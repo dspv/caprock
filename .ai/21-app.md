@@ -323,8 +323,10 @@ One window, three regions:
   agent's terminal: the session's project (and its branch when not the
   default; the path on hover), the agent's character in its state (working,
   *background agents working · N* once its turn ended with subagents still
-  at work, waiting on you, looping, idle, ended), what the session has cost with the cost of each
-  of its last model calls, the context bar and what the next call pays to
+  at work, waiting on you, looping, idle, ended) with a headline figure at
+  the right that the viewer picks (cost, burn rate, tokens, turns, cache
+  hit rate, time working), the spend details folded to one line below the
+  plan windows (cells, and *Spend over time* opening in the flow), the context bar and what the next call pays to
   re-read it, what it is doing this second (the open tool call and how long
   it has run, or *Thinking* since the last one finished; while a permission
   prompt waits, who asks and what — "Subagent (general-purpose) wants to run

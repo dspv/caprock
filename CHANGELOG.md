@@ -7,11 +7,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the agent cockpit puts what people watch first: the agent with a
+  headline figure beside it, then what it and its subagents are doing now,
+  its task list, the context and the plan limits; *Spent this session*
+  follows, folded to one line (*Spent $12.40 · 48 turns · 1h 12m*) until
+  you open it, and stays as you left it.
+- **app:** the headline figure is your choice: cost, burn rate (dollars an
+  hour over the last hour of activity), tokens, turns, cache hit rate or
+  time working, picked from the small menu under it and remembered. The
+  cells under *Spent this session* show the others, never the headline
+  again.
+- **app:** *Spend over time* is a row that says what it opens and opens in
+  place, as wide as the cockpit, instead of a card over the block.
+- **app:** the permission-mode menu is readable: each mode on two lines, its
+  name large with a small mark and what it does under it, the current one
+  marked with an accent bar, and why a row cannot be picked written out.
+
 ### Fixed
 
-- **app:** the cockpit's *Spend by time* card stays inside a narrow
-  inspector: a long *peak …* line no longer pushes it past the panel's
-  edge and cuts off the figure and the close button.
+- **app:** the cockpit's spend over time stays inside a narrow inspector: a
+  long *peak …* line no longer pushes it past the panel's edge.
 
 ### Fixed
 

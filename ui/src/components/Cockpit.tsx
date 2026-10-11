@@ -11,7 +11,7 @@
  * and the day's summary for the plan windows. Nothing here is estimated, and a
  * figure an agent does not report is left out rather than drawn as a zero.
  */
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { api, type Event, type Permission, type RateWindow, type SessionSummary, type SubagentsNow, type Summary } from '@/lib/api'
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
@@ -22,7 +22,9 @@ import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
 import { PlanChip, usePlan } from './PlanPicker'
 import { WINDOW_MS, pace } from '@/lib/pace'
-import { SpendSpark } from './SpendScrub'
+import { SpendOverTime, SpendSpark } from './SpendScrub'
+import { callsFromEvents } from '@/lib/scrub'
+import { CELL_LABEL, HEADLINES, cellsFor, foldedLine, metricTitle, metricValue, setSpendPrefs, spendFigures, useSpendPrefs, type Headline, type SpendFigures } from '@/lib/spendview'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
@@ -113,18 +115,24 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const subs = useSubagents(sessionId, state !== 'ended' && (s.agent ?? 'claude') === 'claude')
   const running = state === 'working' || state === 'looping' ? runningTool(runs, now) : undefined
   const plan = planWindowsFor(s.agent, summary)
+  const calls = useMemo(() => callsFromEvents(main), [main])
+  const figures = spendFigures(s, calls)
+  // The order is what the people using it look at (owner, 2026-10-12): the
+  // agent and its headline figure, what it and its subagents are doing now,
+  // its task list, the context, the plan limits; the spend details after,
+  // folded until a viewer opens them.
   return (
     <>
-      <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} />
-      <Spend s={s} turns={turns} sessionId={sessionId} events={main} now={now} />
-      <ContextMeter s={s} />
+      <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} />
       <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
-      <TodoBlock sessionId={sessionId} />
-      {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && <Subagents subs={subs} permission={permission} now={now} />}
       {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
+      {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && <Subagents subs={subs} permission={permission} now={now} />}
+      <TodoBlock sessionId={sessionId} />
+      <ContextMeter s={s} />
+      {plan && <PlanWindows limits={plan} agent={s.agent} now={now} />}
+      <Spend s={s} turns={turns} sessionId={sessionId} events={main} now={now} figures={figures} />
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
       {changes}
-      {plan && <PlanWindows limits={plan} agent={s.agent} now={now} />}
     </>
   )
 }
@@ -138,16 +146,19 @@ export function SectionLabel({ children, right }: { children: ReactNode; right?:
   )
 }
 
-function Hero({ s, sessionId, state, now, background, subs, permission }: { s: SessionSummary; sessionId: string; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null }) {
+function Hero({ s, sessionId, state, now, background, subs, permission, figures }: { s: SessionSummary; sessionId: string; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null; figures: SpendFigures }) {
   const since = s.worked_at || s.last_event_at
   const strip = subagentChips(subs, permission)
   const saysBackground = background > 0 && state === 'working'
+  // One row: the agent at the left, the headline figure at the right (owner,
+  // 2026-10-12: "put it to the right of the agent, then the chart is wide").
+  // Too narrow for both, the figure wraps under the name.
   return (
-    <div className="flex items-center gap-3.5" data-state={state}>
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3.5 gap-y-2" data-state={state}>
       <div className={`cockpit-avatar relative grid h-[58px] w-[58px] shrink-0 place-items-center rounded-[15px]`} data-state={state}>
         <AgentCharacter who={characterFor(s.agent ?? 'claude')} size={46} className="cockpit-character" />
       </div>
-      <div className="grid min-w-0 gap-1">
+      <div className="grid min-w-0 flex-1 basis-[9.5rem] gap-1">
         <p className="text-[12px] text-fg-muted">
           <span className="font-medium text-fg">{agentName(s.agent ?? 'claude')}</span>
           {s.model_display || s.model ? <span> · {s.model_display || s.model}</span> : null}
@@ -170,6 +181,7 @@ function Hero({ s, sessionId, state, now, background, subs, permission }: { s: S
           <p className="text-[11.5px] text-fg-muted">{s.live_subagents} {s.live_subagents === 1 ? 'subagent' : 'subagents'} working</p>
         )}
       </div>
+      {s.stats && <HeadlineFigure figures={figures} />}
     </div>
   )
 }
@@ -228,37 +240,126 @@ function useTweened(value: number, ms = 650): number {
   return shown
 }
 
-function Spend({ s, turns, sessionId, events, now }: { s: SessionSummary; turns: TurnCost[]; sessionId: string; events: readonly Event[]; now: number }) {
-  const st = s.stats
-  const cost = st?.cost_usd ?? 0
-  const shown = useTweened(cost)
-  const last = turns[turns.length - 1]
-  const tokensIn = st ? st.tokens_in + st.cache_read + st.cache_write : undefined
+/**
+ * The headline figure beside the agent, and what it is: cost by default, or
+ * whatever the viewer picked from the ▾ (burn rate, tokens, turns, cache hit
+ * rate, time working), remembered per viewer (owner, 2026-10-12: "the number
+ * is cool but says nothing; let me switch what matters more to me").
+ */
+function HeadlineFigure({ figures }: { figures: SpendFigures }) {
+  const { headline } = useSpendPrefs()
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  const tweened = useTweened(figures.cost)
+  const meta = HEADLINES.find((h) => h.id === headline) ?? HEADLINES[0]!
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: globalThis.MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.code === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    // The current choice takes the focus, so arrows move from it.
+    box.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')?.focus()
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
+  const value = headline === 'cost' ? fmtUSD(tweened) : metricValue(headline, figures)
+  const [num, unit] = value.endsWith('/h') ? [value.slice(0, -2), '/h'] : [value, '']
+  const choose = (h: Headline) => { setSpendPrefs({ headline: h }); setOpen(false) }
+  const onMenuKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const d = e.code === 'ArrowDown' ? 1 : e.code === 'ArrowUp' ? -1 : 0
+    if (!d) return
+    e.preventDefault()
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'))
+    const i = items.indexOf(document.activeElement as HTMLButtonElement)
+    items[(i + d + items.length) % items.length]?.focus()
+  }
   return (
-    <section aria-label="Spend" className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2.5">
-      <SectionLabel right={last ? <span className="num text-fg-faint" title="What the newest model call cost">last call <span className="text-fg">{fmtUSD(last.cost)}</span></span> : undefined}>
-        Spent this session
-      </SectionLabel>
-      <div className="flex items-end justify-between gap-3">
-        <span className="num text-[34px] font-semibold leading-none tracking-[-0.03em] text-fg" aria-label={`Cost ${fmtUSD(cost)}`}>{fmtUSD(shown)}</span>
-        <SpendSpark sessionId={sessionId} events={events} now={now} />
-      </div>
-      {st && (
-        <dl className="grid grid-cols-4 overflow-hidden rounded-[9px] border border-[var(--app-hairline)]">
-          <Cell label="Turns" value={String(st.turns)} />
-          <Cell label="Tools" value={String(st.tool_calls)} />
-          <Cell label="Tokens" value={fmtTokens(tokensIn)} title={`${fmtTokens(tokensIn)} in · ${fmtTokens(st.tokens_out)} out`} />
-          <Cell label="Cache" value={tokensIn ? fmtPct((s.savings?.hit_rate ?? 0) * 100) : '—'} title="Share of input tokens read from the prompt cache" />
-        </dl>
+    <div ref={box} className="relative ml-auto grid min-w-0 justify-items-end gap-1" data-headline={headline}>
+      <span className="num max-w-full truncate text-[30px] font-semibold leading-none tracking-[-0.03em] text-fg"
+        aria-label={`${meta.name} ${metricValue(headline, figures)}`} title={metricTitle(headline, figures)}>
+        {num}{unit && <span className="text-[16px] font-medium text-fg-muted">{unit}</span>}
+      </span>
+      <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={`Headline: ${meta.name}. Choose what it shows`}
+        onClick={() => setOpen((o) => !o)}
+        title="Choose what this figure shows"
+        className="inline-flex items-center gap-1 rounded-[6px] border border-border px-1.5 text-[11.5px] text-fg-muted outline-none hover:border-border-strong hover:text-fg focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+        {meta.name.toLowerCase()}<span aria-hidden className="text-[9px]">▾</span>
+      </button>
+      {open && (
+        <div role="menu" aria-label="Headline figure" onKeyDown={onMenuKey}
+          className="absolute right-0 top-full z-30 mt-1 grid w-[min(16rem,calc(100vw-32px))] gap-0.5 rounded-[9px] border border-border-strong bg-panel p-1.5 shadow-lg">
+          {HEADLINES.map((h) => (
+            <button key={h.id} type="button" role="menuitemradio" aria-checked={h.id === headline} onClick={() => choose(h.id)}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-[6px] px-2 py-1.5 text-left outline-none hover:bg-panel-2 focus-visible:bg-panel-2 aria-checked:bg-accent/10">
+              <span className={`truncate text-[13px] ${h.id === headline ? 'font-semibold text-fg' : 'text-fg'}`}>{h.name}</span>
+              <span className="num text-[12px] text-fg-muted">{metricValue(h.id, figures)}</span>
+              <span className="col-span-2 truncate text-[11.5px] text-fg-muted">{h.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The spend details under the plan: four cells (never the headline again)
+ * and *Spend over time*, which opens in the flow as wide as the cockpit.
+ * Folded by default to one line, and both choices remembered per viewer.
+ */
+function Spend({ s, turns, sessionId, events, now, figures }: { s: SessionSummary; turns: TurnCost[]; sessionId: string; events: readonly Event[]; now: number; figures: SpendFigures }) {
+  const { folded, headline, chart } = useSpendPrefs()
+  const st = s.stats
+  const last = turns[turns.length - 1]
+  if (!st) return null
+  const cells = cellsFor(headline)
+  const chartId = `spend-time-${sessionId}`
+  return (
+    <section aria-label="Spend" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2.5">
+      <button type="button" aria-expanded={!folded} onClick={() => setSpendPrefs({ folded: !folded })}
+        title={folded ? 'Show the spend details' : 'Fold the spend details'}
+        className="-mx-1 flex min-w-0 items-center gap-1.5 rounded-[6px] px-1 py-0.5 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+        <Chevron open={!folded} />
+        {folded ? (
+          <span data-spend-folded className="num min-w-0 truncate text-[12.5px] text-fg-muted">{foldedLine(headline, figures)}</span>
+        ) : (
+          <>
+            <h4 className="shrink-0 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Spent this session</h4>
+            {last && <span className="num ml-auto min-w-0 truncate text-[11.5px] text-fg-faint" title="What the newest model call cost">last call <span className="text-fg">{fmtUSD(last.cost)}</span></span>}
+          </>
+        )}
+      </button>
+      {!folded && (
+        <>
+          <dl className="grid grid-cols-4 overflow-hidden rounded-[9px] border border-[var(--app-hairline)]">
+            {cells.map((m) => <Cell key={m} label={CELL_LABEL[m]} value={metricValue(m, figures)} title={metricTitle(m, figures)} />)}
+          </dl>
+          <button type="button" aria-expanded={chart} aria-controls={chart ? chartId : undefined} onClick={() => setSpendPrefs({ chart: !chart })}
+            className="-mx-1 flex min-w-0 items-center gap-1.5 rounded-[6px] px-1 py-0.5 text-left text-[12.5px] text-fg-muted outline-none hover:bg-panel-2 hover:text-fg focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+            <Chevron open={chart} />
+            <span className="min-w-0 truncate">Spend over time</span>
+            <span className="ml-auto"><SpendSpark events={events} /></span>
+          </button>
+          {chart && <SpendOverTime sessionId={sessionId} events={events} now={now} />}
+        </>
       )}
     </section>
   )
 }
 
+/** A disclosure's mark: pointing right when closed, down when open. */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" className={`shrink-0 text-fg-muted transition-transform duration-150 ${open ? 'rotate-90' : ''}`}>
+      <path d="M4.5 2.5L8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function Cell({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div className="grid gap-0.5 border-l border-[var(--app-hairline)] px-2 py-1.5 first:border-l-0" title={title}>
-      <dt className="text-[10px] uppercase tracking-[0.06em] text-fg-faint">{label}</dt>
+    <div className="grid min-w-0 gap-0.5 border-l border-[var(--app-hairline)] px-2 py-1.5 first:border-l-0" title={title}>
+      <dt className="truncate text-[10px] uppercase tracking-[0.06em] text-fg-faint">{label}</dt>
       <dd className="num truncate text-[13px] font-medium text-fg">{value}</dd>
     </div>
   )
