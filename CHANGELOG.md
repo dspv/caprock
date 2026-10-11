@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.107.7] - 2026-10-11
+
 ### Added
 
 - **Settings has a sections menu:** on a wide window a list of every section

@@ -73,6 +73,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-11 — 0.107.7: a Settings menu, tabs named by their repo
+
+Settings gets a sticky sections menu with icons; a session tab is named by
+its repository; Feedback is an amber bug; At a glance sits above All time
+and its folded agents are larger with a hint card; key chips are drawn
+darker. ⇧⌘E and ⇧⌘0 get their own Ctrl+Alt+Shift spelling off macOS, and a
+test presses every listed shortcut as each OS spells it (CLAUDE.md rule 12).
+The keep-awake mark stays when off and the PTY resize test handshakes — both
+merged after 0.107.6 was tagged.
+
 ### 2026-10-11 — 0.107.6: the keep-awake mark stays when off
 
 The status bar's keep-awake mark reads *awake off* instead of vanishing. The
