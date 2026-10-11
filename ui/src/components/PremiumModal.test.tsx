@@ -34,7 +34,7 @@ describe('PremiumModal', () => {
     render(<PremiumBanner costUSD={620} days={20} now={NOW} />)
     expect(screen.queryByRole('dialog')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: /what it does/ }))
+    fireEvent.click(screen.getByRole('button', { name: /what it does/i }))
     expect(screen.getByRole('dialog')).toBeTruthy()
   })
 

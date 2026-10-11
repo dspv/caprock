@@ -21,6 +21,7 @@ import { useState, type ReactNode } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { PremiumModal, type PaidFeature } from './PremiumModal'
+import { Banner, BannerButton } from './Banner'
 
 export function Locked({
   feature,
@@ -70,15 +71,18 @@ export function Locked({
         *
         * A row underneath reads in the order the eye already moves — here is
         * the feature, here is what it costs — and covers nothing. */}
-      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 border-t border-border bg-panel-2/60 px-4 py-2.5 text-center">
-        <span className="text-[13px] font-medium text-fg">{title}</span>
-        <button
-          onClick={() => setOpen(true)}
-          className="rounded-sm bg-premium px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110"
-        >
-          Unlock with Premium
-        </button>
-      </div>
+      {/* The banner system's edge form (Banner.tsx), at the panel's foot: the
+        * lock, the feature's name, one button. Not dismissible — it is the
+        * feature's own place, not an interruption. */}
+      <Banner
+        id="locked"
+        edge
+        tone="premium"
+        art="lock"
+        title={title}
+        line="A Premium feature, shown as it will work."
+        actions={<BannerButton kind="premium" onClick={() => setOpen(true)}>Unlock with Premium</BannerButton>}
+      />
 
       {open && <PremiumModal feature={feature} onClose={() => setOpen(false)} />}
     </div>

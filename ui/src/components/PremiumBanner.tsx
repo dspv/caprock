@@ -22,10 +22,11 @@
  * links to is where selling belongs.
  */
 import { useState } from 'react'
-import { fmtUSD } from '@/lib/format'
+import { fmtUSD, fmtUSDShort } from '@/lib/format'
 import { markAnswered, usePromptDue, type PromptKind } from '@/lib/prompts'
 import { useLicensed, useNudgeSlot } from '@/lib/nudges'
 import { PremiumModal } from './PremiumModal'
+import { Banner, BannerButton, BannerDismiss, Fig } from './Banner'
 
 const KIND: PromptKind = 'premium-banner'
 
@@ -43,51 +44,28 @@ export function PremiumBanner({ costUSD, days, now }: { costUSD: number; days: n
 
   const perDay = costUSD / days
   return (
-    <div className="flex items-center gap-3 rounded-[var(--radius-panel)] border border-border bg-panel-2 px-3 py-2 text-[12px]">
-      {/* The measured fact first. Everything after it is a claim, and a claim
-        * that follows one of the reader's own numbers is one they can check. */}
-      <span className="text-fg">
-        <span className="num">{fmtUSD(perDay)}</span>
-        <span className="text-fg-muted"> a day, on average, across {days} active {days === 1 ? 'day' : 'days'}.</span>
-      </span>
-      {/* Says what the feature does, in the words the modal uses.
-        *
-        * This read "Premium stops a day that runs away from you, and alerts
-        * before a plan window does" — a metaphor for a mechanism, and the
-        * owner's verdict was simply "unclear" (translated). A banner has one line to
-        * name a thing the reader can picture; "pauses sessions when the day
-        * crosses a limit you set" is that thing, and it is what the modal
-        * behind the button goes on to explain. */}
-      <span className="text-fg-muted">
-        Premium pauses sessions when the day crosses a limit you set.
-      </span>
-      <span className="ml-auto flex shrink-0 items-center gap-2">
-        {/* Opens the explanation rather than the shop. One line cannot say what
-          * someone would be paying for, and sending them straight to a pricing
-          * page to find out is asking them to leave in order to be persuaded. */}
-        <button
-          onClick={() => setOpen(true)}
-          className="rounded-sm border border-accent/50 bg-accent/10 px-2 py-0.5 text-accent hover:bg-accent/20"
-        >
-          what it does
-        </button>
-        <button
-          /* The `now` this component was given, not a fresh Date.now().
-           *
-           * It read the wall clock here while every other decision in the
-           * component used the prop, so dismissing at one instant and testing
-           * against another silently disagreed by however long the render had
-           * been on screen. In a test with a fixed `now` that gap was a whole
-           * day, and the suite began failing on the date the two crossed —
-           * a year after it was written, with nobody touching this file. */
-          onClick={() => { markAnswered(KIND, now); setGone(true) }}
-          className="rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-fg-faint hover:text-fg-muted"
-          title="hide this for a month"
-        >
-          not now
-        </button>
-      </span>
+    <Banner
+      id="premium"
+      tone="premium"
+      art="cap"
+      /* The measured fact first. Everything after it is a claim, and a claim
+       * that follows one of the reader's own numbers is one they can check. */
+      title={<><Fig title={fmtUSD(perDay)}>{fmtUSDShort(perDay)}</Fig> a day, across {days} active {days === 1 ? 'day' : 'days'}</>}
+      /* Says what the feature does, in the words the modal uses. It once read
+       * "Premium stops a day that runs away from you" — a metaphor for a
+       * mechanism, and the owner's verdict was "unclear" (translated). */
+      line="Premium pauses sessions when the day crosses a limit you set."
+      actions={<>
+        {/* Opens the explanation rather than the shop: one line cannot say
+          * what someone would be paying for. */}
+        <BannerButton kind="premium" onClick={() => setOpen(true)}>What it does</BannerButton>
+        {/* The `now` this component was given, not a fresh Date.now(): the
+          * dismissal and the check must agree on one clock (a fixed-`now`
+          * test failed a year on, on the date the two crossed). */}
+        <BannerDismiss onClick={() => { markAnswered(KIND, now); setGone(true) }} title="Hide this for a month">Not now</BannerDismiss>
+      </>}
+    >
       {open && <PremiumModal feature="cap" onClose={() => setOpen(false)} />}
-    </div>
+    </Banner>
   )
 }

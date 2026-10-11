@@ -7,6 +7,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **ui:** every banner is one design — a small scene drawn from Caprock's own
+  characters on the left, a bold title, one short line, one button and a
+  quiet dismiss, in one row. The team card, the Premium offers, the cap and
+  plan-limit nudges, the phone and star strips, the update and hooks notices,
+  the plan question and the locked panels all use it, in every theme. Figures
+  are short ($16.8k), with the exact sum on hover.
+
 ## [0.107.7] - 2026-10-11
 
 ### Added
