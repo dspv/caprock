@@ -1215,6 +1215,7 @@ export function AppShell() {
                     height={deck.height}
                     onResize={onResizeDeck}
                     onClose={closeDeck}
+                    onToast={setToast}
                   />
                 )}
                 {promptCard && !prefs.inspector && focused && (

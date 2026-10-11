@@ -10,7 +10,7 @@
 import { useState, type ReactNode } from 'react'
 import { api, isPairedDevice, type History } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtDuration, fmtPct, fmtTokens, fmtUSD, fmtTool } from '@/lib/format'
+import { fmtDuration, fmtPct, fmtTokens, fmtUSD, fmtUSDk, fmtUSDShort, fmtTool } from '@/lib/format'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { groupDays } from './Cost'
 import { BarChart, BarReadout } from '@/components/BarChart'
@@ -79,6 +79,19 @@ export function lifetimeFigures(d: History | undefined): LifetimeFigures {
  * label above at caption size, a line under it saying what it is. The money
  * is the hero; the rest step down one size.
  */
+const DAILY_SPANS = ['30d', '90d', '180d', 'all'] as const
+type DailySpan = (typeof DAILY_SPANS)[number]
+const DAILY_SPAN_KEY = 'caprock-daily-span'
+const DAILY_TALL_KEY = 'caprock-daily-tall'
+
+/** A per-viewer choice kept in localStorage; the default when storage is out of reach. */
+function useStored<T>(key: string, fallback: T, ok: (x: unknown) => x is T): [T, (v: T) => void] {
+  const [v, setV] = useState<T>(() => {
+    try { const x: unknown = JSON.parse(localStorage.getItem(key) ?? 'null'); return ok(x) ? x : fallback } catch { return fallback }
+  })
+  return [v, (next: T) => { setV(next); try { localStorage.setItem(key, JSON.stringify(next)) } catch { /* private window */ } }]
+}
+
 function Big({ label, value, sub, hero, tone }: { label: string; value: ReactNode; sub?: ReactNode; hero?: boolean; tone?: string }) {
   return (
     <div className="flex h-full min-w-0 flex-col px-4 py-3.5">
@@ -103,6 +116,12 @@ export function HistoryScreen() {
   // "Measured, not estimated" sat above an all-zero board on a fresh install.
   const measured = !!d && d.totals.turns > 0
   const days = groupDays(d?.daily ?? [])
+  const [dailySpan, setDailySpan] = useStored<DailySpan>(DAILY_SPAN_KEY, 'all', (x): x is DailySpan => (DAILY_SPANS as readonly string[]).includes(x as string))
+  const [dailyTall, setDailyTall] = useStored<boolean>(DAILY_TALL_KEY, false, (x): x is boolean => typeof x === 'boolean')
+  // Calendar days back from today, not the last N rows: days with no spend
+  // have no row.
+  const since = dailySpan === 'all' ? '' : new Date(Date.now() - Number(dailySpan.replace('d', '')) * 86_400_000).toISOString().slice(0, 10)
+  const shownDays = since ? days.filter((x) => x.day >= since) : days
   const f = lifetimeFigures(d)
   const projectColors = sliceColors(f.projects)
   const modelColors = sliceColors(f.models)
@@ -150,11 +169,11 @@ export function HistoryScreen() {
         * work, then the cache, then the counts at reading size below. */}
       <Panel fold="lifetime.totals" title={`Lifetime · ${range}`} right={<span>everything you ran through Caprock · measured, not estimated</span>}>
         <div className="grid sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr] divide-y sm:divide-y-0 sm:divide-x divide-border">
-          <Big hero label={costLabel(plan)} tone="text-accent" value={measured ? fmtUSD(f.cost) : '—'}
+          <Big hero label={costLabel(plan)} tone="text-accent" value={measured ? <span title={fmtUSD(f.cost)}>{fmtUSDShort(f.cost)}</span> : '—'}
             sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured yet'}</span>} />
-          <Big label="A day" value={f.perDay !== undefined ? fmtUSD(f.perDay) : '—'}
+          <Big label="A day" value={f.perDay !== undefined ? <span title={fmtUSD(f.perDay)}>{fmtUSDShort(f.perDay)}</span> : '—'}
             sub={measured && d ? <span title="cost ÷ days with any activity">over {d.totals.days.toLocaleString('en-US')} active {d.totals.days === 1 ? 'day' : 'days'}</span> : undefined} />
-          <Big label="A session" value={f.perSession !== undefined ? fmtUSD(f.perSession) : '—'}
+          <Big label="A session" value={f.perSession !== undefined ? <span title={fmtUSD(f.perSession)}>{fmtUSDShort(f.perSession)}</span> : '—'}
             sub={measured && d ? <span title="cost ÷ sessions">over {d.totals.sessions.toLocaleString('en-US')} {d.totals.sessions === 1 ? 'session' : 'sessions'}</span> : undefined} />
           {/* A never-used cache is 0%, which tripped the < 90% warn tone and
             * painted a fault light onto an empty install. */}
@@ -179,14 +198,33 @@ export function HistoryScreen() {
       {/* Right under the totals, low: the owner's favourite reading of the
         * whole history, "clear, beautiful, real activity" (2026-10-11,
         * translated), was at the bottom of the page. */}
+      {/* Its own period and height, both kept (owner, 2026-10-11: "change the
+        * period here easily", "a toggle that doubles the chart's height"). The
+        * period cuts what the screen's range loaded; it never asks again. */}
       <Panel
         fold="lifetime.daily"
         title="Daily cost"
-        right={<BarReadout bars={days} active={activeDay} total={days.reduce((a, x) => a + x.cost, 0)} />}
+        right={
+          <span className="flex items-center gap-3">
+            <span role="group" aria-label="Daily cost period" className="flex items-center gap-0.5">
+              {DAILY_SPANS.map((sp) => (
+                <button key={sp} type="button" aria-pressed={dailySpan === sp} onClick={() => setDailySpan(sp)}
+                  className={`rounded-[5px] px-1.5 py-0.5 text-[11.5px] ${dailySpan === sp ? 'bg-panel-2 text-fg' : 'text-fg-faint hover:text-fg'}`}>
+                  {sp}
+                </button>
+              ))}
+            </span>
+            <button type="button" aria-pressed={dailyTall} onClick={() => setDailyTall(!dailyTall)} title={dailyTall ? 'Normal height' : 'Twice as tall'}
+              className={`rounded-[5px] px-1.5 py-0.5 text-[11.5px] ${dailyTall ? 'bg-panel-2 text-fg' : 'text-fg-faint hover:text-fg'}`}>
+              ×2
+            </button>
+            <BarReadout bars={shownDays} active={activeDay} total={shownDays.reduce((a, x) => a + x.cost, 0)} fmtTotal={fmtUSDk} />
+          </span>
+        }
       >
-        {!h.data ? <Skeleton rows={2} /> : days.length === 0 && <Empty title="No history yet" />}
-        {days.length > 0 && (
-          <BarChart bars={days} active={activeDay} onActive={setActiveDay} height={72} showDayLabels={false} axis />
+        {!h.data ? <Skeleton rows={2} /> : shownDays.length === 0 && <Empty title="No history yet" />}
+        {shownDays.length > 0 && (
+          <BarChart bars={shownDays} active={activeDay} onActive={setActiveDay} height={dailyTall ? 144 : 72} showDayLabels={false} axis />
         )}
       </Panel>
 
@@ -203,19 +241,26 @@ export function HistoryScreen() {
               <table className="w-full text-[13px]">
                 <thead>
                   <tr className="text-[10px] uppercase tracking-[0.08em] text-fg-faint">
-                    <th className="px-2 pb-1 text-left font-normal">project</th>
+                    <th className="px-2 pb-1 text-left font-normal" colSpan={2}>share · project</th>
                     <th className="px-2 pb-1 text-right font-normal">tokens</th>
                     <th className="px-2 pb-1 text-right font-normal">cost</th>
-                    <th className="px-2 pb-1 text-right font-normal">share</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(d.summary.projects ?? []).filter((p) => p.cost_usd > 0).slice(0, 8).map((p) => (
                     <tr key={p.project} className="border-b border-border/60 last:border-0">
+                      {/* The donut's colour and the share, large, first: the eye
+                        * matches a row to its arc without crossing the table
+                        * (owner, 2026-10-11). */}
+                      <td className="w-[1%] whitespace-nowrap px-2 py-1.5" data-share>
+                        <span className="inline-flex items-center gap-2">
+                          <span aria-hidden className="h-3 w-3 shrink-0 rounded-[3px]" style={{ background: projectColors.get(p.project || 'unknown') ?? 'var(--color-fg-faint)' }} />
+                          <span className="num w-[3.2ch] text-right text-[17px] font-semibold text-fg">{sharePct(p.cost_usd, f.cost || f.projectTotal)}</span>
+                        </span>
+                      </td>
                       <td className="px-2 py-1.5 font-medium truncate max-w-[16rem]">{p.project || 'unknown'}</td>
                       <td className="px-2 py-1.5 num text-right text-fg-muted">{fmtTokens(p.tokens)}</td>
                       <td className="px-2 py-1.5 num text-right">{fmtUSD(p.cost_usd)}</td>
-                      <td className="px-2 py-1.5 text-right text-fg-muted w-28"><ShareBar value={p.cost_usd} total={f.cost || f.projectTotal} color={projectColors.get(p.project || 'unknown')} /></td>
                     </tr>
                   ))}
                 </tbody>
