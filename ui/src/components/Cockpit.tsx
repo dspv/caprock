@@ -20,6 +20,8 @@ import { fmtAgo, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
+import { PlanChip, usePlan } from './PlanPicker'
+import { WINDOW_MS, pace } from '@/lib/pace'
 import { SpendSpark } from './SpendScrub'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import { SubscriptionTag } from './SubscriptionPicker'
@@ -467,32 +469,61 @@ function LoopWarning({ s, now }: { s: SessionSummary; now: number }) {
 
 function PlanWindows({ limits, agent, now }: { limits: NonNullable<Summary['rate_limits']>; agent?: string; now: number }) {
   const source = agent === 'codex' ? 'Codex' : 'Claude Code'
+  const [plan, savePlan] = usePlan()
   return (
-    <section aria-label="Plan limits" className="grid gap-2">
-      <SectionLabel right={<span className="text-fg-faint">all {source} sessions</span>}>Plan</SectionLabel>
-      {limits.five_hour && <WindowBar label="5-hour" w={limits.five_hour} now={now} source={source} />}
-      {limits.seven_day && <WindowBar label="Weekly" w={limits.seven_day} now={now} source={source} />}
+    <section aria-label="Plan limits" className="grid gap-2.5">
+      {/* Which plan these are — and a click to correct it (owner, 2026-10-11:
+        * "and you can confirm the plan there: is it really this one?"). */}
+      <SectionLabel right={agent === 'codex' ? <span className="text-fg-faint">all Codex sessions</span> : <PlanChip plan={plan} onSave={savePlan} />}>Plan</SectionLabel>
+      {limits.five_hour && <WindowBar label="5 hours" w={limits.five_hour} lenMs={WINDOW_MS.five_hour} now={now} source={source} forecasts={agent !== 'codex'} />}
+      {limits.seven_day && <WindowBar label="Week" w={limits.seven_day} lenMs={WINDOW_MS.seven_day} now={now} source={source} forecasts={agent !== 'codex'} />}
     </section>
   )
 }
 
-function WindowBar({ label, w, now, source }: { label: string; w: RateWindow; now: number; source: string }) {
-  const { pct, stale } = readWindow(w, now)
-  const resetMs = w.resets_at * 1000
-  const tone = pct > 85 ? 'danger' : pct >= 60 ? 'warn' : 'accent'
+/**
+ * One window at a glance: the bar, a tick where an even pace would be by
+ * the clock (fill past it = spending faster than time passes), the percentage
+ * large, and one line — when it resets and whether it lasts. Green *enough*,
+ * amber *out at 23:50*, red when that is under half an hour away; a click
+ * shows the exact reset time and the forecast in words.
+ */
+function WindowBar({ label, w, lenMs, now, source, forecasts }: { label: string; w: RateWindow; lenMs: number; now: number; source: string; forecasts: boolean }) {
+  const { stale } = readWindow(w, now)
+  const p = pace(w, lenMs, now, { forecasts, stale })
+  const [more, setMore] = useState(false)
+  const tone = p.verdict === 'out' ? (p.urgent ? 'danger' : 'warn') : p.pct > 85 ? 'danger' : 'ok'
+  const ink = tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-fg'
   const observed = w.observed_at ? ` · read ${fmtAgo(w.observed_at, now)}` : ''
   return (
-    <div className="grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5">
-      <span className="text-[11.5px] text-fg-muted">{label}</span>
-      <div className="cockpit-track h-[6px] overflow-hidden rounded-full" role="meter" aria-label={`${label} window used`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
-        <div className="cockpit-fill h-full rounded-full" data-tone={tone} style={{ width: `${Math.max(1.5, Math.min(100, pct))}%` }} />
+    <div className="grid gap-1" data-window={label}>
+      <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-x-2.5">
+        <span className="text-[12.5px] text-fg-muted">{label}</span>
+        <div className="cockpit-track relative h-[8px] overflow-visible rounded-full" role="meter" aria-label={`${label} window used`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={p.pct}>
+          <div className="cockpit-fill h-full rounded-full" data-tone={tone === 'ok' ? 'accent' : tone} style={{ width: `${Math.max(1.5, Math.min(100, p.pct))}%` }} />
+          {!stale && (
+            <span aria-hidden data-pace-tick title={`Even pace: ${Math.round(p.elapsed)}% of the window has passed`}
+              className="absolute -top-[3px] h-[14px] w-[2px] rounded-full bg-fg" style={{ left: `calc(${p.elapsed}% - 1px)` }} />
+          )}
+        </div>
+        <span className={`num text-right text-[15px] font-semibold ${ink}`}>{p.pct}%</span>
       </div>
-      <span className={`num text-right text-[12px] font-medium ${tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-fg'}`}>{pct}%</span>
-      <span />
-      <span className="col-span-2 text-[10.5px] text-fg-faint" title={stale ? `${source} has not refreshed this window recently` : undefined}>
-        {stale ? 'reset time stale' : `resets ${resetClock(resetMs, now)} · in ${countdown(resetMs - now)}`}{observed}
-        {w.forecast && <span className="text-warn"> · {w.forecast}</span>}
-      </span>
+      <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more}
+        className="ml-[66px] flex flex-wrap items-baseline gap-x-2 text-left text-[12.5px]"
+        title={stale ? `${source} has not refreshed this window recently` : 'Click for the exact time and the forecast'}>
+        {stale ? <span className="text-fg-faint">not reported lately{observed}</span> : (
+          <>
+            <span className="text-fg-muted">resets in <span className="num text-fg">{countdown(p.resetMs - now)}</span></span>
+            {p.verdict === 'ok' && <span data-verdict="ok" className="font-medium text-ok">✓ enough</span>}
+            {p.verdict === 'out' && <span data-verdict="out" className={`font-medium ${p.urgent ? 'text-danger' : 'text-warn'}`}>⚠ out {p.outAt ? `at ${resetClock(p.outAt, now)}` : 'now'}</span>}
+          </>
+        )}
+      </button>
+      {more && !stale && (
+        <p className="ml-[66px] text-[11.5px] leading-relaxed text-fg-faint">
+          Resets {resetClock(p.resetMs, now)}{observed}. {w.forecast ? `At this pace: ${w.forecast.replace(/^~/, 'about ')}.` : forecasts ? 'At this pace it lasts until the reset.' : `${source} limits are not forecast.`} The tick is where an even pace would be.
+        </p>
+      )}
     </div>
   )
 }

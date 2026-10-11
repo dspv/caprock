@@ -21,6 +21,7 @@
  */
 import { useState } from 'react'
 import { api } from '@/lib/api'
+import { Banner, BannerButton, BannerDismiss } from './Banner'
 
 const KEY = 'caprock-hooks-banner-dismissed'
 
@@ -66,51 +67,45 @@ export function HooksBanner({ missing, settingsPath, partial = false }: { missin
     }
   }
 
-  const close = (
-    <button type="button" onClick={dismiss} aria-label="Dismiss the hooks notice"
-      className="-mr-1 self-start px-1.5 text-[15px] leading-none text-fg-faint hover:text-fg">
-      ×
-    </button>
-  )
-
   if (state === 'done') {
     return (
-      <div role="status" className="border border-ok/50 bg-ok/10 px-3 py-2 text-[12px] rounded-[var(--radius-panel)] flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <span className="text-ok font-medium">Hooks installed ✓</span>{' '}
-          <span className="text-fg-muted">{INSTALLED_NOTE}</span>
-          <div className="mono text-[10.5px] text-fg-faint truncate" title={settingsPath}>in {settingsPath}</div>
-        </div>
-        <button type="button" onClick={() => setDismissed(key)} aria-label="Close" className="-mr-1 px-1.5 text-[15px] leading-none text-fg-faint hover:text-fg">×</button>
-      </div>
+      <Banner
+        id="hooks"
+        tone="ok"
+        art="done"
+        role="status"
+        title="Hooks installed ✓"
+        line={INSTALLED_NOTE}
+        foot={<span className="mono block truncate" title={settingsPath}>in {settingsPath}</span>}
+        actions={<BannerDismiss icon onClick={() => setDismissed(key)} aria-label="Close" />}
+      />
     )
   }
 
   return (
-    <div role="status" className="border border-warn/50 bg-warn/10 px-3 py-2 text-[12px] rounded-[var(--radius-panel)] flex items-start gap-3">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="text-warn font-medium">{partial ? 'Hooks need an update' : 'Hooks not installed'}</span>
-          <span className="text-fg-muted min-w-0">
-            {partial
-              ? 'This Caprock listens for more hook events than are installed. Install to add them.'
-              : 'Activity still arrives from transcripts, a few seconds late. Hooks make it live.'}
-          </span>
-          <button type="button" onClick={install} disabled={state === 'busy'}
-            className="rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-panel hover:opacity-90 disabled:opacity-60">
-            {state === 'busy' ? 'Installing…' : partial ? 'Update hooks' : 'Install hooks'}
-          </button>
-        </div>
-        <div className="mt-1 text-[11px] text-fg-faint">
-          or run <span className="mono text-fg-muted">caprock hooks install</span> in a terminal ·{' '}
-          <span title={`Missing hook events: ${(left.length ? left : missing).join(', ')}`}>
-            {missing.length} hook event{missing.length === 1 ? '' : 's'} missing in{' '}
-          </span>
-          <span className="mono break-all">{settingsPath}</span>
-        </div>
-        {state === 'failed' && <div className="mt-1 text-[11.5px] text-danger">Could not install: {error}</div>}
-      </div>
-      {close}
-    </div>
+    <Banner
+      id="hooks"
+      tone="warn"
+      art="hooks"
+      role="status"
+      title={partial ? 'Hooks need an update' : 'Hooks not installed'}
+      line={partial
+        ? 'This Caprock listens for more hook events than are installed.'
+        : 'Activity still arrives from transcripts, a few seconds late. Hooks make it live.'}
+      foot={<>
+        or run <span className="mono text-fg-muted">caprock hooks install</span> ·{' '}
+        <span title={`Missing hook events: ${(left.length ? left : missing).join(', ')}`}>
+          {missing.length} hook event{missing.length === 1 ? '' : 's'} missing in{' '}
+        </span>
+        <span className="mono break-all">{settingsPath}</span>
+        {state === 'failed' && <span className="mt-1 block text-[11.5px] text-danger">Could not install: {error}</span>}
+      </>}
+      actions={<>
+        <BannerButton onClick={install} disabled={state === 'busy'}>
+          {state === 'busy' ? 'Installing…' : partial ? 'Update hooks' : 'Install hooks'}
+        </BannerButton>
+        <BannerDismiss icon onClick={dismiss} aria-label="Dismiss the hooks notice" title="Hide until the missing set changes" />
+      </>}
+    />
   )
 }

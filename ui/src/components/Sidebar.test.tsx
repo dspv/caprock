@@ -340,6 +340,17 @@ describe('the sidebar', () => {
     expect(row().getAttribute('aria-expanded')).toBe('true')
   })
 
+  it('counts the projects in the heading, and hides Outside projects like any project', () => {
+    const stray = { session_id: 'x1', cwd: '/elsewhere', project: 'elsewhere', model: '', started_at: 1, last_event_at: Date.now(), status: 'active', git_branch: '', owned: true, title: 'stray' } as unknown as SessionSummary
+    const live = { ...stray, session_id: 'a1', cwd: '/w/alpha', project: 'alpha', title: 'work' } as unknown as SessionSummary
+    const m = buildSidebar({ projects: [proj('alpha', 1, true), proj('beta', 2, true)], sessions: [stray, live], permissions: new Set(), costs: new Map(), openSessions: new Set() })
+    renderSidebar({ model: m })
+    expect(screen.getByTitle('2 projects, 1 with something running').textContent).toBe('1 of 2')
+    expect(listed()).toContain('other-folders')
+    fireEvent.click(screen.getByRole('button', { name: /^Hide Outside projects/ }))
+    expect(listed()).not.toContain('other-folders')
+  })
+
   it('folds the bottom block to a row of icons and back, remembered across a reload', () => {
     const onSettings = vi.fn()
     const first = renderSidebar({ onSettings })

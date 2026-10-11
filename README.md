@@ -433,7 +433,7 @@ caprock up --hive ~/caprock-tasks --repo ~/dev/myproject
 ```
 
 `--hive` is a queue directory; Caprock creates it, and seeds it with a README
-and an example task so it explains itself. `--repo` is the checkout the work
+showing the task format so it explains itself; the queue starts empty. `--repo` is the checkout the work
 happens in (default: the current directory). Your own working tree is never
 touched — each worker gets its **own git worktree** at
 `<repo>/.caprock-worktrees/<worker-id>`, on a branch named

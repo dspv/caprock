@@ -34,15 +34,17 @@
           // Light palette; the fallback mirrors DEFAULT_TONE in lib/theme.ts.
           var tone = localStorage.getItem('caprock-light-tone');
           document.documentElement.setAttribute('data-tone', tone === 'white' ? 'white' : 'paper');
+          var dark = localStorage.getItem('caprock-dark-tone') === 'slate' ? 'slate' : 'graphite';
+          document.documentElement.setAttribute('data-dark', dark);
           // Mirrors THEME_COLORS in lib/theme.ts: the header's panel colour.
-          var bar = t === 'dark' ? '#211f1d' : tone === 'white' ? '#ffffff' : '#f4ecdd';
+          var bar = t === 'dark' ? (dark === 'slate' ? '#1f2023' : '#211f1d') : tone === 'white' ? '#ffffff' : '#f4ecdd';
           document.querySelector('meta[name="theme-color"]').setAttribute('content', bar);
         } catch (e) {}
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-DQgSNGB2.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-CwAcdCIT.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-BGBPk_Ya.css">
+    <script type="module" crossorigin src="/assets/index-CRc35_in.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-CejlOeAC.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-DFsWMT-p.css">
   </head>
   <body>
     <div id="root"></div>

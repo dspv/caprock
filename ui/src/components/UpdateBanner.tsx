@@ -17,6 +17,7 @@ import { fmtAgo } from '@/lib/format'
 import { Copyable } from '@/components/ui'
 import { everyWhileVisible } from '@/lib/visible'
 import { isTauri } from '@/lib/appmode'
+import { Banner, BannerButton, BannerDismiss } from './Banner'
 
 const DISMISS_KEY = 'caprock.update.dismissed'
 
@@ -50,27 +51,16 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
     // (AppUpdateAsk); a second offer here would be asking twice.
     if (isTauri()) return null
     return (
-      <Frame tone="muted">
-        <span className="text-fg-muted">
-          Caprock can check GitHub for new releases. It&apos;s the only outbound
-          call it makes, so it&apos;s off unless you turn it on — no usage data
-          is sent, and you can turn it off again any time.
-        </span>
-        <span className="ml-auto flex items-center gap-2 shrink-0">
-          <button
-            className="text-[11px] border border-accent/50 text-accent bg-accent/10 px-2 py-0.5 rounded-sm hover:bg-accent/20"
-            onClick={() => onSave({ update_checks: true })}
-          >
-            check for updates
-          </button>
-          <button
-            className="text-[11px] text-fg-faint hover:text-fg border border-border px-1.5 py-0.5 rounded-sm"
-            onClick={() => { localStorage.setItem(DISMISS_KEY, 'offer'); setDismissed('offer') }}
-          >
-            no thanks
-          </button>
-        </span>
-      </Frame>
+      <Banner
+        id="update"
+        art="update"
+        title="Know when a new Caprock is out"
+        line="Off until you turn it on. It asks GitHub for one version number and sends no usage data."
+        actions={<>
+          <BannerButton onClick={() => onSave({ update_checks: true })}>Check for updates</BannerButton>
+          <BannerDismiss onClick={() => { localStorage.setItem(DISMISS_KEY, 'offer'); setDismissed('offer') }}>No thanks</BannerDismiss>
+        </>}
+      />
     )
   }
 
@@ -78,57 +68,30 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
   if (dismissed === st.latest) return null
 
   return (
-    <Frame tone="accent">
-      <span className="text-fg">
-        <span className="font-medium">Caprock {st.latest}</span> is available —
-        you&apos;re on <span className="mono">{st.current}</span>.
-      </span>
-      {/* Upgrading restarts the daemon. A session whose terminal is in a
-        * pty-host carries on and is picked back up (ADR-033); one in the
-        * daemon's own PTY — the fallback when a holder could not start — ends
-        * with it. Those are counted, and only shown when there are any:
-        * finding out afterwards is how a user loses a turn they were in the
-        * middle of. */}
-      {owned > 0 && (
-        <span className="text-[12px] text-warn shrink-0">
-          {owned === 1 ? '1 session Caprock started will close' : `${owned} sessions Caprock started will close`}
-        </span>
-      )}
-      {st.command ? (
-        <Copyable command={st.command} />
-      ) : (
-        <a className="link text-[12px]" href={st.url} target="_blank" rel="noreferrer">
-          download it
-        </a>
-      )}
-      <span className="ml-auto flex items-center gap-2 shrink-0">
-        {st.checked_at ? (
-          <span className="num text-[11px] text-fg-faint">checked {fmtAgo(st.checked_at, now)}</span>
-        ) : null}
-        <a
-          className="text-[11px] text-fg-muted hover:text-fg border border-border px-1.5 py-0.5 rounded-sm no-underline"
-          href={st.url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          what&apos;s new
-        </a>
-        <button
-          className="text-[11px] text-fg-faint hover:text-fg border border-border px-1.5 py-0.5 rounded-sm"
-          onClick={() => { localStorage.setItem(DISMISS_KEY, st.latest!); setDismissed(st.latest!) }}
-        >
-          not now
-        </button>
-      </span>
-    </Frame>
-  )
-}
-
-function Frame({ tone, children }: { tone: 'accent' | 'muted'; children: React.ReactNode }) {
-  const cls = tone === 'accent' ? 'border-accent/40 bg-accent/5' : 'border-border bg-panel'
-  return (
-    <div className={`border rounded-[var(--radius-panel)] px-3 py-2 flex items-center gap-3 text-[12px] ${cls}`}>
-      {children}
-    </div>
+    <Banner
+      id="update"
+      art="update"
+      title={<>Caprock {st.latest} is available</>}
+      line={<>
+        You&apos;re on <span className="mono">{st.current}</span>
+        {st.checked_at ? <span className="text-fg-faint"> · checked {fmtAgo(st.checked_at, now)}</span> : null}
+        {/* Upgrading restarts the daemon. A session whose terminal is in a
+          * pty-host carries on and is picked back up (ADR-033); one in the
+          * daemon's own PTY ends with it. Counted, and only shown when there
+          * are any: finding out afterwards is how a user loses a turn. */}
+        {owned > 0 && (
+          <span className="text-warn"> · {owned === 1 ? '1 session Caprock started will close' : `${owned} sessions Caprock started will close`}</span>
+        )}
+      </>}
+      actions={<>
+        {st.command ? (
+          <Copyable command={st.command} className="max-w-full truncate" />
+        ) : (
+          <a className="bn-btn bg-accent text-bg no-underline" href={st.url} target="_blank" rel="noreferrer">Download it</a>
+        )}
+        <a className="bn-link no-underline" href={st.url} target="_blank" rel="noreferrer">What&apos;s new</a>
+        <BannerDismiss onClick={() => { localStorage.setItem(DISMISS_KEY, st.latest!); setDismissed(st.latest!) }}>Not now</BannerDismiss>
+      </>}
+    />
   )
 }

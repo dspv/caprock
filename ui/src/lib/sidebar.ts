@@ -302,7 +302,9 @@ export function groupProjects(
     else out.more.push(n)
   }
   for (const g of [out.shown, out.more, out.hidden]) g.sort(stableOrder)
-  if (other) out.shown.push(other)
+  // Outside projects stays last, unless hidden by hand; then it waits under
+  // Hidden too, unless something there waits on you.
+  if (other) (hidden.has(OTHER_FOLDERS_ID) && other.waiting === 0 ? out.hidden : out.shown).push(other)
   return out
 }
 

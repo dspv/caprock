@@ -7,6 +7,70 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the pinned Dashboard or Settings tab is its icon and its key —
+  ⌘0, or ⌘, for Settings — the name in the tooltip.
+
+- **app:** the sidebar's *Projects* heading counts them — *● 3 of 12* has
+  something running — and *Outside projects* can be hidden like any project.
+
+- **app:** the inspector's plan windows answer "will it last?" at a glance —
+  a tick on each bar where an even pace would be, the percentage large, and
+  one line: *resets in 4 h 56 min · ✓ enough*, or *⚠ out at 23:50* when the
+  current pace runs out first. A click shows the details; the plan itself
+  is in the header, to confirm or change.
+
+### Changed
+
+- **app:** the version panel is the version, whether it is current, when it
+  was checked, the update button and *Release notes →*. The release notes
+  themselves left the panel, where they were unreadable.
+
+- **Lifetime:** the big figures are short — *$16.8k*, *$159* — with the
+  exact sum on hover. Top projects' rows start with the donut's colour and
+  the share, large.
+
+### Added
+
+- **Lifetime → Daily cost** has its own period (30d, 90d, 180d, all) and a
+  **×2** height toggle; both are remembered.
+
+### Added
+
+- **Four themes, picked by hovering:** Graphite, **Slate** (new — a neutral
+  dark with a soft blue accent), Paper and White. The theme button opens a
+  picker: hover a palette to see it on the whole app, click to keep it.
+  Settings → Appearance shows the same four as large swatches.
+- **app:** tabs in the sidebar show their jump key, ⌘1–⌘9, as the tab strip
+  does.
+
+### Changed
+
+- **app:** every shortcut hint is drawn as a large key — New agent, Quick
+  chat, Add project, Dashboard, Settings — on macOS, Windows and Linux alike.
+
+### Fixed
+
+- **app:** the permission card's Y, N and A work on any keyboard layout; on a
+  Russian one Y typed a Cyrillic letter and did nothing.
+
+- **ui:** every banner is one design — a small scene drawn from Caprock's own
+  characters on the left, a bold title, one short line, one button and a
+  quiet dismiss, in one row. The team card, the Premium offers, the cap and
+  plan-limit nudges, the phone and star strips, the update and hooks notices,
+  the plan question and the locked panels all use it, in every theme. Figures
+  are short ($16.8k), with the exact sum on hover.
+
+- **Settings is quick to scan:** larger titles, buttons and checkboxes; the
+  explanations are hidden until you turn on *Show explanations* or press a
+  section's **?**; a section's title folds it, and the fold is remembered.
+
+### Fixed
+
+- **app:** Cmd+C in a terminal copies on any keyboard layout and says
+  *Copied · N chars*; on a Russian layout it copied nothing and macOS beeped.
+
 ### Added
 
 - **Phone: chat first.** Now on a phone starts with the running sessions,
@@ -76,8 +140,52 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** keys drawn as keys (the deck's *Review changes ⇧⌘G*, the tabs'
   ⌘1–⌘9) are drawn darker and bolder; the faint chip went unseen.
 
+- **ui:** the Tasks screen says what it is and how to start. One sentence and
+  a worked example (you write the task, a worker does it on its own branch,
+  Caprock runs your checks, you merge), then a gallery of templates — fix
+  failing tests, bump a dependency, add tests for a file, fix lint and type
+  errors, write docs for a module, port a script — that open the form
+  prefilled. Their checks are the commands the repository declares (Makefile
+  targets, package.json scripts, go.mod, Cargo.toml, pytest/ruff/mypy when
+  configured), found by the new `GET /v1/hive/starter`, never guessed. The
+  budget field starts empty with the daemon's own ceiling as the hint.
+- **ui:** the board is one list grouped by what each task needs — Needs you,
+  Working, Waiting to start, Finished — instead of six narrow columns, and
+  each row says what the task is doing now, how its checks went, what it cost
+  against its budget, and its one action (Approve/Reject, Review & merge,
+  Open). A queued task with nothing moving says the orchestrator has to be
+  started, with the button.
+- **A new queue directory starts empty.** It no longer gets an example task
+  in the inbox, which the board showed as waiting and the orchestrator would
+  assign with checks guessed for the repository; the format is in its README.
+
+### Added
+
+- **app:** the session deck's first cell is now **CI**, the live GitHub
+  Actions of the session's pull request: a row per job with its state (a
+  turning ring while it runs, ✓, ✗), the step it is on or failed at, its
+  OS and its time, ticking while it runs; a job opens into its steps with
+  their times, and a failed step into the lines around the error in its
+  log, with *Open on GitHub*. At the top, the runner time so far, measured
+  from GitHub's job times and split per OS, never priced. Asked every 12 s
+  while a job runs, else every minute, only while the deck is open
+  (`GET /v1/sessions/{id}/ci`, `GET /v1/sessions/{id}/ci/jobs/{job}/log`).
+- **app:** **Investigate** on a failed CI job queues it into the agent in
+  front — the PR, the workflow, job and step, the job's link and the last
+  40 lines of its log, with "investigate and fix; push to the same branch" —
+  through the message queue, so it types in at the prompt or when the turn
+  ends. Only into a session Caprock started, from a device that may
+  control; otherwise the button says why it is off.
+
+### Removed
+
+- **app:** the deck's *Context* cell: the status bar already shows it.
+
 ### Fixed
 
+- **app:** a pull request in the deck with no checks no longer reads "CI no
+  CI": a fresh one says *CI not started* (GitHub has not reported its checks
+  yet), one older than 10 minutes says *no checks*, each with a tooltip.
 - **app:** the keep-awake mark in the status bar stays when keep-awake is
   off — it reads *awake off*, and a click opens the modes — instead of
   vanishing with no way back from there.

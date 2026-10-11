@@ -15,7 +15,7 @@ describe('the status strip', () => {
     const { container } = render(<StatusStrip version="0.94.1" figures={false} pane={{ status: 'live', protocol: 'v2', cols: 167, rows: 36 }} />)
     const bar = container.querySelector('footer')!
     expect(bar.textContent).not.toMatch(/167×36|\bv2\b/)
-    expect(screen.getByText('0.94.1').closest('button')).toHaveAttribute('title', 'Updates and what changed\nterminal protocol v2 · 167×36')
+    expect(screen.getByText('0.94.1').closest('button')).toHaveAttribute('title', 'Version and updates\nterminal protocol v2 · 167×36')
   })
 
   it('shows the figures of the session in front: model, context, next call, cost', () => {
