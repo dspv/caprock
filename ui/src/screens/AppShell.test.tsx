@@ -323,7 +323,12 @@ describe('the app workspace', () => {
     const ended = await screen.findByRole('group', { name: 'The chat ended' })
     expect(screen.getByRole('tab', { name: /Quick chat/ })).toBeInTheDocument()
     expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
-    expect(fetchMock.mock.calls.some((c) => String((c as unknown[])[0]).includes('/shells'))).toBe(false)
+    // No shell is started in its place: no POST to /shells (a background GET
+    // of the list may land here and is not the point).
+    expect(fetchMock.mock.calls.some((c) => {
+      const [url, init] = c as unknown as [unknown, RequestInit | undefined]
+      return String(url).includes('/shells') && (init?.method ?? 'GET').toUpperCase() === 'POST'
+    })).toBe(false)
     expect(within(ended).getByRole('button', { name: 'Close tab' })).toHaveFocus()
     // Start again: a new chat on the same agent and model, in the same tab.
     fireEvent.click(within(ended).getByRole('button', { name: 'Start again' }))

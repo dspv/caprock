@@ -735,7 +735,7 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
         * true (scripts/shots.py tells it from a screen still loading). */}
       <div data-session-figures className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border-t border-border">
         <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={s.model || '—'} tone="info" />
-        <Stat label="Tokens" value={fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={`${fmtPct(s.savings.hit_rate * 100)} cache hit`} />
+        <Stat label="Tokens" value={fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={`${fmtPct((s.savings?.hit_rate ?? 0) * 100)} cache hit`} />
         {/* The caption carries the price of the NEXT call, not the window size
           * the percentage above already states. Every call re-reads the whole
           * context before it does anything, so a full context is not merely

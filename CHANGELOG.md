@@ -7,6 +7,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **ui:** a session with no cache figures yet (a quick chat that just
+  started) no longer trips the session and Now screens' cache line.
+
 ## [0.110.0] - 2026-10-12
 
 ### Added
