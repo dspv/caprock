@@ -25,7 +25,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   tokens, cost and costliest tools. Finished subagents open too, and *+N
   finished* lists them as rows. New `GET
   /v1/sessions/{id}/subagents/{agent}`; `/subagents` takes `?recent=` (up to
-  30) and lists up to 24 working. A new index (migration 0048) finds a
+  30) and lists up to 24 working. A new index (migration 0049) finds a
   subagent's rows without reading its parent's.
 - **app:** the cockpit's subagent chips show up to 24, in groups of four
   across the cockpit's width (twelve to a row), instead of four and *+N*;
