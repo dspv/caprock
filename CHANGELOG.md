@@ -7,12 +7,70 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **Dark Side** is neon purple instead of crimson: a near-black violet
+  ground, a glowing purple accent and cursor, neon cyan for premium, and a
+  red of its own for errors. Body text stays at 5.1:1 or more.
+
+### Changed
+
+- **app:** ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) now asks: it opens the
+  Quick chat chooser with the agent and model you used last already picked,
+  so Enter starts it and Esc cancels. 1–9 pick the agent there too.
+- **app:** the status bar says whose load it shows: *agent cpu 17% ram 2.0
+  GB* is the session's own processes (the agent and what it runs), and a new
+  *caprock 160 MB* beside it is Caprock itself (daemon, app, terminal
+  holders), with the split in its tooltip.
+
+- **ui:** *Settings* in the dashboard header is a framed button with a gear,
+  like *Feedback* beside it, instead of grey text.
+
+- **app:** the agent cockpit puts what people watch first: the agent with a
+  headline figure beside it, then what it and its subagents are doing now,
+  its task list, the context and the plan limits; *Spent this session*
+  follows, folded to one line (*Spent $12.40 · 48 turns · 1h 12m*) until
+  you open it, and stays as you left it.
+- **app:** the headline figure is your choice: cost, burn rate (dollars an
+  hour over the last hour of activity), tokens, turns, cache hit rate or
+  time working, picked from the small menu under it and remembered. The
+  cells under *Spent this session* show the others, never the headline
+  again.
+- **app:** *Spend over time* is a row that says what it opens and opens in
+  place, as wide as the cockpit, instead of a card over the block.
+- **app:** the permission-mode menu is readable: each mode on two lines, its
+  name large with a small mark and what it does under it, the current one
+  marked with an accent bar, and why a row cannot be picked written out.
+
 ### Fixed
 
+- **app:** the cockpit's spend over time stays inside a narrow inspector: a
+  long *peak …* line no longer pushes it past the panel's edge.
+- **app:** leaving a quick chat. Once its agent exited (`/exit`), the tab
+  became a login shell in Caprock's own data folder, under the same name, so
+  it still looked like the chat and only a reload got you out. Now the tab
+  says *The chat ended*, with *Close tab* (Enter) and *Start again* on the
+  same agent and model. A line above a new chat says ⌘W closes it and /exit
+  ends it (× hides the line for good).
+- **app:** a quick chat's tab, its sidebar row and the inspector read
+  *Quick chat · Opus 5.5*, not *Outside projects* (the group it sits in).
 - **app:** the update card no longer stacks on top of the version panel:
   while the panel is open (it offers the same update), the card steps aside.
 
 ### Added
+
+- **github:** what a CI run cost. A new runner rate table,
+  `pricing/actions.json` (version `2026-10-12.1`), holds GitHub's per-minute
+  rates for every hosted runner, larger, arm64 and GPU runners included,
+  copied from GitHub's *Actions runner pricing* page on 2026-10-12 with the
+  source in the file. Each CI job, run and commit the deck reads now carries
+  `cost`: the runner's SKU, its minutes rounded up the way GitHub bills
+  them, and the dollars at list rate. Standard runners in a public
+  repository are free; self-hosted and unrecognised runners say they are
+  unpriced rather than guess. `GET /v1/github/actions-usage` reads the
+  month's Actions usage from GitHub's billing report, only when asked, and
+  names the token permission it lacks when GitHub refuses. Not in the
+  interface yet.
 
 - **app:** the session deck is one cell, **Pull requests & CI**: the
   session's pull requests, the current one first and up to three earlier
@@ -46,6 +104,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   queued, a slash skipped), joined within a workflow. Hover says the job,
   its state and its time; a click opens that job's steps and error in the
   CI cell, turning it to that pull request.
+
+### Fixed
+
+- **app:** the Dock shows the new icon after an in-app update. On macOS the
+  app sets its Dock tile from its own bundle's icon at every launch, and on
+  the first launch of a new version re-registers the bundle with
+  LaunchServices, so the cached old icon is replaced without restarting the
+  Dock.
 
 ## [0.109.1] - 2026-10-12
 

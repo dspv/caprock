@@ -67,14 +67,19 @@ type CIJob struct {
 	Labels      []string `json:"labels"`
 	// OS is read from the runner labels: linux, windows, macos, self-hosted,
 	// or "" when they name none of these.
-	OS         string   `json:"os,omitempty"`
-	RunnerName string   `json:"runner_name,omitempty"`
-	HTMLURL    string   `json:"html_url,omitempty"`
-	Steps      []CIStep `json:"steps"`
+	OS         string `json:"os,omitempty"`
+	RunnerName string `json:"runner_name,omitempty"`
+	// RunnerGroup is GitHub's runner_group_name: "GitHub Actions" for its
+	// standard hosted runners, the group's name for a larger or self-hosted one.
+	RunnerGroup string   `json:"runner_group_name,omitempty"`
+	HTMLURL     string   `json:"html_url,omitempty"`
+	Steps       []CIStep `json:"steps"`
 	// Baseline is the median duration of the job of this name in the
 	// workflow's last successful runs (WithBaselines); absent with fewer
 	// than two of them.
 	Baseline *CIEstimate `json:"baseline,omitempty"`
+	// Cost is what the job cost at the runner's list rate (runnercost.go).
+	Cost *RunnerCost `json:"cost,omitempty"`
 }
 
 // CIRun is one workflow run of a commit.
@@ -99,6 +104,8 @@ type CIRun struct {
 	// of the workflow's last successful runs (WithBaselines); absent with
 	// fewer than two of them.
 	Baseline *CIEstimate `json:"baseline,omitempty"`
+	// Cost sums the run's finished jobs (runnercost.go).
+	Cost *CICost `json:"cost,omitempty"`
 }
 
 // CIOS is the runner time of the finished jobs on one OS.
@@ -122,8 +129,11 @@ type CI struct {
 	Runs     []CIRun `json:"runs"`
 	RunnerMS int64   `json:"runner_ms"`
 	ByOS     []CIOS  `json:"by_os"`
-	At       int64   `json:"at"`
-	Error    *Error  `json:"error,omitempty"`
+	// Cost sums every run's finished jobs at the runners' list rates: an
+	// estimate before a private repository's included minutes.
+	Cost  *CICost `json:"cost,omitempty"`
+	At    int64   `json:"at"`
+	Error *Error  `json:"error,omitempty"`
 }
 
 // CILog is the end of a failed job's log: the lines around its last error.
@@ -194,6 +204,7 @@ type apiJob struct {
 	CompletedAt string    `json:"completed_at"`
 	Labels      []string  `json:"labels"`
 	RunnerName  string    `json:"runner_name"`
+	RunnerGroup string    `json:"runner_group_name"`
 	HTMLURL     string    `json:"html_url"`
 	Steps       []apiStep `json:"steps"`
 }
@@ -307,6 +318,7 @@ func (s *Service) readCI(ctx context.Context, repo Repo, sha string, prev CI) (C
 	out := CI{Repo: repo.FullName(), HeadSHA: sha, State: "none", ByOS: []CIOS{}, At: s.Now().UnixMilli()}
 	out.Runs, out.Error = s.withJobs(ctx, repo, list.Runs, prev.Runs)
 	settle(&out)
+	out.Cost = s.priceCI(ctx, repo, out.Runs)
 	return out, nil
 }
 
@@ -354,7 +366,7 @@ func (s *Service) readJobs(ctx context.Context, repo Repo, runID int64) ([]CIJob
 	for _, j := range list.Jobs {
 		job := CIJob{ID: j.ID, RunID: j.RunID, Name: j.Name, Status: j.Status, Conclusion: j.Conclusion,
 			StartedAt: unixMS(j.StartedAt), CompletedAt: unixMS(j.CompletedAt), Labels: j.Labels, OS: runnerOS(j.Labels),
-			RunnerName: j.RunnerName, HTMLURL: j.HTMLURL, Steps: make([]CIStep, 0, len(j.Steps))}
+			RunnerName: j.RunnerName, RunnerGroup: j.RunnerGroup, HTMLURL: j.HTMLURL, Steps: make([]CIStep, 0, len(j.Steps))}
 		if job.Labels == nil {
 			job.Labels = []string{}
 		}

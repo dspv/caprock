@@ -149,36 +149,36 @@
 }
 
 /*
- * Dark Side: near-black with a hint of oxblood, a glowing crimson accent
- * (owner, 2026-10-11). Danger cannot be the accent's red, or every error
- * would read as a button: it moves to a hot rose-magenta (#ff5fa2), warn
- * stays amber, and a destructive button is drawn as an outline here (below)
+ * Dark Side: near-black with a hint of violet and a neon purple accent, a
+ * second neon (cyan) for premium (owner, 2026-10-12: the crimson of
+ * 2026-10-11 was too red — "neon, like the purple sabers"). Danger is a red
+ * of its own, apart from the accent, warn stays amber, and a destructive button is drawn as an outline here (below)
  * while an accent one is filled and glows. Glow only on the focused field,
  * the primary button and the tab in front ([data-glow], below).
  */
 [data-theme="dark"][data-dark="side"] {
-  --color-bg: #110c0d;
-  --color-panel: #181113;
-  --color-panel-2: #20171a;
-  --color-border: #2b1e21;
-  --color-border-strong: #44292e;
+  --color-bg: #0d0b14;
+  --color-panel: #15111d;
+  --color-panel-2: #1d1727;
+  --color-border: #2a2236;
+  --color-border-strong: #41345a;
 
-  --color-fg: #eee5e5;
-  --color-fg-muted: #b5a6a8;
-  --color-fg-faint: #94838a;
+  --color-fg: #ece8f5;
+  --color-fg-muted: #b2aac4;
+  --color-fg-faint: #9087a6;
 
   --color-ok: #4fbf6b;
   --color-warn: #e8a03c;
-  --color-danger: #ff5fa2;
-  --color-info: #ff7a7a;
+  --color-danger: #ff4d5e;
+  --color-info: #c79bff;
 
-  --color-accent: #ff4040;
-  --color-accent-strong: #ff7a7a;
-  --color-premium: #7d88ff;
-  --color-premium-strong: #a0a8ff;
+  --color-accent: #b45cff;
+  --color-accent-strong: #d2a2ff;
+  --color-premium: #38d4ff;
+  --color-premium-strong: #8ae6ff;
 
-  --color-term-bg: #110c0d;
-  --color-term-border: #4a2027;
+  --color-term-bg: #0d0b14;
+  --color-term-border: #3d2a5c;
 
   --shadow-panel: 0 12px 32px -18px rgba(0, 0, 0, 0.8);
 }
@@ -670,15 +670,6 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 [data-app] .cockpit-bar-live { animation: cockpitBreath 1.4s ease-in-out infinite; }
 @keyframes cockpitBreath { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 [data-app] .cockpit-spark-new { animation: cockpitBreath 2s ease-in-out 1; }
-/* The spend scrubber opens over the Spend block: no layout below it moves. */
-[data-app] .cockpit-scrub {
-  transform-origin: top right;
-  transition: opacity 150ms var(--app-ease), transform 150ms var(--app-ease), visibility 0s linear 0s;
-}
-[data-app] .cockpit-scrub[data-open="false"] {
-  opacity: 0; transform: scale(0.97); pointer-events: none; visibility: hidden;
-  transition: opacity 150ms var(--app-ease), transform 150ms var(--app-ease), visibility 0s linear 150ms;
-}
 /* The header's subagent strip: a tint per type, pulsing while it works. The
  * ring in the panel's colour separates overlapping chips. */
 [data-app] .cockpit-subchip {
@@ -709,7 +700,6 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
   [data-app] .cockpit-subchip::after { animation: none !important; }
   [data-app] .cockpit-avatar::after, [data-app] .cockpit-avatar .cockpit-character, [data-app] .cockpit-dot::after,
   [data-app] .cockpit-now::after, [data-app] .cockpit-row, [data-app] .cockpit-bar-live, [data-app] .cockpit-spark-new { animation: none !important; }
-  [data-app] .cockpit-scrub { transition: none; }
   [data-app] .cockpit-fill { transition: none; }
 }
 /* The terminal slab: the terminal palette's ground, so anything drawn on it

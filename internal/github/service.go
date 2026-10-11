@@ -159,6 +159,8 @@ type Service struct {
 	repoCI repoCI
 	// baseline keeps past successful runs for the CI baselines (baseline.go).
 	baseline baselineCache
+	// usage keeps the Actions billing usage answers (usage.go).
+	usage usageCache
 }
 
 func (s *Service) init() {

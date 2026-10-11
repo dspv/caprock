@@ -176,4 +176,14 @@ describe('every listed shortcut, on every OS', () => {
       expect(matchAppShortcut(ev, false), `${off} off macOS`).toEqual(mac)
     })
   }
+
+  // Owner, 2026-10-12: ⌥⌘N started a chat "without asking with whom"
+  // (translated). The chord is unchanged on every OS; what the list says it
+  // does changed with it.
+  it('lists ⌥⌘N as asking, Ctrl+Alt+Shift+N off macOS', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⌥⌘N')?.[1]).toMatch(/asks which agent and model, Enter takes the last one/)
+    expect(keys('⌥⌘N', false)).toBe('Ctrl+Alt+Shift+N')
+    expect(matchAppShortcut(event('KeyN', 'n', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'quick-chat' })
+    expect(matchAppShortcut(event('KeyN', 'n', { ctrlKey: true, shiftKey: true, altKey: true }), true)).toBeNull()
+  })
 })

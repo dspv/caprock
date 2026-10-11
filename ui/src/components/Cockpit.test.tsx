@@ -1,5 +1,5 @@
-import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Event, SessionSummary, SubagentsNow, Summary } from '@/lib/api'
 
 const now = Date.now()
@@ -28,6 +28,7 @@ vi.mock('@/lib/api', async (orig) => {
       todos: async () => ({ items: [], updated_at: 0 }),
       recentMainEvents: async (_id: string, kinds: string[]) => { h.mainAsked.push(kinds); return events },
       permission: async () => ({ permission: h.permission }),
+      sessionCalls: async () => [],
       diff: async () => ({ root: '/w', branch: 'main', stat: '', files: [{ path: 'internal/session.go', status: 'modified', additions: 12, deletions: 3 }] }),
     },
   }
@@ -39,6 +40,17 @@ vi.mock('@/lib/live', async (orig) => {
 })
 
 import { Inspector } from './Inspector'
+import { resetSpendPrefsForTest } from '@/lib/spendview'
+
+beforeEach(() => {
+  localStorage.clear()
+  resetSpendPrefsForTest()
+})
+
+/** Open the folded spend details. */
+function unfoldSpend() {
+  fireEvent.click(within(screen.getByRole('region', { name: 'Spend' })).getByRole('button', { expanded: false }))
+}
 
 function agent(p: Partial<SessionSummary> = {}): SessionSummary {
   return {
@@ -73,6 +85,7 @@ describe('the agent cockpit', () => {
     const nowCard = screen.getByRole('region', { name: 'Now' })
     expect(within(nowCard).getByText('Editing')).toBeInTheDocument()
     expect(within(nowCard).getByText('session.go')).toBeInTheDocument()
+    unfoldSpend()
     expect(screen.getByText(/last call/)).toHaveTextContent('$0.07')
     expect(screen.getByRole('meter', { name: '5 hours window used' })).toHaveAttribute('aria-valuenow', '41')
     // One line: when it resets, and whether it lasts (owner, 2026-10-11).
@@ -103,6 +116,7 @@ describe('the agent cockpit', () => {
     const timeline = screen.getByRole('region', { name: 'Recent tool calls' })
     expect(await within(timeline).findByText('go test ./internal/...')).toBeInTheDocument()
     expect(h.mainAsked.at(-1)).toEqual(['tool.pre', 'tool.post', 'turn.assistant'])
+    unfoldSpend()
     expect(screen.getByText(/last call/)).toHaveTextContent('$0.07')
   })
 
@@ -230,5 +244,52 @@ describe('the agent cockpit', () => {
     show(agent({ kind: 'shell' }))
     expect(screen.getByRole('heading', { name: 'Inspector' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Spend' })).toBeNull()
+  })
+})
+
+describe('the spend details', () => {
+  const spend = () => screen.getByRole('region', { name: 'Spend' })
+  const stored = () => JSON.parse(localStorage.getItem('caprock.app.cockpit.spend') ?? '{}')
+
+  it('folds to one line by default, and remembers when it is opened', () => {
+    const { unmount } = show(agent({ started_at: now - 72 * 60_000, worked_at: now }))
+    const toggle = within(spend()).getByRole('button', { name: /Spent \$1\.84 · 12 turns · 1h 12m/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(within(spend()).queryByText('Turns')).toBeNull()
+    fireEvent.click(toggle)
+    expect(within(spend()).getByRole('button', { name: /Spent this session/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(stored().folded).toBe(false)
+    unmount()
+    resetSpendPrefsForTest()
+    show(agent())
+    expect(within(spend()).getByText('Turns')).toBeInTheDocument()
+  })
+
+  it('takes the headline the viewer picks, remembers it, and the cells never repeat it', () => {
+    show(agent())
+    unfoldSpend()
+    const labels = () => Array.from(spend().querySelectorAll('dt')).map((d) => d.textContent)
+    expect(labels()).toEqual(['Turns', 'Tools', 'Tokens', 'Cache'])
+    fireEvent.click(screen.getByRole('button', { name: /Headline: Cost/ }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Turns/ }))
+    expect(screen.getByLabelText('Turns 12')).toBeInTheDocument()
+    expect(labels()).toEqual(['Cost', 'Tools', 'Tokens', 'Cache'])
+    expect(stored().headline).toBe('turns')
+    resetSpendPrefsForTest()
+    expect(screen.queryByRole('menu', { name: 'Headline figure' })).toBeNull()
+  })
+
+  it('opens spend over time in the flow of the block, never over it', async () => {
+    show(agent())
+    unfoldSpend()
+    const row = within(spend()).getByRole('button', { name: /Spend over time/ })
+    expect(row).toHaveAttribute('aria-expanded', 'false')
+    await act(async () => { fireEvent.click(row) })
+    expect(row).toHaveAttribute('aria-expanded', 'true')
+    const chart = spend().querySelector('[data-spend-time]')!
+    expect(chart).toBeTruthy()
+    expect(chart.className).not.toMatch(/\b(absolute|fixed)\b/)
+    expect(spend().querySelector('[role="dialog"]')).toBeNull()
+    expect(stored().chart).toBe(true)
   })
 })

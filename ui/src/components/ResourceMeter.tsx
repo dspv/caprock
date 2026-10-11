@@ -16,18 +16,39 @@ function topLines(r: SessionResources): string {
   return r.top.map((p) => `${p.name} · ${fmtCPU(p.cpu_pct, r.warm)} · ${fmtMem(p.mem_bytes)}`).join('\n')
 }
 
-/** The status bar's "cpu 182% · 1.2 GB" for the session in front. */
+/** The status bar's "agent cpu 182% ram 1.2 GB" for the session in front: its processes, not Caprock's. */
 export function SessionLoad({ sessionId }: { sessionId: string }) {
   const r = useSessionResources(sessionId)
   if (!r) return null
   const title = [
-    `What this session's processes use now: ${r.procs} ${r.procs === 1 ? 'process' : 'processes'}, CPU summed (100% is one core)`,
+    `This session's own processes — the agent and everything it runs, not Caprock: ${r.procs} ${r.procs === 1 ? 'process' : 'processes'}, CPU summed (100% is one core), memory resident`,
     topLines(r),
   ].filter(Boolean).join('\n')
   return (
     <span data-session-load className="inline-flex items-center gap-1.5 whitespace-nowrap" title={title}>
-      cpu <span className={`num ${r.hot ? 'text-warn' : 'text-fg'}`}>{fmtCPU(r.cpu_pct, r.warm)}</span>
-      <span className="num text-fg">{fmtMem(r.mem_bytes)}</span>
+      {/* Said in words (owner, 2026-10-12: "is the second one memory, and is
+        * it Caprock's or everything?"): it is the session's, and it is RAM. */}
+      agent cpu <span className={`num ${r.hot ? 'text-warn' : 'text-fg'}`}>{fmtCPU(r.cpu_pct, r.warm)}</span>
+      {' '}ram <span className="num text-fg">{fmtMem(r.mem_bytes)}</span>
+    </span>
+  )
+}
+
+/** The status bar's "caprock 160 MB": what Caprock itself holds (daemon, app, terminal holders), beside the session's. */
+export function CaprockLoad() {
+  const rep = useResources()
+  if (!rep) return null
+  const c = rep.caprock
+  const mem = c.daemon.mem_bytes + (c.app?.mem_bytes ?? 0) + c.hosts.mem_bytes
+  const cpu = c.daemon.cpu_pct + (c.app?.cpu_pct ?? 0) + c.hosts.cpu_pct
+  const title = [
+    `Caprock itself: ${fmtMem(mem)} RAM, ${fmtCPU(cpu)} CPU`,
+    `daemon ${fmtMem(c.daemon.mem_bytes)}${c.app ? ` · app ${fmtMem(c.app.mem_bytes)}` : ''} · ${c.hosts.count} terminal ${c.hosts.count === 1 ? 'holder' : 'holders'} ${fmtMem(c.hosts.mem_bytes)}`,
+    'Details in Settings.',
+  ].join('\n')
+  return (
+    <span data-caprock-load className="inline-flex items-center gap-1.5 whitespace-nowrap" title={title}>
+      caprock <span className="num text-fg">{fmtMem(mem)}</span>
     </span>
   )
 }

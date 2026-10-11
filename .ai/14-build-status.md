@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — unreleased: what a CI run cost, backend only
+
+A versioned runner rate table, `pricing/actions.json` (`2026-10-12.1`), read
+from GitHub's *Actions runner pricing* reference on 2026-10-12, prices each
+CI job the deck reads: the SKU from its labels (or a larger runner's name),
+its time rounded up to the whole minute, free for standard runners in a
+public repository, unpriced for self-hosted and unknown runners. Each job,
+run and commit carries `cost`; `GET /v1/github/actions-usage` reads what
+GitHub itself billed this month when the token may read billing, and says
+which permission is missing when it may not. Not shown in the interface yet;
+not checked against a real account's billing report.
+
 ### 2026-10-12 — 0.109.1: a large filled triangle for the Dock icon
 
 The app icon is a large filled amber triangle on a dark tile on the macOS

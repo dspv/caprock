@@ -129,32 +129,32 @@ export const SLATE_TERMINAL_THEME: TerminalColors = {
 }
 
 /**
- * Dark Side's terminal: the near-black panel, a crimson cursor and a
- * red-leaning 16-colour set — warm reds and roses, but green, blue and cyan
- * kept clear of them so a diff or a test run still reads.
+ * Dark Side's terminal: the near-black violet panel, a neon purple cursor
+ * and a violet-leaning 16-colour set, green, blue, cyan and red kept clear
+ * of each other so a diff or a test run still reads.
  */
 export const DARK_SIDE_TERMINAL_THEME: TerminalColors = {
-  background: '#181113',
-  foreground: '#eee5e5',
-  cursor: '#ff4040',
-  cursorAccent: '#181113',
-  selectionBackground: '#4a2027',
-  black: '#2b1d20',
+  background: '#15111d',
+  foreground: '#ece8f5',
+  cursor: '#b45cff',
+  cursorAccent: '#15111d',
+  selectionBackground: '#3d2a5c',
+  black: '#241d31',
   red: '#ff5a5a',
   green: '#93cf86',
   yellow: '#f0c27a',
   blue: '#86a8e6',
-  magenta: '#e683bd',
+  magenta: '#c88cff',
   cyan: '#79c6c4',
-  white: '#d9cbcc',
-  brightBlack: '#8f7a7e',
+  white: '#d6d0e3',
+  brightBlack: '#8a80a3',
   brightRed: '#ff8a85',
   brightGreen: '#b0e2a4',
   brightYellow: '#f6d7a0',
   brightBlue: '#a9c3f0',
-  brightMagenta: '#f0a8d2',
+  brightMagenta: '#dcb5ff',
   brightCyan: '#9ddad8',
-  brightWhite: '#f8f1f1',
+  brightWhite: '#f5f2fb',
 }
 
 /** The choice that follows the app's theme rather than naming a palette. */
@@ -381,7 +381,7 @@ export function terminalTheme(id: string, look: AppLook = appLook()): TerminalTh
  * terminal there is dark in every theme (components/Terminal.tsx); the app
  * palette picks which dark (`dashTerminal` in lib/themes.ts).
  */
-export const DASH_GROUND = { caprock: '#1b1b1a', slate: '#1a1b1e', 'dark-side': '#110c0d' } as const
+export const DASH_GROUND = { caprock: '#1b1b1a', slate: '#1a1b1e', 'dark-side': '#0d0b14' } as const
 
 /** `a` mixed toward `b` by t (0–1), as #rrggbb — what xterm's decorations accept. */
 export function mixHex(a: string, b: string, t: number): string {

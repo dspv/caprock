@@ -3,16 +3,17 @@
  * buttons to switch between model vendors — Claude, Codex, Gemini — and
  * inside, picking a model in two clicks", translated).
  *
- * The decision that keeps it instant: **⌥⌘N never asks.** It starts at once
- * on the vendor and model used last (or Claude Code on its default). Clicking
- * *Quick chat* — the sidebar, the strip's + menu, the palette's *Quick chat
- * with…* — opens this chooser instead: a row of the agents installed here,
- * the selected one's models under it. A click on a model starts the chat on
- * it, so another vendor's model is two clicks from the chooser and the last
- * vendor's is one; Enter (or ⌘↩) starts on the highlighted model, so the
- * chooser costs one key over the shortcut. ← → or ⌘1–9 switch the agent,
- * ↑ ↓ the model, Esc closes. The choice is remembered per viewer, in this
- * browser's storage, like the New agent sheet's agent.
+ * Every way in opens this chooser — ⌥⌘N, the sidebar, the strip's + menu,
+ * the palette: a row of the agents installed here, the selected one's models
+ * under it, the last agent and model used already picked and focused, so
+ * Enter alone starts it. ⌥⌘N started at once from 2026-10-09 until
+ * 2026-10-12, when the owner pressed it and found himself in a terminal
+ * "without being asked with whom" (translated); one keystroke to accept is
+ * the price of knowing. A click on a model starts the chat on it, so another
+ * vendor's model is two clicks and the last vendor's one; ← → or 1–9 (⌘1–9
+ * too) switch the agent, ↑ ↓ the model, Esc closes. The choice is
+ * remembered per viewer, in this browser's storage, like the New agent
+ * sheet's agent.
  *
  * Since 2026-10-10 (ADR-046) the models come from the agent catalog — the
  * providers connected to OpenCode, Grok's own list, a custom agent's — and an
@@ -86,6 +87,13 @@ export function quickModels(agent: SpawnAgent, entry?: CatalogEntry): [value: st
   return listedModels(agent, entry)
 }
 
+/** The model's short name for a tab and its hint: "Opus 5.5"; '' for the agent's own default. */
+export function quickChoiceLabel(c: QuickChoice, entry?: CatalogEntry): string {
+  if (!c.model) return ''
+  const hit = quickModels(c.agent, entry).find(([v]) => v === c.model)
+  return hit ? hit[1].split(' · ')[0]! : c.model
+}
+
 const SHORT: Record<string, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', opencode: 'OpenCode', grok: 'Grok' }
 
 export function QuickChatSheet({
@@ -138,7 +146,9 @@ export function QuickChatSheet({
   }
   const onKey = (e: React.KeyboardEvent) => {
     const mod = isMac ? e.metaKey : e.ctrlKey
-    if (mod && /^[1-9]$/.test(e.key)) {
+    // A digit alone picks the agent too, unless a field (the sign-in select) has the keyboard.
+    const bare = !e.metaKey && !e.ctrlKey && !e.altKey && !(e.target instanceof HTMLSelectElement || e.target instanceof HTMLInputElement)
+    if ((mod || bare) && /^[1-9]$/.test(e.key)) {
       const a = offered[Number(e.key) - 1]
       if (a) { setAgent(a.key); setSetupFor(null) }
     } else if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
@@ -165,7 +175,7 @@ export function QuickChatSheet({
       footer={
         <>
           <p className="mr-auto min-w-0 truncate text-[12.5px] text-fg-muted">
-            <span className="mono">←→</span> agent · <span className="mono">↑↓</span> model · <span className="mono">{isMac ? '⌥⌘N' : 'Ctrl+Alt+Shift+N'}</span> skips this
+            <span className="mono">←→</span> agent · <span className="mono">↑↓</span> model · <span className="mono">↩</span> starts · <span className="mono">esc</span> cancels
           </p>
           <SheetButton primary disabled={agents.length === 0 || !!setupFor} onClick={() => start()} aria-keyshortcuts="Enter" title="Start (↩)" keyHint="↩">
             Start
@@ -187,7 +197,7 @@ export function QuickChatSheet({
                   role="radio"
                   aria-checked={agent === a.key}
                   tabIndex={-1}
-                  title={`${a.label}${i < 9 ? ` (${isMac ? '⌘' : 'Ctrl+'}${i + 1})` : ''}`}
+                  title={`${a.label}${i < 9 ? ` (${i + 1})` : ''}`}
                   onClick={() => { setAgent(a.key); list.current?.focus() }}
                   className={`h-[28px] truncate rounded-[6px] px-2 text-[12.5px] ${agent === a.key ? 'bg-panel font-medium text-fg shadow-sm' : 'text-fg-muted hover:text-fg'}`}
                 >

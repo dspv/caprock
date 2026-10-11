@@ -63,7 +63,9 @@ import type { HandoffTarget } from '@/components/AgentHandoff'
 import { liveOwnedSession } from '@/lib/handoff'
 import { CloseSettingsContext } from '@/lib/settingsClose'
 import { SetupShellContext } from '@/lib/setupShell'
-import { QuickChatSheet, quickChatRequest, rememberQuickChoice, rememberedQuickChoice, type QuickChoice } from '@/components/QuickChat'
+import { QuickChatSheet, quickChatRequest, quickChoiceLabel, rememberQuickChoice, rememberedQuickChoice, type QuickChoice } from '@/components/QuickChat'
+import { dismissHint, hintDismissed, isQuickChat, quickChatHint, rememberStartedChat, startedChat } from '@/lib/quickchat'
+import type { ChatPane } from '@/components/QuickChatPane'
 import { useSpawnableAgents } from '@/components/AgentPicker'
 import { AddProjectSheet } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
@@ -247,6 +249,8 @@ export function AppShell() {
     | null
   >(null)
   const [paneStatus, setPaneStatus] = useState<Record<string, PaneStatus>>({})
+  // Quick chats whose agent exited in this window: their tab shows that, in place.
+  const [endedChats, setEndedChats] = useState<ReadonlySet<string>>(() => new Set())
   // Sessions whose tab shows the chat over the terminal; the terminal stays
   // mounted behind it.
   const [chatOpen, setChatOpen] = useState<ReadonlySet<string>>(() => new Set())
@@ -479,6 +483,14 @@ export function AppShell() {
    */
   const onPaneExit = useCallback(async (sessionId: string) => {
     const s = sessionsById.get(sessionId)
+    // A quick chat's folder is Caprock's own, under its data directory: a
+    // shell there is a terminal in a place nobody chose, and it looked just
+    // like the chat (owner, 2026-10-12: "now I can't get out of there",
+    // translated). The tab says the chat ended, with Close tab and Start again.
+    if (isQuickChat(s) || startedChat(sessionId)) {
+      setEndedChats((cur) => (cur.has(sessionId) ? cur : new Set(cur).add(sessionId)))
+      return
+    }
     const cwd = s?.cwd
     if (!cwd || s?.kind === 'shell') { dispatch({ type: 'drop-session', sessionId }); return }
     try {
@@ -520,23 +532,56 @@ export function AppShell() {
   /**
    * A session that needs no folder — the Now screen's Quick chat — in a tab
    * of the strip. The daemon finds it a home in its data directory; it shows
-   * under Other folders, its tab marked "no project". ⌥⌘N starts it at once
-   * on the vendor and model used last; a click opens the chooser
-   * (components/QuickChat.tsx says why).
+   * under Outside projects, its tab named "Quick chat · <model>"
+   * (lib/quickchat.ts). Every way in, ⌥⌘N included, opens the chooser with
+   * the last agent and model picked (components/QuickChat.tsx says why).
+   * `replaces` is an ended chat whose tab the new one takes: Start again.
    */
   const spawnable = useSpawnableAgents()
-  const startQuickChat = useCallback(async (choice: QuickChoice) => {
+  const startQuickChat = useCallback(async (choice: QuickChoice, replaces?: string) => {
     try {
       const { session_id } = await api.spawn(quickChatRequest(choice))
       rememberQuickChoice(choice)
-      openTab({ kind: 'session', sessionId: session_id }, OTHER_FOLDERS_ID, 'Quick chat')
+      rememberStartedChat(session_id, { agent: choice.agent, model: choice.model, label: quickChoiceLabel(choice) })
+      if (replaces) {
+        dispatch({ type: 'replace-session', sessionId: replaces, target: { kind: 'session', sessionId: session_id }, title: 'Quick chat' })
+        setEndedChats((cur) => { const next = new Set(cur); next.delete(replaces); return next })
+      } else {
+        openTab({ kind: 'session', sessionId: session_id }, OTHER_FOLDERS_ID, 'Quick chat')
+      }
       refresh()
     } catch (e) {
       setToast(`Could not start a quick chat: ${errText(e)}`)
     }
   }, [openTab, refresh])
-  const onQuickChat = useCallback(() => startQuickChat(rememberedQuickChoice(spawnable)), [startQuickChat, spawnable])
   const onQuickChatChooser = useCallback(() => setSheet({ kind: 'quick-chat' }), [])
+  // What a quick chat's pane shows around its terminal (components/QuickChatPane.tsx).
+  const [hintOff, setHintOff] = useState(hintDismissed)
+  const onChatHintDismiss = useCallback(() => { dismissHint(); setHintOff(true) }, [])
+  const chatPanesNow = new Map<string, ChatPane>()
+  for (const t of ws.tabs) {
+    for (const l of leaves(t.root)) {
+      if (l.target.kind !== 'session') continue
+      const id = l.target.sessionId
+      const s = sessionsById.get(id)
+      if (!isQuickChat(s) && !startedChat(id)) continue
+      const ended = endedChats.has(id) || s?.status === 'ended'
+      chatPanesNow.set(id, { ended, ...(hintOff ? {} : { hint: quickChatHint(s ?? { session_id: id }, keys('⌘W')) }) })
+    }
+  }
+  // The same map until what it says changes: the terminal stack is memoised,
+  // and the session list answers several times a second.
+  const chatKey = JSON.stringify([...chatPanesNow])
+  const chatPanesRef = useRef<{ key: string; map: ReadonlyMap<string, ChatPane> }>({ key: '', map: new Map() })
+  if (chatPanesRef.current.key !== chatKey) chatPanesRef.current = { key: chatKey, map: chatPanesNow }
+  const chatPanes = chatPanesRef.current.map
+  /** An ended chat's Start again: the agent and model it was started on, else the last ones picked. */
+  const onChatRestart = useCallback((sessionId: string) => {
+    const was = startedChat(sessionId)
+    const s = sessionsById.get(sessionId)
+    const agent = (was?.agent ?? s?.agent ?? 'claude') as QuickChoice['agent']
+    void startQuickChat(was ? { agent, model: was.model } : { ...rememberedQuickChoice(spawnable), agent }, sessionId)
+  }, [sessionsById, startQuickChat, spawnable])
   // The strip's + menu (components/NewMenu.tsx): what opens a tab, with its key.
   const fileScopeRef = useRef<{ projectId: string; worktree: string; title: string } | undefined>(undefined)
   const newItems = useMemo(() => [
@@ -713,7 +758,7 @@ export function AppShell() {
       // In the folder of the session in front — its worktree, not the project's root.
       case 'new-shell': if (workspaceShown && current) onNewShell(current.projectId, focusedSession?.cwd || undefined); else onNewShell(); break
       case 'new-agent': onNewAgent(); break
-      case 'quick-chat': void onQuickChat(); break
+      case 'quick-chat': onQuickChatChooser(); break
       case 'add-project': onAddProject(); break
       case 'detach-tab': if (workspaceShown) detach(); break
       case 'palette': onPalette(); break
@@ -741,7 +786,7 @@ export function AppShell() {
       case 'settings': onSettings(); break
       case 'zoom': stepUiScale(c.step); break
     }
-  }, [onNewShell, onNewAgent, onQuickChat, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open])
+  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -857,8 +902,7 @@ export function AppShell() {
       { id: 'a-agent', group: 'Actions', label: 'New agent', hint: keys('⇧⌘N'), icon: <PlusIcon size={14} />, run: () => onNewAgent() },
       { id: 'a-agent-issue', group: 'Actions', label: 'New agent from issue…', detail: 'an open GitHub issue or pull request: its own copy, its text as the first message', icon: <BranchIcon size={14} />, run: () => setSheet({ kind: 'agent', projectId: activeProjectId, fromGitHub: true }) },
       { id: 'a-shell', group: 'Actions', label: 'New shell', hint: keys('⌘T'), icon: <TerminalIcon size={14} />, run: () => onNewShell() },
-      { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat', detail: 'starts at once, on the agent and model used last', hint: keys('⌥⌘N'), icon: <ChatIcon size={14} />, run: () => { void onQuickChat() } },
-      { id: 'a-quick-chat-with', group: 'Actions', label: 'Quick chat with…', detail: 'pick Claude, Codex, Gemini or OpenCode and a model', icon: <ChatIcon size={14} />, run: onQuickChatChooser },
+      { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat…', detail: 'pick the agent and model; Enter starts the last one used', hint: keys('⌥⌘N'), icon: <ChatIcon size={14} />, run: onQuickChatChooser },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: keys('⌘O'), icon: <FolderPlusIcon size={14} />, run: onAddProject },
       { id: 'a-deck', group: 'Actions', label: deck.open ? 'Hide the session deck' : 'Show the session deck', detail: 'The agent’s live figures under its terminal', hint: keys('⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck' }) },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
@@ -946,7 +990,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, deck.open, current, onNewAgent, onNewShell, onQuickChat, onQuickChatChooser, onAddProject, onDashboard, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies])
+  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, deck.open, current, onNewAgent, onNewShell, onQuickChatChooser, onAddProject, onDashboard, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies])
 
   // Every session the daemon knows, by what it was about; one that is open or
   // live is already in the list above under its own id.
@@ -1136,6 +1180,10 @@ export function AppShell() {
                     onClosePane={onClosePane}
                     onResize={onResizePanes}
                     renderFile={renderFile}
+                    chats={chatPanes}
+                    onChatClose={onClosePane}
+                    onChatRestart={onChatRestart}
+                    onChatHintDismiss={onChatHintDismiss}
                   />
                   {showChat && focused && (
                     <ChatView
