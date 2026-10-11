@@ -17,9 +17,9 @@ beforeEach(() => resetPrompts())
 describe('PremiumBanner', () => {
   it('leads with a measured fact from this machine', () => {
     render(<PremiumBanner costUSD={620} days={20} now={NOW} />)
-    // "$31.00 a day" is the reader's own number and can be checked. A banner
+    // "$31 a day" is the reader's own number and can be checked. A banner
     // that opens with the offer instead is one they have no reason to believe.
-    expect(screen.getByText('$31.00')).toBeTruthy()
+    expect(screen.getByText('$31')).toBeTruthy()
     expect(document.body.textContent).toMatch(/20 active days/)
   })
 
@@ -28,7 +28,7 @@ describe('PremiumBanner', () => {
     const text = document.body.textContent ?? ''
     // The spend figure is allowed; a subscription price is not. Strip the
     // measured number and nothing that looks like money may remain.
-    expect(text.replace('$31.00', '')).not.toMatch(/\$\d/)
+    expect(text.replace('$31', '')).not.toMatch(/\$\d/)
   })
 
   it('says nothing before anything has been measured', () => {
@@ -40,14 +40,14 @@ describe('PremiumBanner', () => {
 
   it('stays quiet for a month once dismissed, then returns', () => {
     const { unmount } = render(<PremiumBanner costUSD={620} days={20} now={NOW} />)
-    fireEvent.click(screen.getByRole('button', { name: /not now/ }))
+    fireEvent.click(screen.getByRole('button', { name: /not now/i }))
     unmount()
 
     render(<PremiumBanner costUSD={620} days={20} now={NOW + 20 * 24 * 3600 * 1000} />)
-    expect(screen.queryByText(/what it does/)).toBeNull()
+    expect(screen.queryByText(/what it does/i)).toBeNull()
 
     render(<PremiumBanner costUSD={620} days={20} now={NOW + 31 * 24 * 3600 * 1000} />)
-    expect(screen.getByText(/what it does/)).toBeTruthy()
+    expect(screen.getByText(/what it does/i)).toBeTruthy()
   })
 
   it('does not share a dismissal with the in-banner hint', () => {
@@ -55,7 +55,7 @@ describe('PremiumBanner', () => {
     // silence the other, or a single click removes every mention at once and
     // the user cannot tell what they turned off.
     const { unmount } = render(<PremiumBanner costUSD={620} days={20} now={NOW} />)
-    fireEvent.click(screen.getByRole('button', { name: /not now/ }))
+    fireEvent.click(screen.getByRole('button', { name: /not now/i }))
     unmount()
 
     render(<PremiumHint reason="this is what a cap stops" now={NOW} canAct />)
@@ -76,17 +76,17 @@ describe('PremiumBanner', () => {
 describe('the dismissal clock', () => {
   it('records the dismissal at the moment it was given, to the millisecond', () => {
     const { unmount } = render(<PremiumBanner costUSD={620} days={20} now={NOW} />)
-    fireEvent.click(screen.getByRole('button', { name: /not now/ }))
+    fireEvent.click(screen.getByRole('button', { name: /not now/i }))
     unmount()
 
     const MONTH = 30 * 24 * 3600 * 1000
     // One millisecond before the month is up: still silent.
     render(<PremiumBanner costUSD={620} days={20} now={NOW + MONTH - 1} />)
-    expect(screen.queryByText(/what it does/)).toBeNull()
+    expect(screen.queryByText(/what it does/i)).toBeNull()
 
     // Exactly a month after the `now` that was passed in — not after the
     // instant the click happened to land in real time.
     render(<PremiumBanner costUSD={620} days={20} now={NOW + MONTH} />)
-    expect(screen.getByText(/what it does/)).toBeTruthy()
+    expect(screen.getByText(/what it does/i)).toBeTruthy()
   })
 })

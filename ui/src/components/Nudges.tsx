@@ -11,12 +11,13 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api, type DailyStat, type RateLimits } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtUSD } from '@/lib/format'
+import { fmtUSD, fmtUSDShort } from '@/lib/format'
 import { markAnswered, usePromptDue } from '@/lib/prompts'
 import { capNudge, limitNudge, useLicensed, useNudgeSlot } from '@/lib/nudges'
 import { findMoment } from '@/lib/shareprompt'
 import { PremiumModal } from './PremiumModal'
 import { ShareDialog } from './Share'
+import { Banner, BannerButton, BannerDismiss, Fig } from './Banner'
 
 /** "2026-10-09" in local time — the daemon's day key. */
 export function localDay(ms: number): string {
@@ -24,9 +25,7 @@ export function localDay(ms: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-const card = 'flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[var(--radius-panel)] border border-border bg-panel-2 px-3 py-2 text-[12px]'
 const primary = 'rounded-md bg-accent px-2.5 py-1 text-[12px] font-medium text-bg hover:brightness-110'
-const later = 'rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-fg-faint hover:text-fg-muted'
 
 /**
  * Under PLAN LIMITS, and in the app's Today strip: a Claude window at 80% or
@@ -44,18 +43,37 @@ export function PlanLimitNudge({ limits, now, compact = false, className = '' }:
   const [open, setOpen] = useState(false)
   if (!mine || !hit) return open ? createPortal(<PremiumModal feature="window" onClose={() => setOpen(false)} />, document.body) : null
   const fact = `Claude's ${hit.name} window is at ${Math.round(hit.pct)}%.`
+  if (!compact) {
+    return (
+      <Banner
+        id="limit"
+        tone="premium"
+        art="window"
+        className={className}
+        title={<>Claude&apos;s {hit.name} window is at <Fig>{Math.round(hit.pct)}%</Fig></>}
+        line="Premium pauses the agents Caprock started before the limit and resumes them after the reset."
+        actions={<>
+          <BannerButton kind="premium" onClick={() => setOpen(true)}>Pause before the limit</BannerButton>
+          <BannerDismiss onClick={() => markAnswered('premium-limit', now)} title="Hide this for two weeks" aria-label="hide this for two weeks">Not now</BannerDismiss>
+        </>}
+      >
+        {open && createPortal(<PremiumModal feature="window" onClose={() => setOpen(false)} />, document.body)}
+      </Banner>
+    )
+  }
+  // The app sidebar's Today strip: one short line, not a banner.
   return (
-    <div className={compact ? `mx-1 mt-1 flex items-center gap-1.5 rounded-[7px] border border-[var(--app-hairline)] px-1.5 py-1 text-[11px] ${className}` : `${card} ${className}`}>
-      <span className={compact ? 'min-w-0 truncate text-fg-muted' : 'text-fg-muted'} title={fact}>
-        {compact ? `${hit.name[0]!.toUpperCase()}${hit.name.slice(1)} at ${Math.round(hit.pct)}%` : <><span className="text-fg">{fact}</span> Premium pauses the agents Caprock started before the limit and resumes them after the reset.</>}
+    <div className={`mx-1 mt-1 flex items-center gap-1.5 rounded-[7px] border border-[var(--app-hairline)] px-1.5 py-1 text-[11px] ${className}`}>
+      <span className="min-w-0 truncate text-fg-muted" title={fact}>
+        {`${hit.name[0]!.toUpperCase()}${hit.name.slice(1)} at ${Math.round(hit.pct)}%`}
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
-        <button type="button" onClick={() => setOpen(true)} className={compact ? 'rounded-sm px-1 text-accent hover:underline' : primary}>
-          {compact ? 'Pause before the limit' : 'Pause agents before the limit — Premium'}
+        <button type="button" onClick={() => setOpen(true)} className="rounded-sm px-1 text-accent hover:underline">
+          Pause before the limit
         </button>
-        <button type="button" onClick={() => markAnswered('premium-limit', now)} className={compact ? 'px-0.5 text-fg-faint hover:text-fg-muted' : later}
+        <button type="button" onClick={() => markAnswered('premium-limit', now)} className="px-0.5 text-fg-faint hover:text-fg-muted"
           title="hide this for two weeks" aria-label="hide this for two weeks">
-          {compact ? '×' : 'not now'}
+          ×
         </button>
       </span>
       {/* Portalled: in the app's sidebar a fixed dialog is clipped to it. */}
@@ -79,17 +97,22 @@ export function CapNudge({ daily, now, className = '' }: { daily: Pick<DailyStat
   const [open, setOpen] = useState(false)
   if (!mine) return open ? <PremiumModal feature="cap" onClose={() => setOpen(false)} /> : null
   return (
-    <div className={`${card} ${className}`}>
-      <span className="text-fg-muted">
-        <span className="num text-fg">{fmtUSD(todayCost)}</span> today, in the top quarter of your days on this machine.
-        {' '}Premium pauses the sessions Caprock started when the day passes a limit you set.
-      </span>
-      <span className="ml-auto flex shrink-0 items-center gap-2">
-        <button type="button" onClick={() => setOpen(true)} className={primary}>Set a daily cap — Premium</button>
-        <button type="button" onClick={() => markAnswered('premium-cap', now)} className={later} title="hide this for two weeks">not now</button>
-      </span>
+    <Banner
+      id="cap"
+      tone="premium"
+      art="cap"
+      className={className}
+      title={<><Fig title={fmtUSD(todayCost)}>{fmtUSDShort(todayCost)}</Fig> today, one of your busiest days</>}
+      /* "Busiest" is the rule itself: today is in the top quarter of this
+       * machine's own days (lib/nudges.ts capNudge). */
+      line="Premium pauses the sessions Caprock started when a day passes your limit."
+      actions={<>
+        <BannerButton kind="premium" onClick={() => setOpen(true)}>Set a daily cap</BannerButton>
+        <BannerDismiss onClick={() => markAnswered('premium-cap', now)} title="Hide this for two weeks">Not now</BannerDismiss>
+      </>}
+    >
       {open && <PremiumModal feature="cap" onClose={() => setOpen(false)} />}
-    </div>
+    </Banner>
   )
 }
 

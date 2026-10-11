@@ -18,6 +18,7 @@ import { Ring } from '@/components/Donut'
 import { PlanOptions, usePlan } from '@/components/PlanPicker'
 import { AgentCharacter, type Character } from '@/components/Characters'
 import { countdown, resetClock } from '@/lib/limitclock'
+import { Banner, BannerButton } from '@/components/Banner'
 
 /** A window's percentage, and whether its reset clock can be believed. */
 export function readWindow(w: RateWindow, now: number) {
@@ -266,14 +267,16 @@ function LimitCard({ who, name, note, l, now, source }: { who: Character; name: 
 function SetPlanBanner({ onSave }: { onSave: (patch: Partial<Settings>) => void }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="mx-3 mb-3 rounded-md border border-accent/40 bg-accent/10 px-3 py-2 text-[13px] text-fg" role="note" data-set-plan>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span><b className="font-semibold">Which plan are you on?</b> Caprock can&apos;t detect it. With it, Cost compares what you used at API prices with what the plan costs you.</span>
-        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="ml-auto rounded-md bg-accent px-2.5 py-1 text-[12.5px] font-medium text-panel hover:opacity-90">
-          {open ? 'Close' : 'Set my plan'}
-        </button>
-      </div>
-      {open && <div className="mt-2 max-w-[320px] rounded-md border border-border bg-panel p-2"><PlanOptions onSave={(p) => { onSave(p); setOpen(false) }} /></div>}
+    <div className="mx-3 mb-3" role="note" data-set-plan>
+      <Banner
+        id="plan"
+        art="plan"
+        title="Which plan are you on?"
+        line="Caprock can't detect it. With it, Cost compares what you used at API prices with what the plan costs you."
+        actions={<BannerButton onClick={() => setOpen((v) => !v)} aria-expanded={open}>{open ? 'Close' : 'Set my plan'}</BannerButton>}
+      >
+        {open && <div className="mt-2 max-w-[320px] rounded-md border border-border bg-panel p-2"><PlanOptions onSave={(p) => { onSave(p); setOpen(false) }} /></div>}
+      </Banner>
     </div>
   )
 }

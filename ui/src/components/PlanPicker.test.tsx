@@ -45,7 +45,7 @@ describe('saving one setting', () => {
     } as Settings
 
     render(<UpdateBanner plan={plan} onSave={(p) => saves.push(p)} now={Date.now()} />)
-    fireEvent.click(await screen.findByText('check for updates'))
+    fireEvent.click(await screen.findByText('Check for updates'))
 
     await waitFor(() => expect(saves.length).toBe(1))
     // The whole point: turning on update checks must not also restate the

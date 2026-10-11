@@ -615,3 +615,11 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
  * focus, marked with the CSS Custom Highlight API — no extra elements. */
 ::highlight(file-find) { background-color: color-mix(in srgb, var(--color-accent) 30%, transparent); }
 ::highlight(file-find-current) { background-color: color-mix(in srgb, var(--color-accent) 75%, transparent); color: var(--color-bg); }
+
+/* Settings: explanations on demand (owner, 2026-10-11). With the page's
+ * switch off, a section's prose — the muted and faint paragraphs and every
+ * [data-help] — is hidden unless that section's ? is pressed. A line that is
+ * a status rather than an explanation carries data-keep. */
+[data-settings-explain="off"] [data-settings-section]:not([data-explain="on"]) :is(p.text-fg-muted, p.text-fg-faint, [data-help]):not([data-keep]) {
+  display: none;
+}

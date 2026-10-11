@@ -1,20 +1,23 @@
 /**
  * "A star on GitHub helps others find it." — the one favour Caprock asks.
  *
- * A slim strip at the bottom of the dashboard and above the app's status
- * strip, never over content. It appears only after real use (lib/nudges.ts
- * starEligible: three days with sessions, ten sessions), never on a first run,
- * and only when no other offer holds the slot. "I starred it" thanks the
- * reader once and never asks again; × puts it away for a month. Both answers
- * are kept on the daemon, so the app and a browser tab agree.
+ * A strip at the bottom of the dashboard and above the app's status strip,
+ * never over content, drawn by the banner system (Banner.tsx) in its edge
+ * form. It appears only after real use (lib/nudges.ts starEligible: three
+ * days with sessions, ten sessions), never on a first run, and only when no
+ * other offer holds the slot. "I starred it" thanks the reader once and never
+ * asks again; × puts it away for a month. Both answers are kept on the
+ * daemon, so the app and a browser tab agree.
  */
 import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { markAnswered, usePromptDue } from '@/lib/prompts'
 import { openExternal, REPO_URL, starEligible, useNudgeSlot } from '@/lib/nudges'
+import { Banner, BannerButton, BannerDismiss } from './Banner'
 
-export function StarStrip({ now = Date.now(), app = false }: { now?: number; app?: boolean }) {
+/** `app`: kept for the callers; the strip draws the same in the app and the dashboard. */
+export function StarStrip({ now = Date.now() }: { now?: number; app?: boolean }) {
   const hist = useApi(() => api.history('all'), [], { live: false, intervalMs: 600_000 })
   const done = !usePromptDue('star-done', now)
   const snoozed = !usePromptDue('star-dismissed', now)
@@ -29,42 +32,23 @@ export function StarStrip({ now = Date.now(), app = false }: { now?: number; app
   }, [thanks])
 
   if (!mine) return null
+  if (thanks) {
+    return <Banner id="star" edge art="star" role="region" label="Star Caprock on GitHub" title={<span role="status">Thank you!</span>} line="It helps others find Caprock." />
+  }
   return (
-    <div
+    <Banner
+      id="star"
+      edge
+      art="star"
       role="region"
-      aria-label="Star Caprock on GitHub"
-      className={`flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border bg-panel-2 px-3 py-1.5 text-[12px] ${app ? '' : 'justify-center'}`}
-    >
-      {thanks ? (
-        <span className="text-fg" role="status">Thank you!</span>
-      ) : (
-        <>
-          <span className="text-fg-muted">Enjoying Caprock? A star on GitHub helps others find it.</span>
-          <button
-            type="button"
-            onClick={() => openExternal(REPO_URL)}
-            className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-0.5 text-[12px] font-medium text-bg hover:brightness-110"
-          >
-            <span aria-hidden>★</span> Star on GitHub
-          </button>
-          <button
-            type="button"
-            onClick={() => { markAnswered('star-done', now); setThanks(true) }}
-            className="rounded-md border border-border px-2 py-0.5 text-fg-muted hover:border-border-strong hover:text-fg"
-          >
-            I starred it
-          </button>
-          <button
-            type="button"
-            onClick={() => markAnswered('star-dismissed', now)}
-            aria-label="Hide for a month"
-            title="Hide for a month"
-            className="px-1 text-fg-faint hover:text-fg-muted"
-          >
-            ×
-          </button>
-        </>
-      )}
-    </div>
+      label="Star Caprock on GitHub"
+      title="Enjoying Caprock?"
+      line="A star on GitHub helps others find it."
+      actions={<>
+        <BannerButton onClick={() => openExternal(REPO_URL)}><span aria-hidden>★</span> Star on GitHub</BannerButton>
+        <button type="button" onClick={() => { markAnswered('star-done', now); setThanks(true) }} className="bn-link">I starred it</button>
+        <BannerDismiss icon onClick={() => markAnswered('star-dismissed', now)} aria-label="Hide for a month" title="Hide for a month" />
+      </>}
+    />
   )
 }

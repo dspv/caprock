@@ -17,7 +17,7 @@
  * - **Bottom-anchored.** A conversation shorter than the view sits at its
  *   bottom, next to the field, as in a messenger.
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type Event, type QueueView } from '@/lib/api'
 import { downscalePhoto } from '@/lib/downscale'
 import { compareEvents, isMessageEvent, mergeEvents, toMessages, toolInputText, type ChatMessage } from '@/lib/chat'
@@ -30,6 +30,7 @@ import { NewPill } from './NewPill'
 import { Prose } from './Prose'
 import { TerminalKeys } from './TerminalKeys'
 import { ChevronIcon } from './AppIcons'
+import { touchScreen } from '@/lib/phone'
 
 /** Events fetched when the view opens, and per page back. */
 export const CHAT_PAGE_EVENTS = 300
@@ -89,13 +90,19 @@ async function base64Of(file: File): Promise<string> {
 const nextFrame: (fn: () => void) => void =
   typeof requestAnimationFrame === 'function' ? (fn) => { requestAnimationFrame(fn) } : (fn) => { setTimeout(fn, 16) }
 
-export function ChatView({ sessionId, canType, ended = false, className = '' }: {
+export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, footer, boxRef }: {
   sessionId: string
   /** The session takes input from here: owned, live, and this device may control. */
   canType: boolean
   /** The session's process is gone: what waits to be sent becomes a draft. */
   ended?: boolean
   className?: string
+  /** The phone's chat: the raw keys folded behind a Keys button. */
+  phone?: boolean
+  /** Said where the field would be, when there is none: why, and what to do. */
+  footer?: ReactNode
+  /** The outer element, for a caller that sizes it (useFillViewport). */
+  boxRef?: (el: HTMLDivElement | null) => void
 }) {
   const [events, setEvents] = useState<readonly Event[]>([])
   const eventsRef = useRef<readonly Event[]>([])
@@ -313,6 +320,11 @@ export function ChatView({ sessionId, canType, ended = false, className = '' }: 
     return paths
   }, [])
 
+  // Dictation on a phone or a tablet, where typing is the slow part (owner's
+  // report, 2026-10-11). The desktop chat is unchanged: its keyboard is fast,
+  // and the OS has its own dictation key there.
+  const [voice] = useState(() => phone || touchScreen())
+
   const stickRef = stick.ref
   const attach = useCallback((el: HTMLDivElement | null) => {
     box.current = el
@@ -320,7 +332,7 @@ export function ChatView({ sessionId, canType, ended = false, className = '' }: 
   }, [stickRef])
 
   return (
-    <div className={`flex min-h-0 flex-col ${className}`} data-chat-view>
+    <div ref={boxRef} className={`flex min-h-0 flex-col ${className}`} data-chat-view>
       <div className="relative min-h-0 flex-1">
         <div
           ref={attach}
@@ -364,9 +376,10 @@ export function ChatView({ sessionId, canType, ended = false, className = '' }: 
       {showInput && (
         <div className="shrink-0">
           {sendError && <div role="alert" className="px-3 pt-1.5 text-[12px] text-danger">{sendError}</div>}
-          <TerminalKeys send={send} attach={attachPhotos} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers />
+          <TerminalKeys send={send} attach={attachPhotos} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={phone} />
         </div>
       )}
+      {!showInput && footer && <div className="shrink-0 border-t border-border px-3 py-2.5 text-[13px] leading-snug text-fg-muted">{footer}</div>}
     </div>
   )
 }
@@ -402,7 +415,7 @@ function NoticeLine({ m }: { m: ChatMessage }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full min-w-0 items-center gap-1.5 rounded-[6px] px-1.5 py-1 text-left text-[12px] text-fg-faint hover:bg-panel-2"
+        className="flex w-full min-w-0 items-center gap-1.5 rounded-[6px] px-1.5 py-1 max-sm:min-h-11 text-left text-[12px] text-fg-faint hover:bg-panel-2"
       >
         <ChevronIcon size={12} className={`transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} />
         <span className="min-w-0 flex-1 truncate">{m.text}</span>
@@ -424,7 +437,7 @@ function ToolLine({ m }: { m: ChatMessage }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={`flex w-full min-w-0 items-center gap-1.5 rounded-[6px] px-1.5 py-1 text-left text-[12.5px] hover:bg-panel-2 ${m.failed ? 'text-danger' : 'text-fg-muted'}`}
+        className={`flex w-full min-w-0 items-center gap-1.5 rounded-[6px] px-1.5 py-1 max-sm:min-h-11 text-left text-[12.5px] hover:bg-panel-2 ${m.failed ? 'text-danger' : 'text-fg-muted'}`}
       >
         <ChevronIcon size={12} className={`transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} />
         <span className="mono min-w-0 flex-1 truncate">{m.text}</span>
