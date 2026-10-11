@@ -2,6 +2,8 @@
 // on the wire, kept as-is in the types so the contract is visible in the code.
 import type { ReapResult, ResourceReport } from './resources'
 import type { PullRequest } from './github'
+import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
+import type { SessionBranches } from './branches'
 
 export type Health = 'working' | 'idle' | 'waiting-on-you' | 'looping' | 'error' | 'ended'
 
@@ -444,6 +446,8 @@ export interface CIJob {
   /** The median duration of the job of this name in the workflow's last
    *  successful runs (up to 5); absent with fewer than 2 of them. */
   baseline?: CIBaseline
+  /** What its minutes cost at list rate (lib/runnercost.ts); unpriced with a reason. */
+  cost?: RunnerCost
 }
 /** What a run or a job usually takes: a median, and how many runs it is of. */
 export interface CIBaseline { median_ms: number; runs: number }
@@ -467,6 +471,8 @@ export interface CIRun {
   /** The median wall-clock span of the workflow's last successful runs (up
    *  to 5); absent with fewer than 2 of them. */
   baseline?: CIBaseline
+  /** The sum of its finished jobs' cost. */
+  cost?: CICost
 }
 /** A commit's GitHub Actions. runner_ms sums the finished jobs; by_os splits it, no billing multiplier. */
 export interface CIState {
@@ -478,6 +484,8 @@ export interface CIState {
   runs: CIRun[]
   runner_ms: number
   by_os: { os: string; ms: number }[]
+  /** The sum over every run's finished jobs: the commit's cost. */
+  cost?: CICost
   at: number
   error?: { message: string; kind?: string }
 }
@@ -1418,6 +1426,10 @@ export const api = {
   sessionCIRelease: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/release`),
   /** The newest run of each workflow on the session's repository's default branch (the CI cell's Main view). */
   sessionCIMain: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/main`),
+  /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */
+  sessionBranches: (id: string) => get<SessionBranches>(`/v1/sessions/${encodeURIComponent(id)}/branches`),
+  /** What GitHub billed for Actions this month (its billing report); ?owner= an organization. */
+  actionsUsage: (owner?: string) => get<ActionsUsage>(`/v1/github/actions-usage${owner ? `?owner=${encodeURIComponent(owner)}` : ''}`),
   notes: (id: string, limit = 200) => get<AssistantNote[]>(`/v1/sessions/${encodeURIComponent(id)}/notes?limit=${limit}`),
   /** `before` pages backwards: pass the lowest event_id already shown. */
   searchNotes: (q: string, limit = 100, before = 0) =>

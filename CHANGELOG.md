@@ -98,8 +98,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   repository are free; self-hosted and unrecognised runners say they are
   unpriced rather than guess. `GET /v1/github/actions-usage` reads the
   month's Actions usage from GitHub's billing report, only when asked, and
-  names the token permission it lacks when GitHub refuses. Not in the
-  interface yet.
+  names the token permission it lacks when GitHub refuses.
+- **app:** the deck's *Pull requests & CI* cell shows what CI cost: each
+  job beside its time (*macOS 4m 45s · $0.31*), each run, the runner total
+  and each PR row (*✓ 9m 10s · −6% · $0.42*); *$0 · public repo* when every
+  minute ran free on standard runners in a public repository, *unpriced*
+  for self-hosted or unknown runners, *≥$0.42* while part of it is unpriced
+  or still running — each an estimate at list rate, the rate table's
+  version and source in the tooltip. The Main view adds what GitHub itself
+  billed for Actions this month (*Actions this month: 1,240 min · $7.40*),
+  or which token permission it needs, with a link to the token settings.
+- **app:** a **Branches** view in the same cell (*PRs | Branches | Release |
+  Main*): the session's repository's branches, the current one first, then
+  by last activity — ahead and behind the default branch, the last commit's
+  age and author, the branch's pull request with its mini pipeline, what
+  Caprock's sessions on it cost and how many, and a *stale* mark (no commit
+  in 30 days and no open PR). Fifteen rows, then *Show all*; a branch whose
+  PR is the session's opens it in the PRs view. Read from local git, one
+  cached list of the repository's pull requests and an indexed query
+  (`GET /v1/sessions/{id}/branches`, migration 0050).
 
 - **app:** the session deck is one cell, **Pull requests & CI**: the
   session's pull requests, the current one first and up to three earlier

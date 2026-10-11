@@ -161,6 +161,9 @@ type Service struct {
 	baseline baselineCache
 	// usage keeps the Actions billing usage answers (usage.go).
 	usage usageCache
+	// branchPulls keeps each repository's pull requests by head branch
+	// (branchpulls.go).
+	branchPulls branchPullsCache
 }
 
 func (s *Service) init() {

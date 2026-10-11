@@ -73,6 +73,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — unreleased: runner cost in the deck, and a Branches view
+
+The deck's *Pull requests & CI* cell shows the runner cost the daemon
+prices: per job, per run, on *runner* and on each PR row, *$0 · public repo*
+when free, *unpriced* for self-hosted and unknown runners, the rate table's
+version and source in every tooltip; the Main view adds what GitHub billed
+for Actions this month, or the token permission that needs. A fourth view,
+**Branches** (`GET /v1/sessions/{id}/branches`, `internal/branches`,
+migration 0050), lists the repository's branches with ahead and behind,
+last commit, PR and mini pipeline, Caprock's spend and sessions on each,
+and a stale mark. Verified against a fake GitHub and a demo repository in a
+preview daemon; the usage line not yet against a real account's report.
+
 ### 2026-10-12 — unreleased: what a CI run cost, backend only
 
 A versioned runner rate table, `pricing/actions.json` (`2026-10-12.1`), read
@@ -82,8 +95,8 @@ its time rounded up to the whole minute, free for standard runners in a
 public repository, unpriced for self-hosted and unknown runners. Each job,
 run and commit carries `cost`; `GET /v1/github/actions-usage` reads what
 GitHub itself billed this month when the token may read billing, and says
-which permission is missing when it may not. Not shown in the interface yet;
-not checked against a real account's billing report.
+which permission is missing when it may not. Shown in the deck since the
+entry above; not checked against a real account's billing report.
 
 ### 2026-10-12 — unreleased: the Queue view
 
@@ -93,7 +106,7 @@ the turn has run), every queued message in order with a rough start and done
 range, and the turns finished in the last three hours; *Add to queue* sends to
 a chosen session or whichever of a project's sessions is free first. The
 estimates come from the project's newest 200 finished Claude Code turns,
-through a new partial covering index (migration 0048, 1 ms per project). The
+through a new partial covering index (migration 0050, 1 ms per project). The
 backtest on the owner's database (RISK-08) says they are rough — median miss
 55 s against a typical 48 s turn, 49% inside the p25–p75 range — so the view
 shows ranges and its basis, never a time. A queued message's finished turn

@@ -12,10 +12,10 @@ const events: Event[] = [
   { id: 3, ts: iso(4_000), session_id: 's1', source: 'hook', kind: 'tool.pre', tool: 'Bash', payload: { tool_use_id: 'b', tool_input: { command: 'go test ./internal/...' } } },
 ]
 
-const h = vi.hoisted(() => ({ asked: 0, prs: { connected: true, prs: [] as unknown[] }, ci: { connected: true } as unknown, logs: 0, queued: [] as string[], rel: { connected: false } as unknown, main: { connected: false } as unknown, logViews: [] as string[], ciPrs: [] as (number | undefined)[] }))
+const h = vi.hoisted(() => ({ asked: 0, prs: { connected: true, prs: [] as unknown[] }, ci: { connected: true } as unknown, logs: 0, queued: [] as string[], rel: { connected: false } as unknown, main: { connected: false } as unknown, logViews: [] as string[], ciPrs: [] as (number | undefined)[], branches: { connected: true, branches: [] } as unknown, usage: undefined as unknown, usageAsked: 0 }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, recentMainEvents: async () => { h.asked++; return events }, sessionPRs: async () => h.prs, sessionCI: async (_id: string, pr?: number) => { h.ciPrs.push(pr); return h.ci }, sessionCIRelease: async () => h.rel, sessionCIMain: async () => h.main, queueSend: async (_id: string, text: string) => { h.queued.push(text); return { sent: false, queue: { session_id: 's1', messages: [], waiting: 'turn' } } },
+  return { ...actual, api: { ...actual.api, recentMainEvents: async () => { h.asked++; return events }, sessionPRs: async () => h.prs, sessionCI: async (_id: string, pr?: number) => { h.ciPrs.push(pr); return h.ci }, sessionCIRelease: async () => h.rel, sessionCIMain: async () => h.main, sessionBranches: async () => h.branches, actionsUsage: async () => { h.usageAsked++; if (!h.usage) throw new Error('not connected'); return h.usage }, queueSend: async (_id: string, text: string) => { h.queued.push(text); return { sent: false, queue: { session_id: 's1', messages: [], waiting: 'turn' } } },
     sessionCILog: async (_id: string, _job: number, view = 'pr') => { h.logs++; h.logViews.push(view); return { job_id: 71, lines: ['go test ./...', '--- FAIL: TestDeck (0.01s)', '##[error]Process completed with exit code 1.'], error_line: 2 } } } }
 })
 
@@ -56,7 +56,7 @@ function show(p: Partial<Parameters<typeof SessionDeck>[0]> = {}) {
   return { ...r, onResize }
 }
 
-afterEach(() => { vi.useRealTimers(); h.asked = 0; h.prs = { connected: true, prs: [] }; h.ci = { connected: true }; h.rel = { connected: false }; h.main = { connected: false }; localStorage.clear() })
+afterEach(() => { vi.useRealTimers(); h.asked = 0; h.prs = { connected: true, prs: [] }; h.ci = { connected: true }; h.rel = { connected: false }; h.main = { connected: false }; h.branches = { connected: true, branches: [] }; h.usage = undefined; h.usageAsked = 0; localStorage.clear() })
 
 describe('the session deck', () => {
   it('asks nothing of the session’s events, and leaves the context to the status bar', async () => {
@@ -433,5 +433,94 @@ describe('the session deck', () => {
       return l
     })
     expect([...line.querySelectorAll('[data-pipe-node]')].map((b) => b.getAttribute('data-tone'))).toEqual(['pass', 'running'])
+  })
+
+  it('prices each job, the run and the PR, and leaves a self-hosted job unpriced with the reason', async () => {
+    const t0 = now - 10 * 60_000
+    const table = { table_version: '2026-10-12.1', table_source: 'https://docs.github.com/en/billing/reference/actions-runner-pricing' }
+    const runCost = { usd: 0.31, minutes_billed: 5, free_minutes: 0, unpriced_minutes: 3, priced_jobs: 1, unpriced_jobs: 1, unfinished_jobs: 0, partial: true, visibility: 'private', ...table }
+    h.ci = { connected: true, pr: { number: 9, url: 'https://github.com/a/b/pull/9', repo: 'a/b', head_sha: 's' }, ci: {
+      repo: 'a/b', head_sha: 's', state: 'pass', runner_ms: 480_000, by_os: [], at: now, cost: runCost, runs: [{ id: 7, name: 'CI', status: 'completed', conclusion: 'success', started_at: t0, updated_at: t0 + 300_000, cost: runCost, jobs: [
+        { id: 70, run_id: 7, name: 'macOS', status: 'completed', conclusion: 'success', started_at: t0, completed_at: t0 + 285_000, duration_ms: 285_000, labels: ['macos-14'], os: 'macos', steps: [],
+          cost: { priced: true, sku: 'actions_macos', display: 'macOS 3-core (M1)', rate_usd_per_min: 0.062, minutes_billed: 5, usd: 0.31, free_public: false } },
+        { id: 71, run_id: 7, name: 'gpu', status: 'completed', conclusion: 'success', started_at: t0, completed_at: t0 + 150_000, duration_ms: 150_000, labels: ['self-hosted', 'gpu'], os: 'self-hosted', steps: [],
+          cost: { priced: false, reason: 'self_hosted', minutes_billed: 3, usd: 0, free_public: false } },
+      ] }] } }
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED))] }
+    show()
+    fireEvent.click(await waitFor(() => rowButton(9)))
+    const mac = await screen.findByText('macOS')
+    const cost = mac.closest('button')!.querySelector('[data-deck-cost="job"]')!
+    expect(cost).toHaveTextContent('$0.31')
+    expect(cost.getAttribute('title')).toMatch(/Rate table 2026-10-12\.1 · https:\/\/docs\.github\.com/)
+    const gpu = screen.getByText('gpu').closest('button')!.querySelector('[data-deck-cost="job"]')!
+    expect(gpu).toHaveTextContent('unpriced')
+    expect(gpu).toHaveAttribute('data-tone', 'muted')
+    expect(gpu.getAttribute('title')).toMatch(/self-hosted/)
+    // The sum beside the runner total, short of the whole while a job is unpriced, said once for one run; the PR row carries it too.
+    expect(document.querySelector('[data-deck-cost="ci"]')).toHaveTextContent('≥$0.31')
+    expect(document.querySelector('[data-deck-run-time] [data-deck-cost]')).toBeNull()
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"] [data-deck-cost="pr"]')).toHaveTextContent('≥$0.31'))
+  })
+
+  it('says what GitHub billed this month in Main, or which permission the token lacks', async () => {
+    h.main = { connected: true, repo: 'ada/b', branch: 'main', ci: { repo: 'ada/b', head_sha: 'm', branch: 'main', state: 'pass', runner_ms: 60_000, by_os: [], at: now, runs: [
+      { id: 50, name: 'CI', status: 'completed', conclusion: 'success', jobs: [] }] } }
+    h.usage = { account: 'ada', org: false, year: 2026, month: 10, available: true, minutes: 1240, gross_usd: 12.4, discount_usd: 5, net_usd: 7.4, by_sku: [], at: now }
+    // Not asked outside the Main view.
+    const first = show()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(h.usageAsked).toBe(0)
+    first.unmount()
+    localStorage.setItem('caprock.deck.ciView', 'main')
+    const second = show()
+    expect(await screen.findByText('Actions this month: 1,240 min · $7.40')).toBeInTheDocument()
+    expect(document.querySelector('[data-deck-usage]')).toHaveAttribute('data-deck-usage', 'available')
+    second.unmount()
+    h.usage = { account: 'ada', org: false, year: 2026, month: 10, available: false, reason: 'permission', needs: ['"Plan" user permission (read), for a fine-grained token'], minutes: 0, gross_usd: 0, discount_usd: 0, net_usd: 0, by_sku: [], at: now }
+    show()
+    expect(await screen.findByText('Real billing: needs the token’s Plan (read) permission')).toBeInTheDocument()
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    fireEvent.click(screen.getByRole('button', { name: /token settings/ }))
+    expect(String(open.mock.calls.at(-1)?.[0] ?? '')).toBe('https://github.com/settings/personal-access-tokens')
+    open.mockRestore()
+  })
+
+  it('lists the branches, the current one first, marks the stale ones, and opens a branch’s PR in the PRs view', async () => {
+    const b = (name: string, p: object = {}) => ({ name, local: true, remote: true, committed_ms: now - 3_600_000, author: 'Ada', cost_usd: 0, sessions: 0, agents: [], activity_at: now, ahead: 1, behind: 0, ...p })
+    h.branches = { connected: true, repo: 'a/b', default: 'main', current: 'feat/9', branches: [
+      b('feat/9', { current: true, ahead: 2, behind: 1, cost_usd: 4.5, sessions: 3, agents: ['claude'], pr: { number: 9, url: 'https://github.com/a/b/pull/9', state: 'open' }, live: livePR(9, PASSED) }),
+      b('main', { default: true, ahead: 0, behind: 0 }),
+      b('feat/77', { pr: { number: 77, url: 'https://github.com/a/b/pull/77', state: 'merged' } }),
+      b('old', { committed_ms: now - 40 * 86_400_000, stale: true }),
+      ...Array.from({ length: 14 }, (_, i) => b(`more-${i}`)),
+    ] }
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED))] }
+    h.ci = { connected: true, pr: { number: 9, url: 'https://github.com/a/b/pull/9', repo: 'a/b', head_sha: 's' }, ci: { repo: 'a/b', head_sha: 's', state: 'pass', runner_ms: 0, by_os: [], at: now, runs: [] } }
+    show()
+    await waitFor(() => rowButton(9))
+    fireEvent.click(screen.getByRole('tab', { name: 'Branches' }))
+    await waitFor(() => expect(document.querySelectorAll('[data-deck-branch-row]').length).toBe(15))
+    const rows = [...document.querySelectorAll('[data-deck-branch-row]')]
+    expect(rows.slice(0, 4).map((r) => r.getAttribute('data-deck-branch-row'))).toEqual(['feat/9', 'main', 'feat/77', 'old'])
+    expect(rows[0]).toHaveAttribute('data-current')
+    expect(rows[0]!.querySelector('[data-deck-branch-ab]')).toHaveTextContent('↑2 ↓1')
+    expect(rows[0]!.querySelector('[data-deck-branch-spend]')).toHaveTextContent('$4.50 · 3 sessions')
+    expect(rows[0]!.querySelector('[data-deck-branch-pr="9"]')).toBeInTheDocument()
+    expect(rows[3]).toHaveAttribute('data-stale')
+    expect(rows[3]!.querySelector('[data-deck-stale]')!.getAttribute('title')).toMatch(/no commit in 30 days and no open pull request/)
+    expect(rows[1]!.querySelector('[data-deck-stale]')).toBeNull()
+    // Show all.
+    fireEvent.click(screen.getByRole('button', { name: 'Show all 18' }))
+    expect(document.querySelectorAll('[data-deck-branch-row]').length).toBe(18)
+    // A PR that is not this session's opens on GitHub.
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    fireEvent.click(rows[2]!.firstElementChild!)
+    expect(String(open.mock.calls.at(-1)?.[0] ?? '')).toBe('https://github.com/a/b/pull/77')
+    open.mockRestore()
+    // The session's own PR opens in the PRs view.
+    fireEvent.click(rows[0]!.firstElementChild!)
+    expect(screen.getByRole('tab', { name: 'PRs' })).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"]')).toHaveAttribute('data-open'))
   })
 })

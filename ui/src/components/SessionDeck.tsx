@@ -32,6 +32,8 @@ import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type Ses
 import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
 import { MiniPipeline } from './MiniPipeline'
 import { CI_VIEWS, byOSLine, checkNodes, jobVsMedian, runSpan, runVsMedian, type DeltaTone, type VsMedian, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, orderPRs, osTag, prAge, prDotState, prMergeText, prReviewText, prVerdict, readCIView, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveCIView, type CITone, type CIView, type PipeNode, type PRWordTone } from '@/lib/ci'
+import { jobCostLabel, sumCostLabel, sumRuns, usageLine, type CICost, type CostLabel, type CostTone } from '@/lib/runnercost'
+import { BRANCHES_SHOWN, STALE_TITLE, aheadBehind, branchPRDot, branchSpend, lastCommit, shownBranches, type SessionBranch, type SessionBranches } from '@/lib/branches'
 import { sessionTitle } from '@/lib/sidebar'
 import { useCanControl } from '@/lib/useCanControl'
 import { githubApi } from '@/lib/github'
@@ -245,7 +247,8 @@ function InvestigateButton({ job, step }: { job: CIJob; step?: string }) {
 }
 
 /** Which view a job's log is read in: the route reads only jobs that view lists. */
-const LogView = createContext<{ view: CIView; pr?: number; onShown?: (d: 1 | -1) => void }>({ view: 'pr' })
+type LogViewName = Exclude<CIView, 'branches'>
+const LogView = createContext<{ view: LogViewName; pr?: number; onShown?: (d: 1 | -1) => void }>({ view: 'pr' })
 
 /**
  * Asks read() while `on`, the deck open and the window visible: every
@@ -282,14 +285,15 @@ function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: 
   return [data, at]
 }
 
-const VIEW_LABEL: Record<CIView, string> = { pr: 'PRs', release: 'Release', main: 'Main' }
+const VIEW_LABEL: Record<CIView, string> = { pr: 'PRs', branches: 'Branches', release: 'Release', main: 'Main' }
 const VIEW_TITLE: Record<CIView, string> = {
   pr: 'This session’s pull requests and their CI',
+  branches: 'The repository’s branches: ahead and behind, last commit, pull request, and what Caprock’s sessions on each cost',
   release: 'The repository’s newest release build: a tag push or a published release',
   main: 'The newest run of each workflow on the default branch',
 }
 
-/** PRs | Release | Main, kept per viewer. */
+/** PRs | Branches | Release | Main, kept per viewer. */
 export function CIViewSwitch({ view, onChange }: { view: CIView; onChange: (v: CIView) => void }) {
   return (
     <div role="tablist" aria-label="CI view" className="flex shrink-0 items-center gap-px rounded-[5px] border border-[var(--app-hairline)] p-px">
@@ -384,6 +388,8 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
     const r = prCI?.ci?.runs
     if (n && r) setSeenRuns((m) => (m[n] === r ? m : { ...m, [n]: r }))
   }, [prCI])
+  // A PR's cost: the open row's commit sum, else the sum of the runs read.
+  const prCost = (n: number): CICost | undefined => (prCI?.pr?.number === n && prCI.ci?.cost) || sumRuns((seenRuns[n] ?? []).map((r) => r.cost))
   // A settled PR's runs are read once while the deck is open, so its row says
   // its time against the median without being opened; the daemon keeps the
   // answer and a finished run's jobs, so this costs GitHub a read per PR.
@@ -407,7 +413,14 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   // its chip shows a build under way from the other views too.
   const [relData, relAt] = usePoll(true, key, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running')
   const [mainData, mainAt] = usePoll(view === 'main', key, () => api.sessionCIMain(sessionId), (d) => ciActive(d.ci))
-  useEffect(() => { setNow(Date.now()) }, [prsAt, prAt, relAt, mainAt])
+  // The branches, while that view is shown: local git and one cached list of
+  // the repository's pull requests, so a poll costs GitHub nothing new.
+  const [brData, brAt] = usePoll(view === 'branches', key, () => api.sessionBranches(sessionId), (d) => d.branches.some((b) => b.live?.checks.state === 'pending'), PRS_PENDING_MS)
+  // What GitHub billed for Actions this month, only while Main is shown; the
+  // daemon keeps the answer 30 minutes, so the minute's poll costs nothing.
+  const owner = mainData?.repo?.split('/')[0] ?? ''
+  const [usage] = usePoll(view === 'main' && !!mainData?.connected && !!owner, `${key}:${owner}`, () => api.actionsUsage(owner), () => false)
+  useEffect(() => { setNow(Date.now()) }, [prsAt, prAt, relAt, mainAt, brAt])
 
   const rel = relData?.release
   const ci = view === 'pr' ? prCI?.ci : view === 'main' ? mainData?.ci : undefined
@@ -455,6 +468,13 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
     pick(node)
   }
 
+  // A branch's PR: in the PRs view when it is one of this session's, else on GitHub.
+  const jumpToPR = (n: number, url: string) => {
+    if (prsData && !prsData.prs.some((p) => p.number === n)) { openExternal(url); return }
+    setChosen(n)
+    setView('pr')
+  }
+
   const connect = async () => {
     setConnecting(true)
     if (await connectGitHub()) setN((x) => x + 1)
@@ -462,6 +482,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   }
 
   const pr = prCI?.pr
+  const logView: LogViewName = view === 'branches' ? 'pr' : view
   const why = !canControl ? 'This device may only watch: queue it from the Mac, or make this device a controller in Settings.'
     : !s.owned ? 'Caprock did not start this session, so it never types into it. Start the agent from Caprock to queue CI failures to it.'
       : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
@@ -474,7 +495,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
     if (view === 'pr' && !pr) return
     setBusy(job.id)
     let lines: string[] = []
-    try { lines = (await api.sessionCILog(sessionId, job.id, view, view === 'pr' ? pr?.number : undefined)).lines } catch { /* the message goes without the log; the job's link has it */ }
+    try { lines = (await api.sessionCILog(sessionId, job.id, logView, logView === 'pr' ? pr?.number : undefined)).lines } catch { /* the message goes without the log; the job's link has it */ }
     const text = investigateMessage({ pr: view === 'pr' ? pr : undefined, where, workflow: run?.name, job, step: step ?? keyStep(job)?.name, lines })
     try {
       const res = await api.queueSend(sessionId, text)
@@ -486,13 +507,15 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
     }
   }
   const total = ci ? runnerTime(ci, now) : 0
-  const runnerTitle = ci ? `Runner time, measured from GitHub’s job times${ciActive(ci) ? ' and the running jobs on the clock' : ''}${ci.by_os.length ? `\nFinished: ${byOSLine(ci)}` : ''}\nNot priced: what a minute costs depends on the plan and the OS.` : ''
+  const runnerTitle = ci ? `Runner time, measured from GitHub’s job times${ciActive(ci) ? ' and the running jobs on the clock' : ''}${ci.by_os.length ? `\nFinished: ${byOSLine(ci)}` : ''}` : ''
+  const ciCost = sumCostLabel(ci?.cost)
   const connectButton = (label: string) => (
     <button type="button" disabled={connecting} onClick={() => void connect()} title="Reads GitHub Actions through your GitHub CLI login; turn it off in Settings → GitHub"
       className="w-fit text-left text-[12px] text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : label}</button>
   )
   const quiet = (text: string, title?: string) => <p className="truncate text-[12px] text-fg-faint" title={title ?? text}>{text}</p>
   const vsCol = runs.some((r) => r.jobs.some((j) => j.baseline))
+  const costCol = runs.some((r) => r.jobs.some((j) => j.cost && j.cost.reason !== 'unfinished'))
   const runList = (manyRuns: boolean, byOS: boolean) => (
     <ul data-deck-ci-jobs className={view === 'pr' ? '-mx-1' : '-mx-1 min-h-0 flex-1 overflow-y-auto overscroll-contain'}>
       {runs.map((run) => (
@@ -509,14 +532,14 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
           )}
           <ul>
             {run.jobs.map((job) => (
-              <CIJobRow key={job.id} sessionId={sessionId} job={job} now={now} vsCol={vsCol}
+              <CIJobRow key={job.id} sessionId={sessionId} job={job} now={now} vsCol={vsCol} costCol={costCol} table={run.cost}
                 open={!!open[job.id]} onToggle={() => setOpen((o) => ({ ...o, [job.id]: !o[job.id] }))} />
             ))}
             {run.jobs.length === 0 && <li className="px-1 text-[11px] text-fg-faint">{run.status === 'completed' ? 'No jobs reported.' : 'Waiting for a runner…'}</li>}
           </ul>
         </li>
       ))}
-      {byOS && ci && ci.by_os.length > 1 && <li className="num truncate px-1 pt-0.5 text-[10.5px] text-fg-faint" title="The finished jobs’ runner time per OS, measured; not priced">{byOSLine(ci)}</li>}
+      {byOS && ci && ci.by_os.length > 1 && <li className="num truncate px-1 pt-0.5 text-[10.5px] text-fg-faint" title="The finished jobs’ runner time per OS, measured">{byOSLine(ci)}</li>}
     </ul>
   )
 
@@ -531,9 +554,11 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
     return (
       <>
         <div className="flex min-w-0 items-baseline gap-2 px-0 text-[10.5px] text-fg-faint">
-          {runs.length === 1 && <><RunTime run={runs[0]!} now={now} /><span aria-hidden>·</span></>}
+          {/* One run: its cost is the runner total's, said once there. */}
+          {runs.length === 1 && <><RunTime run={runs[0]!} now={now} noCost /><span aria-hidden>·</span></>}
           <span data-deck-ci-runner className="num shrink-0" title={runnerTitle}>runner <span className="text-fg">{fmtRun(total)}</span></span>
-          {ci.by_os.length > 1 && <span className="num truncate" title="The finished jobs’ runner time per OS, measured; not priced">{byOSLine(ci)}</span>}
+          {ciCost && <><span aria-hidden>·</span><CostText c={ciCost} data="ci" /></>}
+          {ci.by_os.length > 1 && <span className="num truncate" title="The finished jobs’ runner time per OS, measured">{byOSLine(ci)}</span>}
           <button type="button" onClick={() => openExternal(`${url}/checks`)} className="ml-auto shrink-0 hover:text-fg-muted hover:underline">checks ↗</button>
         </div>
         {runList(runs.length > 1, false)}
@@ -552,7 +577,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
         // the height left, scrolling inside, so the earlier PRs stay in view.
         <ul data-deck-prs className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
           {rows.map((p) => (logs > 0 && openPr !== p.number ? null :
-            <PRRow key={p.url} p={p} now={now} runs={seenRuns[p.number]} open={openPr === p.number}
+            <PRRow key={p.url} p={p} now={now} runs={seenRuns[p.number]} cost={prCost(p.number)} open={openPr === p.number}
               onToggle={() => setChosen(openPr === p.number ? 0 : p.number)}
               onPick={(node) => pickInRow(p.number, node)}>
               {openPr === p.number && prDetail(p)}
@@ -576,6 +601,11 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
         </ul>
       )
     }
+  } else if (view === 'branches') {
+    const d = brData
+    if (d && d.reason) body = quiet('This session’s folder is not a git repository.')
+    else if (d && d.branches.length === 0) body = quiet('No branches.')
+    else if (d) body = <BranchList d={d} now={now} onJump={jumpToPR} connect={!d.connected && d.repo ? connectButton('Connect GitHub to see each branch’s pull request') : null} />
   } else if (view === 'release') {
     const d = relData
     if (d && d.reason) body = quiet(noRepoLine(d))
@@ -585,6 +615,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
     else if (rel && rel.run) {
       const run = rel.run
       const est = releaseEstimateText(rel, now)
+      const relCost = sumCostLabel(run.cost)
       body = (
         <>
           <div data-deck-ci-release className="flex min-w-0 items-baseline gap-1.5 text-[12px]">
@@ -600,6 +631,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
                   <button type="button" onClick={() => openExternal(rel.release?.url ?? run.html_url ?? '')} title={rel.release ? 'Open the release on GitHub' : `Open the ${run.name} run on GitHub`}
                     className={`truncate hover:underline ${rel.state === 'fail' ? 'text-danger' : 'text-fg'}`}>{releaseDoneText(rel, now)}</button>
                   <MiniPipeline nodes={jobNodes([run], now)} label={`${rel.tag ?? run.name}: its jobs`} onPick={pick} />
+                  {relCost && <CostText c={relCost} data="run" />}
                   {rel.release && run.html_url && <button type="button" onClick={() => openExternal(run.html_url!)} className="shrink-0 text-[11px] text-fg-faint hover:text-fg-muted hover:underline">run ↗</button>}
                 </>}
           </div>
@@ -617,6 +649,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
     else if (ci) {
       body = (
         <>
+          <UsageText line={usageLine(usage)} />
           {runList(true, true)}
           {ci.error && <p className="truncate text-[10.5px] text-warn" title={ci.error.message}>The last read failed; this is the one before.</p>}
         </>
@@ -629,7 +662,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   const chip = view !== 'release' ? releaseChip(rel, now) : ''
   return (
     <Investigate.Provider value={{ run: (j, st) => void investigate(j, st), why, busy }}>
-    <LogView.Provider value={{ view, pr: view === 'pr' ? pr?.number : undefined, onShown }}>
+    <LogView.Provider value={{ view: logView, pr: view === 'pr' ? pr?.number : undefined, onShown }}>
     <div data-deck-cell className="flex min-w-0 flex-1 flex-col gap-1 overflow-hidden px-3 pb-2 pt-2">
       <div className="flex min-w-0 items-center gap-2">
         <h4 className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Pull requests &amp; CI</h4>
@@ -647,7 +680,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
           )}
           {view === 'main' && ci?.branch && <span className="mono truncate" title={`${ci.repo}, its default branch`}>{ci.branch}</span>}
           {view === 'main' && ci && jobs.length > 0 && (
-            <span data-deck-ci-runner className="num" title={runnerTitle}>runner <span className="text-fg">{fmtRun(total)}</span></span>
+            <span data-deck-ci-runner className="num" title={runnerTitle}>runner <span className="text-fg">{fmtRun(total)}</span>{ciCost && <> · <CostText c={ciCost} data="ci" /></>}</span>
           )}
         </span>
         <CIViewSwitch view={view} onChange={setView} />
@@ -665,20 +698,22 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
  * conflict when GitHub said so, and its age. A click opens its CI in place;
  * ↗ opens the PR on GitHub.
  */
-function PRRow({ p, now, runs, open, onToggle, onPick, children }: { p: SessionPRLive; now: number; runs?: CIRun[]; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; children?: ReactNode }) {
+function PRRow({ p, now, runs, cost, open, onToggle, onPick, children }: { p: SessionPRLive; now: number; runs?: CIRun[]; cost?: CICost; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; children?: ReactNode }) {
   const live = p.live
   const dot = prDotState(p)
   const v = prVerdict(p, now, runs)
   const review = prReviewText(p)
   const merge = prMergeText(p)
   const age = prAge(p, now)
+  // Its runner cost once a job finished: "· $0.42", "· $0 · public repo".
+  const money = sumCostLabel(cost)
   const title = live?.title || p.title || ''
   const url = live?.url || p.url
   const nodes = live && live.checks.items.length > 0 ? checkNodes(live.checks.items, now) : []
   return (
     <li data-deck-pr={p.number} data-open={open || undefined} className={open ? 'flex min-h-[72px] shrink flex-col' : 'shrink-0'}>
       <div onClick={onToggle}
-        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[8px_minmax(40px,1fr)_auto_auto_minmax(64px,168px)_26px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
+        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[8px_minmax(40px,1fr)_auto_auto_minmax(64px,236px)_26px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
         <span role="img" aria-label={dot} title={dot} className="pr-dot" data-state={dot} />
         <button type="button" aria-expanded={open} onClick={(e) => { e.stopPropagation(); onToggle() }}
           title={`${title}\n${open ? 'Hide' : 'Show'} its CI`} className="flex min-w-0 items-baseline gap-2 text-left">
@@ -695,12 +730,108 @@ function PRRow({ p, now, runs, open, onToggle, onPick, children }: { p: SessionP
           </span>
         </span>
         {nodes.length > 0 ? <span className="flex justify-end"><span className="hidden @min-[520px]:inline-flex"><MiniPipeline nodes={nodes} label={`#${p.number}: its checks`} onPick={onPick} /></span></span> : <span />}
-        <span data-deck-pr-ci title={v.title ?? v.text} className={`w-full min-w-0 truncate text-[11.5px] ${v.strong ? 'font-medium' : ''} ${WORD_TEXT[v.tone]}`}>{v.text}</span>
+        <span data-deck-pr-ci className="flex w-full min-w-0 items-baseline gap-1 overflow-hidden text-[11.5px]">
+          <span title={v.title ?? v.text} className={`truncate ${v.strong ? 'font-medium' : ''} ${WORD_TEXT[v.tone]}`}>{v.text}</span>
+          {money && <><span aria-hidden className="text-fg-faint">·</span><CostText c={money} data="pr" className="shrink-0" /></>}
+        </span>
         <span data-deck-pr-age className="num text-right text-[11px] text-fg-faint" title={age.title}>{age.text}</span>
         <button type="button" onClick={(e) => { e.stopPropagation(); openExternal(url) }} aria-label={`Open #${p.number} on GitHub`} title="Open the pull request on GitHub"
           className="text-[11px] text-fg-faint hover:text-fg">↗</button>
       </div>
       {open && <div data-deck-pr-detail className="mb-1 ml-[7px] min-h-0 flex-1 overflow-y-auto overscroll-contain border-l border-[var(--app-hairline)] pl-2 pt-0.5">{children}</div>}
+    </li>
+  )
+}
+
+const COST_TEXT: Record<CostTone, string> = { cost: 'text-fg-muted', free: 'text-ok', muted: 'text-fg-faint' }
+
+/** A runner cost: "$0.31", "$0 · public repo", "unpriced" (muted), the basis in its tooltip. */
+function CostText({ c, data, className = '' }: { c: CostLabel; data: string; className?: string }) {
+  return <span data-deck-cost={data} data-tone={c.tone} title={c.title} className={`num truncate whitespace-nowrap text-[11px] ${COST_TEXT[c.tone]} ${className}`}>{c.text}</span>
+}
+
+/** What GitHub billed for Actions this month, or what the token needs to say it. */
+function UsageText({ line }: { line?: ReturnType<typeof usageLine> }) {
+  if (!line) return null
+  return (
+    <p data-deck-usage={line.kind} className="flex min-w-0 shrink-0 items-baseline gap-1.5 truncate px-0 text-[11px]" title={line.title}>
+      {line.kind === 'available'
+        ? <span className="num truncate text-fg-muted">{line.text}</span>
+        : <span className="truncate text-fg-faint">{line.text}</span>}
+      {line.kind === 'permission' && (
+        <button type="button" onClick={() => openExternal(line.url)} className="shrink-0 text-accent hover:underline">token settings ↗</button>
+      )}
+    </p>
+  )
+}
+
+/**
+ * The repository's branches (owner, 2026-10-12, translated: "seeing branches
+ * with statistics would also be interesting"): the current one first, then by
+ * last activity; each with ahead and behind the default branch, its last
+ * commit's age and author, its pull request (dot, number, mini pipeline),
+ * what Caprock's sessions on it cost and how many, and a stale mark. The first
+ * BRANCHES_SHOWN, then "Show all". A branch with a PR opens it in the PRs view.
+ */
+function BranchList({ d, now, onJump, connect }: { d: SessionBranches; now: number; onJump: (n: number, url: string) => void; connect: ReactNode }) {
+  const [all, setAll] = useState(false)
+  const rows = shownBranches(d.branches, all)
+  return (
+    <>
+      {connect}
+      <ul data-deck-branches className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+        {rows.map((b) => <BranchRow key={b.name} b={b} now={now} onJump={onJump} />)}
+        {d.branches.length > BRANCHES_SHOWN && (
+          <li className="shrink-0 px-1 pt-0.5">
+            <button type="button" data-deck-branches-all onClick={() => setAll((x) => !x)} className="text-[11px] text-fg-faint hover:text-fg-muted hover:underline">
+              {all ? 'Show fewer' : `Show all ${d.branches.length}`}
+            </button>
+          </li>
+        )}
+      </ul>
+      {d.error && <p className="truncate text-[10.5px] text-warn" title={d.error.message}>Pull requests not read: {d.error.message}</p>}
+    </>
+  )
+}
+
+function BranchRow({ b, now, onJump }: { b: SessionBranch; now: number; onJump: (n: number, url: string) => void }) {
+  const ab = aheadBehind(b)
+  const commit = lastCommit(b, now)
+  const spend = branchSpend(b)
+  const nodes = b.live && b.live.checks.items.length > 0 ? checkNodes(b.live.checks.items, now) : []
+  const pr = b.pr
+  const jump = pr ? () => onJump(pr.number, pr.url) : undefined
+  // Below 460px the deck keeps the name, the PR and the spend; ahead and
+  // behind and the last commit leave the grid (and its template) together.
+  return (
+    <li data-deck-branch-row={b.name} data-current={b.current || undefined} data-stale={b.stale || undefined} className="shrink-0">
+      <div onClick={jump} title={pr ? `${b.name}\nOpen #${pr.number}${pr.title ? ` “${pr.title}”` : ''}` : b.name}
+        className={`grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(44px,auto)] @min-[460px]:grid-cols-[minmax(90px,1fr)_auto_auto_minmax(52px,156px)_minmax(28px,110px)] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12px] ${jump ? 'cursor-pointer hover:bg-[var(--app-row-hover)]' : ''}`}>
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          <span className={`mono truncate text-[11.5px] ${b.current ? 'font-medium text-fg' : b.stale ? 'text-fg-faint' : 'text-fg-muted'}`}>{b.name}</span>
+          {b.current && <span className="hidden shrink-0 text-[10px] uppercase tracking-[0.04em] text-accent @min-[560px]:inline">current</span>}
+          {b.default && <span className="hidden shrink-0 text-[10px] uppercase tracking-[0.04em] text-fg-faint @min-[640px]:inline">default</span>}
+          {b.stale && <span data-deck-stale title={STALE_TITLE} className="shrink-0 rounded-[3px] border border-[var(--app-hairline)] px-1 text-[9.5px] uppercase tracking-[0.04em] text-fg-faint">stale</span>}
+          {!b.local && <span className="hidden shrink-0 text-[10px] text-fg-faint @min-[640px]:inline" title="Only on origin: no local branch">origin</span>}
+        </span>
+        <span data-deck-branch-ab className="num hidden whitespace-nowrap text-[11px] text-fg-faint @min-[460px]:block" title={ab.title}>{ab.text}</span>
+        <span className="flex items-center justify-end gap-1.5">
+          {pr && (
+            <span data-deck-branch-pr={pr.number} className="flex shrink-0 items-center gap-1 text-[11.5px]">
+              <span aria-hidden className="pr-dot" data-state={branchPRDot(pr)} />
+              <span className="num text-fg-muted">#{pr.number}</span>
+            </span>
+          )}
+          {nodes.length > 0 && <span className="hidden @min-[560px]:inline-flex"><MiniPipeline nodes={nodes} label={`#${pr?.number}: its checks`} onPick={() => jump?.()} /></span>}
+        </span>
+        {/* The session count and the author give way first as the deck narrows. */}
+        <span data-deck-branch-spend className={`num truncate text-right text-[11px] ${b.sessions ? 'text-fg-muted' : 'text-fg-faint'}`} title={spend.title}>
+          {spend.cost}{spend.count && <span className="hidden @min-[640px]:inline"> · {spend.count}</span>}
+        </span>
+        <span data-deck-branch-commit className="hidden truncate text-right text-[11px] text-fg-faint @min-[460px]:block" title={commit.title}>
+          {commit.age}{commit.author && <span className="hidden @min-[640px]:inline"> · {commit.author}</span>}
+        </span>
+      </div>
     </li>
   )
 }
@@ -714,28 +845,36 @@ function VsText({ vs, className = '' }: { vs?: VsMedian; className?: string }) {
 }
 
 /** A run's wall-clock time and how it stands against its workflow's median. */
-function RunTime({ run, now }: { run: CIRun; now: number }) {
+function RunTime({ run, now, noCost }: { run: CIRun; now: number; noCost?: boolean }) {
   const ms = runSpan(run, now)
   if (ms === undefined) return null
   const vs = runVsMedian(run, now)
+  const money = noCost ? undefined : sumCostLabel(run.cost)
   return (
     <span data-deck-run-time className="num flex shrink-0 items-baseline gap-1 text-[10.5px] text-fg-faint" title={`The run's wall-clock time, from GitHub's own stamps${vs ? `\n${vs.title}` : ''}`}>
       run <span className={run.status === 'completed' ? 'text-fg' : 'text-warn'}>{fmtRun(ms)}</span>
       {vs && <><span aria-hidden>·</span><VsText vs={vs} /></>}
+      {money && <><span aria-hidden>·</span><CostText c={money} data="run" /></>}
     </span>
   )
 }
 
 /** One job: its mark, name, OS and time against its median; open, its steps. */
-function CIJobRow({ sessionId, job, now, open, onToggle, vsCol }: { sessionId: string; job: CIJob; now: number; open: boolean; onToggle: () => void; vsCol?: boolean }) {
+function CIJobRow({ sessionId, job, now, open, onToggle, vsCol, costCol, table }: { sessionId: string; job: CIJob; now: number; open: boolean; onToggle: () => void; vsCol?: boolean; costCol?: boolean; table?: CICost }) {
   const tone = ciTone(job)
   const vs = vsCol ? jobVsMedian(job, now) : undefined
+  const money = costCol ? jobCostLabel(job.cost, table, job.labels) : undefined
+  // Whole class names, so Tailwind sees each one.
+  const cols = vsCol && costCol ? 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)_minmax(0,108px)_minmax(0,64px)]'
+    : vsCol ? 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)_minmax(0,108px)]'
+      : costCol ? 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)_minmax(0,64px)]'
+        : 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)]'
   const at = keyStep(job)
   const [logFor, setLogFor] = useState<number>()
   return (
     <li data-deck-ci-job={job.id} data-tone={tone}>
       <button type="button" onClick={onToggle} aria-expanded={open} title={`${job.name}${job.labels.length ? `\nRunner: ${job.labels.join(', ')}` : ''}\n${open ? 'Hide' : 'Show'} its steps`}
-        className={`grid w-full min-w-0 ${vsCol ? 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)_minmax(0,108px)]' : 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)]'} items-center gap-x-1.5 rounded-[4px] px-1 py-[1px] text-left text-[12px] hover:bg-[var(--app-row-hover)]`}>
+        className={`grid w-full min-w-0 ${cols} items-center gap-x-1.5 rounded-[4px] px-1 py-[1px] text-left text-[12px] hover:bg-[var(--app-row-hover)]`}>
         <CIMark tone={tone} />
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className={`truncate ${tone === 'fail' ? 'font-medium text-danger' : 'text-fg'}`}>{job.name}</span>
@@ -744,6 +883,7 @@ function CIJobRow({ sessionId, job, now, open, onToggle, vsCol }: { sessionId: s
         <span className="text-[10px] uppercase tracking-[0.04em] text-fg-faint">{osTag(job.os)}</span>
         <span className={`num whitespace-nowrap text-right text-[11.5px] ${tone === 'running' ? 'text-warn' : 'text-fg-muted'}`}>{fmtRun(ciElapsed(job, now))}</span>
         {vsCol && <VsText vs={vs} />}
+        {costCol && (money ? <CostText c={money} data="job" className="text-right" /> : <span />)}
       </button>
       {open && (
         <ul className="ml-[8px] border-l border-[var(--app-hairline)] pl-1">

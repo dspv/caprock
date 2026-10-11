@@ -431,6 +431,7 @@ GET  /v1/sessions/{id}/ci              → SessionCI — the deck's CI cell: Act
 GET  /v1/sessions/{id}/ci/jobs/{job}/log → CILog — the lines around a failed job's error, on demand (?view=pr|release|main)
 GET  /v1/sessions/{id}/ci/release      → SessionRepoCI — the repository's newest release build, with an estimate
 GET  /v1/sessions/{id}/ci/main         → SessionRepoCI — the newest run of each workflow on the default branch
+GET  /v1/sessions/{id}/branches        → SessionBranches — the repository's branches with PRs and Caprock spend (§ Session branches)
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
@@ -1364,7 +1365,8 @@ private repository's included minutes, which a job cannot know are left.
   but no label, so a GPU job is `unknown_runner`.
 - **Run and commit `cost`** — `CICost` `{usd, minutes_billed, free_minutes,
   unpriced_minutes, priced_jobs, unpriced_jobs, unfinished_jobs, partial,
-  visibility, table_version?}` sums the finished jobs: `minutes_billed` and
+  visibility, table_version?, table_source?}` sums the finished jobs
+  (`table_source` is the table's `source` page, for the deck's tooltip): `minutes_billed` and
   `usd` the charged ones, `free_minutes` the public standard ones,
   `unpriced_minutes` the finished jobs with no price. `partial` is true when
   a job is unfinished or unpriced (with minutes), so the sum is short of the
@@ -1374,6 +1376,43 @@ private repository's included minutes, which a job cannot know are left.
   `GET /repos/{o}/{r}`, the same read the default branch comes from and kept
   with it for an hour (`github.RepoVisibility`). An unreadable repository is
   `unknown`, priced at the list rate, and not asked again for 10 minutes.
+
+**Session branches** — **`GET /v1/sessions/{id}/branches`** →
+`SessionBranches` `{connected, repo?, reason?, default?, base?, current?,
+branches[], error?}`: the session deck's Branches view. Read only while that
+view is shown.
+
+- **Git** — local only (`internal/branches`): one `for-each-ref` over
+  `refs/heads` and `refs/remotes/origin` in the session's directory, with
+  `%(ahead-behind:<base>)` (2.41 and later; on an older one a `rev-list
+  --left-right --count` per branch, the 40 most recently committed), kept
+  10 s per directory. `default` is the default branch (the remote answer
+  the session page already keeps, else `origin/HEAD`, else `main` or
+  `master`); `base` the ref counted against (`origin/<default>`, else the
+  local one); `current` the checkout's branch. A folder that is no
+  repository is `reason` `no_repo` with no rows.
+- **Each branch** — `{name, current?, default?, local, remote, ahead?,
+  behind?, committed_ms, author?, sha?, pr?, live?, cost_usd, sessions,
+  agents[], session_at?, activity_at, stale?}`. A local branch and origin's
+  copy are one row (the local one's commit); other remotes and origin's
+  `HEAD` are left out. `ahead` and `behind` are absent when not counted.
+- **Its PR** — `pr` `{number, url, title?, state, draft?, base?,
+  head_sha?}` from one `GET /repos/{o}/{r}/pulls?state=all&sort=updated&direction=desc&per_page=50`
+  per repository, kept 2 min (`github.PullsByBranch`): the branch's open
+  PR, else its most recently updated; a fork's same-named branch is not
+  this repository's; the default branch has none. `live` is an open PR read
+  through `github.PullByURL` (its checks, for the mini pipeline), the
+  newest eight open ones: the same kept reads the PRs view makes. Nothing
+  is sent while GitHub is not connected; a failed list keeps the last one,
+  else `error`.
+- **Spend** — `cost_usd`, `sessions`, `agents` and `session_at` sum the
+  sessions whose `repo_root` is the session's and whose `git_branch` is the
+  branch (`store.SpendByBranch`: `session_stats.cost_usd` at API list
+  price; the branch a session was on when Caprock saw it), read through
+  `idx_sessions_repo_branch` (§ Branch spend DDL).
+- **Order and stale** — the current branch first, then `activity_at` (the
+  later of the last commit and the newest session event), newest first.
+  `stale`: no commit in 30 days and no open PR; never the default branch.
 
 **`GET /v1/github/actions-usage`** (`?owner=` optional) → `ActionsUsage`
 `{account, org, year, month, available, reason?, needs?, minutes, gross_usd,
@@ -2782,6 +2821,16 @@ Where Claude Code's turns begin and end (§ Queue), partial and covering. On
 a copy of the owner's database (2026-10-12, 2 GB) it holds 16k rows; one
 project's turns read in 1 ms through it against 1.6 s cold and 47 ms warm
 through `idx_events_kind_id`, and building it took 4 s, once.
+
+### Branch spend DDL (migration 0050)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_sessions_repo_branch ON sessions(repo_root, git_branch);
+```
+
+The Branches view sums Caprock's spend per branch of one repository
+(§ Session branches): `WHERE repo_root = ? GROUP BY git_branch`, joined to
+`session_stats` by its key. Without it the read scans every session row.
 
 ### Queued messages DDL (migration 0047)
 

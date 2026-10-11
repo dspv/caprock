@@ -184,7 +184,7 @@ func TestPriceRunsSums(t *testing.T) {
 	if c := runs[1].Cost; c.USD != r2 || c.Partial {
 		t.Fatalf("run 2 %+v", c)
 	}
-	if total.USD != usd(r1+r2) || total.MinutesBilled != 13 || !total.Partial || total.Visibility != VisibilityPrivate || total.TableVersion != tb.Version {
+	if total.USD != usd(r1+r2) || total.MinutesBilled != 13 || !total.Partial || total.Visibility != VisibilityPrivate || total.TableVersion != tb.Version || total.TableSource != tb.Source || runs[0].Cost.TableSource != tb.Source {
 		t.Fatalf("total %+v", total)
 	}
 	// Public: the standard minutes are free, the larger runner's are not.

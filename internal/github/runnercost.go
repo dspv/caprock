@@ -243,6 +243,9 @@ type CICost struct {
 	Partial      bool   `json:"partial"`
 	Visibility   string `json:"visibility"`
 	TableVersion string `json:"table_version,omitempty"`
+	// TableSource is the page the table's rates were read from, for the
+	// deck's tooltip.
+	TableSource string `json:"table_source,omitempty"`
 }
 
 func (c *CICost) add(j RunnerCost) {
@@ -286,13 +289,13 @@ func (t *RunnerTable) PriceRuns(runs []CIRun, visibility string) *CICost {
 	if visibility == "" {
 		visibility = VisibilityUnknown
 	}
-	version := ""
+	version, source := "", ""
 	if t != nil {
-		version = t.Version
+		version, source = t.Version, t.Source
 	}
-	total := &CICost{Visibility: visibility, TableVersion: version}
+	total := &CICost{Visibility: visibility, TableVersion: version, TableSource: source}
 	for i := range runs {
-		sum := &CICost{Visibility: visibility, TableVersion: version}
+		sum := &CICost{Visibility: visibility, TableVersion: version, TableSource: source}
 		for k := range runs[i].Jobs {
 			c := t.Cost(runs[i].Jobs[k], visibility)
 			runs[i].Jobs[k].Cost = &c

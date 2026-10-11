@@ -2,8 +2,9 @@
  * The session deck's CI cell, worked out from what GitHub Actions reported
  * (`GET /v1/sessions/{id}/ci`). Every time here is measured — GitHub's own
  * start and end stamps, or for a job still running, the clock minus its
- * start — and none is priced: runner minutes are shown per OS, never turned
- * into money with a multiplier we would have to invent (rule 6).
+ * start. Money is the daemon's: each finished job priced from the versioned
+ * runner rate table, worded in lib/runnercost.ts — never a multiplier made
+ * up here (rule 6).
  */
 import type { CIBaseline, CIJob, CIRun, CIState, CIStep, ReleaseCI, SessionPRLive } from './api'
 import type { PRCheck } from './github'
@@ -109,16 +110,16 @@ export function investigateMessage(o: {
   return msg
 }
 
-/** The CI cell's three views: the session's PR, the repository's release build, its default branch. */
-export type CIView = 'pr' | 'release' | 'main'
-export const CI_VIEWS: CIView[] = ['pr', 'release', 'main']
+/** The cell's four views: the session's PRs, the repository's branches, its release build, its default branch. */
+export type CIView = 'pr' | 'branches' | 'release' | 'main'
+export const CI_VIEWS: CIView[] = ['pr', 'branches', 'release', 'main']
 const CI_VIEW_KEY = 'caprock.deck.ciView'
 
 /** The view this viewer chose last; 'pr' when none was kept or storage is not there. */
 export function readCIView(): CIView {
   try {
     const v = localStorage.getItem(CI_VIEW_KEY)
-    if (v === 'pr' || v === 'release' || v === 'main') return v
+    if (v === 'pr' || v === 'branches' || v === 'release' || v === 'main') return v
   } catch { /* private window, blocked storage */ }
   return 'pr'
 }

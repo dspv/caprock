@@ -409,8 +409,8 @@ One window, three regions:
     committed or pushed and, beside it in amber, *3 not committed · 2 not
     pushed* (a click opens the Changes view, ⇧⌘G); the release chip
     *Release v0.109.1 · ~6 min* while a release builds (a click opens
-    Release); in Main the branch and *runner*; the **PRs | Release | Main**
-    switch, kept per viewer in `localStorage`. The chips give way below a
+    Release); in Main the branch and *runner* with its cost; the **PRs |
+    Branches | Release | Main** switch, kept per viewer in `localStorage`. The chips give way below a
     480px container.
   - **PRs view.** The session's pull requests from `GET
     /v1/sessions/{id}/prs` — its latest four (`session_prs`): the open one
@@ -431,8 +431,8 @@ One window, three regions:
     one at a time, into its GitHub Actions from `GET
     /v1/sessions/{id}/ci?pr=N`: *run 9m 10s · −6%* (one workflow), *runner*
     — the finished jobs' time from GitHub's own stamps plus the running ones
-    on the clock, the minutes per OS beside it and in its tooltip, never
-    priced — and *checks ↗*; then a row per job with a mark (an amber
+    on the clock, the minutes per OS beside it and in its tooltip, and its
+    cost (below) — and *checks ↗*; then a row per job with a mark (an amber
     turning ring while it runs, ✓, ✗, ○ queued, – skipped or cancelled), its
     name, the step it failed at or is on, its OS (from the runner labels),
     its time ticking each second while it runs, and its time against its
@@ -476,14 +476,57 @@ One window, three regions:
     *built*, or *failed … ✗*), then its jobs as a PR's, with steps, errors,
     *Investigate* and each job against its median.
   - **Main view**: the newest run of each workflow on the default branch, a
-    header per workflow with its mark, mini pipeline and *run 9m 10s · −6%*
-    (`GET /v1/sessions/{id}/ci/main`), so a red default branch shows at
-    once.
+    header per workflow with its mark, mini pipeline and *run 9m 10s · −6% ·
+    $0.10* (`GET /v1/sessions/{id}/ci/main`), so a red default branch shows
+    at once. Above them, what GitHub itself billed for Actions this month,
+    from its billing report (`GET /v1/github/actions-usage`, asked for the
+    repository's owner only while this view is shown, kept 30 minutes by
+    the daemon): *Actions this month: 1,240 min · $7.40* — net of GitHub's
+    discount, which is how included minutes appear, the gross and the SKUs
+    in its tooltip. When the token may not read billing, a muted *Real
+    billing: needs the token's Plan (read) permission* (for an
+    organization, Administration (read) as its admin) with *token settings
+    ↗*; no report for the account is one quiet line; nothing while GitHub is
+    not connected.
+  - **Runner cost** (owner, 2026-10-12, translated: "can we add runner
+    costs?"). Each finished job carries the daemon's price from the runner
+    rate table (`pricing/actions.json`, `.ai/03-contracts.md` § Runner
+    cost; worded in `lib/runnercost.ts`): beside its time, *4m 45s · $0.31*;
+    a run beside its time (*run 9m 10s · −6% · $0.42*; with one run, said
+    once, on *runner*); a PR row after its CI words (*✓ 9m 10s · −6% ·
+    $0.42*, from the runs read for it). *$0 · public repo* (green) when
+    every priced minute ran on standard runners in a public repository,
+    GitHub's billing docs saying why in the tooltip; *unpriced* (muted) for
+    a self-hosted runner or one the table does not know, the reason in the
+    tooltip; *≥$0.42* while a job runs or could not be priced. Every
+    tooltip says it is an estimate at list rate, before a private
+    repository's included minutes, and names the table's version and source
+    page. Nothing while no job has finished.
+  - **Branches view** (owner, 2026-10-12, translated: "seeing branches with
+    statistics would also be interesting"; `GET
+    /v1/sessions/{id}/branches`, `lib/branches.ts`): the session's
+    repository's branches, the current one first, then by last activity
+    (the later of the last commit and the newest Caprock session on it). A
+    row: the name in mono (*current*, *default*, *origin* for one only on
+    the remote, and a *stale* tag — no commit in 30 days and no open PR),
+    ahead and behind the default branch (*↑3 ↓1*, *even*), its pull request
+    (state dot, number, mini pipeline for an open one), what Caprock's
+    sessions on it cost and how many (*$11.52 · 2 sessions*, at API list
+    price, the agents in the tooltip), and the last commit's age and
+    author (*3h · Ada*). Fifteen rows, then *Show all N*. A click on a
+    branch with a PR opens that PR in the PRs view when it is one of the
+    session's, else on GitHub. Below a 460px container the row keeps the
+    name, the PR and the cost; the session count, the author and the tags
+    give way first above it. The commits are local git (`for-each-ref`, no
+    network); the PRs one cached list of the repository's 50 most recently
+    updated; the cost one indexed query. Asked every minute while shown,
+    every 20 s while an open PR's checks run.
   - **States and cadence.** The repository is the session's directory's
     remote; a folder with none, a remote off GitHub and GitHub not connected
     are one line each, the last with the connect button. No PR, no runs and
     a failed read are one short line each. The PRs are asked every 20 s
-    while a check runs, else every minute; the open row's CI and Main every
+    while a check runs, else every minute (the Branches view too); the open
+    row's CI and Main every
     12 s while a job runs, else every minute; the release build whatever the
     view, as often — all only while the deck is open and the window visible.
     The daemon keeps each PR 20 s while its checks run, 2 min once settled
