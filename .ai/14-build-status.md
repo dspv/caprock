@@ -73,6 +73,12 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — 0.109.1: a large filled triangle for the Dock icon
+
+The app icon is a large filled amber triangle on a dark tile on the macOS
+icon grid, chosen by the owner from four variants (amber on dark, dark on
+amber, blue, white). Source and renderer in `app/icon-src/`.
+
 ### 2026-10-11 — 0.109.0: seven themes, live permission modes, a sidebar without the waiting block
 
 Seven themes with plain names (Dark Warm, Dark Cold, Dark Side, Light,

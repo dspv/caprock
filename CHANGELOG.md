@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.109.1] - 2026-10-12
+
 ### Changed
 
 - **app:** the Dock and taskbar icon is a large filled amber triangle on a
