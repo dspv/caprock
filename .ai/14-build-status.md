@@ -73,6 +73,11 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-11 — 0.107.5: the deck's faint accent edge back
+
+The session deck's top edge returns to 0.107.3's faint accent line; 0.107.4's
+grey hairline lost the division.
+
 ### 2026-10-11 — 0.107.4: spend by time, ⇧⌘G for the diff
 
 The inspector's spend spark opens, on a click, the session's spend by time
