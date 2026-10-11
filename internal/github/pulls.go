@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,29 @@ type Check struct {
 	Name  string `json:"name"`
 	State string `json:"state"` // pass | fail | pending | skipped
 	URL   string `json:"url,omitempty"`
+	// Status is a check run's own: queued | in_progress | completed; "" for
+	// a commit status. The deck's mini pipeline tells running from queued by it.
+	Status      string `json:"status,omitempty"`
+	StartedAt   int64  `json:"started_at,omitempty"` // unix ms
+	CompletedAt int64  `json:"completed_at,omitempty"`
+	// JobID is the GitHub Actions job a check run is, read from its link
+	// (…/actions/runs/{run}/job/{job}); 0 for any other check.
+	JobID int64 `json:"job_id,omitempty"`
+}
+
+var jobLink = regexp.MustCompile(`/actions/runs/[0-9]+/job/([0-9]+)`)
+
+// jobOf is the Actions job id in a check run's link, 0 when it names none.
+func jobOf(link string) int64 {
+	m := jobLink.FindStringSubmatch(link)
+	if m == nil {
+		return 0
+	}
+	n, err := strconv.ParseInt(m[1], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // Checks sums a head commit's checks: fail when any failed, else pending
@@ -539,17 +563,20 @@ func (s *Service) readChecks(ctx context.Context, repo Repo, sha string) (Checks
 	changed := !res.notModded
 	var runs struct {
 		CheckRuns []struct {
-			Name       string `json:"name"`
-			Status     string `json:"status"`
-			Conclusion string `json:"conclusion"`
-			HTMLURL    string `json:"html_url"`
+			Name        string `json:"name"`
+			Status      string `json:"status"`
+			Conclusion  string `json:"conclusion"`
+			HTMLURL     string `json:"html_url"`
+			StartedAt   string `json:"started_at"`
+			CompletedAt string `json:"completed_at"`
 		} `json:"check_runs"`
 	}
 	if e := decode(res, doing, &runs); e != nil {
 		return out, false, e
 	}
 	for _, r := range runs.CheckRuns {
-		out.Items = append(out.Items, Check{Name: r.Name, State: runState(r.Status, r.Conclusion), URL: r.HTMLURL})
+		out.Items = append(out.Items, Check{Name: r.Name, State: runState(r.Status, r.Conclusion), URL: r.HTMLURL, Status: r.Status,
+			StartedAt: unixMS(r.StartedAt), CompletedAt: unixMS(r.CompletedAt), JobID: jobOf(r.HTMLURL)})
 	}
 	res, e = s.call(ctx, request{method: http.MethodGet, path: base + "/status", doing: doing})
 	if e != nil {

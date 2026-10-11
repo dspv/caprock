@@ -427,7 +427,9 @@ GET  /v1/sessions/{id}/notes           → AssistantNote[] — what Claude said,
 GET  /v1/sessions/{id}/todos           → SessionTodos — the agent's own task list (§ Session todos)
 GET  /v1/sessions/{id}/prs             → {connected, prs: SessionPRLive[]} — the session deck's PRs with CI
 GET  /v1/sessions/{id}/ci              → SessionCI — the deck's CI cell: Actions runs, jobs, steps, times
-GET  /v1/sessions/{id}/ci/jobs/{job}/log → CILog — the lines around a failed job's error, on demand
+GET  /v1/sessions/{id}/ci/jobs/{job}/log → CILog — the lines around a failed job's error, on demand (?view=pr|release|main)
+GET  /v1/sessions/{id}/ci/release      → SessionRepoCI — the repository's newest release build, with an estimate
+GET  /v1/sessions/{id}/ci/main         → SessionRepoCI — the newest run of each workflow on the default branch
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
@@ -1236,14 +1238,17 @@ per link for 20 s while its checks run, 2 min once they settled and 30 min
 once merged or closed (`github.PullByURL`), so the deck polling it costs
 GitHub nothing in between; every read is conditional.
 
-**`GET /v1/sessions/{id}/ci`** → `SessionCI` `{connected, pr?, ci?, error?}`:
-the session deck's CI cell. `pr` `{number, url, title?, state?, repo,
-head_sha?}` is the session's open pull request among its latest three, else
-the newest (each read through `github.PullByURL`, so it shares the PRs
+**`GET /v1/sessions/{id}/ci`** (`?pr=N` optional) → `SessionCI` `{connected,
+pr?, ci?, error?}`: the session deck's CI cell. `pr` `{number, url, title?,
+state?, repo, head_sha?}` is pull request N when it is among the session's
+latest three (a click on its mini pipeline in the PRs cell), else the
+session's open one among them, else the newest (each read through `github.PullByURL`, so it shares the PRs
 cell's reads). `ci` is `github.CI` for that PR's head commit: `{repo,
 head_sha, state, runs[], runner_ms, by_os[], at, error?}`, `state` one of
 `running | fail | pass | none`. Each run `{id, name, event?, status,
-conclusion?, attempt?, html_url?, created_at?, updated_at?, jobs[]}`; each
+conclusion?, attempt?, html_url?, created_at?, updated_at?, started_at?,
+head_branch?, head_sha?, workflow_id?, jobs[]}` (`started_at` is GitHub's
+`run_started_at`; `head_branch` is the tag for a tag push or a release); each
 job `{id, run_id, name, status, conclusion?, started_at?, completed_at?,
 duration_ms?, labels[], os?, runner_name?, html_url?, steps[]}`; each step
 `{number, name, status, conclusion?, started_at?, completed_at?,
@@ -1261,9 +1266,51 @@ are unchanged keeps the jobs read before. While GitHub is not connected
 nothing is sent: `connected` is false, `pr` is the newest recorded one and
 `ci` is absent. A failed read keeps the last answer with `ci.error` set.
 
+**`GET /v1/sessions/{id}/ci/release`** and **`GET /v1/sessions/{id}/ci/main`**
+→ `SessionRepoCI` `{connected, repo?, reason?, branch?, release?, ci?,
+error?}`: the CI cell's Release and Main views, for any repository. `repo`
+(`owner/name`) is read from the session's working directory's remote, as the
+session page reads it (`gitremote.Lookup`, kept a minute); `reason` is
+`no_repo` (not a git repository, or no remote) or `not_github` when there is
+none to read, and nothing is sent. The default branch is git's own
+(`refs/remotes/<remote>/HEAD`), else `GET /repos/{o}/{r}`'s
+`default_branch`, kept an hour. While GitHub is not connected nothing is
+sent: `connected` is false and `repo` says which repository a click would
+read.
+
+- **Release** — `release` is `github.ReleaseCI` `{repo, tag?, state, run?,
+  estimate?, release?, at, error?}`. The release run is found without
+  knowing the workflow's file: the newest run, by `created_at`, among
+  `GET …/actions/runs?event=push&per_page=30` and
+  `GET …/actions/runs?event=release&per_page=5` whose event is `release`, or
+  is `push` with a `head_branch` that reads as a tag (`v1.2.3`, `1.2`,
+  `v1.2.3-rc.1`, `app/v1.2.0`, `release-1.4`; never the default branch;
+  `github.IsReleaseRun`). `tag` is its `head_branch`; `run` is a `CIRun`
+  with its jobs and steps; `state` is `running | fail | pass | none`
+  (`none`: no release run among those). While it runs, `estimate`
+  `{median_ms, runs}` is the median of `updated_at - run_started_at` over
+  the newest successful release runs of the same workflow
+  (`GET …/actions/workflows/{workflow_id}/runs?status=success&per_page=30`),
+  up to 10, the running one left out, absent with fewer than 2 — GitHub's
+  own stamps, kept per workflow 30 min, and an estimate that the UI labels
+  so. Once it passed, `release` `{url, published_at?, draft?}` is
+  `GET …/releases/tags/{tag}` (a 404 is "no release", not an error, and
+  does not mark the health line), kept 30 min once found, 2 min until then.
+- **Main** — `branch` is the default branch and `ci` is a `github.CI` with
+  `branch` set: the newest run of each workflow among
+  `GET …/actions/runs?branch={branch}&per_page=30` (up to 8 workflows,
+  newest first), with jobs and steps; `head_sha` is the newest run's.
+
+Both are kept per repository (and branch) as a commit's CI is: 10 s while a
+run is unfinished, 2 min once settled; a settled run whose `updated_at` and
+attempt are unchanged keeps the jobs read before; a failed read keeps the
+last answer with its `error` set. An unknown session is 404.
+
 **`GET /v1/sessions/{id}/ci/jobs/{job}/log`** → `CILog` `{job_id, lines[],
-error_line, truncated?}`: the end of one finished job's log, for a job in
-this session's CI only (else 404; 409 while GitHub is not connected).
+error_line, truncated?}`: the end of one finished job's log, for a job the
+CI cell lists for this session in the view `?view=` names — `pr` (the
+default, with `?pr=N` as above), `release` or `main` — only (else 404; 409 while GitHub is not
+connected).
 `GET /repos/{o}/{r}/actions/jobs/{job}/logs` is asked on the API host with
 the token and its redirect is not followed by that request; the signed
 address it names is fetched without the token, only over https and only on
@@ -2069,8 +2116,12 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
   state: open|closed|merged, draft, base, head_sha, mergeable: bool|null,
   mergeable_state?, review: approved|changes_requested|review_required|
   commented|"", reviews: [{user, state, at?}], checks: {state:
-  pass|fail|pending|"", passed, failed, pending, items: [{name, state, url?}]},
-  at, error?}`. Checks merge check runs and commit statuses on the head;
+  pass|fail|pending|"", passed, failed, pending, items: [{name, state, url?,
+  status?, started_at?, completed_at?, job_id?}]}, at, error?}`. Checks
+  merge check runs and commit statuses on the head; a check run carries its
+  own `status` (`queued | in_progress | completed`), its times (unix ms) and,
+  when its link is a GitHub Actions job's (`…/actions/runs/{run}/job/{job}`),
+  that `job_id` — the deck's mini pipeline draws them;
   `mergeable` null is GitHub still computing it. Only pull requests whose
   head is in the same repository as `origin` are followed.
 - **`WorktreeInfo`** — `{connected, repo: {owner, name, full_name, html_url}
