@@ -356,7 +356,8 @@ One window, three regions:
   everywhere", "Spent doesn't help", "Working now is debatable"); the
   sidebar and the inspector carry them, and the deck holds no session
   events and no clock. Its top edge is a faint accent rule with a low glow
-  upward (the first, brighter one distracted), framing the line above it where the prompt sits, and *Hide ⌘B*
+  upward (the first, brighter one distracted; a grey hairline lost the
+  division), framing the line above it where the prompt sits, and *Hide ⌘B*
   sits at its right. A figure the agent does not report is
   left out, never drawn as zero. As the terminal narrows the Branch cell
   gives way first, below 720px (a container query). ⌘B (Ctrl+Shift+B off macOS), a strip

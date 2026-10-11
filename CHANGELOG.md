@@ -7,6 +7,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the session deck's top edge is the faint accent line again, as
+  in 0.107.3: it sets the deck apart without catching the eye.
+
 ## [0.107.4] - 2026-10-11
 
 ### Changed
