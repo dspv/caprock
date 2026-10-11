@@ -167,6 +167,10 @@ export function TabStrip(props: TabStripProps) {
           const active = t.id === activeTabId
           const project = props.projectName?.(t.projectId)
           const digit = tabDigit(i, tabs.length)
+          // A tab is named by its project — the repo is what tells tabs apart
+          // at a glance. A second tab of the same project adds its own title,
+          // faint, so the two still differ; a file tab keeps the file name.
+          const twin = project !== undefined && tabs.some((o) => o.id !== t.id && o.projectId === t.projectId && labels.get(o.id)?.file === undefined)
           return (
             <div
               key={t.id}
@@ -174,6 +178,7 @@ export function TabStrip(props: TabStripProps) {
               tabIndex={active ? 0 : -1}
               aria-selected={active}
               data-tab-index={i}
+              aria-label={file === undefined && project ? `${title} · ${project}` : undefined}
               data-dragging={dragging === t.id || undefined}
               onPointerDown={press(t.id)}
               onClick={() => {
@@ -196,14 +201,16 @@ export function TabStrip(props: TabStripProps) {
                   <AgentGlyph agent={s?.agent} shell={isShell} />
                 </>
               )}
-              <TitleAndBranch title={title} branch={label?.branch} className="" />
-              {file === undefined && <HotMark sessionId={s?.session_id} />}
-              {project && (
-                <span data-project-chip className="flex min-w-0 max-w-[10ch] shrink items-center gap-1 text-[11px] text-fg-faint">
+              {file === undefined && project ? (
+                <span data-project-chip className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
                   <span aria-hidden className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: `hsl(${projectHue(t.projectId)} 42% 56%)` }} />
-                  <span className="truncate">{project}</span>
+                  <span data-row-title className="shrink-0 truncate">{project}</span>
+                  {twin && <span data-tab-subtitle className="min-w-0 shrink truncate text-[11px] font-normal text-fg-faint">{title}</span>}
                 </span>
+              ) : (
+                <TitleAndBranch title={title} branch={label?.branch} className="" />
               )}
+              {file === undefined && <HotMark sessionId={s?.session_id} />}
               {/* The jump key on the tab itself, as iTerm shows it: ⌘1–⌘8 by
                 * position, ⌘9 on the last. In a tooltip nobody found it. */}
               {digit && (

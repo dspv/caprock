@@ -66,7 +66,16 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
   // Option, which is otherwise the terminal's Meta and never the app's.
   if (e.altKey) {
     const quick = isMac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey
-    return quick && baseKey(e) === 'n' ? { kind: 'quick-chat' } : null
+    if (quick && baseKey(e) === 'n') return { kind: 'quick-chat' }
+    // Off macOS, a ⇧⌘ chord whose ⌘ twin is also the app's takes Alt too,
+    // or both would be Ctrl+Shift+key (OFF_MAC_ALT).
+    if (!isMac && e.ctrlKey && e.shiftKey && !e.metaKey) {
+      switch (baseKey(e)) {
+        case 'e': return { kind: 'split', direction: 'column' }
+        case '0': return { kind: 'zoom', step: 0 }
+      }
+    }
+    return null
   }
   // Ctrl+Tab and Ctrl+Shift+Tab cycle tabs everywhere, as in every tabbed app.
   if (e.key === 'Tab' && e.ctrlKey && !e.metaKey) return e.shiftKey ? { kind: 'prev-tab' } : { kind: 'next-tab' }
@@ -153,6 +162,10 @@ export function keys(mac: string, isMac = isMacPlatform()): string {
   return mac.split(', ').map(offMac).filter(Boolean).join(', ')
 }
 
+/** ⇧⌘ chords whose ⌘ twin is also a shortcut: off macOS both would read
+ *  Ctrl+Shift+key, so these take Alt as well (split below, default size). */
+const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0'])
+
 function offMac(k: string): string {
   if (/[↩↵]/.test(k)) return `${k.includes('⌘') ? 'Ctrl+' : ''}${k.includes('⇧') ? 'Shift+' : ''}Enter`
   if (k.startsWith('⌃')) return `Ctrl+${k.slice(1)}`
@@ -160,6 +173,7 @@ function offMac(k: string): string {
   // Ctrl+Shift+= is the key that reads + with Shift held.
   const key = k.replace(/[⇧⌘⌥⌃]/g, '').replace('+', '=')
   if (k.includes('⌥')) return `Ctrl+Alt+Shift+${key}`
+  if (OFF_MAC_ALT.has(k)) return `Ctrl+Alt+Shift+${key}`
   if (k === '⌘R') return 'F5'
   if (!k.includes('⇧') && /^(\[|\]|\[ \])$/.test(key)) return ''
   return `Ctrl+Shift+${key}`
