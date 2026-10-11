@@ -17,6 +17,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 - **app:** a tab is named by its project — the repo — alone. A second tab of
   the same project adds its title, faint; the title is in the tooltip.
+- **Now:** *At a glance* — the donuts — comes before *All time*, the exact
+  table: the pictures first, the numbers after.
 - **app:** keys drawn as keys (the deck's *Review changes ⇧⌘G*, the tabs'
   ⌘1–⌘9) are drawn darker and bolder; the faint chip went unseen.
 
