@@ -23,6 +23,34 @@ export function fmtUSD(v: number | undefined | null): string {
   return usd2.format(v)
 }
 
+/**
+ * A headline dollar figure, short: whole dollars under $1,000 ($159), then
+ * $16.8k, $168k, $1.2M. For the big Lifetime figures, where cents on
+ * $16,817.45 were noise (owner, 2026-10-11); the exact sum goes in a tooltip.
+ */
+export function fmtUSDShort(v: number | undefined | null): string {
+  if (finite(v) === null) return '—'
+  v = v as number
+  const abs = Math.abs(v)
+  if (abs >= 1_000_000) return `${v < 0 ? '-' : ''}$${trim(abs / 1_000_000, 1)}M`
+  if (abs >= 100_000) return `${v < 0 ? '-' : ''}$${Math.round(abs / 1000)}k`
+  if (abs >= 1_000) return `${v < 0 ? '-' : ''}$${trim(abs / 1000, 1)}k`
+  if (abs >= 1) return `${v < 0 ? '-' : ''}$${Math.round(abs).toLocaleString('en-US')}`
+  return fmtUSD(v)
+}
+
+/** Thousands with three decimals ($16.818k) — a panel total; plain below $1,000. */
+export function fmtUSDk(v: number | undefined | null): string {
+  if (finite(v) === null) return '—'
+  v = v as number
+  if (Math.abs(v) < 1_000) return fmtUSD(v)
+  return `${v < 0 ? '-' : ''}$${(Math.abs(v) / 1000).toFixed(3)}k`
+}
+
+function trim(n: number, digits: number): string {
+  return n.toFixed(digits).replace(/\.0+$/, '')
+}
+
 export function fmtTokens(v: number | undefined | null): string {
   if (finite(v) === null) return '—'
   v = v as number

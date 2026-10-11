@@ -58,8 +58,9 @@ describe('lifetime figures', () => {
     data.value = hist()
     localStorage.clear()
     render(<HistoryScreen />)
-    expect(await screen.findByText('$15,000.00')).toBeTruthy()
-    expect(screen.getAllByText('$150.00').length).toBeGreaterThan(0)
+    // Headlines short, the exact sum on hover (owner, 2026-10-11).
+    expect((await screen.findByText('$15k')).getAttribute('title')).toBe('$15,000.00')
+    expect(screen.getAllByText('$150').length).toBeGreaterThan(0)
     expect(screen.getByText(/over 100 active days/)).toBeTruthy()
     expect(screen.getByRole('img', { name: /cost by project: caprock/i })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /^numbers$/i }))
