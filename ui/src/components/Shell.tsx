@@ -3,7 +3,7 @@ import { CloseButton, DialogBackdrop } from '@/components/Dialog'
 import type { ReactNode } from 'react'
 import { live as liveStore, useLiveLink } from '@/lib/live'
 import { href, type Route } from '@/lib/router'
-import { useTheme } from '@/lib/theme'
+import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
 import {
   PLATFORMS,
@@ -137,14 +137,15 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
 }
 
 function ThemeToggle() {
-  const [theme, toggle] = useTheme()
-  const dark = theme === 'dark'
+  const { mode, next, cycle } = useThemeMode()
+  const dark = next !== 'dark'
+  const label = `Switch to ${THEME_MODE_NAME[next]} (now ${THEME_MODE_NAME[mode]})`
   return (
     <button
       type="button"
-      onClick={toggle}
-      title={dark ? 'Switch to light theme' : 'Switch to dark theme'}
-      aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+      onClick={cycle}
+      title={label}
+      aria-label={label}
       className="text-fg-muted hover:text-fg inline-flex items-center"
     >
       {dark ? (

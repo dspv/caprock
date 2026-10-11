@@ -76,9 +76,21 @@ export function SpendSpark({ sessionId, events, now }: { sessionId: string; even
         aria-label="Spend over time"
         title="Click for this session's spend over time"
         onClick={() => { setCursor(undefined); setOpen((o) => !o) }}
-        className="mb-[3px] shrink-0 cursor-pointer rounded-[3px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] disabled:cursor-default"
+        className="group relative mb-[3px] shrink-0 cursor-pointer rounded-[3px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] disabled:cursor-default"
       >
         <TurnSpark turns={small} />
+        {/* That a click opens it is said where the pointer is, large, and a
+            corner mark says it at rest (owner, 2026-10-11: "not clear that a
+            click enlarges it"). */}
+        {held.length >= 2 && (
+          <>
+            <span aria-hidden className="absolute -right-1 -top-1.5 text-[10px] leading-none text-fg-faint group-hover:text-accent">↗</span>
+            <span aria-hidden data-spark-hint
+              className="pointer-events-none absolute bottom-full right-0 mb-1.5 whitespace-nowrap rounded-[7px] bg-accent px-2.5 py-1.5 text-[13px] font-semibold text-panel opacity-0 shadow-[0_8px_20px_-10px_rgba(0,0,0,0.6)] transition-opacity duration-100 group-hover:opacity-100 group-focus-visible:opacity-100">
+              Spend by time ↗ click
+            </span>
+          </>
+        )}
       </button>
       <div
         role="dialog"

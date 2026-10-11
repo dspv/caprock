@@ -32,7 +32,7 @@ import type { EditorList, SessionSummary, Summary } from '@/lib/api'
 import { buildToday } from '@/lib/today'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
-import { useTheme } from '@/lib/theme'
+import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { keepsProject, ProjectRow, StatusDot } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { TodayStrip } from './TodayStrip'
@@ -544,11 +544,10 @@ function FooterToggle({ open, onToggle }: { open: boolean; onToggle: () => void 
 }
 
 function ThemeButton() {
-  const [theme, toggle] = useTheme()
-  const dark = theme === 'dark'
+  const { mode, next, cycle } = useThemeMode()
   return (
-    <IconButton label={dark ? 'Paper theme' : 'Graphite theme'} onClick={toggle}>
-      {dark ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+    <IconButton label={`${THEME_MODE_NAME[next]} theme (now ${THEME_MODE_NAME[mode]})`} onClick={cycle}>
+      {next === 'dark' ? <MoonIcon size={15} /> : <SunIcon size={15} />}
     </IconButton>
   )
 }

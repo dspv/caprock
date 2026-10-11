@@ -74,8 +74,42 @@ export function useTheme(): [Theme, () => void, (t: Theme) => void] {
     setTheme(t)
     window.dispatchEvent(new CustomEvent<Theme>(THEME_EVENT, { detail: t }))
   }
-  return [theme, () => set(theme === 'dark' ? 'light' : 'dark'), set]
+  // The toggle walks all three palettes, Graphite → Paper → White (owner,
+  // 2026-10-11: the button only flipped light and dark, Paper was in Settings).
+  const cycle = () => {
+    if (theme === 'dark') { setLightTone('paper'); set('light'); return }
+    if (currentTone() === 'paper') { setLightTone('white'); return }
+    set('dark')
+  }
+  return [theme, cycle, set]
 }
+
+const TONE_EVENT = 'caprock-tone-change'
+
+function currentTone(): LightTone {
+  return document.documentElement.getAttribute('data-tone') === 'white' ? 'white' : 'paper'
+}
+
+/** Chooses the light palette and tells every useLightTone on the page. */
+export function setLightTone(t: LightTone): void {
+  localStorage.setItem(TONE_KEY, t)
+  document.documentElement.setAttribute('data-tone', t)
+  syncThemeColor()
+  window.dispatchEvent(new CustomEvent<LightTone>(TONE_EVENT, { detail: t }))
+}
+
+export type ThemeMode = 'dark' | LightTone
+
+/** What the page shows, as the toggle names it, and what a click shows next. */
+export function useThemeMode(): { mode: ThemeMode; next: ThemeMode; cycle: () => void } {
+  const [theme, cycle] = useTheme()
+  const [tone] = useLightTone()
+  const mode: ThemeMode = theme === 'dark' ? 'dark' : tone
+  const next: ThemeMode = mode === 'dark' ? 'paper' : mode === 'paper' ? 'white' : 'dark'
+  return { mode, next, cycle }
+}
+
+export const THEME_MODE_NAME: Record<ThemeMode, string> = { dark: 'Graphite', paper: 'Paper', white: 'White' }
 
 function initialTone(): LightTone {
   const saved = localStorage.getItem(TONE_KEY)
@@ -90,11 +124,10 @@ export function useLightTone(): [LightTone, (t: LightTone) => void] {
     document.documentElement.setAttribute('data-tone', tone)
     syncThemeColor()
   }, [tone])
-  return [
-    tone,
-    (t) => {
-      localStorage.setItem(TONE_KEY, t)
-      setTone(t)
-    },
-  ]
+  useEffect(() => {
+    const on = (e: Event) => setTone((e as CustomEvent<LightTone>).detail)
+    window.addEventListener(TONE_EVENT, on)
+    return () => window.removeEventListener(TONE_EVENT, on)
+  }, [])
+  return [tone, (t) => { setLightTone(t); setTone(t) }]
 }

@@ -73,6 +73,11 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-11 — 0.107.6: the keep-awake mark stays when off
+
+The status bar's keep-awake mark reads *awake off* instead of vanishing. The
+PTY resize spike test handshakes instead of sleeping (flaked on macOS CI).
+
 ### 2026-10-11 — 0.107.5: the deck's faint accent edge back
 
 The session deck's top edge returns to 0.107.3's faint accent line; 0.107.4's
