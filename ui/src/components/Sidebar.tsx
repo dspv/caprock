@@ -33,13 +33,14 @@ import { buildToday } from '@/lib/today'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
+import { ThemeMenu } from './ThemePicker'
 import { keepsProject, ProjectRow, StatusDot } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { TodayStrip } from './TodayStrip'
 import { AgentGlyph } from './AgentMarks'
 import { FeedbackButton } from './Feedback'
 import { CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
-import { keys } from '@/lib/appkeys'
+import { keys, tabDigit } from '@/lib/appkeys'
 
 /** Project ids hidden by hand: this browser's. */
 export const HIDDEN_KEY = 'caprock.app.hidden-projects'
@@ -123,6 +124,9 @@ export function Sidebar(props: SidebarProps) {
   const allTabs = props.tabs
   const tabbed = useMemo(() => new Set((allTabs ?? []).map((t) => t.projectId)), [allTabs])
   const groups = useMemo(() => groupProjects(model.projects, { hidden, activeProjectId, tabbed }), [model.projects, hidden, activeProjectId, tabbed])
+  const real = model.projects.filter((n) => n.project.root !== '')
+  const projectCount = real.length
+  const busyCount = real.filter((n) => n.live > 0 || n.waiting > 0).length
   // Every project's tabs: the current one lists them, and so does any
   // project where something runs or waits (ProjectRow decides it is open).
   const tabsByProject = useMemo(() => {
@@ -133,6 +137,12 @@ export function Sidebar(props: SidebarProps) {
       else m.set(t.projectId, [t])
     }
     return m
+  }, [allTabs])
+  // Each tab's jump key, as the strip draws it (⌘1–⌘8, ⌘9 the last): the
+  // sidebar shows the same key on the same tab (owner, 2026-10-11).
+  const tabDigits = useMemo(() => {
+    const list = allTabs ?? []
+    return new Map(list.map((t, i) => [t.id, tabDigit(i, list.length)] as const))
   }, [allTabs])
   const noLabels = useMemo(() => new Map<string, TabLabel>(), [])
   const noTabs = useMemo<Tab[]>(() => [], [])
@@ -208,6 +218,7 @@ export function Sidebar(props: SidebarProps) {
         node={n}
         current={current}
         tabs={tabsByProject.get(n.project.id) ?? noTabs}
+        tabDigits={tabDigits}
         labels={props.tabLabels ?? noLabels}
         activeTabId={props.dashboardActive ? undefined : props.activeTabId}
         onSelect={props.onSelectProject}
@@ -309,7 +320,13 @@ export function Sidebar(props: SidebarProps) {
         )}
         <Inbox items={model.inbox} onOpen={props.onOpenInbox} />
 
-        <SectionHead label="Projects" />
+        {/* How many, and how many have something running, so the heading
+          * says something (owner, 2026-10-11: "nothing on the right"). */}
+        <SectionHead label="Projects" action={projectCount > 0 ? (
+          <span className="num text-[11.5px] text-fg-faint" title={`${projectCount} ${projectCount === 1 ? 'project' : 'projects'}, ${busyCount} with something running`}>
+            {busyCount > 0 && <><span aria-hidden className="mr-1 inline-block h-[6px] w-[6px] rounded-full bg-ok align-middle" />{busyCount} of </>}{projectCount}
+          </span>
+        ) : undefined} />
         {model.projects.length === 0 ? (
           <div className="px-2 py-2 text-[12.5px] leading-relaxed text-fg-muted">
             No projects yet.{' '}
@@ -543,11 +560,14 @@ function FooterToggle({ open, onToggle }: { open: boolean; onToggle: () => void 
   )
 }
 
+/** Opens the theme picker: hover a palette to try it, click to keep it. */
 function ThemeButton() {
-  const { mode, next, cycle } = useThemeMode()
+  const { mode } = useThemeMode()
+  const light = mode === 'paper' || mode === 'white'
   return (
-    <IconButton label={`${THEME_MODE_NAME[next]} theme (now ${THEME_MODE_NAME[mode]})`} onClick={cycle}>
-      {next === 'dark' ? <MoonIcon size={15} /> : <SunIcon size={15} />}
-    </IconButton>
+    <ThemeMenu label={`Theme: ${THEME_MODE_NAME[mode]}`} placement="up"
+      className="flex h-[26px] w-[26px] items-center justify-center rounded-[6px] text-fg-muted transition-colors hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none">
+      {light ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+    </ThemeMenu>
   )
 }

@@ -16,7 +16,7 @@ import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneStatus } from './TerminalPane'
 import { AgentGlyph } from './AgentMarks'
-import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { StatusDot, TitleAndBranch } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
 import { closeTitle, closeWord } from '@/lib/closeShell'
@@ -33,8 +33,6 @@ export interface DashboardTab {
   onClose: () => void
 }
 
-/** From this many tabs the Dashboard tab shows only its icon and key. */
-export const DASHBOARD_FOLD_AT = 5
 
 /**
  * A project's mark on its tabs: a hue from its id, muted, so tabs of one
@@ -131,21 +129,19 @@ export function TabStrip(props: TabStripProps) {
             onClick={props.dashboard.onActivate}
             onAuxClick={(e) => { if (e.button === 1) props.dashboard!.onClose() }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.dashboard!.onActivate() }}
-            title={`${props.dashboard.label} — ${keys('⌘0')}`}
+            title={`${props.dashboard.label} — ${keys(props.dashboard.label === 'Settings' ? '⌘,' : '⌘0')}`}
             aria-label={props.dashboard.label}
             className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
               props.dashboard.active ? 'app-tab-front app-tab-dash bg-bg font-medium text-fg' : 'app-tab-dash text-fg hover:text-fg'
             }`}
           >
-            <DashboardIcon size={13} className="text-accent" />
-            {/* With many tabs open the Dashboard folds to its icon and its
-              * key; the key always stays (owner, 2026-10-11). */}
-            {tabs.length < DASHBOARD_FOLD_AT && <span>{props.dashboard.label}</span>}
-            {/* Its key on the tab, as the other tabs carry ⌘1–⌘8: the way
-              * back from a terminal (owner, 2026-10-11). */}
-            {props.dashboard.label === 'Dashboard' && (
-              <kbd data-dashboard-key aria-hidden className="app-kbd-key">{keys('⌘0')}</kbd>
-            )}
+            {/* Folded to its icon and its key, like a key on a keyboard
+              * (owner, 2026-10-11: "fold it to an icon with a big key, like
+              * the others"); the name is in the tooltip. */}
+            {props.dashboard.label === 'Settings'
+              ? <SettingsIcon size={15} className="text-accent" />
+              : <DashboardIcon size={15} className="text-accent" />}
+            <kbd data-dashboard-key aria-hidden className="app-kbd-key">{keys(props.dashboard.label === 'Settings' ? '⌘,' : '⌘0')}</kbd>
             <button
               type="button"
               aria-label={`Close tab ${props.dashboard.label}`}
