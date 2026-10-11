@@ -5,16 +5,21 @@
  * than its edge (owner, 2026-10-11, translated: "I basically type in the
  * centre, a bit below the middle of the screen — that's comfortable — and in
  * this new area show data useful to me while I work"), and the room it makes
- * carries the session's live figures in one dense row: the GitHub Actions of
- * its pull request job by job and step by step, the branch with what is not
- * committed or pushed, and the session's latest pull requests with their CI.
- * No chart: the dashboard has those (owner, 2026-10-11: "we already have
- * charts everywhere").
+ * carries one cell, *Pull requests & CI*: the session's pull requests, the
+ * current one first, each with its state, its mini pipeline and its CI in
+ * words, opening in place into the GitHub Actions jobs and steps; the
+ * release build and the default branch behind a switch; the branch a chip in
+ * its header (owner, 2026-10-12, translated: "Remove the Branch cell … CI/CD
+ * and Pull requests should simply be merged properly into one, with all the
+ * statuses, plus at least a couple of previous PRs"). No chart: the
+ * dashboard has those (owner, 2026-10-11: "we already have charts
+ * everywhere").
  *
  * The branch is what the workspace already holds; the CI and the pull
  * requests are read from GitHub by the daemon, which keeps each answer, while
- * the deck is open. Nothing is estimated, and a figure that is not reported
- * is left out rather than drawn as zero.
+ * the deck is open. Nothing is estimated but the release build's time left,
+ * labelled so, and a figure that is not reported is left out rather than
+ * drawn as zero.
  *
  * Cheap on purpose. It is a sibling of the terminals, so nothing here redraws
  * one. Closed, it is not mounted: no clock, no subscription. While its
@@ -22,14 +27,14 @@
  * box changes once, on release — one fit and one PTY resize, not one per
  * frame. Arrow keys on the divider settle the same way.
  */
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type SessionPRLive, type SessionRepoCI, type SessionSummary, type Summary } from '@/lib/api'
 import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
 import { MiniPipeline } from './MiniPipeline'
-import { CI_VIEWS, byOSLine, checkNodes, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, osTag, readCIView, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveCIView, type CITone, type CIView, type PipeNode } from '@/lib/ci'
+import { CI_VIEWS, byOSLine, checkNodes, jobVsMedian, runSpan, runVsMedian, type DeltaTone, type VsMedian, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, orderPRs, osTag, prAge, prDotState, prMergeText, prReviewText, prVerdict, readCIView, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveCIView, type CITone, type CIView, type PipeNode, type PRWordTone } from '@/lib/ci'
 import { sessionTitle } from '@/lib/sidebar'
 import { useCanControl } from '@/lib/useCanControl'
-import { githubApi, prTone, type PRTone } from '@/lib/github'
+import { githubApi } from '@/lib/github'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
 
@@ -149,21 +154,16 @@ export function SessionDeck(props: SessionDeckProps) {
   )
 }
 
-/** A job to show in the CI cell: a click on a circle of a mini pipeline. */
-export interface CIFocus { view: CIView; pr?: number; job: number; n: number }
 
 function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClose, onToast }: SessionDeckProps) {
-  const [focus, setFocus] = useState<CIFocus>()
   return (
-    // A container, so the branch gives way first as the terminal narrows
-    // (the sidebar and the inspector both open). No clock and no event
-    // subscription: what it is doing and what it cost are the sidebar's and
-    // the inspector's (owner, 2026-10-11: "Spent doesn't help", "Working
-    // now is debatable").
+    // A container, so the row's quieter columns give way as the terminal
+    // narrows (the sidebar and the inspector both open). No clock and no
+    // event subscription: what it is doing and what it cost are the
+    // sidebar's and the inspector's (owner, 2026-10-11: "Spent doesn't
+    // help", "Working now is debatable").
     <div className="@container flex min-h-0 flex-1 items-stretch overflow-hidden">
-      <CI sessionId={sessionId} s={s} onToast={onToast} focus={focus} />
-      <Branch branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} />
-      <PRs sessionId={sessionId} onPick={(pr, job) => setFocus((f) => ({ view: 'pr', pr, job, n: (f?.n ?? 0) + 1 }))} />
+      <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} />
       <div className="flex shrink-0 items-start pr-2 pt-1.5">
         <button
           type="button"
@@ -175,25 +175,6 @@ function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClo
           Hide <kbd aria-hidden className="app-kbd-key">{keys('⌘B')}</kbd>
         </button>
       </div>
-    </div>
-  )
-}
-
-/** The display classes of a cell that is drawn only from a container width up; literal, so Tailwind finds them. */
-const SHOWN_FROM: Record<number, string> = {
-  720: 'hidden @min-[720px]:flex',
-  1000: 'hidden @min-[1000px]:flex',
-}
-
-function Cell({ label, after, right, className = '', grow = false, below, children }: { label: string; after?: ReactNode; right?: ReactNode; className?: string; grow?: boolean; below?: 720 | 1000; children: ReactNode }) {
-  return (
-    <div className={`${below ? SHOWN_FROM[below] : 'flex'} min-w-0 flex-col gap-1 border-r border-[var(--app-hairline)] px-3 pb-2 pt-2 last-of-type:border-r-0 ${grow ? '' : 'overflow-hidden'} ${className}`}>
-      <div className="flex items-baseline gap-2">
-        <h4 className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint">{label}</h4>
-        {after}
-        {right && <div className="ml-auto min-w-0 truncate text-[11px] text-fg-faint">{right}</div>}
-      </div>
-      {children}
     </div>
   )
 }
@@ -212,11 +193,16 @@ async function connectGitHub(): Promise<boolean> {
   return false
 }
 
-/** How often the CI cell asks again: soon while a job runs, else rarely.
- *  The daemon keeps a commit's runs 10 s while one runs and 2 min once all
- *  settled, so a poll inside that costs GitHub nothing. */
+/** How often the CI of the open row, the release build and Main are asked
+ *  again: soon while a job runs, else rarely. The daemon keeps a commit's
+ *  runs 10 s while one runs and 2 min once all settled, so a poll inside
+ *  that costs GitHub nothing. */
 const CI_RUNNING_MS = 12_000
 const CI_IDLE_MS = 60_000
+/** The pull requests: sooner while a check runs. The daemon keeps each pull
+ *  request about as long, so a poll it can answer from what it holds costs
+ *  GitHub nothing. */
+const PRS_PENDING_MS = 20_000
 
 const CI_TEXT: Record<CITone, string> = {
   running: 'text-warn', queued: 'text-fg-faint', pass: 'text-ok', fail: 'text-danger', skipped: 'text-fg-faint',
@@ -229,19 +215,6 @@ function CIMark({ tone }: { tone: CITone }) {
   return <span role="img" aria-label={tone === 'pass' ? 'passed' : tone === 'fail' ? 'failed' : tone} className={`w-[9px] shrink-0 text-center text-[11px] leading-none ${CI_TEXT[tone]}`}>{mark}</span>
 }
 
-/**
- * The CI of the session's pull request, live (owner, 2026-10-11, translated:
- * "I want to see which steps run, how long each step takes — a full status
- * informer of the real CI/CD … what failed and with which error, and the
- * time of each stage, because runners are money"). A row per GitHub Actions
- * job with its state, OS and time, ticking while it runs; a job opens into
- * its steps, and a failed step into the lines around its error. The runner
- * time at the top is measured: the finished jobs' GitHub timestamps plus the
- * running ones on the clock, split per OS, never priced. It replaced the
- * Context cell, which repeated the status bar (owner: "sacrifice it for
- * CI/CD"). Asked while the deck is open and the window visible: every 12 s
- * while a job runs, else every minute.
- */
 /**
  * Investigate: a failed job, its step, link and the end of its log, queued
  * into the session in front as one message (ADR-053's queue: typed in at the
@@ -272,14 +245,14 @@ function InvestigateButton({ job, step }: { job: CIJob; step?: string }) {
 }
 
 /** Which view a job's log is read in: the route reads only jobs that view lists. */
-const LogView = createContext<{ view: CIView; pr?: number }>({ view: 'pr' })
+const LogView = createContext<{ view: CIView; pr?: number; onShown?: (d: 1 | -1) => void }>({ view: 'pr' })
 
 /**
  * Asks read() while `on`, the deck open and the window visible: every
- * CI_RUNNING_MS while busy() says something runs, else every CI_IDLE_MS.
+ * `fast` ms while busy() says something runs, else every CI_IDLE_MS.
  * The last answer stays while it is off.
  */
-function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: T) => boolean): [T | undefined, number] {
+function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: T) => boolean, fast = CI_RUNNING_MS): [T | undefined, number] {
   const [data, setData] = useState<T>()
   const [at, setAt] = useState(0)
   const fn = useRef({ read, busy })
@@ -296,7 +269,7 @@ function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: 
           if (!alive) return
           setData(d)
           setAt(Date.now())
-          if (fn.current.busy(d)) next = CI_RUNNING_MS
+          if (fn.current.busy(d)) next = fast
         } catch { /* the last answer stays */ }
       }
       if (alive) timer = window.setTimeout(() => void tick(), next)
@@ -305,18 +278,18 @@ function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: 
     const onVisible = () => { if (!document.hidden) { window.clearTimeout(timer); void tick() } }
     document.addEventListener('visibilitychange', onVisible)
     return () => { alive = false; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
-  }, [on, key])
+  }, [on, key, fast])
   return [data, at]
 }
 
-const VIEW_LABEL: Record<CIView, string> = { pr: 'PR', release: 'Release', main: 'Main' }
+const VIEW_LABEL: Record<CIView, string> = { pr: 'PRs', release: 'Release', main: 'Main' }
 const VIEW_TITLE: Record<CIView, string> = {
-  pr: 'The CI of this session’s pull request',
+  pr: 'This session’s pull requests and their CI',
   release: 'The repository’s newest release build: a tag push or a published release',
   main: 'The newest run of each workflow on the default branch',
 }
 
-/** PR | Release | Main, kept per viewer. */
+/** PRs | Release | Main, kept per viewer. */
 export function CIViewSwitch({ view, onChange }: { view: CIView; onChange: (v: CIView) => void }) {
   return (
     <div role="tablist" aria-label="CI view" className="flex shrink-0 items-center gap-px rounded-[5px] border border-[var(--app-hairline)] p-px">
@@ -333,7 +306,49 @@ function noRepoLine(d: SessionRepoCI): string {
   return d.reason === 'not_github' ? 'This repository is not on GitHub.' : 'This session’s folder has no GitHub repository.'
 }
 
-function CI({ sessionId, s, onToast, focus }: { sessionId: string; s: SessionSummary; onToast?: (text: string) => void; focus?: CIFocus }) {
+/**
+ * The branch the session works on, a mono chip in the cell's header — "→
+ * main" when the current pull request is from it — and what is not
+ * committed or pushed beside it, a click on which opens the Changes view.
+ * It was a cell of its own until 2026-10-12 (owner: "Remove the Branch
+ * cell — put it somewhere else").
+ */
+function BranchChip({ branch, base, changed, ahead, onReview }: { branch: string; base?: string; changed?: number; ahead?: number; onReview?: () => void }) {
+  const bits = [changed ? `${changed} not committed` : '', ahead ? `${ahead} not pushed` : ''].filter(Boolean)
+  const state = typeof changed === 'number' && !changed && !ahead ? 'clean' : bits.join(' · ')
+  return (
+    <span className="hidden min-w-0 items-baseline gap-1.5 @min-[480px]:flex">
+      <span data-deck-branch title={`Branch ${branch}${base ? `, its pull request into ${base}` : ''}${state ? `\n${state}` : ''}`}
+        className="mono min-w-0 truncate rounded-[4px] border border-[var(--app-hairline)] px-1 text-[10.5px] leading-[16px] text-fg-muted">
+        {branch}{base && <span className="text-fg-faint"> → {base}</span>}
+      </span>
+      {bits.length > 0 && (onReview && changed
+        ? <button type="button" data-deck-dirty onClick={onReview} title={`Review changes (${keys('⇧⌘G')})`}
+            className="hidden shrink-0 text-[10.5px] text-warn underline-offset-2 hover:underline @min-[560px]:inline">{bits.join(' · ')}</button>
+        : <span data-deck-dirty className="hidden shrink-0 text-[10.5px] text-warn @min-[560px]:inline">{bits.join(' · ')}</span>)}
+    </span>
+  )
+}
+
+const WORD_TEXT: Record<PRWordTone, string> = {
+  ok: 'text-ok', fail: 'text-danger', pending: 'text-warn', muted: 'text-fg-muted', faint: 'text-fg-faint',
+}
+
+/**
+ * Pull requests & CI, one cell (owner, 2026-10-12). The PRs view lists the
+ * session's pull requests, the open one first and then the earlier ones: a
+ * state dot, the number and title, the mini pipeline, the CI in words, the
+ * review, a conflict, the age. A row opens in place into its GitHub Actions
+ * (owner, 2026-10-11, translated: "I want to see which steps run, how long
+ * each step takes … what failed and with which error, and the time of each
+ * stage, because runners are money"): a row per job with its state, OS and
+ * time, ticking while it runs; a job opens into its steps, a failed step into
+ * the lines around its error, with Investigate. One row is open at a time;
+ * the current PR is open by default while its CI runs or failed. The Release
+ * and Main views stand behind the same switch. Asked only while the deck is
+ * open and the window visible.
+ */
+function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { sessionId: string; s: SessionSummary; onToast?: (text: string) => void; branch?: string; changed?: number; ahead?: number; onReview?: () => void }) {
   const canControl = useCanControl()
   const [busy, setBusy] = useState<number>()
   const [view, setViewState] = useState<CIView>(() => readCIView())
@@ -343,37 +358,63 @@ function CI({ sessionId, s, onToast, focus }: { sessionId: string; s: SessionSum
   const [open, setOpen] = useState<Record<number, boolean>>({})
   const autoOpened = useRef<Record<string, boolean>>({})
   const [now, setNow] = useState(() => Date.now())
-
-  // The PR whose CI is shown when one was picked from the PRs cell; else the daemon's pick.
-  const [prPick, setPrPick] = useState<number>()
   const [reveal, setReveal] = useState<number>()
-  useEffect(() => {
-    if (!focus) return
-    setViewState(focus.view)
-    saveCIView(focus.view)
-    if (focus.pr) setPrPick(focus.pr)
-    setOpen((o) => ({ ...o, [focus.job]: true }))
-    setReveal(focus.job)
-  }, [focus])
-  const pick = (node: PipeNode) => {
-    if (!node.jobId) { if (node.url) openExternal(node.url); return }
-    setOpen((o) => ({ ...o, [node.jobId!]: true }))
-    setReveal(node.jobId)
-  }
+  // The row opened by a click: a PR's number, 0 when every row was closed,
+  // undefined while no click chose (the default rule decides).
+  const [chosen, setChosen] = useState<number>()
+  // How many error logs are open: while one is, the earlier PRs fold into
+  // one line so the error has the room.
+  const [logs, setLogs] = useState(0)
+  const onShown = useCallback((d: 1 | -1) => setLogs((x) => Math.max(0, x + d)), [])
 
   const key = `${sessionId}:${n}`
-  const [prData, prAt] = usePoll(view === 'pr', `${key}:${prPick ?? ''}`, () => api.sessionCI(sessionId, prPick), (d) => ciActive(d.ci))
+  const [prsData, prsAt] = usePoll(view === 'pr', key, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS)
+  const rows = useMemo(() => orderPRs(prsData?.prs ?? []), [prsData])
+  const lead = rows[0]
+  const leadOpen = lead?.live?.state === 'open' && !!lead.live && (lead.live.checks.state === 'fail' || lead.live.checks.state === 'pending')
+  const openPr = chosen ?? (leadOpen ? lead!.number : 0)
+  const [prData, prAt] = usePoll(view === 'pr' && openPr > 0, `${key}:${openPr}`, () => api.sessionCI(sessionId, openPr), (d) => ciActive(d.ci))
+  // The answer for the open row only: one for the row open before waits.
+  const prCI = prData && prData.pr?.number === openPr ? prData : undefined
+  // Each PR's runs once read, so its row keeps its time against the median
+  // after it is closed; nothing is asked for a row never opened.
+  const [seenRuns, setSeenRuns] = useState<Record<number, CIRun[]>>({})
+  useEffect(() => {
+    const n = prCI?.pr?.number
+    const r = prCI?.ci?.runs
+    if (n && r) setSeenRuns((m) => (m[n] === r ? m : { ...m, [n]: r }))
+  }, [prCI])
+  // A settled PR's runs are read once while the deck is open, so its row says
+  // its time against the median without being opened; the daemon keeps the
+  // answer and a finished run's jobs, so this costs GitHub a read per PR.
+  const asked = useRef<Record<string, boolean>>({})
+  useEffect(() => {
+    if (view !== 'pr' || !prsData?.connected) return
+    const todo = rows.filter((p) => p.number !== openPr && !seenRuns[p.number] && !asked.current[`${sessionId}:${p.number}`]
+      && p.live && (p.live.checks.state === 'pass' || p.live.checks.state === 'fail') && p.live.checks.items.length > 0)
+    void (async () => {
+      for (const p of todo) {
+        asked.current[`${sessionId}:${p.number}`] = true
+        try {
+          const d = await api.sessionCI(sessionId, p.number)
+          const r = d.ci?.runs
+          if (d.pr?.number === p.number && r) setSeenRuns((m) => ({ ...m, [p.number]: r }))
+        } catch { /* the row keeps its time without the median */ }
+      }
+    })()
+  }, [view, prsData, rows, openPr, seenRuns, sessionId])
   // The release build is asked while the deck is open whatever the view, so
-  // its chip shows a build under way from the PR view too.
+  // its chip shows a build under way from the other views too.
   const [relData, relAt] = usePoll(true, key, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running')
   const [mainData, mainAt] = usePoll(view === 'main', key, () => api.sessionCIMain(sessionId), (d) => ciActive(d.ci))
-  useEffect(() => { setNow(Date.now()) }, [prAt, relAt, mainAt])
+  useEffect(() => { setNow(Date.now()) }, [prsAt, prAt, relAt, mainAt])
 
   const rel = relData?.release
-  const ci = view === 'pr' ? prData?.ci : view === 'main' ? mainData?.ci : undefined
+  const ci = view === 'pr' ? prCI?.ci : view === 'main' ? mainData?.ci : undefined
   const runs: CIRun[] = useMemo(() => (view === 'release' ? (rel?.run ? [rel.run] : []) : ci?.runs ?? []), [view, rel?.run, ci?.runs])
   const relRunning = rel?.state === 'running'
-  const active = ciActive(ci) || relRunning
+  const prsRunning = view === 'pr' && rows.some((p) => p.live?.checks.state === 'pending')
+  const active = ciActive(ci) || relRunning || prsRunning
   // A clock only while something runs: a settled CI draws once.
   useEffect(() => {
     if (!active) return
@@ -381,23 +422,18 @@ function CI({ sessionId, s, onToast, focus }: { sessionId: string; s: SessionSum
     return () => window.clearInterval(t)
   }, [active])
 
-  // The first failed job of each view opens by itself, once: what failed is the question.
+  // The first failed job of each view, and of each PR, opens by itself once:
+  // what failed is the question.
+  const autoKey = view === 'pr' ? `pr:${openPr}` : view
   useEffect(() => {
-    if (autoOpened.current[view]) return
+    if (autoOpened.current[autoKey]) return
     const failed = runs.flatMap((r) => r.jobs).find((j) => ciTone(j) === 'fail')
     if (failed) {
-      autoOpened.current[view] = true
+      autoOpened.current[autoKey] = true
       setOpen((o) => ({ ...o, [failed.id]: true }))
     }
-  }, [runs, view])
+  }, [runs, autoKey])
 
-  const connect = async () => {
-    setConnecting(true)
-    if (await connectGitHub()) setN((x) => x + 1)
-    setConnecting(false)
-  }
-
-  const pr = prData?.pr
   const jobs = runs.flatMap((r) => r.jobs)
   // A job picked from a mini pipeline comes into view once it is drawn.
   useEffect(() => {
@@ -407,6 +443,25 @@ function CI({ sessionId, s, onToast, focus }: { sessionId: string; s: SessionSum
     el.scrollIntoView?.({ block: 'nearest' })
     setReveal(undefined)
   }, [reveal, runs])
+  const pick = (node: PipeNode) => {
+    if (!node.jobId) { if (node.url) openExternal(node.url); return }
+    setOpen((o) => ({ ...o, [node.jobId!]: true }))
+    setReveal(node.jobId)
+  }
+  // A circle of a PR row: that row opens, at that job.
+  const pickInRow = (pr: number, node: PipeNode) => {
+    if (!node.jobId) { if (node.url) openExternal(node.url); return }
+    setChosen(pr)
+    pick(node)
+  }
+
+  const connect = async () => {
+    setConnecting(true)
+    if (await connectGitHub()) setN((x) => x + 1)
+    setConnecting(false)
+  }
+
+  const pr = prCI?.pr
   const why = !canControl ? 'This device may only watch: queue it from the Mac, or make this device a controller in Settings.'
     : !s.owned ? 'Caprock did not start this session, so it never types into it. Start the agent from Caprock to queue CI failures to it.'
       : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
@@ -431,13 +486,15 @@ function CI({ sessionId, s, onToast, focus }: { sessionId: string; s: SessionSum
     }
   }
   const total = ci ? runnerTime(ci, now) : 0
+  const runnerTitle = ci ? `Runner time, measured from GitHub’s job times${ciActive(ci) ? ' and the running jobs on the clock' : ''}${ci.by_os.length ? `\nFinished: ${byOSLine(ci)}` : ''}\nNot priced: what a minute costs depends on the plan and the OS.` : ''
   const connectButton = (label: string) => (
     <button type="button" disabled={connecting} onClick={() => void connect()} title="Reads GitHub Actions through your GitHub CLI login; turn it off in Settings → GitHub"
       className="w-fit text-left text-[12px] text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : label}</button>
   )
   const quiet = (text: string, title?: string) => <p className="truncate text-[12px] text-fg-faint" title={title ?? text}>{text}</p>
-  const runList = (manyRuns: boolean) => (
-    <ul data-deck-ci-jobs className="-mx-1 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+  const vsCol = runs.some((r) => r.jobs.some((j) => j.baseline))
+  const runList = (manyRuns: boolean, byOS: boolean) => (
+    <ul data-deck-ci-jobs className={view === 'pr' ? '-mx-1' : '-mx-1 min-h-0 flex-1 overflow-y-auto overscroll-contain'}>
       {runs.map((run) => (
         <li key={run.id} data-deck-ci-run={run.id}>
           {manyRuns && (
@@ -447,29 +504,78 @@ function CI({ sessionId, s, onToast, focus }: { sessionId: string; s: SessionSum
                 {view === 'main' && <CIMark tone={ciTone(run)} />}<span className="truncate">{run.name}</span>
               </button>
               <MiniPipeline nodes={jobNodes([run], now)} label={`${run.name}: its jobs`} onPick={pick} />
+              <RunTime run={run} now={now} />
             </div>
           )}
           <ul>
             {run.jobs.map((job) => (
-              <CIJobRow key={job.id} sessionId={sessionId} job={job} now={now}
+              <CIJobRow key={job.id} sessionId={sessionId} job={job} now={now} vsCol={vsCol}
                 open={!!open[job.id]} onToggle={() => setOpen((o) => ({ ...o, [job.id]: !o[job.id] }))} />
             ))}
             {run.jobs.length === 0 && <li className="px-1 text-[11px] text-fg-faint">{run.status === 'completed' ? 'No jobs reported.' : 'Waiting for a runner…'}</li>}
           </ul>
         </li>
       ))}
-      {ci && ci.by_os.length > 1 && <li className="num truncate px-1 pt-0.5 text-[10.5px] text-fg-faint" title="The finished jobs’ runner time per OS, measured; not priced">{byOSLine(ci)}</li>}
+      {byOS && ci && ci.by_os.length > 1 && <li className="num truncate px-1 pt-0.5 text-[10.5px] text-fg-faint" title="The finished jobs’ runner time per OS, measured; not priced">{byOSLine(ci)}</li>}
     </ul>
   )
 
+  // An open PR row: its CI, as the jobs and steps.
+  const prDetail = (p: SessionPRLive): ReactNode => {
+    if (prsData && !prsData.connected) return connectButton(`Connect GitHub to see #${p.number}’s CI`)
+    if (!prCI) return quiet(prData?.error ? `CI not read: ${prData.error.message}` : 'Reading the CI…')
+    if (!prCI.connected) return connectButton(`Connect GitHub to see #${p.number}’s CI`)
+    if (!ci) return quiet(prCI.error ? `CI not read: ${prCI.error.message}` : `#${p.number}: no commit to read CI for.`, prCI.error?.message)
+    if (jobs.length === 0) return quiet(`No GitHub Actions runs on #${p.number}’s head commit.`)
+    const url = p.live?.url || p.url
+    return (
+      <>
+        <div className="flex min-w-0 items-baseline gap-2 px-0 text-[10.5px] text-fg-faint">
+          {runs.length === 1 && <><RunTime run={runs[0]!} now={now} /><span aria-hidden>·</span></>}
+          <span data-deck-ci-runner className="num shrink-0" title={runnerTitle}>runner <span className="text-fg">{fmtRun(total)}</span></span>
+          {ci.by_os.length > 1 && <span className="num truncate" title="The finished jobs’ runner time per OS, measured; not priced">{byOSLine(ci)}</span>}
+          <button type="button" onClick={() => openExternal(`${url}/checks`)} className="ml-auto shrink-0 hover:text-fg-muted hover:underline">checks ↗</button>
+        </div>
+        {runList(runs.length > 1, false)}
+        {ci.error && <p className="truncate text-[10.5px] text-warn" title={ci.error.message}>The last read failed; this is the one before.</p>}
+      </>
+    )
+  }
+
   let body: ReactNode = null
   if (view === 'pr') {
-    const data = prData
-    if (data && !data.connected) body = pr ? connectButton(`Connect GitHub to see #${pr.number}’s CI`) : quiet('No PR from this session yet.')
-    else if (data && !pr) body = quiet('No PR from this session yet.')
-    else if (data && pr && !ci) body = quiet(data.error ? `CI not read: ${data.error.message}` : `#${pr.number}: no commit to read CI for.`, data.error?.message)
-    else if (data && pr && jobs.length === 0) body = quiet(`No GitHub Actions runs on #${pr.number}’s head commit.`)
-    else if (ci) body = runList(runs.length > 1)
+    const d = prsData
+    if (d && rows.length === 0) body = quiet('No PR from this session yet.')
+    else if (d) {
+      body = (
+        // A column: every row keeps its line and the open one's CI takes
+        // the height left, scrolling inside, so the earlier PRs stay in view.
+        <ul data-deck-prs className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+          {rows.map((p) => (logs > 0 && openPr !== p.number ? null :
+            <PRRow key={p.url} p={p} now={now} runs={seenRuns[p.number]} open={openPr === p.number}
+              onToggle={() => setChosen(openPr === p.number ? 0 : p.number)}
+              onPick={(node) => pickInRow(p.number, node)}>
+              {openPr === p.number && prDetail(p)}
+            </PRRow>
+          ))}
+          {logs > 0 && rows.length > 1 && (
+            <li data-deck-prs-folded className="flex shrink-0 items-center gap-2 overflow-hidden px-1 pt-0.5 text-[11px] text-fg-faint">
+              <span className="shrink-0">also</span>
+              {rows.filter((p) => p.number !== openPr).map((p) => {
+                const v = prVerdict(p, now)
+                return (
+                  <button key={p.url} type="button" onClick={() => setChosen(p.number)} title={`${p.live?.title || p.title || ''}\n${v.text}`}
+                    className="flex shrink-0 items-center gap-1 rounded-[4px] px-1 hover:bg-[var(--app-row-hover)]">
+                    <span aria-hidden className="pr-dot" data-state={prDotState(p)} /><span className="num text-fg-muted">#{p.number}</span><span className={WORD_TEXT[v.tone]}>{v.tone === 'ok' ? '✓' : v.tone === 'fail' ? '✗' : v.tone === 'pending' ? '…' : ''}</span>
+                  </button>
+                )
+              })}
+            </li>
+          )}
+          {rows.length === 1 && <li data-deck-no-earlier className="shrink-0 px-1 pt-0.5 text-[11px] text-fg-faint">No earlier PRs from this session.</li>}
+        </ul>
+      )
+    }
   } else if (view === 'release') {
     const d = relData
     if (d && d.reason) body = quiet(noRepoLine(d))
@@ -497,7 +603,8 @@ function CI({ sessionId, s, onToast, focus }: { sessionId: string; s: SessionSum
                   {rel.release && run.html_url && <button type="button" onClick={() => openExternal(run.html_url!)} className="shrink-0 text-[11px] text-fg-faint hover:text-fg-muted hover:underline">run ↗</button>}
                 </>}
           </div>
-          {runList(false)}
+          {runList(false, true)}
+          {rel.error && jobs.length > 0 && <p className="truncate text-[10.5px] text-warn" title={rel.error.message}>The last read failed; this is the one before.</p>}
         </>
       )
     }
@@ -507,52 +614,128 @@ function CI({ sessionId, s, onToast, focus }: { sessionId: string; s: SessionSum
     else if (d && !d.connected) body = connectButton(`Connect GitHub to see ${d.branch ?? 'the default branch'}’s CI`)
     else if (d && !ci) body = quiet(d.error ? `CI not read: ${d.error.message}` : 'CI not read.', d.error?.message)
     else if (ci && runs.length === 0) body = quiet(`No GitHub Actions runs on ${ci.branch ?? 'the default branch'}.`)
-    else if (ci) body = runList(true)
+    else if (ci) {
+      body = (
+        <>
+          {runList(true, true)}
+          {ci.error && <p className="truncate text-[10.5px] text-warn" title={ci.error.message}>The last read failed; this is the one before.</p>}
+        </>
+      )
+    }
   }
 
+  // The branch's pull request, when the current one is from it: "→ main".
+  const base = lead?.live?.state === 'open' && branch && lead.live.branch === branch ? lead.live.base : undefined
   const chip = view !== 'release' ? releaseChip(rel, now) : ''
-  const lastErr = view === 'release' ? rel?.error : ci?.error
   return (
     <Investigate.Provider value={{ run: (j, st) => void investigate(j, st), why, busy }}>
-    <LogView.Provider value={{ view, pr: view === 'pr' ? pr?.number : undefined }}>
-    <Cell label="CI" className="min-w-[270px] flex-[2.6_1_0]"
-      after={<CIViewSwitch view={view} onChange={setView} />}
-      right={((view === 'pr' && pr) || (view === 'main' && ci) || jobs.length > 0) && (
-        <span className="flex items-baseline justify-end gap-2">
-          {view === 'pr' && pr && <button type="button" onClick={() => openExternal(`${pr.url}/checks`)} title={`${pr.title ?? ''}\nOpen the PR’s checks on GitHub`} className="num hover:text-fg hover:underline">#{pr.number}</button>}
+    <LogView.Provider value={{ view, pr: view === 'pr' ? pr?.number : undefined, onShown }}>
+    <div data-deck-cell className="flex min-w-0 flex-1 flex-col gap-1 overflow-hidden px-3 pb-2 pt-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <h4 className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Pull requests &amp; CI</h4>
+        {branch && <BranchChip branch={branch} base={base} changed={changed} ahead={ahead} onReview={onReview} />}
+        {/* A release under way, said from the other views, in the header. */}
+        {chip && (
+          <button type="button" data-deck-release-chip onClick={() => setView('release')} title={`A release build is running${rel?.estimate ? `; the time left is an estimate from the last ${rel.estimate.runs} runs` : ''}. Show it.`}
+            className="num hidden min-w-0 max-w-[220px] shrink items-center gap-1.5 rounded-[4px] border border-warn/40 @min-[480px]:flex px-1.5 text-[10.5px] leading-[16px] text-warn hover:bg-warn/10">
+            <span aria-hidden className="ci-spin inline-block h-[7px] w-[7px] shrink-0 rounded-full" /><span className="truncate">{chip}</span>
+          </button>
+        )}
+        <span className="ml-auto flex min-w-0 shrink-0 items-baseline justify-end gap-2 text-[11px] text-fg-faint">
+          {view === 'pr' && prsData && !prsData.connected && rows.length > 0 && (
+            <button type="button" disabled={connecting} onClick={() => void connect()} title="Reads CI and reviews through your GitHub CLI login; turn it off in Settings → GitHub" className="text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'connect GitHub for CI'}</button>
+          )}
           {view === 'main' && ci?.branch && <span className="mono truncate" title={`${ci.repo}, its default branch`}>{ci.branch}</span>}
-          {ci && view !== 'release' && jobs.length > 0 && (
-            <span data-deck-ci-runner className="num" title={`Runner time, measured from GitHub’s job times${ciActive(ci) ? ' and the running jobs on the clock' : ''}${ci.by_os.length ? `\nFinished: ${byOSLine(ci)}` : ''}\nNot priced: what a minute costs depends on the plan and the OS.`}>
-              runner <span className="text-fg">{fmtRun(total)}</span>
-            </span>
+          {view === 'main' && ci && jobs.length > 0 && (
+            <span data-deck-ci-runner className="num" title={runnerTitle}>runner <span className="text-fg">{fmtRun(total)}</span></span>
           )}
         </span>
-      )}>
-      {/* A release under way, said from the other views: a slim line under
-        * the header, where the header's own figures leave it room. */}
-      {chip && (
-        <button type="button" data-deck-release-chip onClick={() => setView('release')} title={`A release build is running${rel?.estimate ? `; the time left is an estimate from the last ${rel.estimate.runs} runs` : ''}. Show it.`}
-          className="num -mt-0.5 flex w-fit max-w-full shrink-0 items-center gap-1.5 truncate rounded-[4px] border border-warn/40 px-1.5 text-[10.5px] leading-[16px] text-warn hover:bg-warn/10">
-          <span aria-hidden className="ci-spin inline-block h-[7px] w-[7px] shrink-0 rounded-full" /><span className="truncate">{chip}</span>
-        </button>
-      )}
+        <CIViewSwitch view={view} onChange={setView} />
+      </div>
       {body}
-      {lastErr && jobs.length > 0 && <p className="truncate text-[10.5px] text-warn" title={lastErr.message}>The last read failed; this is the one before.</p>}
-    </Cell>
+    </div>
     </LogView.Provider>
     </Investigate.Provider>
   )
 }
 
-/** One job: its mark, name, OS and time; open, its steps. */
-function CIJobRow({ sessionId, job, now, open, onToggle }: { sessionId: string; job: CIJob; now: number; open: boolean; onToggle: () => void }) {
+/**
+ * One pull request: a dot for its state (open, draft, merged, closed), the
+ * number and title, the mini pipeline, the CI in words, the review and a
+ * conflict when GitHub said so, and its age. A click opens its CI in place;
+ * ↗ opens the PR on GitHub.
+ */
+function PRRow({ p, now, runs, open, onToggle, onPick, children }: { p: SessionPRLive; now: number; runs?: CIRun[]; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; children?: ReactNode }) {
+  const live = p.live
+  const dot = prDotState(p)
+  const v = prVerdict(p, now, runs)
+  const review = prReviewText(p)
+  const merge = prMergeText(p)
+  const age = prAge(p, now)
+  const title = live?.title || p.title || ''
+  const url = live?.url || p.url
+  const nodes = live && live.checks.items.length > 0 ? checkNodes(live.checks.items, now) : []
+  return (
+    <li data-deck-pr={p.number} data-open={open || undefined} className={open ? 'flex min-h-[72px] shrink flex-col' : 'shrink-0'}>
+      <div onClick={onToggle}
+        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[8px_minmax(40px,1fr)_auto_auto_minmax(64px,168px)_26px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
+        <span role="img" aria-label={dot} title={dot} className="pr-dot" data-state={dot} />
+        <button type="button" aria-expanded={open} onClick={(e) => { e.stopPropagation(); onToggle() }}
+          title={`${title}\n${open ? 'Hide' : 'Show'} its CI`} className="flex min-w-0 items-baseline gap-2 text-left">
+          <span className="num shrink-0 text-fg">#{p.number}</span>
+          <span className={`truncate ${open ? 'text-fg' : 'text-fg-muted'}`}>{title}</span>
+        </button>
+        {/* Every cell stays in the grid; what gives way as the deck narrows is
+          * hidden inside it, so the columns never shift. */}
+        <span className="min-w-0">
+          <span data-deck-pr-review className="hidden max-w-[150px] truncate text-[11px] @min-[640px]:block">
+            {review && <span className={WORD_TEXT[review.tone]}>{review.text}</span>}
+            {review && merge && <span className="text-fg-faint"> · </span>}
+            {merge && <span className={WORD_TEXT[merge.tone]} title={merge.title}>{merge.text}</span>}
+          </span>
+        </span>
+        {nodes.length > 0 ? <span className="flex justify-end"><span className="hidden @min-[520px]:inline-flex"><MiniPipeline nodes={nodes} label={`#${p.number}: its checks`} onPick={onPick} /></span></span> : <span />}
+        <span data-deck-pr-ci title={v.title ?? v.text} className={`w-full min-w-0 truncate text-[11.5px] ${v.strong ? 'font-medium' : ''} ${WORD_TEXT[v.tone]}`}>{v.text}</span>
+        <span data-deck-pr-age className="num text-right text-[11px] text-fg-faint" title={age.title}>{age.text}</span>
+        <button type="button" onClick={(e) => { e.stopPropagation(); openExternal(url) }} aria-label={`Open #${p.number} on GitHub`} title="Open the pull request on GitHub"
+          className="text-[11px] text-fg-faint hover:text-fg">↗</button>
+      </div>
+      {open && <div data-deck-pr-detail className="mb-1 ml-[7px] min-h-0 flex-1 overflow-y-auto overscroll-contain border-l border-[var(--app-hairline)] pl-2 pt-0.5">{children}</div>}
+    </li>
+  )
+}
+
+const DELTA_TEXT: Record<DeltaTone, string> = { warn: 'text-warn', ok: 'text-ok', muted: 'text-fg-faint' }
+
+/** A time against its median: "+18%", "≈ 3m left", "+12% over median"; nothing without a median. */
+function VsText({ vs, className = '' }: { vs?: VsMedian; className?: string }) {
+  if (!vs) return <span />
+  return <span data-deck-vs={vs.kind} title={vs.title} className={`num truncate whitespace-nowrap text-[11px] ${DELTA_TEXT[vs.tone]} ${className}`}>{vs.text}</span>
+}
+
+/** A run's wall-clock time and how it stands against its workflow's median. */
+function RunTime({ run, now }: { run: CIRun; now: number }) {
+  const ms = runSpan(run, now)
+  if (ms === undefined) return null
+  const vs = runVsMedian(run, now)
+  return (
+    <span data-deck-run-time className="num flex shrink-0 items-baseline gap-1 text-[10.5px] text-fg-faint" title={`The run's wall-clock time, from GitHub's own stamps${vs ? `\n${vs.title}` : ''}`}>
+      run <span className={run.status === 'completed' ? 'text-fg' : 'text-warn'}>{fmtRun(ms)}</span>
+      {vs && <><span aria-hidden>·</span><VsText vs={vs} /></>}
+    </span>
+  )
+}
+
+/** One job: its mark, name, OS and time against its median; open, its steps. */
+function CIJobRow({ sessionId, job, now, open, onToggle, vsCol }: { sessionId: string; job: CIJob; now: number; open: boolean; onToggle: () => void; vsCol?: boolean }) {
   const tone = ciTone(job)
+  const vs = vsCol ? jobVsMedian(job, now) : undefined
   const at = keyStep(job)
   const [logFor, setLogFor] = useState<number>()
   return (
     <li data-deck-ci-job={job.id} data-tone={tone}>
       <button type="button" onClick={onToggle} aria-expanded={open} title={`${job.name}${job.labels.length ? `\nRunner: ${job.labels.join(', ')}` : ''}\n${open ? 'Hide' : 'Show'} its steps`}
-        className="grid w-full min-w-0 grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)] items-center gap-x-1.5 rounded-[4px] px-1 py-[1px] text-left text-[12px] hover:bg-[var(--app-row-hover)]">
+        className={`grid w-full min-w-0 ${vsCol ? 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)_minmax(0,108px)]' : 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)]'} items-center gap-x-1.5 rounded-[4px] px-1 py-[1px] text-left text-[12px] hover:bg-[var(--app-row-hover)]`}>
         <CIMark tone={tone} />
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className={`truncate ${tone === 'fail' ? 'font-medium text-danger' : 'text-fg'}`}>{job.name}</span>
@@ -560,6 +743,7 @@ function CIJobRow({ sessionId, job, now, open, onToggle }: { sessionId: string; 
         </span>
         <span className="text-[10px] uppercase tracking-[0.04em] text-fg-faint">{osTag(job.os)}</span>
         <span className={`num whitespace-nowrap text-right text-[11.5px] ${tone === 'running' ? 'text-warn' : 'text-fg-muted'}`}>{fmtRun(ciElapsed(job, now))}</span>
+        {vsCol && <VsText vs={vs} />}
       </button>
       {open && (
         <ul className="ml-[8px] border-l border-[var(--app-hairline)] pl-1">
@@ -604,10 +788,16 @@ function CIStepRow({ sessionId, job, step, now, showLog, onLog }: { sessionId: s
 
 /** The lines around a failed job's error, read once, on demand. */
 function CILogTail({ sessionId, job }: { sessionId: string; job: CIJob }) {
-  const { view, pr } = useContext(LogView)
+  const { view, pr, onShown } = useContext(LogView)
   const [log, setLog] = useState<CILog>()
   const [err, setErr] = useState('')
   const pre = useRef<HTMLPreElement>(null)
+  const box2 = useRef<HTMLDivElement>(null)
+  // Said to the cell, which makes room for it; brought into view once read.
+  useEffect(() => {
+    onShown?.(1)
+    return () => onShown?.(-1)
+  }, [onShown])
   useEffect(() => {
     let alive = true
     api.sessionCILog(sessionId, job.id, view, pr).then((l) => { if (alive) setLog(l) }).catch((e: unknown) => {
@@ -621,9 +811,10 @@ function CILogTail({ sessionId, job }: { sessionId: string; job: CIJob }) {
     const box = pre.current
     const el = box?.querySelector<HTMLElement>('[data-error-line]')
     if (box && el) box.scrollTop = Math.max(0, el.offsetTop - box.clientHeight + el.offsetHeight * 4)
-  }, [log])
+    if (log || err) box2.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [log, err])
   return (
-    <div data-deck-ci-log className="my-1 mr-1 overflow-hidden rounded-[5px] border border-[var(--app-hairline)]">
+    <div ref={box2} data-deck-ci-log className="my-1 mr-1 overflow-hidden rounded-[5px] border border-[var(--app-hairline)]">
       {!log && !err && <p className="px-2 py-1 text-[11px] text-fg-faint">Reading the log…</p>}
       {err && <p className="px-2 py-1 text-[11px] text-danger">{err}</p>}
       {log && (
@@ -643,172 +834,3 @@ function CILogTail({ sessionId, job }: { sessionId: string; job: CIJob }) {
   )
 }
 
-/** How often the PR cell asks again: sooner while a check is running. The
- *  daemon keeps each pull request for about as long, so a poll it can answer
- *  from what it holds costs GitHub nothing. */
-const PRS_PENDING_MS = 20_000
-const PRS_IDLE_MS = 60_000
-
-const PR_DOT: Record<PRTone, string> = {
-  ok: 'bg-ok', fail: 'bg-danger', pending: 'bg-warn', merged: 'bg-[#a371f7]', closed: 'bg-fg-faint', none: 'bg-fg-faint/70',
-}
-
-/** The branch the session works on, what is not committed and what is not pushed. */
-function Branch({ branch, changed, ahead, onReview }: { branch?: string; changed?: number; ahead?: number; onReview?: () => void }) {
-  if (!branch) return null
-  const bits = [
-    typeof changed === 'number' ? (changed ? `${changed} not committed` : 'clean') : '',
-    ahead ? `${ahead} not pushed` : '',
-  ].filter(Boolean)
-  return (
-    <Cell label="Branch" className="w-[176px] shrink-0" below={720}>
-      <p className="mono truncate text-[13px] font-medium text-fg" title={branch}>{branch}</p>
-      {bits.length > 0 && <p className={`truncate text-[11.5px] ${changed || ahead ? 'text-warn' : 'text-fg-muted'}`}>{bits.join(' · ')}</p>}
-      {onReview && !!changed && (
-        <button type="button" onClick={onReview} className="flex w-fit items-center gap-1.5 text-left text-[11.5px] text-accent underline-offset-2 hover:underline">Review changes <kbd aria-hidden className="app-kbd-key">{keys('⇧⌘G')}</kbd></button>
-      )}
-    </Cell>
-  )
-}
-
-/** One PR's state in a few characters: CI first, then the review. */
-interface PRStatus {
-  /** The CI in a few characters, "CI" included where it reads so; '' when there is none to show. */
-  ci: string
-  /** What the CI label means, when it needs saying. */
-  ciTitle?: string
-  ciTone: PRTone
-  /** Where the CI is looked at: the failing or running job, else the PR's checks. */
-  ciUrl?: string
-  /** merged, closed, draft, approved…; '' for a plain open PR. */
-  state: string
-  tone: PRTone
-}
-
-/** How long after a PR was opened an empty check list still means "not started yet" rather than "no CI here". */
-const CI_START_GRACE_MS = 10 * 60_000
-
-/** One PR's CI and state, in two columns that line up row to row. */
-function prStatus(p: SessionPRLive, now = Date.now()): PRStatus {
-  const pr = p.live
-  if (!pr) {
-    if (p.merged_at) return { ci: '', ciTone: 'none', state: 'merged', tone: 'merged' }
-    if (p.closed_at) return { ci: '', ciTone: 'none', state: 'closed', tone: 'closed' }
-    return { ci: '', ciTone: 'none', state: 'open', tone: 'none' }
-  }
-  const c = pr.checks
-  const total = c.items.length
-  let ci = ''
-  let ciTone: PRTone = 'none'
-  let ciUrl: string | undefined = total ? `${pr.url}/checks` : undefined
-  if (c.state === 'fail') {
-    const failed = c.items.filter((i) => i.state === 'fail')
-    ci = `CI ✗ ${failed[0]?.name ?? 'failed'}${failed.length > 1 ? ` +${failed.length - 1}` : ''}`
-    ciTone = 'fail'
-    ciUrl = failed.find((i) => i.url)?.url ?? ciUrl
-  } else if (c.state === 'pending') {
-    ci = `CI ${total - c.pending}/${total} running`
-    ciTone = 'pending'
-    ciUrl = c.items.find((i) => i.state === 'pending' && i.url)?.url ?? ciUrl
-  } else if (c.state === 'pass') {
-    ci = `CI ✓ ${total} passed`
-    ciTone = 'ok'
-  }
-  // No checks at all. Right after a PR opens (or a push) GitHub has often not
-  // registered them yet; a while later it means no workflow ran on it.
-  let ciTitle: string | undefined
-  if (!ci && pr.state === 'open' && total === 0) {
-    const since = p.opened_at || p.last_at
-    if (since && now - since < CI_START_GRACE_MS) {
-      ci = 'CI not started'
-      ciTitle = 'GitHub has not reported any checks for this PR yet — they usually appear within a minute of a push'
-    } else {
-      ci = 'no checks'
-      ciTitle = 'No CI workflow ran on this PR'
-    }
-  }
-  const review = pr.state === 'open' ? (pr.review === 'approved' ? 'approved' : pr.review === 'changes_requested' ? 'changes' : '') : ''
-  const state = pr.state !== 'open' ? pr.state : pr.draft ? 'draft' : review
-  const tone: PRTone = pr.state !== 'open' ? prTone(pr) : pr.review === 'changes_requested' ? 'fail' : pr.review === 'approved' ? 'ok' : 'none'
-  return { ci, ciTitle, ciTone, ciUrl, state, tone }
-}
-
-const STATUS_TEXT: Record<PRTone, string> = {
-  ok: 'text-ok', fail: 'text-danger', pending: 'text-warn', merged: 'text-[#a371f7]', closed: 'text-fg-faint', none: 'text-fg-muted',
-}
-
-/**
- * The session's latest pull requests and their CI (owner, 2026-10-11: "I'd
- * look at the statuses of the latest PRs, CI on them if possible"). Asked of
- * the daemon while the deck is open and the window is visible: every 20 s
- * while a check runs, else every minute.
- */
-function PRs({ sessionId, onPick }: { sessionId: string; onPick?: (pr: number, job: number) => void }) {
-  const [data, setData] = useState<{ connected: boolean; prs: SessionPRLive[] }>()
-  const [connecting, setConnecting] = useState(false)
-  const [n, setN] = useState(0)
-  useEffect(() => {
-    let alive = true
-    let timer = 0
-    const tick = async () => {
-      let next = PRS_IDLE_MS
-      if (!document.hidden) {
-        try {
-          const d = await api.sessionPRs(sessionId)
-          if (!alive) return
-          setData(d)
-          if (d.prs.some((p) => p.live?.checks.state === 'pending')) next = PRS_PENDING_MS
-        } catch { /* the last answer stays */ }
-      }
-      if (alive) timer = window.setTimeout(() => void tick(), next)
-    }
-    void tick()
-    const onVisible = () => { if (!document.hidden) { window.clearTimeout(timer); void tick() } }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => { alive = false; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
-  }, [sessionId, n])
-
-  const connect = async () => {
-    setConnecting(true)
-    if (await connectGitHub()) setN((x) => x + 1)
-    setConnecting(false)
-  }
-  const prs = data?.prs ?? []
-  return (
-    <Cell label="Pull requests" className="min-w-[220px] flex-[2.2_1_0]"
-      right={data && !data.connected && prs.length > 0
-        ? <button type="button" disabled={connecting} onClick={() => void connect()} title="Reads CI and reviews through your GitHub CLI login; turn it off in Settings → GitHub" className="text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'connect GitHub for CI'}</button>
-        : undefined}>
-      {data && prs.length === 0 && <p className="text-[12px] text-fg-faint">No PR from this session yet.</p>}
-      <ul className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
-        {prs.map((p) => {
-          const st = prStatus(p)
-          const piped = !!p.live && p.live.checks.items.length > 0
-          // With a pipeline drawn, its summary in words is shown only where
-          // the deck is wide: the circles say it first.
-          const words = piped ? 'hidden @min-[1100px]:block' : ''
-          return (
-            <li key={p.url} data-deck-pr={p.number}
-              className="grid min-w-0 grid-cols-[8px_minmax(0,1fr)_auto_auto_56px] items-center gap-x-2 rounded-[5px] text-[12.5px] hover:bg-[var(--app-row-hover)]">
-              <span aria-hidden className={`h-2 w-2 rounded-full ${PR_DOT[st.ciTone === 'none' ? st.tone : st.ciTone]}`} />
-              <button type="button" onClick={() => openExternal(p.live?.url || p.url)} title={`${p.live?.title || p.title || ''}\nOpen the pull request on GitHub`}
-                className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 text-left">
-                <span className="num text-fg">#{p.number}</span>
-                <span className="truncate text-fg-muted">{p.live?.title || p.title}</span>
-              </button>
-              {piped
-                ? <MiniPipeline nodes={checkNodes(p.live!.checks.items, Date.now())} label={`#${p.number}: its checks`}
-                    onPick={(node) => { if (node.jobId && onPick) onPick(p.number, node.jobId); else if (node.url) openExternal(node.url) }} />
-                : <span />}
-              {st.ci && st.ciUrl
-                ? <button type="button" data-deck-ci onClick={() => openExternal(st.ciUrl!)} title="Open the CI run on GitHub"
-                    className={`max-w-[112px] truncate text-left font-medium underline-offset-2 hover:underline ${words} ${STATUS_TEXT[st.ciTone]}`}>{st.ci}</button>
-                : <span data-deck-ci-none={st.ciTitle ? '' : undefined} title={st.ciTitle} className={`max-w-[112px] truncate ${words} ${st.ciTitle ? 'text-fg-faint' : `font-medium ${STATUS_TEXT[st.ciTone]}`}`}>{st.ci}</span>}
-              <span className={`col-start-5 truncate font-medium ${STATUS_TEXT[st.tone]}`}>{st.state}</span>
-            </li>
-          )
-        })}
-      </ul>
-    </Cell>
-  )
-}

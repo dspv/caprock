@@ -10,6 +10,7 @@ import { baseName } from './files'
 import { dotOf, sessionTitle, type Dot } from './sidebar'
 import { branchLabel } from './sessionLabels'
 import { leaves, namingLeaf, type Tab } from './tabs'
+import { isQuickChat, startedChat } from './quickchat'
 
 export interface TabLabel {
   /** The agent's title, "Shell 2", or a file's name; "+N" for panes split beside it. */
@@ -23,6 +24,8 @@ export interface TabLabel {
   shellName?: string
   /** A shell tab: what runs in front of its prompt, when something does. */
   program?: string
+  /** A quick chat: named as one, never by its group (lib/quickchat.ts). */
+  chat?: boolean
   /** The session the tab is named after, when the list knows it. */
   session?: SessionSummary
   dot: Dot
@@ -66,7 +69,8 @@ export function tabLabels(
       out.set(t.id, { title: `${shellName}${program ? ` · ${program}` : ''}${more}`, shellName, program, branch, isShell, session: s, dot })
       continue
     }
-    out.set(t.id, { title: `${s ? sessionTitle(s) : t.title || 'session'}${more}`, branch, isShell, session: s, dot })
+    const chat = isQuickChat(s) || (!s && !!startedChat(leaf.target.sessionId))
+    out.set(t.id, { title: `${s ? sessionTitle(s) : t.title || 'session'}${more}`, branch, isShell, session: s, dot, ...(chat ? { chat } : {}) })
   }
   return out
 }

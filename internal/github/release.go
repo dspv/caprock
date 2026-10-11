@@ -107,7 +107,9 @@ type linkEntry struct {
 
 type defaultEntry struct {
 	branch string
-	at     time.Time
+	// visibility is public or private, from the same read (runnercost.go).
+	visibility string
+	at         time.Time
 }
 
 // repoCI keeps the release and main answers, estimates, release links and
@@ -119,6 +121,9 @@ type repoCI struct {
 	estimates map[string]estimateEntry
 	links     map[string]linkEntry
 	defaults  map[string]defaultEntry
+	// visFail is when a repository's metadata last failed to read, so its
+	// visibility is not asked on every CI read (RepoVisibility).
+	visFail map[string]time.Time
 }
 
 func (r *repoCI) lazy() {
@@ -128,6 +133,7 @@ func (r *repoCI) lazy() {
 		r.estimates = map[string]estimateEntry{}
 		r.links = map[string]linkEntry{}
 		r.defaults = map[string]defaultEntry{}
+		r.visFail = map[string]time.Time{}
 	}
 }
 
@@ -172,19 +178,39 @@ func (s *Service) DefaultBranch(ctx context.Context, repo Repo) (string, *Error)
 	if have && s.Now().Sub(d.at) < defaultKept {
 		return d.branch, nil
 	}
-	res, e := s.call(ctx, request{method: http.MethodGet, doing: doing, path: repoPath(repo)})
+	d, e := s.readRepoMeta(ctx, repo, doing)
 	if e != nil {
 		return "", e
 	}
+	return d.branch, nil
+}
+
+// readRepoMeta reads GET /repos/{o}/{r} and keeps its default branch and
+// visibility for defaultKept.
+func (s *Service) readRepoMeta(ctx context.Context, repo Repo, doing string) (defaultEntry, *Error) {
+	if e := s.checkRepo(repo, doing); e != nil {
+		return defaultEntry{}, e
+	}
+	res, e := s.call(ctx, request{method: http.MethodGet, doing: doing, path: repoPath(repo)})
+	if e != nil {
+		return defaultEntry{}, e
+	}
 	var r apiRepo
 	if de := decode(res, doing, &r); de != nil {
-		return "", de
+		return defaultEntry{}, de
 	}
+	d := defaultEntry{branch: r.DefaultBranch, visibility: VisibilityPublic, at: s.Now()}
+	if r.Private {
+		d.visibility = VisibilityPrivate
+	}
+	key := repo.FullName()
 	s.repoCI.mu.Lock()
+	s.repoCI.lazy()
 	bound(s.repoCI.defaults, key, func(v defaultEntry) time.Time { return v.at })
-	s.repoCI.defaults[key] = defaultEntry{branch: r.DefaultBranch, at: s.Now()}
+	s.repoCI.defaults[key] = d
+	delete(s.repoCI.visFail, key)
 	s.repoCI.mu.Unlock()
-	return r.DefaultBranch, nil
+	return d, nil
 }
 
 // ReleaseByRepo is the repository's newest release run — the newest run of
@@ -273,6 +299,7 @@ func (s *Service) readRelease(ctx context.Context, repo Repo, defaultBranch stri
 		prevRuns = []CIRun{*prev.Run}
 	}
 	runs, je := s.withJobs(ctx, repo, []apiRun{newest}, prevRuns)
+	s.priceCI(ctx, repo, runs)
 	run := runs[0]
 	out.Run, out.Tag, out.Error = &run, run.HeadBranch, je
 	one := CI{Runs: runs}
@@ -437,6 +464,7 @@ func (s *Service) MainCI(ctx context.Context, repo Repo, branch string) (CI, *Er
 	}
 	out.Runs, out.Error = s.withJobs(ctx, repo, pick, e.ci.Runs)
 	settle(&out)
+	out.Cost = s.priceCI(ctx, repo, out.Runs)
 	s.repoCI.mu.Lock()
 	bound(s.repoCI.main, key, func(v mainEntry) time.Time { return v.at })
 	s.repoCI.main[key] = mainEntry{ci: out, at: now}

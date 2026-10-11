@@ -119,11 +119,14 @@ others. Installing it: [install-app.md](install-app.md).
   shows both.
 - **Quick chat.** Ask something without picking a folder: a session in
   Caprock's data directory opens in a tab, under *Outside projects* in the
-  sidebar. ⌥⌘N starts it at once with the agent and model you used last.
-  Clicking *Quick chat* (the sidebar, the + menu, or *Quick chat with…* in
-  the palette) first shows the agents installed here — Claude Code, Codex,
-  OpenCode, Gemini CLI, Grok and your custom agents — and their models: click
-  a model to start on it, or press Enter for the highlighted one. OpenCode
+  sidebar, and its tab is called *Quick chat* with its model. ⌥⌘N, *Quick
+  chat* in the sidebar, the + menu or the palette shows the agents installed
+  here, with the agent and model you used last already picked — press Enter
+  to start on them, or Esc to cancel. The agents are Claude Code, Codex,
+  OpenCode, Gemini CLI, Grok and your custom agents, each with its models:
+  click a model to start on it. A line above the chat says how to leave it
+  (⌘W closes the tab, /exit ends the chat; × hides the line for good), and
+  when the chat ends its tab offers *Close tab* and *Start again*. OpenCode
   lists the models of the providers you connected; with none connected it
   says so, and *Connect a provider* opens a shell tab with `opencode auth
   login` typed for you to run. The agents that are not installed are named
@@ -430,7 +433,7 @@ On macOS:
 | ----------- | ---------------------------------------- |
 | ⌘T          | New shell in the folder of the tab       |
 | ⇧⌘N         | New agent session                        |
-| ⌥⌘N         | Quick chat, on the last agent and model  |
+| ⌥⌘N         | Quick chat: pick, or Enter for the last  |
 | ⌘O          | Add a project (folder, new, clone)       |
 | ⌘1–8, ⌘9    | A tab by position; the last tab          |
 | ⌃Tab, ⇧⌘[ ] | Next and previous tab                    |

@@ -201,7 +201,7 @@ export function shortcutLabel(keys: string, opts: { shift?: boolean } = {}, isMa
  *  sheet writes each through `keys` (docs/app.md § Keyboard). */
 export const SHORTCUTS: [keys: string, does: string][] = [
   ['⇧⌘N', 'New agent'],
-  ['⌥⌘N', 'Quick chat: no folder, the agent and model used last'],
+  ['⌥⌘N', 'Quick chat: no folder; asks which agent and model, Enter takes the last one'],
   ['⌘T', 'New shell in the folder of the tab'],
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],

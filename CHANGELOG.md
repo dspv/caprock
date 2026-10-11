@@ -22,6 +22,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **Dark Side** is neon purple instead of crimson: a near-black violet
+  ground, a glowing purple accent and cursor, neon cyan for premium, and a
+  red of its own for errors. Body text stays at 5.1:1 or more.
+
+### Changed
+
+- **app:** ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) now asks: it opens the
+  Quick chat chooser with the agent and model you used last already picked,
+  so Enter starts it and Esc cancels. 1–9 pick the agent there too.
 - **app:** the status bar says whose load it shows: *agent cpu 17% ram 2.0
   GB* is the session's own processes (the agent and what it runs), and a new
   *caprock 160 MB* beside it is Caprock itself (daemon, app, terminal
@@ -30,13 +39,67 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **ui:** *Settings* in the dashboard header is a framed button with a gear,
   like *Feedback* beside it, instead of grey text.
 
+- **app:** the agent cockpit puts what people watch first: the agent with a
+  headline figure beside it, then what it and its subagents are doing now,
+  its task list, the context and the plan limits; *Spent this session*
+  follows, folded to one line (*Spent $12.40 · 48 turns · 1h 12m*) until
+  you open it, and stays as you left it.
+- **app:** the headline figure is your choice: cost, burn rate (dollars an
+  hour over the last hour of activity), tokens, turns, cache hit rate or
+  time working, picked from the small menu under it and remembered. The
+  cells under *Spent this session* show the others, never the headline
+  again.
+- **app:** *Spend over time* is a row that says what it opens and opens in
+  place, as wide as the cockpit, instead of a card over the block.
+- **app:** the permission-mode menu is readable: each mode on two lines, its
+  name large with a small mark and what it does under it, the current one
+  marked with an accent bar, and why a row cannot be picked written out.
+
 ### Fixed
 
+- **app:** the cockpit's spend over time stays inside a narrow inspector: a
+  long *peak …* line no longer pushes it past the panel's edge.
+- **app:** leaving a quick chat. Once its agent exited (`/exit`), the tab
+  became a login shell in Caprock's own data folder, under the same name, so
+  it still looked like the chat and only a reload got you out. Now the tab
+  says *The chat ended*, with *Close tab* (Enter) and *Start again* on the
+  same agent and model. A line above a new chat says ⌘W closes it and /exit
+  ends it (× hides the line for good).
+- **app:** a quick chat's tab, its sidebar row and the inspector read
+  *Quick chat · Opus 5.5*, not *Outside projects* (the group it sits in).
 - **app:** the update card no longer stacks on top of the version panel:
   while the panel is open (it offers the same update), the card steps aside.
 
 ### Added
 
+- **github:** what a CI run cost. A new runner rate table,
+  `pricing/actions.json` (version `2026-10-12.1`), holds GitHub's per-minute
+  rates for every hosted runner, larger, arm64 and GPU runners included,
+  copied from GitHub's *Actions runner pricing* page on 2026-10-12 with the
+  source in the file. Each CI job, run and commit the deck reads now carries
+  `cost`: the runner's SKU, its minutes rounded up the way GitHub bills
+  them, and the dollars at list rate. Standard runners in a public
+  repository are free; self-hosted and unrecognised runners say they are
+  unpriced rather than guess. `GET /v1/github/actions-usage` reads the
+  month's Actions usage from GitHub's billing report, only when asked, and
+  names the token permission it lacks when GitHub refuses. Not in the
+  interface yet.
+
+- **app:** the session deck is one cell, **Pull requests & CI**: the
+  session's pull requests, the current one first and up to three earlier
+  ones, each with its state dot, mini pipeline, CI in words (*✓ 9m 10s ·
+  −6%*, *✗ failed at test (windows)*, *running · 3/5 · 4m 10s*), review,
+  conflict and age. A click opens a row in place into its jobs, steps,
+  error lines and *Investigate*; the current PR opens by itself while its CI
+  runs or failed. The Branch cell is gone: the branch is a chip in the
+  header (*feat/x → main*, with what is not committed or pushed), and the
+  release chip sits there too. PRs, Release and Main stay behind one switch.
+  The deck lists four PRs (`GET /v1/sessions/{id}/prs`, was three).
+- **app:** CI runs and jobs show their time against the median of the same
+  workflow's last five successful runs: *4m 45s +18%* (amber past +20%,
+  green below −10%), *≈ 3m left* or *+12% over median* while running,
+  nothing with fewer than two past runs. Past runs' jobs are read once and
+  kept; only while the deck is open (`baseline` on runs and jobs).
 - **app:** the session deck's CI cell has a switch: **PR** (as before),
   **Release** and **Main**, remembered per viewer. *Release* is the
   repository's newest release build — found from the run a tag push or a

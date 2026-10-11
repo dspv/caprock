@@ -48,7 +48,7 @@ Supporting directories:
 | `cmd/`, `internal/` | Go daemon, CLI, shim (see 02-architecture § Repository layout)                                                                                                                     |
 | `ui/`               | React + Vite dashboard, embedded into the binary                                                                                                                                   |
 | `app/`              | The desktop app: Tauri v2 shell around the dashboard ([app/README.md](../app/README.md))                                                                                           |
-| `pricing/`          | `pricing.json` — versioned model pricing table                                                                                                                                     |
+| `pricing/`          | `pricing.json`, `actions.json` — versioned model and runner rates                                                                                                                  |
 | `testdata/`         | Transcript fixtures, hook payloads, fake `claude`                                                                                                                                  |
 
 ## Current State

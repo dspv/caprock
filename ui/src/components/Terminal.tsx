@@ -45,7 +45,7 @@ export const TERMINAL_THEME = {
 } as const
 
 /**
- * A cool or a crimson palette gets a terminal in its own temperature (owner,
+ * A cool or a violet palette gets a terminal in its own temperature (owner,
  * 2026-10-11): the same rule — a dark surface whatever the page — in the
  * dark palette the app palette names (`dashTerminal` in lib/themes.ts): this
  * one for the warm palettes, Dark Cold's for the cool ones, Dark Side's for

@@ -307,7 +307,7 @@ internal/hive/        # on-disk orchestration state: agents/tasks/mailboxes/ledg
 internal/board/       # task board: verification runner, destructive-command policy, approvals — Orchestrate
 internal/orchestrator/ # orchestrator + worker lifecycle, the mailbox-router reconciler — Orchestrate
 ui/                   # React + Vite app; builds into internal/api/dist (go:embed)
-pricing/              # pricing.json + embed.go (versioned pricing table)
+pricing/              # pricing.json (models) + actions.json (GitHub Actions runners) + embed.go, each versioned
 testdata/             # hook payloads, transcript fixtures + expected totals, loop fixtures, fakeclaude (a Go line-REPL `claude`; with a permission flag it draws the mode footer and cycles it on Shift+Tab)
 ```
 

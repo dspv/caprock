@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -119,5 +120,36 @@ func TestSessionOutsideARepoHasNoRepoLink(t *testing.T) {
 	}
 	if string(raw["prs"]) != "[]" {
 		t.Fatalf("prs = %s, want []", raw["prs"])
+	}
+}
+
+// The deck lists the session's current pull request and up to three before
+// it (owner, 2026-10-12: "plus at least a couple of previous PRs").
+func TestSessionPRsListsFourNewestFirst(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	e.seed(t, dir)
+	for i := 1; i <= 6; i++ {
+		n := strconv.Itoa(i)
+		ev := &event.Event{SessionID: "s1", Source: event.SourceHook, Kind: event.KindToolPost, Tool: "Bash", Key: "post:" + n,
+			Ts: e.now.Add(time.Duration(i) * time.Second), Payload: json.RawMessage(`{"tool_name":"Bash","tool_input":{"command":"gh pr create"},
+			"tool_response":{"gitOperation":{"pr":{"number":` + n + `,"url":"https://github.com/dspv/caprock/pull/` + n + `","action":"created"}}}}`)}
+		if _, err := e.rec.Record(ctx, ev, rollup.SessionInfo{Cwd: dir}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var deck struct {
+		PRs []SessionPRLive `json:"prs"`
+	}
+	if code := e.get(t, "/v1/sessions/s1/prs", &deck); code != 200 {
+		t.Fatalf("prs: %d", code)
+	}
+	var got []int
+	for _, p := range deck.PRs {
+		got = append(got, p.Number)
+	}
+	if len(got) != sessionPRsShown || sessionPRsShown != 4 || got[0] != 6 || got[3] != 3 {
+		t.Fatalf("deck prs = %v, want 6 5 4 3", got)
 	}
 }

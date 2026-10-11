@@ -117,6 +117,7 @@ func (s *Server) handleSessionCI(w http.ResponseWriter, r *http.Request) {
 		if ci, e := s.d.GitHub.CIBySHA(ctx, repo, pr.HeadSHA); e != nil {
 			out.Error = e
 		} else {
+			ci.Runs = s.d.GitHub.WithBaselines(ctx, repo, ci.Runs)
 			out.CI = &ci
 			out.Error = nil
 		}
@@ -201,6 +202,10 @@ func (s *Server) handleSessionCIRepo(view string) http.HandlerFunc {
 			if e != nil {
 				out.Error = e
 			} else {
+				if rel.Run != nil {
+					runs := s.d.GitHub.WithBaselines(ctx, repo, []github.CIRun{*rel.Run})
+					rel.Run = &runs[0]
+				}
 				out.Release = &rel
 			}
 		} else {
@@ -209,6 +214,7 @@ func (s *Server) handleSessionCIRepo(view string) http.HandlerFunc {
 			if e != nil {
 				out.Error = e
 			} else {
+				ci.Runs = s.d.GitHub.WithBaselines(ctx, repo, ci.Runs)
 				out.CI = &ci
 			}
 		}

@@ -15,8 +15,11 @@ import { FIND_EVENT } from '@/lib/appkeys'
 import { AppShell, nextWaiting, worktreeSlug } from './AppShell'
 
 vi.mock('@/components/TerminalPane', () => ({
-  TerminalPane: ({ sessionId, active }: { sessionId: string; active: boolean }) => (
-    <div data-testid={`pane-${sessionId}`} data-active={String(active)} />
+  // The program's exit, pressed by hand: what /exit or Ctrl+D does to a pane.
+  TerminalPane: ({ sessionId, active, onExit }: { sessionId: string; active: boolean; onExit?: (code: number) => void }) => (
+    <div data-testid={`pane-${sessionId}`} data-active={String(active)}>
+      <button type="button" data-testid={`exit-${sessionId}`} onClick={() => onExit?.(0)} />
+    </div>
   ),
 }))
 
@@ -51,6 +54,13 @@ const sessions = [
 ]
 
 const editorCalls = vi.hoisted(() => [] as { path: string; line?: number; editor?: string }[])
+// Every quick chat starts as chat-1, chat-2, … in its own dated folder, as
+// the daemon makes one (internal/agents newChatDir).
+const spawned = vi.hoisted(() => ({ n: 0, shells: 0 }))
+const chatSession = (id: string) => sess({
+  session_id: id, cwd: `/data/caprock/chats/2026-10-12-00515${id.slice(-1)}`, repo_root: '', project: 'chat · Oct 12, 00:51', model: '', title: undefined,
+  activity: { phrase: '', at: '', health: 'idle' },
+})
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -60,7 +70,12 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       status: async () => ({ version: 'v0.0.0', claude_available: true }),
       sessions: async () => sessions,
-      spawn: async () => ({ session_id: 'chat-1', cwd: '/data/chat' }),
+      spawn: async () => {
+        spawned.n += 1
+        const id = `chat-${spawned.n}`
+        sessions.push(chatSession(id))
+        return { session_id: id, cwd: chatSession(id).cwd }
+      },
       summary: async () => ({ cost_usd: 1.25, projects: [{ project: 'app', dir: '/w/app', cost_usd: 1.25, tokens: 0, sessions: 2 }], rate_limits: { five_hour: { used_percentage: 40, resets_at: 0 } } }),
       permission: async () => ({ permission: null }),
       diff: async () => ({ root: '/w/app', branch: 'main', files: [], stat: '' }),
@@ -74,6 +89,9 @@ vi.mock('@/lib/api', async (orig) => {
 const fetchMock = vi.fn(async () => new Response('', { status: 404 }))
 
 beforeEach(() => {
+  spawned.n = 0
+  spawned.shells = 0
+  sessions.splice(3)
   localStorage.clear()
   sessionStorage.clear()
   vi.stubGlobal('fetch', fetchMock)
@@ -228,8 +246,9 @@ describe('the app workspace', () => {
     }
   }, 20_000)
 
-  // A click asks which vendor and model (Enter takes the last one); ⌥⌘N
-  // never asks (owner, 2026-10-09).
+  // A click asks which vendor and model, and so does ⌥⌘N since 2026-10-12
+  // (owner: "Quick chat opened a terminal without asking with whom"); the
+  // last one used is picked, so Enter alone starts it.
   it('starts a quick chat in a tab from the sidebar’s chooser, without leaving the workspace', async () => {
     await renderApp()
     fireEvent.click(screen.getByRole('button', { name: 'Quick chat' }))
@@ -241,14 +260,91 @@ describe('the app workspace', () => {
     expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
   })
 
-  it('starts a quick chat at once on ⌥⌘N', async () => {
+  it('asks on ⌥⌘N, the last agent and model picked and focused, so Enter starts it', async () => {
+    localStorage.setItem('caprock.quickchat', JSON.stringify({ agent: 'claude', model: 'claude-sonnet-5-5' }))
     await renderApp()
     await cmd('n', { altKey: true })
+    const chooser = await screen.findByRole('dialog', { name: 'Quick chat' })
+    const list = within(chooser).getByRole('listbox')
+    expect(list).toHaveFocus()
+    expect(within(list).getByRole('option', { selected: true })).toHaveTextContent(/Sonnet 5\.5/)
+    expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
+    fireEvent.keyDown(list, { key: 'Enter' })
     const tab = await screen.findByRole('tab', { name: /Quick chat/ })
-    expect(screen.queryByRole('dialog', { name: 'Quick chat' })).toBeNull()
     expect(tab).toHaveAttribute('aria-selected', 'true')
-    expect(location.hash).toBe('#/app')
     expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
+  })
+
+  it('cancels the ⌥⌘N chooser on Esc, starting nothing', async () => {
+    await renderApp()
+    await cmd('n', { altKey: true })
+    const chooser = await screen.findByRole('dialog', { name: 'Quick chat' })
+    fireEvent.keyDown(within(chooser).getByRole('listbox'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Quick chat' })).toBeNull())
+    expect(spawned.n).toBe(0)
+    expect(screen.queryByRole('tab')).toBeNull()
+  })
+
+  /** Starts a quick chat on Opus 5.5 the way the owner did, and waits for its tab. */
+  async function startChat() {
+    localStorage.setItem('caprock.quickchat', JSON.stringify({ agent: 'claude', model: 'claude-opus-5-5' }))
+    await renderApp()
+    await cmd('n', { altKey: true })
+    fireEvent.keyDown(within(await screen.findByRole('dialog', { name: 'Quick chat' })).getByRole('listbox'), { key: 'Enter' })
+    return screen.findByRole('tab', { name: /Quick chat/ })
+  }
+
+  // Owner, 2026-10-12: the tab said "Outside projects", the group it sits in.
+  it('names a quick chat’s tab, sidebar row and inspector after the chat, not its group', async () => {
+    const tab = await startChat()
+    await waitFor(() => expect(tab).toHaveTextContent('Quick chat · Opus 5.5'))
+    expect(tab).not.toHaveTextContent('Outside projects')
+    // The sidebar lists tabs by the strip's own labels (lib/tablabels.ts); nothing says "new session".
+    expect(screen.queryByText('new session')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Quick chat · Opus 5.5' })).toBeInTheDocument()
+  })
+
+  it('says in the chat how to leave it, until the hint is dismissed for good', async () => {
+    await startChat()
+    const hint = await screen.findByRole('note', { name: 'Quick chat' })
+    expect(hint).toHaveTextContent('Quick chat with Claude · Opus 5.5 — ⌘W closes, /exit ends it')
+    fireEvent.click(within(hint).getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByRole('note', { name: 'Quick chat' })).toBeNull()
+    expect(localStorage.getItem('caprock.quickchat.hint')).toBe('dismissed')
+  })
+
+  // Owner, 2026-10-12: after /exit the tab turned into a login shell in the
+  // chat's hidden folder, looking just like before, and only a reload got
+  // him out. An ended chat says so in place, with the two ways on.
+  it('leaves an ended quick chat in its tab with Close tab and Start again, not a shell', async () => {
+    await startChat()
+    fetchMock.mockClear()
+    fireEvent.click(screen.getByTestId('exit-chat-1'))
+    const ended = await screen.findByRole('group', { name: 'The chat ended' })
+    expect(screen.getByRole('tab', { name: /Quick chat/ })).toBeInTheDocument()
+    expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some((c) => String((c as unknown[])[0]).includes('/shells'))).toBe(false)
+    expect(within(ended).getByRole('button', { name: 'Close tab' })).toHaveFocus()
+    // Start again: a new chat on the same agent and model, in the same tab.
+    fireEvent.click(within(ended).getByRole('button', { name: 'Start again' }))
+    await waitFor(() => expect(screen.getByTestId('pane-chat-2')).toBeInTheDocument())
+    expect(screen.queryByTestId('pane-chat-1')).toBeNull()
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+    expect(screen.queryByRole('group', { name: 'The chat ended' })).toBeNull()
+    // And Close tab closes it.
+    fireEvent.click(screen.getByTestId('exit-chat-2'))
+    fireEvent.click(within(await screen.findByRole('group', { name: 'The chat ended' })).getByRole('button', { name: 'Close tab' }))
+    await waitFor(() => expect(screen.queryByRole('tab')).toBeNull())
+  })
+
+  it('closes a quick chat with ⌘W from inside it, and ⌘0 goes to the dashboard', async () => {
+    await startChat()
+    await cmd('0')
+    await waitFor(() => expect(location.hash).not.toBe('#/app'))
+    fireEvent.click(screen.getByRole('tab', { name: /Quick chat/ }))
+    await waitFor(() => expect(location.hash).toBe('#/app'))
+    await cmd('w')
+    expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
   })
 
   it('switches tabs with ⌘1–9 and keeps every terminal mounted', async () => {
