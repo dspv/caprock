@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.109.0] - 2026-10-11
+
 ### Added
 
 - **Seven themes, with plain names:** Dark Warm (once Graphite), Dark Cold
@@ -18,9 +20,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   picker groups them Dark then Light, the switch-theme command walks all
   seven, and a theme kept under an old name opens as its new one. Each new
   theme has a terminal palette of its own, also in Settings → Terminal.
+
 - **Every theme reads at 4.5:1 or better:** faint text was lifted in Dark
   Warm and Dark Cold and darkened in Light, and Light's accent is a shade
   deeper, so body and secondary text clear 4.5:1 everywhere.
+
+- **app:** change a running session's permission mode. A chip in the session
+  header and the agent cockpit says the mode a Claude Code session is in; for
+  one Caprock started it is a menu. Default, accept edits, plan, bypass (when
+  the process can reach it) and auto are switched in place by Shift+Tab,
+  typed in and checked on the session's own footer; bypass in a process that
+  cannot reach it, and don't ask, are *Restart in …*: after a confirm, at the
+  prompt only, the same conversation is resumed in a new process in the same
+  tab, with the one-time bypass consent where it applies. A session started
+  elsewhere shows its mode read-only. New `GET
+  /v1/sessions/{id}/permission-mode` and `POST
+  /v1/agents/{id}/permission-mode` (ADR-054).
 
 ### Changed
 
@@ -28,8 +43,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   phone) takes a neutral ground, a blue cursor and a cool 16-colour set
   instead of graphite's warm one, and follows a theme switch while open. It
   is also a palette of its own in Settings → Terminal.
-
-### Changed
 
 - **Send feedback** picks Bug, Idea or Question from three large cards with
   an icon, a line each and their key: press 1, 2 or 3 (any keyboard layout)
@@ -39,6 +52,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 - **Slate** has no orange left: waiting and idle marks read as a cool yellow
   there instead of graphite's amber.
+
+- **agents:** a new Claude Code session is started with
+  `--allow-dangerously-skip-permissions` where the bypass warning was already
+  accepted, so bypass is a Shift+Tab away in it without being its mode
+  (ADR-054). Without that consent nothing changes.
 
 ### Fixed
 
@@ -58,8 +76,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   by hand still shows what waits in it. The Today strip's *Waiting* count
   still opens the first one.
 
-### Fixed
-
 - **app:** every row under a project can now be closed or hidden. A row with
   no tab — an agent whose tab you closed, or a session from another terminal
   — has a × that hides it from the list (it keeps running, and nothing is
@@ -70,27 +86,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   right-click or Shift+F10, a tab's menu adds *Close tab and hide from the
   list*, the buttons are bigger (26px), and on a touch screen they are
   always shown.
-
-### Added
-
-- **app:** change a running session's permission mode. A chip in the session
-  header and the agent cockpit says the mode a Claude Code session is in; for
-  one Caprock started it is a menu. Default, accept edits, plan, bypass (when
-  the process can reach it) and auto are switched in place by Shift+Tab,
-  typed in and checked on the session's own footer; bypass in a process that
-  cannot reach it, and don't ask, are *Restart in …*: after a confirm, at the
-  prompt only, the same conversation is resumed in a new process in the same
-  tab, with the one-time bypass consent where it applies. A session started
-  elsewhere shows its mode read-only. New `GET
-  /v1/sessions/{id}/permission-mode` and `POST
-  /v1/agents/{id}/permission-mode` (ADR-054).
-
-### Changed
-
-- **agents:** a new Claude Code session is started with
-  `--allow-dangerously-skip-permissions` where the bypass warning was already
-  accepted, so bypass is a Shift+Tab away in it without being its mode
-  (ADR-054). Without that consent nothing changes.
 
 ## [0.108.1] - 2026-10-11
 

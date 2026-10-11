@@ -73,6 +73,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-11 — 0.109.0: seven themes, live permission modes, a sidebar without the waiting block
+
+Seven themes with plain names (Dark Warm, Dark Cold, Dark Side, Light,
+Light Cold, Book, Light Side) from one table, each with its own terminal
+palette; Dark Cold's terminal is cool. A running Claude Code session's
+permission mode changes from a chip (Shift+Tab presses, or a confirmed
+restart with `--resume` where the process cannot reach the mode; ADR-054).
+Sessions Caprock starts get a UTF-8 locale when none is set (pasted
+non-Latin text was garbled under launchd's bare env). The sidebar drops
+*Waiting on you* and marks the waiting row; every nested row can be closed
+or hidden and brought back. The feedback form picks its kind from three
+cards, 1 2 3 on any layout. Not verified against the real `claude` for the
+mode switch, or on a machine without a locale for the paste fix.
+
 ### 2026-10-11 — The permission mode changes in a running session (ADR-054)
 
 A chip in the session header and the agent cockpit says the mode a session
