@@ -39,6 +39,11 @@ type launchInput struct {
 	// `permissions.blockReadsOutsideWorkingDirectories` on is asked about
 	// Caprock's own files.
 	AddDirs []string
+	// RepoDirs are the other member repositories of the multi-repo project
+	// the session starts in (ADR-055): Claude Code and Codex get each as
+	// --add-dir, Gemini CLI as --include-directories; OpenCode and Grok
+	// have no such flag and start in the project's folder without them.
+	RepoDirs []string
 	// SystemPrompt is the project's instructions for every agent in it:
 	// appended to Claude Code's own system prompt, and Codex's
 	// developer_instructions; "" for none.
@@ -136,8 +141,13 @@ func claudeLaunch(in launchInput) (launch, error) {
 	if in.AllowBypass && in.Mode != "bypassPermissions" {
 		l.args = append(l.args, "--allow-dangerously-skip-permissions")
 	}
-	for _, d := range in.AddDirs {
-		l.args = append(l.args, "--add-dir", d)
+	// `--add-dir <directories...>` is variadic (read in 2.1.296's --help and
+	// its option parser): after `--add-dir a`, every following word up to the
+	// next option is another directory — a first message passed as the
+	// positional prompt included. `--add-dir=a` takes exactly one value and
+	// ends there, so each directory is spelled that way.
+	for _, d := range append(append([]string(nil), in.AddDirs...), in.RepoDirs...) {
+		l.args = append(l.args, "--add-dir="+d)
 	}
 	// Appended, not --system-prompt: Claude Code keeps its own and the
 	// project's instructions come after it, on a resume as well as a start.
@@ -169,6 +179,11 @@ func geminiLaunch(in launchInput) (launch, error) {
 	// four; an unmapped mode is left off rather than guessed at.
 	if mode := geminiApprovalMode(in.Mode); mode != "" {
 		l.args = append(l.args, "--approval-mode", mode)
+	}
+	// `--include-directories`: "Additional directories to include in the
+	// workspace" (an array option, so the = form, one value each).
+	for _, d := range in.RepoDirs {
+		l.args = append(l.args, "--include-directories="+d)
 	}
 	l.args = append(l.args, in.Extra...)
 	// -i/--prompt-interactive: "Execute the provided prompt and continue in
@@ -215,6 +230,11 @@ func codexLaunch(in launchInput) (launch, error) {
 		l.args = append(l.args, "-m", in.Model)
 	}
 	l.args = append(l.args, codexPermissions(in.Mode)...)
+	// `--add-dir <DIR>`: "Additional directories that should be writable
+	// alongside the primary workspace" (codex-cli 0.161.0), one per flag.
+	for _, d := range in.RepoDirs {
+		l.args = append(l.args, "--add-dir", d)
+	}
 	l.args = append(l.args, in.Extra...)
 	// `codex [OPTIONS] [PROMPT]`: the TUI opens with the prompt sent.
 	if p := promptArg(in); p != "" {

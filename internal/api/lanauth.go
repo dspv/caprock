@@ -294,6 +294,8 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/projects":                true,
 	"GET /v1/projects/ops":            true,
 	"GET /v1/projects/{id}/worktrees": true,
+	// A multi-repo project's repositories with their branches (ADR-055).
+	"GET /v1/projects/{id}/repos": true,
 
 	// A worktree's status and one file's diff (the Changes view), as a
 	// session's diff is a read.

@@ -73,6 +73,41 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — 0.110.0: pull requests and CI in one deck cell, a queue, subagents opened
+
+The deck's Branch, CI and Pull requests cells became one *Pull requests &
+CI* cell: the session's PRs with GitLab-style pipelines, durations against
+the median of past runs, Release and Main views and runner cost (a sourced,
+versioned rate table). Tasks gained a Queue (rough ranges, backtested in
+RISK-08); the cockpit opens a subagent's task, calls and answer, puts the
+spend beside the agent with a chosen headline, and reads the permission-mode
+menu at a glance. Quick chats end cleanly; Dark Side is neon purple; the
+Dock refreshes its icon after an update. Not verified against a real
+GitHub billing report or a real `claude` mode switch.
+
+### 2026-10-12 — unreleased: multi-repo projects (ADR-055)
+
+Add project on a folder holding several git repositories asks once: one
+project of N repositories (default) or N separate projects, with the
+repositories found as checkboxes. A multi-repo project stores its folder and
+its members (migration 0050); sessions in a member count toward it, with a
+per-repository split of today's spend and sessions on the project page, each
+member's branch, changes and open pull requests, and an editor to rename,
+add or remove members, rescan, merge repository projects in and split.
+Agents start in the folder; one started inside a member gets the others as
+`--add-dir=` (Claude Code), `--add-dir` (Codex) or `--include-directories=`
+(Gemini). Every Claude Code `--add-dir` is now the `=` form: the flag is
+variadic, and a first message after Caprock's own `--add-dir` folders was
+taken as a directory. Members are not watched; git runs per member on add,
+edit, start, an agent's edit and the page opening. Verified in a headless
+browser against a preview daemon on the fake `claude` with a temp home of
+three repositories: the sheet's question, *Add 1 project*, the sidebar row,
+the per-repository split with two transcripts, the editor's Rescan, and an
+agent started in `web` getting `--add-dir=` for `api` and `infra` with its
+first message last. **Not verified against the real `claude`** (Keychain
+dialog from tests): `--add-dir` and its parser were read from 2.1.296's
+`--help` and binary.
+
 ### 2026-10-12 — unreleased: runner cost in the deck, and a Branches view
 
 The deck's *Pull requests & CI* cell shows the runner cost the daemon

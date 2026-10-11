@@ -7,7 +7,7 @@
 import { isQuickChat, quickChatTitle } from './quickchat'
 import type { SessionSummary } from './api'
 import { branchLabel, sessionHealth } from './sessionLabels'
-import { folderName, inProject, sessionRoot, worktreeKeyOf, type Project } from './projects'
+import { folderName, matchLength, sessionRoot, worktreeKeyOf, type Project } from './projects'
 import { uniqueSuffixes } from './sessionLabels'
 
 /**
@@ -44,6 +44,8 @@ export interface WorktreeNode {
   ahead?: number
   behind?: number
   changed?: number
+  /** The member repository this row is, in a multi-repo project (ADR-055). */
+  repo?: string
   sessions: SessionNode[]
 }
 
@@ -138,9 +140,18 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
   const nodes: ProjectNode[] = projects
     .filter((p) => !p.archived_at)
     .map((p) => ({ project: p, costToday: p.cost_today ?? costs.get(p.root) ?? 0, waiting: 0, looping: 0, live: 0, agents: 0, working: 0, lastActive: Math.max(p.last_activity ?? 0, p.added_at ?? 0), worktrees: [] }))
-  // Longest root first, so a project nested in another (a monorepo package
-  // added on its own) claims its sessions before the outer one does.
-  const byDepth = [...nodes].sort((a, b) => b.project.root.length - a.project.root.length)
+  // The closest project claims a session: a project nested in another (a
+  // monorepo package added on its own) before the outer one, and a
+  // multi-repo project's member repository wherever it lies (ADR-055).
+  const closest = (s: SessionSummary): ProjectNode | undefined => {
+    let best: ProjectNode | undefined
+    let bestLen = -1
+    for (const n of nodes) {
+      const l = matchLength(s, n.project)
+      if (l > bestLen) { best = n; bestLen = l }
+    }
+    return best
+  }
   const inbox: InboxItem[] = []
   const other: ProjectNode = {
     project: { id: OTHER_FOLDERS_ID, root: '', name: 'Outside projects', kind: 'folder' },
@@ -150,7 +161,7 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
   for (const s of sessions) {
     if (!s) continue
     const shown = s.status !== 'ended' || openSessions.has(s.session_id)
-    const listed = byDepth.find((n) => inProject(s, n.project))
+    const listed = closest(s)
     // Only what is live or open goes to Other folders: it is not a history.
     if (!listed && !shown) continue
     const node = listed ?? other
@@ -201,7 +212,18 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
     let wt = node.worktrees.find((w) => w.key === key)
     if (!wt) {
       const known = node.project.worktrees?.find((w) => w.name === key)
-      wt = {
+      const member = key.startsWith('repo:') ? node.project.repos?.find((r) => `repo:${r.path}` === key) : undefined
+      wt = member ? {
+        key,
+        branch: member.branch || member.name,
+        path: member.path,
+        isMain: false,
+        ahead: member.ahead,
+        behind: member.behind,
+        changed: member.changed,
+        repo: member.name,
+        sessions: [],
+      } : {
         key,
         branch: branchLabel(known?.branch || (key === 'main' ? node.project.branch : '') || s.git_branch) || (key === 'main' ? '' : key),
         path: known?.path ?? (key === 'main' ? node.project.root : s.cwd),

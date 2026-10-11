@@ -2,10 +2,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AddProjectSheet, cloneDest, defaultCandidate, repoName, requestFor } from './AddProjectSheet'
 
-const m = vi.hoisted(() => ({ add: vi.fn(), patch: vi.fn(), settings: vi.fn(), save: vi.fn(), stat: vi.fn(), recent: vi.fn(), repos: vi.fn() }))
+const m = vi.hoisted(() => ({ add: vi.fn(), patch: vi.fn(), settings: vi.fn(), save: vi.fn(), stat: vi.fn(), recent: vi.fn(), repos: vi.fn(), scan: vi.fn() }))
 vi.mock('@/lib/projects', async (orig) => {
   const actual = await orig<typeof import('@/lib/projects')>()
-  return { ...actual, projectsApi: { ...actual.projectsApi, add: m.add, patch: m.patch } }
+  return { ...actual, projectsApi: { ...actual.projectsApi, add: m.add, patch: m.patch, scan: m.scan } }
 })
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -22,6 +22,7 @@ beforeEach(() => {
   m.stat.mockReset().mockResolvedValue({ path: '/x', exists: true, is_dir: true, empty: false, parent_exists: true })
   m.recent.mockReset().mockResolvedValue([])
   m.repos.mockReset().mockResolvedValue({ root: '/Users/me/dev', home: '/Users/me', scanned_at: 0, repos: [] })
+  m.scan.mockReset().mockResolvedValue({ root: '/dev/api', repo_root: '/dev/api', repos: [] })
 })
 afterEach(() => { vi.useRealTimers() })
 
@@ -186,5 +187,75 @@ describe('the search under the Folder field', () => {
     expect(screen.getByRole('status', { name: 'What is there' })).toHaveTextContent('no such folder')
     fireEvent.click(screen.getByRole('button', { name: '~/dev/caprock-web' }))
     expect(folderField()).toHaveValue('~/dev/caprock-web')
+  })
+})
+
+// ADR-055: a folder that holds several repositories asks once — one project
+// of N repositories (the default) or N separate projects.
+describe('a folder of repositories', () => {
+  const scan = {
+    root: '/work',
+    repos: [
+      { path: '/work/api', name: 'api' },
+      { path: '/work/web', name: 'web', project_id: 4, project_name: 'web' },
+      { path: '/work/infra', name: 'infra' },
+    ],
+  }
+
+  it('asks once, defaults to one project, and adds the ticked repositories', async () => {
+    m.scan.mockResolvedValue(scan)
+    m.add.mockResolvedValue({ project: { id: '12', root: '/work', name: 'work', kind: 'folder' } })
+    const onAdded = vi.fn()
+    render(<AddProjectSheet source="api" onClose={() => {}} onAdded={onAdded} onAddLocal={() => {}} />)
+    fireEvent.change(folderField(), { target: { value: '/work' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Add/ }))
+    const group = await screen.findByRole('radiogroup', { name: 'Add them as' })
+    expect(m.add).not.toHaveBeenCalled()
+    expect(group).toHaveTextContent('One project of 3 repositories')
+    expect(screen.getByRole('radio', { name: /One project/ })).toBeChecked()
+    expect(screen.getByText('listed as web')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: /infra/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Add 1 project/ }))
+    await waitFor(() => expect(onAdded).toHaveBeenCalledWith('12', undefined))
+    expect(m.add).toHaveBeenCalledTimes(1)
+    expect(m.add).toHaveBeenCalledWith({ path: '/work', repos: ['/work/api', '/work/web'] })
+  })
+
+  it('adds each ticked repository on its own when asked for separate projects', async () => {
+    m.scan.mockResolvedValue(scan)
+    m.add.mockImplementation(async (req: { path: string }) => ({ project: { id: req.path, root: req.path, name: req.path, kind: 'repo' } }))
+    const onAdded = vi.fn()
+    render(<AddProjectSheet source="api" onClose={() => {}} onAdded={onAdded} onAddLocal={() => {}} />)
+    fireEvent.change(folderField(), { target: { value: '/work' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Add/ }))
+    fireEvent.click(await screen.findByRole('radio', { name: /separate projects/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Add 3 projects/ }))
+    await waitFor(() => expect(m.add).toHaveBeenCalledTimes(3))
+    expect(m.add.mock.calls.map((c) => c[0])).toEqual([{ path: '/work/api' }, { path: '/work/web' }, { path: '/work/infra' }])
+    expect(onAdded).toHaveBeenCalledWith('/work/api', undefined)
+  })
+
+  it('refuses one project of a single repository', async () => {
+    m.scan.mockResolvedValue(scan)
+    render(<AddProjectSheet source="api" onClose={() => {}} onAdded={() => {}} onAddLocal={() => {}} />)
+    fireEvent.change(folderField(), { target: { value: '/work' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Add/ }))
+    await screen.findByRole('radiogroup', { name: 'Add them as' })
+    fireEvent.click(screen.getByRole('checkbox', { name: /infra/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /web/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Add 1 project/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('two repositories or more')
+    expect(m.add).not.toHaveBeenCalled()
+  })
+
+  it('asks nothing for a folder inside one repository', async () => {
+    m.scan.mockResolvedValue({ root: '/work/api/src', repo_root: '/work/api', repos: [] })
+    const onAdded = vi.fn()
+    render(<AddProjectSheet source="api" onClose={() => {}} onAdded={onAdded} onAddLocal={() => {}} />)
+    fireEvent.change(folderField(), { target: { value: '/work/api/src' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Add/ }))
+    await waitFor(() => expect(onAdded).toHaveBeenCalled())
+    expect(m.add).toHaveBeenCalledWith({ path: '/work/api/src' })
+    expect(screen.queryByRole('radiogroup')).toBeNull()
   })
 })

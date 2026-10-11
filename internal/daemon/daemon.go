@@ -468,6 +468,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.projs.Env = func() []string { return userenv.Environ(d.log) }
 	// A project's instructions reach every Claude Code session started in it.
 	d.mgr.ProjectPrompt = d.projs.SystemPrompt
+	// A session in a multi-repo project reaches its other repositories
+	// (--add-dir, ADR-055).
+	d.mgr.ProjectRepos = d.projs.OtherRepos
 	// A fresh worktree's setup command runs through this binary's
 	// `worktree-setup` (ADR-050), the same binary that runs pty-hosts.
 	d.mgr.ProjectSetup = d.projs.SetupCommand

@@ -78,6 +78,8 @@ import { warmTerminal } from '@/lib/termwarm'
 import { StatusDot, fmtCostShort } from '@/components/ProjectRow'
 import { fmtAgo } from '@/lib/format'
 import { RecentInProject } from '@/components/RecentInProject'
+import { ProjectRepos } from '@/components/ProjectRepos'
+import { isMultiRepo } from '@/lib/multirepo'
 import { CloseShellConfirm } from '@/components/CloseShellConfirm'
 import { ShortcutsSheet } from '@/components/ShortcutsSheet'
 import { CopiesSheet } from '@/components/CopiesSheet'
@@ -1235,6 +1237,9 @@ export function AppShell() {
                       onNewAgent={() => onNewAgent()}
                       onNewShell={() => onNewShell()}
                       onAddProject={onAddProject}
+                      repos={source === 'api' && activeProject && isMultiRepo(activeProject) ? (
+                        <ProjectRepos project={activeProject} projects={model.projects.map((n) => n.project)} />
+                      ) : undefined}
                       recent={activeProject?.root ? (
                         <RecentInProject
                           key={`${activeProject.root}:${data.sessions.length}`}
@@ -1402,6 +1407,7 @@ function EmptyWorkspace({
   onNewAgent,
   onNewShell,
   onAddProject,
+  repos,
   recent,
 }: {
   project?: Project
@@ -1409,6 +1415,8 @@ function EmptyWorkspace({
   onNewAgent: () => void
   onNewShell: () => void
   onAddProject: () => void
+  /** A multi-repo project's repositories and their split (ADR-055). */
+  repos?: React.ReactNode
   /** The project's recent sessions, to carry one on from here. */
   recent?: React.ReactNode
 }) {
@@ -1428,6 +1436,7 @@ function EmptyWorkspace({
           {project && <EmptyAction icon={<TerminalIcon size={15} />} label="New shell" hint={keys('⌘T')} onClick={onNewShell} />}
           <EmptyAction icon={<FolderPlusIcon size={15} />} label="Add a project" hint={keys('⌘O')} onClick={onAddProject} />
         </div>
+        {repos}
         {recent}
       </div>
     </div>

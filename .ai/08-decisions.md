@@ -2981,3 +2981,78 @@ itself — `claude --help` and the bundled source — not from memory:
   moment the switcher refuses to act.
 - **Restarting mid-turn.** It cuts off the work in flight; the menu waits for
   the turn to end instead.
+
+## ADR-055 — Multi-repo projects: a folder of repositories is one project, its members named, its agents given each other repository
+
+**Date:** 2026-10-12 · **Status:** accepted (owner asked for it, translated:
+"It must be easy to create new projects or open projects — both monorepo and
+several repos. This is very important and must be done carefully.")
+
+**Context.** A project was one git repository (a monorepo already got its
+per-directory cost) or one plain folder. A person whose work is `~/work/api`,
+`~/work/web` and `~/work/infra` had three rows, three costs to add up, and
+agents that could reach only the repository they started in. Adding
+`~/work` itself listed a folder with no git state and no split.
+
+What the agents allow was read from their own `--help`, not from memory:
+
+- Claude Code 2.1.296: `--add-dir <directories...>`, "Additional directories
+  to allow tool access to". It is **variadic**: its option parser (commander,
+  read in the binary) keeps taking words after `--add-dir a` until the next
+  option, so a first message passed as the positional prompt after it became
+  a directory. `--add-dir=a` takes exactly one value. Caprock already passed
+  its paste and chat folders as `--add-dir a`; a start with a first message
+  and no project instructions lost the message to that.
+- codex-cli 0.161.0: `--add-dir <DIR>`, "Additional directories that should
+  be writable alongside the primary workspace", one per flag.
+- Gemini CLI: `--include-directories`, an array option.
+- OpenCode and Grok Build: no such flag.
+
+**Decision.**
+
+- **Adding a folder that holds two or more repositories asks once** —
+  two levels deep at most, never inside a repository, hidden folders and
+  dependency trees (`node_modules`, `vendor`, …) skipped, the walk capped:
+  *One project of N repositories* (the default) or *N separate projects*,
+  each repository a checkbox. A folder inside one repository asks nothing.
+- **A multi-repo project is the folder plus named members**
+  (`project_repos`, migration 0050). A repository is a member of one
+  project; a repository listed on its own is folded in (unlisted, its
+  sessions now count here). A member's sessions never list it again.
+- **Attribution is by containment, the closest match winning**: a
+  session's repository root (else its cwd) goes to the longest project root
+  or member that holds it, a member winning a tie. The project's sessions and
+  today's spend sum its members and the folder; each member has its own
+  share. Monorepos are unchanged.
+- **Agents start in the folder** and so already reach every member below
+  it. One started inside a member (or in a worktree, or with a member outside
+  the folder) gets each other member: `--add-dir=<repo>` for Claude Code,
+  `--add-dir <repo>` for Codex, `--include-directories=<repo>` for Gemini.
+  OpenCode and Grok start without them. Every `--add-dir` is now written in
+  the `=` form, which also fixes the swallowed first message.
+- **Git per member, never watched.** A member's `git status` runs once on
+  add, edit and daemon start, after an agent edits in it (2 s debounce), and
+  when the project page asks (at most every 30 s). No fsnotify tree per
+  member and no timer; `GET /v1/projects`, polled every minute by the app,
+  never runs git for members. Open pull requests per member are read only
+  when the project page opens (`GET /v1/projects/{id}/repos`), one
+  conditional GET per repository, kept 60 s.
+- **Editing**: rename; tick or untick members; *Rescan* the folder for new
+  repositories; merge repository projects in; split into one project per
+  member (an absorbed project comes back with its old name and settings).
+  Nothing deletes a file. Scan, split and merge are the machine's; a paired
+  controller may add or edit members under home.
+
+**Not chosen.**
+
+- **A chosen primary repository to start agents in.** Starting in the
+  folder reaches every member without a flag; a primary is a later choice
+  if the folder proves wrong for someone.
+- **Watching every member like a repository project.** A folder of twelve
+  repositories would be twelve more fsnotify trees for state that matters
+  when someone looks.
+- **A new project kind.** The table's `kind` CHECK would need a rebuild;
+  members are a property of a folder project, and an empty member list makes
+  it an ordinary one again.
+- **Merging projects that share only the home folder.** An agent started in
+  home reaches everything; the merge is refused with the reason.

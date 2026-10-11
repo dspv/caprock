@@ -151,6 +151,8 @@ type Service struct {
 	track *tracker
 	// items keeps the issue picker's answers for itemsTTL (issues.go).
 	items map[string]itemsCached
+	// openPRs keeps each repository's open pull request count (repoprs.go).
+	openPRs map[string]prCount
 	// byURL keeps the pull requests read by their links (byurl.go).
 	byURL byURLCache
 	// ci keeps commits' Actions runs and failed jobs' log tails (actions.go).
@@ -499,6 +501,7 @@ func (s *Service) Disconnect(ctx context.Context) (Status, error) {
 	s.mu.Lock()
 	s.stored = false
 	s.items = nil
+	s.openPRs = nil
 	s.tok, s.tokSource = "", ""
 	s.user, s.scopes, s.scopesOK, s.kind, s.checkedAt = nil, nil, false, "", 0
 	s.lastOK, s.lastErr = 0, nil

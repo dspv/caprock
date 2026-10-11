@@ -76,6 +76,85 @@ export interface ApiProject {
   /** Sent alone with `id` when the project is unlisted. */
   removed?: boolean
   defaults?: ProjectDefaults
+  /** A multi-repo project's member repositories (ADR-055); absent otherwise. */
+  repos?: ApiRepo[]
+}
+
+/** One member of a multi-repo project on the wire (`RepoView`). */
+export interface ApiRepo {
+  path: string
+  /** Below the project's folder, forward slashes: `api`, `services/web`. */
+  name: string
+  exists?: boolean
+  git?: ApiGitStatus | null
+  sessions?: { live: number; waiting: number; total: number }
+  cost_today?: number
+  last_activity?: number
+  /** Open pull requests on GitHub, when `GET …/repos` was asked and GitHub is connected. */
+  open_prs?: number
+  prs_error?: string
+}
+
+/** A member repository, flattened like `Project`. */
+export interface RepoInfo {
+  path: string
+  name: string
+  exists: boolean
+  branch?: string
+  ahead?: number
+  behind?: number
+  changed?: number
+  gitError?: string
+  remote_url?: string
+  live: number
+  waiting: number
+  total: number
+  cost_today: number
+  last_activity?: number
+  open_prs?: number
+  prs_error?: string
+}
+
+/** The wire member, flattened. */
+export function fromApiRepo(r: ApiRepo): RepoInfo {
+  const git = r.git ?? undefined
+  return {
+    path: r.path,
+    name: r.name || folderName(r.path),
+    exists: r.exists !== false,
+    branch: git ? branchLabel(git.branch) || (git.detached ? 'detached' : undefined) : undefined,
+    ahead: git?.ahead,
+    behind: git?.behind,
+    changed: git?.changed,
+    gitError: git?.error || undefined,
+    remote_url: git?.remote_url || undefined,
+    live: r.sessions?.live ?? 0,
+    waiting: r.sessions?.waiting ?? 0,
+    total: r.sessions?.total ?? 0,
+    cost_today: r.cost_today ?? 0,
+    last_activity: r.last_activity,
+    open_prs: r.open_prs,
+    prs_error: r.prs_error,
+  }
+}
+
+/** One repository a scan found below a folder (`GET /v1/projects/scan`). */
+export interface FoundRepo {
+  path: string
+  name: string
+  /** Listed as a project of its own. */
+  project_id?: number
+  project_name?: string
+  /** A member of this multi-repo project. */
+  member_of?: number
+}
+
+/** What adding a folder would add: the repository it is in, or the ones below it. */
+export interface ScanResult {
+  root: string
+  repo_root?: string
+  repos: FoundRepo[]
+  capped?: boolean
 }
 
 /**
@@ -127,6 +206,8 @@ export interface Project {
   cost_today?: number
   last_activity?: number
   defaults?: ProjectDefaults
+  /** A multi-repo project's member repositories (ADR-055); absent for one repository or folder. */
+  repos?: RepoInfo[]
 }
 
 /** A `project` frame on /v1/live: the whole project, or `{id, removed: true}`. */
@@ -146,7 +227,7 @@ export interface OpFrame {
 }
 
 export type AddProjectRequest =
-  | { path: string }
+  | { path: string; repos?: string[] }
   | { create: { parent: string; name: string; git_init?: boolean } }
   | { clone: { url: string; parent: string; name?: string }; op_id: string }
 
@@ -195,6 +276,7 @@ export function fromApiProject(p: ApiProject): Project {
     cost_today: p.cost_today,
     last_activity: p.last_activity,
     defaults: p.defaults,
+    ...(Array.isArray(p.repos) && p.repos.length > 0 ? { repos: p.repos.map(fromApiRepo) } : {}),
     worktrees: (p.worktrees ?? [])
       .filter((w) => !w.missing)
       .map((w) => ({ name: w.name, path: w.path, branch: checkoutLabel(w.branch, w.head), changed: w.changed, caprock: w.caprock })),
@@ -307,8 +389,28 @@ export const projectsApi = {
     const v = await call<{ ops?: OpFrame[] }>('Clone progress', '/v1/projects/ops')
     return Array.isArray(v?.ops) ? v.ops.filter((o) => o && typeof o.op_id === 'string') : []
   },
-  patch: async (id: string, patch: Partial<Pick<Project, 'name' | 'pinned' | 'sort' | 'defaults'>>): Promise<Project> => {
+  patch: async (id: string, patch: Partial<Pick<Project, 'name' | 'pinned' | 'sort' | 'defaults'>> & { repos?: string[] }): Promise<Project> => {
     const v = await call<{ project: ApiProject }>('Editing a project', `/v1/projects/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch })
+    return fromApiProject(v.project)
+  },
+  /** GET /v1/projects/scan: what adding a folder would add (ADR-055). */
+  scan: async (path: string): Promise<ScanResult> => {
+    const v = await call<ScanResult>('Finding repositories', `/v1/projects/scan?path=${encodeURIComponent(path)}`)
+    return { root: v?.root ?? path, repo_root: v?.repo_root || undefined, repos: Array.isArray(v?.repos) ? v.repos.filter((r) => r && typeof r.path === 'string') : [], capped: !!v?.capped }
+  },
+  /** GET /v1/projects/{id}/repos: the members with fresh git state and open pull requests. */
+  repos: async (id: string): Promise<RepoInfo[]> => {
+    const v = await call<{ repos?: ApiRepo[] }>('Repositories', `/v1/projects/${encodeURIComponent(id)}/repos`)
+    return Array.isArray(v?.repos) ? v.repos.filter((r) => r && typeof r.path === 'string').map(fromApiRepo) : []
+  },
+  /** POST /v1/projects/{id}/split: each member becomes a project of its own. */
+  split: async (id: string): Promise<Project[]> => {
+    const v = await call<{ projects?: ApiProject[] }>('Splitting a project', `/v1/projects/${encodeURIComponent(id)}/split`, { method: 'POST', body: {} })
+    return Array.isArray(v?.projects) ? v.projects.map(fromApiProject) : []
+  },
+  /** POST /v1/projects/merge: one multi-repo project of these projects' repositories. */
+  merge: async (ids: string[]): Promise<Project> => {
+    const v = await call<{ project: ApiProject }>('Merging projects', '/v1/projects/merge', { method: 'POST', body: { ids: ids.map(Number) } })
     return fromApiProject(v.project)
   },
   /** DELETE /v1/projects/{id}: unlists it; nothing on disk is touched. */
@@ -463,6 +565,10 @@ export function disambiguate(list: Project[]): Project[] {
  * the main checkout.
  */
 export function worktreeKeyOf(s: Pick<SessionSummary, 'cwd' | 'worktree'>, project: Project): string {
+  // In a multi-repo project the row is the member repository the session
+  // is in, keyed by its path (ADR-055).
+  const member = memberOf(s.cwd, project)
+  if (member) return `repo:${member.path}`
   const wts = (project.worktrees ?? []).filter((w) => w.path && w.path !== project.root)
   let best: Worktree | undefined
   for (const w of wts) {
@@ -476,7 +582,36 @@ export function worktreeKeyOf(s: Pick<SessionSummary, 'cwd' | 'worktree'>, proje
 
 /** Whether a session belongs to a project. */
 export function inProject(s: Pick<SessionSummary, 'cwd' | 'repo_root'>, project: Project): boolean {
+  return matchLength(s, project) >= 0
+}
+
+/** Whether `dir` is `root` or below it, in either separator. */
+export function pathWithin(dir: string, root: string): boolean {
+  if (!root) return false
+  return dir === root || dir.startsWith(`${root}/`) || dir.startsWith(`${root}\\`)
+}
+
+/** The member repository of a multi-repo project that holds `dir`, the deepest one. */
+export function memberOf(dir: string, project: Pick<Project, 'repos'>): RepoInfo | undefined {
+  let best: RepoInfo | undefined
+  for (const r of project.repos ?? []) {
+    if (pathWithin(dir, r.path) && (!best || r.path.length > best.path.length)) best = r
+  }
+  return best
+}
+
+/**
+ * How closely a project holds a session: the length of its root or member
+ * repository that holds the session's folder, the longest; -1 when it does
+ * not. The sidebar gives a session to the closest project, as the daemon's
+ * attribution does (a member wins a tie with a root).
+ */
+export function matchLength(s: Pick<SessionSummary, 'cwd' | 'repo_root'>, project: Project): number {
   const root = sessionRoot(s)
-  if (root === project.root) return true
-  return s.cwd === project.root || s.cwd.startsWith(`${project.root}/`) || s.cwd.startsWith(`${project.root}\\`)
+  let best = -1
+  if (root === project.root || pathWithin(s.cwd, project.root)) best = project.root.length
+  for (const r of project.repos ?? []) {
+    if ((root && pathWithin(root, r.path)) || pathWithin(s.cwd, r.path)) best = Math.max(best, r.path.length + 0.5)
+  }
+  return best
 }

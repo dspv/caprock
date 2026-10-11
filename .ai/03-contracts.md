@@ -1740,10 +1740,14 @@ protection).
 
 ```
 GET    /v1/projects                        → {projects: [Project]}; pinned first, then sort, then name
-POST   /v1/projects                        {path} | {create: {parent, name, git_init?}} | {clone: {url, parent, name?}, op_id?}
+POST   /v1/projects                        {path, repos?} | {create: {parent, name, git_init?}} | {clone: {url, parent, name?}, op_id?}
                                            path, create → 200 {project, created}; clone → 202 {op, existing}
 GET    /v1/projects/ops                    → {ops: [Op]}; clones running or ended in the last hour, newest first
-PATCH  /v1/projects/{id}                   {name?, pinned?, sort?, defaults?: {agent?, model?, permission_mode?, system_prompt?, setup_command?}} → {project}
+GET    /v1/projects/scan?path=             → ScanResult; what adding a folder would add (machine only)
+POST   /v1/projects/merge                  {ids: [id, id, …]} → {project}; one multi-repo project (machine only)
+PATCH  /v1/projects/{id}                   {name?, pinned?, sort?, defaults?: {agent?, model?, permission_mode?, system_prompt?, setup_command?}, repos?} → {project}
+GET    /v1/projects/{id}/repos             → {repos: [RepoView]}; a multi-repo project's members, with open pull requests
+POST   /v1/projects/{id}/split             → {projects: [Project]}; one project per member, this one unlisted (machine only)
 DELETE /v1/projects/{id}                   → 204; unlists it: nothing on disk is touched, no session or cost changes
 GET    /v1/projects/{id}/worktrees         → {worktrees: [Worktree]}
 POST   /v1/projects/{id}/worktrees         {branch, create?, base?} → {worktree: {path, branch, tracks?, copied?}}
@@ -1758,7 +1762,7 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
 - **`Project`** — `{id, name, root, kind: "repo"|"folder", source:
   "seed"|"session"|"folder"|"new"|"clone", pinned, sort, added_at, archived?,
   exists, defaults, git, sessions: {live, waiting, total}, cost_today,
-  last_activity, worktrees: [Worktree], removed?}`. `root` is in the OS's own
+  last_activity, worktrees: [Worktree], repos?: [RepoView], removed?}`. `root` is in the OS's own
   form (backslashes on Windows), so it can be sent back as a `cwd`. `git` is
   `null` for a folder and otherwise `{branch, detached?, dirty, changed,
   ahead, behind, upstream?, default_branch?, remote_url?, error?, at}`:
@@ -1770,6 +1774,61 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   live with a main-thread `agent.stop` or a `permission.prompt` as its newest
   event, and `cost_today` is the non-internal events since local midnight. A
   `project` frame with `removed: true` and only `id` is sent on unlisting.
+- **Multi-repo projects** (2026-10-12, [ADR-055](08-decisions.md);
+  `internal/projects/multirepo.go`, `internal/api/multirepo.go`). A folder
+  project with member repositories (`project_repos`, migration 0050); `repos`
+  is absent for an ordinary project.
+  - **`ScanResult`** — `{root, repo_root?, repos: [{path, name, project_id?,
+    project_name?, member_of?}], capped?}`. `repo_root` is set when the folder
+    is inside a repository (nothing to choose); otherwise `repos` are the
+    folders with a `.git` at most two levels below, sorted by path, `name`
+    the path below `root` with `/`. A repository is not descended into;
+    hidden folders, `node_modules`, `vendor`, `Pods`, `__pycache__` and
+    `target` are skipped, symbolic links to folders followed, and below a
+    folder macOS does not guard a guarded one is not opened. At most 4,000
+    folders opened and 200 repositories (`capped`). `project_id` marks a
+    repository listed on its own, `member_of` one in a multi-repo project.
+  - **Adding** `{path, repos}` lists `path` (an existing folder, not inside a
+    repository) as one project of `repos` — two or more, each a folder inside
+    a repository, which names that repository's root; at most 100. A
+    repository listed as a project of its own is unlisted (folded in); one
+    that was another project's member moves. `repos` without `path` is `400`.
+  - **`PATCH` `repos`** replaces the members whole (`[]` makes the project
+    an ordinary folder again); the project's own folder cannot be one. A
+    removed member is neither deleted nor listed. From a paired controller
+    every path must be absolute and under home (`403`).
+  - **`RepoView`** — `{path, name, exists, git: GitStatus | null, sessions:
+    {live, waiting, total}, cost_today, last_activity, open_prs?,
+    prs_error?}`. `git` is null until git first answers.
+  - **Attribution.** A session's directory key (repository root, else cwd)
+    goes to the project whose root or member holds it most closely, the
+    longest path winning and a member winning a tie; the project's
+    `sessions` and `cost_today` include its members and its folder, and each
+    member's `RepoView` its own share. `projects.ProjectFor` (instructions,
+    setup command) follows the same rule.
+  - **Agents.** A session Caprock starts in a multi-repo project gets every
+    member that neither holds its folder nor lies inside it, and exists:
+    Claude Code `--add-dir=<path>`, Codex `--add-dir <path>`, Gemini
+    `--include-directories=<path>`; OpenCode and Grok none. Every Claude Code
+    `--add-dir` (Caprock's own folders included) is written `--add-dir=<path>`:
+    the flag is variadic and would otherwise take a following positional
+    prompt as a directory (read in 2.1.296).
+  - **Git state.** Members are never watched. One `git status` per member on
+    add, on edit, at daemon start, 2 s after an agent's edit tool in it, and
+    on `GET …/repos` when its last answer is older than 30 s; each sends a
+    `project` frame. `GET /v1/projects` runs no git for members.
+  - **Open pull requests** are read on `GET …/repos` only, for members whose
+    `origin` is on github.com while GitHub is connected: `GET
+    /repos/{o}/{r}/pulls?state=open&per_page=100` (conditional), the count
+    kept 60 s per repository. `prs_error` says why there is none.
+  - **Split** relists each member as a repository project (one unlisted
+    before keeps its name and settings), clears the members and unlists this
+    project. **Merge** takes repository projects and at most one multi-repo
+    project: their repositories become the members of the multi-repo one,
+    or of a new project at the deepest folder holding them all — refused when
+    that is the home folder or a filesystem root; the others are unlisted.
+    Neither touches a file. `GET …/repos` is open to every paired device;
+    scan, split and merge to none.
 - **`Worktree`** — `{name, path, branch?, head?, caprock, locked?, missing?,
   dirty, changed, error?}`, read from `<git common dir>/worktrees/*` without
   running git; `caprock` is true for one under `<root>/.caprock-worktrees/`.
@@ -2447,6 +2506,22 @@ CREATE TABLE IF NOT EXISTS projects (
 separator), so the two join on equality. Cost attribution still uses
 `sessions.repo_root` and `sessions.project`: adding or unlisting a project
 changes no total.
+
+### Project repositories DDL (migration 0050)
+
+```sql
+CREATE TABLE IF NOT EXISTS project_repos (
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  path       TEXT    NOT NULL,             -- normalised like sessions.repo_root
+  added_at   INTEGER NOT NULL,             -- unix ms
+  PRIMARY KEY (project_id, path)
+);
+CREATE INDEX IF NOT EXISTS idx_project_repos_path ON project_repos(path);
+```
+
+A multi-repo project's members ([ADR-055](08-decisions.md)). The daemon keeps
+a path in one project's rows at a time. Unlisting the project keeps its rows,
+so adding its folder again brings it back as it was; a split deletes them.
 
 ### Reclassifying the /clear events already recorded (migration 0021)
 

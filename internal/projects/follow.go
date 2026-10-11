@@ -118,6 +118,16 @@ func (s *Service) noteSession(ctx context.Context, sess store.Session) {
 	if !ok {
 		return
 	}
+	if want == "git" {
+		// An edit in a member repository of a multi-repo project asks git
+		// about that member only (ADR-055); members are not watched.
+		for _, m := range s.Repos(p.ID) {
+			if store.DirWithin(store.NormalizeDir(sess.Cwd), m) || store.DirWithin(dir, m) {
+				s.refreshMember(m, editDebounce)
+				return
+			}
+		}
+	}
 	if want == "git" && p.Kind == store.ProjectKindRepo {
 		s.schedule(p.ID, "", editDebounce)
 		return

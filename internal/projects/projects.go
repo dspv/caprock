@@ -82,6 +82,10 @@ type View struct {
 	CostToday    float64        `json:"cost_today"`
 	LastActivity int64          `json:"last_activity"`
 	Worktrees    []WorktreeView `json:"worktrees"`
+	// Repos are the member repositories of a multi-repo project (ADR-055),
+	// each with its own git state and share of the activity; absent for an
+	// ordinary project.
+	Repos []RepoView `json:"repos,omitempty"`
 	// Removed is set on the frame sent when a project is taken off the list.
 	Removed bool `json:"removed,omitempty"`
 }
@@ -115,6 +119,10 @@ type Service struct {
 	frames   map[int64]*time.Timer
 	sessRoot map[string]string // session id -> its directory key, from session frames
 	pending  map[string]string // session id -> what its last event asks for ("git", "frame")
+	// members are each multi-repo project's member repositories
+	// (normalised), and mgit their cached git answers (multirepo.go).
+	members map[int64][]string
+	mgit    map[string]*memberGit
 
 	// changeLocks holds one mutex per worktree folder: writes to one index
 	// never race (changes.go).
@@ -178,6 +186,8 @@ func (s *Service) init() {
 	s.frames = map[int64]*time.Timer{}
 	s.sessRoot = map[string]string{}
 	s.pending = map[string]string{}
+	s.members = map[int64][]string{}
+	s.mgit = map[string]*memberGit{}
 }
 
 // Start seeds the list on first run, starts watching every listed
@@ -203,12 +213,29 @@ func (s *Service) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	members, err := store.ProjectRepos(ctx, s.Store.DB())
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.members = members
+	for _, ms := range members {
+		for _, m := range ms {
+			s.known[m] = true
+		}
+	}
+	s.mu.Unlock()
 	for _, p := range all {
 		s.mu.Lock()
 		s.known[p.Root] = true
 		s.mu.Unlock()
 		if p.ArchivedAt == 0 {
 			s.track(p)
+			// A multi-repo project's members are asked once, like every
+			// repository at start; after that only when something happens.
+			for _, m := range members[p.ID] {
+				s.refreshMember(m, 0)
+			}
 		}
 	}
 	if s.Bus != nil {
@@ -235,6 +262,12 @@ func (s *Service) Close() {
 	for id, t := range s.frames {
 		t.Stop()
 		delete(s.frames, id)
+	}
+	for _, g := range s.mgit {
+		if g.timer != nil {
+			g.timer.Stop()
+			g.timer = nil
+		}
 	}
 	s.mu.Unlock()
 	if s.watch != nil {
@@ -347,48 +380,88 @@ func (s *Service) Get(ctx context.Context, id int64) (View, error) {
 	return s.view(p, act), nil
 }
 
-// activity is each project's sessions and spend, keyed by project id.
-func (s *Service) activity(ctx context.Context) (map[int64]*store.ProjectActivity, error) {
+// projectActivity is the activity attributed to projects, and — for the
+// multi-repo ones — to each member repository.
+type projectActivity struct {
+	byProject map[int64]*store.ProjectActivity
+	byMember  map[string]*store.ProjectActivity
+}
+
+// activity is each project's sessions and spend, keyed by project id. A
+// session's directory key (its repository root, else its cwd) goes to the
+// project whose root or member repository holds it most closely: the
+// longest match wins, and a member wins a tie with a root (ADR-055).
+func (s *Service) activity(ctx context.Context) (projectActivity, error) {
+	out := projectActivity{byProject: map[int64]*store.ProjectActivity{}, byMember: map[string]*store.ProjectActivity{}}
 	now := s.Now()
 	y, m, d := now.Date()
 	midnight := time.Date(y, m, d, 0, 0, 0, 0, now.Location()).UnixMilli()
 	byDir, err := store.ProjectActivityByDir(ctx, s.Store.DB(), midnight)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 	ps, err := store.ListProjects(ctx, s.Store.DB(), true)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
-	out := map[int64]*store.ProjectActivity{}
+	s.mu.Lock()
+	owner := s.memberOwnerLocked()
+	s.mu.Unlock()
 	for dir, a := range byDir {
-		best, bestLen := int64(0), -1
-		for _, p := range ps {
-			if len(p.Root) > bestLen && store.DirWithin(dir, p.Root) {
-				best, bestLen = p.ID, len(p.Root)
-			}
-		}
+		best, bestLen, member := attribute(dir, ps, owner)
 		if bestLen < 0 {
 			continue
 		}
-		t, ok := out[best]
+		t, ok := out.byProject[best]
 		if !ok {
 			t = &store.ProjectActivity{}
-			out[best] = t
+			out.byProject[best] = t
 		}
-		t.Total += a.Total
-		t.Live += a.Live
-		t.Waiting += a.Waiting
-		t.CostToday += a.CostToday
-		if a.LastActivity > t.LastActivity {
-			t.LastActivity = a.LastActivity
+		addActivity(t, a)
+		if member != "" {
+			t, ok := out.byMember[member]
+			if !ok {
+				t = &store.ProjectActivity{Dir: member}
+				out.byMember[member] = t
+			}
+			addActivity(t, a)
 		}
 	}
 	return out, nil
 }
 
+// attribute is the project a session's directory key belongs to: the
+// longest project root or member repository holding it, a member winning a
+// tie. member is that member, "" when a root won; bestLen is -1 when no
+// project holds dir.
+func attribute(dir string, ps []store.Project, owner map[string]int64) (best int64, bestLen int, member string) {
+	bestLen = -1
+	for _, p := range ps {
+		if len(p.Root) > bestLen && store.DirWithin(dir, p.Root) {
+			best, bestLen = p.ID, len(p.Root)
+		}
+	}
+	for mp, id := range owner {
+		if len(mp) >= bestLen && store.DirWithin(dir, mp) && (member == "" || len(mp) > len(member)) {
+			best, bestLen, member = id, len(mp), mp
+		}
+	}
+	return best, bestLen, member
+}
+
+// addActivity adds a's counts and spend to t.
+func addActivity(t, a *store.ProjectActivity) {
+	t.Total += a.Total
+	t.Live += a.Live
+	t.Waiting += a.Waiting
+	t.CostToday += a.CostToday
+	if a.LastActivity > t.LastActivity {
+		t.LastActivity = a.LastActivity
+	}
+}
+
 // view assembles a project's View from its row, the git cache and activity.
-func (s *Service) view(p store.Project, act map[int64]*store.ProjectActivity) View {
+func (s *Service) view(p store.Project, act projectActivity) View {
 	root := filepath.FromSlash(p.Root)
 	v := View{ID: p.ID, Name: p.Name, Root: root, Kind: p.Kind, Source: p.Source, Pinned: p.Pinned, Sort: p.Sort,
 		AddedAt: p.AddedAt, Archived: p.ArchivedAt != 0, Defaults: json.RawMessage(p.Defaults), Worktrees: []WorktreeView{}}
@@ -398,9 +471,12 @@ func (s *Service) view(p store.Project, act map[int64]*store.ProjectActivity) Vi
 	if st, err := os.Stat(root); err == nil && st.IsDir() {
 		v.Exists = true
 	}
-	if a := act[p.ID]; a != nil {
+	if a := act.byProject[p.ID]; a != nil {
 		v.Sessions = Sessions{Live: a.Live, Waiting: a.Waiting, Total: a.Total}
 		v.CostToday, v.LastActivity = a.CostToday, a.LastActivity
+	}
+	if members := s.Repos(p.ID); len(members) > 0 {
+		v.Repos = s.repoViews(p, members, act.byMember)
 	}
 	if p.Kind != store.ProjectKindRepo {
 		return v
@@ -511,6 +587,9 @@ type Patch struct {
 	Pinned   *bool            `json:"pinned,omitempty"`
 	Sort     *int64           `json:"sort,omitempty"`
 	Defaults *json.RawMessage `json:"defaults,omitempty"`
+	// Repos replaces a project's member repositories (ADR-055); [] makes a
+	// multi-repo project an ordinary one.
+	Repos *[]string `json:"repos,omitempty"`
 }
 
 // Update applies a patch and returns the project after it.
@@ -530,8 +609,20 @@ func (s *Service) Update(ctx context.Context, id int64, patch Patch) (View, erro
 		}
 		sp.Defaults = &d
 	}
+	var members []string
+	if patch.Repos != nil {
+		var err error
+		if members, err = checkRepos(*patch.Repos); err != nil {
+			return View{}, err
+		}
+	}
 	if err := store.UpdateProject(ctx, s.Store.DB(), id, sp); err != nil {
 		return View{}, err
+	}
+	if patch.Repos != nil {
+		if _, err := s.SetRepos(ctx, id, osPaths(members)); err != nil {
+			return View{}, err
+		}
 	}
 	if p, err := store.GetProject(ctx, s.Store.DB(), id); err == nil && p.ArchivedAt == 0 {
 		s.mu.Lock()
@@ -760,10 +851,23 @@ func (s *Service) ProjectFor(dir string) (store.Project, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var best store.Project
-	found := false
+	found, bestLen := false, -1
 	for _, p := range s.projects {
-		if store.DirWithin(dir, p.Root) && (!found || len(p.Root) > len(best.Root)) {
-			best, found = p, true
+		if store.DirWithin(dir, p.Root) && len(p.Root) > bestLen {
+			best, found, bestLen = p, true, len(p.Root)
+		}
+	}
+	// A member repository of a multi-repo project — inside its root or not —
+	// belongs to that project, and wins a tie with a root.
+	for id, ms := range s.members {
+		p, listed := s.projects[id]
+		if !listed {
+			continue
+		}
+		for _, m := range ms {
+			if store.DirWithin(dir, m) && len(m) >= bestLen {
+				best, found, bestLen = p, true, len(m)
+			}
 		}
 	}
 	return best, found
