@@ -36,7 +36,7 @@ export function RepoChoice({
     </label>
   )
   return (
-    <section aria-label="Repositories found" className="grid gap-2 rounded-[10px] border border-[var(--app-hairline)] p-3">
+    <section aria-label="Repositories found" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-[10px] border border-[var(--app-hairline)] p-3">
       <p className="text-[12.5px] text-fg">
         This folder holds {reposLabel(n)}{scan.capped ? ' (and maybe more: the search stopped early)' : ''}. Add them as
       </p>

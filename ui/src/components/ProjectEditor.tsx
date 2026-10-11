@@ -98,11 +98,11 @@ export function ProjectEditor({ project, projects, onClose }: { project: Project
         </>
       }
     >
-      <div className="grid gap-4 px-5 py-4">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 px-5 py-4">
         <SheetField label="Name">
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
         </SheetField>
-        <div className="grid gap-1.5">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5">
           <div className="flex items-baseline gap-2">
             <span className="text-[12.5px] font-medium text-fg">Repositories</span>
             <span className="mono min-w-0 truncate text-[12px] text-fg-faint" title={project.root}>{project.root}</span>
@@ -134,7 +134,7 @@ export function ProjectEditor({ project, projects, onClose }: { project: Project
           {removed > 0 && <p className="text-[12px] text-fg-muted">{removed} will leave the project. Their folders and files stay as they are.</p>}
         </div>
         {candidates.length > 0 && (
-          <div className="grid gap-1.5">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5">
             <span className="text-[12.5px] font-medium text-fg">Merge in</span>
             <ul aria-label="Projects to merge in" className="grid max-h-[160px] gap-0.5 overflow-y-auto">
               {candidates.map((p) => (

@@ -29,7 +29,7 @@ export function ProjectRepos({ project, projects }: { project: Project; projects
   const total = repos.reduce((s, r) => s + r.cost_today, 0)
   const outside = Math.max(0, (project.cost_today ?? 0) - total)
   return (
-    <section aria-label="Repositories" className="grid gap-2">
+    <section aria-label="Repositories" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
       <div className="flex items-baseline gap-2">
         <h2 className="text-[12px] font-medium uppercase tracking-[0.06em] text-fg-muted">{reposLabel(repos.length)}</h2>
         <span className="text-[12px] tabular-nums text-fg-faint">today {fmtUSD(project.cost_today ?? 0)}</span>
@@ -37,7 +37,7 @@ export function ProjectRepos({ project, projects }: { project: Project; projects
           Edit
         </button>
       </div>
-      <ul className="grid gap-px overflow-hidden rounded-[8px] border border-[var(--app-hairline)]">
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-px overflow-hidden rounded-[8px] border border-[var(--app-hairline)] bg-[var(--app-hairline)]">
         {repos.map((r) => {
           const pr = prs.get(r.path)
           const share = (project.cost_today ?? 0) > 0 ? Math.round((r.cost_today / (project.cost_today ?? 1)) * 100) : 0
