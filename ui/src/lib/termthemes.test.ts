@@ -40,10 +40,15 @@ describe('terminal palettes', () => {
 
   it('reads the app’s look off <html>', () => {
     const root = document.createElement('html')
-    expect(appLook(root)).toEqual({ theme: 'dark', tone: 'paper' })
+    expect(appLook(root)).toEqual({ theme: 'dark', tone: 'paper', dark: 'graphite' })
     root.setAttribute('data-theme', 'light')
     root.setAttribute('data-tone', 'white')
-    expect(appLook(root)).toEqual({ theme: 'light', tone: 'white' })
+    expect(appLook(root)).toEqual({ theme: 'light', tone: 'white', dark: 'graphite' })
+  })
+
+  it('gives Match app the cool Slate palette when the app is dark in Slate', () => {
+    expect(terminalTheme(MATCH_APP_THEME, { theme: 'dark', tone: 'paper', dark: 'slate' }).id).toBe('slate')
+    expect(terminalTheme(MATCH_APP_THEME, { theme: 'dark', tone: 'paper', dark: 'graphite' }).id).toBe('caprock')
   })
 
   it('gives every palette all 21 colours as #rrggbb, with unique ids', () => {

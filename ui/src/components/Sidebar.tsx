@@ -1,15 +1,17 @@
 /**
  * The app's sidebar (WP-06): New agent, Quick chat and Add project, the Today
- * strip (spend, agents running and waiting, the plan windows), what is
- * waiting on you when something is, then the projects, then the way into the
- * dashboard.
+ * strip (spend, agents running and waiting, the plan windows), then the
+ * projects, then the way into the dashboard. There is no separate Waiting on
+ * you block (owner, 2026-10-11, translated: "not needed at all — everything
+ * is already visible in Projects"): what waits is marked on its own row under
+ * its project, and the Today strip's Waiting count opens the first of them.
  *
  * The projects are an accordion (owner, 2026-10-09: "which one is active,
  * which to pick, unclear", translated): the current project is open, and so
  * is every project where something runs or waits (owner, 2026-10-11), each
  * with exactly the tabs the strip shows for it. Picking another
- * project makes it current; nothing is expanded or collapsed by hand. The
- * one highlighted row in the sidebar is the tab in front.
+ * project makes it current; the chevron folds one by hand. The one
+ * highlighted row in the sidebar is the tab in front.
  *
  * Keyboard: Tab reaches every row; ↑ and ↓ move between rows, Enter opens
  * what the row names.
@@ -20,30 +22,34 @@
  * A project's × closes it: its tabs close and it moves under Hidden, unless
  * something still runs in it (components/ProjectRow.tsx). Each project's ⋯
  * menu (or a right-click, or Shift+F10 on its row) hides it, closes its tabs,
- * opens it in an editor or removes it from Caprock.
+ * opens it in an editor or removes it from Caprock. Every row under a
+ * project can be closed or hidden from its own ×, and hidden rows come back
+ * from "N hidden · show" (components/ProjectRow.tsx).
  */
 import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { groupProjects, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
+import { groupProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
 import type { Tab } from '@/lib/tabs'
 import type { TabLabel } from '@/lib/tablabels'
 import type { ProjectSource } from '@/lib/projects'
 import type { ProjectShellsOutcome } from '@/lib/closeShell'
 import type { EditorList, SessionSummary, Summary } from '@/lib/api'
 import { buildToday } from '@/lib/today'
-import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { ThemeMenu } from './ThemePicker'
-import { keepsProject, ProjectRow, StatusDot } from './ProjectRow'
+import { keepsProject, ProjectRow } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { TodayStrip } from './TodayStrip'
-import { AgentGlyph } from './AgentMarks'
 import { FeedbackButton } from './Feedback'
 import { CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 import { keys, tabDigit } from '@/lib/appkeys'
 
 /** Project ids hidden by hand: this browser's. */
 export const HIDDEN_KEY = 'caprock.app.hidden-projects'
+/** Session rows hidden by hand under their project, with when: this browser's (ProjectRow). */
+export const HIDDEN_SESSIONS_KEY = 'caprock.app.hidden-sessions'
+/** How many hidden rows are remembered; the oldest go first. Ended sessions are not listed anyway. */
+const HIDDEN_SESSIONS_MAX = 300
 /** Which of the folded groups are open, and `footer` when the bottom block is collapsed. */
 export const FOLDS_KEY = 'caprock.app.project-folds'
 
@@ -61,6 +67,21 @@ function loadIds(key: string): Set<string> {
 
 function saveIds(key: string, ids: ReadonlySet<string>) {
   try { localStorage.setItem(key, JSON.stringify([...ids])) } catch { /* not kept */ }
+}
+
+function loadHiddenSessions(): Map<string, number> {
+  try {
+    const v = JSON.parse(localStorage.getItem(HIDDEN_SESSIONS_KEY) ?? 'null') as unknown
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return new Map()
+    return new Map(Object.entries(v as Record<string, unknown>).filter((e): e is [string, number] => typeof e[1] === 'number'))
+  } catch {
+    return new Map()
+  }
+}
+
+function saveHiddenSessions(m: ReadonlyMap<string, number>) {
+  const kept = [...m].sort((a, b) => b[1] - a[1]).slice(0, HIDDEN_SESSIONS_MAX)
+  try { localStorage.setItem(HIDDEN_SESSIONS_KEY, JSON.stringify(Object.fromEntries(kept))) } catch { /* not kept */ }
 }
 
 export interface SidebarProps {
@@ -81,6 +102,7 @@ export interface SidebarProps {
   /** Opens, as a tab, a live session or shell of the current project that has none. */
   onOpenLive?: (s: SessionSummary, projectId: string) => void
   onSelectProject: (id: string) => void
+  /** Opens what waits on you: the Today strip's Waiting count opens the first. */
   onOpenInbox: (item: InboxItem) => void
   onNewAgent: (projectId: string, cwd?: string) => void
   onNewShell: (projectId: string, cwd?: string) => void
@@ -121,6 +143,18 @@ export function Sidebar(props: SidebarProps) {
   const { model, activeProjectId } = props
   const [hidden, setHidden] = useState<Set<string>>(() => loadIds(HIDDEN_KEY))
   const [folds, setFolds] = useState<Set<string>>(() => loadIds(FOLDS_KEY))
+  const [hiddenSessions, setHiddenSessions] = useState<HiddenSessions>(() => loadHiddenSessions())
+  // Hiding a row unlists it here and nowhere else: nothing is signalled, so
+  // it is safe on a session another terminal started (rule 7).
+  const onHideSession = useCallback((sessionId: string, hide: boolean) => {
+    setHiddenSessions((cur) => {
+      const next = new Map(cur)
+      if (hide) next.set(sessionId, Date.now())
+      else next.delete(sessionId)
+      saveHiddenSessions(next)
+      return next
+    })
+  }, [])
   const allTabs = props.tabs
   const tabbed = useMemo(() => new Set((allTabs ?? []).map((t) => t.projectId)), [allTabs])
   const groups = useMemo(() => groupProjects(model.projects, { hidden, activeProjectId, tabbed }), [model.projects, hidden, activeProjectId, tabbed])
@@ -232,6 +266,8 @@ export function Sidebar(props: SidebarProps) {
         onCloseProject={onCloseProject}
         onCloseTab={props.onCloseTab}
         onMenu={onMenu}
+        hiddenSessions={hiddenSessions}
+        onHideSession={onHideSession}
       />
     )
   }
@@ -318,7 +354,6 @@ export function Sidebar(props: SidebarProps) {
             onWaiting={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
           />
         )}
-        <Inbox items={model.inbox} onOpen={props.onOpenInbox} />
 
         {/* How many, and how many have something running, so the heading
           * says something (owner, 2026-10-11: "nothing on the right"). */}
@@ -430,62 +465,6 @@ export function Sidebar(props: SidebarProps) {
   )
 }
 
-/**
- * What waits on you; nothing at all when nothing does. Turns put down more
- * than 12h ago fold under the current ones, and alone they show no block:
- * a lone "Older, put down…" line was clutter (owner, 2026-10-09). They stay
- * on the Dashboard and in ⌘J.
- */
-function Inbox({ items, onOpen }: { items: InboxItem[]; onOpen: (i: InboxItem) => void }) {
-  const now = useNow(15_000)
-  const [showOlder, setShowOlder] = useState(false)
-  const fresh = items.filter((i) => !i.stale)
-  const older = items.filter((i) => i.stale)
-  const row = (it: InboxItem) => (
-    <li key={it.session.session_id} className="app-fade-in">
-      <button
-        type="button"
-        data-nav-row
-        onClick={() => onOpen(it)}
-        className="app-row grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 rounded-[7px] py-1.5 pl-2 pr-2 text-left"
-      >
-        <StatusDot dot={it.stale ? 'idle' : 'waiting'} />
-        <span className={`min-w-0 truncate text-[12.5px] font-medium ${it.stale ? 'text-fg-muted' : 'text-fg'}`}>{it.title}</span>
-        <span className="num text-[10.5px] text-fg-faint">{fmtAgo(it.since, now)}</span>
-        <span />
-        <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-fg-muted">
-          <AgentGlyph agent={it.session.agent} />
-          <span className="truncate">{it.projectName}</span>
-        </span>
-        <span className={`text-[10.5px] font-medium ${it.reason === 'permission' ? 'text-accent' : 'text-fg-faint'}`}>
-          {it.reason === 'permission' ? 'asks' : 'your turn'}
-        </span>
-      </button>
-    </li>
-  )
-  if (fresh.length === 0) return null
-  return (
-    <section aria-label="Waiting on you" className="mb-2">
-      <SectionHead label="Waiting on you" count={fresh.length} tone="accent" />
-      <ul className="grid grid-cols-1 gap-px">{fresh.map(row)}</ul>
-      {older.length > 0 && (
-        <>
-          <button
-            type="button"
-            aria-expanded={showOlder}
-            onClick={() => setShowOlder((v) => !v)}
-            className="flex h-[24px] w-full items-center gap-1.5 rounded-[6px] px-2 text-left text-[11.5px] text-fg-faint hover:text-fg-muted"
-          >
-            <span className={`inline-block transition-transform motion-reduce:transition-none ${showOlder ? 'rotate-90' : ''}`} aria-hidden>›</span>
-            Older, put down more than 12h ago ({older.length})
-          </button>
-          {showOlder && <ul className="grid grid-cols-1 gap-px">{older.map(row)}</ul>}
-        </>
-      )}
-    </section>
-  )
-}
-
 /** A folded group at the bottom of the projects: Quiet or Hidden, closed until opened. */
 function Fold({ label, title, items, open, onToggle, row }: {
   label: string
@@ -516,13 +495,10 @@ function Fold({ label, title, items, open, onToggle, row }: {
   )
 }
 
-function SectionHead({ label, count, tone = 'faint', action }: { label: string; count?: number; tone?: 'accent' | 'faint'; action?: ReactNode }) {
+function SectionHead({ label, action }: { label: string; action?: ReactNode }) {
   return (
     <div className="flex h-[28px] items-center gap-1.5 px-2 pt-1.5">
       <h2 className="text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-faint">{label}</h2>
-      {count !== undefined && count > 0 && (
-        <span className={`num text-[11px] font-semibold ${tone === 'accent' ? 'text-accent' : 'text-fg-faint'}`}>{count}</span>
-      )}
       <span className="ml-auto">{action}</span>
     </div>
   )

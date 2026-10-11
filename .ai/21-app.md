@@ -145,8 +145,19 @@ One window, three regions:
   project's). No worktree or branch rows, and no session that is not in a
   tab — those are on the project's page (*Recent*), in ⌘K and in the
   Inbox. The one highlighted row in the sidebar is the tab in front; the
-  current project's name is bold. *Waiting on you* is drawn only while
-  something waits. A **Dashboard** entry opens the existing
+  current project's name is bold. There is no *Waiting on you* section
+  (owner, 2026-10-11: "not needed at all — everything is already visible in
+  Projects", translated): a session that waits is marked on its own row,
+  amber edge and tint and *waiting* (or *asks* at a permission prompt), and
+  a project folded by hand still lists what waits in it. Every row under a
+  project can be got rid of (owner, same day: "nothing can be done … I
+  can't close it or hide it afterwards", translated): a tab row's × closes
+  the tab; a row with no tab has a × that hides it from the list, signalling
+  nothing (rule 7), and ■ beside it stops what Caprock started after a
+  confirmation. Hidden rows wait behind *N hidden · show* and come back by
+  themselves when they next wait on you. The same actions are in each row's
+  right-click / Shift+F10 menu; the buttons are 26px, on hover and focus,
+  and always shown on a touch screen ([04-ui.md](04-ui.md) § Sidebar). A **Dashboard** entry opens the existing
   screens in a Dashboard tab pinned at the left of the tab strip (2026-10-09:
   it replaced the whole workspace, and the first tester read that as every
   terminal closing, translated); in it, Now leaves out the session cards and
@@ -305,7 +316,7 @@ One window, three regions:
   permission prompt buttons). It never takes focus. Whichever surface answers — card, notification, phone — the
   daemon reads the menu on the session's screen first and types nothing when
   the option is not on it. Sessions in other tabs or behind the
-  window are reached through their badge, the Inbox, the menu bar popover,
+  window are reached through their badge, their marked row in the sidebar, ⌘J, the menu bar popover,
   the notification and the phone, which keep their buttons.
 - **Agent cockpit (right).** The inspector, open by default (⌘I closes it,
   and closed is remembered per machine), becomes the agent cockpit beside an
@@ -520,7 +531,7 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   hides the window from anywhere. New tab, close tab, next/previous tab, tab
   1–9, new session, new shell, dashboard, find.
 - **F10 — Badge.** The dock (macOS) or taskbar (Windows) badge is the number
-  of sessions waiting on you — the sidebar's inbox: a permission prompt or
+  of sessions waiting on you — the sidebar's marked rows: a permission prompt or
   your turn (`waitingOnYou`, `ui/src/lib/tray.ts`); Linux shows it where the
   desktop supports it. Until 2026-10-07 it counted prompts only, so a
   session done and waiting left the dock bare. The macOS menu bar title is
