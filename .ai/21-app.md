@@ -1127,7 +1127,9 @@ tells a page where a file lives.
   out). Every terminal listens (`ui/src/lib/xtermInput.ts`); the one whose
   box holds the point types each path with `quotePath` (double quotes, an
   inner `"` escaped, Windows backslashes kept), queued behind any upload so
-  the order holds.
+  the order holds. An image path goes in as a bracketed paste instead, so
+  Claude Code shows `[Image #N]` ([04-ui.md](04-ui.md), § Paste or drop
+  files).
 - **A file from a temporary place is copied first.** The screenshot
   thumbnail (`…/TemporaryItems/NSIRD_screencaptureui_…/`) and an image
   dragged out of another app live in a folder only the app the drop landed on

@@ -12,6 +12,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** the version panel is the version, whether it is current, when it
   was checked, the update button and *Release notes →*. The release notes
   themselves left the panel, where they were unreadable.
+- **terminal:** an image pasted, dropped or sent from the phone's photo
+  button shows in Claude Code as `[Image #1]`, `[Image #2]` instead of a long
+  path. Each image goes in as its own bracketed paste of its quoted path —
+  measured against the real `claude`, the only form it attaches; typed, the
+  path stays text. Other files, and a shell that never asked for bracketed
+  paste, still get the quoted path.
 
 ## [0.107.7] - 2026-10-11
 

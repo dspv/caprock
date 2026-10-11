@@ -76,6 +76,56 @@ export function quotePath(p: string): string {
   return `"${p.replace(/"/g, '\\"')}"`
 }
 
+// An image goes in as a paste, so Claude Code shows `[Image #1]`.
+//
+// Claude Code turns an image path into an attachment only when the path
+// arrives as a *paste* — that is how a file dragged into Terminal or iTerm
+// becomes `[Image #N]` there. Typed, the same bytes stay a path in the
+// prompt. Measured on 2026-10-11 against the real `claude` (2.1.296) in a
+// PTY, nothing submitted:
+//
+//   bracketed paste of one path — raw, "double-quoted", 'single-quoted' or
+//   with backslash-escaped spaces, a space in the folder and the name, an
+//   inner `\"` escaped, .PNG in capitals, .jpg, .gif    →  [Image #1]
+//   the same path written without the paste brackets, in one write or one
+//   character at a time                                 →  the path, as text
+//   a .txt path in a paste                              →  the path, as text
+//   two "double-quoted" paths in ONE paste              →  both stay text
+//   two pastes, one path each, even in one write        →  [Image #1] [Image #2]
+//
+// So each image is its own paste of the same quoted path a file gets, which
+// holds for spaces ("Application Support") and Windows backslashes alike.
+// Claude Code adds the space after `[Image #N]` itself, so none is sent.
+// The extensions are the ones its image reader takes (png, jpeg, gif, webp).
+//
+// Only when the process asked for bracketed paste: a shell that did not
+// would get `ESC [200~` typed into its line. A shell that did (zsh, bash's
+// readline) inserts a paste as text, so it still gets the quoted path.
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i
+
+export function isImagePath(p: string): boolean {
+  return IMAGE_EXT.test(p)
+}
+
+/**
+ * What goes into the session for one file path: an image as its own
+ * bracketed paste when the process accepts one, anything else typed, quoted
+ * and followed by a space.
+ */
+export function pathInput(p: string, bracketedPaste: boolean): string {
+  if (bracketedPaste && isImagePath(p)) return `\x1b[200~${quotePath(p)}\x1b[201~`
+  return `${quotePath(p)} `
+}
+
+/**
+ * How long to wait after an image paste before the next input. Claude Code
+ * reads the image before it places `[Image #N]`, so text written straight
+ * after it landed first: image, typed path, image in one write came out as
+ * `"notes.txt" [Image #1] [Image #2]`. With 150 ms between them the order
+ * held (measured in the same run as above).
+ */
+export const IMAGE_SETTLE_MS = 150
+
 export interface TerminalInputOptions {
   /** Keys the app owns (its shortcuts): xterm ignores them and they bubble to the window. */
   isAppKey?: (e: KeyboardEvent) => boolean
@@ -202,6 +252,11 @@ export function attachTerminalInput(
   // The path is quoted, because a data directory on macOS contains spaces
   // ("Application Support") and an unquoted path there is two arguments. Not
   // with JSON.stringify, which doubles every backslash in a Windows path.
+  const sendPath = async (p: string) => {
+    const bracketed = term.modes.bracketedPasteMode
+    send(pathInput(p, bracketed))
+    if (bracketed && isImagePath(p)) await new Promise((r) => setTimeout(r, IMAGE_SETTLE_MS))
+  }
   const sendFile = async (file: File) => {
     try {
       const buf = new Uint8Array(await file.arrayBuffer())
@@ -213,8 +268,9 @@ export function attachTerminalInput(
       }
       const { path } = await api.paste({ name: file.name, type: file.type, data: btoa(bin) })
       // Typed, not pasted: the user is about to talk about this file, and a
-      // path in the prompt is what Claude Code reads.
-      send(`${quotePath(path)} `)
+      // path in the prompt is what Claude Code reads. An image is the
+      // exception — pasted, so it becomes `[Image #N]` (pathInput).
+      await sendPath(path)
     } catch (err) {
       // The daemon's refusal says what it accepts; errText keeps that part.
       const what = file.name ? `${file.name}: ` : ''
@@ -264,8 +320,8 @@ export function attachTerminalInput(
     if (r.width === 0 || r.height === 0) return
     if (d.x < r.left || d.x >= r.right || d.y < r.top || d.y >= r.bottom) return
     const paths = d.paths.filter((p): p is string => typeof p === 'string' && p !== '')
-    queue = queue.then(() => {
-      for (const p of paths) send(`${quotePath(p)} `)
+    queue = queue.then(async () => {
+      for (const p of paths) await sendPath(p)
     })
     term.focus()
   }
