@@ -113,9 +113,16 @@ export function KeepAwakeIndicator() {
   const [open, setOpen] = useState(false)
   const st = useApi(() => (owner ? api.keepAwake() : Promise.resolve(undefined)), [owner], { live: false, intervalMs: open ? 3_000 : 15_000, keepUnchanged: true })
   const s = st.data
-  if (!s || !s.available || s.mode === 'off') return open ? <KeepAwakePopover status={s} onClose={() => setOpen(false)} onChanged={st.refresh} /> : null
-  const holding = s.holding
-  const why = holding
+  // Always drawn, off included, so the status and the way back are one click
+  // away (owner, 2026-10-11: turning it off made the indicator vanish).
+  if (!s) return null
+  const off = s.mode === 'off' || !s.available
+  const holding = !off && s.holding
+  const why = !s.available
+    ? `Cannot keep this computer awake: ${s.reason || 'nothing here offers it'}.`
+    : off
+    ? 'Keep awake is off: this computer sleeps on its usual schedule.'
+    : holding
     ? s.mode === 'always'
       ? 'Awake now: Caprock is keeping this computer awake while it runs.'
       : `Awake now: ${s.working} ${s.working === 1 ? 'agent is' : 'agents are'} working.`
@@ -135,7 +142,7 @@ export function KeepAwakeIndicator() {
           <CoffeeIcon size={12} />
           {holding && <span aria-hidden className="absolute -right-0.5 -top-0.5 h-[5px] w-[5px] rounded-full bg-ok" />}
         </span>
-        {holding ? 'awake' : 'may sleep'}
+        {off ? 'awake off' : holding ? 'awake' : 'may sleep'}
       </button>
       {open && <KeepAwakePopover status={s} onClose={() => setOpen(false)} onChanged={st.refresh} />}
     </span>

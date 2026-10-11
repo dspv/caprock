@@ -80,11 +80,13 @@ describe('KeepAwakeIndicator', () => {
     expect(mark.closest('[data-keep-awake]')?.getAttribute('data-holding')).toBe('false')
   })
 
-  it('draws nothing when keep-awake is off', async () => {
+  it('stays visible when keep-awake is off, and opens the modes from there', async () => {
     state.status = { mode: 'off', holding: false, working: 0, available: true }
-    const { container } = render(<KeepAwakeIndicator />)
-    await new Promise((r) => setTimeout(r, 20))
-    expect(container.querySelector('[data-keep-awake]')).toBeNull()
+    render(<KeepAwakeIndicator />)
+    const mark = await screen.findByText('awake off')
+    expect(mark.closest('[data-keep-awake]')?.getAttribute('data-holding')).toBe('false')
+    fireEvent.click(mark)
+    expect(await screen.findByRole('dialog', { name: 'Keep awake' })).toBeTruthy()
   })
 
   it('opens what it means and the three modes on a click', async () => {

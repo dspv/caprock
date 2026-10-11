@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **app:** the keep-awake mark in the status bar stays when keep-awake is
+  off — it reads *awake off*, and a click opens the modes — instead of
+  vanishing with no way back from there.
+- **ci:** the PTY resize test waits for the process to report its size
+  instead of sleeping, which flaked on a slow macOS runner.
+
 ## [0.107.5] - 2026-10-11
 
 ### Changed
