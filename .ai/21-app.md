@@ -166,10 +166,14 @@ One window, three regions:
   tester could not find how to, translated).
 - **Quick chat: vendor and model** (owner, 2026-10-09: "three buttons to
   switch between model vendors — Claude, Codex, Gemini — and a model in two
-  clicks", translated). Decision: **⌥⌘N never asks** — it starts at once on
-  the vendor and model used last (else Claude Code on its default). A click
-  on *Quick chat* (sidebar, the strip's + menu, the palette's *Quick chat
-  with…*) opens a chooser sheet (`components/QuickChat.tsx`): a segmented
+  clicks", translated). Decision then: **⌥⌘N never asks** — it started at
+  once on the vendor and model used last. **Reversed 2026-10-12** (owner:
+  "Quick chat opened a terminal without asking with whom, and now I can't
+  get out of there", translated): **⌥⌘N asks, with one keystroke to
+  accept.** Every way in — ⌥⌘N, the sidebar, the strip's + menu, the
+  palette's *Quick chat…* — opens a chooser sheet
+  (`components/QuickChat.tsx`) with the agent and model used last (else
+  Claude Code on its default) picked and focused, so Enter starts it: a segmented
   row of the agents installed here (`useSpawnableAgents`), the selected
   one's models under it with the New agent sheet's labels (since
   2026-10-10 from `GET /v1/agents/catalog`: Codex's catalog, the models of
@@ -180,14 +184,32 @@ One window, three regions:
   the agents not installed are named under the list, each opening its install
   note (ADR-046). A click on a model
   starts the chat on it — another vendor's model is two clicks, the last
-  vendor's one; Enter starts on the highlighted model; ← → or ⌘1–9 switch
-  the agent, ↑ ↓ the model, Esc closes. The choice is kept per viewer in
+  vendor's one; Enter starts on the highlighted model; ← → or 1–9 (⌘1–9
+  too) switch the agent, ↑ ↓ the model, Esc closes. The choice is kept per viewer in
   localStorage (`caprock.quickchat`). With more than one Claude Code or
   Codex sign-in, a Subscription select sits under the agent row, its pick
   kept in `caprock.subscription.<agent>.-` and sent as `subscription`
   (ADR-048). Rejected: a header on the started tab
   that restarts the chat on another model — it starts a process only to kill
   it, and cannot change vendor once a conversation has begun.
+- **A quick chat's tab** (owner, 2026-10-12, same report). It is named
+  *Quick chat · Opus 5.5* — the pricing table's model name once it has
+  answered, before that the model it was started on, which the window that
+  started it keeps (`caprock.quickchat.started`), else the agent's name — in
+  the strip, the sidebar row and the inspector's header (`lib/quickchat.ts`;
+  a chat is known by its folder, `<data_dir>/chats/<stamp>`, as the daemon's
+  `chatLabel` knows it). The sidebar still groups it under *Outside
+  projects*; the tab no longer wears that group as its chip. A line above
+  its terminal says *Quick chat with Claude · Opus 5.5 — ⌘W closes, /exit
+  ends it* (keys through `keys()`; Gemini's is /quit), with a × that hides it
+  for good (`caprock.quickchat.hint`). **When the agent exits** the tab stays,
+  dimmed, with *The chat ended*, **Close tab** (focused, so Enter takes it)
+  and **Start again** (a new chat on the same agent and model, in the same
+  tab: `replace-session`). Every other agent's tab becomes a shell in its
+  folder on exit ([04-ui.md](04-ui.md)); a chat's folder is Caprock's own,
+  and that shell — a login prompt in Application Support, under the same
+  tab — was the "can't get out": the owner typed `/exit`, was still in a
+  terminal, and reloaded the window to leave.
 - **Tab strip** (owner, 2026-10-09: "tabs are barely noticeable", and "the
   + amber, or better a dropdown", translated). The tab in front has a 2px
   amber top edge over its hairline frame and a medium-weight label
@@ -197,7 +219,7 @@ One window, three regions:
   (`.app-tab-dash`): an amber grid icon, an amber-tinted fill and frame
   while it is behind, and a hairline divider after it. The + is an amber outline (`.app-primary`, like the sidebar's New
   agent) that opens a menu (`components/NewMenu.tsx`, portalled): *New
-  agent* ⇧⌘N, *Quick chat…* ⌥⌘N (the chooser; the key itself skips it),
+  agent* ⇧⌘N, *Quick chat…* ⌥⌘N (the chooser, as the key opens it),
   *New shell* ⌘T, *Open file…*, *Add project* ⌘O, each with its key; ↑ ↓,
   Enter, Esc. The separate >_ new-shell button is gone: it is the menu's
   third row and ⌘T, and two lone icons side by side read as one ambiguous
@@ -323,8 +345,10 @@ One window, three regions:
   agent's terminal: the session's project (and its branch when not the
   default; the path on hover), the agent's character in its state (working,
   *background agents working · N* once its turn ended with subagents still
-  at work, waiting on you, looping, idle, ended), what the session has cost with the cost of each
-  of its last model calls, the context bar and what the next call pays to
+  at work, waiting on you, looping, idle, ended) with a headline figure at
+  the right that the viewer picks (cost, burn rate, tokens, turns, cache
+  hit rate, time working), the spend details folded to one line below the
+  plan windows (cells, and *Spend over time* opening in the flow), the context bar and what the next call pays to
   re-read it, what it is doing this second (the open tool call and how long
   it has run, or *Thinking* since the last one finished; while a permission
   prompt waits, who asks and what — "Subagent (general-purpose) wants to run

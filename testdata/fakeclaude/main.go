@@ -3,7 +3,8 @@
 //
 // It is a line REPL: it prints a ready line, answers every line it reads with
 // `you-said:<line>`, draws a permission dialog on `ask[tag]` (its footer ends
-// `asked<tag>`), and exits with code 3 on `quit`. Shell scripts do this
+// `asked<tag>`), exits with code 3 on `quit`, and exits cleanly on `/exit` or
+// Ctrl+D, as Claude Code does. Shell scripts do this
 // differently under a POSIX PTY and under ConPTY; a Go binary does not. It
 // accepts and ignores whatever flags the daemon passes (`--session-id …`), and
 // it never contacts anything — no model, no network.
@@ -40,11 +41,15 @@ func main() {
 	}
 }
 
-// answer acts on one line; "quit" exits with code 3.
+// answer acts on one line; "quit" exits with code 3, "/exit" with 0.
 func answer(line string) {
 	if line == "quit" {
 		fmt.Print("bye\r\n")
 		os.Exit(3)
+	}
+	if line == "/exit" {
+		fmt.Print("goodbye\r\n")
+		os.Exit(0)
 	}
 	if tag, ok := strings.CutPrefix(line, "ask"); ok {
 		// A permission dialog as Claude Code draws it: words placed with
@@ -126,7 +131,7 @@ func runTUI(mode string, bypass bool) {
 			return
 		}
 		switch r {
-		case 0x03: // Ctrl+C
+		case 0x03, 0x04: // Ctrl+C, Ctrl+D
 			fmt.Print("\r\n")
 			return
 		case 0x1b:

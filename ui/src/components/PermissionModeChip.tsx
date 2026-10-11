@@ -24,6 +24,7 @@ import { api, ApiError, errText, isPairedDevice, type PermissionModeView } from 
 import { live } from '@/lib/live'
 import { useCanControl } from '@/lib/useCanControl'
 import { BypassConsentNote } from './BypassConsent'
+import { keys } from '@/lib/appkeys'
 
 /** Each mode in the chip's words, and in the menu's. */
 const CHIP: Record<string, string> = {
@@ -35,13 +36,75 @@ const CHIP: Record<string, string> = {
   dontAsk: "don't ask",
 }
 
-const MENU: Record<string, string> = {
-  default: 'Manual · asks first',
-  acceptEdits: 'Accept edits · asks before commands',
-  plan: 'Plan · changes nothing',
-  bypassPermissions: 'Bypass · never asks',
-  auto: 'Auto · if your plan has it',
-  dontAsk: "Don't ask · denies what isn't allowed",
+/** Each mode in the menu: its name, and what it does on a line of its own. */
+const MODE: Record<string, { name: string; does: string }> = {
+  default: { name: 'Manual', does: 'Asks before every edit and command' },
+  acceptEdits: { name: 'Accept edits', does: 'Edits files freely; asks before commands' },
+  plan: { name: 'Plan', does: 'Reads and plans; changes nothing' },
+  bypassPermissions: { name: 'Bypass', does: 'Never asks: runs any command' },
+  auto: { name: 'Auto', does: 'Decides when to ask, if your plan has it' },
+  dontAsk: { name: "Don't ask", does: "Denies whatever isn't already allowed" },
+}
+
+/** The modes that take the guard off are drawn in the warning colour. */
+function risky(m: string): boolean {
+  return m === 'bypassPermissions' || m === 'dontAsk'
+}
+
+/** A small mark per mode, so the rows are told apart before they are read. */
+function ModeIcon({ mode }: { mode: string }) {
+  const common = { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true }
+  switch (mode) {
+    case 'default': // a hand raised: asks first
+      return <svg {...common}><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7m0-4.5a1 1 0 0 1 2 0V7m0-3.5a1 1 0 0 1 2 0V9.5c0 2.5-1.7 4.5-4 4.5S3.5 12.3 3 10.5L2.5 8.8a1 1 0 0 1 1.8-.8L5.5 9.5" /></svg>
+    case 'acceptEdits': // a pencil with a check
+      return <svg {...common}><path d="M9.5 3.5l3 3L6 13H3v-3z" /><path d="M10 14l1.5 1.2L14.5 12" /></svg>
+    case 'plan': // a list
+      return <svg {...common}><path d="M6 4h7M6 8h7M6 12h7" /><circle cx="3" cy="4" r=".6" fill="currentColor" /><circle cx="3" cy="8" r=".6" fill="currentColor" /><circle cx="3" cy="12" r=".6" fill="currentColor" /></svg>
+    case 'bypassPermissions': // a lightning bolt
+      return <svg {...common}><path d="M9 1.5L3.5 9h4l-1 5.5L12.5 7h-4z" /></svg>
+    case 'auto': // a sparkle
+      return <svg {...common}><path d="M8 1.5l1.4 4.1 4.1 1.4-4.1 1.4L8 12.5 6.6 8.4 2.5 7l4.1-1.4z" /><path d="M13 11.5v3M11.5 13h3" /></svg>
+    case 'dontAsk': // a shield struck through
+      return <svg {...common}><path d="M8 1.5l5 2v4c0 3-2.2 5.6-5 7-2.8-1.4-5-4-5-7v-4z" /><path d="M3 3l10 10" /></svg>
+    default:
+      return <svg {...common}><circle cx="8" cy="8" r="5" /></svg>
+  }
+}
+
+/**
+ * One mode as a row of the menu: the name large with its mark, what it does
+ * on the line under it, and when the row cannot be picked, why, on a line of
+ * its own (owner, 2026-10-12: "great, but hard to read").
+ */
+function ModeRow({ mode, current, disabled, reason, restart, onPick, title }: {
+  mode: string
+  current?: boolean
+  disabled: boolean
+  reason?: string
+  restart?: boolean
+  onPick: () => void
+  title?: string
+}) {
+  const v = MODE[mode] ?? { name: mode, does: '' }
+  const off = disabled && !current
+  return (
+    <button type="button" role={restart ? 'menuitem' : 'menuitemradio'} aria-checked={restart ? undefined : !!current}
+      disabled={disabled} onClick={onPick} title={title} data-mode-row={mode}
+      aria-label={[`${restart ? 'Restart in ' : ''}${v.name}`, v.does, reason].filter(Boolean).join('. ')}
+      className={`grid grid-cols-[18px_minmax(0,1fr)] items-start gap-x-2.5 rounded-[7px] border-l-[3px] py-2 pl-2 pr-2.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${
+        current ? 'border-accent bg-accent/10' : 'border-transparent'} ${off ? 'cursor-not-allowed' : current ? 'cursor-default' : 'hover:bg-panel-2'}`}>
+      <span className={`mt-[2px] ${risky(mode) ? 'text-warn' : current ? 'text-accent' : off ? 'text-fg-muted' : 'text-fg'}`}><ModeIcon mode={mode} /></span>
+      <span className="grid min-w-0 gap-0.5">
+        <span data-mode-name className={`flex items-baseline gap-2 text-[15px] font-semibold leading-tight ${off ? 'text-fg-muted' : 'text-fg'}`}>
+          {restart ? `Restart in ${v.name}` : v.name}
+          {current && <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-accent">now</span>}
+        </span>
+        {v.does && <span data-mode-desc className="text-[13px] leading-snug text-fg-muted">{v.does}</span>}
+        {reason && <span data-mode-reason className="text-[12px] leading-snug text-fg-muted">{reason}</span>}
+      </span>
+    </button>
+  )
 }
 
 /** The chip's tone: bypass in the danger colour, as Claude Code draws it. */
@@ -50,6 +113,9 @@ function tone(mode: string): string {
   if (mode === 'plan') return 'border-accent/60 text-accent'
   return 'border-border text-fg-muted'
 }
+
+/** The menu's width: room for a mode's name and its one-line explanation. */
+const MENU_W = 340
 
 /** How long after a live event the mode is read again, at most once. */
 const REFRESH_MS = 2_500
@@ -178,7 +244,7 @@ export function PermissionModeChip({ sessionId, agent, enabled = true }: { sessi
         disabled={busy}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect()
-          const width = Math.min(300, window.innerWidth - 32)
+          const width = Math.min(MENU_W, window.innerWidth - 32)
           setAt({ top: r.bottom + 4, left: Math.max(16, Math.min(r.left, window.innerWidth - width - 16)) })
           setOpen((o) => !o)
           setConfirm('')
@@ -192,13 +258,13 @@ export function PermissionModeChip({ sessionId, agent, enabled = true }: { sessi
       </button>
       {note && <span role="status" className="max-w-[28ch] truncate text-[11px] text-fg-muted" title={note}>{note}</span>}
       {open && (
-        <span role="menu" aria-label="Permission mode" style={at ? { top: at.top, left: at.left } : undefined}
-          className="fixed z-50 grid max-h-[calc(100vh-80px)] w-[min(300px,calc(100vw-32px))] gap-1 overflow-y-auto whitespace-normal rounded-[8px] border border-border-strong bg-panel p-2 text-[12px] shadow-lg">
+        <span role="menu" aria-label="Permission mode" style={at ? { top: at.top, left: at.left, maxHeight: `max(160px, calc(100vh - ${Math.round(at.top)}px - 16px))` } : undefined}
+          className="fixed z-50 grid max-h-[calc(100vh-80px)] w-[min(340px,calc(100vw-32px))] content-start gap-1 overflow-y-auto whitespace-normal rounded-[10px] border border-border-strong bg-panel p-2 text-[13px] shadow-lg">
           {confirm ? (
             <span className="grid gap-2 p-1">
               {needsConsent && <BypassConsentNote button="Accept and restart" />}
               <span className="text-fg">
-                Restart in {MENU[confirm] ?? confirm}?
+                Restart in {MODE[confirm]?.name ?? confirm}?
               </span>
               <span className="text-[11.5px] leading-relaxed text-fg-muted">
                 This process stops and the same conversation is resumed in a new one, in this tab. Nothing is lost
@@ -214,29 +280,19 @@ export function PermissionModeChip({ sessionId, agent, enabled = true }: { sessi
             </span>
           ) : (
             <>
-              {prompt && <span className="px-1 pb-1 text-[11.5px] text-fg-muted">The session is asking something; answer it first.</span>}
-              <span className="px-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">In this session · Shift+Tab</span>
+              {prompt && <span className="rounded-[6px] bg-panel-2 px-2.5 py-2 text-[13px] text-fg">The session is asking something; answer it first.</span>}
+              <span className="px-2 pb-0.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">Switch now ({keys('Shift+Tab')})</span>
               {inSession.map((m) => (
-                <button key={m} type="button" role="menuitemradio" aria-checked={m === mode} disabled={busy || prompt || m === mode}
-                  onClick={() => run(m, false)}
-                  className="flex items-center gap-2 rounded-[5px] px-1.5 py-1 text-left hover:bg-panel-2 disabled:cursor-default disabled:hover:bg-transparent aria-checked:text-fg disabled:[&:not([aria-checked=true])]:opacity-50">
-                  <span aria-hidden className="w-3 text-accent">{m === mode ? '✓' : ''}</span>
-                  {MENU[m] ?? m}
-                </button>
+                <ModeRow key={m} mode={m} current={m === mode} disabled={busy || prompt || m === mode} onPick={() => run(m, false)} />
               ))}
               {restart.length > 0 && (
                 <>
-                  <span className="mt-1 px-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Needs a restart</span>
+                  <span className="mt-2 border-t border-border px-2 pb-0.5 pt-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">Needs a restart</span>
                   {restart.map((m) => (
-                    <button key={m} type="button" role="menuitem" disabled={busy || prompt || working}
-                      onClick={() => setConfirm(m)}
-                      title={working ? 'The agent is working; restart it when the turn has ended.' : 'Stops this process and resumes the same conversation in a new one'}
-                      className="flex items-center gap-2 rounded-[5px] px-1.5 py-1 text-left hover:bg-panel-2 disabled:opacity-50 disabled:hover:bg-transparent">
-                      <span aria-hidden className="w-3" />
-                      Restart in {MENU[m] ?? m}
-                    </button>
+                    <ModeRow key={m} mode={m} restart disabled={busy || prompt || working} onPick={() => setConfirm(m)}
+                      reason={working ? 'The agent is working: restart when its turn ends.' : undefined}
+                      title="Stops this process and resumes the same conversation in a new one" />
                   ))}
-                  {working && <span className="px-1 text-[11px] text-fg-faint">The agent is working: restart when its turn ends.</span>}
                 </>
               )}
             </>

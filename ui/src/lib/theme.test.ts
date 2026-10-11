@@ -118,7 +118,7 @@ describe('theme-color', () => {
   it('is the header panel colour of each palette', () => {
     expect(themeColor('dark', 'paper')).toBe(THEME_COLORS['dark-warm'])
     expect(themeColor(null, null)).toBe(THEME_COLORS['dark-warm'])
-    expect(themeColor('dark', null, 'side')).toBe('#181113')
+    expect(themeColor('dark', null, 'side')).toBe('#15111d')
     expect(themeColor('light', 'paper')).toBe(THEME_COLORS.book)
     expect(themeColor('light', null)).toBe(THEME_COLORS.book)
     expect(themeColor('light', 'white')).toBe('#ffffff')

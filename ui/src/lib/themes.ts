@@ -48,8 +48,8 @@ export const THEMES: readonly ThemeRow[] = [
     terminal: 'slate', dashTerminal: 'slate',
   },
   {
-    id: 'dark-side', name: 'Dark Side', theme: 'dark', sub: 'side', panel: '#181113',
-    swatch: { bg: '#110c0d', panel: '#20171a', fg: '#eee5e5', muted: '#94838a', accent: '#ff4040' },
+    id: 'dark-side', name: 'Dark Side', theme: 'dark', sub: 'side', panel: '#15111d',
+    swatch: { bg: '#0d0b14', panel: '#1d1727', fg: '#ece8f5', muted: '#9087a6', accent: '#b45cff' },
     terminal: 'dark-side', dashTerminal: 'dark-side', glow: true,
   },
   {
