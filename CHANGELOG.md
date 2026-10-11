@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **app:** the Dock shows the new icon after an in-app update. On macOS the
+  app sets its Dock tile from its own bundle's icon at every launch, and on
+  the first launch of a new version re-registers the bundle with
+  LaunchServices, so the cached old icon is replaced without restarting the
+  Dock.
+
 ## [0.109.1] - 2026-10-12
 
 ### Changed
