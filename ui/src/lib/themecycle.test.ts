@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest'
 import { useThemeMode } from './theme'
 
 describe('the theme toggle', () => {
-  it('walks Graphite → Paper → White → Graphite', () => {
+  it('walks Graphite → Slate → Paper → White → Graphite', () => {
     localStorage.setItem('caprock-theme', 'dark')
     const { result } = renderHook(() => useThemeMode())
     expect(result.current.mode).toBe('dark')
+    act(() => result.current.cycle())
+    expect(result.current.mode).toBe('slate')
+    expect(document.documentElement.getAttribute('data-dark')).toBe('slate')
     act(() => result.current.cycle())
     expect(result.current.mode).toBe('paper')
     expect(document.documentElement.getAttribute('data-tone')).toBe('paper')
@@ -14,6 +17,6 @@ describe('the theme toggle', () => {
     expect(result.current.mode).toBe('white')
     act(() => result.current.cycle())
     expect(result.current.mode).toBe('dark')
-    expect(result.current.next).toBe('paper')
+    expect(result.current.next).toBe('slate')
   })
 })

@@ -34,8 +34,10 @@
           // Light palette; the fallback mirrors DEFAULT_TONE in lib/theme.ts.
           var tone = localStorage.getItem('caprock-light-tone');
           document.documentElement.setAttribute('data-tone', tone === 'white' ? 'white' : 'paper');
+          var dark = localStorage.getItem('caprock-dark-tone') === 'slate' ? 'slate' : 'graphite';
+          document.documentElement.setAttribute('data-dark', dark);
           // Mirrors THEME_COLORS in lib/theme.ts: the header's panel colour.
-          var bar = t === 'dark' ? '#211f1d' : tone === 'white' ? '#ffffff' : '#f4ecdd';
+          var bar = t === 'dark' ? (dark === 'slate' ? '#1f2023' : '#211f1d') : tone === 'white' ? '#ffffff' : '#f4ecdd';
           document.querySelector('meta[name="theme-color"]').setAttribute('content', bar);
         } catch (e) {}
       })();

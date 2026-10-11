@@ -33,13 +33,14 @@ import { buildToday } from '@/lib/today'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
+import { ThemeMenu } from './ThemePicker'
 import { keepsProject, ProjectRow, StatusDot } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { TodayStrip } from './TodayStrip'
 import { AgentGlyph } from './AgentMarks'
 import { FeedbackButton } from './Feedback'
 import { CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
-import { keys } from '@/lib/appkeys'
+import { keys, tabDigit } from '@/lib/appkeys'
 
 /** Project ids hidden by hand: this browser's. */
 export const HIDDEN_KEY = 'caprock.app.hidden-projects'
@@ -134,6 +135,12 @@ export function Sidebar(props: SidebarProps) {
     }
     return m
   }, [allTabs])
+  // Each tab's jump key, as the strip draws it (⌘1–⌘8, ⌘9 the last): the
+  // sidebar shows the same key on the same tab (owner, 2026-10-11).
+  const tabDigits = useMemo(() => {
+    const list = allTabs ?? []
+    return new Map(list.map((t, i) => [t.id, tabDigit(i, list.length)] as const))
+  }, [allTabs])
   const noLabels = useMemo(() => new Map<string, TabLabel>(), [])
   const noTabs = useMemo<Tab[]>(() => [], [])
   const now = useNow(30_000)
@@ -208,6 +215,7 @@ export function Sidebar(props: SidebarProps) {
         node={n}
         current={current}
         tabs={tabsByProject.get(n.project.id) ?? noTabs}
+        tabDigits={tabDigits}
         labels={props.tabLabels ?? noLabels}
         activeTabId={props.dashboardActive ? undefined : props.activeTabId}
         onSelect={props.onSelectProject}
@@ -543,11 +551,14 @@ function FooterToggle({ open, onToggle }: { open: boolean; onToggle: () => void 
   )
 }
 
+/** Opens the theme picker: hover a palette to try it, click to keep it. */
 function ThemeButton() {
-  const { mode, next, cycle } = useThemeMode()
+  const { mode } = useThemeMode()
+  const light = mode === 'paper' || mode === 'white'
   return (
-    <IconButton label={`${THEME_MODE_NAME[next]} theme (now ${THEME_MODE_NAME[mode]})`} onClick={cycle}>
-      {next === 'dark' ? <MoonIcon size={15} /> : <SunIcon size={15} />}
-    </IconButton>
+    <ThemeMenu label={`Theme: ${THEME_MODE_NAME[mode]}`} placement="up"
+      className="flex h-[26px] w-[26px] items-center justify-center rounded-[6px] text-fg-muted transition-colors hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none">
+      {light ? <SunIcon size={15} /> : <MoonIcon size={15} />}
+    </ThemeMenu>
   )
 }
