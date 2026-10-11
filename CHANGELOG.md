@@ -116,7 +116,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   in 30 days and no open PR). Fifteen rows, then *Show all*; a branch whose
   PR is the session's opens it in the PRs view. Read from local git, one
   cached list of the repository's pull requests and an indexed query
-  (`GET /v1/sessions/{id}/branches`, migration 0050).
+  (`GET /v1/sessions/{id}/branches`, migration 0051).
 
 - **app:** the session deck is one cell, **Pull requests & CI**: the
   session's pull requests, the current one first and up to three earlier

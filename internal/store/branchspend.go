@@ -20,7 +20,7 @@ type BranchSpend struct {
 
 // SpendByBranch sums the sessions of repository repoRoot (sessions.repo_root,
 // as ingest resolved it) per branch, read through idx_sessions_repo_branch
-// (migration 0050). A session with no branch recorded is left out.
+// (migration 0051). A session with no branch recorded is left out.
 func SpendByBranch(ctx context.Context, q Querier, repoRoot string) (map[string]BranchSpend, error) {
 	out := map[string]BranchSpend{}
 	if repoRoot == "" {

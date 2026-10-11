@@ -2822,7 +2822,7 @@ a copy of the owner's database (2026-10-12, 2 GB) it holds 16k rows; one
 project's turns read in 1 ms through it against 1.6 s cold and 47 ms warm
 through `idx_events_kind_id`, and building it took 4 s, once.
 
-### Branch spend DDL (migration 0050)
+### Branch spend DDL (migration 0051)
 
 ```sql
 CREATE INDEX IF NOT EXISTS idx_sessions_repo_branch ON sessions(repo_root, git_branch);
