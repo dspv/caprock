@@ -121,6 +121,9 @@
   --color-fg-faint: #7d8088;
 
   --color-info: #6ea8fe;
+  /* Slate has no orange anywhere (its user asked for none): waiting and idle
+   * read as a cool yellow here instead of graphite's amber. */
+  --color-warn: #d9c76a;
   --color-accent: #6ea8fe;
   --color-accent-strong: #9cc4ff;
 

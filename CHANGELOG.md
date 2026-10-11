@@ -7,6 +7,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **Slate** has no orange left: waiting and idle marks read as a cool yellow
+  there instead of graphite's amber.
+
 ## [0.108.1] - 2026-10-11
 
 Ships everything listed under 0.108.0: its tag failed the release lint on a
