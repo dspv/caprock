@@ -441,7 +441,12 @@ export interface CIJob {
   runner_name?: string
   html_url?: string
   steps: CIStep[]
+  /** The median duration of the job of this name in the workflow's last
+   *  successful runs (up to 5); absent with fewer than 2 of them. */
+  baseline?: CIBaseline
 }
+/** What a run or a job usually takes: a median, and how many runs it is of. */
+export interface CIBaseline { median_ms: number; runs: number }
 export interface CIRun {
   id: number
   name: string
@@ -459,6 +464,9 @@ export interface CIRun {
   head_sha?: string
   workflow_id?: number
   jobs: CIJob[]
+  /** The median wall-clock span of the workflow's last successful runs (up
+   *  to 5); absent with fewer than 2 of them. */
+  baseline?: CIBaseline
 }
 /** A commit's GitHub Actions. runner_ms sums the finished jobs; by_os splits it, no billing multiplier. */
 export interface CIState {

@@ -34,13 +34,29 @@ function agent(p: Partial<SessionSummary> = {}): SessionSummary {
 
 const summary = { rate_limits: { five_hour: { used_percentage: 41, resets_at: Math.round((now + 3_600_000) / 1000) }, seven_day: { used_percentage: 12, resets_at: Math.round((now + 3 * 86_400_000) / 1000) } } } as unknown as Summary
 
+/** What GitHub says of PR n now. */
+const livePR = (n: number, checks: object, p: object = {}) => ({ number: n, url: `https://github.com/a/b/pull/${n}`, title: `PR ${n}`, state: 'open', draft: false,
+  review: '', reviews: [], branch: `feat/${n}`, base: 'main', mergeable: null, checks, ...p })
+/** One of the session's PRs, as GET /v1/sessions/{id}/prs lists it. */
+const prRow = (n: number, live?: object, p: object = {}) => ({ session_id: 's1', number: n, url: `https://github.com/a/b/pull/${n}`, title: `PR ${n}`, last_at: now, ...(live ? { live } : {}), ...p })
+const RUNNING = { state: 'pending', passed: 1, failed: 0, pending: 1, items: [{ name: 'lint', state: 'pass' }, { name: 'test', state: 'pending', status: 'in_progress', started_at: now - 60_000 }] }
+const FAILED = { state: 'fail', passed: 0, failed: 1, pending: 0, items: [{ name: 'test (macos)', state: 'fail' }] }
+const PASSED = { state: 'pass', passed: 1, failed: 0, pending: 0, items: [{ name: 'lint', state: 'pass' }] }
+
+/** A PR row's own button: it opens the row in place. */
+const rowButton = (n: number) => {
+  const b = document.querySelector(`[data-deck-pr="${n}"] button[aria-expanded]`)
+  if (!b) throw new Error(`no row #${n}`)
+  return b
+}
+
 function show(p: Partial<Parameters<typeof SessionDeck>[0]> = {}) {
   const onResize = vi.fn()
   const r = render(<SessionDeck s={agent()} sessionId="s1" hasPermission={false} summary={summary} height={120} onResize={onResize} onClose={() => {}} {...p} />)
   return { ...r, onResize }
 }
 
-afterEach(() => { vi.useRealTimers(); h.asked = 0; h.rel = { connected: false }; h.main = { connected: false }; localStorage.clear() })
+afterEach(() => { vi.useRealTimers(); h.asked = 0; h.prs = { connected: true, prs: [] }; h.ci = { connected: true }; h.rel = { connected: false }; h.main = { connected: false }; localStorage.clear() })
 
 describe('the session deck', () => {
   it('asks nothing of the session’s events, and leaves the context to the status bar', async () => {
@@ -67,17 +83,24 @@ describe('the session deck', () => {
       ({ number, name, status, conclusion, started_at: from, completed_at: to, duration_ms: to ? to - from : undefined })
     h.ci = { connected: true, pr: { number: 9, url: 'https://github.com/a/b/pull/9', repo: 'a/b', head_sha: 's' }, ci: {
       repo: 'a/b', head_sha: 's', state: 'running', runner_ms: 90_000, by_os: [{ os: 'linux', ms: 90_000 }], at: now, runs: [{ id: 7, name: 'CI', status: 'in_progress', jobs: [
-        { id: 70, run_id: 7, name: 'lint', status: 'completed', conclusion: 'success', started_at: t0, completed_at: t0 + 90_000, duration_ms: 90_000, labels: ['ubuntu-latest'], os: 'linux',
+        { id: 70, run_id: 7, name: 'lint', status: 'completed', conclusion: 'success', started_at: t0, completed_at: t0 + 90_000, duration_ms: 90_000, labels: ['ubuntu-latest'], os: 'linux', baseline: { median_ms: 60_000, runs: 5 },
           steps: [st(1, 'golangci-lint', 'completed', 'success', t0, t0 + 90_000)] },
         { id: 71, run_id: 7, name: 'test (macos)', status: 'completed', conclusion: 'failure', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000, labels: ['macos-14'], os: 'macos', html_url: 'https://github.com/a/b/actions/runs/7/job/71',
           steps: [st(1, 'Set up job', 'completed', 'success', t0, t0 + 2_000), st(2, 'go test', 'completed', 'failure', t0 + 2_000, t0 + 60_000)] },
         { id: 72, run_id: 7, name: 'test (windows)', status: 'in_progress', started_at: now - 125_000, labels: ['windows-latest'], os: 'windows',
           steps: [st(1, 'go test', 'in_progress', undefined, now - 120_000)] },
       ] }] } }
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, RUNNING)), prRow(8, livePR(8, PASSED, { state: 'merged' }))] }
     show()
     const lint = await screen.findByText('lint')
     expect(lint.closest('[data-deck-ci-job]')).toHaveAttribute('data-tone', 'pass')
     expect(lint.closest('button')).toHaveTextContent('1m 30s')
+    // Against the median of its past successful runs, coloured when well over it; a job with none says nothing.
+    const vs = lint.closest('button')!.querySelector('[data-deck-vs]')!
+    expect(vs).toHaveTextContent('+50%')
+    expect(vs).toHaveClass('text-warn')
+    expect(vs.getAttribute('title')).toMatch(/median of the last 5 successful runs/)
+    expect(screen.getByText('test (windows)').closest('button')!.querySelector('[data-deck-vs]')).toBeNull()
     // A running job ticks, and says which step it is on.
     const win = screen.getByText('test (windows)').closest('button')!
     expect(win).toHaveTextContent(/2m 0[5-9]s/)
@@ -93,6 +116,9 @@ describe('the session deck', () => {
     expect(failed).toHaveTextContent('58s')
     fireEvent.click(failed)
     expect(await screen.findByText('##[error]Process completed with exit code 1.')).toHaveClass('ci-error-line')
+    // While an error is open the earlier PRs fold into one line, so it has the room.
+    expect(document.querySelector('[data-deck-pr="8"]')).toBeNull()
+    expect(document.querySelector('[data-deck-prs-folded]')).toHaveTextContent('#8✓')
     expect(h.logs).toBe(1)
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     fireEvent.click(screen.getByRole('button', { name: /Open on GitHub/ }))
@@ -109,6 +135,7 @@ describe('the session deck', () => {
           steps: [{ number: 1, name: 'go test', status: 'completed', conclusion: 'failure', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000 }] },
       ] }] } }
     h.queued = []
+    h.prs = { connected: true, prs: [prRow(428, livePR(428, FAILED, { title: 'Add CI' }))] }
     const onToast = vi.fn()
     const first = show({ onToast })
     const b = await screen.findByRole('button', { name: 'Investigate' })
@@ -129,45 +156,99 @@ describe('the session deck', () => {
   })
 
   it('says plainly when there is no CI to show', async () => {
-    h.ci = { connected: true }
     const { unmount } = show()
-    expect(await screen.findAllByText('No PR from this session yet.')).not.toHaveLength(0)
+    expect(await screen.findByText('No PR from this session yet.')).toBeInTheDocument()
     unmount()
-    h.ci = { connected: false, pr: { number: 4, url: 'https://github.com/a/b/pull/4', repo: 'a/b' } }
+    // Not connected: the row is what the session recorded, and opening it says how to get its CI.
+    h.prs = { connected: false, prs: [prRow(4)] }
     const second = show()
+    fireEvent.click(await waitFor(() => rowButton(4)))
     expect(await screen.findByText('Connect GitHub to see #4’s CI')).toBeInTheDocument()
     second.unmount()
+    h.prs = { connected: true, prs: [prRow(4, livePR(4, RUNNING))] }
     h.ci = { connected: true, pr: { number: 4, url: 'https://github.com/a/b/pull/4', repo: 'a/b', head_sha: 's' }, ci: { repo: 'a/b', head_sha: 's', state: 'none', runs: [], runner_ms: 0, by_os: [], at: now } }
     show()
     expect(await screen.findByText('No GitHub Actions runs on #4’s head commit.')).toBeInTheDocument()
-    h.ci = { connected: true }
   })
 
-  it('shows the branch with what is not committed and not pushed', async () => {
-    show({ branch: 'feat/deck', changed: 3, ahead: 2, onReviewChanges: () => {} })
-    expect(screen.getByText('feat/deck')).toBeInTheDocument()
-    expect(screen.getByText('3 not committed · 2 not pushed')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Review changes' })).toBeInTheDocument()
+  it('has no Branch cell: the branch is a chip in the header, with what is not committed and not pushed', async () => {
+    const onReview = vi.fn()
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED, { branch: 'feat/deck', base: 'main' }))] }
+    show({ branch: 'feat/deck', changed: 3, ahead: 2, onReviewChanges: onReview })
+    expect(screen.queryByRole('heading', { name: 'Branch' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Pull requests & CI' })).toBeInTheDocument()
+    const chip = document.querySelector('[data-deck-branch]')!
+    expect(chip.textContent).toBe('feat/deck')
+    // The current PR is from this branch: where it goes.
+    await waitFor(() => expect(chip.textContent).toBe('feat/deck → main'))
+    const dirty = screen.getByText('3 not committed · 2 not pushed')
+    expect(dirty).toHaveAttribute('title', expect.stringMatching(/^Review changes/))
+    fireEvent.click(dirty)
+    expect(onReview).toHaveBeenCalled()
   })
 
-  it('lists the session’s PRs with their CI', async () => {
-    const pr = (n: number, checks: object, state = 'open') => ({ number: n, url: `https://github.com/a/b/pull/${n}`, title: `PR ${n}`, state, draft: false, review: '', reviews: [], checks })
+  it('lists the current PR first, then the earlier ones, each with its state, CI, review, conflict and age', async () => {
     h.prs = { connected: true, prs: [
-      { session_id: 's1', number: 9, url: 'https://github.com/a/b/pull/9', title: 'PR 9', last_at: now, live: pr(9, { state: 'pending', passed: 2, failed: 0, pending: 3, items: [{}, {}, {}, {}, {}] }) },
-      { session_id: 's1', number: 8, url: 'https://github.com/a/b/pull/8', title: 'PR 8', last_at: now, live: pr(8, { state: 'fail', passed: 1, failed: 1, pending: 0, items: [{ name: 'windows', state: 'fail' }, { name: 'lint', state: 'pass' }] }) },
-      { session_id: 's1', number: 7, url: 'https://github.com/a/b/pull/7', title: 'PR 7', last_at: now, live: pr(7, { state: 'pass', passed: 1, failed: 0, pending: 0, items: [{}] }, 'merged') },
+      prRow(8, livePR(8, FAILED, { state: 'merged' }), { merged_at: now - 2 * 3_600_000 }),
+      prRow(9, livePR(9, { state: 'pending', passed: 2, failed: 0, pending: 3, items: [{ name: 'a', state: 'pass' }, { name: 'b', state: 'pass' }, { name: 'c', state: 'pending', status: 'in_progress', started_at: now - 4 * 60_000 }, { name: 'd', state: 'pending' }, { name: 'e', state: 'pending' }] },
+        { review: 'approved', mergeable: false, mergeable_state: 'dirty' }), { opened_at: now - 5 * 60_000 }),
+      prRow(7, livePR(7, PASSED, { state: 'merged' }), { merged_at: now - 3 * 86_400_000 }),
+      prRow(6, livePR(6, { state: 'none', passed: 0, failed: 0, pending: 0, items: [] }, { state: 'closed', review: 'changes_requested' }), { closed_at: now - 5 * 86_400_000 }),
     ] }
     show()
-    expect(await screen.findByText('CI 2/5 running')).toBeInTheDocument()
-    expect(screen.getByText('CI ✗ windows')).toBeInTheDocument()
-    expect(screen.getByText('CI ✓ 1 passed')).toBeInTheDocument()
-    expect(screen.getByText('merged')).toBeInTheDocument()
-    // The CI opens the failing job when GitHub gave its link, else the PR's checks.
+    await screen.findByText(/^running · 2\/5 · 4m 0\ds$/)
+    const order = [...document.querySelectorAll('[data-deck-pr]')].map((r) => r.getAttribute('data-deck-pr'))
+    expect(order).toEqual(['9', '8', '7', '6'])
+    const row = (n: number) => document.querySelector(`[data-deck-pr="${n}"]`)!
+    expect(row(9).querySelector('.pr-dot')).toHaveAttribute('data-state', 'open')
+    expect(row(8).querySelector('.pr-dot')).toHaveAttribute('data-state', 'merged')
+    expect(row(6).querySelector('.pr-dot')).toHaveAttribute('data-state', 'closed')
+    expect(row(8).querySelector('[data-deck-pr-ci]')).toHaveTextContent('✗ failed at test (macos)')
+    expect(row(7).querySelector('[data-deck-pr-ci]')).toHaveTextContent('✓ passed')
+    expect(row(6).querySelector('[data-deck-pr-ci]')).toHaveTextContent('no checks')
+    // Review and conflict only for an open PR, and only as GitHub said them.
+    expect(row(9).querySelector('[data-deck-pr-review]')).toHaveTextContent('approved · conflict')
+    expect(row(6).querySelector('[data-deck-pr-review]')!.textContent).toBe('')
+    expect(row(9).querySelector('[data-deck-pr-age]')).toHaveTextContent('5m')
+    expect(row(8).querySelector('[data-deck-pr-age]')).toHaveTextContent('2h')
+    expect(row(7).querySelector('[data-deck-pr-age]')).toHaveTextContent('3d')
+    expect(screen.queryByText('No earlier PRs from this session.')).toBeNull()
+    // ↗ opens the PR itself.
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-    fireEvent.click(screen.getByText('CI 2/5 running'))
-    expect(String(open.mock.calls.at(-1)?.[0] ?? '')).toBe('https://github.com/a/b/pull/9/checks')
+    fireEvent.click(screen.getByRole('button', { name: 'Open #8 on GitHub' }))
+    expect(String(open.mock.calls.at(-1)?.[0] ?? '')).toBe('https://github.com/a/b/pull/8')
     open.mockRestore()
-    h.prs = { connected: true, prs: [] }
+  })
+
+  it('opens the current PR by itself only while its CI runs or failed, and one row at a time', async () => {
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED)), prRow(8, livePR(8, FAILED, { state: 'merged' }))] }
+    h.ciPrs = []
+    const first = show()
+    await screen.findByText('✓ passed')
+    await new Promise((r) => setTimeout(r, 20))
+    expect(document.querySelector('[data-deck-pr-detail]')).toBeNull()
+    // Settled rows are read once, closed, for their time against the median.
+    await waitFor(() => expect(h.ciPrs).toEqual([9, 8]))
+    h.ciPrs = []
+    // A click opens a row in place; another closes it and opens its own.
+    fireEvent.click(rowButton(8))
+    await waitFor(() => expect(h.ciPrs).toContain(8))
+    expect(document.querySelectorAll('[data-deck-pr-detail]')).toHaveLength(1)
+    expect(document.querySelector('[data-deck-pr="8"] [data-deck-pr-detail]')).not.toBeNull()
+    fireEvent.click(rowButton(9))
+    await waitFor(() => expect(h.ciPrs).toContain(9))
+    expect(document.querySelectorAll('[data-deck-pr-detail]')).toHaveLength(1)
+    expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-detail]')).not.toBeNull()
+    // The same row again closes it.
+    fireEvent.click(rowButton(9))
+    expect(document.querySelector('[data-deck-pr-detail]')).toBeNull()
+    first.unmount()
+    // A failed current PR opens by itself; with nothing before it, the list says so.
+    h.prs = { connected: true, prs: [prRow(5, livePR(5, FAILED))] }
+    show()
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="5"] [data-deck-pr-detail]')).not.toBeNull())
+    expect(rowButton(5)).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('No earlier PRs from this session.')).toBeInTheDocument()
   })
 
   it('says CI has not started on a fresh PR, and "no checks" on an old one — never "CI no CI"', async () => {
@@ -331,7 +412,8 @@ describe('the session deck', () => {
     fireEvent.click(row.querySelector('[data-pipe-node="81"]')!)
     await waitFor(() => expect(h.ciPrs).toContain(8))
     await waitFor(() => expect(document.querySelector('[data-deck-ci-job="81"] [data-deck-ci-step="1"]')).not.toBeNull())
-    expect(screen.getByRole('tab', { name: 'PR' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'PRs' })).toHaveAttribute('aria-selected', 'true')
+    expect(document.querySelector('[data-deck-pr="8"] [data-deck-pr-detail]')).not.toBeNull()
     h.prs = { connected: true, prs: [] }
     h.ci = { connected: true }
   })

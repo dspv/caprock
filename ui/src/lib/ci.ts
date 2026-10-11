@@ -5,7 +5,7 @@
  * start — and none is priced: runner minutes are shown per OS, never turned
  * into money with a multiplier we would have to invent (rule 6).
  */
-import type { CIJob, CIRun, CIState, CIStep, ReleaseCI } from './api'
+import type { CIBaseline, CIJob, CIRun, CIState, CIStep, ReleaseCI, SessionPRLive } from './api'
 import type { PRCheck } from './github'
 
 export type CITone = 'running' | 'queued' | 'pass' | 'fail' | 'skipped'
@@ -237,4 +237,178 @@ export function checkNodes(items: PRCheck[], now: number): PipeNode[] {
     const ms = c.started_at ? Math.max(0, (c.completed_at || (tone === 'running' ? now : 0)) - c.started_at) : undefined
     return { key: `c${i}:${c.name}`, name: c.name, tone, ms: ms && ms > 0 ? ms : undefined, jobId: c.job_id || undefined, url: c.url }
   })
+}
+
+/**
+ * The session's pull requests in the deck's order (owner, 2026-10-12): the
+ * open one — the newest open, the one the session is on — first, then the
+ * others as the daemon lists them, newest first.
+ */
+export function orderPRs<T extends SessionPRLive>(prs: T[]): T[] {
+  const i = prs.findIndex((p) => (p.live ? p.live.state === 'open' : !p.merged_at && !p.closed_at))
+  if (i <= 0) return prs
+  return [prs[i]!, ...prs.slice(0, i), ...prs.slice(i + 1)]
+}
+
+/** A pull request's state, as its dot draws it. */
+export type PRDot = 'open' | 'draft' | 'merged' | 'closed'
+export function prDotState(p: SessionPRLive): PRDot {
+  if (p.live) return p.live.state === 'open' ? (p.live.draft ? 'draft' : 'open') : p.live.state
+  return p.merged_at ? 'merged' : p.closed_at ? 'closed' : 'open'
+}
+
+/** How a word in a PR row is coloured. */
+export type PRWordTone = 'ok' | 'fail' | 'pending' | 'muted' | 'faint'
+export interface PRWords { text: string; tone: PRWordTone; title?: string; strong?: boolean }
+
+/** How long after a PR was opened an empty check list still means "not started yet" rather than "no CI here". */
+export const CI_START_GRACE_MS = 10 * 60_000
+
+/**
+ * A PR's CI in words: "✓ passed", "✗ failed at test (windows) +1",
+ * "running · 3/5 · 4m 10s" (the time since its first check started,
+ * measured), "CI not started" for ten minutes after it opened with no check
+ * reported — GitHub often has not registered them yet — and "no checks"
+ * after that. Without GitHub, what the session recorded.
+ */
+export function prVerdict(p: SessionPRLive, now: number, runs?: CIRun[]): PRWords {
+  const pr = p.live
+  if (!pr) {
+    if (p.error) return { text: 'not read', tone: 'faint', title: `GitHub was not read: ${p.error.message}` }
+    return { text: prDotState(p), tone: 'muted' }
+  }
+  const c = pr.checks
+  const total = c.items.length
+  if (c.state === 'fail') {
+    const failed = c.items.filter((i) => i.state === 'fail')
+    const more = failed.length > 1 ? ` +${failed.length - 1}` : ''
+    return { text: `✗ failed at ${failed[0]?.name ?? 'a check'}${more}`, tone: 'fail', strong: true, title: `Failed: ${failed.map((i) => i.name).join(', ') || 'a check'}` }
+  }
+  if (c.state === 'pending') {
+    const starts = c.items.map((i) => i.started_at).filter((t): t is number => !!t)
+    const el = starts.length ? now - Math.min(...starts) : undefined
+    const done = total - c.pending
+    const vs = runs && slowestVsMedian(runs, now)
+    const left = vs && vs.kind === 'left' ? ` · ${vs.text}` : ''
+    return { text: `running · ${done}/${total}${el && el > 0 ? ` · ${fmtRun(el)}` : ''}${left}`, tone: 'pending', title: `${done} of ${total} checks finished${el && el > 0 ? `; the first started ${fmtRun(el)} ago` : ''}${vs ? `\n${vs.title}` : ''}` }
+  }
+  if (c.state === 'pass') {
+    // The wall-clock time from the first check's start to the last one's end, and against the median when the runs were read.
+    const starts = c.items.map((i) => i.started_at).filter((t): t is number => !!t)
+    const ends = c.items.map((i) => i.completed_at).filter((t): t is number => !!t)
+    const vs = runs && slowestVsMedian(runs, now)
+    // The run the median is of, when there is one; else the checks' own span.
+    const ms = vs?.kind === 'delta' && vs.ms ? vs.ms : starts.length && ends.length ? Math.max(...ends) - Math.min(...starts) : 0
+    const passed = `${total} check${total === 1 ? '' : 's'} passed`
+    if (ms <= 0) return { text: '✓ passed', tone: 'ok', strong: true, title: passed }
+    return { text: `✓ ${fmtRun(ms)}${vs && vs.kind === 'delta' ? ` · ${vs.text}` : ''}`, tone: 'ok', strong: true, title: `${passed} in ${fmtRun(ms)}${vs ? `\n${vs.title}` : ''}` }
+  }
+  const since = p.opened_at || p.last_at
+  if (pr.state === 'open' && since && now - since < CI_START_GRACE_MS) {
+    return { text: 'CI not started', tone: 'faint', title: 'GitHub has not reported any checks for this PR yet — they usually appear within a minute of a push' }
+  }
+  return { text: 'no checks', tone: 'faint', title: 'No CI workflow ran on this PR' }
+}
+
+/** An open PR's review, when GitHub reported one: approved, changes requested, review required. */
+export function prReviewText(p: SessionPRLive): PRWords | undefined {
+  const pr = p.live
+  if (!pr || pr.state !== 'open') return undefined
+  if (pr.review === 'approved') return { text: 'approved', tone: 'ok' }
+  if (pr.review === 'changes_requested') return { text: 'changes requested', tone: 'fail' }
+  if (pr.review === 'review_required') return { text: 'review required', tone: 'muted' }
+  return undefined
+}
+
+/** An open PR that GitHub says cannot merge: a conflict. Unknown says nothing. */
+export function prMergeText(p: SessionPRLive): PRWords | undefined {
+  const pr = p.live
+  if (!pr || pr.state !== 'open' || pr.mergeable !== false) return undefined
+  return { text: 'conflict', tone: 'fail', title: `GitHub says it cannot be merged as it is${pr.mergeable_state ? ` (${pr.mergeable_state})` : ''}: it conflicts with ${pr.base || 'its base'}` }
+}
+
+/** A PR's age in a few characters — "now", "5m", "2h", "3d" — since it was merged, closed or opened. */
+export function prAge(p: SessionPRLive, now: number): { text: string; title: string } {
+  const at = p.merged_at ?? p.closed_at ?? p.opened_at ?? p.last_at
+  const verb = p.merged_at ? 'merged' : p.closed_at ? 'closed' : p.opened_at ? 'opened' : 'last seen'
+  if (!at) return { text: '', title: '' }
+  const ms = Math.max(0, now - at)
+  const text = ms < 60_000 ? 'now' : ms < 3_600_000 ? `${Math.floor(ms / 60_000)}m` : ms < 86_400_000 ? `${Math.floor(ms / 3_600_000)}h` : `${Math.floor(ms / 86_400_000)}d`
+  return { text, title: `${verb[0]!.toUpperCase()}${verb.slice(1)} ${ago(ms)}` }
+}
+
+/** How a time against its median is coloured: slower by more than a fifth amber, faster by a tenth green. */
+export type DeltaTone = 'warn' | 'ok' | 'muted'
+export interface VsMedian { kind: 'delta' | 'left' | 'over'; text: string; tone: DeltaTone; title: string; /** The time compared. */ ms?: number }
+
+/** Where the median comes from, said in every tooltip. */
+export function baselineBasis(b: CIBaseline): string {
+  return `the median of the last ${b.runs} successful runs`
+}
+
+/** A signed whole percent with a real minus: "+18%", "−6%". */
+export function pct(n: number): string {
+  return n >= 0 ? `+${n}%` : `\u2212${-n}%`
+}
+
+/**
+ * A finished time against its median (owner, 2026-10-12, translated: "the
+ * execution time plus an estimate relative to the average — plus or minus
+ * percent"): "+18%". Undefined without a median of at least two runs: no
+ * invented number (rule 6).
+ */
+export function vsMedian(ms: number | undefined, b: CIBaseline | undefined): VsMedian | undefined {
+  if (!b || b.runs < 2 || b.median_ms <= 0 || !ms || ms <= 0) return undefined
+  const d = Math.round(((ms - b.median_ms) / b.median_ms) * 100)
+  return { kind: 'delta', ms, text: pct(d), tone: d > 20 ? 'warn' : d < -10 ? 'ok' : 'muted', title: `${fmtRun(ms)} against a median of ${fmtRun(b.median_ms)}: ${baselineBasis(b)}` }
+}
+
+/** Minutes left, rounded: "≈ 3m left", "≈ <1m left". */
+function leftText(ms: number): string {
+  return ms < 60_000 ? '≈ <1m left' : `≈ ${Math.round(ms / 60_000)}m left`
+}
+
+/**
+ * A running time against its median: "≈ 3m left" while under it, "+12% over
+ * median" once past it. Undefined without a median of at least two runs.
+ */
+export function runningVsMedian(elapsed: number | undefined, b: CIBaseline | undefined): VsMedian | undefined {
+  if (!b || b.runs < 2 || b.median_ms <= 0 || elapsed === undefined || elapsed < 0) return undefined
+  const basis = `median ${fmtRun(b.median_ms)}: ${baselineBasis(b)}`
+  if (elapsed < b.median_ms) return { kind: 'left', text: leftText(b.median_ms - elapsed), tone: 'muted', title: `${leftText(b.median_ms - elapsed)} (${basis}); an estimate` }
+  const d = Math.round(((elapsed - b.median_ms) / b.median_ms) * 100)
+  return { kind: 'over', text: `${pct(d)} over median`, tone: d > 20 ? 'warn' : 'muted', title: `${fmtRun(elapsed)} so far against a ${basis}` }
+}
+
+/** A run's wall-clock time: started to last updated once done, started to now while it runs. */
+export function runSpan(run: CIRun, now: number): number | undefined {
+  const start = run.started_at || run.created_at
+  if (!start) return undefined
+  if (run.status === 'completed') return run.updated_at && run.updated_at > start ? run.updated_at - start : undefined
+  return Math.max(0, now - start)
+}
+
+/** A run's time against its workflow's median, finished or running. */
+export function runVsMedian(run: CIRun, now: number): VsMedian | undefined {
+  const ms = runSpan(run, now)
+  if (run.status === 'completed') return run.conclusion === 'success' ? vsMedian(ms, run.baseline) : undefined
+  return runningVsMedian(ms, run.baseline)
+}
+
+/** A job's time against the median of its name, finished (and passed) or running. */
+export function jobVsMedian(job: CIJob, now: number): VsMedian | undefined {
+  if (job.status === 'completed') return job.conclusion === 'success' ? vsMedian(job.duration_ms, job.baseline) : undefined
+  if (job.status !== 'in_progress') return undefined
+  return runningVsMedian(ciElapsed(job, now), job.baseline)
+}
+
+/** The PR's slowest run against its median: what decides when the CI is done. */
+export function slowestVsMedian(runs: CIRun[], now: number): VsMedian | undefined {
+  let best: CIRun | undefined
+  let bestMs = -1
+  for (const r of runs) {
+    const ms = runSpan(r, now) ?? 0
+    if (r.baseline && ms > bestMs) { best = r; bestMs = ms }
+  }
+  return best ? runVsMedian(best, now) : undefined
 }

@@ -1230,7 +1230,8 @@ with `resume` (a continued session has its conversation), `relay_from` with
 no `cwd` is given, and a brief over the limit.
 
 **`GET /v1/sessions/{id}/prs`** → `{connected, prs}`: the session's latest
-three pull requests (`session_prs`, newest first), each a `SessionPR` plus
+four pull requests (`session_prs`, newest first; the current one and up to
+three before it, `sessionPRsShown`; three until 2026-10-12), each a `SessionPR` plus
 `live` — the `github.PR` GitHub returns for its link now (state, checks,
 review) — or `error` when GitHub was asked and failed. While GitHub is not
 connected nothing is sent and `live` is absent. Each pull request is kept
@@ -1241,16 +1242,16 @@ GitHub nothing in between; every read is conditional.
 **`GET /v1/sessions/{id}/ci`** (`?pr=N` optional) → `SessionCI` `{connected,
 pr?, ci?, error?}`: the session deck's CI cell. `pr` `{number, url, title?,
 state?, repo, head_sha?}` is pull request N when it is among the session's
-latest three (a click on its mini pipeline in the PRs cell), else the
+latest four (a click on its row or its mini pipeline), else the
 session's open one among them, else the newest (each read through `github.PullByURL`, so it shares the PRs
 cell's reads). `ci` is `github.CI` for that PR's head commit: `{repo,
 head_sha, state, runs[], runner_ms, by_os[], at, error?}`, `state` one of
 `running | fail | pass | none`. Each run `{id, name, event?, status,
 conclusion?, attempt?, html_url?, created_at?, updated_at?, started_at?,
-head_branch?, head_sha?, workflow_id?, jobs[]}` (`started_at` is GitHub's
+head_branch?, head_sha?, workflow_id?, jobs[], baseline?}` (`started_at` is GitHub's
 `run_started_at`; `head_branch` is the tag for a tag push or a release); each
 job `{id, run_id, name, status, conclusion?, started_at?, completed_at?,
-duration_ms?, labels[], os?, runner_name?, html_url?, steps[]}`; each step
+duration_ms?, labels[], os?, runner_name?, html_url?, steps[], baseline?}`; each step
 `{number, name, status, conclusion?, started_at?, completed_at?,
 duration_ms?}` — times unix ms, durations `completed_at - started_at` from
 GitHub's own stamps and absent until both are known. `os` is read from the
@@ -1265,6 +1266,21 @@ settled (`github.CIBySHA`); a settled run whose `updated_at` and attempt
 are unchanged keeps the jobs read before. While GitHub is not connected
 nothing is sent: `connected` is false, `pr` is the newest recorded one and
 `ci` is absent. A failed read keeps the last answer with `ci.error` set.
+
+**CI baselines.** On the three CI routes (`/ci`, `/ci/release`'s `run`,
+`/ci/main`) each run and each job may carry `baseline` `{median_ms, runs}`:
+for a run, the median of `updated_at - run_started_at` over the newest
+successful runs of the same workflow on the repository, other than the runs
+shown, up to 5; for a job, the median `duration_ms` of the jobs of the same
+name that succeeded in those runs. Absent with fewer than 2 samples — never a
+guessed figure (rule 6). Read by `github.WithBaselines` from
+`GET …/actions/workflows/{workflow_id}/runs?status=success&per_page=8`, kept
+per workflow 30 min, and `GET …/actions/runs/{id}/jobs?per_page=100` per past
+run, kept for the daemon's lifetime (a finished run's jobs do not change; up
+to 256 runs and 64 workflows, the oldest read dropped first). Only these
+routes ask for it, so nothing is read while the deck is closed; nothing is
+sent while GitHub is not connected; a failed read is no baseline, not an
+error. The cached answers are never changed: the baselines are set on a copy.
 
 **`GET /v1/sessions/{id}/ci/release`** and **`GET /v1/sessions/{id}/ci/main`**
 → `SessionRepoCI` `{connected, repo?, reason?, branch?, release?, ci?,

@@ -14,6 +14,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** the session deck is one cell, **Pull requests & CI**: the
+  session's pull requests, the current one first and up to three earlier
+  ones, each with its state dot, mini pipeline, CI in words (*✓ 9m 10s ·
+  −6%*, *✗ failed at test (windows)*, *running · 3/5 · 4m 10s*), review,
+  conflict and age. A click opens a row in place into its jobs, steps,
+  error lines and *Investigate*; the current PR opens by itself while its CI
+  runs or failed. The Branch cell is gone: the branch is a chip in the
+  header (*feat/x → main*, with what is not committed or pushed), and the
+  release chip sits there too. PRs, Release and Main stay behind one switch.
+  The deck lists four PRs (`GET /v1/sessions/{id}/prs`, was three).
+- **app:** CI runs and jobs show their time against the median of the same
+  workflow's last five successful runs: *4m 45s +18%* (amber past +20%,
+  green below −10%), *≈ 3m left* or *+12% over median* while running,
+  nothing with fewer than two past runs. Past runs' jobs are read once and
+  kept; only while the deck is open (`baseline` on runs and jobs).
 - **app:** the session deck's CI cell has a switch: **PR** (as before),
   **Release** and **Main**, remembered per viewer. *Release* is the
   repository's newest release build — found from the run a tag push or a

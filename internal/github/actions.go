@@ -71,6 +71,10 @@ type CIJob struct {
 	RunnerName string   `json:"runner_name,omitempty"`
 	HTMLURL    string   `json:"html_url,omitempty"`
 	Steps      []CIStep `json:"steps"`
+	// Baseline is the median duration of the job of this name in the
+	// workflow's last successful runs (WithBaselines); absent with fewer
+	// than two of them.
+	Baseline *CIEstimate `json:"baseline,omitempty"`
 }
 
 // CIRun is one workflow run of a commit.
@@ -91,6 +95,10 @@ type CIRun struct {
 	HeadSHA    string  `json:"head_sha,omitempty"`
 	WorkflowID int64   `json:"workflow_id,omitempty"`
 	Jobs       []CIJob `json:"jobs"`
+	// Baseline is the median wall-clock span (run_started_at to updated_at)
+	// of the workflow's last successful runs (WithBaselines); absent with
+	// fewer than two of them.
+	Baseline *CIEstimate `json:"baseline,omitempty"`
 }
 
 // CIOS is the runner time of the finished jobs on one OS.

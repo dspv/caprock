@@ -157,6 +157,8 @@ type Service struct {
 	ci ciCache
 	// repoCI keeps the release and default-branch CI (release.go).
 	repoCI repoCI
+	// baseline keeps past successful runs for the CI baselines (baseline.go).
+	baseline baselineCache
 }
 
 func (s *Service) init() {

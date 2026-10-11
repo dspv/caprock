@@ -31,6 +31,7 @@
   --color-warn: #e0a33c;    /* idle / waiting-on-you */
   --color-danger: #ff8080;  /* loop / error / over budget */
   --color-info: #feb157;    /* links — the brand amber, not a stray blue */
+  --color-merged: #a371f7;  /* a merged pull request, as GitHub draws it */
 
   /* brand accent — warm amber, one hue for every interactive element */
   --color-accent: #feb157;
@@ -94,6 +95,7 @@
   --color-warn: #9a6700;
   --color-danger: #d64545;
   --color-info: #99600a;
+  --color-merged: #8250df;
 
   --color-accent: #99600a;
   --color-accent-strong: #7a4c06;
@@ -625,6 +627,13 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 .pipe-node[data-tone="fail"] { background: var(--color-danger); }
 .pipe-node[data-tone="queued"] { border: 1.5px solid var(--color-fg-faint); }
 .pipe-node[data-tone="skipped"] { border: 1.5px solid var(--color-fg-faint); background: linear-gradient(135deg, transparent 43%, var(--color-fg-faint) 43%, var(--color-fg-faint) 57%, transparent 57%); }
+/* A pull request's state in the deck: open green, merged violet, closed
+   grey, a draft a hollow ring. */
+.pr-dot { display: inline-block; width: 8px; height: 8px; flex: none; border-radius: 9999px; }
+.pr-dot[data-state="open"] { background: var(--color-ok); }
+.pr-dot[data-state="merged"] { background: var(--color-merged); }
+.pr-dot[data-state="closed"] { background: var(--color-fg-faint); }
+.pr-dot[data-state="draft"] { border: 1.5px solid var(--color-fg-faint); }
 .pipe-link { display: inline-block; width: 4px; height: 1px; flex: none; background: var(--color-fg-faint); opacity: 0.6; }
 .ci-failed-step { background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
 .ci-failed-step:hover { background: color-mix(in srgb, var(--color-danger) 17%, transparent); }
