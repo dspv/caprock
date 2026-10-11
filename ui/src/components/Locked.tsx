@@ -80,7 +80,7 @@ export function Locked({
         tone="premium"
         art="lock"
         title={title}
-        line="A Premium feature, shown as it will work."
+        line="Part of Premium."
         actions={<BannerButton kind="premium" onClick={() => setOpen(true)}>Unlock with Premium</BannerButton>}
       />
 
