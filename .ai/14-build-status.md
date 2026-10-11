@@ -73,6 +73,13 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-11 — 0.107.4: spend by time, ⇧⌘G for the diff
+
+The inspector's spend spark opens, on a click, the session's spend by time
+(bars follow the clock; a stretch reads when, cost, calls, top tools). ⇧⌘G
+opens the diff of the session in front. The deck's top edge is a hairline.
+The repository now squash-merges and deletes merged branches.
+
 ### 2026-10-11 — 0.107.3: deck PRs in columns, CI opens the run
 
 The deck's PR rows line up (CI, then state); a click on the CI opens the

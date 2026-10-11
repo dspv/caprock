@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.107.4] - 2026-10-11
+
 ### Changed
 
 - **app:** the inspector's spend spark opens, on a click, the session's
