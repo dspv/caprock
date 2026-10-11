@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Event, SessionSummary, Summary } from '@/lib/api'
 import { heldSessions } from '@/lib/sessionEvents'
@@ -12,10 +12,11 @@ const events: Event[] = [
   { id: 3, ts: iso(4_000), session_id: 's1', source: 'hook', kind: 'tool.pre', tool: 'Bash', payload: { tool_use_id: 'b', tool_input: { command: 'go test ./internal/...' } } },
 ]
 
-const h = vi.hoisted(() => ({ asked: 0, prs: { connected: true, prs: [] as unknown[] } }))
+const h = vi.hoisted(() => ({ asked: 0, prs: { connected: true, prs: [] as unknown[] }, ci: { connected: true } as unknown, logs: 0, queued: [] as string[] }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, recentMainEvents: async () => { h.asked++; return events }, sessionPRs: async () => h.prs } }
+  return { ...actual, api: { ...actual.api, recentMainEvents: async () => { h.asked++; return events }, sessionPRs: async () => h.prs, sessionCI: async () => h.ci, queueSend: async (_id: string, text: string) => { h.queued.push(text); return { sent: false, queue: { session_id: 's1', messages: [], waiting: 'turn' } } },
+    sessionCILog: async () => { h.logs++; return { job_id: 71, lines: ['go test ./...', '--- FAIL: TestDeck (0.01s)', '##[error]Process completed with exit code 1.'], error_line: 2 } } } }
 })
 
 import { SessionDeck } from './SessionDeck'
@@ -42,10 +43,10 @@ function show(p: Partial<Parameters<typeof SessionDeck>[0]> = {}) {
 afterEach(() => { vi.useRealTimers(); h.asked = 0 })
 
 describe('the session deck', () => {
-  it('reads the session’s context, and asks nothing of its events', async () => {
+  it('asks nothing of the session’s events, and leaves the context to the status bar', async () => {
     show()
-    expect(screen.getByRole('meter', { name: 'Context used' })).toHaveAttribute('aria-valuenow', '62')
-    expect(screen.getByText(/next call/)).toHaveTextContent('$0.03')
+    expect(screen.queryByRole('meter', { name: 'Context used' })).toBeNull()
+    expect(screen.queryByText(/next call/)).toBeNull()
     // What it is doing and what it cost are the sidebar's and the inspector's.
     expect(screen.queryByText('Spent')).toBeNull()
     expect(screen.queryByText('Now')).toBeNull()
@@ -56,9 +57,90 @@ describe('the session deck', () => {
 
   it('leaves out what the agent does not report rather than drawing a zero', () => {
     show({ s: agent({ context: undefined, stats: undefined, agent: 'opencode' }) })
-    expect(screen.queryByRole('meter', { name: 'Context used' })).toBeNull()
     expect(screen.queryByText('Spent')).toBeNull()
     expect(screen.queryByText('$0.00')).toBeNull()
+  })
+
+  it('shows the PR’s CI: jobs, steps, times, the runner total, and a failed step’s error', async () => {
+    const t0 = now - 5 * 60_000
+    const st = (number: number, name: string, status: string, conclusion: string | undefined, from: number, to?: number) =>
+      ({ number, name, status, conclusion, started_at: from, completed_at: to, duration_ms: to ? to - from : undefined })
+    h.ci = { connected: true, pr: { number: 9, url: 'https://github.com/a/b/pull/9', repo: 'a/b', head_sha: 's' }, ci: {
+      repo: 'a/b', head_sha: 's', state: 'running', runner_ms: 90_000, by_os: [{ os: 'linux', ms: 90_000 }], at: now, runs: [{ id: 7, name: 'CI', status: 'in_progress', jobs: [
+        { id: 70, run_id: 7, name: 'lint', status: 'completed', conclusion: 'success', started_at: t0, completed_at: t0 + 90_000, duration_ms: 90_000, labels: ['ubuntu-latest'], os: 'linux',
+          steps: [st(1, 'golangci-lint', 'completed', 'success', t0, t0 + 90_000)] },
+        { id: 71, run_id: 7, name: 'test (macos)', status: 'completed', conclusion: 'failure', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000, labels: ['macos-14'], os: 'macos', html_url: 'https://github.com/a/b/actions/runs/7/job/71',
+          steps: [st(1, 'Set up job', 'completed', 'success', t0, t0 + 2_000), st(2, 'go test', 'completed', 'failure', t0 + 2_000, t0 + 60_000)] },
+        { id: 72, run_id: 7, name: 'test (windows)', status: 'in_progress', started_at: now - 125_000, labels: ['windows-latest'], os: 'windows',
+          steps: [st(1, 'go test', 'in_progress', undefined, now - 120_000)] },
+      ] }] } }
+    show()
+    const lint = await screen.findByText('lint')
+    expect(lint.closest('[data-deck-ci-job]')).toHaveAttribute('data-tone', 'pass')
+    expect(lint.closest('button')).toHaveTextContent('1m 30s')
+    // A running job ticks, and says which step it is on.
+    const win = screen.getByText('test (windows)').closest('button')!
+    expect(win).toHaveTextContent(/2m 0[5-9]s/)
+    expect(win).toHaveTextContent('go test')
+    // The runner time is the finished jobs plus the running one on the clock.
+    expect(document.querySelector('[data-deck-ci-runner]')!.textContent).toMatch(/runner 3m 3[5-9]s/)
+    // The failed job is open; its failed step opens the error.
+    const failed = await waitFor(() => {
+      const b = document.querySelector('[data-deck-ci-job="71"] [data-deck-ci-step="2"] button')
+      if (!b) throw new Error('the failed job did not open')
+      return b
+    })
+    expect(failed).toHaveTextContent('58s')
+    fireEvent.click(failed)
+    expect(await screen.findByText('##[error]Process completed with exit code 1.')).toHaveClass('ci-error-line')
+    expect(h.logs).toBe(1)
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    fireEvent.click(screen.getByRole('button', { name: /Open on GitHub/ }))
+    expect(String(open.mock.calls.at(-1)?.[0] ?? '')).toBe('https://github.com/a/b/actions/runs/7/job/71')
+    open.mockRestore()
+    h.ci = { connected: true }
+  })
+
+  it('queues a failed job into the agent with Investigate, and only into one Caprock started', async () => {
+    const t0 = now - 5 * 60_000
+    h.ci = { connected: true, pr: { number: 428, title: 'Add CI', url: 'https://github.com/a/b/pull/428', repo: 'a/b', head_sha: 's' }, ci: {
+      repo: 'a/b', head_sha: 's', state: 'fail', runner_ms: 60_000, by_os: [], at: now, runs: [{ id: 7, name: 'CI', status: 'completed', conclusion: 'failure', jobs: [
+        { id: 71, run_id: 7, name: 'test (macos)', status: 'completed', conclusion: 'failure', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000, labels: [], html_url: 'https://github.com/a/b/actions/runs/7/job/71',
+          steps: [{ number: 1, name: 'go test', status: 'completed', conclusion: 'failure', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000 }] },
+      ] }] } }
+    h.queued = []
+    const onToast = vi.fn()
+    const first = show({ onToast })
+    const b = await screen.findByRole('button', { name: 'Investigate' })
+    fireEvent.click(b)
+    await waitFor(() => expect(onToast).toHaveBeenCalled())
+    expect(h.queued).toHaveLength(1)
+    expect(h.queued[0]).toContain('CI failed on PR #428 "Add CI"')
+    expect(h.queued[0]).toContain('Workflow: CI · job: test (macos) · step: go test')
+    expect(h.queued[0]).toContain('##[error]Process completed with exit code 1.')
+    expect(onToast.mock.calls[0]![0]).toMatch(/^Queued for /)
+    first.unmount()
+    // A session in another terminal: never typed into, and the button says why.
+    show({ s: agent({ owned: false }) })
+    const off = await screen.findByRole('button', { name: 'Investigate' })
+    expect(off).toBeDisabled()
+    expect(off.getAttribute('title')).toMatch(/did not start this session/)
+    h.ci = { connected: true }
+  })
+
+  it('says plainly when there is no CI to show', async () => {
+    h.ci = { connected: true }
+    const { unmount } = show()
+    expect(await screen.findAllByText('No PR from this session yet.')).not.toHaveLength(0)
+    unmount()
+    h.ci = { connected: false, pr: { number: 4, url: 'https://github.com/a/b/pull/4', repo: 'a/b' } }
+    const second = show()
+    expect(await screen.findByText('Connect GitHub to see #4’s CI')).toBeInTheDocument()
+    second.unmount()
+    h.ci = { connected: true, pr: { number: 4, url: 'https://github.com/a/b/pull/4', repo: 'a/b', head_sha: 's' }, ci: { repo: 'a/b', head_sha: 's', state: 'none', runs: [], runner_ms: 0, by_os: [], at: now } }
+    show()
+    expect(await screen.findByText('No GitHub Actions runs on #4’s head commit.')).toBeInTheDocument()
+    h.ci = { connected: true }
   })
 
   it('shows the branch with what is not committed and not pushed', async () => {
@@ -85,6 +167,21 @@ describe('the session deck', () => {
     fireEvent.click(screen.getByText('CI 2/5 running'))
     expect(String(open.mock.calls.at(-1)?.[0] ?? '')).toBe('https://github.com/a/b/pull/9/checks')
     open.mockRestore()
+    h.prs = { connected: true, prs: [] }
+  })
+
+  it('says CI has not started on a fresh PR, and "no checks" on an old one — never "CI no CI"', async () => {
+    const live = (n: number) => ({ number: n, url: `https://github.com/a/b/pull/${n}`, title: `PR ${n}`, state: 'open', draft: false, review: '', reviews: [],
+      checks: { state: 'none', passed: 0, failed: 0, pending: 0, items: [] } })
+    h.prs = { connected: true, prs: [
+      { session_id: 's1', number: 431, url: 'https://github.com/a/b/pull/431', title: 'PR 431', opened_at: now - 30_000, last_at: now - 30_000, live: live(431) },
+      { session_id: 's1', number: 300, url: 'https://github.com/a/b/pull/300', title: 'PR 300', opened_at: now - 3_600_000, last_at: now - 3_600_000, live: live(300) },
+    ] }
+    show()
+    const fresh = await screen.findByText('CI not started')
+    expect(fresh).toHaveAttribute('title', expect.stringMatching(/not reported any checks for this PR yet/))
+    expect(screen.getByText('no checks')).toHaveAttribute('title', 'No CI workflow ran on this PR')
+    expect(screen.queryByText(/CI no CI/)).toBeNull()
     h.prs = { connected: true, prs: [] }
   })
 

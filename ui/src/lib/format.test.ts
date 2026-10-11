@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { basename, fmtAgo, fmtPct, fmtTokens, fmtUSD, shortId, fmtTool } from './format'
+import { basename, fmtAgo, fmtPct, fmtTokens, fmtUSD, fmtUSDk, fmtUSDShort, shortId, fmtTool } from './format'
 
 describe('format', () => {
   it('formats USD with more precision for tiny amounts', () => {
@@ -32,5 +32,22 @@ describe('format', () => {
     expect(fmtTool('mcp__claude-in-chrome__tabs_context_mcp')).toBe('claude-in-chrome·tabs_context_mcp')
     expect(fmtTool('Bash')).toBe('Bash')
     expect(fmtTool('mcp__apify__call-actor')).toBe('apify·call-actor')
+  })
+})
+
+describe('short dollar figures', () => {
+  it('drops cents on a headline and shortens thousands', () => {
+    expect(fmtUSDShort(16817.45)).toBe('$16.8k')
+    expect(fmtUSDShort(1234)).toBe('$1.2k')
+    expect(fmtUSDShort(12000)).toBe('$12k')
+    expect(fmtUSDShort(168_400)).toBe('$168k')
+    expect(fmtUSDShort(1_240_000)).toBe('$1.2M')
+    expect(fmtUSDShort(158.66)).toBe('$159')
+    expect(fmtUSDShort(0.42)).toBe('$0.42')
+  })
+  it('keeps three decimals of thousands for a panel total', () => {
+    expect(fmtUSDk(16817.53)).toBe('$16.818k')
+    expect(fmtUSDk(1234)).toBe('$1.234k')
+    expect(fmtUSDk(512.3)).toBe('$512.30')
   })
 })

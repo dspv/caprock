@@ -379,6 +379,8 @@ GET  /v1/sessions/{id}/subagents       → {working: SubagentNow[], finished} �
 GET  /v1/sessions/{id}/calls?limit=…   → SessionCall[] — every priced main-thread model call, oldest first (§ Session calls)
 GET  /v1/sessions/{id}/notes           → AssistantNote[] — what Claude said, newest first
 GET  /v1/sessions/{id}/prs             → {connected, prs: SessionPRLive[]} — the session deck's PRs with CI
+GET  /v1/sessions/{id}/ci              → SessionCI — the deck's CI cell: Actions runs, jobs, steps, times
+GET  /v1/sessions/{id}/ci/jobs/{job}/log → CILog — the lines around a failed job's error, on demand
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
@@ -1174,6 +1176,46 @@ connected nothing is sent and `live` is absent. Each pull request is kept
 per link for 20 s while its checks run, 2 min once they settled and 30 min
 once merged or closed (`github.PullByURL`), so the deck polling it costs
 GitHub nothing in between; every read is conditional.
+
+**`GET /v1/sessions/{id}/ci`** → `SessionCI` `{connected, pr?, ci?, error?}`:
+the session deck's CI cell. `pr` `{number, url, title?, state?, repo,
+head_sha?}` is the session's open pull request among its latest three, else
+the newest (each read through `github.PullByURL`, so it shares the PRs
+cell's reads). `ci` is `github.CI` for that PR's head commit: `{repo,
+head_sha, state, runs[], runner_ms, by_os[], at, error?}`, `state` one of
+`running | fail | pass | none`. Each run `{id, name, event?, status,
+conclusion?, attempt?, html_url?, created_at?, updated_at?, jobs[]}`; each
+job `{id, run_id, name, status, conclusion?, started_at?, completed_at?,
+duration_ms?, labels[], os?, runner_name?, html_url?, steps[]}`; each step
+`{number, name, status, conclusion?, started_at?, completed_at?,
+duration_ms?}` — times unix ms, durations `completed_at - started_at` from
+GitHub's own stamps and absent until both are known. `os` is read from the
+runner labels: `linux | windows | macos | self-hosted`, absent when they
+name none. `runner_ms` sums the finished jobs and `by_os` `[{os, ms}]`
+splits it, largest first; no billing multiplier is applied anywhere (a
+running job's time is the reader's clock minus `started_at`). Read from
+`GET /repos/{o}/{r}/actions/runs?head_sha=…&per_page=10` and
+`GET …/actions/runs/{id}/jobs?per_page=100` (the latest attempt), kept per
+commit for 10 s while any run or job is unfinished and 2 min once all
+settled (`github.CIBySHA`); a settled run whose `updated_at` and attempt
+are unchanged keeps the jobs read before. While GitHub is not connected
+nothing is sent: `connected` is false, `pr` is the newest recorded one and
+`ci` is absent. A failed read keeps the last answer with `ci.error` set.
+
+**`GET /v1/sessions/{id}/ci/jobs/{job}/log`** → `CILog` `{job_id, lines[],
+error_line, truncated?}`: the end of one finished job's log, for a job in
+this session's CI only (else 404; 409 while GitHub is not connected).
+`GET /repos/{o}/{r}/actions/jobs/{job}/logs` is asked on the API host with
+the token and its redirect is not followed by that request; the signed
+address it names is fetched without the token, only over https and only on
+`*.actions.githubusercontent.com` or `*.blob.core.windows.net`, where
+GitHub keeps logs (any other host is refused). At most 32 MiB is read; of
+its last 400 lines, `lines` is up to 50 before the last `##[error]` line
+and 10 after it (`error_line` its index), or the last 60 with
+`error_line: -1` when none is marked — the runner's timestamps cut, each
+line at most 400 bytes, the whole at most 24 KiB. Kept per job for 30 min:
+a finished log does not change. GitHub failures answer as the other GitHub
+routes do (`{error, kind, …}`); an expired log is `not_found`.
 
 **`GET /v1/sessions/{id}/relay`** → `RelayBrief` `{session_id, agent, cwd,
 cwd_exists, passage_at?, git?: {branch?, base?, files[], more?, stat?,
@@ -2169,6 +2211,7 @@ Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permi
 
 ```
 POST     /v1/hive                     {hive?, repo?} → {hive, repo}   turns the task runner on, no restart
+GET      /v1/hive/starter             → {repo, checks[], default_budget_usd}   the Tasks templates' prefill
 GET/POST /v1/tasks
 GET      /v1/tasks/{id}
 POST     /v1/tasks/{id}/approve | /v1/tasks/{id}/reject
@@ -2181,6 +2224,8 @@ POST     /v1/orchestrator/stop        → kills the orchestrator + every worker 
 **`GET /v1/tasks/{id}` also answers "where is the work, and what proved it".** Alongside `{task, body}` it returns `done_criteria` (read back off the hive file — the SQLite mirror drops it, so nothing the API returned could say what "done" would mean for a task) and a `work` block: `branch`, `worktree`, `repo`, `sessions[]` (`session_id`, `cwd`, `from_ts`, `to_ts`) and `verifications[]` (`round`, `command`, `exit_code`, `output_path`, `ts`). Everything in `work` is derived per request, never stored — `branch` and `worktree` are the same strings `git worktree add -B caprock/<worker> <repo>/.caprock-worktrees/<worker>` was given, and the rest is read from `task_assignments` and `verifications`. It exists because `GET /v1/sessions/{id}/diff` is keyed on a *session* id while the board knew only the hive *agent* id, so no task card could link to the diff of its own work. Assembled in the daemon's `boardAdapter`, which is the only layer that knows the repo.
 
 **`POST /v1/hive` turns the task runner on over a running daemon.** It opens (creating and seeding) the queue directory, starts the board, wires the orchestrator, and returns the `{hive, repo}` in force — no restart. Both fields are optional; an empty body means the daemon's own suggestion, which is exactly what `GET /v1/status` offers. Everything the board needs (store, bus, session manager, logger) is already running, so the only thing that ever required a restart was that `--hive` was read once at startup: the board is now resolved per request, and the Stop hook's `Decide` is wired unconditionally so the Stop-loop starts working the moment the runner is on. Turning it on a second time is `409` rather than a silent rebuild — a second board over a different directory would leave the first one's router running against task files nobody is looking at. It exists because the dashboard's off state could otherwise only hand the user a command to paste into a terminal, which is not a control. It arms nothing by itself: spawning is still the separate, explicit `POST /v1/orchestrator/start`.
+
+**`GET /v1/hive/starter` is what the Tasks templates prefill from.** `repo` is the checkout workers branch from — the one in force, or the suggestion while the runner is off (the same string as `repo` / `suggested_repo` in `/v1/status`). `checks[]` is `{command, kind, source}` for every check command that repository declares, found by `internal/projcheck` from its files alone — nothing is run: Makefile targets `check` (kind `all`), `test`, `lint`, `vet`, `typecheck`, `build`; package.json scripts `test` (not `npm init`'s always-failing placeholder), `lint`, `typecheck`/`type-check`/`tsc`, `build`, spelled for the package manager its lockfile names (npm, pnpm, yarn, bun); `go test`/`go vet`/`go build ./...` for a go.mod; `cargo test`/`cargo check` for a Cargo.toml; `pytest`, `ruff check .`, `mypy .` only when the Python project's own config names them. Project entry points come first, so a template asking for a kind takes the project's own command over the toolchain's stock one; duplicates are dropped; an empty list is an honest answer. `default_budget_usd` is `board.DefaultBudgetUSD`, the ceiling `POST /v1/tasks` applies when the request names no budget — the form shows it as the placeholder rather than inventing one. It answers with the runner off (it reads, it does not arm) and `501` only when the build has no task runner. Not on the paired-device allowlist: a paired device reads the board but does not write tasks.
 
 **`GET /v1/status` reports the hive.** `hive` and `repo` carry the queue directory in force and the checkout its workers operate on; both are omitted when orchestration is off. Which hive a running daemon had been started with was previously reported nowhere — not in `/v1/status`, not in `caprock status`, not in the startup line or the log — so there was no way to ask a live daemon what it was orchestrating. While it is **off**, `suggested_hive` (`~/caprock-tasks`) and `suggested_repo` (the daemon's cwd) carry what `POST /v1/hive` would use with no body — the defaults the dashboard names in its confirmation before turning anything on. Both are suggestions, not state: nothing is created until the POST.
 
