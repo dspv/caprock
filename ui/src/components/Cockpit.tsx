@@ -235,7 +235,7 @@ function Spend({ s, turns, sessionId, events, now }: { s: SessionSummary; turns:
   const last = turns[turns.length - 1]
   const tokensIn = st ? st.tokens_in + st.cache_read + st.cache_write : undefined
   return (
-    <section aria-label="Spend" className="relative grid gap-2.5">
+    <section aria-label="Spend" className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2.5">
       <SectionLabel right={last ? <span className="num text-fg-faint" title="What the newest model call cost">last call <span className="text-fg">{fmtUSD(last.cost)}</span></span> : undefined}>
         Spent this session
       </SectionLabel>

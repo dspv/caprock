@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** the cockpit's *Spend by time* card stays inside a narrow
+  inspector: a long *peak …* line no longer pushes it past the panel's
+  edge and cuts off the figure and the close button.
+
+### Fixed
+
 - **app:** the update card no longer stacks on top of the version panel:
   while the panel is open (it offers the same update), the card steps aside.
 

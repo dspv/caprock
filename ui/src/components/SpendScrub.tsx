@@ -99,22 +99,25 @@ export function SpendSpark({ sessionId, events, now }: { sessionId: string; even
         data-open={open}
         tabIndex={-1}
         onKeyDown={onKey}
-        className="cockpit-scrub absolute inset-x-0 top-0 z-20 grid gap-2 rounded-[11px] border border-[var(--app-hairline)] bg-[var(--app-chrome-bg)] px-3 pb-3 pt-2.5 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]"
+        className="cockpit-scrub absolute inset-x-0 top-0 z-20 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-[11px] border border-[var(--app-hairline)] bg-[var(--app-chrome-bg)] px-3 pb-3 pt-2.5 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]"
       >
-        <div className="flex items-center gap-2">
+        {/* min-w-0 down the chain: a grid's auto track grows to its widest
+          * line, and a long "peak …" pushed the card past the panel's edge
+          * (owner, 2026-10-12). */}
+        <div className="flex min-w-0 items-center gap-2">
           <span className="shrink-0 whitespace-nowrap text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Spend by {step ? stepText(step) : 'time'}</span>
           {bars[peak] && bars[peak]!.cost > 0 && (
-            <button type="button" onClick={() => setCursor(peak)} className="num ml-auto truncate text-[11px] text-fg-muted hover:text-fg" title="The stretch that cost the most">
+            <button type="button" onClick={() => setCursor(peak)} className="num ml-auto min-w-0 truncate text-[11px] text-fg-muted hover:text-fg" title="The stretch that cost the most">
               peak {barLabel(bars[peak]!, step, now).replace(/–.*$/, '').replace(/^Today /, '')} · {fmtUSD(bars[peak]!.cost)}
             </button>
           )}
-          <button type="button" aria-label="Close" onClick={() => setOpen(false)} className={`${bars[peak]?.cost ? '' : 'ml-auto'} grid h-5 w-5 place-items-center rounded text-fg-faint hover:text-fg`}>×</button>
+          <button type="button" aria-label="Close" onClick={() => setOpen(false)} className={`${bars[peak]?.cost ? '' : 'ml-auto'} grid h-5 w-5 shrink-0 place-items-center rounded text-fg-faint hover:text-fg`}>×</button>
         </div>
         {bar && (
-          <div className="grid gap-0.5" data-spend-readout>
-            <div className="flex items-baseline gap-2">
-              <span className="truncate text-[12.5px] text-fg-muted">{barLabel(bar, step, now)}</span>
-              <span className="num ml-auto text-[22px] font-semibold leading-none tracking-[-0.02em] text-fg">{fmtUSD(bar.cost)}</span>
+          <div className="grid min-w-0 gap-0.5" data-spend-readout>
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="min-w-0 truncate text-[12.5px] text-fg-muted">{barLabel(bar, step, now)}</span>
+              <span className="num ml-auto shrink-0 text-[22px] font-semibold leading-none tracking-[-0.02em] text-fg">{fmtUSD(bar.cost)}</span>
             </div>
             <p className="num truncate text-[12px] text-fg-muted">
               {bar.calls === 0 ? 'nothing ran' : [`${bar.calls} ${bar.calls === 1 ? 'call' : 'calls'}`, topTools(bar)].filter(Boolean).join(' · ')}
@@ -132,7 +135,7 @@ export function SpendSpark({ sessionId, events, now }: { sessionId: string; even
           </svg>
         </div>
         {bars.length > 1 && (
-          <div className="num flex justify-between text-[10.5px] text-fg-faint">
+          <div className="num flex min-w-0 justify-between gap-2 text-[10.5px] text-fg-faint">
             <span>{barLabel(bars[0]!, step, now).replace(/–.*$/, '')}</span>
             <span>{barLabel(bars[bars.length - 1]!, step, now).replace(/–.*$/, '')}</span>
           </div>
