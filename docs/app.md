@@ -102,7 +102,8 @@ others. Installing it: [install-app.md](install-app.md).
   how new agents start, appearance, terminal and editor first. The × beside
   the *Settings* heading, or Esc, closes it as the tab's × does. *Send
   feedback*, the row above *Dashboard*, opens the feedback form: pick Bug, Idea or
-  Question, write a title and a few words, and paste (⌘V) or choose up to
+  Question — click a card or press 1, 2 or 3, and the title is ready for
+  typing — write a title (Enter moves on) and a few words, and paste (⌘V) or choose up to
   four screenshots — drop image files on the window, or on macOS and Windows
   press *Capture window* for a picture of the app itself (not your screen; no
   permission is asked). *Create issue* opens a prefilled GitHub issue in your

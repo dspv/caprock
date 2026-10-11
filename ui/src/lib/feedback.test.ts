@@ -7,7 +7,7 @@
  * here rather than left to whoever edits the file next.
  */
 import { describe, expect, it } from 'vitest'
-import { body, context, isSendable, issueURL, KINDS, title, type Report } from './feedback'
+import { body, context, isSendable, issueURL, kindForCode, KINDS, title, type Report } from './feedback'
 import type { Status } from './api'
 
 const status = {
@@ -141,6 +141,12 @@ describe('issueURL', () => {
       expect(params(issueURL(report({ kind: k.id }))).get('labels')).toBe(k.gh)
     }
     expect(params(issueURL(report({ kind: 'idea' }))).get('labels')).toBe('enhancement')
+  })
+
+  it('picks a kind by the physical key 1, 2 or 3, on the digit row or the numpad', () => {
+    expect(['Digit1', 'Digit2', 'Digit3', 'Numpad1', 'Numpad2', 'Numpad3'].map(kindForCode))
+      .toEqual(['bug', 'idea', 'question', 'bug', 'idea', 'question'])
+    expect(['Digit0', 'Digit4', 'Numpad4', 'KeyB', 'Enter', ''].map(kindForCode)).toEqual([null, null, null, null, null, null])
   })
 
   it('escapes text that would otherwise break the URL', () => {

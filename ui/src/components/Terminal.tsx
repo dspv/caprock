@@ -14,6 +14,7 @@ import { registerBenchTerminal } from '@/lib/benchhook'
 import { coalescedWriter, writeSliced } from '@/lib/termwrite'
 import { touchScreen } from '@/lib/phone'
 import { attachTerminalLinks } from '@/lib/termlinks'
+import { SLATE_TERMINAL_THEME } from '@/lib/termthemes'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
@@ -41,6 +42,17 @@ export const TERMINAL_THEME = {
   cursorAccent: '#1b1b1a',
   selectionBackground: '#3a3835',
 } as const
+
+/**
+ * Slate's dark ground is cool, so its terminal is too (owner, 2026-10-11):
+ * the same rule — a dark surface whatever the page — in Slate's palette. Read
+ * on mount and again whenever data-dark changes, so a theme switch with a
+ * terminal open reaches it.
+ */
+function dashTerminalTheme(): Record<string, string> {
+  const slate = typeof document !== 'undefined' && document.documentElement.getAttribute('data-dark') === 'slate'
+  return slate ? { ...SLATE_TERMINAL_THEME, background: '#1a1b1e', cursorAccent: '#1a1b1e' } : { ...TERMINAL_THEME }
+}
 /** How long the terminal must have been quiet (no typing) before WebGL is set up. */
 export const WEBGL_QUIET_MS = 1500
 
@@ -170,7 +182,7 @@ export function TerminalView({
       // who moved onto it full-time.
       convertEol: false, cursorBlink: !light, fontFamily: v('--font-mono', 'monospace'), fontSize: 12,
       // A copy: xterm keeps the object it is given.
-      theme: { ...TERMINAL_THEME },
+      theme: dashTerminalTheme(),
       // 10k lines: a build log or a long `claude` session scrolls past 5k
       // easily, and losing the start of what you are reading is the moment a
       // terminal stops being one you can work in.
@@ -179,6 +191,8 @@ export function TerminalView({
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host.current)
+    const themeWatch = typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => { term.options.theme = dashTerminalTheme() })
+    themeWatch?.observe(document.documentElement, { attributes: true, attributeFilter: ['data-dark'] })
     const unbench = registerBenchTerminal(sessionId, term)
     // URLs and OSC 8 links open on Cmd/Ctrl+click (lib/termlinks).
     const links = attachTerminalLinks(term)
@@ -371,7 +385,7 @@ export function TerminalView({
       unwake()
       sendRef.current = () => {}
       attachRef.current = async () => {}
-      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); out?.dispose(); client.dispose(); unbench(); links.dispose(); unfont(); term.dispose()
+      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); out?.dispose(); client.dispose(); unbench(); links.dispose(); unfont(); themeWatch?.disconnect(); term.dispose()
     }
   }, [sessionId, owned, attempt, phone])
   if (!owned && detached) {

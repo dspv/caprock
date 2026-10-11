@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1102,8 +1103,50 @@ func childEnv(base []string) []string {
 		out = append(out, kv)
 	}
 	out = append(out, "TERM=xterm-256color", "COLORTERM=truecolor")
-	return out
+	return withUTF8Locale(out, runtime.GOOS)
 }
+
+// withUTF8Locale gives env a UTF-8 locale when it has none, as a terminal
+// application does before it starts a shell.
+//
+// Nothing else on the way sets one. launchd does not, and a login profile
+// seldom does, because Terminal.app, iTerm2 and VS Code export LANG
+// themselves; only a recent macOS's /etc/zprofile has a default, so bash,
+// fish, an older macOS and a profile that failed to resolve start in the C
+// locale. There the bytes of a pasted "καλημέρα" arrive intact and the
+// program still takes each byte for a character: bash shows
+// `\316\272\316\261…`, zsh `<00ad>` (user report, 2026-10-11: a paste of
+// Russian text). Caprock is the terminal here, so it sets LANG, and leaves a
+// locale the user did set alone. en_US.UTF-8 exists on every macOS; C.UTF-8
+// is the one a minimal Linux has. ConPTY speaks UTF-8 whatever the
+// environment says, so Windows gets nothing.
+func withUTF8Locale(env []string, goos string) []string {
+	if goos == "windows" {
+		return env
+	}
+	for _, kv := range env {
+		if k, v, _ := strings.Cut(kv, "="); v != "" && isLocaleVar(k) {
+			return env
+		}
+	}
+	lang := "C.UTF-8"
+	if goos == "darwin" {
+		lang = "en_US.UTF-8"
+	}
+	// Empty ones go: a C library reads the first LANG= it finds, and an
+	// empty one ahead of ours would win.
+	out := env[:0:0]
+	for _, kv := range env {
+		if k, _, _ := strings.Cut(kv, "="); !isLocaleVar(k) {
+			out = append(out, kv)
+		}
+	}
+	return append(out, "LANG="+lang)
+}
+
+// isLocaleVar names the variables that decide how text is decoded, in the
+// order a C library reads them.
+func isLocaleVar(k string) bool { return k == "LC_ALL" || k == "LC_CTYPE" || k == "LANG" }
 
 func indexByte(s string, b byte) int {
 	for i := 0; i < len(s); i++ {

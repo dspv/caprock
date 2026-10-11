@@ -59,7 +59,7 @@ export interface TerminalTheme {
  * THEME_COLORS in lib/theme.ts): the tab strip's ground, so a terminal on it
  * has no edge.
  */
-export const APP_PANEL = { dark: '#211f1d', paper: '#f4ecdd', white: '#ffffff' } as const
+export const APP_PANEL = { dark: '#211f1d', slate: '#1f2023', paper: '#f4ecdd', white: '#ffffff' } as const
 
 /** The app terminal's dark palette since WP-04; what Match app shows in the dark theme. */
 export const APP_TERMINAL_THEME: TerminalColors = {
@@ -88,6 +88,35 @@ export const APP_TERMINAL_THEME: TerminalColors = {
   brightWhite: '#f4f0e8',
 }
 
+/**
+ * Slate's terminal: the Slate panel with neutral ink, a blue cursor and a
+ * cool 16-colour set (owner, 2026-10-11: the terminal should be as cool as the
+ * rest of Slate). What Match app shows when the app is dark in Slate.
+ */
+export const SLATE_TERMINAL_THEME: TerminalColors = {
+  background: APP_PANEL.slate,
+  foreground: '#e6e7ea',
+  cursor: '#6ea8fe',
+  cursorAccent: APP_PANEL.slate,
+  selectionBackground: '#33415a',
+  black: '#2a2c31',
+  red: '#f07178',
+  green: '#8fd18f',
+  yellow: '#e6d47a',
+  blue: '#6ea8fe',
+  magenta: '#b99cf5',
+  cyan: '#6cd0e0',
+  white: '#cfd2d8',
+  brightBlack: '#6a6e78',
+  brightRed: '#ff9198',
+  brightGreen: '#a9e2a9',
+  brightYellow: '#f0e19a',
+  brightBlue: '#9cc4ff',
+  brightMagenta: '#cfb8fa',
+  brightCyan: '#93e0ec',
+  brightWhite: '#f2f3f5',
+}
+
 /** The choice that follows the app's theme rather than naming a palette. */
 export const MATCH_APP_THEME = 'match'
 
@@ -96,6 +125,7 @@ export const DEFAULT_TERMINAL_THEME = MATCH_APP_THEME
 
 export const TERMINAL_THEMES: readonly TerminalTheme[] = [
   { id: 'caprock', name: 'Caprock', tone: 'dark', colors: APP_TERMINAL_THEME },
+  { id: 'slate', name: 'Slate', tone: 'dark', colors: SLATE_TERMINAL_THEME },
   {
     id: 'paper',
     name: 'Paper',
@@ -217,6 +247,8 @@ export const TERMINAL_THEMES: readonly TerminalTheme[] = [
 export interface AppLook {
   theme: 'dark' | 'light'
   tone: 'paper' | 'white'
+  /** Which dark palette (data-dark): graphite unless Slate is chosen. */
+  dark?: 'graphite' | 'slate'
 }
 
 /** The app's look, read off <html> (lib/theme.ts sets data-theme and data-tone). */
@@ -224,6 +256,7 @@ export function appLook(root: HTMLElement | null = typeof document === 'undefine
   return {
     theme: root?.getAttribute('data-theme') === 'light' ? 'light' : 'dark',
     tone: root?.getAttribute('data-tone') === 'white' ? 'white' : 'paper',
+    dark: root?.getAttribute('data-dark') === 'slate' ? 'slate' : 'graphite',
   }
 }
 
@@ -240,12 +273,12 @@ export function isTerminalChoice(id: string): boolean {
 
 /**
  * The palette a choice shows. Match app, and an id no longer offered, follow
- * the app: Caprock when it is dark, Paper on the light panel when it is light.
+ * the app: Caprock when it is dark (Slate in Slate), Paper on the light panel when it is light.
  */
 export function terminalTheme(id: string, look: AppLook = appLook()): TerminalTheme {
   const named = TERMINAL_THEMES.find((t) => t.id === id)
   if (named) return named
-  if (look.theme === 'dark') return TERMINAL_THEMES[0]!
+  if (look.theme === 'dark') return look.dark === 'slate' ? TERMINAL_THEMES.find((t) => t.id === 'slate')! : TERMINAL_THEMES[0]!
   const paper = TERMINAL_THEMES.find((t) => t.id === 'paper')!
   const ground = APP_PANEL[look.tone]
   return { id: `${MATCH_APP_THEME}-${look.tone}`, name: 'Match app', tone: 'light', colors: { ...paper.colors, background: ground, cursorAccent: ground } }

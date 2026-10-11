@@ -2,12 +2,20 @@
  * The feedback button, and the form behind it: what it is, a title, a few
  * words, screenshots — and out comes a GitHub issue the user submits.
  *
- * **The form.** Bug / Idea / Question as a segmented control (each maps to a
- * label that exists on the repo), a required title that becomes the issue's
- * title, an optional description, screenshots pasted (⌘V anywhere in the
+ * **The form.** Bug / Idea / Question as three large cards, each with its key
+ * (1, 2, 3) and a label that exists on the repo, a required title that
+ * becomes the issue's title, an optional description, screenshots pasted (⌘V anywhere in the
  * dialog), dropped or chosen — up to four, a thumbnail each with a × — and a
  * one-line "Included: version, OS…" that opens to show exactly what the
  * diagnostics say, with a box to leave them out.
+ *
+ * **Quick from the keyboard** (owner, 2026-10-11: "big options, quick choice,
+ * choosable with keys, quick to write"). The title has focus on open. 1, 2, 3
+ * pick the kind by physical key (`kindForCode`, so any layout) wherever a
+ * keystroke would not be text — outside a field, or in the title while it is
+ * still empty — and focus lands in the title; arrows move between the cards.
+ * Enter in the title goes on to the description, ⌘↩ (Ctrl+Enter off macOS)
+ * creates the issue from anywhere, Esc closes.
  *
  * **Nothing is transmitted from here.** *Create issue* opens a prefilled
  * GitHub issue in the browser; the user reads it, edits it, submits it. A
@@ -36,20 +44,42 @@
  * window, which reaches the page as a path and is read by the shell only if
  * it is an image of at most 10 MB from that very drop.
  */
-import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { openExternal } from '@/lib/nudges'
 import { isAppMode, isMacPlatform } from '@/lib/appmode'
-import { context, currentScreen, isSendable, issueURL, KINDS, type FeedbackKind } from '@/lib/feedback'
+import { context, currentScreen, isSendable, issueURL, kindForCode, KINDS, type FeedbackKind } from '@/lib/feedback'
+import { keys } from '@/lib/appkeys'
 import { accept, baseName, copyImage, imageTypeOfPath, imagesIn, MAX_SHOTS, nextShot, stepLine, toPNG, type Shot } from '@/lib/attachments'
 import { captureSupported, shell } from '@/lib/shell'
 import { DROP_PATHS_EVENT } from '@/lib/xtermInput'
-import { BugIcon } from './AppIcons'
+import { BugIcon, LightbulbIcon, QuestionIcon } from './AppIcons'
 import { CloseButton, DialogBackdrop } from './Dialog'
 import { KeyChip } from './Sheet'
 
 const TIP = 'Report a bug, suggest an idea, or ask a question'
+
+/** Each kind's card glyph and its colour, from the theme's tokens: the bug is
+ *  the warning hue (graphite's amber, Slate's cool yellow), the idea the green
+ *  of "working", the question the plain ink. */
+const GLYPHS: Record<FeedbackKind, { Glyph: typeof BugIcon; tone: string }> = {
+  bug: { Glyph: BugIcon, tone: 'text-warn' },
+  idea: { Glyph: LightbulbIcon, tone: 'text-ok' },
+  question: { Glyph: QuestionIcon, tone: 'text-fg' },
+}
+
+/** Whether a keystroke on `el` is text being written, so 1 2 3 must type
+ *  rather than pick a kind. An empty title is not writing yet: that is where
+ *  focus sits when the dialog opens, and the first thing a person does there
+ *  is choose. */
+function isWriting(el: EventTarget | null, title: HTMLInputElement | null): boolean {
+  if (!(el instanceof HTMLElement)) return false
+  if (el instanceof HTMLTextAreaElement || el.isContentEditable) return true
+  if (!(el instanceof HTMLInputElement)) return false
+  if (el.type === 'checkbox' || el.type === 'file') return false
+  return !(el === title && el.value === '')
+}
 
 /**
  * `header`: the labelled button in the dashboard's header. `row`: the
@@ -123,6 +153,10 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
   const isMac = isMacPlatform()
   const pasteKey = isMac ? '⌘V' : 'Ctrl+V'
   const picker = useRef<HTMLInputElement>(null)
+  const titleRef = useRef<HTMLInputElement>(null)
+  const descRef = useRef<HTMLTextAreaElement>(null)
+  const cards = useRef<(HTMLButtonElement | null)[]>([])
+  const submitKey = keys('⌘↩', isMac)
   // Pending conversions count against the cap too, so a fast double paste
   // cannot slip a fifth image in while the first four are being drawn.
   const count = useRef(0)
@@ -242,6 +276,32 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
     void copying.then((ok) => setStep((s) => (s && s.i === 0 ? { ...s, copied: ok } : s)))
   }
 
+  /** A kind chosen by click or key: focus goes straight to the title. */
+  const pick = (k: FeedbackKind) => {
+    setKind(k)
+    titleRef.current?.focus()
+  }
+
+  // ⌘↩ / Ctrl+Enter creates the issue from anywhere in the form; 1 2 3 pick
+  // the kind wherever the key would not be typed text. Modified digits are
+  // left alone: ⌘1 is a tab, Shift+1 a "!".
+  const onFormKey = (e: ReactKeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); send(); return }
+    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.nativeEvent.isComposing) return
+    const k = kindForCode(e.code)
+    if (k && !isWriting(e.target, titleRef.current)) { e.preventDefault(); pick(k) }
+  }
+
+  // Arrows move between the cards, as in any radio group; the choice follows.
+  const onCardsKey = (e: ReactKeyboardEvent) => {
+    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0
+    if (step === 0) return
+    e.preventDefault()
+    const i = (KINDS.findIndex((k) => k.id === kind) + step + KINDS.length) % KINDS.length
+    setKind(KINDS[i]!.id)
+    cards.current[i]?.focus()
+  }
+
   const copyAt = (i: number) => {
     const copying = copyImage(shots[i]!.png)
     setStep({ i, copied: true })
@@ -336,39 +396,61 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
           </div>
         ) : (
           <form
-            className="p-5 grid gap-4"
+            className="px-5 pt-4 pb-4 grid gap-3.5"
             onSubmit={(e) => { e.preventDefault(); send() }}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); send() }
-            }}
+            onKeyDown={onFormKey}
           >
-            <div className="inline-flex w-fit items-center gap-0.5 rounded-md bg-panel-2 p-0.5" role="radiogroup" aria-label="What is it">
-              {KINDS.map((k) => (
-                <button
-                  key={k.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={k.id === kind}
-                  onClick={() => setKind(k.id)}
-                  className={`px-3 py-1 rounded-[5px] text-[14px] ${
-                    k.id === kind ? 'bg-accent text-panel font-medium' : 'text-fg-muted hover:text-fg'
-                  }`}
-                >
-                  {k.label}
-                </button>
-              ))}
+            {/* Three big cards, one row (owner, 2026-10-11: "big options,
+              * with icons, quick choice, choosable with keys"). A segmented
+              * control of three small words until then. The key is drawn as
+              * every key in the app is (.app-kbd-key, tokens.css). */}
+            <div className="grid grid-cols-3 gap-2.5 max-sm:gap-1.5" role="radiogroup" aria-label="What is it" data-feedback-kinds="" onKeyDown={onCardsKey}>
+              {KINDS.map((k, i) => {
+                const { Glyph, tone } = GLYPHS[k.id]
+                const on = k.id === kind
+                return (
+                  <button
+                    key={k.id}
+                    ref={(el) => { cards.current[i] = el }}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    aria-label={k.label}
+                    aria-keyshortcuts={String(i + 1)}
+                    tabIndex={on ? 0 : -1}
+                    onClick={() => pick(k.id)}
+                    className={`relative flex items-center gap-3 rounded-[9px] border px-3.5 py-3 text-left transition-colors motion-reduce:transition-none max-sm:flex-col max-sm:items-start max-sm:gap-1.5 max-sm:px-2.5 ${
+                      on ? 'border-accent bg-accent/10' : 'border-border-strong bg-panel-2/40 hover:border-fg-muted'
+                    }`}
+                  >
+                    <Glyph size={30} className={tone} />
+                    <span className="grid min-w-0 flex-1 gap-0.5">
+                      <span className={`text-[17px] font-semibold leading-tight ${on ? 'text-fg' : 'text-fg-muted'}`}>{k.label}</span>
+                      <span className="truncate text-[12.5px] text-fg-muted max-sm:hidden">{k.blurb}</span>
+                    </span>
+                    <kbd aria-hidden className="app-kbd-key absolute right-2.5 top-2.5">{i + 1}</kbd>
+                  </button>
+                )
+              })}
             </div>
 
             <label className="grid gap-1">
               <span className="text-[13px] font-medium text-fg-muted">Title</span>
               {/* Autofocused: the fewer deliberate actions between "I noticed
                 * something" and typing it, the more reports get written.
-                * Prose, so the sans face: `.input` sets mono outside any
-                * layer, where a font utility cannot reach it. */}
+                * Enter goes on to the description rather than submitting a
+                * half-written report. Prose, so the sans face: `.input` sets
+                * mono outside any layer, where a font utility cannot reach it. */}
               <input
+                ref={titleRef}
                 autoFocus
                 value={titleText}
                 onChange={(e) => setTitleText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.nativeEvent.isComposing) return
+                  e.preventDefault()
+                  descRef.current?.focus()
+                }}
                 placeholder={active.title}
                 maxLength={256}
                 className="input w-full text-[15.5px] py-1.5"
@@ -379,10 +461,11 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
             <label className="grid gap-1">
               <span className="text-[13px] font-medium text-fg-muted">Description <span className="text-fg-faint">— optional</span></span>
               <textarea
+                ref={descRef}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder={active.hint}
-                rows={4}
+                rows={3}
                 className="input w-full resize-y text-[15px] leading-relaxed"
                 style={{ fontFamily: 'var(--font-sans)' }}
               />
@@ -392,7 +475,7 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
               <div className="flex flex-wrap items-center gap-2">
                 {shots.map((s, i) => (
                   <div key={s.id} className="relative">
-                    <img src={s.url} alt={`Screenshot ${i + 1}`} className="h-16 w-24 rounded-[5px] border border-border object-cover" />
+                    <img src={s.url} alt={`Screenshot ${i + 1}`} className="h-14 w-20 rounded-[5px] border border-border object-cover" />
                     <button
                       type="button"
                       aria-label={`Remove screenshot ${i + 1}`}
@@ -408,9 +491,9 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
                   <button
                     type="button"
                     onClick={() => picker.current?.click()}
-                    className={`flex h-16 items-center gap-1.5 rounded-[5px] border border-dashed px-3 text-[13.5px] ${
+                    className={`flex h-14 items-center gap-1.5 rounded-[5px] border border-dashed px-3 text-[13.5px] ${
                       dragging ? 'border-accent text-accent' : 'border-border-strong text-fg-muted hover:text-fg hover:border-fg-muted'
-                    } ${shots.length === 0 ? 'flex-1 justify-center' : 'w-24 justify-center'}`}
+                    } ${shots.length === 0 ? 'flex-1 justify-center' : 'w-20 justify-center'}`}
                   >
                     {shots.length === 0
                       ? <>Add screenshots — paste ({pasteKey}), drop, or <span className="underline underline-offset-2">choose</span></>
@@ -422,7 +505,7 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
                     type="button"
                     onClick={() => void capture()}
                     title="Attach a picture of this window — the app only, not your screen"
-                    className="flex h-16 shrink-0 items-center justify-center rounded-[5px] border border-dashed border-border-strong px-3 text-[13.5px] text-fg-muted hover:text-fg hover:border-fg-muted"
+                    className="flex h-14 shrink-0 items-center justify-center rounded-[5px] border border-dashed border-border-strong px-3 text-[13.5px] text-fg-muted hover:text-fg hover:border-fg-muted"
                   >
                     Capture window
                   </button>
@@ -472,12 +555,12 @@ function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => vo
               <button
                 type="submit"
                 disabled={!ready}
-                title={isMac ? '⌘↩' : 'Ctrl+↵'}
+                title={submitKey}
                 aria-keyshortcuts={isMac ? 'Meta+Enter' : 'Control+Enter'}
                 className="ml-auto inline-flex h-[34px] shrink-0 items-center gap-2 rounded-[7px] bg-accent px-4 text-[14px] font-medium text-panel hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Create issue
-                <KeyChip primary>{isMac ? '⌘↩' : 'Ctrl+↵'}</KeyChip>
+                <KeyChip primary>{submitKey}</KeyChip>
               </button>
             </div>
           </form>

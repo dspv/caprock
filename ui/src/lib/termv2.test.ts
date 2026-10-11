@@ -162,6 +162,22 @@ describe('TermClient (protocol v2)', () => {
     expect(t.c.unacked).toBe(0)
   })
 
+  // A paste of non-ASCII text broke in a session (user report, 2026-10-11).
+  // The page was not why: the whole paste goes as one frame of its exact
+  // UTF-8 bytes, never split inside a character (the cause was the session's
+  // locale, agents.withUTF8Locale).
+  it('sends a long multi-byte paste as one frame of its exact UTF-8 bytes', () => {
+    const t = mount()
+    const s1 = last()
+    s1.accept()
+    s1.text({ hello: { v: 2, offset: 0, reset: true, ack: 0 } })
+    const paste = `\x1b[200~${'καλημέρα κόσμε こんにちは世界 🙂 '.repeat(300)}\x1b[201~`
+    expect(t.c.send(paste)).toBe(true)
+    const frames = s1.sent.filter((d): d is Uint8Array => typeof d !== 'string')
+    expect(frames).toHaveLength(1)
+    expect(Array.from(frames[0]!.subarray(4))).toEqual(Array.from(new TextEncoder().encode(paste)))
+  })
+
   it('keeps at most 4 KB of typing while offline', () => {
     const t = mount()
     last().drop()
