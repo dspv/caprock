@@ -7,6 +7,29 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the sidebar has no *Waiting on you* section any more — everything
+  in it was already in Projects. A session that waits on you is marked on its
+  own row instead: an amber edge and tint and the word *waiting*, or *asks*
+  at a permission prompt. One started in another terminal is a row of its
+  own rather than behind *Running in other terminals*, and a project folded
+  by hand still shows what waits in it. The Today strip's *Waiting* count
+  still opens the first one.
+
+### Fixed
+
+- **app:** every row under a project can now be closed or hidden. A row with
+  no tab — an agent whose tab you closed, or a session from another terminal
+  — has a × that hides it from the list (it keeps running, and nothing is
+  ever sent to a session Caprock did not start), next to ■ *Stop…* for what
+  Caprock started, which still asks first. Hidden rows wait behind *N hidden
+  · show* under the project, where an eye brings each one back, and one
+  comes back by itself when it next waits on you. The same actions are on a
+  right-click or Shift+F10, a tab's menu adds *Close tab and hide from the
+  list*, the buttons are bigger (26px), and on a touch screen they are
+  always shown.
+
 ## [0.108.1] - 2026-10-11
 
 Ships everything listed under 0.108.0: its tag failed the release lint on a

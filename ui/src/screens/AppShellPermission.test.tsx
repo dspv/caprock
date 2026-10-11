@@ -3,7 +3,7 @@
  * for the focused agent whether or not its terminal is in front, its keys work
  * from that terminal — and never twice.
  */
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionSummary } from '@/lib/api'
 // Static, as in AppShell.test.tsx: a dynamic import transformed the whole app
@@ -104,7 +104,7 @@ describe('the permission card in the app', () => {
 
   it('follows the tab: switching to a waiting session shows its card', async () => {
     await openAgent()
-    fireEvent.click(within(screen.getByRole('region', { name: 'Waiting on you' })).getByText('Waiting one'))
+    fireEvent.click([...document.querySelectorAll<HTMLElement>('[data-waiting]')].find((r) => r.textContent?.includes('Waiting one'))!)
     await screen.findByRole('tab', { name: /Waiting one/ })
     expect(screen.getByTestId('pane-agent-2')).toHaveAttribute('data-active', 'true')
     expect(cards()).toHaveLength(1)

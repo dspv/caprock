@@ -84,11 +84,16 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 async function renderApp() {
   const view = render(<AppShell />)
-  // The sidebar lists projects; a session not in a tab is reached through
-  // the palette, the Inbox or the project's page.
+  // The sidebar lists projects; what waits on you is a marked row under its
+  // project (there is no separate Waiting on you block).
   await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeTruthy())
-  await screen.findByRole('region', { name: 'Waiting on you' })
+  await waitFor(() => expect(waitingRow('Waiting one')).toBeTruthy())
   return view
+}
+
+/** The sidebar row of a session waiting on you, by its title. */
+function waitingRow(title: string): HTMLElement {
+  return [...document.querySelectorAll<HTMLElement>('[data-waiting]')].find((r) => r.textContent?.includes(title))!
 }
 
 const cmd = (key: string, extra: Partial<KeyboardEventInit> = {}) =>
@@ -105,10 +110,11 @@ async function openFromPalette(text: string) {
 }
 
 describe('the app workspace', () => {
-  it('lists projects from sessions, with what waits on you first', async () => {
+  it('lists projects from sessions, what waits on you marked on its own row', async () => {
     await renderApp()
-    const inbox = screen.getByRole('region', { name: 'Waiting on you' })
-    expect(within(inbox).getByText('Waiting one')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull()
+    expect(waitingRow('Waiting one')).toHaveAttribute('data-live-row', 'agent-2')
+    expect(within(waitingRow('Waiting one')).getByText('waiting')).toBeInTheDocument()
     const projects = [...document.querySelectorAll('[data-project-row]')].map((b) => b.querySelector('span.truncate')?.textContent)
     expect(projects.sort()).toEqual(['app', 'other'])
     // Today, in the sidebar's Today strip; the status strip leaves it out
@@ -248,7 +254,7 @@ describe('the app workspace', () => {
   it('switches tabs with ⌘1–9 and keeps every terminal mounted', async () => {
     await renderApp()
     await openFromPalette('Fix the login bug')
-    fireEvent.click(within(screen.getByRole('region', { name: 'Waiting on you' })).getByText('Waiting one'))
+    fireEvent.click(waitingRow('Waiting one'))
     await screen.findAllByRole('tab')
     await cmd('1')
     expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')

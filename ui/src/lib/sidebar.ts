@@ -25,6 +25,14 @@ export interface SessionNode {
   isShell: boolean
   /** Open in a tab right now. */
   open: boolean
+  /** Waits on you now: a permission prompt, or a turn ended in the last
+   *  STALE_MS. Such a row is never hidden from the sidebar, and carries the
+   *  amber mark there (the sidebar's one way of saying "needs you"). */
+  waiting?: boolean
+  /** Waits on a permission prompt: the row says "asks". */
+  asks?: boolean
+  /** Since when it waits (ms), when it does: a row hidden before this shows again. */
+  waitingSince?: number
 }
 
 export interface WorktreeNode {
@@ -156,9 +164,13 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
       if (!isShell) node.agents += 1
       if (!isShell && dot === 'working') node.working += 1
     }
+    let waitsNow = false
+    let waitingSince: number | undefined
     if (dot === 'waiting' && !isShell) {
       const since = ms(s.activity?.at) || s.last_event_at
       const stale = !hasPermission && now - since > STALE_MS
+      waitsNow = !stale
+      if (waitsNow) waitingSince = since
       if (!stale) node.waiting += 1
       inbox.push({
         session: s,
@@ -179,7 +191,7 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
         wt = { key: root, branch: folderName(root), path: root, isMain: false, sessions: [] }
         other.worktrees.push(wt)
       }
-      wt.sessions.push({ session: s, dot, title: sessionTitle(s), isShell, open: openSessions.has(s.session_id) })
+      wt.sessions.push({ session: s, dot, title: sessionTitle(s), isShell, open: openSessions.has(s.session_id), waiting: waitsNow, asks: waitsNow && hasPermission, waitingSince })
       continue
     }
     const key = worktreeKeyOf(s, node.project)
@@ -198,7 +210,7 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
       }
       node.worktrees.push(wt)
     }
-    wt.sessions.push({ session: s, dot, title: sessionTitle(s), isShell, open: openSessions.has(s.session_id) })
+    wt.sessions.push({ session: s, dot, title: sessionTitle(s), isShell, open: openSessions.has(s.session_id), waiting: waitsNow, asks: waitsNow && hasPermission, waitingSince })
   }
 
   for (const n of nodes) {
@@ -314,4 +326,22 @@ function stableOrder(a: ProjectNode, b: ProjectNode): number {
     (a.project.sort ?? Infinity) - (b.project.sort ?? Infinity) ||
     a.project.name.localeCompare(b.project.name, undefined, { sensitivity: 'base' }) ||
     a.project.id.localeCompare(b.project.id)
+}
+
+/** Session ids hidden from the sidebar by hand, and when: this browser's. */
+export type HiddenSessions = ReadonlyMap<string, number>
+
+/**
+ * Whether a session's row stays out of the sidebar. Hidden by hand keeps it
+ * out (rule 7: hiding never signals anything, it only unlists the row) —
+ * until it needs you again: a permission prompt always shows, and so does a
+ * turn that ended after the row was hidden. A waiting session is the one
+ * thing the sidebar must never lose; the Waiting on you block that used to
+ * list them separately is gone (owner, 2026-10-11), so its rows carry it.
+ */
+export function rowHidden(x: Pick<SessionNode, 'session' | 'asks' | 'waiting' | 'waitingSince'>, hidden: HiddenSessions | undefined): boolean {
+  const at = hidden?.get(x.session.session_id)
+  if (at === undefined) return false
+  if (x.asks) return false
+  return !(x.waiting && (x.waitingSince ?? 0) > at)
 }

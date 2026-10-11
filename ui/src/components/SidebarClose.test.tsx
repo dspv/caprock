@@ -4,7 +4,8 @@
  * row's ×, a project's ×, ■ on what Caprock started with no tab, the
  * right-click menus, and keys that must close nothing. Also what each row
  * says about its state, sessions from other terminals behind one line, and
- * an order that a status change never moves.
+ * an order that a status change never moves. Every row under a project can
+ * be closed or hidden, and hidden rows come back (owner, 2026-10-11).
  */
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -21,7 +22,7 @@ import { buildSidebar } from '@/lib/sidebar'
 import { branchLabel } from '@/lib/sessionLabels'
 import { tabLabels } from '@/lib/tablabels'
 import type { Tab } from '@/lib/tabs'
-import { HIDDEN_KEY, Sidebar, type SidebarProps } from './Sidebar'
+import { HIDDEN_KEY, HIDDEN_SESSIONS_KEY, Sidebar, type SidebarProps } from './Sidebar'
 
 // These read the labels in their macOS spelling; lib/appkeys.test.ts covers
 // Windows and Linux.
@@ -35,9 +36,9 @@ const live = (p: Partial<SessionSummary>) => ({
 const pane = (id: string, kind: 'session' | 'shell' | 'file', sessionId: string, path?: string) =>
   ({ type: 'pane' as const, id, target: { kind, sessionId, path } })
 
-function setup(sessions: SessionSummary[], tabs: Tab[], extra: Partial<SidebarProps> = {}) {
+function setup(sessions: SessionSummary[], tabs: Tab[], extra: Partial<SidebarProps> = {}, permissions: ReadonlySet<string> = new Set()) {
   const open = new Set(tabs.map((t) => (t.root.type === 'pane' ? t.root.target.sessionId : '')))
-  const model = buildSidebar({ projects: [proj('alpha'), proj('beta')], sessions, permissions: new Set(), costs: new Map(), openSessions: open })
+  const model = buildSidebar({ projects: [proj('alpha'), proj('beta')], sessions, permissions, costs: new Map(), openSessions: open })
   const byId = new Map(sessions.map((s) => [s.session_id, s]))
   const props: SidebarProps = {
     model,
@@ -83,6 +84,8 @@ describe('closing in the sidebar', () => {
     const shellX = screen.getByRole('button', { name: 'Close shell Shell 1' })
     expect(shellX).toHaveAttribute('title', 'Close shell (⌘W)')
     expect(shellX.parentElement!.className).toContain('hidden group-hover/row:flex')
+    // No hover on a touch screen: the buttons are always there.
+    expect(shellX.parentElement!.className).toContain('pointer-coarse:flex')
     expect(screen.getByRole('button', { name: 'Close tab app.ts' })).toHaveAttribute('title', 'Close tab (⌘W)')
     fireEvent.click(shellX)
     expect(props.onCloseTab).toHaveBeenCalledWith('t2')
@@ -101,13 +104,13 @@ describe('closing in the sidebar', () => {
     expect(localStorage.getItem(HIDDEN_KEY)).toBeNull()
   })
 
-  it('opens a tab menu on a right-click: Close tab, and Stop… only for what Caprock started', async () => {
+  it('opens a tab menu on a right-click: Close tab, Close and hide for an agent, and Stop… only for what Caprock started', async () => {
     const { props } = setup(
       [live({ session_id: 'a1', title: 'Fix the login' }), live({ session_id: 'x1', title: 'Theirs', owned: false })],
       [agentTab, { id: 't9', projectId: 'alpha', root: pane('p9', 'session', 'x1'), focusedPaneId: 'p9', title: 'Theirs' }, fileTab],
     )
     fireEvent.contextMenu(tabRow('t9'), { clientX: 10, clientY: 10 })
-    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Close tab⌘W'])
+    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Close tab⌘W', 'Close tab and hide from the list'])
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
     fireEvent.contextMenu(tabRow('t3'))
     expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Close tab⌘W'])
@@ -116,7 +119,7 @@ describe('closing in the sidebar', () => {
     expect(screen.queryByRole('menu')).toBeNull()
 
     fireEvent.contextMenu(tabRow('t1'))
-    expect(within(screen.getByRole('menu', { name: 'Fix the login: tab actions' })).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Close tab⌘W', 'Stop the session…'])
+    expect(within(screen.getByRole('menu', { name: 'Fix the login: tab actions' })).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Close tab⌘W', 'Close tab and hide from the list', 'Stop the session…'])
     fireEvent.click(screen.getByRole('menuitem', { name: 'Stop the session…' }))
     // The cockpit's confirmation, nothing stopped yet.
     const confirm = screen.getByRole('alertdialog', { name: 'Confirm stop' })
@@ -253,5 +256,85 @@ describe('closing in the sidebar', () => {
     expect(tail.className).toMatch(/\bmin-w-0\b/)
     expect(tail.className).toMatch(/\btruncate\b/)
     expect(row.getAttribute('title')).toContain(`Context recovery · ${branchLabel(branch)}`)
+  })
+
+  it('hides a row with no tab from its ×, signalling nothing, and brings it back from "N hidden · show"', () => {
+    const sessions = [
+      live({ session_id: 'a2', title: 'Write the docs', started_at: 2 }),
+      live({ session_id: 'x1', title: 'Context recovery', owned: false, started_at: 3 }),
+    ]
+    setup(sessions, [agentTab])
+    const list = screen.getByRole('group', { name: 'alpha: open tabs' })
+    const hide = screen.getByRole('button', { name: 'Hide Write the docs from the list' })
+    expect(hide.getAttribute('title')).toContain('it keeps running')
+    expect(hide.parentElement!.className).toContain('pointer-coarse:flex')
+    fireEvent.click(hide)
+    expect(list.querySelector('[data-live-row="a2"]')).toBeNull()
+    expect(Object.keys(JSON.parse(localStorage.getItem(HIDDEN_SESSIONS_KEY)!))).toEqual(['a2'])
+    expect(signal).not.toHaveBeenCalled()
+
+    // One from another terminal: × hides it too, and it has nothing to stop (rule 7).
+    fireEvent.click(within(list).getByRole('button', { name: /Running in other terminals · 1/ }))
+    expect(screen.queryByRole('button', { name: 'Stop the session…' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Context recovery from the list' }))
+    expect(list.querySelector('[data-live-row="x1"]')).toBeNull()
+    expect(within(list).queryByRole('button', { name: /Running in other terminals/ })).toBeNull()
+    expect(signal).not.toHaveBeenCalled()
+
+    const more = within(list).getByRole('button', { name: /2 hidden · show/ })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(more)
+    expect([...list.querySelectorAll('[data-hidden-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['a2', 'x1'])
+    fireEvent.click(screen.getByRole('button', { name: 'Show Write the docs in the list again' }))
+    expect(list.querySelector('[data-live-row="a2"]')).not.toHaveAttribute('data-hidden-row')
+    expect(within(list).getByRole('button', { name: /1 hidden · hide again/ })).toBeInTheDocument()
+    expect(Object.keys(JSON.parse(localStorage.getItem(HIDDEN_SESSIONS_KEY)!))).toEqual(['x1'])
+  })
+
+  it('offers the same from the keyboard: Shift+F10 on a row with no tab opens Open, Hide, Stop…', () => {
+    setup([live({ session_id: 'a2', title: 'Write the docs' }), live({ session_id: 'x1', title: 'Theirs', owned: false, started_at: 3 })], [])
+    const row = document.querySelector('[data-live-row="a2"]') as HTMLElement
+    fireEvent.keyDown(row, { key: 'F10', shiftKey: true })
+    expect(within(screen.getByRole('menu', { name: 'Write the docs: actions' })).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open as a tab', 'Hide from the list', 'Stop the session…'])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide from the list' }))
+    expect(document.querySelector('[data-live-row="a2"]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Running in other terminals · 1/ }))
+    fireEvent.contextMenu(document.querySelector('[data-live-row="x1"]')!)
+    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open its details', 'Hide from the list'])
+  })
+
+  it("closes a tab and hides its agent from the tab's menu, so it does not come back as a muted row", () => {
+    const { props } = setup([live({ session_id: 'a1', title: 'Fix the login' })], [agentTab])
+    fireEvent.contextMenu(tabRow('t1'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close tab and hide from the list' }))
+    expect(props.onCloseTab).toHaveBeenCalledWith('t1')
+    expect(Object.keys(JSON.parse(localStorage.getItem(HIDDEN_SESSIONS_KEY)!))).toEqual(['a1'])
+    expect(signal).not.toHaveBeenCalled()
+  })
+
+  it('marks what waits on you on its row, a session from another terminal included, and never hides one that asks', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString()
+    const sessions = [
+      live({ session_id: 'x1', title: 'Theirs waiting', owned: false, started_at: 3, activity: { phrase: '', at: recent, health: 'waiting-on-you' } }),
+      live({ session_id: 'x2', title: 'Theirs asking', owned: false, started_at: 4 }),
+      live({ session_id: 'x3', title: 'Theirs busy', owned: false, started_at: 5 }),
+    ]
+    // Hidden before either started waiting.
+    localStorage.setItem(HIDDEN_SESSIONS_KEY, JSON.stringify({ x2: Date.now() - 1000, x1: Date.now() - 10 * 60_000 }))
+    setup(sessions, [], {}, new Set(['x2']))
+    const list = screen.getByRole('group', { name: 'alpha: open tabs' })
+    // Waiting rows are out in the open, not behind the other-terminals line.
+    expect([...list.querySelectorAll('[data-waiting]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['x1', 'x2'])
+    expect(within(list).getByRole('button', { name: /Running in other terminals · 1/ })).toBeInTheDocument()
+    expect(list.querySelector('[data-live-row="x2"] [data-state]')!.textContent).toBe('asks')
+    expect(list.querySelector('[data-live-row="x1"] [data-state]')!.textContent).toBe('waiting')
+  })
+
+  it('keeps a row hidden while what it waits on is older than the hiding', () => {
+    const old = new Date(Date.now() - 60 * 60_000).toISOString()
+    localStorage.setItem(HIDDEN_SESSIONS_KEY, JSON.stringify({ x1: Date.now() - 1000 }))
+    setup([live({ session_id: 'x1', title: 'Theirs waiting', owned: false, activity: { phrase: '', at: old, health: 'waiting-on-you' } })], [])
+    expect(document.querySelector('[data-live-row="x1"]')).toBeNull()
+    expect(screen.getByRole('button', { name: /1 hidden · show/ })).toBeInTheDocument()
   })
 })

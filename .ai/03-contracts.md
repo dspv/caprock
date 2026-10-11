@@ -535,7 +535,7 @@ Claude Code resumes the parent by itself when its background subagents finish.
 A `permission.prompt` as the newest event still reads `waiting-on-you`, and
 looping and ended outrank it. Without it the owner's cockpit said "Waiting on
 you" beside "1 subagent working" (2026-10-09). The project list's `waiting`
-count, the sidebar's inbox, ⌘J and the "finished" alert (`internal/alerts`,
+count, the sidebar's waiting rows, ⌘J and the "finished" alert (`internal/alerts`,
 held until the last subagent stops and a minute after) follow the same rule.
 
 `GET /v1/status` gained `platform` (`GOOS/GOARCH`) — the first thing a bug report needs and the last thing anyone remembers to include.
