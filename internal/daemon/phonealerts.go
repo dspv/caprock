@@ -112,6 +112,10 @@ func (d *Daemon) alertLoop(ctx context.Context, sub *bus.Subscriber) {
 				go d.deliverAlert(ctx, a)
 			}
 			d.observeConversation(ctx, ev)
+		case m := <-d.queueDoneC:
+			for _, a := range rules.QueuedDone(m.ev, m.text, d.rec.Now()) {
+				go d.deliverAlert(ctx, a)
+			}
 		case <-t.C:
 			for _, a := range rules.Due(d.rec.Now()) {
 				go d.deliverAlert(ctx, a)

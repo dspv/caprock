@@ -1311,7 +1311,9 @@ tells a page where a file lives.
   `/v1/live`, `{id, seq, kind, session_id, project, title, body, prompt_id?,
   actions?}`, with `kind` one of `approval`, `finished`, `loop`, `limit`,
   `error`. Telegram and the app read the same decision; the rules, cooldowns
-  and hourly cap are the same.
+  and hourly cap are the same. A queued message's turn ending is a
+  `finished` alert at once, titled *Queued message done*
+  ([03-contracts.md § Queue](03-contracts.md#queue)).
 - **Actions.** For an approval on an owned Claude Code session, `actions` are
   the prompt's buttons. The app shows them as OS notification actions and
   answers through `POST /v1/agents/{id}/permission` with the `prompt_id`, so an

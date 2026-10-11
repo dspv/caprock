@@ -1559,6 +1559,8 @@ export const api = {
   agentInput: (id: string, data: string) => post<void>(`/v1/agents/${encodeURIComponent(id)}/input`, { data }),
   /** The messages waiting for an owned session's turn to end, and why (ADR-053). */
   queue: (id: string) => get<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue`),
+  /** The Queue view: every owned session, what waits in its queue, rough estimates, recent turns. */
+  queueBoard: () => get<QueueBoard>('/v1/queue'),
   /** The chat field's send: typed in now at the prompt, otherwise queued. */
   queueSend: (id: string, text: string) => post<QueueSendResult>(`/v1/agents/${encodeURIComponent(id)}/queue`, { text }),
   queueEdit: (id: string, qid: number, text: string) => post<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue/${qid}`, { text }, 'PATCH'),
@@ -1727,6 +1729,67 @@ export interface QueueView {
   session_id: string
   messages: QueuedMessage[] | null
   waiting: QueueWaiting
+}
+
+/** An estimate in ms from the board's `now`: median and the p25–p75 range. */
+export interface ETA {
+  lo_ms: number
+  mid_ms: number
+  hi_ms: number
+}
+
+/** What the estimates are made from: the project's newest finished Claude Code turns. */
+export interface TurnEstimate {
+  turns: number
+  p25_ms: number
+  median_ms: number
+  p75_ms: number
+}
+
+export interface BoardItem extends QueuedMessage {
+  /** 1 = typed in when the current turn ends. */
+  position: number
+  start?: ETA
+  finish?: ETA
+}
+
+/** One session Caprock started, as the Queue view shows it (GET /v1/queue). */
+export interface BoardSession {
+  session_id: string
+  agent: string
+  title?: string
+  project?: string
+  dir?: string
+  branch?: string
+  waiting: QueueWaiting
+  /** Unix ms the running turn's prompt went in; absent when not known. */
+  turn_started_at?: number
+  todo?: { active?: string; done: number; total: number }
+  queue: BoardItem[]
+  turn_left?: ETA
+  /** When a message added now would start; absent when it cannot be estimated. */
+  free_in?: ETA
+  estimate?: TurnEstimate
+  estimate_note?: string
+}
+
+export interface BoardDone {
+  session_id: string
+  agent: string
+  title?: string
+  project?: string
+  prompt: string
+  started_at: number
+  ended_at: number
+  queued?: boolean
+  failed?: boolean
+}
+
+export interface QueueBoard {
+  now: number
+  sessions: BoardSession[]
+  done: BoardDone[]
+  done_since: number
 }
 
 export interface QueueSendResult {

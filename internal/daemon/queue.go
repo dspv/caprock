@@ -65,12 +65,34 @@ type msgQueue struct {
 	// typed is when Caprock last typed a message into a session, until the
 	// session's next main-thread hook arrives.
 	typed map[string]time.Time
+	// inflight is the queued message Caprock typed into a session, until
+	// the Stop that ends its turn; delivered keeps the last ones typed, for
+	// the Queue view to mark a finished turn as a queued message's.
+	inflight  map[string]string
+	delivered []deliveredMsg
+	// onDone is told when a queued message's turn ends (phone and app
+	// notification, queueboard.go); nil sends nothing.
+	onDone func(ev event.Event, text string)
+
+	// The Queue view's estimates, by project (queueboard.go).
+	estMu sync.Mutex
+	est   map[string]estEntry
+	now   func() time.Time
 }
+
+// deliveredMsg is one queued message Caprock typed in.
+type deliveredMsg struct {
+	session, text string
+}
+
+// deliveredKeep is how many typed-in queued messages are remembered.
+const deliveredKeep = 200
 
 func newMsgQueue(d *Daemon) *msgQueue {
 	q := &msgQueue{
 		d: d, settle: queueSettle, gap: queueTypeGap,
 		locks: map[string]*sync.Mutex{}, continued: map[string]bool{}, typed: map[string]time.Time{},
+		inflight: map[string]string{}, est: map[string]estEntry{}, now: time.Now,
 	}
 	if d.mgr != nil {
 		q.sess = d.mgr
@@ -84,6 +106,7 @@ type queueSessions interface {
 	IsShell(id string) bool
 	PendingPermission(id string) (*agents.Permission, bool)
 	Input(id string, data []byte) error
+	OwnedRunning() []string
 }
 
 // lock serialises everything one session's queue does: a send deciding
@@ -315,6 +338,7 @@ func (q *msgQueue) SendNow(ctx context.Context, id string, mid int64) (api.Queue
 	if err := q.typeLocked(id, m.Text); err != nil {
 		return api.QueueView{}, err
 	}
+	q.markInflight(id, m.Text)
 	return q.changed(ctx, a)
 }
 
@@ -382,7 +406,17 @@ func (q *msgQueue) afterMain(ev *event.Event, continued bool) {
 	} else {
 		delete(q.continued, id)
 	}
+	// The Stop (or StopFailure) that ends a queued message's turn: say so
+	// before the next message goes in.
+	text, wasQueued := q.inflight[id]
+	ended := (ev.Kind == event.KindAgentStop && !continued) || ev.Kind == event.KindThrottle
+	if ended && wasQueued {
+		delete(q.inflight, id)
+	}
 	q.mu.Unlock()
+	if ended && wasQueued && q.onDone != nil {
+		q.onDone(*ev, text)
+	}
 	switch {
 	case ev.Kind == event.KindAgentStop && !continued:
 		go q.deliverSoon(id)
@@ -419,6 +453,7 @@ func (q *msgQueue) deliverSoon(id string) {
 	if err := q.typeLocked(id, m.Text); err != nil {
 		q.d.log.Warn("queue: could not type a queued message", "component", "queue", "session_id", id, "err", err)
 	} else {
+		q.markInflight(id, m.Text)
 		q.d.log.Info("queue: typed a queued message in at the end of a turn", "component", "queue", "session_id", id, "left", len(msgs)-1)
 	}
 	_, _ = q.changed(ctx, a)
@@ -434,7 +469,19 @@ func (q *msgQueue) ended(id string) {
 	q.mu.Lock()
 	delete(q.typed, id)
 	delete(q.continued, id)
+	delete(q.inflight, id)
 	q.mu.Unlock()
+}
+
+// markInflight records a queued message typed into a session.
+func (q *msgQueue) markInflight(id, text string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.inflight[id] = text
+	q.delivered = append(q.delivered, deliveredMsg{session: id, text: text})
+	if n := len(q.delivered); n > deliveredKeep {
+		q.delivered = append([]deliveredMsg(nil), q.delivered[n-deliveredKeep:]...)
+	}
 }
 
 func (q *msgQueue) dropLocked(ctx context.Context, id string) {

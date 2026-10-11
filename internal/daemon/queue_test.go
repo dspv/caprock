@@ -41,6 +41,15 @@ func (f *fakeSessions) Get(id string) (*agents.Agent, bool) {
 	return &agents.Agent{SessionID: id, Kind: kind}, true
 }
 func (f *fakeSessions) IsShell(string) bool { return false }
+func (f *fakeSessions) OwnedRunning() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0, len(f.owned))
+	for id := range f.owned {
+		out = append(out, id)
+	}
+	return out
+}
 func (f *fakeSessions) PendingPermission(id string) (*agents.Permission, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

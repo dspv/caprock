@@ -133,6 +133,8 @@ type Deps struct {
 	// Queue holds what the chat field sends while a turn runs (ADR-053).
 	// nil ⇒ /v1/agents/{id}/queue returns 501.
 	Queue Queuer
+	// Board assembles the Queue view (GET /v1/queue). nil ⇒ 501.
+	Board QueueBoarder
 	// Catalog answers the agent pickers and keeps the custom agents
 	// (ADR-046). nil ⇒ /v1/agents/catalog and /v1/agents/custom return 501.
 	Catalog AgentCatalog
@@ -548,6 +550,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("PATCH /v1/subscriptions/{id}", s.handleRenameSubscription)
 	m.HandleFunc("DELETE /v1/subscriptions/{id}", s.handleRemoveSubscription)
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
+	m.HandleFunc("GET /v1/queue", s.handleQueueBoard)
 	m.HandleFunc("GET /v1/agents/{id}/queue", s.handleQueue)
 	m.HandleFunc("POST /v1/agents/{id}/queue", s.handleQueueSend)
 	m.HandleFunc("PATCH /v1/agents/{id}/queue/{qid}", s.handleQueueEdit)

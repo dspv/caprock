@@ -56,7 +56,9 @@ const (
 	folderMaxRunes  = 60
 	subjectMaxRunes = 100
 	replyMaxRunes   = 120
-	filesNamed      = 3
+	// queuedMaxRunes clips the queued message a finished alert names.
+	queuedMaxRunes = 100
+	filesNamed     = 3
 	// longReplyMaxRunes keeps a whole reply inside one Telegram message
 	// (4096) with room for the lines around it.
 	longReplyMaxRunes = 3000
@@ -83,6 +85,9 @@ func Message(a Alert, d Details) string {
 		b.WriteString("\n" + where)
 	}
 	if a.Kind == KindFinished {
+		if a.Queued != "" {
+			b.WriteString("\n“" + html(clip(a.Queued, queuedMaxRunes)) + "”")
+		}
 		writeRun(&b, d)
 	} else if s := subject(a.Trigger, d); s != "" {
 		if by := subagentOf(a.Trigger); by != "" {
@@ -108,6 +113,8 @@ func headline(a Alert) string {
 			return "⚠️ <b>Stopped: " + html(why) + "</b>"
 		}
 		return "⚠️ <b>Stopped on an error</b>"
+	case a.Kind == KindFinished && a.Queued != "":
+		return "✅ <b>Queued message done</b>"
 	case a.Kind == KindFinished:
 		return "✅ <b>Finished</b>"
 	case a.Question:

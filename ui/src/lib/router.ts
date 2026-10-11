@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/start
+// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -10,7 +10,8 @@ export type Route =
   | { name: 'cost'; section?: string }
   | { name: 'history' }
   | { name: 'week'; start?: string }
-  | { name: 'tasks' }
+  // view 'queue' is the Queue tab of Tasks, at #/queue.
+  | { name: 'tasks'; view?: 'queue' }
   | { name: 'graph' }
   | { name: 'notes' }
   | { name: 'settings' }
@@ -46,6 +47,8 @@ export function parseHash(hash: string): Route {
     }
     case 'tasks':
       return { name: 'tasks' }
+    case 'queue':
+      return { name: 'tasks', view: 'queue' }
     case 'graph':
       return { name: 'graph' }
     case 'notes':
@@ -74,7 +77,7 @@ export function href(r: Route): string {
     case 'cost': return r.section ? `#/cost?section=${r.section}` : '#/cost'
     case 'history': return '#/history'
     case 'week': return r.start ? `#/week?start=${r.start}` : '#/week'
-    case 'tasks': return '#/tasks'
+    case 'tasks': return r.view === 'queue' ? '#/queue' : '#/tasks'
     case 'graph': return '#/graph'
     case 'notes': return '#/notes'
     case 'settings': return '#/settings'
