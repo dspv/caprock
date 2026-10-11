@@ -7,6 +7,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **Plan limits** is two matching cards, Claude and Codex, each with its
+  character and both windows side by side — 5 hours and Week — in larger,
+  shorter words. A window an agent did not report is an empty ring that
+  says so, instead of a missing one.
+
+### Added
+
+- **Plan limits asks for your plan** until it is set, saying why: Caprock
+  can't detect it, and Cost needs it to weigh usage at API prices against
+  what the plan costs. *Set my plan* opens the list in place.
+
 ### Added
 
 - **Settings has a sections menu:** on a wide window a list of every section
