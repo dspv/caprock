@@ -7,6 +7,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **agents:** text pasted in Russian, Greek, Japanese or any other non-ASCII
+  script no longer turns to `\316\272\316\261…` or `<00ad>` in a session or
+  shell Caprock started. The bytes always arrived intact; the session had no
+  locale, because launchd sets none and a terminal application, not the
+  profile, usually exports `LANG`. A session without one now gets a UTF-8
+  `LANG` (`en_US.UTF-8` on macOS, `C.UTF-8` on Linux); a locale you set is
+  kept.
+
 ## [0.108.1] - 2026-10-11
 
 Ships everything listed under 0.108.0: its tag failed the release lint on a
