@@ -7,6 +7,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **Slate** has no orange left: waiting and idle marks read as a cool yellow
+  there instead of graphite's amber.
+
 ### Fixed
 
 - **agents:** text pasted in Russian, Greek, Japanese or any other non-ASCII
