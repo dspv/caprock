@@ -303,7 +303,7 @@ export function subagentTone(type: string | undefined): 0 | 1 | 2 | 3 {
  * `more` counts the working ones left out — finished ones past the strip are
  * the Subagents section's business, not a count to chase.
  */
-export function subagentChips(subs: SubagentsNow | undefined, permission?: Permission | null, max = 4): { chips: SubagentChip[]; more: number } {
+export function subagentChips(subs: SubagentsNow | undefined, permission?: Permission | null, max = MAX_SUBAGENT_CHIPS): { chips: SubagentChip[]; more: number } {
   if (!subs) return { chips: [], more: 0 }
   const chip = (a: { agent_id: string; agent_type?: string; description?: string; model_display?: string }, state: SubagentChip['state']): SubagentChip => ({
     id: a.agent_id,
@@ -316,4 +316,16 @@ export function subagentChips(subs: SubagentsNow | undefined, permission?: Permi
   const shown = working.slice(0, max)
   const done = (subs.recent ?? []).slice(0, Math.max(0, max - shown.length)).map((a) => chip(a, 'done'))
   return { chips: [...shown, ...done], more: working.length - shown.length }
+}
+
+/** Chips the cockpit's hero draws: two rows of twelve, then "+N". */
+export const MAX_SUBAGENT_CHIPS = 24
+/** Chips sit in groups of this many, a wider gap between groups. */
+export const CHIP_GROUP = 4
+
+/** The chips in groups of four, in order: the hero wraps a row between groups, never inside one. */
+export function chipGroups<T>(chips: readonly T[], size = CHIP_GROUP): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < chips.length; i += size) out.push(chips.slice(i, i + size))
+  return out
 }

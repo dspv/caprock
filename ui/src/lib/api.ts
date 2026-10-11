@@ -1395,7 +1395,15 @@ export const api = {
   /** Every priced model call of the session's main thread, oldest first (the spend scrubber). */
   sessionCalls: (id: string) => get<SessionCall[]>(`/v1/sessions/${encodeURIComponent(id)}/calls`),
   /** The subagents working in a session now, and how many finished lately. */
-  subagents: (id: string) => get<SubagentsNow>(`/v1/sessions/${encodeURIComponent(id)}/subagents`),
+  subagents: (id: string, recent = 0) => get<SubagentsNow>(`/v1/sessions/${encodeURIComponent(id)}/subagents${recent > 0 ? `?recent=${recent}` : ''}`),
+  /** One subagent opened up: its task, its newest `limit` calls (before a call id), its result and numbers. */
+  subagent: (id: string, agent: string, opts: { before?: number; limit?: number } = {}) => {
+    const q = new URLSearchParams()
+    if (opts.before) q.set('before', String(opts.before))
+    if (opts.limit) q.set('limit', String(opts.limit))
+    const qs = q.toString()
+    return get<SubagentDetail>(`/v1/sessions/${encodeURIComponent(id)}/subagents/${encodeURIComponent(agent)}${qs ? `?${qs}` : ''}`)
+  },
   /** The task list the session's agent keeps for itself (TodoWrite, TaskCreate/TaskUpdate, update_plan). */
   todos: (id: string) => get<SessionTodos>(`/v1/sessions/${encodeURIComponent(id)}/todos`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
@@ -1634,10 +1642,58 @@ export interface SubagentsNow {
   working: Subagent[]
   /** How many stopped in the same window after making a tool call. */
   finished: number
-  /** The newest of those, at most three. Absent from a daemon that predates it. */
+  /** The newest of those, three unless `recent` asked for more (at most 30). Absent from a daemon that predates it. */
   recent?: SubagentDone[]
   /** What every subagent of the session has cost; absent when any is unknown. */
   cost_usd?: number
+}
+
+/** One call in a subagent's activity feed (GET /v1/sessions/{id}/subagents/{agent}). */
+export interface SubagentCall {
+  /** Its tool.pre event id: the cursor `before` pages by. */
+  id: number
+  tool_use_id?: string
+  tool: string
+  /** Its short line, as the tool list writes it. */
+  detail?: string
+  /** Unix ms; `ended_at` absent while it has no result. */
+  started_at: number
+  ended_at?: number
+  error?: boolean
+}
+
+/** One subagent opened up (GET /v1/sessions/{id}/subagents/{agent}). */
+export interface SubagentDetail {
+  agent_id: string
+  agent_type?: string
+  /** The parent's Agent/Task call input; absent when no call is linked. */
+  description?: string
+  prompt?: string
+  subagent_type?: string
+  parent_tool_use_id?: string
+  background?: boolean
+  state: 'working' | 'finished' | 'quiet'
+  asking: boolean
+  started_at: number
+  last_at: number
+  stopped_at?: number
+  /** What it returned to its parent; absent while it works or when none was recorded. */
+  result?: string
+  /** The newest calls, oldest first; `earlier` is how many came before them. */
+  calls: SubagentCall[]
+  earlier: number
+  stats: {
+    tool_calls: number
+    turns: number
+    tokens: TokenDelta
+    duration_ms: number
+    /** The costliest tool kinds, at most four; `tool` empty for turns that only wrote. */
+    by_tool: { tool: string; calls: number; cost_usd?: number }[]
+    model?: string
+    model_display?: string
+    /** Absent when unknown: no turn, or one the table could not price. */
+    cost_usd?: number
+  }
 }
 
 /** One entry of the agent's own task list (GET /v1/sessions/{id}/todos). */

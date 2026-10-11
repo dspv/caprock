@@ -18,6 +18,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** ⌥⌘N (Ctrl+Alt+Shift+N on Windows and Linux) now asks: it opens the
   Quick chat chooser with the agent and model you used last already picked,
   so Enter starts it and Esc cancels. 1–9 pick the agent there too.
+- **app:** a subagent in the cockpit opens in place: click its row (or its
+  chip at the top) to read the task the parent gave it, folded to six lines
+  with *Show all*, every call it makes as it makes them, with how long each
+  took and the failed ones marked, what it answered, and its model, time,
+  tokens, cost and costliest tools. Finished subagents open too, and *+N
+  finished* lists them as rows. New `GET
+  /v1/sessions/{id}/subagents/{agent}`; `/subagents` takes `?recent=` (up to
+  30) and lists up to 24 working. A new index (migration 0048) finds a
+  subagent's rows without reading its parent's.
+- **app:** the cockpit's subagent chips show up to 24, in groups of four
+  across the cockpit's width (twelve to a row), instead of four and *+N*;
+  *N subagents working* sits right under the state line.
+- **daemon:** a subagent's call count includes the calls only its transcript
+  recorded (a call that failed fires no hook result), so the row and the
+  opened subagent agree.
+
 - **app:** the status bar says whose load it shows: *agent cpu 17% ram 2.0
   GB* is the session's own processes (the agent and what it runs), and a new
   *caprock 160 MB* beside it is Caprock itself (daemon, app, terminal

@@ -359,9 +359,13 @@ One window, three regions:
   worked, its current call with how long it has run, how many calls it has
   made and what it has cost, *waiting on you* while it has a prompt
   outstanding; under them, muted, up to three that finished in the last 30
-  minutes with model, duration and cost, "+N finished" for the rest; the
-  header carries what all of the session's subagents cost — a cost is shown
-  only when every turn behind it was priced, never as $0), its last seven tool calls with their durations, the
+  minutes with model, duration and cost, "+N finished" opening the rest as
+  rows; the header carries what all of the session's subagents cost — a
+  cost is shown only when every turn behind it was priced, never as $0;
+  every row opens in place, one at a time, to the task the parent gave it,
+  its own calls live, what it answered and its numbers — owner, 2026-10-12:
+  "can we expand the subagents to look inside?"; the hero's chips, groups
+  of four up to two rows of twelve, open a row too), its last seven tool calls with their durations, the
   uncommitted changes, the plan windows of its agent (each a bar with a tick
   where an even pace would be by the clock, the percentage large, and one
   line — *resets in 4 h 56 min · ✓ enough* or *⚠ out at 23:50*, amber, red
@@ -380,7 +384,8 @@ One window, three regions:
   fetched once and then followed on the live socket; the daemon's summary of
   the subagents (`/v1/sessions/{id}/subagents`), read again at most every two
   seconds while their events arrive and every twenty regardless, so their
-  thousands of events never reach the page; the session's permission prompt;
+  thousands of events never reach the page — one opened subagent is read
+  once (`/subagents/{agent}`) and then followed on the socket; the session's permission prompt;
   and the day's summary for the plan windows, which are account-wide and
   labelled so. A figure an agent does not report is left
   out, never drawn as zero — no context bar without `context` (its

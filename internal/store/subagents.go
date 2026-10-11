@@ -9,8 +9,8 @@ import (
 )
 
 // maxSubagentsShown bounds the working subagents read in detail: each costs
-// a few indexed lookups, and a panel shows a handful.
-const maxSubagentsShown = 12
+// a few indexed lookups, and the cockpit draws at most two rows of twelve.
+const maxSubagentsShown = 24
 
 // SubagentActivity is one subagent working in a session now: who it is and
 // what it is doing, read from the hooks fired inside it (they carry its
@@ -108,16 +108,16 @@ func SubagentsNow(ctx context.Context, q Querier, sessionID string, since int64)
 // (idx_events_kind_*): on the owner's database that was 1.1 s against 13 ms
 // for a 16,000-event session.
 
-// countSubagentCalls fills ToolCalls for all of them in one pass. Each call is
-// on the hook plane and, often, again in the transcript: counted on one plane,
-// the one that saw more.
+// countSubagentCalls fills ToolCalls for all of them in one pass. A call
+// heard on both planes is one row (they share its key); one only the
+// transcript saw is a row of its own, so the count is of distinct calls.
 func countSubagentCalls(ctx context.Context, q Querier, sessionID string, working []SubagentActivity) error {
 	args := []any{sessionID}
 	for _, a := range working {
 		args = append(args, a.AgentID)
 	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT agent_id, SUM(source = 'hook'), SUM(source <> 'hook')
+		SELECT agent_id, COUNT(DISTINCT COALESCE(json_extract(payload, '$.tool_use_id'), 'event:' || id))
 		  FROM events WHERE session_id = ? AND +kind = 'tool.pre'
 		   AND agent_id IN (?`+strings.Repeat(`, ?`, len(working)-1)+`)
 		 GROUP BY agent_id`, args...)
@@ -128,11 +128,11 @@ func countSubagentCalls(ctx context.Context, q Querier, sessionID string, workin
 	n := map[string]int{}
 	for rows.Next() {
 		var id string
-		var hook, other int
-		if err := rows.Scan(&id, &hook, &other); err != nil {
+		var calls int
+		if err := rows.Scan(&id, &calls); err != nil {
 			return err
 		}
-		n[id] = max(hook, other)
+		n[id] = calls
 	}
 	for i := range working {
 		working[i].ToolCalls = n[working[i].AgentID]
@@ -253,14 +253,8 @@ func SubagentsDone(ctx context.Context, q Querier, sessionID string, since int64
 	if len(done) == 0 {
 		return nil, nil
 	}
-	for i := range done {
-		err := q.QueryRowContext(ctx, `
-			SELECT COALESCE(json_extract(payload, '$.agent_type'), '') FROM events
-			 WHERE session_id = ? AND agent_id = ? AND json_extract(payload, '$.agent_type') <> ''
-			 ORDER BY ts DESC LIMIT 1`, sessionID, done[i].AgentID).Scan(&done[i].AgentType)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
-		}
+	if err := typeSubagents(ctx, q, sessionID, since, done); err != nil {
+		return nil, err
 	}
 	if err := countSubagentCalls(ctx, q, sessionID, done); err != nil {
 		return nil, err
@@ -269,6 +263,36 @@ func SubagentsDone(ctx context.Context, q Querier, sessionID string, since int64
 		return nil, err
 	}
 	return done, nil
+}
+
+// typeSubagents fills AgentType for all of them in one pass over the window:
+// the newest type any of their events named (a SubagentStop often names none).
+func typeSubagents(ctx context.Context, q Querier, sessionID string, since int64, list []SubagentActivity) error {
+	args := []any{sessionID, since}
+	for _, a := range list {
+		args = append(args, a.AgentID)
+	}
+	rows, err := q.QueryContext(ctx, `
+		SELECT agent_id, json_extract(payload, '$.agent_type') FROM events
+		 WHERE session_id = ? AND ts >= ? AND agent_id IN (?`+strings.Repeat(`, ?`, len(list)-1)+`)
+		   AND json_extract(payload, '$.agent_type') <> ''
+		 ORDER BY ts, id`, args...)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	typ := map[string]string{}
+	for rows.Next() {
+		var id, t string
+		if err := rows.Scan(&id, &t); err != nil {
+			return err
+		}
+		typ[id] = t
+	}
+	for i := range list {
+		list[i].AgentType = typ[list[i].AgentID]
+	}
+	return rows.Err()
 }
 
 // SubagentSpend is what a subagent's own model calls cost, from its
