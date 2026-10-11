@@ -1637,6 +1637,17 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   before it installs. A half-typed line lives in the agent's process and is
   repainted with the rest. Checked end to end by `bench/update.mjs`
   (two signed builds, a loopback update server, the fake `claude`).
+- **The Dock icon after an update** (`src/dock_icon.rs`, macOS, from a real
+  `.app` only). The bundle is swapped in place, and the Dock and
+  LaunchServices kept the old icon cached: 0.109.1's new icon did not show
+  on updated installs. Every launch sets the running app's Dock tile from
+  the bundle's `Contents/Resources/icon.icns`
+  (`NSApplication.setApplicationIconImage`, main thread; the badge is the
+  tile's label and draws over it). When the version differs from
+  `<data_dir>/app-last-run-version` (absent counts as different), the shell
+  records it and, on a background thread, touches the bundle's mtime and
+  runs `lsregister -f <bundle>` (ten seconds at most, every error ignored).
+  Never `killall Dock`, no prompt, no privilege.
 - **What it sends** is in ADR-042: the plugin's `User-Agent`, an `Accept`
   header, no identifier and no version in the URL.
 

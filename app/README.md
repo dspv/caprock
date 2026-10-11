@@ -38,6 +38,14 @@ it, run `app/icon-src/render.sh` (needs `rsvg-convert` and `magick`); it
 writes every PNG, `icon.icns` and `icon.ico` in `src-tauri/icons`, which are
 committed. The menu bar's `tray.png` is separate.
 
+An in-app update replaces the bundle in place, and macOS keeps drawing the
+icon it cached for the old one. So on macOS the app sets its own Dock tile
+from the bundle's `icon.icns` on every launch, and the first launch of each
+version (recorded in `<data_dir>/app-last-run-version`) touches the bundle
+and re-registers it with LaunchServices (`lsregister -f`) in the background
+(`src/dock_icon.rs`). It never restarts the Dock or Finder; a development
+build (`cargo run`) does neither.
+
 ## Trying a change on your own Mac
 
 `make app-local` builds this checkout's app and puts it in place of the one

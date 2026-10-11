@@ -15,7 +15,7 @@ import { ConnectionState } from './ConnectionState'
 import { AppUpdateNotice } from './AppUpdateNotice'
 import { StaleUiPill } from './StaleUiPill'
 import { KeepAwakeIndicator } from './KeepAwake'
-import { SessionLoad } from './ResourceMeter'
+import { CaprockLoad, SessionLoad } from './ResourceMeter'
 import { useAppUpdate } from '@/lib/appupdate'
 import { VersionPanel } from './VersionPanel'
 
@@ -117,6 +117,7 @@ function SessionFigures({ s }: { s: SessionSummary }) {
       {/* Its processes' CPU and memory, from the resource meter: absent
         * until the daemon has measured them, and for a daemon without one. */}
       <SessionLoad sessionId={s.session_id} />
+      <CaprockLoad />
     </span>
   )
 }

@@ -8,6 +8,9 @@ mod badge;
 mod capture;
 mod commands;
 mod discovery;
+// The Dock icon is macOS's; the decision is tested on every OS.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod dock_icon;
 mod hotkey;
 // Actionable notifications and the popover are macOS's (notify_macos, the
 // menu bar); elsewhere most of both modules is unused, not dead.
@@ -127,6 +130,10 @@ fn main() {
     )
     .setup(move |app| {
         shell::build(app.handle(), monitored.clone(), start, !quiet)?;
+        // The Dock tile from the bundle's own icon, and once per version a
+        // LaunchServices refresh, so an in-app update shows its new icon.
+        #[cfg(target_os = "macos")]
+        dock_icon::install(&monitored.data_dir, &app.package_info().version.to_string());
         // `--features snapshot` only: an automated check on a machine
         // someone is using (bench/update.mjs) puts no icon in the menu bar or
         // the Dock; its window is placed off screen.
