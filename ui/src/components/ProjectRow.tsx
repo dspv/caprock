@@ -43,7 +43,7 @@ import { AgentGlyph } from './AgentMarks'
 import { CloseIcon, EyeIcon, EyeOffIcon, FileIcon, MoreIcon, PlusIcon, StopIcon, TerminalIcon } from './AppIcons'
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
-import { keys } from '@/lib/appkeys'
+import { keys, tabKey } from '@/lib/appkeys'
 import { HotMark } from './ResourceMeter'
 
 const DOT_CLASS: Record<Dot, string> = {
@@ -107,6 +107,8 @@ export interface ProjectRowProps {
   current: boolean
   /** Its tabs, in strip order, with their labels; drawn when the project is open (current, or something runs or waits in it). */
   tabs: readonly Tab[]
+  /** Each tab's jump-key digit in the strip, if it has one. */
+  tabDigits?: ReadonlyMap<string, number | null>
   labels: ReadonlyMap<string, TabLabel>
   /** The tab in front, when the terminals are on screen. */
   activeTabId?: string
@@ -134,6 +136,7 @@ export const ProjectRow = memo(function ProjectRow({
   node,
   current,
   tabs,
+  tabDigits,
   labels,
   activeTabId,
   onSelect,
@@ -279,6 +282,7 @@ export const ProjectRow = memo(function ProjectRow({
                 <TabRow
                   tab={t}
                   label={l}
+                  digit={tabDigits?.get(t.id) ?? undefined}
                   active={t.id === activeTabId}
                   onOpen={() => onActivateTab(t.id)}
                   onClose={onCloseTab ? () => onCloseTab(t.id) : undefined}
@@ -353,9 +357,10 @@ function StateWord({ dot, hideOnHover }: { dot: Dot; hideOnHover: boolean }) {
 }
 
 /** One open tab under the current project: what the strip calls it, its dot, its state, its branch when not the project's own. */
-function TabRow({ tab, label, active, onOpen, onClose, onMenu }: {
+function TabRow({ tab, label, active, onOpen, onClose, onMenu, digit }: {
   tab: Tab
   label?: TabLabel
+  digit?: number
   active: boolean
   onOpen: () => void
   onClose?: () => void
@@ -396,6 +401,9 @@ function TabRow({ tab, label, active, onOpen, onClose, onMenu }: {
         <TitleAndBranch title={title} branch={label?.branch} className={active ? 'text-fg' : 'text-fg-muted'} />
         {!isFile && <HotMark sessionId={label?.session?.session_id} />}
         {word && <StateWord dot={word} hideOnHover={false} />}
+        {digit && (
+          <kbd data-tab-key aria-hidden className={`app-kbd-key shrink-0 ${onClose ? 'group-hover/row:hidden group-focus-within/row:hidden' : ''} ${active && onClose ? 'hidden' : ''}`}>{tabKey(digit)}</kbd>
+        )}
       </button>
       {onClose && (
         <span className={`absolute right-1 top-1/2 -translate-y-1/2 ${active ? 'flex' : 'hidden group-hover/row:flex group-focus-within/row:flex'}`}>

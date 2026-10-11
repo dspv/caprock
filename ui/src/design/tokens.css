@@ -102,6 +102,31 @@
   --shadow-panel: 0 8px 20px -14px rgba(60, 50, 30, 0.22);
 }
 
+/*
+ * Slate: a neutral dark with a soft blue accent (owner, 2026-10-11) — for
+ * whoever finds the warm charcoal and amber heavy; cooler and flatter, the
+ * way Orca reads. Same roles as the default; only the hues move. The
+ * terminal's own ground stays as it is in every theme (see --color-term-bg).
+ * Applied by <html data-theme="dark" data-dark="slate"> (lib/theme.ts).
+ */
+[data-theme="dark"][data-dark="slate"] {
+  --color-bg: #1a1b1e;
+  --color-panel: #1f2023;
+  --color-panel-2: #26272b;
+  --color-border: #2c2d31;
+  --color-border-strong: #3b3c41;
+
+  --color-fg: #e6e7ea;
+  --color-fg-muted: #a3a6ad;
+  --color-fg-faint: #7d8088;
+
+  --color-info: #6ea8fe;
+  --color-accent: #6ea8fe;
+  --color-accent-strong: #9cc4ff;
+
+  --shadow-panel: 0 12px 32px -18px rgba(0, 0, 0, 0.7);
+}
+
 :root {
   color-scheme: dark;
   background: var(--color-bg);
@@ -321,31 +346,30 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 [data-app] .app-primary:active { background: color-mix(in srgb, var(--color-accent) 20%, transparent); }
 /* A key hint beside a sidebar label: the label's size, muted, right-aligned
  * by its row (owner, same day: the 10.5px hints could not be read). */
-[data-app] .app-kbd {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12.5px;
-  line-height: 1;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  color: var(--color-fg-faint);
-  white-space: nowrap;
-}
-/* The Dashboard's key, drawn as a key: the owner looked for a way back to the
- * dashboard and did not see the faint hint (2026-10-11). */
+/* Every key hint is drawn as a key, large (owner, 2026-10-11: "shortcuts
+ * bigger — people should work from the keyboard, every key shown big").
+ * .app-kbd beside a menu row and .app-kbd-key on tabs are one look now; the
+ * faint grey text the row hints were went unseen. Off macOS the label is
+ * keys()'s Ctrl spelling, so the chip only grows. */
+[data-app] .app-kbd,
 [data-app] .app-kbd-key {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
-  /* Readable at a glance (owner, 2026-10-11: "the shortcut is not visible"). */
   color: var(--color-fg);
-  padding: 2px 6px;
-  border-radius: 5px;
+  padding: 3px 7px;
+  border-radius: 6px;
   border: 1px solid color-mix(in srgb, var(--color-fg) 28%, transparent);
+  border-bottom-width: 2px;
   background: color-mix(in srgb, var(--color-fg) 10%, transparent);
 }
-[data-app] .app-primary .app-kbd { color: color-mix(in srgb, var(--color-accent) 70%, var(--color-fg-faint)); }
+[data-app] .app-primary .app-kbd {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
 /* The sidebar's Today strip (components/TodayStrip.tsx): the cockpit's bars
  * and numerals on a faint card under New agent. */
 [data-app] .today-strip { background: color-mix(in srgb, var(--color-fg) 2.5%, transparent); }

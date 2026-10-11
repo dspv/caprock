@@ -7,6 +7,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **Four themes, picked by hovering:** Graphite, **Slate** (new — a neutral
+  dark with a soft blue accent), Paper and White. The theme button opens a
+  picker: hover a palette to see it on the whole app, click to keep it.
+  Settings → Appearance shows the same four as large swatches.
+- **app:** tabs in the sidebar show their jump key, ⌘1–⌘9, as the tab strip
+  does.
+
+### Changed
+
+- **app:** every shortcut hint is drawn as a large key — New agent, Quick
+  chat, Add project, Dashboard, Settings — on macOS, Windows and Linux alike.
+
+### Fixed
+
+- **app:** the permission card's Y, N and A work on any keyboard layout; on a
+  Russian one Y typed a Cyrillic letter and did nothing.
+
 ## [0.107.7] - 2026-10-11
 
 ### Added

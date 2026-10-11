@@ -104,6 +104,13 @@ describe('a permission prompt', () => {
       host.remove()
     })
 
+    it('takes Y by the key, not the letter: on a Russian layout it types н', async () => {
+      render(<PermissionPrompt sessionId="s1" />)
+      await screen.findByRole('alertdialog')
+      fireEvent.keyDown(document.body, { key: 'н', code: 'KeyY' })
+      await waitFor(() => expect(h.answer).toHaveBeenCalledWith('s1', 'p1', 'allow'))
+    })
+
     it('leaves Enter and Esc in its terminal to Claude Code’s own menu', async () => {
       render(<PermissionPrompt sessionId="s1" />)
       await screen.findByRole('alertdialog')

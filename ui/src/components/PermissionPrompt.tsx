@@ -251,6 +251,8 @@ function Key({ children }: { children: string }) {
  */
 const keyed: symbol[] = []
 
+const LETTER_BY_CODE: Record<string, string> = { KeyY: 'y', KeyN: 'n', KeyA: 'a' }
+
 /** Focus is somewhere a key means typing: a field, an editor, a terminal. */
 function typingInto(el: Element | null): boolean {
   if (!el || !(el instanceof HTMLElement)) return false
@@ -304,7 +306,10 @@ function usePromptKeys(
       if (modal) return
       const onPage = !active || active === document.body || el.contains(active)
       let choice: PermissionChoice | null = null
-      switch (inOwnTerminal && (e.key === 'Enter' || e.key === 'Escape') ? '' : e.key) {
+      // By the physical key, so Y is Y on any layout: on a Russian one it
+      // types "н", and the owner's Y did nothing (2026-10-11).
+      const key = LETTER_BY_CODE[e.code] ?? e.key
+      switch (inOwnTerminal && (key === 'Enter' || key === 'Escape') ? '' : key) {
         case 'y': case 'Y': choice = 'allow'; break
         case 'a': case 'A': choice = hasAlways ? 'always' : null; break
         case 'n': case 'N': choice = 'deny'; break
