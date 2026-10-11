@@ -153,6 +153,8 @@ type Service struct {
 	items map[string]itemsCached
 	// byURL keeps the pull requests read by their links (byurl.go).
 	byURL byURLCache
+	// ci keeps commits' Actions runs and failed jobs' log tails (actions.go).
+	ci ciCache
 }
 
 func (s *Service) init() {

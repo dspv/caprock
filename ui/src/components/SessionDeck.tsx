@@ -5,17 +5,16 @@
  * than its edge (owner, 2026-10-11, translated: "I basically type in the
  * centre, a bit below the middle of the screen — that's comfortable — and in
  * this new area show data useful to me while I work"), and the room it makes
- * carries the session's live figures in one dense row: what it is doing now,
- * what it has cost and what the next call costs, how full its context is,
- * the branch with what is not committed or pushed, and the session's latest
- * pull requests with their CI. No chart: the dashboard has those (owner,
- * 2026-10-11: "we already have charts everywhere").
+ * carries the session's live figures in one dense row: the GitHub Actions of
+ * its pull request job by job and step by step, the branch with what is not
+ * committed or pushed, and the session's latest pull requests with their CI.
+ * No chart: the dashboard has those (owner, 2026-10-11: "we already have
+ * charts everywhere").
  *
- * Every figure but the pull requests' is one the workspace already holds: the
- * session row the sidebar polls and the session's own calls and turns — fetched
- * once and followed on the live socket, shared with the cockpit
- * (lib/sessionEvents.ts). Nothing is estimated, and a figure the agent does
- * not report is left out rather than drawn as zero.
+ * The branch is what the workspace already holds; the CI and the pull
+ * requests are read from GitHub by the daemon, which keeps each answer, while
+ * the deck is open. Nothing is estimated, and a figure that is not reported
+ * is left out rather than drawn as zero.
  *
  * Cheap on purpose. It is a sibling of the terminals, so nothing here redraws
  * one. Closed, it is not mounted: no clock, no subscription. While its
@@ -23,10 +22,12 @@
  * box changes once, on release — one fit and one PTY resize, not one per
  * frame. Arrow keys on the divider settle the same way.
  */
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { api, type SessionPRLive, type SessionSummary, type Summary } from '@/lib/api'
-import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
-import { DECK_DEFAULT, DECK_MAX_SHARE, DECK_TALL, clampDeck, deckKeyStep } from '@/lib/deck'
+import { createContext, useContext, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { api, errText, type CIJob, type CILog, type CIStep, type SessionCI, type SessionPRLive, type SessionSummary, type Summary } from '@/lib/api'
+import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
+import { byOSLine, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, keyStep, osTag, runnerTime, type CITone } from '@/lib/ci'
+import { sessionTitle } from '@/lib/sidebar'
+import { useCanControl } from '@/lib/useCanControl'
 import { githubApi, prTone, type PRTone } from '@/lib/github'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
@@ -51,6 +52,8 @@ export interface SessionDeckProps {
   /** A new height, once a drag or the arrow keys settle. */
   onResize: (height: number) => void
   onClose: () => void
+  /** Says something briefly at the foot of the window: Investigate's result. */
+  onToast?: (text: string) => void
 }
 
 export function SessionDeck(props: SessionDeckProps) {
@@ -139,14 +142,13 @@ export function SessionDeck(props: SessionDeckProps) {
         >
           <span aria-hidden className="deck-grip absolute left-1/2 top-[2px] h-[4px] w-[36px] -translate-x-1/2 rounded-full" />
         </div>
-        <DeckBody {...props} tall={shown >= DECK_TALL} />
+        <DeckBody {...props} />
       </section>
     </div>
   )
 }
 
-function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClose, tall }: SessionDeckProps & { tall: boolean }) {
-  const ctx = s.context
+function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClose, onToast }: SessionDeckProps) {
   return (
     // A container, so the branch gives way first as the terminal narrows
     // (the sidebar and the inspector both open). No clock and no event
@@ -154,7 +156,7 @@ function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClo
     // the inspector's (owner, 2026-10-11: "Spent doesn't help", "Working
     // now is debatable").
     <div className="@container flex min-h-0 flex-1 items-stretch overflow-hidden">
-      {ctx && <Context ctx={ctx} tall={tall} />}
+      <CI sessionId={sessionId} s={s} onToast={onToast} />
       <Branch branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} />
       <PRs sessionId={sessionId} />
       <div className="flex shrink-0 items-start pr-2 pt-1.5">
@@ -190,23 +192,308 @@ function Cell({ label, right, className = '', grow = false, below, children }: {
   )
 }
 
-function Context({ ctx, tall }: { ctx: NonNullable<SessionSummary['context']>; tall: boolean }) {
-  const pct = Math.max(0, Math.min(100, ctx.pct))
-  const tone = pct >= 85 ? 'danger' : pct >= 60 ? 'warn' : 'ok'
+/**
+ * One click turns the GitHub integration on through the GitHub CLI's own
+ * login (ADR-047: off until the user turns it on; this button is that).
+ * Without a usable `gh`, Settings is where a token goes. True when connected.
+ */
+async function connectGitHub(): Promise<boolean> {
+  try {
+    const st = await githubApi.connect('gh')
+    if (st.connected) return true
+  } catch { /* Settings says why */ }
+  location.hash = '#/settings'
+  return false
+}
+
+/** How often the CI cell asks again: soon while a job runs, else rarely.
+ *  The daemon keeps a commit's runs 10 s while one runs and 2 min once all
+ *  settled, so a poll inside that costs GitHub nothing. */
+const CI_RUNNING_MS = 12_000
+const CI_IDLE_MS = 60_000
+
+const CI_TEXT: Record<CITone, string> = {
+  running: 'text-warn', queued: 'text-fg-faint', pass: 'text-ok', fail: 'text-danger', skipped: 'text-fg-faint',
+}
+
+/** A job's or a step's state as a mark: a turning ring while it runs. */
+function CIMark({ tone }: { tone: CITone }) {
+  if (tone === 'running') return <span role="img" aria-label="running" className="ci-spin inline-block h-[9px] w-[9px] shrink-0 rounded-full" />
+  const mark = tone === 'pass' ? '✓' : tone === 'fail' ? '✗' : tone === 'queued' ? '○' : '–'
+  return <span role="img" aria-label={tone === 'pass' ? 'passed' : tone === 'fail' ? 'failed' : tone} className={`w-[9px] shrink-0 text-center text-[11px] leading-none ${CI_TEXT[tone]}`}>{mark}</span>
+}
+
+/**
+ * The CI of the session's pull request, live (owner, 2026-10-11, translated:
+ * "I want to see which steps run, how long each step takes — a full status
+ * informer of the real CI/CD … what failed and with which error, and the
+ * time of each stage, because runners are money"). A row per GitHub Actions
+ * job with its state, OS and time, ticking while it runs; a job opens into
+ * its steps, and a failed step into the lines around its error. The runner
+ * time at the top is measured: the finished jobs' GitHub timestamps plus the
+ * running ones on the clock, split per OS, never priced. It replaced the
+ * Context cell, which repeated the status bar (owner: "sacrifice it for
+ * CI/CD"). Asked while the deck is open and the window visible: every 12 s
+ * while a job runs, else every minute.
+ */
+/**
+ * Investigate: a failed job, its step, link and the end of its log, queued
+ * into the session in front as one message (ADR-053's queue: typed in at the
+ * prompt, else when the turn ends). Only into a session Caprock started and
+ * this device may control — rule 7: Caprock never types into a process it did
+ * not start; otherwise the button is drawn disabled and its tooltip says why.
+ */
+interface InvestigateCtx {
+  run: (job: CIJob, step?: string) => void
+  /** Why it cannot be queued here; '' when it can. */
+  why: string
+  /** The job being queued now. */
+  busy?: number
+}
+const Investigate = createContext<InvestigateCtx | null>(null)
+
+function InvestigateButton({ job, step }: { job: CIJob; step?: string }) {
+  const ctx = useContext(Investigate)
+  if (!ctx) return null
+  const busy = ctx.busy === job.id
   return (
-    <Cell label="Context" className="w-[136px] shrink-0">
-      <p className={`num text-[20px] font-semibold leading-none tracking-[-0.02em] ${tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-fg'}`}>{fmtPct(pct)}</p>
-      <div className="cockpit-track relative h-[5px] overflow-hidden rounded-full" role="meter" aria-label="Context used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
-        <div className="cockpit-fill h-full rounded-full" data-tone={tone} style={{ width: `${Math.max(pct, 1.5)}%` }} />
-      </div>
-      {ctx.next_call_usd > 0 && (
-        <p className="num truncate text-[11px] text-fg-muted" title="What every call now pays to re-read the context">next call <span className="text-fg">{fmtUSD(ctx.next_call_usd)}</span></p>
-      )}
-      {tall && <p className="num truncate text-[11px] text-fg-faint">{fmtTokens(ctx.tokens)} / {fmtTokens(ctx.window)}</p>}
-    </Cell>
+    <button type="button" data-deck-ci-investigate disabled={!!ctx.why || busy} onClick={() => ctx.run(job, step)}
+      title={ctx.why || 'Queue this failure — the job, its step, its link and the end of its log — into this agent, to investigate and fix. It types in at the prompt, else when the turn ends.'}
+      className="rounded-[4px] border border-accent/50 px-1.5 text-[11px] font-medium text-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:border-[var(--app-hairline)] disabled:text-fg-faint">
+      {busy ? 'Queueing…' : 'Investigate'}
+    </button>
   )
 }
 
+function CI({ sessionId, s, onToast }: { sessionId: string; s: SessionSummary; onToast?: (text: string) => void }) {
+  const canControl = useCanControl()
+  const [busy, setBusy] = useState<number>()
+  const [data, setData] = useState<SessionCI>()
+  const [n, setN] = useState(0)
+  const [connecting, setConnecting] = useState(false)
+  const [open, setOpen] = useState<Record<number, boolean>>({})
+  const autoOpened = useRef(false)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    let alive = true
+    let timer = 0
+    const tick = async () => {
+      let next = CI_IDLE_MS
+      if (!document.hidden) {
+        try {
+          const d = await api.sessionCI(sessionId)
+          if (!alive) return
+          setData(d)
+          setNow(Date.now())
+          if (ciActive(d.ci)) next = CI_RUNNING_MS
+        } catch { /* the last answer stays */ }
+      }
+      if (alive) timer = window.setTimeout(() => void tick(), next)
+    }
+    void tick()
+    const onVisible = () => { if (!document.hidden) { window.clearTimeout(timer); void tick() } }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { alive = false; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
+  }, [sessionId, n])
+
+  const ci = data?.ci
+  const active = ciActive(ci)
+  // A clock only while something runs: a settled CI draws once.
+  useEffect(() => {
+    if (!active) return
+    const t = window.setInterval(() => { if (!document.hidden) setNow(Date.now()) }, 1000)
+    return () => window.clearInterval(t)
+  }, [active])
+
+  // The first failed job opens by itself, once: what failed is the question.
+  useEffect(() => {
+    if (!ci || autoOpened.current) return
+    const failed = ci.runs.flatMap((r) => r.jobs).find((j) => ciTone(j) === 'fail')
+    if (failed) {
+      autoOpened.current = true
+      setOpen((o) => ({ ...o, [failed.id]: true }))
+    }
+  }, [ci])
+
+  const connect = async () => {
+    setConnecting(true)
+    if (await connectGitHub()) setN((x) => x + 1)
+    setConnecting(false)
+  }
+
+  const pr = data?.pr
+  const jobs = ci ? ci.runs.flatMap((r) => r.jobs) : []
+  const why = !canControl ? 'This device may only watch: queue it from the Mac, or make this device a controller in Settings.'
+    : !s.owned ? 'Caprock did not start this session, so it never types into it. Start the agent from Caprock to queue CI failures to it.'
+      : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
+  const investigate = async (job: CIJob, step?: string) => {
+    if (!pr || why) return
+    setBusy(job.id)
+    let lines: string[] = []
+    try { lines = (await api.sessionCILog(sessionId, job.id)).lines } catch { /* the message goes without the log; the job's link has it */ }
+    const run = ci?.runs.find((r) => r.id === job.run_id)
+    const text = investigateMessage({ pr, workflow: run?.name, job, step: step ?? keyStep(job)?.name, lines })
+    try {
+      const res = await api.queueSend(sessionId, text)
+      onToast?.(`${res.sent ? 'Sent to' : 'Queued for'} ${sessionTitle(s)}`)
+    } catch (e) {
+      onToast?.(`Not queued: ${errText(e)}`)
+    } finally {
+      setBusy(undefined)
+    }
+  }
+  const manyRuns = (ci?.runs.length ?? 0) > 1
+  const total = ci ? runnerTime(ci, now) : 0
+
+  let body: ReactNode = null
+  if (data && !data.connected) {
+    body = pr
+      ? <button type="button" disabled={connecting} onClick={() => void connect()} title="Reads GitHub Actions through your GitHub CLI login; turn it off in Settings → GitHub"
+          className="w-fit text-left text-[12px] text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : `Connect GitHub to see #${pr.number}’s CI`}</button>
+      : <p className="text-[12px] text-fg-faint">No PR from this session yet.</p>
+  } else if (data && !pr) body = <p className="text-[12px] text-fg-faint">No PR from this session yet.</p>
+  else if (data && pr && !ci) {
+    body = <p className="truncate text-[12px] text-fg-faint" title={data.error?.message}>{data.error ? `CI not read: ${data.error.message}` : `#${pr.number}: no commit to read CI for.`}</p>
+  } else if (data && pr && jobs.length === 0) body = <p className="text-[12px] text-fg-faint">No GitHub Actions runs on #{pr.number}’s head commit.</p>
+  else if (ci) {
+    body = (
+      <ul data-deck-ci-jobs className="-mx-1 min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {ci.runs.map((run) => (
+          <li key={run.id} data-deck-ci-run={run.id}>
+            {manyRuns && (
+              <button type="button" onClick={() => run.html_url && openExternal(run.html_url)} title={`Open the ${run.name} run on GitHub`}
+                className="w-full truncate px-1 pt-0.5 text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-fg-faint hover:text-fg-muted">{run.name}</button>
+            )}
+            <ul>
+              {run.jobs.map((job) => (
+                <CIJobRow key={job.id} sessionId={sessionId} job={job} now={now}
+                  open={!!open[job.id]} onToggle={() => setOpen((o) => ({ ...o, [job.id]: !o[job.id] }))} />
+              ))}
+            </ul>
+          </li>
+        ))}
+        {ci.by_os.length > 1 && <li className="num truncate px-1 pt-0.5 text-[10.5px] text-fg-faint" title="The finished jobs’ runner time per OS, measured; not priced">{byOSLine(ci)}</li>}
+      </ul>
+    )
+  }
+  return (
+    <Investigate.Provider value={{ run: (j, st) => void investigate(j, st), why, busy }}>
+    <Cell label="CI" className="min-w-[270px] flex-[2.6_1_0]"
+      right={(pr || jobs.length > 0) && (
+        <span className="flex items-baseline justify-end gap-2">
+          {pr && <button type="button" onClick={() => openExternal(`${pr.url}/checks`)} title={`${pr.title ?? ''}\nOpen the PR’s checks on GitHub`} className="num hover:text-fg hover:underline">#{pr.number}</button>}
+          {ci && jobs.length > 0 && (
+            <span data-deck-ci-runner className="num" title={`Runner time, measured from GitHub’s job times${active ? ' and the running jobs on the clock' : ''}${ci.by_os.length ? `\nFinished: ${byOSLine(ci)}` : ''}\nNot priced: what a minute costs depends on the plan and the OS.`}>
+              runner <span className="text-fg">{fmtRun(total)}</span>
+            </span>
+          )}
+        </span>
+      )}>
+      {body}
+      {ci?.error && jobs.length > 0 && <p className="truncate text-[10.5px] text-warn" title={ci.error.message}>The last read failed; this is the one before.</p>}
+    </Cell>
+    </Investigate.Provider>
+  )
+}
+
+/** One job: its mark, name, OS and time; open, its steps. */
+function CIJobRow({ sessionId, job, now, open, onToggle }: { sessionId: string; job: CIJob; now: number; open: boolean; onToggle: () => void }) {
+  const tone = ciTone(job)
+  const at = keyStep(job)
+  const [logFor, setLogFor] = useState<number>()
+  return (
+    <li data-deck-ci-job={job.id} data-tone={tone}>
+      <button type="button" onClick={onToggle} aria-expanded={open} title={`${job.name}${job.labels.length ? `\nRunner: ${job.labels.join(', ')}` : ''}\n${open ? 'Hide' : 'Show'} its steps`}
+        className="grid w-full min-w-0 grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)] items-center gap-x-1.5 rounded-[4px] px-1 py-[1px] text-left text-[12px] hover:bg-[var(--app-row-hover)]">
+        <CIMark tone={tone} />
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          <span className={`truncate ${tone === 'fail' ? 'font-medium text-danger' : 'text-fg'}`}>{job.name}</span>
+          {!open && at && <span className={`truncate text-[11px] ${tone === 'fail' ? 'text-danger' : 'text-fg-faint'}`}>{at.name}</span>}
+        </span>
+        <span className="text-[10px] uppercase tracking-[0.04em] text-fg-faint">{osTag(job.os)}</span>
+        <span className={`num whitespace-nowrap text-right text-[11.5px] ${tone === 'running' ? 'text-warn' : 'text-fg-muted'}`}>{fmtRun(ciElapsed(job, now))}</span>
+      </button>
+      {open && (
+        <ul className="ml-[8px] border-l border-[var(--app-hairline)] pl-1">
+          {job.steps.map((st) => (
+            <CIStepRow key={st.number} sessionId={sessionId} job={job} step={st} now={now}
+              showLog={logFor === st.number} onLog={() => setLogFor((x) => (x === st.number ? undefined : st.number))} />
+          ))}
+          {job.steps.length === 0 && <li className="px-1 text-[11px] text-fg-faint">No steps reported yet.</li>}
+          {tone === 'fail' && job.status === 'completed' && (
+            <li className="flex items-center gap-2 px-1 py-0.5 text-[11px] text-fg-faint">
+              <InvestigateButton job={job} step={at?.name} />
+              <span className="truncate">queue it to this agent</span>
+            </li>
+          )}
+        </ul>
+      )}
+    </li>
+  )
+}
+
+/** One step; a failed one opens the lines around its error. */
+function CIStepRow({ sessionId, job, step, now, showLog, onLog }: { sessionId: string; job: CIJob; step: CIStep; now: number; showLog: boolean; onLog: () => void }) {
+  const tone = ciTone(step)
+  const failed = tone === 'fail'
+  const row = (
+    <>
+      <CIMark tone={tone} />
+      <span className={`truncate ${failed ? 'font-medium text-danger' : tone === 'skipped' || tone === 'queued' ? 'text-fg-faint' : 'text-fg-muted'}`}>{step.name}</span>
+      <span className={`num whitespace-nowrap text-right ${tone === 'running' ? 'text-warn' : 'text-fg-faint'}`}>{fmtRun(ciElapsed(step, now))}</span>
+    </>
+  )
+  const cls = 'grid w-full min-w-0 grid-cols-[9px_minmax(0,1fr)_minmax(48px,auto)] items-center gap-x-1.5 rounded-[4px] px-1 text-left text-[11.5px]'
+  return (
+    <li data-deck-ci-step={step.number} data-tone={tone}>
+      {failed && job.status === 'completed'
+        ? <button type="button" onClick={onLog} aria-expanded={showLog} title={showLog ? 'Hide the error' : 'Show the error: the lines around it in the job’s log'} className={`${cls} ci-failed-step`}>{row}</button>
+        : <div className={cls}>{row}</div>}
+      {showLog && <CILogTail sessionId={sessionId} job={job} />}
+    </li>
+  )
+}
+
+/** The lines around a failed job's error, read once, on demand. */
+function CILogTail({ sessionId, job }: { sessionId: string; job: CIJob }) {
+  const [log, setLog] = useState<CILog>()
+  const [err, setErr] = useState('')
+  const pre = useRef<HTMLPreElement>(null)
+  useEffect(() => {
+    let alive = true
+    api.sessionCILog(sessionId, job.id).then((l) => { if (alive) setLog(l) }).catch((e: unknown) => {
+      const body = (e as { body?: { error?: string } }).body
+      if (alive) setErr(body?.error || String(e))
+    })
+    return () => { alive = false }
+  }, [sessionId, job.id])
+  // The error line in view, a few lines of what followed it under it.
+  useEffect(() => {
+    const box = pre.current
+    const el = box?.querySelector<HTMLElement>('[data-error-line]')
+    if (box && el) box.scrollTop = Math.max(0, el.offsetTop - box.clientHeight + el.offsetHeight * 4)
+  }, [log])
+  return (
+    <div data-deck-ci-log className="my-1 mr-1 overflow-hidden rounded-[5px] border border-[var(--app-hairline)]">
+      {!log && !err && <p className="px-2 py-1 text-[11px] text-fg-faint">Reading the log…</p>}
+      {err && <p className="px-2 py-1 text-[11px] text-danger">{err}</p>}
+      {log && (
+        <pre ref={pre} className="mono ci-log max-h-[132px] overflow-auto px-2 py-1 text-[10.5px] leading-[1.45] text-fg-muted">
+          {log.lines.map((l, i) => (
+            <div key={i} data-error-line={i === log.error_line ? '' : undefined} className={i === log.error_line ? 'ci-error-line' : l.includes('##[error]') ? 'text-danger' : undefined}>{l || ' '}</div>
+          ))}
+          {log.lines.length === 0 && <div className="text-fg-faint">The log is empty.</div>}
+        </pre>
+      )}
+      <div className="flex items-center gap-3 border-t border-[var(--app-hairline)] px-2 py-0.5 text-[11px]">
+        {log?.truncated && <span className="text-fg-faint">the end of a long log</span>}
+        <InvestigateButton job={job} />
+        {job.html_url && <button type="button" onClick={() => openExternal(job.html_url!)} className="ml-auto text-accent hover:underline">Open on GitHub ↗</button>}
+      </div>
+    </div>
+  )
+}
 
 /** How often the PR cell asks again: sooner while a check is running. The
  *  daemon keeps each pull request for about as long, so a poll it can answer
@@ -238,8 +525,10 @@ function Branch({ branch, changed, ahead, onReview }: { branch?: string; changed
 
 /** One PR's state in a few characters: CI first, then the review. */
 interface PRStatus {
-  /** The CI in a few characters, '' when there is none to show. */
+  /** The CI in a few characters, "CI" included where it reads so; '' when there is none to show. */
   ci: string
+  /** What the CI label means, when it needs saying. */
+  ciTitle?: string
   ciTone: PRTone
   /** Where the CI is looked at: the failing or running job, else the PR's checks. */
   ciUrl?: string
@@ -248,8 +537,11 @@ interface PRStatus {
   tone: PRTone
 }
 
+/** How long after a PR was opened an empty check list still means "not started yet" rather than "no CI here". */
+const CI_START_GRACE_MS = 10 * 60_000
+
 /** One PR's CI and state, in two columns that line up row to row. */
-function prStatus(p: SessionPRLive): PRStatus {
+function prStatus(p: SessionPRLive, now = Date.now()): PRStatus {
   const pr = p.live
   if (!pr) {
     if (p.merged_at) return { ci: '', ciTone: 'none', state: 'merged', tone: 'merged' }
@@ -263,21 +555,34 @@ function prStatus(p: SessionPRLive): PRStatus {
   let ciUrl: string | undefined = total ? `${pr.url}/checks` : undefined
   if (c.state === 'fail') {
     const failed = c.items.filter((i) => i.state === 'fail')
-    ci = `✗ ${failed[0]?.name ?? 'failed'}${failed.length > 1 ? ` +${failed.length - 1}` : ''}`
+    ci = `CI ✗ ${failed[0]?.name ?? 'failed'}${failed.length > 1 ? ` +${failed.length - 1}` : ''}`
     ciTone = 'fail'
     ciUrl = failed.find((i) => i.url)?.url ?? ciUrl
   } else if (c.state === 'pending') {
-    ci = `${total - c.pending}/${total} running`
+    ci = `CI ${total - c.pending}/${total} running`
     ciTone = 'pending'
     ciUrl = c.items.find((i) => i.state === 'pending' && i.url)?.url ?? ciUrl
   } else if (c.state === 'pass') {
-    ci = `✓ ${total} passed`
+    ci = `CI ✓ ${total} passed`
     ciTone = 'ok'
-  } else if (pr.state === 'open') ci = 'no CI'
+  }
+  // No checks at all. Right after a PR opens (or a push) GitHub has often not
+  // registered them yet; a while later it means no workflow ran on it.
+  let ciTitle: string | undefined
+  if (!ci && pr.state === 'open' && total === 0) {
+    const since = p.opened_at || p.last_at
+    if (since && now - since < CI_START_GRACE_MS) {
+      ci = 'CI not started'
+      ciTitle = 'GitHub has not reported any checks for this PR yet — they usually appear within a minute of a push'
+    } else {
+      ci = 'no checks'
+      ciTitle = 'No CI workflow ran on this PR'
+    }
+  }
   const review = pr.state === 'open' ? (pr.review === 'approved' ? 'approved' : pr.review === 'changes_requested' ? 'changes' : '') : ''
   const state = pr.state !== 'open' ? pr.state : pr.draft ? 'draft' : review
   const tone: PRTone = pr.state !== 'open' ? prTone(pr) : pr.review === 'changes_requested' ? 'fail' : pr.review === 'approved' ? 'ok' : 'none'
-  return { ci, ciTone, ciUrl, state, tone }
+  return { ci, ciTitle, ciTone, ciUrl, state, tone }
 }
 
 const STATUS_TEXT: Record<PRTone, string> = {
@@ -315,20 +620,10 @@ function PRs({ sessionId }: { sessionId: string }) {
     return () => { alive = false; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
   }, [sessionId, n])
 
-  // One click turns the integration on through the GitHub CLI's own login
-  // (ADR-047: off until the user turns it on; this button is that). Without
-  // a usable `gh`, Settings is where a token goes.
   const connect = async () => {
     setConnecting(true)
-    try {
-      const st = await githubApi.connect('gh')
-      if (st.connected) setN((x) => x + 1)
-      else location.hash = '#/settings'
-    } catch {
-      location.hash = '#/settings'
-    } finally {
-      setConnecting(false)
-    }
+    if (await connectGitHub()) setN((x) => x + 1)
+    setConnecting(false)
   }
   const prs = data?.prs ?? []
   return (
@@ -351,8 +646,8 @@ function PRs({ sessionId }: { sessionId: string }) {
               </button>
               {st.ci && st.ciUrl
                 ? <button type="button" data-deck-ci onClick={() => openExternal(st.ciUrl!)} title="Open the CI run on GitHub"
-                    className={`truncate text-left font-medium underline-offset-2 hover:underline ${STATUS_TEXT[st.ciTone]}`}>CI {st.ci}</button>
-                : <span className={`truncate font-medium ${STATUS_TEXT[st.ciTone]}`}>{st.ci && `CI ${st.ci}`}</span>}
+                    className={`truncate text-left font-medium underline-offset-2 hover:underline ${STATUS_TEXT[st.ciTone]}`}>{st.ci}</button>
+                : <span data-deck-ci-none={st.ciTitle ? '' : undefined} title={st.ciTitle} className={`truncate ${st.ciTitle ? 'text-fg-faint' : `font-medium ${STATUS_TEXT[st.ciTone]}`}`}>{st.ci}</span>}
               <span className={`truncate font-medium ${STATUS_TEXT[st.tone]}`}>{st.state}</span>
             </li>
           )
