@@ -7,6 +7,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.108.1] - 2026-10-11
+
+Ships everything listed under 0.108.0: its tag failed the release lint on a
+test helper and published nothing.
+
+### Fixed
+
+- **ci:** the session todos test helper no longer trips golangci-lint
+  (`unparam`, `QF1008`), which stopped the 0.108.0 release before it built.
+
 ## [0.108.0] - 2026-10-11
 
 ### Added

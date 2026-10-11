@@ -73,6 +73,13 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-11 — 0.108.1: 0.108.0, published
+
+The v0.108.0 tag stopped at the release workflow's golangci-lint (two
+findings in a new test helper that the PR run did not report), so nothing
+was published; the tag stays where it is and 0.108.1 ships the same
+changes with the helper fixed.
+
 ### 2026-10-11 — 0.108.0: CI in the deck, four themes, the phone chat-first, the agent's task list
 
 Ships the phone entry below, plus: the deck's first cell is live GitHub

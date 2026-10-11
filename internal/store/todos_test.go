@@ -28,9 +28,10 @@ func (f *todoFixture) call(sess, agent, tool, useID, input string) {
 		Ts: f.at.Add(time.Duration(f.sec) * time.Second), Payload: p})
 }
 
-func (f *todoFixture) todos(sess string) TodoList {
+// todos reads the list of session "s", the one every test writes to.
+func (f *todoFixture) todos() TodoList {
 	f.t.Helper()
-	got, err := SessionTodos(context.Background(), f.weekFixture.s.DB(), sess)
+	got, err := SessionTodos(context.Background(), f.s.DB(), "s")
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -46,7 +47,7 @@ func TestSessionTodosTodoWriteSnapshot(t *testing.T) {
 	f.call("s", "agent-1", "TodoWrite", "u3", `{"todos":[{"content":"subagent plan","status":"pending"}]}`)
 	f.call("other", "", "TodoWrite", "u4", `{"todos":[{"content":"elsewhere","status":"pending"}]}`)
 
-	got := f.todos("s")
+	got := f.todos()
 	want := []TodoItem{
 		{ID: "1", Text: "Read the code", Status: "completed", ActiveForm: "Reading the code"},
 		{ID: "2", Text: "Write the test", Status: "in_progress", ActiveForm: "Writing the test"},
@@ -80,7 +81,7 @@ func TestSessionTodosTaskFold(t *testing.T) {
 	f.call("s", "", "TaskUpdate", "p4", `{"taskId":"3","status":"deleted"}`)
 	f.call("s", "", "TaskUpdate", "p5", `{"taskId":"99","status":"completed"}`)
 
-	got := f.todos("s")
+	got := f.todos()
 	want := []TodoItem{
 		{ID: "1", Text: "Localize progress", Status: "completed", ActiveForm: "Localizing progress"},
 		{ID: "2", Text: "Explicit done state on the page", Status: "in_progress", ActiveForm: "Adding done state"},
@@ -104,13 +105,13 @@ func TestSessionTodosPlanAndNewestKindWins(t *testing.T) {
 	f := newTodoFixture(t)
 	f.call("s", "", "TaskCreate", "c1", `{"subject":"old task"}`)
 	f.call("s", "", "update_plan", "p1", `{"plan":[{"step":"Collect","status":"completed"},{"step":"Build","status":"in_progress"},{"step":"Doc","status":"planned"},{"step":"Drop","status":"cancelled"}]}`)
-	got := f.todos("s")
+	got := f.todos()
 	if len(got.Items) != 4 || got.Items[0].Status != "completed" || got.Items[1].Status != "in_progress" ||
 		got.Items[2].Status != "pending" || got.Items[3].Status != "cancelled" || got.Items[1].Text != "Build" {
 		t.Fatalf("plan = %+v", got.Items)
 	}
 	f.call("s", "", "TaskUpdate", "u1", `{"taskId":"1","status":"in_progress"}`)
-	if got := f.todos("s"); len(got.Items) != 1 || got.Items[0].Text != "old task" {
+	if got := f.todos(); len(got.Items) != 1 || got.Items[0].Text != "old task" {
 		t.Fatalf("after a task update the task list wins: %+v", got.Items)
 	}
 }
@@ -119,7 +120,7 @@ func TestSessionTodosPlanAndNewestKindWins(t *testing.T) {
 func TestSessionTodosNone(t *testing.T) {
 	f := newTodoFixture(t)
 	f.call("s", "", "Bash", "b1", `{"command":"ls"}`)
-	got := f.todos("s")
+	got := f.todos()
 	if got.Items == nil || len(got.Items) != 0 || got.UpdatedAt != 0 {
 		t.Fatalf("got %+v", got)
 	}
