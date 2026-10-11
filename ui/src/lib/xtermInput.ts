@@ -129,7 +129,7 @@ export function attachTerminalInput(
     void navigator.clipboard?.writeText(sel).then(() => flashCopied(term.element, sel.length), () => {})
     return true
   }
-  // By the physical key: on a Russian layout Cmd+C reports "с" (Cyrillic), so
+  // By the physical key: on a Russian layout Cmd+C reports a Cyrillic letter, so
   // matching the letter never copied, and the unhandled key made macOS beep
   // (owner, 2026-10-11).
   const letter = (e: KeyboardEvent) => (/^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : e.key.toLowerCase())
