@@ -25,6 +25,7 @@ import { WINDOW_MS, pace } from '@/lib/pace'
 import { SpendSpark } from './SpendScrub'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import { SubscriptionTag } from './SubscriptionPicker'
+import { TodoBlock } from './SessionTodos'
 import {
   askLine, backgroundAgents, subagentChips, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns, turnCosts,
   type CockpitState, type SubagentChip, type ToolKind, type ToolRun, type TurnCost,
@@ -117,6 +118,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
       <Spend s={s} turns={turns} sessionId={sessionId} events={main} now={now} />
       <ContextMeter s={s} />
       <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
+      <TodoBlock sessionId={sessionId} />
       {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && <Subagents subs={subs} permission={permission} now={now} />}
       {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />

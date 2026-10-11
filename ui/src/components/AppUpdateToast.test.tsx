@@ -38,7 +38,8 @@ describe('the update card', () => {
 
   it('announces a newer version and updates with one click, showing progress', async () => {
     render(<AppUpdateToast />)
-    expect(await screen.findByText('Caprock v0.80.0 is available')).toBeTruthy()
+    // From what to what, at a glance (owner, 2026-10-11).
+    expect((await screen.findByText('0.80.0')).closest('[data-update-from-to]')?.textContent).toMatch(/^Update.*→0\.80\.0$/)
     fireEvent.click(screen.getByRole('button', { name: 'Update and restart' }))
     expect(invoke).toHaveBeenCalledWith('app_update_install', {})
     emit({ phase: 'downloading', next: '0.80.0', downloaded: 250, total: 1000 })
@@ -50,12 +51,12 @@ describe('the update card', () => {
   it('Later puts it away for that version only', async () => {
     const { unmount } = render(<AppUpdateToast />)
     fireEvent.click(await screen.findByRole('button', { name: 'Later' }))
-    expect(screen.queryByText('Caprock v0.80.0 is available')).toBeNull()
+    expect(screen.queryByText('0.80.0')).toBeNull()
     expect(localStorage.getItem(TOAST_KEY)).toBe('v0.80.0')
     unmount()
     h.st = { ...base, latest: 'v0.81.0' }
     render(<AppUpdateToast />)
-    expect(await screen.findByText('Caprock v0.81.0 is available')).toBeTruthy()
+    expect(await screen.findByText('0.81.0')).toBeTruthy()
   })
 
   it('says nothing where the app cannot replace itself, or nothing is newer', async () => {
@@ -68,6 +69,6 @@ describe('the update card', () => {
     h.st = { ...base, latest: 'v0.79.0', update_available: false }
     render(<AppUpdateToast />)
     await act(async () => { await Promise.resolve() })
-    expect(screen.queryByText(/is available/)).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })
