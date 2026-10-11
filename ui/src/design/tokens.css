@@ -105,8 +105,8 @@
 /*
  * Slate: a neutral dark with a soft blue accent (owner, 2026-10-11) — for
  * whoever finds the warm charcoal and amber heavy; cooler and flatter, the
- * way Orca reads. Same roles as the default; only the hues move. The
- * terminal's own ground stays as it is in every theme (see --color-term-bg).
+ * way Orca reads. Same roles as the default; only the hues move. Its
+ * terminal is cool too (SLATE_TERMINAL_THEME in lib/termthemes.ts).
  * Applied by <html data-theme="dark" data-dark="slate"> (lib/theme.ts).
  */
 [data-theme="dark"][data-dark="slate"] {
@@ -121,10 +121,29 @@
   --color-fg-faint: #7d8088;
 
   --color-info: #6ea8fe;
+  /* Slate has no orange anywhere (its user asked for none): waiting and idle
+   * read as a cool yellow here instead of graphite's amber. */
+  --color-warn: #d9c76a;
   --color-accent: #6ea8fe;
   --color-accent-strong: #9cc4ff;
 
+  /* The dashboard and phone terminal's ground (components/Terminal.tsx). */
+  --color-term-bg: #1a1b1e;
+  --color-term-border: #33415a;
+
   --shadow-panel: 0 12px 32px -18px rgba(0, 0, 0, 0.7);
+}
+/* The slab around the app terminal, in Slate's neutral ink. */
+[data-app][data-theme="dark"][data-dark="slate"] .app-slab {
+  --color-term-bg: var(--app-term-bg, #1f2023);
+  --color-term-border: var(--app-term-border, #33415a);
+  --color-fg: #e6e7ea;
+  --color-fg-muted: #a3a6ad;
+  --color-fg-faint: #7d8088;
+  --color-panel: #1f2023;
+  --app-hairline: rgba(230, 231, 234, 0.09);
+  --app-hairline-strong: rgba(230, 231, 234, 0.17);
+  --app-row-hover: rgba(230, 231, 234, 0.06);
 }
 
 :root {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -682,6 +683,48 @@ func TestANormalSpawnStillGetsItsOwnId(t *testing.T) {
 	}
 	if strings.Contains(joined, "--resume") {
 		t.Errorf("a plain spawn resumed something: %v", f.lastSpec.Args)
+	}
+}
+
+// A paste of Greek, Japanese or any other non-ASCII text arrived intact and
+// was still shown as `\316\272\316\261…` by a bash prompt (`<00ad>` by zsh):
+// the session's locale was C. Nothing on the way sets one — launchd does not,
+// and a login profile seldom does, because a terminal application exports
+// LANG before the shell starts. Caprock is that terminal here, so it does
+// what Terminal.app does, and leaves a locale the user chose alone.
+func TestChildEnvGivesAUTF8LocaleWhenNoneIsSet(t *testing.T) {
+	cases := []struct {
+		name string
+		goos string
+		env  []string
+		want []string // locale variables in the result
+	}{
+		{"none on macOS", "darwin", []string{"PATH=/usr/bin"}, []string{"LANG=en_US.UTF-8"}},
+		{"none on Linux", "linux", []string{"PATH=/usr/bin"}, []string{"LANG=C.UTF-8"}},
+		{"set but empty", "darwin", []string{"LANG=", "LC_ALL="}, []string{"LANG=en_US.UTF-8"}},
+		{"the user's LANG", "darwin", []string{"LANG=el_GR.UTF-8"}, []string{"LANG=el_GR.UTF-8"}},
+		{"the user's LC_ALL", "linux", []string{"LC_ALL=ja_JP.UTF-8"}, []string{"LC_ALL=ja_JP.UTF-8"}},
+		{"the user's LC_CTYPE", "darwin", []string{"LC_CTYPE=UTF-8"}, []string{"LC_CTYPE=UTF-8"}},
+		// ConPTY takes UTF-8 whatever the environment says.
+		{"Windows", "windows", []string{"Path=C:\\Windows"}, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var got []string
+			for _, kv := range withUTF8Locale(c.env, c.goos) {
+				if k, v, _ := strings.Cut(kv, "="); (k == "LANG" || strings.HasPrefix(k, "LC_")) && v != "" {
+					got = append(got, kv)
+				}
+			}
+			if !slices.Equal(got, c.want) {
+				t.Fatalf("locale %q, want %q", got, c.want)
+			}
+		})
+	}
+	// And a spawned session gets it: childEnv is what agents and shells start with.
+	env := childEnv([]string{"PATH=/usr/bin", "HOME=/h"})
+	if runtime.GOOS != "windows" && !slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "LANG=") && strings.HasSuffix(kv, ".UTF-8") }) {
+		t.Fatalf("a session started without a locale got none: %q", env)
 	}
 }
 

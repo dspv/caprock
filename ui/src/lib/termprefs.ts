@@ -103,7 +103,7 @@ export function setTerminalPrefs(patch: Partial<TerminalPrefs>): void {
 }
 
 /**
- * Match app follows the app's theme: a change of data-theme or data-tone on
+ * Match app follows the app's theme: a change of data-theme, data-tone or data-dark on
  * <html> is a new palette for every pane, told as a change of prefs (a fresh
  * object, so React state sees it). Watched only while someone listens.
  */
@@ -121,7 +121,7 @@ function watchLook(): void {
     current = { ...p }
     for (const f of listeners) f(current)
   })
-  watcher.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-tone'] })
+  watcher.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-tone', 'data-dark'] })
 }
 
 /** Called with the new prefs on every change, from this page or another window, and when Match app's palette moves with the app. */

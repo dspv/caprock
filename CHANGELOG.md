@@ -9,6 +9,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **Slate's terminal is cool too:** in Slate, the terminal (app, dashboard and
+  phone) takes a neutral ground, a blue cursor and a cool 16-colour set
+  instead of graphite's warm one, and follows a theme switch while open. It
+  is also a palette of its own in Settings → Terminal.
+
+### Changed
+
+- **Slate** has no orange left: waiting and idle marks read as a cool yellow
+  there instead of graphite's amber.
+
+### Fixed
+
+- **agents:** text pasted in Russian, Greek, Japanese or any other non-ASCII
+  script no longer turns to `\316\272\316\261…` or `<00ad>` in a session or
+  shell Caprock started. The bytes always arrived intact; the session had no
+  locale, because launchd sets none and a terminal application, not the
+  profile, usually exports `LANG`. A session without one now gets a UTF-8
+  `LANG` (`en_US.UTF-8` on macOS, `C.UTF-8` on Linux); a locale you set is
+  kept.
+
 - **app:** the sidebar has no *Waiting on you* section any more — everything
   in it was already in Projects. A session that waits on you is marked on its
   own row instead: an amber edge and tint and the word *waiting*, or *asks*
