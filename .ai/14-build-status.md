@@ -73,6 +73,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-11 — 0.108.0: CI in the deck, four themes, the phone chat-first, the agent's task list
+
+Ships the phone entry below, plus: the deck's first cell is live GitHub
+Actions with Investigate; four themes with a hover-to-try picker (Slate is
+new); the cockpit lists the agent's own tasks (`GET /v1/sessions/{id}/todos`);
+the sidebar draws each project's last hour and counts projects; plan windows
+say in one line whether they last; quick Settings; Cmd+C and the permission
+card's keys work on any layout; a pasted image reaches Claude Code as
+`[Image #N]`; shorter Lifetime figures; one banner design; a Tasks screen
+with templates; the update card reads *Update A → B*. Not verified on a real
+iPhone or against a real failing GitHub Actions run with Investigate typed
+into a live `claude`.
+
 ### 2026-10-11 — unreleased: the phone is chat first, with voice
 
 From the owner's report (his partner on an iPhone: a laggy terminal, no chat

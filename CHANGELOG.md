@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.108.0] - 2026-10-11
+
 ### Added
 
 - **app:** the agent cockpit shows the task list the agent keeps for itself
@@ -14,6 +16,63 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   Codex's plan — one large row per task with a spinner, a check or an empty
   circle, the task in hand as the agent words it, and *3 of 7 done* above.
   Not there when the session kept none. New `GET /v1/sessions/{id}/todos`.
+
+- **Lifetime → Daily cost** has its own period (30d, 90d, 180d, all) and a
+  **×2** height toggle; both are remembered.
+
+- **Four themes, picked by hovering:** Graphite, **Slate** (new — a neutral
+  dark with a soft blue accent), Paper and White. The theme button opens a
+  picker: hover a palette to see it on the whole app, click to keep it.
+  Settings → Appearance shows the same four as large swatches.
+
+- **app:** tabs in the sidebar show their jump key, ⌘1–⌘9, as the tab strip
+  does.
+
+- **Phone: chat first.** Now on a phone starts with the running sessions,
+  one tap each into that session's chat. A session on a phone is the whole
+  screen: the page header steps aside, **Chat | Terminal** is one large
+  switch, the conversation fills the screen with the field at the bottom
+  (above the keyboard when it is up), and Esc, Tab, the arrows and Ctrl+C
+  fold behind **Keys**. A session that cannot be typed into from here says
+  why where the field would be — started outside Caprock, ended, or this
+  phone is view-only — with **Branch here to type** or **Continue here**
+  when that works.
+
+- **Voice input in the phone's chat.** A microphone button dictates into
+  the field, live, to read and then send; the browser's own speech
+  recognition does it (Safari sends the audio to Apple's service, and the
+  button says so while it listens), Caprock gets the text. Browsers allow
+  the microphone only on https pages, so over Caprock's plain-http Wi-Fi or
+  Tailscale address it says in one line to use the keyboard's dictation key.
+
+- **Pairing says where the phone will work**, beside the code: only on this
+  Wi-Fi, or anywhere while Tailscale is on on both devices.
+
+- **app:** each project in the sidebar draws its last hour as a small line —
+  amber while something in it works — and has a **+** for a new agent there
+  without hovering. A chevron folds a project by hand, even one with
+  something running; the choice is kept. `GET /v1/activity` serves the line.
+
+- **Plan limits asks for your plan** until it is set, saying why: Caprock
+  can't detect it, and Cost needs it to weigh usage at API prices against
+  what the plan costs. *Set my plan* opens the list in place.
+
+- **app:** the session deck's first cell is now **CI**, the live GitHub
+  Actions of the session's pull request: a row per job with its state (a
+  turning ring while it runs, ✓, ✗), the step it is on or failed at, its
+  OS and its time, ticking while it runs; a job opens into its steps with
+  their times, and a failed step into the lines around the error in its
+  log, with *Open on GitHub*. At the top, the runner time so far, measured
+  from GitHub's job times and split per OS, never priced. Asked every 12 s
+  while a job runs, else every minute, only while the deck is open
+  (`GET /v1/sessions/{id}/ci`, `GET /v1/sessions/{id}/ci/jobs/{job}/log`).
+
+- **app:** **Investigate** on a failed CI job queues it into the agent in
+  front — the PR, the workflow, job and step, the job's link and the last
+  40 lines of its log, with "investigate and fix; push to the same branch" —
+  through the message queue, so it types in at the prompt or when the turn
+  ends. Only into a session Caprock started, from a device that may
+  control; otherwise the button says why it is off.
 
 ### Changed
 
@@ -32,11 +91,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** the update card says it in one line, large — *Update 0.107.6 →
   0.107.7* — with one short line under it and bigger buttons.
 
-### Changed
-
 - **app:** the version panel is the version, whether it is current, when it
   was checked, the update button and *Release notes →*. The release notes
   themselves left the panel, where they were unreadable.
+
 - **terminal:** an image pasted, dropped or sent from the phone's photo
   button shows in Claude Code as `[Image #1]`, `[Image #2]` instead of a long
   path. Each image goes in as its own bracketed paste of its quoted path —
@@ -48,24 +106,39 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   exact sum on hover. Top projects' rows start with the donut's colour and
   the share, large.
 
-### Added
-
-- **Lifetime → Daily cost** has its own period (30d, 90d, 180d, all) and a
-  **×2** height toggle; both are remembered.
-
-### Added
-
-- **Four themes, picked by hovering:** Graphite, **Slate** (new — a neutral
-  dark with a soft blue accent), Paper and White. The theme button opens a
-  picker: hover a palette to see it on the whole app, click to keep it.
-  Settings → Appearance shows the same four as large swatches.
-- **app:** tabs in the sidebar show their jump key, ⌘1–⌘9, as the tab strip
-  does.
-
-### Changed
-
 - **app:** every shortcut hint is drawn as a large key — New agent, Quick
   chat, Add project, Dashboard, Settings — on macOS, Windows and Linux alike.
+
+- **A lighter terminal on a phone or tablet:** no WebGL, no blinking cursor,
+  2,000 lines of scrollback, and output handed over at most ten times a
+  second. Under a 4x CPU throttle at 390px, a busy synthetic session took
+  0.6 s of main-thread time per 10 s, from 3.2 s. A desktop is unchanged.
+
+- **Plan limits** is two matching cards, Claude and Codex, each with its
+  character and both windows side by side — 5 hours and Week — in larger,
+  shorter words. A window an agent did not report is an empty ring that
+  says so, instead of a missing one.
+
+- **ui:** the Tasks screen says what it is and how to start. One sentence and
+  a worked example (you write the task, a worker does it on its own branch,
+  Caprock runs your checks, you merge), then a gallery of templates — fix
+  failing tests, bump a dependency, add tests for a file, fix lint and type
+  errors, write docs for a module, port a script — that open the form
+  prefilled. Their checks are the commands the repository declares (Makefile
+  targets, package.json scripts, go.mod, Cargo.toml, pytest/ruff/mypy when
+  configured), found by the new `GET /v1/hive/starter`, never guessed. The
+  budget field starts empty with the daemon's own ceiling as the hint.
+
+- **ui:** the board is one list grouped by what each task needs — Needs you,
+  Working, Waiting to start, Finished — instead of six narrow columns, and
+  each row says what the task is doing now, how its checks went, what it cost
+  against its budget, and its one action (Approve/Reject, Review & merge,
+  Open). A queued task with nothing moving says the orchestrator has to be
+  started, with the button.
+
+- **A new queue directory starts empty.** It no longer gets an example task
+  in the inbox, which the board showed as waiting and the orchestrator would
+  assign with checks guessed for the repository; the format is in its README.
 
 ### Fixed
 
@@ -83,59 +156,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   explanations are hidden until you turn on *Show explanations* or press a
   section's **?**; a section's title folds it, and the fold is remembered.
 
-### Fixed
-
 - **app:** Cmd+C in a terminal copies on any keyboard layout and says
   *Copied · N chars*; on a Russian layout it copied nothing and macOS beeped.
 
-### Added
+- **app:** a pull request in the deck with no checks no longer reads "CI no
+  CI": a fresh one says *CI not started* (GitHub has not reported its checks
+  yet), one older than 10 minutes says *no checks*, each with a tooltip.
 
-- **Phone: chat first.** Now on a phone starts with the running sessions,
-  one tap each into that session's chat. A session on a phone is the whole
-  screen: the page header steps aside, **Chat | Terminal** is one large
-  switch, the conversation fills the screen with the field at the bottom
-  (above the keyboard when it is up), and Esc, Tab, the arrows and Ctrl+C
-  fold behind **Keys**. A session that cannot be typed into from here says
-  why where the field would be — started outside Caprock, ended, or this
-  phone is view-only — with **Branch here to type** or **Continue here**
-  when that works.
-- **Voice input in the phone's chat.** A microphone button dictates into
-  the field, live, to read and then send; the browser's own speech
-  recognition does it (Safari sends the audio to Apple's service, and the
-  button says so while it listens), Caprock gets the text. Browsers allow
-  the microphone only on https pages, so over Caprock's plain-http Wi-Fi or
-  Tailscale address it says in one line to use the keyboard's dictation key.
-- **Pairing says where the phone will work**, beside the code: only on this
-  Wi-Fi, or anywhere while Tailscale is on on both devices.
+### Removed
 
-### Changed
-
-- **A lighter terminal on a phone or tablet:** no WebGL, no blinking cursor,
-  2,000 lines of scrollback, and output handed over at most ten times a
-  second. Under a 4x CPU throttle at 390px, a busy synthetic session took
-  0.6 s of main-thread time per 10 s, from 3.2 s. A desktop is unchanged.
+- **app:** the deck's *Context* cell: the status bar already shows it.
 
 ## [0.107.7] - 2026-10-11
-
-### Added
-
-- **app:** each project in the sidebar draws its last hour as a small line —
-  amber while something in it works — and has a **+** for a new agent there
-  without hovering. A chevron folds a project by hand, even one with
-  something running; the choice is kept. `GET /v1/activity` serves the line.
-
-### Changed
-
-- **Plan limits** is two matching cards, Claude and Codex, each with its
-  character and both windows side by side — 5 hours and Week — in larger,
-  shorter words. A window an agent did not report is an empty ring that
-  says so, instead of a missing one.
-
-### Added
-
-- **Plan limits asks for your plan** until it is set, saying why: Caprock
-  can't detect it, and Cost needs it to weigh usage at API prices against
-  what the plan costs. *Set my plan* opens the list in place.
 
 ### Added
 
@@ -157,52 +189,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** keys drawn as keys (the deck's *Review changes ⇧⌘G*, the tabs'
   ⌘1–⌘9) are drawn darker and bolder; the faint chip went unseen.
 
-- **ui:** the Tasks screen says what it is and how to start. One sentence and
-  a worked example (you write the task, a worker does it on its own branch,
-  Caprock runs your checks, you merge), then a gallery of templates — fix
-  failing tests, bump a dependency, add tests for a file, fix lint and type
-  errors, write docs for a module, port a script — that open the form
-  prefilled. Their checks are the commands the repository declares (Makefile
-  targets, package.json scripts, go.mod, Cargo.toml, pytest/ruff/mypy when
-  configured), found by the new `GET /v1/hive/starter`, never guessed. The
-  budget field starts empty with the daemon's own ceiling as the hint.
-- **ui:** the board is one list grouped by what each task needs — Needs you,
-  Working, Waiting to start, Finished — instead of six narrow columns, and
-  each row says what the task is doing now, how its checks went, what it cost
-  against its budget, and its one action (Approve/Reject, Review & merge,
-  Open). A queued task with nothing moving says the orchestrator has to be
-  started, with the button.
-- **A new queue directory starts empty.** It no longer gets an example task
-  in the inbox, which the board showed as waiting and the orchestrator would
-  assign with checks guessed for the repository; the format is in its README.
-
-### Added
-
-- **app:** the session deck's first cell is now **CI**, the live GitHub
-  Actions of the session's pull request: a row per job with its state (a
-  turning ring while it runs, ✓, ✗), the step it is on or failed at, its
-  OS and its time, ticking while it runs; a job opens into its steps with
-  their times, and a failed step into the lines around the error in its
-  log, with *Open on GitHub*. At the top, the runner time so far, measured
-  from GitHub's job times and split per OS, never priced. Asked every 12 s
-  while a job runs, else every minute, only while the deck is open
-  (`GET /v1/sessions/{id}/ci`, `GET /v1/sessions/{id}/ci/jobs/{job}/log`).
-- **app:** **Investigate** on a failed CI job queues it into the agent in
-  front — the PR, the workflow, job and step, the job's link and the last
-  40 lines of its log, with "investigate and fix; push to the same branch" —
-  through the message queue, so it types in at the prompt or when the turn
-  ends. Only into a session Caprock started, from a device that may
-  control; otherwise the button says why it is off.
-
-### Removed
-
-- **app:** the deck's *Context* cell: the status bar already shows it.
-
 ### Fixed
 
-- **app:** a pull request in the deck with no checks no longer reads "CI no
-  CI": a fresh one says *CI not started* (GitHub has not reported its checks
-  yet), one older than 10 minutes says *no checks*, each with a tooltip.
 - **app:** the keep-awake mark in the status bar stays when keep-awake is
   off — it reads *awake off*, and a click opens the modes — instead of
   vanishing with no way back from there.
