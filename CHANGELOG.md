@@ -7,6 +7,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **Lifetime:** the big figures are short — *$16.8k*, *$159* — with the
+  exact sum on hover. Top projects' rows start with the donut's colour and
+  the share, large.
+
+### Added
+
+- **Lifetime → Daily cost** has its own period (30d, 90d, 180d, all) and a
+  **×2** height toggle; both are remembered.
+
 ## [0.107.7] - 2026-10-11
 
 ### Added
