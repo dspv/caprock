@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -123,9 +124,12 @@ func TestResizeReachesTheProcess(t *testing.T) {
 	// nothing.
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	// A handshake, not sleeps: the size is read once the process has said it
+	// started, and again once it is told the resize happened. With sleeps a
+	// slow macOS runner printed both sizes after the resize (CI, 2026-10-11).
 	s, err := New().Spawn(ctx, Spec{
 		Command: "/bin/sh",
-		Args:    []string{"-c", "sleep 0.6; stty size; sleep 0.6; stty size"},
+		Args:    []string{"-c", "stty size; read _; stty size"},
 		Cols:    100, Rows: 30,
 	})
 	if err != nil {
@@ -133,37 +137,43 @@ func TestResizeReachesTheProcess(t *testing.T) {
 	}
 	defer func() { _ = s.Signal(SignalKill) }()
 
+	var mu sync.Mutex
 	var got strings.Builder
-	done := make(chan struct{})
 	go func() {
-		defer close(done)
 		r := s.Output()
 		buf := make([]byte, 4096)
 		for {
 			n, err := r.Read(buf)
 			if n > 0 {
+				mu.Lock()
 				got.WriteString(string(buf[:n]))
+				mu.Unlock()
 			}
 			if err != nil {
 				return
 			}
 		}
 	}()
+	out := func() string { mu.Lock(); defer mu.Unlock(); return got.String() }
+	waitFor := func(want string) bool {
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			if strings.Contains(out(), want) {
+				return true
+			}
+		}
+		return false
+	}
 
-	time.Sleep(900 * time.Millisecond)
+	if !waitFor("30 100") {
+		t.Fatalf("the process did not start at 100x30:\n%s", out())
+	}
 	if err := s.Resize(143, 38); err != nil {
 		t.Fatalf("resize: %v", err)
 	}
-	select {
-	case <-done:
-	case <-time.After(4 * time.Second):
+	if _, err := s.Write([]byte("\n")); err != nil {
+		t.Fatalf("write: %v", err)
 	}
-
-	out := got.String()
-	if !strings.Contains(out, "30 100") {
-		t.Errorf("the process did not start at 100x30:\n%s", out)
-	}
-	if !strings.Contains(out, "38 143") {
-		t.Errorf("the resize did not reach the process:\n%s", out)
+	if !waitFor("38 143") {
+		t.Errorf("the resize did not reach the process:\n%s", out())
 	}
 }
