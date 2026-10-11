@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — 0.110.0: pull requests and CI in one deck cell, a queue, subagents opened
+
+The deck's Branch, CI and Pull requests cells became one *Pull requests &
+CI* cell: the session's PRs with GitLab-style pipelines, durations against
+the median of past runs, Release and Main views and runner cost (a sourced,
+versioned rate table). Tasks gained a Queue (rough ranges, backtested in
+RISK-08); the cockpit opens a subagent's task, calls and answer, puts the
+spend beside the agent with a chosen headline, and reads the permission-mode
+menu at a glance. Quick chats end cleanly; Dark Side is neon purple; the
+Dock refreshes its icon after an update. Not verified against a real
+GitHub billing report or a real `claude` mode switch.
+
 ### 2026-10-12 — unreleased: what a CI run cost, backend only
 
 A versioned runner rate table, `pricing/actions.json` (`2026-10-12.1`), read
