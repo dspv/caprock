@@ -1,52 +1,39 @@
 package hive
 
 import (
-	"os"
 	"path/filepath"
 )
 
-// Seed writes a README and one example task into a *fresh* hive, so the
-// directory documents itself.
+// Seed writes a README into a *fresh* hive, so the directory documents itself.
 //
 // A new hive used to be three empty directories with no clue what belonged in
-// them: the one place a user looks after running `caprock up --hive` explained
-// nothing. Both files are written only if absent, and Seed is silent about an
-// existing hive — it never overwrites a user's work, and it never re-seeds a
-// hive whose example task was deliberately deleted (the marker for that is the
-// README, which a seeded hive always has).
+// them. The README says what the directory is and shows the task file format.
+// It is written only if absent, so Seed never overwrites a user's work.
+//
+// It used to write an example task too, into tasks/ in the inbox. A sample in
+// the queue is work: the board showed it as waiting and the orchestrator
+// assigned it, with checks (go test, go vet) guessed for a repository the seed
+// had never looked at. The format now lives in the README, and the dashboard's
+// templates (with checks detected from the repo) are the starting points.
 func (h *Hive) Seed() error {
-	if _, err := os.Stat(filepath.Join(h.Root, "README.md")); err == nil {
-		return nil
-	}
-	if err := writeIfAbsent(filepath.Join(h.Root, "README.md"), seedREADME); err != nil {
-		return err
-	}
-	return writeIfAbsent(h.taskPath(exampleTaskID), exampleTask)
+	return writeIfAbsent(filepath.Join(h.Root, "README.md"), seedREADME)
 }
 
-// exampleTaskID is deliberately not in the `t-<millis>-<n>` shape the board
-// generates, so an example is never mistaken for something Caprock created.
-const exampleTaskID = "example-task"
-
-// exampleTask sits in `inbox` with the runner's own two checks as criteria, so
-// copying it is a working starting point rather than a template to fill in.
+// exampleTask is the task file format, shown in the README. Its id is
+// deliberately not in the `t-<millis>-<n>` shape the board generates.
 const exampleTask = `---
 id: example-task
-title: Example — delete this or edit it into a real task
+title: Add a /healthz endpoint
 status: inbox
 assignee: null
-budget_usd: 3
+budget_usd: 5
 done_criteria:
-  - go test ./...
-  - go vet ./...
+  - make test
 verify_rounds_used: 0
 ---
-This is an example. Nothing runs until you start the orchestrator, and nothing
-is assigned until the orchestrator assigns it.
-
-Replace this text with what you want done. Be specific about the acceptance
-condition — the worker reads this body, and ` + "`done_criteria`" + ` above is what
-Caprock actually runs to decide whether the work is finished.
+What to change, where, and what to leave alone. The worker reads this body;
+` + "`done_criteria`" + ` above is what Caprock actually runs to decide whether the work
+is finished — use the commands this repository really has.
 `
 
 // seedREADME explains the directory in the terms a user needs before they trust
@@ -90,5 +77,9 @@ two workers editing the same file, so give concurrent tasks separate ground.
 Files are the source of truth. Editing a task file by hand is a supported way to
 work; the dashboard mirrors these files, not the other way round.
 
-See ` + "`tasks/example-task.md`" + ` for the format.
+A task file looks like this (save it as ` + "`tasks/<id>.md`" + `, or create it from
+the dashboard's Tasks screen):
+
+` + "```markdown" + `
+` + exampleTask + "```" + `
 `

@@ -52,6 +52,9 @@ func (f *fakeTasks) Get(_ context.Context, id string) (any, error) {
 	return map[string]string{"id": id}, nil
 }
 func (f *fakeTasks) Approvals(context.Context) (any, error) { return []any{}, nil }
+func (f *fakeTasks) Starter(context.Context) (any, error) {
+	return map[string]any{"repo": "/repo", "checks": []any{}, "default_budget_usd": 5}, nil
+}
 func (f *fakeTasks) Approve(_ context.Context, id string, approve bool) error {
 	if f.failApprove {
 		return errors.New("cannot approve")
@@ -265,5 +268,22 @@ func TestAgentSignalErrorNamesTheField(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), "action") {
 		t.Fatalf("the 400 does not name the field: %q", rr.Body.String())
+	}
+}
+
+// The templates' prefill answers with the runner off: the off state shows what
+// a template would fill in for this repository before anything is turned on.
+func TestTaskStarterAnswersWithTheRunnerOff(t *testing.T) {
+	do := newTasksSrv(t, &fakeTasks{off: true})
+	r := do("GET", "/v1/hive/starter", "")
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("GET /v1/hive/starter with the runner off: want 200, got %d", r.StatusCode)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["repo"] != "/repo" || body["default_budget_usd"] != float64(5) {
+		t.Fatalf("starter body: %v", body)
 	}
 }

@@ -19,8 +19,8 @@ func TestActivityBucketsCountsTurnsAndToolsPerSession(t *testing.T) {
 	put("a", event.KindTurnAssistant, 90*time.Second)
 	put("a", event.KindToolPre, 5*time.Minute)
 	put("a", event.KindToolPost, 5*time.Minute) // not counted: one call is one mark
-	put("b", event.KindToolPre, -time.Minute)    // before the window
-	put("b", event.KindToolPre, 7*time.Minute)   // after it
+	put("b", event.KindToolPre, -time.Minute)   // before the window
+	put("b", event.KindToolPre, 7*time.Minute)  // after it
 
 	got, err := ActivityBuckets(ctx, f.s.DB(), from.UnixMilli(), 2*60*1000, 3)
 	if err != nil {

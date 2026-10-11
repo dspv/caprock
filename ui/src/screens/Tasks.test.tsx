@@ -10,10 +10,10 @@
  * The off-state is pinned too: it is the only thing most people will ever see of
  * this feature, and it used to name a flag without naming the concept.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TasksScreen } from './Tasks'
-import type { DiffResult, Status, Task, TaskDetail } from '@/lib/api'
+import type { CreateTaskRequest, DiffResult, Status, Task, TaskDetail, TaskStarter } from '@/lib/api'
 
 const state = vi.hoisted(() => ({
   status: {} as Partial<Status>,
@@ -23,6 +23,8 @@ const state = vi.hoisted(() => ({
   // Every (hive, repo) pair POST /v1/hive was called with. The off state's whole
   // job is that this stays empty until the user confirms.
   enabled: [] as [string, string][],
+  starter: { repo: '/repo', checks: [], default_budget_usd: 5 } as TaskStarter,
+  created: [] as CreateTaskRequest[],
 }))
 const enabled = state.enabled
 
@@ -36,6 +38,8 @@ vi.mock('@/lib/api', async (orig) => {
       tasks: async () => state.tasks,
       task: async () => state.detail,
       diff: async () => state.diff as DiffResult,
+      taskStarter: async () => state.starter,
+      createTask: async (req: CreateTaskRequest) => { state.created.push(req); return {} as TaskDetail },
       enableHive: async (hive?: string, repo?: string) => {
         state.enabled.push([hive ?? '', repo ?? ''])
         state.status = { ...state.status, orchestration: true }
@@ -58,6 +62,8 @@ afterEach(() => {
   state.detail = {} as TaskDetail
   state.diff = undefined
   state.enabled.length = 0
+  state.created.length = 0
+  state.starter = { repo: '/repo', checks: [], default_budget_usd: 5 }
 })
 
 describe('the off state', () => {
@@ -70,14 +76,15 @@ describe('the off state', () => {
     expect(screen.getByText(/created for you/)).toBeTruthy()
   })
 
-  // The point of the rewrite: the concept arrives as three labelled steps, not
-  // as paragraphs. A user should be able to take it in without reading prose.
-  it('is three steps, not prose, and never says "Phase 2" or "hive"', async () => {
+  // The concept arrives as one worked example in four labelled steps, not as
+  // paragraphs. A user should be able to take it in without reading prose.
+  it('is a worked example in steps, and never says "Phase 2" or "hive"', async () => {
     state.status = { orchestration: false } as Status
     const { container } = render(<TasksScreen />)
-    expect(await screen.findByText('You write a task')).toBeTruthy()
-    expect(screen.getByText('Caprock runs it')).toBeTruthy()
+    expect(await screen.findByText('You write the task')).toBeTruthy()
+    expect(screen.getByText('A worker does it')).toBeTruthy()
     expect(screen.getByText('Caprock checks it')).toBeTruthy()
+    expect(screen.getByText('You take it')).toBeTruthy()
     expect(container.textContent).not.toContain('Phase 2')
     expect(container.textContent).not.toContain('hive')
   })
@@ -116,21 +123,98 @@ describe('the off state', () => {
   })
 })
 
-// A board with six empty columns and two buttons does not say which button
-// comes first, and starting the orchestrator over an empty board does nothing.
-it('tells a first-time user which button comes first', async () => {
+// An empty board is where a first-time user lands after turning it on: it
+// must show what to hand off, not six empty columns.
+it('shows the templates and how a task runs on an empty board', async () => {
   state.status = { orchestration: true } as Status
   state.tasks = []
   render(<TasksScreen />)
-  expect(await screen.findByText(/Start here:/)).toBeTruthy()
+  expect(await screen.findByRole('region', { name: 'Start from a template' })).toBeTruthy()
+  expect(screen.getByRole('list', { name: 'How a task runs' })).toBeTruthy()
+  expect(screen.getByText('Fix failing tests')).toBeTruthy()
 })
 
-it('drops the start-here line once there is a task', async () => {
+it('folds the gallery to one line once there is a task', async () => {
   state.status = { orchestration: true } as Status
   state.tasks = [task()]
   render(<TasksScreen />)
   await screen.findByText('Add /healthz')
-  expect(screen.queryByText(/Start here:/)).toBeNull()
+  expect(screen.queryByRole('region', { name: 'Start from a template' })).toBeNull()
+  expect(screen.getByText('Start from:')).toBeTruthy()
+})
+
+// A task in the queue does nothing until the orchestrator runs; that stall is
+// said where the task is, with the button.
+it('says a queued task is waiting for the orchestrator', async () => {
+  state.status = { orchestration: true, claude_available: true } as Status
+  state.tasks = [task({ status: 'inbox', assignee: '' })]
+  render(<TasksScreen />)
+  expect(await screen.findByText(/1 task is waiting/)).toBeTruthy()
+})
+
+describe('templates', () => {
+  // The checks come from the repository, never from the template: a Go
+  // command prefilled into a JavaScript repo is a task that can never pass.
+  it('opens the form prefilled, with the checks the repo declares', async () => {
+    state.status = { orchestration: true } as Status
+    state.starter = {
+      repo: '/repo', default_budget_usd: 5,
+      checks: [
+        { command: 'make check', kind: 'all', source: 'Makefile' },
+        { command: 'make test', kind: 'test', source: 'Makefile' },
+        { command: 'go test ./...', kind: 'test', source: 'go.mod' },
+      ],
+    }
+    render(<TasksScreen />)
+    const gallery = await screen.findByRole('region', { name: 'Start from a template' })
+    await waitFor(() => expect(within(gallery).getAllByText('make test').length).toBeGreaterThan(0))
+    fireEvent.click(within(gallery).getByText('Fix failing tests'))
+    const dialog = await screen.findByRole('dialog', { name: 'New task' })
+    expect((within(dialog).getByPlaceholderText(/healthz/) as HTMLInputElement).value).toBe('Fix the failing tests in <folder>')
+    // One command per kind, the project's own first: make test, not both.
+    expect((within(dialog).getByRole('textbox', { name: /checks that must pass/i }) as HTMLTextAreaElement).value).toBe('make test')
+    // The budget is the user's: empty, with the daemon's ceiling as the hint.
+    expect((within(dialog).getByRole('textbox', { name: /budget/i }) as HTMLInputElement).value).toBe('')
+    expect(within(dialog).getByText(/Empty means Caprock's ceiling of \$5/)).toBeTruthy()
+  })
+
+  it('will not create a task while a template part is unfilled', async () => {
+    state.status = { orchestration: true } as Status
+    state.starter = { repo: '/repo', default_budget_usd: 5, checks: [{ command: 'npm test', kind: 'test', source: 'package.json' }] }
+    render(<TasksScreen />)
+    fireEvent.click(await screen.findByText('Add tests for a file'))
+    const dialog = await screen.findByRole('dialog', { name: 'New task' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }))
+    expect(await within(dialog).findByText(/Fill in <file> first/)).toBeTruthy()
+    expect(state.created).toEqual([])
+    fireEvent.change(within(dialog).getByPlaceholderText(/healthz/), { target: { value: 'Add tests for src/parse.ts' } })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /what the agent should do/i }), { target: { value: 'Cover src/parse.ts.' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }))
+    await waitFor(() => expect(state.created).toHaveLength(1))
+    expect(state.created[0]).toMatchObject({ title: 'Add tests for src/parse.ts', done_criteria: ['npm test'], budget_usd: 0 })
+  })
+
+  it('leaves the checks empty, and says so, when the repo declares none', async () => {
+    state.status = { orchestration: true } as Status
+    render(<TasksScreen />)
+    expect(await screen.findByText(/No test, lint or build commands found/)).toBeTruthy()
+    fireEvent.click(screen.getByText('Fix lint and type errors'))
+    const dialog = await screen.findByRole('dialog', { name: 'New task' })
+    expect((within(dialog).getByRole('textbox', { name: /checks that must pass/i }) as HTMLTextAreaElement).value).toBe('')
+    expect(within(dialog).getByText(/No check commands were found in this repo/)).toBeTruthy()
+  })
+
+  // Picking a template with the runner off asks to turn it on first, then
+  // opens that template — the pick is not lost to the confirmation.
+  it('turns the runner on, then opens the template picked in the off state', async () => {
+    state.status = { orchestration: false, suggested_hive: '/h', suggested_repo: '/repo' } as Status
+    render(<TasksScreen />)
+    fireEvent.click(await screen.findByText('Bump a dependency'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn it on' }))
+    await waitFor(() => expect(enabled).toEqual([['/h', '/repo']]))
+    const dialog = await screen.findByRole('dialog', { name: 'New task' })
+    expect((within(dialog).getByPlaceholderText(/healthz/) as HTMLInputElement).value).toBe('Upgrade <package> to <version>')
+  })
 })
 
 describe('a task that was worked', () => {
@@ -151,7 +235,20 @@ describe('a task that was worked', () => {
     state.status = { orchestration: true } as Status
     state.tasks = [task()]
     render(<TasksScreen />)
-    expect(await screen.findByText('caprock/worker-1')).toBeTruthy()
+    expect((await screen.findAllByText(/caprock\/worker-1/)).length).toBeGreaterThan(0)
+  })
+
+  // The row says what the task is doing, how its checks went and what it cost,
+  // and offers the one thing to do with a finished task.
+  it('reads as state, now, checks, cost and one action', async () => {
+    state.status = { orchestration: true } as Status
+    state.tasks = [task()]
+    render(<TasksScreen />)
+    expect(await screen.findByText('Done')).toBeTruthy()
+    expect(screen.getByText(/Checks passed\. The work is on branch caprock\/worker-1/)).toBeTruthy()
+    expect(screen.getByText('passed')).toBeTruthy()
+    expect(screen.getByText('of $3.00')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Review & merge' })).toBeTruthy()
   })
 
   it('opens to the diff, the checks that passed, and the command that lands it', async () => {
@@ -166,15 +263,16 @@ describe('a task that was worked', () => {
     }
     render(<TasksScreen />)
     fireEvent.click(await screen.findByText('Add /healthz'))
+    const drawer = await screen.findByRole('dialog', { name: 'Task' })
 
     // What changed.
-    expect(await screen.findByText('health.go')).toBeTruthy()
-    expect(screen.getByText('+12')).toBeTruthy()
+    expect(await within(drawer).findByText('health.go')).toBeTruthy()
+    expect(within(drawer).getByText('+12')).toBeTruthy()
     // What proved it.
-    expect(screen.getByText('passed')).toBeTruthy()
-    expect(screen.getByText('go test ./...')).toBeTruthy()
+    expect(within(drawer).getByText('passed')).toBeTruthy()
+    expect(within(drawer).getByText('go test ./...')).toBeTruthy()
     // Where it is, and how to take it.
-    expect(screen.getByText('/repo/.caprock-worktrees/worker-1')).toBeTruthy()
+    expect(within(drawer).getByText('/repo/.caprock-worktrees/worker-1')).toBeTruthy()
     expect(screen.getByText('$ git merge --no-ff caprock/worker-1')).toBeTruthy()
   })
 

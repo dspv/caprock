@@ -9,6 +9,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** the version panel is the version, whether it is current, when it
+  was checked, the update button and *Release notes →*. The release notes
+  themselves left the panel, where they were unreadable.
+
 - **Lifetime:** the big figures are short — *$16.8k*, *$159* — with the
   exact sum on hover. Top projects' rows start with the donut's colour and
   the share, large.
@@ -26,6 +30,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   amber while something in it works — and has a **+** for a new agent there
   without hovering. A chevron folds a project by hand, even one with
   something running; the choice is kept. `GET /v1/activity` serves the line.
+
+### Changed
+
+- **Plan limits** is two matching cards, Claude and Codex, each with its
+  character and both windows side by side — 5 hours and Week — in larger,
+  shorter words. A window an agent did not report is an empty ring that
+  says so, instead of a missing one.
+
+### Added
+
+- **Plan limits asks for your plan** until it is set, saying why: Caprock
+  can't detect it, and Cost needs it to weigh usage at API prices against
+  what the plan costs. *Set my plan* opens the list in place.
 
 ### Added
 
@@ -46,6 +63,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   and cost per turn — instead of a one-line system tooltip.
 - **app:** keys drawn as keys (the deck's *Review changes ⇧⌘G*, the tabs'
   ⌘1–⌘9) are drawn darker and bolder; the faint chip went unseen.
+
+- **ui:** the Tasks screen says what it is and how to start. One sentence and
+  a worked example (you write the task, a worker does it on its own branch,
+  Caprock runs your checks, you merge), then a gallery of templates — fix
+  failing tests, bump a dependency, add tests for a file, fix lint and type
+  errors, write docs for a module, port a script — that open the form
+  prefilled. Their checks are the commands the repository declares (Makefile
+  targets, package.json scripts, go.mod, Cargo.toml, pytest/ruff/mypy when
+  configured), found by the new `GET /v1/hive/starter`, never guessed. The
+  budget field starts empty with the daemon's own ceiling as the hint.
+- **ui:** the board is one list grouped by what each task needs — Needs you,
+  Working, Waiting to start, Finished — instead of six narrow columns, and
+  each row says what the task is doing now, how its checks went, what it cost
+  against its budget, and its one action (Approve/Reject, Review & merge,
+  Open). A queued task with nothing moving says the orchestrator has to be
+  started, with the button.
+- **A new queue directory starts empty.** It no longer gets an example task
+  in the inbox, which the board showed as waiting and the orchestrator would
+  assign with checks guessed for the repository; the format is in its README.
 
 ### Fixed
 

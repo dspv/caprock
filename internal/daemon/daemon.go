@@ -51,6 +51,7 @@ import (
 	"github.com/dspv/caprock/internal/opencode"
 	"github.com/dspv/caprock/internal/orchestrator"
 	"github.com/dspv/caprock/internal/pairing"
+	"github.com/dspv/caprock/internal/projcheck"
 	"github.com/dspv/caprock/internal/projects"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/rollup"
@@ -819,9 +820,9 @@ func (d *Daemon) enableHive(ctx context.Context, hiveDir, repoCwd string) error 
 	if err != nil {
 		return fmt.Errorf("open hive: %w", err)
 	}
-	// A fresh hive was three empty directories. Seeding it with a README and
-	// one example task makes the directory explain itself; it is a no-op on
-	// a hive that already has one, so it never touches a user's work.
+	// A fresh hive was three empty directories. Seeding it with a README makes
+	// the directory explain itself; it is a no-op on a hive that already has
+	// one, so it never touches a user's work.
 	if err := h.Seed(); err != nil {
 		d.log.Warn("seed hive", "component", "board", "err", err)
 	}
@@ -1959,6 +1960,19 @@ func (a *boardAdapter) StopOrchestrator(_ context.Context) (any, error) {
 		return nil, errOrchDisabled
 	}
 	return map[string]int{"stopped": orch.StopAll()}, nil
+}
+
+// Starter is the Tasks templates' prefill: the repository the workers branch
+// from, the checks it declares, and the budget applied when a task names none.
+// It reads files only — nothing runs — and answers with the runner off, so the
+// off state can show what a template would fill in for this repository.
+func (a *boardAdapter) Starter(_ context.Context) (any, error) {
+	repo := a.d.repoCwd()
+	return map[string]any{
+		"repo":               repo,
+		"checks":             projcheck.Detect(repo),
+		"default_budget_usd": board.DefaultBudgetUSD,
+	}, nil
 }
 
 // openCodeStats reports the OpenCode reader, or nil when it is not running.
