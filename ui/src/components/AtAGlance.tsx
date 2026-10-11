@@ -143,17 +143,32 @@ export function AtAGlancePanel() {
             // Folded: each agent as its character and its share, one line
             // (owner, 2026-10-11, translated: "fold blocks like DeepSeek's
             // into an icon").
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-3 py-2" data-agents-folded>
+            // Twice the size since the same day, and fluid: one line that
+            // shrinks the characters with the window down to a floor, then
+            // wraps. The hint is a card, not the native tooltip, which the
+            // owner found poor and unclear.
+            <div className="flex flex-wrap items-center gap-x-[clamp(12px,2vw,28px)] gap-y-2 border-t border-border px-3 py-3" data-agents-folded>
               {rows.map((r) => {
                 const share = sharePct(r.cost, agentTotal)
                 return (
-                  <span key={r.key} title={`${r.name}: ${r.turns.toLocaleString('en-US')} turns · ${fmtUSD(r.cost)} · ${share} of all-time spend`} className="inline-flex items-center gap-1.5">
-                    <AgentCharacter who={r.who} size={26} />
-                    <span className="num text-[12px] text-fg">{share}</span>
+                  <span key={r.key} tabIndex={0} aria-label={`${r.name}: ${share} of all-time spend, ${fmtUSD(r.cost)}, ${r.turns.toLocaleString('en-US')} turns`}
+                    className="group relative inline-flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                    <AgentCharacter who={r.who} size={52} className="h-auto w-[clamp(32px,4vw,52px)]" />
+                    <span className="num text-[clamp(13px,1.3vw,17px)] font-medium text-fg">{share}</span>
+                    <span role="tooltip" data-agent-hint
+                      className="pointer-events-none invisible absolute bottom-full left-0 z-20 mb-2 w-max max-w-[280px] rounded-xl border border-border-strong bg-panel px-3.5 py-2.5 opacity-0 shadow-lg transition-opacity duration-100 group-hover:visible group-hover:opacity-100 group-focus-visible:visible group-focus-visible:opacity-100">
+                      <span className="block text-[14px] font-semibold text-fg">{r.name}</span>
+                      <span className="mt-1 flex items-baseline gap-1.5"><span className="num text-[22px] font-semibold text-accent">{share}</span><span className="text-[12px] text-fg-muted">of all the spend, all time</span></span>
+                      <span className="mt-1.5 grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 text-[12.5px]">
+                        <span className="text-fg-muted">spent</span><span className="num text-right text-fg">{fmtUSD(r.cost)}</span>
+                        <span className="text-fg-muted">turns</span><span className="num text-right text-fg">{r.turns.toLocaleString('en-US')}</span>
+                        <span className="text-fg-muted">per turn</span><span className="num text-right text-fg">{r.turns > 0 ? fmtUSD(r.cost / r.turns) : '—'}</span>
+                      </span>
+                    </span>
                   </span>
                 )
               })}
-              <button type="button" onClick={foldAgents} className="ml-auto text-[11px] text-fg-faint hover:text-accent">show cards</button>
+              <button type="button" onClick={foldAgents} className="ml-auto text-[12px] text-fg-faint hover:text-accent">show cards</button>
             </div>
           )}
           {rows.length > 0 && !agentsSmall && (

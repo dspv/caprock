@@ -19,6 +19,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   the same project adds its title, faint; the title is in the tooltip.
 - **Now:** *At a glance* — the donuts — comes before *All time*, the exact
   table: the pictures first, the numbers after.
+- **Feedback is an amber bug** in the header and the sidebar, in place of a
+  grey speech bubble that went unseen.
+- **Now:** the agents folded to icons are twice the size and shrink with the
+  window on one line; hovering one shows a card — its share, spend, turns
+  and cost per turn — instead of a one-line system tooltip.
 - **app:** keys drawn as keys (the deck's *Review changes ⇧⌘G*, the tabs'
   ⌘1–⌘9) are drawn darker and bolder; the faint chip went unseen.
 
