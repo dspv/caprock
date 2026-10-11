@@ -43,7 +43,14 @@ type launchInput struct {
 	// appended to Claude Code's own system prompt, and Codex's
 	// developer_instructions; "" for none.
 	SystemPrompt string
-	Extra        []string
+	// AllowBypass adds --allow-dangerously-skip-permissions to a Claude Code
+	// start in any other mode, so Shift+Tab reaches bypass in that session
+	// (ADR-054). Set only when the one-time bypass warning was accepted in
+	// the settings the session reads: the flag opens the session on that
+	// warning otherwise, exactly as --dangerously-skip-permissions does
+	// (read in 2.1.296), and its default answer is "No, exit".
+	AllowBypass bool
+	Extra       []string
 	// OpenCodeMajor is the major version of the OpenCode about to start
 	// (opencode.go); 0 when unknown, which builds OpenCode 1's command line.
 	OpenCodeMajor int
@@ -125,6 +132,9 @@ func claudeLaunch(in launchInput) (launch, error) {
 		l.args = append(l.args, "--dangerously-skip-permissions")
 	default:
 		l.args = append(l.args, "--permission-mode", in.Mode)
+	}
+	if in.AllowBypass && in.Mode != "bypassPermissions" {
+		l.args = append(l.args, "--allow-dangerously-skip-permissions")
 	}
 	for _, d := range in.AddDirs {
 		l.args = append(l.args, "--add-dir", d)

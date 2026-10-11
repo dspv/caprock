@@ -457,3 +457,36 @@ func TestTermV2RefusesABadQuery(t *testing.T) {
 		}
 	}
 }
+
+// restartingAgents is v2Agents mid-way through a permission-mode restart.
+type restartingAgents struct{ *v2Agents }
+
+func (restartingAgents) Restarting(string) bool { return true }
+
+// A session stopped to be resumed in another mode says so in its exit frame,
+// so the terminal reconnects to the new process instead of closing the tab.
+func TestTermV2ExitSaysARestart(t *testing.T) {
+	ft := newFakeTerm(1 << 10)
+	e := newEnv(t)
+	ag := &v2Agents{fakeAgents: &fakeAgents{avail: true, snapshot: []byte("V1SNAP"), termCh: make(chan []byte, 4)}, term: ft}
+	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok", Now: func() time.Time { return e.now }, Agents: restartingAgents{ag}})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c := dialV2(ctx, t, e.srv, "")
+	mustHello(ctx, t, c)
+	mustFrame(ctx, t, c)
+	ft.code = 0
+	close(ft.done)
+	for {
+		f, err := readFrame(ctx, c)
+		if err != nil {
+			t.Fatalf("closed without an exit frame: %v", err)
+		}
+		if raw, ok := f.text["exit"]; ok {
+			if string(raw) != `{"code":0,"restart":1}` {
+				t.Fatalf("exit = %s", raw)
+			}
+			return
+		}
+	}
+}

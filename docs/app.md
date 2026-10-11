@@ -102,7 +102,8 @@ others. Installing it: [install-app.md](install-app.md).
   how new agents start, appearance, terminal and editor first. The × beside
   the *Settings* heading, or Esc, closes it as the tab's × does. *Send
   feedback*, the row above *Dashboard*, opens the feedback form: pick Bug, Idea or
-  Question, write a title and a few words, and paste (⌘V) or choose up to
+  Question — click a card or press 1, 2 or 3, and the title is ready for
+  typing — write a title (Enter moves on) and a few words, and paste (⌘V) or choose up to
   four screenshots — drop image files on the window, or on macOS and Windows
   press *Capture window* for a picture of the app itself (not your screen; no
   permission is asked). *Create issue* opens a prefilled GitHub issue in your
@@ -185,6 +186,17 @@ others. Installing it: [install-app.md](install-app.md).
   (*Branch into a tab* while it still runs elsewhere) and the permission mode
   beside it. Continuing in another agent, opening it in your own terminal and
   copying the resume command are under *More*.
+- **The permission mode, while it runs.** A chip beside the agent's name in
+  the inspector, and in the session's header, says the mode a Claude Code
+  session is in — *asks first*, *accept edits*, *plan mode*, *bypass*. For a
+  session Caprock started it is a menu: the modes under *In this session* are
+  reached by Shift+Tab, typed in for you and checked on the session's own
+  footer; *Restart in …* stops the process and resumes the same conversation
+  in a new one, in the same tab, after you confirm, and only when the agent
+  is at its prompt. Bypass is in the session once you have accepted Claude
+  Code's bypass warning on this computer; before that it is a restart that
+  asks for it. A session started in your own terminal shows its mode without
+  the menu: change it there with Shift+Tab.
 - **Tab names.** A tab is named after its agent, with *+N* for the panes
   split beside it.
 - **Projects.** Caprock lists the repositories your sessions ran in. ⌘O, or

@@ -61,7 +61,7 @@ describe('the sidebar', () => {
     const { rerender, props } = renderSidebar({ tabs, tabLabels: labels, activeProjectId: 'alpha', activeTabId: 't3', dashboardActive: false, onActivateTab })
     const list = screen.getByRole('group', { name: 'alpha: open tabs' })
     expect([...list.querySelectorAll('[data-tab-row] span.flex-1')].map((b) => b.textContent)).toEqual(['Fix the login', 'Shell 1', 'Shell 2'])
-    // One highlighted row, and no chevrons to manage.
+    // One highlighted row.
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)
     expect(document.querySelector('[data-tab-row="t3"]')).toHaveAttribute('aria-current', 'true')
     expect(document.querySelector('[data-project-row="alpha"]')).toHaveAttribute('aria-expanded', 'true')
@@ -75,7 +75,7 @@ describe('the sidebar', () => {
     rerender(<Sidebar {...props} activeProjectId="beta" activeTabId="t2" />)
     expect(screen.queryByRole('group', { name: 'alpha: open tabs' })).toBeNull()
     expect(within(screen.getByRole('group', { name: 'beta: open tabs' })).getByText('Shell 1')).toBeInTheDocument()
-    // Nothing waits: no Waiting on you block at all.
+    // No Waiting on you block: what waits is marked on its own row.
     expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull()
   })
 
@@ -304,20 +304,33 @@ describe('the sidebar', () => {
     expect(within(today).queryByRole('meter')).toBeNull()
   })
 
-  it('shows no Waiting on you block when only turns put down more than 12h ago wait, and folds them under a current one', () => {
+  it('has no Waiting on you block: a session waiting now is marked on its own row, one put down more than 12h ago is not', () => {
     const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString()
-    const waiting = (id: string, msAgo: number) => ({
-      session_id: id, cwd: '/w/alpha', project: 'alpha', model: '', started_at: 1, last_event_at: 1, status: 'active', git_branch: '', owned: true,
+    const waiting = (id: string, msAgo: number, started: number) => ({
+      session_id: id, cwd: '/w/alpha', project: 'alpha', model: '', started_at: started, last_event_at: 1, status: 'active', git_branch: '', owned: true,
       title: id, activity: { phrase: '', at: iso(msAgo), health: 'waiting-on-you' },
     }) as unknown as SessionSummary
-    const build = (sessions: SessionSummary[]) => buildSidebar({ projects: [proj('alpha', 1, true)], sessions, permissions: new Set(), costs: new Map(), openSessions: new Set() })
-    const { rerender, props } = renderSidebar({ model: build([waiting('old1', 2 * day), waiting('old2', day)]) })
+    const m = buildSidebar({ projects: [proj('alpha', 1, true)], sessions: [waiting('old1', 2 * day, 1), waiting('now1', 60_000, 2)], permissions: new Set(), costs: new Map(), openSessions: new Set() })
+    renderSidebar({ model: m })
     expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull()
     expect(screen.queryByText(/Older, put down/)).toBeNull()
-    rerender(<Sidebar {...props} model={build([waiting('old1', 2 * day), waiting('now1', 60_000)])} />)
-    const block = screen.getByRole('region', { name: 'Waiting on you' })
-    expect(within(block).getByText('now1')).toBeInTheDocument()
-    expect(within(block).getByText(/Older, put down more than 12h ago \(1\)/)).toBeInTheDocument()
+    expect(document.querySelector('[data-live-row="now1"]')).toHaveAttribute('data-waiting', 'true')
+    expect(document.querySelector('[data-live-row="old1"]')).not.toHaveAttribute('data-waiting')
+    // The project row still counts only what waits now.
+    expect(screen.getByLabelText('1 waiting on you')).toBeInTheDocument()
+  })
+
+  it('keeps what waits under a project folded by hand, and nothing else', () => {
+    const iso = new Date(Date.now() - 60_000).toISOString()
+    const s = (id: string, health: string, started: number) => ({
+      session_id: id, cwd: '/w/alpha', project: 'alpha', model: '', started_at: started, last_event_at: 1, status: 'active', git_branch: '', owned: true,
+      title: id, activity: { phrase: '', at: iso, health },
+    }) as unknown as SessionSummary
+    const m = buildSidebar({ projects: [proj('alpha', 1, true)], sessions: [s('busy', 'working', 1), s('asking', 'waiting-on-you', 2)], permissions: new Set(), costs: new Map(), openSessions: new Set() })
+    renderSidebar({ model: m })
+    fireEvent.click(screen.getByRole('button', { name: 'Fold alpha' }))
+    expect(document.querySelector('[data-project-row="alpha"]')).toHaveAttribute('aria-expanded', 'false')
+    expect([...document.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['asking'])
   })
 
   it('draws a project’s last hour, offers a new agent at rest, and folds a live project by hand', () => {

@@ -132,6 +132,9 @@ type HookSignal struct {
 	ToolUseID string
 	// Suggestions is PermissionRequest's permission_suggestions, verbatim.
 	Suggestions json.RawMessage
+	// PermissionMode is the mode the session was in when the hook fired
+	// (permission_mode, on every hook Claude Code sends).
+	PermissionMode string
 }
 
 // detailMax caps Detail; a heredoc can be pages long, and the phone shows the
@@ -144,6 +147,9 @@ const detailMax = 2000
 func (m *Manager) ObserveHook(sig HookSignal) {
 	if _, ok := m.Get(sig.SessionID); !ok {
 		return
+	}
+	if sig.PermissionMode != "" && sig.AgentID == "" {
+		m.noteMode(sig.SessionID, sig.PermissionMode, SourceHook)
 	}
 	switch sig.Event {
 	case "PreToolUse":

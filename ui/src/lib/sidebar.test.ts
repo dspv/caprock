@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionSummary } from './api'
 import type { Project } from './projects'
-import { buildSidebar, groupProjects, OTHER_FOLDERS_ID } from './sidebar'
+import { buildSidebar, groupProjects, OTHER_FOLDERS_ID, rowHidden } from './sidebar'
 
 function sess(p: Partial<SessionSummary>): SessionSummary {
   return {
@@ -102,5 +102,41 @@ describe('grouping the sidebar projects', () => {
     const g = groupProjects(nodes, { hidden: new Set([OTHER_FOLDERS_ID]) })
     expect(ids(g.shown)).toEqual([])
     expect(ids(g.hidden)).toEqual([OTHER_FOLDERS_ID])
+  })
+})
+
+describe('a session row: what waits, and hiding it', () => {
+  const at = (msAgo: number) => new Date(now - msAgo).toISOString()
+  const build = (permissions: string[] = []) => buildSidebar({
+    projects: [proj('r', 0)],
+    sessions: [
+      sess({ session_id: 'turn', cwd: '/r', activity: { phrase: '', at: at(60_000), health: 'waiting-on-you' } }),
+      sess({ session_id: 'old', cwd: '/r', activity: { phrase: '', at: at(2 * day), health: 'waiting-on-you' } }),
+      sess({ session_id: 'ask', cwd: '/r', activity: { phrase: '', at: at(2 * day), health: 'working' } }),
+      sess({ session_id: 'busy', cwd: '/r' }),
+    ],
+    permissions: new Set(permissions),
+    costs: new Map(),
+    openSessions: new Set(),
+    now,
+  })
+  const rows = (m: ReturnType<typeof build>) => new Map(m.projects[0]!.worktrees.flatMap((w) => w.sessions).map((x) => [x.session.session_id, x]))
+
+  it('marks a session waiting now, says when it began, and tells a permission prompt apart', () => {
+    const r = rows(build(['ask']))
+    expect(r.get('turn')).toMatchObject({ waiting: true, asks: false, waitingSince: now - 60_000 })
+    expect(r.get('old')).toMatchObject({ waiting: false, waitingSince: undefined })
+    expect(r.get('ask')).toMatchObject({ waiting: true, asks: true })
+    expect(r.get('busy')).toMatchObject({ waiting: false })
+  })
+
+  it('keeps a hidden row hidden until it next waits; one that asks always shows', () => {
+    const r = rows(build(['ask']))
+    expect(rowHidden(r.get('busy')!, new Map())).toBe(false)
+    expect(rowHidden(r.get('busy')!, new Map([['busy', now]]))).toBe(true)
+    // Waiting since before it was hidden: stays hidden. Since after: back.
+    expect(rowHidden(r.get('turn')!, new Map([['turn', now - 1000]]))).toBe(true)
+    expect(rowHidden(r.get('turn')!, new Map([['turn', now - 10 * 60_000]]))).toBe(false)
+    expect(rowHidden(r.get('ask')!, new Map([['ask', now]]))).toBe(false)
   })
 })

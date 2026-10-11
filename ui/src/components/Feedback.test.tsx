@@ -273,3 +273,113 @@ describe('the feedback form in the desktop app', () => {
     expect(screen.getAllByRole('img')).toHaveLength(1)
   })
 })
+
+/** Owner, 2026-10-11: "big options, with icons, quick choice, choosable with
+ *  keys, and quick to write". */
+describe('the feedback form from the keyboard', () => {
+  const titleBox = () => screen.getByRole('textbox', { name: 'Title' }) as HTMLInputElement
+  const descBox = () => screen.getByRole('textbox', { name: /Description/ }) as HTMLTextAreaElement
+  const checked = () => screen.getAllByRole('radio').filter((r) => r.getAttribute('aria-checked') === 'true').map((r) => r.getAttribute('aria-label'))
+
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('shows three cards, each with its key, and the title has focus on open', () => {
+    openForm()
+    const cards = screen.getAllByRole('radio')
+    expect(cards.map((c) => c.getAttribute('aria-label'))).toEqual(['Bug', 'Idea', 'Question'])
+    expect(cards.map((c) => c.querySelector('kbd.app-kbd-key')?.textContent)).toEqual(['1', '2', '3'])
+    expect(cards.map((c) => c.textContent)).toEqual([
+      expect.stringContaining('Something broke'),
+      expect.stringContaining('Make it better'),
+      expect.stringContaining('How do I'),
+    ])
+    expect(checked()).toEqual(['Bug'])
+    expect(document.activeElement).toBe(titleBox())
+  })
+
+  it('picks a kind with 1 2 3 by physical key: digit row, numpad, any layout', () => {
+    openForm()
+    // A Greek layout: the key says β, the key pressed is still the 2.
+    fireEvent.keyDown(titleBox(), { key: 'β', code: 'Digit2' })
+    expect(checked()).toEqual(['Idea'])
+    expect(titleBox().value).toBe('')
+    expect(document.activeElement).toBe(titleBox())
+    fireEvent.keyDown(titleBox(), { key: '3', code: 'Numpad3' })
+    expect(checked()).toEqual(['Question'])
+    // From the diagnostics box too, and focus goes to the title.
+    screen.getByRole('checkbox', { name: 'Include diagnostics' }).focus()
+    fireEvent.keyDown(document.activeElement!, { key: '1', code: 'Digit1' })
+    expect(checked()).toEqual(['Bug'])
+    expect(document.activeElement).toBe(titleBox())
+  })
+
+  it('types the digit instead once there is text, in the description, or with a modifier', () => {
+    openForm()
+    fireEvent.change(titleBox(), { target: { value: 'Top ' } })
+    expect(fireEvent.keyDown(titleBox(), { key: '2', code: 'Digit2' })).toBe(true) // not prevented
+    expect(checked()).toEqual(['Bug'])
+    descBox().focus()
+    expect(fireEvent.keyDown(descBox(), { key: '3', code: 'Digit3' })).toBe(true)
+    fireEvent.change(titleBox(), { target: { value: '' } })
+    expect(fireEvent.keyDown(titleBox(), { key: '!', code: 'Digit1', shiftKey: true })).toBe(true)
+    expect(fireEvent.keyDown(titleBox(), { key: '2', code: 'Digit2', metaKey: true })).toBe(true)
+    expect(checked()).toEqual(['Bug'])
+  })
+
+  it('moves between the cards with the arrows, and a click goes to the title', () => {
+    openForm()
+    const [bug, idea, question] = screen.getAllByRole('radio') as HTMLButtonElement[]
+    expect([bug!.tabIndex, idea!.tabIndex, question!.tabIndex]).toEqual([0, -1, -1])
+    bug!.focus()
+    fireEvent.keyDown(bug!, { key: 'ArrowRight', code: 'ArrowRight' })
+    expect(checked()).toEqual(['Idea'])
+    expect(document.activeElement).toBe(idea)
+    fireEvent.keyDown(idea!, { key: 'ArrowLeft', code: 'ArrowLeft' })
+    fireEvent.keyDown(bug!, { key: 'ArrowLeft', code: 'ArrowLeft' })
+    expect(checked()).toEqual(['Question'])
+    expect(document.activeElement).toBe(question)
+    fireEvent.click(idea!)
+    expect(checked()).toEqual(['Idea'])
+    expect(document.activeElement).toBe(titleBox())
+  })
+
+  it('asks a different question per kind, in the title and the description', () => {
+    openForm()
+    expect([titleBox().placeholder, descBox().placeholder]).toEqual(['What broke?', 'What did you do, what did you expect, what happened instead?'])
+    fireEvent.keyDown(titleBox(), { key: '2', code: 'Digit2' })
+    expect([titleBox().placeholder, descBox().placeholder]).toEqual(['What would make it better?', 'What would you like, and what would it help you do?'])
+    fireEvent.keyDown(titleBox(), { key: '3', code: 'Digit3' })
+    expect([titleBox().placeholder, descBox().placeholder]).toEqual(['What do you want to know?', 'What were you trying to find out?'])
+  })
+
+  it('goes on to the description with Enter, and never files a report on a bare Enter', () => {
+    openForm()
+    fireEvent.change(titleBox(), { target: { value: 'Chart is crooked' } })
+    fireEvent.keyDown(titleBox(), { key: 'Enter', code: 'Enter' })
+    expect(document.activeElement).toBe(descBox())
+    expect(opened).toHaveLength(0)
+  })
+
+  it('creates the issue with Ctrl+Enter on Windows and Linux, labelled that way', () => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
+    openForm()
+    const create = screen.getByRole('button', { name: 'Create issue' })
+    expect(create.getAttribute('aria-keyshortcuts')).toBe('Control+Enter')
+    expect(create.querySelector('kbd')?.textContent).toBe('Ctrl+Enter')
+    fireEvent.keyDown(titleBox(), { key: '2', code: 'Digit2' })
+    fireEvent.change(titleBox(), { target: { value: 'Cost per branch' } })
+    descBox().focus()
+    fireEvent.keyDown(descBox(), { key: 'Enter', code: 'Enter', ctrlKey: true })
+    expect(opened).toHaveLength(1)
+    expect(params(opened[0]!).get('labels')).toBe('enhancement')
+  })
+
+  it('creates the issue with ⌘↩ on macOS', () => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
+    openForm()
+    expect(screen.getByRole('button', { name: 'Create issue' }).querySelector('kbd')?.textContent).toBe('⌘↩')
+    fireEvent.change(titleBox(), { target: { value: 'What is session total' } })
+    fireEvent.keyDown(titleBox(), { key: 'Enter', code: 'Enter', metaKey: true })
+    expect(opened).toHaveLength(1)
+  })
+})

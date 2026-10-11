@@ -28,6 +28,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   phone) takes a neutral ground, a blue cursor and a cool 16-colour set
   instead of graphite's warm one, and follows a theme switch while open. It
   is also a palette of its own in Settings → Terminal.
+
+### Changed
+
+- **Send feedback** picks Bug, Idea or Question from three large cards with
+  an icon, a line each and their key: press 1, 2 or 3 (any keyboard layout)
+  and type the title straight away. Enter in the title moves to the
+  description, ⌘↩ (Ctrl+Enter on Windows and Linux) creates the issue, and
+  each kind asks its own question ("What broke?").
+
 - **Slate** has no orange left: waiting and idle marks read as a cool yellow
   there instead of graphite's amber.
 
@@ -40,6 +49,48 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   profile, usually exports `LANG`. A session without one now gets a UTF-8
   `LANG` (`en_US.UTF-8` on macOS, `C.UTF-8` on Linux); a locale you set is
   kept.
+
+- **app:** the sidebar has no *Waiting on you* section any more — everything
+  in it was already in Projects. A session that waits on you is marked on its
+  own row instead: an amber edge and tint and the word *waiting*, or *asks*
+  at a permission prompt. One started in another terminal is a row of its
+  own rather than behind *Running in other terminals*, and a project folded
+  by hand still shows what waits in it. The Today strip's *Waiting* count
+  still opens the first one.
+
+### Fixed
+
+- **app:** every row under a project can now be closed or hidden. A row with
+  no tab — an agent whose tab you closed, or a session from another terminal
+  — has a × that hides it from the list (it keeps running, and nothing is
+  ever sent to a session Caprock did not start), next to ■ *Stop…* for what
+  Caprock started, which still asks first. Hidden rows wait behind *N hidden
+  · show* under the project, where an eye brings each one back, and one
+  comes back by itself when it next waits on you. The same actions are on a
+  right-click or Shift+F10, a tab's menu adds *Close tab and hide from the
+  list*, the buttons are bigger (26px), and on a touch screen they are
+  always shown.
+
+### Added
+
+- **app:** change a running session's permission mode. A chip in the session
+  header and the agent cockpit says the mode a Claude Code session is in; for
+  one Caprock started it is a menu. Default, accept edits, plan, bypass (when
+  the process can reach it) and auto are switched in place by Shift+Tab,
+  typed in and checked on the session's own footer; bypass in a process that
+  cannot reach it, and don't ask, are *Restart in …*: after a confirm, at the
+  prompt only, the same conversation is resumed in a new process in the same
+  tab, with the one-time bypass consent where it applies. A session started
+  elsewhere shows its mode read-only. New `GET
+  /v1/sessions/{id}/permission-mode` and `POST
+  /v1/agents/{id}/permission-mode` (ADR-054).
+
+### Changed
+
+- **agents:** a new Claude Code session is started with
+  `--allow-dangerously-skip-permissions` where the bypass warning was already
+  accepted, so bypass is a Shift+Tab away in it without being its mode
+  (ADR-054). Without that consent nothing changes.
 
 ## [0.108.1] - 2026-10-11
 

@@ -14,6 +14,7 @@ import { costBasisLong } from '@/components/CostBasis'
 import { agentName } from '@/components/Projects'
 import { usePlan } from '@/components/PlanPicker'
 import { ContinueSession } from '@/components/ContinueSession'
+import { PermissionModeChip } from '@/components/PermissionModeChip'
 import { RecentPRs, RepoButtons } from '@/components/RepoLinks'
 import { RelayChain, RelayMenu } from '@/components/RelayDialog'
 import { OpenInTerminal } from '@/components/OpenInTerminal'
@@ -160,6 +161,9 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   const compact = talking && phone
   const controls = (
     <>
+      {/* The permission mode: changeable here for a session Caprock started,
+        * read-only for one started elsewhere (ADR-054). */}
+      {!detail.stale && s.status !== 'ended' && <PermissionModeChip sessionId={id} agent={s.agent} />}
       {!detail.stale && s.owned && s.status !== 'ended' && !reader && <OwnedControls id={id} />}
       {/* Continue, branch, or the reason neither is possible. The server
         * decides, because what decides it is on disk: whether Claude Code

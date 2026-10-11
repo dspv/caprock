@@ -434,6 +434,8 @@ a.link:hover { text-decoration: underline; }
   --app-hairline: color-mix(in srgb, var(--color-fg) 9%, transparent);
   --app-hairline-strong: color-mix(in srgb, var(--color-fg) 17%, transparent);
   --app-row-hover: color-mix(in srgb, var(--color-fg) 6%, transparent);
+  /* A button inside a hovered row: one step past the row's own hover. */
+  --app-row-hover-strong: color-mix(in srgb, var(--color-fg) 12%, transparent);
   --app-row-active: color-mix(in srgb, var(--color-fg) 10%, transparent);
   --app-focus: color-mix(in srgb, var(--color-accent) 70%, transparent);
   --app-ease: cubic-bezier(0.2, 0, 0, 1);
@@ -449,6 +451,12 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 }
 [data-app] .app-row { transition: background-color 120ms var(--app-ease), color 120ms var(--app-ease); }
 [data-app] .app-row:hover { background: var(--app-row-hover); }
+/* A row that waits on you: an amber edge and tint, on the row itself. The
+ * separate Waiting on you block is gone (owner, 2026-10-11: "everything is
+ * already visible in Projects", translated), so the row says it. Before the
+ * current-row rules: the tab in front keeps its own fill and edge. */
+[data-app] .app-row[data-waiting] { background: color-mix(in srgb, var(--color-accent) 11%, transparent); box-shadow: inset 2px 0 0 var(--color-accent); }
+[data-app] .app-row[data-waiting]:hover { background: color-mix(in srgb, var(--color-accent) 17%, transparent); }
 [data-app] .app-row[aria-current="true"] { background: var(--app-row-active); }
 /* The tab in front, in the sidebar's list under the current project: the one
  * highlighted row in the sidebar, its fill plus an edge in the text colour —
@@ -503,6 +511,26 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   background: color-mix(in srgb, var(--color-fg) 10%, transparent);
 }
 [data-app] .app-primary .app-kbd {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+/* The feedback form's kind cards (components/Feedback.tsx) draw 1 2 3 as the
+ * same key, a size up, in the browser dashboard too, where there is no
+ * [data-app]; the chosen card's key takes the accent like .app-primary's. */
+[data-feedback-kinds] .app-kbd-key {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-fg);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-fg) 28%, transparent);
+  border-bottom-width: 2px;
+  background: color-mix(in srgb, var(--color-fg) 10%, transparent);
+}
+[data-feedback-kinds] [aria-checked="true"] .app-kbd-key {
   color: var(--color-accent);
   border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);

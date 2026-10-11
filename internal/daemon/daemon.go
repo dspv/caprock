@@ -440,6 +440,10 @@ func (d *Daemon) run(ctx context.Context) error {
 	}
 	// A permission prompt appearing or going away in an owned session reaches
 	// every open dashboard at once, so a phone's buttons come and go with it.
+	// A Claude Code session may be started able to reach bypass by
+	// Shift+Tab only where the bypass warning was already accepted
+	// (ADR-054, ADR-041).
+	d.mgr.BypassConsent = claudeBypassConsented
 	d.mgr.OnPermission = func(id string, p *agents.Permission) {
 		d.bus.Publish(bus.Frame{Type: bus.FramePermission, Data: map[string]any{"session_id": id, "permission": p}})
 	}
@@ -1723,6 +1727,7 @@ func (d *Daemon) observeHook(p hookd.Payload) {
 	d.mgr.ObserveHook(agents.HookSignal{
 		SessionID: p.SessionID, Event: p.HookEventName, AgentID: p.AgentID, AgentType: p.AgentType,
 		Tool: p.ToolName, Input: p.ToolInput, ToolUseID: p.ToolUseID, Suggestions: p.PermissionSuggestions,
+		PermissionMode: p.PermissionMode,
 	})
 }
 

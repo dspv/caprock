@@ -318,6 +318,52 @@ Everything on this socket used to be treated as keystrokes, so there was no way 
 
 A text frame that is not valid control JSON is still written through as input, so a dashboard that predates this against a newer daemon keeps typing rather than going mute.
 
+### Permission mode of a running session
+
+ADR-054. Code: `internal/agents/modeswitch.go`, `internal/daemon/permmode.go`,
+`internal/api/permmode.go`, `ui/src/components/PermissionModeChip.tsx`.
+
+```
+GET  /v1/sessions/{id}/permission-mode → {session_id, mode, source?, switchable, in_session?, restart?, waiting?}
+POST /v1/agents/{id}/permission-mode   {mode, restart?} → the same view, after the switch
+```
+
+- **`mode`** is Claude Code's word: `default`, `acceptEdits`, `plan`,
+  `bypassPermissions`, `auto`, `dontAsk` (`manual` is accepted on the POST as
+  `default`); `""` when nothing says. **`source`**: `screen` (the footer of
+  the session's terminal, read now), `hook` (the newest hook payload's
+  `permission_mode`), `switch` (a switch Caprock made and saw take), `launch`
+  (its command line).
+- **`switchable`** is true only for a Claude Code session this daemon started
+  and holds (rule 7). Any other session answers what its hooks last said,
+  read-only; Codex, OpenCode and the others answer `mode: ""`.
+- **`in_session`** are the modes Shift+Tab reaches in this process: default,
+  accept edits, plan, bypass when its command line has
+  `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`
+  or `--permission-mode bypassPermissions`, and auto (in the cycle only when
+  the account has it, which a switch finds out). **`restart`** are the rest:
+  bypass when the process cannot reach it, and `dontAsk`.
+- **`waiting`** is the message queue's reading of the session (ADR-053):
+  `permission` or `question` refuse every switch; `turn` refuses a restart,
+  and a Shift+Tab switch whose way passes through bypass.
+- **A switch** presses Shift+Tab (`ESC [ Z`) one at a time and reads the
+  footer after each (`⏸ manual mode on`, `⏵⏵ accept edits on`, …, at most 5
+  presses, 2 s each). Nothing is typed while a permission menu is on the
+  screen.
+- **A restart** stops the process (SIGTERM, kill after 5 s) and resumes the
+  same conversation under its own id (`--resume <id>`) with the new flag —
+  `--permission-mode manual` for default, so a `permissions.defaultMode`
+  setting does not decide instead — the model it was started with, and the
+  terminal's size. A restart into bypass needs the ADR-041 consent.
+- **Errors** are `{error, code, mode?}`: 400 for an unknown mode; 409
+  `not_owned`, `prompt`, `busy`, `bypass_consent`, `stuck` (the restart did
+  not complete); 422 `restart` (the mode is not in this process's cycle),
+  `unreachable` (the cycle came round without it), `stuck` (Shift+Tab
+  changed nothing), `unsupported` (not Claude Code). `mode` is where the
+  session was left. 501 when the daemon has no switcher.
+- **Devices.** GET is a read for every paired device; POST is a
+  controller's (ADR-034).
+
 ### Terminal socket, protocol v2
 
 Every output byte has an offset and every input frame a sequence number, so a reconnect resumes from the last byte the client has, without repainting, and a keystroke resent after a drop is typed once ([21-app.md § Terminal protocol v2](21-app.md#terminal-protocol-v2)). Code: `internal/api/termv2.go`, `internal/termbuf`, `ui/src/lib/termv2.ts`.
@@ -330,7 +376,7 @@ Every output byte has an offset and every input frame a sequence number, so a re
 - **Acks.** `{"ack":S}`, the last applied sequence, at most 100 ms after it was applied. The client resends everything above the newest ack (or hello `ack`) after every reconnect.
 - **Control from the client** (text): `{"resize":{"cols":N,"rows":N}}`; `{"ping":t}`, answered `{"pong":t}`. Any other text is ignored — v2 never types a text frame. A connection's **first** resize is applied as one row less, then 40 ms later the size asked for: two real size changes, so whatever runs gets SIGWINCH and redraws its whole screen. Without it a reattached terminal kept the ring's replay, and a TUI that redraws by difference (Claude Code) showed rows whose labels had scrolled out of the ring as bare numbers until something changed size. Later resizes are applied as sent.
 - **Liveness.** Each side sends `{"ping":t}` every 10 s and answers the other's with `{"pong":t}`; 25 s with nothing received closes the socket.
-- **End.** When the process exits: the last output, `{"exit":{"code":N}}`, then close **1000**. Close **1008**: the device lost the controller role, do not reconnect. Any other close is the connection, and the client reconnects by the policy `/v1/live` shares (§ Client reconnect policy, below).
+- **End.** When the process exits: the last output, `{"exit":{"code":N}}`, then close **1000**. When it exits to be resumed under the same id in another permission mode (`POST /v1/agents/{id}/permission-mode` with `restart`), the frame is `{"exit":{"code":N,"restart":1}}`: the client keeps the tab, forgets its offset (the new process has a new ring) and reconnects through the 1000 close, retrying while the daemon answers 501 until the new process is up. Close **1008**: the device lost the controller role, do not reconnect. Any other close is the connection, and the client reconnects by the policy `/v1/live` shares (§ Client reconnect policy, below).
 - **Client backpressure.** The dashboard closes the socket while more than 1 MiB it has received waits for xterm.js to parse, and reconnects with `since` once that drops to 256 KiB.
 
 ### Live socket, replay
@@ -535,7 +581,7 @@ Claude Code resumes the parent by itself when its background subagents finish.
 A `permission.prompt` as the newest event still reads `waiting-on-you`, and
 looping and ended outrank it. Without it the owner's cockpit said "Waiting on
 you" beside "1 subagent working" (2026-10-09). The project list's `waiting`
-count, the sidebar's inbox, ⌘J and the "finished" alert (`internal/alerts`,
+count, the sidebar's waiting rows, ⌘J and the "finished" alert (`internal/alerts`,
 held until the last subagent stops and a minute after) follow the same rule.
 
 `GET /v1/status` gained `platform` (`GOOS/GOARCH`) — the first thing a bug report needs and the last thing anyone remembers to include.
@@ -1113,6 +1159,16 @@ for it (ADR-041) on one path. The owner's prompt flood of 2026-10-07 under
 bypass was `permissions.blockReadsOutsideWorkingDirectories`, which asks in
 every mode, not the flag. The two are never combined. Every other mode is still
 `--permission-mode <mode>`.
+
+**`--allow-dangerously-skip-permissions` is added to a Claude Code start in
+any other mode, only where the bypass warning was already accepted**
+(ADR-054): `skipDangerousModePermissionPrompt` true in the settings the
+session reads — the subscription's own `settings.json` when it runs on one
+(ADR-048), else the user's. It puts bypass in that session's Shift+Tab cycle
+without starting in it. Without the consent the flag is left off, because it
+opens the session on the same one-time warning as
+`--dangerously-skip-permissions` (read in 2.1.296), and bypass is then
+reached by a restart, which asks for the consent first.
 
 **Claude Code sessions are started with `--add-dir` for Caprock's own
 directories** (`PasteDir`, `ChatsDir`; `agents.ownDirs`, created if absent
