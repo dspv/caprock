@@ -167,15 +167,17 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
   const working = subs?.working.length ?? 0
   // One row: the agent at the left, the headline figure at the right (owner,
   // 2026-10-12: "put it to the right of the agent, then the chart is wide").
-  // Too narrow for both, the figure wraps under the name. Under the name, the
+  // Too narrow for both (.cockpit-hero, a container query), the figure goes
+  // to the chips' row, at its right. Under the name, the
   // state and how many subagents work (owner, 2026-10-12: "move the text with
   // how many subagents are running higher"); their chips under the row.
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3.5 gap-y-2" data-state={state}>
-      <div className={`cockpit-avatar relative grid h-[58px] w-[58px] shrink-0 place-items-center rounded-[15px]`} data-state={state}>
+    <div className="@container min-w-0">
+    <div className="cockpit-hero" data-state={state} data-chips={strip.chips.length > 0 ? undefined : "none"}>
+      <div className={`cockpit-avatar relative grid h-[58px] w-[58px] shrink-0 place-items-center rounded-[15px] [grid-area:av]`} data-state={state}>
         <AgentCharacter who={characterFor(s.agent ?? 'claude')} size={46} className="cockpit-character" />
       </div>
-      <div className="grid min-w-0 flex-1 basis-[9.5rem] gap-1">
+      <div className="grid min-w-0 gap-1 [grid-area:info]">
         <p className="text-[12px] text-fg-muted">
           <span className="font-medium text-fg">{agentName(s.agent ?? 'claude')}</span>
           {s.model_display || s.model ? <span> · {s.model_display || s.model}</span> : null}
@@ -196,10 +198,13 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
           <p className="text-[11px] text-fg-faint">started {fmtAgo(s.started_at, now)}</p>
         )}
       </div>
-      {s.stats && <HeadlineFigure figures={figures} />}
-      {/* The chips take the hero's whole width, so three groups of four fit
-        * a row in a 324px inspector rather than one beside the figure. */}
-      {strip.chips.length > 0 && <div className="basis-full"><SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} /></div>}
+      {s.stats && <div data-hero-fig className="min-w-0 self-center justify-self-end [grid-area:fig]"><HeadlineFigure figures={figures} /></div>}
+      {/* Wide, the figure sits right of the agent and the chips take the
+        * row under both; narrow, the figure moves down to the chips' row,
+        * at its right, so it never hangs alone on a line of its own (owner,
+        * 2026-10-12, a $1,197.22 figure wrapped under a 324px inspector). */}
+      {strip.chips.length > 0 && <div className="min-w-0 self-center [grid-area:chips]"><SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} /></div>}
+    </div>
     </div>
   )
 }
