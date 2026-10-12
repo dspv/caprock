@@ -7,6 +7,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **app:** the cockpit's headline figure stays on the agent's row, at its
+  right, in a narrow inspector too: it shrinks there instead of dropping to
+  the subagent chips' row.
+
 ## [0.111.2] - 2026-10-12
 
 ### Fixed

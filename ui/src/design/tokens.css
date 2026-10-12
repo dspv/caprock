@@ -549,25 +549,22 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
  * State is carried by data-state on the avatar, its dot and the "now" card,
  * so one attribute moves the colour, the halo and the motion together. Motion
  * only while the agent works or waits; an idle or ended agent is still. */
-/* The cockpit's hero: the agent, its headline figure and its subagent chips.
- * Narrow (a 324px inspector), the figure shares the chips' row; from 420px,
- * it sits right of the agent and the chips take the row under both. */
+/* The cockpit's hero: the agent, its headline figure at the right of the same
+ * row (owner, 2026-10-12: "to the right of the main agent"), the subagent
+ * chips on the row under both. A narrow inspector shrinks the figure rather
+ * than moving it off the agent's row. */
 .cockpit-hero {
   display: grid;
   min-width: 0;
   grid-template-columns: 58px minmax(0, 1fr) auto;
-  grid-template-areas: "av info info" "chips chips fig";
+  grid-template-areas: "av info fig" "chips chips chips";
   column-gap: 0.875rem;
   row-gap: 0.5rem;
   align-items: center;
 }
-/* No chips: narrow, the figure lines up under the name rather than hanging
- * at the far right of an empty row. */
-.cockpit-hero[data-chips="none"] { grid-template-areas: "av info info" ". fig fig"; }
-.cockpit-hero[data-chips="none"] > [data-hero-fig] { justify-self: start; }
+.cockpit-hero-num { font-size: 22px; }
 @container (min-width: 420px) {
-  .cockpit-hero, .cockpit-hero[data-chips="none"] { grid-template-areas: "av info fig" "chips chips chips"; }
-  .cockpit-hero[data-chips="none"] > [data-hero-fig] { justify-self: end; }
+  .cockpit-hero-num { font-size: 30px; }
 }
 [data-app] .cockpit-avatar {
   --cockpit-tint: var(--color-fg-faint);

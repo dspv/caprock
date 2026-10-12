@@ -166,13 +166,13 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
   const working = subs?.working.length ?? 0
   // One row: the agent at the left, the headline figure at the right (owner,
   // 2026-10-12: "put it to the right of the agent, then the chart is wide").
-  // Too narrow for both (.cockpit-hero, a container query), the figure goes
-  // to the chips' row, at its right. Under the name, the
+  // A narrow inspector shrinks the figure (.cockpit-hero, a container query)
+  // rather than moving it off the agent's row. Under the name, the
   // state and how many subagents work (owner, 2026-10-12: "move the text with
   // how many subagents are running higher"); their chips under the row.
   return (
     <div className="@container min-w-0">
-    <div className="cockpit-hero" data-state={state} data-chips={strip.chips.length > 0 ? undefined : "none"}>
+    <div className="cockpit-hero" data-state={state}>
       <div className={`cockpit-avatar relative grid h-[58px] w-[58px] shrink-0 place-items-center rounded-[15px] [grid-area:av]`} data-state={state}>
         <AgentCharacter who={characterFor(s.agent ?? 'claude')} size={46} className="cockpit-character" />
       </div>
@@ -198,10 +198,7 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
         )}
       </div>
       {s.stats && <div data-hero-fig className="min-w-0 self-center justify-self-end [grid-area:fig]"><HeadlineFigure figures={figures} /></div>}
-      {/* Wide, the figure sits right of the agent and the chips take the
-        * row under both; narrow, the figure moves down to the chips' row,
-        * at its right, so it never hangs alone on a line of its own (owner,
-        * 2026-10-12, a $1,197.22 figure wrapped under a 324px inspector). */}
+      {/* The chips take the row under the agent and its figure. */}
       {strip.chips.length > 0 && <div className="min-w-0 self-center [grid-area:chips]"><SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} /></div>}
     </div>
     </div>
@@ -298,7 +295,7 @@ function HeadlineFigure({ figures }: { figures: SpendFigures }) {
   }
   return (
     <div ref={box} className="relative ml-auto grid min-w-0 justify-items-end gap-1" data-headline={headline}>
-      <span className="num max-w-full truncate text-[30px] font-semibold leading-none tracking-[-0.03em] text-fg"
+      <span className="cockpit-hero-num num max-w-full truncate font-semibold leading-none tracking-[-0.03em] text-fg"
         aria-label={`${meta.name} ${metricValue(headline, figures)}`} title={metricTitle(headline, figures)}>
         {num}{unit && <span className="text-[16px] font-medium text-fg-muted">{unit}</span>}
       </span>
