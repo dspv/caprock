@@ -194,7 +194,7 @@ BANNERS = """
     localStorage.setItem('caprock.update.dismissed', 'offer');
     const t = Date.now();
     localStorage.setItem('caprock-prompts', JSON.stringify({
-      'premium-banner': t, 'premium-hint': t, 'share-month': t,
+      'premium-banner': t, 'premium-hint': t, 'share-month': t, 'share-week': t,
     }));
   } catch (e) {}
 """
@@ -275,10 +275,14 @@ def shoot(ws, spec, theme):
         rpc(ws, "Page.navigate", {"url": f"{BASE}/#/{route}"})
         time.sleep(0.8)
         evaluate(ws, BANNERS)
-        evaluate(ws, "localStorage.setItem('caprock-theme','%s');"
+        # Dark Cold and Light Cold, the palettes caprock.dev shows (owner,
+        # 2026-10-12); the side alone would load Dark Warm or Book.
+        mode = "light-cold" if theme == "light" else "dark-cold"
+        evaluate(ws, "localStorage.setItem('caprock-theme-mode','%s');"
+                     "localStorage.setItem('caprock-theme','%s');"
                      "localStorage.setItem('caprock-glance-open','1');"
                      "localStorage.setItem('caprock-glance-view','charts');"
-                     "location.reload()" % theme)
+                     "location.reload()" % (mode, theme))
         # Wait for real content: no skeletons, no "reading", the needle there.
         needle = spec.get("needle") or ""
         for _ in range(240):

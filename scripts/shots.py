@@ -486,9 +486,9 @@ def main():
                 # boots. Clicking the header's theme button used to cycle light
                 # and dark; since 0.108.0 it opens a seven-palette menu, so the
                 # click opened the menu and the light pass never turned light.
-                # Dark Warm and Book are what each side shows on a fresh
-                # install (DEFAULT_DARK and DEFAULT_LIGHT in ui/src/lib/themes.ts).
-                mode = "book" if theme == "light" else "dark-warm"
+                # Dark Cold and Light Cold, the palettes caprock.dev shows
+                # (owner, 2026-10-12), so the docs and the site match.
+                mode = "light-cold" if theme == "light" else "dark-cold"
                 evaluate(ws, "try { localStorage.setItem('caprock-theme-mode', '%s');"
                              " localStorage.setItem('caprock-theme', '%s') } catch (e) {}" % (mode, theme))
                 # Navigating to the same document with a different hash does

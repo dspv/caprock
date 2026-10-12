@@ -9,7 +9,7 @@
 
 *The desktop app and a paired phone, with demo projects and a demo session.*
 
-[![release](https://img.shields.io/github/v/release/dspv/caprock?color=feb157)](https://github.com/dspv/caprock/releases)
+[![release](https://img.shields.io/github/v/release/dspv/caprock?color=6ea8fe)](https://github.com/dspv/caprock/releases)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/dspv/caprock/actions/workflows/ci.yml/badge.svg)](https://github.com/dspv/caprock/actions/workflows/ci.yml)
 ![platform](https://img.shields.io/badge/macOS%20·%20Linux%20·%20Windows-informational)
