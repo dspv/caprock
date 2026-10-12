@@ -7,6 +7,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **term:** one session open on the desktop and a phone no longer leaves
+  the desktop's agent drawn at the phone's width. The terminal in use sizes
+  the PTY (as tmux's `latest`): a phone that only opens the Terminal tab is
+  drawn at the desktop's size, typing on the phone gives the PTY the phone's
+  size, and focusing, clicking or typing in the desktop's terminal gives it
+  back, with a full repaint. A phone's chat never resizes it.
+
 ### Changed
 
 - **app:** the cockpit's Spend block shows numbers or a chart, your pick. Its

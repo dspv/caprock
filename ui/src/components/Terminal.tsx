@@ -339,6 +339,24 @@ export function TerminalView({
     const sizeSub = term.onResize(({ cols, rows }) => sendSize(cols, rows))
     client.start()
 
+    // One PTY, several terminals (the app, a browser, a phone): it is the size
+    // of the one in use (internal/api/termsize.go). Typing claims it on the
+    // daemon's side. On a desktop, so does looking: the window gaining focus,
+    // the page coming back into view, a click in the terminal. A touch device
+    // only watches until it types — picking a phone up is not taking the
+    // session over, and its 45 columns would squeeze the desktop's agent.
+    const claim = () => { if (document.visibilityState === 'visible') client.focus() }
+    const hostEl = host.current
+    const textarea = term.textarea
+    if (!light) {
+      window.addEventListener('focus', claim)
+      document.addEventListener('visibilitychange', claim)
+      hostEl.addEventListener('pointerdown', claim)
+      textarea?.addEventListener('focus', claim)
+      // Opening the terminal is looking at it.
+      claim()
+    }
+
     // Back from sleep, the network, the back/forward cache or a network
     // change: reconnect now rather than at the end of a backoff.
     const unwake = onNetworkWake(() => client.wake())
@@ -391,6 +409,10 @@ export function TerminalView({
       unwake()
       sendRef.current = () => {}
       attachRef.current = async () => {}
+      window.removeEventListener('focus', claim)
+      document.removeEventListener('visibilitychange', claim)
+      hostEl.removeEventListener('pointerdown', claim)
+      textarea?.removeEventListener('focus', claim)
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); out?.dispose(); client.dispose(); unbench(); links.dispose(); unfont(); themeWatch?.disconnect(); term.dispose()
     }
   }, [sessionId, owned, attempt, phone])

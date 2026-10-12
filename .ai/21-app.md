@@ -1177,9 +1177,22 @@ and the points below say where the build settled what this plan left open.
 - **Hidden tabs.** A tab not visible for 30 seconds closes its socket; showing
   it reconnects with `since`. Waiting and permission state come from
   `/v1/live`, never from the terminal socket, so a hidden tab still badges.
-- **Input ownership.** No locks. Any client allowed to type may type; the last
-  resize wins; a phone can never lock the desktop out (the failure seen in the
-  reference app's issue tracker).
+- **Input ownership.** No locks. Any client allowed to type may type; a phone
+  can never lock the desktop out (the failure seen in the reference app's
+  issue tracker).
+- **Size.** The terminal in use sizes the PTY, as tmux's `latest`
+  ([03-contracts.md § Terminal socket, protocol v2](03-contracts.md#terminal-socket-protocol-v2)).
+  Typing makes a terminal the one in use on the daemon's side; on a desktop
+  (`TerminalPane`, and `TerminalView` on a fine pointer) so does looking at it
+  — the window gaining focus or coming into view, the tab coming to the front,
+  a click in the pane — sent as `{"focus":true}`, debounced to one claim per
+  100 ms (`TermClient.focus`). A touch device claims only by typing: picking
+  a phone up is not taking the session over. Merely attaching never resizes:
+  a phone opening the Terminal tab is drawn at the desktop's size until it
+  types, and the desktop takes the PTY back, with a full repaint, the moment
+  it is focused, clicked or typed into. It used to be "the last resize wins",
+  and the desktop only sent a size when its own box changed (Vova,
+  2026-10-12).
 - **Modes on exit and restore.** When the child exits, or a snapshot repaints,
   the client resets mouse tracking, bracketed paste and the alternate screen
   before drawing, so a dead TUI's modes never leak into the next one.

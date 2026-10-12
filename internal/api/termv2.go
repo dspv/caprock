@@ -78,8 +78,12 @@ type termControl struct {
 		Cols int `json:"cols"`
 		Rows int `json:"rows"`
 	} `json:"resize"`
-	Ping *int64 `json:"ping"`
-	Pong *int64 `json:"pong"`
+	// Focus says the person is looking at this terminal (its window gained
+	// focus, its tab came to the front, a click in it): it becomes the one
+	// in use and the PTY takes its size (termsize.go).
+	Focus bool   `json:"focus"`
+	Ping  *int64 `json:"ping"`
+	Pong  *int64 `json:"pong"`
 }
 
 // outputFrame is a binary frame: the 8-byte big-endian offset of its first
@@ -128,7 +132,8 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 	defer func() { _ = c.CloseNow() }()
 	c.SetReadLimit(1 << 20)
 
-	t := &termConn{c: c, ctx: ctx}
+	t := &termConn{c: c, ctx: ctx, size: s.sizes.join(id, client)}
+	defer s.sizes.leave(t.size)
 	t.heard.Store(time.Now().UnixNano())
 	var ack uint64
 	if client != "" {
@@ -242,33 +247,14 @@ type termConn struct {
 	// one told to the client (main loop only).
 	acked   atomic.Uint64
 	sentAck uint64
-	// sized is set once the connection's first size has reached the PTY
-	// (read loop only).
-	sized bool
+	// size is this terminal among the session's others (termsize.go).
+	size *sizeConn
 }
 
 // repaintGap separates the two sizes of an attach's repaint, so a TUI that
 // reads its size on each SIGWINCH sees the change rather than one coalesced
 // signal and the size it already had.
 const repaintGap = 40 * time.Millisecond
-
-// resizeAttached gives the PTY a terminal's first size, and makes whatever is
-// running draw its whole screen again.
-//
-// A terminal that attaches to a running session is replayed the ring, which
-// holds only the last bytes written. A TUI that redraws by difference —
-// Claude Code — wrote its status rows' labels once and only their numbers
-// since, so a replay that starts after the labels shows a row of bare numbers
-// that never heals (owner, 2026-10-08, after an app restart). Resizing to the
-// size the PTY already has sends no SIGWINCH, so nothing redrew. One row less
-// and back is two real size changes, and a TUI repaints on each.
-func (s *Server) resizeAttached(id string, cols, rows int) {
-	if rows > 2 {
-		_ = s.d.Agents.Resize(id, cols, rows-1)
-		time.Sleep(repaintGap)
-	}
-	_ = s.d.Agents.Resize(id, cols, rows)
-}
 
 func (t *termConn) text(v any) error {
 	b, err := json.Marshal(v)
@@ -306,6 +292,9 @@ func (t *termConn) read(s *Server, id, client string, ts TermStream, devTok stri
 				continue
 			}
 			seq, input := uint64(binary.BigEndian.Uint32(data[:4])), data[4:]
+			// Typing is use: the PTY takes this terminal's size before the
+			// keys reach whatever runs in it.
+			s.sizes.claim(t.size)
 			if client == "" {
 				// Nothing to number against: typed as it comes, as in v1.
 				_ = s.d.Agents.Write(id, input)
@@ -331,12 +320,9 @@ func (t *termConn) read(s *Server, id, client string, ts TermStream, devTok stri
 				continue
 			}
 			if m.Resize != nil && m.Resize.Cols > 0 && m.Resize.Rows > 0 {
-				if !t.sized {
-					t.sized = true
-					s.resizeAttached(id, m.Resize.Cols, m.Resize.Rows)
-				} else {
-					_ = s.d.Agents.Resize(id, m.Resize.Cols, m.Resize.Rows)
-				}
+				s.sizes.size(t.size, m.Resize.Cols, m.Resize.Rows, m.Focus)
+			} else if m.Focus {
+				s.sizes.claim(t.size)
 			}
 			if m.Ping != nil {
 				_ = t.text(map[string]int64{"pong": *m.Ping})
