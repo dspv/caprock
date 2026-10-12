@@ -139,7 +139,14 @@ One window, three regions:
   one by hand, kept per viewer (`caprock-sidebar-folded`). The *Projects*
   heading says how many and how many have something running (*● 3 of 12*),
   and *Outside projects* can be hidden from its row like any project (it was
-  the one row with no way out; owner, 2026-10-11). Under an open one, exactly its tabs as
+  the one row with no way out; owner, 2026-10-11). Under an open one, **one
+  row** (owner, 2026-10-12: "there should be the project, but only ONE card
+  under it; hide the rest inside", translated): its tab in front, or the one
+  last in front; else what asks, what waits, the agent that worked last, the
+  most recent. The rest fold behind one quiet *+N more* line, which says in
+  amber what in it waits (*+4 more · 1 asks*), breaks itself down in its
+  tooltip (*2 working · 1 idle · 1 shell*), and opens in place, remembered
+  per project ([04-ui.md](04-ui.md) § Sidebar). Opened, its tabs as
   the strip shows them, same order, same names (`lib/tablabels.ts`; shells
   numbered *Shell 1*, *Shell 2*; a branch only when it is not the
   project's). No worktree or branch rows, and no session that is not in a
