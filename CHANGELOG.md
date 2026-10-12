@@ -13,6 +13,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   says *no subagents running*, so the agent's figures and the sections below
   no longer jump as subagents start and finish.
 
+## [0.112.1] - 2026-10-13
+
 ### Added
 
 - **app:** finished copies clean themselves up, asking first by default. A
