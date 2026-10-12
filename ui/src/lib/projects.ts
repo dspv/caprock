@@ -12,7 +12,7 @@
  */
 import { ApiError, deviceToken, type SessionSummary } from './api'
 import { branchLabel, uniqueSuffixes } from './sessionLabels'
-import type { CopiesView, CopyRemoved } from './copies'
+import { cleanupOf, type CleanupRestored, type CleanupView, type CopiesView, type CopyRemoved } from './copies'
 
 export interface Worktree {
   /** The worktree's name: git's name for it, or `main` for the primary checkout. */
@@ -439,6 +439,19 @@ export const projectsApi = {
       body: { copies, delete_merged_branches: deleteMergedBranches },
     })
     return Array.isArray(v?.results) ? v.results : []
+  },
+  /** GET /v1/projects/{id}/cleanup: the finished copies, the day's removals, the history. */
+  cleanup: async (id: string): Promise<CleanupView> =>
+    cleanupOf(await call<CleanupView>('Finished copies', `/v1/projects/${encodeURIComponent(id)}/cleanup`)),
+  /** POST /v1/projects/{id}/cleanup: removes exactly these finished copies, each judged again. */
+  cleanUp: async (id: string, paths: string[]): Promise<{ results: CopyRemoved[]; cleanup: CleanupView }> => {
+    const v = await call<{ results?: CopyRemoved[]; cleanup?: CleanupView }>('Cleaning up copies', `/v1/projects/${encodeURIComponent(id)}/cleanup`, { method: 'POST', body: { paths } })
+    return { results: Array.isArray(v?.results) ? v.results : [], cleanup: cleanupOf(v?.cleanup) }
+  },
+  /** POST /v1/projects/{id}/cleanup/restore: puts removed copies back (Undo, Restore). */
+  restoreCopies: async (id: string, ids: string[]): Promise<{ results: CleanupRestored[]; cleanup: CleanupView }> => {
+    const v = await call<{ results?: CleanupRestored[]; cleanup?: CleanupView }>('Restoring copies', `/v1/projects/${encodeURIComponent(id)}/cleanup/restore`, { method: 'POST', body: { ids } })
+    return { results: Array.isArray(v?.results) ? v.results : [], cleanup: cleanupOf(v?.cleanup) }
   },
   /** POST /v1/shells: a login shell under a pty-host, attached like a session. */
   startShell: async (req: ShellRequest): Promise<ApiShell> => {

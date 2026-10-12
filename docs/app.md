@@ -295,7 +295,20 @@ others. Installing it: [install-app.md](install-app.md).
   lists exactly that for each one. Removing deletes the copy's folder,
   ignored files such as `node_modules` included; its branch stays unless you
   tick *Also delete merged branches*, which deletes only a branch whose every
-  commit is already in the default branch.
+  commit is already in the default branch. *Recently removed* at the bottom
+  lists what went, when and how much it freed, with *Restore* for 7 days.
+  A copy with no commit for 14 days and no pull request is tagged *stale* —
+  a hint, never removed for it.
+- **Finished copies clean themselves up.** When a copy Caprock made is
+  merged (or its pull request is), pushed, has no uncommitted or untracked
+  file and nothing runs in it, the project's page and the deck's Branches
+  view say *3 copies done · 2.1 GB · Clean up*. *Clean up* asks once on the
+  same line and removes exactly those; *Review* opens the copies list with
+  them ticked. Settings → Worktrees chooses *Off*, *Ask* (the default) or
+  *Auto*, which removes a finished copy a day after it finished. Afterwards
+  the line offers *Undo* for a day, and the branch is kept for 7 days so a
+  copy can be restored. The main checkout, worktrees you made yourself and
+  unmerged branches are never touched.
 - **Terminal.** A real terminal for every session Caprock started and every
   shell, and it keeps running when the app or the daemon restarts. Scrolled
   up, new output never moves what you are reading; a "↓ N new lines" pill

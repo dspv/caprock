@@ -196,6 +196,11 @@ type Config struct {
 	// works) or "always" (while Caprock runs). Empty means never chosen,
 	// which is "working".
 	KeepAwake string `json:"keep_awake,omitempty"`
+	// WorktreeCleanup is what happens to finished copies — Caprock's
+	// worktrees that are merged, pushed, clean and idle: "off", "ask" or
+	// "auto"; empty is "ask" (projects/cleanup.go). Written only once
+	// chosen.
+	WorktreeCleanup string `json:"worktree_cleanup,omitempty"`
 }
 
 // GitHubNotifyOn reports whether CI and review notifications are on.

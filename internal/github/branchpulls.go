@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -103,5 +104,36 @@ func (s *Service) PullsByBranch(ctx context.Context, repo Repo) (map[string]Bran
 	bound(s.branchPulls.m, key, func(v branchPullsEntry) time.Time { return v.at })
 	s.branchPulls.m[key] = branchPullsEntry{m: m, at: now}
 	s.branchPulls.mu.Unlock()
+	if s.OnMerged != nil {
+		if merged := newlyMerged(e.m, m); len(merged) > 0 {
+			s.OnMerged(repo, merged)
+		}
+	}
 	return m, nil
+}
+
+// newlyMerged lists the branches merged in now and not in before, sorted.
+func newlyMerged(before, now map[string]BranchPR) []string {
+	var out []string
+	for b, p := range now {
+		if p.State == "merged" && before[b].State != "merged" {
+			out = append(out, b)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// CachedBranchPR is the pull request of a branch from the last list read
+// for the Branches view, however old; nothing is sent. ok is false when no
+// list was read or the branch has none in it.
+func (s *Service) CachedBranchPR(repo Repo, branch string) (BranchPR, bool) {
+	s.branchPulls.mu.Lock()
+	defer s.branchPulls.mu.Unlock()
+	e, have := s.branchPulls.m[repo.FullName()]
+	if !have {
+		return BranchPR{}, false
+	}
+	p, ok := e.m[branch]
+	return p, ok
 }

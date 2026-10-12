@@ -1,12 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CopiesSheet } from './CopiesSheet'
-import { blockedReason, isSafePick, lossOf, shortPath, sizeText, type CopiesView, type ProjectCopy } from '@/lib/copies'
+import { blockedReason, cleanupOf, isSafePick, lossOf, shortPath, sizeText, type CleanupRecord, type CopiesView, type ProjectCopy } from '@/lib/copies'
 
-const m = vi.hoisted(() => ({ copies: vi.fn(), remove: vi.fn() }))
+const m = vi.hoisted(() => ({ copies: vi.fn(), remove: vi.fn(), cleanup: vi.fn(), restore: vi.fn() }))
 vi.mock('@/lib/projects', async (orig) => {
   const actual = await orig<typeof import('@/lib/projects')>()
-  return { ...actual, projectsApi: { ...actual.projectsApi, copies: m.copies, removeCopies: m.remove } }
+  return { ...actual, projectsApi: { ...actual.projectsApi, copies: m.copies, removeCopies: m.remove, cleanup: m.cleanup, restoreCopies: m.restore } }
 })
 
 const base: ProjectCopy = { path: '', caprock: true, merged: false, unpushed: 0, dirty: false, changed: 0, live: [], size: 1000 }
@@ -22,6 +22,8 @@ const view = (copies: ProjectCopy[], extra: Partial<CopiesView> = {}): CopiesVie
 beforeEach(() => {
   m.copies.mockReset().mockResolvedValue(view([main, clean, dirty, live, hand, measuring], { pending: true }))
   m.remove.mockReset()
+  m.cleanup.mockReset().mockResolvedValue(cleanupOf({}))
+  m.restore.mockReset()
 })
 
 describe('copies helpers', () => {
@@ -104,5 +106,38 @@ describe('copies sheet', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Select merged and clean (1)' }))
     expect((screen.getByLabelText(/^done/) as HTMLInputElement).checked).toBe(true)
     expect((screen.getByLabelText(/^wip/) as HTMLInputElement).checked).toBe(false)
+  })
+})
+
+describe('copies sheet: cleanup', () => {
+  const rec = (over: Partial<CleanupRecord>): CleanupRecord => ({ id: 'r1', project_id: 7, path: '/r/.caprock-worktrees/old', branch: 'old', bytes: 1_500_000, at: Date.now() - 3_600_000, how: 'auto', restorable: true, ...over })
+
+  it('ticks the copies Review passed in', async () => {
+    render(<CopiesSheet projectId="7" name="api" onClose={() => {}} preselect={[clean.path, live.path]} />)
+    await waitFor(() => expect((screen.getByLabelText(/^done/) as HTMLInputElement).checked).toBe(true))
+    // A busy one is not ticked, even when asked.
+    expect((screen.getByLabelText(/^busy/) as HTMLInputElement).checked).toBe(false)
+    expect(screen.getByRole('button', { name: /^Remove 1/ })).toBeTruthy()
+  })
+
+  it('tags a stale copy', async () => {
+    m.copies.mockResolvedValue(view([main, { ...clean, stale: true }]))
+    render(<CopiesSheet projectId="7" name="api" onClose={() => {}} />)
+    expect(await screen.findByText('stale')).toBeTruthy()
+  })
+
+  it('lists recently removed copies and restores one', async () => {
+    m.cleanup.mockResolvedValue(cleanupOf({ history: [rec({}), rec({ id: 'r2', branch: 'gone', restorable: false, how: 'manual' }), rec({ id: 'r3', branch: 'back', restored_at: Date.now() })] }))
+    m.restore.mockResolvedValue({ results: [{ id: 'r1', restored: true }], cleanup: cleanupOf({}) })
+    const changed = vi.fn()
+    render(<CopiesSheet projectId="7" name="api" onClose={() => {}} onChanged={changed} />)
+    const box = await screen.findByRole('region', { name: 'Recently removed' })
+    expect(within(box).getByText('old')).toBeTruthy()
+    expect(within(box).getAllByText('1.5MB freed')).toHaveLength(3)
+    expect(within(box).getByText('restored')).toBeTruthy()
+    expect(within(box).getAllByRole('button', { name: 'Restore' })).toHaveLength(1)
+    fireEvent.click(within(box).getByRole('button', { name: 'Restore' }))
+    await waitFor(() => expect(m.restore).toHaveBeenCalledWith('7', ['r1']))
+    await waitFor(() => expect(changed).toHaveBeenCalled())
   })
 })

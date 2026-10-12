@@ -64,8 +64,12 @@ type Copy struct {
 	Size *int64 `json:"size"`
 	// SizeCapped: the walk stopped at its file or time limit, so Size is a
 	// floor.
-	SizeCapped bool   `json:"size_capped,omitempty"`
-	Error      string `json:"error,omitempty"`
+	SizeCapped bool `json:"size_capped,omitempty"`
+	// Stale: a copy Caprock made with no commit for 14 days and no pull
+	// request known for its branch. Suggested, never removed for it
+	// (cleanup.go).
+	Stale bool   `json:"stale,omitempty"`
+	Error string `json:"error,omitempty"`
 }
 
 // CopiesView is a project's copies and their total size.
@@ -301,6 +305,11 @@ func (s *Service) Copies(ctx context.Context, id int64, busy BusyFunc) (CopiesVi
 	if err != nil {
 		return CopiesView{}, err
 	}
+	return s.copiesOf(ctx, id, r, busy)
+}
+
+// copiesOf is Copies for a repository already read.
+func (s *Service) copiesOf(ctx context.Context, id int64, r copiesRepo, busy BusyFunc) (CopiesView, error) {
 	entries, err := s.listPorcelain(ctx, r)
 	if err != nil {
 		return CopiesView{}, err
@@ -330,6 +339,7 @@ func (s *Service) Copies(ctx context.Context, id int64, busy BusyFunc) (CopiesVi
 		if c.Main || c.Missing {
 			continue
 		}
+		c.Stale = s.isStale(id, *c)
 		size, capped, known := s.sizes().get(s, c.Path)
 		if !known {
 			v.Pending = true
@@ -380,9 +390,13 @@ func (s *Service) RemoveCopies(ctx context.Context, id int64, asks []CopyRemoval
 	out := make([]CopyRemoved, 0, len(asks))
 	for _, a := range asks {
 		res := CopyRemoved{Path: a.Path}
-		if err := s.removeCopy(ctx, r, a, deleteMerged, busy, &res); err != nil {
+		gone, err := s.removeCopy(ctx, r, a, deleteMerged, busy, &res)
+		if err != nil {
 			res.Error = err.Error()
 			res.Confirm = errors.Is(err, ErrCopyNeedsConfirm)
+		}
+		if res.Removed {
+			s.recordRemoval(id, gone, cleanupManual, res.BranchDeleted != "")
 		}
 		out = append(out, res)
 	}
@@ -390,15 +404,22 @@ func (s *Service) RemoveCopies(ctx context.Context, id int64, asks []CopyRemoval
 	return out, nil
 }
 
-func (s *Service) removeCopy(ctx context.Context, r copiesRepo, a CopyRemoval, deleteMerged bool, busy BusyFunc, res *CopyRemoved) error {
+// removedCopy is what a removal took away, for the cleanup history.
+type removedCopy struct {
+	copy  Copy
+	bytes int64
+}
+
+func (s *Service) removeCopy(ctx context.Context, r copiesRepo, a CopyRemoval, deleteMerged bool, busy BusyFunc, res *CopyRemoved) (removedCopy, error) {
+	var gone removedCopy
 	path := filepath.FromSlash(strings.TrimSpace(a.Path))
 	if path == "" || !filepath.IsAbs(path) {
-		return fmt.Errorf("%q is not a worktree path", a.Path)
+		return gone, fmt.Errorf("%q is not a worktree path", a.Path)
 	}
 	path = filepath.Clean(path)
 	entries, err := s.listPorcelain(ctx, r)
 	if err != nil {
-		return err
+		return gone, err
 	}
 	idx := -1
 	for i, e := range entries {
@@ -409,24 +430,24 @@ func (s *Service) removeCopy(ctx context.Context, r copiesRepo, a CopyRemoval, d
 	}
 	switch {
 	case idx < 0:
-		return errors.New("not a worktree of this project")
+		return gone, errors.New("not a worktree of this project")
 	case idx == 0 || sameFolder(entries[idx].Path, r.root):
-		return errors.New("the main checkout is never removed")
+		return gone, errors.New("the main checkout is never removed")
 	}
 	c := s.inspect(ctx, r, entries[idx], false)
 	switch {
 	case !c.Caprock:
-		return errors.New("made outside Caprock, so Caprock leaves it to you (git worktree remove)")
+		return gone, errors.New("made outside Caprock, so Caprock leaves it to you (git worktree remove)")
 	case c.Locked:
-		return errors.New("the copy is locked (git worktree unlock first)")
+		return gone, errors.New("the copy is locked (git worktree unlock first)")
 	}
 	if busy != nil && !c.Missing {
 		if live := busy(c.Path, nil); len(live) > 0 {
-			return fmt.Errorf("%s running in it; stop it first", strings.Join(live, ", "))
+			return gone, fmt.Errorf("%s running in it; stop it first", strings.Join(live, ", "))
 		}
 	}
 	if loss := lossOf(c, r.hasRemote); loss != "" && !a.Force {
-		return fmt.Errorf("%w: %s", ErrCopyNeedsConfirm, loss)
+		return gone, fmt.Errorf("%w: %s", ErrCopyNeedsConfirm, loss)
 	}
 	if s.watch != nil && c.Name != "" {
 		// Windows will not remove a directory something holds open.
@@ -437,20 +458,22 @@ func (s *Service) removeCopy(ctx context.Context, r copiesRepo, a CopyRemoval, d
 		args = append(args, "--force")
 	}
 	if _, err := runGit(ctx, time.Minute, r.root, append(args, c.Path)...); err != nil {
-		return err
+		return gone, err
 	}
 	res.Removed = true
+	gone.copy = c
+	gone.bytes, _, _ = s.sizes().peek(c.Path)
 	s.sizes().forget(c.Path)
 	if deleteMerged && c.Branch != "" && c.Branch != r.defaultBranch &&
 		s.mergedInto(ctx, r.root, "refs/heads/"+c.Branch, r.defaultRefs) {
 		// -D: git's own -d judges against the main checkout's HEAD, which
 		// need not be the default branch; merged was checked just above.
 		if _, err := runGit(ctx, s.GitTimeout, r.root, "branch", "-D", c.Branch); err != nil {
-			return fmt.Errorf("the copy is removed; its branch %s is kept: %w", c.Branch, err)
+			return gone, fmt.Errorf("the copy is removed; its branch %s is kept: %w", c.Branch, err)
 		}
 		res.BranchDeleted = c.Branch
 	}
-	return nil
+	return gone, nil
 }
 
 // lossOf says what removing c would lose, "" when nothing. Commits on a
@@ -523,6 +546,14 @@ func (z *sizeCache) get(s *Service, path string) (int64, bool, bool) {
 			go z.work(s)
 		}
 	}
+	return e.bytes, e.capped, ok
+}
+
+// peek is a known size, without measuring.
+func (z *sizeCache) peek(path string) (int64, bool, bool) {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	e, ok := z.m[cleanKey(path)]
 	return e.bytes, e.capped, ok
 }
 

@@ -36,6 +36,7 @@ const BY_TITLE: [RegExp, string][] = [
   [/telegram/i, 'send'],
   [/terminal/i, 'terminal'],
   [/editor/i, 'code'],
+  [/worktree/i, 'branch'],
   [/folder|projects/i, 'folder'],
   [/subscription/i, 'key'],
   [/custom agents/i, 'bot'],
