@@ -297,7 +297,7 @@ describe('closing in the sidebar', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Hide from the list' }))
     expect(document.querySelector('[data-live-row="a2"]')).toBeNull()
     fireEvent.contextMenu(document.querySelector('[data-live-row="x1"]')!)
-    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open its details', 'Hide from the list'])
+    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open in a tab, read-only', 'Hide from the list'])
   })
 
   it("closes a tab and hides its agent from the tab's menu, so it does not come back as a muted row", () => {

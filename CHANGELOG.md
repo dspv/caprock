@@ -7,6 +7,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** a session started in another terminal opens in its own tab. A
+  click on its sidebar row (or in ⌘K, the Inbox, a project's *Recent*) used
+  to switch to the Dashboard tab on the session's page; it now opens a tab
+  named after the session, with the agent's mark, showing its conversation
+  live and read-only with the inspector beside it. Where the terminal would
+  be, it says *Started in another terminal — Caprock watches it, it can't
+  type into it*, with **Continue here** (a new process on a copy of the
+  conversation, in a new tab; the original is never touched) and **Open in
+  dashboard**. An ended session opens the same way, and Continue here
+  carries it on in the same tab. The tab's ⋯ menu hides the session from the
+  sidebar or closes the tab; a hidden session comes back only when it next
+  needs you.
+
 ## [0.112.0] - 2026-10-13
 
 ### Added

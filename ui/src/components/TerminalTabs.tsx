@@ -11,7 +11,7 @@
  */
 import { Fragment, memo, useCallback, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { SessionSummary } from '@/lib/api'
-import { type PaneLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
+import { ownTab, type PaneLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane'
@@ -287,6 +287,7 @@ export const TerminalStack = memo(function TerminalStack({
   onClosePane,
   onResize,
   renderFile,
+  renderObserve,
   chats,
   onChatClose,
   onChatRestart,
@@ -297,6 +298,8 @@ export const TerminalStack = memo(function TerminalStack({
   visibleTabId?: string
   /** What a file tab shows (components/FileView.tsx); stable, as the stack is memoised. */
   renderFile?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
+  /** What a watched session's tab shows (components/ObservePane.tsx): its conversation, read-only, no terminal. */
+  renderObserve?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
   /** The session's program exited; the workspace replaces it with a shell. */
   onPaneExit?: (sessionId: string) => void
@@ -335,8 +338,9 @@ export const TerminalStack = memo(function TerminalStack({
     // on the page's, in the app's theme.
     <div className="relative h-full w-full">
       {tabs.map((t) => (
-        <div key={t.id} className={`absolute inset-0 ${t.root.type === 'pane' && t.root.target.kind === 'file' ? 'bg-bg' : 'app-slab'}`} hidden={t.id !== visibleTabId} data-tab-panel={t.id}>
-          {t.root.type === 'pane' && t.root.target.kind === 'file' ? renderFile?.(t, t.root, t.id === visibleTabId) : <PaneView
+        <div key={t.id} className={`absolute inset-0 ${t.root.type === 'pane' && ownTab(t.root.target) ? 'bg-bg' : 'app-slab'}`} hidden={t.id !== visibleTabId} data-tab-panel={t.id}>
+          {t.root.type === 'pane' && t.root.target.kind === 'file' ? renderFile?.(t, t.root, t.id === visibleTabId)
+            : t.root.type === 'pane' && t.root.target.kind === 'observe' ? renderObserve?.(t, t.root, t.id === visibleTabId) : <PaneView
             node={t.root}
             visible={t.id === visibleTabId}
             ctx={{

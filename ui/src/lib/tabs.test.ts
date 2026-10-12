@@ -293,3 +293,22 @@ describe('file tabs', () => {
     expect(parseWorkspace(JSON.stringify(broken)).tabs).toHaveLength(0)
   })
 })
+
+describe('watched session tabs', () => {
+  const watch = (sessionId: string): WorkspaceAction => ({ type: 'open', target: { kind: 'observe', sessionId }, projectId: 'p1', title: sessionId })
+
+  it('opens once, never split, and kept across a relaunch', () => {
+    let ws = run(watch('theirs'), open('a'), watch('theirs'))
+    expect(ws.tabs).toHaveLength(2)
+    expect(focusedLeaf(activeTab(ws)!).target).toEqual({ kind: 'observe', sessionId: 'theirs' })
+    ws = workspaceReducer(ws, { type: 'split', target: { kind: 'shell', sessionId: 'sh' }, direction: 'row', projectId: 'p1', title: 'shell' })
+    expect(ws.tabs).toHaveLength(3)
+    expect(ws.tabs.every((t) => t.root.type === 'pane')).toBe(true)
+    expect(parseWorkspace(JSON.stringify(ws))).toEqual(ws)
+  })
+
+  it('becomes a session tab in the same place when it is continued under its own id', () => {
+    const ws = run(watch('old'), open('a'), { type: 'replace-session', sessionId: 'old', target: { kind: 'session', sessionId: 'old' }, title: 'old' })
+    expect(ws.tabs.map((t) => focusedLeaf(t).target)).toEqual([{ kind: 'session', sessionId: 'old' }, { kind: 'session', sessionId: 'a' }])
+  })
+})

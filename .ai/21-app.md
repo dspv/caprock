@@ -168,7 +168,28 @@ One window, three regions:
   screens in a Dashboard tab pinned at the left of the tab strip (2026-10-09:
   it replaced the whole workspace, and the first tester read that as every
   terminal closing, translated); in it, Now leaves out the session cards and
-  the projects panel the sidebar already shows. *Quick chat* (⌥⌘N) under
+  the projects panel the sidebar already shows. A session Caprock
+  cannot type into — started in another terminal, ended, or detached by a
+  restart — opens in **an app tab of its own**, never the Dashboard tab
+  (owner, 2026-10-13: "why when I click one of these on the left am I taken
+  to something like the web version of the dashboard instead of into the
+  session?", translated). The tab (target kind `observe`, `lib/tabs.ts`;
+  never split) is named after the session with its agent's mark and shows
+  `components/ObservePane.tsx`: a header (dot, mark, title, *in another
+  terminal* or *ended*, ⋯ with *Hide from the list*, *Open in dashboard*,
+  *Close tab*), the session's conversation live and read-only (the session
+  page's `ChatView`), the inspector beside it as for an owned session, and,
+  where the terminal would be, *Started in another terminal — Caprock
+  watches it, it can't type into it* with **Continue here** and *Open in
+  dashboard*. Continue here is `--resume` in a new process Caprock starts:
+  a copy under a new id (`fork`) in a new tab while the original still
+  runs, the same conversation in the same tab once it ended or was detached
+  (the tab turns into a session tab when the daemon holds its terminal).
+  Nothing is sent to the other process (rule 7). Only the tab in front reads
+  the conversation. *Hide from the list* closes the tab and hides the row
+  (`hideSessionRow`, the same `caprock.app.hidden-sessions` list as the
+  row's ×), and the row stays hidden until it next needs you
+  (`rowHidden`). *Quick chat* (⌥⌘N) under
   *Add project* starts a session with no folder to pick, in a tab (the
   tester could not find how to, translated).
 - **Quick chat: vendor and model** (owner, 2026-10-09: "three buttons to
