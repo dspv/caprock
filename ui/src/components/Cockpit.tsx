@@ -20,7 +20,8 @@ import { fmtAgo, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
-import { PlanChip, usePlan } from './PlanPicker'
+import { PlanChip } from './PlanPicker'
+import { useSessionPlan, windowsOf, type SessionPlan } from './AccountPlan'
 import { WINDOW_MS, pace } from '@/lib/pace'
 import { SpendChart, SpendOverTime } from './SpendScrub'
 import { callsFromEvents } from '@/lib/scrub'
@@ -124,7 +125,10 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const subs = useSubagents(sessionId, state !== 'ended' && (s.agent ?? 'claude') === 'claude', allFinished ? FINISHED_OPEN : 0)
   const openFromChip = (id: string) => { setOpenSub(id); setReveal((n) => n + 1) }
   const running = state === 'working' || state === 'looping' ? runningTool(runs, now) : undefined
-  const plan = planWindowsFor(s.agent, summary)
+  // A session on one of the user's subscriptions shows that account's
+  // windows and plan; the day's summary carries the own sign-in's.
+  const acct = useSessionPlan(s.agent, s.subscription)
+  const plan = s.subscription ? windowsOf(acct.account) : planWindowsFor(s.agent, summary)
   const calls = useMemo(() => callsFromEvents(main), [main])
   const figures = spendFigures(s, calls)
   // The order is what the people using it look at (owner, 2026-10-12): the
@@ -142,7 +146,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
       )}
       <TodoBlock sessionId={sessionId} />
       <ContextMeter s={s} />
-      {plan && <PlanWindows limits={plan} agent={s.agent} now={now} />}
+      {plan && <PlanWindows limits={plan} agent={s.agent} now={now} acct={acct} />}
       <Spend s={s} sessionId={sessionId} events={main} now={now} figures={figures} summary={summary} />
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
       {changes}
@@ -180,7 +184,7 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
         <p className="text-[12px] text-fg-muted">
           <span className="font-medium text-fg">{agentName(s.agent ?? 'claude')}</span>
           {s.model_display || s.model ? <span> · {s.model_display || s.model}</span> : null}
-          <SubscriptionTag id={s.subscription} />
+          <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} />
         </p>
         <p className={`flex items-center gap-1.5 text-[12px] font-medium ${STATE_TEXT[state]}`} role="status">
           <span className={`cockpit-dot inline-block h-[7px] w-[7px] rounded-full`} data-state={state} />
@@ -775,14 +779,14 @@ function LoopWarning({ s, now }: { s: SessionSummary; now: number }) {
   )
 }
 
-function PlanWindows({ limits, agent, now }: { limits: NonNullable<Summary['rate_limits']>; agent?: string; now: number }) {
-  const source = agent === 'codex' ? 'Codex' : 'Claude Code'
-  const [plan, savePlan] = usePlan()
+function PlanWindows({ limits, agent, now, acct }: { limits: NonNullable<Summary['rate_limits']>; agent?: string; now: number; acct: SessionPlan }) {
+  const source = acct.account && !acct.account.default ? `${agent === 'codex' ? 'Codex' : 'Claude Code'} (${acct.account.label})` : agent === 'codex' ? 'Codex' : 'Claude Code'
+  const { plan, save: savePlan } = acct
   return (
     <section aria-label="Plan limits" className="grid gap-2.5">
       {/* Which plan these are — and a click to correct it (owner, 2026-10-11:
         * "and you can confirm the plan there: is it really this one?"). */}
-      <SectionLabel right={agent === 'codex' ? <span className="text-fg-faint">all Codex sessions</span> : <PlanChip plan={plan} onSave={savePlan} />}>Plan</SectionLabel>
+      <SectionLabel right={agent === 'codex' ? <span className="text-fg-faint">{acct.account && !acct.account.default ? acct.account.label : 'all Codex sessions'}</span> : <PlanChip plan={plan} onSave={savePlan} account={acct.account} />}>Plan</SectionLabel>
       {limits.five_hour && <WindowBar label="5 hours" w={limits.five_hour} lenMs={WINDOW_MS.five_hour} now={now} source={source} forecasts={agent !== 'codex'} />}
       {limits.seven_day && <WindowBar label="Week" w={limits.seven_day} lenMs={WINDOW_MS.seven_day} now={now} source={source} forecasts={agent !== 'codex'} />}
     </section>

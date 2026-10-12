@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -117,20 +118,26 @@ func (d *Daemon) startSubscriptions() {
 // resolveSubscription turns a spawn request's subscription into the
 // directory the session runs with. A continued session runs on the one it
 // ran on, whatever the request said: its conversation is in that
-// directory and nowhere else.
+// directory and nowhere else. A request that names none gets the one made
+// the default in Settings → Subscriptions; "default" is the user's own
+// sign-in, whichever is the default.
 func (d *Daemon) resolveSubscription(sr *agents.SpawnRequest, prev *store.Session) error {
-	if prev != nil {
-		sr.Subscription = prev.Subscription
-	}
-	id := sr.Subscription
-	if id == "" || id == subs.DefaultID {
-		sr.Subscription, sr.ConfigDir = "", ""
-		return nil
-	}
 	agent := sr.Agent
 	if agent == "" {
 		agent = agents.AgentClaude
 	}
+	id := sr.Subscription
+	switch {
+	case prev != nil:
+		id = prev.Subscription
+	case id == "" && subs.Supported(agent):
+		id = d.config().DefaultSubscriptionFor(agent)
+	}
+	if id == "" || id == subs.DefaultID {
+		sr.Subscription, sr.ConfigDir = "", ""
+		return nil
+	}
+	sr.Subscription = id
 	sub, ok := subs.Find(d.config().Subscriptions, id)
 	if !ok {
 		if prev != nil {
@@ -190,13 +197,17 @@ func (a *subsAdapter) List(ctx context.Context) (api.SubscriptionsResponse, erro
 	for _, agent := range []string{subs.AgentClaude, subs.AgentCodex} {
 		g := api.SubscriptionAgent{Agent: agent, Label: agentName(agent), Installed: d.mgr != nil && d.mgr.AgentAvailable(agent), Subscriptions: []api.Subscription{}}
 		dp := subs.DefaultPaths(agent, home, getenv)
-		def := a.view(ctx, config.Subscription{ID: "", Label: "Default", Agent: agent}, dp, spend, running)
+		preferred := cfg.DefaultSubscriptionFor(agent)
+		def := a.view(ctx, config.Subscription{ID: "", Label: cfg.OwnLabel(agent), Agent: agent}, dp, spend, running)
+		def.Preferred = preferred == ""
 		g.Subscriptions = append(g.Subscriptions, def)
 		for _, s := range cfg.Subscriptions {
 			if s.Agent != agent {
 				continue
 			}
-			g.Subscriptions = append(g.Subscriptions, a.view(ctx, s, subs.ProfilePaths(agent, subs.Dir(d.opt.DataDir, s.ID)), spend, running))
+			v := a.view(ctx, s, subs.ProfilePaths(agent, subs.Dir(d.opt.DataDir, s.ID)), spend, running)
+			v.Preferred = preferred == s.ID
+			g.Subscriptions = append(g.Subscriptions, v)
 		}
 		out.Agents = append(out.Agents, g)
 	}
@@ -229,6 +240,9 @@ func (a *subsAdapter) view(ctx context.Context, sub config.Subscription, p subs.
 		v.Sessions7d, v.Cost7dUSD = s.Sessions, s.CostUSD
 	}
 	v.Running = running[sub.Agent+"|"+sub.ID]
+	if sub.Plan != nil {
+		v.Plan = &api.SubscriptionPlan{Kind: sub.Plan.Kind, Label: sub.Plan.Label, USDPerMonth: sub.Plan.USDPerMonth}
+	}
 	return v
 }
 
@@ -309,9 +323,9 @@ func (a *subsAdapter) Add(ctx context.Context, agent, label string) (api.Subscri
 			return api.Subscription{}, fmt.Errorf("there is already a %s subscription called %s", agentName(agent), s.Label)
 		}
 	}
-	if strings.EqualFold(label, "Default") {
+	if strings.EqualFold(label, "Default") || strings.EqualFold(label, cfg.OwnLabel(agent)) {
 		d.cfgMu.Unlock()
-		return api.Subscription{}, errors.New("pick a name other than Default, which is your own sign-in")
+		return api.Subscription{}, fmt.Errorf("pick a name other than %s", label)
 	}
 	next := slices.Clone(cfg.Subscriptions)
 	next = append(next, sub)
@@ -329,31 +343,113 @@ func (a *subsAdapter) Add(ctx context.Context, agent, label string) (api.Subscri
 	return a.view(ctx, sub, subs.ProfilePaths(agent, subs.Dir(d.opt.DataDir, id)), nil, nil), nil
 }
 
-func (a *subsAdapter) Rename(ctx context.Context, id, label string) (api.Subscription, error) {
+// Update renames a subscription, makes it the one new sessions of its agent
+// start on, or sets its plan. id "default" is the user's own sign-in to
+// p.Agent: it can be renamed and made the default again; its plan is the
+// main one in /v1/settings. Nothing here touches a directory, a credential
+// or a running session: the default is which directory Caprock gives the
+// sessions it starts next.
+func (a *subsAdapter) Update(ctx context.Context, id string, p api.SubscriptionPatch) (api.Subscription, error) {
 	d := a.d
-	label, err := subs.CleanLabel(label)
-	if err != nil {
-		return api.Subscription{}, err
+	var label string
+	if p.Label != nil {
+		l, err := subs.CleanLabel(*p.Label)
+		if err != nil {
+			return api.Subscription{}, err
+		}
+		if strings.EqualFold(l, "Default") {
+			return api.Subscription{}, errors.New("pick a name other than Default: it is what the one new sessions start on is marked")
+		}
+		label = l
 	}
-	if strings.EqualFold(label, "Default") {
-		return api.Subscription{}, errors.New("pick a name other than Default, which is your own sign-in")
+	own := id == subs.DefaultID
+	if own && !subs.Supported(p.Agent) {
+		return api.Subscription{}, errors.New(`say whose own sign-in: "agent" is "claude" or "codex"`)
+	}
+	if own && p.SetPlan {
+		return api.Subscription{}, errors.New("your own sign-in's plan is the main plan: set it in Settings → Plan & licence")
 	}
 	d.cfgMu.Lock()
-	i := slices.IndexFunc(d.opt.Config.Subscriptions, func(s config.Subscription) bool { return s.ID == id })
-	if i < 0 {
-		d.cfgMu.Unlock()
-		return api.Subscription{}, api.ErrSubscriptionNotFound
-	}
-	next := slices.Clone(d.opt.Config.Subscriptions)
-	next[i].Label = label
-	d.opt.Config.Subscriptions = next
 	cfg := d.opt.Config
-	sub := next[i]
+	agent := p.Agent
+	i := -1
+	if !own {
+		i = slices.IndexFunc(cfg.Subscriptions, func(s config.Subscription) bool { return s.ID == id })
+		if i < 0 {
+			d.cfgMu.Unlock()
+			return api.Subscription{}, api.ErrSubscriptionNotFound
+		}
+		agent = cfg.Subscriptions[i].Agent
+	}
+	if label != "" {
+		for _, s := range cfg.Subscriptions {
+			if s.Agent == agent && s.ID != id && strings.EqualFold(s.Label, label) {
+				d.cfgMu.Unlock()
+				return api.Subscription{}, fmt.Errorf("there is already a %s subscription called %s", agentName(agent), s.Label)
+			}
+		}
+		if !own && strings.EqualFold(cfg.OwnLabel(agent), label) {
+			d.cfgMu.Unlock()
+			return api.Subscription{}, fmt.Errorf("your own %s sign-in is already called %s", agentName(agent), cfg.OwnLabel(agent))
+		}
+	}
+	next := slices.Clone(cfg.Subscriptions)
+	if i >= 0 {
+		if label != "" {
+			next[i].Label = label
+		}
+		if p.SetPlan {
+			if p.Plan == nil {
+				next[i].Plan = nil
+			} else {
+				next[i].Plan = &config.Plan{Kind: p.Plan.Kind, Label: p.Plan.Label, USDPerMonth: p.Plan.USDPerMonth}
+			}
+		}
+	}
+	d.opt.Config.Subscriptions = next
+	if own && label != "" {
+		labels := maps.Clone(cfg.OwnLabels)
+		if labels == nil {
+			labels = map[string]string{}
+		}
+		labels[agent] = label
+		d.opt.Config.OwnLabels = labels
+	}
+	if p.MakeDefault {
+		def := maps.Clone(cfg.DefaultSubscription)
+		if def == nil {
+			def = map[string]string{}
+		}
+		if own {
+			delete(def, agent)
+		} else {
+			def[agent] = id
+		}
+		if len(def) == 0 {
+			def = nil
+		}
+		d.opt.Config.DefaultSubscription = def
+	}
+	cfg = d.opt.Config
 	d.cfgMu.Unlock()
 	if err := config.Save(d.opt.DataDir, cfg); err != nil {
 		return api.Subscription{}, err
 	}
-	return a.view(ctx, sub, subs.ProfilePaths(sub.Agent, subs.Dir(d.opt.DataDir, id)), nil, a.runningBySubscription(ctx)), nil
+	if p.MakeDefault {
+		d.log.Info("new sessions start on another subscription", "component", "subs", "agent", agent, "subscription", id)
+	}
+	list, err := a.List(ctx)
+	if err != nil {
+		return api.Subscription{}, err
+	}
+	for _, g := range list.Agents {
+		for _, s := range g.Subscriptions {
+			if s.Agent == agent && s.ID == id {
+				return s, nil
+			}
+		}
+	}
+	return api.Subscription{}, api.ErrSubscriptionNotFound
 }
 
 // Remove forgets a subscription and deletes its directory — Caprock's own,
@@ -372,6 +468,15 @@ func (a *subsAdapter) Remove(ctx context.Context, id string) error {
 	}
 	d.cfgMu.Lock()
 	d.opt.Config.Subscriptions = slices.DeleteFunc(slices.Clone(d.opt.Config.Subscriptions), func(s config.Subscription) bool { return s.ID == id })
+	// The default goes back to the user's own sign-in with it.
+	if d.opt.Config.DefaultSubscription[sub.Agent] == id {
+		def := maps.Clone(d.opt.Config.DefaultSubscription)
+		delete(def, sub.Agent)
+		if len(def) == 0 {
+			def = nil
+		}
+		d.opt.Config.DefaultSubscription = def
+	}
 	cfg := d.opt.Config
 	d.cfgMu.Unlock()
 	if err := config.Save(d.opt.DataDir, cfg); err != nil {

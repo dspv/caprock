@@ -59,3 +59,60 @@ func TestSubscriptionsUnavailable(t *testing.T) {
 		t.Fatalf("GET without a manager: %d", code)
 	}
 }
+
+type fakeSubs struct{ got []SubscriptionPatch }
+
+func (f *fakeSubs) List(context.Context) (SubscriptionsResponse, error) {
+	return SubscriptionsResponse{}, nil
+}
+func (f *fakeSubs) Add(context.Context, string, string) (Subscription, error) {
+	return Subscription{}, nil
+}
+func (f *fakeSubs) Update(_ context.Context, id string, p SubscriptionPatch) (Subscription, error) {
+	f.got = append(f.got, p)
+	return Subscription{ID: id}, nil
+}
+func (f *fakeSubs) Remove(context.Context, string) error { return nil }
+
+// PATCH reads each change on its own: a name, Make default, a plan, and a
+// plan of null, which clears it. A plan is held to what the main one is.
+func TestSubscriptionPatch(t *testing.T) {
+	e := newEnv(t)
+	f := &fakeSubs{}
+	e.api.d.Subscriptions = f
+	patch := func(id, body string) int {
+		t.Helper()
+		return e.send(t, http.MethodPatch, "/v1/subscriptions/"+id, body, nil)
+	}
+	for _, c := range []struct {
+		body string
+		code int
+	}{
+		{`{"label":"Work"}`, 200},
+		{`{"make_default":true,"agent":"claude"}`, 200},
+		{`{"plan":{"kind":"flat","label":"Max 20×","usd_per_month":200}}`, 200},
+		{`{"plan":null}`, 200},
+		{`{"plan":{"kind":"weekly"}}`, 400},
+		{`{"plan":{"kind":"flat","usd_per_month":-1}}`, 400},
+		{`{}`, 400},
+	} {
+		if code := patch("ab12", c.body); code != c.code {
+			t.Fatalf("%s: %d, want %d", c.body, code, c.code)
+		}
+	}
+	if len(f.got) != 4 {
+		t.Fatalf("patches: %+v", f.got)
+	}
+	if f.got[0].Label == nil || *f.got[0].Label != "Work" || f.got[0].SetPlan || f.got[0].MakeDefault {
+		t.Fatalf("label: %+v", f.got[0])
+	}
+	if !f.got[1].MakeDefault || f.got[1].Agent != "claude" {
+		t.Fatalf("make default: %+v", f.got[1])
+	}
+	if !f.got[2].SetPlan || f.got[2].Plan == nil || f.got[2].Plan.USDPerMonth != 200 {
+		t.Fatalf("plan: %+v", f.got[2])
+	}
+	if !f.got[3].SetPlan || f.got[3].Plan != nil {
+		t.Fatalf("clear: %+v", f.got[3])
+	}
+}

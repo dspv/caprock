@@ -7,6 +7,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **Make any subscription the default.** Settings → *Subscriptions* marks
+  the one new sessions start on when you pick none, and every other one has
+  *Make default*. Your own sign-in can be renamed and made the default
+  again; nothing about `~/.claude` or its sign-in moves. The pickers in New
+  agent, Quick chat and the phone's start form open on it.
+- **A plan per subscription.** With more than one Claude Code sign-in,
+  Settings → *Plan & licence* has a row per account with its own plan;
+  one without a plan uses the main plan, your own sign-in's. A session's
+  cockpit shows its account's plan and windows, and the plan chip there
+  sets that account's plan (`PATCH /v1/subscriptions/{id}` takes
+  `make_default` and `plan`).
+- **Continue on another account.** A running session never changes account;
+  the inspector now offers a new session on another one, with a brief of
+  this one, and the session page's *Continue in…* lists each account. The
+  cockpit and inspector name the account a session runs on, your own
+  sign-in included once there is more than one.
+
 ## [0.111.3] - 2026-10-12
 
 ### Changed

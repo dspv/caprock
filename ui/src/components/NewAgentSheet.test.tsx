@@ -479,6 +479,25 @@ describe('the subscription picker', () => {
     }
   })
 
+  // A tester, 2026-10-12: "I can't change the default account."
+  it('starts on the one made the default, and names the own sign-in when picked', async () => {
+    subsState.value = { licensed: false, free_per_agent: 3, agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [sub('default', 'Own sign-in', 10), { ...sub('ab12', 'Work', 10), preferred: true }] }] }
+    try {
+      open()
+      const select = await screen.findByLabelText<HTMLSelectElement>('Subscription')
+      expect(select.value).toBe('ab12')
+      expect(screen.getByRole('option', { name: /Work \(default\)/ })).toBeInTheDocument()
+      fireEvent.change(select, { target: { value: 'default' } })
+      expect(localStorage.getItem('caprock.subscription.claude.1')).toBe('default')
+      fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
+      await waitFor(() => expect(spawn).toHaveBeenCalled())
+      expect(spawn.mock.calls[0]![0]).toMatchObject({ subscription: 'default' })
+    } finally {
+      subsState.value = undefined
+      localStorage.removeItem('caprock.subscription.claude.1')
+    }
+  })
+
   it('remembers a pick in the select for the project', async () => {
     withSubs()
     try {

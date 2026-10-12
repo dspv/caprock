@@ -73,6 +73,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — unreleased: Make default, and a plan per subscription
+
+A tester's two complaints about ADR-048 (translated): the default account
+could not be changed without signing it in again, and one plan stood for
+accounts on different plans. Settings → Subscriptions gets *Make default*
+(`default_subscription` in `config.json`; Caprock's choice of directory for
+the sessions it starts, `~/.claude` untouched) and a renamable own sign-in;
+Plan & licence a row per Claude Code account (`subscriptions[].plan`), the
+main plan staying the own sign-in's and the fallback. The cockpit shows a
+session's account plan and windows; the inspector offers a relay onto
+another account. No migration: all of it is in `config.json`. Verified on a
+preview daemon with fake profiles and the fake `claude`; no real second
+sign-in was run.
+
 ### 2026-10-12 — 0.111.3: the headline figure back beside the agent, a plainer update button
 
 Owner feedback on 0.111.1: the cockpit's headline figure stays on the

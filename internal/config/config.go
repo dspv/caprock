@@ -147,6 +147,14 @@ type Config struct {
 	// (ADR-048), each in its own configuration directory under the data dir.
 	// The Default one is the user's normal sign-in and is not listed here.
 	Subscriptions []Subscription `json:"subscriptions,omitempty"`
+	// DefaultSubscription is, per agent ("claude", "codex"), the subscription
+	// a new session starts on when none is picked — Make default in Settings →
+	// Subscriptions. Absent means the user's own sign-in, as before. It is
+	// Caprock's choice of directory for the sessions it starts: ~/.claude and
+	// its credentials are never moved or rewritten.
+	DefaultSubscription map[string]string `json:"default_subscription,omitempty"`
+	// OwnLabels names the user's own sign-in per agent, when renamed.
+	OwnLabels map[string]string `json:"own_labels,omitempty"`
 	// Prompts records when each of the dashboard's own offers was last
 	// answered — the GitHub star strip, the Premium and Teams nudges, the
 	// share prompt — keyed by prompt id, in Unix ms. Kept here rather than in

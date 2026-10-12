@@ -35,9 +35,9 @@ import { AgentObservedNote, AgentSetupNote } from './AgentSetup'
 import { DEFAULT_MODELS, GEMINI_MODELS, listedModels, MODELS } from './SpawnDialog'
 import { Sheet, SheetButton } from './Sheet'
 import { SubscriptionNote, SubscriptionPicker, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
-import { hasSubscriptions, rememberedSubscription, rememberSubscription } from '@/lib/subscriptions'
+import { chosenId, hasSubscriptions, preferredId, rememberedSubscription, rememberSubscription } from '@/lib/subscriptions'
 
-/** `subscription` is the sign-in (ADR-048); absent or "default" is the user's own. */
+/** `subscription` is the sign-in (ADR-048): "default" is the user's own, absent the one made the default. */
 export interface QuickChoice { agent: SpawnAgent; model: string; subscription?: string }
 
 const KEY = 'caprock.quickchat'
@@ -59,11 +59,11 @@ export function rememberedQuickChoice(agents: readonly SpawnAgent[]): QuickChoic
   return { agent, model: DEFAULT_MODELS[agent] ?? '', ...quickSubscription(agent) }
 }
 
-/** The sign-in a quick chat on `agent` was last started on, when not the user's own. */
+/** The sign-in a quick chat on `agent` was last started on, when one was picked. */
 function quickSubscription(agent: string): { subscription?: string } {
   if (!hasSubscriptions(agent)) return {}
   const sub = rememberedSubscription(agent, '')
-  return sub === 'default' ? {} : { subscription: sub }
+  return sub ? { subscription: sub } : {}
 }
 
 export function rememberQuickChoice(c: QuickChoice) {
@@ -75,7 +75,7 @@ export function quickChatRequest(c: QuickChoice): SpawnRequest {
   const req: SpawnRequest = { chat: true }
   if (c.agent !== 'claude') req.agent = c.agent
   if (c.model) req.model = c.model
-  if (c.subscription && c.subscription !== 'default' && hasSubscriptions(c.agent)) req.subscription = c.subscription
+  if (c.subscription && hasSubscriptions(c.agent)) req.subscription = c.subscription
   return req
 }
 
@@ -135,8 +135,8 @@ export function QuickChatSheet({
   const subList = subscriptionsFor(subscriptions.all, agent)
   const [subPick, setSubPick] = useState<Record<string, string>>({})
   const subWanted = subPick[agent] ?? rememberedSubscription(agent, '')
-  const subId = subList.some((s) => s.id === subWanted) ? subWanted : 'default'
-  const subscription = subList.length > 1 && subId !== 'default' ? subId : undefined
+  const subId = chosenId(subList, subWanted)
+  const subscription = subList.length > 1 ? subId : undefined
 
   const start = (m = model, a = agent) => onStart({ agent: a, model: m, ...(a === agent && subscription ? { subscription } : {}) })
   const step = (d: number) => {
@@ -205,7 +205,7 @@ export function QuickChatSheet({
                 </button>
               ))}
             </div>
-            <SubscriptionPicker list={subList} value={subId} onChange={(id) => { rememberSubscription(agent, '', id); setSubPick((p) => ({ ...p, [agent]: id })) }} />
+            <SubscriptionPicker list={subList} value={subId} onChange={(id) => { rememberSubscription(agent, '', id === preferredId(subList) ? '' : id); setSubPick((p) => ({ ...p, [agent]: id })) }} />
             <SubscriptionNote list={subList} value={subId} onUse={(id) => setSubPick((p) => ({ ...p, [agent]: id }))} />
             {entry?.setup && <AgentSetupNote entry={entry} onSetup={setup} />}
             <ul

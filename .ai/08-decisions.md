@@ -2630,6 +2630,19 @@ daemon, on a timer).
 **Revisit if** Claude Code or Codex add a documented account switch that does
 not move the whole configuration directory, or stop keying credentials to it.
 
+**Amended 2026-10-12: Make default and a plan per account.** A tester could
+not change which account new sessions use without signing the default in
+again, and had one plan picker for accounts on different plans. The own
+sign-in stays what `claude` uses with no variable; *Make default* is
+Caprock's choice of directory for the sessions it starts when none is
+picked (`default_subscription` in `config.json`) — moving or rewriting
+`~/.claude`'s credentials was rejected: it would touch the Keychain and the
+user's own terminal sessions. A running session still never changes
+account; the inspector offers a relay (ADR-032) onto another. Each added
+account may carry its own plan; the main plan stays the own sign-in's and
+the fallback, so nothing already stored moves and no migration is needed —
+it all lives in `config.json`.
+
 ## ADR-049 — Caprock keeps the computer awake while agents work; on by default
 
 **Date:** 2026-10-11 · **Status:** accepted

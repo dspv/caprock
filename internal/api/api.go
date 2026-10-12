@@ -556,7 +556,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("PUT /v1/agents/custom", s.handlePutCustomAgents)
 	m.HandleFunc("GET /v1/subscriptions", s.handleSubscriptions)
 	m.HandleFunc("POST /v1/subscriptions", s.handleAddSubscription)
-	m.HandleFunc("PATCH /v1/subscriptions/{id}", s.handleRenameSubscription)
+	m.HandleFunc("PATCH /v1/subscriptions/{id}", s.handleUpdateSubscription)
 	m.HandleFunc("DELETE /v1/subscriptions/{id}", s.handleRemoveSubscription)
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("GET /v1/queue", s.handleQueueBoard)

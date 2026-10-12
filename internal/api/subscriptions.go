@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"strings"
 )
 
 // Settings → Subscriptions (ADR-048): more than one sign-in to Claude Code or
@@ -33,11 +36,18 @@ type SubscriptionWindow struct {
 
 // Subscription is one sign-in, as Settings and the pickers show it.
 type Subscription struct {
-	// ID is "default" for the user's own sign-in.
+	// ID is "default" for the user's own sign-in, and Default is true for it
+	// alone: the name predates Make default and means "own".
 	ID      string `json:"id"`
 	Agent   string `json:"agent"`
 	Label   string `json:"label"`
 	Default bool   `json:"default"`
+	// Preferred marks the one a new session of this agent starts on when none
+	// is picked (Make default). Exactly one per agent.
+	Preferred bool `json:"preferred"`
+	// Plan is how this sign-in is paid for, when the user said; the own
+	// sign-in's is the main plan in /v1/settings and is not repeated here.
+	Plan *SubscriptionPlan `json:"plan,omitempty"`
 	// Dir is its configuration directory; EnvVar the variable that selects it
 	// ("" for the Default one, which uses none).
 	Dir    string `json:"dir"`
@@ -55,6 +65,25 @@ type Subscription struct {
 	// Running is how many sessions Caprock started are running on it.
 	Running   int   `json:"running"`
 	CreatedAt int64 `json:"created_at,omitempty"`
+}
+
+// SubscriptionPlan is one sign-in's plan: kind "flat" or "metered", the
+// user's words for it and a monthly price (0 = not stated).
+type SubscriptionPlan struct {
+	Kind        string  `json:"kind"`
+	Label       string  `json:"label,omitempty"`
+	USDPerMonth float64 `json:"usd_per_month,omitempty"`
+}
+
+// SubscriptionPatch is PATCH /v1/subscriptions/{id}: each field present
+// changes one thing. Agent names whose own sign-in "default" is.
+type SubscriptionPatch struct {
+	Agent       string
+	Label       *string
+	MakeDefault bool
+	// SetPlan with Plan nil clears the plan: the main one stands for it.
+	SetPlan bool
+	Plan    *SubscriptionPlan
 }
 
 // SubscriptionAgent groups one agent's subscriptions, the Default one first.
@@ -78,7 +107,7 @@ type SubscriptionsResponse struct {
 type SubscriptionManager interface {
 	List(ctx context.Context) (SubscriptionsResponse, error)
 	Add(ctx context.Context, agent, label string) (Subscription, error)
-	Rename(ctx context.Context, id, label string) (Subscription, error)
+	Update(ctx context.Context, id string, p SubscriptionPatch) (Subscription, error)
 	Remove(ctx context.Context, id string) error
 }
 
@@ -145,18 +174,47 @@ func (s *Server) handleAddSubscription(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sub)
 }
 
-func (s *Server) handleRenameSubscription(w http.ResponseWriter, r *http.Request) {
+// handleUpdateSubscription renames a subscription, makes it the one new
+// sessions start on, or sets its plan — the own sign-in ("default") too,
+// named with "agent".
+func (s *Server) handleUpdateSubscription(w http.ResponseWriter, r *http.Request) {
 	if !s.subscriptionsWritable(w, r) {
 		return
 	}
 	var body struct {
-		Label string `json:"label"`
+		Agent       string          `json:"agent"`
+		Label       *string         `json:"label"`
+		MakeDefault bool            `json:"make_default"`
+		Plan        json.RawMessage `json:"plan"`
 	}
+	const shape = `body is {"label"?: "…", "make_default"?: true, "plan"?: {"kind": "flat"|"metered", "label"?: "…", "usd_per_month"?: 0} | null, "agent"?: "claude"|"codex"}`
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": `body is {"label": "…"}`})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": shape})
 		return
 	}
-	sub, err := s.d.Subscriptions.Rename(r.Context(), r.PathValue("id"), body.Label)
+	p := SubscriptionPatch{Agent: body.Agent, Label: body.Label, MakeDefault: body.MakeDefault}
+	if len(body.Plan) > 0 {
+		p.SetPlan = true
+		if string(body.Plan) != "null" {
+			var plan SubscriptionPlan
+			if err := json.Unmarshal(body.Plan, &plan); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": shape})
+				return
+			}
+			if err := validPlan(&plan); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			if plan.Kind != "" {
+				p.Plan = &plan
+			}
+		}
+	}
+	if p.Label == nil && !p.MakeDefault && !p.SetPlan {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": shape})
+		return
+	}
+	sub, err := s.d.Subscriptions.Update(r.Context(), r.PathValue("id"), p)
 	if err != nil {
 		s.subscriptionError(w, err)
 		return
@@ -173,4 +231,23 @@ func (s *Server) handleRemoveSubscription(w http.ResponseWriter, r *http.Request
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// validPlan holds a sign-in's plan to what PUT /v1/settings holds the main
+// one to: a known kind, a price that is a non-negative number, a short label.
+// Kind "" is no plan.
+func validPlan(p *SubscriptionPlan) error {
+	switch p.Kind {
+	case "", "flat", "metered":
+	default:
+		return fmt.Errorf("unknown plan kind %q (want \"flat\", \"metered\", or empty)", p.Kind)
+	}
+	if p.USDPerMonth < 0 || math.IsNaN(p.USDPerMonth) || math.IsInf(p.USDPerMonth, 0) {
+		return errors.New("usd_per_month must be a non-negative number")
+	}
+	p.Label = strings.TrimSpace(p.Label)
+	if len(p.Label) > 64 {
+		p.Label = p.Label[:64]
+	}
+	return nil
 }

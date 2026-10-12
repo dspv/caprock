@@ -20,6 +20,7 @@ import { agentName } from './Projects'
 import { PermissionPrompt } from './PermissionPrompt'
 import { StatusDot } from './ProjectRow'
 import { SubscriptionTag } from './SubscriptionPicker'
+import { RelayMenu } from './RelayDialog'
 import { branchLabel } from '@/lib/sessionLabels'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { href } from '@/lib/router'
@@ -99,6 +100,9 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
         <header className="grid gap-1">
           <h3 className="line-clamp-2 text-[14.5px] font-semibold leading-snug tracking-[-0.01em] text-fg" title={sessionTitle(s)}>{sessionTitle(s)}</h3>
           {s.cwd && <Place place={sessionPlace(s, project)} />}
+          {/* A running session never changes account; with more than one,
+            * a new session on another picks the work up (ADR-048). */}
+          {s.cwd && <p className="flex"><RelayMenu sessionID={sessionId} agent={s.agent} subscription={s.subscription} accountsOnly /></p>}
           {onCompare && s.attempts && s.attempts > 1 && (
             <p className="text-[12px] text-fg-muted">
               Attempt {s.attempt} of {s.attempts} ·{' '}
@@ -130,7 +134,7 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
           <p className="text-[12px] text-fg-muted">
             {isShell ? 'Login shell' : agentName(s.agent)}
             {!isShell && (s.model_display || s.model) ? ` · ${s.model_display || s.model}` : ''}
-            {!isShell && <SubscriptionTag id={s.subscription} />}
+            {!isShell && <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} />}
             {branchLabel(s.git_branch) ? <> · <span className="mono">{branchLabel(s.git_branch)}</span></> : null}
           </p>
         )}

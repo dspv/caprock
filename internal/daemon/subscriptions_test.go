@@ -95,11 +95,12 @@ func TestSubscriptionsAddRenameRemove(t *testing.T) {
 		t.Fatalf("list header: %+v", list)
 	}
 
-	got, err := a.Rename(ctx, work.ID, "Work")
+	name := func(s string) *string { return &s }
+	got, err := a.Update(ctx, work.ID, api.SubscriptionPatch{Label: name("Work")})
 	if err != nil || got.Label != "Work" {
 		t.Fatalf("rename: %+v %v", got, err)
 	}
-	if _, err := a.Rename(ctx, "nope", "x"); !errors.Is(err, api.ErrSubscriptionNotFound) {
+	if _, err := a.Update(ctx, "nope", api.SubscriptionPatch{Label: name("x")}); !errors.Is(err, api.ErrSubscriptionNotFound) {
 		t.Fatalf("rename unknown: %v", err)
 	}
 
@@ -143,5 +144,123 @@ func TestResolveSubscription(t *testing.T) {
 	}
 	if err := d.resolveSubscription(&agents.SpawnRequest{Resume: "x"}, &store.Session{Subscription: "gone1"}); err == nil {
 		t.Fatal("a session on a removed subscription was continued")
+	}
+}
+
+// Make default, a renamed own sign-in and a plan per subscription — the
+// tester's two complaints (2026-10-12): the default could not be changed
+// without signing it in again, and one plan stood for every account.
+func TestSubscriptionsMakeDefaultAndPlans(t *testing.T) {
+	d := subsDaemon(t)
+	a := &subsAdapter{d: d}
+	ctx := context.Background()
+	work, err := a.Add(ctx, "claude", "Work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Add(ctx, "claude", "Personal"); err != nil {
+		t.Fatal(err)
+	}
+	preferred := func() []string {
+		list, err := a.List(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, g := range list.Agents {
+			for _, s := range g.Subscriptions {
+				if s.Preferred {
+					out = append(out, g.Agent+":"+s.Label)
+				}
+			}
+		}
+		return out
+	}
+	if got := preferred(); len(got) != 2 || got[0] != "claude:Own sign-in" || got[1] != "codex:Own sign-in" {
+		t.Fatalf("before: %v", got)
+	}
+
+	// No subscription asked for: the own sign-in, as before.
+	sr := agents.SpawnRequest{}
+	if err := d.resolveSubscription(&sr, nil); err != nil || sr.ConfigDir != "" {
+		t.Fatalf("own: %+v %v", sr, err)
+	}
+
+	got, err := a.Update(ctx, work.ID, api.SubscriptionPatch{MakeDefault: true})
+	if err != nil || !got.Preferred {
+		t.Fatalf("make default: %+v %v", got, err)
+	}
+	if got := preferred(); len(got) != 2 || got[0] != "claude:Work" {
+		t.Fatalf("after: %v", got)
+	}
+	// Saved, so a restart keeps it.
+	if saved, err := config.Load(d.opt.DataDir); err != nil || saved.DefaultSubscription["claude"] != work.ID {
+		t.Fatalf("saved: %+v %v", saved.DefaultSubscription, err)
+	}
+	// Now a request that names none runs on Work; "default" is still the
+	// own sign-in; Codex is untouched; a continued session keeps its own.
+	sr = agents.SpawnRequest{}
+	if err := d.resolveSubscription(&sr, nil); err != nil || sr.Subscription != work.ID || sr.ConfigDir != subs.Dir(d.opt.DataDir, work.ID) {
+		t.Fatalf("default work: %+v %v", sr, err)
+	}
+	sr = agents.SpawnRequest{Subscription: subs.DefaultID}
+	if err := d.resolveSubscription(&sr, nil); err != nil || sr.ConfigDir != "" || sr.Subscription != "" {
+		t.Fatalf("own asked for: %+v %v", sr, err)
+	}
+	sr = agents.SpawnRequest{Agent: "codex"}
+	if err := d.resolveSubscription(&sr, nil); err != nil || sr.ConfigDir != "" {
+		t.Fatalf("codex: %+v %v", sr, err)
+	}
+	sr = agents.SpawnRequest{Resume: "x"}
+	if err := d.resolveSubscription(&sr, &store.Session{}); err != nil || sr.ConfigDir != "" {
+		t.Fatalf("resume on own: %+v %v", sr, err)
+	}
+	// Gemini has no subscriptions and is not given one.
+	sr = agents.SpawnRequest{Agent: "gemini"}
+	if err := d.resolveSubscription(&sr, nil); err != nil || sr.ConfigDir != "" || sr.Subscription != "" {
+		t.Fatalf("gemini: %+v %v", sr, err)
+	}
+
+	// The own sign-in can be renamed, and made the default again.
+	name := func(s string) *string { return &s }
+	own, err := a.Update(ctx, subs.DefaultID, api.SubscriptionPatch{Agent: "claude", Label: name("Home")})
+	if err != nil || own.Label != "Home" || !own.Default || own.Preferred {
+		t.Fatalf("rename own: %+v %v", own, err)
+	}
+	if _, err := a.Update(ctx, subs.DefaultID, api.SubscriptionPatch{Label: name("x")}); err == nil {
+		t.Fatal("the own sign-in was renamed without saying whose")
+	}
+	if _, err := a.Update(ctx, work.ID, api.SubscriptionPatch{Label: name("home")}); err == nil {
+		t.Fatal("Work took the own sign-in's name")
+	}
+	if _, err := a.Update(ctx, work.ID, api.SubscriptionPatch{Label: name("personal")}); err == nil {
+		t.Fatal("Work took Personal's name")
+	}
+
+	// A plan per subscription; nil clears it; the own one's is the main plan.
+	got, err = a.Update(ctx, work.ID, api.SubscriptionPatch{SetPlan: true, Plan: &api.SubscriptionPlan{Kind: "flat", Label: "Max 20×", USDPerMonth: 200}})
+	if err != nil || got.Plan == nil || got.Plan.USDPerMonth != 200 || got.Plan.Label != "Max 20×" {
+		t.Fatalf("plan: %+v %v", got, err)
+	}
+	if _, err := a.Update(ctx, subs.DefaultID, api.SubscriptionPatch{Agent: "claude", SetPlan: true, Plan: &api.SubscriptionPlan{Kind: "flat"}}); err == nil {
+		t.Fatal("the own sign-in got a second plan")
+	}
+	got, err = a.Update(ctx, work.ID, api.SubscriptionPatch{SetPlan: true})
+	if err != nil || got.Plan != nil {
+		t.Fatalf("clear plan: %+v %v", got, err)
+	}
+
+	// Removing the default hands it back to the own sign-in.
+	if _, err := a.Update(ctx, work.ID, api.SubscriptionPatch{MakeDefault: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Remove(ctx, work.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := preferred(); len(got) != 2 || got[0] != "claude:Home" {
+		t.Fatalf("after remove: %v", got)
+	}
+	if d.config().DefaultSubscription != nil {
+		t.Fatalf("default kept for a removed subscription: %v", d.config().DefaultSubscription)
 	}
 }

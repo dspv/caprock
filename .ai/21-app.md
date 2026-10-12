@@ -194,9 +194,9 @@ One window, three regions:
   vendor's one; Enter starts on the highlighted model; ← → or 1–9 (⌘1–9
   too) switch the agent, ↑ ↓ the model, Esc closes. The choice is kept per viewer in
   localStorage (`caprock.quickchat`). With more than one Claude Code or
-  Codex sign-in, a Subscription select sits under the agent row, its pick
-  kept in `caprock.subscription.<agent>.-` and sent as `subscription`
-  (ADR-048). Rejected: a header on the started tab
+  Codex sign-in, a Subscription select sits under the agent row, opening on
+  the pick kept in `caprock.subscription.<agent>.-` or else the default one,
+  and sent as `subscription` (ADR-048). Rejected: a header on the started tab
   that restarts the chat on another model — it starts a process only to kill
   it, and cannot change vendor once a conversation has begun.
 - **A quick chat's tab** (owner, 2026-10-12, same report). It is named

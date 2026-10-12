@@ -1128,12 +1128,20 @@ export interface SubscriptionWindow {
   observed_at: number
 }
 
-/** A sign-in to Claude Code or Codex (ADR-048). `id` is "default" for the user's own. */
+/** How one sign-in is paid for, as the user stated it. */
+export interface SubscriptionPlan { kind: 'flat' | 'metered'; label?: string; usd_per_month?: number }
+
+/** A sign-in to Claude Code or Codex (ADR-048). `id` is "default" for the
+ *  user's own, and `default` is true for it alone (the name predates Make
+ *  default). `preferred` is the one new sessions start on when none is picked. */
 export interface Subscription {
   id: string
   agent: SubscriptionAgentId
   label: string
   default: boolean
+  preferred?: boolean
+  /** Its own plan; absent means the main plan (Settings) stands for it. */
+  plan?: SubscriptionPlan
   dir: string
   env_var?: string
   signed_in: boolean
@@ -1168,8 +1176,9 @@ export interface SpawnRequest {
   /** Start the new worktree at GitHub pull request N's head (refs/pull/N/head, fetched from the remote) instead of a branch. */
   worktree_pr?: number
   model?: string; permission_mode?: string; args?: string[]
-  /** The sign-in to run on (ADR-048): a subscription id, or absent / "default"
-   *  for the user's own. Claude Code and Codex only; a resume keeps its own. */
+  /** The sign-in to run on (ADR-048): a subscription id, "default" for the
+   *  user's own, or absent for the one made the default in Settings →
+   *  Subscriptions. Claude Code and Codex only; a resume keeps its own. */
   subscription?: string
   /** Continue an existing conversation instead of starting a new one. Caprock
    *  cannot type into a process it did not start, so picking a session up
@@ -1549,7 +1558,9 @@ export const api = {
   subscriptions: () => get<SubscriptionsResponse>('/v1/subscriptions'),
   /** 402 at the free number without a licence. */
   addSubscription: (agent: SubscriptionAgentId, label: string) => post<Subscription>('/v1/subscriptions', { agent, label }),
-  renameSubscription: (id: string, label: string) => post<Subscription>(`/v1/subscriptions/${encodeURIComponent(id)}`, { label }, 'PATCH'),
+  /** Rename, Make default, or set a plan (null clears it). `agent` names whose own sign-in "default" is. */
+  updateSubscription: (id: string, patch: { agent?: SubscriptionAgentId; label?: string; make_default?: boolean; plan?: SubscriptionPlan | null }) =>
+    post<Subscription>(`/v1/subscriptions/${encodeURIComponent(id)}`, patch, 'PATCH'),
   /** 409 while a session Caprock started runs on it. */
   removeSubscription: (id: string) => post<void>(`/v1/subscriptions/${encodeURIComponent(id)}`, {}, 'DELETE'),
   agentModels: (agent: string) =>
