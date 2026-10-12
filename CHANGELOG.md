@@ -7,6 +7,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **app:** the version panel's update button reads at a glance: *Update to
+  v…* on one line, with *Restarts the app · sessions keep running* in small
+  type under it, instead of one sentence wrapping across the button.
+
 ## [0.111.2] - 2026-10-12
 
 ### Fixed
