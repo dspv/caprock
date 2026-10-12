@@ -858,6 +858,12 @@ mode, `working` when never chosen; it is stored as `keep_awake` in
 `config.json` only once it differs from what is stored, so writing back what
 was read does not pin the default.
 
+`GET`/`PUT /v1/settings` carry **`worktree_cleanup`**: one of `off`, `ask`,
+`auto`, else `400` (an empty string included). `GET` returns the effective
+mode, `ask` when never chosen; stored as `worktree_cleanup` in `config.json`
+the same way as `keep_awake`. A change checks every project with copies
+again (§ Projects and shells, *Finished copies*).
+
 `PUT /v1/settings` also accepts `gemini_api_key`, stored write-only in the same way. `GET` reports `gemini_key_set` and `gemini_key_from_env` instead of the value; `GEMINI_API_KEY` in the daemon's environment takes precedence over the stored key when both exist ([ADR-025](08-decisions.md)).
 
 `PUT /v1/settings` accepts `report_bot_token` and `report_chat_id` for the weekly report. The **token is write-only**: it is stored and never returned by `GET /v1/settings`, which instead carries `report_bot_set` (a bool), `report_last_error` and `report_last_sent_ms`. This is the only write-only field in the API and it exists because the settings response is read on every dashboard render and by `caprock report` — a credential should not ride along on either ([ADR-024](08-decisions.md)). Omitting `report_bot_token` from a PUT leaves the stored one alone, since a UI that reads settings and writes them back always omits it; sending `""` clears it. The chat id is not a credential and round-trips normally.
@@ -1820,6 +1826,9 @@ GET    /v1/projects/{id}/branches          → {branches: [{name, main?, default
 DELETE /v1/projects/{id}/worktrees/{name}  → 204; 409 {error} when it has any change
 GET    /v1/projects/{id}/copies            → {copies: [Copy], default_branch?, has_remote, total, pending?, capped?}
 POST   /v1/projects/{id}/copies/remove     {copies: [{path, force?}], delete_merged_branches?} → {results: [{path, removed, branch_deleted?, confirm?, error?}]}
+GET    /v1/projects/{id}/cleanup           → CleanupView
+POST   /v1/projects/{id}/cleanup           {paths: [path]} → {results: [{path, removed, confirm?, error?}], cleanup: CleanupView}
+POST   /v1/projects/{id}/cleanup/restore   {ids: [id]} → {results: [{id, path?, restored, error?}], cleanup: CleanupView}
 POST   /v1/shells                          {cwd | project_id, cols?, rows?, replaces?, type?, run?} → {shell: Shell}
 GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running shell without project
 ```
@@ -1967,6 +1976,62 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   theirs. The answer is `200` with one result per item; `400` for a body
   outside those bounds or a project that is not a repository. Both routes are
   loopback only: neither is on a paired device's or a controller's list.
+  Every copy removed here is added to the cleanup history (`how: "manual"`).
+  `Copy` also carries **`stale?`**: a copy Caprock made whose newest commit
+  is over 14 days old and whose branch has no pull request in the cached
+  list (below); a suggestion, never a reason to remove it.
+- **Finished copies** (2026-10-13; `internal/projects/cleanup.go`,
+  `internal/api/copies.go`). A copy is *finished* — a candidate — when it is
+  under `<root>/.caprock-worktrees`, not missing or locked, nothing is in
+  `live`, it has no change (untracked included), no `git error`, is on a
+  branch other than the default, has no orphaned commit, and either `merged`
+  holds and the branch's reflog has more than its creation entry (a fresh
+  copy never committed in is merged trivially and is not finished), or the
+  branch's pull request is `merged` in the Branches view's cached list
+  (`github.CachedBranchPR`; nothing is sent) with its `head_sha` equal to
+  the copy's HEAD — a squash merge. With a remote, `unpushed` must be 0
+  unless that pull request's head is the copy's HEAD. A restored copy is not
+  a candidate again until its HEAD moves. The mode is
+  `worktree_cleanup` in `/v1/settings`.
+  **`CleanupView`** — `{mode: "off"|"ask"|"auto", candidates:
+  [{path, branch, size, size_capped?, since, due?, pr?}], total, pending?,
+  removed: [CleanupRecord], history: [CleanupRecord], checked_at}`: `since`
+  is when it became a candidate (Unix ms, kept across restarts); `due`, in
+  Auto mode, is `since` + 24 h; `pr` is the merged pull request when git
+  alone did not see the merge; sizes come from the copies' size cache.
+  `removed` are the records of the last 24 h with `how` `auto` or `ask`, not
+  restored (the "Removed · Undo" line); `history` is the project's last 20,
+  newest first. **`CleanupRecord`** — `{id, project_id, path, branch?,
+  head?, bytes, at, how: "auto"|"ask"|"manual", branch_deleted?,
+  restored_at?, settled?, restorable}`; `restorable` is within 7 days, not
+  restored and the folder free. In mode `off` `candidates` is empty and
+  `POST …/cleanup` is `400`.
+- **When it is checked** — never on a poll: a session whose `cwd` is in a
+  `.caprock-worktrees` folder ending (its project, after 5 s); a fresh read
+  of the Branches view's pull request list showing a branch merged that the
+  last read did not (`github.Service.OnMerged`; each project with a copy of
+  Caprock's on that branch); the mode changing; and a daily pass, the first
+  10 minutes after start, over the projects with a copy of Caprock's in the
+  git state already held. The first `GET …/cleanup` after a start checks the
+  project; later ones answer from the last check. In Auto mode a candidate
+  whose `due` has passed is removed (judged again as `copies/remove` would,
+  never forced, its branch kept) and a timer is set for the next `due`.
+- **`POST …/cleanup`** removes exactly the listed paths among the copies
+  that are finished at that moment (a path that is not is kept, with the
+  reason), never forced, branches kept; recorded with `how: "ask"`.
+  **`POST …/cleanup/restore`** puts records back: `git worktree add <path>
+  <branch>`, or `git worktree add -b <branch> <path> <head>` when the
+  branch is gone, then the `.worktreeinclude` files; refused once restored,
+  after 7 days, outside `.caprock-worktrees`, or with the folder present.
+  The daily pass deletes the branch of a record cleaned up (`auto` or `ask`)
+  7 days earlier and not restored, but only while the branch still points at
+  `head`, no worktree has it checked out and it is merged (or its pull
+  request is, at `head`); any other branch is left for good, and a `manual`
+  record's branch is never touched. All three routes are loopback only.
+- **State file**: `<data_dir>/worktree-cleanup.json` — `{since: {pathKey:
+  ms}, kept?: {pathKey: head}, removed: [CleanupRecord]}`, written
+  atomically; records older than 30 days go (one still inside its 7 days
+  stays), at most 200. No DDL.
 - **From a controller phone**, `path`, `create.parent` and `clone.parent`
   must be absolute and resolve under home (`403` otherwise), and the worktree
   routes refuse a project whose root is outside home. The `GET` routes are

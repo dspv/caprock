@@ -4,6 +4,10 @@
  * § Projects and shells). The calls are `projectsApi.copies` and
  * `projectsApi.removeCopies` (lib/projects); the sheet is
  * components/CopiesSheet.
+ *
+ * Finished copies — Caprock's, merged, pushed, clean and idle — clean
+ * themselves up, asking first by default (`GET /v1/projects/{id}/cleanup`;
+ * components/CleanupLine): Off, Ask or Auto in Settings → Worktrees.
  */
 import { fmtBytes } from './format'
 
@@ -29,6 +33,8 @@ export interface ProjectCopy {
   /** Bytes; null while measured, and always for the main checkout. */
   size: number | null
   size_capped?: boolean
+  /** Caprock's copy with no commit for 14 days and no pull request known: suggested, never removed for it. */
+  stale?: boolean
   error?: string
 }
 
@@ -49,6 +55,93 @@ export interface CopyRemoved {
   error?: string
 }
 
+export type CleanupMode = 'off' | 'ask' | 'auto'
+
+/** One finished copy (projects.CleanupCandidate). */
+export interface CleanupCandidate {
+  path: string
+  branch: string
+  size: number | null
+  size_capped?: boolean
+  /** Unix ms it became one; `due`, in Auto mode, when it is removed. */
+  since: number
+  due?: number
+  /** The merged pull request that made it one, when git alone did not. */
+  pr?: number
+}
+
+/** One removed copy in the history (projects.CleanupRecord). */
+export interface CleanupRecord {
+  id: string
+  project_id: number
+  path: string
+  branch?: string
+  head?: string
+  bytes: number
+  /** Unix ms. */
+  at: number
+  how: 'auto' | 'ask' | 'manual'
+  branch_deleted?: boolean
+  restored_at?: number
+  restorable: boolean
+}
+
+export interface CleanupView {
+  mode: CleanupMode
+  candidates: CleanupCandidate[]
+  total: number
+  pending?: boolean
+  /** Cleaned up in the last day and not restored: the "Removed · Undo" line. */
+  removed: CleanupRecord[]
+  /** This project's removals, newest first. */
+  history: CleanupRecord[]
+  checked_at: number
+}
+
+export interface CleanupRestored {
+  id: string
+  path?: string
+  restored: boolean
+  error?: string
+}
+
+/** A wire view made safe to read: lists always lists. */
+export function cleanupOf(v: Partial<CleanupView> | null | undefined): CleanupView {
+  const list = <T,>(x: T[] | undefined | null): T[] => (Array.isArray(x) ? x : [])
+  return {
+    mode: v?.mode === 'off' || v?.mode === 'auto' ? v.mode : 'ask',
+    candidates: list(v?.candidates).filter((c) => c && typeof c.path === 'string'),
+    total: typeof v?.total === 'number' ? v.total : 0,
+    pending: !!v?.pending,
+    removed: list(v?.removed).filter((r) => r && typeof r.id === 'string'),
+    history: list(v?.history).filter((r) => r && typeof r.id === 'string'),
+    checked_at: v?.checked_at ?? 0,
+  }
+}
+
+/** "3 copies", "1 copy". */
+export function copiesText(n: number): string {
+  return n === 1 ? '1 copy' : `${n} copies`
+}
+
+/** The removed copies' bytes, summed. */
+export function freedOf(list: CleanupRecord[]): number {
+  return list.reduce((n, r) => n + (r.bytes || 0), 0)
+}
+
+/** "in 18 h", "in 40 min", "soon": when an Auto-mode candidate goes. */
+export function dueText(due: number, now: number): string {
+  const ms = due - now
+  if (ms <= 60_000) return 'soon'
+  const min = Math.round(ms / 60_000)
+  if (min < 60) return `in ${min} min`
+  return `in ${Math.round(min / 60)} h`
+}
+
+/** The last folder of a path, either separator. */
+export function baseOf(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path
+}
 
 /** Why a copy cannot be removed from here, or null when it can. */
 export function blockedReason(c: ProjectCopy): string | null {

@@ -745,6 +745,8 @@ export interface Settings {
   spawn_permission_mode?: string
   /** When the computer is kept from idle-sleeping (ADR-049). The daemon returns "working" when never chosen. */
   keep_awake?: KeepAwakeMode
+  /** What happens to finished copies (lib/copies CleanupMode). The daemon returns "ask" when never chosen. */
+  worktree_cleanup?: 'off' | 'ask' | 'auto'
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
   /** The share of a Claude plan window (50–99) at which Premium pauses the

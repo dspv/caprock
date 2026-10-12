@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dspv/caprock/internal/agentcat"
@@ -181,12 +182,15 @@ type Daemon struct {
 	// projs is the projects list and its git watcher (WP-05).
 	projs *projects.Service
 	// gh is the GitHub integration (WP-19); idle until the user connects.
-	gh    *github.Service
-	board *board.Board
-	orch  *orchestrator.Orchestrator
-	api   *api.Server
-	rt    config.Runtime
-	start time.Time
+	gh *github.Service
+	// ghLive is gh once started, for the copies' cleanup timers, which may
+	// run before it is.
+	ghLive atomic.Pointer[github.Service]
+	board  *board.Board
+	orch   *orchestrator.Orchestrator
+	api    *api.Server
+	rt     config.Runtime
+	start  time.Time
 	// events is /v1/status's stored-event count, taken in the background.
 	events eventCounter
 
@@ -475,6 +479,17 @@ func (d *Daemon) run(ctx context.Context) error {
 	// `worktree-setup` (ADR-050), the same binary that runs pty-hosts.
 	d.mgr.ProjectSetup = d.projs.SetupCommand
 	d.mgr.SetupExe = d.opt.HolderExe
+	// Finished copies clean themselves up, asking first by default
+	// (projects/cleanup.go): the mode from config.json, what runs where, and
+	// the pull requests the deck's Branches view already read.
+	if d.opt.DataDir != "" {
+		d.projs.CleanupFile = filepath.Join(d.opt.DataDir, projects.CleanupStateFile)
+	}
+	d.projs.CleanupMode = func() string { return d.config().WorktreeCleanup }
+	d.projs.Busy = func(ctx context.Context) projects.BusyFunc {
+		return api.BusyIn(ctx, d.store, &shellAdapter{m: d.mgr})
+	}
+	d.projs.PRState = d.cachedBranchPR
 	if err := d.projs.Start(ctx); err != nil {
 		d.log.Warn("projects list unavailable", "component", "daemon", "err", err)
 		d.projs = nil
@@ -1460,6 +1475,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		AlertLastError:   alertErr,
 		AlertLastSentMs:  alertSent,
 		KeepAwake:        keepawake.Normalize(c.KeepAwake),
+		WorktreeCleanup:  projects.NormalizeCleanup(c.WorktreeCleanup),
 	}
 }
 
@@ -1517,6 +1533,11 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	if keepAwakeChanged {
 		a.d.opt.Config.KeepAwake = in.KeepAwake
 	}
+	// The same for the copies' cleanup: "ask" stays the default until chosen.
+	cleanupChanged := in.WorktreeCleanup != "" && in.WorktreeCleanup != projects.NormalizeCleanup(a.d.opt.Config.WorktreeCleanup)
+	if cleanupChanged {
+		a.d.opt.Config.WorktreeCleanup = in.WorktreeCleanup
+	}
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
 	if capChanged && a.d.cap != nil {
@@ -1525,6 +1546,10 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	if a.d.tg != nil {
 		// A switch turned or a bot cleared: start or stop reading updates.
 		defer a.d.tg.Wake()
+	}
+	if cleanupChanged && a.d.projs != nil {
+		// Checked again under the new mode, after the save below.
+		defer a.d.projs.CleanupModeChanged()
 	}
 	if keepAwakeChanged && a.d.awake != nil {
 		// Take or let go of the hold now, not at the next tick.

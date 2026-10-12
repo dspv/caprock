@@ -9,6 +9,9 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **ui:** Lifetime's *Top projects* donut sits beside its table again instead
+  of drawing over it; a donut without a legend keeps its own width.
+
 - **app:** *Hide* on a project in the sidebar did nothing when an agent in
   it had finished its turn, or when it was the project in front — from the
   row's eye, its ⋯ menu and a right-click alike, *Outside projects*
@@ -17,6 +20,48 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   out only when an agent there asks or finishes a turn after it was hidden.
 
 ## [0.112.0] - 2026-10-13
+
+### Added
+
+- **app:** finished copies clean themselves up, asking first by default. A
+  copy Caprock made that is merged (or its pull request is), pushed, clean
+  and has nothing running in it shows on the project's page and the deck's
+  Branches view as *3 copies done · 2.1 GB · Clean up*; one click, confirmed
+  on the same line, removes exactly those, and *Review* opens the copies
+  list with them ticked. Settings → Worktrees: *Off*, *Ask* or *Auto*
+  (removed a day after they finish). *Undo* for a day, branches kept 7 days
+  with *Restore* under *Recently removed* in the copies list, and a *stale*
+  tag for a copy with no commit in 14 days and no pull request. The main
+  checkout, your own worktrees and unmerged branches are never touched.
+
+## [0.111.3] - 2026-10-12
+
+### Changed
+
+- **app:** each project in the sidebar shows one row: the tab you are on (or
+  its last one), else what waits on you, else the agent that worked last.
+  The rest fold behind one quiet *+N more* line that opens in place, stays
+  open per project, lists what it holds in its tooltip (*2 working · 1 idle
+  · 1 shell*) and turns amber when something behind it waits (*+4 more · 1
+  asks*). It replaces the *Running in other terminals* line; ⌘1–⌘9 still
+  reach every tab.
+
+### Changed
+
+- **app:** three figures beside the agent in the cockpit, each one yours
+  to pick: the headline in large type and two short lines under it
+  (*$4.08/h burn ▾*, *4.01B tok ▾*), from one list — cost, burn rate,
+  tokens, cache hit rate, turns, time working, last call, tool calls —
+  never the same one twice (picking a taken one swaps them), cost, burn
+  rate and tokens until you choose. In a narrow inspector the two lines
+  move under the agent, beside the subagent chips, rather than squeezing
+  the agent's own lines or being cut.
+
+- **app:** the Spend block in the cockpit opens on its chart again,
+  unfolded: the period's spend by time with its total and the stretch
+  under the pointer. *Numbers* is still a click away on the *Chart |
+  Numbers* switch. A choice saved while Numbers and folded were the
+  default opens on the chart once; what you pick after that holds.
 
 ### Added
 

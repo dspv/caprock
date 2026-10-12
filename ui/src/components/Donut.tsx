@@ -115,7 +115,10 @@ export function Donut({
   const hole = Math.round(2 * (r - 9) * 0.82)
   let at = 0
   return (
-    <figure className="@container m-0 min-w-0" data-donut>
+    // Only a donut with a legend is a size container: a container has no
+    // width of its own, so a bare donut in an `auto` grid column (Lifetime's
+    // Top projects) collapsed to nothing and drew over the table beside it.
+    <figure className={`${legend ? '@container min-w-0' : 'shrink-0'} m-0`} style={legend ? undefined : { width: size }} data-donut>
       {title && <figcaption className="text-[10px] uppercase tracking-[0.12em] text-fg-faint mb-2">{title}</figcaption>}
       <div className="flex flex-col items-start gap-3 @[400px]:flex-row @[400px]:items-center @[400px]:gap-4">
         <div className="relative shrink-0" style={{ width: size, height: size }}>

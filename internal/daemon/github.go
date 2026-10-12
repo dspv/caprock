@@ -56,8 +56,29 @@ func (d *Daemon) newGitHub() *github.Service {
 	s.Store = github.DefaultStore(d.opt.DataDir, github.KeychainService, github.UserHome(context.Background()))
 	if d.projs != nil {
 		s.Projects = d.projs
+		// A pull request seen merged: its branch's copy may be finished.
+		projs := d.projs
+		s.OnMerged = func(_ github.Repo, branches []string) { projs.CleanupBranchesMerged(branches) }
 	}
 	return s
+}
+
+// cachedBranchPR is a branch's pull request from the list the Branches view
+// last read, for the copies' cleanup; nothing is sent to GitHub.
+func (d *Daemon) cachedBranchPR(remoteURL, branch string) (string, int, string) {
+	gh := d.ghLive.Load()
+	if gh == nil {
+		return "", 0, ""
+	}
+	repo, ok := github.ParseRemote(remoteURL)
+	if !ok {
+		return "", 0, ""
+	}
+	p, ok := gh.CachedBranchPR(repo, branch)
+	if !ok {
+		return "", 0, ""
+	}
+	return p.State, p.Number, p.HeadSHA
 }
 
 // githubConfig keeps the GitHub choices in config.json.
@@ -90,4 +111,5 @@ func (g *githubConfig) save(change func(*config.Config)) error {
 func (d *Daemon) startGitHub(ctx context.Context) {
 	d.gh = d.newGitHub()
 	d.gh.Start(ctx)
+	d.ghLive.Store(d.gh)
 }

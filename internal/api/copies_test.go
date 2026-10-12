@@ -89,3 +89,64 @@ func TestCopiesRoutes(t *testing.T) {
 		t.Fatal("the copy is still on disk")
 	}
 }
+
+// The cleanup routes answer for a repository, refuse a bad body, and stay on
+// the machine; the mode is a settings word.
+func TestCleanupRoutes(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	s, home, viewer, controller, _ := projectsServer(t)
+	repo := filepath.Join(home, "repo")
+	_ = os.MkdirAll(repo, 0o755)
+	c := exec.Command("git", "-C", repo, "init", "-q", "-b", "main")
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	w := call(t, s, machine, "", "POST", "/v1/projects", `{"path":"`+filepath.ToSlash(repo)+`"}`)
+	var added struct {
+		Project projects.View `json:"project"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &added)
+	id := itoa(added.Project.ID)
+	w = call(t, s, machine, "", "GET", "/v1/projects/"+id+"/cleanup", "")
+	var v projects.CleanupView
+	if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil || w.Code != 200 || v.Mode != projects.CleanupAsk || v.Candidates == nil || v.History == nil {
+		t.Fatalf("cleanup: %d %s", w.Code, w.Body.String())
+	}
+	for _, tok := range []string{viewer, controller} {
+		for _, r := range [][3]string{{"GET", "/cleanup", ""}, {"POST", "/cleanup", `{"paths":["x"]}`}, {"POST", "/cleanup/restore", `{"ids":["x"]}`}} {
+			if w := call(t, s, testPhone, tok, r[0], "/v1/projects/"+id+r[1], r[2]); w.Code != http.StatusForbidden {
+				t.Fatalf("a phone reached %s %s: %d", r[0], r[1], w.Code)
+			}
+		}
+	}
+	for _, r := range [][2]string{{"/cleanup", `{"paths":[]}`}, {"/cleanup/restore", `{}`}} {
+		if w := call(t, s, machine, "", "POST", "/v1/projects/"+id+r[0], r[1]); w.Code != http.StatusBadRequest {
+			t.Fatalf("%s with an empty body: %d", r[0], w.Code)
+		}
+	}
+	w = call(t, s, machine, "", "POST", "/v1/projects/"+id+"/cleanup/restore", `{"ids":["nope"]}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "no such removal") {
+		t.Fatalf("restore unknown: %d %s", w.Code, w.Body.String())
+	}
+	if w := call(t, s, machine, "", "GET", "/v1/projects/999/cleanup", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("no such project: %d", w.Code)
+	}
+}
+
+func TestWorktreeCleanupSettingValidates(t *testing.T) {
+	e := newEnv(t)
+	if code := e.putSettings(t, map[string]any{"worktree_cleanup": "auto"}); code != http.StatusOK {
+		t.Fatalf("auto: %d", code)
+	}
+	var st Settings
+	if code := e.get(t, "/v1/settings", &st); code != http.StatusOK || st.WorktreeCleanup != projects.CleanupAuto {
+		t.Fatalf("GET: %d %q", code, st.WorktreeCleanup)
+	}
+	for _, bad := range []string{"always", ""} {
+		if code := e.putSettings(t, map[string]any{"worktree_cleanup": bad}); code != http.StatusBadRequest {
+			t.Fatalf("%q answered %d, want 400", bad, code)
+		}
+	}
+}

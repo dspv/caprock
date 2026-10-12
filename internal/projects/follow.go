@@ -110,6 +110,13 @@ func (s *Service) noteSession(ctx context.Context, sess store.Session) {
 		if want == "" {
 			want = "frame"
 		}
+		// A session in one of Caprock's copies ended: the copy may be
+		// finished now (cleanup.go).
+		if seen && sess.Status == store.StatusEnded && inCopy(sess.Cwd) {
+			if p, ok := s.ProjectFor(dir); ok && p.Kind == store.ProjectKindRepo {
+				s.CleanupSoon(p.ID)
+			}
+		}
 	}
 	if want == "" {
 		return

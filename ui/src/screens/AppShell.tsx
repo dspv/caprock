@@ -83,6 +83,7 @@ import { isMultiRepo } from '@/lib/multirepo'
 import { CloseChatConfirm, CloseShellConfirm } from '@/components/CloseShellConfirm'
 import { ShortcutsSheet } from '@/components/ShortcutsSheet'
 import { CopiesSheet } from '@/components/CopiesSheet'
+import { CleanupLine } from '@/components/CleanupLine'
 import { worktreeSlug } from '@/lib/slug'
 import { openPhoneSettings, openSettingsAt } from '@/components/Pairing'
 import { reloadSaved, savedFor, sendPrompt, useSavedPrompts, type SavedPrompt } from '@/lib/saved'
@@ -159,7 +160,7 @@ type SheetState =
   /** The palette's "Open file…": the files of one worktree. */
   | { kind: 'files'; projectId: string; worktree: string; title: string }
   /** *Clean up copies…*: a project's worktrees, their state and size (components/CopiesSheet). */
-  | { kind: 'copies'; projectId: string; name: string }
+  | { kind: 'copies'; projectId: string; name: string; preselect?: string[] }
   | null
 
 
@@ -885,6 +886,19 @@ export function AppShell() {
     const p = projectsById.get(projectId)
     if (p?.kind === 'repo') setSheet({ kind: 'copies', projectId, name: p.name })
   }, [projectsById])
+  /** *Review* on the cleanup line: the copies sheet with the finished ones ticked. */
+  const onReviewCopies = useCallback((projectId: string, preselect: string[]) => {
+    const p = projectsById.get(projectId)
+    if (p?.kind === 'repo') setSheet({ kind: 'copies', projectId, name: p.name, preselect })
+  }, [projectsById])
+  /** Copies were cleaned up: a tab on a session that ran in one closes
+   * (nothing runs there: a copy with a live session is never finished). */
+  const onCopiesRemoved = useCallback((paths: string[]) => {
+    const inside = (cwd?: string) => !!cwd && paths.some((p) => cwd === p || cwd.startsWith(`${p}/`) || cwd.startsWith(`${p}\\`))
+    for (const x of data.sessions) {
+      if (openSessions.has(x.session_id) && inside(x.cwd)) dispatch({ type: 'drop-session', sessionId: x.session_id })
+    }
+  }, [data.sessions, openSessions])
   const onRoute = useCallback((h: string) => { location.hash = h }, [])
 
   // The worktree "Open file…" lists: the file tab's in front, else the
@@ -1276,6 +1290,15 @@ export function AppShell() {
                       repos={source === 'api' && activeProject && isMultiRepo(activeProject) ? (
                         <ProjectRepos project={activeProject} projects={model.projects.map((n) => n.project)} />
                       ) : undefined}
+                      cleanup={source === 'api' && activeProject?.kind === 'repo' ? (
+                        <CleanupLine
+                          projectId={activeProject.id}
+                          refreshKey={worktreesKey(activeProject)}
+                          onReview={(paths) => onReviewCopies(activeProject.id, paths)}
+                          onRemoved={onCopiesRemoved}
+                          className="px-3"
+                        />
+                      ) : undefined}
                       recent={activeProject?.root ? (
                         <RecentInProject
                           key={`${activeProject.root}:${data.sessions.length}`}
@@ -1309,6 +1332,15 @@ export function AppShell() {
                     worktrees={deckWorktrees}
                     onOpenSession={onDeckOpenSession}
                     onStartAgent={onDeckStartAgent}
+                    cleanup={focusedWorktree?.repo && projectsById.get(focusedWorktree.projectId) ? (
+                      <CleanupLine
+                        projectId={focusedWorktree.projectId}
+                        refreshKey={worktreesKey(projectsById.get(focusedWorktree.projectId))}
+                        onReview={(paths) => onReviewCopies(focusedWorktree.projectId, paths)}
+                        onRemoved={onCopiesRemoved}
+                        compact
+                      />
+                    ) : undefined}
                   />
                 )}
                 {promptCard && !prefs.inspector && focused && (
@@ -1403,7 +1435,7 @@ export function AppShell() {
         />
       )}
       {folderMenu && <EditorMenu at={folderMenu} editors={editors} onClose={closeFolderMenu} onError={setToast} />}
-      {sheet?.kind === 'copies' && <CopiesSheet key={sheet.projectId} projectId={sheet.projectId} name={sheet.name} onClose={closeSheet} onChanged={refresh} />}
+      {sheet?.kind === 'copies' && <CopiesSheet key={sheet.projectId} projectId={sheet.projectId} name={sheet.name} preselect={sheet.preselect} onClose={closeSheet} onChanged={refresh} />}
       {sheet?.kind === 'keys' && <ShortcutsSheet isMac={isMac} onClose={closeSheet} />}
       {sheet?.kind === 'share' && <ShareDialog onClose={closeSheet} />}
       {sheet?.kind === 'files' && (
@@ -1447,6 +1479,11 @@ export function AppShell() {
   )
 }
 
+/** A project's worktrees as one string: the cleanup line asks again when it changes. */
+function worktreesKey(p?: Project): string {
+  return (p?.worktrees ?? []).map((w) => `${w.path}@${w.branch}:${w.changed ?? 0}`).join('|')
+}
+
 function EmptyWorkspace({
   project,
   hasProjects,
@@ -1455,6 +1492,7 @@ function EmptyWorkspace({
   onAddProject,
   repos,
   recent,
+  cleanup,
 }: {
   project?: Project
   hasProjects: boolean
@@ -1465,6 +1503,8 @@ function EmptyWorkspace({
   repos?: React.ReactNode
   /** The project's recent sessions, to carry one on from here. */
   recent?: React.ReactNode
+  /** Finished copies: "3 copies done · Clean up" (components/CleanupLine). */
+  cleanup?: React.ReactNode
 }) {
   return (
     <div className="app-slab app-scroll absolute inset-0 flex items-center justify-center overflow-y-auto px-8 py-8">
@@ -1483,6 +1523,7 @@ function EmptyWorkspace({
           <EmptyAction icon={<FolderPlusIcon size={15} />} label="Add a project" hint={keys('⌘O')} onClick={onAddProject} />
         </div>
         {repos}
+        {cleanup}
         {recent}
       </div>
     </div>

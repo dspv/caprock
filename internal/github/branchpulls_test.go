@@ -78,3 +78,15 @@ func TestPullsByBranchIsOneKeptList(t *testing.T) {
 		t.Fatal("asked again within branchPullsKept")
 	}
 }
+
+// A branch is newly merged once: on the first list that shows it merged.
+func TestNewlyMerged(t *testing.T) {
+	before := map[string]BranchPR{"a": {State: "open"}, "b": {State: "merged"}}
+	now := map[string]BranchPR{"a": {State: "merged"}, "b": {State: "merged"}, "c": {State: "merged"}, "d": {State: "open"}}
+	if got := newlyMerged(before, now); len(got) != 2 || got[0] != "a" || got[1] != "c" {
+		t.Fatalf("got %v", got)
+	}
+	if got := newlyMerged(now, now); len(got) != 0 {
+		t.Fatalf("again: %v", got)
+	}
+}

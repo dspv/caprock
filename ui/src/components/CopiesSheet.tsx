@@ -15,26 +15,37 @@
  *   every commit on it is in the default branch.
  *
  * Sizes are measured in the background; "…" until then, polled while any is.
+ *
+ * Below the list, *Recently removed*: what was removed here or by the
+ * finished-copies cleanup (components/CleanupLine), when, and how much it
+ * freed, with *Restore* for 7 days — the branch is kept that long. A copy
+ * of Caprock's with no commit for 14 days and no pull request is tagged
+ * `stale`: a suggestion, never removed for it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { errText } from '@/lib/api'
-import { blockedReason, isSafePick, lossOf, shortPath, sizeText, type CopiesView, type CopyRemoved, type ProjectCopy } from '@/lib/copies'
+import { baseOf, blockedReason, isSafePick, lossOf, shortPath, sizeText, type CleanupRecord, type CopiesView, type CopyRemoved, type ProjectCopy } from '@/lib/copies'
 import { fmtAgo, fmtBytes } from '@/lib/format'
 import { projectsApi } from '@/lib/projects'
 import { Sheet, SheetButton } from './Sheet'
 
 const POLL_MS = 1500
 
-export function CopiesSheet({ projectId, name, onClose, onChanged }: {
+export function CopiesSheet({ projectId, name, onClose, onChanged, preselect }: {
   projectId: string
   name: string
   onClose: () => void
-  /** Copies were removed: the sidebar's list is stale. */
+  /** Copies were removed or restored: the sidebar's list is stale. */
   onChanged?: () => void
+  /** Paths ticked when the list first arrives (Review on the cleanup line). */
+  preselect?: string[]
 }) {
   const [view, setView] = useState<CopiesView | null>(null)
   const [error, setError] = useState('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [history, setHistory] = useState<CleanupRecord[]>([])
+  const [restoring, setRestoring] = useState('')
+  const preselected = useRef(false)
   const [deleteBranches, setDeleteBranches] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -51,13 +62,23 @@ export function CopiesSheet({ projectId, name, onClose, onChanged }: {
       // A copy that went away or became unremovable drops out of the pick.
       setPicked((cur) => {
         const ok = new Set(v.copies.filter((c) => blockedReason(c) === null).map((c) => c.path))
+        if (!preselected.current && preselect?.length) {
+          preselected.current = true
+          return new Set(preselect.filter((p) => ok.has(p)))
+        }
         const next = new Set([...cur].filter((p) => ok.has(p)))
         return next.size === cur.size ? cur : next
       })
     } catch (e) {
       if (alive.current) setError(`Could not list the copies: ${errText(e)}`)
     }
-  }, [projectId])
+    try {
+      const c = await projectsApi.cleanup(projectId)
+      if (alive.current) setHistory(c.history)
+    } catch {
+      // An older daemon has no history; the list stands without it.
+    }
+  }, [projectId, preselect])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -106,6 +127,22 @@ export function CopiesSheet({ projectId, name, onClose, onChanged }: {
       setError(`Could not remove: ${errText(e)}`)
     } finally {
       if (alive.current) setBusy(false)
+    }
+  }
+
+  const restore = async (r: CleanupRecord) => {
+    setRestoring(r.id)
+    setError('')
+    try {
+      const res = await projectsApi.restoreCopies(projectId, [r.id])
+      const failed = res.results.find((x) => !x.restored)
+      if (failed) setError(`Could not restore ${baseOf(r.path)}: ${failed.error ?? ''}`)
+      else onChanged?.()
+      await load()
+    } catch (e) {
+      setError(`Could not restore: ${errText(e)}`)
+    } finally {
+      if (alive.current) setRestoring('')
     }
   }
 
@@ -176,6 +213,9 @@ export function CopiesSheet({ projectId, name, onClose, onChanged }: {
               ))}
             </ul>
           )
+        )}
+        {!confirming && history.length > 0 && (
+          <RecentlyRemoved history={history} restoring={restoring} onRestore={(r) => void restore(r)} />
         )}
         {!confirming && view && (
           <p className="text-[12px] leading-snug text-fg-faint">
@@ -249,6 +289,7 @@ function Badges({ c, hasRemote, defaultBranch }: { c: ProjectCopy; hasRemote: bo
   if (c.locked) out.push(<Badge key="locked" tone="muted">locked</Badge>)
   if (c.live.length > 0) out.push(<Badge key="live" tone="accent" title={c.live.join(', ')}>live</Badge>)
   if (c.dirty) out.push(<Badge key="dirty" tone="warn" title="Uncommitted changes, untracked files included">{c.changed === 1 ? '1 change' : `${c.changed} changes`}</Badge>)
+  if (c.stale) out.push(<Badge key="stale" tone="muted" title="No commit for 14 days and no pull request: worth a look; never removed for this">stale</Badge>)
   if (!c.main && c.merged) out.push(<Badge key="merged" tone="ok" title={`Every commit on it is in ${defaultBranch || 'the default branch'}`}>merged</Badge>)
   if (hasRemote && !c.missing && !c.detached) {
     if (c.unpushed > 0) out.push(<Badge key="unpushed" tone="warn" title="Commits no remote has">{c.unpushed} unpushed</Badge>)
@@ -297,5 +338,37 @@ function Results({ results }: { results: { removed: CopyRemoved[]; failed: CopyR
         </p>
       ))}
     </div>
+  )
+}
+
+/** What was removed — here or by the cleanup — when, how much it freed, and Restore while the branch is kept. */
+function RecentlyRemoved({ history, restoring, onRestore }: { history: CleanupRecord[]; restoring: string; onRestore: (r: CleanupRecord) => void }) {
+  const how = { auto: 'automatically', ask: 'from the cleanup line', manual: 'here' } as const
+  return (
+    <section aria-label="Recently removed" className="grid gap-1.5" data-copies-history>
+      <h3 className="text-[11px] font-medium uppercase tracking-[0.06em] text-fg-faint">Recently removed</h3>
+      <ul className="grid grid-cols-[minmax(0,1fr)] gap-px overflow-hidden rounded-[8px] border border-[var(--app-hairline)]">
+        {history.map((r) => (
+          <li key={r.id} className="flex min-w-0 items-center gap-3 bg-panel px-3 py-1.5 text-[12.5px]">
+            <span className="min-w-0 flex-1 truncate">
+              <span className="font-mono text-fg">{r.branch || baseOf(r.path)}</span>
+              <span className="text-fg-faint"> · {fmtAgo(r.at)} · {how[r.how] ?? r.how}</span>
+            </span>
+            <span className="num w-[112px] shrink-0 whitespace-nowrap text-right text-fg-muted">{r.bytes > 0 ? `${fmtBytes(r.bytes)} freed` : '—'}</span>
+            <span className="w-[72px] shrink-0 text-right">
+              {r.restored_at ? (
+                <span className="text-fg-faint">restored</span>
+              ) : r.restorable ? (
+                <button type="button" className="text-accent hover:underline disabled:opacity-60" disabled={!!restoring} onClick={() => onRestore(r)}>
+                  {restoring === r.id ? 'Restoring…' : 'Restore'}
+                </button>
+              ) : (
+                <span className="text-fg-faint" title="Removed more than 7 days ago, or its folder is in use again">—</span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }

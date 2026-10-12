@@ -106,6 +106,16 @@ type Service struct {
 	Debounce   time.Duration
 	GitTimeout time.Duration
 
+	// Finished copies cleaning themselves up (cleanup.go). CleanupFile is
+	// where the state is kept ("" keeps it in memory); CleanupMode is
+	// off | ask | auto (ask when nil); Busy says what runs in a folder;
+	// PRState is the cached pull request of a branch of the repository at
+	// remoteURL — its state, number and head commit — without asking GitHub.
+	CleanupFile string
+	CleanupMode func() string
+	Busy        func(ctx context.Context) BusyFunc
+	PRState     func(remoteURL, branch string) (state string, number int, head string)
+
 	sem   chan struct{}
 	watch *watcher
 	ops   *opRegistry
@@ -142,6 +152,10 @@ type Service struct {
 	// sizeCache holds the copies' measured sizes (copies.go).
 	sizeOnce  sync.Once
 	sizeCache *sizeCache
+
+	// clean is the finished-copy cleanup's state (cleanup.go).
+	cleanOnce sync.Once
+	clean     *cleanupState
 }
 
 type gitState struct {
@@ -241,6 +255,7 @@ func (s *Service) Start(ctx context.Context) error {
 	if s.Bus != nil {
 		go s.follow(ctx, s.Bus.Subscribe(4096))
 	}
+	s.startCleanup()
 	go func() {
 		<-ctx.Done()
 		s.Close()
@@ -270,6 +285,7 @@ func (s *Service) Close() {
 		}
 	}
 	s.mu.Unlock()
+	s.stopCleanup()
 	if s.watch != nil {
 		_ = s.watch.w.Close()
 	}

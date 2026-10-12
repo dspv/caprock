@@ -69,6 +69,8 @@ export interface SessionDeckProps {
   onOpenSession?: (s: SessionSummary) => void
   /** Starts an agent and opens its tab; throws why it could not. */
   onStartAgent?: (req: SpawnRequest, title: string) => Promise<void>
+  /** The project's finished copies, over the Branches view (components/CleanupLine). */
+  cleanup?: ReactNode
 }
 
 export function SessionDeck(props: SessionDeckProps) {
@@ -164,7 +166,7 @@ export function SessionDeck(props: SessionDeckProps) {
 }
 
 
-function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClose, onToast, worktrees, onOpenSession, onStartAgent }: SessionDeckProps) {
+function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClose, onToast, worktrees, onOpenSession, onStartAgent, cleanup }: SessionDeckProps) {
   return (
     // A container, so the row's quieter columns give way as the terminal
     // narrows (the sidebar and the inspector both open). No clock and no
@@ -172,7 +174,7 @@ function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClo
     // sidebar's and the inspector's (owner, 2026-10-11: "Spent doesn't
     // help", "Working now is debatable").
     <div className="@container flex min-h-0 flex-1 items-stretch overflow-hidden">
-      <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} worktrees={worktrees} onOpenSession={onOpenSession} onStartAgent={onStartAgent} />
+      <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} worktrees={worktrees} onOpenSession={onOpenSession} onStartAgent={onStartAgent} cleanup={cleanup} />
       <div className="flex shrink-0 items-start pr-2 pt-1.5">
         <button
           type="button"
@@ -434,7 +436,7 @@ const WORD_TEXT: Record<PRWordTone, string> = {
  * and Main views stand behind the same switch. Asked only while the deck is
  * open and the window visible.
  */
-function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, worktrees, onOpenSession, onStartAgent }: { sessionId: string; s: SessionSummary; onToast?: (text: string) => void; branch?: string; changed?: number; ahead?: number; onReview?: () => void; worktrees?: DeckWorktree[]; onOpenSession?: (s: SessionSummary) => void; onStartAgent?: (req: SpawnRequest, title: string) => Promise<void> }) {
+function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, worktrees, onOpenSession, onStartAgent, cleanup }: { sessionId: string; s: SessionSummary; onToast?: (text: string) => void; branch?: string; changed?: number; ahead?: number; onReview?: () => void; worktrees?: DeckWorktree[]; onOpenSession?: (s: SessionSummary) => void; onStartAgent?: (req: SpawnRequest, title: string) => Promise<void>; cleanup?: ReactNode }) {
   const canControl = useCanControl()
   const [busy, setBusy] = useState<number>()
   const [view, setViewState] = useState<CIView>(() => readCIView())
@@ -893,7 +895,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
     const d = brData
     if (d && d.reason) body = quiet('This session’s folder is not a git repository.')
     else if (d && d.branches.length === 0) body = quiet('No branches.')
-    else if (d) body = <BranchList d={d} now={now} onJump={jumpToPR} connect={!d.connected && d.repo ? connectButton('Connect GitHub to see each branch’s pull request') : null} />
+    else if (d) body = <BranchList d={d} now={now} onJump={jumpToPR} connect={!d.connected && d.repo ? connectButton('Connect GitHub to see each branch’s pull request') : null} cleanup={cleanup} />
   } else if (view === 'release') {
     const d = relData
     if (d && d.reason) body = quiet(noRepoLine(d))
@@ -1104,12 +1106,13 @@ function UsageText({ line }: { line?: ReturnType<typeof usageLine> }) {
  * what Caprock's sessions on it cost and how many, and a stale mark. The first
  * BRANCHES_SHOWN, then "Show all". A branch with a PR opens it in the PRs view.
  */
-function BranchList({ d, now, onJump, connect }: { d: SessionBranches; now: number; onJump: (n: number, url: string) => void; connect: ReactNode }) {
+function BranchList({ d, now, onJump, connect, cleanup }: { d: SessionBranches; now: number; onJump: (n: number, url: string) => void; connect: ReactNode; cleanup?: ReactNode }) {
   const [all, setAll] = useState(false)
   const rows = shownBranches(d.branches, all)
   return (
     <>
       {connect}
+      {cleanup && <div className="shrink-0 empty:hidden" data-deck-cleanup>{cleanup}</div>}
       <ul data-deck-branches className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
         {rows.map((b) => <BranchRow key={b.name} b={b} now={now} onJump={onJump} />)}
         {d.branches.length > BRANCHES_SHOWN && (

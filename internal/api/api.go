@@ -307,6 +307,10 @@ type Settings struct {
 	// keepawake.Modes. GET returns the effective mode, "working" when never
 	// chosen (ADR-049).
 	KeepAwake string `json:"keep_awake"`
+	// WorktreeCleanup is what happens to finished copies: one of
+	// projects.CleanupModes. GET returns the effective mode, "ask" when
+	// never chosen.
+	WorktreeCleanup string `json:"worktree_cleanup"`
 }
 
 // ReportSender sends one weekly report immediately.
@@ -594,6 +598,10 @@ func New(d Deps) *Server {
 	// Every worktree with its state and size, and cleaning them up (copies.go).
 	m.HandleFunc("GET /v1/projects/{id}/copies", s.handleCopies)
 	m.HandleFunc("POST /v1/projects/{id}/copies/remove", s.handleRemoveCopies)
+	// Finished copies: the ones to clean up, the history, Undo (copies.go).
+	m.HandleFunc("GET /v1/projects/{id}/cleanup", s.handleCleanup)
+	m.HandleFunc("POST /v1/projects/{id}/cleanup", s.handleCleanUp)
+	m.HandleFunc("POST /v1/projects/{id}/cleanup/restore", s.handleCleanupRestore)
 	// A worktree's changes: review, stage, commit, push (changes.go).
 	m.HandleFunc("GET /v1/projects/{id}/changes", s.handleChanges)
 	m.HandleFunc("GET /v1/projects/{id}/changes/diff", s.handleChangeDiff)
@@ -1294,6 +1302,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		Editor          *string  `json:"editor"`
 		SpawnMode       *string  `json:"spawn_permission_mode"`
 		KeepAwake       *string  `json:"keep_awake"`
+		WorktreeCleanup *string  `json:"worktree_cleanup"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
@@ -1400,6 +1409,14 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.KeepAwake = v
+	}
+	if patch.WorktreeCleanup != nil {
+		v := strings.TrimSpace(*patch.WorktreeCleanup)
+		if !projects.ValidCleanupMode(v) {
+			s.failCode(w, http.StatusBadRequest, fmt.Errorf("worktree_cleanup must be one of %s", strings.Join(projects.CleanupModes, ", ")))
+			return
+		}
+		in.WorktreeCleanup = v
 	}
 	// Only touched when the caller named it. GET never returns the token, so a
 	// UI that reads settings and writes them back always omits it — treating
