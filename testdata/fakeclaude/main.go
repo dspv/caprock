@@ -13,7 +13,8 @@
 // permissions or --allow-dangerously-skip-permissions) it also draws Claude
 // Code's mode footer ("⏵⏵ accept edits on") under its prompt and cycles the
 // mode on Shift+Tab (ESC [ Z) in Claude Code 2.1.296's order, bypass only
-// when a flag allows it and never auto. That needs the terminal raw, so only
+// when a flag allows it and never auto; ESC CR (a line break, as Caprock
+// types one) stays in the prompt as ↵. That needs the terminal raw, so only
 // then is it switched to raw mode; without the flags it stays the line REPL
 // the smoke tests drive.
 package main
@@ -135,8 +136,15 @@ func runTUI(mode string, bypass bool) {
 			fmt.Print("\r\n")
 			return
 		case 0x1b:
-			// ESC [ Z is Shift+Tab; any other sequence is read and dropped.
+			// ESC [ Z is Shift+Tab; ESC CR is a newline inside the prompt
+			// (Alt+Enter, what Caprock types for a line break), kept as ↵
+			// so a test can see a message of several lines arrive as one;
+			// any other sequence is read and dropped.
 			b1, _ := in.ReadByte()
+			if b1 == '\r' {
+				line = append(line, '↵')
+				break
+			}
 			if b1 != '[' {
 				continue
 			}

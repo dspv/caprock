@@ -9,7 +9,7 @@
  * click, never repaints from nothing and never drops a socket that was in use.
  */
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { api, ApiError, errText, type SessionSummary } from '@/lib/api'
+import { api, ApiError, errText, type SessionSummary, type SpawnRequest } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { stepUiScale } from '@/lib/uiscale'
@@ -1066,6 +1066,21 @@ export function AppShell() {
       : undefined
   }, [focusedWorktree, onOpenChanges])
 
+  // The deck's PR rows: the focused session's project's checkouts and the
+  // live agents in each, so a row says who is on its branch.
+  const deckWorktrees = useMemo(() => {
+    if (!focused) return undefined
+    const n = model.projects.find((x) => x.worktrees.some((w) => w.sessions.some((y) => y.session.session_id === focused.sessionId)))
+    return n?.worktrees.map((w) => ({ branch: w.branch, path: w.path, agents: w.sessions.filter((y) => !y.isShell).map((y) => ({ session: y.session, dot: y.dot })) }))
+  }, [focused, model.projects])
+  const deckProjectId = focusedWorktree?.projectId ?? activeProjectId
+  const onDeckOpenSession = useCallback((s: SessionSummary) => openSession(s, deckProjectId), [openSession, deckProjectId])
+  const onDeckStartAgent = useCallback(async (req: SpawnRequest, title: string) => {
+    const { session_id } = await api.spawn(req)
+    openTab({ kind: 'session', sessionId: session_id }, deckProjectId, title)
+    data.refresh()
+  }, [openTab, deckProjectId, data])
+
   // The project the focused session is listed under, named as the sidebar names it.
   const focusedProject = useMemo(() => {
     if (!focused) return undefined
@@ -1291,6 +1306,9 @@ export function AppShell() {
                     onResize={onResizeDeck}
                     onClose={closeDeck}
                     onToast={setToast}
+                    worktrees={deckWorktrees}
+                    onOpenSession={onDeckOpenSession}
+                    onStartAgent={onDeckStartAgent}
                   />
                 )}
                 {promptCard && !prefs.inspector && focused && (

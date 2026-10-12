@@ -11,7 +11,7 @@
  * and the day's summary for the plan windows. Nothing here is estimated, and a
  * figure an agent does not report is left out rather than drawn as a zero.
  */
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { api, type Event, type Permission, type RateWindow, type SessionSummary, type SubagentsNow, type Summary } from '@/lib/api'
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
@@ -26,7 +26,7 @@ import { WINDOW_MS, pace } from '@/lib/pace'
 import { SpendChart, SpendOverTime } from './SpendScrub'
 import { callsFromEvents } from '@/lib/scrub'
 import { everyWhileVisible } from '@/lib/visible'
-import { HEADLINES, METRICS, SPEND_PERIODS, foldedLine, metricTitle, metricValue, periodFigures, periodScope, pickSlot, setSpendPrefs, shownSlots, spendFigures, useSpendPrefs, type Headline, type Metric, type PeriodFigures, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
+import { HEADLINES, METRICS, SPEND_PERIODS, foldedLine, metricTitle, metricValue, periodFigures, periodScope, pickHero, pickSlot, setSpendPrefs, shownSlots, spendFigures, useSpendPrefs, type Metric, type PeriodFigures, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
@@ -163,27 +163,69 @@ export function SectionLabel({ children, right }: { children: ReactNode; right?:
   )
 }
 
+/** The agent's lines need about this much width before the two smaller figures leave their side. */
+const INFO_MIN_PX = 150
+/** The avatar's column and the two gaps of the hero's grid. */
+const HERO_FIXED_PX = 58 + 2 * 14
+
+/**
+ * Whether the two smaller figures stand under the big one (the agent's row
+ * has room for the widest of them beside the agent's lines) or move to the
+ * chips' row at its right. Measured, not guessed from the inspector's
+ * width: "$1,197.22/h burn" needs more room than "$4.08/h burn".
+ */
+function useSecondariesBelow(hero: RefObject<HTMLDivElement | null>, fig: RefObject<HTMLDivElement | null>, sec: RefObject<HTMLDivElement | null>): boolean {
+  const [below, setBelow] = useState(false)
+  useLayoutEffect(() => {
+    const h = hero.current
+    if (!h || typeof ResizeObserver !== 'function') return
+    const measure = () => {
+      // Not laid out (a hidden pane): nothing to decide from.
+      if (!(h.clientWidth > 0)) return
+      // Each line's own width: the same whether they stand stacked beside
+      // the agent or side by side under it, so the choice cannot flap.
+      const lines = Array.from(sec.current?.querySelectorAll<HTMLElement>('[data-hero-line]') ?? [], (el) => el.offsetWidth)
+      const need = Math.max(fig.current?.offsetWidth ?? 0, ...lines)
+      setBelow(h.clientWidth - HERO_FIXED_PX - need < INFO_MIN_PX)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    for (const el of [h, fig.current, sec.current]) if (el) ro.observe(el)
+    return () => ro.disconnect()
+  }, [hero, fig, sec, below])
+  return below
+}
+
 function Hero({ s, sessionId, state, now, background, subs, permission, figures, onChip }: { s: SessionSummary; sessionId: string; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null; figures: SpendFigures; onChip: (id: string) => void }) {
   const since = s.worked_at || s.last_event_at
   const strip = subagentChips(subs, permission)
   const saysBackground = background > 0 && state === 'working'
   const working = subs?.working.length ?? 0
-  // One row: the agent at the left, the headline figure at the right (owner,
-  // 2026-10-12: "put it to the right of the agent, then the chart is wide").
-  // A narrow inspector shrinks the figure (.cockpit-hero, a container query)
-  // rather than moving it off the agent's row. Under the name, the
-  // state and how many subagents work (owner, 2026-10-12: "move the text with
-  // how many subagents are running higher"); their chips under the row.
+  const heroRef = useRef<HTMLDivElement>(null)
+  const figRef = useRef<HTMLDivElement>(null)
+  const secRef = useRef<HTMLDivElement>(null)
+  const below = useSecondariesBelow(heroRef, figRef, secRef)
+  const sec = s.stats
+    ? <div ref={secRef} data-hero-sec className={`w-max ${below ? 'ml-auto shrink-0' : 'self-start justify-self-end [grid-area:sec]'}`}><HeroSecondaries figures={figures} row={below && strip.chips.length === 0} /></div>
+    : null
+  // One row: the agent at the left, its figures at the right (owner,
+  // 2026-10-12: "put it to the right of the agent, then the chart is wide";
+  // "let several numbers be changeable"): the headline big, two smaller
+  // lines under it. A narrow inspector shrinks the big one (.cockpit-hero,
+  // a container query) rather than moving it off the agent's row; when the
+  // smaller lines would squeeze the agent's own, they move to the chips'
+  // row at its right instead of being cut. Under the name, the state and
+  // how many subagents work; their chips under the row.
   return (
     <div className="@container min-w-0">
-    <div className="cockpit-hero" data-state={state}>
+    <div ref={heroRef} className="cockpit-hero" data-state={state} data-sec={below ? 'below' : 'beside'}>
       <div className={`cockpit-avatar relative grid h-[58px] w-[58px] shrink-0 place-items-center rounded-[15px] [grid-area:av]`} data-state={state}>
         <AgentCharacter who={characterFor(s.agent ?? 'claude')} size={46} className="cockpit-character" />
       </div>
       <div className="grid min-w-0 gap-1 [grid-area:info]">
         <p className="text-[12px] text-fg-muted">
           <span className="font-medium text-fg">{agentName(s.agent ?? 'claude')}</span>
-          {s.model_display || s.model ? <span> · {s.model_display || s.model}</span> : null}
+          {s.model_display || s.model ? <span> · <span className="whitespace-nowrap">{s.model_display || s.model}</span></span> : null}
           <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} />
         </p>
         <p className={`flex items-center gap-1.5 text-[12px] font-medium ${STATE_TEXT[state]}`} role="status">
@@ -201,9 +243,16 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
           <p className="text-[11px] text-fg-faint">started {fmtAgo(s.started_at, now)}</p>
         )}
       </div>
-      {s.stats && <div data-hero-fig className="min-w-0 self-center justify-self-end [grid-area:fig]"><HeadlineFigure figures={figures} /></div>}
-      {/* The chips take the row under the agent and its figure. */}
-      {strip.chips.length > 0 && <div className="min-w-0 self-center [grid-area:chips]"><SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} /></div>}
+      {s.stats && <div ref={figRef} data-hero-fig className={`w-max justify-self-end ${below ? 'self-center' : 'self-end'} [grid-area:fig]`}><HeadlineFigure figures={figures} /></div>}
+      {!below && sec}
+      {/* The chips take the row under the agent and its figures; the two
+        * smaller figures join them at the right when they left their side. */}
+      {(strip.chips.length > 0 || (below && sec)) && (
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 [grid-area:chips]">
+          {strip.chips.length > 0 && <div className="min-w-0"><SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} /></div>}
+          {below && sec}
+        </div>
+      )}
     </div>
     </div>
   )
@@ -264,42 +313,80 @@ function useTweened(value: number, ms = 650): number {
   return shown
 }
 
-/**
- * The headline figure beside the agent, and what it is: cost by default, or
- * whatever the viewer picked from the ▾ (burn rate, tokens, turns, cache hit
- * rate, time working), remembered per viewer (owner, 2026-10-12: "the number
- * is cool but says nothing; let me switch what matters more to me").
- */
-function HeadlineFigure({ figures }: { figures: SpendFigures }) {
-  const { headline } = useSpendPrefs()
-  const [open, setOpen] = useState(false)
-  const box = useRef<HTMLDivElement>(null)
-  const tweened = useTweened(figures.cost)
-  const meta = HEADLINES.find((h) => h.id === headline) ?? HEADLINES[0]!
+/** A small menu's housekeeping: closes on a click outside or Escape, and its current choice takes the focus. */
+function useMenuDismiss(open: boolean, box: RefObject<HTMLElement | null>, close: () => void) {
   useEffect(() => {
     if (!open) return
-    const onDown = (e: globalThis.MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
-    const onKey = (e: KeyboardEvent) => { if (e.code === 'Escape') setOpen(false) }
+    const onDown = (e: globalThis.MouseEvent) => { if (!box.current?.contains(e.target as Node)) close() }
+    const onKey = (e: KeyboardEvent) => { if (e.code === 'Escape') close() }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
     // The current choice takes the focus, so arrows move from it.
     box.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')?.focus()
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
   }, [open])
+}
+
+/** ↑/↓ move through a menu's enabled items. */
+function onMenuKey(e: ReactKeyboardEvent<HTMLDivElement>) {
+  const d = e.code === 'ArrowDown' ? 1 : e.code === 'ArrowUp' ? -1 : 0
+  if (!d) return
+  e.preventDefault()
+  const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]:not(:disabled)'))
+  const i = items.indexOf(document.activeElement as HTMLButtonElement)
+  items[(i + d + items.length) % items.length]?.focus()
+}
+
+const HERO_PLACE = ['the big figure', 'the line under it', 'the second line'] as const
+
+/**
+ * What one of the three figures beside the agent can show: every metric
+ * with its value and what it is. One another figure shows is marked, and
+ * picking it swaps the two, so none is shown twice.
+ */
+function HeroMenu({ slot, hero, figures, label, onPick }: { slot: number; hero: readonly Metric[]; figures: SpendFigures; label: string; onPick: (m: Metric) => void }) {
+  return (
+    <div role="menu" aria-label={label} onKeyDown={onMenuKey}
+      className="absolute right-0 top-full z-30 mt-1 grid w-[min(16rem,calc(100vw-32px))] gap-0.5 rounded-[9px] border border-border-strong bg-panel p-1.5 shadow-lg">
+      {HEADLINES.map((h) => {
+        const at = hero.indexOf(h.id)
+        const other = at >= 0 && at !== slot
+        return (
+          <button key={h.id} type="button" role="menuitemradio" aria-checked={at === slot} onClick={() => onPick(h.id)}
+            title={other ? `Shown as ${HERO_PLACE[at]}: picking it swaps the two` : h.hint}
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-[6px] px-2 py-1.5 text-left outline-none hover:bg-panel-2 focus-visible:bg-panel-2 aria-checked:bg-accent/10">
+            <span className={`truncate text-[13px] ${at === slot ? 'font-semibold text-fg' : 'text-fg'}`}>
+              {h.name}{other ? <span className="font-normal text-fg-faint"> · shown</span> : null}
+            </span>
+            <span className="num text-[12px] text-fg-muted">{metricValue(h.id, figures)}</span>
+            <span className="col-span-2 truncate text-[11.5px] text-fg-muted">{h.hint}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * The headline figure beside the agent, and what it is: cost by default, or
+ * whatever the viewer picked from the ▾, remembered per viewer (owner,
+ * 2026-10-12: "the number is cool but says nothing; let me switch what
+ * matters more to me").
+ */
+function HeadlineFigure({ figures }: { figures: SpendFigures }) {
+  const { hero } = useSpendPrefs()
+  const headline = hero[0]!
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  const tweened = useTweened(figures.cost)
+  const meta = HEADLINES.find((h) => h.id === headline) ?? HEADLINES[0]!
+  useMenuDismiss(open, box, () => setOpen(false))
   const value = headline === 'cost' ? fmtUSD(tweened) : metricValue(headline, figures)
   const [num, unit] = value.endsWith('/h') ? [value.slice(0, -2), '/h'] : [value, '']
-  const choose = (h: Headline) => { setSpendPrefs({ headline: h }); setOpen(false) }
-  const onMenuKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    const d = e.code === 'ArrowDown' ? 1 : e.code === 'ArrowUp' ? -1 : 0
-    if (!d) return
-    e.preventDefault()
-    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'))
-    const i = items.indexOf(document.activeElement as HTMLButtonElement)
-    items[(i + d + items.length) % items.length]?.focus()
-  }
+  const choose = (m: Metric) => { setSpendPrefs({ hero: pickHero(hero, 0, m) }); setOpen(false) }
   return (
-    <div ref={box} className="relative ml-auto grid min-w-0 justify-items-end gap-1" data-headline={headline}>
-      <span className="cockpit-hero-num num max-w-full truncate font-semibold leading-none tracking-[-0.03em] text-fg"
+    <div ref={box} className="relative grid min-w-0 justify-items-end gap-1" data-headline={headline}>
+      <span className="cockpit-hero-num num whitespace-nowrap font-semibold leading-none tracking-[-0.03em] text-fg" data-long={num.length >= 8 ? '' : undefined}
         aria-label={`${meta.name} ${metricValue(headline, figures)}`} title={metricTitle(headline, figures)}>
         {num}{unit && <span className="text-[16px] font-medium text-fg-muted">{unit}</span>}
       </span>
@@ -309,36 +396,61 @@ function HeadlineFigure({ figures }: { figures: SpendFigures }) {
         className="inline-flex items-center gap-1 rounded-[6px] border border-border px-1.5 text-[11.5px] text-fg-muted outline-none hover:border-border-strong hover:text-fg focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
         {meta.name.toLowerCase()}<span aria-hidden className="text-[9px]">▾</span>
       </button>
-      {open && (
-        <div role="menu" aria-label="Headline figure" onKeyDown={onMenuKey}
-          className="absolute right-0 top-full z-30 mt-1 grid w-[min(16rem,calc(100vw-32px))] gap-0.5 rounded-[9px] border border-border-strong bg-panel p-1.5 shadow-lg">
-          {HEADLINES.map((h) => (
-            <button key={h.id} type="button" role="menuitemradio" aria-checked={h.id === headline} onClick={() => choose(h.id)}
-              className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-[6px] px-2 py-1.5 text-left outline-none hover:bg-panel-2 focus-visible:bg-panel-2 aria-checked:bg-accent/10">
-              <span className={`truncate text-[13px] ${h.id === headline ? 'font-semibold text-fg' : 'text-fg'}`}>{h.name}</span>
-              <span className="num text-[12px] text-fg-muted">{metricValue(h.id, figures)}</span>
-              <span className="col-span-2 truncate text-[11.5px] text-fg-muted">{h.hint}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {open && <HeroMenu slot={0} hero={hero} figures={figures} label="Headline figure" onPick={choose} />}
     </div>
   )
 }
 
 /**
- * The spend details under the plan, folded by default to one line.
- * Unfolded, the header carries a period chip (session · today · 7d · 30d)
- * and *Numbers | Chart*, both remembered per viewer (owner, 2026-10-12:
- * "you can choose what you see — the chart or the numbers — and which
- * ones, and that makes it compact"). **Numbers**: three figures in one row,
- * each label a menu that picks what sits there, never one twice and, for
- * the session, never the headline beside the agent again. **Chart**: the
+ * The two smaller figures under the headline, one line each in 13px —
+ * the value, then a short word for it and a ▾ (*$4.08/h burn ▾*, *4.01B
+ * tok ▾*). Moved under the agent, they stand side by side on a row of
+ * their own, or stacked at the right of the subagent chips. Each line is its own chooser over the same metrics as the
+ * headline, swapping rather than repeating; burn rate and tokens until a
+ * viewer picks, remembered per viewer.
+ */
+function HeroSecondaries({ figures, row }: { figures: SpendFigures; row: boolean }) {
+  const { hero } = useSpendPrefs()
+  const [open, setOpen] = useState<number | null>(null)
+  const box = useRef<HTMLDivElement>(null)
+  useMenuDismiss(open !== null, box, () => setOpen(null))
+  const choose = (i: number, m: Metric) => { setSpendPrefs({ hero: pickHero(hero, i, m) }); setOpen(null) }
+  return (
+    <div ref={box} className={`relative ${row ? 'flex items-baseline gap-2' : 'grid justify-items-end gap-0.5'}`}>
+      {[1, 2].map((i) => {
+        const m = hero[i]!
+        const meta = HEADLINES.find((h) => h.id === m)!
+        const value = metricValue(m, figures)
+        return (
+          <button key={i} type="button" data-hero-line={m} aria-haspopup="menu" aria-expanded={open === i}
+            aria-label={`${meta.name} ${value}. Choose what this line shows`} title={metricTitle(m, figures)}
+            onClick={() => setOpen((o) => (o === i ? null : i))}
+            className="-mr-1 inline-flex items-baseline gap-1 whitespace-nowrap rounded-[5px] px-1 text-[13px] leading-[18px] outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] aria-expanded:bg-panel-2">
+            <span className="num font-medium text-fg">{value}</span>
+            <span className="text-[12px] text-fg-muted">{meta.short}</span>
+            <span aria-hidden className="text-[9px] text-fg-faint">▾</span>
+          </button>
+        )
+      })}
+      {open !== null && <HeroMenu slot={open} hero={hero} figures={figures} label={`What line ${open} shows`} onPick={(m) => choose(open, m)} />}
+    </div>
+  )
+}
+
+/**
+ * The spend details under the plan, unfolded by default, foldable to one
+ * line. The header carries a period chip (session · today · 7d · 30d) and
+ * *Chart | Numbers*, both remembered per viewer (owner, 2026-10-12: "you
+ * can choose what you see — the chart or the numbers — and which ones").
+ * **Chart**, the default since the figures beside the agent carry the
+ * numbers (owner, 2026-10-12: "where did you put the chart?"): the
  * period's spend by time, its total on the top line and the stretch under
- * the pointer at its right.
+ * the pointer at its right. **Numbers**: three figures in one row, each
+ * label a menu that picks what sits there, never one twice and, for the
+ * session, never one of the figures beside the agent again.
  */
 function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSummary; sessionId: string; events: readonly Event[]; now: number; figures: SpendFigures; summary?: Summary }) {
-  const { folded, headline, view, period, slots } = useSpendPrefs()
+  const { folded, headline, hero, view, period, slots } = useSpendPrefs()
   // Folded, nothing is read: the one line is the session's own.
   const range = usePeriodSummary(folded ? 'session' : period, summary)
   if (!s.stats) return null
@@ -364,7 +476,7 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
           </>
         )}
       </div>
-      {!folded && view === 'numbers' && <SpendNumbers period={period} headline={headline} slots={slots} figures={pf} scope={scope} />}
+      {!folded && view === 'numbers' && <SpendNumbers period={period} hero={hero} slots={slots} figures={pf} scope={scope} />}
       {!folded && view === 'chart' && (period === 'session'
         ? <SpendOverTime sessionId={sessionId} events={events} now={now} total={figures.cost} />
         : !range
@@ -376,9 +488,8 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
   )
 }
 
-/** Numbers or Chart: two small icons, each named for a screen reader and on hover. */
+/** Chart or Numbers: two small icons, each named for a screen reader and on hover. */
 const VIEW_OPTIONS = [
-  ['numbers', <span key="n" aria-hidden className="num block w-[18px] text-center text-[10px] font-semibold tracking-[-0.03em]">123</span>, 'Numbers'],
   ['chart', (
     <svg key="c" aria-hidden width="18" height="12" viewBox="0 0 18 12" className="block">
       <rect x="3" y="6" width="3" height="6" rx="0.5" fill="currentColor" opacity="0.7" />
@@ -386,6 +497,7 @@ const VIEW_OPTIONS = [
       <rect x="12" y="4.5" width="3" height="7.5" rx="0.5" fill="currentColor" opacity="0.7" />
     </svg>
   ), 'Chart'],
+  ['numbers', <span key="n" aria-hidden className="num block w-[18px] text-center text-[10px] font-semibold tracking-[-0.03em]">123</span>, 'Numbers'],
 ] as const satisfies readonly (readonly [SpendView, ReactNode, string])[]
 
 /**
@@ -394,28 +506,12 @@ const VIEW_OPTIONS = [
  * call, time working, turns, tool calls); picking one another figure shows
  * swaps the two, so none is shown twice. Remembered per viewer.
  */
-function SpendNumbers({ period, headline, slots, figures, scope }: { period: SpendPeriod; headline: Headline; slots: readonly Metric[]; figures: PeriodFigures; scope: string }) {
-  const shown = shownSlots(slots, period, headline)
+function SpendNumbers({ period, hero, slots, figures, scope }: { period: SpendPeriod; hero: readonly Metric[]; slots: readonly Metric[]; figures: PeriodFigures; scope: string }) {
+  const shown = shownSlots(slots, period, hero)
   const [open, setOpen] = useState<number | null>(null)
   const box = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (open === null) return
-    const onDown = (e: globalThis.MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(null) }
-    const onKey = (e: KeyboardEvent) => { if (e.code === 'Escape') setOpen(null) }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    box.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')?.focus()
-    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
-  }, [open])
+  useMenuDismiss(open !== null, box, () => setOpen(null))
   const choose = (i: number, m: Metric) => { setSpendPrefs({ slots: pickSlot(shown, i, m) }); setOpen(null) }
-  const onMenuKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    const d = e.code === 'ArrowDown' ? 1 : e.code === 'ArrowUp' ? -1 : 0
-    if (!d) return
-    e.preventDefault()
-    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]:not(:disabled)'))
-    const i = items.indexOf(document.activeElement as HTMLButtonElement)
-    items[(i + d + items.length) % items.length]?.focus()
-  }
   const when = scope.toLowerCase()
   return (
     <div ref={box} data-spend-numbers className="relative grid min-w-0 grid-cols-[minmax(0,1fr)]">
@@ -442,10 +538,10 @@ function SpendNumbers({ period, headline, slots, figures, scope }: { period: Spe
         <div role="menu" aria-label={`What figure ${open + 1} shows`} onKeyDown={onMenuKey}
           className="absolute inset-x-0 top-full z-30 mt-1 grid gap-px rounded-[9px] border border-border-strong bg-panel p-1 shadow-lg">
           {METRICS.map((x) => {
-            const beside = period === 'session' && x.id === headline
+            const beside = period === 'session' && hero.includes(x.id)
             return (
               <button key={x.id} type="button" role="menuitemradio" aria-checked={x.id === shown[open]} disabled={beside}
-                onClick={() => choose(open, x.id)} title={beside ? 'Already the figure beside the agent' : x.hint}
+                onClick={() => choose(open, x.id)} title={beside ? 'Already one of the figures beside the agent' : x.hint}
                 className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-[6px] px-2 py-1 text-left outline-none hover:bg-panel-2 focus-visible:bg-panel-2 disabled:opacity-45 disabled:hover:bg-transparent aria-checked:bg-accent/10">
                 <span className={`min-w-0 truncate text-[12.5px] ${x.id === shown[open] ? 'font-semibold text-fg' : 'text-fg'}`}>
                   {x.name}{beside ? <span className="text-fg-faint"> · beside the agent</span> : null}

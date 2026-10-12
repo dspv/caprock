@@ -1,8 +1,9 @@
 /**
  * The cockpit's spend figures as each viewer has set them (.ai/04-ui.md §
- * Inspector): which figure is the headline beside the agent, whether the
- * Spend details are folded, whether they read as numbers or a chart, over
- * which period, which three figures, and the figures themselves. Kept
+ * Inspector): which three figures stand beside the agent (the headline and
+ * two smaller lines), whether the Spend details are folded, whether they
+ * read as a chart or numbers, over which period, which three figures, and
+ * the figures themselves. Kept
  * apart from the components so the arithmetic and the choice of figures
  * are tested.
  *
@@ -15,20 +16,62 @@ import type { SessionSummary, Summary } from './api'
 import type { CallPoint } from './scrub'
 import { fmtDuration, fmtPct, fmtTokens, fmtUSD } from './format'
 
-/** What the big figure can be. */
-export type Headline = 'cost' | 'burn' | 'tokens' | 'turns' | 'cache' | 'time'
-/** What a figure of the Numbers row can be: any headline, tool calls, and the last call's cost. */
-export type Metric = Headline | 'tools' | 'last'
+/** What a figure can be, beside the agent or in the Numbers row. */
+export type Metric = 'cost' | 'burn' | 'tokens' | 'turns' | 'cache' | 'time' | 'tools' | 'last'
+/** What the big figure beside the agent can be: any metric. */
+export type Headline = Metric
 
-/** The headline menu, in its order, with what each one is. */
-export const HEADLINES: readonly { id: Headline; name: string; hint: string }[] = [
-  { id: 'cost', name: 'Cost', hint: 'what the session has spent' },
-  { id: 'burn', name: 'Burn rate', hint: 'per hour, over the last hour of activity' },
-  { id: 'tokens', name: 'Tokens', hint: 'input, cache reads and writes included' },
-  { id: 'turns', name: 'Turns', hint: 'prompts the agent answered' },
-  { id: 'cache', name: 'Cache hit rate', hint: 'input read from the prompt cache' },
-  { id: 'time', name: 'Time working', hint: 'from its start to its last activity' },
+/**
+ * The menu of the three figures beside the agent, in its order: its name,
+ * the short word after a smaller line's value (*$4.08/h burn ▾*), and what
+ * it is. One list for all three (owner, 2026-10-12: "let several numbers
+ * be changeable").
+ */
+export const HEADLINES: readonly { id: Metric; name: string; short: string; hint: string }[] = [
+  { id: 'cost', name: 'Cost', short: 'cost', hint: 'what the session has spent' },
+  { id: 'burn', name: 'Burn rate', short: 'burn', hint: 'per hour, over the last hour of activity' },
+  { id: 'tokens', name: 'Tokens', short: 'tok', hint: 'input, cache reads and writes included' },
+  { id: 'cache', name: 'Cache hit rate', short: 'cache', hint: 'input read from the prompt cache' },
+  { id: 'turns', name: 'Turns', short: 'turns', hint: 'prompts the agent answered' },
+  { id: 'time', name: 'Time working', short: 'time', hint: 'from its start to its last activity' },
+  { id: 'last', name: 'Last call', short: 'last call', hint: 'what the newest model call cost' },
+  { id: 'tools', name: 'Tool calls', short: 'tools', hint: 'tool calls made' },
 ]
+
+/** The figures beside the agent before a viewer picks: cost big, then burn rate and tokens. */
+export const DEFAULT_HERO: readonly Metric[] = ['cost', 'burn', 'tokens']
+const HERO_FILL: readonly Metric[] = ['cost', 'burn', 'tokens', 'cache', 'turns', 'time', 'last', 'tools']
+
+/** Three distinct metrics from whatever was stored, the defaults filling any gap. */
+function distinct3(raw: unknown, fill: readonly Metric[]): Metric[] {
+  const valid = new Set(HEADLINES.map((m) => m.id))
+  const out: Metric[] = []
+  for (const v of Array.isArray(raw) ? raw : []) {
+    if (out.length < 3 && valid.has(v as Metric) && !out.includes(v as Metric)) out.push(v as Metric)
+  }
+  for (const m of fill) if (out.length < 3 && !out.includes(m)) out.push(m)
+  return out
+}
+
+/** The three figures beside the agent, the headline first. */
+export function normalizeHero(raw: unknown): Metric[] {
+  return distinct3(raw, HERO_FILL)
+}
+
+/** Slot `i` set to `m`; a slot that already held `m` takes what `i` had, so none is ever shown twice. */
+function swapIn(out: Metric[], i: number, m: Metric): Metric[] {
+  const j = out.indexOf(m)
+  const old = out[i]
+  if (old === undefined || j === i) return out
+  out[i] = m
+  if (j >= 0) out[j] = old
+  return out
+}
+
+/** A figure beside the agent set to `m`, swapping with the one that showed it. */
+export function pickHero(hero: readonly Metric[], i: number, m: Metric): Metric[] {
+  return swapIn(normalizeHero(hero), i, m)
+}
 
 /**
  * The Numbers row's menu, in its order: what each figure can show, its
@@ -56,55 +99,51 @@ const FILL_ORDER: readonly Metric[] = ['cost', 'tokens', 'cache', 'burn', 'last'
 
 /** Three distinct metrics from whatever was stored, the defaults filling any gap. */
 export function normalizeSlots(raw: unknown): Metric[] {
-  const valid = new Set(METRICS.map((m) => m.id))
-  const out: Metric[] = []
-  for (const v of Array.isArray(raw) ? raw : []) {
-    if (out.length < 3 && valid.has(v as Metric) && !out.includes(v as Metric)) out.push(v as Metric)
-  }
-  for (const m of [...DEFAULT_SLOTS, ...FILL_ORDER]) if (out.length < 3 && !out.includes(m)) out.push(m)
-  return out
+  return distinct3(raw, [...DEFAULT_SLOTS, ...FILL_ORDER])
 }
 
 /**
- * The three figures as drawn. For *session*, a slot holding the hero's
- * headline shows the next metric not already shown instead: the same
- * figure twice, a few lines apart, says nothing new. A Caprock-wide period
- * is a different figure, so it keeps it.
+ * The three figures as drawn. For *session*, a slot holding one of the
+ * figures beside the agent shows the next metric not already shown
+ * instead: the same figure twice, a few lines apart, says nothing new. A
+ * Caprock-wide period is a different figure, so it keeps it.
  */
-export function shownSlots(slots: readonly Metric[], period: SpendPeriod, headline: Headline): Metric[] {
+export function shownSlots(slots: readonly Metric[], period: SpendPeriod, hero: readonly Metric[]): Metric[] {
   const out = normalizeSlots(slots)
   if (period !== 'session') return out
-  return out.map((m, i) => {
-    if (m !== headline) return m
-    const taken = new Set<Metric>([headline, ...out.filter((_, j) => j !== i)])
-    return FILL_ORDER.find((x) => !taken.has(x)) ?? m
+  const beside = new Set(hero)
+  const shown: Metric[] = []
+  out.forEach((m, i) => {
+    if (!beside.has(m)) { shown.push(m); return }
+    const taken = new Set<Metric>([...beside, ...shown, ...out.slice(i + 1)])
+    shown.push(FILL_ORDER.find((x) => !taken.has(x)) ?? m)
   })
+  return shown
 }
 
 /** Slot `i` set to `m`; a slot that already showed `m` takes what `i` had, so no metric is ever shown twice. */
 export function pickSlot(slots: readonly Metric[], i: number, m: Metric): Metric[] {
-  const out = normalizeSlots(slots)
-  const j = out.indexOf(m)
-  const old = out[i]
-  if (old === undefined || j === i) return out
-  out[i] = m
-  if (j >= 0) out[j] = old
-  return out
+  return swapIn(normalizeSlots(slots), i, m)
 }
 
-/** How the unfolded Spend block reads: three figures, or the period's spend as a chart. */
+/** How the unfolded Spend block reads: the period's spend as a chart, or three figures. */
 export type SpendView = 'numbers' | 'chart'
 /** What the figures and the chart cover: this session, or every session on the machine over a range. */
 export type SpendPeriod = 'session' | 'today' | '7d' | '30d'
 export const SPEND_PERIODS: readonly SpendPeriod[] = ['session', 'today', '7d', '30d']
 
 export interface SpendPrefs {
-  /** The Spend details folded to one line: the default, since most viewers want context and the plan first. */
+  /** The Spend details folded to one line; unfolded by default, so the chart is in sight. */
   folded: boolean
+  /** The three figures beside the agent, the big one first, never one twice. */
+  hero: Metric[]
+  /** The big one, `hero[0]`. */
   headline: Headline
   /**
-   * Numbers or Chart (owner, 2026-10-12: "you can choose what you see —
-   * the chart or the numbers, and which ones"). Numbers by default.
+   * Chart or Numbers (owner, 2026-10-12: "you can choose what you see —
+   * the chart or the numbers, and which ones"). Chart by default: the
+   * figures beside the agent carry the numbers (owner, 2026-10-12: "where
+   * did you put the chart?").
    */
   view: SpendView
   /** What the figures and the chart cover. */
@@ -113,7 +152,7 @@ export interface SpendPrefs {
   slots: Metric[]
 }
 
-export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: true, headline: 'cost', view: 'numbers', period: 'session', slots: [...DEFAULT_SLOTS] }
+export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: false, hero: [...DEFAULT_HERO], headline: 'cost', view: 'chart', period: 'session', slots: [...DEFAULT_SLOTS] }
 
 /**
  * A stored view, including 0.111.0's: *Full* drew the cells and *Spend
@@ -123,28 +162,46 @@ export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: true, headline: 'cost',
 function viewOf(v: unknown): SpendView {
   if (v === 'numbers' || v === 'chart') return v
   if (v === 'full') return 'chart'
+  if (v === 'compact') return 'numbers'
   return DEFAULT_SPEND_PREFS.view
 }
 
 const KEY = 'caprock.app.cockpit.spend'
+/**
+ * The stored choices' version. Before 2, Numbers and a folded block were the
+ * defaults, and a stored choice cannot say whether the viewer picked them or
+ * was given them, so every older one is opened on the chart once.
+ */
+const VERSION = 2
 const listeners = new Set<() => void>()
 
 /** Whatever was stored, made valid field by field. */
 export function normalizeSpendPrefs(raw: unknown): SpendPrefs {
   const v = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  // Before the three figures, one headline was stored: it stays the big one.
+  const hero = normalizeHero(Array.isArray(v.hero) ? v.hero : [v.headline, ...DEFAULT_HERO])
   return {
     folded: typeof v.folded === 'boolean' ? v.folded : DEFAULT_SPEND_PREFS.folded,
-    headline: HEADLINES.some((x) => x.id === v.headline) ? (v.headline as Headline) : DEFAULT_SPEND_PREFS.headline,
+    hero,
+    headline: hero[0]!,
     view: viewOf(v.view),
     period: SPEND_PERIODS.includes(v.period as SpendPeriod) ? (v.period as SpendPeriod) : DEFAULT_SPEND_PREFS.period,
     slots: normalizeSlots(v.slots),
   }
 }
 
+/** A choice stored before version 2 opened on the chart, once (see VERSION). */
+export function migrateSpendPrefs(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw
+  const v = raw as Record<string, unknown>
+  if (v.v === VERSION) return raw
+  return { ...v, view: 'chart', folded: false }
+}
+
 function read(): SpendPrefs {
   try {
     const s = localStorage.getItem(KEY)
-    return normalizeSpendPrefs(s ? JSON.parse(s) : undefined)
+    return normalizeSpendPrefs(migrateSpendPrefs(s ? JSON.parse(s) : undefined))
   } catch {
     return DEFAULT_SPEND_PREFS
   }
@@ -161,7 +218,7 @@ export function getSpendPrefs(): SpendPrefs {
 export function setSpendPrefs(patch: Partial<SpendPrefs>): void {
   current = normalizeSpendPrefs({ ...getSpendPrefs(), ...patch })
   try {
-    localStorage.setItem(KEY, JSON.stringify(current))
+    localStorage.setItem(KEY, JSON.stringify({ ...current, v: VERSION }))
   } catch {
     // Private storage: the choice holds until the window closes.
   }

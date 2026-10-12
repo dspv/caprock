@@ -26,9 +26,9 @@ function seed(kv: Record<string, string>) {
 }
 
 describe('the palette table', () => {
-  it('lists seven palettes, dark ones first, with unique ids and their sub-attribute', () => {
-    expect(THEME_MODES).toEqual(['dark-warm', 'dark-cold', 'dark-side', 'light', 'light-cold', 'book', 'light-side'])
-    expect(THEMES.map((t) => t.name)).toEqual(['Dark Warm', 'Dark Cold', 'Dark Side', 'Light', 'Light Cold', 'Book', 'Light Side'])
+  it('lists eight palettes, dark ones first, with unique ids and their sub-attribute', () => {
+    expect(THEME_MODES).toEqual(['dark-warm', 'dark-cold', 'dark-pastel', 'dark-side', 'light', 'light-cold', 'book', 'light-side'])
+    expect(THEMES.map((t) => t.name)).toEqual(['Dark Warm', 'Dark Cold', 'Dark Pastel', 'Dark Side', 'Light', 'Light Cold', 'Book', 'Light Side'])
     const keys = THEMES.map((t) => `${t.theme}/${t.sub}`)
     expect(new Set(keys).size).toBe(THEMES.length)
   })
@@ -44,6 +44,43 @@ describe('the palette table', () => {
       const block = css.slice(at, css.indexOf('}', at))
       expect(block, t.id).toContain(`--color-panel: ${t.panel};`)
     }
+  })
+})
+
+/** WCAG contrast of two #rrggbb colours. */
+function contrast(a: string, b: string): number {
+  const lum = (h: string) => {
+    const [r, g, bl] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * bl!
+  }
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p)
+  return (x! + 0.05) / (y! + 0.05)
+}
+
+function block(head: string): Record<string, string> {
+  const css = readFileSync(join(ui, 'src', 'design', 'tokens.css'), 'utf8')
+  const at = css.indexOf(head)
+  const body = css.slice(at, css.indexOf('}', at))
+  return Object.fromEntries([...body.matchAll(/--color-([\w-]+):\s*(#[0-9a-f]{6});/g)].map((m) => [m[1]!, m[2]!]))
+}
+
+describe('the calm palettes', () => {
+  // Testers asked for a dark palette that does not shout (2026-10-12); calm
+  // must not mean faint.
+  it('Dark Pastel: body 7:1, muted and faint and accent 4.5:1, marks 3:1, on every surface', () => {
+    const c = block('[data-theme="dark"][data-dark="pastel"] {')
+    for (const g of ['bg', 'panel', 'panel-2']) {
+      expect(contrast(c.fg!, c[g]!), `fg on ${g}`).toBeGreaterThanOrEqual(7)
+      for (const k of ['fg-muted', 'fg-faint', 'accent', 'info']) expect(contrast(c[k]!, c[g]!), `${k} on ${g}`).toBeGreaterThanOrEqual(4.5)
+      for (const k of ['ok', 'warn', 'danger', 'premium', 'merged']) expect(contrast(c[k]!, c[g]!), `${k} on ${g}`).toBeGreaterThanOrEqual(3)
+    }
+    // A filled accent button carries the panel colour as its label.
+    expect(contrast(c.panel!, c.accent!)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('Dark Cold’s softer accent still reads at 4.5:1 on every surface', () => {
+    const c = block('[data-theme="dark"][data-dark="slate"] {')
+    for (const g of ['bg', 'panel', 'panel-2']) expect(contrast(c.accent!, c[g]!), g).toBeGreaterThanOrEqual(4.5)
   })
 })
 
@@ -104,6 +141,7 @@ describe('the kept palette', () => {
     const { result } = renderHook(() => useTheme())
     expect(result.current[0]).toBe('dark')
     act(() => result.current[1]()) // Dark Cold
+    act(() => result.current[1]()) // Dark Pastel
     act(() => result.current[1]()) // Dark Side
     expect(result.current[0]).toBe('dark')
     act(() => result.current[1]()) // Light

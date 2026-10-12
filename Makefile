@@ -193,7 +193,15 @@ lang-check: ## Fail if any tracked text file holds Cyrillic (generated dist and 
 	@python3 scripts/check-no-cyrillic.py
 
 .PHONY: check
-check: docs-check docs-links lang-check lint test dist-check smoke ## Docs gates + lint + test + dist sync + smoke (what CI runs, minus the OS matrix)
+check: check-go check-ui ## Docs gates + lint + test + dist sync + smoke (what CI runs, minus the OS matrix)
+
+# The two halves of check, which share nothing, so release.yml's verify runs
+# them as two jobs side by side. Together they are exactly check.
+.PHONY: check-go
+check-go: docs-check docs-links lang-check lint-go test-go smoke ## check's Go half: docs gates, vet + golangci-lint, go test, smoke
+
+.PHONY: check-ui
+check-ui: lint-ui test-ui test-scripts dist-check ## check's dashboard half: typecheck, vitest, release script tests, dist sync
 
 .PHONY: release-ready
 release-ready: check ## Everything `check` does, plus the things only a release forgets

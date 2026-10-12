@@ -468,6 +468,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions/{id}/notes", s.handleSessionNotes)
 	m.HandleFunc("GET /v1/sessions/{id}/todos", s.handleSessionTodos)
 	m.HandleFunc("GET /v1/sessions/{id}/prs", s.handleSessionPRs)
+	m.HandleFunc("POST /v1/sessions/{id}/prs/{number}/rerun", s.handleSessionPRRerun)
+	m.HandleFunc("POST /v1/sessions/{id}/prs/{number}/update-branch", s.handleSessionPRUpdateBranch)
 	m.HandleFunc("GET /v1/sessions/{id}/ci", s.handleSessionCI)
 	m.HandleFunc("GET /v1/sessions/{id}/branches", s.handleSessionBranches)
 	m.HandleFunc("GET /v1/sessions/{id}/ci/jobs/{job}/log", s.handleSessionCILog)

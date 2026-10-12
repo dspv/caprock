@@ -429,6 +429,8 @@ GET  /v1/sessions/{id}/calls?limit=…   → SessionCall[] — every priced main
 GET  /v1/sessions/{id}/notes           → AssistantNote[] — what Claude said, newest first
 GET  /v1/sessions/{id}/todos           → SessionTodos — the agent's own task list (§ Session todos)
 GET  /v1/sessions/{id}/prs             → {connected, prs: SessionPRLive[]} — the session deck's PRs with CI
+POST /v1/sessions/{id}/prs/{number}/rerun → {ok, mode, runs, jobs} — re-run one of the session's PRs' checks on GitHub (machine only)
+POST /v1/sessions/{id}/prs/{number}/update-branch → {ok} — merge the base into one of the session's open PRs on GitHub (machine only)
 GET  /v1/sessions/{id}/ci              → SessionCI — the deck's CI cell: Actions runs, jobs, steps, times
 GET  /v1/sessions/{id}/ci/jobs/{job}/log → CILog — the lines around a failed job's error, on demand (?view=pr|release|main)
 GET  /v1/sessions/{id}/ci/release      → SessionRepoCI — the repository's newest release build, with an estimate
@@ -1243,7 +1245,38 @@ review) — or `error` when GitHub was asked and failed. While GitHub is not
 connected nothing is sent and `live` is absent. Each pull request is kept
 per link for 20 s while its checks run, 2 min once they settled and 30 min
 once merged or closed (`github.PullByURL`), so the deck polling it costs
-GitHub nothing in between; every read is conditional.
+GitHub nothing in between; every read is conditional. The row's state chips
+read fields this answer already carries (`mergeable`, `mergeable_state`,
+`review`, `draft`); nothing is asked per chip.
+
+**`POST /v1/sessions/{id}/prs/{number}/rerun`** (no body) → `{ok, mode,
+runs, jobs}`: the session deck's *Re-run checks*. Acts only on a pull
+request in the session's `session_prs` (404 otherwise), read through
+`github.PullByURL` for its head commit. `github.RerunChecks` reads that
+commit's runs afresh, then asks GitHub `POST
+/repos/{o}/{r}/actions/runs/{id}/rerun-failed-jobs` for every finished run
+that failed (`mode: "failed"`), else `POST …/runs/{id}/rerun` for every
+finished run (`mode: "all"`: a flaky green the user wants checked again);
+a run still going is left alone, and with none finished the answer is 409
+`kind: "state"`. `runs` is how many runs were asked, `jobs` how many jobs
+that re-runs. The commit's kept runs and the repository's kept pull
+requests are dropped so the next poll shows them queued. A refusal is the
+usual GitHub error body (`githubFail`): 403 is `kind: "scope"` with `needs`
+from GitHub's `X-Accepted-GitHub-Permissions`, else the documented
+`"Actions" repository permission (write)` / `"repo"` scope; it does not mark
+the connection's health line.
+
+**`POST /v1/sessions/{id}/prs/{number}/update-branch`** (no body) → `{ok}`:
+the deck's *Update branch*. The same pull request check, then 409 `kind:
+"state"` when it is not open or GitHub says it conflicts (`mergeable`
+false); else `github.UpdateBranch` sends `PUT
+/repos/{o}/{r}/pulls/{n}/update-branch` with `expected_head_sha` = the head
+last read, so a push made since is refused rather than merged over (said as
+*The branch moved since Caprock last read it*). A 403 names `"Pull requests"
+repository permission (write)` when GitHub names nothing. Both routes are
+writes to the user's own repository with the user's own token, sent on a
+click and a confirm, never by a poll (rule 4), and are the machine's: not in
+the paired-device lists.
 
 **`GET /v1/sessions/{id}/ci`** (`?pr=N` optional) → `SessionCI` `{connected,
 pr?, ci?, error?}`: the session deck's CI cell. `pr` `{number, url, title?,

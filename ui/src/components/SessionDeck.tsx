@@ -28,10 +28,10 @@
  * frame. Arrow keys on the divider settle the same way.
  */
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type SessionPRLive, type SessionRepoCI, type SessionSummary, type Summary } from '@/lib/api'
+import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type SessionPRLive, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
 import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
 import { MiniPipeline } from './MiniPipeline'
-import { CI_VIEWS, byOSLine, checkNodes, jobVsMedian, runSpan, runVsMedian, type DeltaTone, type VsMedian, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, orderPRs, osTag, prAge, prDotState, prMergeText, prReviewText, prVerdict, readCIView, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveCIView, type CITone, type CIView, type PipeNode, type PRWordTone } from '@/lib/ci'
+import { CI_VIEWS, byOSLine, checkNodes, jobVsMedian, runSpan, runVsMedian, type DeltaTone, type VsMedian, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, orderPRs, osTag, prAge, prDotState, prReviewText, prVerdict, readCIView, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveCIView, type CITone, type CIView, type PipeNode, type PRWordTone } from '@/lib/ci'
 import { jobCostLabel, sumCostLabel, sumRuns, usageLine, type CICost, type CostLabel, type CostTone } from '@/lib/runnercost'
 import { BRANCHES_SHOWN, STALE_TITLE, aheadBehind, branchPRDot, branchSpend, lastCommit, shownBranches, type SessionBranch, type SessionBranches } from '@/lib/branches'
 import { sessionTitle } from '@/lib/sidebar'
@@ -39,6 +39,7 @@ import { useCanControl } from '@/lib/useCanControl'
 import { githubApi } from '@/lib/github'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
+import { PROGRESS_MAX_MS, branchWorktree, fixCIMessage, fixConflictMessage, fixWorktreeName, forceErrText, hasConflict, isBehind, prAgents, prChips, progressStands, rerunText, typeable, type DeckWorktree, type PRAgent, type PRChip, type PRProgress } from '@/lib/prforce'
 
 /** How long arrow keys on the divider rest before the terminal is fitted to the new height. */
 export const KEY_SETTLE_MS = 250
@@ -62,6 +63,12 @@ export interface SessionDeckProps {
   onClose: () => void
   /** Says something briefly at the foot of the window: Investigate's result. */
   onToast?: (text: string) => void
+  /** The checkouts of the session's project and the live agents in each: who is on a PR's branch. */
+  worktrees?: DeckWorktree[]
+  /** Opens a session's tab: a PR row's agent mark. */
+  onOpenSession?: (s: SessionSummary) => void
+  /** Starts an agent and opens its tab; throws why it could not. */
+  onStartAgent?: (req: SpawnRequest, title: string) => Promise<void>
 }
 
 export function SessionDeck(props: SessionDeckProps) {
@@ -157,7 +164,7 @@ export function SessionDeck(props: SessionDeckProps) {
 }
 
 
-function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClose, onToast }: SessionDeckProps) {
+function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClose, onToast, worktrees, onOpenSession, onStartAgent }: SessionDeckProps) {
   return (
     // A container, so the row's quieter columns give way as the terminal
     // narrows (the sidebar and the inspector both open). No clock and no
@@ -165,7 +172,7 @@ function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClo
     // sidebar's and the inspector's (owner, 2026-10-11: "Spent doesn't
     // help", "Working now is debatable").
     <div className="@container flex min-h-0 flex-1 items-stretch overflow-hidden">
-      <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} />
+      <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} worktrees={worktrees} onOpenSession={onOpenSession} onStartAgent={onStartAgent} />
       <div className="flex shrink-0 items-start pr-2 pt-1.5">
         <button
           type="button"
@@ -358,6 +365,56 @@ function scrollInDeck(el: HTMLElement, mode: 'start' | 'nearest') {
   else if (r.bottom > a.bottom) area.scrollTop += Math.min(r.top - a.top, r.bottom - a.bottom)
 }
 
+/** The force actions on a pull request row. */
+type ForceKind = 'conflict' | 'ci' | 'rerun' | 'update'
+const FORCE_LABEL: Record<ForceKind, string> = {
+  conflict: 'Fix conflict with agent', ci: 'Fix CI with agent', rerun: 'Re-run checks', update: 'Update branch',
+}
+const FORCE_TITLE: Record<ForceKind, string> = {
+  conflict: 'An agent merges the base in, resolves the conflicts, runs the checks and pushes: the agent on this branch when Caprock started it, else a new one in the branch’s checkout',
+  ci: 'An agent looks at this pull request’s CI — the failed job with its log, or the flaky checks — fixes it and pushes',
+  rerun: 'Run the checks again on GitHub: the failed jobs, else every finished run. Needs the token’s Actions (write) permission',
+  update: 'Merge the base into this branch on GitHub, as its Update branch button does. Needs the token’s Pull requests (write) permission',
+}
+/** Where a fix goes: typed into an agent Caprock started, or a new agent. */
+type FixPlan = { mode: 'queue'; to: SessionSummary } | { mode: 'spawn'; wt?: DeckWorktree; foreign: boolean }
+
+/** What each PR row is doing after a force action, per session, while the app runs: hiding the deck keeps it. */
+const prProgress = new Map<string, PRProgress>()
+function progressOf(sessionId: string): Record<number, PRProgress> {
+  const out: Record<number, PRProgress> = {}
+  for (const [k, g] of prProgress) {
+    const i = k.lastIndexOf(':')
+    if (k.slice(0, i) === sessionId) out[Number(k.slice(i + 1))] = g
+  }
+  return out
+}
+/** Forgets every progress line: for tests. */
+export function forgetPRProgress() { prProgress.clear() }
+
+const CHIP_TEXT: Record<PRChip['tone'], string> = {
+  fail: 'border-danger/45 text-danger', warn: 'border-warn/45 text-warn', muted: 'border-[var(--app-hairline)] text-fg-faint',
+}
+const AGENT_TINT: Record<PRAgent['word'], string> = {
+  fixing: 'bg-ok/20 text-ok', waiting: 'bg-accent/20 text-accent', idle: 'bg-[var(--app-row-hover)] text-fg-muted',
+}
+const AGENT_WORD: Record<PRAgent['word'], string> = { fixing: 'text-ok', waiting: 'text-accent', idle: 'text-fg-faint' }
+
+/** Who is on the PR's branch: the agent's initial and its word, or "2 agents"; a click opens it. */
+function AgentMark({ agents, onOpen }: { agents: PRAgent[]; onOpen?: (s: SessionSummary) => void }) {
+  if (agents.length === 0) return null
+  const a = agents[0]!
+  const many = agents.length > 1
+  return (
+    <button type="button" data-deck-pr-agent={a.word} disabled={!onOpen} onClick={(e) => { e.stopPropagation(); onOpen?.(a.session) }}
+      title={`${agents.map((x) => x.title).join('\n')}${onOpen ? '\nOpen its tab' : ''}`}
+      className="flex shrink-0 items-center gap-1 rounded-[4px] px-0.5 text-[10.5px] leading-[14px] hover:bg-[var(--app-row-hover)]">
+      <span aria-hidden className={`grid h-[14px] w-[14px] place-items-center rounded-[4px] text-[9px] font-semibold ${AGENT_TINT[a.word]}`}>{a.initial}</span>
+      <span className={many ? 'text-fg-muted' : AGENT_WORD[a.word]}>{many ? `${agents.length} agents` : a.word}</span>
+    </button>
+  )
+}
+
 const WORD_TEXT: Record<PRWordTone, string> = {
   ok: 'text-ok', fail: 'text-danger', pending: 'text-warn', muted: 'text-fg-muted', faint: 'text-fg-faint',
 }
@@ -377,7 +434,7 @@ const WORD_TEXT: Record<PRWordTone, string> = {
  * and Main views stand behind the same switch. Asked only while the deck is
  * open and the window visible.
  */
-function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { sessionId: string; s: SessionSummary; onToast?: (text: string) => void; branch?: string; changed?: number; ahead?: number; onReview?: () => void }) {
+function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, worktrees, onOpenSession, onStartAgent }: { sessionId: string; s: SessionSummary; onToast?: (text: string) => void; branch?: string; changed?: number; ahead?: number; onReview?: () => void; worktrees?: DeckWorktree[]; onOpenSession?: (s: SessionSummary) => void; onStartAgent?: (req: SpawnRequest, title: string) => Promise<void> }) {
   const canControl = useCanControl()
   const [busy, setBusy] = useState<number>()
   const [view, setViewState] = useState<CIView>(() => readCIView())
@@ -402,9 +459,28 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   // one line so the error has the room.
   const [logs, setLogs] = useState(0)
   const onShown = useCallback((d: 1 | -1) => setLogs((x) => Math.max(0, x + d)), [])
+  const [confirm, setConfirm] = useState<{ pr: number; kind: ForceKind }>()
+  const [forcing, setForcing] = useState<number>()
+  const [progress, setProgressState] = useState<Record<number, PRProgress>>(() => progressOf(sessionId))
+  const setProgress = (n: number, g: PRProgress | undefined) => {
+    const k = `${sessionId}:${n}`
+    if (g) prProgress.set(k, g)
+    else prProgress.delete(k)
+    setProgressState(progressOf(sessionId))
+  }
+  // A progress line goes once GitHub shows it done, or after a while.
+  const standing = (p: SessionPRLive, agents: PRAgent[]): PRProgress | undefined => {
+    const g = progress[p.number]
+    return g && progressStands(g, p, agents, now) ? g : undefined
+  }
+  // While one stands, the PRs are asked sooner and the clock ticks, so it
+  // goes as soon as it is done.
+  const forceActive = Object.values(progress).some((g) => now - g.at < PROGRESS_MAX_MS)
 
   const key = `${sessionId}:${n}`
-  const [prsData, prsAt] = usePoll(view === 'pr', key, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS)
+  // Sooner while a force action's progress stands, so it goes once done.
+  const forceSoon = useRef(false)
+  const [prsData, prsAt] = usePoll(view === 'pr', key, () => api.sessionPRs(sessionId), (d) => forceSoon.current || d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS)
   const rows = useMemo(() => orderPRs(prsData?.prs ?? []), [prsData])
   const lead = rows[0]
   // The current PR opens by itself while it is open and has checks, whatever
@@ -463,7 +539,8 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   const runs: CIRun[] = useMemo(() => (view === 'release' ? (rel?.run ? [rel.run] : []) : ci?.runs ?? []), [view, rel?.run, ci?.runs])
   const relRunning = rel?.state === 'running'
   const prsRunning = view === 'pr' && rows.some((p) => p.live?.checks.state === 'pending')
-  const active = ciActive(ci) || relRunning || prsRunning
+  const active = ciActive(ci) || relRunning || prsRunning || forceActive
+  forceSoon.current = forceActive
   // A clock only while something runs: a settled CI draws once.
   useEffect(() => {
     if (!active) return
@@ -572,6 +649,139 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
       setBusy(undefined)
     }
   }
+  // The force actions on a pull request (owner, 2026-10-12, translated: "if
+  // needed I want to FORCE a fix or a check"): each asks once, in a line
+  // inside the row, and then says in the row what it is doing.
+  const root = s.repo_root || s.cwd
+  const agentsOf = (p: SessionPRLive) => prAgents(p.live?.branch, worktrees)
+  // Who a fix goes to: a Caprock-started agent on the branch; for CI, else
+  // the session in front as Investigate does; else a new agent in the
+  // branch's checkout, or in a new worktree at the PR's head when there is
+  // none or someone Caprock did not start works in it (rule 7).
+  const fixPlan = (p: SessionPRLive, kind: 'conflict' | 'ci'): FixPlan => {
+    const on = agentsOf(p)
+    const mine = on.find((a) => typeable(a.session))
+    if (mine) return { mode: 'queue', to: mine.session }
+    if (kind === 'ci' && !why) return { mode: 'queue', to: s }
+    const wt = branchWorktree(p.live?.branch, worktrees)
+    const foreign = on.some((a) => !typeable(a.session))
+    return { mode: 'spawn', wt: wt && !foreign ? wt : undefined, foreign }
+  }
+  const forceWhy = (p: SessionPRLive, kind: ForceKind): string => {
+    if (!canControl) return 'This device may only watch: do it from the Mac, or make this device a controller in Settings.'
+    const live = p.live
+    if (!live || live.state !== 'open') return 'Only an open pull request.'
+    if (kind === 'rerun' || kind === 'update') {
+      if (prsData && !prsData.connected) return 'Connect GitHub first.'
+      if (kind === 'rerun' && live.checks.items.length === 0) return 'No checks to re-run.'
+      if (kind === 'rerun' && live.checks.state === 'pending') return 'The checks are still running; GitHub re-runs a run once it has finished.'
+      return ''
+    }
+    const plan = fixPlan(p, kind)
+    if (plan.mode === 'spawn' && !onStartAgent) return 'An agent cannot be started from here.'
+    if (plan.mode === 'spawn' && !root) return 'This session has no folder to start an agent in.'
+    return ''
+  }
+  const confirmText = (p: SessionPRLive, kind: ForceKind): string => {
+    const live = p.live!
+    if (kind === 'rerun') return live.checks.failed > 0 ? `Re-run #${p.number}’s failed jobs on GitHub?` : `Re-run every check of #${p.number} on GitHub?`
+    if (kind === 'update') return `Merge ${live.base} into ${live.branch} on GitHub (Update branch)?`
+    const plan = fixPlan(p, kind)
+    const what = kind === 'conflict' ? `merge origin/${live.base}, resolve the conflicts, run the checks and push` : 'fix #' + p.number + '’s CI and push'
+    if (plan.mode === 'queue') return `Ask ${sessionTitle(plan.to)} to ${what}?`
+    const where = plan.wt ? `in ${plan.wt.path.split(/[\\/]/).pop()}` : `in a new worktree at #${p.number}’s head`
+    return `Start an agent ${where} to ${what}?${plan.foreign ? ' The agent on the branch was not started by Caprock, so nothing is typed into it.' : ''}`
+  }
+  // Fix CI's message: Investigate's for the first failed job, with its log;
+  // else the flaky-check one.
+  const ciMessage = async (p: SessionPRLive, fresh: boolean): Promise<string> => {
+    const live = p.live!
+    const failed = prCI?.pr?.number === p.number ? jobs.find((j) => ciTone(j) === 'fail') : undefined
+    if (!failed) return fixCIMessage(live, fresh)
+    let lines: string[] = []
+    try { lines = (await api.sessionCILog(sessionId, failed.id, 'pr', p.number)).lines } catch { /* the job's link has it */ }
+    const run = runs.find((r) => r.id === failed.run_id)
+    const text = investigateMessage({ pr: { number: p.number, title: live.title, url: live.url }, workflow: run?.name, job: failed, step: keyStep(failed)?.name, lines })
+    return fresh && live.branch ? `${text}\nPush to the pull request's branch: git push origin HEAD:${live.branch}` : text
+  }
+  const force = async (p: SessionPRLive, kind: ForceKind) => {
+    setConfirm(undefined)
+    const live = p.live
+    if (!live || forceWhy(p, kind)) return
+    setForcing(p.number)
+    const label = FORCE_LABEL[kind]
+    try {
+      if (kind === 'rerun') {
+        const r = await api.sessionPRRerun(sessionId, p.number)
+        setProgress(p.number, { kind: 'rerun', text: rerunText(r.jobs), at: Date.now(), head: live.head_sha })
+      } else if (kind === 'update') {
+        await api.sessionPRUpdateBranch(sessionId, p.number)
+        setProgress(p.number, { kind: 'update', text: 'updating branch…', at: Date.now(), head: live.head_sha })
+      } else {
+        const plan = fixPlan(p, kind)
+        const fresh = plan.mode === 'spawn' && !plan.wt
+        const text = kind === 'conflict' ? fixConflictMessage(live, fresh) : await ciMessage(p, fresh)
+        if (plan.mode === 'queue') {
+          const res = await api.queueSend(plan.to.session_id, text)
+          onToast?.(`${res.sent ? 'Sent to' : 'Queued for'} ${sessionTitle(plan.to)}`)
+        } else {
+          const req: SpawnRequest = plan.wt ? { cwd: plan.wt.path, prompt: text } : { cwd: root, worktree: fixWorktreeName(p.number), worktree_pr: p.number, prompt: text }
+          await onStartAgent!(req, `#${p.number} ${kind === 'conflict' ? 'conflict' : 'CI'}`)
+          onToast?.(`Started an agent on #${p.number}`)
+        }
+        setProgress(p.number, { kind: 'agent', text: 'agent fixing…', at: Date.now(), head: live.head_sha })
+      }
+      setN((x) => x + 1)
+    } catch (e) {
+      onToast?.(`${label}: ${forceErrText(e)}`)
+    } finally {
+      setForcing(undefined)
+    }
+  }
+  // ⋯ on a row: open it, with the focus on its first action.
+  const focusActions = useRef<number | undefined>(undefined)
+  const openActions = (n: number) => {
+    if (openPr !== n) togglePR(n)
+    focusActions.current = n
+  }
+  useLayoutEffect(() => {
+    const n = focusActions.current
+    if (n === undefined) return
+    const b = cell.current?.querySelector<HTMLElement>(`[data-deck-pr="${n}"] [data-deck-pr-actions] button:not([disabled])`)
+    if (b) { focusActions.current = undefined; b.focus({ preventScroll: true }) }
+  })
+  const actionsFor = (p: SessionPRLive): ReactNode => {
+    const live = p.live
+    if (!live || live.state !== 'open') return null
+    const kinds: ForceKind[] = []
+    if (hasConflict(p)) kinds.push('conflict')
+    else if (isBehind(p)) kinds.push('update')
+    if (live.checks.items.length > 0) kinds.push('ci', 'rerun')
+    if (kinds.length === 0) return null
+    const c = confirm?.pr === p.number ? confirm : undefined
+    return (
+      <div data-deck-pr-actions className="flex min-w-0 items-center gap-1.5 overflow-hidden pb-0.5 pl-[34px] pr-1 text-[11px]">
+        {c ? (
+          <>
+            <span data-deck-pr-confirm className="min-w-0 truncate text-fg" title={confirmText(p, c.kind)}>{confirmText(p, c.kind)}</span>
+            <button type="button" data-deck-pr-confirm-yes autoFocus onClick={() => void force(p, c.kind)}
+              className="shrink-0 rounded-[4px] border border-accent/60 bg-accent/10 px-1.5 font-medium text-accent hover:bg-accent/20">Confirm</button>
+            <button type="button" onClick={() => setConfirm(undefined)} title={`Cancel (${keys('Esc')})`}
+              className="shrink-0 rounded-[4px] px-1 text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">Cancel</button>
+          </>
+        ) : kinds.map((k) => {
+          const no = forceWhy(p, k)
+          return (
+            <button key={k} type="button" data-deck-pr-action={k} disabled={!!no || forcing === p.number} onClick={() => setConfirm({ pr: p.number, kind: k })}
+              title={no || FORCE_TITLE[k]}
+              className={`shrink-0 rounded-[4px] border px-1.5 leading-[16px] disabled:cursor-not-allowed disabled:border-[var(--app-hairline)] disabled:text-fg-faint ${k === 'conflict' ? 'border-danger/50 text-danger hover:bg-danger/10' : 'border-[var(--app-hairline)] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'}`}>
+              {FORCE_LABEL[k]}
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
   const total = ci ? runnerTime(ci, now) : 0
   const runnerTitle = ci ? `Runner time, measured from GitHub’s job times${ciActive(ci) ? ' and the running jobs on the clock' : ''}${ci.by_os.length ? `\nFinished: ${byOSLine(ci)}` : ''}` : ''
   const ciCost = sumCostLabel(ci?.cost)
@@ -648,13 +858,19 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
         // A column: every row keeps its line and the open one's CI takes
         // the height left, scrolling inside, so the earlier PRs stay in view.
         <ul data-deck-prs data-deck-scroll="" className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-          {rows.map((p) => (cramped && openPr !== p.number ? null :
+          {rows.map((p) => {
+            if (cramped && openPr !== p.number) return null
+            const agents = agentsOf(p)
+            return (
             <PRRow key={p.url} p={p} now={now} runs={seenRuns[p.number]} cost={prCost(p.number)} open={openPr === p.number}
               onToggle={() => togglePR(p.number)}
-              onPick={(node) => pickInRow(p.number, node)}>
+              onPick={(node) => pickInRow(p.number, node)}
+              agents={agents} onOpenAgent={onOpenSession} progress={standing(p, agents)}
+              actions={openPr === p.number ? actionsFor(p) : null} onMenu={p.live?.state === 'open' ? () => openActions(p.number) : undefined}>
               {openPr === p.number && prDetail(p)}
             </PRRow>
-          ))}
+            )
+          })}
           {cramped && rows.length > 1 && (
             <li data-deck-prs-folded className="flex shrink-0 items-center gap-2 overflow-hidden px-1 pt-0.5 text-[11px] text-fg-faint">
               <span className="shrink-0">also</span>
@@ -736,7 +952,8 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   // only while the focus is in the deck: the terminal keeps its own Esc.
   const onEsc = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'Escape' || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
-    if (openJob !== undefined && jobs.some((j) => j.id === openJob)) fold(openJob, true)
+    if (confirm) setConfirm(undefined)
+    else if (openJob !== undefined && jobs.some((j) => j.id === openJob)) fold(openJob, true)
     else if (view === 'pr' && openPr > 0) togglePR(openPr, true)
     else return
     e.preventDefault()
@@ -780,12 +997,14 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
  * conflict when GitHub said so, and its age. A click opens its CI in place;
  * ↗ opens the PR on GitHub.
  */
-function PRRow({ p, now, runs, cost, open, onToggle, onPick, children }: { p: SessionPRLive; now: number; runs?: CIRun[]; cost?: CICost; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; children?: ReactNode }) {
+function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpenAgent, progress, actions, onMenu, children }: { p: SessionPRLive; now: number; runs?: CIRun[]; cost?: CICost; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; agents?: PRAgent[]; onOpenAgent?: (s: SessionSummary) => void; progress?: PRProgress; actions?: ReactNode; onMenu?: () => void; children?: ReactNode }) {
   const live = p.live
   const dot = prDotState(p)
   const v = prVerdict(p, now, runs)
-  const review = prReviewText(p)
-  const merge = prMergeText(p)
+  // "changes requested" is the review chip; approved and review required stay words.
+  const reviewWords = prReviewText(p)
+  const review = live?.review === 'changes_requested' ? undefined : reviewWords
+  const chips = prChips(p)
   const age = prAge(p, now)
   // Its runner cost once a job finished: "· $0.42", "· $0 · public repo".
   const money = sumCostLabel(cost)
@@ -798,7 +1017,7 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, children }: { p: Se
         * the chevron that folds it. */}
       <div className={open ? 'sticky top-0 z-[2] shrink-0 bg-[var(--app-chrome-bg)]' : undefined}>
       <div onClick={onToggle}
-        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[10px_8px_minmax(40px,1fr)_auto_auto_minmax(64px,236px)_26px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
+        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[10px_8px_minmax(40px,1fr)_auto_auto_minmax(64px,236px)_26px_14px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
         <Chevron open={open} />
         <span role="img" aria-label={dot} title={dot} className="pr-dot" data-state={dot} />
         <button type="button" aria-expanded={open} onClick={(e) => { e.stopPropagation(); onToggle() }}
@@ -808,12 +1027,21 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, children }: { p: Se
         </button>
         {/* Every cell stays in the grid; what gives way as the deck narrows is
           * hidden inside it, so the columns never shift. */}
-        <span className="min-w-0">
-          <span data-deck-pr-review className="hidden max-w-[150px] truncate text-[11px] @min-[640px]:block">
-            {review && <span className={WORD_TEXT[review.tone]}>{review.text}</span>}
-            {review && merge && <span className="text-fg-faint"> · </span>}
-            {merge && <span className={WORD_TEXT[merge.tone]} title={merge.title}>{merge.text}</span>}
-          </span>
+        {/* What is doing something about it, who is on it, and what stands
+          * between it and a merge — beside the mini pipeline. The chips and
+          * the agent stay at every width; the review words give way. */}
+        <span className="flex min-w-0 items-center justify-end gap-1">
+          {/* An agent at work says "fixing" in its own mark: no second line for it. */}
+          {progress && !(progress.kind === 'agent' && agents.some((a) => a.word === 'fixing')) && (
+            <span data-deck-pr-progress={progress.kind} title={progress.text} className="flex shrink-0 items-center gap-1 text-[10.5px] text-accent">
+              <span aria-hidden className="ci-spin inline-block h-[7px] w-[7px] shrink-0 rounded-full" />{progress.text}
+            </span>
+          )}
+          <AgentMark agents={agents} onOpen={onOpenAgent} />
+          {chips.map((c) => (
+            <span key={c.word} data-deck-pr-chip={c.word} title={c.title} className={`shrink-0 rounded-[4px] border px-1 text-[10px] font-medium leading-[14px] ${CHIP_TEXT[c.tone]}`}>{c.word}</span>
+          ))}
+          {review && <span data-deck-pr-review className={`hidden max-w-[150px] truncate text-[11px] @min-[640px]:block ${WORD_TEXT[review.tone]}`}>{review.text}</span>}
         </span>
         {nodes.length > 0 ? <span className="flex justify-end"><span className="hidden @min-[520px]:inline-flex"><MiniPipeline nodes={nodes} label={`#${p.number}: its checks`} onPick={onPick} /></span></span> : <span />}
         <span data-deck-pr-ci className="flex w-full min-w-0 items-baseline gap-1 overflow-hidden text-[11.5px]">
@@ -821,9 +1049,14 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, children }: { p: Se
           {money && <><span aria-hidden className="text-fg-faint">·</span><CostText c={money} data="pr" className="shrink-0" /></>}
         </span>
         <span data-deck-pr-age className="num text-right text-[11px] text-fg-faint" title={age.title}>{age.text}</span>
+        {onMenu
+          ? <button type="button" data-deck-pr-menu onClick={(e) => { e.stopPropagation(); onMenu() }} aria-label={`Actions on #${p.number}`} title="Fix with an agent, re-run checks, update the branch"
+              className="text-[12px] leading-none text-fg-faint hover:text-fg">⋯</button>
+          : <span />}
         <button type="button" onClick={(e) => { e.stopPropagation(); openExternal(url) }} aria-label={`Open #${p.number} on GitHub`} title="Open the pull request on GitHub"
           className="text-[11px] text-fg-faint hover:text-fg">↗</button>
       </div>
+      {actions}
       </div>
       {/* A size container: an open job's steps are bounded to its height (100cqh). */}
       {open && <div data-deck-pr-detail data-deck-scroll="" className="mb-1 ml-[7px] min-h-0 flex-1 overflow-y-auto overscroll-contain border-l border-[var(--app-hairline)] pl-2 pt-0.5 [container-type:size]">{children}</div>}

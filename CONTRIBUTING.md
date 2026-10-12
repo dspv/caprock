@@ -33,6 +33,10 @@ is almost always green — the exception is a platform-specific bug on Windows o
 Linux, which only the CI matrix can catch. Run a single package's tests with
 `go test ./internal/<pkg>/...`.
 
+On a pull request the desktop app's three CI builds run only when it touches
+`app/`, the `Makefile`, `scripts/check-app-mic.sh` or `.github/workflows/ci.yml`;
+otherwise they show as skipped. Every push to `master` builds them.
+
 ## Making a change
 
 1. Open an issue first for anything non-trivial.

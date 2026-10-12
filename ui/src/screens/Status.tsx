@@ -233,7 +233,7 @@ function CustomAgentsSection() {
 function AppearanceSection() {
   return (
     <Section title="Appearance">
-      {/* Seven palettes as large swatches, Dark then Light; hovering one tries it on the page. */}
+      {/* The palettes as large swatches, Dark then Light; hovering one tries it on the page. */}
       <ThemePicker size="cards" />
       {isTauri() && <InterfaceSize />}
       <p className="text-[12px] text-fg-muted">Saved in this browser only.</p>

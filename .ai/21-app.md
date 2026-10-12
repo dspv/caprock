@@ -275,7 +275,11 @@ One window, three regions:
   it; the button says *Add 1 project* / *Add N projects* (`RepoChoice.tsx`,
   `lib/multirepo.ts`). A folder inside one repository asks nothing.
 - **Add project sheet** (owner, 2026-10-09). The folder field starts on the
-  default folder — `settings.default_folder` (Settings → Projects), else
+  default folder — `settings.default_folder` (Settings → Projects, labelled
+  *Where you keep your code* since 2026-10-12: a tester read *Default folder*
+  as the one place projects may live and asked for more of them; the help now
+  says it limits nothing, it only sets where Add project and Browse open and
+  where the new-session search looks for repositories), else
   `~/` — and is focused; *Set … as default* beside it keeps the field's
   folder (an existing folder's own, the parent of a new project or a clone's
   destination). Under it, 250 ms after the last key, what is there (`GET
@@ -373,11 +377,15 @@ One window, three regions:
   agent's terminal: the session's project (and its branch when not the
   default; the path on hover), the agent's character in its state (working,
   *background agents working · N* once its turn ended with subagents still
-  at work, waiting on you, looping, idle, ended) with a headline figure at
-  the right that the viewer picks (cost, burn rate, tokens, turns, cache
-  hit rate, time working), the spend details folded to one line below the
-  plan windows (three figures the viewer picks, or a chart of the period's
-  spend: *Numbers | Chart*, for the session, today, 7 or 30 days), the context bar and what the next call pays to
+  at work, waiting on you, looping, idle, ended) with three figures at
+  the right that the viewer picks from one list (cost, burn rate, tokens,
+  cache hit rate, turns, time working, last call, tool calls): a big
+  headline and two short lines under it (*$4.08/h burn ▾*, *4.01B tok ▾*),
+  never one twice, cost, burn rate and tokens by default; when the two
+  lines would squeeze the agent's own, they move to the chips' row at its
+  right. Below the plan windows, the spend details, open on a chart of the
+  period's spend (*Chart | Numbers*, for the session, today, 7 or 30 days;
+  Numbers is three more figures the viewer picks), the context bar and what the next call pays to
   re-read it, what it is doing this second (the open tool call and how long
   it has run, or *Thinking* since the last one finished; while a permission
   prompt waits, who asks and what — "Subagent (general-purpose) wants to run
@@ -501,6 +509,43 @@ One window, three regions:
     recorded (open, merged) and *connect GitHub for CI* turns the integration
     on through the `gh` login in one click (ADR-047: this click is the user
     turning it on), else opens Settings.
+  - **Who is on a PR, and forcing a fix** (owner, 2026-10-12, translated:
+    "From the PRs I want to see, for example, when there's a conflict, or
+    that you (an agent) are looking at it or fixing it — and if needed I want
+    to FORCE a fix or a check"). Beside an open PR's mini pipeline, one-word
+    chips from what GitHub already returned: *conflict* (red; `mergeable`
+    false or `mergeable_state` dirty), *behind* (amber; GitHub's own
+    `behind`, which it reports when the base must be merged in first),
+    *review* (changes requested) and *draft*; GitHub still computing says
+    nothing. *approved* and *review required* stay words, giving way when
+    narrow; the chips do not. Before them, who is on it: a live agent whose
+    checkout (the sidebar's worktree row) is on the PR's head branch, as its
+    initial in a small tinted square and *fixing* (working), *waiting* (on
+    you) or *idle*; several are *2 agents*, the tooltip naming each; a click
+    opens that session's tab. The open row has a line of actions under its
+    header, and every open PR a ⋯ that opens its row with the focus on them:
+    *Fix conflict with agent* (with a conflict), *Update branch* (behind and
+    no conflict), *Fix CI with agent* and *Re-run checks* (with checks; the
+    re-run disabled while they still run). Each asks first in that line —
+    the sentence, *Confirm*, *Cancel* (Esc), never a modal — then says what
+    it does in the row: *agent fixing…* (unless the agent's own mark already
+    says *fixing*), *re-running 5 jobs…*, *updating branch…*, until GitHub
+    shows it done (the checks running again, the head moving) or four
+    minutes pass; the PRs are asked every 20 s meanwhile. A fix goes to the
+    Caprock-started agent on the branch as a queued message (ADR-053's
+    queue); Fix CI otherwise goes to the session in front as Investigate
+    does; else a new agent starts in the branch's checkout, or in a new
+    worktree `pr-N-fix` at the PR's head (`worktree_pr`) when there is none
+    or an agent Caprock did not start works in it — rule 7: nothing is typed
+    into a process Caprock did not start, and the confirm says so. The
+    conflict message asks to merge `origin/<base>`, resolve, run the checks
+    and push (to `HEAD:<branch>` from a new worktree, whose local branch is
+    `caprock/pr-N-fix`); Fix CI sends Investigate's message for the first
+    failed job with its log, else one about flaky checks. Re-run and Update
+    branch are GitHub's own (`POST /v1/sessions/{id}/prs/{n}/rerun`,
+    `…/update-branch`; `.ai/03-contracts.md`), with the user's token; a
+    refusal names the permission the token lacks — *Actions (write)*,
+    *Pull requests (write)* — in the toast. Code: `lib/prforce.ts`.
   - **Time against the median** (owner, 2026-10-12, translated: "In CI runs
     I want to see the execution time plus an estimate relative to the
     average — plus or minus percent"). A run's wall-clock time (started to
@@ -1271,6 +1316,56 @@ there, and worktrees as first-class places to work.
   the folder; one started inside a member gets the others as `--add-dir`.
   Members are not watched (contract in 03-contracts.md § Projects and
   shells). A monorepo stays one repository with its per-directory split.
+
+## Composer
+
+An optional box under an agent's terminal to write a message in (owner,
+2026-10-13, translated: "if it's optional and can be switched on and off,
+why not; the main thing is no abrupt change"; earlier: "the area where you
+type isn't highlighted enough"). Built in `ui/src/components/Composer.tsx`
+and `ui/src/lib/composer.ts`.
+
+- **Off by default, and off changes nothing.** Settings → Terminal →
+  *Composer: type in a box under the agent*, kept per viewer in localStorage
+  (`caprock.app.composer`) like the terminal's appearance; every pane follows
+  at once. The pane's tree has the same shape on or off (an inner box that
+  fills the pane when there is no composer), so switching never remounts the
+  terminal's host, and with it off the pane is pixel-identical to before
+  (compared against a master build, 2026-10-13: zero differing pixels in the
+  terminal's area). Its own ⋯ menu turns it off again; there is no pane menu
+  to put the switch in, and adding one would change the pane with it off.
+- **Which panes.** A session Caprock started, live, not detached, not a
+  shell (`composerFits`, the same test as `typeable` in `lib/prforce.ts`):
+  rule 7, it never types into a session from another terminal. App
+  workspace only (`TerminalPane`); the phone and the dashboard's terminal
+  are unchanged.
+- **Sending** is the chat's queue path, `POST /v1/agents/{id}/queue`
+  (ADR-053): typed in at once at the prompt, otherwise held and typed when
+  the turn ends. The daemon types each line break as ESC CR and Enter after
+  a pause (`promptBytes`), so several lines arrive as one message — checked
+  with the fake agent, which keeps ESC CR in its prompt as `↵`, and received
+  `first line of the message↵second line, same message` as one line. While a
+  message waits the box says *queued · sends when the agent is free*.
+- **Keys.** Enter sends, Shift+Enter is a newline in the box, Esc goes back
+  to the terminal (after closing a picker). ↑ and ↓ on an empty box, or one
+  still showing a history entry, walk the last 50 messages sent from it to
+  that session (localStorage, `caprock.composer.history.<id>`). No global
+  shortcut: the placeholder's keys go through `keys()`, so Windows and Linux
+  read *Enter* and *Shift+Enter*.
+- **Focus is never moved behind the user's back.** A click in the terminal
+  focuses the terminal, a key typed there stays there, and showing a tab
+  focuses the terminal as before. A permission prompt (the live permissions
+  set, or the queue's `permission`/`question`) tints the box's edge amber and
+  says *Claude is asking — answer in the terminal (1/2/3)*.
+- **Pickers, saved prompts, images.** The chat field's `/` and `@` pickers
+  (`useChatPicker`), the session's saved prompts behind a *Saved* button (a
+  pick fills the box, never sends), and a pasted image handed to the
+  terminal's own paste path (`attachTerminalInput().sendFiles`), so Claude
+  Code shows `[Image #N]` in its prompt and the words sent from the box
+  follow it.
+- **Look.** `.app-composer` in `tokens.css`: the slab's own ink at 5% over
+  the terminal's ground, a hairline at rest, the accent edge and a 3px
+  accent halo when it has the keyboard, in every terminal palette.
 
 ## Shell tabs
 
