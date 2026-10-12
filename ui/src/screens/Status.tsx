@@ -43,6 +43,7 @@ import { SavedPromptsSetting } from '@/components/SavedPromptsSetting'
 import { SubscriptionsSetting } from '@/components/SubscriptionsSetting'
 import { SpawnModeSetting } from '@/components/SpawnModeSetting'
 import { KeepAwakeSetting } from '@/components/KeepAwake'
+import { WorktreeCleanupSetting } from '@/components/WorktreeCleanupSetting'
 import { GitHubSettings } from '@/components/GitHubSettings'
 import { WindowStopSetting } from '@/components/WindowStopSetting'
 import { Locked } from '@/components/Locked'
@@ -124,6 +125,7 @@ export function StatusScreen() {
           <TerminalSettings />
           {owner && <EditorSetting />}
           {owner && <DefaultFolderSetting />}
+          {owner && <WorktreeCleanupSetting />}
           {owner && <SubscriptionsSetting />}
           {owner && <CustomAgentsSection />}
           {owner && isTauri() && <DesktopNotifications />}
@@ -147,6 +149,7 @@ export function StatusScreen() {
           {owner && <SavedPromptsSetting />}
           {owner && <EditorSetting />}
           {owner && <DefaultFolderSetting />}
+          {owner && <WorktreeCleanupSetting />}
           {owner && <SubscriptionsSetting />}
           {owner && <CustomAgentsSection />}
           <GitHubSettings />

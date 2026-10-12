@@ -7,6 +7,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **app:** finished copies clean themselves up, asking first by default. A
+  copy Caprock made that is merged (or its pull request is), pushed, clean
+  and has nothing running in it shows on the project's page and the deck's
+  Branches view as *3 copies done · 2.1 GB · Clean up*; one click, confirmed
+  on the same line, removes exactly those, and *Review* opens the copies
+  list with them ticked. Settings → Worktrees: *Off*, *Ask* or *Auto*
+  (removed a day after they finish). *Undo* for a day, branches kept 7 days
+  with *Restore* under *Recently removed* in the copies list, and a *stale*
+  tag for a copy with no commit in 14 days and no pull request. The main
+  checkout, your own worktrees and unmerged branches are never touched.
+
 ## [0.111.3] - 2026-10-12
 
 ### Changed

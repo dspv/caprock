@@ -321,12 +321,27 @@ One window, three regions:
   sessions and shells keep running — rule 7), *Open in* each editor from
   `GET /v1/editors`, *Clean up copies…* for a repository (every worktree
   with its state and size, removing Caprock's; `CopiesSheet.tsx`,
-  [04-ui.md](04-ui.md)), and *Remove from Caprock…*, which confirms inline and
+  [04-ui.md](04-ui.md); finished copies below), and *Remove from Caprock…*, which confirms inline and
   then unlists (`DELETE /v1/projects/{id}`, or the page's local list on a
   derived source) and closes the project's tabs. There is no "Open in
   Finder": no endpoint reveals a folder, and the editors cover opening it.
   The menu is portalled to `<body>`: the sidebar's backdrop filter makes it
   the containing block of anything fixed inside it.
+- **Finished copies** (owner-approved design, 2026-10-12). A copy Caprock
+  made that is merged (or its pull request is), pushed, clean and has
+  nothing running in it is *finished*; Settings → Worktrees says what
+  happens to it: *Off*, *Ask* (the default) or *Auto*. Ask puts one quiet
+  line on the project's page and over the deck's Branches view — never the
+  sidebar — *3 copies done · 2.1 GB · Clean up · Review*; *Clean up*
+  confirms on the same line and removes exactly those, *Review* opens the
+  copies sheet with them ticked. Auto removes a copy 24 hours after it
+  finished. Either way the line then says *Removed 3 copies · 2.1 GB freed
+  · Undo* for a day, the branch is kept 7 days (Restore in the sheet's
+  *Recently removed*), and a tab on a session in a removed copy closes.
+  Checked when a session in a copy ends, when a pull request is seen merged,
+  and once a day; never polled. Code: `internal/projects/cleanup.go`,
+  `components/CleanupLine.tsx`; contract in
+  [03-contracts.md](03-contracts.md) § Projects and shells.
 - **Keeping the project list short** (owner, 2026-10-08: "a ton of stuff
   hanging in it and it's unclear how to hide things", translated). Since
   2026-10-09, above `FOLD_ABOVE` (8) projects the list is what is in play —

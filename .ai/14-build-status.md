@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — unreleased: finished copies clean themselves up
+
+A copy Caprock made that is merged (or its pull request is), pushed, clean
+and idle is listed on the project's page and the deck's Branches view with
+one-click *Clean up* (Ask, the default), or removed a day later (Auto), or
+left alone (Off; Settings → Worktrees). Branches are kept 7 days with Undo
+and Restore; the copies sheet gains *Recently removed* and a *stale* tag.
+Checked on a session ending in a copy, a pull request seen merged and once a
+day; no poll. State in `worktree-cleanup.json`, no migration. Verified on a
+preview daemon with the fake `claude`: 3 merged copies found, a dirty and an
+unmerged one left, removed and restored.
+
 ### 2026-10-12 — 0.111.3: the headline figure back beside the agent, a plainer update button
 
 Owner feedback on 0.111.1: the cockpit's headline figure stays on the

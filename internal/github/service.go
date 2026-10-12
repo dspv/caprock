@@ -125,6 +125,11 @@ type Service struct {
 	Now      func() time.Time
 	// Sleep waits between device-flow polls; tests shorten it.
 	Sleep func(context.Context, time.Duration) bool
+	// OnMerged is told the head branches of a repository whose pull
+	// requests a fresh list shows merged and the last list did not (all
+	// merged ones on the first list): finished copies may be cleaned up
+	// (projects/cleanup.go). Called without locks held.
+	OnMerged func(repo Repo, branches []string)
 
 	c    *client
 	once sync.Once
