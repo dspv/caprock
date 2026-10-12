@@ -247,12 +247,18 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
       {!below && sec}
       {/* The chips take the row under the agent and its figures; the two
         * smaller figures join them at the right when they left their side. */}
-      {(strip.chips.length > 0 || (below && sec)) && (
-        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 [grid-area:chips]">
-          {strip.chips.length > 0 && <div className="min-w-0"><SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} /></div>}
+      {/* The row is always there, so nothing above or below it moves when
+        * subagents start or finish (owner, 2026-10-13: "fix its position and
+        * mark the subagents' place when nothing runs"). */}
+      {state !== 'ended' && (
+        <div data-hero-chips className="mt-2 flex min-h-[22px] min-w-0 flex-wrap items-center gap-x-3 gap-y-1 [grid-area:chips]">
+          {strip.chips.length > 0
+            ? <div className="min-w-0"><SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} /></div>
+            : <span data-hero-nosubs className="text-[11px] text-fg-faint">no subagents running</span>}
           {below && sec}
         </div>
       )}
+      {state === 'ended' && below && sec && <div className="mt-2 flex justify-end [grid-area:chips]">{sec}</div>}
     </div>
     </div>
   )
