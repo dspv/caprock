@@ -18,7 +18,10 @@
  *
  * The list stays short: projects in play (running, waiting, a tab open,
  * pinned, current) come first; the rest fold under More projects, and the
- * ones hidden by hand under Hidden, both closed by default.
+ * ones hidden by hand under Hidden, both closed by default. Hidden wins over
+ * running and over being in front: the project in front stays in view under
+ * Hidden's heading, its tabs open; one comes back out only when it needs you
+ * again (lib/sidebar.ts projectHidden).
  * A project's × closes it: its tabs close and it moves under Hidden, unless
  * something still runs in it (components/ProjectRow.tsx). Each project's ⋯
  * menu (or a right-click, or Shift+F10 on its row) hides it, closes its tabs,
@@ -27,7 +30,7 @@
  * from "N hidden · show" (components/ProjectRow.tsx).
  */
 import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { groupProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
+import { groupProjects, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
 import type { Tab } from '@/lib/tabs'
 import type { TabLabel } from '@/lib/tablabels'
 import type { ProjectSource } from '@/lib/projects'
@@ -45,7 +48,7 @@ import { FeedbackButton } from './Feedback'
 import { CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 import { keys, tabDigit } from '@/lib/appkeys'
 
-/** Project ids hidden by hand: this browser's. */
+/** Project ids hidden by hand, with when: this browser's. An older plain list of ids still reads. */
 export const HIDDEN_KEY = 'caprock.app.hidden-projects'
 /** Session rows hidden by hand under their project, with when: this browser's (ProjectRow). */
 export const HIDDEN_SESSIONS_KEY = 'caprock.app.hidden-sessions'
@@ -68,6 +71,26 @@ function loadIds(key: string): Set<string> {
 
 function saveIds(key: string, ids: ReadonlySet<string>) {
   try { localStorage.setItem(key, JSON.stringify([...ids])) } catch { /* not kept */ }
+}
+
+function loadHiddenProjects(): Map<string, number> {
+  try {
+    const v = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? 'null') as unknown
+    // Before 2026-10-13 a plain list, with no time: hidden as of now, so a
+    // turn that had already ended does not bring it back.
+    if (Array.isArray(v)) {
+      const at = Date.now()
+      return new Map(v.filter((x): x is string => typeof x === 'string').map((id) => [id, at]))
+    }
+    if (!v || typeof v !== 'object') return new Map()
+    return new Map(Object.entries(v as Record<string, unknown>).filter((e): e is [string, number] => typeof e[1] === 'number'))
+  } catch {
+    return new Map()
+  }
+}
+
+function saveHiddenProjects(m: HiddenProjects) {
+  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(Object.fromEntries(m))) } catch { /* not kept */ }
 }
 
 function loadHiddenSessions(): Map<string, number> {
@@ -144,7 +167,7 @@ export interface SidebarProps {
 
 export function Sidebar(props: SidebarProps) {
   const { model, activeProjectId } = props
-  const [hidden, setHidden] = useState<Set<string>>(() => loadIds(HIDDEN_KEY))
+  const [hidden, setHidden] = useState<HiddenProjects>(() => loadHiddenProjects())
   const [folds, setFolds] = useState<Set<string>>(() => loadIds(FOLDS_KEY))
   const [hiddenSessions, setHiddenSessions] = useState<HiddenSessions>(() => loadHiddenSessions())
   // Hiding a row unlists it here and nowhere else: nothing is signalled, so
@@ -205,10 +228,10 @@ export function Sidebar(props: SidebarProps) {
   const menuNode = menuAt ? model.projects.find((n) => n.project.id === menuAt.projectId) : undefined
   const onHide = useCallback((id: string, hide: boolean) => {
     setHidden((cur) => {
-      const next = new Set(cur)
-      if (hide) next.add(id)
+      const next = new Map(cur)
+      if (hide) next.set(id, Date.now())
       else next.delete(id)
-      saveIds(HIDDEN_KEY, next)
+      saveHiddenProjects(next)
       return next
     })
   }, [])
@@ -376,7 +399,10 @@ export function Sidebar(props: SidebarProps) {
           <>
             <ul className="grid grid-cols-1 gap-px">{groups.shown.map(row)}</ul>
             <Fold label="More projects" title="Nothing running and no tab open" items={groups.more} open={folds.has('more')} onToggle={() => toggleFold('more')} row={row} />
-            <Fold label="Hidden" title="Hidden by hand; a project shows again while something runs in it" items={groups.hidden} open={folds.has('hidden')} onToggle={() => toggleFold('hidden')} row={row} />
+            {/* The project in front stays in view under Hidden even while the fold
+              * is closed: hiding it moves it there, its tabs open, rather than
+              * leaving it where it was or taking it off the screen. */}
+            <Fold label="Hidden" title="Hidden by hand; one comes back when an agent there asks or finishes a turn" items={groups.hidden} open={folds.has('hidden')} keep={activeProjectId} onToggle={() => toggleFold('hidden')} row={row} />
           </>
         )}
         {props.source === 'derived' && model.projects.length > 0 && (
@@ -470,11 +496,13 @@ export function Sidebar(props: SidebarProps) {
 }
 
 /** A folded group at the bottom of the projects: Quiet or Hidden, closed until opened. */
-function Fold({ label, title, items, open, onToggle, row }: {
+function Fold({ label, title, items, open, keep, onToggle, row }: {
   label: string
   title: string
   items: ProjectNode[]
   open: boolean
+  /** A project listed even while closed: the one in front. */
+  keep?: string
   onToggle: () => void
   row: (n: ProjectNode) => ReactNode
 }) {
@@ -494,7 +522,9 @@ function Fold({ label, title, items, open, onToggle, row }: {
         </span>
         <span className="font-medium">{label} <span className="num font-normal">· {items.length}</span></span>
       </button>
-      {open && <ul className="grid grid-cols-1 gap-px">{items.map(row)}</ul>}
+      {open
+        ? <ul className="grid grid-cols-1 gap-px">{items.map(row)}</ul>
+        : keep !== undefined && items.some((n) => n.project.id === keep) && <ul className="grid grid-cols-1 gap-px">{items.filter((n) => n.project.id === keep).map(row)}</ul>}
     </section>
   )
 }
