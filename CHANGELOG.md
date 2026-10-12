@@ -7,6 +7,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **ui:** a session with no cache figures yet (a quick chat that just
+  started) no longer trips the session and Now screens' cache line.
+
 ### Changed
 
 - **deck:** the *Pull requests & CI* cell is dense. A run's jobs flow into
