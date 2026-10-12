@@ -7,6 +7,32 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **ui:** a Dark Pastel theme: a neutral graphite ground, a dusty blue
+  accent and soft, low-chroma status colours, with a terminal to match — for
+  whoever finds the other dark themes loud. Body text stays at 7:1 or more,
+  muted text and the accent at 4.5:1 or more.
+
+### Changed
+
+- **ui:** Dark Cold's blue accent is one step softer.
+- **ui:** Settings → Projects calls its folder *Where you keep your code* and
+  says what it does: Add project and Browse open there and a new session
+  suggests the repositories inside it; it limits nothing, every folder you
+  run an agent in or add is a project wherever it is.
+- **ui:** the Memory screen opens with one paragraph saying what it is for:
+  every answer Claude wrote you, searchable, linked to the moment it was
+  written, and what a new session in the same folder is handed.
+
+### Fixed
+
+- **ui:** big figures never run into the next tile or lose their leading
+  digits. A figure keeps its size while it fits and shrinks to its tile when
+  it does not (*$130,489.86* beside a seven-figure burn rate, in a narrow
+  window or the app with the sidebar open), and the caption under it wraps
+  instead of being cut off.
+
 ## [0.111.3] - 2026-10-12
 
 ### Changed

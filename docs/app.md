@@ -210,7 +210,9 @@ others. Installing it: [install-app.md](install-app.md).
   *Add project* at the top of the sidebar, adds a folder, makes a new one
   (`git init` optional) or clones a repository with git's progress shown.
   The folder starts at your default folder — your home folder until you set
-  one in Settings → Projects or with *Set as default* beside the field — and
+  one in Settings → Projects (*Where you keep your code*: it limits nothing,
+  every folder you run an agent in or add is a project wherever it is) or
+  with *Set as default* beside the field — and
   a line under it says what is there as you type: *will be created*, *exists,
   empty — will clone here*, *exists — not empty, clone will fail*, *already in
   Caprock*. Typing a name lists the projects, recent folders and repositories
@@ -404,13 +406,14 @@ others. Installing it: [install-app.md](install-app.md).
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
-- **Themes.** Seven, picked from the sun/moon button at the foot of the
-  sidebar or Settings → *Appearance*: Dark Warm, Dark Cold and Dark Side;
+- **Themes.** Eight, picked from the sun/moon button at the foot of the
+  sidebar or Settings → *Appearance*: Dark Warm, Dark Cold, Dark Pastel (a
+  neutral graphite with soft, muted colours) and Dark Side;
   Light, Light Cold, Book and Light Side. Point at one to try it on the
   whole window, click to keep it. Dark Side and Light Side add a soft glow to
   the focused field, the primary button and the tab in front.
 - **Terminal look.** Settings → *Terminal*: the colours (*Match app*,
-  Dark Warm, Dark Cold, Book, Light Cold, Light Side, Dark Side, Catppuccin
+  Dark Warm, Dark Cold, Dark Pastel, Book, Light Cold, Light Side, Dark Side, Catppuccin
   Mocha, Tokyo Night, Solarized Dark), the font (JetBrains Mono,
   or SF Mono, Menlo, Fira Code and other monospace fonts you have), size,
   line height and cursor, with a preview. Every open terminal changes as you

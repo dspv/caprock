@@ -275,7 +275,11 @@ One window, three regions:
   it; the button says *Add 1 project* / *Add N projects* (`RepoChoice.tsx`,
   `lib/multirepo.ts`). A folder inside one repository asks nothing.
 - **Add project sheet** (owner, 2026-10-09). The folder field starts on the
-  default folder — `settings.default_folder` (Settings → Projects), else
+  default folder — `settings.default_folder` (Settings → Projects, labelled
+  *Where you keep your code* since 2026-10-12: a tester read *Default folder*
+  as the one place projects may live and asked for more of them; the help now
+  says it limits nothing, it only sets where Add project and Browse open and
+  where the new-session search looks for repositories), else
   `~/` — and is focused; *Set … as default* beside it keeps the field's
   folder (an existing folder's own, the parent of a new project or a clone's
   destination). Under it, 250 ms after the last key, what is there (`GET

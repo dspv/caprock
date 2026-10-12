@@ -31,6 +31,7 @@ describe('terminal palettes', () => {
     expect(DEFAULT_TERMINAL_THEME).toBe(MATCH_APP_THEME)
     expect(terminalTheme(MATCH_APP_THEME, { mode: 'dark-warm' }).id).toBe('caprock')
     expect(terminalTheme(MATCH_APP_THEME, { mode: 'dark-cold' }).id).toBe('slate')
+    expect(terminalTheme(MATCH_APP_THEME, { mode: 'dark-pastel' }).id).toBe('dark-pastel')
     expect(terminalTheme(MATCH_APP_THEME, { mode: 'dark-side' }).id).toBe('dark-side')
     expect(terminalTheme(MATCH_APP_THEME, { mode: 'light-cold' }).id).toBe('light-cold')
     expect(terminalTheme(MATCH_APP_THEME, { mode: 'light-side' }).id).toBe('light-side')
@@ -72,6 +73,9 @@ describe('terminal palettes', () => {
     expect(dashTerminalTheme(root)).toEqual({ ...TERMINAL_THEME })
     root.setAttribute('data-dark', 'slate')
     expect(dashTerminalTheme(root).background).toBe(DASH_GROUND.slate)
+    root.setAttribute('data-dark', 'pastel')
+    expect(dashTerminalTheme(root).background).toBe(DASH_GROUND['dark-pastel'])
+    expect(dashTerminalTheme(root).cursor).toBe('#a3b6c9')
     root.setAttribute('data-dark', 'side')
     expect(dashTerminalTheme(root).cursor).toBe('#b45cff')
     root.setAttribute('data-theme', 'light')
@@ -83,7 +87,7 @@ describe('terminal palettes', () => {
 
   it('keeps the 16 ANSI colours of every palette distinct', () => {
     const ansi = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as const
-    for (const id of ['slate', 'dark-side', 'light-cold', 'light-side']) {
+    for (const id of ['slate', 'dark-pastel', 'dark-side', 'light-cold', 'light-side']) {
       const c = terminalTheme(id).colors
       const all = [...ansi.map((k) => c[k]), ...ansi.map((k) => c[`bright${k[0]!.toUpperCase()}${k.slice(1)}` as keyof typeof c])]
       expect(new Set(all).size, id).toBe(16)

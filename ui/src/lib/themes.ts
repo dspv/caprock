@@ -12,7 +12,7 @@
  * can import it freely.
  */
 
-export type ThemeMode = 'dark-warm' | 'dark-cold' | 'dark-side' | 'light' | 'light-cold' | 'book' | 'light-side'
+export type ThemeMode = 'dark-warm' | 'dark-cold' | 'dark-pastel' | 'dark-side' | 'light' | 'light-cold' | 'book' | 'light-side'
 
 export interface ThemeRow {
   id: ThemeMode
@@ -31,7 +31,7 @@ export interface ThemeRow {
   /** The app terminal's palette under Match app (termthemes.ts), drawn on `panel`. */
   terminal: string
   /** The dashboard and phone terminal: always dark (Terminal.tsx), in this palette's temperature. */
-  dashTerminal: 'caprock' | 'slate' | 'dark-side'
+  dashTerminal: 'caprock' | 'slate' | 'dark-pastel' | 'dark-side'
   /** A soft neon glow on the focused field, the primary button and the active tab's top edge. */
   glow?: boolean
 }
@@ -44,8 +44,15 @@ export const THEMES: readonly ThemeRow[] = [
   },
   {
     id: 'dark-cold', name: 'Dark Cold', theme: 'dark', sub: 'slate', panel: '#1f2023',
-    swatch: { bg: '#1a1b1e', panel: '#26272b', fg: '#e6e7ea', muted: '#8b8e96', accent: '#6ea8fe' },
+    swatch: { bg: '#1a1b1e', panel: '#26272b', fg: '#e6e7ea', muted: '#8b8e96', accent: '#86a9dc' },
     terminal: 'slate', dashTerminal: 'slate',
+  },
+  {
+    // Neutral graphite, a dusty blue accent and low-chroma status colours,
+    // for whoever finds the other dark palettes loud (testers, 2026-10-12).
+    id: 'dark-pastel', name: 'Dark Pastel', theme: 'dark', sub: 'pastel', panel: '#212221',
+    swatch: { bg: '#1c1d1c', panel: '#292a29', fg: '#e3e1db', muted: '#97958e', accent: '#a3b6c9', accent2: '#8fbc98' },
+    terminal: 'dark-pastel', dashTerminal: 'dark-pastel',
   },
   {
     id: 'dark-side', name: 'Dark Side', theme: 'dark', sub: 'side', panel: '#15111d',
