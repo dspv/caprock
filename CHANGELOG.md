@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.112.1] - 2026-10-13
+
 ### Added
 
 - **app:** finished copies clean themselves up, asking first by default. A

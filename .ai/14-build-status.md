@@ -73,6 +73,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — 0.112.1: hide works, actions you can see, other terminals' sessions in a tab
+
+Hiding a project always moves it under *Hidden* (it came straight back when
+it was in front or had an agent at its prompt); every open pull request in
+the deck shows a direct *Fix* / *Re-run* / *Update* beside its one problem
+chip and one status word (*in work*, *waiting*, *queued*); a session started
+in another terminal opens in its own app tab with *Continue here* (a new
+`--resume` process) and *Hide*; finished copies clean themselves up, asking
+first; and Lifetime's Top projects donut no longer draws over its table.
+
 ### 2026-10-13 — 0.112.0: one row per project, figures beside the agent, PRs that say what blocks them
 
 From a day of the owner's and two testers' feedback: each project shows one
