@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.111.3] - 2026-10-12
+
 ### Changed
 
 - **app:** each project in the sidebar shows one row: the tab you are on (or
@@ -22,7 +24,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** the version panel's update button reads at a glance: *Update to
   v…* on one line, with *Restarts the app · sessions keep running* in small
   type under it, instead of one sentence wrapping across the button.
-
 - **app:** the cockpit's headline figure stays on the agent's row, at its
   right, in a narrow inspector too: it shrinks there instead of dropping to
   the subagent chips' row.
