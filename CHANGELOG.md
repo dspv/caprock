@@ -7,14 +7,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-### Fixed
-
-- **term:** one session open on the desktop and a phone no longer leaves
-  the desktop's agent drawn at the phone's width. The terminal in use sizes
-  the PTY (as tmux's `latest`): a phone that only opens the Terminal tab is
-  drawn at the desktop's size, typing on the phone gives the PTY the phone's
-  size, and focusing, clicking or typing in the desktop's terminal gives it
-  back, with a full repaint. A phone's chat never resizes it.
+## [0.111.1] - 2026-10-12
 
 ### Changed
 
@@ -31,15 +24,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   summaries already read, and a range with nothing to draw says so instead
   of drawing an empty line. A stored *Full* opens as Chart, *Compact* as
   Numbers.
-
-### Fixed
-
-- **app:** in a narrow inspector the cockpit's headline figure moves to the
-  subagent chips' row (or under the name when there are none) instead of
-  hanging alone on a line of its own.
-
-### Changed
-
 - **deck:** an open CI job stays in view and folds back in one move. Its
   line is pinned at the top of the CI area with *Fold Esc*, its steps are
   bounded to the deck's height and scroll on their own, and opening a job
@@ -47,6 +31,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   then the open PR; the terminal keeps its own Esc. Every PR row has a
   chevron, the open PR's line stays pinned, and the current PR folded by
   hand stays folded while the app runs.
+
+### Fixed
+
+- **term:** one session open on the desktop and a phone no longer leaves
+  the desktop's agent drawn at the phone's width. The terminal in use sizes
+  the PTY (as tmux's `latest`): a phone that only opens the Terminal tab is
+  drawn at the desktop's size, typing on the phone gives the PTY the phone's
+  size, and focusing, clicking or typing in the desktop's terminal gives it
+  back, with a full repaint. A phone's chat never resizes it.
+- **app:** in a narrow inspector the cockpit's headline figure moves to the
+  subagent chips' row (or under the name when there are none) instead of
+  hanging alone on a line of its own.
 
 ## [0.111.0] - 2026-10-12
 

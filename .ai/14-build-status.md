@@ -73,6 +73,17 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — 0.111.1: one PTY for two screens, spend as numbers or a chart, a foldable open job
+
+Feedback on 0.111.0, the same day. A session open on the desktop and a phone
+is sized by whichever terminal is in use (typing, focus, a click), tmux's
+"latest client", instead of the last resize received, so the phone no longer
+leaves the desktop's agent in a narrow column (a user's report). The
+cockpit's Spend block is Numbers or Chart, the owner's pick, with each figure's
+metric chosen from its label; the headline figure no longer hangs alone on a
+line in a narrow inspector. An open CI job in the deck keeps its line at the
+top with *Fold* and Esc, its steps scrolling under it.
+
 ### 2026-10-12 — unreleased: the terminal in use sizes the PTY
 
 Vova reported the desktop app drawing the agent in a ~45-column strip after
