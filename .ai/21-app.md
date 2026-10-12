@@ -459,9 +459,18 @@ One window, three regions:
     its time ticking each second while it runs, and its time against its
     median. A job opens into its steps, and a failed step into the lines
     around the error in the job's log (monospace, scrolling, the error line
-    marked) with *Investigate* and *Open on GitHub*. The first failed job of
-    each PR opens by itself. The current PR is open by default while its CI
-    runs or failed. Every row keeps its line and the open one's CI takes the
+    marked) with *Investigate* and *Open on GitHub*. The jobs flow into as
+    many columns as the deck's width holds — three at about 1300px, two at
+    about 900px, one when narrow — each a fixed set of tracks after the name
+    (OS, time, against the median, cost) so a column lines up row to row;
+    an open job takes the whole row and its steps flow the same way (owner,
+    2026-10-12, translated, of the 0.109 deck's one tall column with its
+    right half empty: "see how much space is wasted, although the
+    information is important and good — it was just laid out
+    inconveniently"). The first failed job of each PR opens by itself. The
+    current PR is open by default while it is open and has checks, whatever
+    their state, so its jobs fill the room the rows would leave empty; a
+    merged or closed one first stays a row. Every row keeps its line and the open one's CI takes the
     height left, scrolling inside, so the earlier PRs stay in view; while an
     error log is open they fold into one line (*also #13 ✓ #12 ✓*) so the
     error has the room. A settled PR's runs are read once while the deck is

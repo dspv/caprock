@@ -114,6 +114,10 @@ describe('the session deck', () => {
       return b
     })
     expect(failed).toHaveTextContent('58s')
+    // The jobs flow into columns as the width allows; an open job takes the whole row for its steps.
+    expect(document.querySelector('[data-deck-ci-grid]')!.className).toMatch(/repeat\(auto-fill/)
+    expect(document.querySelector('[data-deck-ci-job="71"]')).toHaveClass('col-span-full')
+    expect(document.querySelector('[data-deck-ci-job="70"]')).not.toHaveClass('col-span-full')
     fireEvent.click(failed)
     expect(await screen.findByText('##[error]Process completed with exit code 1.')).toHaveClass('ci-error-line')
     // While an error is open the earlier PRs fold into one line, so it has the room.
@@ -220,11 +224,12 @@ describe('the session deck', () => {
     open.mockRestore()
   })
 
-  it('opens the current PR by itself only while its CI runs or failed, and one row at a time', async () => {
-    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED)), prRow(8, livePR(8, FAILED, { state: 'merged' }))] }
+  it('opens the current PR by itself while it is open with checks, and one row at a time', async () => {
+    // A merged PR first stays closed: only an open one with checks opens by itself.
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED, { state: 'merged' })), prRow(8, livePR(8, FAILED, { state: 'merged' }))] }
     h.ciPrs = []
     const first = show()
-    await screen.findByText('✓ passed')
+    await screen.findByText(/✓/)
     await new Promise((r) => setTimeout(r, 20))
     expect(document.querySelector('[data-deck-pr-detail]')).toBeNull()
     // Settled rows are read once, closed, for their time against the median.
@@ -243,6 +248,11 @@ describe('the session deck', () => {
     fireEvent.click(rowButton(9))
     expect(document.querySelector('[data-deck-pr-detail]')).toBeNull()
     first.unmount()
+    // An open current PR whose checks passed opens by itself: its jobs fill the room.
+    h.prs = { connected: true, prs: [prRow(6, livePR(6, PASSED))] }
+    const second = show()
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="6"] [data-deck-pr-detail]')).not.toBeNull())
+    second.unmount()
     // A failed current PR opens by itself; with nothing before it, the list says so.
     h.prs = { connected: true, prs: [prRow(5, livePR(5, FAILED))] }
     show()
@@ -448,7 +458,8 @@ describe('the session deck', () => {
       ] }] } }
     h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED))] }
     show()
-    fireEvent.click(await waitFor(() => rowButton(9)))
+    // An open PR with checks opens by itself.
+    await waitFor(() => expect(rowButton(9)).toHaveAttribute('aria-expanded', 'true'))
     const mac = await screen.findByText('macOS')
     const cost = mac.closest('button')!.querySelector('[data-deck-cost="job"]')!
     expect(cost).toHaveTextContent('$0.31')

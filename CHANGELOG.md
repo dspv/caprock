@@ -7,6 +7,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **ui:** a session with no cache figures yet (a quick chat that just
+  started) no longer trips the session and Now screens' cache line.
+
+### Changed
+
+- **deck:** the *Pull requests & CI* cell is dense. A run's jobs flow into
+  as many columns as the deck is wide (three at about 1300px, two at about
+  900px) instead of one tall scrolling column with its right half empty,
+  each column lined up (OS, time, against the median, cost); an open job
+  takes the whole row and its steps flow the same way. The current pull
+  request opens by itself while it is open and has checks, passed included,
+  so its jobs fill the room the rows used to leave empty. The cell's title
+  no longer truncates, and an open PR's CI no longer scrolls sideways by a
+  few pixels.
+
 ### Changed
 
 - **app:** the cockpit's Spend block opens **Compact** by default: a period

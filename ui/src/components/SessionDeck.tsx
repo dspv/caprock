@@ -348,7 +348,8 @@ const WORD_TEXT: Record<PRWordTone, string> = {
  * stage, because runners are money"): a row per job with its state, OS and
  * time, ticking while it runs; a job opens into its steps, a failed step into
  * the lines around its error, with Investigate. One row is open at a time;
- * the current PR is open by default while its CI runs or failed. The Release
+ * the current PR is open by default while it is open and has checks, so its
+ * jobs fill the room rather than leaving it empty. The Release
  * and Main views stand behind the same switch. Asked only while the deck is
  * open and the window visible.
  */
@@ -375,7 +376,10 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   const [prsData, prsAt] = usePoll(view === 'pr', key, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS)
   const rows = useMemo(() => orderPRs(prsData?.prs ?? []), [prsData])
   const lead = rows[0]
-  const leadOpen = lead?.live?.state === 'open' && !!lead.live && (lead.live.checks.state === 'fail' || lead.live.checks.state === 'pending')
+  // The current PR opens by itself while it is open and has checks, whatever
+  // their state: its jobs fill the room the rows leave (owner, 2026-10-12, of
+  // the 0.109 deck: "see how much space is wasted").
+  const leadOpen = lead?.live?.state === 'open' && !!lead.live && lead.live.checks.items.length > 0
   const openPr = chosen ?? (leadOpen ? lead!.number : 0)
   const [prData, prAt] = usePoll(view === 'pr' && openPr > 0, `${key}:${openPr}`, () => api.sessionCI(sessionId, openPr), (d) => ciActive(d.ci))
   // The answer for the open row only: one for the row open before waits.
@@ -517,7 +521,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   const vsCol = runs.some((r) => r.jobs.some((j) => j.baseline))
   const costCol = runs.some((r) => r.jobs.some((j) => j.cost && j.cost.reason !== 'unfinished'))
   const runList = (manyRuns: boolean, byOS: boolean) => (
-    <ul data-deck-ci-jobs className={view === 'pr' ? '-mx-1' : '-mx-1 min-h-0 flex-1 overflow-y-auto overscroll-contain'}>
+    <ul data-deck-ci-jobs className={view === 'pr' ? '' : '-mx-1 min-h-0 flex-1 overflow-y-auto overscroll-contain'}>
       {runs.map((run) => (
         <li key={run.id} data-deck-ci-run={run.id}>
           {manyRuns && (
@@ -530,12 +534,15 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
               <RunTime run={run} now={now} />
             </div>
           )}
-          <ul>
+          {/* The jobs flow into as many columns as the deck's width holds,
+            * not one tall column with its right half empty; an open job
+            * takes the whole width for its steps and error. */}
+          <ul data-deck-ci-grid className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,330px),1fr))] gap-x-6">
             {run.jobs.map((job) => (
               <CIJobRow key={job.id} sessionId={sessionId} job={job} now={now} vsCol={vsCol} costCol={costCol} table={run.cost}
                 open={!!open[job.id]} onToggle={() => setOpen((o) => ({ ...o, [job.id]: !o[job.id] }))} />
             ))}
-            {run.jobs.length === 0 && <li className="px-1 text-[11px] text-fg-faint">{run.status === 'completed' ? 'No jobs reported.' : 'Waiting for a runner…'}</li>}
+            {run.jobs.length === 0 && <li className="col-span-full px-1 text-[11px] text-fg-faint">{run.status === 'completed' ? 'No jobs reported.' : 'Waiting for a runner…'}</li>}
           </ul>
         </li>
       ))}
@@ -665,7 +672,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
     <LogView.Provider value={{ view: logView, pr: view === 'pr' ? pr?.number : undefined, onShown }}>
     <div data-deck-cell className="flex min-w-0 flex-1 flex-col gap-1 overflow-hidden px-3 pb-2 pt-2">
       <div className="flex min-w-0 items-center gap-2">
-        <h4 className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Pull requests &amp; CI</h4>
+        <h4 className="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Pull requests &amp; CI</h4>
         {branch && <BranchChip branch={branch} base={base} changed={changed} ahead={ahead} onReview={onReview} />}
         {/* A release under way, said from the other views, in the header. */}
         {chip && (
@@ -865,35 +872,36 @@ function CIJobRow({ sessionId, job, now, open, onToggle, vsCol, costCol, table }
   const vs = vsCol ? jobVsMedian(job, now) : undefined
   const money = costCol ? jobCostLabel(job.cost, table, job.labels) : undefined
   // Whole class names, so Tailwind sees each one.
-  const cols = vsCol && costCol ? 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)_minmax(0,108px)_minmax(0,64px)]'
-    : vsCol ? 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)_minmax(0,108px)]'
-      : costCol ? 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)_minmax(0,64px)]'
-        : 'grid-cols-[9px_minmax(0,1fr)_auto_minmax(48px,auto)]'
+  // Fixed tracks after the name, so a column of jobs lines up row to row.
+  const cols = vsCol && costCol ? 'grid-cols-[9px_minmax(0,1fr)_34px_52px_62px_42px]'
+    : vsCol ? 'grid-cols-[9px_minmax(0,1fr)_34px_52px_62px]'
+      : costCol ? 'grid-cols-[9px_minmax(0,1fr)_34px_52px_42px]'
+        : 'grid-cols-[9px_minmax(0,1fr)_34px_52px]'
   const at = keyStep(job)
   const [logFor, setLogFor] = useState<number>()
   return (
-    <li data-deck-ci-job={job.id} data-tone={tone}>
+    <li data-deck-ci-job={job.id} data-tone={tone} className={open ? 'col-span-full' : 'min-w-0'}>
       <button type="button" onClick={onToggle} aria-expanded={open} title={`${job.name}${job.labels.length ? `\nRunner: ${job.labels.join(', ')}` : ''}\n${open ? 'Hide' : 'Show'} its steps`}
         className={`grid w-full min-w-0 ${cols} items-center gap-x-1.5 rounded-[4px] px-1 py-[1px] text-left text-[12px] hover:bg-[var(--app-row-hover)]`}>
         <CIMark tone={tone} />
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className={`truncate ${tone === 'fail' ? 'font-medium text-danger' : 'text-fg'}`}>{job.name}</span>
-          {!open && at && <span className={`truncate text-[11px] ${tone === 'fail' ? 'text-danger' : 'text-fg-faint'}`}>{at.name}</span>}
+          {!open && at && <span className={`min-w-0 shrink-[100] truncate text-[11px] ${tone === 'fail' ? 'text-danger' : 'text-fg-faint'}`}>{at.name}</span>}
         </span>
-        <span className="text-[10px] uppercase tracking-[0.04em] text-fg-faint">{osTag(job.os)}</span>
+        <span className="truncate text-[10px] uppercase tracking-[0.04em] text-fg-faint">{osTag(job.os)}</span>
         <span className={`num whitespace-nowrap text-right text-[11.5px] ${tone === 'running' ? 'text-warn' : 'text-fg-muted'}`}>{fmtRun(ciElapsed(job, now))}</span>
         {vsCol && <VsText vs={vs} />}
         {costCol && (money ? <CostText c={money} data="job" className="text-right" /> : <span />)}
       </button>
       {open && (
-        <ul className="ml-[8px] border-l border-[var(--app-hairline)] pl-1">
+        <ul className="ml-[8px] grid grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-x-4 border-l border-[var(--app-hairline)] pl-1">
           {job.steps.map((st) => (
             <CIStepRow key={st.number} sessionId={sessionId} job={job} step={st} now={now}
               showLog={logFor === st.number} onLog={() => setLogFor((x) => (x === st.number ? undefined : st.number))} />
           ))}
-          {job.steps.length === 0 && <li className="px-1 text-[11px] text-fg-faint">No steps reported yet.</li>}
+          {job.steps.length === 0 && <li className="col-span-full px-1 text-[11px] text-fg-faint">No steps reported yet.</li>}
           {tone === 'fail' && job.status === 'completed' && (
-            <li className="flex items-center gap-2 px-1 py-0.5 text-[11px] text-fg-faint">
+            <li className="col-span-full flex items-center gap-2 px-1 py-0.5 text-[11px] text-fg-faint">
               <InvestigateButton job={job} step={at?.name} />
               <span className="truncate">queue it to this agent</span>
             </li>
@@ -917,7 +925,7 @@ function CIStepRow({ sessionId, job, step, now, showLog, onLog }: { sessionId: s
   )
   const cls = 'grid w-full min-w-0 grid-cols-[9px_minmax(0,1fr)_minmax(48px,auto)] items-center gap-x-1.5 rounded-[4px] px-1 text-left text-[11.5px]'
   return (
-    <li data-deck-ci-step={step.number} data-tone={tone}>
+    <li data-deck-ci-step={step.number} data-tone={tone} className={showLog ? 'col-span-full' : 'min-w-0'}>
       {failed && job.status === 'completed'
         ? <button type="button" onClick={onLog} aria-expanded={showLog} title={showLog ? 'Hide the error' : 'Show the error: the lines around it in the job’s log'} className={`${cls} ci-failed-step`}>{row}</button>
         : <div className={cls}>{row}</div>}
