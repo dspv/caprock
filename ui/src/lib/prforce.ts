@@ -36,6 +36,80 @@ export function prChips(p: SessionPRLive): PRChip[] {
   return out
 }
 
+/**
+ * What stands between an open PR and a merge, the most important first:
+ * conflict, failed CI, behind, changes requested, draft. The row shows the
+ * first alone (owner, 2026-10-13, translated: "I understand it could get
+ * overloaded"); the rest go in its tooltip and the opened row.
+ */
+export type PRProblem = PRChipWord | 'ci'
+export function prProblems(p: SessionPRLive): PRProblem[] {
+  const chips = prChips(p).map((c) => c.word)
+  const out: PRProblem[] = []
+  if (chips.includes('conflict')) out.push('conflict')
+  if (p.live?.state === 'open' && p.live.checks.state === 'fail') out.push('ci')
+  for (const w of ['behind', 'review', 'draft'] as const) if (chips.includes(w)) out.push(w)
+  return out
+}
+
+/**
+ * The row's one problem chip: the most important problem's, or none when
+ * that is failed CI (the CI words already say "✗ failed at …"). `more` is
+ * every other problem, for its tooltip.
+ */
+export function topChip(p: SessionPRLive): { chip?: PRChip; more: string[] } {
+  const probs = prProblems(p)
+  const chips = prChips(p)
+  const top = probs[0]
+  const words: Record<PRProblem, string> = { conflict: 'conflicts with the base', ci: 'CI failed', behind: 'behind the base', review: 'changes requested', draft: 'a draft' }
+  return { chip: top && top !== 'ci' ? chips.find((c) => c.word === top) : undefined, more: probs.slice(1).map((w) => words[w]) }
+}
+
+/** The one-word actions beside the row's problem: conflict → Fix, failed CI → Fix and Re-run, behind → Update. */
+export type QuickKind = 'conflict' | 'ci' | 'rerun' | 'update'
+export function quickActions(p: SessionPRLive): QuickKind[] {
+  const top = prProblems(p)[0]
+  return top === 'conflict' ? ['conflict'] : top === 'ci' ? ['ci', 'rerun'] : top === 'behind' ? ['update'] : []
+}
+export const QUICK_LABEL: Record<QuickKind, string> = { conflict: 'Fix', ci: 'Fix', rerun: 'Re-run', update: 'Update' }
+
+/**
+ * Whether anything is on an open PR, in one word (owner, 2026-10-13,
+ * translated: "I want to see whether it's in the plan or in work"), the
+ * first that holds: *in work* — an agent on its branch working, or an
+ * action Caprock started still running; *waiting* — an agent on its branch
+ * asks you; *queued* — a message queued for an agent on it, or GitHub's
+ * auto-merge on. Nothing when nobody is on it. The agent's initial goes
+ * beside the word, so its own mark never says the same thing twice.
+ */
+export interface PRStatus { word: 'in work' | 'waiting' | 'queued'; agent?: PRAgent; title: string }
+export function prStatus(p: SessionPRLive, agents: PRAgent[], progress: PRProgress | undefined, queued: number): PRStatus | undefined {
+  const live = p.live
+  if (!live || live.state !== 'open') return undefined
+  const fixing = agents.find((a) => a.word === 'fixing')
+  if (fixing || progress) return { word: 'in work', agent: fixing ?? agents[0], title: [progress?.text, ...agents.map((a) => a.title)].filter(Boolean).join('\n') }
+  const waiting = agents.find((a) => a.word === 'waiting')
+  if (waiting) return { word: 'waiting', agent: waiting, title: agents.map((a) => a.title).join('\n') }
+  if (queued > 0 || live.auto_merge) {
+    const why = [queued > 0 ? `${queued} ${queued === 1 ? 'message' : 'messages'} queued for an agent on it` : '', live.auto_merge ? 'GitHub’s auto-merge is on: it merges once the checks and reviews allow' : ''].filter(Boolean)
+    return { word: 'queued', agent: agents[0], title: why.join('\n') }
+  }
+  return undefined
+}
+
+/**
+ * The queued messages that are about a PR: every one queued for an agent on
+ * its branch, and those queued elsewhere that name its link (a Fix CI sent
+ * to the session in front).
+ */
+export function queuedFor(p: SessionPRLive, agents: PRAgent[], queues: Record<string, { text: string }[]>): number {
+  const on = new Set(agents.map((a) => a.session.session_id))
+  const url = p.live?.url || p.url
+  let n = 0
+  for (const [id, msgs] of Object.entries(queues)) n += on.has(id) ? msgs.length : msgs.filter((m) => !!url && m.text.includes(url)).length
+  return n
+}
+
 export function hasConflict(p: SessionPRLive): boolean { return prChips(p).some((c) => c.word === 'conflict') }
 export function isBehind(p: SessionPRLive): boolean { return prChips(p).some((c) => c.word === 'behind') }
 

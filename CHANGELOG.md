@@ -7,6 +7,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **deck:** every open pull request shows its actions. The ⋯ was a faint
+  dot at the row's end that read as part of the age, and the actions only
+  appeared once a row was opened, so they went unseen. Now the row's one
+  problem carries a direct word beside it — *Fix* for a conflict, *Fix* and
+  *Re-run* for failed CI, *Update* for a branch behind — that asks on the
+  same line, and the ⋯ is a clear button at every width. Without GitHub
+  connected the actions are there greyed, with *Connect GitHub*.
+- **deck:** a pull request row says whether anything is on it in one word:
+  *in work* (an agent on its branch working, or a re-run, update or fix
+  Caprock started), *waiting* (an agent there asks you) or *queued* (a
+  message queued for it, or GitHub's auto-merge on), with the agent's
+  initial beside it. The row shows one problem chip, the most important,
+  the rest in its tooltip, and at a narrow deck the mini pipeline goes
+  before the title does.
+
 ## [0.112.0] - 2026-10-13
 
 ### Added

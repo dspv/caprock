@@ -90,7 +90,7 @@ func (s *Service) PullByURL(ctx context.Context, link string) (PR, *Error) {
 	}
 	pr := PR{Branch: p.Head.Ref, Repo: repo.FullName(), Number: p.Number, URL: p.HTMLURL, Title: p.Title, State: p.state(),
 		Draft: p.Draft, Base: p.Base.Ref, HeadSHA: p.Head.SHA, Mergeable: p.Mergeable, MergeableState: p.MergeableState,
-		Reviews: []Review{}, Checks: Checks{State: "none", Items: []Check{}}, At: now.UnixMilli()}
+		AutoMerge: p.AutoMerge != nil, Reviews: []Review{}, Checks: Checks{State: "none", Items: []Check{}}, At: now.UnixMilli()}
 	if checks, _, ce := s.readChecks(ctx, repo, pr.HeadSHA); ce == nil {
 		pr.Checks = checks
 	} else if have {
