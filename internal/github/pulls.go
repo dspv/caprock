@@ -79,12 +79,15 @@ type PR struct {
 	Base      string `json:"base"`
 	HeadSHA   string `json:"head_sha"`
 	// Mergeable is null while GitHub is still working it out.
-	Mergeable      *bool    `json:"mergeable"`
-	MergeableState string   `json:"mergeable_state,omitempty"`
-	Review         string   `json:"review"` // approved | changes_requested | review_required | commented | ""
-	Reviews        []Review `json:"reviews"`
-	Checks         Checks   `json:"checks"`
-	At             int64    `json:"at"` // when it was last read, unix ms
+	Mergeable      *bool  `json:"mergeable"`
+	MergeableState string `json:"mergeable_state,omitempty"`
+	// AutoMerge is GitHub's auto-merge turned on: it merges once the checks
+	// and reviews allow (the deck's "queued").
+	AutoMerge bool     `json:"auto_merge,omitempty"`
+	Review    string   `json:"review"` // approved | changes_requested | review_required | commented | ""
+	Reviews   []Review `json:"reviews"`
+	Checks    Checks   `json:"checks"`
+	At        int64    `json:"at"` // when it was last read, unix ms
 	// Error is why the last read failed; the rest is the last good answer.
 	Error *Error `json:"error,omitempty"`
 }
@@ -359,7 +362,11 @@ type apiPull struct {
 	MergedAt       *string `json:"merged_at"`
 	Mergeable      *bool   `json:"mergeable"`
 	MergeableState string  `json:"mergeable_state"`
-	Head           struct {
+	// AutoMerge is null unless auto-merge is enabled on the pull request.
+	AutoMerge *struct {
+		MergeMethod string `json:"merge_method"`
+	} `json:"auto_merge"`
+	Head struct {
 		Ref  string `json:"ref"`
 		SHA  string `json:"sha"`
 		Repo *struct {
@@ -514,7 +521,7 @@ func (s *Service) refreshPull(ctx context.Context, f *followed, number int) bool
 	changed := !res.notModded
 	pr := &PR{ProjectID: t.projectID, Worktree: t.worktree, Branch: t.branch, Repo: t.repo.FullName(), Number: p.Number, URL: p.HTMLURL,
 		Title: p.Title, State: p.state(), Draft: p.Draft, Base: p.Base.Ref, HeadSHA: p.Head.SHA, Mergeable: p.Mergeable,
-		MergeableState: p.MergeableState, Reviews: []Review{}, Checks: Checks{State: "none", Items: []Check{}}, At: s.Now().UnixMilli()}
+		MergeableState: p.MergeableState, AutoMerge: p.AutoMerge != nil, Reviews: []Review{}, Checks: Checks{State: "none", Items: []Check{}}, At: s.Now().UnixMilli()}
 	var firstErr *Error
 	checks, ch, e := s.readChecks(ctx, t.repo, p.Head.SHA)
 	if e != nil {

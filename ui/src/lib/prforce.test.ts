@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError, type SessionPRLive, type SessionSummary } from './api'
-import { agentWord, fixCIMessage, fixConflictMessage, forceErrText, prAgents, prChips, progressStands, rerunText, typeable } from './prforce'
+import { agentWord, fixCIMessage, fixConflictMessage, forceErrText, prAgents, prChips, prProblems, prStatus, progressStands, queuedFor, quickActions, rerunText, topChip, typeable, type PRAgent } from './prforce'
 
 const pr = (live: object = {}): SessionPRLive => ({ session_id: 's', url: 'https://github.com/a/b/pull/9', number: 9, last_at: 0,
   live: { project_id: 0, worktree: '', branch: 'feat/x', repo: 'a/b', number: 9, url: 'https://github.com/a/b/pull/9', title: 'Add x', state: 'open', draft: false,
@@ -82,5 +82,43 @@ describe('progressStands', () => {
     expect(progressStands(g, pr(), working, t + 90_000)).toBe(true)
     expect(progressStands(g, pr(), [], t + 90_000)).toBe(false)
     expect(progressStands(g, pr({ head_sha: 'h2' }), working, t + 90_000)).toBe(false)
+  })
+})
+
+describe('one problem, one action, one status word', () => {
+  const FAIL = { state: 'fail', passed: 0, failed: 1, pending: 0, items: [] }
+  it('ranks conflict, failed CI, behind, review, draft', () => {
+    expect(prProblems(pr({ mergeable: false, checks: FAIL, review: 'changes_requested', draft: true }))).toEqual(['conflict', 'ci', 'review', 'draft'])
+    expect(prProblems(pr({ mergeable: true, mergeable_state: 'behind', checks: FAIL }))).toEqual(['ci', 'behind'])
+    expect(prProblems(pr({ state: 'merged', checks: FAIL }))).toEqual([])
+  })
+  it('shows the first as the one chip, none for failed CI, the rest in its tooltip', () => {
+    const c = topChip(pr({ mergeable: false, checks: FAIL, draft: true }))
+    expect(c.chip?.word).toBe('conflict')
+    expect(c.more).toEqual(['CI failed', 'a draft'])
+    expect(topChip(pr({ checks: FAIL, mergeable_state: 'behind' }))).toEqual({ chip: undefined, more: ['behind the base'] })
+  })
+  it('offers Fix, Fix and Re-run, or Update for the first problem only', () => {
+    expect(quickActions(pr({ mergeable: false, checks: FAIL }))).toEqual(['conflict'])
+    expect(quickActions(pr({ checks: FAIL, mergeable_state: 'behind' }))).toEqual(['ci', 'rerun'])
+    expect(quickActions(pr({ mergeable: true, mergeable_state: 'behind' }))).toEqual(['update'])
+    expect(quickActions(pr({ review: 'changes_requested' }))).toEqual([])
+  })
+  it('says in work, then waiting, then queued, else nothing', () => {
+    const a = (word: PRAgent['word'], id = word): PRAgent => ({ session: sess({ session_id: id }), word, initial: 'A', title: `${id} — ${word}` })
+    const g = { kind: 'rerun' as const, text: 're-running…', at: 0 }
+    expect(prStatus(pr(), [a('waiting'), a('fixing')], undefined, 3)?.word).toBe('in work')
+    expect(prStatus(pr(), [], g, 0)).toMatchObject({ word: 'in work', title: 're-running…' })
+    expect(prStatus(pr(), [a('idle'), a('waiting')], undefined, 1)?.word).toBe('waiting')
+    expect(prStatus(pr(), [a('idle')], undefined, 1)).toMatchObject({ word: 'queued', title: '1 message queued for an agent on it' })
+    expect(prStatus(pr({ auto_merge: true }), [], undefined, 0)?.title).toMatch(/auto-merge is on/)
+    expect(prStatus(pr(), [a('idle')], undefined, 0)).toBeUndefined()
+    expect(prStatus(pr({ state: 'merged', auto_merge: true }), [a('fixing')], g, 2)).toBeUndefined()
+  })
+  it('counts what is queued for the branch’s agents, and elsewhere what names the PR', () => {
+    const on = [{ session: sess({ session_id: 'a1' }), word: 'idle' as const, initial: 'A', title: '' }]
+    const qs = { a1: [{ text: 'x' }, { text: 'y' }], s: [{ text: 'Look at https://github.com/a/b/pull/9/checks' }, { text: 'other' }] }
+    expect(queuedFor(pr(), on, qs)).toBe(3)
+    expect(queuedFor(pr(), [], qs)).toBe(1)
   })
 })

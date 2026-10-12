@@ -1253,7 +1253,8 @@ per link for 20 s while its checks run, 2 min once they settled and 30 min
 once merged or closed (`github.PullByURL`), so the deck polling it costs
 GitHub nothing in between; every read is conditional. The row's state chips
 read fields this answer already carries (`mergeable`, `mergeable_state`,
-`review`, `draft`); nothing is asked per chip.
+`review`, `draft`, and `auto_merge` for its *queued*); nothing is asked per
+chip.
 
 **`POST /v1/sessions/{id}/prs/{number}/rerun`** (no body) → `{ok, mode,
 runs, jobs}`: the session deck's *Re-run checks*. Acts only on a pull
@@ -2527,7 +2528,7 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
   (`in:name fork:true`). 30 a page.
 - **`PR`** — `{project_id, worktree, branch, repo, number, url, title,
   state: open|closed|merged, draft, base, head_sha, mergeable: bool|null,
-  mergeable_state?, review: approved|changes_requested|review_required|
+  mergeable_state?, auto_merge?, review: approved|changes_requested|review_required|
   commented|"", reviews: [{user, state, at?}], checks: {state:
   pass|fail|pending|"", passed, failed, pending, items: [{name, state, url?,
   status?, started_at?, completed_at?, job_id?}]}, at, error?}`. Checks
@@ -2535,7 +2536,9 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
   own `status` (`queued | in_progress | completed`), its times (unix ms) and,
   when its link is a GitHub Actions job's (`…/actions/runs/{run}/job/{job}`),
   that `job_id` — the deck's mini pipeline draws them;
-  `mergeable` null is GitHub still computing it. Only pull requests whose
+  `mergeable` null is GitHub still computing it; `auto_merge` is true while
+  GitHub's auto-merge is enabled (its pull request object's `auto_merge`
+  not null, read with the rest, no call of its own). Only pull requests whose
   head is in the same repository as `origin` are followed.
 - **`WorktreeInfo`** — `{connected, repo: {owner, name, full_name, html_url}
   | null, reason?, branch, base, remote?, published, ahead, pr: PR | null,
