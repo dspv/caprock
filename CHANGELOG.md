@@ -20,7 +20,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** the cockpit's subagent row keeps its place: with none running it
   says *no subagents running*, so the agent's figures and the sections below
   no longer jump as subagents start and finish.
-
 - **app:** on Windows, closing a shell tab no longer says it is running
   `csrss` (or another stranger) when it is at its prompt. A process whose
   parent exited long ago still names that parent's pid, and Windows reuses
