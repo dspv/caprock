@@ -7,6 +7,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **ui:** Lifetime's *Top projects* donut sits beside its table again instead
+  of drawing over it; a donut without a legend keeps its own width.
+
 ## [0.112.0] - 2026-10-13
 
 ### Added
