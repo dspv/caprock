@@ -23,6 +23,7 @@ import { branchLabel } from '@/lib/sessionLabels'
 import { tabLabels } from '@/lib/tablabels'
 import type { Tab } from '@/lib/tabs'
 import { HIDDEN_KEY, HIDDEN_SESSIONS_KEY, Sidebar, type SidebarProps } from './Sidebar'
+import { MORE_KEY } from './ProjectRow'
 
 // These read the labels in their macOS spelling; lib/appkeys.test.ts covers
 // Windows and Linux.
@@ -71,6 +72,9 @@ const tabRow = (id: string) => document.querySelector(`[data-tab-row="${id}"]`) 
 
 beforeEach(() => {
   localStorage.clear()
+  // These are about each row's actions, so every row is out: alpha's
+  // "+N more" open. The one row and the fold are tested at the end.
+  localStorage.setItem(MORE_KEY, JSON.stringify(['alpha']))
   signal.mockClear()
 })
 
@@ -130,7 +134,7 @@ describe('closing in the sidebar', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull()
   })
 
-  it('offers ■ on what Caprock started with no tab, after the same confirmation; what other terminals started sits behind one line', () => {
+  it('offers ■ on what Caprock started with no tab, after the same confirmation; what other terminals started comes last, with nothing to stop', () => {
     const sessions = [
       live({ session_id: 'a1', title: 'Fix the login' }),
       live({ session_id: 'sh2', kind: 'shell', started_at: 2 }),
@@ -139,8 +143,7 @@ describe('closing in the sidebar', () => {
     ]
     const { props } = setup(sessions, [agentTab])
     const list = screen.getByRole('group', { name: 'alpha: open tabs' })
-    expect([...list.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['sh2'])
-    expect(within(list).queryByText('Context recovery')).toBeNull()
+    expect([...list.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['sh2', 'x1', 'x2'])
     fireEvent.click(screen.getByRole('button', { name: 'Stop the shell…' }))
     const confirm = screen.getByRole('alertdialog', { name: 'Confirm stop' })
     expect(confirm).toHaveTextContent('Stop this shell? Its process ends; the shell is kept.')
@@ -148,10 +151,6 @@ describe('closing in the sidebar', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(signal).not.toHaveBeenCalled()
 
-    const others = within(list).getByRole('button', { name: /Running in other terminals · 2/ })
-    expect(others).toHaveAttribute('aria-expanded', 'false')
-    fireEvent.click(others)
-    expect([...list.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['sh2', 'x1', 'x2'])
     // Rule 7: nothing to stop on a session Caprock did not start.
     expect(screen.getAllByRole('button', { name: /^Stop the/ })).toHaveLength(1)
     fireEvent.click(list.querySelector('[data-live-row="x1"]')!)
@@ -242,7 +241,6 @@ describe('closing in the sidebar', () => {
   it('lets the title win over a long branch: the branch shrinks first, both are in the tooltip', () => {
     const branch = 'feature/an-extremely-long-branch-name-for-the-login-rework'
     setup([live({ session_id: 'x1', title: 'Context recovery', owned: false, git_branch: branch })], [])
-    fireEvent.click(screen.getByRole('button', { name: /Running in other terminals · 1/ }))
     const row = document.querySelector('[data-live-row="x1"]')!
     const title = row.querySelector('[data-row-title]')!
     const tail = row.querySelector('[data-row-branch]')!
@@ -274,11 +272,11 @@ describe('closing in the sidebar', () => {
     expect(signal).not.toHaveBeenCalled()
 
     // One from another terminal: × hides it too, and it has nothing to stop (rule 7).
-    fireEvent.click(within(list).getByRole('button', { name: /Running in other terminals · 1/ }))
     expect(screen.queryByRole('button', { name: 'Stop the session…' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Hide Context recovery from the list' }))
     expect(list.querySelector('[data-live-row="x1"]')).toBeNull()
-    expect(within(list).queryByRole('button', { name: /Running in other terminals/ })).toBeNull()
+    // Nothing left to fold: no "+N more" line.
+    expect(list.querySelector('[data-more-rows]')).toBeNull()
     expect(signal).not.toHaveBeenCalled()
 
     const more = within(list).getByRole('button', { name: /2 hidden · show/ })
@@ -298,7 +296,6 @@ describe('closing in the sidebar', () => {
     expect(within(screen.getByRole('menu', { name: 'Write the docs: actions' })).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open as a tab', 'Hide from the list', 'Stop the session…'])
     fireEvent.click(screen.getByRole('menuitem', { name: 'Hide from the list' }))
     expect(document.querySelector('[data-live-row="a2"]')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /Running in other terminals · 1/ }))
     fireEvent.contextMenu(document.querySelector('[data-live-row="x1"]')!)
     expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open its details', 'Hide from the list'])
   })
@@ -323,9 +320,9 @@ describe('closing in the sidebar', () => {
     localStorage.setItem(HIDDEN_SESSIONS_KEY, JSON.stringify({ x2: Date.now() - 1000, x1: Date.now() - 10 * 60_000 }))
     setup(sessions, [], {}, new Set(['x2']))
     const list = screen.getByRole('group', { name: 'alpha: open tabs' })
-    // Waiting rows are out in the open, not behind the other-terminals line.
-    expect([...list.querySelectorAll('[data-waiting]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['x1', 'x2'])
-    expect(within(list).getByRole('button', { name: /Running in other terminals · 1/ })).toBeInTheDocument()
+    // The one that asks leads; the other waiting one is under "+N more", which says so.
+    expect([...list.querySelectorAll('[data-live-row][data-waiting]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['x2', 'x1'])
+    expect(list.querySelector('[data-more-rows]')!.textContent).toBe('+2 more · 1 waiting›')
     expect(list.querySelector('[data-live-row="x2"] [data-state]')!.textContent).toBe('asks')
     expect(list.querySelector('[data-live-row="x1"] [data-state]')!.textContent).toBe('waiting')
   })

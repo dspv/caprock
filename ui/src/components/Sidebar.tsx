@@ -97,6 +97,8 @@ export interface SidebarProps {
   tabLabels?: ReadonlyMap<string, TabLabel>
   /** The tab in front: the one highlighted row. */
   activeTabId?: string
+  /** Each project's tab last in front (lib/tabs.ts activeByProject): the one row an open project shows. */
+  activeByProject?: Readonly<Record<string, string>>
   onActivateTab?: (tabId: string) => void
   /** Closes a tab, as ⌘W and the strip's × do; what runs in it keeps running. */
   onCloseTab?: (tabId: string) => void
@@ -256,6 +258,7 @@ export function Sidebar(props: SidebarProps) {
         tabDigits={tabDigits}
         labels={props.tabLabels ?? noLabels}
         activeTabId={props.dashboardActive ? undefined : props.activeTabId}
+        leadTabId={props.activeByProject?.[n.project.id]}
         onSelect={props.onSelectProject}
         onActivateTab={props.onActivateTab ?? noop}
         onOpenLive={props.onOpenLive}

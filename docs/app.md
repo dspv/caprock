@@ -34,8 +34,14 @@ others. Installing it: [install-app.md](install-app.md).
   of the count, the badge and ⌘J; when only such turns are left, the block
   is not shown at all (they stay on the Dashboard). Then the projects, one line each: the
   name, a green dot with how many sessions and shells run in it, and how
-  many wait on you. Only the current project is open, and under it are
-  exactly its tabs — the ones in the tab strip, in the same order and under
+  many wait on you. Only the current project is open, and under it is one
+  row: the tab you are looking at, or the project's last one; with no tab,
+  whatever asks or waits on you, else the agent that worked last. The rest
+  sit behind one quiet line, *+4 more* — hover it for what it holds (*2
+  working · 1 idle · 1 shell*), click it to list them in place; it stays
+  open for that project until you fold it. When something behind it waits
+  on you, the line turns amber and says so: *+4 more · 1 asks*. Opened,
+  the list is the project's tabs — the ones in the tab strip, in the same order and under
   the same names (*Shell 1*, *Shell 2* for shells, *Shell 1 · claude* while
   one runs a program; a branch beside a tab
   only when it is not the project's own). Click another project to make it
@@ -44,9 +50,7 @@ others. Installing it: [install-app.md](install-app.md).
   sidebar is the tab you are looking at; the current project's name is
   bold. After the tabs, muted, come the sessions and shells Caprock started
   in the project that still run with no tab; click one to open it as a tab.
-  Sessions started in another terminal are not listed one by one: a muted
-  *Running in other terminals · N* at the bottom opens the list, and one of
-  them waiting on you is still under *Waiting on you*. Each row says its
+  Sessions started in another terminal come last. Each row says its
   state in one word at its right: *working* (green), *waiting* (amber — it
   needs you, and nothing else in the list is amber), *idle* or *done*; a
   shell says nothing. Rows keep the strip's order, then the order things

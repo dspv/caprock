@@ -7,6 +7,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** each project in the sidebar shows one row: the tab you are on (or
+  its last one), else what waits on you, else the agent that worked last.
+  The rest fold behind one quiet *+N more* line that opens in place, stays
+  open per project, lists what it holds in its tooltip (*2 working · 1 idle
+  · 1 shell*) and turns amber when something behind it waits (*+4 more · 1
+  asks*). It replaces the *Running in other terminals* line; ⌘1–⌘9 still
+  reach every tab.
+
 ### Fixed
 
 - **app:** the version panel's update button reads at a glance: *Update to

@@ -1133,6 +1133,7 @@ export function AppShell() {
               tabs={ws.tabs}
               tabLabels={labels}
               activeTabId={current?.id}
+              activeByProject={ws.activeByProject}
               onActivateTab={onActivateTab}
               onCloseTab={onCloseTab}
               onOpenLive={openSession}
