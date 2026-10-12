@@ -7,6 +7,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **deck:** an open CI job stays in view and folds back in one move. Its
+  line is pinned at the top of the CI area with *Fold Esc*, its steps are
+  bounded to the deck's height and scroll on their own, and opening a job
+  closes the one before. Esc, while the focus is in the deck, folds the job,
+  then the open PR; the terminal keeps its own Esc. Every PR row has a
+  chevron, the open PR's line stays pinned, and the current PR folded by
+  hand stays folded while the app runs.
+
 ## [0.111.0] - 2026-10-12
 
 The 0.110.0 tag never published (its release check failed); this release

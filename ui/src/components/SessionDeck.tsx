@@ -27,7 +27,7 @@
  * box changes once, on release — one fit and one PTY resize, not one per
  * frame. Arrow keys on the divider settle the same way.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type SessionPRLive, type SessionRepoCI, type SessionSummary, type Summary } from '@/lib/api'
 import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
 import { MiniPipeline } from './MiniPipeline'
@@ -334,6 +334,30 @@ function BranchChip({ branch, base, changed, ahead, onReview }: { branch: string
   )
 }
 
+/**
+ * The pull requests folded by hand, per session, while the app runs: the
+ * current one opens by itself while it has checks, and a fold must not be
+ * undone by the next poll or by hiding and showing the deck again.
+ */
+const foldedPRs = new Set<string>()
+/** Forgets every fold: for tests. */
+export function forgetFoldedPRs() { foldedPRs.clear() }
+
+/**
+ * Scrolls `el` within its own scroll area (marked data-deck-scroll) only —
+ * never the deck or the window, which scrollIntoView would also move: to the
+ * top of the area when opened, just into view when folded back.
+ */
+function scrollInDeck(el: HTMLElement, mode: 'start' | 'nearest') {
+  const area = el.parentElement?.closest<HTMLElement>('[data-deck-scroll]')
+  if (!area) return
+  const a = area.getBoundingClientRect()
+  const r = el.getBoundingClientRect()
+  if (mode === 'start') area.scrollTop += r.top - a.top
+  else if (r.top < a.top) area.scrollTop += r.top - a.top
+  else if (r.bottom > a.bottom) area.scrollTop += Math.min(r.top - a.top, r.bottom - a.bottom)
+}
+
 const WORD_TEXT: Record<PRWordTone, string> = {
   ok: 'text-ok', fail: 'text-danger', pending: 'text-warn', muted: 'text-fg-muted', faint: 'text-fg-faint',
 }
@@ -360,10 +384,17 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   const setView = (v: CIView) => { setViewState(v); saveCIView(v) }
   const [n, setN] = useState(0)
   const [connecting, setConnecting] = useState(false)
-  const [open, setOpen] = useState<Record<number, boolean>>({})
+  // One job open at a time: its steps take the row, under a header that
+  // stays in view while they scroll (owner, 2026-10-12, translated: "when
+  // you start expanding things, you can't see a damn thing, and then it's
+  // impossible to collapse").
+  const [openJob, setOpenJob] = useState<number>()
   const autoOpened = useRef<Record<string, boolean>>({})
   const [now, setNow] = useState(() => Date.now())
-  const [reveal, setReveal] = useState<number>()
+  // What to bring into view once drawn: a job just opened (to the top of
+  // its scroll area) or just folded (back to its row), or a PR opened.
+  const scrollTo = useRef<{ sel: string; mode: 'start' | 'nearest'; focus?: boolean } | undefined>(undefined)
+  const cell = useRef<HTMLDivElement>(null)
   // The row opened by a click: a PR's number, 0 when every row was closed,
   // undefined while no click chose (the default rule decides).
   const [chosen, setChosen] = useState<number>()
@@ -379,7 +410,8 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   // The current PR opens by itself while it is open and has checks, whatever
   // their state: its jobs fill the room the rows leave (owner, 2026-10-12, of
   // the 0.109 deck: "see how much space is wasted").
-  const leadOpen = lead?.live?.state === 'open' && !!lead.live && lead.live.checks.items.length > 0
+  // Unless it was folded by hand in this session: that holds.
+  const leadOpen = lead?.live?.state === 'open' && !!lead.live && lead.live.checks.items.length > 0 && !foldedPRs.has(`${sessionId}:${lead.number}`)
   const openPr = chosen ?? (leadOpen ? lead!.number : 0)
   const [prData, prAt] = usePoll(view === 'pr' && openPr > 0, `${key}:${openPr}`, () => api.sessionCI(sessionId, openPr), (d) => ciActive(d.ci))
   // The answer for the open row only: one for the row open before waits.
@@ -447,27 +479,56 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
     const failed = runs.flatMap((r) => r.jobs).find((j) => ciTone(j) === 'fail')
     if (failed) {
       autoOpened.current[autoKey] = true
-      setOpen((o) => ({ ...o, [failed.id]: true }))
+      setOpenJob(failed.id)
     }
   }, [runs, autoKey])
 
   const jobs = runs.flatMap((r) => r.jobs)
-  // A job picked from a mini pipeline comes into view once it is drawn.
-  useEffect(() => {
-    if (reveal === undefined) return
-    const el = document.querySelector<HTMLElement>(`[data-deck-ci-job="${reveal}"]`)
+  // A job opened comes to the top of its scroll area, its header pinned
+  // there; one folded goes back to its row, in view. Once it is drawn: a job
+  // picked from a PR row waits for that PR's CI.
+  useLayoutEffect(() => {
+    const t = scrollTo.current
+    if (!t) return
+    const el = cell.current?.querySelector<HTMLElement>(t.sel)
     if (!el) return
-    el.scrollIntoView?.({ block: 'nearest' })
-    setReveal(undefined)
-  }, [reveal, runs])
+    scrollTo.current = undefined
+    scrollInDeck(el, t.mode)
+    if (t.focus) el.querySelector<HTMLElement>('button[aria-expanded]')?.focus({ preventScroll: true })
+  }, [openJob, runs, openPr, prCI])
+  const openOne = (id: number) => {
+    setOpenJob(id)
+    scrollTo.current = { sel: `[data-deck-ci-job="${id}"]`, mode: 'start' }
+  }
+  // Folded, the job's own button keeps the focus, so Esc and the arrow of
+  // the next look start from it.
+  const fold = (id: number, focus = false) => {
+    setOpenJob(undefined)
+    scrollTo.current = { sel: `[data-deck-ci-job="${id}"]`, mode: 'nearest', focus }
+  }
+  const toggleJob = (id: number) => (openJob === id ? fold(id) : openOne(id))
   const pick = (node: PipeNode) => {
     if (!node.jobId) { if (node.url) openExternal(node.url); return }
-    setOpen((o) => ({ ...o, [node.jobId!]: true }))
-    setReveal(node.jobId)
+    openOne(node.jobId)
+  }
+  // A PR row's click: open it (and only it), or fold it — remembered, so
+  // the current PR stays folded once folded by hand.
+  const togglePR = (n: number, focus = false) => {
+    const k = `${sessionId}:${n}`
+    if (openPr === n) {
+      foldedPRs.add(k)
+      setChosen(0)
+      scrollTo.current = { sel: `[data-deck-pr="${n}"]`, mode: 'nearest', focus }
+    } else {
+      foldedPRs.delete(k)
+      setChosen(n)
+      scrollTo.current = { sel: `[data-deck-pr="${n}"]`, mode: 'nearest' }
+    }
   }
   // A circle of a PR row: that row opens, at that job.
   const pickInRow = (pr: number, node: PipeNode) => {
     if (!node.jobId) { if (node.url) openExternal(node.url); return }
+    foldedPRs.delete(`${sessionId}:${pr}`)
     setChosen(pr)
     pick(node)
   }
@@ -475,6 +536,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   // A branch's PR: in the PRs view when it is one of this session's, else on GitHub.
   const jumpToPR = (n: number, url: string) => {
     if (prsData && !prsData.prs.some((p) => p.number === n)) { openExternal(url); return }
+    foldedPRs.delete(`${sessionId}:${n}`)
     setChosen(n)
     setView('pr')
   }
@@ -521,7 +583,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   const vsCol = runs.some((r) => r.jobs.some((j) => j.baseline))
   const costCol = runs.some((r) => r.jobs.some((j) => j.cost && j.cost.reason !== 'unfinished'))
   const runList = (manyRuns: boolean, byOS: boolean) => (
-    <ul data-deck-ci-jobs className={view === 'pr' ? '' : '-mx-1 min-h-0 flex-1 overflow-y-auto overscroll-contain'}>
+    <ul data-deck-ci-jobs data-deck-scroll={view === 'pr' ? undefined : ''} className={view === 'pr' ? '' : '-mx-1 min-h-0 flex-1 overflow-y-auto overscroll-contain [container-type:size]'}>
       {runs.map((run) => (
         <li key={run.id} data-deck-ci-run={run.id}>
           {manyRuns && (
@@ -540,7 +602,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
           <ul data-deck-ci-grid className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,330px),1fr))] gap-x-6">
             {run.jobs.map((job) => (
               <CIJobRow key={job.id} sessionId={sessionId} job={job} now={now} vsCol={vsCol} costCol={costCol} table={run.cost}
-                open={!!open[job.id]} onToggle={() => setOpen((o) => ({ ...o, [job.id]: !o[job.id] }))} />
+                open={openJob === job.id} onToggle={() => toggleJob(job.id)} />
             ))}
             {run.jobs.length === 0 && <li className="col-span-full px-1 text-[11px] text-fg-faint">{run.status === 'completed' ? 'No jobs reported.' : 'Waiting for a runner…'}</li>}
           </ul>
@@ -574,6 +636,9 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
     )
   }
 
+  // While an error is open, or a job's steps, the earlier PRs fold into one
+  // line so the open PR has the deck's height.
+  const cramped = logs > 0 || (openJob !== undefined && jobs.some((j) => j.id === openJob))
   let body: ReactNode = null
   if (view === 'pr') {
     const d = prsData
@@ -582,21 +647,21 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
       body = (
         // A column: every row keeps its line and the open one's CI takes
         // the height left, scrolling inside, so the earlier PRs stay in view.
-        <ul data-deck-prs className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-          {rows.map((p) => (logs > 0 && openPr !== p.number ? null :
+        <ul data-deck-prs data-deck-scroll="" className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+          {rows.map((p) => (cramped && openPr !== p.number ? null :
             <PRRow key={p.url} p={p} now={now} runs={seenRuns[p.number]} cost={prCost(p.number)} open={openPr === p.number}
-              onToggle={() => setChosen(openPr === p.number ? 0 : p.number)}
+              onToggle={() => togglePR(p.number)}
               onPick={(node) => pickInRow(p.number, node)}>
               {openPr === p.number && prDetail(p)}
             </PRRow>
           ))}
-          {logs > 0 && rows.length > 1 && (
+          {cramped && rows.length > 1 && (
             <li data-deck-prs-folded className="flex shrink-0 items-center gap-2 overflow-hidden px-1 pt-0.5 text-[11px] text-fg-faint">
               <span className="shrink-0">also</span>
               {rows.filter((p) => p.number !== openPr).map((p) => {
                 const v = prVerdict(p, now)
                 return (
-                  <button key={p.url} type="button" onClick={() => setChosen(p.number)} title={`${p.live?.title || p.title || ''}\n${v.text}`}
+                  <button key={p.url} type="button" onClick={() => togglePR(p.number)} title={`${p.live?.title || p.title || ''}\n${v.text}`}
                     className="flex shrink-0 items-center gap-1 rounded-[4px] px-1 hover:bg-[var(--app-row-hover)]">
                     <span aria-hidden className="pr-dot" data-state={prDotState(p)} /><span className="num text-fg-muted">#{p.number}</span><span className={WORD_TEXT[v.tone]}>{v.tone === 'ok' ? '✓' : v.tone === 'fail' ? '✗' : v.tone === 'pending' ? '…' : ''}</span>
                   </button>
@@ -667,10 +732,20 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview }: { 
   // The branch's pull request, when the current one is from it: "→ main".
   const base = lead?.live?.state === 'open' && branch && lead.live.branch === branch ? lead.live.base : undefined
   const chip = view !== 'release' ? releaseChip(rel, now) : ''
+  // Esc folds the innermost open thing — a job's steps, else the open PR —
+  // only while the focus is in the deck: the terminal keeps its own Esc.
+  const onEsc = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
+    if (openJob !== undefined && jobs.some((j) => j.id === openJob)) fold(openJob, true)
+    else if (view === 'pr' && openPr > 0) togglePR(openPr, true)
+    else return
+    e.preventDefault()
+    e.stopPropagation()
+  }
   return (
     <Investigate.Provider value={{ run: (j, st) => void investigate(j, st), why, busy }}>
     <LogView.Provider value={{ view: logView, pr: view === 'pr' ? pr?.number : undefined, onShown }}>
-    <div data-deck-cell className="flex min-w-0 flex-1 flex-col gap-1 overflow-hidden px-3 pb-2 pt-2">
+    <div ref={cell} data-deck-cell onKeyDown={onEsc} className="flex min-w-0 flex-1 flex-col gap-1 overflow-hidden px-3 pb-2 pt-2">
       <div className="flex min-w-0 items-center gap-2">
         <h4 className="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Pull requests &amp; CI</h4>
         {branch && <BranchChip branch={branch} base={base} changed={changed} ahead={ahead} onReview={onReview} />}
@@ -718,12 +793,16 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, children }: { p: Se
   const url = live?.url || p.url
   const nodes = live && live.checks.items.length > 0 ? checkNodes(live.checks.items, now) : []
   return (
-    <li data-deck-pr={p.number} data-open={open || undefined} className={open ? 'flex min-h-[72px] shrink flex-col' : 'shrink-0'}>
+    <li data-deck-pr={p.number} data-open={open || undefined} className={open ? 'flex min-h-[72px] flex-1 flex-col' : 'shrink-0'}>
+      {/* Open, its line stays at the top of the list whatever scrolls, with
+        * the chevron that folds it. */}
+      <div className={open ? 'sticky top-0 z-[2] shrink-0 bg-[var(--app-chrome-bg)]' : undefined}>
       <div onClick={onToggle}
-        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[8px_minmax(40px,1fr)_auto_auto_minmax(64px,236px)_26px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
+        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[10px_8px_minmax(40px,1fr)_auto_auto_minmax(64px,236px)_26px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
+        <Chevron open={open} />
         <span role="img" aria-label={dot} title={dot} className="pr-dot" data-state={dot} />
         <button type="button" aria-expanded={open} onClick={(e) => { e.stopPropagation(); onToggle() }}
-          title={`${title}\n${open ? 'Hide' : 'Show'} its CI`} className="flex min-w-0 items-baseline gap-2 text-left">
+          title={`${title}\n${open ? `Fold its CI (${keys('Esc')})` : 'Show its CI'}`} className="flex min-w-0 items-baseline gap-2 text-left">
           <span className="num shrink-0 text-fg">#{p.number}</span>
           <span className={`truncate ${open ? 'text-fg' : 'text-fg-muted'}`}>{title}</span>
         </button>
@@ -745,8 +824,20 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, children }: { p: Se
         <button type="button" onClick={(e) => { e.stopPropagation(); openExternal(url) }} aria-label={`Open #${p.number} on GitHub`} title="Open the pull request on GitHub"
           className="text-[11px] text-fg-faint hover:text-fg">↗</button>
       </div>
-      {open && <div data-deck-pr-detail className="mb-1 ml-[7px] min-h-0 flex-1 overflow-y-auto overscroll-contain border-l border-[var(--app-hairline)] pl-2 pt-0.5">{children}</div>}
+      </div>
+      {/* A size container: an open job's steps are bounded to its height (100cqh). */}
+      {open && <div data-deck-pr-detail data-deck-scroll="" className="mb-1 ml-[7px] min-h-0 flex-1 overflow-y-auto overscroll-contain border-l border-[var(--app-hairline)] pl-2 pt-0.5 [container-type:size]">{children}</div>}
     </li>
+  )
+}
+
+/** A disclosure chevron: right while folded, down while open; up on a Fold button. */
+function Chevron({ open, up }: { open?: boolean; up?: boolean }) {
+  const turn = up ? '-rotate-90' : open ? 'rotate-90 text-fg-muted' : 'text-fg-faint'
+  return (
+    <svg aria-hidden data-deck-chevron viewBox="0 0 10 10" className={`h-[10px] w-[10px] shrink-0 transition-transform duration-100 ${turn}`}>
+      <path d="M3.5 2 L6.5 5 L3.5 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }
 
@@ -880,9 +971,12 @@ function CIJobRow({ sessionId, job, now, open, onToggle, vsCol, costCol, table }
   const at = keyStep(job)
   const [logFor, setLogFor] = useState<number>()
   return (
-    <li data-deck-ci-job={job.id} data-tone={tone} className={open ? 'col-span-full' : 'min-w-0'}>
-      <button type="button" onClick={onToggle} aria-expanded={open} title={`${job.name}${job.labels.length ? `\nRunner: ${job.labels.join(', ')}` : ''}\n${open ? 'Hide' : 'Show'} its steps`}
-        className={`grid w-full min-w-0 ${cols} items-center gap-x-1.5 rounded-[4px] px-1 py-[1px] text-left text-[12px] hover:bg-[var(--app-row-hover)]`}>
+    <li data-deck-ci-job={job.id} data-tone={tone} data-open={open || undefined} className={open ? 'col-span-full' : 'min-w-0'}>
+      {/* Open, the job's line is pinned at the top of the scroll area while
+        * its steps scroll under it, with the control that folds them. */}
+      <div data-deck-ci-job-head className={open ? 'sticky top-0 z-[1] flex min-w-0 items-center gap-2 bg-[var(--app-chrome-bg)]' : 'contents'}>
+      <button type="button" onClick={onToggle} aria-expanded={open} title={`${job.name}${job.labels.length ? `\nRunner: ${job.labels.join(', ')}` : ''}\n${open ? `Fold its steps (${keys('Esc')})` : 'Show its steps'}`}
+        className={`grid w-full min-w-0 ${cols} items-center gap-x-1.5 rounded-[4px] px-1 py-[1px] text-left text-[12px] hover:bg-[var(--app-row-hover)] ${open ? 'flex-1 bg-[var(--app-row-hover)]' : ''}`}>
         <CIMark tone={tone} />
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className={`truncate ${tone === 'fail' ? 'font-medium text-danger' : 'text-fg'}`}>{job.name}</span>
@@ -894,7 +988,16 @@ function CIJobRow({ sessionId, job, now, open, onToggle, vsCol, costCol, table }
         {costCol && (money ? <CostText c={money} data="job" className="text-right" /> : <span />)}
       </button>
       {open && (
-        <ul className="ml-[8px] grid grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-x-4 border-l border-[var(--app-hairline)] pl-1">
+        <button type="button" data-deck-ci-fold onClick={onToggle} aria-label={`Fold ${job.name}’s steps (${keys('Esc')})`} title="Fold the steps: Esc, or a click on the job"
+          className="flex h-[20px] shrink-0 items-center gap-1 rounded-[5px] px-1.5 text-[11px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">
+          <Chevron up />Fold <kbd aria-hidden className="app-kbd-key">{keys('Esc')}</kbd>
+        </button>
+      )}
+      </div>
+      {open && (
+        // Never taller than the scroll area under the pinned line: the steps
+        // scroll on their own, so the open job fits the deck whatever its height.
+        <ul data-deck-ci-steps className="ml-[8px] grid max-h-[max(60px,calc(100cqh-26px))] grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] content-start gap-x-4 overflow-y-auto overscroll-contain border-l border-[var(--app-hairline)] pl-1">
           {job.steps.map((st) => (
             <CIStepRow key={st.number} sessionId={sessionId} job={job} step={st} now={now}
               showLog={logFor === st.number} onLog={() => setLogFor((x) => (x === st.number ? undefined : st.number))} />

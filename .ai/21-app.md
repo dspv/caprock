@@ -467,13 +467,27 @@ One window, three regions:
     2026-10-12, translated, of the 0.109 deck's one tall column with its
     right half empty: "see how much space is wasted, although the
     information is important and good — it was just laid out
-    inconveniently"). The first failed job of each PR opens by itself. The
+    inconveniently"). One job is open at a time: opening one folds the one
+    before and brings it to the top of the CI's scroll area, where its line
+    stays pinned while its steps scroll under it, with *Fold Esc* at its
+    end; the steps are never taller than that area and scroll on their own,
+    so the open job fits a deck of any height. A click on the job, *Fold* or
+    Esc folds it and the job goes back to its row, in view (owner,
+    2026-10-12, translated, of the 0.111 deck: "when you start expanding
+    things, you can't see a damn thing, and then it's impossible to
+    collapse"). Esc folds the innermost open thing — the job, then the open
+    PR — and only while the focus is in the deck, so the terminal keeps its
+    own Esc; with nothing open it is not the deck's. Every PR row carries a
+    chevron (right folded, down open), and the open PR's line stays pinned
+    at the top of the list. The first failed job of each PR opens by itself. The
     current PR is open by default while it is open and has checks, whatever
     their state, so its jobs fill the room the rows would leave empty; a
-    merged or closed one first stays a row. Every row keeps its line and the open one's CI takes the
-    height left, scrolling inside, so the earlier PRs stay in view; while an
-    error log is open they fold into one line (*also #13 ✓ #12 ✓*) so the
-    error has the room. A settled PR's runs are read once while the deck is
+    merged or closed one first stays a row, and one folded by hand stays
+    folded for as long as the app runs, the deck hidden and shown again
+    included. Every row keeps its line and the open one's CI takes the
+    height left, scrolling inside, so the earlier PRs stay in view; while a
+    job or an error log is open they fold into one line (*also #13 ✓ #12
+    ✓*) so it has the room. A settled PR's runs are read once while the deck is
     open, so its row carries its time against the median without being
     opened. While GitHub is not connected the rows show what the session
     recorded (open, merged) and *connect GitHub for CI* turns the integration

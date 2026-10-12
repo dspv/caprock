@@ -19,7 +19,7 @@ vi.mock('@/lib/api', async (orig) => {
     sessionCILog: async (_id: string, _job: number, view = 'pr') => { h.logs++; h.logViews.push(view); return { job_id: 71, lines: ['go test ./...', '--- FAIL: TestDeck (0.01s)', '##[error]Process completed with exit code 1.'], error_line: 2 } } } }
 })
 
-import { SessionDeck } from './SessionDeck'
+import { SessionDeck, forgetFoldedPRs } from './SessionDeck'
 
 function agent(p: Partial<SessionSummary> = {}): SessionSummary {
   return {
@@ -56,7 +56,7 @@ function show(p: Partial<Parameters<typeof SessionDeck>[0]> = {}) {
   return { ...r, onResize }
 }
 
-afterEach(() => { vi.useRealTimers(); h.asked = 0; h.prs = { connected: true, prs: [] }; h.ci = { connected: true }; h.rel = { connected: false }; h.main = { connected: false }; h.branches = { connected: true, branches: [] }; h.usage = undefined; h.usageAsked = 0; localStorage.clear() })
+afterEach(() => { vi.useRealTimers(); forgetFoldedPRs(); h.asked = 0; h.prs = { connected: true, prs: [] }; h.ci = { connected: true }; h.rel = { connected: false }; h.main = { connected: false }; h.branches = { connected: true, branches: [] }; h.usage = undefined; h.usageAsked = 0; localStorage.clear() })
 
 describe('the session deck', () => {
   it('asks nothing of the session’s events, and leaves the context to the status bar', async () => {
@@ -425,6 +425,60 @@ describe('the session deck', () => {
     expect(screen.getByRole('tab', { name: 'PRs' })).toHaveAttribute('aria-selected', 'true')
     expect(document.querySelector('[data-deck-pr="8"] [data-deck-pr-detail]')).not.toBeNull()
     h.prs = { connected: true, prs: [] }
+    h.ci = { connected: true }
+  })
+
+  it('keeps an open job in view with a Fold control, folds it with Esc, then the PR, and remembers that fold', async () => {
+    const t0 = now - 5 * 60_000
+    const steps = Array.from({ length: 25 }, (_, i) => ({ number: i + 1, name: `step ${i + 1}`, status: 'completed', conclusion: 'success', started_at: t0, completed_at: t0 + 1_000, duration_ms: 1_000 }))
+    const job = (id: number) => ({ id, run_id: 7, name: `job ${id}`, status: 'completed', conclusion: 'success', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000, labels: [], steps })
+    h.ci = { connected: true, pr: { number: 9, url: 'https://github.com/a/b/pull/9', repo: 'a/b', head_sha: 's' }, ci: {
+      repo: 'a/b', head_sha: 's', state: 'pass', runner_ms: 120_000, by_os: [], at: now, runs: [{ id: 7, name: 'CI', status: 'completed', conclusion: 'success', jobs: [job(70), job(71)] }] } }
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED)), prRow(8, livePR(8, PASSED, { state: 'merged' }))] }
+    const first = show()
+    const jobButton = (id: number) => document.querySelector<HTMLElement>(`[data-deck-ci-job="${id}"] button[aria-expanded]`)!
+    await waitFor(() => expect(jobButton(70)).not.toBeNull())
+    // Nothing failed, so nothing is open: no Fold control.
+    expect(document.querySelector('[data-deck-ci-fold]')).toBeNull()
+    fireEvent.click(jobButton(70))
+    expect(jobButton(70)).toHaveAttribute('aria-expanded', 'true')
+    // Its line is pinned at the top of the scroll area, its steps bounded and scrolling on their own.
+    expect(document.querySelector('[data-deck-ci-job="70"] [data-deck-ci-job-head]')).toHaveClass('sticky')
+    expect(document.querySelector('[data-deck-ci-job="70"] [data-deck-ci-steps]')!.className).toMatch(/max-h-.*100cqh/)
+    // The earlier PRs fold into one line while a job is open.
+    expect(document.querySelector('[data-deck-pr="8"]')).toBeNull()
+    expect(document.querySelector('[data-deck-prs-folded]')).toHaveTextContent('#8')
+    // Opening another job closes the first: one at a time.
+    fireEvent.click(jobButton(71))
+    expect(jobButton(70)).toHaveAttribute('aria-expanded', 'false')
+    expect(document.querySelectorAll('[data-deck-ci-fold]')).toHaveLength(1)
+    // The Fold control names its key and folds the job.
+    const fold = document.querySelector('[data-deck-ci-fold]')!
+    expect(fold).toHaveAccessibleName(/Fold job 71’s steps \((Esc)\)/)
+    fireEvent.click(fold)
+    expect(jobButton(71)).toHaveAttribute('aria-expanded', 'false')
+    expect(document.querySelector('[data-deck-pr="8"]')).not.toBeNull()
+    // Esc in the deck folds the innermost open thing: the job, then the PR.
+    fireEvent.click(jobButton(70))
+    fireEvent.keyDown(jobButton(70), { key: 'Escape' })
+    expect(jobButton(70)).toHaveAttribute('aria-expanded', 'false')
+    expect(document.activeElement).toBe(jobButton(70))
+    fireEvent.keyDown(jobButton(70), { key: 'Escape' })
+    expect(document.querySelector('[data-deck-pr-detail]')).toBeNull()
+    expect(rowButton(9)).toHaveAttribute('aria-expanded', 'false')
+    // Esc with nothing open is not the deck's: it goes on to whoever wants it.
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    rowButton(9).dispatchEvent(esc)
+    expect(esc.defaultPrevented).toBe(false)
+    first.unmount()
+    // The current PR folded by hand stays folded when the deck comes back.
+    show()
+    await waitFor(() => expect(rowButton(9)).toHaveAttribute('aria-expanded', 'false'))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(document.querySelector('[data-deck-pr-detail]')).toBeNull()
+    // Opened again by hand, it is open, and the next deck opens it by itself.
+    fireEvent.click(rowButton(9))
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-detail]')).not.toBeNull())
     h.ci = { connected: true }
   })
 
