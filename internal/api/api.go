@@ -413,6 +413,9 @@ type Server struct {
 	drill *answerCache
 	// repos answers "which repository, on which host" per directory.
 	repos *repoCache
+	// sizes decides which attached terminal a session's PTY is sized for
+	// (termsize.go).
+	sizes *ptySizes
 }
 
 // New builds the router.
@@ -435,6 +438,11 @@ func New(d Deps) *Server {
 	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now),
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), repos: newRepoCache()}
+	s.sizes = newPTYSizes(func(id string, cols, rows int) {
+		if s.d.Agents != nil {
+			_ = s.d.Agents.Resize(id, cols, rows)
+		}
+	})
 	// The whole-history answers are renewed while nothing was written: with
 	// the dashboard open and no agent working, five components asked for
 	// all-time history once a minute each and every ask past the TTL counted

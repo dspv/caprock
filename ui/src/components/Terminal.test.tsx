@@ -113,7 +113,7 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true
 Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return hostSize.height } })
 
 import { START_TIMEOUT_MS, TERMINAL_THEME, TerminalView, WEBGL_QUIET_MS } from './Terminal'
-import { BACKOFF_MAX_MS, BACKOFF_MIN_MS } from '@/lib/termv2'
+import { BACKOFF_MAX_MS, BACKOFF_MIN_MS, TermClient } from '@/lib/termv2'
 
 describe('TerminalView', () => {
   beforeEach(() => {
@@ -962,5 +962,43 @@ describe('rendering', () => {
     // in.
     render(<TerminalView sessionId="s-scroll" owned />)
     expect((ctor.mock.calls[0]?.[0] as { scrollback?: number })?.scrollback).toBe(10000)
+  })
+})
+
+// One PTY, several terminals: the one in use sizes it (internal/api/termsize.go).
+// Vova (2026-10-12): typing from a phone left the desktop's agent drawn 45
+// columns wide until its window next changed size.
+describe('claiming the PTY', () => {
+  beforeEach(() => {
+    vi.stubGlobal('WebSocket', class {
+      static OPEN = 1
+      readyState = 0
+      binaryType = ''
+      send() {}
+      close() {}
+    })
+  })
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+
+  it('on a desktop: when it opens, when the window gains focus, and on a click', () => {
+    const claim = vi.spyOn(TermClient.prototype, 'focus')
+    const { container } = render(<TerminalView sessionId="s-claim" owned />)
+    expect(claim).toHaveBeenCalledTimes(1)
+    window.dispatchEvent(new Event('focus'))
+    expect(claim).toHaveBeenCalledTimes(2)
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(claim).toHaveBeenCalledTimes(3)
+    container.querySelector('.xterm-screen')!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(claim).toHaveBeenCalledTimes(4)
+  })
+
+  it('on a touch device only by typing, which the daemon sees: looking claims nothing', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(pointer: coarse)', addEventListener() {}, removeEventListener() {} }))
+    const claim = vi.spyOn(TermClient.prototype, 'focus')
+    const { container } = render(<TerminalView sessionId="s-claim-phone" owned />)
+    window.dispatchEvent(new Event('focus'))
+    document.dispatchEvent(new Event('visibilitychange'))
+    container.querySelector('.xterm-screen')!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(claim).not.toHaveBeenCalled()
   })
 })

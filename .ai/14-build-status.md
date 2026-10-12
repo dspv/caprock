@@ -73,6 +73,23 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — unreleased: the terminal in use sizes the PTY
+
+Vova reported the desktop app drawing the agent in a ~45-column strip after
+he typed into the same session from his phone: every attached terminal's
+resize went to the one PTY, the last sender won, and the desktop sent a size
+only when its own box changed. The daemon now keeps each socket's size and
+applies the one in use (`internal/api/termsize.go`): input, a `focus` frame,
+being the only terminal, or being the tab that last claimed it. A phone
+attaching repaints at the desktop's size instead of shrinking it; the desktop
+claims the PTY back on window focus, visibility, tab shown, a click or a key
+(a touch device only by typing). Verified on a preview stand with two
+headless pages, 1400px app workspace and 390px phone: before, the PTY went
+100x37 → 46x27 when the phone merely opened the Terminal tab and stayed
+there after the desktop was focused and clicked; after, it stayed 100x37
+until the phone typed, went 46x27, and came back to 100x37 on the
+desktop's focus and click.
+
 ### 2026-10-12 — 0.111.0: CI cost and branches, a dense deck, compact spend
 
 The v0.110.0 tag's release run failed its verify job (an app test asserted
