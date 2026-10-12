@@ -1476,6 +1476,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		AlertLastSentMs:  alertSent,
 		KeepAwake:        keepawake.Normalize(c.KeepAwake),
 		WorktreeCleanup:  projects.NormalizeCleanup(c.WorktreeCleanup),
+		StatuslineMode:   config.NormalizeStatusline(c.StatuslineMode),
 	}
 }
 
@@ -1538,8 +1539,18 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	if cleanupChanged {
 		a.d.opt.Config.WorktreeCleanup = in.WorktreeCleanup
 	}
+	// The status line: Full until chosen, like the two above. Switching it
+	// in or out of Off registers or removes Caprock's own statusLine entry;
+	// Full and Short share that entry, which reads the mode as it renders.
+	statuslineChanged := in.StatuslineMode != "" && in.StatuslineMode != config.NormalizeStatusline(a.d.opt.Config.StatuslineMode)
+	if statuslineChanged {
+		a.d.opt.Config.StatuslineMode = in.StatuslineMode
+	}
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
+	if statuslineChanged {
+		a.d.applyStatuslineMode(cfg)
+	}
 	if capChanged && a.d.cap != nil {
 		a.d.cap.Reset()
 	}
