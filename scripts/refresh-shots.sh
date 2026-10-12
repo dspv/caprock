@@ -138,7 +138,15 @@ except Exception:
     hooks = {}
 json.dump({"hooks": hooks}, open(sys.argv[2], "w"))
 PY
-HOME="$WORK/home" "$SHOT_BIN" up --no-open --no-hooks --port "$PORT" --data-dir "$WORK/data" >/dev/null 2>&1 || true
+# Pointed at a stand-in repository with --repo. Tasks names the repo the
+# daemon works on ("Checks found in <repo>"), which defaults to the directory
+# it starts in: this checkout, the user's home path on a public screenshot.
+# The stand-in carries a go.mod and a Makefile so the templates show checks.
+STAND=/Users/Shared/caprock-shots/acme-api
+rm -rf "${STAND:?}"; mkdir -p "$STAND"
+printf 'module example.com/acme-api\n\ngo 1.23\n' > "$STAND/go.mod"
+printf 'test:\n\tgo test ./...\n\nlint:\n\tgo vet ./...\n' > "$STAND/Makefile"
+HOME="$WORK/home" "$SHOT_BIN" up --no-open --no-hooks --port "$PORT" --data-dir "$WORK/data" --repo "$STAND" >/dev/null 2>&1 || true
 for _ in $(seq 1 20); do
   curl -sf "http://127.0.0.1:$PORT/v1/status" >/dev/null 2>&1 && break
   sleep 1
@@ -154,7 +162,7 @@ fi
 stop_shot_daemon() {
   CAPROCK_DATA_DIR="$WORK/data" "$SHOT_BIN" down >/dev/null 2>&1 || true
 }
-trap 'stop_shot_daemon; rm -rf "$WORK"' EXIT
+trap 'stop_shot_daemon; rm -rf "$WORK" "${STAND%/*}"' EXIT
 
 # websocket-client drives Chrome's debugging protocol and is not a dependency
 # of anything else here, so it lives in a throwaway venv.

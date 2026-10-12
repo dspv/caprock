@@ -6,7 +6,7 @@ already measures, in one window. It talks to the same local daemon as the
 browser dashboard and the phone, so a session started in one is live in the
 others. Installing it: [install-app.md](install-app.md).
 
-![The app: projects and their sessions on the left, a shell tab on the right, plan limits and today's spend along the bottom](shot-app.png)
+![The app: today's spend, the plan windows and the projects with their sessions on the left; on the right a Claude Code session with a shell split below it](shot-app.png)
 
 *Demo projects and sessions, made up for this picture.*
 

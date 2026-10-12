@@ -356,7 +356,10 @@ WIDTH, HEIGHT = 1600, 1400
 MIN_H, PAD = 300, 28          # never crop tighter than this; breathing room below
 # A screen whose crop ends at a named panel rather than at the viewport. Now
 # runs far past 1400px, and the fixed height cut At a glance's donuts in half.
-CROP_TO = {"now": "at a glance"}
+# Cost's donut row runs past the 1400px frame, so the panel snap
+# fell back to the Totals edge and left the row's headings as a stray strip
+# along the bottom; it ends at the row instead.
+CROP_TO = {"now": "at a glance", "cost": "model mix"}
 
 
 def rpc(ws, method, params=None, _id=[0]):
@@ -478,6 +481,16 @@ def main():
 
         for theme in ("dark", "light"):
             for route, name in SHOTS:
+                # The theme is chosen before the load, in storage, because the
+                # load below is a real one and the app reads its palette as it
+                # boots. Clicking the header's theme button used to cycle light
+                # and dark; since 0.108.0 it opens a seven-palette menu, so the
+                # click opened the menu and the light pass never turned light.
+                # Dark Warm and Book are what each side shows on a fresh
+                # install (DEFAULT_DARK and DEFAULT_LIGHT in ui/src/lib/themes.ts).
+                mode = "book" if theme == "light" else "dark-warm"
+                evaluate(ws, "try { localStorage.setItem('caprock-theme-mode', '%s');"
+                             " localStorage.setItem('caprock-theme', '%s') } catch (e) {}" % (mode, theme))
                 # Navigating to the same document with a different hash does
                 # not reload it, and the dismissal flags above are only read as
                 # the document boots. Go by way of about:blank so each capture
@@ -488,22 +501,6 @@ def main():
                 time.sleep(0.3)
                 rpc(ws, "Page.navigate", {"url": f"{BASE}/#/{route}"})
                 time.sleep(1.5)
-                # Toggle to the theme we want by clicking the control, which is
-                # what a person does. Writing to storage only takes effect on
-                # the next document load, and a hash navigation is not one.
-                for _ in range(3):
-                    cur = evaluate(ws, "document.documentElement.getAttribute('data-theme')")
-                    if cur == theme:
-                        break
-                    evaluate(ws, """
-                      (() => {
-                        const b = [...document.querySelectorAll('button')].find(
-                          (x) => (x.getAttribute('aria-label') || '').includes('theme'));
-                        if (b) b.click();
-                      })()
-                    """)
-                    time.sleep(0.8)
-
 
                 for _ in range(40):
                     time.sleep(0.4)
