@@ -56,3 +56,30 @@ func progName(argv0, comm string) string {
 	}
 	return n
 }
+
+// proc is one entry of a process table scan, for the child scan Windows uses.
+type proc struct {
+	pid, ppid int
+	exe       string
+	start     int64 // creation time, any monotonic unit shared with the shell's
+}
+
+// childName names the first real child of the shell in procs: its parent pid
+// is the shell's and it started no earlier than the shell did. An older
+// process naming the shell's pid as its parent is the orphan of an earlier
+// process that held the pid, not the shell's child. Console hosts are
+// skipped: they belong to the console, not to what the user ran.
+func childName(shellPID int, shellStart int64, procs []proc) string {
+	for _, p := range procs {
+		if p.ppid != shellPID || p.pid == shellPID || p.start < shellStart {
+			continue
+		}
+		name := progName(p.exe, "")
+		switch strings.ToLower(name) {
+		case "conhost", "openconsole":
+			continue
+		}
+		return name
+	}
+	return ""
+}

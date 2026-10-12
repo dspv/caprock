@@ -2089,8 +2089,12 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   read from the shell's own process (`tpgid` from `kern.proc.pid` or
   `/proc/<pid>/stat`): a group other than the shell's is a running job, named
   by its leader, or `"program"` when no member can be named. On Windows it is
-  the shell's first child process other than a console host, best effort; it
-  may be absent while something runs, and reading it never fails the list.
+  the shell's first child process other than a console host, best effort; a
+  child is a process naming the shell's pid as its parent *and* created no
+  earlier than the shell (Windows never clears a dead parent's pid and reuses
+  it, so csrss otherwise claims any process that draws its boot-time
+  parent's pid). It may be absent while something runs, and reading it never
+  fails the list.
   It is read only for a running shell Caprock started, at most once per 2 s
   per shell however often the list is asked (`internal/fgproc`,
   `Manager.ShellProgram`); reading signals nothing (rule 7). The app ends an
