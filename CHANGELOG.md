@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.112.0] - 2026-10-13
+
 ### Added
 
 - **app:** an optional composer under an agent's terminal (Settings →
