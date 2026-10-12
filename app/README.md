@@ -321,3 +321,4 @@ painting while covered or off screen (WebKit's occlusion detection and App
 Nap off); an empty `<dir>/hide` hides the window and turns both back on.
 Afterwards: `caprock service uninstall` and `caprock down` with the same
 environment.
+

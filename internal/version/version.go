@@ -1,4 +1,4 @@
-// Package version exposes the build-time version string stamped via -ldflags.
+// Package version exposes the build-time version string stamped via -ldflags. (CI probe, never merged)
 package version
 
 // Version is set at build time: -X github.com/dspv/caprock/internal/version.Version=v0.1.0
