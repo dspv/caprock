@@ -45,6 +45,42 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   asks*). It replaces the *Running in other terminals* line; ⌘1–⌘9 still
   reach every tab.
 
+### Changed
+
+- **app:** three figures beside the agent in the cockpit, each one yours
+  to pick: the headline in large type and two short lines under it
+  (*$4.08/h burn ▾*, *4.01B tok ▾*), from one list — cost, burn rate,
+  tokens, cache hit rate, turns, time working, last call, tool calls —
+  never the same one twice (picking a taken one swaps them), cost, burn
+  rate and tokens until you choose. In a narrow inspector the two lines
+  move under the agent, beside the subagent chips, rather than squeezing
+  the agent's own lines or being cut.
+
+- **app:** the Spend block in the cockpit opens on its chart again,
+  unfolded: the period's spend by time with its total and the stretch
+  under the pointer. *Numbers* is still a click away on the *Chart |
+  Numbers* switch. A choice saved while Numbers and folded were the
+  default opens on the chart once; what you pick after that holds.
+
+### Added
+
+- **deck:** pull requests show what stands in their way and who is on them,
+  and can be fixed or re-checked from the row. An open PR carries one-word
+  chips beside its pipeline — *conflict*, *behind*, *review* (changes
+  requested), *draft* — from what GitHub already said, and nothing while
+  GitHub is still computing. A live agent whose checkout is on the PR's
+  branch shows as its initial with *fixing*, *waiting* or *idle* (*2
+  agents* for several); a click opens its tab. The open row, or its ⋯,
+  offers *Fix conflict with agent*, *Update branch*, *Fix CI with agent*
+  and *Re-run checks*; each confirms in one line inside the row, then says
+  what it is doing there (*agent fixing…*, *re-running 5 jobs…*,
+  *updating branch…*) until GitHub shows it done. A fix goes to the
+  Caprock-started agent on the branch, else a new agent starts in the
+  branch's checkout or a new worktree at the PR's head; nothing is typed
+  into a session Caprock did not start. Re-run and Update branch use
+  GitHub's own APIs with your token, and a refusal names the permission
+  the token is missing.
+
 ### Fixed
 
 - **app:** the version panel's update button reads at a glance: *Update to

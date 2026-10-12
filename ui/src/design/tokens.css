@@ -594,14 +594,22 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   display: grid;
   min-width: 0;
   grid-template-columns: 58px minmax(0, 1fr) auto;
-  grid-template-areas: "av info fig" "chips chips chips";
+  /* The big figure over its two smaller lines, beside the agent; the chips
+   * (and the smaller lines, when they left the agent's side) under both. */
+  grid-template-areas: "av info fig" "av info sec" "chips chips chips";
   column-gap: 0.875rem;
-  row-gap: 0.5rem;
+  row-gap: 0;
   align-items: center;
 }
+.cockpit-hero[data-sec="below"] { grid-template-areas: "av info fig" "chips chips chips"; }
+.cockpit-hero [data-hero-sec] { margin-top: 0.375rem; }
+.cockpit-hero[data-sec="below"] [data-hero-sec] { margin-top: 0; }
 .cockpit-hero-num { font-size: 22px; }
+/* A long figure ($1,197.22) in a narrow inspector steps down once more, so
+ * the agent's own lines keep room beside it. */
+.cockpit-hero-num[data-long] { font-size: 18px; }
 @container (min-width: 420px) {
-  .cockpit-hero-num { font-size: 30px; }
+  .cockpit-hero-num, .cockpit-hero-num[data-long] { font-size: 30px; }
 }
 [data-app] .cockpit-avatar {
   --cockpit-tint: var(--color-fg-faint);

@@ -377,11 +377,15 @@ One window, three regions:
   agent's terminal: the session's project (and its branch when not the
   default; the path on hover), the agent's character in its state (working,
   *background agents working · N* once its turn ended with subagents still
-  at work, waiting on you, looping, idle, ended) with a headline figure at
-  the right that the viewer picks (cost, burn rate, tokens, turns, cache
-  hit rate, time working), the spend details folded to one line below the
-  plan windows (three figures the viewer picks, or a chart of the period's
-  spend: *Numbers | Chart*, for the session, today, 7 or 30 days), the context bar and what the next call pays to
+  at work, waiting on you, looping, idle, ended) with three figures at
+  the right that the viewer picks from one list (cost, burn rate, tokens,
+  cache hit rate, turns, time working, last call, tool calls): a big
+  headline and two short lines under it (*$4.08/h burn ▾*, *4.01B tok ▾*),
+  never one twice, cost, burn rate and tokens by default; when the two
+  lines would squeeze the agent's own, they move to the chips' row at its
+  right. Below the plan windows, the spend details, open on a chart of the
+  period's spend (*Chart | Numbers*, for the session, today, 7 or 30 days;
+  Numbers is three more figures the viewer picks), the context bar and what the next call pays to
   re-read it, what it is doing this second (the open tool call and how long
   it has run, or *Thinking* since the last one finished; while a permission
   prompt waits, who asks and what — "Subagent (general-purpose) wants to run
@@ -505,6 +509,43 @@ One window, three regions:
     recorded (open, merged) and *connect GitHub for CI* turns the integration
     on through the `gh` login in one click (ADR-047: this click is the user
     turning it on), else opens Settings.
+  - **Who is on a PR, and forcing a fix** (owner, 2026-10-12, translated:
+    "From the PRs I want to see, for example, when there's a conflict, or
+    that you (an agent) are looking at it or fixing it — and if needed I want
+    to FORCE a fix or a check"). Beside an open PR's mini pipeline, one-word
+    chips from what GitHub already returned: *conflict* (red; `mergeable`
+    false or `mergeable_state` dirty), *behind* (amber; GitHub's own
+    `behind`, which it reports when the base must be merged in first),
+    *review* (changes requested) and *draft*; GitHub still computing says
+    nothing. *approved* and *review required* stay words, giving way when
+    narrow; the chips do not. Before them, who is on it: a live agent whose
+    checkout (the sidebar's worktree row) is on the PR's head branch, as its
+    initial in a small tinted square and *fixing* (working), *waiting* (on
+    you) or *idle*; several are *2 agents*, the tooltip naming each; a click
+    opens that session's tab. The open row has a line of actions under its
+    header, and every open PR a ⋯ that opens its row with the focus on them:
+    *Fix conflict with agent* (with a conflict), *Update branch* (behind and
+    no conflict), *Fix CI with agent* and *Re-run checks* (with checks; the
+    re-run disabled while they still run). Each asks first in that line —
+    the sentence, *Confirm*, *Cancel* (Esc), never a modal — then says what
+    it does in the row: *agent fixing…* (unless the agent's own mark already
+    says *fixing*), *re-running 5 jobs…*, *updating branch…*, until GitHub
+    shows it done (the checks running again, the head moving) or four
+    minutes pass; the PRs are asked every 20 s meanwhile. A fix goes to the
+    Caprock-started agent on the branch as a queued message (ADR-053's
+    queue); Fix CI otherwise goes to the session in front as Investigate
+    does; else a new agent starts in the branch's checkout, or in a new
+    worktree `pr-N-fix` at the PR's head (`worktree_pr`) when there is none
+    or an agent Caprock did not start works in it — rule 7: nothing is typed
+    into a process Caprock did not start, and the confirm says so. The
+    conflict message asks to merge `origin/<base>`, resolve, run the checks
+    and push (to `HEAD:<branch>` from a new worktree, whose local branch is
+    `caprock/pr-N-fix`); Fix CI sends Investigate's message for the first
+    failed job with its log, else one about flaky checks. Re-run and Update
+    branch are GitHub's own (`POST /v1/sessions/{id}/prs/{n}/rerun`,
+    `…/update-branch`; `.ai/03-contracts.md`), with the user's token; a
+    refusal names the permission the token lacks — *Actions (write)*,
+    *Pull requests (write)* — in the toast. Code: `lib/prforce.ts`.
   - **Time against the median** (owner, 2026-10-12, translated: "In CI runs
     I want to see the execution time plus an estimate relative to the
     average — plus or minus percent"). A run's wall-clock time (started to
