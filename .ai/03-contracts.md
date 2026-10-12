@@ -1105,7 +1105,7 @@ GET    /v1/agents/custom             → {agents: [CustomAgent], licensed}
 PUT    /v1/agents/custom             {agents: [CustomAgent]} → {agents, licensed}; 402 without an active licence
 GET    /v1/subscriptions             → {agents: [{agent, label, installed, subscriptions: [Subscription]}], licensed, free_per_agent, home?}
 POST   /v1/subscriptions             {agent: claude|codex, label} → Subscription; 402 at the free number without a licence
-PATCH  /v1/subscriptions/{id}        {label} → Subscription
+PATCH  /v1/subscriptions/{id}        {label?, make_default?, plan?: {kind, label?, usd_per_month?} | null, agent?} → Subscription
 DELETE /v1/subscriptions/{id}        → 204; 409 while a session Caprock started runs on it
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 GET    /v1/agents/{id}/queue         → QueueView; the messages waiting for the turn to end (§ Queued messages)
@@ -1569,13 +1569,32 @@ says, so a renewed licence restores them.
 
 **Subscriptions** ([ADR-048](08-decisions.md)). A subscription is a sign-in
 to Claude Code or Codex kept in `<data dir>/profiles/<id>/` (0700), stored as
-`subscriptions: [{id, label, agent, created_at}]` in `config.json`; `id` is
-eight lowercase hex digits. The user's normal sign-in is the **Default**
-subscription: never stored, always listed first with `id: "default"`, and
-recorded on a session as `""`. A `Subscription` in the API is `{id, agent,
-label, default, dir, env_var?, signed_in, account?, login_command, windows:
-[{window, used_percentage, resets_at, observed_at}], sessions_7d,
-cost_7d_usd, running, created_at?}`.
+`subscriptions: [{id, label, agent, created_at, plan?: {kind, label?,
+usd_per_month?}}]` in `config.json`; `id` is eight lowercase hex digits. The
+user's normal sign-in (`~/.claude`, `~/.codex`, or the directory their login
+shell's `CLAUDE_CONFIG_DIR`/`CODEX_HOME` names) is the **own sign-in**: never
+stored, always listed first with `id: "default"` and `default: true` (the
+field's name predates Make default and means "own"), and recorded on a
+session as `""`. Its name is *Own sign-in* until renamed (`own_labels:
+{agent: label}` in `config.json`). A `Subscription` in the API is `{id,
+agent, label, default, preferred, plan?, dir, env_var?, signed_in, account?,
+login_command, windows: [{window, used_percentage, resets_at, observed_at}],
+sessions_7d, cost_7d_usd, running, created_at?}`.
+
+- **`preferred`** marks, per agent, the one a new session starts on when the
+  request names none — *Make default*, stored as `default_subscription:
+  {agent: id}` in `config.json` (absent: the own sign-in, as before; an id
+  that has been removed counts as absent, and `DELETE` drops it). It is
+  Caprock's choice of directory for the sessions it starts: `~/.claude`, its
+  credentials and the Keychain are never moved, rewritten or read, and a
+  running session never changes account.
+- **`plan`** is how that sign-in is paid for, as the user stated it in
+  Settings → Plan & licence: `kind` `flat` or `metered`, the user's words,
+  a monthly price (0 = not stated). Absent: the main plan (`plan_kind`,
+  `plan_label`, `plan_usd_per_month` in `/v1/settings`) stands for it. The
+  own sign-in has no `plan` of its own — the main plan is its plan, and the
+  plan of every session no account plan is known for. Caprock never infers
+  one (rule 6).
 
 - **`signed_in` and `account` come from files, never from running the
   agent.** Claude Code: `oauthAccount.emailAddress` in the directory's
@@ -1597,14 +1616,25 @@ cost_7d_usd, running, created_at?}`.
   over-40-character label, `Default`, or a label the agent already has;
   `402` when the agent already has `free_per_agent` (3, the Default one
   included) and the licence is not active; `403` from a paired device.
+- **`PATCH`** changes what its body names: `label` (the same rules as
+  `POST`, minus the free number; the own sign-in can be renamed too),
+  `make_default: true`, and `plan` — an object sets it, held to what `PUT
+  /v1/settings` holds the main plan to (`400` for another `kind` or a
+  negative or non-finite price; the label is cut at 64 bytes), `null` or
+  `kind: ""` clears it. `id` `default` needs `agent` (`claude` or `codex`)
+  and refuses `plan` (`400`: its plan is the main one). `400` for a body
+  that changes nothing, `404` for an unknown id, `403` from a paired device.
 - **`DELETE`** removes it from the config and deletes its directory — only a
   directory directly under `profiles/`. `404` for an unknown id, `409` while
   a session Caprock started runs on it. Sessions recorded on it keep the id.
 - **`GET`** is open to a controller phone (the start form's picker); the
   writes are not.
 
-`POST /v1/agents` takes `subscription` (an id, `"default"` or empty) for
-`agent` `claude` or `codex`. The daemon resolves it to the directory — the
+`POST /v1/agents` takes `subscription` (an id, `"default"` for the own
+sign-in, or empty for the `preferred` one) for `agent` `claude` or `codex`.
+The pickers send it whenever an agent has more than one sign-in, so an empty
+one comes from a caller with no picker (an orchestrator task, a Telegram
+`/new`, a phone on an older page). The daemon resolves it to the directory — the
 request never names one — and the child gets `CLAUDE_CONFIG_DIR` or
 `CODEX_HOME` set to it, replacing any value the login shell exports; Claude
 Code's folder trust is written to that directory's `.claude.json`, not

@@ -8,8 +8,9 @@
 # built from the same commit with the same version stamp, so it must run on a
 # clean checkout of the tag itself.
 #
-# Release.yml's app-macos job runs this same script; run it by hand when
-# Actions is down:
+# Release.yml's app-macos-build job runs this same script with --no-upload,
+# alongside verify, and its app-macos job attaches the files once goreleaser
+# has published the release. Run it by hand when Actions is down:
 #
 #   git checkout vX.Y.Z
 #   make app-release TAG=vX.Y.Z                          # build, check, upload

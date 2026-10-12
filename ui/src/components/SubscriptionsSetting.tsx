@@ -20,7 +20,9 @@ import { useState } from 'react'
 import { api, errText, type Subscription, type SubscriptionAgentId, type SubscriptionsResponse, ApiError } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtUSD } from '@/lib/format'
-import { currentWindows, forgetSubscription, resetText, windowLabel, NEAR_PCT } from '@/lib/subscriptions'
+import { currentWindows, forgetAgentPicks, forgetSubscription, resetText, windowLabel, NEAR_PCT } from '@/lib/subscriptions'
+import { planFields, planText } from './AccountPlan'
+import { subscriptionsChanged, useSubscriptionsChanged } from './SubscriptionPicker'
 import { useSetupShell } from '@/lib/setupShell'
 import { PremiumModal } from './PremiumModal'
 import { Section } from './SettingsParts'
@@ -29,11 +31,12 @@ const AGENT_LABEL: Record<SubscriptionAgentId, string> = { claude: 'Claude Code'
 
 export function SubscriptionsSetting() {
   const res = useApi(() => api.subscriptions(), [], { live: false, intervalMs: 10_000 })
+  useSubscriptionsChanged(res.refresh)
   const data = res.data
   return (
     <Section id="subscriptions" title="Subscriptions">
       <p className="text-[12px] leading-relaxed text-fg-muted">
-        Sign in to Claude Code or Codex more than once — a work account and your own, say — and pick which one a new session runs on in <span className="text-fg">New agent</span> and <span className="text-fg">Quick chat</span>. Each sign-in lives in its own folder; you sign in with the agent’s own command, and Caprock never sees a password or token.
+        Sign in to Claude Code or Codex more than once — a work account and your own, say — and pick which one a new session runs on in <span className="text-fg">New agent</span> and <span className="text-fg">Quick chat</span>; the one marked <span className="text-fg">default</span> is used when you pick none. Each sign-in lives in its own folder; you sign in with the agent’s own command, and Caprock never sees a password or token.
       </p>
       {!data && res.error && <p className="text-[12px] text-fg-faint">This daemon does not offer subscriptions yet.</p>}
       {data && <SubscriptionsBody data={data} refresh={() => res.refresh?.()} />}
@@ -75,13 +78,13 @@ function AgentGroup({ agent, list, onSignIn, refresh }: {
     <div className="grid gap-1.5">
       <h3 className="text-[12px] font-medium text-fg-muted">{AGENT_LABEL[agent]}</h3>
       <ul className="grid gap-1.5" aria-label={`${AGENT_LABEL[agent]} subscriptions`}>
-        {list.map((s) => <SubscriptionRow key={s.id} sub={s} onSignIn={() => onSignIn(s)} refresh={refresh} />)}
+        {list.map((s) => <SubscriptionRow key={s.id} sub={s} onSignIn={() => onSignIn(s)} refresh={refresh} choice={list.length > 1} />)}
       </ul>
     </div>
   )
 }
 
-function SubscriptionRow({ sub, onSignIn, refresh }: { sub: Subscription; onSignIn: () => void; refresh: () => void }) {
+function SubscriptionRow({ sub, onSignIn, refresh, choice }: { sub: Subscription; onSignIn: () => void; refresh: () => void; choice: boolean }) {
   const [mode, setMode] = useState<'' | 'rename' | 'remove'>('')
   const [name, setName] = useState(sub.label)
   const [busy, setBusy] = useState(false)
@@ -93,9 +96,26 @@ function SubscriptionRow({ sub, onSignIn, refresh }: { sub: Subscription; onSign
     setBusy(true)
     setError('')
     try {
-      await api.renameSubscription(sub.id, name)
+      await api.updateSubscription(sub.id, { agent: sub.agent, label: name })
       setMode('')
       refresh()
+      subscriptionsChanged()
+    } catch (e) {
+      setError(errText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  // Which folder Caprock gives the sessions it starts next: nothing about the
+  // sign-in itself moves, and a running session stays where it is.
+  const makeDefault = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await api.updateSubscription(sub.id, { agent: sub.agent, make_default: true })
+      forgetAgentPicks(sub.agent)
+      refresh()
+      subscriptionsChanged()
     } catch (e) {
       setError(errText(e))
     } finally {
@@ -131,10 +151,14 @@ function SubscriptionRow({ sub, onSignIn, refresh }: { sub: Subscription; onSign
         ) : (
           <span className="text-[13px] font-medium text-fg">{sub.label}</span>
         )}
+        {choice && sub.preferred && (
+          <span className="rounded-sm border border-accent/50 px-1 text-[10.5px] font-medium uppercase tracking-[0.06em] text-accent" title="New sessions start on it when you pick none">default</span>
+        )}
         <span className={`text-[12px] ${sub.signed_in ? 'text-fg-muted' : 'text-accent'}`}>
           {sub.signed_in ? (sub.account || 'signed in') : 'not signed in'}
         </span>
         {sub.running > 0 && <span className="text-[12px] text-fg-faint">· {sub.running} running</span>}
+        {sub.plan && <span className="mono text-[11.5px] text-fg-faint">· {planText(planFields(sub.plan), fmtUSD)}</span>}
       </div>
       <p className="mono text-[11.5px] text-fg-muted">
         {windows.length === 0
@@ -148,7 +172,7 @@ function SubscriptionRow({ sub, onSignIn, refresh }: { sub: Subscription; onSign
           ))}
         {sub.sessions_7d > 0 && <span className="text-fg-faint"> · 7 days: {sub.sessions_7d} session{sub.sessions_7d === 1 ? '' : 's'}, {fmtUSD(sub.cost_7d_usd)}</span>}
       </p>
-      {!sub.default && <p className="mono truncate text-[11px] text-fg-faint" title={sub.dir}>{sub.dir}</p>}
+      <p className="mono truncate text-[11px] text-fg-faint" title={sub.dir}>{sub.dir}{sub.default ? ' · your own sign-in' : ''}</p>
       {mode === 'remove' && (
         <p className="text-[12px] leading-snug text-fg">
           Remove {sub.label}? Its folder is deleted, with the sign-in, history and settings {sub.agent === 'codex' ? 'Codex' : 'Claude Code'} kept there. Sessions already recorded stay in Caprock.
@@ -160,7 +184,12 @@ function SubscriptionRow({ sub, onSignIn, refresh }: { sub: Subscription; onSign
             <button type="button" onClick={onSignIn} className="text-accent hover:underline">
               {sub.signed_in ? 'Sign in again' : 'Sign in'}
             </button>
-            {!sub.default && <button type="button" onClick={() => setMode('rename')} className="text-fg-muted hover:text-fg">Rename</button>}
+            {choice && !sub.preferred && (
+              <button type="button" disabled={busy} onClick={() => void makeDefault()} title="New sessions start on it when you pick none; running ones stay where they are" className="text-fg-muted hover:text-fg disabled:opacity-50">
+                Make default
+              </button>
+            )}
+            <button type="button" onClick={() => setMode('rename')} className="text-fg-muted hover:text-fg">Rename</button>
             {!sub.default && (
               <button
                 type="button"

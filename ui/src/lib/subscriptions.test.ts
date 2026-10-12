@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import type { Subscription } from './api'
-import { forgetSubscription, fullest, isNear, rememberedSubscription, rememberSubscription, withRoom } from './subscriptions'
+import { chosenId, forgetAgentPicks, forgetSubscription, preferredId, fullest, isNear, rememberedSubscription, rememberSubscription, withRoom } from './subscriptions'
 
 const NOW = 1_800_000_000
 
@@ -29,13 +29,29 @@ describe('subscriptions', () => {
   })
 
   it('remembers a pick per agent and project, and forgets a removed one', () => {
-    expect(rememberedSubscription('claude', 'p1')).toBe('default')
+    expect(rememberedSubscription('claude', 'p1')).toBe('')
     rememberSubscription('claude', 'p1', 'ab12')
     rememberSubscription('codex', 'p1', 'cd34')
     expect(rememberedSubscription('claude', 'p1')).toBe('ab12')
-    expect(rememberedSubscription('claude', 'p2')).toBe('default')
+    expect(rememberedSubscription('claude', 'p2')).toBe('')
     forgetSubscription('ab12')
-    expect(rememberedSubscription('claude', 'p1')).toBe('default')
+    expect(rememberedSubscription('claude', 'p1')).toBe('')
+    expect(rememberedSubscription('codex', 'p1')).toBe('cd34')
+  })
+
+  it('falls back to the one made the default, and Make default forgets the picks', () => {
+    const list = [sub('default', []), { ...sub('work', []), preferred: true }, sub('home', [])]
+    expect(preferredId(list)).toBe('work')
+    expect(chosenId(list, '')).toBe('work')
+    expect(chosenId(list, 'default')).toBe('default')
+    expect(chosenId(list, 'gone')).toBe('work')
+    expect(preferredId([sub('default', [])])).toBe('default')
+    rememberSubscription('claude', 'p1', 'home')
+    rememberSubscription('claude', 'p2', 'default')
+    rememberSubscription('codex', 'p1', 'cd34')
+    forgetAgentPicks('claude')
+    expect(rememberedSubscription('claude', 'p1')).toBe('')
+    expect(rememberedSubscription('claude', 'p2')).toBe('')
     expect(rememberedSubscription('codex', 'p1')).toBe('cd34')
   })
 })

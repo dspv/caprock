@@ -42,4 +42,11 @@ describe('Memory', () => {
     render(<NotesScreen />)
     expect(await screen.findByText(/What Claude has told you\. Local only\./)).toBeTruthy()
   })
+
+  it('opens with what the screen is for', async () => {
+    const { container } = render(<NotesScreen />)
+    const intro = container.querySelector('[data-memory-intro]')!
+    expect(intro.textContent).toMatch(/Everything Claude wrote back to you, from every session/)
+    expect(intro.textContent).toMatch(/remember a conclusion but not the session it was in/)
+  })
 })

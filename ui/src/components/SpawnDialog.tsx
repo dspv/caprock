@@ -9,6 +9,8 @@ import { navigate } from '@/lib/router'
 import { modeWords, useInitialMode } from '@/lib/permissionMode'
 import { stepSelect } from '@/lib/selectKeys'
 import { BypassConsentNote, useBypassConsent } from './BypassConsent'
+import { SubscriptionNote, SubscriptionPicker, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
+import { chosenId } from '@/lib/subscriptions'
 
 // What the two selects start on, rather than an empty "default" that says
 // nothing about what you are about to run. Opus is what the machine's own
@@ -204,6 +206,12 @@ export function SpawnDialog({
   const remote = isPairedDevice()
   const [confirming, setConfirming] = useState(false)
   const consent = useBypassConsent(agent, mode)
+  // The sign-in it runs on (ADR-048): the one made the default unless picked
+  // here — the phone's start form included.
+  const subList = subscriptionsFor(useSubscriptionList().all, agent)
+  const [subPick, setSubPick] = useState<Record<string, string>>({})
+  const subId = chosenId(subList, subPick[agent] ?? '')
+  const pickSub = (id: string) => setSubPick((p) => ({ ...p, [agent]: id }))
   const submit = async () => {
     if (!cwd.trim()) { setError('Working directory is required.'); return }
     if (remote && mode === 'bypassPermissions' && !confirming) { setConfirming(true); return }
@@ -213,6 +221,7 @@ export function SpawnDialog({
       if (consent.needed) await consent.accept()
       const req: Parameters<typeof api.spawn>[0] = { cwd: cwd.trim() }
       if (agent !== 'claude') req.agent = agent
+      if (subList.length > 1) req.subscription = subId
       if (model.trim()) req.model = model.trim()
       // Every agent takes the mode in Claude's vocabulary; the daemon
       // translates it, or leaves it off where the agent has no counterpart.
@@ -263,6 +272,8 @@ export function SpawnDialog({
               * fails on click is worse than no choice. The last one picked
               * is remembered for this viewer. */}
             <AgentPicker value={agent} agents={agents} onChange={setAgent} />
+            <SubscriptionPicker list={subList} value={subId} onChange={pickSub} />
+            <SubscriptionNote list={subList} value={subId} onUse={pickSub} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Model" hint={agent === 'opencode' ? 'provider/model' : undefined}>
                 <ModelField

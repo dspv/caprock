@@ -13,11 +13,12 @@
  *   `[data-tone="paper"]`) with ink dark enough to read on it. The ids are
  *   the names from before the rename (2026-10-11), kept so a stored choice
  *   still finds its palette.
- * - **Dark Cold** (id `slate`), **Light Cold**, **Light Side** and **Dark
- *   Side** are ours too: each app palette's own ground (its panel, `panel` in
- *   lib/themes.ts) with a 16-colour set in its temperature — cool for the two
- *   Colds, blue and green on sand for Light Side, red-leaning on near-black
- *   for Dark Side, every colour still distinct from the others.
+ * - **Dark Cold** (id `slate`), **Dark Pastel**, **Light Cold**, **Light
+ *   Side** and **Dark Side** are ours too: each app palette's own ground (its
+ *   panel, `panel` in lib/themes.ts) with a 16-colour set in its temperature —
+ *   cool for the two Colds, low-chroma for Dark Pastel, blue and green on sand
+ *   for Light Side, red-leaning on near-black for Dark Side, every colour
+ *   still distinct from the others.
  * - **Match app** is not a palette but a choice: the app palette's own
  *   terminal (`terminal` in lib/themes.ts) on that palette's panel colour, so
  *   the terminal reads as part of the window rather than a window on top of
@@ -107,7 +108,7 @@ export const APP_TERMINAL_THEME: TerminalColors = {
 export const SLATE_TERMINAL_THEME: TerminalColors = {
   background: APP_PANEL.slate,
   foreground: '#e6e7ea',
-  cursor: '#6ea8fe',
+  cursor: '#86a9dc',
   cursorAccent: APP_PANEL.slate,
   selectionBackground: '#33415a',
   black: '#2a2c31',
@@ -126,6 +127,35 @@ export const SLATE_TERMINAL_THEME: TerminalColors = {
   brightMagenta: '#cfb8fa',
   brightCyan: '#93e0ec',
   brightWhite: '#f2f3f5',
+}
+
+/**
+ * Dark Pastel's terminal: its graphite panel, a dusty blue cursor and a
+ * low-chroma 16-colour set — every hue still apart from the others, so a
+ * diff or a test run reads, but nothing shouts (testers, 2026-10-12).
+ */
+export const PASTEL_TERMINAL_THEME: TerminalColors = {
+  background: THEME_COLORS['dark-pastel'],
+  foreground: '#e3e1db',
+  cursor: '#a3b6c9',
+  cursorAccent: THEME_COLORS['dark-pastel'],
+  selectionBackground: '#3a4048',
+  black: '#2c2d2c',
+  red: '#d99a9a',
+  green: '#a3c4a0',
+  yellow: '#d8c38f',
+  blue: '#9db3cc',
+  magenta: '#bfa9d4',
+  cyan: '#98c3c0',
+  white: '#cfccc4',
+  brightBlack: '#7a7872',
+  brightRed: '#e6b2b2',
+  brightGreen: '#b9d5b6',
+  brightYellow: '#e6d4a8',
+  brightBlue: '#b7c8db',
+  brightMagenta: '#d1c0e1',
+  brightCyan: '#b2d4d1',
+  brightWhite: '#ecebe6',
 }
 
 /**
@@ -166,6 +196,7 @@ export const DEFAULT_TERMINAL_THEME = MATCH_APP_THEME
 export const TERMINAL_THEMES: readonly TerminalTheme[] = [
   { id: 'caprock', name: 'Dark Warm', tone: 'dark', colors: APP_TERMINAL_THEME },
   { id: 'slate', name: 'Dark Cold', tone: 'dark', colors: SLATE_TERMINAL_THEME },
+  { id: 'dark-pastel', name: 'Dark Pastel', tone: 'dark', colors: PASTEL_TERMINAL_THEME },
   {
     id: 'paper',
     name: 'Book',
@@ -381,7 +412,7 @@ export function terminalTheme(id: string, look: AppLook = appLook()): TerminalTh
  * terminal there is dark in every theme (components/Terminal.tsx); the app
  * palette picks which dark (`dashTerminal` in lib/themes.ts).
  */
-export const DASH_GROUND = { caprock: '#1b1b1a', slate: '#1a1b1e', 'dark-side': '#0d0b14' } as const
+export const DASH_GROUND = { caprock: '#1b1b1a', slate: '#1a1b1e', 'dark-pastel': '#1c1d1c', 'dark-side': '#0d0b14' } as const
 
 /** `a` mixed toward `b` by t (0–1), as #rrggbb — what xterm's decorations accept. */
 export function mixHex(a: string, b: string, t: number): string {

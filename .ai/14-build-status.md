@@ -73,6 +73,33 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — 0.112.0: one row per project, figures beside the agent, PRs that say what blocks them
+
+From a day of the owner's and two testers' feedback: each project shows one
+sidebar row with the rest under *+N more*; three figures beside the agent,
+each chosen, and Spend on its chart again; the deck's pull requests show
+conflict / behind / review / draft and which agent is on them, with fix,
+re-run and update-branch from the row; any subscription can be the default,
+with a plan per subscription; big figures never clip, a Dark Pastel theme,
+plainer Projects-folder and Memory copy; an optional composer under the
+agent's terminal (off by default); and faster CI (app builds only when the
+app changes, per-OS caches, a parallel release verify — the first release
+on that pipeline).
+
+### 2026-10-12 — unreleased: Make default, and a plan per subscription
+
+A tester's two complaints about ADR-048 (translated): the default account
+could not be changed without signing it in again, and one plan stood for
+accounts on different plans. Settings → Subscriptions gets *Make default*
+(`default_subscription` in `config.json`; Caprock's choice of directory for
+the sessions it starts, `~/.claude` untouched) and a renamable own sign-in;
+Plan & licence a row per Claude Code account (`subscriptions[].plan`), the
+main plan staying the own sign-in's and the fallback. The cockpit shows a
+session's account plan and windows; the inspector offers a relay onto
+another account. No migration: all of it is in `config.json`. Verified on a
+preview daemon with fake profiles and the fake `claude`; no real second
+sign-in was run.
+
 ### 2026-10-13 — unreleased: finished copies clean themselves up
 
 A copy Caprock made that is merged (or its pull request is), pushed, clean

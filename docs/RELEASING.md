@@ -104,9 +104,12 @@ install command that is missing.
    ```
 
    `.github/workflows/release.yml` gates `goreleaser release --clean` behind a
-   `verify` job that re-runs `make check` + the Windows cross-build on the exact
-   tagged commit (the full 3-OS matrix already ran on master before you tagged);
-   a tag on a red commit never publishes. On success it produces:
+   `verify` job that re-runs `make check` (as its two halves, `check-go` and
+   `check-ui`, side by side) + the Windows cross-build on the exact tagged
+   commit (the full 3-OS matrix already ran on master before you tagged); a
+   tag on a red commit never publishes. The app builds run beside `verify` and
+   attach their files only after goreleaser has published. On success it
+   produces:
    - `caprock`, `caprock-hook` and `caprock-pty-host` for darwin/linux/windows × amd64/arm64,
    - a macOS **universal** binary,
    - a Homebrew formula pushed to `dspv/homebrew-tap` and a Scoop manifest pushed
@@ -151,17 +154,21 @@ complete the formula push it previously skipped.
 ## The desktop app
 
 The app (`app/`, WP-17) ships on the same release as the daemon, built from the
-same tagged commit so it bundles that daemon. `release.yml` does it after
-goreleaser:
+same tagged commit so it bundles that daemon. `release.yml` builds it while
+`verify` runs (`app-macos-build`, `app-other-build`; building publishes
+nothing) and attaches the files after goreleaser has published the release
+(`app-macos`, `app-other`), so a red `verify` leaves no release at all:
 
-- **`app-macos`** runs `scripts/app-release.sh` on the tag:
+- **`app-macos`** gets what `app-macos-build` made with
+  `scripts/app-release.sh <tag> --no-upload`:
   `Caprock_<version>_universal.dmg` (arm64 + x86_64, ad-hoc signed), checked
   before upload (`hdiutil verify`, `codesign --verify`, `lipo` on the app and
   the bundled daemon, bundle id `dev.caprock.app`, `caprock version` of the
   bundled daemon, and `scripts/check-app-mic.sh`: both binaries carry the
   microphone entitlement and the Info.plist its usage string, ADR-045). It
-  renders the cask from `app/packaging/caprock-app.rb.tmpl` and, on a stable tag with `HOMEBREW_TAP_TOKEN` set, pushes it to
-  `Casks/caprock-app.rb` in `dspv/homebrew-tap`.
+  renders the cask from `app/packaging/caprock-app.rb.tmpl`; `app-macos`
+  attaches the files and, on a stable tag with `HOMEBREW_TAP_TOKEN` set, pushes
+  the cask to `Casks/caprock-app.rb` in `dspv/homebrew-tap`.
 - **`app-other`** builds `Caprock_<version>_x64-setup.exe` (NSIS) on Windows
   and the AppImage, `.deb` and `.rpm` on Ubuntu 22.04. Each OS is its own job;
   a failure there never holds up the `.dmg`.

@@ -25,6 +25,8 @@ import { SettingsNav } from '@/components/SettingsNav'
 import { fmtDuration, fmtUSD } from '@/lib/format'
 import { Empty } from '@/components/ui'
 import { PlanOptions, usePlan } from '@/components/PlanPicker'
+import { AccountPlans, planText } from '@/components/AccountPlan'
+import { subscriptionsFor, useSubscriptionList } from '@/components/SubscriptionPicker'
 import { LicenseField } from '@/components/LicenseField'
 import { Pairing } from '@/components/Pairing'
 import { PhoneAlerts } from '@/components/PhoneAlerts'
@@ -167,27 +169,33 @@ export function StatusScreen() {
 
 function PlanSection() {
   const [plan, savePlan] = usePlan()
+  // More than one Claude Code sign-in: a plan per account (AccountPlan).
+  const accounts = subscriptionsFor(useSubscriptionList().all, 'claude')
   if (!plan) return null
-  const current =
-    plan.plan_kind === 'metered'
-      ? `${plan.plan_label || 'API'} · billed per token`
-      : plan.plan_kind === 'flat'
-        ? `${plan.plan_label || 'plan'} · ${fmtUSD(plan.plan_usd_per_month)}/mo`
-        : 'not set'
+  const current = planText(plan, fmtUSD) || 'not set'
   return (
     <Section title="Plan & licence">
-      <div className="grid gap-2">
-        <div className="flex flex-wrap items-baseline gap-x-2">
-          <span className="text-fg">Your plan:</span>
-          <span className={`mono ${plan.plan_kind ? 'text-fg' : 'text-accent'}`}>{current}</span>
+      {accounts.length > 1 ? (
+        <div className="grid gap-2">
+          <p className="text-[12px] leading-relaxed text-fg-muted">
+            How you pay for each Claude Code account, so Caprock can set its sessions&rsquo; usage against the right plan. It cannot detect this, so it asks. An account with no plan of its own uses the main one, your own sign-in&rsquo;s.
+          </p>
+          <AccountPlans list={accounts} main={plan} saveMain={savePlan} />
         </div>
-        <p className="text-[12px] leading-relaxed text-fg-muted">
-          How you pay for Claude Code, so Caprock can set your usage against it. It cannot detect this, so it asks.
-        </p>
-        <div className="max-w-sm rounded-md border border-border p-1.5">
-          <PlanOptions plan={plan} onSave={savePlan} />
+      ) : (
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-fg">Your plan:</span>
+            <span className={`mono ${plan.plan_kind ? 'text-fg' : 'text-accent'}`}>{current}</span>
+          </div>
+          <p className="text-[12px] leading-relaxed text-fg-muted">
+            How you pay for Claude Code, so Caprock can set your usage against it. It cannot detect this, so it asks.
+          </p>
+          <div className="max-w-sm rounded-md border border-border p-1.5">
+            <PlanOptions plan={plan} onSave={savePlan} />
+          </div>
         </div>
-      </div>
+      )}
       <div className="border-t border-border pt-3">
         <LicenseField plan={plan} save={savePlan} />
       </div>
@@ -228,7 +236,7 @@ function CustomAgentsSection() {
 function AppearanceSection() {
   return (
     <Section title="Appearance">
-      {/* Seven palettes as large swatches, Dark then Light; hovering one tries it on the page. */}
+      {/* The palettes as large swatches, Dark then Light; hovering one tries it on the page. */}
       <ThemePicker size="cards" />
       {isTauri() && <InterfaceSize />}
       <p className="text-[12px] text-fg-muted">Saved in this browser only.</p>

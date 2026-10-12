@@ -52,7 +52,7 @@ import { BypassConsentNote, useBypassConsent } from './BypassConsent'
 import { defaultWorktreeName, WORKTREE_NAME } from '@/lib/slug'
 import { isMacPlatform } from '@/lib/appmode'
 import { SubscriptionNote, SubscriptionPicker, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
-import { rememberedSubscription, rememberSubscription } from '@/lib/subscriptions'
+import { chosenId, preferredId, rememberedSubscription, rememberSubscription } from '@/lib/subscriptions'
 import { useGitHubStatus } from '@/lib/github'
 import { githubRepoOf, itemBranchName, itemPrompt, type GitHubItem } from '@/lib/fromGitHub'
 import { GitHubItemPicker } from './GitHubItemPicker'
@@ -173,8 +173,9 @@ export function NewAgentSheet({
   const subKey = `${agent}|${pid}`
   const [subPick, setSubPick] = useState<Record<string, string>>({})
   const subWanted = subPick[subKey] ?? rememberedSubscription(agent, pid)
-  const subId = subList.some((s) => s.id === subWanted) ? subWanted : 'default'
-  const chooseSub = (id: string) => { rememberSubscription(agent, pid, id); setSubPick((p) => ({ ...p, [subKey]: id })) }
+  const subId = chosenId(subList, subWanted)
+  // Picking the default remembers nothing, so a later Make default reaches this project too.
+  const chooseSub = (id: string) => { rememberSubscription(agent, pid, id === preferredId(subList) ? '' : id); setSubPick((p) => ({ ...p, [subKey]: id })) }
   const pickSubOnce = (id: string) => setSubPick((p) => ({ ...p, [subKey]: id }))
   // The name is optional: left empty, it comes from the first message.
   const worktreeName = newBranch.trim() || defaultWorktreeName(prompt)
@@ -204,7 +205,9 @@ export function NewAgentSheet({
       if (consent.needed) await consent.accept()
       const req: Parameters<typeof api.spawn>[0] = { cwd: where && where !== NEW_WORKTREE ? where : project.root }
       if (agent !== 'claude') req.agent = agent
-      if (subList.length > 1 && subId !== 'default') req.subscription = subId
+      // Named whenever there is a choice: "default" is the own sign-in, and
+      // leaving it out would mean the one made the default.
+      if (subList.length > 1) req.subscription = subId
       const model = models[agent]?.trim()
       if (model) req.model = model
       // A custom agent's flags are its own; Caprock maps no mode onto them.

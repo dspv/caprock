@@ -71,6 +71,17 @@ export function NotesScreen() {
   const mem = st.data?.memory
   return (
     <div className="grid gap-3">
+      {/* What this screen is, in one paragraph (tester, 2026-10-12,
+        * translated: "I don't understand why the Memory tab is needed"). The
+        * name says where the words are kept; this says what you would come
+        * here for. */}
+      <p data-memory-intro className="max-w-[760px] text-[13px] leading-relaxed text-fg-muted">
+        <span className="text-fg">Everything Claude wrote back to you, from every session, kept on this machine.</span>{' '}
+        Search it when you remember a conclusion but not the session it was in — a name, an error, a decision — and open
+        the moment it was written. With <span className="text-fg">Memory between sessions</span> on in Settings, a new
+        session in a folder is also handed the last of what was written there, so it picks up where the previous one
+        stopped.
+      </p>
       <HandoffEffect holdout={mem?.holdout_pct} served={mem?.served} withheld={mem?.withheld} />
       <form
         className="flex items-center gap-2"

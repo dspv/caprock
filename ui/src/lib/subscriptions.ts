@@ -67,21 +67,49 @@ function key(agent: string, project: string): string {
   return `${PREFIX}${agent}.${project || '-'}`
 }
 
+/** The pick remembered for this agent and project, or '' when there is none
+ *  and the one made the default applies. "default" is the user's own sign-in,
+ *  picked. */
 export function rememberedSubscription(agent: string, project: string): string {
   try {
-    return localStorage.getItem(key(agent, project)) ?? 'default'
+    return localStorage.getItem(key(agent, project)) ?? ''
   } catch {
-    return 'default'
+    return ''
   }
 }
 
 export function rememberSubscription(agent: string, project: string, id: string): void {
   try {
-    if (id === 'default') localStorage.removeItem(key(agent, project))
+    if (!id) localStorage.removeItem(key(agent, project))
     else localStorage.setItem(key(agent, project), id)
   } catch {
     // Not remembering is fine.
   }
+}
+
+/** Forget every pick this browser remembered for an agent: Make default is
+ *  "new sessions start here", everywhere, until a project picks another. */
+export function forgetAgentPicks(agent: string): void {
+  try {
+    const drop: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(`${PREFIX}${agent}.`)) drop.push(k)
+    }
+    drop.forEach((k) => localStorage.removeItem(k))
+  } catch {
+    // Nothing remembered, nothing to forget.
+  }
+}
+
+/** The one new sessions of this agent start on when none is picked. */
+export function preferredId(list: readonly Subscription[]): string {
+  return list.find((s) => s.preferred)?.id ?? 'default'
+}
+
+/** What a picker shows: the wanted one while it exists, else the default. */
+export function chosenId(list: readonly Subscription[], wanted: string): string {
+  return wanted && list.some((s) => s.id === wanted) ? wanted : preferredId(list)
 }
 
 /** Forget a removed subscription wherever this browser remembered it. */

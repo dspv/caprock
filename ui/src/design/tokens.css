@@ -132,12 +132,15 @@
   --color-fg-muted: #a3a6ad;
   --color-fg-faint: #8b8e96;
 
-  --color-info: #6ea8fe;
+  /* One step softer than the #6ea8fe it shipped with: testers who picked
+   * Dark Cold as the calmer dark still found it "a lot of colour"
+   * (2026-10-12). 6.2:1 on panel-2. */
+  --color-info: #86a9dc;
   /* Dark Cold has no orange anywhere (its user asked for none): waiting and idle
    * read as a cool yellow here instead of graphite's amber. */
   --color-warn: #d9c76a;
-  --color-accent: #6ea8fe;
-  --color-accent-strong: #9cc4ff;
+  --color-accent: #86a9dc;
+  --color-accent-strong: #a9c3e6;
   /* Lifted a step: the default ultramarine is 2.9:1 on this panel-2. */
   --color-premium: #5a68f6;
 
@@ -146,6 +149,40 @@
   --color-term-border: #33415a;
 
   --shadow-panel: 0 12px 32px -18px rgba(0, 0, 0, 0.7);
+}
+
+/*
+ * Dark Pastel: a neutral graphite ground, a dusty blue accent and low-chroma
+ * status colours (testers, 2026-10-12: "in dark the accent is very bright…
+ * I love everything neutral and pastel", translated). Body ink 11:1 on
+ * panel-2, muted 6.5:1, faint 4.8:1, accent 6.9:1, every mark over 6:1.
+ */
+[data-theme="dark"][data-dark="pastel"] {
+  --color-bg: #1c1d1c;
+  --color-panel: #212221;
+  --color-panel-2: #292a29;
+  --color-border: #2f302f;
+  --color-border-strong: #3e3f3e;
+
+  --color-fg: #e3e1db;
+  --color-fg-muted: #b0aea7;
+  --color-fg-faint: #97958e;
+
+  --color-ok: #8fbc98;
+  --color-warn: #d2bb88;
+  --color-danger: #e3a0a0;
+  --color-info: #a3b6c9;
+  --color-merged: #b8a8d6;
+
+  --color-accent: #a3b6c9;
+  --color-accent-strong: #c2cfdc;
+  --color-premium: #a9a6e3;
+  --color-premium-strong: #c6c4f0;
+
+  --color-term-bg: #1c1d1c;
+  --color-term-border: #3a4048;
+
+  --shadow-panel: 0 12px 32px -18px rgba(0, 0, 0, 0.6);
 }
 
 /*
@@ -791,6 +828,24 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
   --app-hairline-strong: rgba(36, 33, 28, 0.18);
   --app-row-hover: rgba(36, 33, 28, 0.06);
 }
+
+/* The composer under an agent's terminal (components/Composer.tsx): a box
+ * lifted a step off the slab, in the slab's own ink so it reads on a dark or
+ * a light terminal palette, and an accent ring when it has the keyboard —
+ * where you type has to be found at a glance (owner, 2026-10-13). An open
+ * prompt in the terminal tints its edge amber. */
+[data-app] .app-composer {
+  background: color-mix(in srgb, var(--color-fg) 5%, var(--color-term-bg, var(--color-panel)));
+  box-shadow: inset 0 0 0 1px var(--app-hairline-strong);
+  transition: box-shadow 120ms var(--app-ease);
+}
+[data-app] .app-composer:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-fg) 26%, transparent); }
+[data-app] .app-composer[data-asking] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-warn) 55%, transparent); }
+[data-app] .app-composer:focus-within {
+  background: color-mix(in srgb, var(--color-fg) 7%, var(--color-term-bg, var(--color-panel)));
+  box-shadow: inset 0 0 0 1px var(--color-accent), 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+@media (prefers-reduced-motion: reduce) { [data-app] .app-composer { transition: none; } }
 
 /* Every terminal (xterm.js): one rasterisation for every glyph, no ligatures.
  *

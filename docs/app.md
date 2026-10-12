@@ -210,7 +210,9 @@ others. Installing it: [install-app.md](install-app.md).
   *Add project* at the top of the sidebar, adds a folder, makes a new one
   (`git init` optional) or clones a repository with git's progress shown.
   The folder starts at your default folder — your home folder until you set
-  one in Settings → Projects or with *Set as default* beside the field — and
+  one in Settings → Projects (*Where you keep your code*: it limits nothing,
+  every folder you run an agent in or add is a project wherever it is) or
+  with *Set as default* beside the field — and
   a line under it says what is there as you type: *will be created*, *exists,
   empty — will clone here*, *exists — not empty, clone will fail*, *already in
   Caprock*. Typing a name lists the projects, recent folders and repositories
@@ -419,13 +421,14 @@ others. Installing it: [install-app.md](install-app.md).
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
-- **Themes.** Seven, picked from the sun/moon button at the foot of the
-  sidebar or Settings → *Appearance*: Dark Warm, Dark Cold and Dark Side;
+- **Themes.** Eight, picked from the sun/moon button at the foot of the
+  sidebar or Settings → *Appearance*: Dark Warm, Dark Cold, Dark Pastel (a
+  neutral graphite with soft, muted colours) and Dark Side;
   Light, Light Cold, Book and Light Side. Point at one to try it on the
   whole window, click to keep it. Dark Side and Light Side add a soft glow to
   the focused field, the primary button and the tab in front.
 - **Terminal look.** Settings → *Terminal*: the colours (*Match app*,
-  Dark Warm, Dark Cold, Book, Light Cold, Light Side, Dark Side, Catppuccin
+  Dark Warm, Dark Cold, Dark Pastel, Book, Light Cold, Light Side, Dark Side, Catppuccin
   Mocha, Tokyo Night, Solarized Dark), the font (JetBrains Mono,
   or SF Mono, Menlo, Fira Code and other monospace fonts you have), size,
   line height and cursor, with a preview. Every open terminal changes as you
@@ -481,6 +484,18 @@ and Ctrl+Shift+V stay the terminal's copy and paste. Reload is F5 there:
 Ctrl+R stays the shell's history search, and F5 in a focused terminal goes
 to the program running in it. The terminal's own keys (Ctrl+C, Ctrl+W,
 Option as Meta) always reach the terminal.
+
+**Composer (optional).** Settings → Terminal → *Composer: type in a box
+under the agent* puts a message box under the terminal of every agent
+Caprock started. Enter sends the message (several lines arrive as one),
+Shift+Enter starts a new line, Esc goes back to the terminal, and ↑ ↓ on an
+empty box bring back what you sent before. `/` and `@` open the command and
+file pickers, *Saved* puts a saved prompt in the box, and a pasted image goes
+into the agent's prompt as in the terminal. While the agent works, a message
+waits in the queue and the box says so; when the agent asks for permission,
+the box tells you to answer in the terminal. It is off by default, and with
+it off nothing about the terminal changes; the box's ⋯ menu turns it off
+again. Sessions started in another terminal never get one.
 
 The interface size lives in Settings → Appearance (100, 110, 125 or 140%),
 and the app opens at 110%. It zooms the whole window natively, terminal

@@ -14,7 +14,8 @@ import type { SessionSummary } from '@/lib/api'
 import { type PaneLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { tabLabels, type TabLabel } from '@/lib/tablabels'
-import { TerminalPane, type PaneStatus } from './TerminalPane'
+import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane'
+import { composerFits, useComposerEnabled } from '@/lib/composer'
 import { AgentGlyph } from './AgentMarks'
 import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { StatusDot, TitleAndBranch } from './ProjectRow'
@@ -328,6 +329,7 @@ export const TerminalStack = memo(function TerminalStack({
   const chatClose = useCallback((tabId: string, paneId: string) => chatRef.current.onChatClose?.(tabId, paneId), [])
   const chatRestart = useCallback((id: string) => chatRef.current.onChatRestart?.(id), [])
   const hintDismiss = useCallback(() => chatRef.current.onChatHintDismiss?.(), [])
+  const [composer] = useComposerEnabled()
   return (
     // The terminal slab is each terminal tab's own ground; a file tab reads
     // on the page's, in the app's theme.
@@ -351,6 +353,7 @@ export const TerminalStack = memo(function TerminalStack({
               onChatClose: (paneId: string) => chatClose(t.id, paneId),
               onChatRestart: chatRestart,
               onChatHintDismiss: hintDismiss,
+              composer,
             }}
           />}
         </div>
@@ -375,13 +378,19 @@ interface PaneCtx {
   onChatClose?: (paneId: string) => void
   onChatRestart?: (sessionId: string) => void
   onChatHintDismiss?: () => void
+  /** The composer is switched on (Settings → Terminal). */
+  composer?: boolean
 }
 
 function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ctx: PaneCtx }) {
   if (node.type === 'pane') {
     const id = node.target.sessionId
     const focused = ctx.tab.focusedPaneId === node.id || (!ctx.split)
-    const term = <PaneTerminal id={id} visible={visible} focused={focused} onPaneStatus={ctx.onPaneStatus} onPaneExit={ctx.onPaneExit} />
+    // The composer: switched on, and an agent Caprock started (rule 7).
+    const cs = ctx.composer ? ctx.sessions?.get(id) : undefined
+    const withComposer = !!cs && node.target.kind !== 'shell' && composerFits(cs)
+    const term = <PaneTerminal id={id} visible={visible} focused={focused} onPaneStatus={ctx.onPaneStatus} onPaneExit={ctx.onPaneExit}
+      composer={withComposer} agent={cs?.agent} asking={withComposer && !!ctx.permissions?.has(id)} />
     const chat = ctx.chats?.get(id)
     const ended = chat?.ended && (
       <ChatEnded visible={visible && focused} onClose={() => ctx.onChatClose?.(node.id)} onRestart={() => ctx.onChatRestart?.(id)} />
@@ -443,16 +452,21 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
  * callbacks are stable (TerminalStack), so a new session list — the sidebar's
  * dots moving — does not reach a terminal.
  */
-const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit }: {
+const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit, composer = false, agent, asking = false }: {
   id: string
   visible: boolean
   focused: boolean
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
   onPaneExit?: (sessionId: string) => void
+  /** Primitives, so the memo still holds while the session list moves. */
+  composer?: boolean
+  agent?: string
+  asking?: boolean
 }) {
   const onStatus = useMemo(() => onPaneStatus && ((s: PaneStatus) => onPaneStatus(id, s)), [onPaneStatus, id])
   const onExit = useMemo(() => onPaneExit && (() => onPaneExit(id)), [onPaneExit, id])
-  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} />
+  const box = useMemo<PaneComposer | undefined>(() => (composer ? { agent, asking } : undefined), [composer, agent, asking])
+  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} composer={box} />
 })
 
 /** A split's children with a divider between each pair, dragged or moved with the arrow keys. */

@@ -14,7 +14,7 @@
  *    lie, so the comparison is suppressed and the total is labelled as spend.
  */
 import { useEffect, useRef, useState } from 'react'
-import { api, type Settings } from '@/lib/api'
+import { api, type Settings, type Subscription } from '@/lib/api'
 import { fmtUSD } from '@/lib/format'
 
 /** The common flat plans, as published by Anthropic (claude.com/pricing, read
@@ -73,7 +73,13 @@ export function usePlan(): [Settings | undefined, (patch: Partial<Settings>) => 
   return [cached, save]
 }
 
-export function PlanChip({ plan, onSave }: { plan?: Settings; onSave: (patch: Partial<Settings>) => void }) {
+export function PlanChip({ plan, onSave, account }: {
+  plan?: Settings
+  onSave: (patch: Partial<Settings>) => void
+  /** The sign-in this plan is for, when it is one of the user's subscriptions:
+   *  the chip then sets that account's own plan (components/AccountPlan). */
+  account?: Subscription
+}) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
 
@@ -91,6 +97,7 @@ export function PlanChip({ plan, onSave }: { plan?: Settings; onSave: (patch: Pa
     : plan.plan_kind === 'metered'
       ? plan.plan_label || 'API'
       : `${plan.plan_label || 'plan'} · ${fmtUSD(plan.plan_usd_per_month)}/mo`
+  const sub = account && !account.default ? account : undefined
 
   return (
     <div className="relative" ref={box}>
@@ -110,26 +117,32 @@ export function PlanChip({ plan, onSave }: { plan?: Settings; onSave: (patch: Pa
             : 'border-accent/50 text-accent'
         }`}
         title={
-          plan?.plan_kind
-            ? `Your plan: ${label}. Click to change it.`
-            : 'How you pay for Claude Code — Caprock cannot detect this, so you tell it'
+          sub
+            ? sub.plan
+              ? `${sub.label}'s plan: ${label}. Click to change it.`
+              : `${sub.label} has no plan of its own, so the main plan stands for it${plan?.plan_kind ? `: ${label}` : ''}. Click to set one.`
+            : plan?.plan_kind
+              ? `Your plan: ${label}. Click to change it.`
+              : 'How you pay for Claude Code — Caprock cannot detect this, so you tell it'
         }
       >
         {plan?.plan_kind && <span className="text-ok" aria-hidden>✓</span>}
         {label}
       </button>
-      {open && <PlanMenu plan={plan} onSave={(s) => { onSave(s); setOpen(false) }} />}
+      {open && <PlanMenu plan={plan} account={sub} onSave={(s) => { onSave(s); setOpen(false) }} />}
     </div>
   )
 }
 
-function PlanMenu({ plan, onSave }: { plan?: Settings; onSave: (patch: Partial<Settings>) => void }) {
+function PlanMenu({ plan, account, onSave }: { plan?: Settings; account?: Subscription; onSave: (patch: Partial<Settings>) => void }) {
   return (
     <div className="absolute right-0 top-7 z-20 w-[268px] border border-border-strong bg-panel rounded-[var(--radius-panel)] shadow-lg p-2">
       <div className="text-[11px] text-fg-muted px-1 pb-1.5">
-        How do you pay for Claude Code? Caprock can&apos;t detect this and never guesses.
+        {account
+          ? <>How is <span className="text-fg">{account.label}</span>{account.account ? <> ({account.account})</> : null} paid for? Caprock can&apos;t detect this and never guesses.</>
+          : <>How do you pay for Claude Code? Caprock can&apos;t detect this and never guesses.</>}
       </div>
-      <PlanOptions plan={plan} onSave={onSave} />
+      <PlanOptions plan={account && !account.plan ? undefined : plan} onSave={onSave} useMain={account ? !account.plan : undefined} />
     </div>
   )
 }
@@ -138,14 +151,29 @@ function PlanMenu({ plan, onSave }: { plan?: Settings; onSave: (patch: Partial<S
  * The plan choices themselves: the header's popover and the Settings screen
  * show the same list, so a plan set in one is the plan the other shows.
  */
-export function PlanOptions({ plan, onSave }: { plan?: Settings; onSave: (patch: Partial<Settings>) => void }) {
+export function PlanOptions({ plan, onSave, useMain }: {
+  plan?: Partial<Settings>
+  onSave: (patch: Partial<Settings>) => void
+  /** For one of the user's subscriptions: offer "The main plan" first,
+   *  marked when it is what applies (true) — it saves plan_kind "". */
+  useMain?: boolean
+}) {
   const [custom, setCustom] = useState(String(plan?.plan_usd_per_month || ''))
   // Only the plan fields are sent: changing the plan must not silently reset
   // an unrelated preference such as release checks.
   return (
     <div>
+      {useMain !== undefined && (
+        <button
+          onClick={() => onSave({ plan_kind: '', plan_label: '', plan_usd_per_month: 0 })}
+          className={`w-full flex items-baseline gap-2 px-1.5 py-1 rounded-sm text-left text-[12px] hover:bg-panel-2 ${useMain ? 'text-accent' : 'text-fg'}`}
+        >
+          <span>The main plan</span>
+          <span className="mono text-[11px] text-fg-faint ml-auto">own sign-in&apos;s</span>
+        </button>
+      )}
       {PRESETS.map((p) => {
-        const active = plan?.plan_label === p.label
+        const active = !!plan?.plan_kind && plan?.plan_label === p.label
         return (
           <button
             key={p.label}

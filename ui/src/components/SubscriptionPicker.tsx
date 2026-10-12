@@ -9,15 +9,35 @@
  * remembered choice stays, a running session never moves, and nothing is
  * ever picked without the click.
  */
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { api, type Subscription } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fullest, hasSubscriptions, isNear, resetText, roomText, windowLabel, withRoom } from '@/lib/subscriptions'
 
-/** The daemon's list, fetched once; empty on a daemon that predates it. */
-export function useSubscriptionList(): { all: Subscription[]; loaded: boolean; refresh: () => void } {
-  const res = useApi(() => api.subscriptions(), [], { live: false })
+// Every list on screen refreshes after a change made from any of them: a
+// plan set in Settings is the plan the cockpit's chip shows.
+const listeners = new Set<() => void>()
+
+/** Ask every open subscription list to read the daemon's again. */
+export function subscriptionsChanged(): void {
+  for (const fn of listeners) fn()
+}
+
+/** Refresh `refresh` whenever subscriptionsChanged() is called. */
+export function useSubscriptionsChanged(refresh: () => void): void {
+  useEffect(() => {
+    listeners.add(refresh)
+    return () => { listeners.delete(refresh) }
+  }, [refresh])
+}
+
+/** The daemon's list, fetched once; empty on a daemon that predates it, or
+ *  while `wanted` is false. */
+export function useSubscriptionList(wanted = true): { all: Subscription[]; loaded: boolean; refresh: () => void } {
+  const res = useApi(() => (wanted ? api.subscriptions() : Promise.resolve(undefined)), [wanted], { live: false })
   const all = useMemo(() => res.data?.agents.flatMap((a) => a.subscriptions) ?? [], [res.data])
+  const refresh = res.refresh
+  useSubscriptionsChanged(useMemo(() => () => refresh?.(), [refresh]))
   return { all, loaded: !!res.data || !!res.error, refresh: () => res.refresh?.() }
 }
 
@@ -28,7 +48,7 @@ export function subscriptionsFor(all: readonly Subscription[], agent: string): S
 
 /** What an option says: its name, and what is in the way. */
 export function optionText(s: Subscription, nowSec = Date.now() / 1000): string {
-  const parts = [s.label]
+  const parts = [s.preferred ? `${s.label} (default)` : s.label]
   if (!s.signed_in) parts.push('not signed in')
   else {
     const f = fullest(s, nowSec)
@@ -56,6 +76,7 @@ export function SubscriptionPicker({
       <span className="text-[11px] text-fg-muted">Subscription</span>
       <select
         className={className}
+        title={(() => { const s = list.find((x) => x.id === value); return s?.account ? `${s.label}: ${s.account}` : undefined })()}
         value={list.some((s) => s.id === value) ? value : 'default'}
         onChange={(e) => onChange(e.target.value)}
         // Quick chat's arrows move its own lists; a select keeps its own.
@@ -115,21 +136,28 @@ export function SubscriptionNote({
 }
 
 /**
- * The subscription a session ran on, by name, for the session's card, the
- * inspector and its page. Nothing for the Default sign-in — most sessions —
- * and the list is only asked for when a session has one.
+ * The sign-in a session ran on, by name, for the session's card, the
+ * inspector, the cockpit and its page. With `agent`, the user's own sign-in
+ * is named too once that agent has more than one; without, a session on it
+ * says nothing — the list is only asked for when there is something to name.
  */
-export function SubscriptionTag({ id, prefix = ' · ' }: { id?: string; prefix?: string }) {
-  if (!id) return null
-  return <SubscriptionTagFor id={id} prefix={prefix} />
+export function SubscriptionTag({ id, agent, prefix = ' · ', className }: { id?: string; agent?: string; prefix?: string; className?: string }) {
+  if (!id && !(agent !== undefined && hasSubscriptions(agent || 'claude'))) return null
+  return <SubscriptionTagFor id={id ?? ''} agent={agent || 'claude'} prefix={prefix} className={className} />
 }
 
-function SubscriptionTagFor({ id, prefix }: { id: string; prefix: string }) {
+function SubscriptionTagFor({ id, agent, prefix, className }: { id: string; agent: string; prefix: string; className?: string }) {
   const { all, loaded } = useSubscriptionList()
   if (!loaded) return null
+  if (!id) {
+    const list = subscriptionsFor(all, agent)
+    const own = list.find((s) => s.default)
+    if (list.length < 2 || !own) return null
+    return <span className={className} title={`Ran on your own sign-in${own.account ? `, ${own.account}` : ''}`}>{prefix}{own.label}</span>
+  }
   const s = all.find((x) => x.id === id)
   return (
-    <span title={s ? `Ran on the ${s.label} subscription` : 'Ran on a subscription that has since been removed'}>
+    <span className={className} title={s ? `Ran on the ${s.label} subscription${s.account ? `, ${s.account}` : ''}` : 'Ran on a subscription that has since been removed'}>
       {prefix}{s ? s.label : 'removed subscription'}
     </span>
   )

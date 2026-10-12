@@ -12,7 +12,7 @@ import { TerminalView } from '@/components/Terminal'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { costBasisLong } from '@/components/CostBasis'
 import { agentName } from '@/components/Projects'
-import { usePlan } from '@/components/PlanPicker'
+import { useSessionPlan } from '@/components/AccountPlan'
 import { ContinueSession } from '@/components/ContinueSession'
 import { PermissionModeChip } from '@/components/PermissionModeChip'
 import { RecentPRs, RepoButtons } from '@/components/RepoLinks'
@@ -86,7 +86,8 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         ? tab
         : narrowScreen() || app ? 'chat' : 'timeline'
   const now = useNow(1000)
-  const [plan] = usePlan()
+  // The plan this session is set against: its account's own, else the main one.
+  const { plan } = useSessionPlan(detail.data?.agent, detail.data?.subscription)
   // The phone's Chat tab: a compact header, its details behind a toggle.
   const [details, setDetails] = useState(false)
   // On a phone the chat is the screen, its field at the bottom as in a
@@ -184,13 +185,13 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {app ? (
         !reader && (
           <MoreMenu>
-            {s.cwd && <RelayMenu sessionID={s.session_id} />}
+            {s.cwd && <RelayMenu sessionID={s.session_id} agent={s.agent} subscription={s.subscription} />}
             <OpenInTerminal sessionID={s.session_id} info={s.open_terminal} />
             {s.resume?.command && <CopyCommand command={s.resume.command} />}
           </MoreMenu>
         )
       ) : (
-        s.cwd && !reader && <RelayMenu sessionID={s.session_id} />
+        s.cwd && !reader && <RelayMenu sessionID={s.session_id} agent={s.agent} subscription={s.subscription} />
       )}
     </>
   )
@@ -234,7 +235,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           </span>
         )}
         {s.git_branch && <span className="mono text-[11px] text-fg-muted">{s.git_branch}</span>}
-        {s.subscription && <span className="text-[11px] text-fg-muted"><SubscriptionTag id={s.subscription} prefix="on " /></span>}
+        <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} prefix="on " className="text-[11px] text-fg-muted" />
         {/* Health and the controls are about now: never from a kept copy. */}
         {!compact && !detail.stale && <Badge health={s.activity.health} />}
         {!compact && controls}
