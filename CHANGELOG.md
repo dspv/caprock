@@ -7,6 +7,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** three figures beside the agent in the cockpit, each one yours
+  to pick: the headline in large type and two short lines under it
+  (*$4.08/h burn ▾*, *4.01B tok ▾*), from one list — cost, burn rate,
+  tokens, cache hit rate, turns, time working, last call, tool calls —
+  never the same one twice (picking a taken one swaps them), cost, burn
+  rate and tokens until you choose. In a narrow inspector the two lines
+  move under the agent, beside the subagent chips, rather than squeezing
+  the agent's own lines or being cut.
+
+- **app:** the Spend block in the cockpit opens on its chart again,
+  unfolded: the period's spend by time with its total and the stretch
+  under the pointer. *Numbers* is still a click away on the *Chart |
+  Numbers* switch. A choice saved while Numbers and folded were the
+  default opens on the chart once; what you pick after that holds.
+
 ### Fixed
 
 - **app:** the version panel's update button reads at a glance: *Update to
