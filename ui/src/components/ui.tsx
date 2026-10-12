@@ -1,6 +1,6 @@
 // Small presentational primitives. Every color comes from tokens.css.
 import { useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { Health } from '@/lib/api'
 
 /** Which folded panels are closed, by their `fold` key; kept per viewer. */
@@ -91,15 +91,37 @@ export function Stat({ label, value, sub, tone, size = 'default' }: {
     // across a row whatever sits above them. One tile's caption wrapping to two
     // lines used to drag every neighbour's off the shared baseline, which read
     // as text stuck to the underside of a number rather than as a row.
-    <div className="flex h-full flex-col px-3 py-2.5 min-w-0">
+    //
+    // A size container, so the figure can shrink to the tile (statFit).
+    <div className="@container flex h-full flex-col px-3 py-2.5 min-w-0">
       <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">{label}</div>
       {/* Semibold, not just larger: weight separates a figure from its
        * neighbours without spending a pixel of density, which is what a dense
        * dashboard needs. The product had no semibold anywhere. */}
-      <div className={`num font-semibold tracking-[-0.01em] ${valueCls} ${toneCls}`}>{value}</div>
-      {sub && <div className="mt-auto pt-1 text-[11px] text-fg-muted num truncate">{sub}</div>}
+      <div className={`num font-semibold tracking-[-0.01em] whitespace-nowrap ${valueCls} ${toneCls}`} style={statFit(value, size)}>{value}</div>
+      {/* Wraps rather than ending in an ellipsis: a cut
+       * "at API list price · not a…" dropped the half that mattered. */}
+      {sub && <div className="mt-auto pt-1 text-[11px] leading-snug text-fg-muted num [overflow-wrap:anywhere]">{sub}</div>}
     </div>
   )
+}
+
+/** A Stat figure's largest size, per tile size. */
+const STAT_MAX_PX = { hero: 34, default: 28, compact: 22 } as const
+
+/**
+ * The font size that fits a text figure on one line in its tile: the size's
+ * own step, or smaller when the tile is too narrow for every character
+ * (testers, 2026-10-12: "$12,793.46" ran into the next tile and lost its
+ * leading digits in a narrow window). The figure is mono, so each character
+ * is 0.6em wide and the arithmetic is exact; 100cqi is the tile's content
+ * width. A node that is not plain text keeps the fixed step.
+ */
+export function statFit(value: ReactNode, size: 'hero' | 'default' | 'compact' = 'default'): CSSProperties | undefined {
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined
+  const n = String(value).length
+  if (n === 0) return undefined
+  return { fontSize: `max(12px, min(${STAT_MAX_PX[size]}px, calc(100cqi / ${(n * 0.6).toFixed(2)})))` }
 }
 
 const healthLabel: Record<Health, string> = {

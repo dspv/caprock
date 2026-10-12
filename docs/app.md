@@ -34,8 +34,14 @@ others. Installing it: [install-app.md](install-app.md).
   of the count, the badge and ⌘J; when only such turns are left, the block
   is not shown at all (they stay on the Dashboard). Then the projects, one line each: the
   name, a green dot with how many sessions and shells run in it, and how
-  many wait on you. Only the current project is open, and under it are
-  exactly its tabs — the ones in the tab strip, in the same order and under
+  many wait on you. Only the current project is open, and under it is one
+  row: the tab you are looking at, or the project's last one; with no tab,
+  whatever asks or waits on you, else the agent that worked last. The rest
+  sit behind one quiet line, *+4 more* — hover it for what it holds (*2
+  working · 1 idle · 1 shell*), click it to list them in place; it stays
+  open for that project until you fold it. When something behind it waits
+  on you, the line turns amber and says so: *+4 more · 1 asks*. Opened,
+  the list is the project's tabs — the ones in the tab strip, in the same order and under
   the same names (*Shell 1*, *Shell 2* for shells, *Shell 1 · claude* while
   one runs a program; a branch beside a tab
   only when it is not the project's own). Click another project to make it
@@ -44,9 +50,7 @@ others. Installing it: [install-app.md](install-app.md).
   sidebar is the tab you are looking at; the current project's name is
   bold. After the tabs, muted, come the sessions and shells Caprock started
   in the project that still run with no tab; click one to open it as a tab.
-  Sessions started in another terminal are not listed one by one: a muted
-  *Running in other terminals · N* at the bottom opens the list, and one of
-  them waiting on you is still under *Waiting on you*. Each row says its
+  Sessions started in another terminal come last. Each row says its
   state in one word at its right: *working* (green), *waiting* (amber — it
   needs you, and nothing else in the list is amber), *idle* or *done*; a
   shell says nothing. Rows keep the strip's order, then the order things
@@ -206,7 +210,9 @@ others. Installing it: [install-app.md](install-app.md).
   *Add project* at the top of the sidebar, adds a folder, makes a new one
   (`git init` optional) or clones a repository with git's progress shown.
   The folder starts at your default folder — your home folder until you set
-  one in Settings → Projects or with *Set as default* beside the field — and
+  one in Settings → Projects (*Where you keep your code*: it limits nothing,
+  every folder you run an agent in or add is a project wherever it is) or
+  with *Set as default* beside the field — and
   a line under it says what is there as you type: *will be created*, *exists,
   empty — will clone here*, *exists — not empty, clone will fail*, *already in
   Caprock*. Typing a name lists the projects, recent folders and repositories
@@ -309,10 +315,12 @@ others. Installing it: [install-app.md](install-app.md).
   `~/.claude`), or `@` for a file in the session's folder: ↑ ↓ and Enter
   pick, Esc closes. Picking only fills the field.
 - **Agent cockpit** (⌘I). Open beside an agent's terminal unless you close
-  it: the agent and its state, what the session has cost (or another
-  figure you pick beside the agent), its spend for the session, today, 7
-  or 30 days as three figures you choose or as a chart (*Numbers | Chart*,
-  folded to one line until you open it), how full its context is and what every call
+  it: the agent and its state, three figures beside it that you pick —
+  what the session has cost in large type, its burn rate and tokens on two
+  short lines under it, or any of cache hit rate, turns, time working, the
+  last call and tool calls (click a figure's ▾) — its spend for the
+  session, today, 7 or 30 days as a chart or as three more figures you
+  choose (*Chart | Numbers*; fold it to one line if you like), how full its context is and what every call
   now pays to re-read it, what it is doing this second and for how long,
   the task list the agent keeps for itself (each task with a spinner, a
   check or an empty circle, and *3 of 7 done* above them; not there when
@@ -400,13 +408,14 @@ others. Installing it: [install-app.md](install-app.md).
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
-- **Themes.** Seven, picked from the sun/moon button at the foot of the
-  sidebar or Settings → *Appearance*: Dark Warm, Dark Cold and Dark Side;
+- **Themes.** Eight, picked from the sun/moon button at the foot of the
+  sidebar or Settings → *Appearance*: Dark Warm, Dark Cold, Dark Pastel (a
+  neutral graphite with soft, muted colours) and Dark Side;
   Light, Light Cold, Book and Light Side. Point at one to try it on the
   whole window, click to keep it. Dark Side and Light Side add a soft glow to
   the focused field, the primary button and the tab in front.
 - **Terminal look.** Settings → *Terminal*: the colours (*Match app*,
-  Dark Warm, Dark Cold, Book, Light Cold, Light Side, Dark Side, Catppuccin
+  Dark Warm, Dark Cold, Dark Pastel, Book, Light Cold, Light Side, Dark Side, Catppuccin
   Mocha, Tokyo Night, Solarized Dark), the font (JetBrains Mono,
   or SF Mono, Menlo, Fira Code and other monospace fonts you have), size,
   line height and cursor, with a preview. Every open terminal changes as you

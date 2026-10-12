@@ -7,6 +7,32 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **ui:** a Dark Pastel theme: a neutral graphite ground, a dusty blue
+  accent and soft, low-chroma status colours, with a terminal to match — for
+  whoever finds the other dark themes loud. Body text stays at 7:1 or more,
+  muted text and the accent at 4.5:1 or more.
+
+### Changed
+
+- **ui:** Dark Cold's blue accent is one step softer.
+- **ui:** Settings → Projects calls its folder *Where you keep your code* and
+  says what it does: Add project and Browse open there and a new session
+  suggests the repositories inside it; it limits nothing, every folder you
+  run an agent in or add is a project wherever it is.
+- **ui:** the Memory screen opens with one paragraph saying what it is for:
+  every answer Claude wrote you, searchable, linked to the moment it was
+  written, and what a new session in the same folder is handed.
+
+### Fixed
+
+- **ui:** big figures never run into the next tile or lose their leading
+  digits. A figure keeps its size while it fits and shrinks to its tile when
+  it does not (*$130,489.86* beside a seven-figure burn rate, in a narrow
+  window or the app with the sidebar open), and the caption under it wraps
+  instead of being cut off.
+
 ### Changed
 
 - **ci:** a pull request that does not touch the desktop app (`app/`, the
@@ -17,6 +43,52 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   goreleaser has published, so a red `verify` still publishes nothing.
 
 ## [0.111.3] - 2026-10-12
+
+### Changed
+
+- **app:** each project in the sidebar shows one row: the tab you are on (or
+  its last one), else what waits on you, else the agent that worked last.
+  The rest fold behind one quiet *+N more* line that opens in place, stays
+  open per project, lists what it holds in its tooltip (*2 working · 1 idle
+  · 1 shell*) and turns amber when something behind it waits (*+4 more · 1
+  asks*). It replaces the *Running in other terminals* line; ⌘1–⌘9 still
+  reach every tab.
+
+### Changed
+
+- **app:** three figures beside the agent in the cockpit, each one yours
+  to pick: the headline in large type and two short lines under it
+  (*$4.08/h burn ▾*, *4.01B tok ▾*), from one list — cost, burn rate,
+  tokens, cache hit rate, turns, time working, last call, tool calls —
+  never the same one twice (picking a taken one swaps them), cost, burn
+  rate and tokens until you choose. In a narrow inspector the two lines
+  move under the agent, beside the subagent chips, rather than squeezing
+  the agent's own lines or being cut.
+
+- **app:** the Spend block in the cockpit opens on its chart again,
+  unfolded: the period's spend by time with its total and the stretch
+  under the pointer. *Numbers* is still a click away on the *Chart |
+  Numbers* switch. A choice saved while Numbers and folded were the
+  default opens on the chart once; what you pick after that holds.
+
+### Added
+
+- **deck:** pull requests show what stands in their way and who is on them,
+  and can be fixed or re-checked from the row. An open PR carries one-word
+  chips beside its pipeline — *conflict*, *behind*, *review* (changes
+  requested), *draft* — from what GitHub already said, and nothing while
+  GitHub is still computing. A live agent whose checkout is on the PR's
+  branch shows as its initial with *fixing*, *waiting* or *idle* (*2
+  agents* for several); a click opens its tab. The open row, or its ⋯,
+  offers *Fix conflict with agent*, *Update branch*, *Fix CI with agent*
+  and *Re-run checks*; each confirms in one line inside the row, then says
+  what it is doing there (*agent fixing…*, *re-running 5 jobs…*,
+  *updating branch…*) until GitHub shows it done. A fix goes to the
+  Caprock-started agent on the branch, else a new agent starts in the
+  branch's checkout or a new worktree at the PR's head; nothing is typed
+  into a session Caprock did not start. Re-run and Update branch use
+  GitHub's own APIs with your token, and a refusal names the permission
+  the token is missing.
 
 ### Fixed
 
