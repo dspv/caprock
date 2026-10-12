@@ -1317,6 +1317,56 @@ there, and worktrees as first-class places to work.
   Members are not watched (contract in 03-contracts.md § Projects and
   shells). A monorepo stays one repository with its per-directory split.
 
+## Composer
+
+An optional box under an agent's terminal to write a message in (owner,
+2026-10-13, translated: "if it's optional and can be switched on and off,
+why not; the main thing is no abrupt change"; earlier: "the area where you
+type isn't highlighted enough"). Built in `ui/src/components/Composer.tsx`
+and `ui/src/lib/composer.ts`.
+
+- **Off by default, and off changes nothing.** Settings → Terminal →
+  *Composer: type in a box under the agent*, kept per viewer in localStorage
+  (`caprock.app.composer`) like the terminal's appearance; every pane follows
+  at once. The pane's tree has the same shape on or off (an inner box that
+  fills the pane when there is no composer), so switching never remounts the
+  terminal's host, and with it off the pane is pixel-identical to before
+  (compared against a master build, 2026-10-13: zero differing pixels in the
+  terminal's area). Its own ⋯ menu turns it off again; there is no pane menu
+  to put the switch in, and adding one would change the pane with it off.
+- **Which panes.** A session Caprock started, live, not detached, not a
+  shell (`composerFits`, the same test as `typeable` in `lib/prforce.ts`):
+  rule 7, it never types into a session from another terminal. App
+  workspace only (`TerminalPane`); the phone and the dashboard's terminal
+  are unchanged.
+- **Sending** is the chat's queue path, `POST /v1/agents/{id}/queue`
+  (ADR-053): typed in at once at the prompt, otherwise held and typed when
+  the turn ends. The daemon types each line break as ESC CR and Enter after
+  a pause (`promptBytes`), so several lines arrive as one message — checked
+  with the fake agent, which keeps ESC CR in its prompt as `↵`, and received
+  `first line of the message↵second line, same message` as one line. While a
+  message waits the box says *queued · sends when the agent is free*.
+- **Keys.** Enter sends, Shift+Enter is a newline in the box, Esc goes back
+  to the terminal (after closing a picker). ↑ and ↓ on an empty box, or one
+  still showing a history entry, walk the last 50 messages sent from it to
+  that session (localStorage, `caprock.composer.history.<id>`). No global
+  shortcut: the placeholder's keys go through `keys()`, so Windows and Linux
+  read *Enter* and *Shift+Enter*.
+- **Focus is never moved behind the user's back.** A click in the terminal
+  focuses the terminal, a key typed there stays there, and showing a tab
+  focuses the terminal as before. A permission prompt (the live permissions
+  set, or the queue's `permission`/`question`) tints the box's edge amber and
+  says *Claude is asking — answer in the terminal (1/2/3)*.
+- **Pickers, saved prompts, images.** The chat field's `/` and `@` pickers
+  (`useChatPicker`), the session's saved prompts behind a *Saved* button (a
+  pick fills the box, never sends), and a pasted image handed to the
+  terminal's own paste path (`attachTerminalInput().sendFiles`), so Claude
+  Code shows `[Image #N]` in its prompt and the words sent from the box
+  follow it.
+- **Look.** `.app-composer` in `tokens.css`: the slab's own ink at 5% over
+  the terminal's ground, a hairline at rest, the accent edge and a 3px
+  accent halo when it has the keyboard, in every terminal palette.
+
 ## Shell tabs
 
 - `POST /v1/shells` with `{"project_id"|"cwd", "cols", "rows"}` starts the

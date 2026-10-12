@@ -30,6 +30,10 @@
  * - **The face** (lib/termfont): every subset of JetBrains Mono is asked for
  *   before the terminal opens, and a face finishing its load re-measures the
  *   cell and rebuilds the WebGL atlas.
+ * - **The composer** (components/Composer.tsx), when switched on and the
+ *   session is an agent Caprock started: a box under the terminal, inside the
+ *   pane. The tree has the same shape with it or without it, so switching it
+ *   never remounts the terminal's host.
  */
 import { useEffect, useRef, useState } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
@@ -49,6 +53,7 @@ import { lineFor, markOf, saveScroll, takeScroll } from '@/lib/termresume'
 import { APP_UPDATE_EVENT } from '@/lib/appupdate'
 import { WEBGL_QUIET_MS } from './Terminal'
 import { NewPill } from './NewPill'
+import { Composer } from './Composer'
 import { TerminalFind, type TermSearch } from './TerminalFind'
 import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPrefs } from '@/lib/termprefs'
 import { searchColors, terminalTheme } from '@/lib/termthemes'
@@ -70,6 +75,13 @@ export const HIDDEN_HOLD_BYTES = 256 * 1024
  */
 export const SETTLE_MS = 3000
 
+/** The composer under the terminal: absent, there is none (.ai/21-app.md § Composer). */
+export interface PaneComposer {
+  agent?: string
+  /** A permission prompt is open in the terminal. */
+  asking: boolean
+}
+
 export interface PaneStatus {
   status: TermState
   protocol?: 'v1' | 'v2'
@@ -83,6 +95,7 @@ export function TerminalPane({
   focused = true,
   onStatus,
   onExit,
+  composer,
 }: {
   sessionId: string
   /** The tab is in front and the workspace is showing. */
@@ -96,6 +109,7 @@ export function TerminalPane({
    * workspace puts a shell in the same folder here.
    */
   onExit?: (code: number) => void
+  composer?: PaneComposer
 }) {
   const host = useRef<HTMLDivElement>(null)
   const api = useRef<{ show: () => void; hide: () => void; scrollToBottom: () => void; focus: () => void } | null>(null)
@@ -109,6 +123,7 @@ export function TerminalPane({
   const [find, setFind] = useState<{ open: boolean; token: number }>({ open: false, token: 0 })
   const [results, setResults] = useState<{ index: number; count: number } | null>(null)
   const searchRef = useRef<TermSearch | null>(null)
+  const filesRef = useRef<((files: File[]) => Promise<void>) | null>(null)
   const activeRef = useRef(active)
   activeRef.current = active
   const onStatusRef = useRef(onStatus)
@@ -314,6 +329,7 @@ export function TerminalPane({
     const input = attachTerminalInput(term, el, (d) => conn.send(d), {
       isAppKey: (e) => matchAppShortcut(e, isMac) !== null,
     })
+    filesRef.current = input.sendFiles
 
     // "↓ N new lines": counted from the buffer's growth while the viewport is
     // above the bottom, published at most once a frame.
@@ -437,6 +453,7 @@ export function TerminalPane({
       disposed = true
       api.current = null
       searchRef.current = null
+      filesRef.current = null
       window.removeEventListener(FIND_EVENT, onFind)
       window.removeEventListener(APP_UPDATE_EVENT, onAppUpdate)
       if (resumeTimer) window.clearTimeout(resumeTimer)
@@ -478,7 +495,10 @@ export function TerminalPane({
   }, [active, focused])
 
   return (
-    <div className="relative h-full w-full bg-term-bg">
+    // One shape with the composer or without it (the header): the inner box
+    // fills the outer exactly when there is none.
+    <div className="relative flex h-full w-full flex-col bg-term-bg">
+    <div className="relative min-h-0 w-full flex-1">
       {/* The padding is on a wrapper: FitAddon measures the host's parent box. */}
       <div className="absolute inset-0 pl-3 pt-2 pr-1 pb-1">
         <div ref={host} data-term-host data-term-session={sessionId} className="h-full w-full" />
@@ -512,6 +532,16 @@ export function TerminalPane({
       <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
         <NewPill count={newLines} unit={newLines === 1 ? 'new line' : 'new lines'} onJump={() => api.current?.scrollToBottom()} />
       </div>
+    </div>
+    {composer && (
+      <Composer
+        sessionId={sessionId}
+        agent={composer.agent}
+        asking={composer.asking}
+        onFiles={(files) => { void filesRef.current?.(files) }}
+        onBack={() => api.current?.focus()}
+      />
+    )}
     </div>
   )
 }

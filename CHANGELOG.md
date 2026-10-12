@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** an optional composer under an agent's terminal (Settings →
+  Terminal, off by default): a highlighted box to write a message in, sent
+  with Enter through the message queue so several lines arrive as one, with
+  the `/` and `@` pickers, saved prompts, pasted images and ↑ ↓ history; it
+  queues while the agent works and points at the terminal while the agent
+  asks. Only for sessions Caprock started; with it off nothing changes.
 - **ui:** a Dark Pastel theme: a neutral graphite ground, a dusty blue
   accent and soft, low-chroma status colours, with a terminal to match — for
   whoever finds the other dark themes loud. Body text stays at 7:1 or more,

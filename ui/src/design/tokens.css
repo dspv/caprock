@@ -829,6 +829,24 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
   --app-row-hover: rgba(36, 33, 28, 0.06);
 }
 
+/* The composer under an agent's terminal (components/Composer.tsx): a box
+ * lifted a step off the slab, in the slab's own ink so it reads on a dark or
+ * a light terminal palette, and an accent ring when it has the keyboard —
+ * where you type has to be found at a glance (owner, 2026-10-13). An open
+ * prompt in the terminal tints its edge amber. */
+[data-app] .app-composer {
+  background: color-mix(in srgb, var(--color-fg) 5%, var(--color-term-bg, var(--color-panel)));
+  box-shadow: inset 0 0 0 1px var(--app-hairline-strong);
+  transition: box-shadow 120ms var(--app-ease);
+}
+[data-app] .app-composer:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-fg) 26%, transparent); }
+[data-app] .app-composer[data-asking] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-warn) 55%, transparent); }
+[data-app] .app-composer:focus-within {
+  background: color-mix(in srgb, var(--color-fg) 7%, var(--color-term-bg, var(--color-panel)));
+  box-shadow: inset 0 0 0 1px var(--color-accent), 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+@media (prefers-reduced-motion: reduce) { [data-app] .app-composer { transition: none; } }
+
 /* Every terminal (xterm.js): one rasterisation for every glyph, no ligatures.
  *
  * The WebGL renderer draws each glyph once onto a scratch canvas and keeps it.

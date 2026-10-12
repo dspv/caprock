@@ -8,16 +8,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TabStrip, TerminalStack } from './TerminalTabs'
 import type { Tab } from '@/lib/tabs'
 import type { SessionSummary } from '@/lib/api'
+import { setComposerEnabled } from '@/lib/composer'
 
 // These read the labels in their macOS spelling; lib/appkeys.test.ts covers
 // Windows and Linux.
 Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
 
 // A pane that counts its renders: xterm is beside the point here.
-const panes = vi.hoisted(() => ({ renders: new Map<string, number>() }))
+const panes = vi.hoisted(() => ({ renders: new Map<string, number>(), composer: new Map<string, unknown>() }))
 vi.mock('./TerminalPane', () => ({
-  TerminalPane: ({ sessionId }: { sessionId: string }) => {
+  TerminalPane: ({ sessionId, composer }: { sessionId: string; composer?: unknown }) => {
     panes.renders.set(sessionId, (panes.renders.get(sessionId) ?? 0) + 1)
+    panes.composer.set(sessionId, composer)
     return null
   },
 }))
@@ -205,5 +207,41 @@ describe('TerminalStack', () => {
     expect(panes.renders.get('one')).toBe(2)
     expect(panes.renders.get('two')).toBe(2)
     expect(panes.renders.get('three')).toBe(1)
+  })
+})
+
+describe('TerminalStack composer', () => {
+  afterEach(() => setComposerEnabled(false))
+  const agentTab = (id: string): Tab => ({ ...tab(id), root: { type: 'pane', id: `${id}-pane`, target: { kind: 'session', sessionId: id } } })
+  const session = (id: string, over: Partial<SessionSummary>): SessionSummary =>
+    ({ session_id: id, owned: true, status: 'working', kind: 'agent', agent: 'claude', ...over }) as SessionSummary
+  const stack = () => (
+    <TerminalStack
+      tabs={[agentTab('mine'), agentTab('theirs'), tab('sh'), agentTab('gone')]}
+      visibleTabId="mine"
+      sessions={new Map([
+        ['mine', session('mine', {})],
+        ['theirs', session('theirs', { owned: false })],
+        ['sh', session('sh', { kind: 'shell' })],
+        ['gone', session('gone', { status: 'ended' })],
+      ])}
+      permissions={new Set(['mine'])}
+    />
+  )
+
+  it('gives no pane a composer while it is off', () => {
+    panes.composer.clear()
+    render(stack())
+    expect([...panes.composer.values()]).toEqual([undefined, undefined, undefined, undefined])
+  })
+
+  it('when on, gives one only to a live agent Caprock started (rule 7), never to a shell', () => {
+    setComposerEnabled(true)
+    panes.composer.clear()
+    render(stack())
+    expect(panes.composer.get('mine')).toEqual({ agent: 'claude', asking: true })
+    expect(panes.composer.get('theirs')).toBeUndefined()
+    expect(panes.composer.get('sh')).toBeUndefined()
+    expect(panes.composer.get('gone')).toBeUndefined()
   })
 })

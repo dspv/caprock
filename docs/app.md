@@ -472,6 +472,18 @@ Ctrl+R stays the shell's history search, and F5 in a focused terminal goes
 to the program running in it. The terminal's own keys (Ctrl+C, Ctrl+W,
 Option as Meta) always reach the terminal.
 
+**Composer (optional).** Settings → Terminal → *Composer: type in a box
+under the agent* puts a message box under the terminal of every agent
+Caprock started. Enter sends the message (several lines arrive as one),
+Shift+Enter starts a new line, Esc goes back to the terminal, and ↑ ↓ on an
+empty box bring back what you sent before. `/` and `@` open the command and
+file pickers, *Saved* puts a saved prompt in the box, and a pasted image goes
+into the agent's prompt as in the terminal. While the agent works, a message
+waits in the queue and the box says so; when the agent asks for permission,
+the box tells you to answer in the terminal. It is off by default, and with
+it off nothing about the terminal changes; the box's ⋯ menu turns it off
+again. Sessions started in another terminal never get one.
+
 The interface size lives in Settings → Appearance (100, 110, 125 or 140%),
 and the app opens at 110%. It zooms the whole window natively, terminal
 included, so text stays sharp and clicks land where they should. In a

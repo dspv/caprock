@@ -5,7 +5,8 @@
  * like Appearance.
  */
 import { useMemo } from 'react'
-import { Choice, Section } from './SettingsParts'
+import { Choice, Section, Toggle } from './SettingsParts'
+import { useComposerEnabled } from '@/lib/composer'
 import {
   DEFAULT_PREFS,
   FONT_SIZE_RANGE,
@@ -20,6 +21,7 @@ import { TERMINAL_CHOICES, terminalTheme } from '@/lib/termthemes'
 
 export function TerminalSettings() {
   const [prefs, set] = useTerminalPrefs()
+  const [composer, setComposer] = useComposerEnabled()
   // Measured once per visit: a font installed meanwhile shows on the next.
   const fonts = useMemo(() => detectMonoFonts(), [])
   const shown = fonts.some((f) => f.id === prefs.font) ? fonts : [...fonts, { id: prefs.font, name: prefs.font, family: '' }]
@@ -56,6 +58,12 @@ export function TerminalSettings() {
         onChange={(cursor) => set({ cursor })}
       />
       <TerminalPreview prefs={prefs} />
+      <Toggle
+        checked={composer}
+        onChange={setComposer}
+        label="Composer: type in a box under the agent"
+        hint="For agents Caprock started: write a message in a box under the terminal, with the / and @ pickers and your saved prompts, and send it with Enter. While the agent works it waits in the queue. The terminal keeps working as it does now."
+      />
       <p className="flex flex-wrap items-center gap-x-3 text-[12px] text-fg-muted">
         Every open terminal changes as you choose. Saved in this browser only.
         <button type="button" onClick={() => set(DEFAULT_PREFS)} className="text-fg-muted underline-offset-2 hover:text-fg hover:underline">
