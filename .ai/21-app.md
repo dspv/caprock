@@ -359,9 +359,18 @@ One window, three regions:
   from its menu or closed with its row's × (which since 2026-10-09
   replaces the hover eye, and hides only when nothing runs or waits in it)
   goes under *Hidden · N*, where the
-  same actions show it again. `groupProjects` in `ui/src/lib/sidebar.ts`
-  decides; *Other folders* always keeps a row.
-  Hidden ids live in the page's storage (`caprock.app.hidden-projects`),
+  same actions show it again. Hidden wins over what runs in it and over being
+  in front: the project in front moves under *Hidden* with its tabs open and
+  stays in view under that heading while the fold is closed. It comes back
+  out only when it needs you again — a permission prompt, or a turn that ended
+  after it was hidden (`projectHidden`, the same rule as a hidden session
+  row). Until 0.112.0 a project in front or with any agent at "your turn"
+  (up to twelve hours) was forced back into view, so *Hide* did nothing on
+  exactly the projects it was pressed on (owner, 2026-10-13).
+  `groupProjects` in `ui/src/lib/sidebar.ts` decides; *Other folders* always
+  keeps a row.
+  Hidden ids, each with when it was hidden, live in the page's storage
+  (`caprock.app.hidden-projects`; an older plain list of ids still reads),
   not the daemon: the projects API has no hide flag, and unlisting
   (`DELETE /v1/projects/{id}`) takes the project out of every list, phone
   and palette included, which is not what hiding means. Which folds are open is

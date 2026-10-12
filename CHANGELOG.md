@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **ui:** Lifetime's *Top projects* donut sits beside its table again instead
+  of drawing over it; a donut without a legend keeps its own width.
+
+- **app:** *Hide* on a project in the sidebar did nothing when an agent in
+  it had finished its turn, or when it was the project in front — from the
+  row's eye, its ⋯ menu and a right-click alike, *Outside projects*
+  included. Hidden now wins: the project moves under *Hidden* (the one in
+  front stays in view under that heading, its tabs open), and comes back
+  out only when an agent there asks or finishes a turn after it was hidden.
+
 - **deck:** every open pull request shows its actions. The ⋯ was a faint
   dot at the row's end that read as part of the age, and the actions only
   appeared once a row was opened, so they went unseen. Now the row's one
