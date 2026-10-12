@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.111.2] - 2026-10-12
+
 ### Fixed
 
 - **ui:** the At a glance donuts read in full on a 14-inch screen. The bill

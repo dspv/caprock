@@ -73,6 +73,13 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — 0.111.2: donuts read in full on a 14-inch screen
+
+Every donut's legend and centre caption wrap instead of truncating; the
+legend moves under its chart below about 400px and the At a glance row stacks
+below 720px; hovering or focusing a slice or legend row lights it and puts its
+name, share and dollars in the centre, without a popup.
+
 ### 2026-10-12 — 0.111.1: one PTY for two screens, spend as numbers or a chart, a foldable open job
 
 Feedback on 0.111.0, the same day. A session open on the desktop and a phone
