@@ -309,8 +309,10 @@ others. Installing it: [install-app.md](install-app.md).
   `~/.claude`), or `@` for a file in the session's folder: ↑ ↓ and Enter
   pick, Esc closes. Picking only fills the field.
 - **Agent cockpit** (⌘I). Open beside an agent's terminal unless you close
-  it: the agent and its state, what the session has cost and what each of
-  its last model calls cost, how full its context is and what every call
+  it: the agent and its state, what the session has cost (or another
+  figure you pick beside the agent), its spend for the session, today, 7
+  or 30 days as three figures you choose or as a chart (*Numbers | Chart*,
+  folded to one line until you open it), how full its context is and what every call
   now pays to re-read it, what it is doing this second and for how long,
   the task list the agent keeps for itself (each task with a spinner, a
   check or an empty circle, and *3 of 7 done* above them; not there when

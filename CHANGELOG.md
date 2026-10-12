@@ -7,6 +7,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the cockpit's Spend block shows numbers or a chart, your pick. Its
+  header holds the period chip (*session · today · 7d · 30d*) and a small
+  *Numbers | Chart* switch in place of 0.111.0's *Compact | Full*, whose
+  compact spark was a couple of bars. **Numbers** is three figures in a
+  row; each label is a menu of what sits there (spent, burn rate, tokens,
+  cache hit rate, last call, time working, turns, tool calls), never the
+  same one twice and, for the session, never the figure already beside the
+  agent; the choice is remembered. **Chart** is the period's spend by time
+  under 96px tall, its total on the top line and the stretch under the
+  pointer at its right (←/→ move it); today, 7 and 30 days come from the
+  summaries already read, and a range with nothing to draw says so instead
+  of drawing an empty line. A stored *Full* opens as Chart, *Compact* as
+  Numbers.
+
+### Fixed
+
+- **app:** in a narrow inspector the cockpit's headline figure moves to the
+  subagent chips' row (or under the name when there are none) instead of
+  hanging alone on a line of its own.
+
 ## [0.111.0] - 2026-10-12
 
 The 0.110.0 tag never published (its release check failed); this release

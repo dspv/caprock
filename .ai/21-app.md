@@ -369,7 +369,8 @@ One window, three regions:
   at work, waiting on you, looping, idle, ended) with a headline figure at
   the right that the viewer picks (cost, burn rate, tokens, turns, cache
   hit rate, time working), the spend details folded to one line below the
-  plan windows (cells, and *Spend over time* opening in the flow), the context bar and what the next call pays to
+  plan windows (three figures the viewer picks, or a chart of the period's
+  spend: *Numbers | Chart*, for the session, today, 7 or 30 days), the context bar and what the next call pays to
   re-read it, what it is doing this second (the open tool call and how long
   it has run, or *Thinking* since the last one finished; while a permission
   prompt waits, who asks and what — "Subagent (general-purpose) wants to run

@@ -57,11 +57,18 @@ beforeEach(() => {
   h.summaryAsked = []
 })
 
-/** Open the folded spend details, in the Full view unless told otherwise (Compact is the default). */
-function unfoldSpend(view: 'compact' | 'full' = 'full') {
+/** Open the folded spend details, as Numbers unless told otherwise (Numbers is the default). */
+function unfoldSpend(view: 'numbers' | 'chart' = 'numbers') {
   const region = screen.getByRole('region', { name: 'Spend' })
   fireEvent.click(within(region).getByRole('button', { expanded: false }))
-  if (view === 'full') fireEvent.click(within(region).getByRole('button', { name: 'Full' }))
+  if (view === 'chart') fireEvent.click(within(region).getByRole('button', { name: 'Chart' }))
+}
+
+/** What the newest call cost, as the first figure's menu offers it. */
+function lastCallOffered(): HTMLElement {
+  const region = screen.getByRole('region', { name: 'Spend' })
+  fireEvent.click(within(region).getAllByRole('button', { name: /Choose what this figure shows/ })[0]!)
+  return within(region).getByRole('menuitemradio', { name: /Last call/ })
 }
 
 function agent(p: Partial<SessionSummary> = {}): SessionSummary {
@@ -98,7 +105,7 @@ describe('the agent cockpit', () => {
     expect(within(nowCard).getByText('Editing')).toBeInTheDocument()
     expect(within(nowCard).getByText('session.go')).toBeInTheDocument()
     unfoldSpend()
-    expect(screen.getByText(/last call/)).toHaveTextContent('$0.07')
+    expect(lastCallOffered()).toHaveTextContent('$0.07')
     expect(screen.getByRole('meter', { name: '5 hours window used' })).toHaveAttribute('aria-valuenow', '41')
     // One line: when it resets, and whether it lasts (owner, 2026-10-11).
     expect(document.querySelector('[data-window="5 hours"]')?.textContent).toMatch(/resets in/)
@@ -129,7 +136,7 @@ describe('the agent cockpit', () => {
     expect(await within(timeline).findByText('go test ./internal/...')).toBeInTheDocument()
     expect(h.mainAsked.at(-1)).toEqual(['tool.pre', 'tool.post', 'turn.assistant'])
     unfoldSpend()
-    expect(screen.getByText(/last call/)).toHaveTextContent('$0.07')
+    expect(lastCallOffered()).toHaveTextContent('$0.07')
   })
 
   it('lists the subagents at work: type, task, current call, calls made, and who waits on you', async () => {
@@ -262,6 +269,7 @@ describe('the agent cockpit', () => {
 describe('the spend details', () => {
   const spend = () => screen.getByRole('region', { name: 'Spend' })
   const stored = () => JSON.parse(localStorage.getItem('caprock.app.cockpit.spend') ?? '{}')
+  const slots = () => Array.from(spend().querySelectorAll('[data-slot]')).map((d) => d.getAttribute('data-slot'))
 
   it('folds to one line by default, and remembers when it is opened', () => {
     const { unmount } = show(agent({ started_at: now - 72 * 60_000, worked_at: now }))
@@ -277,62 +285,73 @@ describe('the spend details', () => {
     expect(within(spend()).getByText('Tokens')).toBeInTheDocument()
   })
 
-  it('opens Compact by default and remembers Full, and the fold works in both', () => {
+  it('opens Numbers by default and remembers Chart, and the fold works in both', async () => {
     const { unmount } = show(agent())
-    unfoldSpend('compact')
-    expect(spend()).toHaveAttribute('data-spend-view', 'compact')
-    expect(within(spend()).getByRole('button', { name: 'Compact' })).toHaveAttribute('aria-pressed', 'true')
-    expect(Array.from(spend().querySelectorAll('dt')).map((d) => d.textContent)).toEqual(['Spent', 'Tokens', 'Cache'])
-    expect(within(spend()).queryByRole('button', { name: /Spend over time/ })).toBeNull()
-    fireEvent.click(within(spend()).getByRole('button', { name: 'Full' }))
-    expect(stored().view).toBe('full')
-    expect(within(spend()).getByRole('button', { name: /Spent this session/ })).toBeInTheDocument()
-    expect(within(spend()).getByRole('button', { name: /Spend over time/ })).toBeInTheDocument()
+    unfoldSpend()
+    expect(spend()).toHaveAttribute('data-spend-view', 'numbers')
+    expect(within(spend()).getByRole('button', { name: 'Numbers' })).toHaveAttribute('aria-pressed', 'true')
+    // Spent is the headline beside the agent already: the first figure shows burn rate instead.
+    expect(slots()).toEqual(['burn', 'tokens', 'cache'])
+    expect(spend().querySelector('[data-spend-time]')).toBeNull()
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Chart' })) })
+    expect(stored().view).toBe('chart')
+    expect(spend().querySelector('[data-spend-numbers]')).toBeNull()
+    expect(within(spend()).getByRole('group', { name: /^Spend by .*, this session$/ })).toBeInTheDocument()
+    expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$1.84')
     unmount()
     resetSpendPrefsForTest()
-    show(agent())
-    expect(spend()).toHaveAttribute('data-spend-view', 'full')
+    await act(async () => { show(agent()) })
+    expect(spend()).toHaveAttribute('data-spend-view', 'chart')
     // Folded, both views read the same one line.
     fireEvent.click(within(spend()).getByRole('button', { expanded: true }))
     expect(spend().querySelector('[data-spend-folded]')).toHaveTextContent('Spent $1.84')
     expect(within(spend()).queryByRole('group', { name: 'Spend view' })).toBeNull()
   })
 
-  it('reads the compact figures from the session, then from each range’s summary', async () => {
+  it('reads the figures and the chart from the session, then from each range’s summary', async () => {
     h.summaries = {
-      '7d': { range: '7d', cost_usd: 84.5, tokens_in: 1_000, cache_read: 9_000, cache_write: 0, savings: { hit_rate: 0.9 }, projects: [{ project: 'a', spark: { from_ms: 0, width_ms: 1, cost: [1, 0, 2], tokens: [] } }, { project: 'b', spark: { from_ms: 0, width_ms: 1, cost: [0, 3, 1], tokens: [] } }] } as unknown as Summary,
+      '7d': { range: '7d', cost_usd: 84.5, tokens_in: 1_000, cache_read: 9_000, cache_write: 0, turns: 30, tool_calls: 90, savings: { hit_rate: 0.9 }, projects: [{ project: 'a', spark: { from_ms: 0, width_ms: 86_400_000, cost: [1, 0, 2], tokens: [] } }, { project: 'b', spark: { from_ms: 0, width_ms: 86_400_000, cost: [0, 3, 1], tokens: [] } }] } as unknown as Summary,
       '30d': { range: '30d', cost_usd: 310, tokens_in: 0, cache_read: 0, cache_write: 0, savings: { hit_rate: 0 }, projects: [] } as unknown as Summary,
     }
     const today = { ...summary, range: 'today', cost_usd: 12.25, tokens_in: 500, cache_read: 1_500, cache_write: 0, savings: { hit_rate: 0.75 }, projects: [] } as unknown as Summary
     show(agent(), today)
-    unfoldSpend('compact')
+    unfoldSpend()
     const fig = (name: RegExp) => within(spend()).getByLabelText(name)
-    expect(fig(/^Spent, this session/)).toHaveTextContent('$1.84')
+    expect(fig(/^Tokens, this session/)).toHaveTextContent('950.1k')
     expect(within(spend()).getByRole('button', { name: 'session' })).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(within(spend()).getByRole('button', { name: 'today' }))
-    // Today is the summary the window already holds: no extra request.
+    // Today is the summary the window already holds: no extra request. A
+    // Caprock-wide figure is not the headline's, so Spent is back.
+    expect(slots()).toEqual(['cost', 'tokens', 'cache'])
     expect(fig(/^Spent, today · all sessions/)).toHaveTextContent('$12.25')
     expect(fig(/^Cache hit rate, today/)).toHaveTextContent('75%')
     expect(h.summaryAsked).toEqual([])
-    expect(spend().querySelector('[data-spend-scope]')).toHaveTextContent('Today · all sessions')
     await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: '7d' })) })
     expect(h.summaryAsked).toEqual(['7d'])
     expect(fig(/^Spent, 7 days/)).toHaveTextContent('$84.50')
     expect(fig(/^Tokens, 7 days/)).toHaveTextContent('10.0k')
     expect(fig(/^Cache hit rate, 7 days/)).toHaveTextContent('90%')
-    // The projects' sparks summed bucket by bucket: [1, 3, 3].
-    expect(spend().querySelectorAll('[data-period-spark] rect')).toHaveLength(3)
+    // The chart: the projects' sparks summed bucket by bucket, [1, 3, 3].
+    fireEvent.click(within(spend()).getByRole('button', { name: 'Chart' }))
+    const chart = within(spend()).getByRole('group', { name: 'Spend by 1 day, 7 days · all sessions' })
+    expect(chart.querySelectorAll('rect')).toHaveLength(3)
+    expect(chart.querySelector('[data-spend-total]')).toHaveTextContent('$84.50')
+    expect(chart.querySelector('[data-spend-readout]')).toHaveTextContent('$3.00')
     await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: '30d' })) })
+    // No spark in the range: it says so, never an empty line.
+    expect(spend().querySelector('[data-spend-empty]')).toHaveTextContent('no spend by time to draw')
+    expect(within(spend()).queryByRole('group', { name: /^Spend by/ })).toBeNull()
+    fireEvent.click(within(spend()).getByRole('button', { name: 'Numbers' }))
     expect(fig(/^Spent, 30 days/)).toHaveTextContent('$310.00')
     // No input in the range: no cache rate, a dash rather than a zero.
     expect(fig(/^Cache hit rate, 30 days/)).toHaveTextContent('—')
-    expect(stored().period).toBe('30d')
+    expect(stored()).toMatchObject({ period: '30d', view: 'numbers' })
   })
 
-  it('lays the compact block out to shrink: min-w-0 down the chain, three equal columns', () => {
+  it('lays the numbers out to shrink: min-w-0 down the chain, three equal columns', () => {
     show(agent())
-    unfoldSpend('compact')
-    const block = spend().querySelector('[data-spend-compact]')!
+    unfoldSpend()
+    const block = spend().querySelector('[data-spend-numbers]')!
     expect(block.className).toMatch(/\bmin-w-0\b/)
     expect(block.className).toMatch(/grid-cols-\[minmax\(0,1fr\)\]/)
     const dl = block.querySelector('dl')!
@@ -340,36 +359,49 @@ describe('the spend details', () => {
     expect(dl.className).toMatch(/\bmin-w-0\b/)
     for (const d of Array.from(dl.children)) expect(d.className).toMatch(/\bmin-w-0\b/)
     for (const dd of Array.from(dl.querySelectorAll('dd'))) expect(dd.className).toMatch(/\btruncate\b/)
-    expect(spend().querySelector('[data-spend-scope]')!.className).toMatch(/\bmin-w-0\b.*\btruncate\b|\btruncate\b.*\bmin-w-0\b/)
-    const spark = block.querySelector('[data-period-spark]')!
-    expect(Number(spark.getAttribute('height') ?? (spark as HTMLElement).style.height.replace('px', ''))).toBeLessThanOrEqual(24)
   })
 
-  it('takes the headline the viewer picks, remembers it, and the cells never repeat it', () => {
+  it('lets each figure pick what it shows, swaps rather than repeats, and remembers it', () => {
+    show(agent({ started_at: now - 72 * 60_000, worked_at: now }))
+    unfoldSpend()
+    const menuOf = (i: number) => fireEvent.click(within(spend()).getAllByRole('button', { name: /Choose what this figure shows/ })[i]!)
+    menuOf(0)
+    const menu = within(spend()).getByRole('menu', { name: 'What figure 1 shows' })
+    // The headline beside the agent is not offered again for the session.
+    expect(within(menu).getByRole('menuitemradio', { name: /Spent/ })).toBeDisabled()
+    expect(within(menu).getByRole('menuitemradio', { name: /Burn rate/ })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: /Time working/ }))
+    expect(slots()).toEqual(['time', 'tokens', 'cache'])
+    expect(within(spend()).getByLabelText(/^Time working, this session/)).toHaveTextContent('1h 12m')
+    // Picking what another figure shows swaps the two.
+    menuOf(2)
+    fireEvent.click(within(spend()).getByRole('menuitemradio', { name: /Tokens/ }))
+    expect(slots()).toEqual(['time', 'cache', 'tokens'])
+    expect(stored().slots).toEqual(['time', 'cache', 'tokens'])
+    expect(within(spend()).queryByRole('menu')).toBeNull()
+  })
+
+  it('takes the headline the viewer picks, remembers it, and the figures never repeat it', () => {
     show(agent())
     unfoldSpend()
-    const labels = () => Array.from(spend().querySelectorAll('dt')).map((d) => d.textContent)
-    expect(labels()).toEqual(['Turns', 'Tools', 'Tokens', 'Cache'])
     fireEvent.click(screen.getByRole('button', { name: /Headline: Cost/ }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /Turns/ }))
-    expect(screen.getByLabelText('Turns 12')).toBeInTheDocument()
-    expect(labels()).toEqual(['Cost', 'Tools', 'Tokens', 'Cache'])
-    expect(stored().headline).toBe('turns')
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Tokens/ }))
+    expect(screen.getByLabelText('Tokens 950.1k')).toBeInTheDocument()
+    expect(slots()).toEqual(['cost', 'burn', 'cache'])
+    expect(stored().headline).toBe('tokens')
     resetSpendPrefsForTest()
     expect(screen.queryByRole('menu', { name: 'Headline figure' })).toBeNull()
   })
 
-  it('opens spend over time in the flow of the block, never over it', async () => {
+  it('draws the chart in the flow of the block, never over it', async () => {
     show(agent())
     unfoldSpend()
-    const row = within(spend()).getByRole('button', { name: /Spend over time/ })
-    expect(row).toHaveAttribute('aria-expanded', 'false')
-    await act(async () => { fireEvent.click(row) })
-    expect(row).toHaveAttribute('aria-expanded', 'true')
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Chart' })) })
+    expect(within(spend()).getByRole('button', { name: 'Chart' })).toHaveAttribute('aria-pressed', 'true')
     const chart = spend().querySelector('[data-spend-time]')!
     expect(chart).toBeTruthy()
     expect(chart.className).not.toMatch(/\b(absolute|fixed)\b/)
     expect(spend().querySelector('[role="dialog"]')).toBeNull()
-    expect(stored().chart).toBe(true)
+    expect(stored().view).toBe('chart')
   })
 })
