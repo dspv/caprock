@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   clients: [] as { callbacks: { write: (d: Uint8Array, done: () => void) => void; reset: () => void } }[],
   writes: [] as unknown[],
   suspends: 0,
+  claims: 0,
 }))
 
 vi.mock('@xterm/xterm', () => ({
@@ -69,6 +70,7 @@ vi.mock('@/lib/termv2', () => ({
     suspend() { h.suspends++ }
     send() { return true }
     resize() {}
+    focus() { h.claims++ }
     dispose() {}
   },
 }))
@@ -89,6 +91,7 @@ beforeEach(() => {
   h.clients.length = 0
   h.writes.length = 0
   h.suspends = 0
+  h.claims = 0
   localStorage.clear()
   setTerminalPrefs(DEFAULT_PREFS)
 })
@@ -336,5 +339,32 @@ describe('a hidden pane does no terminal work', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// One PTY, several terminals: the one in use sizes it (internal/api/termsize.go).
+// A phone that typed into the session left the agent 45 columns wide in the
+// app's pane until the pane's box next changed (Vova, 2026-10-12). Typing
+// claims the PTY on the daemon's side; looking at the pane claims it here.
+describe('a pane claims the PTY when it is looked at', () => {
+  it('on coming to the front, on the window gaining focus or coming into view, and on a click', () => {
+    const { container, rerender } = render(<TerminalPane sessionId="a" active={false} />)
+    expect(h.claims).toBe(0)
+    rerender(<TerminalPane sessionId="a" active />)
+    expect(h.claims).toBe(1)
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(h.claims).toBe(2)
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(h.claims).toBe(3)
+    const host = container.querySelector('[data-term-host]')!
+    fireEvent.pointerDown(host)
+    expect(h.claims).toBe(4)
+  })
+
+  it('never from a tab out of sight', () => {
+    render(<TerminalPane sessionId="a" active={false} />)
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(h.claims).toBe(0)
   })
 })

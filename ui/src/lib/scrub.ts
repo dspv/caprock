@@ -238,7 +238,7 @@ export function timeBars(calls: readonly CallPoint[]): { step: number; bars: Tim
 }
 
 /** "Today 14:00–15:00", "Fri 22:00–Sat 01:00", "Mon 6 Oct" for a day. */
-export function barLabel(b: TimeBar, step: number, now: number): string {
+export function barLabel(b: Pick<TimeBar, 'start' | 'end'>, step: number, now: number): string {
   const d = new Date(b.start)
   const e = new Date(b.end)
   const p = (v: number) => String(v).padStart(2, '0')

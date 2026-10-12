@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CONNECT_TIMEOUT_MS, PROBE_MS } from './reconnect'
 import {
-  BACKOFF_MAX_MS, BACKOFF_MIN_MS, DEAD_MS, HIGH_WATER, OFFLINE_QUEUE_BYTES, TERM_V2_PROTOCOL,
+  BACKOFF_MAX_MS, BACKOFF_MIN_MS, DEAD_MS, FOCUS_DEBOUNCE_MS, HIGH_WATER, OFFLINE_QUEUE_BYTES, TERM_V2_PROTOCOL,
   TermClient, backoff, type TermState,
 } from './termv2'
 
@@ -519,3 +519,50 @@ describe('TermClient — exactly once (Phone v2 item 3)', () => {
 /** The last mounted client's wake, as the page's listeners would call it. */
 let wakeLast: (() => void) | null = null
 function mountWake() { wakeLast?.() }
+
+// One PTY, several terminals: the one in use sizes it (internal/api/termsize.go).
+describe('TermClient — claiming the PTY (focus)', () => {
+  beforeEach(() => {
+    FakeSocket.all = []
+    vi.useFakeTimers()
+    vi.stubGlobal('WebSocket', FakeSocket)
+  })
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+  const texts = (s: FakeSocket) => s.sent.filter((d): d is string => typeof d === 'string' && !d.startsWith('{"ping"'))
+
+  it('sends one claim for a burst of focus events', () => {
+    const t = mount()
+    const s1 = last()
+    s1.accept()
+    t.c.focus()
+    t.c.focus()
+    t.c.focus()
+    expect(texts(s1)).toEqual([])
+    vi.advanceTimersByTime(FOCUS_DEBOUNCE_MS)
+    expect(texts(s1)).toEqual(['{"focus":true}'])
+    t.c.focus()
+    vi.advanceTimersByTime(FOCUS_DEBOUNCE_MS)
+    expect(texts(s1)).toEqual(['{"focus":true}', '{"focus":true}'])
+  })
+
+  it('a claim made with no socket goes with the next first size, as one frame', () => {
+    const t = mount()
+    const s1 = last()
+    t.c.focus()
+    vi.advanceTimersByTime(FOCUS_DEBOUNCE_MS)
+    s1.accept()
+    t.c.resize(150, 40)
+    t.c.resize(151, 40)
+    expect(texts(s1)).toEqual(['{"resize":{"cols":150,"rows":40},"focus":true}', '{"resize":{"cols":151,"rows":40}}'])
+  })
+
+  it('says nothing to a daemon from before v2, which would not understand it', () => {
+    const t = mount()
+    const s1 = last()
+    s1.accept('')
+    t.c.focus()
+    vi.advanceTimersByTime(FOCUS_DEBOUNCE_MS)
+    t.c.resize(100, 30)
+    expect(texts(s1)).toEqual(['{"resize":{"cols":100,"rows":30}}'])
+  })
+})

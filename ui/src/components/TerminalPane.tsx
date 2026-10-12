@@ -368,6 +368,20 @@ export function TerminalPane({
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('online', onWake)
 
+    // One PTY, several terminals (this app, a phone): it is the size of the
+    // one in use (internal/api/termsize.go). Typing claims it on the daemon's
+    // side; looking claims it here — the window gaining focus or coming back
+    // into view, this tab coming to the front (show), a click in the pane.
+    // Without it a phone that typed into the session left the agent drawn
+    // 45 columns wide in this pane until its box next changed (Vova,
+    // 2026-10-12).
+    const claim = () => { if (visible && document.visibilityState === 'visible') conn.focus() }
+    window.addEventListener('focus', claim)
+    document.addEventListener('visibilitychange', claim)
+    el.addEventListener('pointerdown', claim)
+    const textarea = term.textarea
+    textarea?.addEventListener('focus', claim)
+
     // A face finishing its load: measure the cell again, drop the atlas,
     // repaint, and fit to the new cell.
     const unfont = watchTerminalFont(term, () => {
@@ -396,6 +410,7 @@ export function TerminalPane({
         refit()
         if (webglLost || !webgl) scheduleWebgl()
         if (focusedRef.current) term.focus()
+        claim()
       },
       hide: () => {
         visible = false
@@ -435,6 +450,10 @@ export function TerminalPane({
       if (fitRaf) cancelAnimationFrame(fitRaf)
       document.removeEventListener('visibilitychange', onWake)
       window.removeEventListener('online', onWake)
+      window.removeEventListener('focus', claim)
+      document.removeEventListener('visibilitychange', claim)
+      el.removeEventListener('pointerdown', claim)
+      textarea?.removeEventListener('focus', claim)
       ro.disconnect()
       dropWebgl()
       input.dispose()

@@ -1,9 +1,10 @@
 /**
  * The cockpit's spend figures as each viewer has set them (.ai/04-ui.md §
  * Inspector): which figure is the headline beside the agent, whether the
- * Spend details are folded, whether *Spend over time* is open, and the
- * figures themselves. Kept apart from the components so the arithmetic and
- * the choice of cells are tested.
+ * Spend details are folded, whether they read as numbers or a chart, over
+ * which period, which three figures, and the figures themselves. Kept
+ * apart from the components so the arithmetic and the choice of figures
+ * are tested.
  *
  * Every figure is the daemon's or summed from the calls the cockpit already
  * holds; one the data does not carry is `undefined`, drawn as a dash, never
@@ -11,13 +12,13 @@
  */
 import { useSyncExternalStore } from 'react'
 import type { SessionSummary, Summary } from './api'
-import { timeBars, type CallPoint } from './scrub'
+import type { CallPoint } from './scrub'
 import { fmtDuration, fmtPct, fmtTokens, fmtUSD } from './format'
 
 /** What the big figure can be. */
 export type Headline = 'cost' | 'burn' | 'tokens' | 'turns' | 'cache' | 'time'
-/** What a small cell can be: any headline, and tool calls. */
-export type Metric = Headline | 'tools'
+/** What a figure of the Numbers row can be: any headline, tool calls, and the last call's cost. */
+export type Metric = Headline | 'tools' | 'last'
 
 /** The headline menu, in its order, with what each one is. */
 export const HEADLINES: readonly { id: Headline; name: string; hint: string }[] = [
@@ -29,22 +30,71 @@ export const HEADLINES: readonly { id: Headline; name: string; hint: string }[] 
   { id: 'time', name: 'Time working', hint: 'from its start to its last activity' },
 ]
 
-/** The small cells' order of usefulness: the first four that are not the headline. */
-const CELL_ORDER: readonly Metric[] = ['cost', 'turns', 'tools', 'tokens', 'cache', 'burn', 'time']
+/**
+ * The Numbers row's menu, in its order: what each figure can show, its
+ * short label over the figure, and what it is. Burn rate, time working and
+ * the last call are a session's own; a Caprock-wide period has a dash there.
+ */
+export const METRICS: readonly { id: Metric; name: string; label: string; hint: string }[] = [
+  { id: 'cost', name: 'Spent', label: 'Spent', hint: 'at API list price' },
+  { id: 'burn', name: 'Burn rate', label: 'Burn', hint: 'per hour, over the last hour of activity' },
+  { id: 'tokens', name: 'Tokens', label: 'Tokens', hint: 'input, cache reads and writes included' },
+  { id: 'cache', name: 'Cache hit rate', label: 'Cache', hint: 'input read from the prompt cache' },
+  { id: 'last', name: 'Last call', label: 'Last call', hint: 'what the newest model call cost' },
+  { id: 'time', name: 'Time working', label: 'Time', hint: 'from its start to its last activity' },
+  { id: 'turns', name: 'Turns', label: 'Turns', hint: 'prompts the agent answered' },
+  { id: 'tools', name: 'Tool calls', label: 'Tools', hint: 'tool calls made' },
+]
 
-/** The four cells under a headline, never repeating it. */
-export function cellsFor(h: Headline): Metric[] {
-  return CELL_ORDER.filter((m) => m !== h).slice(0, 4)
+/** The metrics only a session has: a Caprock-wide period draws a dash for them. */
+export const SESSION_ONLY: ReadonlySet<Metric> = new Set<Metric>(['burn', 'time', 'last'])
+
+/** The three figures before a viewer picks: what #472's Compact showed. */
+export const DEFAULT_SLOTS: readonly Metric[] = ['cost', 'tokens', 'cache']
+/** What fills a slot that is empty or would repeat the headline: the first of these not shown already. */
+const FILL_ORDER: readonly Metric[] = ['cost', 'tokens', 'cache', 'burn', 'last', 'time', 'turns', 'tools']
+
+/** Three distinct metrics from whatever was stored, the defaults filling any gap. */
+export function normalizeSlots(raw: unknown): Metric[] {
+  const valid = new Set(METRICS.map((m) => m.id))
+  const out: Metric[] = []
+  for (const v of Array.isArray(raw) ? raw : []) {
+    if (out.length < 3 && valid.has(v as Metric) && !out.includes(v as Metric)) out.push(v as Metric)
+  }
+  for (const m of [...DEFAULT_SLOTS, ...FILL_ORDER]) if (out.length < 3 && !out.includes(m)) out.push(m)
+  return out
 }
 
-/** The short label a cell carries. */
-export const CELL_LABEL: Record<Metric, string> = {
-  cost: 'Cost', burn: 'Burn', tokens: 'Tokens', turns: 'Turns', cache: 'Cache', time: 'Time', tools: 'Tools',
+/**
+ * The three figures as drawn. For *session*, a slot holding the hero's
+ * headline shows the next metric not already shown instead: the same
+ * figure twice, a few lines apart, says nothing new. A Caprock-wide period
+ * is a different figure, so it keeps it.
+ */
+export function shownSlots(slots: readonly Metric[], period: SpendPeriod, headline: Headline): Metric[] {
+  const out = normalizeSlots(slots)
+  if (period !== 'session') return out
+  return out.map((m, i) => {
+    if (m !== headline) return m
+    const taken = new Set<Metric>([headline, ...out.filter((_, j) => j !== i)])
+    return FILL_ORDER.find((x) => !taken.has(x)) ?? m
+  })
 }
 
-/** How the unfolded Spend block reads: three figures and a spark, or the cells and *Spend over time*. */
-export type SpendView = 'compact' | 'full'
-/** What the compact figures cover: this session, or every session on the machine over a range. */
+/** Slot `i` set to `m`; a slot that already showed `m` takes what `i` had, so no metric is ever shown twice. */
+export function pickSlot(slots: readonly Metric[], i: number, m: Metric): Metric[] {
+  const out = normalizeSlots(slots)
+  const j = out.indexOf(m)
+  const old = out[i]
+  if (old === undefined || j === i) return out
+  out[i] = m
+  if (j >= 0) out[j] = old
+  return out
+}
+
+/** How the unfolded Spend block reads: three figures, or the period's spend as a chart. */
+export type SpendView = 'numbers' | 'chart'
+/** What the figures and the chart cover: this session, or every session on the machine over a range. */
 export type SpendPeriod = 'session' | 'today' | '7d' | '30d'
 export const SPEND_PERIODS: readonly SpendPeriod[] = ['session', 'today', '7d', '30d']
 
@@ -52,15 +102,29 @@ export interface SpendPrefs {
   /** The Spend details folded to one line: the default, since most viewers want context and the plan first. */
   folded: boolean
   headline: Headline
-  /** *Spend over time* open under the cells. */
-  chart: boolean
-  /** Compact by default (owner, 2026-10-12: about half as tall, only the figures that inform). */
+  /**
+   * Numbers or Chart (owner, 2026-10-12: "you can choose what you see —
+   * the chart or the numbers, and which ones"). Numbers by default.
+   */
   view: SpendView
-  /** What the compact figures cover. */
+  /** What the figures and the chart cover. */
   period: SpendPeriod
+  /** The Numbers row's three metrics, left to right, never one twice. */
+  slots: Metric[]
 }
 
-export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: true, headline: 'cost', chart: false, view: 'compact', period: 'session' }
+export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: true, headline: 'cost', view: 'numbers', period: 'session', slots: [...DEFAULT_SLOTS] }
+
+/**
+ * A stored view, including 0.111.0's: *Full* drew the cells and *Spend
+ * over time*, so it reads as Chart; *Compact* drew three figures, so it
+ * reads as Numbers.
+ */
+function viewOf(v: unknown): SpendView {
+  if (v === 'numbers' || v === 'chart') return v
+  if (v === 'full') return 'chart'
+  return DEFAULT_SPEND_PREFS.view
+}
 
 const KEY = 'caprock.app.cockpit.spend'
 const listeners = new Set<() => void>()
@@ -71,9 +135,9 @@ export function normalizeSpendPrefs(raw: unknown): SpendPrefs {
   return {
     folded: typeof v.folded === 'boolean' ? v.folded : DEFAULT_SPEND_PREFS.folded,
     headline: HEADLINES.some((x) => x.id === v.headline) ? (v.headline as Headline) : DEFAULT_SPEND_PREFS.headline,
-    chart: typeof v.chart === 'boolean' ? v.chart : DEFAULT_SPEND_PREFS.chart,
-    view: v.view === 'compact' || v.view === 'full' ? v.view : DEFAULT_SPEND_PREFS.view,
+    view: viewOf(v.view),
     period: SPEND_PERIODS.includes(v.period as SpendPeriod) ? (v.period as SpendPeriod) : DEFAULT_SPEND_PREFS.period,
+    slots: normalizeSlots(v.slots),
   }
 }
 
@@ -161,6 +225,8 @@ export interface SpendFigures {
   cache?: number
   /** From the start to the last activity, ms. */
   timeMs?: number
+  /** What the newest priced model call cost. */
+  last?: number
 }
 
 export function spendFigures(s: SessionSummary, calls: readonly CallPoint[]): SpendFigures {
@@ -176,6 +242,7 @@ export function spendFigures(s: SessionSummary, calls: readonly CallPoint[]): Sp
     tools: st?.tool_calls,
     cache: tokens ? (s.savings?.hit_rate ?? 0) * 100 : undefined,
     timeMs: s.started_at > 0 && end > s.started_at ? end - s.started_at : undefined,
+    last: calls.length > 0 ? calls[calls.length - 1]!.cost : undefined,
   }
 }
 
@@ -187,21 +254,33 @@ export function fmtSpan(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`
 }
 
-/** A metric's value as a cell or the headline draws it; a dash when unknown. */
-export function metricValue(m: Metric, f: SpendFigures): string {
+/** A metric's value as a figure or the headline draws it; a dash when unknown. */
+export function metricValue(m: Metric, f: PeriodFigures): string {
   switch (m) {
-    case 'cost': return fmtUSD(f.cost)
+    case 'cost': return f.cost === undefined ? '—' : fmtUSD(f.cost)
     case 'burn': return f.burn ? `${fmtUSD(f.burn.perHour)}/h` : '—'
     case 'tokens': return f.tokens === undefined ? '—' : fmtTokens(f.tokens)
     case 'turns': return f.turns === undefined ? '—' : String(f.turns)
     case 'tools': return f.tools === undefined ? '—' : String(f.tools)
     case 'cache': return f.cache === undefined ? '—' : fmtPct(f.cache)
     case 'time': return f.timeMs === undefined ? '—' : fmtSpan(f.timeMs)
+    case 'last': return f.last === undefined ? '—' : fmtUSD(f.last)
   }
 }
 
-/** What hovering a metric explains. */
-export function metricTitle(m: Metric, f: SpendFigures): string {
+/** What hovering a metric explains; for a Caprock-wide period, whose figure it is. */
+export function metricTitle(m: Metric, f: PeriodFigures, period: SpendPeriod = 'session'): string {
+  if (period !== 'session') {
+    const when = periodScope(period).split(' · ')[0]!.toLowerCase()
+    if (SESSION_ONLY.has(m)) return 'A session’s own figure: pick session to see it'
+    switch (m) {
+      case 'cost': return `What every session spent, ${when}, at API list price`
+      case 'tokens': return `Input tokens of every session, ${when}, cache reads and writes included`
+      case 'cache': return `Share of input tokens read from the prompt cache, every session, ${when}`
+      case 'turns': return `Prompts answered, every session, ${when}`
+      case 'tools': return `Tool calls, every session, ${when}`
+    }
+  }
   switch (m) {
     case 'cost': return 'What the session has spent, at API list price'
     case 'burn': return f.burn
@@ -212,6 +291,7 @@ export function metricTitle(m: Metric, f: SpendFigures): string {
     case 'tools': return 'Tool calls'
     case 'cache': return 'Share of input tokens read from the prompt cache'
     case 'time': return 'From the session’s start to its last prompt, reply or tool call'
+    case 'last': return 'What the newest model call cost'
   }
 }
 
@@ -225,6 +305,7 @@ function phrase(m: Metric, f: SpendFigures): string | undefined {
     case 'tools': return f.tools === undefined ? undefined : `${f.tools} tool calls`
     case 'cache': return f.cache === undefined ? undefined : `${fmtPct(f.cache)} cache hits`
     case 'time': return f.timeMs === undefined ? undefined : fmtSpan(f.timeMs)
+    case 'last': return f.last === undefined ? undefined : `last call ${fmtUSD(f.last)}`
   }
 }
 
@@ -235,18 +316,25 @@ export function foldedLine(h: Headline, f: SpendFigures): string {
   return line.charAt(0).toUpperCase() + line.slice(1)
 }
 
-/** What the compact block shows for a period. A figure the source does not carry is undefined (a dash). */
-export interface PeriodFigures {
+/**
+ * The figures for a period, and the period's spend as bars. A figure the
+ * source does not carry is undefined (a dash); `series` is undefined when
+ * the source has no series to draw, never an empty line.
+ */
+export interface PeriodFigures extends Omit<SpendFigures, 'cost'> {
   cost?: number
-  /** Input tokens with cache reads and writes, as the session's Tokens counts them. */
-  tokens?: number
-  /** Percent of input read from the cache. */
-  cache?: number
-  /** Spend over the period, oldest first: the spark under the figures. */
-  series: number[]
+  series?: { step: number; bars: SpendBar[] }
 }
 
-/** Whose money the compact figures are: "This session", "Today · all sessions". */
+/** One stretch of the chart: when, and what was spent in it. */
+export interface SpendBar {
+  /** Unix ms, inclusive. */
+  start: number
+  end: number
+  cost: number
+}
+
+/** Whose money the figures are: "This session", "Today · all sessions". */
 export function periodScope(p: SpendPeriod): string {
   switch (p) {
     case 'session': return 'This session'
@@ -257,27 +345,34 @@ export function periodScope(p: SpendPeriod): string {
 }
 
 /**
- * The compact figures for a period. *session* is this session's own figures
- * and its calls summed by time (`timeBars`, as *Spend over time* draws
- * them). today, 7d and 30d are Caprock-wide, from that range's
- * `/v1/stats/summary`: its totals, its savings' hit rate, and the projects'
- * sparks (24 hours, 7 or 30 days) summed bucket by bucket — no new query.
- * No summary yet: dashes, never zeros.
+ * The figures for a period. *session* is this session's own figures (its
+ * chart is drawn from its full call series, `SpendOverTime`). today, 7d and
+ * 30d are Caprock-wide, from that range's `/v1/stats/summary`: its totals,
+ * its savings' hit rate, and the projects' sparks (24 hours, 7 or 30 days)
+ * summed bucket by bucket into the chart's bars — no new query. No summary
+ * yet: dashes, never zeros; no spark in it: no series.
  */
-export function periodFigures(p: SpendPeriod, f: SpendFigures, calls: readonly CallPoint[], summary: Summary | undefined): PeriodFigures {
-  if (p === 'session') {
-    return { cost: f.cost, tokens: f.tokens, cache: f.cache, series: timeBars(calls).bars.map((b) => b.cost) }
-  }
-  if (!summary) return { series: [] }
+export function periodFigures(p: SpendPeriod, f: SpendFigures, summary: Summary | undefined): PeriodFigures {
+  if (p === 'session') return f
+  if (!summary) return {}
   const tokens = summary.tokens_in + summary.cache_read + summary.cache_write
-  const series: number[] = []
+  const sums: number[] = []
+  let grid: { from: number; width: number } | undefined
   for (const proj of summary.projects ?? []) {
-    proj.spark?.cost.forEach((v, i) => { series[i] = (series[i] ?? 0) + (Number.isFinite(v) ? v : 0) })
+    const sp = proj.spark
+    if (!sp?.cost?.length) continue
+    if (!grid && sp.width_ms > 0) grid = { from: sp.from_ms, width: sp.width_ms }
+    sp.cost.forEach((v, i) => { sums[i] = (sums[i] ?? 0) + (Number.isFinite(v) ? v : 0) })
   }
+  const series = grid
+    ? { step: grid.width, bars: Array.from(sums, (v, i) => ({ start: grid!.from + i * grid!.width, end: grid!.from + (i + 1) * grid!.width, cost: v ?? 0 })) }
+    : undefined
   return {
     cost: summary.cost_usd,
     tokens,
     cache: tokens > 0 ? (summary.savings?.hit_rate ?? 0) * 100 : undefined,
-    series: Array.from(series, (v) => v ?? 0),
+    turns: summary.turns,
+    tools: summary.tool_calls,
+    series,
   }
 }

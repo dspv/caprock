@@ -35,6 +35,9 @@ export const LOW_WATER = 256 * 1024
 
 export type TermState = LinkPhase
 
+/** Focus events this close together are one claim on the PTY's size. */
+export const FOCUS_DEBOUNCE_MS = 100
+
 /** Said when the daemon closes with 1008 and gives no reason of its own. */
 export const REVOKED_REASON = 'ask on the machine Caprock runs on'
 
@@ -112,6 +115,9 @@ export class TermClient {
   /** The program exited to be started again under the same id (a
    *  permission-mode restart): the close that follows is reconnected. */
   private restarting = false
+  /** A claim on the PTY's size (`focus`) waits to be sent: debounced, or until a socket opens. */
+  private focusPending = false
+  private focusTimer: ReturnType<typeof setTimeout> | undefined
 
   constructor(private readonly opts: TermOptions) {
     this.random = opts.random ?? Math.random
@@ -165,7 +171,35 @@ export class TermClient {
   resize(cols: number, rows: number): void {
     const ws = this.ws
     if (!ws || ws.readyState !== WebSocket.OPEN || cols <= 0 || rows <= 0) return
+    if (this.focusPending && this.isV2(ws)) {
+      // A claim waiting for this socket goes with its first size: one repaint, not two.
+      this.focusPending = false
+      ws.send(JSON.stringify({ resize: { cols, rows }, focus: true }))
+      return
+    }
     ws.send(JSON.stringify({ resize: { cols, rows } }))
+  }
+
+  /**
+   * The person is looking at this terminal — its window gained focus, its tab
+   * came to the front, a click in it: the PTY takes this terminal's size
+   * when another one has it (`{"focus":true}`, internal/api/termsize.go).
+   * Typing claims it on the daemon's side and needs no call. Bursts (a
+   * window's focus and visibility arrive together) are sent once; a claim
+   * made while no socket is open goes with the next one's first size. The
+   * daemon does nothing when this terminal already has the PTY.
+   */
+  focus(): void {
+    if (this.ended || this.disposed) return
+    this.focusPending = true
+    if (this.focusTimer !== undefined) return
+    this.focusTimer = setTimeout(() => {
+      this.focusTimer = undefined
+      const ws = this.ws
+      if (!this.focusPending || !ws || ws.readyState !== WebSocket.OPEN || !this.isV2(ws)) return
+      this.focusPending = false
+      ws.send(JSON.stringify({ focus: true }))
+    }, FOCUS_DEBOUNCE_MS)
   }
 
   /**
@@ -209,6 +243,7 @@ export class TermClient {
 
   dispose(): void {
     this.disposed = true
+    clearTimeout(this.focusTimer)
     this.retry.cancel()
     clearInterval(this.pingTimer)
     const ws = this.ws

@@ -22,10 +22,10 @@ import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
 import { PlanChip, usePlan } from './PlanPicker'
 import { WINDOW_MS, pace } from '@/lib/pace'
-import { SpendOverTime, SpendSpark } from './SpendScrub'
-import { callsFromEvents, type CallPoint } from '@/lib/scrub'
+import { SpendChart, SpendOverTime } from './SpendScrub'
+import { callsFromEvents } from '@/lib/scrub'
 import { everyWhileVisible } from '@/lib/visible'
-import { CELL_LABEL, HEADLINES, SPEND_PERIODS, cellsFor, foldedLine, metricTitle, metricValue, periodFigures, periodScope, setSpendPrefs, spendFigures, useSpendPrefs, type Headline, type SpendFigures, type SpendPeriod } from '@/lib/spendview'
+import { HEADLINES, METRICS, SPEND_PERIODS, foldedLine, metricTitle, metricValue, periodFigures, periodScope, pickSlot, setSpendPrefs, shownSlots, spendFigures, useSpendPrefs, type Headline, type Metric, type PeriodFigures, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
@@ -33,8 +33,8 @@ import { PermissionModeChip } from './PermissionModeChip'
 import { KindIcon } from './KindIcon'
 import { SubagentDetail } from './SubagentDetail'
 import {
-  askLine, backgroundAgents, chipGroups, subagentChips, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns, turnCosts,
-  type CockpitState, type SubagentChip, type ToolRun, type TurnCost,
+  askLine, backgroundAgents, chipGroups, subagentChips, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns,
+  type CockpitState, type SubagentChip, type ToolRun,
 } from '@/lib/cockpit'
 
 const TIMELINE_ROWS = 7
@@ -114,7 +114,6 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const [permission] = usePermission(sessionId)
   const now = useNow(1000)
   const runs = useMemo(() => toolRuns(main), [main])
-  const turns = useMemo(() => turnCosts(main), [main])
   const state = cockpitState(s, hasPermission || !!permission)
   // The subagent row opened in place (one at a time), and whether "+N
   // finished" is open — which asks the daemon for more than three of them.
@@ -144,7 +143,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
       <TodoBlock sessionId={sessionId} />
       <ContextMeter s={s} />
       {plan && <PlanWindows limits={plan} agent={s.agent} now={now} />}
-      <Spend s={s} turns={turns} sessionId={sessionId} events={main} now={now} figures={figures} calls={calls} summary={summary} />
+      <Spend s={s} sessionId={sessionId} events={main} now={now} figures={figures} summary={summary} />
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
       {changes}
     </>
@@ -167,15 +166,17 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
   const working = subs?.working.length ?? 0
   // One row: the agent at the left, the headline figure at the right (owner,
   // 2026-10-12: "put it to the right of the agent, then the chart is wide").
-  // Too narrow for both, the figure wraps under the name. Under the name, the
+  // Too narrow for both (.cockpit-hero, a container query), the figure goes
+  // to the chips' row, at its right. Under the name, the
   // state and how many subagents work (owner, 2026-10-12: "move the text with
   // how many subagents are running higher"); their chips under the row.
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3.5 gap-y-2" data-state={state}>
-      <div className={`cockpit-avatar relative grid h-[58px] w-[58px] shrink-0 place-items-center rounded-[15px]`} data-state={state}>
+    <div className="@container min-w-0">
+    <div className="cockpit-hero" data-state={state} data-chips={strip.chips.length > 0 ? undefined : "none"}>
+      <div className={`cockpit-avatar relative grid h-[58px] w-[58px] shrink-0 place-items-center rounded-[15px] [grid-area:av]`} data-state={state}>
         <AgentCharacter who={characterFor(s.agent ?? 'claude')} size={46} className="cockpit-character" />
       </div>
-      <div className="grid min-w-0 flex-1 basis-[9.5rem] gap-1">
+      <div className="grid min-w-0 gap-1 [grid-area:info]">
         <p className="text-[12px] text-fg-muted">
           <span className="font-medium text-fg">{agentName(s.agent ?? 'claude')}</span>
           {s.model_display || s.model ? <span> · {s.model_display || s.model}</span> : null}
@@ -196,10 +197,13 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
           <p className="text-[11px] text-fg-faint">started {fmtAgo(s.started_at, now)}</p>
         )}
       </div>
-      {s.stats && <HeadlineFigure figures={figures} />}
-      {/* The chips take the hero's whole width, so three groups of four fit
-        * a row in a 324px inspector rather than one beside the figure. */}
-      {strip.chips.length > 0 && <div className="basis-full"><SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} /></div>}
+      {s.stats && <div data-hero-fig className="min-w-0 self-center justify-self-end [grid-area:fig]"><HeadlineFigure figures={figures} /></div>}
+      {/* Wide, the figure sits right of the agent and the chips take the
+        * row under both; narrow, the figure moves down to the chips' row,
+        * at its right, so it never hangs alone on a line of its own (owner,
+        * 2026-10-12, a $1,197.22 figure wrapped under a 324px inspector). */}
+      {strip.chips.length > 0 && <div className="min-w-0 self-center [grid-area:chips]"><SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} /></div>}
+    </div>
     </div>
   )
 }
@@ -322,25 +326,26 @@ function HeadlineFigure({ figures }: { figures: SpendFigures }) {
 }
 
 /**
- * The spend details under the plan, folded by default to one line. Unfolded
- * they read one of two ways, picked by *Compact | Full* in the header and
- * remembered per viewer: **Compact** (the default; owner, 2026-10-12: about
- * half as tall, only the figures that inform) — Spent, Tokens and Cache for
- * this session, today, 7 or 30 days, and a spark of that period's spend;
- * **Full** — four cells (never the headline again) and *Spend over time*,
- * which opens in the flow as wide as the cockpit.
+ * The spend details under the plan, folded by default to one line.
+ * Unfolded, the header carries a period chip (session · today · 7d · 30d)
+ * and *Numbers | Chart*, both remembered per viewer (owner, 2026-10-12:
+ * "you can choose what you see — the chart or the numbers — and which
+ * ones, and that makes it compact"). **Numbers**: three figures in one row,
+ * each label a menu that picks what sits there, never one twice and, for
+ * the session, never the headline beside the agent again. **Chart**: the
+ * period's spend by time, its total on the top line and the stretch under
+ * the pointer at its right.
  */
-function Spend({ s, turns, sessionId, events, now, figures, calls, summary }: { s: SessionSummary; turns: TurnCost[]; sessionId: string; events: readonly Event[]; now: number; figures: SpendFigures; calls: readonly CallPoint[]; summary?: Summary }) {
-  const { folded, headline, chart, view, period } = useSpendPrefs()
-  const st = s.stats
-  const last = turns[turns.length - 1]
-  if (!st) return null
-  const cells = cellsFor(headline)
-  const chartId = `spend-time-${sessionId}`
-  const compact = view === 'compact'
+function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSummary; sessionId: string; events: readonly Event[]; now: number; figures: SpendFigures; summary?: Summary }) {
+  const { folded, headline, view, period, slots } = useSpendPrefs()
+  // Folded, nothing is read: the one line is the session's own.
+  const range = usePeriodSummary(folded ? 'session' : period, summary)
+  if (!s.stats) return null
+  const scope = periodScope(period)
+  const pf = periodFigures(period, figures, range)
   return (
-    <section aria-label="Spend" data-spend-view={folded ? undefined : view} className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2.5">
-      <div className="flex min-w-0 items-center gap-2">
+    <section aria-label="Spend" data-spend-view={folded ? undefined : view} data-spend-period={folded ? undefined : period} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+      <div className="flex min-w-0 items-center gap-1.5">
         <button type="button" aria-expanded={!folded} onClick={() => setSpendPrefs({ folded: !folded })}
           title={folded ? 'Show the spend details' : 'Fold the spend details'}
           className="-mx-1 flex min-w-0 flex-1 items-center gap-1.5 rounded-[6px] px-1 py-0.5 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
@@ -348,32 +353,109 @@ function Spend({ s, turns, sessionId, events, now, figures, calls, summary }: { 
           {folded ? (
             <span data-spend-folded className="num min-w-0 truncate text-[12.5px] text-fg-muted">{foldedLine(headline, figures)}</span>
           ) : (
-            <>
-              <h4 className="shrink-0 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">{compact ? 'Spend' : 'Spent this session'}</h4>
-              {!compact && last && <span className="num ml-auto hidden min-w-0 truncate text-[11.5px] text-fg-faint @[330px]:block" title="What the newest model call cost">last call <span className="text-fg">{fmtUSD(last.cost)}</span></span>}
-            </>
+            <h4 className="min-w-0 truncate text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Spend</h4>
           )}
         </button>
         {!folded && (
-          <Segmented label="Spend view" value={view} options={[['compact', 'Compact'], ['full', 'Full']]} onPick={(v) => setSpendPrefs({ view: v })} />
+          <>
+            <Segmented label={`Period: ${scope}`} value={period} options={SPEND_PERIODS.map((p) => [p, p, periodScope(p)] as const)} onPick={(p) => setSpendPrefs({ period: p })} />
+            <Segmented label="Spend view" value={view} options={VIEW_OPTIONS} onPick={(v) => setSpendPrefs({ view: v })} />
+          </>
         )}
       </div>
-      {!folded && compact && <CompactSpend period={period} figures={figures} calls={calls} summary={summary} />}
-      {!folded && !compact && (
-        <>
-          <dl className="grid grid-cols-4 overflow-hidden rounded-[9px] border border-[var(--app-hairline)]">
-            {cells.map((m) => <Cell key={m} label={CELL_LABEL[m]} value={metricValue(m, figures)} title={metricTitle(m, figures)} />)}
-          </dl>
-          <button type="button" aria-expanded={chart} aria-controls={chart ? chartId : undefined} onClick={() => setSpendPrefs({ chart: !chart })}
-            className="-mx-1 flex min-w-0 items-center gap-1.5 rounded-[6px] px-1 py-0.5 text-left text-[12.5px] text-fg-muted outline-none hover:bg-panel-2 hover:text-fg focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
-            <Chevron open={chart} />
-            <span className="min-w-0 truncate">Spend over time</span>
-            <span className="ml-auto"><SpendSpark events={events} /></span>
-          </button>
-          {chart && <SpendOverTime sessionId={sessionId} events={events} now={now} />}
-        </>
-      )}
+      {!folded && view === 'numbers' && <SpendNumbers period={period} headline={headline} slots={slots} figures={pf} scope={scope} />}
+      {!folded && view === 'chart' && (period === 'session'
+        ? <SpendOverTime sessionId={sessionId} events={events} now={now} total={figures.cost} />
+        : !range
+          ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">Reading {scope.split(' · ')[0]!.toLowerCase()}…</p>
+          : !pf.series
+            ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">This range’s summary has no spend by time to draw.</p>
+            : <SpendChart id={`spend-time-${sessionId}`} bars={pf.series.bars} step={pf.series.step} now={now} total={pf.cost} scope={scope.toLowerCase()} />)}
     </section>
+  )
+}
+
+/** Numbers or Chart: two small icons, each named for a screen reader and on hover. */
+const VIEW_OPTIONS = [
+  ['numbers', <span key="n" aria-hidden className="num block w-[18px] text-center text-[10px] font-semibold tracking-[-0.03em]">123</span>, 'Numbers'],
+  ['chart', (
+    <svg key="c" aria-hidden width="18" height="12" viewBox="0 0 18 12" className="block">
+      <rect x="3" y="6" width="3" height="6" rx="0.5" fill="currentColor" opacity="0.7" />
+      <rect x="7.5" y="2" width="3" height="10" rx="0.5" fill="currentColor" />
+      <rect x="12" y="4.5" width="3" height="7.5" rx="0.5" fill="currentColor" opacity="0.7" />
+    </svg>
+  ), 'Chart'],
+] as const satisfies readonly (readonly [SpendView, ReactNode, string])[]
+
+/**
+ * Numbers: three figures in one row for the period. Each label is a menu
+ * of what can sit there (spent, burn rate, tokens, cache hit rate, last
+ * call, time working, turns, tool calls); picking one another figure shows
+ * swaps the two, so none is shown twice. Remembered per viewer.
+ */
+function SpendNumbers({ period, headline, slots, figures, scope }: { period: SpendPeriod; headline: Headline; slots: readonly Metric[]; figures: PeriodFigures; scope: string }) {
+  const shown = shownSlots(slots, period, headline)
+  const [open, setOpen] = useState<number | null>(null)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (open === null) return
+    const onDown = (e: globalThis.MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(null) }
+    const onKey = (e: KeyboardEvent) => { if (e.code === 'Escape') setOpen(null) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    box.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]')?.focus()
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
+  const choose = (i: number, m: Metric) => { setSpendPrefs({ slots: pickSlot(shown, i, m) }); setOpen(null) }
+  const onMenuKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const d = e.code === 'ArrowDown' ? 1 : e.code === 'ArrowUp' ? -1 : 0
+    if (!d) return
+    e.preventDefault()
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]:not(:disabled)'))
+    const i = items.indexOf(document.activeElement as HTMLButtonElement)
+    items[(i + d + items.length) % items.length]?.focus()
+  }
+  const when = scope.toLowerCase()
+  return (
+    <div ref={box} data-spend-numbers className="relative grid min-w-0 grid-cols-[minmax(0,1fr)]">
+      <dl className="grid min-w-0 grid-cols-3 gap-2">
+        {shown.map((m, i) => {
+          const meta = METRICS.find((x) => x.id === m)!
+          const value = metricValue(m, figures)
+          return (
+            <div key={i} className="grid min-w-0 gap-0.5" data-slot={m}>
+              <dt className="flex min-w-0">
+                <button type="button" aria-haspopup="menu" aria-expanded={open === i} aria-label={`${meta.name}. Choose what this figure shows`}
+                  title="Choose what this figure shows" onClick={() => setOpen((o) => (o === i ? null : i))}
+                  className="-mx-1 flex min-w-0 items-center gap-0.5 rounded-[4px] px-1 text-[10px] uppercase leading-[14px] tracking-[0.06em] text-fg-faint outline-none hover:bg-panel-2 hover:text-fg focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] aria-expanded:text-fg">
+                  <span className="min-w-0 truncate">{meta.label}</span><span aria-hidden className="shrink-0 text-[8px]">▾</span>
+                </button>
+              </dt>
+              <dd aria-label={`${meta.name}, ${when}: ${value}`} title={metricTitle(m, figures, period)}
+                className="num min-w-0 max-w-full truncate text-[18px] font-semibold leading-[22px] tracking-[-0.02em] text-fg">{value}</dd>
+            </div>
+          )
+        })}
+      </dl>
+      {open !== null && (
+        <div role="menu" aria-label={`What figure ${open + 1} shows`} onKeyDown={onMenuKey}
+          className="absolute inset-x-0 top-full z-30 mt-1 grid gap-px rounded-[9px] border border-border-strong bg-panel p-1 shadow-lg">
+          {METRICS.map((x) => {
+            const beside = period === 'session' && x.id === headline
+            return (
+              <button key={x.id} type="button" role="menuitemradio" aria-checked={x.id === shown[open]} disabled={beside}
+                onClick={() => choose(open, x.id)} title={beside ? 'Already the figure beside the agent' : x.hint}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-[6px] px-2 py-1 text-left outline-none hover:bg-panel-2 focus-visible:bg-panel-2 disabled:opacity-45 disabled:hover:bg-transparent aria-checked:bg-accent/10">
+                <span className={`min-w-0 truncate text-[12.5px] ${x.id === shown[open] ? 'font-semibold text-fg' : 'text-fg'}`}>
+                  {x.name}{beside ? <span className="text-fg-faint"> · beside the agent</span> : null}
+                </span>
+                <span className="num text-[12px] text-fg-muted">{metricValue(x.id, figures)}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -386,13 +468,14 @@ function Chevron({ open }: { open: boolean }) {
   )
 }
 
-/** A small segmented choice: toggle buttons in one hairline frame, the picked one filled. */
-function Segmented<T extends string>({ label, value, options, onPick }: { label: string; value: T; options: readonly (readonly [T, string])[]; onPick: (v: T) => void }) {
+/** A small segmented choice: toggle buttons in one hairline frame, the picked one filled. An option's third field names it. */
+function Segmented<T extends string>({ label, value, options, onPick }: { label: string; value: T; options: readonly (readonly [T, ReactNode, string?])[]; onPick: (v: T) => void }) {
   return (
     <div role="group" aria-label={label} className="flex shrink-0 items-center rounded-[6px] border border-[var(--app-hairline)] p-px">
-      {options.map(([id, name]) => (
+      {options.map(([id, name, title]) => (
         <button key={id} type="button" aria-pressed={id === value} onClick={() => onPick(id)}
-          className={`rounded-[5px] px-1.5 py-px text-[11px] leading-[16px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${id === value ? 'bg-panel-2 font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}>
+          aria-label={typeof name === 'string' ? undefined : title} title={title}
+          className={`grid h-[18px] place-items-center rounded-[5px] px-1.5 text-[11px] leading-[16px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${id === value ? 'bg-panel-2 font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}>
           {name}
         </button>
       ))}
@@ -426,69 +509,6 @@ function usePeriodSummary(period: SpendPeriod, given: Summary | undefined): Summ
   }, [need, period])
   if (period === 'session') return undefined
   return own ?? (got?.period === period ? got.s : undefined)
-}
-
-/**
- * Compact spend: a period chip, one row of three figures — Spent, Tokens,
- * Cache — for that period, and a spark of its spend no taller than 24px.
- * *session* is this session's; today, 7d and 30d are every session's.
- */
-function CompactSpend({ period, figures, calls, summary }: { period: SpendPeriod; figures: SpendFigures; calls: readonly CallPoint[]; summary?: Summary }) {
-  const range = usePeriodSummary(period, summary)
-  const pf = periodFigures(period, figures, calls, range)
-  const scope = periodScope(period)
-  return (
-    <div data-spend-compact className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
-      <div className="flex min-w-0 items-center gap-2">
-        <Segmented label="Period" value={period} options={SPEND_PERIODS.map((p) => [p, p] as const)} onPick={(p) => setSpendPrefs({ period: p })} />
-        <span data-spend-scope className="ml-auto min-w-0 truncate text-[11px] text-fg-faint" title={scope}>{scope}</span>
-      </div>
-      <dl className="grid min-w-0 grid-cols-3 gap-2">
-        <Figure label="Spent" aria={`Spent, ${scope.toLowerCase()}`} value={pf.cost === undefined ? '—' : fmtUSD(pf.cost)} title={period === 'session' ? 'What the session has spent, at API list price' : `What every session spent, ${scope.split(' · ')[0]!.toLowerCase()}, at API list price`} />
-        <Figure label="Tokens" aria={`Tokens, ${scope.toLowerCase()}`} value={pf.tokens === undefined ? '—' : fmtTokens(pf.tokens)} title="Input tokens, cache reads and writes included" />
-        <Figure label="Cache" aria={`Cache hit rate, ${scope.toLowerCase()}`} value={pf.cache === undefined ? '—' : fmtPct(pf.cache)} title="Share of input tokens read from the prompt cache" />
-      </dl>
-      <PeriodSpark values={pf.series} label={`Spend over ${period === 'session' ? 'the session' : scope.split(' · ')[0]!.toLowerCase()}`} />
-    </div>
-  )
-}
-
-function Figure({ label, aria, value, title }: { label: string; aria: string; value: string; title: string }) {
-  return (
-    <div className="grid min-w-0 gap-0.5" title={title}>
-      <dt className="truncate text-[10px] uppercase tracking-[0.06em] text-fg-faint">{label}</dt>
-      <dd aria-label={`${aria}: ${value}`} className="num truncate text-[18px] font-semibold leading-[22px] tracking-[-0.02em] text-fg">{value}</dd>
-    </div>
-  )
-}
-
-const PERIOD_SPARK_H = 18
-
-/** The period's spend as bars across the block's width; a hairline floor when there is nothing to draw. */
-function PeriodSpark({ values, label }: { values: readonly number[]; label: string }) {
-  const max = Math.max(...values, 0)
-  const H = PERIOD_SPARK_H
-  if (values.length < 2 || max <= 0) {
-    return <div data-period-spark aria-hidden className="relative min-w-0" style={{ height: H }}><span className="absolute inset-x-0 bottom-0 h-px bg-[var(--app-hairline)]" /></div>
-  }
-  const lastSpent = values.reduce((m, v, i) => (v > 0 ? i : m), 0)
-  return (
-    <svg data-period-spark role="img" aria-label={label} width="100%" height={H} viewBox={`0 0 ${values.length} ${H}`} preserveAspectRatio="none" className="block min-w-0">
-      {values.map((v, i) => {
-        const h = v > 0 ? Math.max(1.5, (v / max) * H) : 1
-        return <rect key={i} x={i + 0.12} y={H - h} width={0.76} height={h} className={v > 0 ? 'fill-accent' : 'fill-fg-faint'} opacity={i === lastSpent ? 1 : v > 0 ? 0.5 : 0.3} />
-      })}
-    </svg>
-  )
-}
-
-function Cell({ label, value, title }: { label: string; value: string; title?: string }) {
-  return (
-    <div className="grid min-w-0 gap-0.5 border-l border-[var(--app-hairline)] px-2 py-1.5 first:border-l-0" title={title}>
-      <dt className="truncate text-[10px] uppercase tracking-[0.06em] text-fg-faint">{label}</dt>
-      <dd className="num truncate text-[13px] font-medium text-fg">{value}</dd>
-    </div>
-  )
 }
 
 function ContextMeter({ s }: { s: SessionSummary }) {
