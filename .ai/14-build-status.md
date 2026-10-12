@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — 0.111.0: CI cost and branches, a dense deck, compact spend
+
+The v0.110.0 tag's release run failed its verify job (an app test asserted
+no request to `/shells` at all, and a background read could land; a session
+with no cache figures tripped the cache line), so nothing was published;
+#470 fixed both and 0.111.0 ships 0.110.0's changes with the rest. New here:
+multi-repo projects (below), runner cost and a Branches view in the deck's
+*Pull requests & CI* cell (below), the cell's jobs flowing into as many
+columns as the deck is wide, the cockpit's Spend block Compact by default
+with a session/today/7d/30d chip, and closing a quick chat ending its
+process (asking first only while it is answering).
+
 ### 2026-10-12 — 0.110.0: pull requests and CI in one deck cell, a queue, subagents opened
 
 The deck's Branch, CI and Pull requests cells became one *Pull requests &
@@ -85,7 +97,7 @@ menu at a glance. Quick chats end cleanly; Dark Side is neon purple; the
 Dock refreshes its icon after an update. Not verified against a real
 GitHub billing report or a real `claude` mode switch.
 
-### 2026-10-12 — unreleased: multi-repo projects (ADR-055)
+### 2026-10-12 — 0.111.0: multi-repo projects (ADR-055)
 
 Add project on a folder holding several git repositories asks once: one
 project of N repositories (default) or N separate projects, with the
@@ -116,7 +128,7 @@ when free, *unpriced* for self-hosted and unknown runners, the rate table's
 version and source in every tooltip; the Main view adds what GitHub billed
 for Actions this month, or the token permission that needs. A fourth view,
 **Branches** (`GET /v1/sessions/{id}/branches`, `internal/branches`,
-migration 0050), lists the repository's branches with ahead and behind,
+migration 0051), lists the repository's branches with ahead and behind,
 last commit, PR and mini pipeline, Caprock's spend and sessions on each,
 and a stale mark. Verified against a fake GitHub and a demo repository in a
 preview daemon; the usage line not yet against a real account's report.
@@ -141,7 +153,7 @@ the turn has run), every queued message in order with a rough start and done
 range, and the turns finished in the last three hours; *Add to queue* sends to
 a chosen session or whichever of a project's sessions is free first. The
 estimates come from the project's newest 200 finished Claude Code turns,
-through a new partial covering index (migration 0050, 1 ms per project). The
+through a new partial covering index (migration 0048, 1 ms per project). The
 backtest on the owner's database (RISK-08) says they are rough — median miss
 55 s against a typical 48 s turn, 49% inside the p25–p75 range — so the view
 shows ranges and its basis, never a time. A queued message's finished turn
