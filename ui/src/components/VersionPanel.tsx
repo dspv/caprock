@@ -103,10 +103,13 @@ export function VersionPanel({ shown, title, status, onStatus }: {
             </p>
           )}
           {available && offer.kind === 'install' && (
-            <button type="button" onClick={() => { setOpen(false); void appUpdate.install() }}
-              className="rounded-[7px] bg-accent px-3 py-1.5 text-left font-medium text-panel hover:opacity-90">
-              Update to {offer.next} — restart · sessions keep running
-            </button>
+            <div className="grid gap-1">
+              <button type="button" onClick={() => { setOpen(false); void appUpdate.install() }}
+                className="rounded-[7px] bg-accent px-3 py-1.5 text-center text-[14px] font-semibold text-panel hover:opacity-90">
+                Update to {offer.next}
+              </button>
+              <p className="text-center text-[12px] text-fg-muted">Restarts the app · sessions keep running</p>
+            </div>
           )}
           {available && offer.kind !== 'install' && commands.length > 0 && (
             <div className="grid gap-1.5">
