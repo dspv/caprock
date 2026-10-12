@@ -1417,6 +1417,10 @@ export const api = {
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
   /** The session's latest PRs, with CI and review when GitHub is connected (the session deck). */
   sessionPRs: (id: string) => get<{ connected: boolean; prs: SessionPRLive[] }>(`/v1/sessions/${encodeURIComponent(id)}/prs`),
+  /** Re-run a session PR's checks on GitHub: its failed jobs, else every finished run (the deck's Re-run checks). */
+  sessionPRRerun: (id: string, n: number) => post<{ ok: boolean; mode: 'failed' | 'all'; runs: number; jobs: number }>(`/v1/sessions/${encodeURIComponent(id)}/prs/${n}/rerun`, {}),
+  /** Merge the base into a session PR's branch on GitHub (the deck's Update branch). */
+  sessionPRUpdateBranch: (id: string, n: number) => post<{ ok: boolean }>(`/v1/sessions/${encodeURIComponent(id)}/prs/${n}/update-branch`, {}),
   /** The GitHub Actions runs, jobs and steps of the session's PR (the session deck's CI cell). */
   sessionCI: (id: string, pr?: number) => get<SessionCI>(`/v1/sessions/${encodeURIComponent(id)}/ci${pr ? `?pr=${pr}` : ''}`),
   /** The lines around a failed job's error, on demand. */

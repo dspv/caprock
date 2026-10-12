@@ -7,6 +7,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **deck:** pull requests show what stands in their way and who is on them,
+  and can be fixed or re-checked from the row. An open PR carries one-word
+  chips beside its pipeline — *conflict*, *behind*, *review* (changes
+  requested), *draft* — from what GitHub already said, and nothing while
+  GitHub is still computing. A live agent whose checkout is on the PR's
+  branch shows as its initial with *fixing*, *waiting* or *idle* (*2
+  agents* for several); a click opens its tab. The open row, or its ⋯,
+  offers *Fix conflict with agent*, *Update branch*, *Fix CI with agent*
+  and *Re-run checks*; each confirms in one line inside the row, then says
+  what it is doing there (*agent fixing…*, *re-running 5 jobs…*,
+  *updating branch…*) until GitHub shows it done. A fix goes to the
+  Caprock-started agent on the branch, else a new agent starts in the
+  branch's checkout or a new worktree at the PR's head; nothing is typed
+  into a session Caprock did not start. Re-run and Update branch use
+  GitHub's own APIs with your token, and a refusal names the permission
+  the token is missing.
+
 ### Fixed
 
 - **app:** the version panel's update button reads at a glance: *Update to
