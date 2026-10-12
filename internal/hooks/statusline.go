@@ -225,3 +225,25 @@ func UninstallStatusline(settingsPath, cmdPath string) (removed bool, err error)
 	}
 	return true, writeSettings(settingsPath, root)
 }
+
+// SetStatuslineOn applies Settings → Status line to one settings.json: on
+// (Full or Short) registers our command when no statusLine is set, off
+// (Off) removes ours. Both go through the same ownership checks as install
+// and uninstall — a statusLine the user set to something else is never
+// replaced and never removed — and both are no-ops when there is nothing to
+// do. Reports whether the file changed.
+func SetStatuslineOn(settingsPath, cmdPath string, on bool) (changed bool, err error) {
+	if !on {
+		return UninstallStatusline(settingsPath, cmdPath)
+	}
+	_, present, err := StatuslineInstalled(settingsPath, cmdPath)
+	if err != nil || present {
+		// Ours already (the mode is read at render time, so Full and Short
+		// share one entry), or the user's own: either way, leave it.
+		return false, err
+	}
+	if _, err := InstallStatusline(settingsPath, cmdPath); err != nil {
+		return false, err
+	}
+	return true, nil
+}

@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- Settings → *Status line*: Full, Short or Off for the line Caprock puts at
+  the bottom of Claude Code. Short is model, context and the plan windows
+  (the reset time only from 80%), without the cost and counters the cockpit
+  already shows; Off removes Caprock's own entry from Claude Code's
+  settings, never one you set. Full stays the default.
+
 ## [0.112.1] - 2026-10-13
 
 ### Added

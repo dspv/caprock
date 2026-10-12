@@ -201,6 +201,54 @@ type Config struct {
 	// "auto"; empty is "ask" (projects/cleanup.go). Written only once
 	// chosen.
 	WorktreeCleanup string `json:"worktree_cleanup,omitempty"`
+	// StatuslineMode is what Caprock's Claude Code status line shows:
+	// "full", "short" or "off" (StatuslineModes). Empty is "full". The
+	// status line command reads it at render time (ReadStatuslineMode);
+	// "off" also removes Caprock's own statusLine entry from Claude Code's
+	// settings, and choosing again puts it back. Written only once chosen.
+	StatuslineMode string `json:"statusline_mode,omitempty"`
+}
+
+// The status line modes (config.json "statusline_mode").
+const (
+	StatuslineFull  = "full"
+	StatuslineShort = "short"
+	StatuslineOff   = "off"
+)
+
+// StatuslineModes lists the accepted values of StatuslineMode.
+var StatuslineModes = []string{StatuslineFull, StatuslineShort, StatuslineOff}
+
+// ValidStatuslineMode reports whether v is one of StatuslineModes.
+func ValidStatuslineMode(v string) bool {
+	return v == StatuslineFull || v == StatuslineShort || v == StatuslineOff
+}
+
+// NormalizeStatusline is the effective mode: anything unknown or unset is
+// "full", the line everyone had before the setting existed.
+func NormalizeStatusline(v string) string {
+	if ValidStatuslineMode(v) {
+		return v
+	}
+	return StatuslineFull
+}
+
+// ReadStatuslineMode is the status line command's read of its one setting,
+// made on every render: a small file read and a decode of a single field.
+// Every failure — no data dir, no config.json, a file that does not parse —
+// is "full", so the line a session sees never depends on this succeeding.
+func ReadStatuslineMode(dir string) string {
+	b, err := os.ReadFile(ConfigPath(dir))
+	if err != nil {
+		return StatuslineFull
+	}
+	var v struct {
+		Mode string `json:"statusline_mode"`
+	}
+	if json.Unmarshal(b, &v) != nil {
+		return StatuslineFull
+	}
+	return NormalizeStatusline(v.Mode)
 }
 
 // GitHubNotifyOn reports whether CI and review notifications are on.

@@ -486,3 +486,143 @@ func TestCostPrecisionFollowsMagnitude(t *testing.T) {
 		}
 	}
 }
+
+// fixture is the owner's real line in JSON form: everything the full line
+// shows, so each mode can be checked for what it keeps and what it drops.
+const fixture = `{"session_id":"s1","model":{"display_name":"Opus 5.5"},"context_window":{"used_percentage":28},` +
+	`"cost":{"total_cost_usd":1597.17},"rate_limits":{"five_hour":{"used_percentage":5,"resets_at":1900000000},` +
+	`"seven_day":{"used_percentage":1,"resets_at":1900500000}}}`
+
+// countersServer answers the stats read with non-zero counters and records
+// whether it was asked.
+func countersServer(t *testing.T) *bool {
+	t.Helper()
+	asked := new(bool)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			*asked = true
+		}
+		_, _ = io.WriteString(w, `{"turns":19720,"tool_calls":22078}`)
+	}))
+	t.Cleanup(srv.Close)
+	pointAtServer(t, srv.URL)
+	return asked
+}
+
+// writeMode stores a Settings choice the way the daemon does.
+func writeMode(t *testing.T, mode string) {
+	t.Helper()
+	dir, err := config.DataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.StatuslineMode = mode
+	if err := config.Save(dir, cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Full is the line everyone had before the setting existed: cost and the
+// counters are on it.
+func TestModeFullKeepsEverything(t *testing.T) {
+	countersServer(t)
+	writeMode(t, config.StatuslineFull)
+	var out bytes.Buffer
+	RunWith(strings.NewReader(fixture), &out, Options{Rich: true, Width: 500})
+	got := out.String()
+	for _, want := range []string{"⛰", "Opus 5.5", "ctx 28%", "$1597.17", "19720 turns", "22078 steps", "5h", "resets", "7d"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("full line missing %q: %q", want, got)
+		}
+	}
+}
+
+// Short is model, context and the plan windows — no cost, no counters, and
+// no call to the daemon for counters it would not print. The reset time is
+// left off while the five-hour window is comfortable.
+func TestModeShortDropsCostAndCounters(t *testing.T) {
+	asked := countersServer(t)
+	writeMode(t, config.StatuslineShort)
+	var out bytes.Buffer
+	RunWith(strings.NewReader(fixture), &out, Options{Rich: true, Width: 500})
+	got := out.String()
+	for _, want := range []string{"⛰", "Opus 5.5", "ctx 28%", "5h", "7d"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("short line missing %q: %q", want, got)
+		}
+	}
+	for _, no := range []string{"$", "turns", "steps", "resets", "cache", " in "} {
+		if strings.Contains(got, no) {
+			t.Fatalf("short line has %q: %q", no, got)
+		}
+	}
+	if *asked {
+		t.Fatal("short mode asked the daemon for counters it does not show")
+	}
+	if w := displayWidth(got); w > 45 {
+		t.Fatalf("short line is %d columns: %q", w, got)
+	}
+}
+
+// At 80% of the five-hour window the reset time is what the user needs next.
+func TestModeShortShowsResetWhenHigh(t *testing.T) {
+	in := strings.Replace(fixture, `"used_percentage":5,`, `"used_percentage":80,`, 1)
+	var out bytes.Buffer
+	RunWith(strings.NewReader(in), &out, Options{Mode: config.StatuslineShort, Width: 500})
+	if got := out.String(); !strings.Contains(got, "resets ") {
+		t.Fatalf("short line at 80%% has no reset time: %q", got)
+	}
+	in = strings.Replace(fixture, `"used_percentage":5,`, `"used_percentage":79,`, 1)
+	out.Reset()
+	RunWith(strings.NewReader(in), &out, Options{Mode: config.StatuslineShort, Width: 500})
+	if got := out.String(); strings.Contains(got, "resets") {
+		t.Fatalf("short line at 79%% has a reset time: %q", got)
+	}
+}
+
+// An entry put back by hand while Settings says Off still prints a line —
+// the full one, not a blank that reads as broken.
+func TestModeOffStillPrintsWhenRun(t *testing.T) {
+	writeMode(t, config.StatuslineOff)
+	var out bytes.Buffer
+	RunWith(strings.NewReader(fixture), &out, Options{Width: 500})
+	if got := out.String(); !strings.Contains(got, "$1597.17") {
+		t.Fatalf("off mode printed %q", got)
+	}
+}
+
+// A config.json that cannot be read or parsed is Full: the line never
+// depends on the setting being readable.
+func TestUnreadableConfigIsFull(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(config.EnvDataDir, dir)
+	if err := os.WriteFile(config.ConfigPath(dir), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	RunWith(strings.NewReader(fixture), &out, Options{Width: 500})
+	if got := out.String(); !strings.Contains(got, "$1597.17") {
+		t.Fatalf("unreadable config printed %q", got)
+	}
+}
+
+// Short still feeds the plan windows to the daemon: the cockpit and the Cost
+// screen read them from here.
+func TestModeShortStillForwardsLimits(t *testing.T) {
+	posted := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posted <- struct{}{}
+		}
+	}))
+	defer srv.Close()
+	pointAtServer(t, srv.URL)
+	var out bytes.Buffer
+	RunWith(strings.NewReader(fixture), &out, Options{Mode: config.StatuslineShort})
+	select {
+	case <-posted:
+	default:
+		t.Fatal("short mode did not forward the plan windows")
+	}
+}
