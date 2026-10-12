@@ -77,10 +77,12 @@ export function glanceCharts(h: History | undefined, g: Glance | undefined): Gla
   const b = g?.bill
   const bill: Segment[] = b
     ? [
-        { key: 'cache_read', label: 'cache read · re-reading context', value: b.cache_read_usd, display: fmtUSD(b.cache_read_usd) },
+        // Short labels, the names the rest of the app uses: they never fit
+        // truncated into a third of a 14-inch screen (owner, 2026-10-12).
+        { key: 'cache_read', label: 'cache read', detail: 're-reading context', value: b.cache_read_usd, display: fmtUSD(b.cache_read_usd) },
         { key: 'cache_write', label: 'cache write', value: b.cache_write_usd, display: fmtUSD(b.cache_write_usd) },
         { key: 'output', label: 'output', value: b.output_usd, display: fmtUSD(b.output_usd) },
-        { key: 'input', label: 'uncached input', value: b.input_usd, display: fmtUSD(b.input_usd) },
+        { key: 'input', label: 'input', detail: 'uncached', value: b.input_usd, display: fmtUSD(b.input_usd) },
       ].filter((s) => s.value > 0)
     : []
   const fmtCalls = (v: number) => v.toLocaleString('en-US')
@@ -129,7 +131,12 @@ export function AtAGlancePanel() {
     >
       {open && view === 'charts' && (
         <>
-          <div className="grid gap-x-8 gap-y-5 px-3 py-3 md:grid-cols-3">
+          {/* Three across only when the panel itself has room for three
+            * donuts with their legends under them; a narrower panel (the app
+            * with the sidebar and inspector open) stacks them, each with the
+            * legend beside it. The panel's width decides, not the window's. */}
+          <div className="@container">
+          <div className="grid gap-x-8 gap-y-5 px-3 py-3 @[720px]:grid-cols-3">
             <Donut title="Where the money went" segments={c.models} center={lead(c.models, c.modelTotal)} centerLabel={c.models[0]?.label ?? ''}
               ariaLabel={`Cost by model: ${c.models.map((s) => `${s.label} ${s.display}, ${sharePct(s.value, c.modelTotal)}`).join('; ')}`} />
             {c.bill.length > 0 && (
@@ -138,6 +145,7 @@ export function AtAGlancePanel() {
             )}
             <Donut title="Most-used tools" segments={c.tools} center={lead(c.tools, c.toolTotal)} centerLabel={c.tools[0]?.label ?? ''}
               ariaLabel={`Tool calls by tool: ${c.tools.map((s) => `${s.label} ${s.display}, ${sharePct(s.value, c.toolTotal)}`).join('; ')}`} />
+          </div>
           </div>
           {rows.length > 0 && agentsSmall && (
             // Folded: each agent as its character and its share, one line
@@ -255,7 +263,7 @@ function ShareBlock({ title, head, of, segments, total, extra }: {
       {lead && (
         <p className="mt-1.5 flex items-baseline gap-2">
           <span className="num text-[28px] font-semibold leading-none text-accent">{sharePct(lead.value, total)}</span>
-          <span className="min-w-0 truncate text-[13px] text-fg-muted">
+          <span className="min-w-0 text-[13px] text-fg-muted [overflow-wrap:anywhere]">
             <span className="text-fg">{lead.label}</span> {of}
           </span>
         </p>
@@ -278,7 +286,7 @@ function ShareBlock({ title, head, of, segments, total, extra }: {
               <th scope="row" className="max-w-[220px] pt-1 pr-2 text-left font-normal text-fg">
                 <span className="flex items-center gap-2">
                   <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: colorOf(sg, i) }} />
-                  <span className="truncate">{sg.label}</span>
+                  <span className="[overflow-wrap:anywhere]">{sg.label}{sg.detail && <span className="text-fg-faint"> · {sg.detail}</span>}</span>
                 </span>
               </th>
               {extra && <td className="num pt-1 pl-2 text-right text-fg-muted">{extra[i]}</td>}

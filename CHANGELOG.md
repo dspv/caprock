@@ -7,6 +7,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **ui:** the At a glance donuts read in full on a 14-inch screen. The bill
+  by token type is labelled *cache read*, *cache write*, *output* and
+  *input*, the names used everywhere else, with *re-reading context* and
+  *uncached* as a quiet second line; the donut centre's caption wraps onto
+  two lines instead of ending in an ellipsis, on every donut in the app. A
+  donut narrower than about 400px puts its legend under the chart at full
+  width, and the three sit side by side only when the panel has room for
+  them. Hovering a slice or a legend row, or focusing a row with the
+  keyboard, lights that slice and shows its share, name and figure in the
+  centre, in place, with no popup.
+
 ## [0.111.1] - 2026-10-12
 
 ### Changed

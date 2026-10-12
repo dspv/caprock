@@ -7,7 +7,7 @@
  * across a room, and the legend under it carries every figure — the picture is
  * never the only place a number lives.
  */
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 export interface Segment {
   key: string
@@ -15,6 +15,8 @@ export interface Segment {
   value: number
   /** The figure shown in the legend beside the share ("$1,234", "40,961"). */
   display: string
+  /** A short gloss printed under the label in the legend ("re-reading context"). */
+  detail?: string
 }
 
 /**
@@ -53,21 +55,39 @@ export function sharePct(v: number, total: number): string {
 }
 
 /** An arc of a circle from `from` to `to` (fractions of a turn, from 12 o'clock). */
-function Arc({ r, from, to, color, width, dashed }: { r: number; from: number; to: number; color: string; width: number; dashed?: boolean }) {
+function Arc({ r, from, to, color, width, dashed, opacity, on }: {
+  r: number; from: number; to: number; color: string; width: number; dashed?: boolean
+  opacity?: number
+  /** Pointer handlers, for a donut slice that answers hover. */
+  on?: { onMouseEnter: () => void; onMouseLeave: () => void; onClick: () => void }
+}) {
   const span = to - from
   if (span <= 0) return null
-  const stroke = { stroke: color }
+  const stroke = { stroke: color, opacity, transition: 'opacity 120ms' }
   if (span >= 0.9999) {
-    return <circle r={r} fill="none" style={stroke} strokeWidth={width} strokeDasharray={dashed ? '3 3' : undefined} />
+    return <circle r={r} fill="none" style={stroke} strokeWidth={width} strokeDasharray={dashed ? '3 3' : undefined} {...on} />
   }
   const pt = (f: number) => {
     const a = 2 * Math.PI * f - Math.PI / 2
     return `${(r * Math.cos(a)).toFixed(3)} ${(r * Math.sin(a)).toFixed(3)}`
   }
   const d = `M ${pt(from)} A ${r} ${r} 0 ${span > 0.5 ? 1 : 0} 1 ${pt(to)}`
-  return <path d={d} fill="none" style={stroke} strokeWidth={width} strokeDasharray={dashed ? '3 3' : undefined} />
+  return <path d={d} fill="none" style={stroke} strokeWidth={width} strokeDasharray={dashed ? '3 3' : undefined} {...on} />
 }
 
+/**
+ * A donut with its legend. Hovering a slice or a legend row, or focusing a
+ * row, lights that slice, dims the rest and puts the slice's own share, name
+ * and figure in the centre: the full reading in place, never a floating
+ * tooltip (owner, 2026-10-12, translated: "maybe something on hover, but not
+ * a popup").
+ *
+ * The figure is a container: beside the donut the legend needs about 400px
+ * of figure, so a narrower one (three donuts across a 14-inch screen with the
+ * sidebar open) puts the legend under the donut at full width instead of
+ * truncating every label. Nothing in a donut or its legend is ever clipped
+ * with an ellipsis; the centre caption wraps onto a second line.
+ */
 export function Donut({
   title,
   segments,
@@ -87,45 +107,63 @@ export function Donut({
   /** Off when an exact table sits beside the chart and would repeat it. */
   legend?: boolean
 }) {
+  const [active, setActive] = useState<string | null>(null)
   const total = segments.reduce((a, s) => a + s.value, 0)
   const r = size / 2 - 12
+  const lit = segments.find((s) => s.key === active)
+  // The centre's usable width: the hole, less a margin so text never meets the ring.
+  const hole = Math.round(2 * (r - 9) * 0.82)
   let at = 0
   return (
-    <figure className="m-0 min-w-0">
+    <figure className="@container m-0 min-w-0" data-donut>
       {title && <figcaption className="text-[10px] uppercase tracking-[0.12em] text-fg-faint mb-2">{title}</figcaption>}
-      <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
-        <svg width={size} height={size} viewBox={`${-size / 2} ${-size / 2} ${size} ${size}`} role="img" aria-label={ariaLabel} className="shrink-0">
-          <circle r={r} fill="none" style={{ stroke: 'var(--color-panel-2)' }} strokeWidth={18} />
-          {total > 0 && segments.map((s, i) => {
-            const from = at / total
-            at += s.value
-            const to = at / total
-            // A hairline gap between segments, so two neighbours of close
-            // colour still read as two.
-            return <Arc key={s.key} r={r} from={from} to={Math.max(from, to - (segments.length > 1 ? 0.004 : 0))} color={colorOf(s, i)} width={18} />
-          })}
-          <text textAnchor="middle" y={4} className="num" style={{ fill: 'var(--color-fg)', fontSize: size * 0.2, fontWeight: 650, fontFamily: 'var(--font-mono)' }}>{center}</text>
-          <text textAnchor="middle" y={size * 0.2} style={{ fill: 'var(--color-fg-muted)', fontSize: 10.5, fontFamily: 'var(--font-sans)' }}>
-            {clip(centerLabel, 16)}
-          </text>
-        </svg>
-        {legend && <Legend segments={segments} total={total} />}
+      <div className="flex flex-col items-start gap-3 @[400px]:flex-row @[400px]:items-center @[400px]:gap-4">
+        <div className="relative shrink-0" style={{ width: size, height: size }}>
+          <svg width={size} height={size} viewBox={`${-size / 2} ${-size / 2} ${size} ${size}`} role="img" aria-label={ariaLabel} className="block">
+            <circle r={r} fill="none" style={{ stroke: 'var(--color-panel-2)' }} strokeWidth={18} />
+            {total > 0 && segments.map((s, i) => {
+              const from = at / total
+              at += s.value
+              const to = at / total
+              // A hairline gap between segments, so two neighbours of close
+              // colour still read as two.
+              return <Arc key={s.key} r={r} from={from} to={Math.max(from, to - (segments.length > 1 ? 0.004 : 0))} color={colorOf(s, i)} width={18}
+                opacity={active && active !== s.key ? 0.28 : 1}
+                on={{ onMouseEnter: () => setActive(s.key), onMouseLeave: () => setActive(null), onClick: () => setActive(active === s.key ? null : s.key) }} />
+            })}
+          </svg>
+          <div aria-hidden className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center" data-donut-center>
+            <span className="num font-[650] leading-none text-fg" style={{ fontSize: size * 0.2 }}>{lit ? sharePct(lit.value, total) : center}</span>
+            <span className="mt-1 leading-[1.15] text-fg-muted [overflow-wrap:anywhere] [text-wrap:balance]" style={{ width: hole, fontSize: 10.5 }}>
+              {lit ? lit.label : centerLabel}
+            </span>
+            {lit && <span className="num mt-0.5 leading-none text-fg" style={{ fontSize: 10.5 }}>{lit.display}</span>}
+          </div>
+        </div>
+        {legend && <Legend segments={segments} total={total} active={active} onActive={setActive} />}
       </div>
     </figure>
   )
 }
 
-function clip(s: string, n: number): string {
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s
-}
-
-export function Legend({ segments, total }: { segments: Segment[]; total: number }) {
+export function Legend({ segments, total, active, onActive }: {
+  segments: Segment[]
+  total: number
+  active?: string | null
+  onActive?: (key: string | null) => void
+}) {
   return (
-    <ul className="m-0 p-0 list-none grid grid-cols-1 gap-1 min-w-0 flex-1 basis-full sm:basis-auto text-[11px]">
+    <ul className="m-0 p-0 list-none grid grid-cols-1 gap-0.5 min-w-0 w-full max-w-[320px] @[400px]:w-auto @[400px]:flex-1 text-[11px]">
       {segments.map((s, i) => (
-        <li key={s.key} className="flex items-baseline gap-2 min-w-0">
+        <li key={s.key} tabIndex={onActive ? 0 : undefined} data-active={active === s.key || undefined}
+          onMouseEnter={onActive && (() => onActive(s.key))} onMouseLeave={onActive && (() => onActive(null))}
+          onFocus={onActive && (() => onActive(s.key))} onBlur={onActive && (() => onActive(null))}
+          className={`flex items-baseline gap-2 min-w-0 rounded-[4px] px-1 -mx-1 py-[1px] outline-none focus-visible:ring-1 focus-visible:ring-accent transition-opacity ${active === s.key ? 'bg-panel-2' : ''} ${active && active !== s.key ? 'opacity-60' : ''}`}>
           <span className="inline-block w-2 h-2 rounded-[2px] shrink-0 translate-y-[1px]" style={{ background: colorOf(s, i) }} aria-hidden />
-          <span className="truncate text-fg-muted min-w-0 flex-1" title={s.label}>{s.label}</span>
+          <span className="min-w-0 flex-1 text-fg-muted [overflow-wrap:anywhere]">
+            {s.label}
+            {s.detail && <span className="block text-[10px] leading-tight text-fg-faint">{s.detail}</span>}
+          </span>
           <span className="num text-fg shrink-0">{s.display}</span>
           <span className="num text-fg-faint w-9 text-right shrink-0">{sharePct(s.value, total)}</span>
         </li>
