@@ -5,17 +5,23 @@
  * A project is one line: its name, a green dot with how many sessions and
  * shells run in it, and how many wait on you. The current project is open,
  * and so is every project where something runs or waits (owner,
- * 2026-10-11); the chevron folds one by hand. Under it, exactly the tabs the
- * tab strip shows for it, in the same order and under the same names
- * (lib/tablabels.ts). After them, muted, whatever Caprock started in the
- * project that still runs with no tab — a tab closed on a live shell or
- * agent — so live work is never out of sight; a click opens it as a tab.
- * Sessions started in another terminal are behind one muted line, "Running
- * in other terminals · N", except one waiting on you, which is always a row.
- * Ended sessions are not listed. The order is the strip's, then the order
- * things started: a status change never moves a row, and a new one appears
- * at the end. The tab in front is the one highlighted row in the whole
- * sidebar.
+ * 2026-10-11); the chevron folds one by hand. Under it, ONE row (owner,
+ * 2026-10-12: "there should be the project, but only ONE card under it;
+ * hide the rest inside", translated): its tab in front, or the one last in
+ * front when the project is not; else what waits on
+ * you, a permission prompt first; else the agent that worked last; else the
+ * most recent (pickLead). Everything else folds into one quiet line, "+N
+ * more", whose tooltip says what it holds ("2 working · 1 idle · 1 shell")
+ * and which says, in amber, what in it waits on you ("+4 more · 1 asks"). It
+ * opens in place and stays open per project (`caprock-sidebar-more-open`).
+ * Open, it lists the project's tabs as the strip shows them, in the same
+ * order and under the same names (lib/tablabels.ts); then, muted, what
+ * Caprock started that still runs with no tab, a click opening it as a tab;
+ * then what another terminal started. Ended sessions are not listed. The
+ * order is the strip's, then the order things started: a status change
+ * never moves a row within the fold, and a new one appears at the end. The
+ * tab in front is the one highlighted row in the whole sidebar. The strip's
+ * ⌘1–⌘9 reach every tab, shown or folded.
  *
  * What waits on you is marked on its own row — an amber edge and tint, and
  * the word "waiting" (or "asks", at a permission prompt) — since the
@@ -31,7 +37,8 @@
  * the list — nothing is signalled, so it is the one action offered on a
  * session another terminal started (rule 7) — and, on what Caprock started,
  * ■, which stops it after the cockpit's confirmation. Hidden rows wait
- * behind "N hidden · show", and each comes back by itself when it next
+ * behind "N hidden · show" (inside "+N more" when there is one), and each
+ * comes back by itself when it next
  * waits on you (lib/sidebar.ts rowHidden). The same actions are in each
  * row's menu: a right-click, Shift+F10 or the context-menu key. The buttons
  * show on hover and focus, always on the tab in front, and always on a touch
@@ -40,7 +47,7 @@
  * its tabs close and it stays, its dot green. Delete and Backspace close
  * nothing.
  */
-import { Fragment, memo, useMemo, useState } from 'react'
+import { Fragment, memo, useMemo, useRef, useState } from 'react'
 import type { SessionSummary } from '@/lib/api'
 import { rowHidden, type HiddenSessions, type ProjectNode, type SessionNode } from '@/lib/sidebar'
 import type { Dot } from '@/lib/sidebar'
@@ -137,6 +144,8 @@ export interface ProjectRowProps {
   labels: ReadonlyMap<string, TabLabel>
   /** The tab in front, when the terminals are on screen. */
   activeTabId?: string
+  /** The project's own tab last in front, in front or not: the one row it shows, ahead of all else. */
+  leadTabId?: string
   onSelect: (id: string) => void
   onActivateTab: (tabId: string) => void
   /** Closes a tab exactly as ⌘W and the strip's × do; what runs in it keeps running. */
@@ -168,6 +177,7 @@ export const ProjectRow = memo(function ProjectRow({
   tabDigits,
   labels,
   activeTabId,
+  leadTabId,
   onSelect,
   onActivateTab,
   onCloseTab,
@@ -201,7 +211,20 @@ export const ProjectRow = memo(function ProjectRow({
     ? tabs.filter((t) => { const sid = labels.get(t.id)?.session?.session_id; return !!sid && !!nodes.get(sid)?.waiting })
     : tabs
   const ownRows = waitingOnly ? live.own.filter((x) => x.waiting) : live.own
-  const [othersOpen, setOthersOpen] = useState(false)
+  const nodeOfTab = (t: Tab) => { const sid = labels.get(t.id)?.session?.session_id; return sid ? nodes.get(sid) : undefined }
+  // Everything listable under the open project, in the list's order: its
+  // tabs as the strip has them, then what Caprock started with no tab, then
+  // what another terminal started (waiting first). Hidden rows are apart.
+  const items = useMemo<LeadItem[]>(() => open ? [
+    ...tabs.map((t) => { const l = labels.get(t.id); const sid = l?.session?.session_id; return { key: t.id, tab: t, label: l, node: sid ? nodes.get(sid) : undefined } }),
+    ...[...live.own, ...live.waitingOther, ...live.other].map((x) => ({ key: x.session.session_id, node: x })),
+  ] : [], [open, tabs, labels, nodes, live])
+  const prevLead = useRef<string | undefined>(undefined)
+  const lead = open ? pickLead(items, (activeTabId && tabs.some((t) => t.id === activeTabId) ? activeTabId : undefined) ?? leadTabId, prevLead.current) : undefined
+  prevLead.current = lead?.key
+  const rest = lead ? items.filter((it) => it !== lead) : items
+  const restWaiting = { asks: rest.filter((it) => it.node?.asks).length, waiting: rest.filter((it) => it.node?.waiting && !it.node.asks).length }
+  const [moreOpen, setMoreOpen] = useIdFlag(MORE_KEY, id)
   const [hiddenOpen, setHiddenOpen] = useState(false)
   const [rowMenu, setRowMenu] = useState<RowMenuState | null>(null)
   const [stopping, setStopping] = useState<{ sessionId: string; what: StopWhat } | null>(null)
@@ -237,6 +260,27 @@ export const ProjectRow = memo(function ProjectRow({
       onMenu={(at, from) => setRowMenu({ ...at, from, kind: 'live', id: x.session.session_id })}
     />
   )
+  const itemRow = (it: LeadItem) => {
+    if (!it.tab) return <>{liveRow(it.node!)}{confirm(it.node!.session.session_id)}</>
+    const t = it.tab
+    const l = it.label
+    return (
+      <>
+        <TabRow
+          tab={t}
+          label={l}
+          waiting={!!it.node?.waiting}
+          asks={!!it.node?.asks}
+          digit={tabDigits?.get(t.id) ?? undefined}
+          active={t.id === activeTabId}
+          onOpen={() => onActivateTab(t.id)}
+          onClose={onCloseTab ? () => onCloseTab(t.id) : undefined}
+          onMenu={(at, from) => setRowMenu({ ...at, from, kind: 'tab', id: t.id })}
+        />
+        {l?.session && confirm(l.session.session_id)}
+      </>
+    )
+  }
   const rowMenuContent = () => {
     if (!rowMenu) return null
     if (rowMenu.kind === 'tab') {
@@ -380,70 +424,62 @@ export const ProjectRow = memo(function ProjectRow({
           {current && !waitingOnly && tabs.length === 0 && live.own.length === 0 && live.waitingOther.length === 0 && live.other.length === 0 && live.hidden.length === 0 && (
             <li className="flex h-[30px] items-center pl-[22px] pr-2 text-[12px] text-fg-faint">No tabs open.</li>
           )}
-          {shownTabs.map((t) => {
-            const l = labels.get(t.id)
-            const n = l?.session ? nodes.get(l.session.session_id) : undefined
-            return (
-              <Fragment key={t.id}>
-                <TabRow
-                  tab={t}
-                  label={l}
-                  waiting={!!n?.waiting}
-                  asks={!!n?.asks}
-                  digit={tabDigits?.get(t.id) ?? undefined}
-                  active={t.id === activeTabId}
-                  onOpen={() => onActivateTab(t.id)}
-                  onClose={onCloseTab ? () => onCloseTab(t.id) : undefined}
-                  onMenu={(at, from) => setRowMenu({ ...at, from, kind: 'tab', id: t.id })}
-                />
-                {l?.session && confirm(l.session.session_id)}
-              </Fragment>
-            )
-          })}
-          {ownRows.map((x) => (
-            <Fragment key={x.session.session_id}>
-              {liveRow(x)}
-              {confirm(x.session.session_id)}
-            </Fragment>
-          ))}
-          {/* Started in another terminal and waiting on you: always a row,
-            * never behind the line below, since these rows are now the
-            * sidebar's only list of what needs you. */}
-          {live.waitingOther.map((x) => <Fragment key={x.session.session_id}>{liveRow(x)}</Fragment>)}
-          {!waitingOnly && live.other.length > 0 && (
-            <li>
-              <button
-                type="button"
-                data-nav-row
-                aria-expanded={othersOpen}
-                onClick={() => setOthersOpen((v) => !v)}
-                className="app-row flex h-[30px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] pr-2 text-left text-[12px] text-fg-faint"
-                title="Sessions in this project started outside Caprock, in another terminal. Caprock watches them; it does not hold their terminal."
-              >
-                <span className="min-w-0 flex-1 truncate">Running in other terminals <span className="num">· {live.other.length}</span></span>
-                <span className={`inline-block transition-transform motion-reduce:transition-none ${othersOpen ? 'rotate-90' : ''}`} aria-hidden>›</span>
-              </button>
-            </li>
+          {waitingOnly ? (
+            <>
+              {shownTabs.map((t) => <Fragment key={t.id}>{itemRow({ key: t.id, tab: t, label: labels.get(t.id), node: nodeOfTab(t) })}</Fragment>)}
+              {ownRows.map((x) => <Fragment key={x.session.session_id}>{itemRow({ key: x.session.session_id, node: x })}</Fragment>)}
+              {live.waitingOther.map((x) => <Fragment key={x.session.session_id}>{itemRow({ key: x.session.session_id, node: x })}</Fragment>)}
+            </>
+          ) : (
+            <>
+              {/* One row: the one that matters now (pickLead). The rest wait
+                * behind one quiet line, "+N more", that says what in it
+                * needs you (owner, 2026-10-12: "only ONE card under it; hide
+                * the rest inside", translated). */}
+              {lead && <Fragment key={lead.key}>{itemRow(lead)}</Fragment>}
+              {rest.length > 0 && (
+                <li>
+                  <button
+                    type="button"
+                    data-nav-row
+                    data-more-rows
+                    data-waiting={restWaiting.asks + restWaiting.waiting > 0 || undefined}
+                    aria-expanded={moreOpen}
+                    onClick={() => setMoreOpen(!moreOpen)}
+                    className={`app-row flex h-[26px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] pr-2 text-left text-[12px] ${restWaiting.asks + restWaiting.waiting > 0 ? 'text-accent' : 'text-fg-faint'}`}
+                    title={`${moreBreakdown(rest)}. ${moreOpen ? 'Fold them back under this line.' : 'Show them here.'} They keep running either way.`}
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className="num">+{rest.length}</span> more
+                      {restWaiting.asks > 0 && <span className="font-semibold"> · <span className="num">{restWaiting.asks}</span> asks</span>}
+                      {restWaiting.waiting > 0 && <span className="font-semibold"> · <span className="num">{restWaiting.waiting}</span> waiting</span>}
+                    </span>
+                    <span className={`inline-block transition-transform motion-reduce:transition-none ${moreOpen ? 'rotate-90' : ''}`} aria-hidden>›</span>
+                  </button>
+                </li>
+              )}
+              {moreOpen && rest.map((it) => <Fragment key={it.key}>{itemRow(it)}</Fragment>)}
+              {/* Hidden by hand, never lost: one line brings them back. With
+                * other rows folded, it folds with them. */}
+              {live.hidden.length > 0 && (rest.length === 0 || moreOpen) && (
+                <li>
+                  <button
+                    type="button"
+                    data-nav-row
+                    data-hidden-rows
+                    aria-expanded={hiddenOpen}
+                    onClick={() => setHiddenOpen((v) => !v)}
+                    className="app-row flex h-[30px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] pr-2 text-left text-[12px] text-fg-faint"
+                    title="Rows you hid. What runs in them keeps running; each shows again by itself when it next waits on you."
+                  >
+                    <EyeOffIcon size={13} />
+                    <span className="min-w-0 flex-1 truncate"><span className="num">{live.hidden.length}</span> hidden · {hiddenOpen ? 'hide again' : 'show'}</span>
+                  </button>
+                </li>
+              )}
+              {hiddenOpen && (rest.length === 0 || moreOpen) && live.hidden.map((x) => <Fragment key={x.session.session_id}>{liveRow(x, true)}{confirm(x.session.session_id)}</Fragment>)}
+            </>
           )}
-          {!waitingOnly && othersOpen && live.other.map((x) => <Fragment key={x.session.session_id}>{liveRow(x)}</Fragment>)}
-          {/* Hidden by hand, never lost: one line brings them back. */}
-          {!waitingOnly && live.hidden.length > 0 && (
-            <li>
-              <button
-                type="button"
-                data-nav-row
-                data-hidden-rows
-                aria-expanded={hiddenOpen}
-                onClick={() => setHiddenOpen((v) => !v)}
-                className="app-row flex h-[30px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] pr-2 text-left text-[12px] text-fg-faint"
-                title="Rows you hid. What runs in them keeps running; each shows again by itself when it next waits on you."
-              >
-                <EyeOffIcon size={13} />
-                <span className="min-w-0 flex-1 truncate"><span className="num">{live.hidden.length}</span> hidden · {hiddenOpen ? 'hide again' : 'show'}</span>
-              </button>
-            </li>
-          )}
-          {!waitingOnly && hiddenOpen && live.hidden.map((x) => <Fragment key={x.session.session_id}>{liveRow(x, true)}{confirm(x.session.session_id)}</Fragment>)}
         </ul>
       )}
       {rowMenuContent()}
@@ -676,23 +712,93 @@ function RowAction({ label, title, onClick, popup, children }: { label: string; 
 }
 
 const FOLDED_KEY = 'caprock-sidebar-folded'
+/** Projects whose "+N more" is open, kept per viewer. */
+export const MORE_KEY = 'caprock-sidebar-more-open'
 
-function readFolded(): Set<string> {
-  try { return new Set(JSON.parse(localStorage.getItem(FOLDED_KEY) ?? '[]') as string[]) } catch { return new Set() }
+function readIds(key: string): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(key) ?? '[]') as string[]) } catch { return new Set() }
+}
+
+/** One project's yes/no kept per viewer under `key`: folded by hand, its "+N more" open. */
+function useIdFlag(key: string, id: string): [boolean, (v: boolean) => void] {
+  const [v, setV] = useState(() => readIds(key).has(id))
+  const set = (next: boolean) => {
+    setV(next)
+    try {
+      const all = readIds(key)
+      if (next) all.add(id); else all.delete(id)
+      localStorage.setItem(key, JSON.stringify([...all]))
+    } catch { /* private window: for this page only */ }
+  }
+  return [v, set]
 }
 
 /** A project folded by hand, kept per viewer. */
 function useFolded(id: string): [boolean, (v: boolean) => void] {
-  const [v, setV] = useState(() => readFolded().has(id))
-  const set = (next: boolean) => {
-    setV(next)
-    try {
-      const all = readFolded()
-      if (next) all.add(id); else all.delete(id)
-      localStorage.setItem(FOLDED_KEY, JSON.stringify([...all]))
-    } catch { /* private window: folded for this page only */ }
+  return useIdFlag(FOLDED_KEY, id)
+}
+
+/** A row under a project: a tab (with the session it shows, if any), or a live session or shell with no tab. */
+export interface LeadItem {
+  key: string
+  tab?: Tab
+  label?: TabLabel
+  node?: SessionNode
+}
+
+/** How much a row matters now: the tab in front, one that asks, one that waits, an agent that works, a busy shell, the rest. Lower first. */
+function leadTier(it: LeadItem, activeTabId?: string): number {
+  if (it.tab && it.tab.id === activeTabId) return 0
+  if (it.node?.asks) return 1
+  if (it.node?.waiting) return 2
+  if ((it.node?.dot ?? it.label?.dot) === 'working') return it.node?.isShell || it.label?.isShell ? 4 : 3
+  return 5
+}
+
+function lastEvent(it: LeadItem): number {
+  return it.node?.session.last_event_at ?? it.label?.session?.last_event_at ?? 0
+}
+
+/**
+ * The one row an open project shows (owner, 2026-10-12): its tab in front;
+ * else what waits on you, a permission prompt first; else the working agent
+ * most recently active (a busy shell after it); else the most recent. The row shown before stays
+ * while nothing outranks it, so two busy sessions do not trade places on
+ * every event.
+ */
+export function pickLead(items: readonly LeadItem[], activeTabId?: string, prev?: string): LeadItem | undefined {
+  if (items.length === 0) return undefined
+  let best: LeadItem | undefined
+  let bestTier = 6
+  for (const it of items) {
+    const t = leadTier(it, activeTabId)
+    if (t < bestTier || (t === bestTier && lastEvent(it) > lastEvent(best!))) { best = it; bestTier = t }
   }
-  return [v, set]
+  const kept = prev === undefined ? undefined : items.find((it) => it.key === prev)
+  if (kept && leadTier(kept, activeTabId) === bestTier) return kept
+  return best
+}
+
+/** What "+N more" folds, for its tooltip: "2 working · 1 idle · 1 shell". */
+export function moreBreakdown(rest: readonly LeadItem[]): string {
+  const counts = new Map<string, number>()
+  const add = (k: string) => counts.set(k, (counts.get(k) ?? 0) + 1)
+  for (const it of rest) {
+    if (it.label?.file !== undefined) add('file')
+    else if (it.node?.isShell || it.label?.isShell) add('shell')
+    else if (it.node?.asks) add('asks')
+    else {
+      const dot = it.node?.dot ?? it.label?.dot ?? 'idle'
+      add(dot === 'waiting' ? 'waiting' : STATE_WORD[dot])
+    }
+  }
+  const order = ['asks', 'waiting', 'working', 'looping', 'idle', 'done', 'shell', 'file']
+  const parts = order.filter((k) => counts.has(k)).map((k) => {
+    const n = counts.get(k)!
+    return k === 'shell' || k === 'file' ? `${n} ${k}${n > 1 ? 's' : ''}` : `${n} ${k}`
+  })
+  const others = rest.filter((it) => !it.tab && it.node && !it.node.session.owned).length
+  return parts.join(' · ') + (others ? ` (${others} from other terminals)` : '')
 }
 
 function Chevron({ open }: { open: boolean }) {

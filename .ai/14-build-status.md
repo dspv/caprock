@@ -73,6 +73,13 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-12 — 0.111.3: the headline figure back beside the agent, a plainer update button
+
+Owner feedback on 0.111.1: the cockpit's headline figure stays on the
+agent's row in a narrow inspector (it shrinks there instead of dropping to
+the chips' row), and the version panel's update button is *Update to v…*
+with the restart note in small type under it.
+
 ### 2026-10-12 — 0.111.2: donuts read in full on a 14-inch screen
 
 Every donut's legend and centre caption wrap instead of truncating; the

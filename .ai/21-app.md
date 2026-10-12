@@ -139,7 +139,14 @@ One window, three regions:
   one by hand, kept per viewer (`caprock-sidebar-folded`). The *Projects*
   heading says how many and how many have something running (*● 3 of 12*),
   and *Outside projects* can be hidden from its row like any project (it was
-  the one row with no way out; owner, 2026-10-11). Under an open one, exactly its tabs as
+  the one row with no way out; owner, 2026-10-11). Under an open one, **one
+  row** (owner, 2026-10-12: "there should be the project, but only ONE card
+  under it; hide the rest inside", translated): its tab in front, or the one
+  last in front; else what asks, what waits, the agent that worked last, the
+  most recent. The rest fold behind one quiet *+N more* line, which says in
+  amber what in it waits (*+4 more · 1 asks*), breaks itself down in its
+  tooltip (*2 working · 1 idle · 1 shell*), and opens in place, remembered
+  per project ([04-ui.md](04-ui.md) § Sidebar). Opened, its tabs as
   the strip shows them, same order, same names (`lib/tablabels.ts`; shells
   numbered *Shell 1*, *Shell 2*; a branch only when it is not the
   project's). No worktree or branch rows, and no session that is not in a
@@ -366,11 +373,15 @@ One window, three regions:
   agent's terminal: the session's project (and its branch when not the
   default; the path on hover), the agent's character in its state (working,
   *background agents working · N* once its turn ended with subagents still
-  at work, waiting on you, looping, idle, ended) with a headline figure at
-  the right that the viewer picks (cost, burn rate, tokens, turns, cache
-  hit rate, time working), the spend details folded to one line below the
-  plan windows (three figures the viewer picks, or a chart of the period's
-  spend: *Numbers | Chart*, for the session, today, 7 or 30 days), the context bar and what the next call pays to
+  at work, waiting on you, looping, idle, ended) with three figures at
+  the right that the viewer picks from one list (cost, burn rate, tokens,
+  cache hit rate, turns, time working, last call, tool calls): a big
+  headline and two short lines under it (*$4.08/h burn ▾*, *4.01B tok ▾*),
+  never one twice, cost, burn rate and tokens by default; when the two
+  lines would squeeze the agent's own, they move to the chips' row at its
+  right. Below the plan windows, the spend details, open on a chart of the
+  period's spend (*Chart | Numbers*, for the session, today, 7 or 30 days;
+  Numbers is three more figures the viewer picks), the context bar and what the next call pays to
   re-read it, what it is doing this second (the open tool call and how long
   it has run, or *Thinking* since the last one finished; while a permission
   prompt waits, who asks and what — "Subagent (general-purpose) wants to run

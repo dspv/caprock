@@ -7,6 +7,35 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.111.3] - 2026-10-12
+
+### Changed
+
+- **app:** each project in the sidebar shows one row: the tab you are on (or
+  its last one), else what waits on you, else the agent that worked last.
+  The rest fold behind one quiet *+N more* line that opens in place, stays
+  open per project, lists what it holds in its tooltip (*2 working · 1 idle
+  · 1 shell*) and turns amber when something behind it waits (*+4 more · 1
+  asks*). It replaces the *Running in other terminals* line; ⌘1–⌘9 still
+  reach every tab.
+
+### Changed
+
+- **app:** three figures beside the agent in the cockpit, each one yours
+  to pick: the headline in large type and two short lines under it
+  (*$4.08/h burn ▾*, *4.01B tok ▾*), from one list — cost, burn rate,
+  tokens, cache hit rate, turns, time working, last call, tool calls —
+  never the same one twice (picking a taken one swaps them), cost, burn
+  rate and tokens until you choose. In a narrow inspector the two lines
+  move under the agent, beside the subagent chips, rather than squeezing
+  the agent's own lines or being cut.
+
+- **app:** the Spend block in the cockpit opens on its chart again,
+  unfolded: the period's spend by time with its total and the stretch
+  under the pointer. *Numbers* is still a click away on the *Chart |
+  Numbers* switch. A choice saved while Numbers and folded were the
+  default opens on the chart once; what you pick after that holds.
+
 ### Added
 
 - **deck:** pull requests show what stands in their way and who is on them,
@@ -31,7 +60,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** the version panel's update button reads at a glance: *Update to
   v…* on one line, with *Restarts the app · sessions keep running* in small
   type under it, instead of one sentence wrapping across the button.
-
 - **app:** the cockpit's headline figure stays on the agent's row, at its
   right, in a narrow inspector too: it shrinks there instead of dropping to
   the subagent chips' row.

@@ -57,11 +57,10 @@ beforeEach(() => {
   h.summaryAsked = []
 })
 
-/** Open the folded spend details, as Numbers unless told otherwise (Numbers is the default). */
-function unfoldSpend(view: 'numbers' | 'chart' = 'numbers') {
+/** Switch the spend details, open on the chart by default, to Numbers. */
+function showNumbers() {
   const region = screen.getByRole('region', { name: 'Spend' })
-  fireEvent.click(within(region).getByRole('button', { expanded: false }))
-  if (view === 'chart') fireEvent.click(within(region).getByRole('button', { name: 'Chart' }))
+  fireEvent.click(within(region).getByRole('button', { name: 'Numbers' }))
 }
 
 /** What the newest call cost, as the first figure's menu offers it. */
@@ -104,7 +103,7 @@ describe('the agent cockpit', () => {
     const nowCard = screen.getByRole('region', { name: 'Now' })
     expect(within(nowCard).getByText('Editing')).toBeInTheDocument()
     expect(within(nowCard).getByText('session.go')).toBeInTheDocument()
-    unfoldSpend()
+    showNumbers()
     expect(lastCallOffered()).toHaveTextContent('$0.07')
     expect(screen.getByRole('meter', { name: '5 hours window used' })).toHaveAttribute('aria-valuenow', '41')
     // One line: when it resets, and whether it lasts (owner, 2026-10-11).
@@ -135,7 +134,7 @@ describe('the agent cockpit', () => {
     const timeline = screen.getByRole('region', { name: 'Recent tool calls' })
     expect(await within(timeline).findByText('go test ./internal/...')).toBeInTheDocument()
     expect(h.mainAsked.at(-1)).toEqual(['tool.pre', 'tool.post', 'turn.assistant'])
-    unfoldSpend()
+    showNumbers()
     expect(lastCallOffered()).toHaveTextContent('$0.07')
   })
 
@@ -266,46 +265,137 @@ describe('the agent cockpit', () => {
   })
 })
 
+describe('the figures beside the agent', () => {
+  const stored = () => JSON.parse(localStorage.getItem('caprock.app.cockpit.spend') ?? '{}')
+  const lines = () => Array.from(document.querySelectorAll('[data-hero-line]')).map((d) => d.getAttribute('data-hero-line'))
+
+  it('shows cost big, then burn rate and tokens as two short lines', () => {
+    show(agent())
+    expect(screen.getByLabelText('Cost $1.84')).toBeInTheDocument()
+    expect(lines()).toEqual(['burn', 'tokens'])
+    const tok = screen.getByRole('button', { name: /^Tokens 950\.1k\. Choose what this line shows/ })
+    expect(tok).toHaveTextContent('950.1k')
+    expect(tok).toHaveTextContent('tok')
+    // Short, on one line each: no wrapping inside a line.
+    expect(tok.className).toMatch(/\bwhitespace-nowrap\b/)
+    expect(tok.className).toMatch(/text-\[13px\]/)
+  })
+
+  it('lets each of the three pick its metric, swaps rather than repeats, and remembers them', () => {
+    const { unmount } = show(agent({ started_at: now - 72 * 60_000, worked_at: now }))
+    fireEvent.click(screen.getByRole('button', { name: /Headline: Cost/ }))
+    const big = screen.getByRole('menu', { name: 'Headline figure' })
+    // The same list for all three, with the ones another figure shows marked.
+    expect(within(big).getAllByRole('menuitemradio')).toHaveLength(8)
+    expect(within(big).getByRole('menuitemradio', { name: /Tokens/ })).toHaveTextContent('Tokens · shown')
+    expect(within(big).getByRole('menuitemradio', { name: /Tokens/ })).toHaveAttribute('title', 'Shown as the second line: picking it swaps the two')
+    fireEvent.click(within(big).getByRole('menuitemradio', { name: /Tokens/ }))
+    // Tokens was the second line: it and cost swap.
+    expect(screen.getByLabelText('Tokens 950.1k')).toBeInTheDocument()
+    expect(lines()).toEqual(['burn', 'cost'])
+    fireEvent.click(screen.getByRole('button', { name: /^Burn rate .*Choose what this line shows/ }))
+    const line = screen.getByRole('menu', { name: 'What line 1 shows' })
+    expect(within(line).getByRole('menuitemradio', { name: /Burn rate/ })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(within(line).getByRole('menuitemradio', { name: /Time working/ }))
+    expect(lines()).toEqual(['time', 'cost'])
+    expect(screen.getByRole('button', { name: /^Time working 1h 12m\./ })).toBeInTheDocument()
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(stored().hero).toEqual(['tokens', 'time', 'cost'])
+    unmount()
+    resetSpendPrefsForTest()
+    show(agent())
+    expect(screen.getByLabelText('Tokens 950.1k')).toBeInTheDocument()
+    expect(lines()).toEqual(['time', 'cost'])
+  })
+
+  it('keeps an older stored headline as the big figure', () => {
+    localStorage.setItem('caprock.app.cockpit.spend', JSON.stringify({ headline: 'turns' }))
+    show(agent())
+    expect(screen.getByLabelText('Turns 12')).toBeInTheDocument()
+    expect(lines()).toEqual(['cost', 'burn'])
+  })
+
+  it('stands the two lines beside the agent until measuring says they do not fit', () => {
+    show(agent())
+    const hero = document.querySelector('.cockpit-hero')!
+    // No layout here: nothing measured, so they keep their place under the big figure.
+    expect(hero).toHaveAttribute('data-sec', 'beside')
+    expect(hero.querySelector('[data-hero-sec]')!.className).toMatch(/\[grid-area:sec\]/)
+  })
+
+  it('moves the two lines to the chips’ row when they would squeeze the agent’s own', () => {
+    // A 324px inspector's hero is about 291px wide; each figure about 100px.
+    const width = (w: number) => vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(w)
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(100)
+    width(291)
+    const { unmount } = show(agent())
+    let hero = document.querySelector('.cockpit-hero')!
+    expect(hero).toHaveAttribute('data-sec', 'below')
+    // Not cut: the whole lines, side by side under the agent, still choosers.
+    const sec = hero.querySelector('[data-hero-sec]')!
+    expect(sec.className).not.toMatch(/grid-area:sec/)
+    expect(sec.parentElement!.className).toMatch(/\[grid-area:chips\]/)
+    expect(within(sec as HTMLElement).getAllByRole('button', { name: /Choose what this line shows/ })).toHaveLength(2)
+    unmount()
+    width(447)
+    show(agent())
+    hero = document.querySelector('.cockpit-hero')!
+    expect(hero).toHaveAttribute('data-sec', 'beside')
+    vi.restoreAllMocks()
+  })
+})
+
 describe('the spend details', () => {
   const spend = () => screen.getByRole('region', { name: 'Spend' })
   const stored = () => JSON.parse(localStorage.getItem('caprock.app.cockpit.spend') ?? '{}')
   const slots = () => Array.from(spend().querySelectorAll('[data-slot]')).map((d) => d.getAttribute('data-slot'))
 
-  it('folds to one line by default, and remembers when it is opened', () => {
-    const { unmount } = show(agent({ started_at: now - 72 * 60_000, worked_at: now }))
-    const toggle = within(spend()).getByRole('button', { name: /Spent \$1\.84 · 12 turns · 1h 12m/ })
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(within(spend()).queryByText('Turns')).toBeNull()
+  it('opens on the session’s chart by default, folds to one line, and remembers it', async () => {
+    const { unmount } = await act(async () => show(agent({ started_at: now - 72 * 60_000, worked_at: now })))
+    expect(spend()).toHaveAttribute('data-spend-view', 'chart')
+    expect(within(spend()).getByRole('button', { name: 'Chart' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(spend()).getByRole('group', { name: /^Spend by .*, this session$/ })).toBeInTheDocument()
+    expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$1.84')
+    const toggle = within(spend()).getByRole('button', { name: /^Spend$/ })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(toggle)
-    expect(within(spend()).getByRole('button', { name: /^Spend$/ })).toHaveAttribute('aria-expanded', 'true')
-    expect(stored().folded).toBe(false)
+    expect(within(spend()).getByRole('button', { name: /Spent \$1\.84 · 12 turns · 1h 12m/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(within(spend()).queryByRole('group', { name: 'Spend view' })).toBeNull()
+    expect(stored()).toMatchObject({ folded: true, v: 2 })
     unmount()
     resetSpendPrefsForTest()
     show(agent())
-    expect(within(spend()).getByText('Tokens')).toBeInTheDocument()
+    expect(spend().querySelector('[data-spend-folded]')).toHaveTextContent('Spent $1.84')
   })
 
-  it('opens Numbers by default and remembers Chart, and the fold works in both', async () => {
-    const { unmount } = show(agent())
-    unfoldSpend()
-    expect(spend()).toHaveAttribute('data-spend-view', 'numbers')
-    expect(within(spend()).getByRole('button', { name: 'Numbers' })).toHaveAttribute('aria-pressed', 'true')
-    // Spent is the headline beside the agent already: the first figure shows burn rate instead.
-    expect(slots()).toEqual(['burn', 'tokens', 'cache'])
-    expect(spend().querySelector('[data-spend-time]')).toBeNull()
-    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Chart' })) })
-    expect(stored().view).toBe('chart')
-    expect(spend().querySelector('[data-spend-numbers]')).toBeNull()
-    expect(within(spend()).getByRole('group', { name: /^Spend by .*, this session$/ })).toBeInTheDocument()
-    expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$1.84')
+  it('opens a choice stored before the chart was the default on the chart, once', async () => {
+    localStorage.setItem('caprock.app.cockpit.spend', JSON.stringify({ folded: true, headline: 'cost', view: 'numbers', period: '7d' }))
+    h.summaries = { '7d': { range: '7d', cost_usd: 84.5, tokens_in: 0, cache_read: 0, cache_write: 0, savings: { hit_rate: 0 }, projects: [] } as unknown as Summary }
+    const { unmount } = await act(async () => show(agent()))
+    expect(spend()).toHaveAttribute('data-spend-view', 'chart')
+    expect(spend()).toHaveAttribute('data-spend-period', '7d')
+    // A pick after that holds.
+    showNumbers()
+    expect(stored()).toMatchObject({ view: 'numbers', v: 2 })
     unmount()
     resetSpendPrefsForTest()
     await act(async () => { show(agent()) })
-    expect(spend()).toHaveAttribute('data-spend-view', 'chart')
-    // Folded, both views read the same one line.
-    fireEvent.click(within(spend()).getByRole('button', { expanded: true }))
-    expect(spend().querySelector('[data-spend-folded]')).toHaveTextContent('Spent $1.84')
-    expect(within(spend()).queryByRole('group', { name: 'Spend view' })).toBeNull()
+    expect(spend()).toHaveAttribute('data-spend-view', 'numbers')
+  })
+
+  it('remembers Numbers, and never repeats a figure beside the agent there', async () => {
+    const { unmount } = await act(async () => show(agent()))
+    showNumbers()
+    expect(spend()).toHaveAttribute('data-spend-view', 'numbers')
+    expect(within(spend()).getByRole('button', { name: 'Numbers' })).toHaveAttribute('aria-pressed', 'true')
+    // Spent, burn rate and tokens are beside the agent already: the slots show the next ones.
+    expect(slots()).toEqual(['last', 'time', 'cache'])
+    expect(spend().querySelector('[data-spend-time]')).toBeNull()
+    expect(stored().view).toBe('numbers')
+    unmount()
+    resetSpendPrefsForTest()
+    show(agent())
+    expect(spend()).toHaveAttribute('data-spend-view', 'numbers')
   })
 
   it('reads the figures and the chart from the session, then from each range’s summary', async () => {
@@ -314,14 +404,14 @@ describe('the spend details', () => {
       '30d': { range: '30d', cost_usd: 310, tokens_in: 0, cache_read: 0, cache_write: 0, savings: { hit_rate: 0 }, projects: [] } as unknown as Summary,
     }
     const today = { ...summary, range: 'today', cost_usd: 12.25, tokens_in: 500, cache_read: 1_500, cache_write: 0, savings: { hit_rate: 0.75 }, projects: [] } as unknown as Summary
-    show(agent(), today)
-    unfoldSpend()
+    await act(async () => { show(agent(), today) })
+    showNumbers()
     const fig = (name: RegExp) => within(spend()).getByLabelText(name)
-    expect(fig(/^Tokens, this session/)).toHaveTextContent('950.1k')
+    expect(fig(/^Cache hit rate, this session/)).toHaveTextContent('95%')
     expect(within(spend()).getByRole('button', { name: 'session' })).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(within(spend()).getByRole('button', { name: 'today' }))
     // Today is the summary the window already holds: no extra request. A
-    // Caprock-wide figure is not the headline's, so Spent is back.
+    // Caprock-wide figure is not the ones beside the agent, so Spent is back.
     expect(slots()).toEqual(['cost', 'tokens', 'cache'])
     expect(fig(/^Spent, today · all sessions/)).toHaveTextContent('$12.25')
     expect(fig(/^Cache hit rate, today/)).toHaveTextContent('75%')
@@ -341,16 +431,16 @@ describe('the spend details', () => {
     // No spark in the range: it says so, never an empty line.
     expect(spend().querySelector('[data-spend-empty]')).toHaveTextContent('no spend by time to draw')
     expect(within(spend()).queryByRole('group', { name: /^Spend by/ })).toBeNull()
-    fireEvent.click(within(spend()).getByRole('button', { name: 'Numbers' }))
+    showNumbers()
     expect(fig(/^Spent, 30 days/)).toHaveTextContent('$310.00')
     // No input in the range: no cache rate, a dash rather than a zero.
     expect(fig(/^Cache hit rate, 30 days/)).toHaveTextContent('—')
     expect(stored()).toMatchObject({ period: '30d', view: 'numbers' })
   })
 
-  it('lays the numbers out to shrink: min-w-0 down the chain, three equal columns', () => {
-    show(agent())
-    unfoldSpend()
+  it('lays the numbers out to shrink: min-w-0 down the chain, three equal columns', async () => {
+    await act(async () => { show(agent()) })
+    showNumbers()
     const block = spend().querySelector('[data-spend-numbers]')!
     expect(block.className).toMatch(/\bmin-w-0\b/)
     expect(block.className).toMatch(/grid-cols-\[minmax\(0,1fr\)\]/)
@@ -361,47 +451,32 @@ describe('the spend details', () => {
     for (const dd of Array.from(dl.querySelectorAll('dd'))) expect(dd.className).toMatch(/\btruncate\b/)
   })
 
-  it('lets each figure pick what it shows, swaps rather than repeats, and remembers it', () => {
-    show(agent({ started_at: now - 72 * 60_000, worked_at: now }))
-    unfoldSpend()
+  it('lets each figure pick what it shows, swaps rather than repeats, and remembers it', async () => {
+    await act(async () => { show(agent({ started_at: now - 72 * 60_000, worked_at: now })) })
+    showNumbers()
     const menuOf = (i: number) => fireEvent.click(within(spend()).getAllByRole('button', { name: /Choose what this figure shows/ })[i]!)
     menuOf(0)
     const menu = within(spend()).getByRole('menu', { name: 'What figure 1 shows' })
-    // The headline beside the agent is not offered again for the session.
-    expect(within(menu).getByRole('menuitemradio', { name: /Spent/ })).toBeDisabled()
-    expect(within(menu).getByRole('menuitemradio', { name: /Burn rate/ })).toHaveAttribute('aria-checked', 'true')
-    fireEvent.click(within(menu).getByRole('menuitemradio', { name: /Time working/ }))
-    expect(slots()).toEqual(['time', 'tokens', 'cache'])
+    // The figures beside the agent are not offered again for the session.
+    for (const name of [/Spent/, /Burn rate/, /Tokens/]) expect(within(menu).getByRole('menuitemradio', { name })).toBeDisabled()
+    expect(within(menu).getByRole('menuitemradio', { name: /Last call/ })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: /Turns/ }))
+    expect(slots()).toEqual(['turns', 'time', 'cache'])
     expect(within(spend()).getByLabelText(/^Time working, this session/)).toHaveTextContent('1h 12m')
     // Picking what another figure shows swaps the two.
     menuOf(2)
-    fireEvent.click(within(spend()).getByRole('menuitemradio', { name: /Tokens/ }))
-    expect(slots()).toEqual(['time', 'cache', 'tokens'])
-    expect(stored().slots).toEqual(['time', 'cache', 'tokens'])
+    fireEvent.click(within(spend()).getByRole('menuitemradio', { name: /Time working/ }))
+    expect(slots()).toEqual(['turns', 'cache', 'time'])
+    expect(stored().slots).toEqual(['turns', 'cache', 'time'])
     expect(within(spend()).queryByRole('menu')).toBeNull()
   })
 
-  it('takes the headline the viewer picks, remembers it, and the figures never repeat it', () => {
-    show(agent())
-    unfoldSpend()
-    fireEvent.click(screen.getByRole('button', { name: /Headline: Cost/ }))
-    fireEvent.click(screen.getByRole('menuitemradio', { name: /Tokens/ }))
-    expect(screen.getByLabelText('Tokens 950.1k')).toBeInTheDocument()
-    expect(slots()).toEqual(['cost', 'burn', 'cache'])
-    expect(stored().headline).toBe('tokens')
-    resetSpendPrefsForTest()
-    expect(screen.queryByRole('menu', { name: 'Headline figure' })).toBeNull()
-  })
-
   it('draws the chart in the flow of the block, never over it', async () => {
-    show(agent())
-    unfoldSpend()
-    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Chart' })) })
+    await act(async () => { show(agent()) })
     expect(within(spend()).getByRole('button', { name: 'Chart' })).toHaveAttribute('aria-pressed', 'true')
     const chart = spend().querySelector('[data-spend-time]')!
     expect(chart).toBeTruthy()
     expect(chart.className).not.toMatch(/\b(absolute|fixed)\b/)
     expect(spend().querySelector('[role="dialog"]')).toBeNull()
-    expect(stored().view).toBe('chart')
   })
 })

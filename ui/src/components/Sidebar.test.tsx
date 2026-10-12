@@ -48,7 +48,7 @@ const listed = () => [...document.querySelectorAll('[data-project-row]')].map((b
 beforeEach(() => localStorage.clear())
 
 describe('the sidebar', () => {
-  it('opens only the current project, listing its tabs as the strip names them, the tab in front the one highlighted row', () => {
+  it('opens only the current project, its tab in front the one row under it and the one highlighted row, the rest behind +N more as the strip names them', () => {
     const pane = (id: string, kind: 'session' | 'shell', sessionId: string) => ({ type: 'pane' as const, id, target: { kind, sessionId } })
     const tabs: Tab[] = [
       { id: 't1', projectId: 'alpha', root: pane('p1', 'session', 'a1'), focusedPaneId: 'p1', title: 'Fix the login' },
@@ -60,7 +60,11 @@ describe('the sidebar', () => {
     const onActivateTab = vi.fn()
     const { rerender, props } = renderSidebar({ tabs, tabLabels: labels, activeProjectId: 'alpha', activeTabId: 't3', dashboardActive: false, onActivateTab })
     const list = screen.getByRole('group', { name: 'alpha: open tabs' })
-    expect([...list.querySelectorAll('[data-tab-row] span.flex-1')].map((b) => b.textContent)).toEqual(['Fix the login', 'Shell 1', 'Shell 2'])
+    const titles = () => [...list.querySelectorAll('[data-tab-row] span.flex-1')].map((b) => b.textContent)
+    expect(titles()).toEqual(['Shell 1'])
+    fireEvent.click(within(list).getByRole('button', { name: /\+2 more/ }))
+    // The one in front, then the rest in strip order.
+    expect(titles()).toEqual(['Shell 1', 'Fix the login', 'Shell 2'])
     // One highlighted row.
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)
     expect(document.querySelector('[data-tab-row="t3"]')).toHaveAttribute('aria-current', 'true')
@@ -139,6 +143,7 @@ describe('the sidebar', () => {
     const onOpenLive = vi.fn()
     renderSidebar({ model: withLive, tabs, tabLabels: tabLabels(tabs, new Map(), new Set(), () => undefined), activeProjectId: 'alpha', activeTabId: 't1', dashboardActive: false, onOpenLive })
     const list = screen.getByRole('group', { name: 'alpha: open tabs' })
+    fireEvent.click(within(list).getByRole('button', { name: /\+2 more/ }))
     expect([...list.querySelectorAll('[data-tab-row]')].map((b) => b.getAttribute('data-tab-row'))).toEqual(['t1'])
     // Agents first, the most recent first; the ended one is not listed.
     expect([...list.querySelectorAll('[data-live-row] span.flex-1')].map((b) => b.textContent)).toEqual(['Write the docs', 'Shell'])
@@ -314,6 +319,9 @@ describe('the sidebar', () => {
     renderSidebar({ model: m })
     expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull()
     expect(screen.queryByText(/Older, put down/)).toBeNull()
+    // The one waiting now is the row shown; the old one is under +1 more, which says nothing waits there.
+    expect(screen.getByRole('button', { name: '+1 more' })).not.toHaveAttribute('data-waiting')
+    fireEvent.click(screen.getByRole('button', { name: '+1 more' }))
     expect(document.querySelector('[data-live-row="now1"]')).toHaveAttribute('data-waiting', 'true')
     expect(document.querySelector('[data-live-row="old1"]')).not.toHaveAttribute('data-waiting')
     // The project row still counts only what waits now.
