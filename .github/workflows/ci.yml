@@ -5,14 +5,45 @@ on:
     branches: [master]
   pull_request:
 
+# A new push to a pull request cancels the run it supersedes. A push to master
+# never cancels: every master commit gets its full run, and that run is what
+# writes the caches pull requests read.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
+  # What a pull request touches, so the desktop app's three builds (the
+  # slowest jobs here, 4-7 min each) run only when something they build from
+  # changed. The app bundles app/ and a daemon built from Go that the go job
+  # already compiles on every OS; the dashboard is not in it (the window loads
+  # it from the daemon). A push to master always runs everything, and so does
+  # a pull request whose file list cannot be read.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      app: ${{ steps.files.outputs.app }}
+    steps:
+      - id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then echo "app=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if ! files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename'); then
+            echo "could not list the PR's files: running everything"; echo "app=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          app=false
+          if grep -qE '^(app/|Makefile$|scripts/check-app-mic\.sh$|\.github/workflows/ci\.yml$)' <<<"$files"; then app=true; fi
+          echo "app=$app" | tee -a "$GITHUB_OUTPUT"
+
   ui:
     name: ui (typecheck, test, build)
     runs-on: ubuntu-latest
@@ -38,16 +69,12 @@ jobs:
           git diff --quiet -- internal/api/dist || {
             echo "internal/api/dist/ is stale — run 'make ui' and commit the result";
             git --no-pager diff --stat -- internal/api/dist; exit 1; }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v6.0.0
-        with:
-          name: ui-dist
-          path: internal/api/dist
-          if-no-files-found: error
-          retention-days: 3
 
+  # The go jobs build against the committed internal/api/dist rather than
+  # waiting for the ui job's: the ui job fails when that copy is stale, so a
+  # green run tested the same bytes either way, three minutes sooner.
   go:
     name: go (${{ matrix.os }})
-    needs: ui
     strategy:
       fail-fast: false
       matrix:
@@ -60,11 +87,25 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: true
-      - uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317 # v7.0.0
+          cache: false
+      # The Go build and module cache. Only this job writes it (its last step,
+      # on master): with setup-go's cache every job shared one key, whichever
+      # finished first saved it, and Windows ended up with a 28 MB cache that held
+      # almost none of what the go job compiles.
+      - name: go cache paths
+        id: gocache
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: gorestore
         with:
-          name: ui-dist
-          path: internal/api/dist
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-${{ runner.os }}-
       - name: go vet
         run: go vet ./...
       - name: golangci-lint
@@ -85,6 +126,15 @@ jobs:
           name: caprock-${{ matrix.os }}
           path: bin/
           retention-days: 3
+      # The one writer of the Go cache: on master, once per go.mod/go.sum, from
+      # the job that compiles everything (vet, tests, -trimpath binaries, smoke).
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && steps.gorestore.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
 
   # T0 — ConPTY spike. Informational: it must never redden the required jobs
   # (ADR-006 / .ai/09-execution-plan.md T0). Its result is the go/no-go for T11.
@@ -103,7 +153,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+      # No Go cache: the spike compiles one package tree, and restoring the
+      # daemon's cache took longer on Windows than compiling it.
       - name: spike
         run: go test -count=1 -v -tags ptyspike ./internal/ptyman/...
 
@@ -124,7 +176,21 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+      # The Go cache the go job writes on master; read-only here.
+      - name: go cache paths
+        id: gocache
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-${{ runner.os }}-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -146,6 +212,8 @@ jobs:
   # than at release time. Linux builds against WebKitGTK 4.1, Tauri v2's floor.
   app:
     name: app (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -165,7 +233,21 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+      # The Go cache the go job writes on master; read-only here.
+      - name: go cache paths
+        id: gocache
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-${{ runner.os }}-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -181,15 +263,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Cargo's registry and the compiled dependencies, keyed by OS, rustc and
+      # Cargo.lock; the app crate itself always rebuilds. Written from master
+      # only. release.yml's Windows app job reads the same key.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            app/src-tauri/target
-          key: app-${{ runner.os }}-${{ hashFiles('app/src-tauri/Cargo.lock') }}
-          restore-keys: app-${{ runner.os }}-
+          workspaces: app/src-tauri -> target
+          shared-key: app-${{ matrix.os }}
+          save-if: ${{ github.event_name == 'push' }}
       - name: fmt, clippy, test
         run: make app-test
       - name: bundle

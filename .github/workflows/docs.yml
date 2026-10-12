@@ -5,6 +5,11 @@ on:
     branches: [master]
   pull_request:
 
+# As in ci.yml: a new push to a pull request cancels the run it supersedes.
+concurrency:
+  group: docs-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     name: tables aligned, links resolve, no Cyrillic

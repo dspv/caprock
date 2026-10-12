@@ -199,7 +199,8 @@ release:
   # Not a draft: goreleaser publishes the release directly, which is also what
   # lets it push the Homebrew formula (skip_upload:auto skips on draft). release.yml
   # gates goreleaser behind a `verify` job that re-runs `make check` + the Windows
-  # cross-build on the exact tagged commit, so a tag on a red commit never ships.
+  # cross-build on the exact tagged commit, so a tag on a red commit never ships;
+  # the app jobs build beside verify but attach only after this publishes.
   # (The full 3-OS matrix runs on master before the tag is cut.) Cutting a
   # `-rc`/`-beta` tag still marks the release a prerelease (prerelease:auto) and
   # skips the formula push.
