@@ -36,6 +36,13 @@ type Config struct {
 	// Loop detector: >= K same-tool similar-input tool.pre events within T minutes.
 	LoopK        int `json:"loop_k"`
 	LoopTMinutes int `json:"loop_t_minutes"`
+	// LANKeepOn turns phone access (LAN access) back on when the daemon
+	// starts, as if `caprock up --lan` had been given. Off unless the user
+	// ticks *Keep on after Caprock restarts* (ADR-060, amending ADR-029):
+	// only paired devices get in either way, so what it keeps open is the
+	// pairing page on a named address, not the data. Turning phone access off
+	// clears it.
+	LANKeepOn bool `json:"lan_keep_on,omitempty"`
 	// AutoPause applies to owned sessions only (Phase 1). Default off.
 	AutoPause bool `json:"auto_pause"`
 	// Memory decides whether a session opening a folder is told what the last

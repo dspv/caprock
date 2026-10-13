@@ -966,6 +966,10 @@ controller, on the machine, revocably.
 "loopback is unaffected" means this machine's own clients; a request a proxy
 or tunnel relays onto loopback is a device here, token and role included.
 
+*Amended 2026-10-14 by [ADR-060](#adr-060--phone-access-may-stay-on-across-restarts-when-the-owner-ticks-it):*
+"not a stored setting" holds by default; the owner can tick *Keep on after
+Caprock restarts*, and turning access off clears it.
+
 **Rules out:** a relay of ours (sessions would pass through a machine we run,
 which contradicts rule 4 and three sentences on the site); binding the wildcard
 address; a stored "LAN on" setting; pairing from a device that is already
@@ -3294,3 +3298,60 @@ paired device's route list.
 **Revisit if:** a listed process turns out to be one a user needed and the
 heuristics cannot tell it apart — narrow the heuristics before widening
 anything.
+
+## ADR-060 — Phone access may stay on across restarts, when the owner ticks it
+
+**Date:** 2026-10-14 · **Status:** accepted
+
+**Context.** The owner (2026-10-14, translated): "Is it normal that we still
+have this feeling that there's no connection with the phone such that you can
+reach it from different networks?" His panel said *Phone access is off — It
+switches off whenever Caprock restarts*, with Tailscale folded under *Then:
+…*, and the only paired device was a Mac last seen 41 days earlier. Two
+things made the phone feel disconnected: every restart (an update, a reboot)
+closed the door until someone at the Mac turned it on again, and the panel did
+not say, until a code was on screen, that "anywhere" needs Tailscale on both
+devices. ADR-029 made the listener deliberately not a stored setting.
+
+**Decision.**
+
+- **A stored opt-in, `lan_keep_on` in `config.json`, off by default.** When
+  true, the daemon turns phone access on at start as `--lan` would. It is set
+  only with `POST /v1/pair/lan {on: true, keep: true}` — the checkbox *Keep
+  on after Caprock restarts*, offered beside **Turn on** and under the panel
+  while access is on — and **turning access off always clears it**: an "off"
+  that comes back at the next start is not off. Existing installs keep
+  ADR-029's behaviour until someone ticks it.
+- **Why that is safe enough.** Only paired devices get in: every `/v1` route
+  but `POST /v1/pair` refuses a request without a device token, codes are
+  issued only from the machine, are six digits, single-use, five minutes and
+  burned after five wrong guesses, and pairing itself is unchanged. What the
+  setting keeps open on the network is the pairing page and the dashboard's
+  static files on one named address (or two: LAN and Tailscale), never the
+  wildcard. The residual risk ADR-029 named — a laptop opened in a coworking
+  space still listening — is that a stranger on that Wi-Fi sees the pairing
+  page and cannot get past it. A Tailscale address is reachable only from the
+  owner's own tailnet.
+- **Where the phone works is said first.** `GET /v1/pair/state` reports
+  `tailscale: true` when the machine has a Tailscale address now (read from
+  the interface list, listened on or not, while access is off too), and the
+  panel leads with *Works on this Wi-Fi only* or *Works anywhere (Tailscale)*.
+  Without Tailscale it gives the one step (install it on this computer and
+  the phone, same account) with the three downloads. The panel polls the
+  state every 5 s while visible, so installing Tailscale flips it without a
+  restart.
+- **Tailscale that appears while access is on is listened on.** `POST
+  /v1/pair/lan {on: true}` while already listening now also opens the
+  Tailscale listener when one is missing, leaving the first listener alone;
+  the panel sends it once when it sees `tailscale` without a Tailscale
+  address. The old "turn phone access off and on" is gone.
+- **A new code prefers the Tailscale address** when there is one and the
+  owner has not picked another: a phone's token is per address, so one paired
+  on the Wi-Fi address works on that Wi-Fi only.
+
+**Rules out:** keep-on by default; keep-on surviving Turn off; any relay in
+this decision (that is ADR-058's question, not this one's).
+
+**Revisit if:** a paired device is ever let in without a token, or the
+unauthenticated surface grows past `POST /v1/pair` and static files — keep-on
+would then be keeping that open too.

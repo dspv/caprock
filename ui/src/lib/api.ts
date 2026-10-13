@@ -1530,6 +1530,11 @@ export interface PairState {
   /** Every address a phone can open, `url` first: the LAN one, the Tailscale
    *  one and its MagicDNS name (WP-15). A code works on any of them. */
   addresses?: PairAddress[]
+  /** This machine has a Tailscale address now, listened on or not — reported
+   *  while access is off too, so the panel can say where it will work. */
+  tailscale?: boolean
+  /** *Keep on after Caprock restarts* (ADR-060). */
+  keep_on?: boolean
   devices: PairedDevice[]
 }
 
@@ -1628,7 +1633,10 @@ export const api = {
   /** Withdraw the outstanding code, so it stops working before it expires. */
   pairCancelCode: () => post<{ cleared: boolean }>('/v1/pair/code', {}, 'DELETE'),
   /** Turn network access on or off without restarting the daemon. */
-  setLAN: (on: boolean) => post<{ enabled: boolean; url?: string }>('/v1/pair/lan', { on }),
+  /** Phone access on or off; `keep` also stores whether it comes back on
+   *  after a restart. Turning it off always clears that (ADR-060). */
+  setLAN: (on: boolean, keep?: boolean) =>
+    post<{ enabled: boolean; url?: string; keep_on?: boolean }>('/v1/pair/lan', keep === undefined ? { on } : { on, keep }),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
   /** Give a paired device control of sessions, or take it away. Machine only. */
   pairSetRole: (id: string, role: PairedDevice['role']) =>

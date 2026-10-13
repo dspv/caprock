@@ -117,6 +117,10 @@ type Deps struct {
 	LAN interface {
 		EnableLAN() (string, error)
 		DisableLAN() error
+		// LANKeepOn and SetLANKeepOn read and store *Keep on after Caprock
+		// restarts* (ADR-060).
+		LANKeepOn() bool
+		SetLANKeepOn(on bool) error
 	}
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
 	ActiveLoops func(sessionID string) *loop.Alert
