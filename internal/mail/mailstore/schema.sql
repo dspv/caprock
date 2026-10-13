@@ -1,4 +1,6 @@
--- Caprock Mail schema. Applied idempotently at open; versioned by user_version.
+-- Caprock Mail schema. Applied idempotently at open. A column added to a table
+-- that already shipped is also listed in addedColumns (store.go), which adds it
+-- to an existing mail.db.
 
 CREATE TABLE IF NOT EXISTS accounts (
     id          INTEGER PRIMARY KEY,
@@ -15,7 +17,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     signature   TEXT NOT NULL DEFAULT '',
     created_at  INTEGER NOT NULL,
     last_sync   INTEGER NOT NULL DEFAULT 0,
-    last_error  TEXT NOT NULL DEFAULT ''
+    last_error  TEXT NOT NULL DEFAULT '',
+    auth        TEXT NOT NULL DEFAULT 'password' -- password | oauth2:google | oauth2:microsoft; added to older files by addColumns
 );
 
 CREATE TABLE IF NOT EXISTS folders (

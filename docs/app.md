@@ -426,15 +426,17 @@ others. Installing it: [install-app.md](install-app.md).
   focus the edge and use ↑ ↓; double-click it for the default height. The
   deck button beside the inspector's, ⌘B and the palette open and close it;
   the app remembers its height and whether it was open. A shell tab has no
-  deck. It opens on all of the session's pull requests, each with its checks
-  summed up in a few words — *✗ 1 failed ● 1 running ✓ 10*, the failed first
-  and the running one pulsing, or just *✓ all 12 · 6m* once everything
-  passed — and opens one only when you click it; the next time it opens on
-  that one. Hover the summary for every check: its name, OS, state, time and
-  the step a failed one stopped at. The cockpit on the right has a **CI**
+  deck. It opens on all of the session's pull requests, each title as long
+  as the row allows, with its checks as a circle per check (coloured by
+  state, the running ones pulsing) or, switched in the header (*Checks:
+  circles | summary*), summed up in a few words — *✗ 1 failed ● 1 running ✓
+  10*, or just *✓ all 12 · 6m* once everything passed — and opens one only
+  when you click it; the next time it opens on that one. Hover the checks for
+  every one: its name, OS, state, time and the step a failed one stopped
+  at. The cockpit on the right has a **CI**
   block with the same summary, or one ring with *10/11 · 5m*, or the jobs by OS, switched in its
   label; it shows what the deck last read and a click opens *PRs & CI*.
-  **Expand**, beside *Hide*, opens it large in a tab of its own,
+  **Expand** (⇧⌘B), beside *Hide*, opens it large in a tab of its own,
   *PRs & CI*: the repository's last two weeks on top (pull requests merged
   per day, the median time to merge, the median CI run, the share of red
   runs, the Actions minutes GitHub billed this month), its pull requests on
@@ -442,8 +444,9 @@ others. Installing it: [install-app.md](install-app.md).
   you pick on the right with its state, review, merge state and diff size,
   the deck's actions, its jobs by runner OS against each one's usual time,
   the jobs on a timeline, and a failed job's steps and log with
-  *Investigate*. *Back to the deck* closes the tab and shows the agent with
-  its deck. It reads GitHub only while it is in front.
+  *Investigate*. **Collapse**, the same button in the same corner, and ⇧⌘B
+  again close the tab and show the agent with its deck. It reads GitHub
+  only while it is in front.
 - **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
   same button), *Review and commit* in the inspector, or "Review changes" in
   the palette. The files are listed as *Staged*, *Changes* and *Conflicts*;
@@ -560,12 +563,13 @@ On macOS:
 | ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                    |
 | ⌘I          | Agent cockpit (the inspector)                                               |
 | ⌘B          | Session deck under the agent's terminal                                     |
+| ⇧⌘B         | Expand the deck into PRs & CI; Collapse back                                |
 | ⌘\          | Hide or show the sidebar                                                    |
 | ⌘0, ⇧⌘D     | Dashboard tab, and back                                                     |
 | ⌘R          | Reload the window (View → Reload)                                           |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
-(Quick chat is Ctrl+Alt+Shift+N). The arrow chords are Alt+Shift there
+(Quick chat is Ctrl+Alt+Shift+N, Expand Ctrl+Alt+Shift+B). The arrow chords are Alt+Shift there
 (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ← projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
 in a text field the arrow chords stay the field's. Ctrl+Shift+C

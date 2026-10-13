@@ -7,6 +7,7 @@ costing it, and whether anything of Caprock's is running that should not be.
 caprock doctor          # readable report; exits 1 when something is flagged
 caprock doctor --json   # the same as GET /v1/footprint
 caprock doctor --data-dir <dir>   # check another data directory
+caprock doctor --stop <pid>       # stop one process from the Orphans list (asks first; --yes skips)
 ```
 
 ## In the app: the status bar
@@ -21,6 +22,10 @@ things to look at*), each warning with the processes behind it, what the
 memory and the disk are spent on, the daemon's disk reads and writes,
 what Caprock did on its own, and:
 
+- **Orphans** lists the processes that look abandoned, each with why
+  (below). Switch on **Advanced** (off by default, and only on the computer
+  itself) for a Stop beside each and **Stop selected**; each asks once more
+  before anything is sent.
 - **Check now** asks again at once (the panel otherwise refreshes every 10
   seconds while the window is visible).
 - **Stop N orphans** stops the orphaned terminals the sweep would stop, now
@@ -53,7 +58,57 @@ It reports:
   it started — orphaned terminals it stopped, a write-ahead log it folded
   back into the database, old images it replaced and the space it gave back
   to the disk — with the time of each.
+- **Orphans:** processes that look abandoned, Caprock's or not (below).
 - **Verdict:** one line per finding, `WARN` or `OK`.
+
+## Orphans
+
+The doctor looks for processes that outlived whatever they were for, and says
+why each is listed:
+
+- **Another Caprock daemon**, with its data directory and whether that still
+  exists — a `caprock up` another tool started from a temporary directory, a
+  preview stand nobody stopped.
+- **A terminal holder no Caprock will reattach to**, from any install. The
+  ones that hold nothing but an idle shell the daemon stops on its own; one
+  where an agent or a command still runs is listed and left alone.
+- **Any other `caprock` command whose parent has exited.**
+- **A `claude` whose session ended** in Caprock's history (and which was
+  already running when that session started, so a reused pid is not
+  mistaken for it), **or whose parent has exited**, with no terminal.
+- **An MCP server whose parent has exited** — its command line names MCP —
+  usually because the `claude` that started it is gone.
+- **Something a Claude Code session started** (`CLAUDECODE` is in its
+  environment) whose parent has exited: often a server left running on
+  purpose, so it is said, not warned about.
+
+Never listed: anything with a terminal (a window you are in), anything in a
+live session's process tree, another user's processes, anything younger than
+two minutes, and macOS apps and their helpers (the Claude desktop app is
+launchd's child by design). The list is taken when you open the doctor or
+run `caprock doctor`; the daemon's 10-minute sweep keeps only a count, which
+turns the status figure the warning colour when a `claude`, an MCP server or
+a Caprock command looks abandoned. On Windows, which does not reparent and
+has no terminals to check, a process counts as parentless when its parent's
+pid is not running or now names a younger process.
+
+### Stopping one
+
+Caprock never stops a process it did not start on its own. You can:
+
+- **In the panel:** tick **Advanced**, then **Stop** beside one, or tick
+  several and **Stop selected**, and confirm.
+- **In a terminal:** `caprock doctor --stop <pid>` (repeatable). It shows the
+  process and why it is listed, and asks; `--yes` skips the question.
+
+Either way the process gets SIGTERM, then SIGKILL five seconds later if it is
+still there (on Windows it is terminated at once). Only a process on the list
+can be stopped: the daemon takes the list again, and signals only a pid that
+is still on it with the same start time — checked again before each signal,
+so a pid the system has since given to another program is never touched.
+Only that process is signalled, not its children; stopping a terminal
+holder closes its terminal, which ends what runs in it. A paired phone can
+read the list but cannot stop anything.
 
 ## What Caprock fixes by itself
 
@@ -83,8 +138,9 @@ unattended is fixed unattended, and `caprock doctor` says when it was done:
   few seconds for a restarting one, then exits naming the pid of the one that
   runs.
 
-What it does not fix: another daemon or a second app (Caprock never stops a
-process it did not start; quit the ones you do not use), and a database that
+What it does not fix on its own: another daemon, a second app, or any other
+process it did not start (it lists them under Orphans; stopping one is your
+click — see above), and a database that
 is large because of how much history it holds (deleting history is your call
 — set a retention period in Settings; the space it frees goes back to the
 disk on its own).

@@ -728,12 +728,15 @@ One window, three regions:
     page. Nothing while no job has finished.
   - **PRs & CI tab** (owner, 2026-10-13, translated: "I also want to expand
     the panel bigger, to see the statuses large and in detail, plus
-    statistics … sometimes it's interesting to look"). *Expand* beside
-    *Hide ⌘B* — one control, no key of its own (rule 12), no sidebar item —
-    opens the cell large as a tab of its own (`kind: 'prs'`, one per agent
-    session, never split; `components/PRsCITab.tsx`, words in
-    `lib/prstats.ts`); *Back to the deck* closes it and brings the agent's
-    tab to the front with its deck open. It shows:
+    statistics … sometimes it's interesting to look"). *Expand ⇧⌘B* beside
+    *Hide ⌘B* — outlined in the accent, no sidebar item — opens the cell
+    large as a tab of its own (`kind: 'prs'`, one per agent session, never
+    split; `components/PRsCITab.tsx`, words in `lib/prstats.ts`); in the tab
+    the same control in the same corner is *Collapse ⇧⌘B*, which closes it
+    and brings the agent's tab to the front with its deck open (owner,
+    2026-10-14, translated: "it should simply be a toggle"). Off macOS the
+    key is Ctrl+Alt+Shift+B: ⌘B's Ctrl+Shift+B is the deck's (rule 12). It
+    shows:
     - **The figures** — over the 14 local days ending today, from `GET
       /v1/sessions/{id}/ci/stats`: *Merged* (the total, the last 7, today,
       bars per day), *Time to merge* (the median from opened to merged of
@@ -1027,7 +1030,7 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
 - **An editor or IDE.** No file editing; F18 opens the user's editor.
 - **Our own agent or chat model.** The app runs the user's agents.
 - **A second engine.** No session, git or pricing logic in the app.
-- **Typing into or signalling a process Caprock did not start** (rule 7).
+- **Typing into or signalling a process Caprock did not start** (rule 7; the doctor's per-item, confirmed stop is the one exception, ADR-059).
 - **Telemetry, crash upload, accounts, cloud sync.**
 - **The manager's dashboard.** That is the Teams web product.
 - **Electron**, a TUI, or a per-OS native rewrite for the MVP (ADR-038).
