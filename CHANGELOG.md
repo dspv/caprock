@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.112.3] - 2026-10-13
+
 ### Changed
 
 - **app:** the cockpit's top block holds one calm layout in every state.

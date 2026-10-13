@@ -73,6 +73,14 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — 0.112.3: the cockpit's hero holds one layout in every state
+
+The agent's row with the headline figure fixed at its right, a detail row
+(permission mode and start; the two smaller figures), and one line of
+subagent chips that fits as many groups of four as the inspector is wide.
+Working, waiting, background, idle, looping and ended only recolour; nothing
+moves. The below/beside switch for the smaller figures is gone.
+
 ### 2026-10-13 — 0.112.2: a shorter status line, a subagent row that keeps its place
 
 Settings → *Status line* picks Full, Short or Off for the line Caprock puts
