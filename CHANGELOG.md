@@ -7,6 +7,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the cockpit's top block holds one calm layout in every state.
+  The agent, its model and state on the left, the big figure fixed at the
+  right of the same row, the permission mode and the two smaller figures
+  under them, and one line of subagent chips at the bottom; working,
+  waiting on you, idle or ended only changes the colours and the chips,
+  never where anything sits. A long model name is cut with the full name on
+  hover instead of wrapping, and the chips fit as many groups of four as the
+  inspector is wide.
+
 ### Fixed
 
 - **app:** the cockpit's subagent row keeps its place: with none running it
