@@ -92,7 +92,7 @@ export function ProjectMenu(props: ProjectMenuProps) {
           {props.onHide && (hidden ? (
             <Item icon={<EyeIcon size={14} />} label="Show in the sidebar again" onClick={pick(() => props.onHide!(false))} />
           ) : (
-            <Item icon={<EyeOffIcon size={14} />} label="Hide from the sidebar" hint="under Hidden" onClick={pick(() => props.onHide!(true))} />
+            <Item icon={<EyeOffIcon size={14} />} label="Hide from the sidebar" hint="under More…" onClick={pick(() => props.onHide!(true))} />
           ))}
           <Item
             icon={<CloseIcon size={14} />}

@@ -92,7 +92,7 @@ function nextMode(m: ThemeMode): ThemeMode {
   return THEME_MODES[(THEME_MODES.indexOf(m) + 1) % THEME_MODES.length]!
 }
 
-/** The palette's Switch theme: walks all seven, dark ones first. */
+/** The palette's Switch theme: walks all eight, dark ones first. */
 export function cycleThemeMode(): void {
   setThemeMode(nextMode(modeOfRoot()))
 }

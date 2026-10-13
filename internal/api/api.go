@@ -167,6 +167,8 @@ type Deps struct {
 	GitHub *github.Service
 	// Shells starts and lists shell tabs (nil ⇒ /v1/shells returns 501).
 	Shells ShellController
+	// Mail serves /v1/mail/* (Caprock Mail, internal/mail). nil ⇒ 501.
+	Mail http.Handler
 	// DataDir is where Caprock keeps its own state. Needed so a file pasted
 	// into the terminal can be written somewhere Claude Code can read it by
 	// path. Empty ⇒ POST /v1/paste returns 501.
@@ -642,6 +644,7 @@ func New(d Deps) *Server {
 	// One file, read-only, and the list of them (files.go).
 	m.HandleFunc("GET /v1/projects/{id}/file", s.handleProjectFile)
 	m.HandleFunc("GET /v1/projects/{id}/files", s.handleProjectFiles)
+	m.HandleFunc("/v1/mail/", s.handleMail)
 	m.HandleFunc("GET /v1/github", s.handleGitHubStatus)
 	m.HandleFunc("PATCH /v1/github", s.handleGitHubPatch)
 	m.HandleFunc("DELETE /v1/github", s.handleGitHubDisconnect)
@@ -2675,4 +2678,14 @@ func hasMainEvent(events []event.Event) bool {
 		}
 	}
 	return false
+}
+
+// handleMail hands /v1/mail/* to Caprock Mail, after the pairing gate and the
+// CSRF guard in ServeHTTP have run like for every other /v1 route.
+func (s *Server) handleMail(w http.ResponseWriter, r *http.Request) {
+	if s.d.Mail == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "mail is not available"})
+		return
+	}
+	s.d.Mail.ServeHTTP(w, r)
 }

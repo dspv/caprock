@@ -26,7 +26,7 @@ import { shell } from '@/lib/shell'
 
 export type NudgeId =
   | 'premium-limit' | 'premium-hint' | 'premium-cap' | 'premium-banner'
-  | 'teams-nudge' | 'share-moment' | 'setup' | 'star'
+  | 'teams-nudge' | 'share-moment' | 'setup' | 'mail' | 'star'
 
 /**
  * Who wins when several are eligible. The offer tied to something happening
@@ -41,6 +41,9 @@ export const NUDGE_PRIORITY: Record<NudgeId, number> = {
   'share-moment': 30,
   // Above the general offers: it sets up the product, it does not sell it.
   setup: 25,
+  // A new part of the product, offered once: below the offers tied to what is
+  // happening now, above the general Premium banner and the star.
+  mail: 22,
   'premium-banner': 20,
   star: 10,
 }
@@ -133,6 +136,15 @@ export function usePromptSync() {
  * with sessions and ten sessions in all — someone who has come back, not
  * someone still finding out what the window is.
  */
+/**
+ * The Mail offer: after real use (two days with sessions), never on a first
+ * run, and only while no mail account exists. Opening Mail answers it.
+ */
+export const MAIL_MIN_DAYS = 2
+export function mailEligible(totals: { days: number } | undefined, accounts: number | undefined): boolean {
+  return !!totals && totals.days >= MAIL_MIN_DAYS && accounts === 0
+}
+
 export const STAR_MIN_DAYS = 3
 export const STAR_MIN_SESSIONS = 10
 export function starEligible(totals: { days: number; sessions: number } | undefined): boolean {

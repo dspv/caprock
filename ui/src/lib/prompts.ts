@@ -27,6 +27,7 @@ export type PromptKind =
   | 'teams-banner' | 'teams-nudge'
   | 'star-dismissed' | 'star-done'
   | 'setup-later' | 'setup-phone-skip' | 'setup-telegram-skip'
+  | 'mail-later' | 'mail-done'
 
 const KEY = 'caprock-prompts'
 const DAY = 24 * 60 * 60 * 1000
@@ -54,6 +55,9 @@ const PERIOD_MS: Record<PromptKind, number> = {
   'setup-later': 7 * DAY,
   'setup-phone-skip': Number.POSITIVE_INFINITY,
   'setup-telegram-skip': Number.POSITIVE_INFINITY,
+  // The Mail offer: × is "not now" for a month; opening Mail answers it for good.
+  'mail-later': 30 * DAY,
+  'mail-done': Number.POSITIVE_INFINITY,
 }
 
 type Store = Partial<Record<PromptKind, number>>

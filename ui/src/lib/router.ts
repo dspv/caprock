@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start
+// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/mail
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -15,6 +15,8 @@ export type Route =
   | { name: 'graph' }
   | { name: 'notes' }
   | { name: 'settings' }
+  // Caprock Mail (internal/mail): every inbox the user added.
+  | { name: 'mail' }
   // Start work from the phone (WP-15): clone, a new project, a worktree.
   | { name: 'start'; mode?: StartMode }
 
@@ -55,6 +57,8 @@ export function parseHash(hash: string): Route {
       return { name: 'notes' }
     case 'settings':
       return { name: 'settings' }
+    case 'mail':
+      return { name: 'mail' }
     case 'start': {
       const mode = params.get('mode')
       return mode === 'clone' || mode === 'new' || mode === 'worktree' ? { name: 'start', mode } : { name: 'start' }
@@ -81,6 +85,7 @@ export function href(r: Route): string {
     case 'graph': return '#/graph'
     case 'notes': return '#/notes'
     case 'settings': return '#/settings'
+    case 'mail': return '#/mail'
     case 'start': return r.mode ? `#/start?mode=${r.mode}` : '#/start'
   }
 }
