@@ -123,6 +123,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 
 - **mail:** on macOS, account passwords go to the login keychain through the call that names the keychain file, so saving one can never bring up a "Keychain Not Found" dialog. Passwords saved before are read where they are; Windows and Linux are unchanged.
+- **daemon:** a session with no process behind it ends as soon as its transcript file or its folder is deleted, instead of staying in the sidebar for 24 hours. Nine synthetic transcripts a test script wrote and removed left nine such sessions listed as "working". A session is also no longer shown as working because of an event stamped ahead of the clock.
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.
 
 ### Security

@@ -3392,7 +3392,13 @@ Two exceptions, both deliberate:
 - **Sessions with no pid** — written by an older shim, or read from a transcript
   with no live process behind them — fall back to a 24-hour staleness sweep,
   because there is nothing to verify and the only cost of being slow is a stale
-  row.
+  row. One fact is checked first: when such a session's transcript file (only
+  when `has_transcript`, so the file was read and existed) or its `cwd` no
+  longer exists, the next sweep ends it (2026-10-14: a test script wrote nine
+  synthetic transcripts and deleted them, and the nine sessions read from them
+  would otherwise have stayed listed as working for 24 hours). Only "does not
+  exist" counts; a permission error ends nothing. There is no end-reason
+  column, so the row records the end as any other sweep's.
 
 **`sessions.status` is derived, and `ended` is sticky only against the past.**
 An explicit status from a caller (a `SessionEnd` hook, `SetExit`, the sweep)

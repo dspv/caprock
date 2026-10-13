@@ -845,6 +845,13 @@ missed that and filled the Now screen with 97-day-old sessions marked live.
 And sessions with no pid at all keep a 24-hour staleness sweep, because there
 is nothing to verify.
 
+**Amended 2026-10-14: the disk is a fact too.** A test script wrote nine
+synthetic transcripts under `~/.claude/projects` and deleted them; the nine
+pid-less sessions read from them sat in the sidebar as working and would have
+stayed a day. A session with no pid whose transcript (one actually read) or
+directory no longer exists now ends on the next sweep. Observed agents stay on
+the clock alone.
+
 **Separately, the Now screen filters by recency.** Status cannot tell a quiet
 session from imported history, so anything silent for two days is not shown
 there whatever its status — two days rather than one so a Friday evening
