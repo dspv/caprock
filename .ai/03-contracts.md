@@ -2749,6 +2749,33 @@ GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?
   a controller. On macOS a folder behind a privacy prompt is refused as the
   Changes routes refuse it (`tcc`).
 
+### Mail (`/v1/mail/*`)
+
+Caprock Mail ([ADR-056](08-decisions.md)). Code: `internal/mail` (HTTP in
+`http.go`), `internal/mail/engine` (IMAP, SMTP), `internal/mail/mailstore`
+(DDL in `schema.sql`), `ui/src/screens/mail`. Every write is JSON, as the CSRF
+guard requires. Before the first account exists only `GET /v1/mail/state` and
+`GET /v1/mail/providers` answer without opening Mail.
+
+- `GET /v1/mail/state` — `{accounts, folders, counts: {inbox, unread, flagged}, version}`; `version` moves on every local change and is what the screen polls.
+- `GET /v1/mail/providers?email=` — server settings guessed from the address, then its MX record: `{provider, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, note, help_url, known}`. The MX lookup is the one network call it makes.
+- `POST /v1/mail/accounts` — `{name, email, username, imap_*, smtp_*, password}`; IMAP and SMTP are tried first and a refusal is `422` with nothing stored. `PUT /v1/mail/accounts/{id}` edits (a new password is optional), `DELETE` removes the account, its mail and its password.
+- `GET /v1/mail/messages?view=&account=&folder=&q=&before=&before_id=&limit=` — newest first, without bodies. `view`: `inbox unread flagged sent drafts archive junk trash folder all`; `q` is a full-text query (every word a prefix) over subject, people and body.
+- `GET /v1/mail/messages/{id}` — one message with `body_text` and `body_html` (cleaned), fetched from the server if the background pass has not yet. `GET .../thread` — the conversation, oldest first. `GET .../part/{path}` — one attachment or inline image by IMAP part path or `cid:<id>`; `?download=1` forces an attachment disposition; served with a sandboxing CSP.
+- `POST /v1/mail/actions` — `{ids, action, folder}`; `action`: `read unread flag unflag archive trash spam inbox move`. Archive goes to the Archive folder, else Gmail's All Mail, else a new `Archive`; trash on a message already in Trash deletes it.
+- `POST /v1/mail/send` — `{account_id, to, cc, bcc, subject, text, in_reply_to, attachments: [{filename, type, data(base64)}]}`, up to 40 MB. Filed in Sent (Gmail files it itself); the answered message gets `\Answered`.
+- `POST /v1/mail/sync?account=` — sync now. `GET /v1/mail/contacts?q=` — address completion.
+- `GET|PUT /v1/mail/settings` — `ai_enabled` (`"0"`), `ai_url` (`http://127.0.0.1:11434/v1`), `ai_model`, `remote_images` (`ask` or `always`).
+- `GET /v1/mail/ai/status`, `POST /v1/mail/ai/summarize` and `POST /v1/mail/ai/draft` (`{message_id, instruction}`) — through any OpenAI-compatible server; `409` while `ai_enabled` is off.
+
+**`mail.db`** is not part of the event store's migration chain; its schema is
+`internal/mail/mailstore/schema.sql`, applied idempotently at open: `accounts`
+(servers, signature, last sync and error — never the password), `folders`
+(name, role, `uidvalidity`, highest stored UID, counts), `messages` (envelope,
+flags, thread key, snippet, decoded text and HTML bodies, the body structure
+as JSON), `messages_fts` (FTS5 over subject, people, body), `settings`,
+`contacts` (addresses seen, weighted towards ones written to).
+
 ### GitHub
 
 Connect GitHub, pick a repository to clone, put a local project on GitHub,

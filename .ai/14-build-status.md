@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — unreleased: Caprock Mail
+
+An IMAP/SMTP mail client inside the daemon ([ADR-056](08-decisions.md)):
+`internal/mail` with its own `mail.db`, `/v1/mail/*`, the `#/mail` screen,
+a *Mail · new* item in the dashboard's screen row and a one-time offer strip.
+Verified against in-process IMAP and SMTP servers (`internal/mail/fakemail`:
+sync, search, attachment, archive, trash and expunge, send with a Sent copy,
+threading, IDLE push) and in a browser on a preview daemon with
+`CAPROCK_MAIL_DEMO=1`. Not verified against a real Gmail or iCloud account
+yet. Not built: OAuth, server-side drafts, notifications, rules, Mail on a
+paired phone.
+
 ### 2026-10-13 — unreleased: old payloads compacted, free space returned
 
 The rows stored before `event.CapToolField` kept their base64, and SQLite

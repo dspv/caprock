@@ -3106,3 +3106,52 @@ What the agents allow was read from their own `--help`, not from memory:
   it an ordinary one again.
 - **Merging projects that share only the home folder.** An agent started in
   home reaches everything; the merge is refused with the reason.
+
+## ADR-056 — Caprock Mail: an IMAP client inside the daemon, off until the user adds an account
+
+**Date:** 2026-10-13 · **Status:** accepted
+
+**Context.** The owner asked for a mail client to replace Apple Mail as an
+experiment: one inbox for every account, fast, local, with AI from a model on
+the machine. The alternatives each lack one of those — Gmail's web client
+dislikes foreign accounts, Thunderbird is slow, Apple Mail is neither fast nor
+searchable. Caprock already has the pieces: a loopback daemon, SQLite, a
+dashboard and a desktop app on three OSes.
+
+**Decision.**
+
+- **Inside the daemon, beside it in storage.** `internal/mail` is a separate
+  package tree with its own database, `mail.db` in the data directory, so mail
+  never shares a migration chain, a vacuum or a lock with the event store.
+  It is served under `/v1/mail/*` behind the same pairing gate and CSRF guard
+  as every other route, and drawn by a lazily loaded screen at `#/mail`.
+- **Off until used (ADR-047).** Before the first account nothing is opened:
+  no database file, no goroutine, no connection; `GET /v1/mail/state` answers
+  from nothing. Adding an account is the switch, removing the last one ends
+  the traffic. Once on, Caprock talks only to the IMAP and SMTP servers the
+  user typed in, and — only when local AI is turned on in Mail's settings —
+  to the model server at the address shown there (Ollama on loopback by
+  default). Nothing is sent to Caprock. The add-account form says so.
+- **Passwords in the OS keychain**, a 0600 file only where there is none
+  (Linux without a Secret Service). App passwords, not OAuth: Gmail and iCloud
+  accept them; Microsoft accounts that refuse passwords are a known gap.
+- **Sync shape.** The newest 500 messages per folder first, older history in
+  steps of 500 per full pass up to 20,000; text parts fetched by IMAP part
+  path, attachments only on demand; IMAP IDLE on INBOX for new mail, a poll
+  where the server has none; "All Mail"-style virtual folders are not synced.
+- **HTML mail never acts.** Scripts, frames, refreshes and event handlers are
+  stripped, and the body renders in a sandboxed iframe under a CSP with no
+  script and no network; remote images (tracking pixels) load only when the
+  user allows them.
+- **The screen polls a change counter** every 4 s while it is open and the
+  page is visible, rather than adding frames to the live socket.
+- **Offered once.** A *Mail* item marked *new* sits last in the dashboard's
+  screen row (not in the app's project sidebar), and one banner offers it
+  through the nudge system after two days of use, only while no account
+  exists; opening Mail or dismissing it answers it.
+
+**Consequences.** One more outbound path exists, to destinations the user
+chose; the binary grows by the IMAP, SMTP and MIME libraries. Not built:
+OAuth, server-side drafts, notifications, rules, mail on a paired phone
+(attachments and the iframe's images need the device token, which plain URLs
+do not carry).
