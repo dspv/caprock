@@ -14,11 +14,38 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   its key, the one in front too; the same key shows on the tab's row in the
   sidebar. Projects moved to ⌃⌘1–⌃⌘9 (Alt+Shift+1–9 on Windows and Linux),
   drawn dimmer on each project row; ⌥⌘ arrows still walk sessions and
-  projects. A one-line card says so once, with a way to every key.
+  projects. One line above the bottom strips says so once, with a way to
+  every key.
+- **deck:** a pull request's checks read at a glance. In place of a circle per
+  check — twelve tiny circles in a row that said nothing — each row sums them
+  up in one short group: *✗ 1 failed ● 1 running ✓ 10*, the failed first, the
+  running one pulsing, skipped ones a dim count only when there are any, and a
+  finished green PR just *✓ all 12 · 6m*. Hovering it lists every check with
+  its OS, state, time and the step a failed one stopped at; a click opens that
+  job. The circles-or-words switch is gone, a row no longer says *$0* for a
+  public repository's free runners, and the cockpit's CI block uses the same
+  summary, its view tabs now named *PRs · Ring · OS*.
+- **settings:** every saved credential (DeepSeek key, Telegram bot token, a
+  pasted GitHub token) is entered in one secure field: a lock inside, masked
+  monospace text, an eye only while typing, and once saved a locked pill with
+  its hint and where it is kept, with Replace and Remove. An (i) explains
+  where it is stored, what it is sent to, how backups treat it and how to
+  revoke it at the provider. Settings says under each field whether it is in
+  the macOS login keychain or in a file, with the file's path.
 
 ### Fixed
 
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.
+
+### Security
+
+- **settings:** the DeepSeek API key and the Telegram bot token are no
+  longer kept in `config.json`. They live where the GitHub token does: the
+  macOS login keychain, or a file only your user can read in the data
+  directory on Windows and Linux (or when the keychain refuses). A key an
+  older release wrote to `config.json` is moved there on the daemon's next
+  start and removed from the file. A DeepSeek session reads its key from
+  there when it starts, into its own environment only.
 
 ## [0.115.1] - 2026-10-13
 

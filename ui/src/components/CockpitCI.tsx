@@ -3,7 +3,8 @@
  * some CI/CD indicators into the right part — try making the indicator switch
  * between views right away, we'll see what sticks"): the session's pull
  * requests and their checks, in one of three views kept per viewer —
- * circles per PR (the default), one ring with "10/11 · 4m" and the time
+ * each PR's checks in one short group (the default, as the deck's rows
+ * say them: "✗ 1 failed ✓ 11", every check on hover), one ring with "10/11 · 4m" and the time
  * against the median, or the open PR's jobs by runner OS. A click opens the
  * PRs & CI tab.
  *
@@ -15,10 +16,10 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { SessionCI, SessionPRs } from '@/lib/api'
 import type { PRCheck } from '@/lib/github'
-import { checkNodes, orderPRs, prDotState, prVerdict, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, ciTone, type CITone, type CockpitCIView, type PRWordTone } from '@/lib/ci'
+import { orderPRs, prChecks, prDotState, prVerdict, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, ciTone, type CITone, type CockpitCIView, type PRWordTone } from '@/lib/ci'
 import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
 import { GRID_OS_LABEL, jobGrid } from '@/lib/prstats'
-import { MiniPipeline } from './MiniPipeline'
+import { CheckSummary } from './CheckSummary'
 import { SectionLabel } from './Cockpit'
 
 /** The most pull requests listed in the circles view. */
@@ -29,9 +30,9 @@ const WORD: Record<PRWordTone, string> = {
 }
 
 const VIEWS: { v: CockpitCIView; label: string; title: string }[] = [
-  { v: 'dots', label: '•••', title: 'A circle per check, for each pull request' },
-  { v: 'ring', label: '◔', title: 'One ring: checks done, the time, and against the median' },
-  { v: 'grid', label: '▦', title: 'The open pull request’s jobs by runner OS' },
+  { v: 'dots', label: 'PRs', title: 'Each pull request’s checks: how many failed, run and passed; hover one for every check' },
+  { v: 'ring', label: 'Ring', title: 'One ring: checks done, the time, and against the median' },
+  { v: 'grid', label: 'OS', title: 'The open pull request’s jobs by runner OS' },
 ]
 
 /** The deck's last answer under key, redrawn when the deck is told a new one. */
@@ -82,14 +83,17 @@ export function CockpitCI({ sessionId, onOpen }: { sessionId: string; onOpen?: (
   const body = view === 'ring' ? <Ring p={lead!} ci={ci.d} now={now} /> : view === 'grid' ? <Grid ci={ci.d} lead={lead!.number} /> : (
     <ul className="grid gap-1">
       {rows.slice(0, SHOWN).map((p) => {
-        const nodes = checkNodes(p.live!.checks.items, now)
+        const sum = prChecks(p, now)
         const v = prVerdict(p, now)
+        const title = p.live?.title || p.title || ''
         return (
           <li key={p.url} data-cockpit-ci-pr={p.number} className="flex min-w-0 items-center gap-1.5 text-[12px]">
             <span aria-hidden className="pr-dot" data-state={prDotState(p)} />
             <span className="num shrink-0 text-fg-muted">#{p.number}</span>
-            {nodes.length > 0 ? <MiniPipeline nodes={nodes} label={`#${p.number}: its checks`} compact /> : null}
-            <span title={v.title ?? v.text} className={`ml-auto min-w-0 truncate text-[11px] ${WORD[v.tone]}`}>{v.text}</span>
+            <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg-faint" title={title}>{title}</span>
+            {sum
+              ? <CheckSummary s={sum} label={`#${p.number}: its checks`} focusable={false} className="shrink-0" />
+              : <span title={v.title ?? v.text} className={`shrink-0 truncate text-[11px] ${WORD[v.tone]}`}>{v.text}</span>}
           </li>
         )
       })}
@@ -105,7 +109,7 @@ export function CockpitCI({ sessionId, onOpen }: { sessionId: string; onOpen?: (
           <span role="tablist" aria-label="CI view" className="flex items-center gap-px rounded-[5px] border border-[var(--app-hairline)] p-px">
             {VIEWS.map((x) => (
               <button key={x.v} type="button" role="tab" aria-selected={view === x.v} data-cockpit-ci-view={x.v} title={x.title} onClick={() => setView(x.v)}
-                className={`min-w-[20px] rounded-[4px] px-1 text-[10.5px] leading-[15px] ${view === x.v ? 'bg-[var(--app-row-hover)] text-fg' : 'text-fg-faint hover:text-fg-muted'}`}>{x.label}</button>
+                className={`rounded-[4px] px-1.5 text-[10.5px] leading-[15px] ${view === x.v ? 'bg-[var(--app-row-hover)] text-fg' : 'text-fg-faint hover:text-fg-muted'}`}>{x.label}</button>
             ))}
           </span>
         </span>

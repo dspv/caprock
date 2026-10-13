@@ -1055,11 +1055,34 @@ effective mode, `full` when never chosen; stored as `statusline_mode` in
 `config.json` the same way as `keep_awake`. A change applies Caprock's own
 `statusLine` entry to match (§ Statusline, *Settings → Status line*).
 
-`PUT /v1/settings` also accepts `gemini_api_key`, stored write-only in the same way. `GET` reports `gemini_key_set` and `gemini_key_from_env` instead of the value; `GEMINI_API_KEY` in the daemon's environment takes precedence over the stored key when both exist ([ADR-025](08-decisions.md)).
+`PUT /v1/settings` also accepts `gemini_api_key`, write-only and stored in `config.json` (unlike the two credentials below, which the secret store keeps). `GET` reports `gemini_key_set` and `gemini_key_from_env` instead of the value; `GEMINI_API_KEY` in the daemon's environment takes precedence over the stored key when both exist ([ADR-025](08-decisions.md)).
 
-`PUT /v1/settings` also accepts `deepseek_api_key`, the user's DeepSeek key for Claude Code on DeepSeek (see **Subscriptions** below), stored write-only in `config.json` as `deepseek_api_key`. `GET` reports `deepseek_key_set` and `deepseek_key_hint` — the first three and last four characters (`sk-…1a2b`), or `…` for a key under 16 characters — never the value. Trimmed on the way in; `""` clears it; `400` for a value with a line break or a NUL, or over 512 bytes, because it becomes one environment variable of a child process. Caprock never sends it anywhere and never logs it.
+`PUT /v1/settings` also accepts `deepseek_api_key`, the user's DeepSeek key for Claude Code on DeepSeek (see **Subscriptions** below), write-only and kept in the secret store (below), never in `config.json`. `GET` reports `deepseek_key_set`, `deepseek_key_where` and `deepseek_key_hint` — the first three and last four characters (`sk-…1a2b`), or `…` for a key under 16 characters — never the value. Trimmed on the way in; `""` clears it; `400` for a value with a line break or a NUL, or over 512 bytes, because it becomes one environment variable of a child process. Caprock never sends it anywhere and never logs it.
 
-`PUT /v1/settings` accepts `report_bot_token` and `report_chat_id` for the weekly report. The **token is write-only**: it is stored and never returned by `GET /v1/settings`, which instead carries `report_bot_set` (a bool), `report_last_error` and `report_last_sent_ms`. This is the only write-only field in the API and it exists because the settings response is read on every dashboard render and by `caprock report` — a credential should not ride along on either ([ADR-024](08-decisions.md)). Omitting `report_bot_token` from a PUT leaves the stored one alone, since a UI that reads settings and writes them back always omits it; sending `""` clears it. The chat id is not a credential and round-trips normally.
+`PUT /v1/settings` accepts `report_bot_token` and `report_chat_id` for the weekly report. The **token is write-only**: it is kept in the secret store (below) and never returned by `GET /v1/settings`, which instead carries `report_bot_set` (a bool), `report_bot_where`, `report_last_error` and `report_last_sent_ms`. This is the only write-only field in the API and it exists because the settings response is read on every dashboard render and by `caprock report` — a credential should not ride along on either ([ADR-024](08-decisions.md)). Omitting `report_bot_token` from a PUT leaves the stored one alone, since a UI that reads settings and writes them back always omits it; sending `""` clears it. The chat id is not a credential and round-trips normally.
+
+**The secret store** (`internal/secret`, [ADR-024](08-decisions.md) amended
+2026-10-14). The DeepSeek key and the Telegram bot token are kept as the
+GitHub token is (§ GitHub, "Where the token lives"):
+
+- **macOS:** the login keychain through `/usr/bin/security`, the keychain
+  file always named. Services `dev.caprock.deepseek` and
+  `dev.caprock.telegram`, account `caprock`.
+- **Windows, Linux, or a keychain that refuses:** `<data_dir>/deepseek-api-key`
+  and `<data_dir>/telegram-bot-token`, mode `0600`.
+  `CAPROCK_SECRET_STORE=file` forces the files.
+- **`config.json`** holds only `deepseek_key_stored` and `report_bot_stored`
+  (bools), so a daemon that never stored one never asks the keychain. The old
+  keys `deepseek_api_key` and `report_bot_token` are read once at start, moved
+  to the store, and removed from the file in one atomic write; a store that
+  refuses leaves them there, still used, and `*_where` says `config`.
+- **`deepseek_key_where` / `report_bot_where`** (absent when none is set):
+  `{kind: "keychain" | "file" | "config", path?, note?}`; `path` is the file's
+  for `file` and `config`, `note` why the keychain was not used.
+- **When it is read.** The DeepSeek key from the store when a session on it
+  starts, into that session's environment only; the bot token at start, kept
+  in memory for sends. Neither is logged. Clearing either (`""`, or the
+  Telegram bridge's Disconnect) deletes it from the store.
 
 `PUT /v1/settings` accepts `default_folder` (2026-10-09): where the app's Add project sheet starts — its folder field, a new project's parent, a clone's destination and the folder browser. Empty is the home folder; otherwise an absolute path or one led by `~`, one line, at most 1024 bytes (`400` otherwise). Stored as `default_folder` in `config.json` and returned by `GET`. It changes no boundary: `/v1/browse` and `/v1/browse/stat` stay rooted at `browse_root`.
 

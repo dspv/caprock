@@ -786,6 +786,15 @@ export interface AssistantNote {
 export interface HandoffGroup { sessions: number; reached: number; median_min: number; median_calls: number }
 
 /** GET /v1/telegram: the bridge to the owner's own bot (ADR-047). */
+/** Where a credential is kept (internal/secret): the macOS login keychain,
+ *  a 0600 file (with its path), or still config.json when moving it failed. */
+export interface SecretWhere {
+  kind: 'keychain' | 'file' | 'config'
+  path?: string
+  /** Why it is not in the keychain, when it could have been. */
+  note?: string
+}
+
 export interface TelegramStatus {
   bot_set: boolean
   /** Bullets and the token's last four characters; the token never comes back. */
@@ -855,6 +864,8 @@ export interface Settings {
   /** Whether a bot token is stored. The token itself is never returned — it is
    *  the one write-only field in this API (ADR-024). */
   report_bot_set?: boolean
+  /** Where the bot token is kept; absent when none is set. */
+  report_bot_where?: SecretWhere
   /** Why the last send failed, absent when it did not. A weekly message that
    *  stops arriving is invisible otherwise. */
   report_last_error?: string
@@ -887,6 +898,8 @@ export interface Settings {
   /** Whether a DeepSeek key is stored, and its first and last characters. */
   deepseek_key_set?: boolean
   deepseek_key_hint?: string
+  /** Where the DeepSeek key is kept; absent when none is set. */
+  deepseek_key_where?: SecretWhere
   /** Write-only: an empty string removes it. */
   deepseek_api_key?: string
   update_checks: boolean

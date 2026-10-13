@@ -26,6 +26,7 @@ import { subscriptionsChanged, useSubscriptionsChanged } from './SubscriptionPic
 import { useSetupShell } from '@/lib/setupShell'
 import { PremiumModal } from './PremiumModal'
 import { Section } from './SettingsParts'
+import { SecretField, type SecretProvider } from './SecretField'
 
 const AGENT_LABEL: Record<SubscriptionAgentId, string> = { claude: 'Claude Code', codex: 'Codex' }
 
@@ -95,32 +96,28 @@ function AgentGroup({ agent, list, onSignIn, refresh, children }: {
  * DeepSeek's Anthropic-compatible API. Free. The key is write-only: the
  * daemon says whether one is set and shows its first and last characters.
  */
+export const DEEPSEEK_PROVIDER: SecretProvider = {
+  name: 'DeepSeek',
+  host: 'api.deepseek.com',
+  sentWhen: 'from the environment of a session you start on DeepSeek, when that session talks to the model.',
+  revokeAt: 'platform.deepseek.com/api_keys',
+  revokeHow: 'delete the key there.',
+}
+
 export function DeepSeekKey({ entry, refresh }: { entry?: Subscription; refresh: () => void }) {
   const st = useApi(() => api.settings(), [], { live: false })
-  const [draft, setDraft] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
   const set = !!st.data?.deepseek_key_set
   const save = async (key: string) => {
-    setBusy(true)
-    setError('')
-    try {
-      await api.saveSettings({ deepseek_api_key: key } as Partial<Settings> as Settings)
-      setDraft('')
-      st.refresh?.()
-      refresh()
-      subscriptionsChanged()
-    } catch (e) {
-      setError(errText(e))
-    } finally {
-      setBusy(false)
-    }
+    await api.saveSettings({ deepseek_api_key: key } as Partial<Settings> as Settings)
+    st.refresh?.()
+    refresh()
+    subscriptionsChanged()
   }
   return (
     <div className="grid gap-1.5 rounded-[8px] border border-border px-3 py-2" aria-label="DeepSeek">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="text-[13px] font-medium text-fg">DeepSeek</span>
-        <span className="text-[12px] text-fg-muted">{set ? <>key <span className="mono">{st.data?.deepseek_key_hint || 'set'}</span></> : 'off'}</span>
+        <span className="text-[12px] text-fg-muted">{set ? 'key saved' : 'off'}</span>
         {entry && entry.running > 0 && <span className="text-[12px] text-fg-faint">· {entry.running} running</span>}
         {entry && entry.sessions_7d > 0 && <span className="mono text-[11.5px] text-fg-faint">· 7 days: {entry.sessions_7d} session{entry.sessions_7d === 1 ? '' : 's'}, {fmtUSD(entry.cost_7d_usd)}</span>}
       </div>
@@ -132,28 +129,23 @@ export function DeepSeekKey({ entry, refresh }: { entry?: Subscription; refresh:
         Pick <span className="text-fg">DeepSeek</span> under Subscription in New agent or Quick chat. DeepSeek bills your key; the session does not use your Claude plan or its limits, and the key goes only into that session&rsquo;s environment. Get a key at{' '}
         <a className="link" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">platform.deepseek.com</a>.
       </p>
-      <div className="flex flex-wrap items-center gap-2 text-[12px]">
-        <input
-          className="input h-[28px] min-w-[12rem] flex-1 text-[12.5px]"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          aria-label="DeepSeek API key"
-          placeholder={set ? 'Paste a new key to replace it' : 'sk-…'}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && draft.trim()) void save(draft.trim()) }}
-        />
-        <button type="button" disabled={busy || !draft.trim()} onClick={() => void save(draft.trim())} className="text-accent hover:underline disabled:opacity-50">
-          {set ? 'Replace key' : 'Save key'}
-        </button>
-        {set && (
-          <button type="button" disabled={busy} onClick={() => void save('')} className="text-fg-muted hover:text-danger disabled:opacity-50">
-            Remove key
-          </button>
-        )}
-        {error && <span role="alert" className="min-w-0 truncate text-danger" title={error}>{error}</span>}
-      </div>
+      <SecretField
+        label="DeepSeek API key"
+        what="DeepSeek key"
+        set={set}
+        hint={st.data?.deepseek_key_hint}
+        where={st.data?.deepseek_key_where}
+        provider={DEEPSEEK_PROVIDER}
+        placeholder={set ? 'Paste the new key' : 'sk-…'}
+        saveLabel="Save key"
+        removeLabel="Remove"
+        onSave={async (k) => {
+          try { await save(k) } catch (e) { throw new Error(errText(e)) }
+        }}
+        onRemove={async () => {
+          try { await save('') } catch (e) { throw new Error(errText(e)) }
+        }}
+      />
     </div>
   )
 }
