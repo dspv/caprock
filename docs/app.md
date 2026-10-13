@@ -118,10 +118,15 @@ others. Installing it: [install-app.md](install-app.md).
 - **Dialogs.** Every dialog — Quick chat, New agent, Add project, the
   palette, Share and the rest — closes with the × in its corner, a click
   outside it, or Esc. In the app,
-  Now keeps its figures — today, plan limits, the pulse, all time, at a
-  glance, the activity feed — and leaves the session cards and the projects
-  panel to the sidebar, which lists the same sessions; the browser dashboard
-  shows both.
+  Now keeps its figures — today, plan limits, the pulse, the repos, all
+  time, at a glance, the activity feed — and leaves the session cards and the
+  projects panel to the sidebar, which lists the same sessions; the browser
+  dashboard shows both. **Repos**, under the pulse, has a row for each
+  repository a session runs in: commits a day over two weeks, today's and the
+  week's, lines added and removed, files not committed, from the
+  repository's own git; with GitHub connected, its open pull requests, red
+  runs, median CI time and newest release, as the session deck last read
+  them. Fold it and it reads nothing.
 - **Quick chat.** Ask something without picking a folder: a session in
   Caprock's data directory opens in a tab, under *Outside projects* in the
   sidebar, and its tab is called *Quick chat* with its model. ⌥⌘N, *Quick
@@ -356,8 +361,11 @@ others. Installing it: [install-app.md](install-app.md).
   amber only in your top fifth; hover for the whole sentence) — what it
   is doing this second and for how long, right under that its spend for the session,
   today, 7 or 30 days as a chart or as three more figures you choose
-  (*Chart | Numbers*; the chart's ▾ switches its bars between cost, tokens
-  and turns; fold it to a strip of the same bars and three figures if you
+  (*Chart | Numbers*; the chart's ▾ switches its bars between cost, burn
+  rate — dollars per hour you actually worked in each stretch — tokens and
+  turns, and a faint dashed line marks your pace: your usual burn rate, or
+  the period's average stretch, so hovering a bar says *38% above your
+  usual*; fold it to a strip of the same bars and three figures if you
   like), how full its context is and what every call now pays to re-read
   it, the task list the agent keeps for itself (each task with a spinner, a
   check or an empty circle, and *3 of 7 done* above them; not there when

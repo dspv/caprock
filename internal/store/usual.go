@@ -28,10 +28,15 @@ type Usual struct {
 }
 
 // Deciles is a distribution as its sample count and eleven values: the
-// minimum, every tenth percentile, and the maximum, ascending.
+// minimum, every tenth percentile, and the maximum, ascending; and its mean.
+// The cockpit's chart needs the mean: a bar's burn rate is its active hours'
+// cost over those hours, a mean, and a mean set against a median of a
+// skewed distribution reads high every time (the owner's 30 days on
+// 2026-10-13: median $3.82/h, mean $8.25/h).
 type Deciles struct {
-	N int       `json:"n"`
-	Q []float64 `json:"q"`
+	N    int       `json:"n"`
+	Q    []float64 `json:"q"`
+	Mean float64   `json:"mean"`
 }
 
 const (
@@ -58,7 +63,11 @@ func deciles(v []float64, min int) *Deciles {
 	for k := range q {
 		q[k] = v[k*(len(v)-1)/10]
 	}
-	return &Deciles{N: len(v), Q: q}
+	var sum float64
+	for _, x := range v {
+		sum += x
+	}
+	return &Deciles{N: len(v), Q: q, Mean: sum / float64(len(v))}
 }
 
 // UsualSince measures the usual from fromMs on, through the agent filter.

@@ -18,12 +18,14 @@
  * Turns, time working, tool calls and the last call have no usual: a turn
  * count says nothing on its own and a single call's price is noise.
  */
-import type { Metric, SpendFigures } from './spendview'
+import { barValue, chartValueText, periodBurn, type ChartMetric, type Metric, type SpendBar, type SpendFigures } from './spendview'
 
 /** One distribution: how many samples, and its deciles (11 values, ascending). */
 export interface Deciles {
   n: number
   q: number[]
+  /** The samples' mean; absent from a daemon before the chart's pace line. */
+  mean?: number
 }
 
 /** The daemon's baseline; any part it could not measure is absent. */
@@ -131,4 +133,91 @@ export function versusTitle(v: Versus, fmt: (n: number) => string, days: number)
   if (v.near) return `About ${what}${among}`
   const how = v.now / v.usual >= 2 ? `${deltaText(v)} ${what}` : `${deltaText(v)} ${v.delta > 0 ? 'above' : 'below'} ${what}`
   return `${how}${among}`
+}
+
+/**
+ * The chart's pace line (.ai/04-ui.md § Inspector): a faint dashed level
+ * across the bars for what a stretch usually measures, so a bar reads as
+ * above or below it rather than as a height alone (owner, 2026-10-13: "it's
+ * a chart, but it's unclear — pace").
+ *
+ * - **Burn rate**: the viewer's usual, every active session-hour's cost
+ *   over every active hour of the last 30 days (`usual.burn.mean`). A bar
+ *   is the mean of its own active hours, so it is set against the mean,
+ *   not the median the headline uses for a single hour: the distribution
+ *   is skewed, and on the owner's 30 days (2026-10-13) the median was
+ *   $3.82/h and the mean $8.25/h — against the median every day read two
+ *   to four times usual. Without enough hours, or from an older daemon
+ *   with no mean, the period's own rate.
+ * - **Cost, tokens, turns**: the period's own average stretch, over the
+ *   stretches with any activity — an idle night is not a slow hour. There
+ *   is no 30-day usual per stretch to draw: the daemon's are per session
+ *   and per session-hour, and a stretch is neither.
+ *
+ * Fewer than two stretches with a value: no line. One bar set against its
+ * own average says nothing.
+ */
+export interface Pace {
+  /** In the metric's own unit. */
+  value: number
+  /** 'usual': the viewer's 30-day median; 'avg': the period's own average. */
+  kind: 'usual' | 'avg'
+  /** The distribution behind a usual, for the clearly-high tone. */
+  dist?: Deciles
+}
+
+export function paceOf(m: ChartMetric, bars: readonly SpendBar[], u: Usual | undefined): Pace | undefined {
+  const values = bars.map((b) => barValue(m, b)).filter((v): v is number => v !== undefined && v > 0)
+  if (values.length < 2) return undefined
+  if (m === 'burn') {
+    const d = u?.burn
+    if (d && d.q.length === 11 && d.n >= (MIN_SAMPLES.burn ?? Infinity) && d.mean !== undefined && d.mean > 0) return { value: d.mean, kind: 'usual', dist: d }
+    const own = periodBurn(bars)
+    return own !== undefined && own > 0 ? { value: own, kind: 'avg' } : undefined
+  }
+  return { value: values.reduce((a, v) => a + v, 0) / values.length, kind: 'avg' }
+}
+
+/** The line's label at its right end: "usual $3.00/h", "avg 1.2M". */
+export function paceLabel(m: ChartMetric, p: Pace): string {
+  return `${p.kind === 'usual' ? 'usual' : 'avg'} ${chartValueText(m, p.value)}`
+}
+
+/** What the line is, on hover. */
+export function paceTitle(m: ChartMetric, p: Pace, days = 30): string {
+  const v = chartValueText(m, p.value)
+  if (p.kind === 'usual') return `Your usual, ${v}: every active session-hour’s cost over every active hour, ${days} days`
+  return m === 'burn'
+    ? `This period’s own rate, ${v}: too few active hours yet for a usual`
+    : `The average stretch with any activity, ${v}`
+}
+
+/**
+ * Where one bar stands against the line: 'high' only when a usual says it
+ * is in the top fifth of the viewer's own hours (the headline's amber rule,
+ * `tone`), else 'above' or 'below'. An average has no distribution, so it
+ * is never 'high': above the average is not something to act on.
+ */
+export function barPace(v: number | undefined, p: Pace | undefined): 'high' | 'above' | 'below' | undefined {
+  if (v === undefined || !p || !(v > 0)) return undefined
+  if (v <= p.value) return 'below'
+  const near = Math.abs(v / p.value - 1) < NEAR
+  if (p.dist && !near && percentileOf(v, p.dist.q) >= 80) return 'high'
+  return 'above'
+}
+
+/**
+ * The bar against the line, in words: "38% above your usual", "2.4× your
+ * usual", "about the average", "55% below the average". `short` is the
+ * form the chart's top line has room for in a 330px cockpit beside the
+ * date: "38% above usual", "55% below avg". Undefined without a value or
+ * a line.
+ */
+export function paceSentence(v: number | undefined, p: Pace | undefined, short = false): string | undefined {
+  if (v === undefined || !p || !(p.value > 0)) return undefined
+  const what = p.kind === 'usual' ? (short ? 'usual' : 'your usual') : (short ? 'avg' : 'the average')
+  const r = v / p.value
+  if (Math.abs(r - 1) < NEAR) return `about ${what}`
+  if (r >= 2) return `${r >= 10 ? Math.round(r) : r.toFixed(1)}× ${what}`
+  return `${Math.round(Math.abs(r - 1) * 100)}% ${r > 1 ? 'above' : 'below'} ${what}`
 }

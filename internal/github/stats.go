@@ -307,3 +307,25 @@ func median(xs []int64) int64 {
 	}
 	return (s[n/2-1] + s[n/2]) / 2
 }
+
+// CachedRepoPulls is the last list of the repository's own pull requests
+// read for the Branches view or the PRs & CI tab, however old; nothing is
+// sent. ok is false when none was read.
+func (s *Service) CachedRepoPulls(repo Repo) ([]BranchPR, bool) {
+	s.branchPulls.mu.Lock()
+	defer s.branchPulls.mu.Unlock()
+	e, ok := s.branchPulls.m[repo.FullName()]
+	if !ok {
+		return nil, false
+	}
+	return append([]BranchPR(nil), e.list...), true
+}
+
+// CachedRelease is the last release answer the deck's Release view read,
+// however old; nothing is sent. ok is false when none was read.
+func (s *Service) CachedRelease(repo Repo) (ReleaseCI, bool) {
+	s.repoCI.mu.Lock()
+	defer s.repoCI.mu.Unlock()
+	e, ok := s.repoCI.release[repo.FullName()]
+	return e.rel, ok
+}

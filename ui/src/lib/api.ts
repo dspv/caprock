@@ -387,6 +387,8 @@ export interface Spark {
   from_ms: number; width_ms: number; cost: number[]; tokens: number[]
   /** The input side of `tokens` (fresh input, cache reads and writes) and the assistant turns, per bucket; absent from an older daemon. */
   input?: number[]; turns?: number[]
+  /** Active session-hours per bucket (an hour in which one session made five or more priced calls) and what they cost: the chart's burn rate. Absent from an older daemon. */
+  active_hours?: number[]; active_cost?: number[]
 }
 /** One REPOSITORY's spend. `paths` is the per-directory breakdown, absent when
  *  the repository has only one directory (it would restate the row's total).
@@ -556,6 +558,36 @@ export interface RepoStats {
     workflows: WorkflowStats[]
   }
 }
+/** One listed repository with a session in it: GET /v1/repos/activity. */
+export interface RepoActivity {
+  project_id: number
+  root: string
+  name: string
+  /** Local calendar days, oldest first; the arrays below are per day. */
+  days: string[]
+  commits: number[]
+  added: number[]
+  deleted: number[]
+  last_commit_at?: number
+  /** Files the working tree has changed or new. */
+  dirty: number
+  sessions: number
+  checked_ms: number
+  error?: string
+  /** Only while GitHub is connected and the remote is on GitHub; each part only once the deck or the PRs & CI tab read it. */
+  github?: {
+    repo: string
+    pulls?: { open: number; merged_7d: number; ttm_median_ms?: number; listed: number }
+    ci?: { runs: number; red: number; workflow?: string; median_ms?: number }
+    release?: { tag?: string; state: string; at?: number }
+  }
+}
+
+export interface ReposActivity {
+  repos: RepoActivity[]
+  github_connected: boolean
+}
+
 /** `GET /v1/sessions/{id}/ci/stats`: the PRs & CI tab. */
 export interface SessionCIStats extends DeckFresh {
   connected: boolean
@@ -1521,6 +1553,8 @@ export const api = {
   /** The PRs & CI tab: the repository's pull requests and its figures over 14 days. Asked only while the tab is shown. */
   sessionCIStats: (id: string) => get<SessionCIStats>(`/v1/sessions/${encodeURIComponent(id)}/ci/stats`),
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */
+  /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */
+  reposActivity: () => get<ReposActivity>('/v1/repos/activity'),
   sessionBranches: (id: string) => get<SessionBranches>(`/v1/sessions/${encodeURIComponent(id)}/branches`),
   /** What GitHub billed for Actions this month (its billing report); ?owner= an organization. */
   actionsUsage: (owner?: string) => get<ActionsUsage>(`/v1/github/actions-usage${owner ? `?owner=${encodeURIComponent(owner)}` : ''}`),

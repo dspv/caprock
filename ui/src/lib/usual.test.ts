@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { fmtUSD } from './format'
-import type { SpendFigures } from './spendview'
-import { arrow, deltaText, percentileOf, tone, versus, versusTitle, type Usual } from './usual'
+import type { SpendBar, SpendFigures } from './spendview'
+import { arrow, barPace, deltaText, paceLabel, paceOf, paceSentence, paceTitle, percentileOf, tone, versus, versusTitle, type Pace, type Usual } from './usual'
 
 /** A measured shape (multiples of the median), scaled to a median. */
 const SHAPE = [0.003, 0.03, 0.08, 0.22, 0.56, 1, 1.65, 2.6, 3.7, 6, 22.7]
@@ -73,5 +73,59 @@ describe('versusTitle', () => {
     expect(versusTitle(versus('cost', figs({ cost: 3.12 }), usual(3))!, fmtUSD, 30))
       .toBe('About your median session, $3.00 (30 days) · already more than 51% of your sessions')
     expect(versusTitle(versus('cache', figs({ cache: 88.4 }), usual(3))!, fmtUSD, 30)).toBe('9 pts below your 30-day hit rate of 97.4%')
+  })
+})
+
+describe('the chart’s pace line', () => {
+  const H = 3_600_000
+  const bar = (i: number, p: Partial<SpendBar>): SpendBar => ({ start: i * H, end: (i + 1) * H, cost: 0, ...p })
+
+  it('draws burn rate against the 30-day mean active session-hour, or the period’s own rate without one', () => {
+    const bars = [bar(0, { activeHours: 1, activeCost: 6 }), bar(1, { activeHours: 0, activeCost: 0 }), bar(2, { activeHours: 2, activeCost: 3 })]
+    // A bar is a mean of its hours, so the line is the mean, not the median ($1 here).
+    const p = paceOf('burn', bars, usual(3, { burn: { ...dist(1), mean: 3 } }))!
+    expect(p).toMatchObject({ value: 3, kind: 'usual' })
+    expect(paceLabel('burn', p)).toBe('usual $3.00/h')
+    expect(paceTitle('burn', p, 30)).toBe('Your usual, $3.00/h: every active session-hour’s cost over every active hour, 30 days')
+    // Too few hours for a usual: the period's own, every active hour's cost over every active hour.
+    const own = paceOf('burn', bars, usual(3, { burn: { ...dist(3, 12), mean: 5 } }))!
+    expect(own).toMatchObject({ value: 3, kind: 'avg' })
+    expect(paceLabel('burn', own)).toBe('avg $3.00/h')
+    expect(paceOf('burn', bars, undefined)).toMatchObject({ value: 3, kind: 'avg' })
+    // An older daemon sends no mean: the period's own rate, never the median in its place.
+    expect(paceOf('burn', bars, usual(5))).toMatchObject({ value: 3, kind: 'avg' })
+  })
+
+  it('draws cost, tokens and turns against the average stretch with any activity, and nothing for one stretch', () => {
+    const bars = [bar(0, { cost: 2, tokens: 1_000_000 }), bar(1, { cost: 0, tokens: 0 }), bar(2, { cost: 4, tokens: 2_000_000 })]
+    // The idle stretch is left out of the average: (2 + 4) / 2.
+    expect(paceOf('cost', bars, usual(3))).toEqual({ value: 3, kind: 'avg' })
+    expect(paceLabel('tokens', paceOf('tokens', bars, usual(3))!)).toBe('avg 1.50M')
+    expect(paceOf('cost', [bars[0]!, bars[1]!], usual(3))).toBeUndefined()
+    // An older daemon's bars without turns: no line.
+    expect(paceOf('turns', bars, undefined)).toBeUndefined()
+  })
+
+  it('says where a bar stands: above or below, and amber only in the top fifth of a usual', () => {
+    const u: Pace = { value: 3, kind: 'usual', dist: dist(3) }
+    expect(paceSentence(4.14, u)).toBe('38% above your usual')
+    expect(paceSentence(1.35, u)).toBe('55% below your usual')
+    expect(paceSentence(3.2, u)).toBe('about your usual')
+    expect(paceSentence(7.2, u)).toBe('2.4× your usual')
+    expect(paceSentence(36, u)).toBe('12× your usual')
+    expect(paceSentence(undefined, u)).toBeUndefined()
+    expect(paceSentence(5, { value: 4, kind: 'avg' })).toBe('25% above the average')
+    // The short form the chart's top line has room for.
+    expect(paceSentence(4.14, u, true)).toBe('38% above usual')
+    expect(paceSentence(1, { value: 4, kind: 'avg' }, true)).toBe('75% below avg')
+    expect(paceSentence(3.2, u, true)).toBe('about usual')
+    // The 80th percentile of this shape is 3.7× the median: $11.10/h.
+    expect(barPace(4.14, u)).toBe('above')
+    expect(barPace(9, u)).toBe('above')
+    expect(barPace(12, u)).toBe('high')
+    expect(barPace(2, u)).toBe('below')
+    expect(barPace(undefined, u)).toBeUndefined()
+    // An average has no distribution: never amber, however high.
+    expect(barPace(40, { value: 3, kind: 'avg' })).toBe('above')
   })
 })

@@ -187,9 +187,12 @@ const KEY = 'caprock.app.cockpit.spend'
  * cost was the big figure by default: a stored hero that is exactly the old
  * default takes the new one, and any other order was picked and stays.
  * 4 added the chart's metric, which a stored choice from before simply
- * lacks: it reads as cost, and nothing else of it changes.
+ * lacks: it reads as cost, and nothing else of it changes. 5 added burn
+ * rate to the chart's metrics: a version 4 choice holds one of the three it
+ * could pick then and is kept as picked, so there is no step for it — the
+ * number says which menu the choice was made from.
  */
-const VERSION = 4
+const VERSION = 5
 const listeners = new Set<() => void>()
 
 /** Whatever was stored, made valid field by field. */
@@ -387,13 +390,20 @@ export function metricTitle(m: Metric, f: PeriodFigures, period: SpendPeriod = '
 export interface PeriodFigures extends Omit<SpendFigures, 'cost'> {
   cost?: number
   series?: { step: number; bars: SpendBar[] }
+  /**
+   * The period's dollars per active hour, when its bars are too fine to
+   * carry active hours (a session drawn by 10 minutes): what the chart's
+   * burn rate would read. Otherwise it is read from the bars.
+   */
+  activeBurn?: number
 }
 
 /**
  * One stretch of the chart: when, what was spent in it, and, when the
- * source says, its input tokens (cache reads and writes included) and its
- * turns. An older daemon's period series has cost only: the other fields
- * are absent, never zero.
+ * source says, its input tokens (cache reads and writes included), its
+ * turns, and its active session-hours with what they cost (the burn rate's
+ * two halves). An older daemon's period series has cost only: the other
+ * fields are absent, never zero.
  */
 export interface SpendBar {
   /** Unix ms, inclusive. */
@@ -402,63 +412,96 @@ export interface SpendBar {
   cost: number
   tokens?: number
   turns?: number
+  /** Clock hours in the stretch in which one session made at least USUAL_MIN_CALLS priced calls costing more than nothing. */
+  activeHours?: number
+  /** What those hours cost; the stretch's other spend is not in it. */
+  activeCost?: number
 }
 
 /**
- * What the chart's bars can measure: only what adds up per stretch. Burn
- * rate, time working and the last call are the session's own single
- * figures, not a per-stretch sum; the cache hit rate is above 90% in every
- * stretch of a working session, so its bars all stand the same height and
- * say nothing (owner, 2026-10-13, picked cost, tokens and turns).
+ * What the chart's bars can measure. Cost, tokens and turns add up per
+ * stretch; burn rate is a rate per stretch (owner, 2026-10-13: "for some
+ * total spend matters more, for some burn rate, someone measures tokens").
+ * Time working and the last call are the session's own single figures; the
+ * cache hit rate is above 90% in every stretch of a working session, so its
+ * bars all stand the same height and say nothing.
  */
-export type ChartMetric = 'cost' | 'tokens' | 'turns'
+export type ChartMetric = 'cost' | 'burn' | 'tokens' | 'turns'
 
 export const CHART_METRICS: readonly { id: ChartMetric; name: string; short: string; hint: string }[] = [
   { id: 'cost', name: 'Cost', short: 'cost', hint: 'spent, at API list price' },
+  { id: 'burn', name: 'Burn rate', short: 'burn', hint: 'per active hour: an hour with five or more calls' },
   { id: 'tokens', name: 'Tokens', short: 'tokens', hint: 'input, cache reads and writes included' },
   { id: 'turns', name: 'Turns', short: 'turns', hint: 'model calls, per stretch' },
 ]
 
-/** A bar's value for a metric; undefined when the source does not carry it. */
+/**
+ * A bar's value for a metric; undefined when the source does not carry it.
+ * Burn rate is the stretch's active hours' cost over those hours — not its
+ * cost over the stretch's length, which would only be cost drawn again —
+ * and undefined for a stretch with no active hour: idle is no rate, not
+ * $0/h.
+ */
 export function barValue(m: ChartMetric, b: SpendBar): number | undefined {
   switch (m) {
     case 'cost': return b.cost
+    case 'burn': return b.activeHours && b.activeHours > 0 ? (b.activeCost ?? 0) / b.activeHours : undefined
     case 'tokens': return b.tokens
     case 'turns': return b.turns
   }
 }
 
-/** A chart value as its top line draws it: $12.40, 950.1k, 1,204. */
+/** Whether the source carries a metric for a bar at all, zero or not; a burn bar with no active hour still carries it. */
+export function barCarries(m: ChartMetric, b: SpendBar): boolean {
+  return m === 'burn' ? b.activeHours !== undefined : barValue(m, b) !== undefined
+}
+
+/** A chart value as its top line draws it: $12.40, $3.10/h, 950.1k, 1,204. */
 export function chartValueText(m: ChartMetric, v: number | undefined): string {
   if (v === undefined || !Number.isFinite(v)) return '—'
   switch (m) {
     case 'cost': return fmtUSD(v)
+    case 'burn': return `${fmtUSD(v)}/h`
     case 'tokens': return fmtTokens(v)
     case 'turns': return Math.round(v).toLocaleString('en-US')
   }
 }
 
+/** The period's burn rate from its bars: every active hour's cost over every active hour. Undefined with none. */
+export function periodBurn(bars: readonly SpendBar[] | undefined): number | undefined {
+  let h = 0, c = 0
+  for (const b of bars ?? []) { h += b.activeHours ?? 0; c += b.activeCost ?? 0 }
+  return h > 0 ? c / h : undefined
+}
+
 /**
  * The folded strip's figures: the chart's metric first, then cost, tokens,
  * turns and time working, three of them, leaving out any the period does
- * not carry rather than drawing a dash.
+ * not carry rather than drawing a dash. The first is the chart's own total,
+ * so a folded burn rate is the same figure the chart's top line reads.
  */
 export function foldedFigures(first: ChartMetric, f: PeriodFigures): { id: Metric; label: string; value: string }[] {
   const order: Metric[] = [first, 'cost', 'tokens', 'turns', 'time']
   const out: { id: Metric; label: string; value: string }[] = []
   for (const m of order) {
     if (out.length >= 3 || out.some((x) => x.id === m)) continue
-    const value = metricValue(m, f)
+    const value = m === first ? chartValueText(first, chartTotal(first, f)) : metricValue(m, f)
     if (value === '—') continue
     out.push({ id: m, label: METRICS.find((x) => x.id === m)!.label, value })
   }
   return out
 }
 
-/** The period's own figure for a metric, the chart's total. */
+/**
+ * The period's own figure for a metric, the chart's total. Burn rate is the
+ * period's active hours' rate, read from its bars, so the top line and the
+ * bars under it measure the same thing (the hero's burn, the last hour of
+ * activity, is a different question).
+ */
 export function chartTotal(m: ChartMetric, f: PeriodFigures): number | undefined {
   switch (m) {
     case 'cost': return f.cost
+    case 'burn': return f.activeBurn ?? periodBurn(f.series?.bars)
     case 'tokens': return f.tokens
     case 'turns': return f.turns
   }
@@ -487,17 +530,18 @@ export function periodFigures(p: SpendPeriod, f: SpendFigures, summary: Summary 
   if (!summary) return {}
   const tokens = summary.tokens_in + summary.cache_read + summary.cache_write
   const sums: number[] = []
-  // Input and turns, summed alike; a row from an older daemon without them
-  // leaves that series undefined for every bar.
-  const extra = { input: [] as number[], turns: [] as number[] }
-  const has = { input: true, turns: true }
+  // Input, turns and the active hours, summed alike (a session lives in one
+  // project, so its hours are counted once); a row from an older daemon
+  // without one leaves that series undefined for every bar.
+  const extra = { input: [] as number[], turns: [] as number[], active_hours: [] as number[], active_cost: [] as number[] }
+  const has = { input: true, turns: true, active_hours: true, active_cost: true }
   let grid: { from: number; width: number } | undefined
   for (const proj of summary.projects ?? []) {
     const sp = proj.spark
     if (!sp?.cost?.length) continue
     if (!grid && sp.width_ms > 0) grid = { from: sp.from_ms, width: sp.width_ms }
     sp.cost.forEach((v, i) => { sums[i] = (sums[i] ?? 0) + (Number.isFinite(v) ? v : 0) })
-    for (const k of ['input', 'turns'] as const) {
+    for (const k of ['input', 'turns', 'active_hours', 'active_cost'] as const) {
       const arr = sp[k]
       if (!Array.isArray(arr)) { has[k] = false; continue }
       arr.forEach((v, i) => { extra[k][i] = (extra[k][i] ?? 0) + (Number.isFinite(v) ? v : 0) })
@@ -510,6 +554,7 @@ export function periodFigures(p: SpendPeriod, f: SpendFigures, summary: Summary 
           start: grid!.from + i * grid!.width, end: grid!.from + (i + 1) * grid!.width, cost: v ?? 0,
           ...(has.input ? { tokens: extra.input[i] ?? 0 } : {}),
           ...(has.turns ? { turns: extra.turns[i] ?? 0 } : {}),
+          ...(has.active_hours && has.active_cost ? { activeHours: extra.active_hours[i] ?? 0, activeCost: extra.active_cost[i] ?? 0 } : {}),
         })),
       }
     : undefined
