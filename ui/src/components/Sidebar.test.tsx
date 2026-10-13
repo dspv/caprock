@@ -44,6 +44,11 @@ function renderSidebar(extra: Partial<SidebarProps> = {}) {
 }
 
 const listed = () => [...document.querySelectorAll('[data-project-row]')].map((b) => b.getAttribute('data-project-row'))
+/** The rows in the list above the folds. */
+const top = () => [...document.querySelectorAll('.app-scroll > ul [data-project-row]')].map((b) => b.getAttribute('data-project-row'))
+
+/** The project ids hidden by hand, as stored (id → when). */
+const hiddenIds = () => Object.keys(JSON.parse(localStorage.getItem(HIDDEN_KEY)!) as Record<string, number>)
 
 beforeEach(() => localStorage.clear())
 
@@ -162,7 +167,7 @@ describe('the sidebar', () => {
     const first = renderSidebar()
     fireEvent.click(screen.getByRole('button', { name: 'Close project beta' }))
     expect(listed()).toEqual(['alpha', 'stale'])
-    expect(JSON.parse(localStorage.getItem(HIDDEN_KEY)!)).toEqual(['beta'])
+    expect(hiddenIds()).toEqual(['beta'])
     first.unmount()
 
     renderSidebar()
@@ -172,14 +177,62 @@ describe('the sidebar', () => {
     fireEvent.click(within(hidden).getByRole('button', { name: 'Show beta in the list again' }))
     expect(listed()).toEqual(['alpha', 'beta', 'stale'])
     expect(screen.queryByRole('region', { name: 'Hidden' })).not.toBeInTheDocument()
-    expect(JSON.parse(localStorage.getItem(HIDDEN_KEY)!)).toEqual([])
+    expect(hiddenIds()).toEqual([])
   })
 
-  it('keeps the project in front listed even when hidden', () => {
-    localStorage.setItem(HIDDEN_KEY, JSON.stringify(['beta']))
+  it('hides the project in front: it moves under Hidden, still in view with the fold closed, and Show brings it back', () => {
     renderSidebar({ activeProjectId: 'beta', dashboardActive: false })
+    fireEvent.click(screen.getByRole('button', { name: /^Hide beta/ }))
+    expect(hiddenIds()).toEqual(['beta'])
+    const hidden = screen.getByRole('region', { name: 'Hidden' })
+    expect(within(hidden).getByRole('button', { name: /Hidden · 1/ })).toHaveAttribute('aria-expanded', 'false')
+    // Out of the list above, kept in view under Hidden: the one in front.
+    expect(top()).toEqual(['alpha', 'stale'])
+    expect(hidden.querySelector('[data-project-row="beta"]')).toHaveAttribute('data-current')
+    fireEvent.click(within(hidden).getByRole('button', { name: 'Show beta in the list again' }))
+    expect(screen.queryByRole('region', { name: 'Hidden' })).toBeNull()
     expect(listed()).toEqual(['alpha', 'beta', 'stale'])
-    expect(screen.getByRole('button', { name: 'Show beta in the list again' })).toBeInTheDocument()
+  })
+
+  // The owner's bug on 0.112.0 (2026-10-13): Hide did nothing on a project
+  // whose agent had finished its turn. Every path wrote the id; the project
+  // stayed where it was.
+  it('hides a project whose agent finished its turn, from its eye, its ⋯ menu and a right-click, Outside projects too', () => {
+    const ended = new Date(Date.now() - 60_000).toISOString()
+    const s = (id: string, cwd: string) => ({
+      session_id: id, cwd, project: 'p', model: '', started_at: 0, last_event_at: 0, status: 'active', transcript_path: '',
+      has_hooks: true, has_transcript: true, git_branch: 'main', version: '', owned: false,
+      stats: { session_id: id, turns: 1, tool_calls: 0, files_touched: 0, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0, cost_usd: 0 },
+      activity: { phrase: '', at: ended, health: 'waiting-on-you' },
+      savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 },
+    }) as unknown as SessionSummary
+    const waiting = buildSidebar({
+      projects: [proj('alpha', 1, true), proj('beta', 2, true), proj('stale', 30)],
+      sessions: [s('a1', '/w/alpha'), s('b1', '/w/beta'), s('s1', '/w/stale'), s('o1', '/elsewhere')],
+      permissions: new Set(),
+      costs: new Map(),
+      openSessions: new Set(),
+    })
+    expect(waiting.projects.every((n) => n.waiting === 1)).toBe(true)
+    renderSidebar({ model: waiting })
+    expect(top()).toEqual(['alpha', 'beta', 'stale', 'other-folders'])
+    fireEvent.click(screen.getByRole('button', { name: /^Hide alpha/ }))
+    expect(top()).toEqual(['beta', 'stale', 'other-folders'])
+    fireEvent.click(screen.getByRole('button', { name: /More for beta/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Hide from the sidebar/ }))
+    expect(top()).toEqual(['stale', 'other-folders'])
+    fireEvent.contextMenu(document.querySelector('[data-project-row="stale"]')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: /Hide from the sidebar/ }))
+    expect(top()).toEqual(['other-folders'])
+    fireEvent.click(screen.getByRole('button', { name: /^Hide Outside projects/ }))
+    expect(top()).toEqual([])
+    expect(within(screen.getByRole('region', { name: 'Hidden' })).getByRole('button', { name: /Hidden · 4/ })).toBeInTheDocument()
+  })
+
+  it('reads the older list of hidden ids', () => {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify(['beta']))
+    renderSidebar()
+    expect(listed()).toEqual(['alpha', 'stale'])
   })
 
   it('survives unreadable storage', () => {
@@ -228,7 +281,7 @@ describe('the sidebar', () => {
     fireEvent.contextMenu(document.querySelector('[data-project-row="alpha"]')!)
     fireEvent.click(screen.getByRole('menuitem', { name: /Hide from the sidebar/ }))
     expect(listed()).toEqual(['beta', 'stale'])
-    expect(JSON.parse(localStorage.getItem(HIDDEN_KEY)!)).toEqual(['alpha'])
+    expect(hiddenIds()).toEqual(['alpha'])
     // From Hidden, the same menu shows it again.
     fireEvent.click(screen.getByRole('button', { name: /Hidden · 1/ }))
     fireEvent.contextMenu(document.querySelector('[data-project-row="alpha"]')!)

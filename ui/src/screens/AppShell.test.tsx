@@ -50,13 +50,13 @@ function sess(p: Partial<SessionSummary>): SessionSummary {
 const sessions = [
   sess({ session_id: 'agent-1', title: 'Fix the login bug' }),
   sess({ session_id: 'agent-2', title: 'Waiting one', activity: { phrase: '', at: new Date(Date.now() - 60_000).toISOString(), health: 'waiting-on-you' } }),
-  sess({ session_id: 'theirs', title: 'Started elsewhere', owned: false, cwd: '/w/other', repo_root: '/w/other', project: 'other' }),
+  sess({ session_id: 'theirs', title: 'Started elsewhere', owned: false, cwd: '/w/other', repo_root: '/w/other', project: 'other', resume: { ok: true, command: 'claude --resume theirs' } }),
 ]
 
 const editorCalls = vi.hoisted(() => [] as { path: string; line?: number; editor?: string }[])
 // Every quick chat starts as chat-1, chat-2, … in its own dated folder, as
 // the daemon makes one (internal/agents newChatDir).
-const spawned = vi.hoisted(() => ({ n: 0, shells: 0, health: 'idle' as 'idle' | 'working', signals: [] as [string, string][] }))
+const spawned = vi.hoisted(() => ({ n: 0, shells: 0, health: 'idle' as 'idle' | 'working', signals: [] as [string, string][], reqs: [] as Record<string, unknown>[] }))
 const chatSession = (id: string) => sess({
   session_id: id, cwd: `/data/caprock/chats/2026-10-12-00515${id.slice(-1)}`, repo_root: '', project: 'chat · Oct 12, 00:51', model: '', title: undefined,
   activity: { phrase: '', at: '', health: spawned.health },
@@ -70,7 +70,8 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       status: async () => ({ version: 'v0.0.0', claude_available: true }),
       sessions: async () => sessions,
-      spawn: async () => {
+      spawn: async (req: Record<string, unknown>) => {
+        spawned.reqs.push(req)
         spawned.n += 1
         const id = `chat-${spawned.n}`
         sessions.push(chatSession(id))
@@ -185,11 +186,58 @@ describe('the app workspace', () => {
     expect(screen.queryByRole('log')).not.toBeInTheDocument()
   })
 
-  it('opens a session it does not own in the dashboard, never as a terminal (rule 7)', async () => {
+  it('opens a session it does not own in a tab of its own, read-only, never as a terminal (rule 7; owner, 2026-10-13)', async () => {
     await renderApp()
     await openFromPalette('Started elsewhere')
+    const tab = await screen.findByRole('tab', { name: /Started elsewhere/ })
+    expect(tab).toHaveAttribute('aria-selected', 'true')
+    expect(location.hash).not.toBe('#/session/theirs')
+    expect(document.querySelector('[data-observe-pane="theirs"]')).toBeInTheDocument()
+    expect(screen.getByText(/Started in another terminal — Caprock watches it, it can’t type into it/)).toBeInTheDocument()
+    expect(screen.queryByTestId('pane-theirs')).not.toBeInTheDocument()
+    // Open in dashboard is the way to the session's page, on demand.
+    fireEvent.click(document.querySelector<HTMLElement>('[data-observe-dashboard]')!)
     expect(location.hash).toBe('#/session/theirs')
-    expect(screen.queryByRole('tab', { name: /Started elsewhere/ })).not.toBeInTheDocument()
+    expect(spawned.signals).toEqual([])
+  })
+
+  it('a click on a sidebar row from another terminal opens its tab, not the Dashboard tab (owner, 2026-10-13)', async () => {
+    await renderApp()
+    const row = await waitFor(() => {
+      const r = [...document.querySelectorAll<HTMLElement>('button[title]')].find((b) => b.title.startsWith('Started elsewhere') && b.title.includes('started in another terminal'))
+      if (!r) throw new Error('no row')
+      return r
+    })
+    fireEvent.click(row)
+    expect(await screen.findByRole('tab', { name: /Started elsewhere/ })).toHaveAttribute('aria-selected', 'true')
+    expect(location.hash).not.toBe('#/session/theirs')
+    expect(document.querySelector('[data-observe-pane="theirs"]')).toBeInTheDocument()
+  })
+
+  it('Continue here on a session from another terminal starts a copy in a new tab, and leaves the original alone', async () => {
+    await renderApp()
+    await openFromPalette('Started elsewhere')
+    await screen.findByRole('tab', { name: /Started elsewhere/ })
+    spawned.reqs.length = 0
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue here' }))
+    await waitFor(() => expect(spawned.reqs).toHaveLength(1))
+    expect(spawned.reqs[0]).toMatchObject({ cwd: '/w/other', resume: 'theirs', fork: true })
+    const id = `chat-${spawned.n}`
+    await waitFor(() => expect(screen.getByTestId(`pane-${id}`)).toHaveAttribute('data-active', 'true'))
+    // The watched tab stays; nothing was sent to the other terminal's process.
+    expect(screen.getByRole('tab', { name: /Started elsewhere/ })).toBeInTheDocument()
+    expect(spawned.signals).toEqual([])
+  })
+
+  it('hides a watched session from its tab’s menu: the tab closes and the row is unlisted', async () => {
+    await renderApp()
+    await openFromPalette('Started elsewhere')
+    await screen.findByRole('tab', { name: /Started elsewhere/ })
+    fireEvent.click(screen.getByRole('button', { name: 'More for Started elsewhere' }))
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Hide from the list' }))
+    await waitFor(() => expect(screen.queryByRole('tab', { name: /Started elsewhere/ })).not.toBeInTheDocument())
+    expect(Object.keys(JSON.parse(localStorage.getItem('caprock.app.hidden-sessions') ?? '{}'))).toContain('theirs')
+    expect(spawned.signals).toEqual([])
   })
 
   it('lists the current project’s tabs in the sidebar as the strip shows them, and one click brings a project back (tester, 2026-10-09)', async () => {

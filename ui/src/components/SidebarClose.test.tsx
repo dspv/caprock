@@ -70,6 +70,9 @@ const shellTab: Tab = { id: 't2', projectId: 'alpha', root: pane('p2', 'shell', 
 const fileTab: Tab = { id: 't3', projectId: 'alpha', root: pane('p3', 'file', 'f1', 'src/app.ts'), focusedPaneId: 'p3', title: 'app.ts' }
 const tabRow = (id: string) => document.querySelector(`[data-tab-row="${id}"]`) as HTMLElement
 
+/** The project ids hidden by hand, as stored (id → when). */
+const hiddenIds = () => Object.keys(JSON.parse(localStorage.getItem(HIDDEN_KEY)!) as Record<string, number>)
+
 beforeEach(() => {
   localStorage.clear()
   // These are about each row's actions, so every row is out: alpha's
@@ -164,7 +167,7 @@ describe('closing in the sidebar', () => {
     expect(x.getAttribute('title')).toContain('moves under Hidden')
     fireEvent.click(x)
     expect(props.onCloseProjectTabs).toHaveBeenCalledWith('alpha')
-    expect(JSON.parse(localStorage.getItem(HIDDEN_KEY)!)).toEqual(['alpha'])
+    expect(hiddenIds()).toEqual(['alpha'])
     expect(props.onActivateTab).toHaveBeenCalledWith('tb')
   })
 
@@ -185,7 +188,7 @@ describe('closing in the sidebar', () => {
     // The shell stopped: nothing runs there any more, so it hides.
     await act(async () => { fireEvent.click(x) })
     expect(props.onCloseProjectTabs).toHaveBeenCalledTimes(2)
-    expect(JSON.parse(localStorage.getItem(HIDDEN_KEY)!)).toEqual(['alpha'])
+    expect(hiddenIds()).toEqual(['alpha'])
   })
 
   it('keeps a project with live work listed: its × only closes the tabs', () => {
@@ -297,7 +300,7 @@ describe('closing in the sidebar', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Hide from the list' }))
     expect(document.querySelector('[data-live-row="a2"]')).toBeNull()
     fireEvent.contextMenu(document.querySelector('[data-live-row="x1"]')!)
-    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open its details', 'Hide from the list'])
+    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open in a tab, read-only', 'Hide from the list'])
   })
 
   it("closes a tab and hides its agent from the tab's menu, so it does not come back as a muted row", () => {

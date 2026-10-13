@@ -310,9 +310,9 @@ export const FOLD_ABOVE = 8
  * With FOLD_ABOVE projects or fewer nothing folds: every project not hidden
  * by hand is in view. Above that, in view is what is in play: a live or
  * waiting session, a tab open (`tabbed`), pinned, or the project in front. A
- * hidden project that comes back to life shows normally until it is idle
- * again. Other folders holds only what is live or open, so it is always in
- * view, and last.
+ * project hidden by hand stays under Hidden whatever runs in it, the one in
+ * front included, until it needs you again (`projectHidden`). Other folders
+ * holds only what is live or open, so it is always in view, and last.
  *
  * Inside each group the order is stable: pinned first, then the order set by
  * hand, then by name. Activity never moves a row and neither does a click: a
@@ -320,7 +320,7 @@ export const FOLD_ABOVE = 8
  */
 export function groupProjects(
   nodes: ProjectNode[],
-  { hidden, activeProjectId, tabbed }: { hidden: ReadonlySet<string>; activeProjectId?: string; tabbed?: ReadonlySet<string> },
+  { hidden, activeProjectId, tabbed }: { hidden: HiddenProjects; activeProjectId?: string; tabbed?: ReadonlySet<string> },
 ): ProjectGroups {
   const out: ProjectGroups = { shown: [], more: [], hidden: [] }
   const fold = nodes.filter((n) => n.project.id !== OTHER_FOLDERS_ID).length > FOLD_ABOVE
@@ -331,9 +331,10 @@ export function groupProjects(
     const busy = n.live > 0 || n.waiting > 0 || !!tabbed?.has(id) || n.worktrees.some((w) => w.sessions.some((s) => s.open))
     // Hidden by hand wins over running (owner, 2026-10-11: "hide a project
     // with one button"): its sessions keep running under Hidden, dot and
-    // count included. Only the current project, and one waiting on you,
-    // come back out.
-    if (hidden.has(id) && id !== activeProjectId && n.waiting === 0) out.hidden.push(n)
+    // count included. It wins over being in front and over a turn that had
+    // already ended too: forcing those back out made Hide do nothing on the
+    // very projects it is pressed on (owner, 2026-10-13).
+    if (projectHidden(n, hidden)) out.hidden.push(n)
     else if (busy || id === activeProjectId) out.shown.push(n)
     else if (!fold || n.project.pinned) out.shown.push(n)
     else out.more.push(n)
@@ -341,8 +342,30 @@ export function groupProjects(
   for (const g of [out.shown, out.more, out.hidden]) g.sort(stableOrder)
   // Outside projects stays last, unless hidden by hand; then it waits under
   // Hidden too, unless something there waits on you.
-  if (other) (hidden.has(OTHER_FOLDERS_ID) && other.waiting === 0 ? out.hidden : out.shown).push(other)
+  if (other) (projectHidden(other, hidden) ? out.hidden : out.shown).push(other)
   return out
+}
+
+/** Project ids hidden from the sidebar by hand, and when: this browser's. */
+export type HiddenProjects = ReadonlyMap<string, number>
+
+/**
+ * Whether a project stays under Hidden: hidden by hand, and nothing in it
+ * needs you since. As with a session row (`rowHidden`), a permission prompt
+ * always brings it out, and so does a turn that ended after it was hidden; a
+ * turn that had already ended when Hide was pressed does not, nor does
+ * being the project in front.
+ */
+export function projectHidden(n: ProjectNode, hidden: HiddenProjects): boolean {
+  const at = hidden.get(n.project.id)
+  if (at === undefined) return false
+  for (const wt of n.worktrees) {
+    for (const x of wt.sessions) {
+      if (x.asks) return false
+      if (x.waiting && (x.waitingSince ?? 0) > at) return false
+    }
+  }
+  return true
 }
 
 /** Pinned first, then the order set by hand, then by name: nothing that changes with activity. */

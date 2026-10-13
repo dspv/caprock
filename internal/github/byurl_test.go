@@ -58,3 +58,25 @@ func TestPullByURLKeepsWhatItRead(t *testing.T) {
 		t.Fatalf("requests:\n%s", got)
 	}
 }
+
+// GitHub's auto-merge rides on the pull request object already read: no
+// call of its own, and absent (false) when GitHub sends null.
+func TestPullByURLSaysAutoMerge(t *testing.T) {
+	x := newFixture(t)
+	x.connect(t)
+	on := pull("ada/caprock", 4, "feat/y", "sha4")
+	on["auto_merge"] = map[string]any{"merge_method": "squash"}
+	off := pull("ada/caprock", 5, "feat/z", "sha5")
+	off["auto_merge"] = nil
+	x.f.mu.Lock()
+	x.f.pulls["ada/caprock"] = []map[string]any{on, off}
+	x.f.mu.Unlock()
+	pr, e := x.s.PullByURL(context.Background(), "https://github.com/ada/caprock/pull/4")
+	if e != nil || !pr.AutoMerge {
+		t.Fatalf("want auto-merge on: %+v %v", pr, e)
+	}
+	pr, e = x.s.PullByURL(context.Background(), "https://github.com/ada/caprock/pull/5")
+	if e != nil || pr.AutoMerge {
+		t.Fatalf("want auto-merge off: %+v %v", pr, e)
+	}
+}

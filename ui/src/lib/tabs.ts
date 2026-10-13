@@ -18,11 +18,14 @@
 
 /**
  * What a pane shows: an agent session, a shell (a session of kind `shell`),
- * or one of the project's files, read-only. A file's `sessionId` is its key
- * (lib/files.ts fileKey), so the same file opens once, as a session does.
+ * one of the project's files, read-only, or a session Caprock cannot type
+ * into — one started in another terminal, or one that ended — shown as its
+ * conversation, read-only (`observe`, components/ObservePane.tsx; rule 7). A
+ * file's `sessionId` is its key (lib/files.ts fileKey), so the same file
+ * opens once, as a session does.
  */
 export interface TabTarget {
-  kind: 'session' | 'shell' | 'file'
+  kind: 'session' | 'shell' | 'file' | 'observe'
   sessionId: string
   /** A file: its path relative to the worktree. */
   path?: string
@@ -312,8 +315,8 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
     case 'split': {
       const tab = activeTab(ws)
       // Already open somewhere: show it where it is rather than twice. A file
-      // is a tab of its own: neither split nor split beside.
-      if (!tab || findTabBySession(ws, a.target.sessionId) || a.target.kind === 'file' || focusedLeaf(tab).target.kind === 'file') {
+      // and a watched session are tabs of their own: neither split nor split beside.
+      if (!tab || findTabBySession(ws, a.target.sessionId) || ownTab(a.target) || ownTab(focusedLeaf(tab).target)) {
         return workspaceReducer(ws, { type: 'open', target: a.target, projectId: a.projectId, title: a.title })
       }
       if (leaves(tab.root).length >= MAX_PANES) return ws
@@ -362,7 +365,12 @@ function isTarget(v: unknown): v is TabTarget {
   const t = v as TabTarget
   if (!t || typeof t.sessionId !== 'string' || t.sessionId === '') return false
   if (t.kind === 'file') return typeof t.path === 'string' && t.path !== '' && (t.worktree === undefined || typeof t.worktree === 'string')
-  return t.kind === 'session' || t.kind === 'shell'
+  return t.kind === 'session' || t.kind === 'shell' || t.kind === 'observe'
+}
+
+/** A pane that is a whole tab, never split: a file, or a session watched read-only. */
+export function ownTab(t: TabTarget): boolean {
+  return t.kind === 'file' || t.kind === 'observe'
 }
 
 function isPane(v: unknown): v is PaneNode {

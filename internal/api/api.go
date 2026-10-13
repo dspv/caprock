@@ -26,6 +26,7 @@ import (
 	"github.com/dspv/caprock/internal/bus"
 	capguard "github.com/dspv/caprock/internal/cap"
 	"github.com/dspv/caprock/internal/codex"
+	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/contexttax"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/editor"
@@ -311,6 +312,11 @@ type Settings struct {
 	// projects.CleanupModes. GET returns the effective mode, "ask" when
 	// never chosen.
 	WorktreeCleanup string `json:"worktree_cleanup"`
+	// StatuslineMode is what Caprock's Claude Code status line shows: one
+	// of config.StatuslineModes. GET returns the effective mode, "full"
+	// when never chosen; "off" removes Caprock's own statusLine entry from
+	// Claude Code's settings (never the user's own).
+	StatuslineMode string `json:"statusline_mode"`
 }
 
 // ReportSender sends one weekly report immediately.
@@ -1303,6 +1309,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		SpawnMode       *string  `json:"spawn_permission_mode"`
 		KeepAwake       *string  `json:"keep_awake"`
 		WorktreeCleanup *string  `json:"worktree_cleanup"`
+		StatuslineMode  *string  `json:"statusline_mode"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
@@ -1417,6 +1424,14 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.WorktreeCleanup = v
+	}
+	if patch.StatuslineMode != nil {
+		v := strings.TrimSpace(*patch.StatuslineMode)
+		if !config.ValidStatuslineMode(v) {
+			s.failCode(w, http.StatusBadRequest, fmt.Errorf("statusline_mode must be one of %s", strings.Join(config.StatuslineModes, ", ")))
+			return
+		}
+		in.StatuslineMode = v
 	}
 	// Only touched when the caller named it. GET never returns the token, so a
 	// UI that reads settings and writes them back always omits it — treating
