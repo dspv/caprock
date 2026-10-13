@@ -934,6 +934,11 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
   file truncated after. A running read can hold part of it back; the next
   attempt is 10 minutes later.
 - **A paired device may read it**, as it may read `/v1/resources`.
+- **Who asks.** The dashboard's status strip, every 10 s while its page is
+  visible (04-ui.md § Caprock footprint); each ask counts as looking, so
+  the meter samples while it does. The panel's *Copy report* renders this
+  object as `caprock doctor`'s text, and `testdata/footprint/doctor.json`
+  with `doctor.txt` pin the two renderings to each other.
 
 `caprock doctor [--json] [--data-dir <dir>]` prints the footprint as text —
 memory and CPU, disk, the daemon's disk I/O, duplicates, what was done on

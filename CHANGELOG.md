@@ -16,6 +16,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   second daemon, a second app, orphaned terminals, a database over 2 GB and
   heavy disk reads, and exits 1 when something is flagged. `--json` prints
   the new `GET /v1/footprint`. It works with no daemon running.
+- **app:** what Caprock costs this computer, one click from the status bar.
+  *caprock 1.1 GB · 2.2 GB* at its right is the memory of every Caprock
+  process and the data directory on disk (memory alone in a narrow window),
+  in the warning colour with a dot when something is flagged. A click — or
+  the palette's *Caprock doctor* — opens the doctor as a panel: the verdict
+  in one line, each warning with the processes behind it, what the memory
+  and the disk are spent on, the daemon's disk reads and writes, what it
+  cleaned up on its own, **Check now**, **Stop N orphans** and **Copy
+  report**, which copies exactly what `caprock doctor` prints.
 - **daemon:** the resource meter counts the app's window: on macOS the
   WebKit helpers that draw it (hundreds of MB that belonged to no one
   before), elsewhere the app's child processes.

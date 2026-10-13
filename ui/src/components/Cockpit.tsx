@@ -322,7 +322,7 @@ function useTweened(value: number, ms = 650): number {
 }
 
 /** A small menu's housekeeping: closes on a click outside or Escape, and its current choice takes the focus. */
-function useMenuDismiss(open: boolean, box: RefObject<HTMLElement | null>, close: () => void) {
+export function useMenuDismiss(open: boolean, box: RefObject<HTMLElement | null>, close: () => void) {
   useEffect(() => {
     if (!open) return
     const onDown = (e: globalThis.MouseEvent) => { if (!box.current?.contains(e.target as Node)) close() }

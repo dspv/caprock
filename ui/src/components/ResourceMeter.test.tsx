@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { CaprockItself, CaprockLoad, HotMark, Processes, SessionLoad } from './ResourceMeter'
+import { CaprockItself, HotMark, Processes, SessionLoad } from './ResourceMeter'
 import { fmtCPU, fmtMem, resetResourcesForTest, type ResourceReport } from '@/lib/resources'
 
 const GB = 2 ** 30
@@ -65,12 +65,6 @@ describe('the session faces', () => {
     // In words: the session's, and RAM — not Caprock's.
     expect(el.textContent).toMatch(/agent cpu .* ram /)
     expect(el.getAttribute('title')).toContain('not Caprock')
-  })
-
-  it('puts what Caprock itself holds beside it', () => {
-    const { container } = render(<CaprockLoad />)
-    const el = container.querySelector('[data-caprock-load]')
-    if (el) expect(el.textContent).toMatch(/^caprock \d/)
   })
 
   it('shows nothing for a session the meter has not measured', () => {

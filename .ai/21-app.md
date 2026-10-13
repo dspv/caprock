@@ -754,7 +754,12 @@ One window, three regions:
   runs; this is the way back to what ended.
 - **Status strip (bottom).** Connection state, plan limits (5-hour and 7-day)
   and today's spend while the sidebar is hidden (its Today strip carries
-  them otherwise), the daemon's state and version — read again on every
+  them otherwise), what Caprock itself costs this computer — *caprock
+  1.1 GB · 2.2 GB*, memory and disk, memory alone in a window under
+  1,250 px, the warning colour with a dot when the doctor flags something,
+  and a click (or the palette's *Caprock doctor*) opens `caprock doctor` as
+  a panel ([04-ui.md § Caprock footprint](04-ui.md)) — the daemon's state
+  and version — read again on every
   reconnect of the live link and on window focus, since the app can swap its
   daemon under a page that stays loaded.
 

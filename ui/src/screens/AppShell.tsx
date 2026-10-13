@@ -44,6 +44,7 @@ import { Inspector } from '@/components/Inspector'
 import { SessionDeck } from '@/components/SessionDeck'
 import { readDeck, saveDeck, type DeckPrefs } from '@/lib/deck'
 import { StatusStrip } from '@/components/StatusStrip'
+import { openCaprockDoctor } from '@/components/FootprintPanel'
 import { StarStrip } from '@/components/StarStrip'
 import { SetupStrip } from '@/components/SetupStrip'
 import { ShareMoment } from '@/components/Nudges'
@@ -955,6 +956,8 @@ export function AppShell() {
       { id: 'a-settings', group: 'Actions', label: 'Settings', detail: 'permission mode, theme, terminal, notifications, phone', hint: keys('⌘,'), icon: <SettingsIcon size={14} />, run: onSettings },
       { id: 'a-phone', group: 'Actions', label: 'Open Caprock on your phone', detail: 'pair with a QR code, then add it to the home screen', icon: <SettingsIcon size={14} />, run: openPhoneSettings },
       { id: 'a-telegram', group: 'Actions', label: 'Connect Telegram', detail: 'messages when a session needs you; reply from the chat', icon: <SettingsIcon size={14} />, run: () => openSettingsAt('telegram') },
+      // `caprock doctor` in the window: the status strip's panel. No chord (rule 12).
+      { id: 'a-doctor', group: 'Actions', label: 'Caprock doctor', detail: 'what Caprock costs this computer: memory, disk, duplicates', icon: <SparkIcon size={14} />, run: openCaprockDoctor },
       { id: 'a-keys', group: 'Actions', label: 'Keyboard shortcuts', detail: 'every key the app answers to', icon: <SearchIcon size={14} />, run: () => setSheet({ kind: 'keys' }) },
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
       ...(isTauri() ? [{ id: 'a-zoom-reset', group: 'Actions' as const, label: 'Interface size: back to the default', hint: isMacPlatform() ? keys('⇧⌘0') : undefined, icon: <SparkIcon size={14} />, run: () => stepUiScale(0) }] : []),

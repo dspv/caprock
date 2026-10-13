@@ -34,25 +34,6 @@ export function SessionLoad({ sessionId }: { sessionId: string }) {
   )
 }
 
-/** The status bar's "caprock 160 MB": what Caprock itself holds (daemon, app, terminal holders), beside the session's. */
-export function CaprockLoad() {
-  const rep = useResources()
-  if (!rep) return null
-  const c = rep.caprock
-  const mem = c.daemon.mem_bytes + (c.app?.mem_bytes ?? 0) + c.hosts.mem_bytes
-  const cpu = c.daemon.cpu_pct + (c.app?.cpu_pct ?? 0) + c.hosts.cpu_pct
-  const title = [
-    `Caprock itself: ${fmtMem(mem)} RAM, ${fmtCPU(cpu)} CPU`,
-    `daemon ${fmtMem(c.daemon.mem_bytes)}${c.app ? ` · app ${fmtMem(c.app.mem_bytes)}` : ''} · ${c.hosts.count} terminal ${c.hosts.count === 1 ? 'holder' : 'holders'} ${fmtMem(c.hosts.mem_bytes)}`,
-    'Details in Settings.',
-  ].join('\n')
-  return (
-    <span data-caprock-load className="inline-flex items-center gap-1.5 whitespace-nowrap" title={title}>
-      caprock <span className="num text-fg">{fmtMem(mem)}</span>
-    </span>
-  )
-}
-
 /** A small mark on a session's row and tab while its processes have been busy for a minute. */
 export function HotMark({ sessionId }: { sessionId: string | undefined }) {
   const rep = useResources()
