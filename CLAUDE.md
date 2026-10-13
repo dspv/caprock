@@ -56,7 +56,9 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 6. **No invented numbers anywhere public** — prices, costs, forecasts, performance claims. Measured or sourced with a date; otherwise an open question in `.ai/12-risks.md`. Forecasts are labeled estimates.
 
-7. **We never signal or type into a process we did not start.**
+7. **We never signal or type into a process we did not start.** The one
+   exception is the doctor's stop: a direct, per-item, confirmed user action,
+   never automatic ([ADR-059](.ai/08-decisions.md)).
 
 8. **Contracts, DDL, and pricing change only together with `.ai/03-contracts.md`, a migration, or a `pricing_version` bump — in the same commit.**
 
