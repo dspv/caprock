@@ -129,6 +129,26 @@ describe('the session deck in the app', () => {
     expect(deck()).toBeInTheDocument()
   })
 
+  // Owner, 2026-10-14, translated: "it should simply be a toggle".
+  it('toggles between the deck and the PRs & CI tab on ⇧⌘B, the control in the same corner', async () => {
+    await openAgent()
+    const shiftCmdB = () => act(() => { fireEvent.keyDown(window, { key: 'B', code: 'KeyB', metaKey: true, shiftKey: true }) })
+    cmdB()
+    shiftCmdB()
+    expect(await screen.findByRole('tab', { name: /PRs & CI · app/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Collapse: back/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Expand/ })).toBeNull()
+    shiftCmdB()
+    await waitFor(() => expect(screen.queryByRole('tab', { name: /PRs & CI/ })).toBeNull())
+    expect(deck()).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Expand/ })).toBeInTheDocument()
+    // With the deck hidden, the agent in front still expands.
+    cmdB()
+    expect(deck()).toBeNull()
+    shiftCmdB()
+    expect(await screen.findByRole('tab', { name: /PRs & CI · app/ })).toBeInTheDocument()
+  })
+
   it('is listed in the palette', async () => {
     await openAgent()
     act(() => { fireEvent.keyDown(window, { key: 'k', code: 'KeyK', metaKey: true }) })

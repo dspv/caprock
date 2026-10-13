@@ -241,6 +241,24 @@ cleanup](02-architecture.md#retention-and-cleanup)). Not done: rewriting the
 rows stored before the cap — their payloads still cost a full read whenever
 a whole-history scan touches them.
 
+### 2026-10-14 — unreleased: the doctor's Orphans, and the Advanced stop (ADR-059)
+
+The footprint's `orphans` lists other Caprock daemons, unreachable holders
+of any install, stray caprock commands, a `claude` whose session ended or
+whose parent exited, MCP servers whose parent exited, and what a Claude Code
+session started that outlived it — each with why, never anything with a
+terminal, in a live session, of another user, younger than two minutes or
+in an app bundle (a framework Python's `Python.app` is not one). Taken on
+demand (`?orphans=1`, the open panel, `caprock doctor`); the 10-minute sweep
+keeps the count. The panel's Advanced mode and `caprock doctor --stop <pid>`
+stop one listed process on a confirmed click, pid and start time checked
+before SIGTERM and SIGKILL; rule 7 now names this as its one exception. On
+the owner's Mac (read-only, 2026-10-14) the doctor listed a Python
+`http.server` 46 hours old started from a Claude Code session; the 7-day-old
+Homebrew holder is still registered with a live claude in it, so it is a
+session, not an orphan. Verified on a preview daemon with two stand-in
+processes this session started, stopped from the panel.
+
 ### 2026-10-13 — unreleased: `caprock doctor` and what Caprock costs this machine
 
 `GET /v1/footprint` and `caprock doctor` ([03-contracts.md § Footprint](03-contracts.md#footprint)):

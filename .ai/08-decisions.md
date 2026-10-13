@@ -3212,10 +3212,38 @@ dashboard and a desktop app on three OSes.
   the traffic. Once on, Caprock talks only to the IMAP and SMTP servers the
   user typed in, and — only when local AI is turned on in Mail's settings —
   to the model server at the address shown there (Ollama on loopback by
-  default). Nothing is sent to Caprock. The add-account form says so.
+  default) — and, for an account signed in with Google or Microsoft, to
+  that provider (below). Nothing is sent to Caprock. The add-account form
+  says so.
 - **Passwords in the OS keychain**, a 0600 file only where there is none
-  (Linux without a Secret Service). App passwords, not OAuth: Gmail and iCloud
-  accept them; Microsoft accounts that refuse passwords are a known gap.
+  (Linux without a Secret Service). iCloud has no OAuth for mail, so an
+  app-specific password stays the only way there; any IMAP host takes a
+  password.
+- **Sign in with Google or Microsoft** (added 2026-10-14). The installed-app
+  OAuth flow (RFC 8252): authorization code with PKCE (S256) in the user's
+  browser, redirected back to the daemon's own loopback port. What is sent
+  where, all only after the user clicks the button: the browser goes to
+  accounts.google.com or login.microsoftonline.com and the user approves
+  there; the daemon then sends the authorization code and the PKCE verifier
+  (with the client ID, and for Google the desktop client's non-confidential
+  "secret") to that provider's token endpoint — oauth2.googleapis.com or
+  login.microsoftonline.com — and from then on the refresh token to the same
+  endpoint for a new access token, about hourly while Mail syncs. The access
+  token goes only to the provider's own IMAP and SMTP servers (imap.gmail.com
+  and smtp.gmail.com; outlook.office365.com and smtp.office365.com) inside
+  SASL XOAUTH2. The refresh token lives where passwords live — the OS
+  keychain item of the account — and the access token only in memory. The
+  scopes are mail only (`https://mail.google.com/`; Microsoft's
+  `IMAP.AccessAsUser.All` and `SMTP.Send`, `offline_access`) plus `openid
+  email` for the address. Revoking: remove the account in Mail (deletes the
+  token here), and at the provider — Google at myaccount.google.com/permissions,
+  a personal Microsoft account at account.live.com/consent/Manage, a work
+  account at myapps.microsoft.com or by its Entra admin. The client IDs are
+  the Caprock owner's app registrations, compiled in or given by environment
+  ([docs/mail-oauth.md](../docs/mail-oauth.md)); without one the button is not
+  offered and nothing else changes. The callback is the one `/v1` route the
+  CSRF guard admits as a cross-site GET, on a loopback Host only, with the
+  single-use state as its protection.
 - **Headers are read whole.** The list is built from `BODY.PEEK[HEADER]`,
   parsed locally, never from ENVELOPE or `HEADER.FIELDS`: iCloud has sent
   ENVELOPEs with unescaped quotes in the Message-ID (one bad answer fails
@@ -3249,6 +3277,57 @@ dashboard and a desktop app on three OSes.
 
 **Consequences.** One more outbound path exists, to destinations the user
 chose; the binary grows by the IMAP, SMTP and MIME libraries. Not built:
-OAuth, server-side drafts, notifications, rules, mail on a paired phone
+server-side drafts, notifications, rules, mail on a paired phone
 (attachments and the iframe's images need the device token, which plain URLs
 do not carry).
+
+## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
+
+**Date:** 2026-10-14 · **Status:** accepted (owner approved, 2026-10-14)
+
+**Context.** The owner asked (2026-10-13, translated): "I'd like to be able
+to monitor such orphans, including Claude's orphans. Maybe also an
+additional cleanup — an advanced mode." On his Mac were a 7-day-old
+`caprock pty-host` from an old Homebrew install, a `caprock up` that another
+tool had started from a job's temporary directory hours earlier, leftover
+preview holders from agent tests, and, he suspected, `claude` processes and
+node MCP servers that outlived their sessions. Caprock already stopped its
+own reapable terminal holders on its own; everything else it only named, and
+rule 7 ("we never signal or type into a process we did not start") kept it
+from offering more — a person had to find each pid and run `kill` by hand.
+
+**Decision.**
+
+- **Monitoring anything is allowed.** Reading the process table — parents,
+  start times, terminals, argv, environment — signals nothing. The footprint
+  gains `orphans`: other Caprock daemons, terminal holders no Caprock will
+  reattach to, any other caprock command whose parent is gone, a `claude`
+  whose session ended in Caprock's history or whose parent is gone, an MCP
+  server whose parent is gone, and what a Claude Code session started
+  (`CLAUDECODE` in its environment) that outlived its parent. Each is listed
+  with why. The heuristics are conservative: a process with a controlling
+  terminal, in a live session's tree, of another user, younger than two
+  minutes or inside a macOS app bundle is never listed. The list is taken on
+  demand (the open doctor, `caprock doctor`); the 10-minute sweep keeps a
+  count for the status strip; there is no new polling.
+- **Signalling a process Caprock did not start is allowed only as a direct,
+  per-item, confirmed user action from the doctor** — the panel's Advanced
+  mode (off by default, on the machine itself: never from a paired phone)
+  with a confirmation, or `caprock doctor --stop <pid>` with a prompt (`--yes`
+  skips it). The request names pid and start time; the daemon takes the list
+  again and signals only a process that list holds with that start time,
+  re-checking the start time before SIGTERM and before SIGKILL five seconds
+  later (Windows: TerminateProcess). Only that pid is signalled, never its
+  children.
+- **Never automatic, never by the orchestrator or an agent, never typing.**
+  No sweep, rule, cap or agent stops a process Caprock did not start; nothing
+  is ever typed into one. Caprock's own reapable holders keep being stopped on
+  their own, as before (§ Resources).
+
+**Rules out:** an automatic cleanup of non-Caprock processes; a "stop all"
+without a per-item list the user saw; stopping a process tree; the stop on a
+paired device's route list.
+
+**Revisit if:** a listed process turns out to be one a user needed and the
+heuristics cannot tell it apart — narrow the heuristics before widening
+anything.

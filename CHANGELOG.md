@@ -22,6 +22,31 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   is asked for its RFC 6186 SRV records and its own autoconfig file before
   Caprock falls back to `imap.` and `smtp.`; only the domain itself is asked,
   no directory. The answer says how it was found (`source`).
+- **mail:** sign in with Google or Microsoft. A Gmail, Google Workspace,
+  Outlook.com or Microsoft 365 mailbox connects with a click and an approval
+  in the browser, no app password: the installed-app OAuth flow with PKCE,
+  back to Caprock on loopback, then IMAP and SMTP over XOAUTH2. The refresh
+  token is kept in the keychain like a password; a revoked or expired sign-in
+  shows as a sync error asking to sign in again. Signing in with an address
+  Mail already has switches that account over and keeps its mail. Nothing is
+  sent to Google or Microsoft until the button is clicked. The buttons need
+  the build's client IDs (`docs/mail-oauth.md`); iCloud keeps app-specific
+  passwords, having no OAuth for mail.
+- **doctor:** an Orphans section lists the processes on the machine that look
+  abandoned, each with why: another Caprock daemon (and whether its data
+  directory still exists), terminal holders no Caprock will reattach to from
+  any install, a `claude` whose session ended or whose parent exited, MCP
+  servers whose `claude` is gone, and what a Claude Code session started that
+  outlived it. Anything in a terminal you are in, in a live session, of
+  another user or inside an app is never listed. The list is taken when you
+  open the doctor or run `caprock doctor`; the 10-minute sweep keeps a count
+  for the status bar.
+- **doctor:** an Advanced mode (off by default, on the computer only) adds a
+  Stop to each orphan and *Stop selected*, each confirmed once more; `caprock
+  doctor --stop <pid>` does the same from a terminal and asks first (`--yes`
+  skips). The process gets SIGTERM, then SIGKILL after 5 seconds, and only if
+  it is still the one listed — same pid, same start time. Caprock never stops
+  a process it did not start on its own (ADR-059).
 
 ### Changed
 
@@ -34,6 +59,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   job. The circles-or-words switch is gone, a row no longer says *$0* for a
   public repository's free runners, and the cockpit's CI block uses the same
   summary, its view tabs now named *PRs · Ring · OS*.
+- **deck:** Expand is a button you can see — outlined, with its key, ⇧⌘B
+  (Ctrl+Alt+Shift+B on Windows and Linux) — and in the PRs & CI tab the same
+  button in the same corner reads *Collapse* and takes you back to the agent
+  with its deck; the key toggles both ways. *Back to the deck* is gone. A
+  pull request's title gets every pixel its row's checks leave, a step
+  larger, cut only when the row is full. The circle per check is back as the
+  default, with the summary one click away (*Checks: circles | summary*,
+  remembered); hovering the circles shows the same card of every check.
 - **settings:** every saved credential (DeepSeek key, Telegram bot token, a
   pasted GitHub token) is entered in one secure field: a lock inside, masked
   monospace text, an eye only while typing, and once saved a locked pill with

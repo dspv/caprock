@@ -152,17 +152,24 @@ type resourceMeter struct {
 	env     map[pidKey][]string
 	exe     map[pidKey]string
 	resp    map[pidKey]int32 // macOS: the process responsible for a WebKit helper
+	tty     map[pidKey]bool  // whether a process has a controlling terminal
 	over    map[string]*overState
 	last    *ResourceReport
 	asked   time.Time // last GET /v1/resources
+	// orphSampler measures the orphan list (orphans.go); orphLast is the
+	// last orphan scan, whose counts the footprint answers with between
+	// scans.
+	orphSampler *procstat.Sampler
+	orphLast    OrphanReport
 }
 
 func newResourceMeter() *resourceMeter {
 	return &resourceMeter{
 		sampler: procstat.NewSampler(),
 		argv:    map[pidKey][]string{}, env: map[pidKey][]string{},
-		exe: map[pidKey]string{}, resp: map[pidKey]int32{},
-		over: map[string]*overState{},
+		exe: map[pidKey]string{}, resp: map[pidKey]int32{}, tty: map[pidKey]bool{},
+		over:        map[string]*overState{},
+		orphSampler: procstat.NewSampler(),
 	}
 }
 
@@ -183,6 +190,9 @@ func (d *Daemon) resourceLoop(ctx context.Context) {
 			} else if len(res.Reaped) > 0 {
 				d.log.Info("stopped orphaned pty-hosts", "component", "resources", "count", len(res.Reaped))
 			}
+			// The orphan count the status strip warns with; the list is
+			// taken only when someone opens the doctor.
+			d.scanOrphans(ctx)
 			reap.Reset(reapEvery)
 		case <-t.C:
 			if !d.someoneLooking() {
@@ -342,6 +352,11 @@ func (m *resourceMeter) forgetGone(tab *procstat.Table) {
 	for k := range m.resp {
 		if gone(k) {
 			delete(m.resp, k)
+		}
+	}
+	for k := range m.tty {
+		if gone(k) {
+			delete(m.tty, k)
 		}
 	}
 }
@@ -526,7 +541,7 @@ func stopHost(ctx context.Context, h ptyhost.HostProc) error {
 			return false
 		}
 		p, ok := tab.Procs[h.PID]
-		return ok && p.StartMs == h.StartMs
+		return ok && p.StartMs == h.StartMs && !exited(h.PID)
 	}
 	if !same() {
 		return errChanged
