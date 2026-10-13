@@ -46,6 +46,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** switching tabs no longer redraws the terminal's font for a moment. A tab hidden for 30 s had let its WebGL renderer go, so it came back drawn by the DOM renderer, in other glyphs and another cell height, until WebGL was swapped in 1.5 s later; a tab hidden for less had its glyph atlas rebuilt on every switch. The three tabs hidden last now keep their renderer, a tab past that gets it back before it is first painted, and the atlas is rebuilt only after a wake, a pixel-ratio change or a hide of more than five minutes, so the squashed letters of #541 stay fixed.
 - **mail:** on macOS, account passwords go to the login keychain through the call that names the keychain file, so saving one can never bring up a "Keychain Not Found" dialog. Passwords saved before are read where they are; Windows and Linux are unchanged.
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.
 

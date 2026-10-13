@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   claims: 0,
   claimSizes: [] as unknown[][],
   blurs: 0,
+  webgl: { made: 0, disposed: 0 },
 }))
 
 vi.mock('@xterm/xterm', () => ({
@@ -30,6 +31,8 @@ vi.mock('@xterm/xterm', () => ({
     element: HTMLElement | undefined
     buffer = { active: { viewportY: 0, baseY: 0 } }
     scrolledTo: number | null = null
+    // xterm's render service, as paintNow reaches it.
+    _core = { _renderService: { _handleIntersectionChange: () => { h.steps.push('paint') } } }
     constructor(opts: Record<string, unknown>) { this.options = { ...opts }; h.terms.push(this) }
     loadAddon() {}
     open(parent: HTMLElement) { h.steps.push('open'); this.element = document.createElement('div'); parent.appendChild(this.element) }
@@ -49,7 +52,13 @@ vi.mock('@xterm/xterm', () => ({
   },
 }))
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() { h.steps.push('fit') } } }))
-vi.mock('@xterm/addon-webgl', () => ({ WebglAddon: class { onContextLoss() {} dispose() {} } }))
+vi.mock('@xterm/addon-webgl', () => ({
+  WebglAddon: class {
+    constructor() { h.webgl.made++; h.steps.push('webgl') }
+    onContextLoss() {}
+    dispose() { h.webgl.disposed++ }
+  },
+}))
 vi.mock('@xterm/addon-search', () => ({
   SearchAddon: class {
     findNext(q: string, o: Record<string, unknown>) { h.calls.push(['next', q, o]); return true }
@@ -79,7 +88,8 @@ vi.mock('@/lib/termv2', () => ({
 }))
 vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
 
-import { HIDDEN_HOLD_BYTES, SETTLE_MS, TerminalPane } from './TerminalPane'
+import { HIDDEN_DISCONNECT_MS, HIDDEN_HOLD_BYTES, KEEP_WEBGL_HIDDEN, LONG_HIDDEN_MS, SETTLE_MS, TerminalPane, keptWebglCount } from './TerminalPane'
+import { WEBGL_QUIET_MS } from './Terminal'
 import { FIND_EVENT } from '@/lib/appkeys'
 import { setTerminalPrefs, DEFAULT_PREFS } from '@/lib/termprefs'
 import { APP_UPDATE_EVENT } from '@/lib/appupdate'
@@ -97,6 +107,8 @@ beforeEach(() => {
   h.claims = 0
   h.claimSizes.length = 0
   h.blurs = 0
+  h.webgl.made = 0
+  h.webgl.disposed = 0
   localStorage.clear()
   setTerminalPrefs(DEFAULT_PREFS)
 })
@@ -404,5 +416,97 @@ describe('a pane claims the PTY when it is looked at', () => {
     vis.mockRestore()
     act(() => { window.dispatchEvent(new Event('pagehide')) })
     expect(h.blurs).toBe(before + 3)
+  })
+})
+
+// The owner saw the font "redrawn from scratch" for a moment on a tab switch
+// (2026-10-14): a tab hidden 30 s came back on the DOM renderer and had WebGL
+// swapped in 1.5 s later; one hidden for less had its glyph atlas cleared.
+describe('switching tabs shows the terminal as it was', () => {
+  let width: { mockRestore: () => void }
+  beforeEach(() => {
+    vi.useFakeTimers()
+    width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800)
+  })
+  afterEach(() => {
+    width.mockRestore()
+    vi.useRealTimers()
+  })
+
+  // A pane in front with output and WebGL in, as after a minute of work.
+  const working = (id: string) => {
+    const r = render(<TerminalPane sessionId={id} active />)
+    const client = h.clients.at(-1)!
+    act(() => client.callbacks.write(new TextEncoder().encode('$ ls'), () => {}))
+    act(() => { vi.advanceTimersByTime(WEBGL_QUIET_MS + 10) })
+    return r
+  }
+  const count = (step: string) => h.steps.filter((s) => s === step).length
+
+  it('back and forth: no new renderer, no atlas rebuilt, no refit, even past the socket\'s 30 s', () => {
+    const { rerender } = working('a')
+    expect(h.webgl.made).toBe(1)
+    const fits = count('fit')
+    const paints = count('paint')
+    for (const away of [2_000, HIDDEN_DISCONNECT_MS + 5_000]) {
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      act(() => { vi.advanceTimersByTime(away) })
+      rerender(<TerminalPane sessionId="a" active />)
+    }
+    expect(h.webgl).toEqual({ made: 1, disposed: 0 })
+    expect(h.steps).not.toContain('atlas')
+    expect(count('fit')).toBe(fits)
+    // Drawn in the frame it appears in, not the one after.
+    expect(count('paint')).toBe(paints + 2)
+  })
+
+  it('a pane that let its WebGL go gets it back in show(), before the first paint, with no quiet wait', () => {
+    const panes = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, r: working(id) }))
+    expect(h.webgl.made).toBe(5)
+    // All five behind another tab, a first: only the three hidden last keep a context.
+    for (const p of panes) p.r.rerender(<TerminalPane sessionId={p.id} active={false} />)
+    expect(keptWebglCount()).toBe(KEEP_WEBGL_HIDDEN)
+    expect(h.webgl.disposed).toBe(5 - KEEP_WEBGL_HIDDEN)
+    // a comes back: a renderer at once (no timer advanced), then the fit, then the frame.
+    h.steps.length = 0
+    panes[0]!.r.rerender(<TerminalPane sessionId="a" active />)
+    expect(h.webgl.made).toBe(6)
+    expect(h.steps.indexOf('webgl')).toBeGreaterThanOrEqual(0)
+    expect(h.steps.indexOf('webgl')).toBeLessThan(h.steps.indexOf('fit'))
+    expect(h.steps.indexOf('fit')).toBeLessThan(h.steps.lastIndexOf('paint'))
+    // Shown, it is not counted; hidden again it is, and c, hidden longest ago, lets its go.
+    expect(keptWebglCount()).toBe(KEEP_WEBGL_HIDDEN)
+    panes[0]!.r.rerender(<TerminalPane sessionId="a" active={false} />)
+    expect(keptWebglCount()).toBe(KEEP_WEBGL_HIDDEN)
+    expect(h.webgl.disposed).toBe(5 - KEEP_WEBGL_HIDDEN + 1)
+  })
+
+  it('a pane still waiting for its first output keeps the quiet path', () => {
+    render(<TerminalPane sessionId="a" active />)
+    expect(h.webgl.made).toBe(0)
+    act(() => h.clients[0]!.callbacks.write(new TextEncoder().encode('x'), () => {}))
+    expect(h.webgl.made).toBe(0)
+    act(() => { vi.advanceTimersByTime(WEBGL_QUIET_MS * 2 + 10) })
+    expect(h.webgl.made).toBe(1)
+  })
+
+  // #541: WebKit drops the atlas's texture without a contextlost event; the
+  // squashed, half-cut letters must not come back.
+  it('rebuilds the atlas after a long hide, and after a wake it missed while hidden', () => {
+    const { rerender } = working('a')
+    rerender(<TerminalPane sessionId="a" active={false} />)
+    act(() => { vi.advanceTimersByTime(LONG_HIDDEN_MS + 1) })
+    rerender(<TerminalPane sessionId="a" active />)
+    expect(count('atlas')).toBe(1)
+
+    rerender(<TerminalPane sessionId="a" active={false} />)
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(count('atlas')).toBe(1)
+    rerender(<TerminalPane sessionId="a" active />)
+    expect(count('atlas')).toBe(2)
+
+    // In front, a window back in view rebuilds it at once.
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(count('atlas')).toBe(3)
   })
 })
