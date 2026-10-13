@@ -26,10 +26,27 @@ function healthy(): Footprint {
   }
 }
 
+/** The last footprint served, `at` and all: ages in the report count from it. */
+let lastServed: Footprint | undefined
+/** The bodies POSTed to the orphan stop. */
+let stopBodies: unknown[] = []
+
 function serve(f: Footprint) {
-  const fetch = vi.fn((input: RequestInfo | URL) => {
+  stopBodies = []
+  const fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
-    const body = url.includes('/v1/footprint') ? { ...f, at: Date.now() } : url.includes('/v1/resources/reap') ? { reaped: [], kept: [] } : undefined
+    let body: unknown
+    if (url.includes('/v1/footprint/orphans/stop')) {
+      const req = JSON.parse(String(init?.body)) as { targets: { pid: number }[] }
+      stopBodies.push(req)
+      const list = f.orphans?.list ?? []
+      body = { stopped: list.filter((o) => req.targets.some((t) => t.pid === o.pid)), failed: [] }
+    } else if (url.includes('/v1/footprint')) {
+      // The strip asks without the list; the open panel with it.
+      const withList = url.includes('orphans=1')
+      lastServed = { ...f, at: Date.now(), orphans: f.orphans && (withList ? f.orphans : { ...f.orphans, scanned: false, list: [] }) }
+      body = lastServed
+    } else if (url.includes('/v1/resources/reap')) body = { reaped: [], kept: [] }
     if (!body) return new Promise<Response>(() => {})
     return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }))
   })
@@ -116,8 +133,8 @@ describe('the panel', () => {
   it('says the verdict in one line, the warnings, and the duplicates behind them', async () => {
     const { button, container } = await strip(warned())
     fireEvent.click(button)
-    expect(container.querySelector('[data-verdict-summary]')!.textContent).toBe('3 things to look at')
-    expect([...container.querySelectorAll('[data-verdict]')].map((e) => e.getAttribute('data-verdict'))).toEqual(['duplicate_daemon', 'orphans', 'disk_reads_high'])
+    expect(container.querySelector('[data-verdict-summary]')!.textContent).toBe('4 things to look at')
+    expect([...container.querySelectorAll('[data-verdict]')].map((e) => e.getAttribute('data-verdict'))).toEqual(['duplicate_daemon', 'orphans', 'stray_processes', 'disk_reads_high'])
     const dup = container.querySelector('[data-duplicates]')!.textContent
     expect(dup).toContain('pid 9214')
     expect(dup).toContain('/opt/homebrew/bin/caprock')
@@ -151,8 +168,11 @@ describe('the panel', () => {
     const { button, container } = await strip(f)
     fireEvent.click(button)
     await act(async () => { fireEvent.click(container.querySelector('[data-copy-report]')!) })
-    const text = (writeText.mock.calls[0] as unknown as [string])[0]
-    expect(text).toBe(footprintText(f)) // `at` is not in the text
+    await waitFor(() => expect(container.querySelector('[data-orphan]')).not.toBeNull())
+    await act(async () => { fireEvent.click(container.querySelector('[data-copy-report]')!) })
+    const text = (writeText.mock.calls.at(-1) as unknown as [string])[0]
+    expect(text).toBe(footprintText(lastServed!)) // ages count from the report's `at`
+    expect(text).toContain('Orphans (processes that look abandoned)')
     expect(text).toContain('Memory and CPU')
     expect(screen.getByRole('status').textContent).toBe('Report copied.')
   })
@@ -164,7 +184,8 @@ describe('the panel', () => {
     const before = fetch.mock.calls.filter((c) => String(c[0]).includes('/v1/footprint')).length
     fireEvent.click(container.querySelector('[data-check-now]')!)
     expect(container.querySelector('[data-checked]')!.textContent).toBe('checking…')
-    await waitFor(() => expect(fetch.mock.calls.filter((c) => String(c[0]).includes('/v1/footprint')).length).toBe(before + 1))
+    // The strip's question and the open panel's, with the orphan list.
+    await waitFor(() => expect(fetch.mock.calls.filter((c) => String(c[0]).includes('/v1/footprint')).length).toBe(before + 2))
     await waitFor(() => expect(container.querySelector('[data-checked]')!.textContent).toBe('checked just now'))
   })
 })
@@ -186,5 +207,100 @@ describe('Stop N orphans', () => {
     const { button } = await strip(healthy())
     fireEvent.click(button)
     expect(screen.queryByRole('button', { name: /^Stop / })).toBeNull()
+  })
+})
+
+describe('Orphans', () => {
+  const open = async (owner = true) => {
+    const r = await strip(warned(), owner)
+    fireEvent.click(r.button)
+    await waitFor(() => expect(r.container.querySelector('[data-orphan]')).not.toBeNull())
+    return r
+  }
+
+  it('lists each process that looks abandoned with why, its age and memory, read-only by default', async () => {
+    const { container } = await open()
+    const rows = [...container.querySelectorAll('[data-orphan]')]
+    expect(rows.map((r) => r.getAttribute('data-orphan'))).toEqual(['34399', '48120', '48133'])
+    const claude = container.querySelector('[data-orphan="48120"]')!.textContent!
+    expect(claude).toContain('claude')
+    expect(container.querySelector('[data-orphan="48120"] [title="how long it has run"]')!.textContent).toMatch(/^[0-9]+[hd]$/)
+    expect(claude).toContain('212 MB')
+    expect(claude).toContain('session ended')
+    expect(container.querySelector('[data-orphan="34399"]')!.textContent).toContain('(gone)')
+    // Off by default: no Stop, no checkbox.
+    expect(container.querySelector('[data-advanced]')).not.toBeNull()
+    expect((container.querySelector('[data-advanced]') as HTMLInputElement).checked).toBe(false)
+    expect(container.querySelector('[data-orphan-stop]')).toBeNull()
+    expect(container.querySelector('[data-orphan-pick]')).toBeNull()
+  })
+
+  it('shows the last count while the list is being taken', async () => {
+    const r = await strip(warned())
+    const fetch = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    // Hold the panel's own question so the strip's counts are what it shows.
+    fetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('orphans=1')) return new Promise<Response>(() => {})
+      const f = warned()
+      return Promise.resolve(new Response(JSON.stringify({ ...f, at: Date.now(), orphans: { ...f.orphans, scanned: false, list: [] } }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    })
+    fireEvent.click(r.button)
+    const sec = r.container.querySelector('[data-orphans]')!
+    expect(sec.textContent).toContain('3 processes at the last check')
+    expect(r.container.querySelector('[data-orphan]')).toBeNull()
+  })
+
+  it('says so when nothing looks abandoned', async () => {
+    const f = healthy()
+    f.orphans = { scanned: true, at: f.at, count: 0, by_kind: {}, list: [] }
+    const r = await strip(f)
+    fireEvent.click(r.button)
+    await waitFor(() => expect(r.container.querySelector('[data-orphans-none]')).not.toBeNull())
+    expect(r.container.querySelector('[data-advanced]')).toBeNull()
+  })
+
+  it('has no Advanced mode on a paired device', async () => {
+    const { container } = await open(false)
+    expect(container.querySelector('[data-advanced]')).toBeNull()
+    expect(container.querySelector('[data-orphan-stop]')).toBeNull()
+  })
+
+  it('stops one only after Advanced, Stop and the confirmation, naming its pid and start', async () => {
+    const { container } = await open()
+    fireEvent.click(container.querySelector('[data-advanced]')!)
+    const row = container.querySelector('[data-orphan="48120"]')!
+    fireEvent.click(row.querySelector('[data-orphan-stop]')!)
+    expect(stopBodies).toEqual([]) // nothing yet: the confirmation first
+    const confirm = container.querySelector('[data-stop-confirm]')!
+    expect(confirm.textContent).toContain('claude (pid 48120)')
+    await act(async () => { fireEvent.click(container.querySelector('[data-stop-confirm-yes]')!) })
+    await waitFor(() => expect(stopBodies).toHaveLength(1))
+    expect(stopBodies[0]).toEqual({ targets: [{ pid: 48120, started_at: warned().orphans!.list![1]!.started_at }] })
+    await waitFor(() => expect(container.querySelector('[data-orphans-note]')!.textContent).toContain('Stopped claude (pid 48120)'))
+  })
+
+  it('cancels without stopping anything', async () => {
+    const { container } = await open()
+    fireEvent.click(container.querySelector('[data-advanced]')!)
+    fireEvent.click(container.querySelector('[data-orphan="48133"] [data-orphan-stop]')!)
+    fireEvent.click(container.querySelector('[data-stop-confirm-no]')!)
+    expect(container.querySelector('[data-stop-confirm]')).toBeNull()
+    expect(stopBodies).toEqual([])
+  })
+
+  it('stops the selected ones together', async () => {
+    const { container } = await open()
+    fireEvent.click(container.querySelector('[data-advanced]')!)
+    const selected = container.querySelector<HTMLButtonElement>('[data-stop-selected]')!
+    expect(selected.disabled).toBe(true)
+    fireEvent.click(container.querySelector('[data-orphan="48120"] [data-orphan-pick]')!)
+    fireEvent.click(container.querySelector('[data-orphan="48133"] [data-orphan-pick]')!)
+    expect(selected.textContent).toBe('Stop selected (2)')
+    fireEvent.click(selected)
+    expect(container.querySelector('[data-stop-confirm]')!.textContent).toContain('Stop 2 processes?')
+    await act(async () => { fireEvent.click(container.querySelector('[data-stop-confirm-yes]')!) })
+    await waitFor(() => expect(stopBodies).toHaveLength(1))
+    expect((stopBodies[0] as { targets: { pid: number }[] }).targets.map((t) => t.pid)).toEqual([48120, 48133])
   })
 })

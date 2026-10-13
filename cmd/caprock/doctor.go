@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -27,6 +31,8 @@ func doctorCmd() *cobra.Command {
 	var (
 		asJSON   bool
 		dataDirF string
+		stop     []int
+		yes      bool
 	)
 	c := &cobra.Command{
 		Use:   "doctor",
@@ -44,6 +50,9 @@ func doctorCmd() *cobra.Command {
 			}
 			f := doctorReport(cmd, dir)
 			out := cmd.OutOrStdout()
+			if len(stop) > 0 {
+				return doctorStop(cmd, dir, f, stop, yes)
+			}
 			if asJSON {
 				enc := json.NewEncoder(out)
 				enc.SetIndent("", "  ")
@@ -61,6 +70,8 @@ func doctorCmd() *cobra.Command {
 	}
 	c.Flags().BoolVar(&asJSON, "json", false, "print the footprint as JSON (the shape of GET /v1/footprint)")
 	c.Flags().StringVar(&dataDirF, "data-dir", "", "the data directory to check (also $CAPROCK_DATA_DIR)")
+	c.Flags().IntSliceVar(&stop, "stop", nil, "stop a process from the Orphans list by pid (repeatable); asks first")
+	c.Flags().BoolVar(&yes, "yes", false, "with --stop: do not ask")
 	return c
 }
 
@@ -70,13 +81,107 @@ func doctorReport(cmd *cobra.Command, dir string) *daemon.FootprintReport {
 	rt, err := config.ReadRuntime(dir)
 	if err == nil && daemonAlive(rt) {
 		var f daemon.FootprintReport
-		if err := getJSON(rt.Port, "/v1/footprint", &f); err == nil {
+		if err := getJSON(rt.Port, "/v1/footprint?orphans=1", &f); err == nil {
+			if f.Orphans == nil {
+				// A daemon from before the orphan scan: take it here.
+				f.SetOrphans(daemon.OfflineOrphans(cmd.Context(), dir, int32(rt.PID)))
+			}
 			return &f
 		}
 		return daemon.OfflineFootprint(cmd.Context(), dir, int32(rt.PID))
 	}
 	return daemon.OfflineFootprint(cmd.Context(), dir, 0)
 }
+
+// doctorStop is `caprock doctor --stop <pid>`: each pid must be on the
+// Orphans list just taken, it is shown, and it is stopped only after a yes
+// (ADR-059). The daemon stops it when one answers; otherwise the doctor
+// does, against a scan of its own. Either way the pid's start time is
+// checked again before every signal.
+func doctorStop(cmd *cobra.Command, dir string, f *daemon.FootprintReport, pids []int, yes bool) error {
+	out := cmd.OutOrStdout()
+	byPID := map[int32]daemon.Orphan{}
+	if f.Orphans != nil {
+		for _, o := range f.Orphans.List {
+			byPID[o.PID] = o
+		}
+	}
+	var targets []daemon.OrphanTarget
+	for _, p := range pids {
+		o, ok := byPID[int32(p)]
+		if !ok {
+			return fmt.Errorf("pid %d is not on the doctor's Orphans list; Caprock stops only what it lists (run `caprock doctor` to see the list)", p)
+		}
+		printOrphan(out, f.At, o, "")
+		targets = append(targets, daemon.OrphanTarget{PID: o.PID, StartedAt: o.StartedAt})
+	}
+	if !yes {
+		fmt.Fprintf(out, "Stop %s? It gets SIGTERM, then SIGKILL after 5 seconds. [y/N] ", map[bool]string{true: "it", false: "them"}[len(targets) == 1])
+		line, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+		if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
+			fmt.Fprintln(out, "Nothing stopped.")
+			return nil
+		}
+	}
+	var res daemon.OrphanStopResult
+	rt, err := config.ReadRuntime(dir)
+	if err == nil && daemonAlive(rt) && f.DiskIO != nil {
+		err := postJSON(rt.Port, "/v1/footprint/orphans/stop", map[string]any{"targets": targets}, &res)
+		var se statusError
+		switch {
+		case errors.As(err, &se) && (se.code == http.StatusNotFound || se.code == http.StatusMethodNotAllowed):
+			// A daemon from before the stop: the doctor stops it itself.
+			res = daemon.StopOrphansOffline(cmd.Context(), dir, targets, int32(rt.PID))
+		case err != nil:
+			return err
+		}
+	} else {
+		running := int32(0)
+		if err == nil {
+			running = int32(rt.PID)
+		}
+		res = daemon.StopOrphansOffline(cmd.Context(), dir, targets, running)
+	}
+	for _, o := range res.Stopped {
+		fmt.Fprintf(out, "stopped pid %d (%s)\n", o.PID, o.Label)
+	}
+	for _, x := range res.Failed {
+		fmt.Fprintf(out, "pid %d not stopped: %s\n", x.PID, x.Error)
+	}
+	if len(res.Failed) > 0 {
+		return exitCodeError{code: 1}
+	}
+	return nil
+}
+
+// postJSON posts body to the daemon and decodes its answer into v.
+func postJSON(port int, path string, body, v any) error {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	resp, err := (&http.Client{Timeout: time.Minute}).Post(fmt.Sprintf("http://127.0.0.1:%d%s", port, path), "application/json", bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return statusError{code: resp.StatusCode, msg: fmt.Sprintf("POST %s: %s", path, strings.TrimSpace(string(got)))}
+	}
+	return json.Unmarshal(got, v)
+}
+
+// statusError is a daemon's answer other than 200.
+type statusError struct {
+	code int
+	msg  string
+}
+
+func (e statusError) Error() string { return e.msg }
 
 func printDoctor(w io.Writer, f *daemon.FootprintReport) {
 	mem := daemon.Bytes
@@ -163,6 +268,8 @@ func printDoctor(w io.Writer, f *daemon.FootprintReport) {
 		fmt.Fprintf(w, "    %d  %s\n", e.Count, e.Exe)
 	}
 
+	printOrphans(w, f)
+
 	if f.DiskIO != nil { // the daemon's own report, not one read from outside
 		fmt.Fprintln(w, "\nDone on its own (since the daemon started)")
 		if len(f.Actions) == 0 {
@@ -179,6 +286,54 @@ func printDoctor(w io.Writer, f *daemon.FootprintReport) {
 	}
 	if f.Error != "" {
 		fmt.Fprintf(w, "\nnote: %s\n", f.Error)
+	}
+}
+
+// printOrphans is the Orphans section: each process that looks abandoned,
+// with why, its age at the report's time, its memory and its executable.
+func printOrphans(w io.Writer, f *daemon.FootprintReport) {
+	o := f.Orphans
+	if o == nil {
+		return
+	}
+	fmt.Fprintln(w, "\nOrphans (processes that look abandoned)")
+	switch {
+	case !o.Scanned && o.Count > 0:
+		fmt.Fprintf(w, "  %d found at the last check; `caprock doctor` lists them\n", o.Count)
+	case o.Count == 0:
+		fmt.Fprintln(w, "  none")
+	}
+	for _, p := range o.List {
+		printOrphan(w, f.At, p, "  ")
+	}
+	if len(o.List) > 0 {
+		fmt.Fprintln(w, "  (stop one: caprock doctor --stop <pid>)")
+	}
+	if o.Note != "" {
+		fmt.Fprintf(w, "  note: %s\n", o.Note)
+	}
+}
+
+// printOrphan is one orphan in three lines: what, why, where.
+func printOrphan(w io.Writer, at int64, p daemon.Orphan, indent string) {
+	tail := ""
+	if p.Auto {
+		tail = " · stopped on its own"
+	}
+	fmt.Fprintf(w, "%spid %d  %s · %s old · %s%s\n", indent, p.PID, p.Label, daemon.Age(time.Duration(at-p.StartedAt)*time.Millisecond), daemon.Bytes(p.MemBytes), tail)
+	fmt.Fprintf(w, "%s  %s\n", indent, p.Why)
+	where := p.Exe
+	if p.DataDir != "" {
+		if where != "" {
+			where += " · "
+		}
+		where += "data " + p.DataDir
+		if p.DataDirGone {
+			where += " (gone)"
+		}
+	}
+	if where != "" {
+		fmt.Fprintf(w, "%s  %s\n", indent, where)
 	}
 }
 

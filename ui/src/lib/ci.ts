@@ -128,6 +128,22 @@ export function saveCIView(v: CIView): void {
   try { localStorage.setItem(CI_VIEW_KEY, v) } catch { /* kept for this page only */ }
 }
 
+/** How a deck row draws a PR's checks: a circle per check, or #548's counts in words. */
+export type ChecksView = 'circles' | 'summary'
+export const CHECKS_VIEWS: ChecksView[] = ['circles', 'summary']
+const CHECKS_VIEW_KEY = 'caprock.deck.checksView'
+
+/** The circles unless this viewer chose the summary (owner, 2026-10-14,
+ *  translated, of the circles: "I like everything now"). */
+export function readChecksView(): ChecksView {
+  try { if (localStorage.getItem(CHECKS_VIEW_KEY) === 'summary') return 'summary' } catch { /* not kept */ }
+  return 'circles'
+}
+
+export function saveChecksView(v: ChecksView): void {
+  try { localStorage.setItem(CHECKS_VIEW_KEY, v) } catch { /* kept for this page only */ }
+}
+
 const OPEN_PR_KEY = 'caprock.deck.openPR'
 /** The most sessions whose opened row is remembered. */
 const OPEN_PR_KEPT = 50
@@ -345,6 +361,8 @@ export interface ChecksSummary {
   vs?: VsMedian
   /** The checks, the failed first, then running, queued, passed, skipped. */
   nodes: PipeNode[]
+  /** The same checks in the order they started: the circles' order. */
+  started: PipeNode[]
 }
 
 const TONE_ORDER: Record<CITone, number> = { fail: 0, running: 1, queued: 2, pass: 3, skipped: 4 }
@@ -364,7 +382,7 @@ export function prChecks(p: { live?: { checks: { items: PRCheck[] } } }, now: nu
   let ms: number | undefined
   if (first !== undefined) ms = done ? (vs?.kind === 'delta' && vs.ms ? vs.ms : ends.length ? Math.max(...ends) - first : undefined) : now - first
   const sorted = nodes.map((n, i) => ({ n, i })).sort((a, b) => TONE_ORDER[a.n.tone] - TONE_ORDER[b.n.tone] || a.i - b.i).map((e) => e.n)
-  return { counts, green, done, ms: ms && ms > 0 ? ms : undefined, vs, nodes: sorted }
+  return { counts, green, done, ms: ms && ms > 0 ? ms : undefined, vs, nodes: sorted, started: nodes }
 }
 
 /** The summary in a sentence, for a screen reader and the hover's head: "12 checks: 1 failed, 1 running, 10 passed". */
