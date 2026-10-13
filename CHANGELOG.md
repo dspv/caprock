@@ -67,6 +67,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **remote:** the phone's first screen says what to do in three large steps,
+  keeps the pasted link for a home-screen app behind one tap (shown at once
+  when opened from the home screen), and answers the questions a careful
+  person asks — is it safe, what the relay sees, why not an app, a lost
+  phone, a relay of your own — with links to how it works and the relay's
+  source.
+
 - **app:** a new icon — a bold white C on a near-black tile, with a green dot
   in its mouth for a session running. The amber triangle got lost among its
   Dock neighbours; a letter reads at a glance. The menu-bar icon, the
