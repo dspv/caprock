@@ -893,6 +893,9 @@ export function AppShell() {
   // ⇧⌘G opens the diff of the session in front; what that is is known further
   // down (focusedWorktree), so it is reached through a ref set there.
   const openChangesRef = useRef<(() => void) | undefined>(undefined)
+  // ⇧⌘B: Expand from an agent's tab, Collapse from its PRs & CI tab — set
+  // further down, where both are known (onExpandDeck, backToDeck).
+  const expandRef = useRef<(() => void) | undefined>(undefined)
   const run = useCallback((c: AppCommand) => {
     switch (c.kind) {
       // In the folder of the session in front — its worktree, not the project's root.
@@ -909,6 +912,10 @@ export function AppShell() {
         if (workspaceShown && !frontIsAgent && !deck.open) { setToast('The session deck shows an agent’s figures: bring an agent’s tab to the front.'); break }
         setDeck((d) => ({ ...d, open: !d.open }))
         showWorkspace()
+        break
+      case 'deck-expand':
+        if (expandRef.current) expandRef.current()
+        else setToast('Expand shows an agent’s pull requests and CI: bring an agent’s tab to the front.')
         break
       case 'changes':
         if (openChangesRef.current) openChangesRef.current()
@@ -1329,6 +1336,13 @@ export function AppShell() {
     setDeck((d) => ({ ...d, open: true }))
     showWorkspace()
   }, [sessionsById, openSession, projectOfSession, activeProjectId, showWorkspace])
+  // In a layout effect, so a key pressed right after a tab switch acts on the tab now in front.
+  const frontTabId = current?.id
+  useLayoutEffect(() => {
+    expandRef.current = workspaceShown && frontTabId && focused?.kind === 'prs'
+      ? () => backToDeck(frontTabId, focused.of ?? '')
+      : workspaceShown && focusedIsAgent && focusedSession ? onExpandDeck : undefined
+  }, [workspaceShown, frontTabId, focused, backToDeck, focusedIsAgent, focusedSession, onExpandDeck])
   const renderPRs = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
     const of = leaf.target.of ?? ''
     const n = projectOfSession(of)

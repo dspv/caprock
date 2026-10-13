@@ -265,6 +265,19 @@ address; it is the one call a device makes before it is trusted, and
 it answers the same way for a wrong, expired, exhausted or never-issued code,
 because every distinction tells a guesser how close they are.
 
+**Access from anywhere (ADR-058).** `POST /v1/pair/remote` (`{on, relay?,
+app?}`, loopback-only) turns it on or off, remembered in `remote.json` (mode
+0600, with the machine's two keys) and answers the state; `GET /v1/pair/state`
+and `POST /v1/pair/code` carry it as `remote: {enabled, status
+(off|connecting|online|offline), error?, phones, relay, app, host_id, link?}`,
+where `link` is the pairing link the QR draws — the phone's page with `r`
+(relay), `h` (host id), `k` (static key), `c` (the live code) and `n` (name)
+after the `#`. `enabled` at the top of the state is the network listener
+alone; the guest list is live whenever either is on. Requests from the relay
+arrive on loopback with `Via: 1.1 caprock-remote` and are gated as a paired
+device. The relay's wire is `internal/remote/wire.go`, the channel's frames
+`internal/remote/proto.go`.
+
 - `DELETE /v1/pair/code` withdraws the outstanding code and answers
   `{cleared: true}` whether or not there was one — the dashboard's **Cancel**,
   so a code hidden from the owner is not still valid behind them.
@@ -2902,13 +2915,18 @@ GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?
 
 Caprock Mail ([ADR-057](08-decisions.md)). Code: `internal/mail` (HTTP in
 `http.go`), `internal/mail/engine` (IMAP, SMTP), `internal/mail/mailstore`
-(DDL in `schema.sql`), `ui/src/screens/mail`. Every write is JSON, as the CSRF
-guard requires. Before the first account exists only `GET /v1/mail/state` and
-`GET /v1/mail/providers` answer without opening Mail.
+(DDL in `schema.sql`), `internal/mail/oauth` (sign-in with Google and
+Microsoft; HTTP in `http_oauth.go`), `ui/src/screens/mail`. Every write is
+JSON, as the CSRF guard requires. Before the first account exists only `GET
+/v1/mail/state`, `GET /v1/mail/providers` and `GET /v1/mail/oauth/providers`
+answer without opening Mail.
 
 - `GET /v1/mail/state` — `{accounts, folders, counts: {inbox, unread, flagged}, version}`; `version` moves on every local change and is what the screen polls.
-- `GET /v1/mail/providers?email=` — server settings guessed from the address, then its MX record: `{provider, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, note, help_url, known, needs_username}`. iCloud (icloud.com, me.com, mac.com) and Gmail by domain; iCloud+ custom domains, Google Workspace and Microsoft 365 by MX; `needs_username` is set for an iCloud+ custom domain, whose sign-in is the @icloud.com address. The MX lookup is the one network call it makes.
-- `POST /v1/mail/accounts` — `{name, email, username, imap_*, smtp_*, password}`; IMAP and SMTP are tried first and a refusal is `422` with nothing stored. A sign-in name the server refuses is retried with the address and, on iCloud, the part before the @ (SMTP: the @icloud.com form) — at most three names, only on a credentials refusal, never on `NO [UNAVAILABLE]`, which Dovecot (Spacemail and many hosts) sends for a wrong password on a real mailbox and while it locks sign-in after failures; the name that worked is stored. iCloud and Gmail refusals carry what to do (an app-specific password); an `UNAVAILABLE` refusal says the password was not accepted. `PUT /v1/mail/accounts/{id}` edits (a new password is optional), `DELETE` removes the account, its mail and its password.
+- `GET /v1/mail/providers?email=` — server settings for an address: `{provider, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, note, help_url, known, needs_username, username, source}`. Lookup order, first answer wins, `source` says which: `preset` — the domain is in the table in `internal/mail/providers/providers.go` (about 40 consumer services, each entry citing the provider's own settings page); `mx` — the domain's MX points at a host in that table (Google Workspace, Microsoft 365, iCloud+, Zoho, Fastmail, Yandex 360 and the hosts people put their own domain on: Rackspace, GoDaddy, Namecheap Private Email, Spacemail, IONOS, OVHcloud, Hostinger, Titan, Infomaniak, STRATO, Migadu and others; the longest matching hint wins); `srv` — RFC 6186 records `_imaps._tcp` / `_imap._tcp` and `_submissions._tcp` / `_submission._tcp` (implicit TLS preferred; an IMAP record is required); `autoconfig` — the domain's own Thunderbird-format file, `https://autoconfig.<domain>/mail/config-v1.1.xml?emailaddress=<addr>` then `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, SSL or STARTTLS servers only, `%EMAILADDRESS%` / `%EMAILLOCALPART%` / `%EMAILDOMAIN%` substituted, a redirect followed only within the domain; `guess` — `imap.<domain>` / `smtp.<domain>`, `known: false`. `needs_username` is set for an iCloud+ custom domain (sign-in is the @icloud.com address) and when autoconfig names a sign-in other than the address, given in `username`. Every network call goes to the user's own domain — its DNS and its web server, 3 s each; no third-party directory (Mozilla's ISPDB included) is asked. A preset domain makes no network call at all.
+- `POST /v1/mail/accounts` — `{name, email, username, imap_*, smtp_*, password}`; IMAP and SMTP are tried first and a refusal is `422` with nothing stored. A sign-in name the server refuses is retried with the address and, on iCloud, the part before the @ (SMTP: the @icloud.com form) — at most three names, only on a credentials refusal, never on `NO [UNAVAILABLE]`, which Dovecot (Spacemail and many hosts) sends for a wrong password on a real mailbox and while it locks sign-in after failures; the name that worked is stored. iCloud and Gmail refusals carry what to do (an app-specific password); an `UNAVAILABLE` refusal says the password was not accepted. `PUT /v1/mail/accounts/{id}` edits (a new password is optional; refused with `400` on an OAuth account, whose `auth` only a new sign-in changes), `DELETE` removes the account, its mail and its password or refresh token. Every account carries `auth`: `password` (the default), `oauth2:google` or `oauth2:microsoft`. An OAuth account signs in with SASL XOAUTH2 using an access token refreshed from the stored refresh token and cached in memory until a minute before it expires (a rotated refresh token is saved back); a refresh token the provider refuses (`invalid_grant`), or a token the server refuses, is a sync error that says to sign in again.
+- `GET /v1/mail/oauth/providers` — `{google: bool, microsoft: bool}`: which *Sign in with …* buttons work in this build (a provider without a client ID is `false`; see [docs/mail-oauth.md](../docs/mail-oauth.md)). Answers without opening Mail.
+- `POST /v1/mail/oauth/start` — `{provider: "google" | "microsoft"}` → `{auth_url}`, the provider's page for the screen to open in the browser. The authorization code flow with PKCE (S256); `state` and the verifier stay in memory, single use, for 10 minutes. The redirect is this daemon's own port on loopback: `http://127.0.0.1:<port>/v1/mail/oauth/callback` for Google, `http://localhost:<port>/…` for Microsoft (which ignores the port only for `localhost`). `409` when the provider has no client ID, `403` when the request did not reach the daemon by a loopback name (a paired phone: the browser could not come back).
+- `GET /v1/mail/oauth/callback?code=&state=` — where the provider sends the browser. Exchanges the code (with the verifier), reads the address from the ID token, checks IMAP and SMTP with XOAUTH2, stores the refresh token in the secret store under the account's item, and creates the account — or switches an existing account with the same address to the sign-in, keeping its mail. Answers a small self-contained HTML page (*Connected — you can close this tab*, or the error); the screen sees the account through `GET /v1/mail/state`. It is the one `/v1` route admitted as a cross-site top-level GET (the browser arrives from the provider's page): only as `GET`, only on a loopback `Host`; the single-use `state` is its CSRF protection. Unknown, used or expired state is `400`.
 - `GET /v1/mail/messages?view=&account=&folder=&q=&before=&before_id=&limit=` — newest first, without bodies. `view`: `inbox unread flagged sent drafts archive junk trash folder all`; `q` is a full-text query (every word a prefix) over subject, people and body.
 - `GET /v1/mail/messages/{id}` — one message with `body_text` and `body_html` (cleaned), fetched from the server if the background pass has not yet. `GET .../thread` — the conversation, oldest first. `GET .../part/{path}` — one attachment or inline image by IMAP part path or `cid:<id>`; `?download=1` forces an attachment disposition; served with a sandboxing CSP.
 - `POST /v1/mail/actions` — `{ids, action, folder}`; `action`: `read unread flag unflag archive trash spam inbox move`. Archive goes to the Archive folder, else Gmail's All Mail, else a new `Archive`; trash on a message already in Trash deletes it.
@@ -2919,11 +2937,16 @@ guard requires. Before the first account exists only `GET /v1/mail/state` and
 
 **`mail.db`** is not part of the event store's migration chain; its schema is
 `internal/mail/mailstore/schema.sql`, applied idempotently at open: `accounts`
-(servers, signature, last sync and error — never the password), `folders`
+(servers, signature, last sync and error, `auth` — never the password or
+token), `folders`
 (name, role, `uidvalidity`, highest stored UID, counts), `messages` (envelope,
 flags, thread key, snippet, decoded text and HTML bodies, the body structure
 as JSON), `messages_fts` (FTS5 over subject, people, body), `settings`,
-`contacts` (addresses seen, weighted towards ones written to).
+`contacts` (addresses seen, weighted towards ones written to). `CREATE TABLE
+IF NOT EXISTS` does not change a table that exists, so a column added after a
+table shipped is also listed in `addedColumns` (`store.go`), which adds it to
+an existing file when `pragma_table_info` lacks it: `accounts.auth TEXT NOT
+NULL DEFAULT 'password'`.
 
 ### GitHub
 

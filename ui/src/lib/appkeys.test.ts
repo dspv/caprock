@@ -278,6 +278,20 @@ describe('every listed shortcut, on every OS', () => {
   // Owner, 2026-10-12: ⌥⌘N started a chat "without asking with whom"
   // (translated). The chord is unchanged on every OS; what the list says it
   // does changed with it.
+  // Owner, 2026-10-14: Expand needs a key. ⌘B is the deck, so off macOS
+  // Ctrl+Shift+B is taken by it and Expand takes Alt as well.
+  it('makes ⇧⌘B the deck’s Expand and Collapse, Ctrl+Alt+Shift+B off macOS, beside ⌘B', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⇧⌘B')?.[1]).toMatch(/Expand the deck into the PRs & CI tab; in that tab, Collapse back/)
+    expect(keys('⇧⌘B', false)).toBe('Ctrl+Alt+Shift+B')
+    expect(keys('⌘B', false)).toBe('Ctrl+Shift+B')
+    expect(matchAppShortcut(event('KeyB', 'B', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'deck-expand' })
+    expect(matchAppShortcut(event('KeyB', 'b', { metaKey: true }), true)).toEqual({ kind: 'deck' })
+    expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'deck-expand' })
+    expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'deck' })
+    // Ctrl+B alone stays the terminal's (tmux's prefix, readline's back-char).
+    expect(matchAppShortcut(event('KeyB', 'b', { ctrlKey: true }), false)).toBeNull()
+  })
+
   it('lists ⌥⌘N as asking, Ctrl+Alt+Shift+N off macOS', () => {
     expect(SHORTCUTS.find(([k]) => k === '⌥⌘N')?.[1]).toMatch(/asks which agent and model, Enter takes the last one/)
     expect(keys('⌥⌘N', false)).toBe('Ctrl+Alt+Shift+N')

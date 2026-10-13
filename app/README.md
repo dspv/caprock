@@ -30,13 +30,17 @@ as sidecars; the app installs both into its data directory's `bin/`. Bundle id `
 
 ## The app icon
 
-`app/icon-src/icon.svg` is the source: a large filled amber triangle with
-rounded corners on a dark tile, drawn on the macOS icon grid (an 824 px tile
-with 100 px clear on every side of 1024) so it sits the same size as its Dock
-neighbours (owner, 2026-10-11: big, a plain coloured triangle). After editing
-it, run `app/icon-src/render.sh` (needs `rsvg-convert` and `magick`); it
-writes every PNG, `icon.icns` and `icon.ico` in `src-tauri/icons`, which are
-committed. The menu bar's `tray.png` is separate.
+`app/icon-src/icon.svg` is the source: a bold white C on a near-black
+squircle, with a green dot in its mouth — a session running. It is drawn on
+the macOS icon grid (an 824 px tile with 100 px clear on every side of 1024)
+so it sits the same size as its Dock neighbours, and it is a letter rather
+than a shape so it reads at a glance among them (owner, 2026-10-13, after the
+amber triangle got lost in the Dock). After editing it, run
+`app/icon-src/render.sh` (needs `rsvg-convert` and `magick`); it writes every
+PNG, `icon.icns` and `icon.ico` in `src-tauri/icons`, and the menu bar's
+`tray.png` from `tray.svg`, all committed. The dashboard's favicon and
+home-screen icons (`ui/public/favicon.svg`, `ui/icons/`) carry the same mark;
+`scripts/make-icons.sh` renders their PNGs.
 
 An in-app update replaces the bundle in place, and macOS keeps drawing the
 icon it cached for the old one. So on macOS the app sets its own Dock tile

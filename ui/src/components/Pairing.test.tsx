@@ -19,6 +19,10 @@ describe('phoneStatus — the state at a glance', () => {
       label: 'Waiting for your phone…',
     })
   })
+  it('is on while access from anywhere is, with the network listener off', () => {
+    const remote = { enabled: true, status: 'online' as const, phones: 0, relay: '', app: '' }
+    expect(phoneStatus({ enabled: false, devices: [phone], remote }).label).toBe('1 phone connected')
+  })
   it('counts what is connected, and calls a tablet a device', () => {
     expect(phoneStatus({ enabled: true, devices: [phone] }).label).toBe('1 phone connected')
     expect(phoneStatus({ enabled: true, devices: [phone, tablet] }).label).toBe('2 devices connected')
@@ -125,11 +129,49 @@ describe('Pairing panel', () => {
     expect(localStorage.getItem('caprock.pair.address')).toBe('magicdns')
   })
 
-  it('says what happens without Tailscale: Wi-Fi only, nothing relayed', async () => {
+  it('says what to do off this Wi-Fi: from anywhere, or Tailscale', async () => {
     stubState([{ enabled: true, url: 'http://192.168.1.10:22776', devices: [], addresses: [{ url: 'http://192.168.1.10:22776', kind: 'lan' }] }])
     render(<Pairing />)
-    expect(await screen.findByText(/cannot reach Caprock otherwise; nothing is relayed/)).toBeTruthy()
+    expect(await screen.findByText(/Not on this Wi-Fi\?/)).toBeTruthy()
     expect(screen.queryByRole('radio')).toBeNull()
+  })
+
+  const remoteOn = {
+    enabled: true,
+    status: 'online' as const,
+    phones: 0,
+    relay: 'wss://relay.example',
+    app: 'https://m.example',
+    host_id: 'h',
+    link: 'https://m.example/#/pair?c=482913&h=h&k=k&r=wss%3A%2F%2Frelay.example',
+  }
+
+  it('offers access from anywhere, and turns it on from the machine', async () => {
+    stubState([{ enabled: false, devices: [], remote: { ...remoteOn, enabled: false, status: 'off', link: undefined } }])
+    const setRemote = vi.spyOn(api, 'setRemote').mockResolvedValue(remoteOn)
+    render(<Pairing />)
+    expect((await screen.findAllByText('From anywhere')).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+    await waitFor(() => expect(setRemote).toHaveBeenCalledWith(true))
+  })
+
+  it('with access from anywhere on, pairs through the relay without the network listener', async () => {
+    localStorage.removeItem('caprock.pair.address')
+    stubState([
+      { enabled: false, devices: [phone], remote: remoteOn },
+      { enabled: false, code: '482913', expires_in_sec: 300, devices: [phone], remote: remoteOn },
+    ])
+    const setLAN = vi.spyOn(api, 'setLAN')
+    vi.spyOn(api, 'pairCode').mockResolvedValue({ code: '482913', expires_in_sec: 300, url: '' })
+    render(<Pairing />)
+    expect(await screen.findByText('Online')).toBeTruthy()
+    // The network listener is off, and that is not a problem to warn about.
+    expect(screen.queryByText('Phone access is off')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Show a code/ }))
+    expect((await screen.findByTestId('pair-reach')).textContent).toMatch(/^Anywhere — Wi-Fi or mobile data/)
+    expect(screen.getByRole('img', { name: /m\.example/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeTruthy()
+    expect(setLAN).not.toHaveBeenCalled()
   })
 
   it('names Tailscale as the requirement when the address is a tunnel', async () => {

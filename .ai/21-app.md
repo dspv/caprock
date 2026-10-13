@@ -741,12 +741,15 @@ One window, three regions:
     page. Nothing while no job has finished.
   - **PRs & CI tab** (owner, 2026-10-13, translated: "I also want to expand
     the panel bigger, to see the statuses large and in detail, plus
-    statistics … sometimes it's interesting to look"). *Expand* beside
-    *Hide ⌘B* — one control, no key of its own (rule 12), no sidebar item —
-    opens the cell large as a tab of its own (`kind: 'prs'`, one per agent
-    session, never split; `components/PRsCITab.tsx`, words in
-    `lib/prstats.ts`); *Back to the deck* closes it and brings the agent's
-    tab to the front with its deck open. It shows:
+    statistics … sometimes it's interesting to look"). *Expand ⇧⌘B* beside
+    *Hide ⌘B* — outlined in the accent, no sidebar item — opens the cell
+    large as a tab of its own (`kind: 'prs'`, one per agent session, never
+    split; `components/PRsCITab.tsx`, words in `lib/prstats.ts`); in the tab
+    the same control in the same corner is *Collapse ⇧⌘B*, which closes it
+    and brings the agent's tab to the front with its deck open (owner,
+    2026-10-14, translated: "it should simply be a toggle"). Off macOS the
+    key is Ctrl+Alt+Shift+B: ⌘B's Ctrl+Shift+B is the deck's (rule 12). It
+    shows:
     - **The figures** — over the 14 local days ending today, from `GET
       /v1/sessions/{id}/ci/stats`: *Merged* (the total, the last 7, today,
       bars per day), *Time to merge* (the median from opened to merged of
@@ -2219,7 +2222,9 @@ The owner said to go ahead with the proposals ("build it to the end"). Taken:
 1. **Phone off the home network:** Tailscale for the MVP, with Phase A
    resilience (resume, replay, endless reconnect). A Caprock relay stays a
    later decision with its own ADR (would override the relay clauses of
-   ADR-029 and ADR-034). F19 waits for it.
+   ADR-029 and ADR-034). F19 waits for it. *Decided 2026-10-13:* the relay
+   is built — ADR-058, end-to-end Noise over a relay that sees ciphertext,
+   for a phone with nothing installed.
 2. **Apple Developer Program:** not yet. The macOS build ships unsigned
    (ad-hoc) with the "Open Anyway" note; signing and notarization when the
    account exists.

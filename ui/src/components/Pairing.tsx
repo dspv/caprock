@@ -27,7 +27,7 @@
  * rendered.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, errText, type PairAddress, type PairedDevice, type PairState } from '@/lib/api'
+import { api, errText, type PairAddress, type PairedDevice, type PairState, type RemoteState } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { REVEAL_EVENT, Section } from '@/components/SettingsParts'
 import { fmtAgo, fmtWhen } from '@/lib/format'
@@ -122,12 +122,13 @@ export function pairLink(url: string, code: string): string {
  */
 export function addressesOf(s: Pick<PairState, 'url' | 'tunnelled' | 'addresses'>): PairAddress[] {
   const all: PairAddress[] = s.addresses?.length ? s.addresses : s.url ? [{ url: s.url, kind: s.tunnelled ? 'tailscale' : 'lan' }] : []
-  const rank = { lan: 0, tailscale: 1, magicdns: 2 } as const
+  const rank = { anywhere: -1, lan: 0, tailscale: 1, magicdns: 2 } as const
   return [...all].sort((a, b) => rank[a.kind] - rank[b.kind])
 }
 
-const ADDRESS_LABEL: Record<PairAddress['kind'], string> = { lan: 'Wi-Fi', tailscale: 'Tailscale', magicdns: 'Tailscale name' }
+const ADDRESS_LABEL: Record<PairAddress['kind'], string> = { anywhere: 'Anywhere', lan: 'Wi-Fi', tailscale: 'Tailscale', magicdns: 'Tailscale name' }
 const ADDRESS_NOTE: Record<PairAddress['kind'], string> = {
+  anywhere: 'Through an encrypted relay: works on any network, nothing to install.',
   lan: 'Works while your phone is on the same Wi-Fi.',
   tailscale: 'Works anywhere your phone has Tailscale on — even on mobile data.',
   magicdns: 'The Tailscale address by name; needs MagicDNS on in Tailscale.',
@@ -137,10 +138,10 @@ const ADDRESS_KEY = 'caprock.pair.address'
 export type PhoneStatus = { tone: 'off' | 'waiting' | 'ok' | 'on'; label: string }
 
 /** What the corner of the panel says, from the daemon's state alone. */
-export function phoneStatus(s: Pick<PairState, 'enabled' | 'code' | 'devices'>): PhoneStatus {
+export function phoneStatus(s: Pick<PairState, 'enabled' | 'code' | 'devices' | 'remote'>): PhoneStatus {
   const n = s.devices.length
   const noun = deviceNoun(s.devices)
-  if (!s.enabled) {
+  if (!s.enabled && !s.remote?.enabled) {
     return { tone: 'off', label: n > 0 ? `Off · ${n} ${noun}${n === 1 ? '' : 's'} paired` : 'Off' }
   }
   if (s.code) return { tone: 'waiting', label: 'Waiting for your phone…' }
@@ -219,7 +220,7 @@ export function Pairing() {
     try {
       // One press does both: the listener has to be up before a phone can
       // reach the page the code opens.
-      if (!s?.enabled) await api.setLAN(true)
+      if (!s?.enabled && !s?.remote?.enabled) await api.setLAN(true)
       const r = await api.pairCode()
       setCodeUntil(Date.now() + r.expires_in_sec * 1000)
       state.refresh()
@@ -236,6 +237,21 @@ export function Pairing() {
     setJoined(null)
     try {
       await api.setLAN(on)
+      state.refresh()
+    } catch (e) {
+      setError(errText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Access from anywhere (ADR-058): on stays on across restarts, so the Mac
+  // mini in a cupboard is reachable without anyone at it.
+  async function turnRemote(on: boolean) {
+    setBusy(true)
+    setError('')
+    try {
+      await api.setRemote(on)
       state.refresh()
     } catch (e) {
       setError(errText(e))
@@ -293,7 +309,9 @@ export function Pairing() {
 
   const status = phoneStatus(s)
   const secondsLeft = codeUntil ? Math.max(0, Math.ceil((codeUntil - now) / 1000)) : 0
-  const showingCode = Boolean(code && s.url && secondsLeft > 0)
+  const remote = s.remote
+  const anywhere = Boolean(remote?.enabled)
+  const showingCode = Boolean(code && (s.url || anywhere) && secondsLeft > 0)
   const machine = thisMachine()
   const addresses = addressesOf(s)
   const hasTailscale = addresses.some((a) => a.kind !== 'lan')
@@ -309,7 +327,7 @@ export function Pairing() {
             The same Caprock on your phone: read what agents wrote, type into a session, approve, stop.
           </p>
         )}
-        {!showingCode && !s.enabled && s.devices.length > 0 && (
+        {!showingCode && !s.enabled && !anywhere && s.devices.length > 0 && (
           <div className="flex flex-wrap items-center gap-4 rounded-[12px] border border-warn/50 bg-warn/10 px-4 py-3.5">
             <div className="min-w-0 flex-1">
               <div className="text-[17px] font-medium text-fg">Phone access is off</div>
@@ -321,11 +339,13 @@ export function Pairing() {
           </div>
         )}
         {showingCode ? (
-          <CodeView addresses={addresses} code={code} secondsLeft={secondsLeft} onNew={showCode} onCancel={cancelCode} busy={busy} />
+          <CodeView addresses={addresses} remote={anywhere ? remote : undefined} code={code} secondsLeft={secondsLeft} onNew={showCode} onCancel={cancelCode} busy={busy} />
         ) : (
           <>
             <ol className="grid gap-3 sm:grid-cols-3">
-              {tunnelOnly ? (
+              {anywhere ? (
+                <BigStep n={1} title="Anywhere">Your phone on any network — Wi-Fi or mobile data. Nothing to install.</BigStep>
+              ) : tunnelOnly ? (
                 <BigStep n={1} title="Tailscale on both">Tailscale on your phone and {machine}; then it works anywhere.</BigStep>
               ) : (
                 <BigStep n={1} title={hasTailscale ? 'Same Wi-Fi or Tailscale' : 'Same Wi-Fi'}>Your phone and {machine} on one network.</BigStep>
@@ -337,6 +357,7 @@ export function Pairing() {
                 iPhone: Share → Add to Home Screen. Android: menu → Add to Home screen.
               </BigStep>
             </ol>
+            <Anywhere remote={remote} busy={busy} onTurn={turnRemote} />
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <button
                 onClick={showCode}
@@ -354,7 +375,7 @@ export function Pairing() {
               <ul className="mt-2 grid gap-2 text-fg-muted">
                 <li><b className="font-medium text-fg">Home screen.</b> On an iPhone the home-screen app keeps its own storage: open it from there and type a new code once.</li>
                 <li><b className="font-medium text-fg">Carry on a session.</b> On the phone: Now → the session → Chat, and type. Approve and stop from there too.</li>
-                {!hasTailscale && <li><b className="font-medium text-fg">Not on this Wi-Fi?</b> Install <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" className="text-accent">Tailscale</a> on both, then it works anywhere, even on mobile data. A phone off this Wi-Fi cannot reach Caprock otherwise; nothing is relayed through us.</li>}
+                {!hasTailscale && !anywhere && <li><b className="font-medium text-fg">Not on this Wi-Fi?</b> Turn on <b className="font-medium text-fg">From anywhere</b> above, or install <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" className="text-accent">Tailscale</a> on both.</li>}
               </ul>
             </details>
           </>
@@ -395,6 +416,46 @@ export function Pairing() {
   )
 }
 
+/**
+ * Access from anywhere (ADR-058), one row: what it is, whether it is up, and
+ * the switch. Off by default; once on it stays on across restarts.
+ */
+function Anywhere({ remote, busy, onTurn }: { remote?: RemoteState; busy: boolean; onTurn: (on: boolean) => void }) {
+  if (!remote) return null
+  const state = !remote.enabled
+    ? null
+    : remote.status === 'online'
+      ? { dot: 'bg-ok', text: remote.phones > 0 ? `Online · ${remote.phones} connected now` : 'Online' }
+      : remote.status === 'connecting'
+        ? { dot: 'bg-warn animate-pulse', text: 'Connecting to the relay…' }
+        : { dot: 'bg-danger', text: remote.error ? `Offline: ${remote.error}` : 'Offline — retrying' }
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[12px] border border-border bg-panel-2/50 px-4 py-3.5">
+      <div className="min-w-0 flex-1 basis-60">
+        <div className="text-[16px] font-medium text-fg">From anywhere</div>
+        <div className="text-[13px] leading-snug text-fg-muted">
+          Wi-Fi or mobile data, nothing to install on the phone. Through a relay that passes encrypted bytes and cannot read them.
+        </div>
+        {state && (
+          <div className="mt-1 flex items-center gap-1.5 text-[12px] text-fg">
+            <span className={`inline-block h-2 w-2 rounded-full ${state.dot}`} aria-hidden />
+            <span className="min-w-0 break-words">{state.text}</span>
+          </div>
+        )}
+      </div>
+      {remote.enabled ? (
+        <button onClick={() => onTurn(false)} disabled={busy} className="text-[13px] text-fg-faint underline hover:text-danger disabled:opacity-50">
+          Turn off
+        </button>
+      ) : (
+        <button onClick={() => onTurn(true)} disabled={busy} className="h-10 rounded-[10px] border border-accent px-4 text-[14px] font-medium text-accent hover:bg-accent/10 disabled:opacity-50">
+          Turn on
+        </button>
+      )}
+    </div>
+  )
+}
+
 function StatusPill({ status }: { status: PhoneStatus }) {
   const dot = status.tone === 'ok' ? 'bg-ok' : status.tone === 'waiting' ? 'bg-warn animate-pulse' : status.tone === 'on' ? 'bg-accent' : 'bg-fg-faint'
   return (
@@ -418,6 +479,7 @@ export function BigStep({ n, title, children }: { n: number; title: string; chil
 
 function CodeView({
   addresses,
+  remote,
   code,
   secondsLeft,
   onNew,
@@ -425,6 +487,8 @@ function CodeView({
   busy,
 }: {
   addresses: PairAddress[]
+  /** Access from anywhere, when on: the QR opens the phone's page through the relay. */
+  remote?: RemoteState
   code: string
   secondsLeft: number
   onNew: () => void
@@ -436,13 +500,17 @@ function CodeView({
   const [kind, setKind] = useState<PairAddress['kind'] | ''>(() => {
     try { return (localStorage.getItem(ADDRESS_KEY) as PairAddress['kind'] | null) ?? '' } catch { return '' }
   })
-  const chosen = addresses.find((a) => a.kind === kind) ?? addresses[0]!
+  // From anywhere leads when it is on: it is the one that works off this
+  // Wi-Fi with nothing installed on the phone.
+  const all: PairAddress[] = remote?.link ? [{ url: remote.app, kind: 'anywhere' }, ...addresses] : addresses
+  const chosen = all.find((a) => a.kind === kind) ?? all[0]!
   const choose = (k: PairAddress['kind']) => {
     setKind(k)
     try { localStorage.setItem(ADDRESS_KEY, k) } catch { /* remembered for this page only */ }
   }
   const url = chosen.url
-  const link = pairLink(url, code)
+  const link = chosen.kind === 'anywhere' && remote?.link ? remote.link : pairLink(url, code)
+  const [copied, setCopied] = useState(false)
   const qr = useMemo(() => qrPath(encodeQR(link)), [link])
   const mm = Math.floor(secondsLeft / 60)
   const ss = String(secondsLeft % 60).padStart(2, '0')
@@ -460,10 +528,10 @@ function CodeView({
         <path d={qr.d} fill="#000" />
       </svg>
       <div className="grid min-w-0 flex-1 basis-[220px] gap-3">
-        {addresses.length > 1 && (
+        {all.length > 1 && (
           <div className="grid gap-1">
             <div role="radiogroup" aria-label="Address the code opens" className="flex flex-wrap gap-1">
-              {addresses.map((a) => (
+              {all.map((a) => (
                 <button
                   key={a.url}
                   type="button"
@@ -487,12 +555,33 @@ function CodeView({
           * partner paired on the Wi-Fi and found it gone everywhere else
           * (2026-10-11). Caprock relays nothing, so "anywhere" is Tailscale. */}
         <div data-testid="pair-reach" className="text-[13px] leading-snug text-fg">
-          {chosen.kind !== 'lan'
+          {chosen.kind === 'anywhere'
+            ? <>Anywhere — Wi-Fi or mobile data, nothing to install. Encrypted end to end; the relay cannot read it.</>
+            : chosen.kind !== 'lan'
             ? <>Anywhere, as long as Tailscale is on, on both your phone and {thisMachine()}.</>
             : addresses.some((a) => a.kind !== 'lan')
               ? <>Only on this Wi-Fi. For anywhere, pick Tailscale above — it has to be on on both devices.</>
               : <>Only on this Wi-Fi. For anywhere, mobile data too: <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" className="text-accent">Tailscale</a> on both your phone and {thisMachine()} (then turn phone access off and on).</>}
         </div>
+        {chosen.kind === 'anywhere' ? (
+          <div className="grid gap-1 text-[12px] text-fg-muted">
+            {/* A home-screen app on iOS keeps its own storage and the camera
+              * opens links in Safari, so the link is offered to paste there. */}
+            <div>Added Caprock to the phone&apos;s home screen? Copy the link and paste it there.</div>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(link).then(() => {
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                })
+              }}
+              className="w-fit rounded-md border border-border px-2.5 py-1 text-[12px] text-fg hover:border-accent"
+            >
+              {copied ? 'Copied ✓' : 'Copy link'}
+            </button>
+          </div>
+        ) : (
         <div className="grid gap-1">
           <div className="text-[12px] text-fg-muted">
             No camera? Open <span className="mono text-fg select-all break-all">{url}</span> on the phone and type
@@ -501,6 +590,7 @@ function CodeView({
             {code.slice(0, 3)}&thinsp;{code.slice(3)}
           </div>
         </div>
+        )}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-fg-muted">
           <span className="num">Works once · {mm}:{ss} left</span>
           <button onClick={onNew} disabled={busy} className="text-accent hover:underline disabled:opacity-50">New code</button>
