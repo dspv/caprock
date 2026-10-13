@@ -57,7 +57,7 @@ import '@xterm/xterm/css/xterm.css'
 import { deviceToken } from '@/lib/api'
 import { TermClient, type TermState } from '@/lib/termv2'
 import { attachTerminalInput } from '@/lib/xtermInput'
-import { FIND_EVENT, matchAppShortcut } from '@/lib/appkeys'
+import { FIND_EVENT, ownsTerminalKey, watchChordArrows } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { registerBenchTerminal } from '@/lib/benchhook'
 import { writeSliced } from '@/lib/termwrite'
@@ -206,6 +206,7 @@ export function TerminalPane({
     const el = host.current
     if (!el) return
     const isMac = isMacPlatform()
+    watchChordArrows(isMac)
     const css = getComputedStyle(document.documentElement)
     // The resolved stack, never var(): xterm hands this to a canvas, which
     // does not resolve custom properties (see Terminal.tsx).
@@ -428,7 +429,7 @@ export function TerminalPane({
     })
     const sizeSub = term.onResize(({ cols, rows }) => conn.resize(cols, rows))
     const input = attachTerminalInput(term, el, (d) => conn.send(d), {
-      isAppKey: (e) => matchAppShortcut(e, isMac) !== null,
+      isAppKey: (e) => ownsTerminalKey(e, isMac),
     })
     filesRef.current = input.sendFiles
 
