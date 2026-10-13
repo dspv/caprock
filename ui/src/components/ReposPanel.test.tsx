@@ -77,6 +77,12 @@ describe('the Repos section', () => {
     expect(JSON.parse(localStorage.getItem(PANEL_FOLDS_KEY) ?? '[]')).not.toContain('now.repos')
   })
 
+  it('reads a missing or odd answer as no rows instead of failing the screen', async () => {
+    h.answer = {}
+    render(<ReposPanel />)
+    expect(await screen.findByText('No listed repository has a session running.')).toBeInTheDocument()
+  })
+
   it('says so when no listed repository has a session running', async () => {
     h.answer = { github_connected: true, repos: [] } satisfies ReposActivity
     render(<ReposPanel />)

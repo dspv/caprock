@@ -33,8 +33,29 @@ export function ReposPanel() {
 }
 
 /** The poll: while mounted (the panel open) and the window visible. */
+/**
+ * The answer as the table reads it: a missing or odd answer (an older
+ * daemon, a cache written by another build) is no rows, never a crash of the
+ * Now screen; a row without its arrays has no figures for them.
+ */
+export function asRepos(v: unknown): ReposActivity {
+  const o = (v && typeof v === 'object' ? v : {}) as Partial<ReposActivity>
+  const rows = Array.isArray(o.repos) ? o.repos : []
+  const arr = (a: unknown) => (Array.isArray(a) ? (a as number[]) : [])
+  return {
+    github_connected: o.github_connected === true,
+    repos: rows.filter((r) => r && typeof r === 'object').map((r) => ({
+      ...r, days: arr(r.days) as unknown as string[], commits: arr(r.commits), added: arr(r.added), deleted: arr(r.deleted),
+      name: typeof r.name === 'string' ? r.name : '', dirty: Number(r.dirty) || 0, sessions: Number(r.sessions) || 0,
+    })),
+  }
+}
+
 function useRepos(): { data?: ReposActivity; failed: boolean } {
-  const [data, setData] = useState<ReposActivity | undefined>(() => readDeck<ReposActivity>(CACHE_KEY)?.d)
+  const [data, setData] = useState<ReposActivity | undefined>(() => {
+    const c = readDeck<unknown>(CACHE_KEY)?.d
+    return c === undefined ? undefined : asRepos(c)
+  })
   const [failed, setFailed] = useState(false)
   const alive = useRef(true)
   useEffect(() => {
@@ -43,7 +64,7 @@ function useRepos(): { data?: ReposActivity; failed: boolean } {
     const tick = async () => {
       if (document.hidden) return
       try {
-        const d = await api.reposActivity()
+        const d = asRepos(await api.reposActivity())
         if (!alive.current) return
         setData(d)
         setFailed(false)
