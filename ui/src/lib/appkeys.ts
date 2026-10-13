@@ -31,8 +31,8 @@ export type AppCommand =
   | { kind: 'dashboard' }
   | { kind: 'next-tab' }
   | { kind: 'prev-tab' }
-  /** ⌘1–⌘9: a project by its place in the sidebar, ⌘9 the last. */
-  | { kind: 'project'; index: number }
+  /** ⌘1–⌘9: a tab by its place in the strip, ⌘9 the last. */
+  | { kind: 'tab'; index: number }
   /** The next or previous row under the project in front (⌥⌘↓ ⌥⌘↑). */
   | { kind: 'session'; delta: 1 | -1 }
   /** The next or previous project in the sidebar (⌥⌘→ ⌥⌘←). */
@@ -99,6 +99,11 @@ function arrowCommand(k: string): AppCommand | null {
     case '←': return { kind: 'step-project', delta: -1 }
     default: return null
   }
+}
+
+/** ⌘1–⌘9: the tab at that place in the strip, ⌘9 the last. */
+function digitCommand(k: string): AppCommand | null {
+  return /^[1-9]$/.test(k) ? { kind: 'tab', index: Number(k) - 1 } : null
 }
 
 /** Whether a command is one of the arrow chords, which a text field keeps. */
@@ -198,12 +203,12 @@ function plain(k: string): AppCommand | null {
     // 2026-10-11: ⇧⌘D was awkward to reach). ⇧⌘D still works.
     case '0': return { kind: 'dashboard' }
     default:
-      // ⌘1–⌘9 are projects, by their place in the sidebar (owner,
-      // 2026-10-13, translated: "Command+digit focuses that project right
-      // away, you see on the left where you are"). They were tabs by their
-      // place in the strip; tabs keep ⌃Tab and ⇧⌘[ ].
-      if (/^[1-9]$/.test(k)) return { kind: 'project', index: Number(k) - 1 }
-      return null
+      // ⌘1–⌘9 are the strip's tabs by place, ⌘9 the last, and the strip is
+      // in the order the tabs were opened (owner, 2026-10-14, translated:
+      // "I just want to switch between them with key combos"). For a day
+      // they were the sidebar's Nth item, a project or a session by
+      // grouping, and nobody could predict which. Projects have no digits.
+      return digitCommand(k)
   }
 }
 
@@ -246,8 +251,8 @@ function offMac(k: string): string {
   return `Ctrl+Shift+${key}`
 }
 
-/** The digit that jumps to the project at `index` of `count`: ⌘1–⌘8 by
- *  position, ⌘9 the last one, else none. */
+/** The digit that jumps to the tab at `index` of `count`: 1–8 by
+ *  position, 9 the last one, else none. */
 export function tabDigit(index: number, count: number): number | null {
   if (index === count - 1 && count > 8) return 9
   return index < 8 ? index + 1 : null
@@ -255,7 +260,18 @@ export function tabDigit(index: number, count: number): number | null {
 
 /** A tab's jump key as the tab itself shows it: short enough for a tab. */
 export function tabKey(digit: number, isMac = isMacPlatform()): string {
-  return isMac ? `⌘${digit}` : `Ctrl⇧${digit}`
+  return stripKey(String(digit), isMac)
+}
+
+/** A ⌘ chord drawn on the strip (⌘0, ⌘,): the same short spelling as a tab's
+ *  ⌘N — Ctrl⇧ off macOS, where the chord is Ctrl+Shift with that key. */
+export function stripKey(key: string, isMac = isMacPlatform()): string {
+  return isMac ? `⌘${key}` : `Ctrl⇧${key}`
+}
+
+/** The one line that says how to move around, for the hint after an update. */
+export function moveKeysLine(isMac = isMacPlatform()): string {
+  return `${keys('⌘1', isMac).replace(/1$/, '1–9')} switch tabs in the order you opened them · double-click a tab to rename`
 }
 
 /** How a shortcut is written in a menu or a tooltip on this platform. */
@@ -273,7 +289,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],
   ['⌘J', 'Next session waiting on you'],
-  ['⌘1–8, ⌘9', 'The sidebar’s Nth item (a project, or a session when not grouped); the last'],
+  ['⌘1–8, ⌘9', 'The Nth tab, in the order opened, as its badge says; ⌘9 the last'],
   ['⌥⌘↓, ⌥⌘↑', 'Next and previous session of the project in front'],
   ['⌥⌘→, ⌥⌘←', 'Next and previous project'],
   ['⌥⇧↑, ⌥⇧↓', 'Move the focused session row up or down in the sidebar'],

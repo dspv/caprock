@@ -9,6 +9,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **mail:** adding an account finds the servers for about 40 mail services
+  and the hosts people put their own domain on. The table now knows Yahoo,
+  AOL, AT&T, Verizon, Cox, Xfinity, GMX, WEB.DE, mail.com, Zoho, Mail.ru,
+  Rambler, Seznam, Daum, Orange, Free, SFR, La Poste, T-Online, Libero,
+  Virgilio, mailbox.org, Posteo, Purelymail, Runbox, Mailfence and Migadu as
+  well as Gmail, iCloud, Outlook, Fastmail, Yandex and Proton Bridge, each with
+  what it needs (an app password, IMAP switched on) and its help page. A
+  custom domain is recognised by its MX on Google Workspace, Microsoft 365,
+  iCloud+, Zoho, Rackspace, GoDaddy, Namecheap Private Email, Spacemail,
+  IONOS, OVHcloud, Hostinger, Titan, Infomaniak and STRATO. Any other domain
+  is asked for its RFC 6186 SRV records and its own autoconfig file before
+  Caprock falls back to `imap.` and `smtp.`; only the domain itself is asked,
+  no directory. The answer says how it was found (`source`).
 - **mail:** sign in with Google or Microsoft. A Gmail, Google Workspace,
   Outlook.com or Microsoft 365 mailbox connects with a click and an approval
   in the browser, no app password: the installed-app OAuth flow with PKCE,
@@ -46,6 +59,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   them each row carries — *Compact* (just the phrase), *Cost* (cost and time,
   the default) or *Full* (calls, cost, model and time), or any mix —
   remembered on this device.
+- **app:** tabs are the way around. ⌘1–⌘9 (Ctrl+Shift+1–9 on Windows and
+  Linux) switch to the Nth tab, and the tabs stay in the order you opened
+  them: a new tab goes last with the next number, and the numbers change
+  only when you close or drag a tab; a restart keeps them. Every tab shows
+  its key, the one in front too, and its session's name with its project's
+  dot and short name. The sidebar is Flat by default — the open sessions in
+  the tabs' order, each with the same key and its project, then the ones
+  running without a tab — or Tree, sessions under their projects (Settings
+  → Appearance, or the folder button). Projects have no number keys any
+  more; a click on a project opens its page, and ⌥⌘ arrows still walk
+  sessions and projects. The pinned Dashboard tab shows ⌘0 again (⌘, on
+  Settings) and the inspector's button ⌘I, so every key is on screen. One
+  line says so once, with a way to every key.
 - **deck:** a pull request's checks read at a glance. In place of a circle per
   check — twelve tiny circles in a row that said nothing — each row sums them
   up in one short group: *✗ 1 failed ● 1 running ✓ 10*, the failed first, the
