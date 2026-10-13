@@ -15,6 +15,16 @@ export function hasSubscriptions(agent: string): agent is 'claude' | 'codex' {
   return agent === 'claude' || agent === 'codex'
 }
 
+/** The id of Claude Code on DeepSeek: a session in the user's own Claude
+ *  Code setup whose model calls go to DeepSeek on the user's DeepSeek key. */
+export const DEEPSEEK_ID = 'deepseek'
+
+/** The real sign-ins in a list, without a provider entry such as DeepSeek:
+ *  what Settings manages, plans are set for, and the free number counts. */
+export function signIns(list: readonly Subscription[]): Subscription[] {
+  return list.filter((s) => !s.provider)
+}
+
 /** "5-hour" or "weekly". */
 export function windowLabel(w: SubscriptionWindow['window']): string {
   return w === 'five_hour' ? '5-hour' : 'weekly'
@@ -41,7 +51,9 @@ export function isNear(sub: Subscription, nowSec = Date.now() / 1000): boolean {
  * first; the chosen one is never among them.
  */
 export function withRoom(list: readonly Subscription[], chosenId: string, nowSec = Date.now() / 1000): Subscription[] {
-  const rest = list.filter((s) => s.id !== chosenId && s.signed_in && !isNear(s, nowSec))
+  // Another provider is never offered as the way past a plan's line: the
+  // note is about the user's sign-ins, and DeepSeek is a different model.
+  const rest = signIns(list).filter((s) => s.id !== chosenId && s.signed_in && !isNear(s, nowSec))
   const pct = (s: Subscription) => fullest(s, nowSec)?.used_percentage ?? Infinity
   return [...rest].sort((a, b) => pct(a) - pct(b))
 }

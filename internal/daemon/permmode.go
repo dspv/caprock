@@ -189,7 +189,7 @@ func (a *agentAdapter) restartInMode(ctx context.Context, ag *agents.Agent, want
 // subscription's (ADR-048), or "" for the user's own.
 func (a *agentAdapter) configDirOf(ctx context.Context, id string) string {
 	sess, err := store.GetSession(ctx, a.d.store.DB(), id)
-	if err != nil || sess.Subscription == "" || sess.Subscription == subs.DefaultID {
+	if err != nil || sess.Subscription == "" || sess.Subscription == subs.DefaultID || sess.Subscription == subs.DeepSeekID {
 		return ""
 	}
 	return subs.Dir(a.d.opt.DataDir, sess.Subscription)

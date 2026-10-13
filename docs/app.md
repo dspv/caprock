@@ -171,6 +171,16 @@ others. Installing it: [install-app.md](install-app.md).
   agent's defaults: your settings, plugins and servers are not copied.
   Three per agent are free, your own sign-in included; more come with
   Premium. *Remove* deletes the folder after asking.
+- **Claude Code on DeepSeek.** Under Claude Code in Settings →
+  *Subscriptions*, paste your DeepSeek API key and *Save key*. *New agent*
+  and *Quick chat* then offer **DeepSeek · your API key** in the
+  *Subscription* picker; a session started on it is Claude Code in your
+  usual setup, talking to DeepSeek's models on your key instead of to
+  Anthropic, so your Claude plan and its limits are not used. The note under
+  the picker says what it sends to api.deepseek.com; Caprock itself sends
+  nothing, and the key reaches only that session. Its card says *DeepSeek*
+  and its cost is priced at DeepSeek's list price. Free. *Remove key* turns
+  it off.
 - **The tab strip.** The tab in front has an amber top edge; the others are
   shaded tabs of their own. The amber + opens a menu: New agent, Quick
   chat, New shell, Run saved…, Open file, Add project, each with its key.

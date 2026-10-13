@@ -1045,6 +1045,8 @@ effective mode, `full` when never chosen; stored as `statusline_mode` in
 
 `PUT /v1/settings` also accepts `gemini_api_key`, stored write-only in the same way. `GET` reports `gemini_key_set` and `gemini_key_from_env` instead of the value; `GEMINI_API_KEY` in the daemon's environment takes precedence over the stored key when both exist ([ADR-025](08-decisions.md)).
 
+`PUT /v1/settings` also accepts `deepseek_api_key`, the user's DeepSeek key for Claude Code on DeepSeek (see **Subscriptions** below), stored write-only in `config.json` as `deepseek_api_key`. `GET` reports `deepseek_key_set` and `deepseek_key_hint` — the first three and last four characters (`sk-…1a2b`), or `…` for a key under 16 characters — never the value. Trimmed on the way in; `""` clears it; `400` for a value with a line break or a NUL, or over 512 bytes, because it becomes one environment variable of a child process. Caprock never sends it anywhere and never logs it.
+
 `PUT /v1/settings` accepts `report_bot_token` and `report_chat_id` for the weekly report. The **token is write-only**: it is stored and never returned by `GET /v1/settings`, which instead carries `report_bot_set` (a bool), `report_last_error` and `report_last_sent_ms`. This is the only write-only field in the API and it exists because the settings response is read on every dashboard render and by `caprock report` — a credential should not ride along on either ([ADR-024](08-decisions.md)). Omitting `report_bot_token` from a PUT leaves the stored one alone, since a UI that reads settings and writes them back always omits it; sending `""` clears it. The chat id is not a credential and round-trips normally.
 
 `PUT /v1/settings` accepts `default_folder` (2026-10-09): where the app's Add project sheet starts — its folder field, a new project's parent, a clone's destination and the folder browser. Empty is the home folder; otherwise an absolute path or one led by `~`, one line, at most 1024 bytes (`400` otherwise). Stored as `default_folder` in `config.json` and returned by `GET`. It changes no boundary: `/v1/browse` and `/v1/browse/stat` stay rooted at `browse_root`.
@@ -1779,7 +1781,18 @@ session as `""`. Its name is *Own sign-in* until renamed (`own_labels:
 {agent: label}` in `config.json`). A `Subscription` in the API is `{id,
 agent, label, default, preferred, plan?, dir, env_var?, signed_in, account?,
 login_command, windows: [{window, used_percentage, resets_at, observed_at}],
-sessions_7d, cost_7d_usd, running, created_at?}`.
+sessions_7d, cost_7d_usd, running, created_at?, provider?}`.
+
+- **`provider: "deepseek"`** marks the one entry that is not a sign-in:
+  Claude Code on DeepSeek, `id: "deepseek"`, listed last under `claude`
+  while a DeepSeek key is set (`deepseek_api_key`) and absent otherwise.
+  It has `signed_in: true`, `account: "your DeepSeek API key"`, `plan:
+  {kind: "metered", label: "DeepSeek API"}`, an empty `dir` and
+  `login_command`, no `windows`, and its own `sessions_7d`, `cost_7d_usd`
+  and `running`. It is not in `config.json`'s `subscriptions`: it never
+  counts toward `free_per_agent`, and `PATCH` and `DELETE` on it are `404`
+  (the key is removed in `PUT /v1/settings`). The id cannot collide with a
+  real one, which is hex.
 
 - **`preferred`** marks, per agent, the one a new session starts on when the
   request names none — *Make default*, stored as `default_subscription:
@@ -1841,6 +1854,28 @@ Code's folder trust is written to that directory's `.claude.json`, not
 `~/.claude.json`. A `resume` runs on the subscription the session ran on,
 whatever the request says, and is refused when that subscription has been
 removed. An unknown id, or a subscription of the other agent, is `400`.
+
+`subscription: "deepseek"` starts Claude Code on DeepSeek: the user's own
+configuration directory (no `CLAUDE_CONFIG_DIR` is set), with the stored key
+put into that child's environment only — never argv, the database, the
+pty-host's registry or a log — as `ANTHROPIC_AUTH_TOKEN`, beside
+`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`,
+`ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL` and
+`ANTHROPIC_DEFAULT_SONNET_MODEL` `=deepseek-flash[1m]`,
+`ANTHROPIC_DEFAULT_HAIKU_MODEL` and `CLAUDE_CODE_SUBAGENT_MODEL`
+`=deepseek-flash`, and `CLAUDE_CODE_AUTO_COMPACT_WINDOW=786432` — DeepSeek's
+published set for Claude Code (read 2026-10-13) less
+`CLAUDE_CODE_EFFORT_LEVEL=max`. `ANTHROPIC_API_KEY`,
+`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_SMALL_FAST_MODEL` and the
+`CLAUDE_CODE_USE_{BEDROCK,VERTEX,FOUNDRY,ANTHROPIC_AWS}` switches are removed
+from the login-shell environment for it. A `model` that does not start with
+`deepseek-` is dropped, because the launcher's list is Claude's and DeepSeek
+maps a Claude id to a model of its own choosing. `400` with no key set, or
+for an agent other than `claude`; a `resume` of a DeepSeek session stays on
+DeepSeek and is refused, saying why, once the key is removed. The session
+records `sessions.subscription = "deepseek"`, so its plan windows, if Claude
+Code ever reports any for it, go under `sub:deepseek:` and the plan-window
+stop never pauses it.
 
 The daemon reads each subscription's transcripts as it reads the Default
 one's: Claude Code's under `<dir>/projects/`, Codex's under
@@ -3667,7 +3702,7 @@ No DDL change was needed for either fix here, only honest use of the existing co
 - **The weekly report states what changed, not what happened.** It is sold on the promise of the repository that cost 3× its usual week and of last week against the one before it, per repository and model — so it must ship as a comparison against the preceding period, not as a digest of the current one. This is not a presentation choice: five readers were shown a digest-shaped description of it and every one of them concluded they would be paying for delivery of figures the free dashboard already shows (FB-027). A digest is a notification; what moved is the thing a week of data can say and a live screen cannot.
 - **`/v1/history` and the wide ranges of `/v1/stats/summary` are cached, with single-flight and stale-while-revalidate** (`internal/api/answercache.go`). Both answer from aggregates over the whole events table — on the owner's 1 GB, 333k-event database `/v1/history?range=all` is ~1.5s and `/v1/stats/summary?range=all` ~1.0s through the Go driver, and 4.7s and 1.5s under a live dashboard (2026-10-04) — and they are asked for in bursts: **five components on the main screen request history on their own timers**, and the share dialog asks for its period's summary (or all-time history) beside the glance. Requests for the same key that arrive while one is in flight wait for it and share its result. A settled answer is served as it is for its TTL (`historyTTL` 3s, `summaryTTL` 10s); past that it is **still served at once and one background refresh replaces it**, so nobody waits on a whole-table scan once a key has been computed, and what is shown is at most one refresh behind. Past `answerMaxStale` (30 min) an answer is too old to present as current and the caller waits for a fresh one. The daemon computes history for all time and the 7d, 30d and all-time summaries in the background as it starts (`Server.Warm`), so the first screen after a restart finds them ready. **Today's summary is not cached** — it is ~40ms and is the figure people watch move — and neither are the burn rate, throttles and plan windows beside any range, which are read live on every request. Keys carry the range's resolved start as well as its label, so `today`, `7d` and `30d` become new keys at midnight rather than serving yesterday's answer; `?range=` and `?range=today` still share one entry. **Errors are never cached**, and a failed refresh keeps the stale answer. Computations run on a context detached from their first caller: browsers abandon requests routinely, and a caller hanging up must not take the answer away from the callers waiting behind it. Writes do not invalidate — ingest commits several times a second while anyone works, so an invalidated cache would be empty exactly when the screen is busiest. Measured on a copy of the owner's database with a writer committing every 200ms and the main screen's eleven requests fired at once: the slowest went from 3.6s to 0.09s (2026-10-04). `/v1/status` reads its stored-event count the same way, recounted in the background at most every 30 s: a `COUNT(*)` over 333k events is 600ms on a cold connection.
 - **Dated prices (migration-free, `pricing.json`).** A model may have more than one row. A superseded price keeps its own row carrying `until` — the last date it applied, inclusive, UTC — and the current price is the row with no `until`; rows for one id are ordered oldest-first. A turn is priced by `LookupAt`/`PriceAt` at **its own timestamp**, so a rate that has since lapsed still prices the turns that ran under it. Without this, the only way to record a price change is to overwrite the figure, which silently restates history at a price nobody was charged — an invented number (rule 6) about our own past. Sonnet 5 was the first case (introductory $2/$10 through 2026-08-30, $3/$15 announced from 2026-08-31) until the rise was cancelled; no row is dated today. A row whose `until` will not parse is treated as not applying, so an unparseable date falls through to the current price rather than pricing a turn at an expired one. Exactly one row per model id may omit `until`, and a test enforces it.
-- **Corrections (`pricing.json` `corrections`).** A list of `{model, from?, reason}`: turns an earlier table priced *wrongly* — a missing row that fell through to another model by prefix, or a price change that was announced and cancelled. That differs from a price that changed, which never restates history. On start the daemon (`rollup.ApplyCorrections`) reprices every `turn.assistant` whose model starts with `model` and whose time is on or after `from` (UTC; empty = all), at the row in force at the turn's own timestamp, and moves `session_stats` and `daily_stats` by the difference in the same transaction. It runs once per table version, recorded in `meta.price_corrections`; an interrupted pass is finished by the next start, because a turn already at the corrected figure moves by nothing. A malformed `from` or a correction with no model fails the table load. `2026-10-01.1` corrects `claude-opus-5-5` (all turns, previously priced as Opus 5) and `claude-sonnet-5` from 2026-08-31. `2026-10-03.1` adds `gemini-3.8-flash` and `gemini-3.1-flash-lite` with no correction: neither matched another id by prefix, so their turns were unpriced (named in `unpriced`), not mispriced. `2026-10-08.1` adds `claude-haiku-5-5` (its lower, under-100k tier) with no correction, for the same reason.
+- **Corrections (`pricing.json` `corrections`).** A list of `{model, from?, reason}`: turns an earlier table priced *wrongly* — a missing row that fell through to another model by prefix, or a price change that was announced and cancelled. That differs from a price that changed, which never restates history. On start the daemon (`rollup.ApplyCorrections`) reprices every `turn.assistant` whose model starts with `model` and whose time is on or after `from` (UTC; empty = all), at the row in force at the turn's own timestamp, and moves `session_stats` and `daily_stats` by the difference in the same transaction. It runs once per table version, recorded in `meta.price_corrections`; an interrupted pass is finished by the next start, because a turn already at the corrected figure moves by nothing. A malformed `from` or a correction with no model fails the table load. `2026-10-01.1` corrects `claude-opus-5-5` (all turns, previously priced as Opus 5) and `claude-sonnet-5` from 2026-08-31. `2026-10-03.1` adds `gemini-3.8-flash` and `gemini-3.1-flash-lite` with no correction: neither matched another id by prefix, so their turns were unpriced (named in `unpriced`), not mispriced. `2026-10-08.1` adds `claude-haiku-5-5` (its lower, under-100k tier) with no correction, for the same reason. `2026-10-13.1` adds `deepseek-flash` (DeepSeek's off-peak list price; peak hours bill double and are under-reported) with no correction, for the same reason; it prices Claude Code on DeepSeek. The `deepseek-v4-pro` row is unchanged although DeepSeek now lists a higher price, because the date it changed is not known ([OQ-13](12-risks.md#open-questions)).
 - Cost per assistant turn = `tokens_in × input + cache_write × cache_write_price + cache_read × cache_read_price + tokens_out × output`, all prices per token (table values are per MTok ÷ 1e6).
 - Cache-savings math (ported from Caprock-python `_savings.py`): `billed_with = in + 1.25·cache_write + 0.10·cache_read` in input-token equivalents; `billed_without = in + cache_write + cache_read`; `saved = billed_without − billed_with`; hit-rate reported as `cache_read / (in + cache_read + cache_write)`. Where the transcript reports the 1h-TTL split (`cache_creation.ephemeral_1h_input_tokens`), those tokens are priced at the 1h write price (2×), not 1.25×.
 - **Source of the numbers:** Anthropic first-party pricing page (`platform.claude.com/docs/en/about-claude/pricing`), fetched 2026-08-18. Bedrock/Vertex have separate partner pricing — first-party only across v0.1–v0.3; recorded as [OQ-02](12-risks.md#open-questions).
