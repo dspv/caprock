@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **mail:** sign in with Google or Microsoft. A Gmail, Google Workspace,
+  Outlook.com or Microsoft 365 mailbox connects with a click and an approval
+  in the browser, no app password: the installed-app OAuth flow with PKCE,
+  back to Caprock on loopback, then IMAP and SMTP over XOAUTH2. The refresh
+  token is kept in the keychain like a password; a revoked or expired sign-in
+  shows as a sync error asking to sign in again. Signing in with an address
+  Mail already has switches that account over and keeps its mail. Nothing is
+  sent to Google or Microsoft until the button is clicked. The buttons need
+  the build's client IDs (`docs/mail-oauth.md`); iCloud keeps app-specific
+  passwords, having no OAuth for mail.
 - **doctor:** an Orphans section lists the processes on the machine that look
   abandoned, each with why: another Caprock daemon (and whether its data
   directory still exists), terminal holders no Caprock will reattach to from
