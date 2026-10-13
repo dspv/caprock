@@ -382,7 +382,11 @@ export interface PathShare {
  *  Bucket i covers [from_ms + i*width_ms, from_ms + (i+1)*width_ms). Absent on
  *  `range=all`, whose start is the first event ever captured — a fixed bucket
  *  count would make a column mean a different span on every machine. */
-export interface Spark { from_ms: number; width_ms: number; cost: number[]; tokens: number[] }
+export interface Spark {
+  from_ms: number; width_ms: number; cost: number[]; tokens: number[]
+  /** The input side of `tokens` (fresh input, cache reads and writes) and the assistant turns, per bucket; absent from an older daemon. */
+  input?: number[]; turns?: number[]
+}
 /** One REPOSITORY's spend. `paths` is the per-directory breakdown, absent when
  *  the repository has only one directory (it would restate the row's total).
  *  `spark` is the series behind the row's sparkline. */

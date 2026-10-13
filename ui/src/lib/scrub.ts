@@ -205,6 +205,8 @@ export interface TimeBar {
   end: number
   cost: number
   calls: number
+  /** Input tokens, cache reads and writes included, of the calls that report them. */
+  tokens: number
   /** Tool name → how many calls asked for it, from the calls that say. */
   tools: Map<string, number>
 }
@@ -227,11 +229,12 @@ export function timeBars(calls: readonly CallPoint[]): { step: number; bars: Tim
   const offset = new Date(first).getTimezoneOffset() * 60_000
   const start0 = Math.floor((first - offset) / step) * step + offset
   const n = Math.floor((last - start0) / step) + 1
-  const bars: TimeBar[] = Array.from({ length: n }, (_, i) => ({ start: start0 + i * step, end: start0 + (i + 1) * step, cost: 0, calls: 0, tools: new Map() }))
+  const bars: TimeBar[] = Array.from({ length: n }, (_, i) => ({ start: start0 + i * step, end: start0 + (i + 1) * step, cost: 0, calls: 0, tokens: 0, tools: new Map() }))
   for (const c of timed) {
     const b = bars[Math.min(n - 1, Math.floor((c.ts - start0) / step))]!
     b.cost += c.cost
     b.calls++
+    if (c.tokens) b.tokens += (c.tokens.in || 0) + (c.tokens.cache_read || 0) + (c.tokens.cache_write || 0)
     for (const t of c.tools ?? []) b.tools.set(t.tool, (b.tools.get(t.tool) ?? 0) + 1)
   }
   return { step, bars }

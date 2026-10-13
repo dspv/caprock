@@ -299,3 +299,60 @@ func spendTouching(t *testing.T, s *Store, sid, msg string, ts int64, tokens int
 		t.Fatal(err)
 	}
 }
+
+// The cockpit's spend chart plots a period by tokens or turns as well as cost,
+// from the same buckets. Each series must add up to the summary figure it
+// stands for: input tokens to tokens_in + cache_read + cache_write, turns to
+// turns (rule 6).
+func TestSummarizeSparkCarriesInputAndTurns(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	const hour = int64(3_600_000)
+	from := 50 * hour
+	turn := func(sid string, ts int64, tk event.TokenDelta, usd float64) {
+		t.Helper()
+		ev := &event.Event{
+			SessionID: sid, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Model: "claude-opus-5", Ts: time.UnixMilli(ts), Tokens: &tk, CostUSD: &usd,
+			Key: fmt.Sprintf("%s-%d", sid, ts),
+		}
+		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	turn("a", from+10, event.TokenDelta{In: 5, Out: 100, CacheRead: 900, CacheWrite: 95}, 0.5)
+	turn("a", from+20, event.TokenDelta{In: 10, Out: 50, CacheRead: 0, CacheWrite: 990}, 1.5)
+	turn("b", from+2*hour+5, event.TokenDelta{In: 1, Out: 9, CacheRead: 3000, CacheWrite: 0}, 0.25)
+	for _, id := range []string{"a", "b"} {
+		if err := UpsertSession(ctx, s.db, id, SessionPatch{Project: "alpha"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sum, err := SummarizeSpark(ctx, s.db, from, SparkSpec{Buckets: 3, WidthMs: hour, FromMs: from})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sum.Projects) != 1 || sum.Projects[0].Spark == nil {
+		t.Fatalf("want one project with a spark: %+v", sum.Projects)
+	}
+	sp := sum.Projects[0].Spark
+	want := func(name string, got, exp []int64) {
+		t.Helper()
+		if fmt.Sprint(got) != fmt.Sprint(exp) {
+			t.Fatalf("%s = %v, want %v", name, got, exp)
+		}
+	}
+	want("input", sp.Input, []int64{2000, 0, 3001})
+	want("turns", sp.Turns, []int64{2, 0, 1})
+	// Tokens keeps its meaning, output included, so the Projects panel's
+	// picture does not change.
+	want("tokens", sp.Tokens, []int64{2150, 0, 3010})
+	var in, turns int64
+	for i := range sp.Input {
+		in += sp.Input[i]
+		turns += sp.Turns[i]
+	}
+	if in != sum.TokensIn+sum.CacheRead+sum.CacheWrite || turns != sum.Turns {
+		t.Fatalf("series sum to (%d, %d), summary says (%d, %d)", in, turns, sum.TokensIn+sum.CacheRead+sum.CacheWrite, sum.Turns)
+	}
+}

@@ -340,7 +340,7 @@ describe('the spend details', () => {
   const stored = () => JSON.parse(localStorage.getItem('caprock.app.cockpit.spend') ?? '{}')
   const slots = () => Array.from(spend().querySelectorAll('[data-slot]')).map((d) => d.getAttribute('data-slot'))
 
-  it('opens on the session’s chart by default, folds to one line, and remembers it', async () => {
+  it('opens on the session’s chart by default, folds to a strip of bars and figures, and remembers it', async () => {
     const { unmount } = await act(async () => show(agent({ started_at: now - 72 * 60_000, worked_at: now })))
     expect(spend()).toHaveAttribute('data-spend-view', 'chart')
     expect(within(spend()).getByRole('button', { name: 'Chart' })).toHaveAttribute('aria-pressed', 'true')
@@ -349,13 +349,33 @@ describe('the spend details', () => {
     const toggle = within(spend()).getByRole('button', { name: /^Spend$/ })
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(toggle)
-    expect(within(spend()).getByRole('button', { name: /spent \$1\.84 · 12 turns/i })).toHaveAttribute('aria-expanded', 'false')
+    // The chart's metric first, then the next two the session carries.
+    expect(within(spend()).getByRole('button', { name: 'Spend $1.84 · 950.1k tok · 12 turns' })).toHaveAttribute('aria-expanded', 'false')
     expect(within(spend()).queryByRole('group', { name: 'Spend view' })).toBeNull()
-    expect(stored()).toMatchObject({ folded: true, v: 3 })
+    expect(stored()).toMatchObject({ folded: true, v: 4 })
     unmount()
     resetSpendPrefsForTest()
     show(agent())
-    expect(spend().querySelector('[data-spend-folded]')).toHaveTextContent(/spent \$1\.84/i)
+    const strip = spend().querySelector('[data-spend-folded]')
+    expect(strip).toHaveTextContent(/\$1\.84/)
+    expect([...strip!.querySelectorAll('[data-fold-fig]')].map((e) => e.getAttribute('data-fold-fig'))).toEqual(['cost', 'tokens', 'turns'])
+  })
+
+  it('switches what the bars measure from the ▾, and puts that figure first when folded', async () => {
+    await act(async () => show(agent()))
+    // Under Now, above the context and the plan.
+    const after = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(after(screen.getByRole('region', { name: 'Now' }), spend())).toBe(true)
+    expect(after(spend(), screen.getByRole('region', { name: 'Context' }))).toBe(true)
+    fireEvent.click(within(spend()).getByRole('button', { name: /^The bars show cost/ }))
+    const menu = within(spend()).getByRole('menu', { name: 'What the bars show' })
+    expect(within(menu).getAllByRole('menuitemradio').map((b) => b.textContent?.split(/[$\d]/)[0])).toEqual(['Cost', 'Tokens', 'Turns'])
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: /^Tokens/ }))
+    expect(stored()).toMatchObject({ chartBy: 'tokens', v: 4 })
+    expect(spend().querySelector('[data-spend-time]')).toHaveAttribute('data-metric', 'tokens')
+    expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('950.1k')
+    fireEvent.click(within(spend()).getByRole('button', { name: /^Spend$/ }))
+    expect(within(spend()).getByRole('button', { name: 'Spend 950.1k tok · $1.84 · 12 turns' })).toBeInTheDocument()
   })
 
   it('opens a choice stored before the chart was the default on the chart, once', async () => {
@@ -366,7 +386,7 @@ describe('the spend details', () => {
     expect(spend()).toHaveAttribute('data-spend-period', '7d')
     // A pick after that holds.
     showNumbers()
-    expect(stored()).toMatchObject({ view: 'numbers', v: 3 })
+    expect(stored()).toMatchObject({ view: 'numbers', v: 4 })
     unmount()
     resetSpendPrefsForTest()
     await act(async () => { show(agent()) })

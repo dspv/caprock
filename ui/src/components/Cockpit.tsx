@@ -23,10 +23,10 @@ import { readWindow } from './PlanLimits'
 import { PlanChip } from './PlanPicker'
 import { useSessionPlan, windowsOf, type SessionPlan } from './AccountPlan'
 import { WINDOW_MS, pace } from '@/lib/pace'
-import { SpendChart, SpendOverTime } from './SpendScrub'
+import { SpendBars, SpendChart, SpendOverTime, useSessionBars } from './SpendScrub'
 import { callsFromEvents } from '@/lib/scrub'
 import { everyWhileVisible } from '@/lib/visible'
-import { HEADLINES, METRICS, SPEND_PERIODS, foldedLine, metricTitle, metricValue, periodFigures, periodScope, pickHero, pickSlot, setSpendPrefs, shownSlots, spendFigures, useSpendPrefs, type Metric, type PeriodFigures, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
+import { CHART_METRICS, HEADLINES, METRICS, SPEND_PERIODS, chartTotal, chartValueText, foldedFigures, metricTitle, metricValue, periodFigures, periodScope, pickHero, pickSlot, setSpendPrefs, shownSlots, spendFigures, useSpendPrefs, type ChartMetric, type Metric, type PeriodFigures, type SpendBar, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
@@ -135,14 +135,15 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const calls = useMemo(() => callsFromEvents(main), [main])
   const figures = spendFigures(s, calls)
   // The order is what the people using it look at (owner, 2026-10-12): the
-  // agent and its headline figure, what it and its subagents are doing now,
-  // its task list, the context, the plan limits; the spend details after,
-  // folded until a viewer opens them.
+  // agent and its headline figure, what it is doing now, then the spend
+  // chart (owner, 2026-10-13: "I like looking at it", picked from three
+  // places), its subagents, its task list, the context, the plan limits.
   return (
     <>
       <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} onChip={openFromChip} />
       <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
       {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
+      <Spend s={s} sessionId={sessionId} events={main} now={now} figures={figures} summary={summary} />
       {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && (
         <Subagents subs={subs} permission={permission} now={now} sessionId={sessionId} open={openSub} onOpen={setOpenSub}
           allFinished={allFinished} onAllFinished={setAllFinished} reveal={reveal} />
@@ -150,7 +151,6 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
       <TodoBlock sessionId={sessionId} />
       <ContextMeter s={s} />
       {plan && <PlanWindows limits={plan} agent={s.agent} now={now} acct={acct} />}
-      <Spend s={s} sessionId={sessionId} events={main} now={now} figures={figures} summary={summary} />
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
       {changes}
     </>
@@ -449,33 +449,38 @@ function HeroSecondaries({ figures }: { figures: SpendFigures }) {
 }
 
 /**
- * The spend details under the plan, unfolded by default, foldable to one
- * line. The header carries a period chip (session · today · 7d · 30d) and
+ * The spend details under Now, unfolded by default, foldable to one strip
+ * (FoldSpark). The header carries a period chip (session · today · 7d · 30d) and
  * *Chart | Numbers*, both remembered per viewer (owner, 2026-10-12: "you
  * can choose what you see — the chart or the numbers — and which ones").
  * **Chart**, the default since the figures beside the agent carry the
  * numbers (owner, 2026-10-12: "where did you put the chart?"): the
  * period's spend by time, its total on the top line and the stretch under
- * the pointer at its right. **Numbers**: three figures in one row, each
+ * the pointer at its right, and what the bars measure — cost, tokens or
+ * turns — picked from the ▾ after the total (ChartChooser). **Numbers**: three figures in one row, each
  * label a menu that picks what sits there, never one twice and, for the
  * session, never one of the figures beside the agent again.
  */
 function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSummary; sessionId: string; events: readonly Event[]; now: number; figures: SpendFigures; summary?: Summary }) {
-  const { folded, headline, hero, view, period, slots } = useSpendPrefs()
-  // Folded, nothing is read: the one line is the session's own.
-  const range = usePeriodSummary(folded ? 'session' : period, summary)
+  const { folded, hero, view, period, slots, chartBy } = useSpendPrefs()
+  // Folded, the strip shows the period and the metric the chart shows.
+  const range = usePeriodSummary(period, summary)
   if (!s.stats) return null
   const scope = periodScope(period)
   const pf = periodFigures(period, figures, range)
+  const chooser = <ChartChooser metric={chartBy} figures={pf} />
   return (
-    <section aria-label="Spend" data-spend-view={folded ? undefined : view} data-spend-period={folded ? undefined : period} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+    <section aria-label="Spend" data-spend-view={folded ? undefined : view} data-spend-period={folded ? undefined : period} className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
       <div className="flex min-w-0 items-center gap-1.5">
         <button type="button" aria-expanded={!folded} onClick={() => setSpendPrefs({ folded: !folded })}
-          title={folded ? 'Show the spend details' : 'Fold the spend details'}
-          className="-mx-1 flex min-w-0 flex-1 items-center gap-1.5 rounded-[6px] px-1 py-0.5 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+          aria-label={folded ? `Spend ${foldedFigures(chartBy, pf).map((f) => (foldWord(f.id) ? `${f.value} ${foldWord(f.id)}` : f.value)).join(' · ')}` : undefined}
+          title={folded ? `Show the spend details · ${scope}` : 'Fold the spend details'}
+          className={`-mx-1 flex min-w-0 flex-1 items-center gap-1.5 rounded-[6px] px-1 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${folded ? 'py-1' : 'py-0.5'}`}>
           <Chevron open={!folded} />
           {folded ? (
-            <span data-spend-folded className="num min-w-0 truncate text-[12.5px] text-fg-muted">{foldedLine(headline, figures)}</span>
+            period === 'session'
+              ? <SessionFoldSpark sessionId={sessionId} events={events} metric={chartBy} figures={pf} period={period} />
+              : <FoldSpark bars={pf.series?.bars} metric={chartBy} figures={pf} period={period} />
           ) : (
             <h4 className="min-w-0 truncate text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Spend</h4>
           )}
@@ -489,13 +494,87 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
       </div>
       {!folded && view === 'numbers' && <SpendNumbers period={period} hero={hero} slots={slots} figures={pf} scope={scope} />}
       {!folded && view === 'chart' && (period === 'session'
-        ? <SpendOverTime sessionId={sessionId} events={events} now={now} total={figures.cost} />
+        ? <SpendOverTime sessionId={sessionId} events={events} now={now} total={chartTotal(chartBy, figures)} metric={chartBy} chooser={chooser} />
         : !range
           ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">Reading {scope.split(' · ')[0]!.toLowerCase()}…</p>
           : !pf.series
             ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">This range’s summary has no spend by time to draw.</p>
-            : <SpendChart id={`spend-time-${sessionId}`} bars={pf.series.bars} step={pf.series.step} now={now} total={pf.cost} scope={scope.toLowerCase()} />)}
+            : <SpendChart id={`spend-time-${sessionId}`} bars={pf.series.bars} step={pf.series.step} now={now} total={chartTotal(chartBy, pf)} scope={scope.toLowerCase()} metric={chartBy} chooser={chooser} />)}
     </section>
+  )
+}
+
+/**
+ * The chart's ▾, after its figure on the top line: what the bars measure,
+ * in the hero's own style (*$1,320.49 cost ▾*). Remembered per viewer.
+ */
+function ChartChooser({ metric, figures }: { metric: ChartMetric; figures: PeriodFigures }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLSpanElement>(null)
+  useMenuDismiss(open, box, () => setOpen(false))
+  const meta = CHART_METRICS.find((m) => m.id === metric)!
+  return (
+    <span ref={box} className="shrink-0">
+      <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={`The bars show ${meta.name.toLowerCase()}. Choose what they show`}
+        title="Choose what the bars show" onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-baseline gap-1 whitespace-nowrap rounded-[5px] px-1 text-[12px] leading-[16px] text-fg-faint outline-none hover:bg-panel-2 hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] aria-expanded:bg-panel-2">
+        {meta.short}<span aria-hidden className="text-[9px]">▾</span>
+      </button>
+      {open && (
+        <div role="menu" aria-label="What the bars show" onKeyDown={onMenuKey}
+          className="absolute inset-x-0 top-full z-30 mt-1 grid gap-0.5 rounded-[9px] border border-border-strong bg-panel p-1.5 shadow-lg">
+          {CHART_METRICS.map((m) => (
+            <button key={m.id} type="button" role="menuitemradio" aria-checked={m.id === metric}
+              onClick={() => { setSpendPrefs({ chartBy: m.id }); setOpen(false) }} title={m.hint}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-[6px] px-2 py-1.5 text-left outline-none hover:bg-panel-2 focus-visible:bg-panel-2 aria-checked:bg-accent/10">
+              <span className={`truncate text-[13px] text-fg ${m.id === metric ? 'font-semibold' : ''}`}>{m.name}</span>
+              <span className="num text-[12px] text-fg-muted">{chartValueText(m.id, chartTotal(m.id, figures))}</span>
+              <span className="col-span-2 truncate text-[11.5px] text-fg-muted">{m.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  )
+}
+
+/** "7d" before a folded strip's figures, when they are not the session's own. */
+function FoldPeriod({ period }: { period: SpendPeriod }) {
+  if (period === 'session') return null
+  return <span className="num shrink-0 rounded-[4px] border border-[var(--app-hairline)] px-1 text-[10.5px] leading-[14px] text-fg-muted">{period}</span>
+}
+
+/** The short word after a folded figure: none for dollars, which say what they are. */
+function foldWord(m: Metric): string {
+  return m === 'cost' ? '' : HEADLINES.find((h) => h.id === m)?.short ?? ''
+}
+
+function SessionFoldSpark(p: { sessionId: string; events: readonly Event[]; metric: ChartMetric; figures: PeriodFigures; period: SpendPeriod }) {
+  const { bars } = useSessionBars(p.sessionId, p.events)
+  return <FoldSpark bars={bars} metric={p.metric} figures={p.figures} period={p.period} />
+}
+
+/**
+ * The folded Spend: the chart's bars, 20px tall, and three figures beside
+ * them — the chart's metric first in 13px semibold, two quieter after it;
+ * the third gives way in a cockpit under 340px (a container query on the
+ * section). It replaced a faint one-line sentence that a 330px cockpit cut
+ * off (owner, 2026-10-13: "folded, a more noticeable line with metrics").
+ */
+function FoldSpark({ bars, metric, figures, period }: { bars?: readonly SpendBar[]; metric: ChartMetric; figures: PeriodFigures; period: SpendPeriod }) {
+  const figs = foldedFigures(metric, figures)
+  return (
+    <span data-spend-folded className="flex min-w-0 flex-1 items-center gap-2.5">
+      <FoldPeriod period={period} />
+      <span className="h-[20px] min-w-[40px] flex-1 border-b border-[var(--app-hairline)]">
+        {bars && bars.length > 0 && <SpendBars bars={bars} metric={metric} height={20} />}
+      </span>
+      {figs.map((f, i) => (
+        <span key={f.id} data-fold-fig={f.id} className={`num shrink-0 whitespace-nowrap text-[13px] leading-[18px] ${i === 0 ? 'font-semibold text-fg' : 'font-medium text-fg-muted'} ${i === 2 ? '@max-[340px]:hidden' : ''}`}>
+          {f.value}{foldWord(f.id) && <span className="ml-0.5 text-[11.5px] font-normal text-fg-faint">{foldWord(f.id)}</span>}
+        </span>
+      ))}
+    </span>
   )
 }
 
