@@ -661,6 +661,11 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/saved-prompts", s.handleAddSavedPrompt)
 	m.HandleFunc("PATCH /v1/saved-prompts/{id}", s.handlePatchSavedPrompt)
 	m.HandleFunc("DELETE /v1/saved-prompts/{id}", s.handleDeleteSavedPrompt)
+	// The Inbox (03-contracts.md § Inbox): what the phone's Save keeps.
+	m.HandleFunc("GET /v1/inbox", s.handleInbox)
+	m.HandleFunc("POST /v1/inbox", s.handleAddInbox)
+	m.HandleFunc("DELETE /v1/inbox/{id}", s.handleDeleteInbox)
+	m.HandleFunc("GET /v1/inbox/{id}/files/{n}", s.handleInboxFile)
 	m.HandleFunc("POST /v1/shells", s.handleStartShell)
 	m.HandleFunc("GET /v1/shells", s.handleShells)
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)

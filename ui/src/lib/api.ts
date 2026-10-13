@@ -1149,6 +1149,28 @@ export interface SavedPrompt {
 /** What a saved prompt is made or changed from; project_id 0 is every project. */
 export interface SavedDraft { kind: 'prompt' | 'command'; name: string; text: string; project_id: number }
 
+/** One thing saved for later from the phone or the machine (03-contracts.md § Inbox). */
+export interface InboxItem {
+  id: number
+  text: string
+  /** Absolute paths under the daemon's inbox directory. */
+  files: string[]
+  /** Absent for the Inbox itself, no project. */
+  project_id?: number
+  project_root?: string
+  project_name?: string
+  /** The paired device's name; absent when saved on the machine. */
+  from_device?: string
+  created_at: number
+}
+
+/** What POST /v1/inbox takes: text and/or files (base64), to a project or the Inbox (0). */
+export interface InboxDraft {
+  text: string
+  project_id?: number
+  files?: { name: string; type: string; data: string }[]
+}
+
 /** The agents that have subscriptions (ADR-048). */
 export type SubscriptionAgentId = 'claude' | 'codex'
 
@@ -1598,6 +1620,10 @@ export const api = {
   addSavedPrompt: (d: SavedDraft) => post<{ item: SavedPrompt }>('/v1/saved-prompts', d),
   updateSavedPrompt: (id: number, d: Partial<SavedDraft>) => post<{ item: SavedPrompt }>(`/v1/saved-prompts/${id}`, d, 'PATCH'),
   removeSavedPrompt: (id: number) => post<void>(`/v1/saved-prompts/${id}`, {}, 'DELETE'),
+  /** The Inbox (03-contracts.md § Inbox). Saving and deleting: the machine and a controller. */
+  inbox: () => get<{ items: InboxItem[]; max: number }>('/v1/inbox'),
+  addInbox: (d: InboxDraft) => post<{ item: InboxItem }>('/v1/inbox', d),
+  removeInbox: (id: number) => post<void>(`/v1/inbox/${id}`, {}, 'DELETE'),
   /** Settings → Subscriptions (ADR-048). */
   subscriptions: () => get<SubscriptionsResponse>('/v1/subscriptions'),
   /** 402 at the free number without a licence. */

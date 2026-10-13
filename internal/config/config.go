@@ -338,6 +338,12 @@ func ChatsDir(dir string) string { return filepath.Join(dir, "chats") }
 // user has to go looking for.
 func PasteDir(dir string) string { return filepath.Join(dir, "paste") }
 
+// InboxDir is where the Inbox keeps the photos and files saved with an item
+// (03-contracts.md § Inbox): `inbox/<stamp>-<random>/<name>`, one directory
+// per file. Apart from paste/ because it is kept until its item is deleted,
+// while a pasted file goes after 30 days.
+func InboxDir(dir string) string { return filepath.Join(dir, "inbox") }
+
 // Load reads config.json, layering it over Defaults(). Unknown fields are ignored.
 func Load(dir string) (Config, error) {
 	cfg := Defaults()

@@ -190,7 +190,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `POST /v1/agents/{id}/input`, `POST /v1/agents/{id}/signal`,
   `POST /v1/agents/{id}/permission`, the message queue (`POST /v1/agents/{id}/queue`,
   `PATCH` and `DELETE /v1/agents/{id}/queue/{qid}`, `POST /v1/agents/{id}/queue/{qid}/send`),
-  `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`, and — to
+  `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`, saving to
+  and deleting from the Inbox (`POST /v1/inbox`, `DELETE /v1/inbox/{id}`,
+  § Inbox), and — to
   start work from the phone (2026-10-05, [21-app.md](21-app.md) decision 8) —
   `POST /v1/projects`, `PATCH` and `DELETE /v1/projects/{id}`, and `POST` and
   `DELETE /v1/projects/{id}/worktrees…` (see § Projects and shells for the
@@ -669,7 +671,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -1296,6 +1298,10 @@ GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?
 POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny|dismiss} → 204; 409 when that prompt is not the oldest outstanding, or no permission menu is on screen at all (the prompt is dropped); 422 {error} when the menu on screen has no such option, or more than one prompt is outstanding (nothing typed); dismiss types nothing and drops that prompt, any of them
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit; subprotocol caprock.term.v2 [?since=&client=] = protocol v2
 POST   /v1/paste                     {name, type, data:base64} → {path}; writes a pasted or dropped file so Claude Code can read it
+GET    /v1/inbox                     → {items, max}; what was saved for later (§ Inbox)
+POST   /v1/inbox                     {text?, project_id?, files?} → {item}; save a note, a link or a photo (§ Inbox)
+DELETE /v1/inbox/{id}                → 204; with its files (§ Inbox)
+GET    /v1/inbox/{id}/files/{n}      → an item's image, for its thumbnail (§ Inbox)
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
 POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, name}}; this machine only
@@ -2395,6 +2401,48 @@ DELETE /v1/saved-prompts/{id}              → 204
   ESC CR, then `\r` on its own 80 ms later, as the message field does; a
   command is `POST /v1/shells {cwd, type: <text>, run: true}`.
 
+### Inbox
+
+A note, a link or a photo saved for later — from the phone's **Save**, from
+another app's **Share** on the phone, or on the machine — kept for the user to
+start a chat from on the Mac. Code: `internal/api/inbox.go`,
+`internal/store/inbox.go`; the files are written by `writeUpload` in
+`internal/api/paste.go`, with the same checks as a pasted file.
+
+```
+GET    /v1/inbox                    → {items: [InboxItem], max}; newest first
+POST   /v1/inbox                    {text?, project_id?, files?: [{name, type, data: base64}]} → {item: InboxItem}
+DELETE /v1/inbox/{id}               → 204; its files are deleted with it
+GET    /v1/inbox/{id}/files/{n}     → the n-th file's bytes, images only (thumbnails)
+```
+
+- **`InboxItem`** — `{id, text, files: [path], project_id?, project_root?,
+  project_name?, from_device?, created_at}` (unix ms). `project_id` absent
+  (0 in a request) is the Inbox itself; `project_root` and `project_name` are
+  joined from `projects`. `files` are absolute paths under
+  `<data_dir>/inbox/<UTC stamp>-<random hex>/<name>`, one directory per file,
+  kept until the item is deleted (a pasted file goes after 30 days; these do
+  not). `from_device` is the paired device's name, absent when saved on the
+  machine.
+- **Limits.** `text` trimmed, no NUL, valid UTF-8, at most 16 KiB; text or
+  at least one file; at most 4 files, each checked as `POST /v1/paste`
+  checks one (the extension allow-list, 10 MB, `415` for a refused type, the
+  name sanitised). A refused file leaves nothing behind. At most 500 items:
+  the 501st `POST` is `409`. `project_id` must name a project (`400`); an
+  unknown id is `404`. `501` for a file when the daemon has no data
+  directory.
+- **Files are served as images only.** `GET …/files/{n}` answers png, jpg,
+  jpeg, gif and webp with their type, `nosniff` and a day's private cache;
+  any other file is `404` (an HTML or SVG file served from this origin would
+  run as the dashboard; the session reads it by path instead), as is a path
+  that is not directly inside one of the Inbox's own directories.
+- **Who.** Both `GET`s are open to every paired device; `POST` and `DELETE`
+  to a controller and the machine (a viewer gets `403`). Saving puts nothing
+  into any session: a chat starts from an item only when the user starts
+  one.
+- **Live.** Each save and delete publishes an `inbox` frame, `{id,
+  deleted}`, on `/v1/live`.
+
 ### Queued messages
 
 What the chat field sends to a session Caprock started ([ADR-053](08-decisions.md)).
@@ -3255,6 +3303,24 @@ CREATE INDEX IF NOT EXISTS idx_saved_prompts_project ON saved_prompts(project_id
 Saved prompts and commands ([ADR-051](08-decisions.md), § Saved prompts and
 commands). No foreign key: unlisting a project (`archived_at`) keeps its
 rows, and nothing deletes a project row.
+
+### Inbox DDL (migration 0052)
+
+```sql
+CREATE TABLE IF NOT EXISTS inbox (
+  id          INTEGER PRIMARY KEY,
+  text        TEXT    NOT NULL DEFAULT '',
+  files       TEXT    NOT NULL DEFAULT '[]',
+  project_id  INTEGER,                -- NULL = the Inbox, no project
+  from_device TEXT    NOT NULL DEFAULT '',
+  created_at  INTEGER NOT NULL        -- unix ms
+);
+CREATE INDEX IF NOT EXISTS idx_inbox_created ON inbox(created_at);
+```
+
+What was saved for later (§ Inbox). `files` is a JSON array of paths the
+daemon wrote under `<data_dir>/inbox`. No foreign key: unlisting a project
+keeps its items, as it keeps its saved prompts.
 
 ### Turn bounds DDL (migration 0048)
 

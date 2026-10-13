@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/config"
@@ -224,50 +225,64 @@ func (s *Server) handlePaste(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, "bad request", "the body is not the JSON this endpoint takes, or is larger than 10 MB")
 		return
 	}
-	name, ok := pasteName(body.Name, body.Type)
-	if !ok {
-		what := strings.ToLower(filepath.Ext(cleanStem(body.Name)))
-		if what == "" {
-			what = "a file with no extension"
-		}
-		fail(http.StatusUnsupportedMediaType, "unsupported file type: "+what, pasteAccepted())
-		return
-	}
-	raw, err := base64.StdEncoding.DecodeString(body.Data)
-	if err != nil {
-		fail(http.StatusBadRequest, "bad request", "data is not valid base64")
-		return
-	}
-	if len(raw) == 0 {
-		fail(http.StatusBadRequest, "empty file", "there is nothing in it to save")
-		return
-	}
-	if len(raw) > pasteLimit {
-		fail(http.StatusRequestEntityTooLarge, "file is larger than 10 MB", "attach it by path instead: type the path into the session")
-		return
-	}
-
-	root := config.PasteDir(s.d.DataDir)
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		fail(http.StatusInternalServerError, "cannot write", err.Error())
-		return
-	}
-	var suffix [4]byte
-	if _, err := rand.Read(suffix[:]); err != nil {
-		fail(http.StatusInternalServerError, "cannot write", err.Error())
-		return
-	}
-	// Mkdir, not MkdirAll: the directory is new or this paste does not
-	// happen, so two requests can never share one.
-	dir := filepath.Join(root, fmt.Sprintf("%s-%s", s.d.Now().UTC().Format("20060102-150405"), hex.EncodeToString(suffix[:])))
-	if err := os.Mkdir(dir, 0o700); err != nil {
-		fail(http.StatusInternalServerError, "cannot write", err.Error())
-		return
-	}
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, raw, 0o600); err != nil {
-		fail(http.StatusInternalServerError, "cannot write", err.Error())
+	path, perr := writeUpload(config.PasteDir(s.d.DataDir), s.d.Now(), body.Name, body.Type, body.Data)
+	if perr != nil {
+		fail(perr.code, perr.msg, perr.detail)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"path": path})
+}
+
+// uploadErr is why writeUpload refused a file, as the endpoint answers it.
+type uploadErr struct {
+	code        int
+	msg, detail string
+}
+
+// writeUpload checks one file a browser sent — its name or type against the
+// allow-list, its base64, its size — and writes it 0600 into a directory of
+// its own under root, `<root>/<UTC timestamp>-<random hex>/<name>`. Shared by
+// POST /v1/paste and the Inbox (inbox.go), so a file saved from the phone
+// passes exactly the checks a pasted one does.
+func writeUpload(root string, now time.Time, rawName, mimeType, data string) (string, *uploadErr) {
+	name, ok := pasteName(rawName, mimeType)
+	if !ok {
+		what := strings.ToLower(filepath.Ext(cleanStem(rawName)))
+		if what == "" {
+			what = "a file with no extension"
+		}
+		return "", &uploadErr{http.StatusUnsupportedMediaType, "unsupported file type: " + what, pasteAccepted()}
+	}
+	raw, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return "", &uploadErr{http.StatusBadRequest, "bad request", "data is not valid base64"}
+	}
+	if len(raw) == 0 {
+		return "", &uploadErr{http.StatusBadRequest, "empty file", "there is nothing in it to save"}
+	}
+	if len(raw) > pasteLimit {
+		return "", &uploadErr{http.StatusRequestEntityTooLarge, "file is larger than 10 MB", "attach it by path instead: type the path into the session"}
+	}
+	cannot := func(err error) (string, *uploadErr) {
+		return "", &uploadErr{http.StatusInternalServerError, "cannot write", err.Error()}
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return cannot(err)
+	}
+	var suffix [4]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return cannot(err)
+	}
+	// Mkdir, not MkdirAll: the directory is new or this upload does not
+	// happen, so two requests can never share one.
+	dir := filepath.Join(root, fmt.Sprintf("%s-%s", now.UTC().Format("20060102-150405"), hex.EncodeToString(suffix[:])))
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		return cannot(err)
+	}
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		_ = os.RemoveAll(dir)
+		return cannot(err)
+	}
+	return path, nil
 }

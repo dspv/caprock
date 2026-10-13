@@ -44,6 +44,9 @@ const (
 	// FrameQueue is an owned session's message queue after any change
 	// (ADR-053): {session_id, messages, waiting}.
 	FrameQueue FrameType = "queue"
+	// FrameInbox says the Inbox changed (03-contracts.md § Inbox): {id,
+	// deleted}, so a screen showing it reads it again.
+	FrameInbox FrameType = "inbox"
 )
 
 // Frame is what goes over /v1/live. Seq is set by Publish: one more than the

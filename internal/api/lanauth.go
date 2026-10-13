@@ -272,6 +272,8 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/tools/drill":                     true, // the tool drill-down; its Premium half is gated in the handler
 	"GET /v1/saved-prompts":                   true, // the phone's chips (ADR-051); changing them is the machine's
 	"GET /v1/attempts/{group}":                true, // Compare attempts (ADR-052): what each changed and cost, a read
+	"GET /v1/inbox":                           true, // what was saved for later, from the phone or the machine
+	"GET /v1/inbox/{id}/files/{n}":            true, // an Inbox item's image, for its thumbnail
 
 	// The permission prompt an owned session waits on (ADR-035); the live
 	// socket already carries it to a viewer.
@@ -354,6 +356,11 @@ var controllerRoutes = map[string]bool{
 	"POST /v1/agents/{id}/input":  true,
 	"POST /v1/agents/{id}/signal": true, // pause, resume, stop
 	"POST /v1/paste":              true, // a photo or file from the phone, typed in as its path
+	// The Inbox: save a note, a link or a photo for later, and delete one
+	// (03-contracts.md § Inbox). Nothing in it is typed anywhere until the
+	// user starts a chat from it.
+	"POST /v1/inbox":              true,
+	"DELETE /v1/inbox/{id}":       true,
 	"POST /v1/tasks/{id}/approve": true,
 	"POST /v1/tasks/{id}/reject":  true,
 
