@@ -152,7 +152,7 @@ for num, title, merged in db.execute(
         continue
     seen.add(num)
     prs.append({"number": num, "title": title})
-    if len(prs) >= 8:
+    if len(prs) >= 16:
         break
 
 # Each pull request as GitHub shows it to anyone: dspv/caprock is public.
@@ -163,14 +163,30 @@ def _s(iso):
         return None
     t = _dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() * 1000
     return round((t - lo) / 1000)
+# A pull request's checks are what GitHub shows today, which is not what
+# they were in the window once the branch is pushed again or re-run. So a
+# fixture that exists keeps its pull requests as first read, and only a
+# field it lacks is fetched; DEMO_REFRESH_PRS=1 reads them all again.
+prev = {}
+if os.path.exists(OUT) and os.environ.get("DEMO_REFRESH_PRS") != "1":
+    prev = {p["number"]: p for p in json.load(open(OUT)).get("prs", [])}
+    prs = [prev[p["number"]] if p["number"] in prev else p for p in prs]
 for pr in prs:
+    if pr["number"] in prev and "changed_files" in pr:
+        continue
+    if pr["number"] in prev:
+        g = json.loads(subprocess.run(["gh", "pr", "view", str(pr["number"]), "--repo", "dspv/caprock", "--json",
+                                       "changedFiles,commits"], capture_output=True, text=True, check=True).stdout)
+        pr["changed_files"], pr["commits"] = g["changedFiles"], len(g["commits"])
+        continue
     raw = subprocess.run(["gh", "pr", "view", str(pr["number"]), "--repo", "dspv/caprock", "--json",
-                          "state,headRefName,additions,deletions,mergeable,createdAt,mergedAt,statusCheckRollup"],
+                          "state,headRefName,additions,deletions,changedFiles,commits,mergeable,createdAt,mergedAt,statusCheckRollup"],
                          capture_output=True, text=True, check=True).stdout
     g = json.loads(raw)
     pr.update({
         "state": g["state"].lower(), "branch": g["headRefName"], "additions": g["additions"],
-        "deletions": g["deletions"], "mergeable": g["mergeable"].lower(),
+        "deletions": g["deletions"], "changed_files": g["changedFiles"], "commits": len(g["commits"]),
+        "mergeable": g["mergeable"].lower(),
         "created_s": _s(g["createdAt"]), "merged_s": _s(g.get("mergedAt")),
         "checks": [{"name": c.get("name") or c.get("context"), "workflow": c.get("workflowName") or "",
                     "conclusion": (c.get("conclusion") or "").lower(), "started_s": _s(c.get("startedAt")),
@@ -178,8 +194,13 @@ for pr in prs:
                    for c in g.get("statusCheckRollup") or [] if "${{" not in (c.get("name") or "")],
     })
 
+# Only what existed by five minutes past the window, newest eight: a pull
+# request opened later (this fixture's own, for one) is not part of it.
+prs = [p for p in prs if p["created_s"] is not None and p["created_s"] <= round((hi - lo) / 1000) + 300][:8]
+
 # The plan windows as Claude Code's status line reported them through the
 # window: [t, used_percentage, seconds until that window resets].
+
 limits = {}
 for w in ("five_hour", "seven_day"):
     limits[w] = [[round((ts - lo) / 1000), pct, resets - ts // 1000]

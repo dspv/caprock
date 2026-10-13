@@ -2445,7 +2445,9 @@
    "mergeable": "mergeable",
    "created_s": 5362,
    "merged_s": null,
-   "checks": []
+   "checks": [],
+   "changed_files": 18,
+   "commits": 3
   },
   {
    "number": 563,
@@ -2457,7 +2459,9 @@
    "mergeable": "conflicting",
    "created_s": 5223,
    "merged_s": null,
-   "checks": []
+   "checks": [],
+   "changed_files": 20,
+   "commits": 3
   },
   {
    "number": 562,
@@ -2469,7 +2473,9 @@
    "mergeable": "conflicting",
    "created_s": 4457,
    "merged_s": null,
-   "checks": []
+   "checks": [],
+   "changed_files": 26,
+   "commits": 4
   },
   {
    "number": 561,
@@ -2552,7 +2558,9 @@
      "started_s": 4241,
      "completed_s": 4363
     }
-   ]
+   ],
+   "changed_files": 19,
+   "commits": 10
   },
   {
    "number": 560,
@@ -2635,7 +2643,9 @@
      "started_s": 4088,
      "completed_s": 4207
     }
-   ]
+   ],
+   "changed_files": 53,
+   "commits": 4
   },
   {
    "number": 559,
@@ -2647,7 +2657,9 @@
    "mergeable": "conflicting",
    "created_s": 3828,
    "merged_s": null,
-   "checks": []
+   "checks": [],
+   "changed_files": 38,
+   "commits": 2
   },
   {
    "number": 558,
@@ -2730,7 +2742,9 @@
      "started_s": 3783,
      "completed_s": 3879
     }
-   ]
+   ],
+   "changed_files": 29,
+   "commits": 2
   },
   {
    "number": 555,
@@ -2813,7 +2827,9 @@
      "started_s": 5229,
      "completed_s": 5338
     }
-   ]
+   ],
+   "changed_files": 19,
+   "commits": 4
   }
  ],
  "limits": {
