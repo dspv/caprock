@@ -97,6 +97,8 @@ export interface PullRequest {
   head_sha: string
   mergeable: boolean | null
   mergeable_state?: string
+  /** GitHub's auto-merge is on: it merges once the checks and reviews allow. */
+  auto_merge?: boolean
   review: '' | 'approved' | 'changes_requested' | 'review_required' | 'commented'
   reviews: PRReview[]
   checks: { state: 'pass' | 'fail' | 'pending' | 'none'; passed: number; failed: number; pending: number; items: PRCheck[] }

@@ -38,7 +38,7 @@ import { OPEN_SESSION_EVENT } from '@/lib/shell'
 import { useOsNotifications } from '@/lib/notify'
 import { useTheme } from '@/lib/theme'
 import { useDaemonVersion } from '@/lib/useDaemonVersion'
-import { Sidebar } from '@/components/Sidebar'
+import { hideSessionRow, Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
 import { SessionDeck } from '@/components/SessionDeck'
@@ -57,6 +57,7 @@ import { ChatView } from '@/components/ChatView'
 import { ChangesView } from '@/components/ChangesView'
 import { AttemptsCompare } from '@/components/AttemptsCompare'
 import { FileView } from '@/components/FileView'
+import { attachable, ObservePane } from '@/components/ObservePane'
 import { FilePicker } from '@/components/FilePicker'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import type { HandoffTarget } from '@/components/AgentHandoff'
@@ -380,15 +381,18 @@ export function AppShell() {
     openTab({ kind: 'file', sessionId: fileKey(projectId, worktree, path), path, worktree }, projectId, baseName(path))
   }, [openTab])
 
-  /** A session's terminal when Caprock holds one; its details otherwise (rule 7). */
+  /**
+   * A session in a tab: its terminal when Caprock holds one; otherwise — one
+   * started in another terminal, or one that ended — its conversation,
+   * read-only, in a tab of its own (components/ObservePane.tsx; rule 7). It
+   * opened the Dashboard tab on the session's page until 2026-10-13 (owner,
+   * translated: "why am I taken to something like the web version of the
+   * dashboard instead of into the session?").
+   */
   const openSession = useCallback((s: SessionSummary, projectId: string) => {
-    const attachable = s.owned && s.status !== 'ended' && !s.detached
-    if (!attachable && !openSessions.has(s.session_id)) {
-      location.hash = `#/session/${encodeURIComponent(s.session_id)}`
-      return
-    }
-    openTab({ kind: s.kind === 'shell' ? 'shell' : 'session', sessionId: s.session_id }, projectId, sessionTitle(s))
-  }, [openSessions, openTab])
+    const kind = s.kind === 'shell' ? 'shell' : attachable(s) ? 'session' : 'observe'
+    openTab({ kind, sessionId: s.session_id }, projectId, sessionTitle(s))
+  }, [openTab])
 
   const onOpenInbox = useCallback((i: InboxItem) => openSession(i.session, i.projectId), [openSession])
   const jumpToWaiting = useCallback(() => {
@@ -1149,6 +1153,39 @@ export function AppShell() {
   }, [folderOf, openFile, editors, openInEditor])
   const focusedFile = focused?.kind === 'file'
 
+  // A watched session that Caprock now holds a terminal for — continued here
+  // under its own id — becomes an ordinary session tab, in the same place.
+  useEffect(() => {
+    for (const t of ws.tabs) {
+      for (const l of leaves(t.root)) {
+        if (l.target.kind !== 'observe') continue
+        const s = sessionsById.get(l.target.sessionId)
+        if (s && s.kind !== 'shell' && attachable(s)) dispatch({ type: 'replace-session', sessionId: s.session_id, target: { kind: 'session', sessionId: s.session_id }, title: sessionTitle(s) })
+      }
+    }
+  }, [ws.tabs, sessionsById])
+  const renderObserve = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
+    // Only the tab in front reads the conversation: a tab behind costs nothing.
+    if (!visible) return null
+    const id = leaf.target.sessionId
+    return (
+      <ObservePane
+        sessionId={id}
+        session={sessionsById.get(id)}
+        title={tab.title}
+        hasPermission={data.permissions.has(id)}
+        onContinued={(newId, title, sameId) => {
+          if (sameId) dispatch({ type: 'replace-session', sessionId: id, target: { kind: 'session', sessionId: id }, title })
+          else openTab({ kind: 'session', sessionId: newId }, tab.projectId, title)
+          refresh()
+        }}
+        onOpenDashboard={() => { location.hash = `#/session/${encodeURIComponent(id)}` }}
+        onHide={() => { dispatch({ type: 'close', tabId: tab.id }); hideSessionRow(id) }}
+        onClose={() => dispatch({ type: 'close', tabId: tab.id })}
+      />
+    )
+  }, [sessionsById, data.permissions, openTab, refresh])
+
   return (
     <div className="flex h-dvh flex-col text-fg">
       <div className="flex min-h-0 flex-1">
@@ -1233,6 +1270,7 @@ export function AppShell() {
                     onClosePane={onClosePane}
                     onResize={onResizePanes}
                     renderFile={renderFile}
+                    renderObserve={renderObserve}
                     chats={chatPanes}
                     onChatClose={onClosePane}
                     onChatRestart={onChatRestart}

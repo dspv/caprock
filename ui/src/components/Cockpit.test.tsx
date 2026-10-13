@@ -224,8 +224,11 @@ describe('the agent cockpit', () => {
   it('says background agents are working, not waiting on you, after the turn ended', async () => {
     show(agent({ live_subagents: 1, activity: { phrase: 'background agents working · 1', at: iso(1_000), health: 'working', background: 1 } }))
     await screen.findByRole('region', { name: 'Recent tool calls' })
-    expect(screen.getByRole('status')).toHaveTextContent('Background agents working · 1')
+    // The state line is short so it never wraps; the count sits under it.
+    expect(screen.getByRole('status')).toHaveTextContent('Background agents')
+    expect(screen.getByRole('status')).toHaveAttribute('title', 'Background agents working · 1')
     expect(screen.getByRole('status')).not.toHaveTextContent('Waiting')
+    expect(document.querySelector('[data-hero-count]')).toHaveTextContent('1 subagent working')
     const nowCard = screen.getByRole('region', { name: 'Now' })
     expect(within(nowCard).getByText('Background agents working · 1')).toBeInTheDocument()
     expect(within(nowCard).queryByText(/Waiting|Thinking/)).toBeNull()
@@ -315,33 +318,20 @@ describe('the figures beside the agent', () => {
     expect(lines()).toEqual(['cost', 'burn'])
   })
 
-  it('stands the two lines beside the agent until measuring says they do not fit', () => {
-    show(agent())
-    const hero = document.querySelector('.cockpit-hero')!
-    // No layout here: nothing measured, so they keep their place under the big figure.
-    expect(hero).toHaveAttribute('data-sec', 'beside')
-    expect(hero.querySelector('[data-hero-sec]')!.className).toMatch(/\[grid-area:sec\]/)
-  })
-
-  it('moves the two lines to the chips’ row when they would squeeze the agent’s own', () => {
-    // A 324px inspector's hero is about 291px wide; each figure about 100px.
-    const width = (w: number) => vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(w)
-    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(100)
-    width(291)
-    const { unmount } = show(agent())
-    let hero = document.querySelector('.cockpit-hero')!
-    expect(hero).toHaveAttribute('data-sec', 'below')
-    // Not cut: the whole lines, side by side under the agent, still choosers.
-    const sec = hero.querySelector('[data-hero-sec]')!
-    expect(sec.className).not.toMatch(/grid-area:sec/)
-    expect(sec.parentElement!.className).toMatch(/\[grid-area:chips\]/)
-    expect(within(sec as HTMLElement).getAllByRole('button', { name: /Choose what this line shows/ })).toHaveLength(2)
-    unmount()
-    width(447)
-    show(agent())
-    hero = document.querySelector('.cockpit-hero')!
-    expect(hero).toHaveAttribute('data-sec', 'beside')
-    vi.restoreAllMocks()
+  // One grid in every state (owner, 2026-10-13): the two smaller figures
+  // always stand under the big one, at any width, never on the chips' row.
+  it('keeps the two lines under the big figure at any width', () => {
+    for (const w of [291, 447]) {
+      vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(w)
+      const { unmount } = show(agent())
+      const hero = document.querySelector('.cockpit-hero')!
+      const sec = hero.querySelector('[data-hero-sec]')!
+      expect(sec.className).toMatch(/\[grid-area:sec\]/)
+      expect(within(sec as HTMLElement).getAllByRole('button', { name: /Choose what this line shows/ })).toHaveLength(2)
+      expect(hero.querySelector('[data-hero-chips]')!.contains(sec)).toBe(false)
+      unmount()
+      vi.restoreAllMocks()
+    }
   })
 })
 

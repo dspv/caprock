@@ -168,7 +168,28 @@ One window, three regions:
   screens in a Dashboard tab pinned at the left of the tab strip (2026-10-09:
   it replaced the whole workspace, and the first tester read that as every
   terminal closing, translated); in it, Now leaves out the session cards and
-  the projects panel the sidebar already shows. *Quick chat* (⌥⌘N) under
+  the projects panel the sidebar already shows. A session Caprock
+  cannot type into — started in another terminal, ended, or detached by a
+  restart — opens in **an app tab of its own**, never the Dashboard tab
+  (owner, 2026-10-13: "why when I click one of these on the left am I taken
+  to something like the web version of the dashboard instead of into the
+  session?", translated). The tab (target kind `observe`, `lib/tabs.ts`;
+  never split) is named after the session with its agent's mark and shows
+  `components/ObservePane.tsx`: a header (dot, mark, title, *in another
+  terminal* or *ended*, ⋯ with *Hide from the list*, *Open in dashboard*,
+  *Close tab*), the session's conversation live and read-only (the session
+  page's `ChatView`), the inspector beside it as for an owned session, and,
+  where the terminal would be, *Started in another terminal — Caprock
+  watches it, it can't type into it* with **Continue here** and *Open in
+  dashboard*. Continue here is `--resume` in a new process Caprock starts:
+  a copy under a new id (`fork`) in a new tab while the original still
+  runs, the same conversation in the same tab once it ended or was detached
+  (the tab turns into a session tab when the daemon holds its terminal).
+  Nothing is sent to the other process (rule 7). Only the tab in front reads
+  the conversation. *Hide from the list* closes the tab and hides the row
+  (`hideSessionRow`, the same `caprock.app.hidden-sessions` list as the
+  row's ×), and the row stays hidden until it next needs you
+  (`rowHidden`). *Quick chat* (⌥⌘N) under
   *Add project* starts a session with no folder to pick, in a tab (the
   tester could not find how to, translated).
 - **Quick chat: vendor and model** (owner, 2026-10-09: "three buttons to
@@ -359,9 +380,18 @@ One window, three regions:
   from its menu or closed with its row's × (which since 2026-10-09
   replaces the hover eye, and hides only when nothing runs or waits in it)
   goes under *Hidden · N*, where the
-  same actions show it again. `groupProjects` in `ui/src/lib/sidebar.ts`
-  decides; *Other folders* always keeps a row.
-  Hidden ids live in the page's storage (`caprock.app.hidden-projects`),
+  same actions show it again. Hidden wins over what runs in it and over being
+  in front: the project in front moves under *Hidden* with its tabs open and
+  stays in view under that heading while the fold is closed. It comes back
+  out only when it needs you again — a permission prompt, or a turn that ended
+  after it was hidden (`projectHidden`, the same rule as a hidden session
+  row). Until 0.112.0 a project in front or with any agent at "your turn"
+  (up to twelve hours) was forced back into view, so *Hide* did nothing on
+  exactly the projects it was pressed on (owner, 2026-10-13).
+  `groupProjects` in `ui/src/lib/sidebar.ts` decides; *Other folders* always
+  keeps a row.
+  Hidden ids, each with when it was hidden, live in the page's storage
+  (`caprock.app.hidden-projects`; an older plain list of ids still reads),
   not the daemon: the projects API has no hide flag, and unlisting
   (`DELETE /v1/projects/{id}`) takes the project out of every list, phone
   and palette included, which is not what hiding means. Which folds are open is
@@ -444,6 +474,17 @@ One window, three regions:
   `context_note` instead), no plan windows for an agent with none. A shell
   tab keeps the plain inspector (folder, changes, actions). Code:
   `components/Cockpit.tsx`, derivations in `lib/cockpit.ts`.
+- **Claude Code's own status line: Full, Short or Off** (owner, 2026-10-13:
+  the cockpit already shows cost, turns and limits, so the full line inside
+  Claude's TUI repeats it and crowds the bottom of the terminal). Settings →
+  *Status line* (`components/StatuslineSetting.tsx`, `statusline_mode`),
+  Full by default so nothing changes for anyone who does not choose. Short
+  is model, context and the two plan windows, with the five-hour reset time
+  only from 80%; Off removes Caprock's own `statusLine` entry from Claude
+  Code's settings (never the user's own) and Full or Short puts it back. The
+  line reads the choice as it draws, and Off also stops Claude's plan
+  windows reaching the cockpit, which the setting says
+  ([03-contracts.md § Statusline](03-contracts.md#statusline)).
 - **Session deck (under the agent's terminal)** (owner, 2026-10-11,
   translated: "I want to be able to enlarge the bottom area so that I
   basically type in the centre, a bit below the middle of the screen —
@@ -524,29 +565,52 @@ One window, three regions:
     recorded (open, merged) and *connect GitHub for CI* turns the integration
     on through the `gh` login in one click (ADR-047: this click is the user
     turning it on), else opens Settings.
-  - **Who is on a PR, and forcing a fix** (owner, 2026-10-12, translated:
+  - **What stands in a PR's way, and forcing a fix** (owner, 2026-10-12, translated:
     "From the PRs I want to see, for example, when there's a conflict, or
     that you (an agent) are looking at it or fixing it — and if needed I want
-    to FORCE a fix or a check"). Beside an open PR's mini pipeline, one-word
-    chips from what GitHub already returned: *conflict* (red; `mergeable`
-    false or `mergeable_state` dirty), *behind* (amber; GitHub's own
-    `behind`, which it reports when the base must be merged in first),
-    *review* (changes requested) and *draft*; GitHub still computing says
-    nothing. *approved* and *review required* stay words, giving way when
-    narrow; the chips do not. Before them, who is on it: a live agent whose
-    checkout (the sidebar's worktree row) is on the PR's head branch, as its
-    initial in a small tinted square and *fixing* (working), *waiting* (on
-    you) or *idle*; several are *2 agents*, the tooltip naming each; a click
-    opens that session's tab. The open row has a line of actions under its
-    header, and every open PR a ⋯ that opens its row with the focus on them:
+    to FORCE a fix or a check"; 2026-10-13: "I understand it could get
+    overloaded"). An open PR's row says at most one problem, the most
+    important: *conflict* (red; `mergeable` false or `mergeable_state`
+    dirty), failed CI, *behind* (amber; GitHub's own `behind`, which it
+    reports when the base must be merged in first), *review* (changes
+    requested), *draft*; GitHub still computing says nothing. It is a chip,
+    except failed CI, which the CI words already say (*✗ failed at …*); the
+    other problems are in the chip's tooltip. Beside it, one accent word that
+    acts: *Fix* for a conflict, *Fix* and *Re-run* for failed CI, *Update*
+    for behind. *approved* and *review required* stay words, giving way below
+    a 1100px deck; the mini pipeline goes below 1000px, before the title
+    gives way, and the CI words column is at most a fifth of the deck, so at
+    860px the title keeps about half the row.
+  - **Whether anything is on it** (owner, 2026-10-13, translated: "I want to
+    see whether it's in the plan or in work"). One word before the chip, the
+    first that holds: *in work* (accent, a small spinner: a live agent whose
+    checkout — the sidebar's worktree row — is on the PR's head branch is
+    working, or an action Caprock started is still running), *waiting* (an
+    agent on the branch waits on you), *queued* (a message queued for an
+    agent on the branch, or one queued elsewhere that names the PR's link, or
+    GitHub's auto-merge on: `auto_merge` on the PR GitHub already returned).
+    Nothing when nobody is on it. The agent's initial in a small tinted
+    square sits beside the word (an idle agent is its initial alone), *+1*
+    for more, the tooltip naming each; a click opens that session's tab. The
+    queues are read per agent (`GET /v1/agents/{id}/queue`) with each PR
+    poll, only for Caprock-started agents on open PRs' branches and the
+    session itself. Tasks-board tasks are not matched: a task is not tied to
+    a repository and only its body would name the PR.
+  - **The actions.** Every open PR has a ⋯ at every deck width (and, while
+    GitHub is not connected, every PR not known merged or closed) that opens
+    its row with the focus on the line of actions under its header: the
+    one-word action opens the same line in its row without opening the CI.
     *Fix conflict with agent* (with a conflict), *Update branch* (behind and
     no conflict), *Fix CI with agent* and *Re-run checks* (with checks; the
     re-run disabled while they still run). Each asks first in that line —
-    the sentence, *Confirm*, *Cancel* (Esc), never a modal — then says what
-    it does in the row: *agent fixing…* (unless the agent's own mark already
-    says *fixing*), *re-running 5 jobs…*, *updating branch…*, until GitHub
-    shows it done (the checks running again, the head moving) or four
-    minutes pass; the PRs are asked every 20 s meanwhile. A fix goes to the
+    the sentence, *Confirm*, *Cancel* (Esc), never a modal — then the row
+    says *in work*, what it does in the word's tooltip (*agent fixing…*,
+    *re-running 5 jobs…*, *updating branch…*), until GitHub shows it done
+    (the checks running again, the head moving) or four minutes pass; the
+    PRs are asked every 20 s meanwhile. Not connected, the four actions are
+    there greyed with *Connect GitHub* beside them. They act on any open PR
+    the cell lists (the session's `session_prs`), from the Mac only: a
+    paired device that may only watch has them disabled with the reason. A fix goes to the
     Caprock-started agent on the branch as a queued message (ADR-053's
     queue); Fix CI otherwise goes to the session in front as Investigate
     does; else a new agent starts in the branch's checkout, or in a new

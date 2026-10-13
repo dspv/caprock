@@ -318,10 +318,24 @@ export function subagentChips(subs: SubagentsNow | undefined, permission?: Permi
   return { chips: [...shown, ...done], more: working.length - shown.length }
 }
 
-/** Chips the cockpit's hero draws: two rows of twelve, then "+N". */
+/** Chips the cockpit's hero draws at most: its one row in the widest inspector, then "+N". */
 export const MAX_SUBAGENT_CHIPS = 24
 /** Chips sit in groups of this many, a wider gap between groups. */
 export const CHIP_GROUP = 4
+
+/** A chip, the gap inside a group of four, and the wider gap between groups (px), as the hero draws them. */
+const CHIP_PX = 18
+const CHIP_GAP_PX = 3
+const GROUP_GAP_PX = 8
+/** The "+N" chip after the last group, with its gap. */
+const MORE_PX = 30
+const GROUP_PX = CHIP_GROUP * CHIP_PX + (CHIP_GROUP - 1) * CHIP_GAP_PX
+
+/** How many whole groups of four fit the hero's one row of chips this wide, with room for "+N" or without; at least one. */
+export function chipGroupsThatFit(width: number, withMore: boolean): number {
+  const room = width - (withMore ? MORE_PX : 0) + GROUP_GAP_PX
+  return Math.max(1, Math.floor(room / (GROUP_PX + GROUP_GAP_PX)))
+}
 
 /** The chips in groups of four, in order: the hero wraps a row between groups, never inside one. */
 export function chipGroups<T>(chips: readonly T[], size = CHIP_GROUP): T[][] {

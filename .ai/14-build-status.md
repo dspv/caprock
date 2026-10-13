@@ -73,6 +73,33 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — 0.112.3: the cockpit's hero holds one layout in every state
+
+The agent's row with the headline figure fixed at its right, a detail row
+(permission mode and start; the two smaller figures), and one line of
+subagent chips that fits as many groups of four as the inspector is wide.
+Working, waiting, background, idle, looping and ended only recolour; nothing
+moves. The below/beside switch for the smaller figures is gone.
+
+### 2026-10-13 — 0.112.2: a shorter status line, a subagent row that keeps its place
+
+Settings → *Status line* picks Full, Short or Off for the line Caprock puts
+under Claude Code (Full stays the default; Off removes only Caprock's own
+entry); the cockpit's subagent row always holds its place and says *no
+subagents running* when there are none; and on Windows a shell tab at its
+prompt no longer claims to run `csrss`, because a child must also have
+started after the shell (this was the flaky `fgproc` test on CI).
+
+### 2026-10-13 — 0.112.1: hide works, actions you can see, other terminals' sessions in a tab
+
+Hiding a project always moves it under *Hidden* (it came straight back when
+it was in front or had an agent at its prompt); every open pull request in
+the deck shows a direct *Fix* / *Re-run* / *Update* beside its one problem
+chip and one status word (*in work*, *waiting*, *queued*); a session started
+in another terminal opens in its own app tab with *Continue here* (a new
+`--resume` process) and *Hide*; finished copies clean themselves up, asking
+first; and Lifetime's Top projects donut no longer draws over its table.
+
 ### 2026-10-13 — 0.112.0: one row per project, figures beside the agent, PRs that say what blocks them
 
 From a day of the owner's and two testers' feedback: each project shows one

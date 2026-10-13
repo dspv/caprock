@@ -7,7 +7,40 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-## [0.112.0] - 2026-10-13
+## [0.112.3] - 2026-10-13
+
+### Changed
+
+- **app:** the cockpit's top block holds one calm layout in every state.
+  The agent, its model and state on the left, the big figure fixed at the
+  right of the same row, the permission mode and the two smaller figures
+  under them, and one line of subagent chips at the bottom; working,
+  waiting on you, idle or ended only changes the colours and the chips,
+  never where anything sits. A long model name is cut with the full name on
+  hover instead of wrapping, and the chips fit as many groups of four as the
+  inspector is wide.
+
+## [0.112.2] - 2026-10-13
+
+### Added
+
+- Settings → *Status line*: Full, Short or Off for the line Caprock puts at
+  the bottom of Claude Code. Short is model, context and the plan windows
+  (the reset time only from 80%), without the cost and counters the cockpit
+  already shows; Off removes Caprock's own entry from Claude Code's
+  settings, never one you set. Full stays the default.
+
+### Fixed
+
+- **app:** the cockpit's subagent row keeps its place: with none running it
+  says *no subagents running*, so the agent's figures and the sections below
+  no longer jump as subagents start and finish.
+- **app:** on Windows, closing a shell tab no longer says it is running
+  `csrss` (or another stranger) when it is at its prompt. A process whose
+  parent exited long ago still names that parent's pid, and Windows reuses
+  pids; a child now also has to have started after the shell.
+
+## [0.112.1] - 2026-10-13
 
 ### Added
 
@@ -22,34 +55,47 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   tag for a copy with no commit in 14 days and no pull request. The main
   checkout, your own worktrees and unmerged branches are never touched.
 
-## [0.111.3] - 2026-10-12
-
 ### Changed
 
-- **app:** each project in the sidebar shows one row: the tab you are on (or
-  its last one), else what waits on you, else the agent that worked last.
-  The rest fold behind one quiet *+N more* line that opens in place, stays
-  open per project, lists what it holds in its tooltip (*2 working · 1 idle
-  · 1 shell*) and turns amber when something behind it waits (*+4 more · 1
-  asks*). It replaces the *Running in other terminals* line; ⌘1–⌘9 still
-  reach every tab.
+- **app:** a session started in another terminal opens in its own tab. A
+  click on its sidebar row (or in ⌘K, the Inbox, a project's *Recent*) used
+  to switch to the Dashboard tab on the session's page; it now opens a tab
+  named after the session, with the agent's mark, showing its conversation
+  live and read-only with the inspector beside it. Where the terminal would
+  be, it says *Started in another terminal — Caprock watches it, it can't
+  type into it*, with **Continue here** (a new process on a copy of the
+  conversation, in a new tab; the original is never touched) and **Open in
+  dashboard**. An ended session opens the same way, and Continue here
+  carries it on in the same tab. The tab's ⋯ menu hides the session from the
+  sidebar or closes the tab; a hidden session comes back only when it next
+  needs you.
 
-### Changed
+### Fixed
 
-- **app:** three figures beside the agent in the cockpit, each one yours
-  to pick: the headline in large type and two short lines under it
-  (*$4.08/h burn ▾*, *4.01B tok ▾*), from one list — cost, burn rate,
-  tokens, cache hit rate, turns, time working, last call, tool calls —
-  never the same one twice (picking a taken one swaps them), cost, burn
-  rate and tokens until you choose. In a narrow inspector the two lines
-  move under the agent, beside the subagent chips, rather than squeezing
-  the agent's own lines or being cut.
+- **ui:** Lifetime's *Top projects* donut sits beside its table again instead
+  of drawing over it; a donut without a legend keeps its own width.
+- **app:** *Hide* on a project in the sidebar did nothing when an agent in
+  it had finished its turn, or when it was the project in front — from the
+  row's eye, its ⋯ menu and a right-click alike, *Outside projects*
+  included. Hidden now wins: the project moves under *Hidden* (the one in
+  front stays in view under that heading, its tabs open), and comes back
+  out only when an agent there asks or finishes a turn after it was hidden.
+- **deck:** every open pull request shows its actions. The ⋯ was a faint
+  dot at the row's end that read as part of the age, and the actions only
+  appeared once a row was opened, so they went unseen. Now the row's one
+  problem carries a direct word beside it — *Fix* for a conflict, *Fix* and
+  *Re-run* for failed CI, *Update* for a branch behind — that asks on the
+  same line, and the ⋯ is a clear button at every width. Without GitHub
+  connected the actions are there greyed, with *Connect GitHub*.
+- **deck:** a pull request row says whether anything is on it in one word:
+  *in work* (an agent on its branch working, or a re-run, update or fix
+  Caprock started), *waiting* (an agent there asks you) or *queued* (a
+  message queued for it, or GitHub's auto-merge on), with the agent's
+  initial beside it. The row shows one problem chip, the most important,
+  the rest in its tooltip, and at a narrow deck the mini pipeline goes
+  before the title does.
 
-- **app:** the Spend block in the cockpit opens on its chart again,
-  unfolded: the period's spend by time with its total and the stretch
-  under the pointer. *Numbers* is still a click away on the *Chart |
-  Numbers* switch. A choice saved while Numbers and folded were the
-  default opens on the chart once; what you pick after that holds.
+## [0.112.0] - 2026-10-13
 
 ### Added
 

@@ -34,7 +34,7 @@ const BY_TITLE: [RegExp, string][] = [
   [/appearance/i, 'palette'],
   [/phone/i, 'phone'],
   [/telegram/i, 'send'],
-  [/terminal/i, 'terminal'],
+  [/terminal|status line/i, 'terminal'],
   [/editor/i, 'code'],
   [/worktree/i, 'branch'],
   [/folder|projects/i, 'folder'],

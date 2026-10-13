@@ -586,30 +586,44 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
  * State is carried by data-state on the avatar, its dot and the "now" card,
  * so one attribute moves the colour, the halo and the motion together. Motion
  * only while the agent works or waits; an idle or ended agent is still. */
-/* The cockpit's hero: the agent, its headline figure at the right of the same
- * row (owner, 2026-10-12: "to the right of the main agent"), the subagent
- * chips on the row under both. A narrow inspector shrinks the figure rather
- * than moving it off the agent's row. */
+/* The cockpit's hero (components/Cockpit.tsx Hero): one grid of three fixed
+ * rows, the same in every state, so a state change recolours and never moves
+ * anything (owner, 2026-10-13: "restore the awesome look — both when work is
+ * going on and when it waits"). The agent's row is as tall as the avatar:
+ * its lines, and at the right the headline figure. The detail row: the mode
+ * and start under the agent's lines, the two smaller figures under the
+ * headline. Then one line of subagent chips. The second, collapsing column
+ * lets the smaller figures be wider than the headline without pushing the
+ * headline off the agent's lines. A narrow inspector steps the avatar and
+ * the headline down; a long figure (8 characters or more, $1,197.22) one
+ * step further, so the agent's lines keep their room. */
 .cockpit-hero {
+  --hero-av: 52px;
   display: grid;
   min-width: 0;
-  grid-template-columns: 58px minmax(0, 1fr) auto;
-  /* The big figure over its two smaller lines, beside the agent; the chips
-   * (and the smaller lines, when they left the agent's side) under both. */
-  grid-template-areas: "av info fig" "av info sec" "chips chips chips";
-  column-gap: 0.875rem;
-  row-gap: 0;
-  align-items: center;
+  grid-template-columns: var(--hero-av) minmax(0, 1fr) auto auto;
+  grid-template-rows: max(var(--hero-av), 58px) 38px 22px;
+  grid-template-areas:
+    "av info info fig"
+    ". meta sec sec"
+    "chips chips chips chips";
+  column-gap: 12px;
+  row-gap: 7px;
 }
-.cockpit-hero[data-sec="below"] { grid-template-areas: "av info fig" "chips chips chips"; }
-.cockpit-hero [data-hero-sec] { margin-top: 0.375rem; }
-.cockpit-hero[data-sec="below"] [data-hero-sec] { margin-top: 0; }
-.cockpit-hero-num { font-size: 22px; }
-/* A long figure ($1,197.22) in a narrow inspector steps down once more, so
- * the agent's own lines keep room beside it. */
-.cockpit-hero-num[data-long] { font-size: 18px; }
+.cockpit-hero .cockpit-avatar { width: var(--hero-av); height: var(--hero-av); }
+.cockpit-hero .cockpit-avatar .cockpit-character { width: calc(var(--hero-av) - 12px); height: calc(var(--hero-av) - 12px); }
+.cockpit-hero [data-hero-chips] { margin-top: 3px; }
+.cockpit-hero-num { font-size: 24px; }
+.cockpit-hero-num[data-long] { font-size: 19px; }
+@container (min-width: 340px) {
+  .cockpit-hero { --hero-av: 56px; column-gap: 14px; }
+  .cockpit-hero-num { font-size: 28px; }
+  .cockpit-hero-num[data-long] { font-size: 22px; }
+}
 @container (min-width: 420px) {
-  .cockpit-hero-num, .cockpit-hero-num[data-long] { font-size: 30px; }
+  .cockpit-hero { --hero-av: 58px; }
+  .cockpit-hero-num { font-size: 32px; }
+  .cockpit-hero-num[data-long] { font-size: 26px; }
 }
 [data-app] .cockpit-avatar {
   --cockpit-tint: var(--color-fg-faint);

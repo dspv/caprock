@@ -184,3 +184,81 @@ func TestRepairStatusline(t *testing.T) {
 		}
 	})
 }
+
+// Settings → Status line: Off removes our entry and only ours; choosing Full
+// or Short again puts it back, and never over a statusLine the user set.
+func TestSetStatuslineOn(t *testing.T) {
+	ours := `"/opt/homebrew/bin/caprock" statusline`
+
+	t.Run("off removes ours, on puts it back", func(t *testing.T) {
+		sp := filepath.Join(t.TempDir(), "settings.json")
+		if err := os.WriteFile(sp, []byte(`{"model":"opus"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := InstallStatusline(sp, ours); err != nil {
+			t.Fatal(err)
+		}
+		changed, err := SetStatuslineOn(sp, ours, false)
+		if err != nil || !changed {
+			t.Fatalf("off: %v %v", changed, err)
+		}
+		if _, present, _ := StatuslineInstalled(sp, ours); present {
+			t.Fatal("off left a statusLine behind")
+		}
+		changed, err = SetStatuslineOn(sp, ours, true)
+		if err != nil || !changed {
+			t.Fatalf("on: %v %v", changed, err)
+		}
+		if mine, _, _ := StatuslineInstalled(sp, ours); !mine {
+			t.Fatal("on did not re-install ours")
+		}
+		// On again is a no-op: Full and Short share the one entry.
+		if changed, err := SetStatuslineOn(sp, ours, true); err != nil || changed {
+			t.Fatalf("second on: %v %v", changed, err)
+		}
+		got, _ := os.ReadFile(sp)
+		if !strings.Contains(string(got), `"model"`) {
+			t.Fatalf("lost the rest of settings.json: %s", got)
+		}
+	})
+
+	t.Run("a flagged entry of ours is still ours", func(t *testing.T) {
+		sp := filepath.Join(t.TempDir(), "settings.json")
+		if _, err := InstallStatusline(sp, ours+" --rich"); err != nil {
+			t.Fatal(err)
+		}
+		if changed, err := SetStatuslineOn(sp, ours, false); err != nil || !changed {
+			t.Fatalf("off: %v %v", changed, err)
+		}
+	})
+
+	t.Run("the user's own statusLine is never touched", func(t *testing.T) {
+		sp := filepath.Join(t.TempDir(), "settings.json")
+		theirs := `{"statusLine":{"type":"command","command":"npx ccusage statusline"}}`
+		if err := os.WriteFile(sp, []byte(theirs), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for _, on := range []bool{false, true, false} {
+			if changed, err := SetStatuslineOn(sp, ours, on); err != nil || changed {
+				t.Fatalf("on=%v changed the user's statusLine: %v %v", on, changed, err)
+			}
+		}
+		got, _ := os.ReadFile(sp)
+		if string(got) != theirs {
+			t.Fatalf("user's settings rewritten: %s", got)
+		}
+	})
+
+	t.Run("no settings file: off is a no-op, on creates it", func(t *testing.T) {
+		sp := filepath.Join(t.TempDir(), "settings.json")
+		if changed, err := SetStatuslineOn(sp, ours, false); err != nil || changed {
+			t.Fatalf("off: %v %v", changed, err)
+		}
+		if _, err := os.Stat(sp); !os.IsNotExist(err) {
+			t.Fatalf("off created a file: %v", err)
+		}
+		if changed, err := SetStatuslineOn(sp, ours, true); err != nil || !changed {
+			t.Fatalf("on: %v %v", changed, err)
+		}
+	})
+}

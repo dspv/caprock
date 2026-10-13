@@ -222,10 +222,13 @@ describe('the hero’s subagent chips', () => {
   it('puts the count above the chips, groups them by four, and a chip opens its row', async () => {
     h.subagents = { working: Array.from({ length: 14 }, (_, i) => working(`w${i}`, { agent_type: i % 2 ? 'Explore' : 'general-purpose' })), finished: 0 }
     h.details = { w9: detail('w9') }
+    // A wide inspector: the chips' one row holds six groups of four.
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(600)
     show(agent({ live_subagents: 14, activity: { phrase: 'background agents working · 14', at: new Date().toISOString(), health: 'working', background: 14 } }))
     const chips = await screen.findByRole('group', { name: 'Subagents' })
     const status = screen.getByRole('status')
-    expect(status).toHaveTextContent('Background agents working · 14')
+    expect(status).toHaveTextContent('Background agents')
+    expect(status).toHaveAttribute('title', 'Background agents working · 14')
     // The state line comes before the chips in reading order.
     expect(status.compareDocumentPosition(chips) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(chips).getAllByRole('button')).toHaveLength(14)
@@ -238,14 +241,27 @@ describe('the hero’s subagent chips', () => {
     const row = rowButton(section, 'Task w9')
     expect(row).toHaveAttribute('aria-expanded', 'true')
     expect(await within(section).findByRole('list', { name: 'Subagent activity' })).toBeInTheDocument()
+    vi.restoreAllMocks()
   })
 
   it('stops at 24 chips and counts the rest', async () => {
     h.subagents = { working: Array.from({ length: 27 }, (_, i) => working(`w${i}`)), finished: 0 }
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(600)
     show(agent({ live_subagents: 27, activity: { phrase: 'editing', at: new Date().toISOString(), health: 'working' } }))
     const chips = await screen.findByRole('group', { name: 'Subagents, and 3 more working' })
     expect(within(chips).getAllByRole('button')).toHaveLength(24)
     expect(chips).toHaveTextContent('+3')
     expect(screen.getByText('27 subagents working')).toBeInTheDocument()
+    vi.restoreAllMocks()
+  })
+
+  it('fits as many groups of four as the row holds, then "+N"', async () => {
+    h.subagents = { working: Array.from({ length: 14 }, (_, i) => working(`w${i}`)), finished: 0 }
+    // A 324px inspector's chip row: three groups and the "+N".
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(291)
+    show(agent({ live_subagents: 14, activity: { phrase: 'editing', at: new Date().toISOString(), health: 'working' } }))
+    const chips = await screen.findByRole('group', { name: 'Subagents, and 2 more working' })
+    expect([...chips.querySelectorAll('button')]).toHaveLength(12)
+    vi.restoreAllMocks()
   })
 })
