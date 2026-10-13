@@ -152,7 +152,10 @@ describe('a file tab', () => {
     expect(screen.getByRole('button', { name: 'Close tab app.md' })).toBeInTheDocument()
   })
 
-  it('names a session tab by its project, adding the title only to tell two apart', () => {
+  // Owner, 2026-10-13 (translated): "I have only four tabs and already
+  // can't see the 4th one's title. I don't care which agent it is … the
+  // session name is very important."
+  it('names a session tab by its session, the project a colour dot and the agent only in the tooltip', () => {
     const other: Tab = { ...tab('solo'), projectId: 'q' }
     render(
       <TabStrip
@@ -171,11 +174,57 @@ describe('a file tab', () => {
         onToggleInspector={() => {}}
       />,
     )
-    const [one, , solo] = screen.getAllByRole("tab") as [HTMLElement, HTMLElement, HTMLElement]
-    expect(one.querySelector('[data-row-title]')?.textContent).toBe('caprock')
-    expect(one.querySelector('[data-tab-subtitle]')?.textContent).toBe('Shell 1')
-    expect(solo.querySelector('[data-row-title]')?.textContent).toBe('caprock-web')
-    expect(solo.querySelector('[data-tab-subtitle]')).toBeNull()
+    const [one, , solo] = screen.getAllByRole('tab') as [HTMLElement, HTMLElement, HTMLElement]
+    expect(one.querySelector('[data-row-title]')?.textContent).toBe('Shell 1')
+    expect(solo.querySelector('[data-row-title]')?.textContent).toBe('Shell 1')
+    expect(one.querySelector('[data-project-dot]')).not.toBeNull()
+    expect(one.getAttribute('aria-label')).toBe('Shell 1 · caprock')
+    expect(solo.getAttribute('aria-label')).toBe('Shell 1 · caprock-web')
+    // No agent mark on the tab; it is named in the tooltip.
+    expect(one.querySelector('[aria-label="Shell"], [aria-label="Claude Code"]')).toBeNull()
+    expect(one.getAttribute('title')).toBe('Shell 1 · Shell · caprock')
+    expect(one.querySelector('[data-tab-subtitle], [data-project-chip]')).toBeNull()
+  })
+
+  it('puts the jump key in the ×\'s slot at the right end: the key at rest, the × on hover and in front', () => {
+    render(
+      <TabStrip
+        tabs={[tab('one'), tab('two')]}
+        activeTabId="one"
+        digits={new Map([['one', 1], ['two', 2]])}
+        sessions={new Map()}
+        permissions={new Set()}
+        projectName={() => 'caprock'}
+        inspectorOpen={false}
+        sidebarOpen
+        onActivate={() => {}}
+        onDetach={() => {}}
+        onMove={() => {}}
+        onNewAgent={() => {}}
+        onNewShell={() => {}}
+        onToggleInspector={() => {}}
+        dashboard={{ active: false, label: 'Dashboard', onActivate: () => {}, onClose: () => {} }}
+      />,
+    )
+    const [one, two] = screen.getAllByRole('tab').filter((t) => t.hasAttribute('data-tab-index')) as [HTMLElement, HTMLElement]
+    for (const t of [one, two]) {
+      const end = t.querySelector('[data-tab-end]')!
+      // The slot is the tab's last child: nothing after it, the title before it.
+      expect(t.lastElementChild).toBe(end)
+      expect(end.querySelector('[data-tab-key]')!.className).toContain('app-kbd-sm')
+      expect(end.querySelector('button')!.className).toContain('absolute')
+    }
+    // In front: the × shows and the key steps aside; behind: the key, the × on hover.
+    expect(one.querySelector('[data-tab-key]')!.className).toContain('invisible')
+    expect(one.querySelector('[data-tab-end] button')!.className).not.toContain('invisible')
+    expect(two.querySelector('[data-tab-key]')!.className).toContain('group-hover:invisible')
+    expect(two.querySelector('[data-tab-end] button')!.className).toContain('invisible group-hover:visible')
+    expect(two.getAttribute('title')).toContain('— ⌘2')
+    // The Dashboard tab is its icon alone: no key drawn, no × while it is behind.
+    const dash = document.querySelector('[data-dashboard-tab]')!
+    expect(dash.querySelector('kbd')).toBeNull()
+    expect(dash.getAttribute('title')).toBe('Dashboard — ⌘0')
+    expect(screen.getByRole('button', { name: 'Close tab Dashboard' }).className).toContain('hidden')
   })
 
   it('shows what the workspace draws for a file, not a terminal', () => {

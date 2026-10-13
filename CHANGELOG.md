@@ -52,6 +52,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   last as *Fold N back*.
 - **app:** ⌘1–⌘9 now pick a project rather than a tab by its place in the
   strip; ⌃Tab and ⇧⌘[ ] still cycle the tabs.
+- **app:** tabs are named by their session again, so four or six tabs all
+  keep their names: the project is the coloured dot (and in the tooltip
+  with the agent and the branch), the agent mark is gone from the tab, the
+  dots sit closer, and the ⌘ key is a small key at the right end that the
+  × replaces on hover and on the tab in front. The Dashboard tab is its
+  icon alone, its key in the tooltip.
 - **dashboard:** the Now screen refreshes once, not once per section. Its
   sections ask on one shared tick, at most every 2 s (all-time figures every
   10 s); sections asking the same question share one request; a folded or

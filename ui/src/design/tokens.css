@@ -561,6 +561,21 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   border-bottom-width: 2px;
   background: color-mix(in srgb, var(--color-fg) 10%, transparent);
 }
+/* The key on a tab: the same key, compact, so a tab keeps room for its
+ * session's name (owner, 2026-10-13: "move this badge closer to the ×",
+ * translated). It shares one slot with the tab's ×. */
+[data-app] .app-kbd-sm {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--color-fg-muted);
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-fg) 22%, transparent);
+  background: color-mix(in srgb, var(--color-fg) 7%, transparent);
+}
 [data-app] .app-primary .app-kbd {
   color: var(--color-accent);
   border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);

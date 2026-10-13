@@ -274,7 +274,9 @@ others. Installing it: [install-app.md](install-app.md).
   what is running, so this is where yesterday's work is.
 - **Tabs.** One strip holds every open tab of every project, in the order
   you opened them — an agent session, a shell or a file each — and each tab
-  carries its project's name beside a dot in that project's colour. Picking
+  is named by its session, after a dot in its project's colour; hover it
+  for the project, the agent and the branch. The Dashboard tab is just its
+  icon. Picking
   another project never takes a tab out of the strip: the project's own
   tabs are listed under it in the sidebar, under the same names, or its
   page shows when it has none. Picking a tab makes its project current.

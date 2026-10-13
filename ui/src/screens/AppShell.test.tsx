@@ -255,7 +255,8 @@ describe('the app workspace', () => {
     // runs stays expanded (owner, 2026-10-11).
     fireEvent.click(otherRow())
     await waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'false'))
-    expect(within(screen.getByRole('tab', { name: /Fix the login bug/ })).getByText('app')).toBeInTheDocument()
+    // Named by its session; its project in the name read out and the tooltip.
+    expect(screen.getByRole('tab', { name: 'Fix the login bug · app' }).getAttribute('title')).toContain('· app')
     expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
     expect(within(screen.getByRole('group', { name: 'app: open tabs' })).getByText('Fix the login bug')).toBeInTheDocument()
     expect(within(appRow()).getByLabelText(/running/)).toBeInTheDocument()
