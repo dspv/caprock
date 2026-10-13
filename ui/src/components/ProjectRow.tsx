@@ -20,8 +20,8 @@
  * (lib/tablabels.ts). A muted row runs with no tab; a click opens it as a
  * tab, or one started in another terminal read-only
  * (components/ObservePane.tsx). The tab in front is the one highlighted row
- * in the whole sidebar. The project row carries its ⌃⌘1–⌃⌘9 key, each
- * tab's row the tab's ⌘1–⌘9; ⌥⌘↑ ⌥⌘↓
+ * in the whole sidebar. Each tab's row carries the tab's ⌘1–⌘9 (projects
+ * have no digit); a click on the project row opens its page; ⌥⌘↑ ⌥⌘↓
  * walk its rows (sessionStops). The chevron folds a project by hand.
  *
  * What waits on you is marked on its own row — an amber edge and tint, and
@@ -65,7 +65,7 @@ import { renamable } from '@/lib/sessionNames'
 import { sessionAbout } from '@/lib/sidebar'
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
-import { keys, projectKey, tabKey } from '@/lib/appkeys'
+import { keys, tabKey } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { moveKey, orderRows, tabRowKey } from '@/lib/rowOrder'
 import { namingLeaf } from '@/lib/tabs'
@@ -147,8 +147,6 @@ export interface ProjectRowProps {
   current: boolean
   /** Its tabs, in strip order, with their labels; drawn when the project is open (current, or something runs or waits in it). */
   tabs: readonly Tab[]
-  /** The project's ⌃⌘1–⌃⌘9 digit, by its place in the sidebar; none past the ninth. */
-  digit?: number
   /** Each tab's ⌘1–⌘9, by tab id, drawn on its row as the strip draws it. */
   tabDigits?: ReadonlyMap<string, number>
   /** The rows' order set by hand, as row keys (lib/rowOrder.ts). */
@@ -186,7 +184,6 @@ export const ProjectRow = memo(function ProjectRow({
   node,
   current,
   tabs,
-  digit,
   tabDigits,
   rowOrder,
   onReorder,
@@ -259,7 +256,7 @@ export const ProjectRow = memo(function ProjectRow({
           aria-haspopup={menu ? 'menu' : undefined}
           aria-keyshortcuts={menu ? 'Shift+F10' : undefined}
           className={`app-row flex h-[32px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] text-left ${isGroup ? 'pr-2 pointer-coarse:pr-[36px]' : 'pr-9 pointer-coarse:pr-[64px]'}`}
-          title={`${isGroup ? 'Sessions in folders you have not added as a project. Add one with Add project.' : p.repos?.length ? `${p.root} · ${p.repos.map((r) => r.name).join(', ')}` : p.root || p.name}${digit ? ` — ${keys(`⌃⌘${digit}`)}` : ''}`}
+          title={`${isGroup ? 'Sessions in folders you have not added as a project. Add one with Add project.' : p.repos?.length ? `${p.root} · ${p.repos.map((r) => r.name).join(', ')}` : p.root || p.name}`}
         >
           <span className={`min-w-0 flex-1 truncate text-[13px] ${current ? 'font-semibold text-fg' : 'text-fg-muted'}`}>
             {p.name}
@@ -272,9 +269,6 @@ export const ProjectRow = memo(function ProjectRow({
               <span aria-hidden className="inline-block h-[6px] w-[6px] rounded-full bg-ok" />
               {node.live}
             </span>
-          )}
-          {digit && (
-            <kbd data-project-key aria-hidden className={`app-kbd-key shrink-0 group-hover:invisible ${current ? 'opacity-80' : 'opacity-55'}`}>{projectKey(digit)}</kbd>
           )}
           {node.waiting > 0 && (
             <span
@@ -882,13 +876,18 @@ export function projectRows(node: ProjectNode, tabs: readonly Tab[], labels: Rea
 export const FLAT_ORDER = '*'
 
 /**
- * Every listed project's session rows as one list (*Group by project* off):
- * the order set by hand in the flat list, then when each session started.
+ * Every listed project's session rows as one list (the Flat sidebar, the
+ * default): the rows with a tab in the strip's order — the order the tabs
+ * were opened, so ⌘1, ⌘2 … run down the list — then the sessions running
+ * with no tab, in the order set by hand in the flat list, then by when each
+ * started (owner, 2026-10-14).
  */
 export function flatRows(projects: readonly ProjectNode[], tabs: readonly Tab[], labels: ReadonlyMap<string, TabLabel>, rowOrders: Readonly<Record<string, readonly string[]>>, hiddenSessions?: HiddenSessions): SidebarRow[] {
   const all = projects.flatMap((n) => projectRows(n, tabs.filter((t) => t.projectId === n.project.id), labels, undefined, hiddenSessions)
     .map((it) => ({ ...it, projectName: n.project.name })))
-  return orderRows(all, leadKey, leadStarted, rowOrders[FLAT_ORDER])
+  const at = new Map(tabs.map((t, i) => [t.id, i] as const))
+  const tabbed = all.filter((r) => r.tab).sort((a, b) => (at.get(a.tab!.id) ?? 0) - (at.get(b.tab!.id) ?? 0))
+  return [...tabbed, ...orderRows(all.filter((r) => !r.tab), leadKey, leadStarted, rowOrders[FLAT_ORDER])]
 }
 
 /**

@@ -31,8 +31,6 @@ export type AppCommand =
   | { kind: 'prev-tab' }
   /** ⌘1–⌘9: a tab by its place in the strip, ⌘9 the last. */
   | { kind: 'tab'; index: number }
-  /** ⌃⌘1–⌃⌘9 (Alt+Shift+1–9 off macOS): a project by its place in the sidebar, ⌃⌘9 the last. */
-  | { kind: 'project'; index: number }
   /** The next or previous row under the project in front (⌥⌘↓ ⌥⌘↑). */
   | { kind: 'session'; delta: 1 | -1 }
   /** The next or previous project in the sidebar (⌥⌘→ ⌥⌘←). */
@@ -101,9 +99,9 @@ function arrowCommand(k: string): AppCommand | null {
   }
 }
 
-/** The jump a digit is, ⌘9 (⌃⌘9) the last: tabs on ⌘, projects on ⌃⌘. */
-function digitCommand(k: string, kind: 'tab' | 'project'): AppCommand | null {
-  return /^[1-9]$/.test(k) ? { kind, index: Number(k) - 1 } : null
+/** ⌘1–⌘9: the tab at that place in the strip, ⌘9 the last. */
+function digitCommand(k: string): AppCommand | null {
+  return /^[1-9]$/.test(k) ? { kind: 'tab', index: Number(k) - 1 } : null
 }
 
 /** Whether a command is one of the arrow chords, which a text field keeps. */
@@ -119,9 +117,8 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
     const quick = isMac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey
     if (quick && baseKey(e) === 'n') return { kind: 'quick-chat' }
     if (isMac && quick) return arrowCommand(baseKey(e))
-    // Off macOS the arrow chords are Alt+Shift (arrowCommand), and so are
-    // the project digits (⌃⌘1–⌃⌘9 on macOS; offMac says why).
-    if (!isMac && e.shiftKey && !e.ctrlKey && !e.metaKey) return arrowCommand(baseKey(e)) ?? digitCommand(baseKey(e), 'project')
+    // Off macOS the arrow chords are Alt+Shift (arrowCommand).
+    if (!isMac && e.shiftKey && !e.ctrlKey && !e.metaKey) return arrowCommand(baseKey(e))
     // Off macOS, a ⇧⌘ chord whose ⌘ twin is also the app's takes Alt too,
     // or both would be Ctrl+Shift+key (OFF_MAC_ALT).
     if (!isMac && e.ctrlKey && e.shiftKey && !e.metaKey) {
@@ -136,9 +133,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
   if (e.key === 'Tab' && e.ctrlKey && !e.metaKey) return e.shiftKey ? { kind: 'prev-tab' } : { kind: 'next-tab' }
   const k = baseKey(e)
   if (isMac) {
-    // ⌃⌘1–⌃⌘9 are projects; no other ⌃⌘ chord is the app's.
-    if (e.metaKey && e.ctrlKey) return e.shiftKey ? null : digitCommand(k, 'project')
-    if (!e.metaKey) return null
+    if (!e.metaKey || e.ctrlKey) return null
     // ⌘+ is ⌘= with or without Shift, as in every browser.
     if (k === '=') return { kind: 'zoom', step: 1 }
     if (e.shiftKey) {
@@ -201,12 +196,12 @@ function plain(k: string): AppCommand | null {
     // 2026-10-11: ⇧⌘D was awkward to reach). ⇧⌘D still works.
     case '0': return { kind: 'dashboard' }
     default:
-      // ⌘1–⌘9 are the strip's tabs by place, ⌘9 the last, whatever the
-      // sidebar's grouping (owner, 2026-10-14, translated: "I just want to
-      // switch between them with key combos"). For a day they were the
-      // sidebar's Nth item, a project or a session by grouping, and that
-      // was the part nobody could predict. Projects are ⌃⌘1–⌃⌘9.
-      return digitCommand(k, 'tab')
+      // ⌘1–⌘9 are the strip's tabs by place, ⌘9 the last, and the strip is
+      // in the order the tabs were opened (owner, 2026-10-14, translated:
+      // "I just want to switch between them with key combos"). For a day
+      // they were the sidebar's Nth item, a project or a session by
+      // grouping, and nobody could predict which. Projects have no digits.
+      return digitCommand(k)
   }
 }
 
@@ -230,16 +225,6 @@ const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0'])
 
 function offMac(k: string): string {
   if (/[↩↵]/.test(k)) return `${k.includes('⌘') ? 'Ctrl+' : ''}${k.includes('⇧') ? 'Shift+' : ''}Enter`
-  // ⌃⌘1–⌃⌘9, the projects, are Alt+Shift+1–9 off macOS, beside the
-  // Alt+Shift arrows that also walk projects. Every other spelling is
-  // taken: Ctrl+Shift+digit is a tab, Alt+digit is readline's and
-  // PSReadLine's digit-argument and a tab in GNOME Terminal, Ctrl+Alt+digit
-  // is AltGr+digit on European layouts — {, [, @ — and a tab in Windows
-  // Terminal. Alt+Shift+digit is bound by none of PSReadLine, GNOME or
-  // Windows Terminal; the loss is a few Meta keys on the shifted digits —
-  // bash's M-! M-@ M-$ (complete a command, host, variable, which Tab also
-  // does), M-# (comment the line), zsh's M-! (expand history).
-  if (k.startsWith('⌃⌘')) return `Alt+Shift+${k.slice(2)}`
   if (k.startsWith('⌃')) return `Ctrl+${k.slice(1)}`
   // ⌥⇧↑ ⌥⇧↓, the sidebar's move-a-row keys, are Ctrl+Shift off macOS:
   // Alt+Shift arrows are the app's there, and Ctrl+Shift arrows reach the
@@ -257,8 +242,8 @@ function offMac(k: string): string {
   return `Ctrl+Shift+${key}`
 }
 
-/** The digit that jumps to the tab (or project) at `index` of `count`:
- *  1–8 by position, 9 the last one, else none. */
+/** The digit that jumps to the tab at `index` of `count`: 1–8 by
+ *  position, 9 the last one, else none. */
 export function tabDigit(index: number, count: number): number | null {
   if (index === count - 1 && count > 8) return 9
   return index < 8 ? index + 1 : null
@@ -269,14 +254,9 @@ export function tabKey(digit: number, isMac = isMacPlatform()): string {
   return isMac ? `⌘${digit}` : `Ctrl⇧${digit}`
 }
 
-/** A project's jump key as its sidebar row shows it. */
-export function projectKey(digit: number, isMac = isMacPlatform()): string {
-  return isMac ? `⌃⌘${digit}` : `Alt⇧${digit}`
-}
-
 /** The one line that says how to move around, for the hint after an update. */
 export function moveKeysLine(isMac = isMacPlatform()): string {
-  return `${keys('⌘1', isMac).replace(/1$/, '1–9')} switch tabs · ${keys('⌃⌘1', isMac).replace(/1$/, '1–9')} projects · ${isMac ? '⌥⌘ arrows' : 'Alt+Shift+arrows'} walk them`
+  return `${keys('⌘1', isMac).replace(/1$/, '1–9')} switch tabs in the order you opened them · double-click a tab to rename`
 }
 
 /** How a shortcut is written in a menu or a tooltip on this platform. */
@@ -294,8 +274,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],
   ['⌘J', 'Next session waiting on you'],
-  ['⌘1–8, ⌘9', 'The Nth tab of the strip, as its badge says; ⌘9 the last'],
-  ['⌃⌘1–8, ⌃⌘9', 'The Nth project in the sidebar, at its last tab; ⌃⌘9 the last'],
+  ['⌘1–8, ⌘9', 'The Nth tab, in the order opened, as its badge says; ⌘9 the last'],
   ['⌥⌘↓, ⌥⌘↑', 'Next and previous session of the project in front'],
   ['⌥⌘→, ⌥⌘←', 'Next and previous project'],
   ['⌥⇧↑, ⌥⇧↓', 'Move the focused session row up or down in the sidebar'],

@@ -36,6 +36,7 @@ import { StoragePanel } from '@/components/Storage'
 import { Choice, Details, Section, Toggle } from '@/components/SettingsParts'
 import { GlobalHotkey } from '@/components/GlobalHotkey'
 import { isAppMode, isMacPlatform, isTauri } from '@/lib/appmode'
+import { useSidebarMode, type SidebarMode } from '@/lib/sidebarMode'
 import { UI_SCALES, setUiScale, useUiScale, type UiScale } from '@/lib/uiscale'
 import { TerminalSettings } from '@/components/TerminalSettings'
 import { StatuslineSetting } from '@/components/StatuslineSetting'
@@ -264,8 +265,27 @@ function AppearanceSection() {
       {/* The palettes as large swatches, Dark then Light; hovering one tries it on the page. */}
       <ThemePicker size="cards" />
       {isTauri() && <InterfaceSize />}
+      <SidebarModeSetting />
       <p className="text-[12px] text-fg-muted">Saved in this browser only.</p>
     </Section>
+  )
+}
+
+/** Flat (the tabs' order) or Tree (by project): lib/sidebarMode.ts. */
+function SidebarModeSetting() {
+  const [mode, setMode] = useSidebarMode()
+  return (
+    <div className="space-y-1">
+      <Choice<SidebarMode>
+        label="Sidebar"
+        value={mode}
+        options={[{ value: 'flat', label: 'Flat' }, { value: 'tree', label: 'Tree' }]}
+        onChange={setMode}
+      />
+      <p className="text-[12px] text-fg-muted">
+        Flat lists the open sessions in the tabs&rsquo; order, each with its tab&rsquo;s key; Tree lists them under their projects.
+      </p>
+    </div>
   )
 }
 

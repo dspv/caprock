@@ -1,9 +1,10 @@
 /**
  * The one-line card that says how to move around, shown once (owner,
  * 2026-10-14, translated: "now it's unclear how to switch between sessions
- * in one project"). ⌘1–⌘9 changed meaning in the same release — tabs, no
- * longer the sidebar's Nth item — so the people who learned the old keys
- * are told once, and so is everyone new. Got it puts it away for good on
+ * in one project"). ⌘1–⌘9 changed meaning in the same release — the
+ * tabs in the order they were opened, no longer the sidebar's Nth item —
+ * so the people who learned the old keys are told once, and so is everyone
+ * new. Got it puts it away for good on
  * this machine; All keys opens the shortcuts sheet. No new panel: one line
  * above the bottom strips, which never takes focus from the terminal.
  */

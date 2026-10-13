@@ -9,13 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
-- **app:** ⌘1–⌘9 switch tabs again, the Nth tab of the strip (⌘9 the
-  last), whether the sidebar groups by project or not, and every tab shows
-  its key, the one in front too; the same key shows on the tab's row in the
-  sidebar. Projects moved to ⌃⌘1–⌃⌘9 (Alt+Shift+1–9 on Windows and Linux),
-  drawn dimmer on each project row; ⌥⌘ arrows still walk sessions and
-  projects. One line above the bottom strips says so once, with a way to
-  every key.
+- **app:** tabs are the way around. ⌘1–⌘9 (Ctrl+Shift+1–9 on Windows and
+  Linux) switch to the Nth tab, and the tabs stay in the order you opened
+  them: a new tab goes last with the next number, and the numbers change
+  only when you close or drag a tab; a restart keeps them. Every tab shows
+  its key, the one in front too, and its session's name with its project's
+  dot and short name. The sidebar is Flat by default — the open sessions in
+  the tabs' order, each with the same key and its project, then the ones
+  running without a tab — or Tree, sessions under their projects (Settings
+  → Appearance, or the folder button). Projects have no number keys any
+  more; a click on a project opens its page, and ⌥⌘ arrows still walk
+  sessions and projects. One line says so once, with a way to every key.
 - **deck:** a pull request's checks read at a glance. In place of a circle per
   check — twelve tiny circles in a row that said nothing — each row sums them
   up in one short group: *✗ 1 failed ● 1 running ✓ 10*, the failed first, the

@@ -18,6 +18,29 @@ const open = (sessionId: string, projectId = 'p1'): WorkspaceAction => ({ type: 
 const run = (...actions: WorkspaceAction[]): Workspace => actions.reduce(workspaceReducer, EMPTY_WORKSPACE)
 
 describe('workspace tabs', () => {
+  // Owner, 2026-10-14: ⌘N is the Nth tab in the order opened; a new tab goes
+  // last, a close moves the later ones up, a drag moves one; a restart keeps it.
+  it('keeps the strip in the order opened, whatever the project; close and drag alone change it', () => {
+    let ws = run(open('a', 'p1'), open('b', 'p1'), open('c', 'p2'), open('d', 'p1'))
+    expect(ws.tabs.map((t) => t.title)).toEqual(['a', 'b', 'c', 'd'])
+    ws = workspaceReducer(ws, { type: 'activate', tabId: ws.tabs[0]!.id })
+    ws = workspaceReducer(ws, open('e', 'p2'))
+    expect(ws.tabs.map((t) => t.title)).toEqual(['a', 'b', 'c', 'd', 'e'])
+    ws = workspaceReducer(ws, { type: 'close', tabId: ws.tabs[1]!.id })
+    expect(ws.tabs.map((t) => t.title)).toEqual(['a', 'c', 'd', 'e'])
+    ws = workspaceReducer(ws, { type: 'move', tabId: ws.tabs[3]!.id, toIndex: 0 })
+    expect(ws.tabs.map((t) => t.title)).toEqual(['e', 'a', 'c', 'd'])
+    expect(parseWorkspace(JSON.stringify(ws)).tabs.map((t) => t.title)).toEqual(['e', 'a', 'c', 'd'])
+  })
+
+  it('shows a project\'s page on a click on its row, keeping its tabs', () => {
+    let ws = run(open('a', 'p1'), open('b', 'p2'))
+    ws = workspaceReducer(ws, { type: 'project', projectId: 'p1', view: true })
+    expect(ws.activeProject).toBe('p1')
+    expect(activeTab(ws)).toBeUndefined()
+    expect(ws.tabs).toHaveLength(2)
+  })
+
   it('opens a session once: a second open focuses the tab it already has', () => {
     const ws = run(open('a'), open('b'), open('a'))
     expect(ws.tabs).toHaveLength(2)

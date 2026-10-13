@@ -14,8 +14,8 @@
  *
  * Keyboard: Tab reaches every row; ↑ and ↓ move between rows, Enter opens
  * what the row names, ⌥⇧↑ ⌥⇧↓ move a session row within its project. A
- * row with a tab shows the tab's ⌘1–⌘9; ⌃⌘1–⌃⌘9 bring a project to the
- * front by its place here, the key drawn on its row; ⌥⌘← ⌥⌘→ step to the project before or after, ⌥⌘↑ ⌥⌘↓ to the session
+ * row with a tab shows the tab's ⌘1–⌘9, as the strip does; projects have
+ * no digit. ⌥⌘← ⌥⌘→ step to the project before or after, ⌥⌘↑ ⌥⌘↓ to the session
  * above or below in the project in front (lib/appkeys.ts, AppShell).
  *
  * Rows keep their places (owner, 2026-10-13): projects by pin, the order set
@@ -38,7 +38,7 @@
  * session row can be closed or hidden from its own ×.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { groupProjects, numberedProjects, rowHidden, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
+import { groupProjects, rowHidden, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
 import type { Tab } from '@/lib/tabs'
 import type { SettingsSection } from '@/lib/router'
 import type { TabLabel } from '@/lib/tablabels'
@@ -50,13 +50,13 @@ import { useNow } from '@/lib/useNow'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { THEMES } from '@/lib/themes'
 import { ThemeMenu } from './ThemePicker'
-import { FLAT_ORDER, flatRows, keepsProject, ProjectRow, SessionList } from './ProjectRow'
+import { FLAT_ORDER, flatRows, keepsProject, leadKey, ProjectRow, SessionList } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { MenuBox, MenuItem, MenuSeparator, type MenuAt } from './RowMenu'
 import { TodayStrip } from './TodayStrip'
 import { FeedbackButton } from './Feedback'
 import { CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, EyeIcon, FolderIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
-import { keys, tabDigit } from '@/lib/appkeys'
+import { keys } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, saveRowOrder, type RowOrders } from '@/lib/rowOrder'
 
 /** Project ids hidden by hand, with when: this browser's. An older plain list of ids still reads. */
@@ -203,6 +203,8 @@ export interface SidebarProps {
   onToggleGrouped?: () => void
   /** Each tab's ⌘1–⌘9, by tab id, as the strip shows it: drawn on that tab's row too. */
   tabDigits?: ReadonlyMap<string, number>
+  /** The flat list's tabbed rows, dragged into this order: the strip takes it (AppShell). */
+  onOrderTabs?: (tabIds: string[]) => void
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -254,14 +256,24 @@ export function Sidebar(props: SidebarProps) {
     hiddenProjects.length + hiddenRows.length ? `${hiddenProjects.length + hiddenRows.length} hidden` : '',
   ].filter(Boolean).join(' · ')
   const [moreAt, setMoreAt] = useState<MenuAt | null>(null)
-  // Group by project off: every listed project's sessions as one list
-  // (owner, 2026-10-13, translated: "make a
-  // switch like 'group by projects' or not … that frees lots of room").
+  // Flat (the default since 2026-10-14) or Tree (lib/sidebarMode.ts): Flat
+  // is every listed project's sessions as one list in the tabs' order
+  // (owner, 2026-10-13, translated: "make a switch like 'group by
+  // projects' or not … that frees lots of room").
   const grouped = props.grouped ?? true
   const flat = useMemo(
     () => (grouped ? [] : flatRows(listed, allTabs ?? [], props.tabLabels ?? new Map(), rowOrders, hiddenSessions)),
     [grouped, listed, allTabs, props.tabLabels, rowOrders, hiddenSessions],
   )
+  // A row moved in the flat list moves its tab in the strip, which the list
+  // follows; the rows with no tab keep an order of their own after them.
+  const onFlatReorder = useCallback((_: string, keys: string[]) => {
+    const byKey = new Map(flat.map((r) => [leadKey(r), r] as const))
+    const rows = keys.map((k) => byKey.get(k)).filter((r): r is NonNullable<typeof r> => !!r)
+    const tabIds = rows.flatMap((r) => (r.tab ? [r.tab.id] : []))
+    if (tabIds.length) props.onOrderTabs?.(tabIds)
+    saveRowOrder(FLAT_ORDER, rows.filter((r) => !r.tab).map(leadKey))
+  }, [flat, props.onOrderTabs])
   const real = model.projects.filter((n) => n.project.root !== '')
   const projectCount = real.length
   const busyCount = real.filter((n) => n.live > 0 || n.waiting > 0).length
@@ -276,12 +288,6 @@ export function Sidebar(props: SidebarProps) {
     }
     return m
   }, [allTabs])
-  // Each project's jump key, ⌃⌘1–⌃⌘8 by its place and ⌃⌘9 the last, drawn
-  // on its row (owner, 2026-10-13); its tabs' rows carry their own ⌘N.
-  const projectDigits = useMemo(() => {
-    const ids = numberedProjects(groups)
-    return new Map(ids.map((id, i) => [id, tabDigit(i, ids.length)] as const))
-  }, [groups])
   const noLabels = useMemo(() => new Map<string, TabLabel>(), [])
   const noTabs = useMemo<Tab[]>(() => [], [])
   const now = useNow(30_000)
@@ -359,7 +365,6 @@ export function Sidebar(props: SidebarProps) {
         node={n}
         current={current}
         tabs={tabsByProject.get(n.project.id) ?? noTabs}
-        digit={grouped ? projectDigits.get(n.project.id) ?? undefined : undefined}
         tabDigits={props.tabDigits}
         rowOrder={rowOrders[n.project.id]}
         onReorder={onReorder}
@@ -478,7 +483,7 @@ export function Sidebar(props: SidebarProps) {
                 data-group-toggle
                 aria-pressed={grouped}
                 aria-label="Group by project"
-                title={grouped ? 'Group by project: on. Turn off for one list of every session.' : 'Group by project: off. Turn on to list sessions under their projects.'}
+                title={grouped ? 'Tree: sessions under their projects. Turn off for one list in the tabs’ order (also in Settings → Appearance).' : 'Flat: one list in the tabs’ order. Turn on to list sessions under their projects (also in Settings → Appearance).'}
                 onClick={props.onToggleGrouped}
                 className={`flex h-[20px] w-[20px] items-center justify-center rounded-[5px] hover:bg-[var(--app-row-hover)] ${grouped ? 'text-fg-muted' : 'text-fg-faint'}`}
               >
@@ -506,7 +511,7 @@ export function Sidebar(props: SidebarProps) {
                 onCloseTab={props.onCloseTab}
                 onOpenLive={props.onOpenLive}
                 onHideSession={onHideSession}
-                onReorder={onReorder}
+                onReorder={onFlatReorder}
               />
             ) : (
               <p className="px-2 py-1 text-[12px] text-fg-faint">No agent sessions running.</p>

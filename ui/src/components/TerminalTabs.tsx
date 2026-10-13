@@ -175,8 +175,8 @@ export function TabStrip(props: TabStripProps) {
           const digit = props.digits?.get(t.id)
           // A tab is named by its session — the name is what matters (owner,
           // 2026-10-13, translated: "the session name is very important … I
-          // don't care which agent it is"). The project is its colour dot,
-          // named in the tooltip; the agent is in the tooltip only. A file
+          // don't care which agent it is"). The project is its colour dot and
+          // its short name after the title (2026-10-14); the agent is in the tooltip only. A file
           // tab keeps the file name; a quick chat has no project dot.
           const dot = file === undefined && !label?.chat && project !== undefined
           const agent = file === undefined ? agentGlyphLabel(s?.agent, isShell) : undefined
@@ -213,6 +213,8 @@ export function TabStrip(props: TabStripProps) {
               {renaming === t.id && renamable(s, isShell)
                 ? <InlineRename sessionId={s.session_id} initial={s.name?.trim() || sessionAbout(s)} current={s.name ?? ''} onDone={() => setRenaming(null)} />
                 : <span data-row-title className="min-w-0 flex-1 truncate">{title}</span>}
+              {/* Its project, short and faint after the name: fixed, never edited (owner, 2026-10-14). */}
+              {dot && <span data-tab-project aria-hidden className="max-w-[9ch] shrink truncate text-[11px] text-fg-faint">{project}</span>}
               {file === undefined && <HotMark sessionId={s?.session_id} />}
               {/* The jump key and the × share one slot at the right end, so
                 * nothing moves the title: the key at rest, the × on hover.

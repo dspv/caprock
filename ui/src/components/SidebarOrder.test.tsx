@@ -138,13 +138,12 @@ describe('rows keep their places', () => {
     }
   })
 
-  it('draws ⌃⌘1–⌃⌘9 on the project rows in the sidebar order, and marks the project in front', () => {
+  it('draws no key on a project row (tabs have the digits), and marks the project in front', () => {
     render(<Sidebar {...props(three(), [], { activeProjectId: 'beta' })} />)
-    const keyOf = (id: string) => document.querySelector(`[data-project-row="${id}"] [data-project-key]`)?.textContent
-    expect(['alpha', 'beta', 'gamma'].map(keyOf)).toEqual(['⌃⌘1', '⌃⌘2', '⌃⌘3'])
+    expect(document.querySelectorAll('[data-project-key]')).toHaveLength(0)
     expect(document.querySelectorAll('[data-project-row][data-current]')).toHaveLength(1)
     expect(document.querySelector('[data-project-row="beta"]')).toHaveAttribute('data-current', 'true')
-    expect(document.querySelector('[data-project-row="beta"]')!.getAttribute('title')).toContain('— ⌃⌘2')
+    expect(document.querySelector('[data-project-row="beta"]')!.getAttribute('title')).not.toContain('⌘')
   })
 })
 
