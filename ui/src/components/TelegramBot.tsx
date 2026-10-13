@@ -19,8 +19,17 @@ import { useApi } from '@/lib/useApi'
 import { useNow } from '@/lib/useNow'
 import { openExternal } from '@/lib/nudges'
 import { BigStep } from './Pairing'
+import { SecretInfo, SecretInput, SecretNote, SecretPill, type SecretProvider } from './SecretField'
 
-export function TelegramBotFields({ onSaved }: { s?: Settings; onSaved: () => void }) {
+export const TELEGRAM_PROVIDER: SecretProvider = {
+  name: 'Telegram',
+  host: 'api.telegram.org',
+  sentWhen: 'with each message the bot sends or reads: alerts, the weekly report, chat replies.',
+  revokeAt: '@BotFather',
+  revokeHow: 'send /revoke and pick the bot, or /deletebot.',
+}
+
+export function TelegramBotFields({ s, onSaved }: { s?: Settings; onSaved: () => void }) {
   const tg = useApi(() => api.telegram(), [], { live: false })
   const [state, setState] = useState<TelegramStatus | undefined>(undefined)
   const [token, setToken] = useState('')
@@ -111,17 +120,15 @@ export function TelegramBotFields({ onSaved }: { s?: Settings; onSaved: () => vo
           >
             Open @BotFather
           </button>
-          <input
-            className="input h-11 min-w-[220px] flex-1 text-[14px]"
-            type="password"
-            aria-label="Bot token"
+          <SecretInput
+            size="lg"
+            label="Bot token"
             placeholder="Paste the bot token"
             value={token}
-            onChange={(e) => setToken(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && token.trim()) void saveToken()
-            }}
+            onChange={setToken}
+            onEnter={() => void saveToken()}
           />
+          <SecretInfo what="bot token" provider={TELEGRAM_PROVIDER} where={s?.report_bot_where} />
           <button
             onClick={() => void saveToken()}
             disabled={busy || !token.trim()}
@@ -139,19 +146,24 @@ export function TelegramBotFields({ onSaved }: { s?: Settings; onSaved: () => vo
           Your own bot: messages go from this computer straight to Telegram, never through a server of ours. The token is
           checked with Telegram, kept on this computer only and never shown again.
         </p>
+        <SecretNote where={s?.report_bot_where} host="api.telegram.org" />
         {err}
       </div>
     )
   }
 
   const botLine = (
-    <p className="flex flex-wrap items-baseline gap-x-2 text-fg">
-      <span>{bot}</span>
-      <span className="mono text-[11px] text-fg-faint">{state.token_masked}</span>
-      <button onClick={() => setEditing(true)} className="text-[12px] text-fg-muted hover:text-fg">
-        Change bot
-      </button>
-    </p>
+    <div className="grid gap-1">
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-fg">
+        <span>{bot}</span>
+        <SecretPill hint={state.token_masked} where={s?.report_bot_where} />
+        <SecretInfo what="bot token" provider={TELEGRAM_PROVIDER} where={s?.report_bot_where} />
+        <button onClick={() => setEditing(true)} className="text-[12px] text-fg-muted hover:text-fg">
+          Change bot
+        </button>
+      </p>
+      <SecretNote where={s?.report_bot_where} host="api.telegram.org" removeLabel="Disconnect" />
+    </div>
   )
 
   if (pairing) {
