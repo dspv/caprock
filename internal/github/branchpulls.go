@@ -34,11 +34,18 @@ type BranchPR struct {
 	Draft   bool   `json:"draft,omitempty"`
 	Base    string `json:"base,omitempty"`
 	HeadSHA string `json:"head_sha,omitempty"`
+	// CreatedAt and MergedAt are GitHub's stamps (unix ms), MergedAt 0 until
+	// merged: what the PRs & CI tab's merges per day and time to merge count.
+	CreatedAt int64 `json:"created_at,omitempty"`
+	MergedAt  int64 `json:"merged_at,omitempty"`
 }
 
 type branchPullsEntry struct {
-	m  map[string]BranchPR
-	at time.Time
+	m map[string]BranchPR
+	// list is every pull request of the repository's own in the answer,
+	// most recently updated first (a fork's left out, as in m).
+	list []BranchPR
+	at   time.Time
 }
 
 type branchPullsCache struct {
@@ -51,15 +58,31 @@ type branchPullsCache struct {
 // shown: the open one, else the most recently updated. list is newest first.
 func pickBranchPRs(repo Repo, list []apiPull) map[string]BranchPR {
 	out := map[string]BranchPR{}
+	for _, b := range ownPulls(repo, list) {
+		have, ok := out[b.branch]
+		if ok && (have.State == "open" || b.pr.State != "open") {
+			continue
+		}
+		out[b.branch] = b.pr
+	}
+	return out
+}
+
+type ownPull struct {
+	branch string
+	pr     BranchPR
+}
+
+// ownPulls is the repository's own pull requests in list, in its order: a
+// fork's are left out, its branch not being this repository's.
+func ownPulls(repo Repo, list []apiPull) []ownPull {
+	out := make([]ownPull, 0, len(list))
 	for _, p := range list {
 		if p.Head.Ref == "" || (p.Head.Repo != nil && !strings.EqualFold(p.Head.Repo.FullName, repo.FullName())) {
 			continue
 		}
-		have, ok := out[p.Head.Ref]
-		if ok && (have.State == "open" || p.state() != "open") {
-			continue
-		}
-		out[p.Head.Ref] = BranchPR{Number: p.Number, URL: p.HTMLURL, Title: p.Title, State: p.state(), Draft: p.Draft, Base: p.Base.Ref, HeadSHA: p.Head.SHA}
+		out = append(out, ownPull{branch: p.Head.Ref, pr: BranchPR{Number: p.Number, URL: p.HTMLURL, Title: p.Title, State: p.state(), Draft: p.Draft,
+			Base: p.Base.Ref, HeadSHA: p.Head.SHA, CreatedAt: unixMS(p.CreatedAt), MergedAt: p.mergedMS()}})
 	}
 	return out
 }
@@ -100,9 +123,14 @@ func (s *Service) PullsByBranch(ctx context.Context, repo Repo) (map[string]Bran
 		return nil, de
 	}
 	m := pickBranchPRs(repo, list)
+	own := ownPulls(repo, list)
+	all := make([]BranchPR, len(own))
+	for i, o := range own {
+		all[i] = o.pr
+	}
 	s.branchPulls.mu.Lock()
 	bound(s.branchPulls.m, key, func(v branchPullsEntry) time.Time { return v.at })
-	s.branchPulls.m[key] = branchPullsEntry{m: m, at: now}
+	s.branchPulls.m[key] = branchPullsEntry{m: m, list: all, at: now}
 	s.branchPulls.mu.Unlock()
 	if s.OnMerged != nil {
 		if merged := newlyMerged(e.m, m); len(merged) > 0 {
@@ -136,4 +164,32 @@ func (s *Service) CachedBranchPR(repo Repo, branch string) (BranchPR, bool) {
 	}
 	p, ok := e.m[branch]
 	return p, ok
+}
+
+// RepoPulls is the repository's own pull requests from the same list
+// PullsByBranch reads and keeps (its 50 most recently updated, newest first),
+// so asking for both costs one read. Nothing is sent while GitHub is not
+// connected.
+func (s *Service) RepoPulls(ctx context.Context, repo Repo) ([]BranchPR, *Error) {
+	if _, e := s.PullsByBranch(ctx, repo); e != nil {
+		return nil, e
+	}
+	s.branchPulls.mu.Lock()
+	defer s.branchPulls.mu.Unlock()
+	list := s.branchPulls.m[repo.FullName()].list
+	return append([]BranchPR(nil), list...), nil
+}
+
+// CachedRepoPull is pull request number n of repo from the last list read,
+// however old; nothing is sent. ok is false when no list was read or n is
+// not in it: the PRs & CI tab acts only on a pull request it listed.
+func (s *Service) CachedRepoPull(repo Repo, n int) (BranchPR, bool) {
+	s.branchPulls.mu.Lock()
+	defer s.branchPulls.mu.Unlock()
+	for _, p := range s.branchPulls.m[repo.FullName()].list {
+		if p.Number == n {
+			return p, true
+		}
+	}
+	return BranchPR{}, false
 }

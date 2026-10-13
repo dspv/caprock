@@ -18,15 +18,19 @@
 
 /**
  * What a pane shows: an agent session, a shell (a session of kind `shell`),
- * one of the project's files, read-only, or a session Caprock cannot type
+ * one of the project's files, read-only, a session Caprock cannot type
  * into — one started in another terminal, or one that ended — shown as its
- * conversation, read-only (`observe`, components/ObservePane.tsx; rule 7). A
- * file's `sessionId` is its key (lib/files.ts fileKey), so the same file
- * opens once, as a session does.
+ * conversation, read-only (`observe`, components/ObservePane.tsx; rule 7),
+ * or the session deck's pull requests and CI, large (`prs`,
+ * components/PRsCITab.tsx). A file's `sessionId` is its key (lib/files.ts
+ * fileKey), and a PRs & CI tab's is prsTabKey(of), so each opens once, as a
+ * session does.
  */
 export interface TabTarget {
-  kind: 'session' | 'shell' | 'file' | 'observe'
+  kind: 'session' | 'shell' | 'file' | 'observe' | 'prs'
   sessionId: string
+  /** A PRs & CI tab: the agent session it was opened from, whose repository it shows. */
+  of?: string
   /** A file: its path relative to the worktree. */
   path?: string
   /** A file: the linked worktree's name; '' or absent for the main checkout. */
@@ -361,16 +365,22 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
   }
 }
 
+/** The key of the PRs & CI tab opened from session `of`: one per session. */
+export function prsTabKey(of: string): string {
+  return `prs:${of}`
+}
+
 function isTarget(v: unknown): v is TabTarget {
   const t = v as TabTarget
   if (!t || typeof t.sessionId !== 'string' || t.sessionId === '') return false
   if (t.kind === 'file') return typeof t.path === 'string' && t.path !== '' && (t.worktree === undefined || typeof t.worktree === 'string')
+  if (t.kind === 'prs') return typeof t.of === 'string' && t.of !== '' && t.sessionId === prsTabKey(t.of)
   return t.kind === 'session' || t.kind === 'shell' || t.kind === 'observe'
 }
 
-/** A pane that is a whole tab, never split: a file, or a session watched read-only. */
+/** A pane that is a whole tab, never split: a file, a session watched read-only, or the PRs & CI tab. */
 export function ownTab(t: TabTarget): boolean {
-  return t.kind === 'file' || t.kind === 'observe'
+  return t.kind === 'file' || t.kind === 'observe' || t.kind === 'prs'
 }
 
 function isPane(v: unknown): v is PaneNode {

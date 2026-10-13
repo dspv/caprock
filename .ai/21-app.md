@@ -134,19 +134,22 @@ One window, three regions:
   project) that needs no hover — no branch, no ±, no spend. The owner asked
   for the three on 2026-10-11 (translated: "neat small activity charts, a
   button to fold or hide, a quick button to add something in the same
-  project"); hide, a new shell, the menu and close stay on hover. The current
-  project and any with something live or waiting are open; the chevron folds
-  one by hand, kept per viewer (`caprock-sidebar-folded`). The *Projects*
-  heading says how many and how many have something running (*● 3 of 12*),
-  and *Outside projects* can be hidden from its row like any project (it was
-  the one row with no way out; owner, 2026-10-11). Under an open one, **one
-  row** (owner, 2026-10-12: "there should be the project, but only ONE card
-  under it; hide the rest inside", translated): its tab in front, or the one
-  last in front; else what asks, what waits, the agent that worked last, the
-  most recent. The rest fold behind one quiet *+N more* line, which says in
-  amber what in it waits (*+4 more · 1 asks*), breaks itself down in its
-  tooltip (*2 working · 1 idle · 1 shell*), and opens in place, remembered
-  per project ([04-ui.md](04-ui.md) § Sidebar). Opened, its tabs as
+  project"); hide, a new shell, the menu and close stay on hover. The
+  *Projects* heading says how many and how many have something running
+  (*● 3 of 12*), and *Outside projects* can be hidden from its row like any
+  project (it was the one row with no way out; owner, 2026-10-11). **Under
+  each project, only what is active** (owner, 2026-10-13, FB-053: "way too
+  much stuff, I want only active sessions there", translated): what works,
+  loops or waits on you, and the tab in front, so it always has its row. It
+  replaced one row per project (2026-10-12), which still showed an idle tab
+  and, opened, a *N hidden · hide again* line and every idle *new session*.
+  Idle and hidden rows, files and quiet shells fold behind one quiet *+N
+  more* line, which breaks itself down in its tooltip (*2 idle · 1 shell ·
+  1 hidden*) and opens in place for the window's life (sessionStorage), so
+  it is not left open for good. A project with nothing active that is not
+  current is its row alone: its chevron shows the rest, and a click makes it
+  current. The chevron of an active project folds it by hand, kept per
+  viewer (`caprock-sidebar-folded`) ([04-ui.md](04-ui.md) § Sidebar). Opened, its tabs as
   the strip shows them, same order, same names (`lib/tablabels.ts`; shells
   numbered *Shell 1*, *Shell 2*; a branch only when it is not the
   project's). No worktree or branch rows, and no session that is not in a
@@ -161,8 +164,9 @@ One window, three regions:
   can't close it or hide it afterwards", translated): a tab row's × closes
   the tab; a row with no tab has a × that hides it from the list, signalling
   nothing (rule 7), and ■ beside it stops what Caprock started after a
-  confirmation. Hidden rows wait behind *N hidden · show* and come back by
-  themselves when they next wait on you. The same actions are in each row's
+  confirmation. Hidden rows wait last inside *+N more*, muted, each with an
+  eye that shows it again, and come back by themselves when they next wait
+  on you. The same actions are in each row's
   right-click / Shift+F10 menu; the buttons are 26px, on hover and focus,
   and always shown on a touch screen ([04-ui.md](04-ui.md) § Sidebar). A **Dashboard** entry opens the existing
   screens in a Dashboard tab pinned at the left of the tab strip (2026-10-09:
@@ -684,6 +688,46 @@ One window, three regions:
     tooltip says it is an estimate at list rate, before a private
     repository's included minutes, and names the table's version and source
     page. Nothing while no job has finished.
+  - **PRs & CI tab** (owner, 2026-10-13, translated: "I also want to expand
+    the panel bigger, to see the statuses large and in detail, plus
+    statistics … sometimes it's interesting to look"). *Expand* beside
+    *Hide ⌘B* — one control, no key of its own (rule 12), no sidebar item —
+    opens the cell large as a tab of its own (`kind: 'prs'`, one per agent
+    session, never split; `components/PRsCITab.tsx`, words in
+    `lib/prstats.ts`); *Back to the deck* closes it and brings the agent's
+    tab to the front with its deck open. It shows:
+    - **The figures** — over the 14 local days ending today, from `GET
+      /v1/sessions/{id}/ci/stats`: *Merged* (the total, the last 7, today,
+      bars per day), *Time to merge* (the median from opened to merged of
+      those merged, nothing with fewer than two), *CI time* (the median
+      successful run of the workflow taking the most time, a line per day),
+      *Red runs* (failed of the runs that passed or failed, with re-runs;
+      runs per day with the red part), and *Actions this month* when
+      GitHub's billing report is readable. Every figure is counted from
+      GitHub's stamps; the tooltips say which pull requests and how many
+      runs (the newest 100) they rest on.
+    - **The list** — *This session* (its own, the open one first),
+      *Repository* (the repository's 50 most recently updated, the default,
+      kept per viewer) or *Open*; a row says its state, number, title, age,
+      its CI in words where read (the session's own) or *merged in 8m*, and
+      *this session*.
+    - **The chosen one** — the session's open PR first: its state, CI,
+      merge state and review as large pills, branch → base, the diff's size
+      (*+181 −59 · 13 files · 2 commits*, from GitHub's answer for the pull
+      request), when it was opened and how long it took to merge; the
+      deck's actions (lib/usePRForce, shared with the deck's rows; on a
+      pull request of the repository that is not the session's too, once
+      the tab has listed it); its jobs as a grid of job × runner OS (a
+      matrix job's OS taken out of its name), each cell its state, time,
+      time against its median and the step it failed at or is on; the jobs
+      on the run's clock, each with its median as a tick; and a job's steps
+      — the first failed job by itself — with the end of its log and
+      *Investigate*.
+    It asks only while it is the tab in front and the window is visible,
+    through the deck's routes and kept answers (it opens on what the deck
+    last knew), and one more read of GitHub: the repository's newest 100
+    runs, kept 30 minutes by the daemon. Below 760px the list and the
+    chosen one stack.
   - **Branches view** (owner, 2026-10-12, translated: "seeing branches with
     statistics would also be interesting"; `GET
     /v1/sessions/{id}/branches`, `lib/branches.ts`): the session's

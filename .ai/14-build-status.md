@@ -73,6 +73,45 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — 0.114.0: the owner's afternoon list, and a lighter Now
+
+Cut while more of the same list was still in flight, because the owner kept
+meeting bugs master had already fixed. In it: Claude Code on DeepSeek through
+the Subscription picker (#522; the live run reached DeepSeek and got 402 for
+an empty balance, so the transcript model name is still unverified, OQ-13);
+subagent rows that say what each one is doing (#523); the spend chart under
+Now with cost, tokens and turns (#524); the cockpit headline against the
+viewer's own usual (#525); a Hidden status line that keeps plan limits coming
+(#526); old base64 payloads stripped and free space returned on idle (#527;
+2.2 GB to 1.38 GB on a copy of the owner's database); the sidebar listing
+only active sessions (#529); the Now screen batching its refreshes, about
+700 to about 100 requests a minute (#530); and pull requests and CI, large,
+in a tab (#528). Still to come: the Repos table, burn rate and a usual line
+on the chart, project keys with fixed row order, the phone home and Inbox,
+Dark Pastel as the default.
+
+### 2026-10-13 — unreleased: old payloads compacted, free space returned
+
+The rows stored before `event.CapToolField` kept their base64, and SQLite
+never gave freed pages back. Owner's mandate: necessary safe optimisations run
+automatically on every machine. Now, on the idle check (nothing recorded and
+no write request for 30 minutes), `daemon/compact.go` runs three steps, each
+standing down the moment anything is to be written: base64 in older events
+becomes CapToolField's marker (`event.StripBinary`; text never clipped;
+resumable through `meta.payload_compact_cursor`, bounded by
+`payload_compact_until`, finished once); then one VACUUM that switches the
+database to `auto_vacuum=INCREMENTAL`, only with free disk of 2.2 × the used
+size (measured peak 1.94 ×), 10-minute limit, interrupted by the recorder's
+`OnWrite` or any non-GET request and rolled back unchanged; then
+`incremental_vacuum` 4 MiB at a time. New databases are incremental from the
+first table (DSN pragma). Footprint `actions` say each step; the Storage panel
+lost its manual `sqlite3 … VACUUM` advice and reads `returns_free_space`. On
+a copy of the owner's 2.2 GB database: 4,181 rows, 750 MB of payload, 79 s;
+VACUUM 2,176 → 1,384 MB in 21 s; a concurrent 20 ms writer never failed
+(slowest commit 38 ms); an interrupted VACUUM let the writer in after 2 ms.
+Figures in [03-contracts.md § Payload compaction and
+auto-vacuum](03-contracts.md#payload-compaction-and-auto-vacuum-no-migration).
+
 ### 2026-10-13 — unreleased: Claude Code on DeepSeek
 
 A user asked to run Claude Code sessions from Caprock on DeepSeek's models

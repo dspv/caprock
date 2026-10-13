@@ -21,6 +21,9 @@ export interface BranchPR {
   draft?: boolean
   base?: string
   head_sha?: string
+  /** GitHub's stamps (unix ms): the PRs & CI tab's merges per day and time to merge. */
+  created_at?: number
+  merged_at?: number
 }
 
 /** One row (`api.SessionBranch`). */

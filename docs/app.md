@@ -34,19 +34,20 @@ others. Installing it: [install-app.md](install-app.md).
   of the count, the badge and ⌘J; when only such turns are left, the block
   is not shown at all (they stay on the Dashboard). Then the projects, one line each: the
   name, a green dot with how many sessions and shells run in it, and how
-  many wait on you. Only the current project is open, and under it is one
-  row: the tab you are looking at, or the project's last one; with no tab,
-  whatever asks or waits on you, else the agent that worked last. The rest
-  sit behind one quiet line, *+4 more* — hover it for what it holds (*2
-  working · 1 idle · 1 shell*), click it to list them in place; it stays
-  open for that project until you fold it. When something behind it waits
-  on you, the line turns amber and says so: *+4 more · 1 asks*. Opened,
-  the list is the project's tabs — the ones in the tab strip, in the same order and under
+  many wait on you. Under each project are only the sessions that are
+  active: working, looping or waiting on you, plus the tab you are looking
+  at, so it always has a row. Everything else — idle sessions, rows you
+  hid, open files, shells with nothing running — sits behind one quiet
+  line, *+3 more*: hover it for what it holds (*2 idle · 1 hidden*), click
+  it to list them in place, hidden rows last with an eye to show them
+  again. It stays open until you fold it or close the window. A project
+  with nothing active is just its own line; its arrow lists what is in it.
+  Rows are the project's tabs — the ones in the tab strip, in the same order and under
   the same names (*Shell 1*, *Shell 2* for shells, *Shell 1 · claude* while
   one runs a program; a branch beside a tab
   only when it is not the project's own). Click another project to make it
   current: its last tab comes to the front, or its own page when it has
-  none, and the project before folds up. The one highlighted row in the
+  none. The one highlighted row in the
   sidebar is the tab you are looking at; the current project's name is
   bold. After the tabs, muted, come the sessions and shells Caprock started
   in the project that still run with no tab; click one to open it as a tab.
@@ -54,8 +55,8 @@ others. Installing it: [install-app.md](install-app.md).
   state in one word at its right: *working* (green), *waiting* (amber — it
   needs you, and nothing else in the list is amber), *idle* or *done*; a
   shell says nothing. Rows keep the strip's order, then the order things
-  started: a change of state never moves one, and a new one appears at the
-  end. An ended session is
+  started: a change of state only moves a row between the list and *+N
+  more*, and a new one appears at the end. An ended session is
   on the project's page (*Recent*) and in ⌘K. Pinned projects come first,
   then the rest by name, and clicking a project never moves it. Hover a project for *New agent* and *New shell*. Sessions in a
   folder that is not a repository sit under *Outside projects*, and so does a
@@ -389,7 +390,16 @@ others. Installing it: [install-app.md](install-app.md).
   focus the edge and use ↑ ↓; double-click it for the default height. The
   deck button beside the inspector's, ⌘B and the palette open and close it;
   the app remembers its height and whether it was open. A shell tab has no
-  deck.
+  deck. **Expand**, beside *Hide*, opens it large in a tab of its own,
+  *PRs & CI*: the repository's last two weeks on top (pull requests merged
+  per day, the median time to merge, the median CI run, the share of red
+  runs, the Actions minutes GitHub billed this month), its pull requests on
+  the left (this session's, the repository's or the open ones), and the one
+  you pick on the right with its state, review, merge state and diff size,
+  the deck's actions, its jobs by runner OS against each one's usual time,
+  the jobs on a timeline, and a failed job's steps and log with
+  *Investigate*. *Back to the deck* closes the tab and shows the agent with
+  its deck. It reads GitHub only while it is in front.
 - **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
   same button), *Review and commit* in the inspector, or "Review changes" in
   the palette. The files are listed as *Staged*, *Changes* and *Conflicts*;

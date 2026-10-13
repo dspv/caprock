@@ -13,12 +13,12 @@
  * exactly the judgement that produced the bug.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { PulsePanel, TIER_TOKEN, IDLE_TOKEN } from './Pulse'
 import type { Event, SessionSummary } from '@/lib/api'
 
 /** Seeded events per session id, keyed the way the panel asks for them. */
-const seeded = vi.hoisted(() => ({ value: {} as Record<string, Event[]> }))
+const seeded = vi.hoisted(() => ({ value: {} as Record<string, Event[]>, asked: [] as string[] }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -26,7 +26,7 @@ vi.mock('@/lib/api', async (orig) => {
     ...actual,
     api: {
       ...actual.api,
-      recentEvents: async (id: string) => seeded.value[id] ?? [],
+      recentEvents: async (id: string) => { seeded.asked.push(id); return seeded.value[id] ?? [] },
       session: async () => ({ repo: { url: 'https://github.com/o/caprock', root: '/r/caprock' } }),
       summary: async () => ({ projects: [{ project: 'caprock', dir: '/r/caprock', tokens: 1_200_000, cost_usd: 42.5, sessions: 3 }] }),
     },
@@ -276,6 +276,28 @@ describe('a pulse row, opened', () => {
     unmount()
     render(<PulsePanel sessions={sessions} now={NOW} />)
     await waitFor(() => expect(screen.getByText('Open session')).toBeInTheDocument())
+  })
+})
+
+describe('seeding the tracks', () => {
+  // Sorted by the newest event, two busy sessions swap places every few
+  // seconds; keyed on that order, each swap read 2,000 events per track again.
+  it('reads a track once, not again when the order changes, and a new one on its own', async () => {
+    const NOW = Date.now()
+    seeded.value = { a: [turn('a', NOW - 60_000)], b: [turn('b', NOW - 60_000)] }
+    seeded.asked = []
+    const a = session({ session_id: 'a', project: 'one', last_event_at: NOW - 1000 })
+    const b = session({ session_id: 'b', project: 'two', last_event_at: NOW - 2000 })
+    const { rerender } = render(<PulsePanel sessions={[a, b]} now={NOW} />)
+    await waitFor(() => expect(seeded.asked.sort()).toEqual(['a', 'b']))
+    rerender(<PulsePanel sessions={[{ ...b, last_event_at: NOW }, a]} now={NOW} />)
+    await act(async () => {})
+    expect(seeded.asked).toHaveLength(2)
+    const c = session({ session_id: 'c', project: 'three', last_event_at: NOW })
+    rerender(<PulsePanel sessions={[c, b, a]} now={NOW} />)
+    await waitFor(() => expect(seeded.asked).toHaveLength(3))
+    expect(seeded.asked[2]).toBe('c')
+    expect(screen.getByText('one')).toBeInTheDocument()
   })
 })
 

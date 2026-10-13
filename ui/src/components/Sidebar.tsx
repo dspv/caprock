@@ -7,9 +7,10 @@
  * its project, and the Today strip's Waiting count opens the first of them.
  *
  * The projects are an accordion (owner, 2026-10-09: "which one is active,
- * which to pick, unclear", translated): the current project is open, and so
- * is every project where something runs or waits (owner, 2026-10-11), each
- * with exactly the tabs the strip shows for it. Picking another
+ * which to pick, unclear", translated): under each project only what is
+ * active — works, loops, waits on you, or is the tab in front — and the rest
+ * behind one "+N more" (owner, 2026-10-13, FB-053; ProjectRow decides it).
+ * A project with nothing active is one line. Picking another
  * project makes it current; the chevron folds one by hand. The one
  * highlighted row in the sidebar is the tab in front.
  *
@@ -27,7 +28,7 @@
  * menu (or a right-click, or Shift+F10 on its row) hides it, closes its tabs,
  * opens it in an editor or removes it from Caprock. Every row under a
  * project can be closed or hidden from its own ×, and hidden rows come back
- * from "N hidden · show" (components/ProjectRow.tsx).
+ * from the end of "+N more" (components/ProjectRow.tsx).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { groupProjects, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
@@ -135,8 +136,6 @@ export interface SidebarProps {
   tabLabels?: ReadonlyMap<string, TabLabel>
   /** The tab in front: the one highlighted row. */
   activeTabId?: string
-  /** Each project's tab last in front (lib/tabs.ts activeByProject): the one row an open project shows. */
-  activeByProject?: Readonly<Record<string, string>>
   onActivateTab?: (tabId: string) => void
   /** Closes a tab, as ⌘W and the strip's × do; what runs in it keeps running. */
   onCloseTab?: (tabId: string) => void
@@ -301,7 +300,6 @@ export function Sidebar(props: SidebarProps) {
         tabDigits={tabDigits}
         labels={props.tabLabels ?? noLabels}
         activeTabId={props.dashboardActive ? undefined : props.activeTabId}
-        leadTabId={props.activeByProject?.[n.project.id]}
         onSelect={props.onSelectProject}
         onActivateTab={props.onActivateTab ?? noop}
         onOpenLive={props.onOpenLive}

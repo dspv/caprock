@@ -17,13 +17,17 @@
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtBytes, fmtPct, fmtTokens, fmtTool, fmtUSD } from '@/lib/format'
-import { Panel } from '@/components/ui'
+import { Panel, usePanelOpen } from '@/components/ui'
+import { SLOW_LIVE_MS, useOnScreen } from '@/lib/refresh'
 import { ShareCard } from '@/components/Share'
 
 export function BreakdownPanel() {
   // Lifetime figures move slowly; a minute is far more often than they change,
   // and this must not compete with the live panels above it for the socket.
-  const h = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all' })
+  // Folded or scrolled away it asks nothing (lib/refresh.ts).
+  const open = usePanelOpen('now.all-time')
+  const [seen, onScreen] = useOnScreen()
+  const h = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all', liveMs: SLOW_LIVE_MS, active: open && onScreen })
   const tools = (h.data?.tools ?? []).slice(0, 6)
   const models = (h.data?.summary?.models ?? []).slice(0, 5)
   if (tools.length === 0 && models.length === 0) return null
@@ -49,6 +53,7 @@ export function BreakdownPanel() {
   return (
     <Panel
       fold="now.all-time"
+      sectionRef={seen}
       title="All time"
       right={
         <span className="inline-flex items-center gap-3">

@@ -3,26 +3,26 @@
  * 2026-10-09: "which one is active, which to pick, unclear", translated).
  *
  * A project is one line: its name, a green dot with how many sessions and
- * shells run in it, and how many wait on you. The current project is open,
- * and so is every project where something runs or waits (owner,
- * 2026-10-11); the chevron folds one by hand. Under it, ONE row (owner,
- * 2026-10-12: "there should be the project, but only ONE card under it;
- * hide the rest inside", translated): its tab in front, or the one last in
- * front when the project is not; else what waits on
- * you, a permission prompt first; else the agent that worked last; else the
- * most recent (pickLead). Everything else folds into one quiet line, "+N
- * more", whose tooltip says what it holds ("2 working · 1 idle · 1 shell")
- * and which says, in amber, what in it waits on you ("+4 more · 1 asks"). It
- * opens in place and stays open per project (`caprock-sidebar-more-open`).
- * Open, it lists the project's tabs as the strip shows them, in the same
- * order and under the same names (lib/tablabels.ts); then, muted, what
+ * shells run in it, and how many wait on you. Under it, only what is active
+ * (owner, 2026-10-13, FB-053: "way too much stuff, I want only active
+ * sessions there", translated; isActiveRow): what works, loops or waits on
+ * you, and the tab in front, so the tab in front always has its row. It
+ * replaced one row per project (2026-10-12), which still listed an idle
+ * session when nothing else was going on. Everything else (idle sessions,
+ * files, quiet shells, rows hidden by hand) folds into one quiet line, "+N
+ * more", whose tooltip says what it holds ("2 idle · 1 shell · 1 hidden").
+ * It opens in place and stays open for this window's life
+ * (`caprock-sidebar-more-open`, sessionStorage). A project with nothing
+ * active that is not current is its row alone: its chevron opens the same
+ * list, and a click makes it current, which brings its last tab to the
+ * front. The chevron of an active project folds it by hand. Rows keep the
+ * strip's order for tabs (same names, lib/tablabels.ts), then, muted, what
  * Caprock started that still runs with no tab, a click opening it as a tab;
  * then what another terminal started, a click opening it in a tab of its
- * own, read-only (components/ObservePane.tsx). Ended sessions are not listed. The
- * order is the strip's, then the order things started: a status change
- * never moves a row within the fold, and a new one appears at the end. The
- * tab in front is the one highlighted row in the whole sidebar. The strip's
- * ⌘1–⌘9 reach every tab, shown or folded.
+ * own, read-only (components/ObservePane.tsx). Ended sessions are not
+ * listed. A status change adds or removes a row and never reorders the
+ * others. The tab in front is the one highlighted row in the whole sidebar.
+ * The strip's ⌘1–⌘9 reach every tab, shown or folded.
  *
  * What waits on you is marked on its own row — an amber edge and tint, and
  * the word "waiting" (or "asks", at a permission prompt) — since the
@@ -37,10 +37,10 @@
  * a program (lib/closeShell). A row with no tab has a × that hides it from
  * the list — nothing is signalled, so it is the one action offered on a
  * session another terminal started (rule 7) — and, on what Caprock started,
- * ■, which stops it after the cockpit's confirmation. Hidden rows wait
- * behind "N hidden · show" (inside "+N more" when there is one), and each
- * comes back by itself when it next
- * waits on you (lib/sidebar.ts rowHidden). The same actions are in each
+ * ■, which stops it after the cockpit's confirmation. Hidden rows wait last
+ * inside "+N more", muted, each with an open eye that shows it again (the
+ * separate "N hidden · show" line went on 2026-10-13), and each comes back
+ * by itself when it next waits on you (lib/sidebar.ts rowHidden). The same actions are in each
  * row's menu: a right-click, Shift+F10 or the context-menu key. The buttons
  * show on hover and focus, always on the tab in front, and always on a touch
  * screen, where there is no hover. A project's × closes its tabs and moves
@@ -48,7 +48,7 @@
  * its tabs close and it stays, its dot green. Delete and Backspace close
  * nothing.
  */
-import { Fragment, memo, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useMemo, useState } from 'react'
 import type { SessionSummary } from '@/lib/api'
 import { rowHidden, type HiddenSessions, type ProjectNode, type SessionNode } from '@/lib/sidebar'
 import type { Dot } from '@/lib/sidebar'
@@ -145,8 +145,6 @@ export interface ProjectRowProps {
   labels: ReadonlyMap<string, TabLabel>
   /** The tab in front, when the terminals are on screen. */
   activeTabId?: string
-  /** The project's own tab last in front, in front or not: the one row it shows, ahead of all else. */
-  leadTabId?: string
   onSelect: (id: string) => void
   onActivateTab: (tabId: string) => void
   /** Closes a tab exactly as ⌘W and the strip's × do; what runs in it keeps running. */
@@ -178,7 +176,6 @@ export const ProjectRow = memo(function ProjectRow({
   tabDigits,
   labels,
   activeTabId,
-  leadTabId,
   onSelect,
   onActivateTab,
   onCloseTab,
@@ -195,38 +192,43 @@ export const ProjectRow = memo(function ProjectRow({
 }: ProjectRowProps) {
   const p = node.project
   const id = p.id
-  // Open when current, and also whenever something runs or waits in it
-  // (owner, 2026-10-11, translated: "active sessions should stay expanded,
-  // so I don't switch between projects and have the other one fold"). Only
-  // projects with nothing going on fold.
-  // Unless folded by hand: the chevron's choice wins over both (owner,
-  // 2026-10-11: "a button to fold, hide").
+  // Under a project, only what is active (owner, 2026-10-13, FB-053: "way
+  // too much stuff, I want only active sessions there", translated): what
+  // works, loops or waits on you, and the tab in front, so the tab in front
+  // always has its row. Idle, hidden and the rest go behind one quiet line,
+  // "+N more"; a project with nothing active is its row alone, and its
+  // chevron (or a click, which makes it current) shows the rest.
+  // The chevron folds an active project by hand (owner, 2026-10-11: "a
+  // button to fold, hide"); folded, what waits on you still shows under it.
   const [folded, setFolded] = useFolded(id)
-  const open = !folded && (current || node.live > 0 || node.waiting > 0)
-  // Folded by hand while something in it waits on you: what waits still
-  // shows under it, and nothing else. A fold never hides what needs you.
-  const waitingOnly = !open && folded && node.waiting > 0
-  const live = useMemo(() => (open || waitingOnly ? liveWithoutTab(node, hiddenSessions) : NO_LIVE), [open, waitingOnly, node, hiddenSessions])
+  const live = useMemo(() => liveWithoutTab(node, hiddenSessions), [node, hiddenSessions])
   const nodes = useMemo(() => new Map(node.worktrees.flatMap((w) => w.sessions).map((x) => [x.session.session_id, x] as const)), [node])
-  const shownTabs = waitingOnly
-    ? tabs.filter((t) => { const sid = labels.get(t.id)?.session?.session_id; return !!sid && !!nodes.get(sid)?.waiting })
-    : tabs
-  const ownRows = waitingOnly ? live.own.filter((x) => x.waiting) : live.own
   const nodeOfTab = (t: Tab) => { const sid = labels.get(t.id)?.session?.session_id; return sid ? nodes.get(sid) : undefined }
-  // Everything listable under the open project, in the list's order: its
-  // tabs as the strip has them, then what Caprock started with no tab, then
-  // what another terminal started (waiting first). Hidden rows are apart.
-  const items = useMemo<LeadItem[]>(() => open ? [
+  // Everything listable under the project, in the list's order: its tabs as
+  // the strip has them, then what Caprock started with no tab, then what
+  // another terminal started (waiting first). Hidden rows are apart.
+  const items = useMemo<LeadItem[]>(() => [
     ...tabs.map((t) => { const l = labels.get(t.id); const sid = l?.session?.session_id; return { key: t.id, tab: t, label: l, node: sid ? nodes.get(sid) : undefined } }),
     ...[...live.own, ...live.waitingOther, ...live.other].map((x) => ({ key: x.session.session_id, node: x })),
-  ] : [], [open, tabs, labels, nodes, live])
-  const prevLead = useRef<string | undefined>(undefined)
-  const lead = open ? pickLead(items, (activeTabId && tabs.some((t) => t.id === activeTabId) ? activeTabId : undefined) ?? leadTabId, prevLead.current) : undefined
-  prevLead.current = lead?.key
-  const rest = lead ? items.filter((it) => it !== lead) : items
-  const restWaiting = { asks: rest.filter((it) => it.node?.asks).length, waiting: rest.filter((it) => it.node?.waiting && !it.node.asks).length }
-  const [moreOpen, setMoreOpen] = useIdFlag(MORE_KEY, id)
-  const [hiddenOpen, setHiddenOpen] = useState(false)
+  ], [tabs, labels, nodes, live])
+  const front = activeTabId && tabs.some((t) => t.id === activeTabId) ? activeTabId : undefined
+  const shown = items.filter((it) => isActiveRow(it, front))
+  const rest = items.filter((it) => !isActiveRow(it, front))
+  const restCount = rest.length + live.hidden.length
+  // Nothing active and not the project in front: the project row alone.
+  const quiet = !current && shown.length === 0
+  const [moreOpen, setMoreOpen] = useMoreOpen(id)
+  // A quiet project shown through its chevron: while it stays quiet and on
+  // screen. Picking it, or something in it starting, ends that.
+  const [peek, setPeek] = useState(false)
+  if (peek && !quiet) setPeek(false)
+  const showRest = quiet ? peek : moreOpen
+  const open = quiet ? peek && restCount > 0 : !folded
+  // Folded by hand while something in it waits on you: what waits still
+  // shows under it, and nothing else. A fold never hides what needs you.
+  const waitingOnly = !quiet && folded && node.waiting > 0
+  const shownTabs = waitingOnly ? tabs.filter((t) => !!nodeOfTab(t)?.waiting) : tabs
+  const ownRows = waitingOnly ? live.own.filter((x) => x.waiting) : live.own
   const [rowMenu, setRowMenu] = useState<RowMenuState | null>(null)
   const [stopping, setStopping] = useState<{ sessionId: string; what: StopWhat } | null>(null)
   // Other folders is a group, not a folder: no menu, no new agent in it.
@@ -318,17 +320,34 @@ export const ProjectRow = memo(function ProjectRow({
   return (
     <li className="grid grid-cols-1" data-project={id}>
       <div className="group relative">
-        <button
-          type="button"
-          data-project-fold
-          aria-label={`${folded ? 'Unfold' : 'Fold'} ${p.name}`}
-          title={folded ? 'Unfold: show its tabs and sessions' : 'Fold: one line, what runs in it keeps running'}
-          aria-expanded={!folded}
-          onClick={() => setFolded(!folded)}
-          className="absolute left-0 top-1/2 z-[1] flex h-[26px] w-[20px] -translate-y-1/2 items-center justify-center rounded-[5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
-        >
-          <Chevron open={!folded && open} />
-        </button>
+        {/* Active, the chevron folds it by hand. Quiet (nothing active, not
+          * in front), it shows what is behind it: the one way in besides
+          * picking the project. Quiet and empty, there is nothing to show. */}
+        {quiet ? restCount > 0 && (
+          <button
+            type="button"
+            data-project-fold
+            aria-label={`${peek ? 'Fold' : 'Show'} ${p.name}: ${restCount} not active`}
+            title={`${moreBreakdown(rest, live.hidden.length)}. ${peek ? 'Fold them back.' : 'Show them here.'} Nothing in it is active.`}
+            aria-expanded={peek}
+            onClick={() => setPeek(!peek)}
+            className="absolute left-0 top-1/2 z-[1] flex h-[26px] w-[20px] -translate-y-1/2 items-center justify-center rounded-[5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+          >
+            <Chevron open={open} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            data-project-fold
+            aria-label={`${folded ? 'Unfold' : 'Fold'} ${p.name}`}
+            title={folded ? 'Unfold: show what is active in it' : 'Fold: one line, what runs in it keeps running'}
+            aria-expanded={!folded}
+            onClick={() => setFolded(!folded)}
+            className="absolute left-0 top-1/2 z-[1] flex h-[26px] w-[20px] -translate-y-1/2 items-center justify-center rounded-[5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+          >
+            <Chevron open={open} />
+          </button>
+        )}
         <button
           type="button"
           data-nav-row
@@ -422,7 +441,7 @@ export const ProjectRow = memo(function ProjectRow({
       </div>
       {(open || waitingOnly) && (
         <ul className="grid grid-cols-1 pb-1" role="group" aria-label={`${p.name}: open tabs`}>
-          {current && !waitingOnly && tabs.length === 0 && live.own.length === 0 && live.waitingOther.length === 0 && live.other.length === 0 && live.hidden.length === 0 && (
+          {current && !waitingOnly && items.length === 0 && live.hidden.length === 0 && (
             <li className="flex h-[30px] items-center pl-[22px] pr-2 text-[12px] text-fg-faint">No tabs open.</li>
           )}
           {waitingOnly ? (
@@ -433,52 +452,32 @@ export const ProjectRow = memo(function ProjectRow({
             </>
           ) : (
             <>
-              {/* One row: the one that matters now (pickLead). The rest wait
-                * behind one quiet line, "+N more", that says what in it
-                * needs you (owner, 2026-10-12: "only ONE card under it; hide
-                * the rest inside", translated). */}
-              {lead && <Fragment key={lead.key}>{itemRow(lead)}</Fragment>}
-              {rest.length > 0 && (
+              {/* What is active, in the list's order: a state change adds or
+                * removes a row and never reorders the others. */}
+              {shown.map((it) => <Fragment key={it.key}>{itemRow(it)}</Fragment>)}
+              {/* The rest (idle, hidden by hand, files, quiet shells) behind
+                * one quiet line (owner, 2026-10-13, FB-053). A quiet project
+                * has no line: its chevron is the way in. */}
+              {!quiet && restCount > 0 && (
                 <li>
                   <button
                     type="button"
                     data-nav-row
                     data-more-rows
-                    data-waiting={restWaiting.asks + restWaiting.waiting > 0 || undefined}
                     aria-expanded={moreOpen}
                     onClick={() => setMoreOpen(!moreOpen)}
-                    className={`app-row flex h-[26px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] pr-2 text-left text-[12px] ${restWaiting.asks + restWaiting.waiting > 0 ? 'text-accent' : 'text-fg-faint'}`}
-                    title={`${moreBreakdown(rest)}. ${moreOpen ? 'Fold them back under this line.' : 'Show them here.'} They keep running either way.`}
+                    className="app-row flex h-[26px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] pr-2 text-left text-[12px] text-fg-faint"
+                    title={`${moreBreakdown(rest, live.hidden.length)}. ${moreOpen ? 'Fold them back under this line.' : 'Show them here.'} Nothing in them is active.`}
                   >
-                    <span className="min-w-0 flex-1 truncate">
-                      <span className="num">+{rest.length}</span> more
-                      {restWaiting.asks > 0 && <span className="font-semibold"> · <span className="num">{restWaiting.asks}</span> asks</span>}
-                      {restWaiting.waiting > 0 && <span className="font-semibold"> · <span className="num">{restWaiting.waiting}</span> waiting</span>}
-                    </span>
+                    <span className="min-w-0 flex-1 truncate"><span className="num">+{restCount}</span> more</span>
                     <span className={`inline-block transition-transform motion-reduce:transition-none ${moreOpen ? 'rotate-90' : ''}`} aria-hidden>›</span>
                   </button>
                 </li>
               )}
-              {moreOpen && rest.map((it) => <Fragment key={it.key}>{itemRow(it)}</Fragment>)}
-              {/* Hidden by hand, never lost: one line brings them back. With
-                * other rows folded, it folds with them. */}
-              {live.hidden.length > 0 && (rest.length === 0 || moreOpen) && (
-                <li>
-                  <button
-                    type="button"
-                    data-nav-row
-                    data-hidden-rows
-                    aria-expanded={hiddenOpen}
-                    onClick={() => setHiddenOpen((v) => !v)}
-                    className="app-row flex h-[30px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] pr-2 text-left text-[12px] text-fg-faint"
-                    title="Rows you hid. What runs in them keeps running; each shows again by itself when it next waits on you."
-                  >
-                    <EyeOffIcon size={13} />
-                    <span className="min-w-0 flex-1 truncate"><span className="num">{live.hidden.length}</span> hidden · {hiddenOpen ? 'hide again' : 'show'}</span>
-                  </button>
-                </li>
-              )}
-              {hiddenOpen && (rest.length === 0 || moreOpen) && live.hidden.map((x) => <Fragment key={x.session.session_id}>{liveRow(x, true)}{confirm(x.session.session_id)}</Fragment>)}
+              {showRest && rest.map((it) => <Fragment key={it.key}>{itemRow(it)}</Fragment>)}
+              {/* Hidden by hand, never lost: last in the fold, muted, each
+                * with the open eye that brings it back; no line of their own. */}
+              {showRest && live.hidden.map((x) => <Fragment key={x.session.session_id}>{liveRow(x, true)}{confirm(x.session.session_id)}</Fragment>)}
             </>
           )}
         </ul>
@@ -487,8 +486,6 @@ export const ProjectRow = memo(function ProjectRow({
     </li>
   )
 })
-
-const NO_LIVE: LiveWithoutTab = { own: [], waitingOther: [], other: [], hidden: [] }
 
 /** What a tab's Stop… would stop: its session, when Caprock started it and it still runs (rule 7). */
 function stoppable(l?: TabLabel): { sessionId: string; what: StopWhat } | undefined {
@@ -585,7 +582,7 @@ export interface LiveWithoutTab {
   waitingOther: SessionNode[]
   /** Started in another terminal, not waiting: behind one line. */
   other: SessionNode[]
-  /** Hidden by hand, whoever started them: behind "N hidden · show". */
+  /** Hidden by hand, whoever started them: last inside "+N more". */
   hidden: SessionNode[]
 }
 
@@ -621,7 +618,7 @@ export function liveWithoutTab(node: ProjectNode, hiddenSessions?: HiddenSession
 function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onShow, onMenu }: {
   item: SessionNode
   ownBranch?: string
-  /** Hidden by hand and shown on demand under "N hidden". */
+  /** Hidden by hand and shown on demand last inside "+N more". */
   hidden?: boolean
   onOpen: () => void
   onStop?: () => void
@@ -661,7 +658,7 @@ function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onSh
         <span data-row-actions className={`absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 ${ACTIONS_ON_HOVER}`}>
           {onShow && <RowAction label={`Show ${title} in the list again`} onClick={onShow}><EyeIcon size={14} /></RowAction>}
           {onHide && (
-            <RowAction label={`Hide ${title} from the list`} title={`Hide from the list: ${s.owned ? 'it keeps running' : 'nothing is sent to it'}; “hidden · show” brings it back`} onClick={onHide}>
+            <RowAction label={`Hide ${title} from the list`} title={`Hide from the list: ${s.owned ? 'it keeps running' : 'nothing is sent to it'}; it stays under “+N more” with an eye to show it again`} onClick={onHide}>
               <CloseIcon size={14} />
             </RowAction>
           )}
@@ -713,22 +710,28 @@ function RowAction({ label, title, onClick, popup, children }: { label: string; 
 }
 
 const FOLDED_KEY = 'caprock-sidebar-folded'
-/** Projects whose "+N more" is open, kept per viewer. */
+/**
+ * Projects whose "+N more" is open: for this window's life only
+ * (sessionStorage), so what was asked for once does not stay in the list
+ * for good (owner, 2026-10-13, FB-053). It was kept in localStorage until
+ * then; that copy is dropped once, below.
+ */
 export const MORE_KEY = 'caprock-sidebar-more-open'
+try { localStorage.removeItem(MORE_KEY) } catch { /* nothing kept */ }
 
-function readIds(key: string): Set<string> {
-  try { return new Set(JSON.parse(localStorage.getItem(key) ?? '[]') as string[]) } catch { return new Set() }
+function readIds(store: Storage, key: string): Set<string> {
+  try { return new Set(JSON.parse(store.getItem(key) ?? '[]') as string[]) } catch { return new Set() }
 }
 
-/** One project's yes/no kept per viewer under `key`: folded by hand, its "+N more" open. */
-function useIdFlag(key: string, id: string): [boolean, (v: boolean) => void] {
-  const [v, setV] = useState(() => readIds(key).has(id))
+/** One project's yes/no kept under `key` in `store`: folded by hand, its "+N more" open. */
+function useIdFlag(store: () => Storage, key: string, id: string): [boolean, (v: boolean) => void] {
+  const [v, setV] = useState(() => { try { return readIds(store(), key).has(id) } catch { return false } })
   const set = (next: boolean) => {
     setV(next)
     try {
-      const all = readIds(key)
+      const all = readIds(store(), key)
       if (next) all.add(id); else all.delete(id)
-      localStorage.setItem(key, JSON.stringify([...all]))
+      store().setItem(key, JSON.stringify([...all]))
     } catch { /* private window: for this page only */ }
   }
   return [v, set]
@@ -736,7 +739,12 @@ function useIdFlag(key: string, id: string): [boolean, (v: boolean) => void] {
 
 /** A project folded by hand, kept per viewer. */
 function useFolded(id: string): [boolean, (v: boolean) => void] {
-  return useIdFlag(FOLDED_KEY, id)
+  return useIdFlag(() => localStorage, FOLDED_KEY, id)
+}
+
+/** A project's "+N more" open, for this window's life. */
+function useMoreOpen(id: string): [boolean, (v: boolean) => void] {
+  return useIdFlag(() => sessionStorage, MORE_KEY, id)
 }
 
 /** A row under a project: a tab (with the session it shows, if any), or a live session or shell with no tab. */
@@ -747,57 +755,41 @@ export interface LeadItem {
   node?: SessionNode
 }
 
-/** How much a row matters now: the tab in front, one that asks, one that waits, an agent that works, a busy shell, the rest. Lower first. */
-function leadTier(it: LeadItem, activeTabId?: string): number {
-  if (it.tab && it.tab.id === activeTabId) return 0
-  if (it.node?.asks) return 1
-  if (it.node?.waiting) return 2
-  if ((it.node?.dot ?? it.label?.dot) === 'working') return it.node?.isShell || it.label?.isShell ? 4 : 3
-  return 5
-}
-
-function lastEvent(it: LeadItem): number {
-  return it.node?.session.last_event_at ?? it.label?.session?.last_event_at ?? 0
-}
-
 /**
- * The one row an open project shows (owner, 2026-10-12): its tab in front;
- * else what waits on you, a permission prompt first; else the working agent
- * most recently active (a busy shell after it); else the most recent. The row shown before stays
- * while nothing outranks it, so two busy sessions do not trade places on
- * every event.
+ * Whether a row shows under its project rather than behind "+N more" (owner,
+ * 2026-10-13, FB-053: "I want only active sessions there", translated): the
+ * tab in front, so it always has its row; what waits on you now (a turn
+ * older than 12 h is not waiting: lib/sidebar.ts); what works or loops,
+ * an agent or a shell running a program. Idle and ended sessions, files and
+ * quiet shells are not. Hidden rows are never items (liveWithoutTab).
  */
-export function pickLead(items: readonly LeadItem[], activeTabId?: string, prev?: string): LeadItem | undefined {
-  if (items.length === 0) return undefined
-  let best: LeadItem | undefined
-  let bestTier = 6
-  for (const it of items) {
-    const t = leadTier(it, activeTabId)
-    if (t < bestTier || (t === bestTier && lastEvent(it) > lastEvent(best!))) { best = it; bestTier = t }
-  }
-  const kept = prev === undefined ? undefined : items.find((it) => it.key === prev)
-  if (kept && leadTier(kept, activeTabId) === bestTier) return kept
-  return best
+export function isActiveRow(it: LeadItem, activeTabId?: string): boolean {
+  if (it.tab && it.tab.id === activeTabId) return true
+  if (it.label?.file !== undefined) return false
+  if (it.node) return !!it.node.waiting || it.node.dot === 'working' || it.node.dot === 'looping'
+  const dot = it.label?.dot
+  return dot === 'working' || dot === 'looping' || (dot === 'waiting' && it.label?.session?.status !== 'ended')
 }
 
-/** What "+N more" folds, for its tooltip: "2 working · 1 idle · 1 shell". */
-export function moreBreakdown(rest: readonly LeadItem[]): string {
+/** What "+N more" folds, for its tooltip: "2 idle · 1 shell · 1 hidden". */
+export function moreBreakdown(rest: readonly LeadItem[], hidden = 0): string {
   const counts = new Map<string, number>()
   const add = (k: string) => counts.set(k, (counts.get(k) ?? 0) + 1)
   for (const it of rest) {
     if (it.label?.file !== undefined) add('file')
     else if (it.node?.isShell || it.label?.isShell) add('shell')
-    else if (it.node?.asks) add('asks')
     else {
+      // A turn that ended long ago no longer waits: it reads as idle.
       const dot = it.node?.dot ?? it.label?.dot ?? 'idle'
-      add(dot === 'waiting' ? 'waiting' : STATE_WORD[dot])
+      add(dot === 'waiting' ? 'idle' : STATE_WORD[dot])
     }
   }
-  const order = ['asks', 'waiting', 'working', 'looping', 'idle', 'done', 'shell', 'file']
+  const order = ['working', 'looping', 'idle', 'done', 'shell', 'file']
   const parts = order.filter((k) => counts.has(k)).map((k) => {
     const n = counts.get(k)!
     return k === 'shell' || k === 'file' ? `${n} ${k}${n > 1 ? 's' : ''}` : `${n} ${k}`
   })
+  if (hidden > 0) parts.push(`${hidden} hidden`)
   const others = rest.filter((it) => !it.tab && it.node && !it.node.session.owned).length
   return parts.join(' · ') + (others ? ` (${others} from other terminals)` : '')
 }

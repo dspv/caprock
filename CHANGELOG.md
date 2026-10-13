@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.114.0] - 2026-10-13
+
 ### Added
 
 - **app:** the cockpit's spend chart can show **burn rate** — each bar the
@@ -21,6 +23,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   `active_hours` and `active_cost` from the same scan, and each of
   `usual`'s distributions its `mean`.
 
+- **app:** the session deck's pull requests and CI, large. **Expand** beside
+  *Hide ⌘B* opens a *PRs & CI* tab: the repository's last 14 days on top —
+  pull requests merged per day, the median time to merge, the median CI run
+  of its slowest workflow, the share of red runs with re-runs, and the
+  Actions minutes GitHub billed this month — its pull requests on the left
+  (this session's, the repository's newest 50, or the open ones), and the
+  chosen one on the right: state, CI, merge state and review as large
+  pills, the diff's size, the deck's Fix / Re-run / Update actions, its jobs
+  as a grid of job × runner OS against each job's median, the jobs on the
+  run's clock, and a failed job's steps and log with *Investigate*. *Back to
+  the deck* returns to the agent. It asks GitHub only while it is the tab in
+  front, through the deck's kept answers, plus one list of the repository's
+  newest 100 runs kept 30 minutes; nothing at all while GitHub is not
+  connected. No new key and no sidebar item.
+- **api:** `GET /v1/sessions/{id}/ci/stats` (the tab's figures and the
+  repository's pull requests); a pull request carries `created_at`,
+  `merged_at` and its diff size (`additions`, `deletions`,
+  `changed_files`, `commits`); `…/ci?pr=N` and the rerun and update-branch
+  routes also take a pull request of the repository that the tab listed.
 - **app:** Settings → *Status line* → *Hidden*: no line under Claude Code, so the
   row goes, while your plan limits keep reaching Caprock's cockpit and Cost
   screen — which *Off* stops. Recommended on the page, never chosen for
@@ -40,13 +61,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   more arrays over the same buckets, `input` (input tokens with cache reads
   and writes) and `turns`, from the same scan as `cost`, so the chart can
   plot today, 7 or 30 days by tokens or turns without another request.
-
-### Changed
-
-- **app:** Spend moves up in the cockpit, from after the plan windows to
-  directly under *Now*. Folded, it is a strip of the chart's own bars and
-  three figures, the chart's metric first, instead of a faint sentence a
-  narrow cockpit cut off.
 - **agents:** Claude Code on DeepSeek, free. Paste your DeepSeek API key in
   Settings → Subscriptions and *New agent* and *Quick chat* offer
   **DeepSeek · your API key** in the Subscription picker: the session is
@@ -59,10 +73,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   database or a log; Settings and the picker say what the session sends to
   api.deepseek.com and that Caprock sends nothing. Its card says
   *DeepSeek*.
-- **pricing:** `deepseek-flash` at DeepSeek's off-peak list price ($0.15
-  input, $0.003 cache hit, $0.60 output per 1M, read 2026-10-13); turns in
-  DeepSeek's weekday peak hours bill double and read low. Table
-  `2026-10-13.1`.
 - **app:** each subagent row in the cockpit says what the subagent is doing
   now in words — the description Claude wrote for its latest command
   ("Rerun the store tests"), else its tool and target ("Editing
@@ -71,6 +81,52 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   under it shows the raw command only when the phrase does not already say
   it. `GET /v1/sessions/{id}/subagents` carries the phrase as `doing` and
   `doing_from`.
+
+### Changed
+
+- **dashboard:** the Now screen refreshes once, not once per section. Its
+  sections ask on one shared tick, at most every 2 s (all-time figures every
+  10 s); sections asking the same question share one request; a folded or
+  scrolled-away section asks nothing until it is seen again; and the live
+  pulse and activity feed no longer read every track's history again each
+  time two busy sessions swap places. Under a steady stream of hook events
+  (five sessions, ten events a second) the open screen went from about 650–770
+  requests a minute to about 100, and the daemon's CPU for it on a copy of a
+  2.2 GB database from 36 s to 17 s per minute (measured 2026-10-13). A screen
+  opened after events had arrived no longer asks every question twice.
+- **app:** the hot-process flame on a sidebar row or tab draws again only
+  when what it says changes: every row's mark redrew on each 5 s resources
+  sample, hot or not. It stays a static mark — no animation to pause.
+- **daemon:** the database gets smaller on its own. While Caprock is idle
+  (nothing recorded for 30 minutes) it replaces the screenshots and files
+  that events stored before 0.113.0 still hold as base64 with the marker new
+  events get, *[image image/png 512 KB not stored]*, a few hundred events at
+  a time; the text of every event is kept whole. It then compacts the
+  database once — only with free disk of about twice its size, rolled back
+  unchanged if anything is recorded meanwhile — and from then on gives free
+  space back to the disk as it appears, including what a retention period
+  deletes. New databases do that from the start. On a copy of a 2.2 GB
+  database (2026-10-13): 4,181 events rewritten, 750 MB of payload removed in
+  79 s, compaction to 1.4 GB in 21 s; a writer committing every 20 ms
+  throughout never failed. `caprock doctor` lists each step under *done on
+  its own*; the Storage panel no longer tells you to stop Caprock and run
+  VACUUM, and `GET /v1/storage` carries `returns_free_space`.
+- **app:** the sidebar lists only active sessions under a project: what is
+  working, looping or waiting on you, plus the tab in front so it always
+  has its row. Idle sessions, rows you hid, files and quiet shells sit
+  behind one faint *+N more* (its tooltip says what it holds, hidden rows
+  included); opened, the hidden ones come last with an eye to show them
+  again. The separate *N hidden · show* line is gone, *+N more* no longer
+  stays open across restarts, and a project with nothing active is just
+  its own line, its arrow listing what is in it.
+- **app:** Spend moves up in the cockpit, from after the plan windows to
+  directly under *Now*. Folded, it is a strip of the chart's own bars and
+  three figures, the chart's metric first, instead of a faint sentence a
+  narrow cockpit cut off.
+- **pricing:** `deepseek-flash` at DeepSeek's off-peak list price ($0.15
+  input, $0.003 cache hit, $0.60 output per 1M, read 2026-10-13); turns in
+  DeepSeek's weekday peak hours bill double and read low. Table
+  `2026-10-13.1`.
 
 ## [0.113.0] - 2026-10-13
 
