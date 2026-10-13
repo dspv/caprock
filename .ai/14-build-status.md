@@ -73,6 +73,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — 0.112.2: a shorter status line, a subagent row that keeps its place
+
+Settings → *Status line* picks Full, Short or Off for the line Caprock puts
+under Claude Code (Full stays the default; Off removes only Caprock's own
+entry); the cockpit's subagent row always holds its place and says *no
+subagents running* when there are none; and on Windows a shell tab at its
+prompt no longer claims to run `csrss`, because a child must also have
+started after the shell (this was the flaky `fgproc` test on CI).
+
 ### 2026-10-13 — 0.112.1: hide works, actions you can see, other terminals' sessions in a tab
 
 Hiding a project always moves it under *Hidden* (it came straight back when
