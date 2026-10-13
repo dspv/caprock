@@ -12,7 +12,7 @@
 import { useEffect, useMemo } from 'react'
 import { api, type Subscription } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fullest, hasSubscriptions, isNear, resetText, roomText, windowLabel, withRoom } from '@/lib/subscriptions'
+import { DEEPSEEK_ID, fullest, hasSubscriptions, isNear, resetText, roomText, windowLabel, withRoom } from '@/lib/subscriptions'
 
 // Every list on screen refreshes after a change made from any of them: a
 // plan set in Settings is the plan the cockpit's chip shows.
@@ -48,6 +48,7 @@ export function subscriptionsFor(all: readonly Subscription[], agent: string): S
 
 /** What an option says: its name, and what is in the way. */
 export function optionText(s: Subscription, nowSec = Date.now() / 1000): string {
+  if (s.provider) return `${s.label} · your API key`
   const parts = [s.preferred ? `${s.label} (default)` : s.label]
   if (!s.signed_in) parts.push('not signed in')
   else {
@@ -106,6 +107,14 @@ export function SubscriptionNote({
   if (list.length < 2) return null
   const chosen = list.find((s) => s.id === value) ?? list[0]
   if (!chosen) return null
+  if (chosen.provider) {
+    // Rule 4: say where the work goes before it goes there.
+    return (
+      <p role="note" className="text-[12px] leading-snug text-fg-muted">
+        Claude Code runs on DeepSeek Flash, whatever Model says: this session sends its prompts, files and tool output to api.deepseek.com, billed to your DeepSeek key. Caprock sends nothing.
+      </p>
+    )
+  }
   if (!chosen.signed_in) {
     return (
       <p role="note" className="text-[12px] leading-snug text-fg-muted">
@@ -156,6 +165,9 @@ function SubscriptionTagFor({ id, agent, prefix, className }: { id: string; agen
     return <span className={className} title={`Ran on your own sign-in${own.account ? `, ${own.account}` : ''}`}>{prefix}{own.label}</span>
   }
   const s = all.find((x) => x.id === id)
+  // DeepSeek is listed only while a key is set; a session that ran on it
+  // still did after the key is removed.
+  if (!s && id === DEEPSEEK_ID) return <span className={className} title="Ran on DeepSeek, on your DeepSeek key">{prefix}DeepSeek</span>
   return (
     <span className={className} title={s ? `Ran on the ${s.label} subscription${s.account ? `, ${s.account}` : ''}` : 'Ran on a subscription that has since been removed'}>
       {prefix}{s ? s.label : 'removed subscription'}

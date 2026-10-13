@@ -15,7 +15,9 @@ import { ConnectionState } from './ConnectionState'
 import { AppUpdateNotice } from './AppUpdateNotice'
 import { StaleUiPill } from './StaleUiPill'
 import { KeepAwakeIndicator } from './KeepAwake'
-import { CaprockLoad, SessionLoad } from './ResourceMeter'
+import { SessionLoad } from './ResourceMeter'
+import { CaprockFootprint } from './FootprintPanel'
+import { isPairedDevice } from '@/lib/api'
 import { useAppUpdate } from '@/lib/appupdate'
 import { VersionPanel } from './VersionPanel'
 
@@ -52,7 +54,7 @@ export function StatusStrip({ summary, pane, session, version, figures = true }:
       {five && <Limit label="5h" pct={five.used_percentage} />}
       {seven && <Limit label="7d" pct={seven.used_percentage} />}
       {figures && summary && (
-        <span title="Spent today, every agent">
+        <span className="whitespace-nowrap" title="Spent today, every agent">
           Today <span className="num text-fg">{fmtUSD(summary.cost_usd)}</span>
         </span>
       )}
@@ -61,6 +63,9 @@ export function StatusStrip({ summary, pane, session, version, figures = true }:
         * cockpit that carries them is often closed (owner, 2026-10-10). */}
       {session && <SessionFigures s={session} />}
       <span className="ml-auto flex items-center gap-4">
+        {/* Caprock's own memory and disk, always: whether a slow machine
+          * is Caprock is a question with or without a session in front. */}
+        <CaprockFootprint owner={!isPairedDevice()} />
         {pane && pane.status !== 'live' && (
           <span title="The terminal in front">{pane.status}</span>
         )}
@@ -117,7 +122,6 @@ function SessionFigures({ s }: { s: SessionSummary }) {
       {/* Its processes' CPU and memory, from the resource meter: absent
         * until the daemon has measured them, and for a daemon without one. */}
       <SessionLoad sessionId={s.session_id} />
-      <CaprockLoad />
     </span>
   )
 }

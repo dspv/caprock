@@ -2643,6 +2643,43 @@ account may carry its own plan; the main plan stays the own sign-in's and
 the fallback, so nothing already stored moves and no migration is needed —
 it all lives in `config.json`.
 
+**Amended 2026-10-13: Claude Code on DeepSeek is an entry in the same
+picker.** The owner, 2026-10-13 (translated): "in sessions you should be
+able to use DeepSeek" — a user wants to start Claude Code from Caprock on
+DeepSeek's models, not DeepSeek Harness. Free, decided with it. DeepSeek
+publishes an Anthropic-compatible endpoint and the variables Claude Code
+needs (api-docs.deepseek.com/quick_start/agent_integrations/claude_code,
+read 2026-10-13), and Claude Code documents that a credential variable
+replaces the saved claude.ai login for the process and that the
+subscription's limits then do not apply (code.claude.com/docs/en/llm-gateway,
+read the same day).
+
+- **It is offered as a subscription, `id: "deepseek"`,** because the
+  question it answers is the picker's: which account pays for this session.
+  Its sessions record it in `sessions.subscription` (no migration), so the
+  rules above carry over unchanged — their plan windows, if any, never land
+  on the Default one's, the plan-window stop leaves them alone, the card
+  names it, a relay can start one. It has no directory: the session uses the
+  user's own `~/.claude`, so its settings, hooks and history are the user's.
+  It is not a sign-in, so it does not count toward the free three, and it
+  cannot be renamed, made the default or removed there; the key is removed
+  in Settings, where it is pasted.
+- **The key is the user's, write-only, and goes only into the child's
+  environment** as `ANTHROPIC_AUTH_TOKEN` — not `ANTHROPIC_API_KEY`, which
+  Claude Code makes the user approve once in the session. Caprock makes no
+  call with it (rule 4: the session talks to DeepSeek, as a session already
+  talks to Anthropic), and Settings and the launcher say what the session
+  sends where before one starts.
+- **Never offered as the way past a Claude limit.** The near-limit note
+  names only sign-ins: a different provider is a different model, not more
+  room on the same plan, and steering a user to it is not Caprock's call.
+
+**Rejected:** a new agent kind (`claude-deepseek`): every Claude Code
+surface — hooks, transcripts, resume, permission modes — would need it
+taught; and a model entry in the launcher's Model list: the provider
+changes the credential and the endpoint, not only the model, and a model
+list cannot say where the work goes.
+
 ## ADR-049 — Caprock keeps the computer awake while agents work; on by default
 
 **Date:** 2026-10-11 · **Status:** accepted

@@ -42,12 +42,22 @@ export interface HostVerdict {
   child?: string
 }
 
+/** Several processes counted as one: the app window's web view helpers. */
+export interface ProcGroup {
+  count: number
+  cpu_pct: number
+  mem_bytes: number
+  procs: ProcUsage[]
+}
+
 export interface ResourceReport {
   at: number
   sessions: SessionResources[]
   caprock: {
     daemon: ProcUsage
     app?: ProcUsage
+    /** The processes that draw the app's window; absent without the app. */
+    webview?: ProcGroup
     hosts: { count: number; mem_bytes: number; cpu_pct: number; orphans: number; reapable: number; list: HostVerdict[] }
   }
   thresholds: { cpu_pct: number; mem_bytes: number; after_s: number; interval_s: number }

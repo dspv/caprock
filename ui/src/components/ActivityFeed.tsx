@@ -17,6 +17,7 @@ import { Panel } from '@/components/ui'
 import { href } from '@/lib/router'
 import { NewPill } from './NewPill'
 import { useStickToBottom } from '@/lib/useStickToBottom'
+import { useFrameBatch } from '@/lib/framebatch'
 
 export function ActivityFeed({ sessions, now, emptyHint }: { sessions: SessionSummary[]; now: number; emptyHint?: ReactNode }) {
   const [items, setItems] = useState<FeedItem[]>([])
@@ -31,6 +32,13 @@ export function ActivityFeed({ sessions, now, emptyHint }: { sessions: SessionSu
   pausedRef.current = paused
 
   for (const s of sessions) if (s.project) projects.current.set(s.session_id, s.project)
+
+  // Frames land a batch at a time (lib/framebatch): one render per
+  // FRAME_BATCH_MS while agents work, not one per event.
+  const incoming = useFrameBatch<FeedItem>((batch) => {
+    setItems((cur) => batch.reduce((acc, it) => pushItem(acc, it), cur))
+    setReceived((n) => n + batch.length)
+  })
 
   // Seed from history so the panel has content the moment it opens.
   useEffect(() => {
@@ -95,12 +103,9 @@ export function ActivityFeed({ sessions, now, emptyHint }: { sessions: SessionSu
       // that a filter would have excluded.
       if (id && projects.current.has(id) && !allowed.current.has(id)) return
       const item = toFeedItem(f.data)
-      if (item) {
-        setItems((cur) => pushItem(cur, item))
-        setReceived((n) => n + 1)
-      }
+      if (item) incoming.push(item)
     })
-  }, [])
+  }, [incoming])
 
   return (
     <Panel

@@ -30,6 +30,41 @@ Claude Code sends one JSON object per event on the shim's stdin. Fields common t
 | `StopFailure`       | `error` / `stop_reason` (rate_limit, overloaded, billing)    |
 | `PermissionRequest` | `tool_name`, `tool_input`, `permission_suggestions`          |
 
+**What is stored is the payload with its tool fields bounded** (`event.CapToolField`,
+2026-10-13). The shim forwards the body verbatim; the daemon stores every field as
+it came except `tool_input` and `tool_response`, which go through the rule the
+transcript parser applies to its own copy of a call — one function, so the two
+planes cannot drift. Before this the hook copy was stored verbatim up to the 4 MiB
+body limit, and it is the copy that wins the dedup: hook tool results were 1.1 GB
+of the owner's 2.2 GB database, mostly base64 screenshots and whole files. Per
+field (`MaxToolField`, 32 KiB of JSON):
+
+- **Base64 content is replaced by a marker at any size**: an image block's
+  `data`, Claude Code's `file.base64` (a Read of an image), an MCP screenshot's
+  `data` beside its `mimeType`, a `data:<type>;base64,` URI. The marker names the
+  media type and decoded size: `[image image/png 512 KB not stored]` (`[file
+  <type> …]` for anything not an image). The rest of the block — `type`,
+  dimensions, `originalSize` — stays.
+- **A string longer than the budget is clipped** on a rune boundary and ends
+  `…[truncated <bytes dropped> bytes]`, plus `, <n> lines` when the dropped part
+  held line breaks, so the Week's lines-added count still counts a large Write
+  whole (`event.SplitClip`).
+- **Short fields always survive.** An object's fields get the budget smallest
+  first, so `file_path`, `command`, exit codes, `interrupted`, `agentId` and
+  `gitOperation` are kept beside a huge `originalFile`; an array keeps elements
+  until the budget is spent and ends with `[<n> more items not stored]`.
+- **A value within the budget with nothing base64 in it is stored byte for byte**,
+  without being decoded.
+- **`tool_bytes` counts the response the tool handed back, not the stored copy**
+  (`Event.ToolBytes`), so tool sizes are unchanged. It applies to every agent
+  observed through hooks (today Claude Code); Codex output is clipped by its own
+  importer (`codex.MaxToolOutput`).
+
+Measured on a copy of the owner's database (2026-10-13): of 134,099 hook tool
+rows, 6,099 change, and their payloads go from 1,229 MB to 388 MB — 841 MB less
+for the same history. Rows stored before the cap keep what they have. The whole
+output of a clipped call is still in the agent's own transcript.
+
 **`PermissionRequest` is observed, and stored as `permission.prompt`**
 ([ADR-035](08-decisions.md), [ADR-036](08-decisions.md)). Claude Code fires it
 as it draws a permission dialog; the shim forwards it fire-and-forget and never
@@ -428,7 +463,7 @@ GET  /v1/sessions/{id}/subagents/{agent} → SubagentDetail — one subagent ope
 GET  /v1/sessions/{id}/calls?limit=…   → SessionCall[] — every priced main-thread model call, oldest first (§ Session calls)
 GET  /v1/sessions/{id}/notes           → AssistantNote[] — what Claude said, newest first
 GET  /v1/sessions/{id}/todos           → SessionTodos — the agent's own task list (§ Session todos)
-GET  /v1/sessions/{id}/prs             → {connected, prs: SessionPRLive[]} — the session deck's PRs with CI
+GET  /v1/sessions/{id}/prs             → {connected, prs: SessionPRLive[], fetched_at, refreshing?} — the session deck's PRs with CI
 POST /v1/sessions/{id}/prs/{number}/rerun → {ok, mode, runs, jobs} — re-run one of the session's PRs' checks on GitHub (machine only)
 POST /v1/sessions/{id}/prs/{number}/update-branch → {ok} — merge the base into one of the session's open PRs on GitHub (machine only)
 GET  /v1/sessions/{id}/ci              → SessionCI — the deck's CI cell: Actions runs, jobs, steps, times
@@ -470,8 +505,11 @@ detector's read-only tools in SQL rather than after reading them. Each reader
 also cuts the window into slices of about equal event counts (four for the
 replay, two for tool calls) read side by side and joined back in time order,
 so the figures are those of a single pass: `all` went from 5.0 s to 1.9 s on
-a warm copy of the 1.2 GB database (2026-10-05). `Server.Warm` computes `all`
-and `30d` when the daemon starts.
+a warm copy of the 1.2 GB database (2026-10-05). They are not computed at
+start any more: `Server.Warm` did, and the slow-query log named those payload
+scans as the startup's biggest reads on the owner's 2.2 GB database
+(2026-10-13) — a gigabyte-scale read on every start for a dialog most starts
+never open. The dialog pays for its period once, when it is opened.
 
 The Week screen's shareable card. `start` is a local date and the window is
 `[start 00:00, start+7 00:00)` in the daemon's time zone: the same days the
@@ -729,7 +767,7 @@ What that file holds bounds what may ever be said about it: a timestamp and two 
 #### Storage
 
 `GET /v1/storage` reports what Caprock keeps on disk: `{data_dir,
-total_bytes, files[], database?, measured_at?, measure_ms?, error?,
+total_bytes, files[], database?, measured_at?, measure_ms?, error?, measuring?,
 reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
 
 - **`files`** is every top-level entry of the data directory, `{name, bytes,
@@ -747,10 +785,16 @@ reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
 - **It is cached, not computed per request.** `dbstat` walks every page and the
   breakdown reads every event; on an 857 MB database the two measured 8 s warm
   and 14 s cold
-  through this driver (2026-10-01). The daemon measures a minute after start,
-  then every 30 minutes, and serves the last result; `database` is absent until
-  the first one finishes. A failed refresh keeps the previous figures and sets
-  `error`. The breakdown is one scan of `events` in rowid order, folded in Go:
+  through this driver (2026-10-01), and 4.8 s reading the whole 2.2 GB file on
+  the owner's machine (2026-10-13). **It is measured only when wanted**: a
+  request that finds the cached figures a day old (`storageMaxAge`), or none,
+  starts one measurement in the background and answers at once with what it
+  has and `measuring: true`; and once a day while the daemon is idle (nothing
+  recorded for 30 minutes) it measures on its own, so the panel finds figures
+  ready. Never on a fixed timer: it used to run a minute after every start and
+  every 30 minutes whether or not anyone looked. `database` is absent until the
+  first one finishes. A failed measurement keeps the previous figures, sets
+  `error`, and is retried no sooner than a day later. The breakdown is one scan of `events` in rowid order, folded in Go:
   it was a `GROUP BY` over a join, which SQLite sorted through temp files
   carrying every payload (11 s in the sqlite3 shell on a 1.8 GB database,
   against 0.4 s for the scan; 2026-10-10).
@@ -922,8 +966,10 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
   limits.
 - **`actions`** is what the daemon did about its footprint on its own,
   oldest first, the last 50 since it started, in memory only: every reap
-  (§ Resources: on its own every 10 minutes, or from the button) and every
-  write-ahead-log checkpoint. Every remedy that is safe to apply unattended
+  (§ Resources: on its own every 10 minutes, or from the button), every
+  write-ahead-log checkpoint, and every daily data-directory sweep that
+  removed something ([02-architecture.md § Retention and
+  cleanup](02-architecture.md#retention-and-cleanup)). Every remedy that is safe to apply unattended
   is applied unattended — nobody else cleans up after a user's Caprock —
   and said here. Nothing is done about another daemon, a second app or a
   large database: stopping a process Caprock did not start is rule 7's
@@ -932,8 +978,15 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
   over 256 MiB is folded back with `PRAGMA wal_checkpoint(TRUNCATE)` — what
   SQLite's automatic checkpoint does in small steps, done at once and the
   file truncated after. A running read can hold part of it back; the next
-  attempt is 10 minutes later.
+  attempt is 10 minutes later. Below that, `journal_size_limit` (64 MiB, set
+  when the database is opened) has SQLite truncate the WAL back after its own
+  checkpoints, so a big transaction does not leave a large file behind.
 - **A paired device may read it**, as it may read `/v1/resources`.
+- **Who asks.** The dashboard's status strip, every 10 s while its page is
+  visible (04-ui.md § Caprock footprint); each ask counts as looking, so
+  the meter samples while it does. The panel's *Copy report* renders this
+  object as `caprock doctor`'s text, and `testdata/footprint/doctor.json`
+  with `doctor.txt` pin the two renderings to each other.
 
 `caprock doctor [--json] [--data-dir <dir>]` prints the footprint as text —
 memory and CPU, disk, the daemon's disk I/O, duplicates, what was done on
@@ -989,6 +1042,8 @@ effective mode, `full` when never chosen; stored as `statusline_mode` in
 `statusLine` entry to match (§ Statusline, *Settings → Status line*).
 
 `PUT /v1/settings` also accepts `gemini_api_key`, stored write-only in the same way. `GET` reports `gemini_key_set` and `gemini_key_from_env` instead of the value; `GEMINI_API_KEY` in the daemon's environment takes precedence over the stored key when both exist ([ADR-025](08-decisions.md)).
+
+`PUT /v1/settings` also accepts `deepseek_api_key`, the user's DeepSeek key for Claude Code on DeepSeek (see **Subscriptions** below), stored write-only in `config.json` as `deepseek_api_key`. `GET` reports `deepseek_key_set` and `deepseek_key_hint` — the first three and last four characters (`sk-…1a2b`), or `…` for a key under 16 characters — never the value. Trimmed on the way in; `""` clears it; `400` for a value with a line break or a NUL, or over 512 bytes, because it becomes one environment variable of a child process. Caprock never sends it anywhere and never logs it.
 
 `PUT /v1/settings` accepts `report_bot_token` and `report_chat_id` for the weekly report. The **token is write-only**: it is stored and never returned by `GET /v1/settings`, which instead carries `report_bot_set` (a bool), `report_last_error` and `report_last_sent_ms`. This is the only write-only field in the API and it exists because the settings response is read on every dashboard render and by `caprock report` — a credential should not ride along on either ([ADR-024](08-decisions.md)). Omitting `report_bot_token` from a PUT leaves the stored one alone, since a UI that reads settings and writes them back always omits it; sending `""` clears it. The chat id is not a credential and round-trips normally.
 
@@ -1289,7 +1344,7 @@ which the flag does not take, so that one starts with no flag). Otherwise, and
 when nothing was recorded, it is the `spawn_permission_mode` setting; with
 neither, no mode is sent and the agent starts in its own default. A request
 that names a mode, or carries `command`, is left as it is. No column stores the
-mode: every hook payload is kept verbatim, and the mode changes mid-session.
+mode: every hook payload keeps its `permission_mode`, and the mode changes mid-session.
 
 **`bypassPermissions` is spawned as `--dangerously-skip-permissions`**, the
 flag the orchestrator has always used for its own unattended workers. Claude
@@ -1367,7 +1422,8 @@ with `resume` (a continued session has its conversation), `relay_from` with
 `resume`, an unknown `relay_from`, a source folder that no longer exists when
 no `cwd` is given, and a brief over the limit.
 
-**`GET /v1/sessions/{id}/prs`** → `{connected, prs}`: the session's latest
+**`GET /v1/sessions/{id}/prs`** → `SessionPRs` `{connected, prs, fetched_at,
+refreshing?}`: the session's latest
 four pull requests (`session_prs`, newest first; the current one and up to
 three before it, `sessionPRsShown`; three until 2026-10-12), each a `SessionPR` plus
 `live` — the `github.PR` GitHub returns for its link now (state, checks,
@@ -1379,6 +1435,25 @@ GitHub nothing in between; every read is conditional. The row's state chips
 read fields this answer already carries (`mergeable`, `mergeable_state`,
 `review`, `draft`, and `auto_merge` for its *queued*); nothing is asked per
 chip.
+
+**The deck's answers are kept** (`internal/api/deckcache.go`). The five
+views of the *Pull requests & CI* cell — `…/prs`, `…/ci`, `…/ci/release`,
+`…/ci/main`, `…/branches` — are each composed from the kept GitHub reads
+above, and the composed answer is kept per view, session, pull request
+asked for and whether GitHub is connected (at most 256 keys). A key never
+composed is composed while the request waits, and concurrent requests for
+it share one composition. Within 2 s the kept answer is handed back as it
+is. Past that, the request starts one background composition (on a
+context of its own, 15 s) and waits up to 300 ms for it: when the GitHub
+reads answer from what they keep it lands inside that and is handed back;
+when one has to ask GitHub, the request gets the last answer at once with
+`refreshing: true`, and the next poll finds the new one. A kept answer
+older than an hour is not shown; the request waits for a fresh one. A
+composition that fails (a database error, an unknown session) is not kept
+and the last answer stays. Every answer carries `fetched_at`, Unix ms, when
+the daemon composed it, and `refreshing` only when true. GitHub is asked no
+more often than before: a composition calls the same kept reads a request
+used to, each deciding by its own freshness whether to ask.
 
 **`POST /v1/sessions/{id}/prs/{number}/rerun`** (no body) → `{ok, mode,
 runs, jobs}`: the session deck's *Re-run checks*. Acts only on a pull
@@ -1410,7 +1485,7 @@ click and a confirm, never by a poll (rule 4), and are the machine's: not in
 the paired-device lists.
 
 **`GET /v1/sessions/{id}/ci`** (`?pr=N` optional) → `SessionCI` `{connected,
-pr?, ci?, error?}`: the session deck's CI cell. `pr` `{number, url, title?,
+pr?, ci?, error?, fetched_at, refreshing?}`: the session deck's CI cell. `pr` `{number, url, title?,
 state?, repo, head_sha?}` is pull request N when it is among the session's
 latest four (a click on its row or its mini pipeline), else the
 session's open one among them, else the newest (each read through `github.PullByURL`, so it shares the PRs
@@ -1461,7 +1536,7 @@ error. The cached answers are never changed: the baselines are set on a copy.
 
 **`GET /v1/sessions/{id}/ci/release`** and **`GET /v1/sessions/{id}/ci/main`**
 → `SessionRepoCI` `{connected, repo?, reason?, branch?, release?, ci?,
-error?}`: the CI cell's Release and Main views, for any repository. `repo`
+error?, fetched_at, refreshing?}`: the CI cell's Release and Main views, for any repository. `repo`
 (`owner/name`) is read from the session's working directory's remote, as the
 session page reads it (`gitremote.Lookup`, kept a minute); `reason` is
 `no_repo` (not a git repository, or no remote) or `not_github` when there is
@@ -1545,7 +1620,7 @@ private repository's included minutes, which a job cannot know are left.
 
 **Session branches** — **`GET /v1/sessions/{id}/branches`** →
 `SessionBranches` `{connected, repo?, reason?, default?, base?, current?,
-branches[], error?}`: the session deck's Branches view. Read only while that
+branches[], error?, fetched_at, refreshing?}`: the session deck's Branches view. Read only while that
 view is shown.
 
 - **Git** — local only (`internal/branches`): one `for-each-ref` over
@@ -1704,7 +1779,18 @@ session as `""`. Its name is *Own sign-in* until renamed (`own_labels:
 {agent: label}` in `config.json`). A `Subscription` in the API is `{id,
 agent, label, default, preferred, plan?, dir, env_var?, signed_in, account?,
 login_command, windows: [{window, used_percentage, resets_at, observed_at}],
-sessions_7d, cost_7d_usd, running, created_at?}`.
+sessions_7d, cost_7d_usd, running, created_at?, provider?}`.
+
+- **`provider: "deepseek"`** marks the one entry that is not a sign-in:
+  Claude Code on DeepSeek, `id: "deepseek"`, listed last under `claude`
+  while a DeepSeek key is set (`deepseek_api_key`) and absent otherwise.
+  It has `signed_in: true`, `account: "your DeepSeek API key"`, `plan:
+  {kind: "metered", label: "DeepSeek API"}`, an empty `dir` and
+  `login_command`, no `windows`, and its own `sessions_7d`, `cost_7d_usd`
+  and `running`. It is not in `config.json`'s `subscriptions`: it never
+  counts toward `free_per_agent`, and `PATCH` and `DELETE` on it are `404`
+  (the key is removed in `PUT /v1/settings`). The id cannot collide with a
+  real one, which is hex.
 
 - **`preferred`** marks, per agent, the one a new session starts on when the
   request names none — *Make default*, stored as `default_subscription:
@@ -1766,6 +1852,28 @@ Code's folder trust is written to that directory's `.claude.json`, not
 `~/.claude.json`. A `resume` runs on the subscription the session ran on,
 whatever the request says, and is refused when that subscription has been
 removed. An unknown id, or a subscription of the other agent, is `400`.
+
+`subscription: "deepseek"` starts Claude Code on DeepSeek: the user's own
+configuration directory (no `CLAUDE_CONFIG_DIR` is set), with the stored key
+put into that child's environment only — never argv, the database, the
+pty-host's registry or a log — as `ANTHROPIC_AUTH_TOKEN`, beside
+`ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic`,
+`ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL` and
+`ANTHROPIC_DEFAULT_SONNET_MODEL` `=deepseek-flash[1m]`,
+`ANTHROPIC_DEFAULT_HAIKU_MODEL` and `CLAUDE_CODE_SUBAGENT_MODEL`
+`=deepseek-flash`, and `CLAUDE_CODE_AUTO_COMPACT_WINDOW=786432` — DeepSeek's
+published set for Claude Code (read 2026-10-13) less
+`CLAUDE_CODE_EFFORT_LEVEL=max`. `ANTHROPIC_API_KEY`,
+`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_SMALL_FAST_MODEL` and the
+`CLAUDE_CODE_USE_{BEDROCK,VERTEX,FOUNDRY,ANTHROPIC_AWS}` switches are removed
+from the login-shell environment for it. A `model` that does not start with
+`deepseek-` is dropped, because the launcher's list is Claude's and DeepSeek
+maps a Claude id to a model of its own choosing. `400` with no key set, or
+for an agent other than `claude`; a `resume` of a DeepSeek session stays on
+DeepSeek and is refused, saying why, once the key is removed. The session
+records `sessions.subscription = "deepseek"`, so its plan windows, if Claude
+Code ever reports any for it, go under `sub:deepseek:` and the plan-window
+stop never pauses it.
 
 The daemon reads each subscription's transcripts as it reads the Default
 one's: Claude Code's under `<dir>/projects/`, Codex's under
@@ -2793,7 +2901,8 @@ that had merely been cleared. Fixing the writer did not reach the rows already
 stored, and on the owner's database **all 18 of them were the last event of
 their session** — which is the phrase the session card shows.
 
-The rewrite reads rather than guesses: `events.payload` is stored verbatim, so
+The rewrite reads rather than guesses: `events.payload` keeps every field but
+the bounded tool fields as Claude Code sent it, so
 each row already names the hook that produced it. `hook_event_name = 'SessionEnd'`
 is the whole condition, and `reason` picks the kind — `clear` → `context.clear`,
 anything else → `session.continue`. A genuine `PreCompact` is untouched, which
@@ -2938,7 +3047,7 @@ CREATE TABLE events (
   cost_usd    REAL,
   msg_id      TEXT,                          -- assistant message id (migration 0012)
   touch_dir   TEXT,                          -- directory the tool touched (migration 0012)
-  tool_bytes  INTEGER NOT NULL DEFAULT 0,    -- bytes the tool returned (migration 0018)
+  tool_bytes  INTEGER NOT NULL DEFAULT 0,    -- bytes the tool returned, before the payload cap (0018)
   internal    INTEGER NOT NULL DEFAULT 0,    -- 1 = hidden product machinery (0024)
   inner_tool  TEXT                           -- tool a Codex `exec` script ran (0038)
 );
@@ -3591,7 +3700,7 @@ No DDL change was needed for either fix here, only honest use of the existing co
 - **The weekly report states what changed, not what happened.** It is sold on the promise of the repository that cost 3× its usual week and of last week against the one before it, per repository and model — so it must ship as a comparison against the preceding period, not as a digest of the current one. This is not a presentation choice: five readers were shown a digest-shaped description of it and every one of them concluded they would be paying for delivery of figures the free dashboard already shows (FB-027). A digest is a notification; what moved is the thing a week of data can say and a live screen cannot.
 - **`/v1/history` and the wide ranges of `/v1/stats/summary` are cached, with single-flight and stale-while-revalidate** (`internal/api/answercache.go`). Both answer from aggregates over the whole events table — on the owner's 1 GB, 333k-event database `/v1/history?range=all` is ~1.5s and `/v1/stats/summary?range=all` ~1.0s through the Go driver, and 4.7s and 1.5s under a live dashboard (2026-10-04) — and they are asked for in bursts: **five components on the main screen request history on their own timers**, and the share dialog asks for its period's summary (or all-time history) beside the glance. Requests for the same key that arrive while one is in flight wait for it and share its result. A settled answer is served as it is for its TTL (`historyTTL` 3s, `summaryTTL` 10s); past that it is **still served at once and one background refresh replaces it**, so nobody waits on a whole-table scan once a key has been computed, and what is shown is at most one refresh behind. Past `answerMaxStale` (30 min) an answer is too old to present as current and the caller waits for a fresh one. The daemon computes history for all time and the 7d, 30d and all-time summaries in the background as it starts (`Server.Warm`), so the first screen after a restart finds them ready. **Today's summary is not cached** — it is ~40ms and is the figure people watch move — and neither are the burn rate, throttles and plan windows beside any range, which are read live on every request. Keys carry the range's resolved start as well as its label, so `today`, `7d` and `30d` become new keys at midnight rather than serving yesterday's answer; `?range=` and `?range=today` still share one entry. **Errors are never cached**, and a failed refresh keeps the stale answer. Computations run on a context detached from their first caller: browsers abandon requests routinely, and a caller hanging up must not take the answer away from the callers waiting behind it. Writes do not invalidate — ingest commits several times a second while anyone works, so an invalidated cache would be empty exactly when the screen is busiest. Measured on a copy of the owner's database with a writer committing every 200ms and the main screen's eleven requests fired at once: the slowest went from 3.6s to 0.09s (2026-10-04). `/v1/status` reads its stored-event count the same way, recounted in the background at most every 30 s: a `COUNT(*)` over 333k events is 600ms on a cold connection.
 - **Dated prices (migration-free, `pricing.json`).** A model may have more than one row. A superseded price keeps its own row carrying `until` — the last date it applied, inclusive, UTC — and the current price is the row with no `until`; rows for one id are ordered oldest-first. A turn is priced by `LookupAt`/`PriceAt` at **its own timestamp**, so a rate that has since lapsed still prices the turns that ran under it. Without this, the only way to record a price change is to overwrite the figure, which silently restates history at a price nobody was charged — an invented number (rule 6) about our own past. Sonnet 5 was the first case (introductory $2/$10 through 2026-08-30, $3/$15 announced from 2026-08-31) until the rise was cancelled; no row is dated today. A row whose `until` will not parse is treated as not applying, so an unparseable date falls through to the current price rather than pricing a turn at an expired one. Exactly one row per model id may omit `until`, and a test enforces it.
-- **Corrections (`pricing.json` `corrections`).** A list of `{model, from?, reason}`: turns an earlier table priced *wrongly* — a missing row that fell through to another model by prefix, or a price change that was announced and cancelled. That differs from a price that changed, which never restates history. On start the daemon (`rollup.ApplyCorrections`) reprices every `turn.assistant` whose model starts with `model` and whose time is on or after `from` (UTC; empty = all), at the row in force at the turn's own timestamp, and moves `session_stats` and `daily_stats` by the difference in the same transaction. It runs once per table version, recorded in `meta.price_corrections`; an interrupted pass is finished by the next start, because a turn already at the corrected figure moves by nothing. A malformed `from` or a correction with no model fails the table load. `2026-10-01.1` corrects `claude-opus-5-5` (all turns, previously priced as Opus 5) and `claude-sonnet-5` from 2026-08-31. `2026-10-03.1` adds `gemini-3.8-flash` and `gemini-3.1-flash-lite` with no correction: neither matched another id by prefix, so their turns were unpriced (named in `unpriced`), not mispriced. `2026-10-08.1` adds `claude-haiku-5-5` (its lower, under-100k tier) with no correction, for the same reason.
+- **Corrections (`pricing.json` `corrections`).** A list of `{model, from?, reason}`: turns an earlier table priced *wrongly* — a missing row that fell through to another model by prefix, or a price change that was announced and cancelled. That differs from a price that changed, which never restates history. On start the daemon (`rollup.ApplyCorrections`) reprices every `turn.assistant` whose model starts with `model` and whose time is on or after `from` (UTC; empty = all), at the row in force at the turn's own timestamp, and moves `session_stats` and `daily_stats` by the difference in the same transaction. It runs once per table version, recorded in `meta.price_corrections`; an interrupted pass is finished by the next start, because a turn already at the corrected figure moves by nothing. A malformed `from` or a correction with no model fails the table load. `2026-10-01.1` corrects `claude-opus-5-5` (all turns, previously priced as Opus 5) and `claude-sonnet-5` from 2026-08-31. `2026-10-03.1` adds `gemini-3.8-flash` and `gemini-3.1-flash-lite` with no correction: neither matched another id by prefix, so their turns were unpriced (named in `unpriced`), not mispriced. `2026-10-08.1` adds `claude-haiku-5-5` (its lower, under-100k tier) with no correction, for the same reason. `2026-10-13.1` adds `deepseek-flash` (DeepSeek's off-peak list price; peak hours bill double and are under-reported) with no correction, for the same reason; it prices Claude Code on DeepSeek. The `deepseek-v4-pro` row is unchanged although DeepSeek now lists a higher price, because the date it changed is not known ([OQ-13](12-risks.md#open-questions)).
 - Cost per assistant turn = `tokens_in × input + cache_write × cache_write_price + cache_read × cache_read_price + tokens_out × output`, all prices per token (table values are per MTok ÷ 1e6).
 - Cache-savings math (ported from Caprock-python `_savings.py`): `billed_with = in + 1.25·cache_write + 0.10·cache_read` in input-token equivalents; `billed_without = in + cache_write + cache_read`; `saved = billed_without − billed_with`; hit-rate reported as `cache_read / (in + cache_read + cache_write)`. Where the transcript reports the 1h-TTL split (`cache_creation.ephemeral_1h_input_tokens`), those tokens are priced at the 1h write price (2×), not 1.25×.
 - **Source of the numbers:** Anthropic first-party pricing page (`platform.claude.com/docs/en/about-claude/pricing`), fetched 2026-08-18. Bedrock/Vertex have separate partner pricing — first-party only across v0.1–v0.3; recorded as [OQ-02](12-risks.md#open-questions).

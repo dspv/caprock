@@ -16,11 +16,11 @@
  * Self-contained: one section, its own fetching and state, so the Settings
  * screen places it and nothing else.
  */
-import { useState } from 'react'
-import { api, errText, type Subscription, type SubscriptionAgentId, type SubscriptionsResponse, ApiError } from '@/lib/api'
+import { useState, type ReactNode } from 'react'
+import { api, errText, type Settings, type Subscription, type SubscriptionAgentId, type SubscriptionsResponse, ApiError } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtUSD } from '@/lib/format'
-import { currentWindows, forgetAgentPicks, forgetSubscription, resetText, windowLabel, NEAR_PCT } from '@/lib/subscriptions'
+import { currentWindows, forgetAgentPicks, forgetSubscription, resetText, signIns, windowLabel, DEEPSEEK_ID, NEAR_PCT } from '@/lib/subscriptions'
 import { planFields, planText } from './AccountPlan'
 import { subscriptionsChanged, useSubscriptionsChanged } from './SubscriptionPicker'
 import { useSetupShell } from '@/lib/setupShell'
@@ -52,12 +52,14 @@ function SubscriptionsBody({ data, refresh }: { data: SubscriptionsResponse; ref
     if (setupShell) setupShell(s.login_command, data.home)
     else setToRun({ label: s.label, command: s.login_command })
   }
-  const groups = data.agents.filter((g) => g.installed || g.subscriptions.length > 1)
+  const groups = data.agents.filter((g) => g.installed || signIns(g.subscriptions).length > 1)
   return (
     <div className="grid gap-4">
       {groups.length === 0 && <p className="text-[12px] text-fg-faint">Neither Claude Code nor Codex is installed here.</p>}
       {groups.map((g) => (
-        <AgentGroup key={g.agent} agent={g.agent} list={g.subscriptions} onSignIn={signIn} refresh={refresh} />
+        <AgentGroup key={g.agent} agent={g.agent} list={signIns(g.subscriptions)} onSignIn={signIn} refresh={refresh}>
+          {g.agent === 'claude' && <DeepSeekKey entry={g.subscriptions.find((s) => s.id === DEEPSEEK_ID)} refresh={refresh} />}
+        </AgentGroup>
       ))}
       {toRun && <CommandToRun label={toRun.label} command={toRun.command} onClose={() => setToRun(null)} />}
       <AddSubscription data={data} onAdded={(s) => { refresh(); signIn(s) }} />
@@ -68,11 +70,12 @@ function SubscriptionsBody({ data, refresh }: { data: SubscriptionsResponse; ref
   )
 }
 
-function AgentGroup({ agent, list, onSignIn, refresh }: {
+function AgentGroup({ agent, list, onSignIn, refresh, children }: {
   agent: SubscriptionAgentId
   list: Subscription[]
   onSignIn: (s: Subscription) => void
   refresh: () => void
+  children?: ReactNode
 }) {
   return (
     <div className="grid gap-1.5">
@@ -80,6 +83,77 @@ function AgentGroup({ agent, list, onSignIn, refresh }: {
       <ul className="grid gap-1.5" aria-label={`${AGENT_LABEL[agent]} subscriptions`}>
         {list.map((s) => <SubscriptionRow key={s.id} sub={s} onSignIn={() => onSignIn(s)} refresh={refresh} choice={list.length > 1} />)}
       </ul>
+      {children}
+    </div>
+  )
+}
+
+/**
+ * Claude Code on DeepSeek: the user's own DeepSeek key, pasted here. Set, it
+ * adds "DeepSeek" to the Subscription picker in New agent and Quick chat; a
+ * session started on it gets the key in its own environment and talks to
+ * DeepSeek's Anthropic-compatible API. Free. The key is write-only: the
+ * daemon says whether one is set and shows its first and last characters.
+ */
+export function DeepSeekKey({ entry, refresh }: { entry?: Subscription; refresh: () => void }) {
+  const st = useApi(() => api.settings(), [], { live: false })
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const set = !!st.data?.deepseek_key_set
+  const save = async (key: string) => {
+    setBusy(true)
+    setError('')
+    try {
+      await api.saveSettings({ deepseek_api_key: key } as Partial<Settings> as Settings)
+      setDraft('')
+      st.refresh?.()
+      refresh()
+      subscriptionsChanged()
+    } catch (e) {
+      setError(errText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="grid gap-1.5 rounded-[8px] border border-border px-3 py-2" aria-label="DeepSeek">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="text-[13px] font-medium text-fg">DeepSeek</span>
+        <span className="text-[12px] text-fg-muted">{set ? <>key <span className="mono">{st.data?.deepseek_key_hint || 'set'}</span></> : 'off'}</span>
+        {entry && entry.running > 0 && <span className="text-[12px] text-fg-faint">· {entry.running} running</span>}
+        {entry && entry.sessions_7d > 0 && <span className="mono text-[11.5px] text-fg-faint">· 7 days: {entry.sessions_7d} session{entry.sessions_7d === 1 ? '' : 's'}, {fmtUSD(entry.cost_7d_usd)}</span>}
+      </div>
+      {/* What it sends where stays visible with explanations off (rule 4). */}
+      <p data-keep className="text-[12px] leading-snug text-fg-muted">
+        Claude Code on your DeepSeek key: a session on it sends its prompts, files and tool output to api.deepseek.com. Caprock itself sends nothing.
+      </p>
+      <p className="text-[12px] leading-snug text-fg-muted">
+        Pick <span className="text-fg">DeepSeek</span> under Subscription in New agent or Quick chat. DeepSeek bills your key; the session does not use your Claude plan or its limits, and the key goes only into that session&rsquo;s environment. Get a key at{' '}
+        <a className="link" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">platform.deepseek.com</a>.
+      </p>
+      <div className="flex flex-wrap items-center gap-2 text-[12px]">
+        <input
+          className="input h-[28px] min-w-[12rem] flex-1 text-[12.5px]"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          aria-label="DeepSeek API key"
+          placeholder={set ? 'Paste a new key to replace it' : 'sk-…'}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && draft.trim()) void save(draft.trim()) }}
+        />
+        <button type="button" disabled={busy || !draft.trim()} onClick={() => void save(draft.trim())} className="text-accent hover:underline disabled:opacity-50">
+          {set ? 'Replace key' : 'Save key'}
+        </button>
+        {set && (
+          <button type="button" disabled={busy} onClick={() => void save('')} className="text-fg-muted hover:text-danger disabled:opacity-50">
+            Remove key
+          </button>
+        )}
+        {error && <span role="alert" className="min-w-0 truncate text-danger" title={error}>{error}</span>}
+      </div>
     </div>
   )
 }
@@ -229,7 +303,7 @@ function AddSubscription({ data, onAdded }: { data: SubscriptionsResponse; onAdd
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [premium, setPremium] = useState(false)
-  const count = data.agents.find((g) => g.agent === agent)?.subscriptions.length ?? 1
+  const count = signIns(data.agents.find((g) => g.agent === agent)?.subscriptions ?? []).length || 1
   const atLimit = !data.licensed && count >= data.free_per_agent
 
   const add = async () => {

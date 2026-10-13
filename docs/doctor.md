@@ -9,6 +9,31 @@ caprock doctor --json   # the same as GET /v1/footprint
 caprock doctor --data-dir <dir>   # check another data directory
 ```
 
+## In the app: the status bar
+
+The same report is one click away in the desktop app and the dashboard. At
+the right of the status bar, *caprock 1.1 GB · 2.2 GB* is the memory every
+Caprock process holds and the data directory's size on disk (in a narrow
+window, memory alone; the disk figure is in its tooltip). It turns the
+warning colour, with a small dot, when the doctor flags something. A click
+opens the doctor as a panel: the verdict in one line (*All good*, or *3
+things to look at*), each warning with the processes behind it, what the
+memory and the disk are spent on, the daemon's disk reads and writes,
+what Caprock did on its own, and:
+
+- **Check now** asks again at once (the panel otherwise refreshes every 10
+  seconds while the window is visible).
+- **Stop N orphans** stops the orphaned terminals the sweep would stop, now
+  (on the computer itself, not from a paired phone).
+- **Copy report** copies the text `caprock doctor` prints, line for line —
+  the thing to paste into an issue.
+- **Storage settings →** goes to what fills the database and the retention
+  period.
+
+The command palette's *Caprock doctor* opens the same panel.
+
+## What it reports
+
 It reports:
 
 - **Memory and CPU** of every Caprock process: the daemon, the desktop app,

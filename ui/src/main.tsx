@@ -9,6 +9,7 @@ import { isAppMode, isTrayRoute } from '@/lib/appmode'
 import { loadTerminalFont } from '@/lib/termfont'
 import { watchUiVersion } from '@/lib/staleui'
 import { applyUiScale } from '@/lib/uiscale'
+import { markPageVisibility } from '@/lib/visible'
 
 // The app opens on terminals: start fetching every subset of their face now,
 // while the workspace chunk is still loading (lib/termfont).
@@ -19,6 +20,9 @@ if (!isTrayRoute()) applyUiScale()
 
 // A daemon updated under this page: reload onto its UI (lib/staleui).
 watchUiVersion()
+
+// Out of sight, every CSS animation pauses (lib/visible, design/tokens.css).
+markPageVisibility()
 
 // Two entry points from one bundle: the dashboard, or the app's terminal-first
 // workspace (WP-04). Each is its own chunk, so the app's terminal route never

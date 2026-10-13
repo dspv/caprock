@@ -158,6 +158,25 @@ func TestModelsSeenInTheWildArePriced(t *testing.T) {
 	}
 }
 
+// Claude Code on DeepSeek runs deepseek-flash; however the transcript spells
+// it, the turn is priced at that row and never falls through to another.
+func TestDeepSeekFlashIsPriced(t *testing.T) {
+	tab, err := Load("../../pricing/pricing.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"deepseek-flash", "deepseek-flash[1m]", "DeepSeek-Flash", "deepseek/deepseek-flash"} {
+		p, ok := tab.Lookup(id)
+		if !ok || p.ID != "deepseek-flash" {
+			t.Errorf("%q: priced as %q, %v", id, p.ID, ok)
+		}
+	}
+	usd, ok := tab.Price("deepseek-flash", event.TokenDelta{In: 1_000_000, Out: 1_000_000, CacheRead: 1_000_000})
+	if !ok || usd < 0.7529 || usd > 0.7531 { // 0.15 + 0.60 + 0.003, off-peak list price
+		t.Errorf("1M each of input, output and cache read: $%v", usd)
+	}
+}
+
 // A price change is not retroactive, and this is the test that says so.
 //
 // Sonnet 5 was the first case — an introductory $2/$10 that was to revert to

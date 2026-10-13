@@ -1,6 +1,7 @@
 // Typed client for the daemon API (.ai/03-contracts.md § HTTP API). snake_case
 // on the wire, kept as-is in the types so the contract is visible in the code.
 import type { ReapResult, ResourceReport } from './resources'
+import type { Footprint } from './footprint'
 import type { PullRequest } from './github'
 import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
 import type { SessionBranches } from './branches'
@@ -415,6 +416,17 @@ export interface SessionPRLive extends SessionPR {
   live?: PullRequest
   error?: { message: string }
 }
+/** How fresh a deck answer is: when the daemon composed it (unix ms), and
+ *  whether it is the one kept while a newer one is composed. */
+export interface DeckFresh {
+  fetched_at?: number
+  refreshing?: boolean
+}
+/** `GET /v1/sessions/{id}/prs`. */
+export interface SessionPRs extends DeckFresh {
+  connected: boolean
+  prs: SessionPRLive[]
+}
 /** One step of a GitHub Actions job (`GET /v1/sessions/{id}/ci`). Times are unix ms. */
 export interface CIStep {
   number: number
@@ -490,7 +502,7 @@ export interface CIState {
   error?: { message: string; kind?: string }
 }
 /** `GET /v1/sessions/{id}/ci`: the CI of the session's open PR, else its newest. */
-export interface SessionCI {
+export interface SessionCI extends DeckFresh {
   connected: boolean
   pr?: { number: number; url: string; title?: string; state?: string; repo: string; head_sha?: string }
   ci?: CIState
@@ -510,7 +522,7 @@ export interface ReleaseCI {
   error?: { message: string; kind?: string }
 }
 /** `GET /v1/sessions/{id}/ci/release` and `…/ci/main`: the session's repository's release build or default branch. */
-export interface SessionRepoCI {
+export interface SessionRepoCI extends DeckFresh {
   connected: boolean
   /** owner/name, from the session's directory's remote. */
   repo?: string
@@ -792,6 +804,11 @@ export interface Settings {
   gemini_key_from_env?: boolean
   /** Write-only, like the bot token. */
   gemini_api_key?: string
+  /** Whether a DeepSeek key is stored, and its first and last characters. */
+  deepseek_key_set?: boolean
+  deepseek_key_hint?: string
+  /** Write-only: an empty string removes it. */
+  deepseek_api_key?: string
   update_checks: boolean
   plan_kind: '' | 'flat' | 'metered'
   plan_label: string
@@ -1034,8 +1051,9 @@ export interface Status {
 }
 
 /** What Caprock keeps on disk: GET /v1/storage. The database composition is
- *  measured in the background and cached, so `database` is absent for the
- *  first minute after the daemon starts. */
+ *  measured in the background and cached: a request that finds it a day old
+ *  (or missing) starts a measurement and says `measuring`, and `database` is
+ *  absent until the first one finishes. */
 export interface StorageReport {
   data_dir: string
   total_bytes: number
@@ -1055,6 +1073,8 @@ export interface StorageReport {
   }
   measured_at?: number
   measure_ms?: number
+  /** A measurement is running; the figures are the previous one's. */
+  measuring?: boolean
   error?: string
   reclaimable_bytes: number
   /** An estimate, and named as one: see 03-contracts.md § Storage. */
@@ -1161,6 +1181,10 @@ export interface Subscription {
   /** Sessions Caprock started that are running on it. */
   running: number
   created_at?: number
+  /** Set on an entry that is not a sign-in but a model provider Claude Code
+   *  runs on with the user's own key ("deepseek", id "deepseek"): offered in
+   *  the pickers, never renamed, removed, made the default or counted. */
+  provider?: 'deepseek'
 }
 
 export interface SubscriptionsResponse {
@@ -1432,7 +1456,7 @@ export const api = {
   todos: (id: string) => get<SessionTodos>(`/v1/sessions/${encodeURIComponent(id)}/todos`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
   /** The session's latest PRs, with CI and review when GitHub is connected (the session deck). */
-  sessionPRs: (id: string) => get<{ connected: boolean; prs: SessionPRLive[] }>(`/v1/sessions/${encodeURIComponent(id)}/prs`),
+  sessionPRs: (id: string) => get<SessionPRs>(`/v1/sessions/${encodeURIComponent(id)}/prs`),
   /** Re-run a session PR's checks on GitHub: its failed jobs, else every finished run (the deck's Re-run checks). */
   sessionPRRerun: (id: string, n: number) => post<{ ok: boolean; mode: 'failed' | 'all'; runs: number; jobs: number }>(`/v1/sessions/${encodeURIComponent(id)}/prs/${n}/rerun`, {}),
   /** Merge the base into a session PR's branch on GitHub (the deck's Update branch). */
@@ -1535,6 +1559,8 @@ export const api = {
   resources: () => get<ResourceReport>('/v1/resources'),
   /** Stop the orphaned pty-hosts nothing runs in. Machine only. */
   reapOrphans: () => post<ReapResult>('/v1/resources/reap', {}),
+  /** What Caprock itself costs this machine: memory, disk, its disk I/O, duplicates (lib/footprint.ts). */
+  footprint: () => get<Footprint>('/v1/footprint'),
   /** Terminal applications installed here, most preferred first. */
   terminals: () => get<TerminalList>('/v1/terminals'),
   /** Open a session in the user's own terminal app. */

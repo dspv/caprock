@@ -130,5 +130,6 @@ function trim(s: Storage) {
   }
 }
 
-/** Key prefixes with their own entry limit, oldest out first. */
-export const GROUP_LIMITS: Record<string, number> = { 'session:': 30 }
+/** Key prefixes with their own entry limit, oldest out first: per session
+ *  pages, and the session deck's Pull requests & CI views (lib/deckCache). */
+export const GROUP_LIMITS: Record<string, number> = { 'session:': 30, 'deck:': 24 }

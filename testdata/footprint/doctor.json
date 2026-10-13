@@ -1,0 +1,37 @@
+{
+  "at": 1791877758573,
+  "daemon_running": true,
+  "data_dir": "/Users/you/Library/Application Support/caprock",
+  "exe": "/Applications/Caprock.app/Contents/MacOS/caprock",
+  "memory": {
+    "daemon": {"pid": 811, "name": "caprock", "cpu_pct": 1.2, "mem_bytes": 356515840},
+    "app": {"pid": 812, "name": "caprock-app", "cpu_pct": 0.4, "mem_bytes": 47185920},
+    "webview": {"count": 3, "cpu_pct": 2.1, "mem_bytes": 440401920,
+                "procs": [{"pid": 813, "name": "com.apple.WebKit.WebContent", "cpu_pct": 2.0, "mem_bytes": 346030080}]},
+    "hosts": {"count": 26, "mem_bytes": 272629760, "cpu_pct": 0, "orphans": 11, "reapable": 11},
+    "other_daemons_mem_bytes": 34603008,
+    "total_mem_bytes": 1151336448,
+    "total_cpu_pct": 9.4
+  },
+  "disk": {"total_bytes": 2315255808, "database_bytes": 2094006272, "wal_bytes": 6291456, "pastes_bytes": 125829120,
+           "logs_bytes": 41943040, "binaries_bytes": 53477376, "other_bytes": 5000},
+  "disk_io": {"interval_s": 60, "samples": 61,
+              "last_minute": {"read_bytes": 28311552, "write_bytes": 419840, "seconds": 60},
+              "last_hour": {"read_bytes": 1717986918, "write_bytes": 23068672, "seconds": 3600},
+              "since_start": {"read_bytes": 3328599654, "write_bytes": 99614720, "seconds": 9100}},
+  "duplicates": {
+    "daemons": [{"pid": 9214, "exe": "/opt/homebrew/bin/caprock", "data_dir": "/tmp/stand", "mem_bytes": 34603008, "started_at": 1791791358573}],
+    "apps": [{"pid": 812, "exe": "/Applications/Caprock.app/Contents/MacOS/caprock-app", "mem_bytes": 47185920}],
+    "other_install_holders": {"count": 11, "orphans": 11, "exes": [{"exe": "/opt/homebrew/bin/caprock", "count": 9}, {"exe": "/Applications/Caprock 0.104.app/Contents/MacOS/caprock", "count": 2}]}
+  },
+  "verdicts": [
+    {"level": "warn", "code": "duplicate_daemon", "text": "1 other Caprock daemon running beside this one (pid 9214 /opt/homebrew/bin/caprock, data /tmp/stand), using 33 MB. Caprock does not stop a daemon it did not start; stop the ones you do not use."},
+    {"level": "warn", "code": "orphans", "text": "11 of 26 terminal holders are orphans no Caprock will reattach to (all of them together use 260 MB). 11 hold only an idle shell or nothing: the daemon stops them on its own within 10 minutes (the Stop button in Settings does it now)."},
+    {"level": "warn", "code": "disk_reads_high", "text": "The daemon read 1.6 GB from disk in the last 60 minutes (over 500 MB)."},
+    {"level": "ok", "code": "other_install_holders", "text": "11 terminal holders run from another Caprock install or an older version (9 from /opt/homebrew/bin/caprock, 2 from /Applications/Caprock 0.104.app/Contents/MacOS/caprock). 11 of them are orphans (above)."}
+  ],
+  "actions": [
+    {"at": 1791875898573, "what": "folded the 290 MB write-ahead log back into the database (now 2.0 GB)"},
+    {"at": 1791876438573, "what": "stopped 3 orphaned terminal holders (3 holding only an idle shell)"}
+  ]
+}

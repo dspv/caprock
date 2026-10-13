@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, ApiError, isPairedDevice, type DiffResult, type Event, type SessionDetail } from '@/lib/api'
 import { useCanControl } from '@/lib/useCanControl'
 import { useApi } from '@/lib/useApi'
@@ -6,7 +6,7 @@ import { live, useLiveLink } from '@/lib/live'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
 import { Badge, Empty, Panel, Skeleton, Sparkline, StaleNote, Stat } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
-import { useNow } from './Now'
+import { useNowFor } from '@/lib/useNow'
 import { SessionNotes } from '@/components/Notes'
 import { TerminalView } from '@/components/Terminal'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
@@ -22,6 +22,7 @@ import { DiffFiles } from '@/components/DiffFiles'
 import { SessionCommit } from '@/components/SessionCommit'
 import { NewPill } from '@/components/NewPill'
 import { useStickToBottom } from '@/lib/useStickToBottom'
+import { useFrameBatch } from '@/lib/framebatch'
 import { setDraft } from '@/lib/draft'
 import { RemoveSession } from '@/components/RemoveSession'
 import { ChatView } from '@/components/ChatView'
@@ -85,7 +86,8 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       : (tab === 'terminal' && !reader) || tab === 'notes' || tab === 'chat' || tab === 'timeline'
         ? tab
         : narrowScreen() || app ? 'chat' : 'timeline'
-  const now = useNow(1000)
+  // Seconds while the session is fresh, else a slower clock (lib/useNow).
+  const now = useNowFor(detail.data?.last_event_at)
   // The plan this session is set against: its account's own, else the main one.
   const { plan } = useSessionPlan(detail.data?.agent, detail.data?.subscription)
   // The phone's Chat tab: a compact header, its details behind a toggle.
@@ -467,13 +469,20 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
     }
   }
   useEffect(() => { setEvents(initial); setExhausted(false); lastId.current = initial.length ? initial[initial.length - 1]!.id : 0 }, [initial])
-  // Append live events for this session as they arrive.
-  useEffect(() => live.onFrame((f) => {
-    if (f.type !== 'event' || f.data.session_id !== id || f.data.id <= lastId.current) return
-    lastId.current = f.data.id
-    setEvents((evs) => [...evs, f.data].slice(-5000))
-    setReceived((n) => n + 1)
-  }), [id])
+  // Append live events for this session as they arrive, a batch at a time
+  // (lib/framebatch): one render per FRAME_BATCH_MS, not one per event.
+  const incoming = useFrameBatch<Event>((batch) => {
+    setEvents((evs) => [...evs, ...batch].slice(-5000))
+    setReceived((n) => n + batch.length)
+  })
+  useEffect(() => {
+    const off = live.onFrame((f) => {
+      if (f.type !== 'event' || f.data.session_id !== id || f.data.id <= lastId.current) return
+      lastId.current = f.data.id
+      incoming.push(f.data)
+    })
+    return () => { off(); incoming.cancel() }
+  }, [id, incoming])
   const cost = useMemo(() => {
     let acc = 0
     return events.filter((e) => e.kind === 'turn.assistant').map((e) => (acc += e.cost_usd ?? 0))
@@ -484,6 +493,11 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
     for (const e of events) if (e.kind === 'tool.pre' && e.tool) { const p = e.payload as { tool_use_id?: string }; if (p?.tool_use_id) m.set(p.tool_use_id, e.tool) }
     return m
   }, [events])
+  // A row's age reads in seconds for its first minute and in minutes after:
+  // past that it is handed a clock that moves every 15 s, so the per-second
+  // tick redraws the fresh rows only (EventRow is memoised).
+  const coarse = Math.floor(now / 15_000) * 15_000
+  const rowNow = (ts: string) => (now - Date.parse(ts) < 90_000 ? now : coarse)
   // Newest first. The list is read the way a feed is — you arrive wanting the
   // last thing that happened, not the first — and it used to be the only place
   // in Caprock ordered the other way, so the same glance meant two different
@@ -509,7 +523,7 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
         <ol ref={stick.ref} className="max-h-[70vh] overflow-auto">
           {visible.length === 0 && <Empty title="No events yet" />}
           {visible.map((e) => (
-            <EventRow key={e.id} e={e} now={now} toolByUse={toolByUse} inMinute={at !== undefined && sameMinute(e.ts, at)} />
+            <EventRow key={e.id} e={e} now={rowNow(e.ts)} tool={toolOf(e, toolByUse)} inMinute={at !== undefined && sameMinute(e.ts, at)} />
           ))}
           {/* History is behind a link rather than loaded up front: a long
             * session has thousands of events and nobody wants them rendered to
@@ -570,10 +584,21 @@ function sameMinute(ts: string, at: number): boolean {
   return Number.isFinite(t) && Math.floor(t / 60_000) === Math.floor(at / 60_000)
 }
 
-function EventRow({ e, now, toolByUse, inMinute }: {
+/** tool.post rows from transcripts carry no tool name: the matching tool.pre's. */
+function toolOf(e: Event, toolByUse: Map<string, string>): string | undefined {
+  if (e.tool || e.kind !== 'tool.post') return e.tool
+  return toolByUse.get(String((e.payload as { tool_use_id?: unknown } | undefined)?.tool_use_id ?? ''))
+}
+
+/**
+ * Memoised, and handed only what it shows: a new event or a clock tick redraws
+ * the rows it changes, not the thousands of older ones under them.
+ */
+const EventRow = memo(function EventRow({ e, now, tool, inMinute }: {
   e: Event
+  /** The clock for this row's age: per second while it is fresh, coarser after (Timeline rowNow). */
   now: number
-  toolByUse: Map<string, string>
+  tool?: string
   /** Arrived here from the pulse: this is one of the events that was clicked. */
   inMinute?: boolean
 }) {
@@ -585,8 +610,7 @@ function EventRow({ e, now, toolByUse, inMinute }: {
     if (inMinute) row.current?.scrollIntoView({ block: 'center' })
   }, [inMinute])
   const p = (e.payload ?? {}) as Record<string, unknown>
-  const resolved = e.tool || (e.kind === 'tool.post' ? toolByUse.get(String(p.tool_use_id ?? '')) : undefined)
-  const label = describe({ ...e, tool: resolved }, p)
+  const label = describe({ ...e, tool }, p)
   // The full text of what Claude (or you) wrote, for the expanded view.
   const prose = e.kind === 'turn.assistant' ? String(p.text ?? '')
     // DeepSeek Harness keeps the prompt as `text`, everyone else as `prompt`.
@@ -633,7 +657,7 @@ function EventRow({ e, now, toolByUse, inMinute }: {
       )}
     </li>
   )
-}
+})
 
 export function describe(e: Event, p: Record<string, unknown>): string {
   switch (e.kind) {

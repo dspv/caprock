@@ -58,6 +58,17 @@ const (
 // store "" in sessions.subscription, as every session did before this.
 const DefaultID = "default"
 
+// DeepSeekID names Claude Code on DeepSeek: a Claude Code session in the
+// user's own configuration directory whose model calls go to DeepSeek's
+// Anthropic-compatible API on the user's DeepSeek key (Settings →
+// Subscriptions). It is offered beside the sign-ins once a key is set, and
+// recorded on its sessions like one, so their plan windows, if any arrive,
+// are filed under its own prefix and never over the Default sign-in's, and
+// the plan-window stop leaves them alone. It is not a directory and not a
+// sign-in, so it never counts toward FreePerAgent. NewID's hex ids can never
+// spell it.
+const DeepSeekID = "deepseek"
+
 // FreePerAgent is how many subscriptions per agent are free, the Default one
 // included; a fourth and more need a licence (owner decision, 2026-10-10).
 const FreePerAgent = 3

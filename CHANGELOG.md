@@ -9,6 +9,35 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **agents:** Claude Code on DeepSeek, free. Paste your DeepSeek API key in
+  Settings → Subscriptions and *New agent* and *Quick chat* offer
+  **DeepSeek · your API key** in the Subscription picker: the session is
+  Claude Code in your usual setup, with DeepSeek's documented variables and
+  your key in that one process's environment, so its model calls go to
+  DeepSeek's Anthropic-compatible API and DeepSeek bills your key. Your
+  claude.ai sign-in and its plan limits are not used, and the session is
+  kept out of the Claude plan windows and the plan-window stop. The key is
+  write-only (Settings shows `sk-…1a2b`), never on a command line, in the
+  database or a log; Settings and the picker say what the session sends to
+  api.deepseek.com and that Caprock sends nothing. Its card says
+  *DeepSeek*.
+- **pricing:** `deepseek-flash` at DeepSeek's off-peak list price ($0.15
+  input, $0.003 cache hit, $0.60 output per 1M, read 2026-10-13); turns in
+  DeepSeek's weekday peak hours bill double and read low. Table
+  `2026-10-13.1`.
+- **app:** each subagent row in the cockpit says what the subagent is doing
+  now in words — the description Claude wrote for its latest command
+  ("Rerun the store tests"), else its tool and target ("Editing
+  Cockpit.tsx"), else its task — after its type as a letter chip (G, E, P,
+  the full type on hover), with calls and cost beside it; the dimmer line
+  under it shows the raw command only when the phrase does not already say
+  it. `GET /v1/sessions/{id}/subagents` carries the phrase as `doing` and
+  `doing_from`.
+
+## [0.113.0] - 2026-10-13
+
+### Added
+
 - **cli:** `caprock doctor` says what Caprock costs this machine — memory and
   CPU of the daemon, the app, the app's window and the terminal holders; the
   data directory split into database, pastes, logs and binaries; the
@@ -16,18 +45,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   second daemon, a second app, orphaned terminals, a database over 2 GB and
   heavy disk reads, and exits 1 when something is flagged. `--json` prints
   the new `GET /v1/footprint`. It works with no daemon running.
+- **app:** what Caprock costs this computer, one click from the status bar.
+  *caprock 1.1 GB · 2.2 GB* at its right is the memory of every Caprock
+  process and the data directory on disk (memory alone in a narrow window),
+  in the warning colour with a dot when something is flagged. A click — or
+  the palette's *Caprock doctor* — opens the doctor as a panel: the verdict
+  in one line, each warning with the processes behind it, what the memory
+  and the disk are spent on, the daemon's disk reads and writes, what it
+  cleaned up on its own, **Check now**, **Stop N orphans** and **Copy
+  report**, which copies exactly what `caprock doctor` prints.
 - **daemon:** the resource meter counts the app's window: on macOS the
   WebKit helpers that draw it (hundreds of MB that belonged to no one
   before), elsewhere the app's child processes.
-- **app:** each subagent row in the cockpit says what the subagent is doing
-  now in words — the description Claude wrote for its latest command
-  ("Rerun the store tests"), else its tool and target ("Editing
-  Cockpit.tsx"), else its task — after its type as a letter chip (G, E, P,
-  the full type on hover), with calls and cost beside it; the dimmer line
-  under it shows the raw command only when the phrase does not already say
-  it.
-  `GET /v1/sessions/{id}/subagents` carries the phrase as `doing` and
-  `doing_from`.
+- **daemon:** any database statement slower than 300 ms is logged with the
+  code that ran it, so a slow screen or a burst of disk reads names its cause.
 
 ### Changed
 
@@ -42,9 +73,44 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   with tokens and cost under it — what a session is doing now first, what it
   has added up to under it. A choice someone made stays; one that was only
   ever the old cost-first default takes the new one.
+- **app:** a hidden window does no work, and an idle one almost none. Out of
+  sight (minimized, closed or covered), the page stops its polls and clocks,
+  holds live events and applies them together every 2 s (at once for a
+  notification, a permission prompt or a loop alert, and the moment the
+  window is shown), pauses animations, and the terminal in front neither
+  draws nor blinks; the menu bar and Dock badge stay current. Shown, screens
+  that follow agents at work redraw a batch at a time rather than per event,
+  and clocks tick every second only while something on screen is under a
+  minute old.
+- **store:** tool calls are stored the way the screens read them. A hook's
+  tool input and output now go through the same cap as the transcript's:
+  screenshots and other base64 become a marker naming their type and size,
+  text past 32 KB is clipped with a marker saying how much was dropped, and
+  every short field — paths, commands, exit codes — stays. Tool sizes still
+  count what the tool really returned. On a copy of one 2.2 GB database the
+  same history needed 841 MB less.
+- **daemon:** the database is read far less. The Storage figures are measured
+  when the panel finds them a day old, or once a day while nothing is
+  running, instead of a full read of the database every 30 minutes; a start
+  no longer pre-computes the share dialog's 30-day and all-time Weeks; and
+  the write-ahead log shrinks back to 64 MB after a big write.
+- **daemon:** old leftovers are cleaned up on their own, once a day while
+  idle: pasted and dropped files after 30 days, empty quick-chat folders no
+  session used, Gemini telemetry of sessions ended over 30 days ago, and the
+  unused `launchd.log`. Each sweep logs what it removed and how many bytes,
+  and is listed in the footprint's `actions`.
 
 ### Fixed
 
+- **deck:** the Pull requests & CI panel opens on what it last knew. Its
+  PRs, Branches, Release and Main views draw the last list at once — when
+  the deck opens, when the app starts, when you switch views — and read
+  again behind it, with *updating…*, *updated 12 s ago* or *couldn't
+  refresh* in the header; the very first read shows three grey rows rather
+  than an empty area. The daemon keeps each composed answer too, so a
+  request whose GitHub reads have expired is answered at once from the last
+  one while one refresh runs behind it, instead of waiting seconds on
+  GitHub. GitHub is asked no more often than before.
 - **app:** the spend chart's hovered bar shows its own figure in full. While
   a bar is hovered (or stepped to with ←/→) its cost takes the big figure's
   place with a short date beside it (*$287.12 Sun 11 Oct · 06–12*, *of

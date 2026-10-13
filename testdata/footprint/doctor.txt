@@ -1,0 +1,39 @@
+data directory  /Users/you/Library/Application Support/caprock
+daemon          running, pid 811
+
+Memory and CPU
+  daemon            340 MB  1.2%  
+  desktop app       45 MB   0.4%  
+  app window        420 MB  2.1%  3 web view processes
+  terminal holders  260 MB  0.0%  26, 11 orphaned, 11 reapable
+  other daemons     33 MB         1
+  total             1.1 GB  9.4%  
+
+Disk (2.2 GB in the data directory)
+  database  2.0 GB  write-ahead log 6 MB
+  pastes    120 MB  
+  logs      40 MB   
+  binaries  51 MB   
+  other     5 KB    
+
+The daemon's disk I/O
+  last minute  read 27 MB   written 410 KB  over 1m
+  last hour    read 1.6 GB  written 22 MB   over 1h00m
+  since start  read 3.1 GB  written 95 MB   over 2h31m
+
+Duplicates
+  other daemon: pid 9214 /opt/homebrew/bin/caprock 33 MB, data /tmp/stand
+  desktop apps: 1
+  terminal holders from another install: 11 (11 orphaned)
+    9  /opt/homebrew/bin/caprock
+    2  /Applications/Caprock 0.104.app/Contents/MacOS/caprock
+
+Done on its own (since the daemon started)
+  Oct 13 07:18  folded the 290 MB write-ahead log back into the database (now 2.0 GB)
+  Oct 13 07:27  stopped 3 orphaned terminal holders (3 holding only an idle shell)
+
+Verdict
+  WARN  1 other Caprock daemon running beside this one (pid 9214 /opt/homebrew/bin/caprock, data /tmp/stand), using 33 MB. Caprock does not stop a daemon it did not start; stop the ones you do not use.
+  WARN  11 of 26 terminal holders are orphans no Caprock will reattach to (all of them together use 260 MB). 11 hold only an idle shell or nothing: the daemon stops them on its own within 10 minutes (the Stop button in Settings does it now).
+  WARN  The daemon read 1.6 GB from disk in the last 60 minutes (over 500 MB).
+  OK    11 terminal holders run from another Caprock install or an older version (9 from /opt/homebrew/bin/caprock, 2 from /Applications/Caprock 0.104.app/Contents/MacOS/caprock). 11 of them are orphans (above).

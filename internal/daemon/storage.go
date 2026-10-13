@@ -15,19 +15,22 @@ import (
 // How the storage figures stay cheap.
 //
 // The database's composition costs a walk of every page (dbstat) and a read of
-// every event row. Against the owner's 857 MB database that measured 8
-// seconds warm and 14 cold through this driver — fine once in a while in the
-// background, and out of the question on a request a screen polls. So the composition is
-// measured on a timer and cached; a request reads the cache and stats the data
-// directory, which is a few dozen files.
+// every event row: 4.8 s and the whole 2.2 GB file on the owner's machine
+// (2026-10-13). It used to run a minute after every start and then every 30
+// minutes whether or not anyone looked — the slow-query log put it beside the
+// startup scans as the daemon's biggest reads. It is now measured only when it
+// is wanted:
 //
-// The first measurement waits a minute after start: a fresh daemon is already
-// backfilling transcripts, and a full-file read competing with that only makes
-// both slower.
-const (
-	storageFirstDelay = time.Minute
-	storageEvery      = 30 * time.Minute
-)
+//   - when GET /v1/storage finds the cached figures older than storageMaxAge
+//     (or none at all), it starts a measurement in the background and answers
+//     at once with what it has, saying `measuring: true`;
+//   - at most once per storageMaxAge when the daemon has been idle —
+//     nothing recorded for idleFor — so the figures are there when the
+//     Storage panel is next opened, measured at a moment nobody is working.
+//
+// A request reads the cache and stats the data directory, which is a few
+// dozen files.
+const storageMaxAge = 24 * time.Hour
 
 // storageState is the cached measurement.
 type storageState struct {
@@ -36,6 +39,37 @@ type storageState struct {
 	at   time.Time
 	took time.Duration
 	err  string
+	// running is set while a measurement is in flight; tried is when the
+	// last one started, failed or not, so a failing measurement is retried
+	// once per storageMaxAge rather than on every request.
+	running bool
+	tried   time.Time
+}
+
+// storageDue reports whether a measurement last started at tried is too old
+// to serve as it is.
+func storageDue(tried, now time.Time) bool {
+	return tried.IsZero() || now.Sub(tried) >= storageMaxAge
+}
+
+// startMeasure starts a background measurement unless one is running or the
+// last one is recent enough. It reports whether one is running now.
+func (d *Daemon) startMeasure(now time.Time) bool {
+	d.storage.mu.Lock()
+	defer d.storage.mu.Unlock()
+	if d.storage.running {
+		return true
+	}
+	if !storageDue(d.storage.tried, now) {
+		return false
+	}
+	d.storage.running, d.storage.tried = true, now
+	ctx := d.baseCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	go d.measureStorage(ctx)
+	return true
 }
 
 // StorageReport is what GET /v1/storage returns. See 03-contracts.md § Storage.
@@ -51,6 +85,9 @@ type StorageReport struct {
 	MeasuredAt int64          `json:"measured_at,omitempty"`
 	MeasureMs  int64          `json:"measure_ms,omitempty"`
 	Error      string         `json:"error,omitempty"`
+	// Measuring is true while a measurement runs in the background; the
+	// figures above are the previous one's until it finishes.
+	Measuring bool `json:"measuring,omitempty"`
 	// ReclaimableBytes is the database's free pages: what a VACUUM would hand
 	// back to the disk. Zero until measured.
 	ReclaimableBytes int64 `json:"reclaimable_bytes"`
@@ -71,27 +108,13 @@ type FileSize struct {
 	Dir   bool   `json:"dir,omitempty"`
 }
 
-// storageLoop keeps the cached composition fresh.
-func (d *Daemon) storageLoop(ctx context.Context) {
-	t := time.NewTimer(storageFirstDelay)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			d.measureStorage(ctx)
-			t.Reset(storageEvery)
-		}
-	}
-}
-
 func (d *Daemon) measureStorage(ctx context.Context) {
 	t0 := time.Now()
 	st, err := store.MeasureStorage(ctx, d.store.DB(), d.rec.Now())
 	took := time.Since(t0)
 	d.storage.mu.Lock()
 	defer d.storage.mu.Unlock()
+	d.storage.running = false
 	if err != nil {
 		// Keep the previous figures: a failed refresh should not blank a
 		// panel that was right half an hour ago.
@@ -100,11 +123,13 @@ func (d *Daemon) measureStorage(ctx context.Context) {
 		return
 	}
 	d.storage.db, d.storage.at, d.storage.took, d.storage.err = &st, time.Now(), took, ""
-	d.log.Debug("storage measured", "component", "daemon", "took", took)
+	d.log.Info("storage measured", "component", "daemon", "took_ms", took.Milliseconds(), "database_bytes", st.PageCount*st.PageSize)
 }
 
-// storageReport answers GET /v1/storage.
+// storageReport answers GET /v1/storage, starting a measurement when the
+// cached one is older than storageMaxAge.
 func (d *Daemon) storageReport(_ context.Context) any {
+	measuring := d.startMeasure(time.Now())
 	files, total := dataDirSizes(d.opt.DataDir)
 	r := StorageReport{
 		DataDir: d.opt.DataDir, TotalBytes: total, Files: files,
@@ -114,6 +139,7 @@ func (d *Daemon) storageReport(_ context.Context) any {
 	db, at, took, errText := d.storage.db, d.storage.at, d.storage.took, d.storage.err
 	d.storage.mu.Unlock()
 	r.Error = errText
+	r.Measuring = measuring
 	if db != nil {
 		r.Database = db
 		r.MeasuredAt, r.MeasureMs = at.UnixMilli(), took.Milliseconds()

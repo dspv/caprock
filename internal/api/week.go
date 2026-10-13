@@ -95,22 +95,6 @@ func (s *Server) weekAnswer(ctx context.Context, period string, from, to time.Ti
 	})
 }
 
-// warmWeek computes the share dialog's all-time and 30-day Weeks, the two
-// that cost seconds on a large database, so the first open after a start
-// finds them cached.
-func (s *Server) warmWeek(ctx context.Context) {
-	for _, period := range []string{"all", "30d"} {
-		if ctx.Err() != nil {
-			return
-		}
-		from, to, err := s.weekPeriod(ctx, period)
-		if err != nil {
-			continue
-		}
-		_, _ = s.weekAnswer(ctx, period, from, to)
-	}
-}
-
 // weekPeriod is the window a named period covers, in whole local days ending
 // today: the same days the Cost screen's ranges use. "all" starts on the day
 // of the first event recorded.

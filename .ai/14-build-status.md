@@ -73,6 +73,79 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — unreleased: Claude Code on DeepSeek
+
+A user asked to run Claude Code sessions from Caprock on DeepSeek's models
+(owner, 2026-10-13; free). Built as a subscription entry, `deepseek`
+(ADR-048, amended): the user pastes a DeepSeek key in Settings →
+Subscriptions, *DeepSeek · your API key* appears in New agent's and Quick
+chat's Subscription picker, and a session started on it gets DeepSeek's
+published variables and the key in its own environment, with
+`ANTHROPIC_AUTH_TOKEN` replacing the claude.ai login for that process. It
+runs in the user's own `~/.claude`, records `subscription = deepseek`, is
+priced at a new `deepseek-flash` row (table `2026-10-13.1`, off-peak list
+price) and is kept out of the Claude plan windows and the plan-window stop.
+Verified live on 2026-10-13 with the owner's key: the endpoint accepts the
+key as a bearer token, and a real `claude -p` with exactly these variables
+reached DeepSeek with no sign-in prompt and no Keychain dialog — and got
+`402 Insufficient Balance`, so no reply has yet shown which model id
+DeepSeek reports in a transcript ([OQ-13](12-risks.md#open-questions)).
+
+### 2026-10-13 — 0.113.0: what Caprock costs this computer, and less of it
+
+A user's machine felt slow and the owner could not say whether it was
+Caprock. Measured on his Mac first: about 1 GB of memory once the app's
+WebKit helpers are counted (they were not), a 2.2 GB database half of which
+was verbatim tool output and screenshots from hooks, and the whole database
+read every 30 minutes by the storage figures and on every start by the share
+dialog's warm-up. Shipped together: `caprock doctor` and `GET /v1/footprint`,
+the same report one click from the status bar, one daemon per data
+directory, an orphan sweep every 10 minutes that also stops other installs'
+idle holders, hook payloads clipped like transcript ones (841 MB less on a
+copy of his database), storage measured on demand, a slow-query log, a daily
+idle sweep of old pastes and leftovers, a hidden window that does no work,
+and a pull requests panel that opens on what it last knew. Also: burn rate
+as the cockpit's default headline, the spend chart's hovered figure in full,
+and a phone put away gives the PTY back. Every cleanup runs on its own on a
+user's machine (owner, 2026-10-13); old rows are not rewritten yet.
+
+### 2026-10-13 — unreleased: a hidden window does no work
+
+The owner measured the app's page at about 3% of a core with nothing
+happening and more while sessions streamed. Profiled headless (nine tabs,
+four agents at work) and fixed: live frames are held while the page is hidden
+and applied together every 2 s, at once for a notification, a prompt or an
+alert, and on showing; polls and clocks clear their timers while hidden; one
+debounce timer per pace for `useLiveTick`, set only for a new tick; CSS
+animations pause; the tab in front holds its output and stops blinking while
+hidden; clocks tick per second only while something shown is under a minute
+old; live screens apply events in 250 ms batches; the timeline's rows are
+memoised; a closed popover is not re-rendered. Rule in
+[04-ui.md § A hidden window does no work](04-ui.md#a-hidden-window-does-no-work),
+findings in [21-app.md](21-app.md#a-hidden-window-does-no-work-2026-10-13).
+Tests: `ui/src/lib/visible.test.ts`, `live.test.tsx`, `framebatch.test.ts`,
+`useNow.test.tsx`.
+### 2026-10-13 — unreleased: store what the screens read, read the database less
+
+The owner's database was 2.2 GB, 1.1 GB of it hook tool results stored
+verbatim (screenshots as base64, whole files), and the daemon twice read over
+a gigabyte within a minute with nothing saying why. Now: the hook copy of a
+tool call goes through the transcript parser's cap (one shared function,
+`event.CapToolField`; 841 MB less for the same history on a copy, 6,099 of
+134,099 rows changed; `tool_bytes` keeps the original size). Every statement
+is timed and one over 300 ms is logged with its caller — on a copy it named
+the culprits at once: the storage measurement (a 5.5 s `dbstat` walk of the
+whole file, a minute after start and every 30 minutes) and `Server.Warm`'s
+30-day and all-time Weeks (`scanToolPosts` reading every Bash/Edit/Write
+result payload, 1–4 s per slice). The measurement now runs when the Storage
+panel finds it a day old or once a day while idle; Warm leaves the long
+Weeks to the dialog. `journal_size_limit` is 64 MiB, and an idle daily sweep
+removes old pastes, empty unused chat folders, ended Gemini telemetry and
+the stale `launchd.log` ([02-architecture.md § Retention and
+cleanup](02-architecture.md#retention-and-cleanup)). Not done: rewriting the
+rows stored before the cap — their payloads still cost a full read whenever
+a whole-history scan touches them.
+
 ### 2026-10-13 — unreleased: `caprock doctor` and what Caprock costs this machine
 
 `GET /v1/footprint` and `caprock doctor` ([03-contracts.md § Footprint](03-contracts.md#footprint)):

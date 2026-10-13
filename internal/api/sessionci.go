@@ -26,6 +26,14 @@ type SessionCI struct {
 	PR        *SessionCIPR  `json:"pr,omitempty"`
 	CI        *github.CI    `json:"ci,omitempty"`
 	Error     *github.Error `json:"error,omitempty"`
+	// FetchedAt and Refreshing: as SessionPRs says them.
+	FetchedAt  int64 `json:"fetched_at"`
+	Refreshing bool  `json:"refreshing,omitempty"`
+}
+
+func (a SessionCI) stamped(at int64, refreshing bool) any {
+	a.FetchedAt, a.Refreshing = at, refreshing
+	return a
 }
 
 // sessionCIPR picks the pull request whose CI the deck shows: the one
@@ -87,29 +95,31 @@ func wantPR(r *http.Request) int {
 // the head commit of the session's open pull request (else its newest), with
 // every job and step and what each took. Kept per commit (github.CIBySHA):
 // 10 s while a job runs, 2 min once settled. Nothing is sent while GitHub is
-// not connected (rule 4).
+// not connected (rule 4). The composed answer is kept (deckcache.go).
 func (s *Server) handleSessionCI(w http.ResponseWriter, r *http.Request) {
-	connected := s.d.GitHub != nil && s.d.GitHub.Status().Connected
+	id, want := r.PathValue("id"), wantPR(r)
+	connected := s.githubConnected()
+	s.serveDeck(w, r, deckKey("ci", id, connected, want), func(ctx context.Context) (deckAnswer, error) {
+		return s.composeSessionCI(ctx, id, want, connected)
+	}, s.fail)
+}
+
+func (s *Server) composeSessionCI(ctx context.Context, id string, want int, connected bool) (deckAnswer, error) {
 	if !connected {
-		prs, err := store.SessionPRs(r.Context(), s.d.Store.DB(), r.PathValue("id"))
+		prs, err := store.SessionPRs(ctx, s.d.Store.DB(), id)
 		if err != nil {
-			s.fail(w, err)
-			return
+			return nil, err
 		}
 		out := SessionCI{}
 		if len(prs) > 0 {
 			repo, _, _ := github.ParsePullURL(prs[0].URL)
 			out.PR = &SessionCIPR{Number: prs[0].Number, URL: prs[0].URL, Title: prs[0].Title, Repo: repo.FullName()}
 		}
-		writeJSON(w, http.StatusOK, out)
-		return
+		return out, nil
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-	pr, perr, err := s.sessionCIPR(ctx, r.PathValue("id"), wantPR(r))
+	pr, perr, err := s.sessionCIPR(ctx, id, want)
 	if err != nil {
-		s.fail(w, err)
-		return
+		return nil, err
 	}
 	out := SessionCI{Connected: true, PR: pr, Error: perr}
 	if pr != nil && pr.HeadSHA != "" {
@@ -122,7 +132,7 @@ func (s *Server) handleSessionCI(w http.ResponseWriter, r *http.Request) {
 			out.Error = nil
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out, nil
 }
 
 // SessionRepoCI is GET /v1/sessions/{id}/ci/release and …/ci/main: the
@@ -138,6 +148,14 @@ type SessionRepoCI struct {
 	Release *github.ReleaseCI `json:"release,omitempty"`
 	CI      *github.CI        `json:"ci,omitempty"`
 	Error   *github.Error     `json:"error,omitempty"`
+	// FetchedAt and Refreshing: as SessionPRs says them.
+	FetchedAt  int64 `json:"fetched_at"`
+	Refreshing bool  `json:"refreshing,omitempty"`
+}
+
+func (a SessionRepoCI) stamped(at int64, refreshing bool) any {
+	a.FetchedAt, a.Refreshing = at, refreshing
+	return a
 }
 
 // sessionRepo is the GitHub repository of a session's working directory and
@@ -173,53 +191,57 @@ func (s *Server) defaultBranch(ctx context.Context, repo github.Repo, local stri
 // handleSessionCIRepo serves the CI cell's Release and Main views: the newest
 // release run of the session's repository, or the newest run of each
 // workflow on its default branch, kept as github.ReleaseByRepo and
-// github.MainCI keep them. Nothing is sent while GitHub is not connected.
+// github.MainCI keep them, and the composed answer kept (deckcache.go).
+// Nothing is sent while GitHub is not connected.
 func (s *Server) handleSessionCIRepo(view string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-		defer cancel()
-		out := SessionRepoCI{Connected: s.d.GitHub != nil && s.d.GitHub.Status().Connected}
-		repo, local, ok, err := s.sessionRepo(ctx, r.PathValue("id"), &out)
-		if err != nil {
-			s.notFoundOrFail(w, err)
-			return
+		id := r.PathValue("id")
+		connected := s.githubConnected()
+		s.serveDeck(w, r, deckKey(view, id, connected, 0), func(ctx context.Context) (deckAnswer, error) {
+			return s.composeSessionCIRepo(ctx, view, id, connected)
+		}, s.notFoundOrFail)
+	}
+}
+
+func (s *Server) composeSessionCIRepo(ctx context.Context, view, id string, connected bool) (deckAnswer, error) {
+	out := SessionRepoCI{Connected: connected}
+	repo, local, ok, err := s.sessionRepo(ctx, id, &out)
+	if err != nil {
+		return nil, err
+	}
+	if !ok || !out.Connected {
+		if ok && view == "main" {
+			out.Branch = local
 		}
-		if !ok || !out.Connected {
-			if ok && view == "main" {
-				out.Branch = local
-			}
-			writeJSON(w, http.StatusOK, out)
-			return
-		}
-		branch, e := s.defaultBranch(ctx, repo, local)
+		return out, nil
+	}
+	branch, e := s.defaultBranch(ctx, repo, local)
+	if e != nil {
+		out.Error = e
+		return out, nil //nolint:nilerr // GitHub's refusal is part of the answer
+	}
+	if view == "release" {
+		rel, e := s.d.GitHub.ReleaseByRepo(ctx, repo, branch)
 		if e != nil {
 			out.Error = e
-			writeJSON(w, http.StatusOK, out)
-			return
-		}
-		if view == "release" {
-			rel, e := s.d.GitHub.ReleaseByRepo(ctx, repo, branch)
-			if e != nil {
-				out.Error = e
-			} else {
-				if rel.Run != nil {
-					runs := s.d.GitHub.WithBaselines(ctx, repo, []github.CIRun{*rel.Run})
-					rel.Run = &runs[0]
-				}
-				out.Release = &rel
-			}
 		} else {
-			out.Branch = branch
-			ci, e := s.d.GitHub.MainCI(ctx, repo, branch)
-			if e != nil {
-				out.Error = e
-			} else {
-				ci.Runs = s.d.GitHub.WithBaselines(ctx, repo, ci.Runs)
-				out.CI = &ci
+			if rel.Run != nil {
+				runs := s.d.GitHub.WithBaselines(ctx, repo, []github.CIRun{*rel.Run})
+				rel.Run = &runs[0]
 			}
+			out.Release = &rel
 		}
-		writeJSON(w, http.StatusOK, out)
+	} else {
+		out.Branch = branch
+		ci, e := s.d.GitHub.MainCI(ctx, repo, branch)
+		if e != nil {
+			out.Error = e
+		} else {
+			ci.Runs = s.d.GitHub.WithBaselines(ctx, repo, ci.Runs)
+			out.CI = &ci
+		}
 	}
+	return out, nil
 }
 
 // ciRunsOf is the runs the CI cell shows for this session in one view (pr,

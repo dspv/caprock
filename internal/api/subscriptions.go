@@ -65,6 +65,12 @@ type Subscription struct {
 	// Running is how many sessions Caprock started are running on it.
 	Running   int   `json:"running"`
 	CreatedAt int64 `json:"created_at,omitempty"`
+	// Provider is set on an entry that is not a sign-in but a model provider
+	// Claude Code runs on with the user's own key: "deepseek" (id "deepseek").
+	// It is offered in the pickers like a sign-in, but it has no directory,
+	// no plan windows and no sign-in command, cannot be renamed, removed or
+	// made the default, and does not count toward the free number.
+	Provider string `json:"provider,omitempty"`
 }
 
 // SubscriptionPlan is one sign-in's plan: kind "flat" or "metered", the
