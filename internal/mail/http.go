@@ -24,6 +24,7 @@ func (s *Service) Handler() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /v1/mail/state", s.state)
 	m.HandleFunc("GET /v1/mail/providers", s.guess)
+	s.importRoutes(m)
 	m.HandleFunc("POST /v1/mail/accounts", s.addAccount)
 	m.HandleFunc("PUT /v1/mail/accounts/{id}", s.updateAccount)
 	m.HandleFunc("DELETE /v1/mail/accounts/{id}", s.deleteAccount)

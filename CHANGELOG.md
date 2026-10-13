@@ -7,6 +7,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **mail:** when you first open Mail it offers the accounts you already have in
+  another client, so you add them with a click instead of retyping servers and
+  passwords. Thunderbird comes over whole — servers and, when there is no
+  primary password, the passwords too, decrypted on your machine (nothing is
+  sent anywhere and no password ever crosses the dashboard connection). Apple
+  Mail brings its server settings; its passwords are not readable, so you type
+  each once, and on macOS without Full Disk Access Caprock says so and how to
+  grant it. Each account is signed in to and verified before it is saved, and
+  one account that fails never stops the others.
+
 ### Changed
 
 - **deck:** a pull request's checks read at a glance. In place of a circle per
