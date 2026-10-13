@@ -205,7 +205,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           <div className="flex min-w-0 items-center gap-2">
             <a href={href({ name: 'now' })} aria-label="Back to Now" className="link shrink-0 text-fg-muted text-[13px] py-1">←</a>
             <h1 className="max-w-[45%] shrink-0 truncate text-[15px] font-medium">{s.project || 'unknown project'}</h1>
-            <span className={`min-w-0 flex-1 truncate text-[12px] ${s.description_source === 'title' ? 'text-fg' : 'text-fg-muted'}`}>{s.description}</span>
+            <span className={`min-w-0 flex-1 truncate text-[12px] ${s.description_source !== 'prompt' ? 'text-fg' : 'text-fg-muted'}`}>{s.description}</span>
             {!detail.stale && <Badge health={s.activity.health} />}
             <button
               type="button"
@@ -252,10 +252,10 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         * and ellipsizes; at phone width the buttons wrap under it. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 -my-0.5">
         <div
-          className={`flex-1 basis-48 min-w-0 truncate text-[13px] ${s.description_source === 'title' ? 'text-fg' : 'text-fg-muted'}`}
+          className={`flex-1 basis-48 min-w-0 truncate text-[13px] ${s.description_source !== 'prompt' ? 'text-fg' : 'text-fg-muted'}`}
           title={s.description ? (s.description_source === 'prompt' ? `first prompt: ${s.description}` : s.description) : undefined}
         >
-          {s.description ? (s.description_source === 'title' ? s.description : `“${s.description}”`) : null}
+          {s.description ? (s.description_source !== 'prompt' ? s.description : `“${s.description}”`) : null}
         </div>
         {/* The user's own terminal app, beside the repository: both open
           * this session's work somewhere other than here, and the title row

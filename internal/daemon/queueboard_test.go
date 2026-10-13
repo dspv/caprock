@@ -148,6 +148,14 @@ func TestQueuedMessageDoneIsHeardAndMarked(t *testing.T) {
 	}
 	hook(t, q, d, "s1", event.KindAgentStop, nil, false) // the first turn ends: not a queued one
 	waitQueue(t, "the queued message", func() bool { return strings.Contains(f.got("s1"), "queued one") })
+	// The text reaches the terminal a moment before the queue records it as
+	// in flight; a loaded runner delivered the next hook in between.
+	waitQueue(t, "the message in flight", func() bool {
+		q.mu.Lock()
+		defer q.mu.Unlock()
+		_, ok := q.inflight["s1"]
+		return ok
+	})
 	if h := count(); len(h) != 0 {
 		t.Fatalf("heard %v for a turn no queued message started", h)
 	}

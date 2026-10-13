@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Shell } from '@/components/Shell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useRoute, type Route } from '@/lib/router'
@@ -16,6 +16,9 @@ import { PairScreen } from '@/screens/Pair'
 import { NewProjectScreen } from '@/components/NewProject'
 import { PhoneHome } from '@/components/PhoneHome'
 import { useNarrowScreen } from '@/lib/phone'
+
+// Mail is its own world (internal/mail); its code loads only when opened.
+const MailScreen = lazy(() => import('@/screens/mail/MailScreen').then((m) => ({ default: m.MailScreen })))
 
 /**
  * Whether this browser may see the figures at all.
@@ -78,6 +81,7 @@ export function Dashboard({ route, inApp = false }: { route: Route; inApp?: bool
         {route.name === 'graph' && <OrchestrationScreen />}
         {route.name === 'notes' && <NotesScreen />}
         {route.name === 'start' && <NewProjectScreen mode={route.mode} />}
+        {route.name === 'mail' && <Suspense fallback={null}><MailScreen /></Suspense>}
       </ErrorBoundary>
     </Shell>
   )

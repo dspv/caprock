@@ -128,6 +128,69 @@ export function saveCIView(v: CIView): void {
   try { localStorage.setItem(CI_VIEW_KEY, v) } catch { /* kept for this page only */ }
 }
 
+/** How a deck row says its checks: a circle per check, or in words. */
+export type CIMarks = 'dots' | 'text'
+const CI_MARKS_KEY = 'caprock.deck.ciMarks'
+
+/** The circles unless this viewer chose the words (owner, 2026-10-13). */
+export function readCIMarks(): CIMarks {
+  try { if (localStorage.getItem(CI_MARKS_KEY) === 'text') return 'text' } catch { /* not kept */ }
+  return 'dots'
+}
+
+export function saveCIMarks(v: CIMarks): void {
+  try { localStorage.setItem(CI_MARKS_KEY, v) } catch { /* kept for this page only */ }
+}
+
+const OPEN_PR_KEY = 'caprock.deck.openPR'
+/** The most sessions whose opened row is remembered. */
+const OPEN_PR_KEPT = 50
+
+function openPRs(): Record<string, number> {
+  try {
+    const v = JSON.parse(localStorage.getItem(OPEN_PR_KEY) ?? '{}') as unknown
+    if (v && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, number>
+  } catch { /* not kept */ }
+  return {}
+}
+
+/**
+ * The PR row this viewer opened in a session's deck, 0 when none: the deck
+ * opens on the overview of every row, and on a row only once one was opened
+ * by hand (owner, 2026-10-13, translated: "again the first one is always
+ * opened, but I want to see the overall picture").
+ */
+export function readOpenPR(sessionId: string): number {
+  const n = openPRs()[sessionId]
+  return typeof n === 'number' && n > 0 ? n : 0
+}
+
+/** Remembers the row opened (n > 0) or that every row is folded (0). */
+export function saveOpenPR(sessionId: string, n: number): void {
+  const m = openPRs()
+  delete m[sessionId]
+  if (n > 0) m[sessionId] = n
+  const keys = Object.keys(m)
+  for (const k of keys.slice(0, Math.max(0, keys.length - OPEN_PR_KEPT))) delete m[k]
+  try { localStorage.setItem(OPEN_PR_KEY, JSON.stringify(m)) } catch { /* kept for this page only */ }
+}
+
+/** The cockpit's CI block: circles per PR, one ring with the count, or jobs by OS. */
+export type CockpitCIView = 'dots' | 'ring' | 'grid'
+const COCKPIT_CI_KEY = 'caprock.cockpit.ciView'
+
+export function readCockpitCIView(): CockpitCIView {
+  try {
+    const v = localStorage.getItem(COCKPIT_CI_KEY)
+    if (v === 'ring' || v === 'grid') return v
+  } catch { /* not kept */ }
+  return 'dots'
+}
+
+export function saveCockpitCIView(v: CockpitCIView): void {
+  try { localStorage.setItem(COCKPIT_CI_KEY, v) } catch { /* kept for this page only */ }
+}
+
 /** Whole minutes, at least 1: "about 6 min". */
 function mins(ms: number): number {
   return Math.max(1, Math.round(ms / 60_000))

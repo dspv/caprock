@@ -25,6 +25,9 @@ export interface Session {
   owned: boolean
   /** The agent's own name for the session (Claude Code's ai-title, OpenCode's title). */
   title?: string
+  /** The user's own name for the session, renamed from its tab or sidebar
+   *  row (`PUT /v1/sessions/{id}/name`); outranks `title`. Empty: not renamed. */
+  name?: string
   /** Which coding agent produced this session. Absent means Claude Code,
    *  which is what every session was before OpenCode support. */
   agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek'
@@ -126,10 +129,10 @@ export interface SessionSummary extends Session {
    *  session that has not answered yet. The two look identical from here and
    *  mean opposite things, so the server names which it is. */
   context_note?: string
-  /** What tells this session from the others: the agent's own title, else the
-   *  first prompt that says something. */
+  /** What tells this session from the others: the name the user gave it, else
+   *  the agent's own title, else the first prompt that says something. */
   description?: string
-  description_source?: 'title' | 'prompt'
+  description_source?: 'name' | 'title' | 'prompt'
   /** Last prompt, reply or tool call — not the exit or restart that followed it (FB-037). */
   worked_at?: number
   /** The session this one continues: the one a /clear replaced, or the one it was forked from (FB-039). */
@@ -1531,6 +1534,8 @@ export const api = {
   /** One Projects row's sessions, newest first, each with whether it can be picked up. */
   sessionsInDir: (dir: string) => get<SessionSummary[]>(`/v1/sessions?dir=${encodeURIComponent(dir)}`),
   session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
+  /** The user's own name for a session; '' clears it. */
+  renameSession: (id: string, name: string) => post<{ session_id: string; name: string }>(`/v1/sessions/${encodeURIComponent(id)}/name`, { name }, 'PUT'),
   events: (id: string, after = 0, limit = 500) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?after=${after}&limit=${limit}`),
   /** The events immediately preceding `before`, oldest-first — paging back
    *  through a long session without refetching from its start. */

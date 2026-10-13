@@ -169,6 +169,7 @@ export function screenName(r: Route): string {
     case 'notes': return 'Memory'
     case 'settings': return 'Settings'
     case 'start': return 'Start work'
+    case 'mail': return 'Mail'
   }
 }
 

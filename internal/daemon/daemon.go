@@ -48,6 +48,7 @@ import (
 	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/logcap"
 	"github.com/dspv/caprock/internal/loop"
+	"github.com/dspv/caprock/internal/mail"
 	"github.com/dspv/caprock/internal/nativeterm"
 	"github.com/dspv/caprock/internal/opencode"
 	"github.com/dspv/caprock/internal/orchestrator"
@@ -149,6 +150,8 @@ type Daemon struct {
 	// tg is the Telegram bridge (ADR-047); nil in tests that build a daemon
 	// by hand, which then send alerts the old way.
 	tg *telegram.Bridge
+	// mail is Caprock Mail; idle until the user adds an account (internal/mail).
+	mail *mail.Service
 	// talk keeps a conversation's messages from being sent twice.
 	talk conversation
 	det  *loop.Detector
@@ -595,6 +598,8 @@ func (d *Daemon) run(ctx context.Context) error {
 		}
 	}
 
+	d.mail = mail.New(d.opt.DataDir, d.log)
+	defer d.mail.Close()
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, WindowStop: d.windowStopStatus,
@@ -624,6 +629,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		},
 		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d,
 		Projects: d.projs, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
+		Mail: d.mail.Handler(),
 	})
 	srv := &http.Server{Handler: d.markWrites(d.api), ReadHeaderTimeout: 10 * time.Second}
 	// Held so LAN access can be switched on later without a restart. The

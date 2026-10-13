@@ -28,6 +28,7 @@ import {
   type ProjectSource,
 } from './projects'
 import { everyWhileVisible, pageHidden } from './visible'
+import { onSessionRenamed } from './sessionNames'
 
 const FULL_LIST_MS = 60_000
 const SUMMARY_MS = 60_000
@@ -203,6 +204,10 @@ export function useWorkspaceData(): WorkspaceData {
     const stop = everyWhileVisible(load, SHELLS_MS)
     return () => { alive = false; stop() }
   }, [nonce])
+
+  // A rename shows in the tab and the sidebar row at once, before the daemon
+  // answers; its session frame confirms it, here and in every other window.
+  useEffect(() => onSessionRenamed((id, name) => setSessions((cur) => applySessionFrames(cur, [[id, { session: { name } }]]))), [])
 
   // Git state, clones and permission prompts, as they happen.
   useEffect(() => {

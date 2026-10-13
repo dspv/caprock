@@ -190,7 +190,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `POST /v1/agents`, `GET /v1/agents/models`, `GET /v1/agents/catalog`, `GET /v1/recent-dirs`,
   `GET /v1/browse`, `GET /v1/browse/stat` and `GET /v1/browse/repos` (rooted inside home, see below), `GET /v1/sessions/{id}/relay`, `GET /v1/agents/{id}/term`,
   `POST /v1/agents/{id}/input`, `POST /v1/agents/{id}/signal`,
-  `POST /v1/agents/{id}/permission`, the message queue (`POST /v1/agents/{id}/queue`,
+  `POST /v1/agents/{id}/permission`, `PUT /v1/sessions/{id}/name` (a label in
+  Caprock's own database), the message queue (`POST /v1/agents/{id}/queue`,
   `PATCH` and `DELETE /v1/agents/{id}/queue/{qid}`, `POST /v1/agents/{id}/queue/{qid}/send`),
   `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`, saving to
   and deleting from the Inbox (`POST /v1/inbox`, `DELETE /v1/inbox/{id}`,
@@ -1322,6 +1323,7 @@ GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; t
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
 POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, name}}; this machine only
 POST   /v1/sessions/{id}/open-terminal {terminal?, mode?: resume|move|fork} → {terminal: {id, name}, mode, command}
+PUT    /v1/sessions/{id}/name        {name} → {session_id, name}; "" clears it; 400 without name, 404 for an unknown session (§ Session name DDL)
 POST   /v1/sessions/remove           {ids?: [id], cwd_prefix?, dry_run?} → {dry_run, sessions: [RemovalCandidate], skipped: [RemovalCandidate + reason], cost_usd, unmatched_usd}
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
@@ -1466,7 +1468,11 @@ views of the *Pull requests & CI* cell — `…/prs`, `…/ci`, `…/ci/release`
 above, and the composed answer is kept per view, session, pull request
 asked for and whether GitHub is connected (at most 256 keys). A key never
 composed is composed while the request waits, and concurrent requests for
-it share one composition. Within 2 s the kept answer is handed back as it
+it share one composition — except `…/prs`: when its first composition takes
+longer than 300 ms (it has to ask GitHub), the request gets the session's
+pull requests as recorded (`SessionPR` fields, no `live`, no `error`) with
+`refreshing: true` at once, and the composition goes on to be kept for the
+next poll (`serveDeckOrQuick`, 2026-10-13). Within 2 s the kept answer is handed back as it
 is. Past that, the request starts one background composition (on a
 context of its own, 15 s) and waits up to 300 ms for it: when the GitHub
 reads answer from what they keep it lands inside that and is handed back;
@@ -2086,7 +2092,8 @@ dialogs open on it, and `POST /v1/agents` uses it for a request with no mode
 and nothing to carry one from.
 
 **`SessionSummary.description` / `description_source`** — what tells a session
-from the others on the screen (FB-035): the stored `sessions.title`
+from the others on the screen (FB-035): the name the user gave it,
+`sessions.name` (`"name"`), else the stored `sessions.title`
 (`"title"`), else the first of the session's earliest eight `turn.user`
 prompts — or the stored `sessions.prompt`, for Codex — that says something (`"prompt"`):
 not a tag-wrapped command or notification, not a bare path, at least 12
@@ -2805,6 +2812,33 @@ GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?
   a controller. On macOS a folder behind a privacy prompt is refused as the
   Changes routes refuse it (`tcc`).
 
+### Mail (`/v1/mail/*`)
+
+Caprock Mail ([ADR-057](08-decisions.md)). Code: `internal/mail` (HTTP in
+`http.go`), `internal/mail/engine` (IMAP, SMTP), `internal/mail/mailstore`
+(DDL in `schema.sql`), `ui/src/screens/mail`. Every write is JSON, as the CSRF
+guard requires. Before the first account exists only `GET /v1/mail/state` and
+`GET /v1/mail/providers` answer without opening Mail.
+
+- `GET /v1/mail/state` — `{accounts, folders, counts: {inbox, unread, flagged}, version}`; `version` moves on every local change and is what the screen polls.
+- `GET /v1/mail/providers?email=` — server settings guessed from the address, then its MX record: `{provider, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, note, help_url, known}`. The MX lookup is the one network call it makes.
+- `POST /v1/mail/accounts` — `{name, email, username, imap_*, smtp_*, password}`; IMAP and SMTP are tried first and a refusal is `422` with nothing stored. `PUT /v1/mail/accounts/{id}` edits (a new password is optional), `DELETE` removes the account, its mail and its password.
+- `GET /v1/mail/messages?view=&account=&folder=&q=&before=&before_id=&limit=` — newest first, without bodies. `view`: `inbox unread flagged sent drafts archive junk trash folder all`; `q` is a full-text query (every word a prefix) over subject, people and body.
+- `GET /v1/mail/messages/{id}` — one message with `body_text` and `body_html` (cleaned), fetched from the server if the background pass has not yet. `GET .../thread` — the conversation, oldest first. `GET .../part/{path}` — one attachment or inline image by IMAP part path or `cid:<id>`; `?download=1` forces an attachment disposition; served with a sandboxing CSP.
+- `POST /v1/mail/actions` — `{ids, action, folder}`; `action`: `read unread flag unflag archive trash spam inbox move`. Archive goes to the Archive folder, else Gmail's All Mail, else a new `Archive`; trash on a message already in Trash deletes it.
+- `POST /v1/mail/send` — `{account_id, to, cc, bcc, subject, text, in_reply_to, attachments: [{filename, type, data(base64)}]}`, up to 40 MB. Filed in Sent (Gmail files it itself); the answered message gets `\Answered`.
+- `POST /v1/mail/sync?account=` — sync now. `GET /v1/mail/contacts?q=` — address completion.
+- `GET|PUT /v1/mail/settings` — `ai_enabled` (`"0"`), `ai_url` (`http://127.0.0.1:11434/v1`), `ai_model`, `remote_images` (`ask` or `always`).
+- `GET /v1/mail/ai/status`, `POST /v1/mail/ai/summarize` and `POST /v1/mail/ai/draft` (`{message_id, instruction}`) — through any OpenAI-compatible server; `409` while `ai_enabled` is off.
+
+**`mail.db`** is not part of the event store's migration chain; its schema is
+`internal/mail/mailstore/schema.sql`, applied idempotently at open: `accounts`
+(servers, signature, last sync and error — never the password), `folders`
+(name, role, `uidvalidity`, highest stored UID, counts), `messages` (envelope,
+flags, thread key, snippet, decoded text and HTML bodies, the body structure
+as JSON), `messages_fts` (FTS5 over subject, people, body), `settings`,
+`contacts` (addresses seen, weighted towards ones written to).
+
 ### GitHub
 
 Connect GitHub, pick a repository to clone, put a local project on GitHub,
@@ -3336,6 +3370,23 @@ for an agent whose prompts never become events. The rollout transcript's own
 user messages cannot serve: all 60 checked opened with injected AGENTS.md or
 auto-review text. `prompt` is empty for every other agent, whose first prompt
 is read from events.
+
+### Session name DDL (migration 0052)
+
+```sql
+ALTER TABLE sessions ADD COLUMN name TEXT NOT NULL DEFAULT '';
+```
+
+The user's own name for a session, set by `PUT /v1/sessions/{id}/name`
+`{name}` from its tab or sidebar row ([21-app.md](21-app.md) § What the user
+sees). The name is made one line (whitespace collapsed) and clipped to 120
+characters; `""` clears it. It outranks `title` wherever a session is named
+(`description_source: "name"`), and nothing the agent writes touches it, so a
+later `ai-title` cannot undo a rename. Searching sessions matches it. `Session`
+carries it as `name`, never omitted — a live `session` frame patches the
+client's copy, and a frame without the key would leave a cleared name
+standing. A rename publishes that frame, so every window shows it without a
+refetch. A controller device may rename; a viewer may not.
 
 ### Worked-at and parent DDL (migration 0027)
 

@@ -58,7 +58,10 @@ import { closeTitle, closeWord } from '@/lib/closeShell'
 import { fmtUSD } from '@/lib/format'
 import { agentGlyphLabel } from './AgentMarks'
 import { projectHue } from './TerminalTabs'
-import { CloseIcon, EyeIcon, EyeOffIcon, FileIcon, MoreIcon, PlusIcon, StopIcon, TerminalIcon } from './AppIcons'
+import { CloseIcon, EyeIcon, EyeOffIcon, FileIcon, MoreIcon, PencilIcon, PlusIcon, StopIcon, TerminalIcon } from './AppIcons'
+import { InlineRename } from './InlineRename'
+import { renamable } from '@/lib/sessionNames'
+import { sessionAbout } from '@/lib/sidebar'
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
 import { keys, tabKey } from '@/lib/appkeys'
@@ -438,6 +441,13 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
       <StopConfirm sessionId={stopping.sessionId} what={stopping.what} onDone={() => setStopping(null)} />
     </li>
   )
+  // The session whose name is being typed in place of its row.
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const renameRow = (s: SessionSummary) => (
+    <li className="flex h-[28px] items-center pl-[22px] pr-1">
+      <InlineRename sessionId={s.session_id} initial={s.name?.trim() || sessionAbout(s)} current={s.name ?? ''} onDone={() => setRenaming(null)} />
+    </li>
+  )
   const itemRow = (it: SidebarRow) => {
     const k = leadKey(it)
     const drag: RowDrag = { rowKey: k, projectId: orderId, dragging: dragKey === k, onPress: onReorder ? pressRow(k) : undefined }
@@ -445,9 +455,12 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
     const digit = digits?.get(k)
     if (!it.tab) {
       const x = it.node!
+      const named = renamable(x.session, x.isShell)
+      if (named && renaming === x.session.session_id) return renameRow(x.session)
       return (
         <>
           <LiveRow
+            onRename={named ? () => setRenaming(x.session.session_id) : undefined}
             item={x}
             drag={drag}
             project={proj}
@@ -464,9 +477,12 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
     }
     const t = it.tab
     const l = it.label
+    const named = l?.file === undefined && renamable(l?.session, l?.isShell) ? l!.session! : undefined
+    if (named && renaming === named.session_id) return renameRow(named)
     return (
       <>
         <TabRow
+          onRename={named ? () => setRenaming(named.session_id) : undefined}
           drag={drag}
           project={proj}
           digit={digit}
@@ -495,6 +511,9 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
       const hideable = !!onHideSession && !!sid && l?.file === undefined && !l?.isShell && l?.session?.status !== 'ended'
       return (
         <MenuBox at={rowMenu} label={`${l?.title ?? tab.title}: tab actions`} width={232} onClose={closeRowMenu}>
+          {l?.file === undefined && renamable(l?.session, l?.isShell) && (
+            <MenuItem icon={<PencilIcon size={14} />} label="Rename…" onClick={() => { setRowMenu(null); setRenaming(sid!) }} />
+          )}
           {onCloseTab && <MenuItem icon={<CloseIcon size={14} />} label={closeWord(l?.file !== undefined, !!l?.isShell)} hint={keys('⌘W')} onClick={() => { setRowMenu(null); onCloseTab(tab.id) }} />}
           {onCloseTab && hideable && (
             <MenuItem icon={<EyeOffIcon size={14} />} label="Close tab and hide from the list" onClick={() => { setRowMenu(null); onCloseTab(tab.id); onHideSession!(sid!, true) }} />
@@ -508,7 +527,8 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
     return (
       <MenuBox at={rowMenu} label={`${x.title}: actions`} width={232} onClose={closeRowMenu}>
         <MenuItem icon={<PlusIcon size={14} />} label={x.session.owned ? 'Open as a tab' : 'Open in a tab, read-only'} onClick={() => { setRowMenu(null); onOpenLive?.(x.session, it.projectId) }} />
-        {onHideSession && <MenuItem icon={<EyeOffIcon size={14} />} label="Hide from the list" onClick={() => { setRowMenu(null); onHideSession(x.session.session_id, true) }} />}
+        {renamable(x.session, x.isShell) && <MenuItem icon={<PencilIcon size={14} />} label="Rename…" onClick={() => { setRowMenu(null); setRenaming(x.session.session_id) }} />}
+        {onHideSession &&<MenuItem icon={<EyeOffIcon size={14} />} label="Hide from the list" onClick={() => { setRowMenu(null); onHideSession(x.session.session_id, true) }} />}
         {canStop && <MenuItem icon={<StopIcon size={14} />} label={stopLabel('session')} tone="danger" onClick={() => { setRowMenu(null); setStopping({ sessionId: x.session.session_id, what: 'session' }) }} />}
       </MenuBox>
     )
@@ -585,8 +605,10 @@ function dragProps(drag?: RowDrag) {
   }
 }
 
-function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, drag, project, digit }: {
+function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, onRename, drag, project, digit }: {
   tab: Tab
+  /** Double-click names it: an agent's tab only. */
+  onRename?: () => void
   label?: TabLabel
   drag?: RowDrag
   project?: { name: string; id: string }
@@ -615,6 +637,7 @@ function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, dr
         aria-haspopup="menu"
         aria-keyshortcuts="Shift+F10"
         onClick={onOpen}
+        onDoubleClick={onRename}
         {...menuHandlers(onMenu)}
         className={`app-row flex h-[28px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] text-left ${active ? PAD_ALWAYS[n] : PAD_ON_HOVER[n]}`}
         title={[label?.file ?? title, label?.session ? agentGlyphLabel(label.session.agent, label.isShell) : '', label?.branch, project?.name].filter(Boolean).join(' · ')}
@@ -675,8 +698,10 @@ export function liveWithoutTab(node: ProjectNode, hiddenSessions?: HiddenSession
  * × hides it from the list, ■ stops it when Caprock started it, and a hidden
  * one shown on demand has the open eye that brings it back.
  */
-function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onShow, onMenu, drag, project, digit }: {
+function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onShow, onMenu, onRename, drag, project, digit }: {
   item: SessionNode
+  /** Double-click names it: an agent's session only. */
+  onRename?: () => void
   drag?: RowDrag
   project?: { name: string; id: string }
   digit?: number
@@ -707,6 +732,7 @@ function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onSh
         aria-haspopup="menu"
         aria-keyshortcuts="Shift+F10"
         onClick={onOpen}
+        onDoubleClick={onRename}
         {...menuHandlers(onMenu)}
         className={`app-row flex h-[28px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] text-left ${item.waiting ? '' : hidden ? 'opacity-55' : 'opacity-75'} ${PAD_ON_HOVER[n]}`}
         title={`${[title, agentGlyphLabel(s.agent, item.isShell), branch, project?.name].filter(Boolean).join(' · ')}: ${s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}`}

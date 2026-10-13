@@ -27,6 +27,7 @@ import { ShareButton } from '@/components/Share'
 import { PremiumChip } from '@/components/PremiumChip'
 import { SiteFooter } from '@/components/SiteFooter'
 import { StarStrip } from '@/components/StarStrip'
+import { MailStrip } from '@/components/MailStrip'
 import { SetupStrip } from '@/components/SetupStrip'
 import { ShareMoment } from '@/components/Nudges'
 import { openExternal, usePromptSync } from '@/lib/nudges'
@@ -53,6 +54,9 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
   // and nobody looking for the second would think to open the first.
   { route: { name: 'notes' }, label: 'Memory' },
   { route: { name: 'tasks' }, label: 'Tasks' },
+  // Caprock Mail: a separate kind of work, so it sits last. Marked new until
+  // people have found it; the offer on Now points here once (lib/nudges.ts).
+  { route: { name: 'mail' }, label: 'Mail', phase: 'new' },
 ]
 // The graph is deliberately not in NAV. Without a running orchestrator it can
 // only draw session ids around a hub — topology, not work — which costs a
@@ -106,7 +110,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
                   : 'text-fg hover:text-accent'
               }`}>
               {n.label}
-              {n.phase && <span className="ml-1 text-[9px] uppercase tracking-wider text-fg-faint">{n.phase}</span>}
+              {n.phase && <span className={`ml-1 text-[9px] uppercase tracking-wider ${n.phase === 'new' && !active(n.route) ? 'text-accent font-semibold' : 'text-fg-faint'}`}>{n.phase}</span>}
             </a>
           ))}
         </nav>
@@ -150,6 +154,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
       {/* The star strip sits above the footer, never over content; one offer
         * at a time (lib/nudges.ts). The share toast floats bottom-right. */}
       {!immersive && !phoneHome && <SetupStrip app={app} />}
+      {!immersive && !phoneHome && <MailStrip />}
       {!immersive && !phoneHome && <StarStrip app={app} />}
       {!phoneHome && <ShareMoment />}
       {!app && !immersive && !phoneHome && <SiteFooter />}

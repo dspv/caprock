@@ -89,6 +89,16 @@ others. Installing it: [install-app.md](install-app.md).
   A session started in another terminal has no stop — Caprock never
   signals a process it did not start. Right-click a tab for *Close tab*
   and, when there is one, *Stop…*. Delete and Backspace close nothing.
+- **Naming a session.** Double-click an agent's tab in the tab strip, or
+  its row in the sidebar, or right-click the row for *Rename…*: the name
+  becomes a field. Enter or clicking away saves it, Esc keeps the old one,
+  and an emptied field gives the session back the name Caprock made for
+  it. The new name shows at once in the tab, the sidebar, ⌘K and Now, in
+  this window and every other one, and it stays after a restart; a
+  session's own title from the agent never overwrites it. Until you name
+  one, a session is called by the agent's own title, or else by a few
+  words of your first message — *Fix the login bug* for "can you please
+  fix the login bug in auth.go". Shells are numbered, not named.
 - **A project's menu.** Click the ⋯ on its row (it shows on hover), right-click the row, or press Shift+F10
   on it: *Hide from the sidebar* (or *Show in the sidebar again*), *Close
   its tabs* — every tab and split of that project; the sessions and shells
@@ -409,7 +419,14 @@ others. Installing it: [install-app.md](install-app.md).
   focus the edge and use ↑ ↓; double-click it for the default height. The
   deck button beside the inspector's, ⌘B and the palette open and close it;
   the app remembers its height and whether it was open. A shell tab has no
-  deck. **Expand**, beside *Hide*, opens it large in a tab of its own,
+  deck. It opens on all of the session's pull requests, each with a circle
+  per check — green passed, red failed, amber pulsing while it runs — and
+  opens one only when you click it; the next time it opens on that one. A
+  small switch beside *PRs · Branches · Release · Main* shows the checks in
+  words instead. The cockpit on the right has a **CI** block with the same
+  circles, or one ring with *10/11 · 5m*, or the jobs by OS, switched in its
+  label; it shows what the deck last read and a click opens *PRs & CI*.
+  **Expand**, beside *Hide*, opens it large in a tab of its own,
   *PRs & CI*: the repository's last two weeks on top (pull requests merged
   per day, the median time to merge, the median CI run, the share of red
   runs, the Actions minutes GitHub billed this month), its pull requests on

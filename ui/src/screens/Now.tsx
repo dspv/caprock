@@ -717,10 +717,10 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
         * a quotation and is shown as one. */}
       {s.description && (
         <div
-          className={`px-3 pb-0.5 text-[14px] truncate ${s.description_source === 'title' ? 'text-fg font-medium' : 'text-fg'}`}
-          title={s.description_source === 'title' ? s.description : `first prompt: ${s.description}`}
+          className={`px-3 pb-0.5 text-[14px] truncate ${s.description_source !== 'prompt' ? 'text-fg font-medium' : 'text-fg'}`}
+          title={s.description_source !== 'prompt' ? s.description : `first prompt: ${s.description}`}
         >
-          {s.description_source === 'title' ? s.description : `“${s.description}”`}
+          {s.description_source !== 'prompt' ? s.description : `“${s.description}”`}
         </div>
       )}
       {s.status === 'ended' ? (

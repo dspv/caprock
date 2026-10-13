@@ -9,6 +9,7 @@ import type { SessionSummary } from './api'
 import { branchLabel, sessionHealth } from './sessionLabels'
 import { folderName, matchLength, sessionRoot, worktreeKeyOf, type Project } from './projects'
 import { uniqueSuffixes } from './sessionLabels'
+import { promptTitle } from './sessionNames'
 
 /**
  * The group for sessions in folders no listed project holds. The daemon lists
@@ -115,14 +116,27 @@ export function dotOf(s: SessionSummary, hasPermission: boolean): Dot {
   }
 }
 
-/** What a session is called in a row: the agent's title, else its first meaningful prompt, else its folder's branch. */
+/**
+ * What a session is called in a row: the name the user gave it, else the
+ * agent's title, else a few words from its first meaningful prompt
+ * (lib/sessionNames.ts), else its folder's branch.
+ */
 export function sessionTitle(s: SessionSummary): string {
   const branch = branchLabel(s.git_branch)
   if (s.kind === 'shell') return branch ? `shell · ${branch}` : 'shell'
+  const name = s.name?.trim()
   // A quick chat is named as one, not by its dated folder (lib/quickchat.ts).
-  if (isQuickChat(s)) return quickChatTitle(s)
-  const title = (s.title || s.description || '').trim() || (branch ? `on ${branch}` : 'new session')
+  if (!name && isQuickChat(s)) return quickChatTitle(s)
+  const title = name || sessionAbout(s) || (branch ? `on ${branch}` : 'new session')
   return attemptLabel(s) ? `${attemptLabel(s)} · ${title}` : title
+}
+
+/** What the session is about without the user's name for it: the agent's title, else a few words of its first prompt. */
+export function sessionAbout(s: SessionSummary): string {
+  if (s.title?.trim()) return s.title.trim()
+  // A description the user's name made is stale once that name is cleared.
+  if (s.description_source === 'prompt') return promptTitle(s.description)
+  return s.description_source === 'name' ? '' : (s.description ?? '').trim()
 }
 
 /** "attempt 2/3" for one of several started on one first message (ADR-052); '' otherwise. */

@@ -13,7 +13,8 @@ import (
 // — "ended" or "waiting for you" on nearly every one — so a list of them was a
 // list of identical rows.
 //
-// The agent's own name for the session comes first: Claude Code's ai-title is
+// A name the user gave the session (renamed from its tab or sidebar row) comes
+// first. Then the agent's own name for the session: Claude Code's ai-title is
 // the name its /resume picker shows, so it is the name the user already knows
 // the session by. Without one, the first prompt that says something.
 const (
@@ -27,6 +28,7 @@ const (
 
 // DescriptionSource says where a description came from.
 const (
+	DescriptionName   = "name"
 	DescriptionTitle  = "title"
 	DescriptionPrompt = "prompt"
 )
@@ -39,6 +41,10 @@ func Describe(ctx context.Context, q store.Querier, sess store.Session) string {
 }
 
 func describe(ctx context.Context, q store.Querier, sess store.Session) (text, source string) {
+	// A name the user gave it outranks everything the agent said.
+	if n := clipLine(sess.Name); n != "" {
+		return n, DescriptionName
+	}
 	if t := clipLine(sess.Title); t != "" {
 		return t, DescriptionTitle
 	}

@@ -70,6 +70,11 @@ type Session struct {
 	AttemptGroup string `json:"attempt_group,omitempty"`
 	Attempt      int    `json:"attempt,omitempty"`
 	Attempts     int    `json:"attempts,omitempty"`
+	// Name is the user's own name for the session, set from its tab or
+	// sidebar row (migration 0052); it outranks Title wherever a session is
+	// named. Never omitted: a live frame patches the held copy, and a frame
+	// without the key would leave a cleared name standing.
+	Name string `json:"name"`
 }
 
 // Stats mirrors session_stats.
@@ -532,6 +537,19 @@ func SetTitle(ctx context.Context, q Querier, id, title string) error {
 	return err
 }
 
+// SetName records the user's own name for a session; an empty name clears it,
+// and the agent's title or first prompt names the session again. Unlike
+// SetTitle this is the user's word, so empty is a value, not a no-op. ok is
+// false when no such session is stored.
+func SetName(ctx context.Context, q Querier, id, name string) (ok bool, err error) {
+	res, err := q.ExecContext(ctx, `UPDATE sessions SET name = ? WHERE session_id = ?`, strings.TrimSpace(name), id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // SetPrompt records the first thing the user typed, for an agent whose prompts
 // are not events. Same rules as SetTitle: empty is a no-op, a missing session
 // is not created.
@@ -916,14 +934,14 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), ` + attemptCol
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), ` + attemptCol
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned int
 	var exit sql.NullInt64
 	var attempt string
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &attempt)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &attempt)
 	s.setAttempt(attempt)
 	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
 	if exit.Valid {
@@ -1047,9 +1065,9 @@ func sessionFilter(activeOnly bool, search string) (string, []any) {
 		for _, v := range searchVariants(search) {
 			pat := "%" + escapeLike(v) + "%"
 			alts = append(alts, `(COALESCE(project,'') LIKE ? ESCAPE '\' OR COALESCE(cwd,'') LIKE ? ESCAPE '\' OR COALESCE(git_branch,'') LIKE ? ESCAPE '\'
-			  OR title LIKE ? ESCAPE '\' OR prompt LIKE ? ESCAPE '\' OR session_id LIKE ? ESCAPE '\'
+			  OR title LIKE ? ESCAPE '\' OR name LIKE ? ESCAPE '\' OR prompt LIKE ? ESCAPE '\' OR session_id LIKE ? ESCAPE '\'
 			  OR session_id IN (SELECT session_id FROM events WHERE kind = 'turn.user' AND payload LIKE ? ESCAPE '\'))`)
-			for i := 0; i < 7; i++ {
+			for i := 0; i < 8; i++ {
 				args = append(args, pat)
 			}
 		}

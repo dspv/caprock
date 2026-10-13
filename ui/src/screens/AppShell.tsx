@@ -49,6 +49,7 @@ import { readDeck, saveDeck, type DeckPrefs } from '@/lib/deck'
 import { StatusStrip } from '@/components/StatusStrip'
 import { openCaprockDoctor } from '@/components/FootprintPanel'
 import { StarStrip } from '@/components/StarStrip'
+import { MailStrip } from '@/components/MailStrip'
 import { SetupStrip } from '@/components/SetupStrip'
 import { ShareMoment } from '@/components/Nudges'
 import { ShareDialog } from '@/components/Share'
@@ -179,6 +180,7 @@ const SCREENS: [string, string, string][] = [
   ['notes', 'Memory', 'what the agents said, searchable'],
   ['tasks', 'Tasks', 'the board'],
   ['queue', 'Queue', 'what each agent is doing, what waits, roughly when it is done'],
+  ['mail', 'Mail', 'every inbox in one place, on this machine'],
 ]
 
 /** The next session waiting on you after the one in front, wrapping; the first when the one in front is not waiting. Stale ones are skipped. */
@@ -1618,6 +1620,7 @@ export function AppShell() {
                   onOpenFile={focusedWorktree?.repo ? (p) => openFile(focusedWorktree.projectId, focusedWorktree.w.isMain ? '' : focusedWorktree.w.key, p) : undefined}
                   summary={data.summary}
                   onCompare={inspectedSession?.attempt_group ? () => onCompare(inspectedSession) : undefined}
+                  onOpenPRs={inspectedSession && inspectedSession.kind !== 'shell' ? () => openPRsTab(inspectedSession, projectOfSession(inspectedSession.session_id)?.project.id ?? activeProjectId) : undefined}
                 />
               </div>
             )}
@@ -1628,6 +1631,7 @@ export function AppShell() {
       {/* The GitHub star ask sits above the status strip, never over a
         * terminal; the share toast floats (lib/nudges.ts, one at a time). */}
       <SetupStrip app />
+      <MailStrip />
       <StarStrip app />
       <ShareMoment />
       <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} session={focused?.kind === 'session' && workspaceShown ? focusedSession : undefined} version={version} figures={!prefs.sidebar} />

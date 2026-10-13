@@ -286,6 +286,23 @@ One window, three regions:
   Enter, Esc. The separate >_ new-shell button is gone: it is the menu's
   third row and ⌘T, and two lone icons side by side read as one ambiguous
   control.
+- **Renaming a session** (owner, 2026-10-13: "edit a session's name in a
+  few clicks from the tabs and the projects on the left; the new name must
+  show at once in the top tab", translated). A double-click on an agent's
+  tab or sidebar row (a tab row or a muted live row), or *Rename…* in the
+  row's menu, puts a field in place of the name (`components/InlineRename.tsx`):
+  Enter or blur saves, Esc cancels, its keys reach nothing else. The held
+  session list is patched before the request (`lib/sessionNames.ts`
+  `renameSession`, applied by `useWorkspaceData`), so the tab and the row
+  change in the same frame; a refusal rolls it back. `PUT
+  /v1/sessions/{id}/name` stores it (`sessions.name`, migration 0052) and
+  sends a session frame, which renames it in every other window. A shell
+  or a file tab has no rename. Unnamed, a session is called by
+  `sessionTitle`: the agent's title, else `promptTitle` — up to four words
+  that carry meaning from its first meaningful prompt, the request's
+  opening ("can you please", "I want you to") dropped, cut at the first
+  "to / in / and …" after two of them, a path as its last part. String
+  work on text the list already holds; nothing is computed on the daemon.
 - **Every agent in New agent, with what it lacks** (owner, 2026-10-10:
   "OpenCode there is empty — either give buttons to connect it or remove
   it", translated; ADR-046). The Agent select lists the startable agents
@@ -580,12 +597,14 @@ One window, three regions:
     PR — and only while the focus is in the deck, so the terminal keeps its
     own Esc; with nothing open it is not the deck's. Every PR row carries a
     chevron (right folded, down open), and the open PR's line stays pinned
-    at the top of the list. The first failed job of each PR opens by itself. The
-    current PR is open by default while it is open and has checks, whatever
-    their state, so its jobs fill the room the rows would leave empty; a
-    merged or closed one first stays a row, and one folded by hand stays
-    folded for as long as the app runs, the deck hidden and shown again
-    included. Every row keeps its line and the open one's CI takes the
+    at the top of the list. The first failed job of each PR opens by itself. No
+    PR opens by itself: the deck opens on the overview, every row on its
+    line with a circle per check (or its CI in words, a switch beside the
+    view tabs, kept per viewer); a row opened by hand is opened again the
+    next time, kept per viewer and session, until it is folded (owner,
+    2026-10-13, [04-ui.md](04-ui.md) § CI in the session deck). The same
+    circles, a ring or the jobs by OS sit in the cockpit's CI block, from
+    what the deck read ([04-ui.md](04-ui.md) § CI in the cockpit). Every row keeps its line and the open one's CI takes the
     height left, scrolling inside, so the earlier PRs stay in view; while a
     job or an error log is open they fold into one line (*also #13 ✓ #12
     ✓*) so it has the room. A settled PR's runs are read once while the deck is

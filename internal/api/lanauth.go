@@ -369,6 +369,10 @@ var controllerRoutes = map[string]bool{
 	// Answer a permission prompt with a button (ADR-035).
 	"POST /v1/agents/{id}/permission": true,
 
+	// Rename a session, as its tab and sidebar row do on the machine: a
+	// label in Caprock's own database, which runs nothing.
+	"PUT /v1/sessions/{id}/name": true,
+
 	// Change an owned session's permission mode (ADR-054): Shift+Tab typed
 	// in, which a controller can already type, or the same conversation
 	// resumed in a new process — as continuing one is. Bypass is allowed

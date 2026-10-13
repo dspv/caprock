@@ -30,6 +30,7 @@ import { Cockpit, SectionLabel } from './Cockpit'
 import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
 import { keys } from '@/lib/appkeys'
 import { Processes } from './ResourceMeter'
+import { CockpitCI } from './CockpitCI'
 
 const DIFF_REFRESH_MS = 20_000
 const DIFF_FILES_SHOWN = 5
@@ -48,6 +49,7 @@ export function Inspector({
   summary,
   project,
   onCompare,
+  onOpenPRs,
 }: {
   session?: SessionSummary
   /** The sidebar's project the session belongs to: its name heads the place line. */
@@ -69,6 +71,8 @@ export function Inspector({
   summary?: Summary
   /** Opens the comparison of the attempts this session is one of (ADR-052). */
   onCompare?: () => void
+  /** Opens the session's PRs & CI tab: the cockpit's CI block is its door. */
+  onOpenPRs?: () => void
 }) {
   const isAgent = !!sessionId && !!session && session.kind !== 'shell'
   return (
@@ -82,7 +86,7 @@ export function Inspector({
       {!sessionId ? (
         <p className="px-4 py-5 text-[12.5px] leading-relaxed text-fg-muted">Open a session to see what it costs, how full its context is, and what it changed.</p>
       ) : (
-        <Body key={sessionId} session={session} project={project} sessionId={sessionId} hasPermission={hasPermission} showPrompt={showPrompt} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} onOpenFile={onOpenFile} summary={summary} onCompare={onCompare} />
+        <Body key={sessionId} session={session} project={project} sessionId={sessionId} hasPermission={hasPermission} showPrompt={showPrompt} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} onOpenFile={onOpenFile} summary={summary} onCompare={onCompare} onOpenPRs={onOpenPRs} />
       )}
     </aside>
   )
@@ -91,7 +95,7 @@ export function Inspector({
 type OpenInEditor = (path: string, label: string, editor?: string, line?: number) => void
 interface EditorAction { name: string; open: OpenInEditor }
 
-function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges, onOpenFile, summary, onCompare }: { session?: SessionSummary; project?: Pick<Project, 'name' | 'default_branch'>; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void; onOpenFile?: (path: string) => void; summary?: Summary; onCompare?: () => void }) {
+function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges, onOpenFile, summary, onCompare, onOpenPRs }: { session?: SessionSummary; project?: Pick<Project, 'name' | 'default_branch'>; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void; onOpenFile?: (path: string) => void; summary?: Summary; onCompare?: () => void; onOpenPRs?: () => void }) {
   const isShell = s?.kind === 'shell'
   const ended = s?.status === 'ended'
   if (s && !isShell) {
@@ -118,6 +122,7 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
           summary={summary}
           changes={<Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} onOpenFile={onOpenFile} />}
         />
+        <CockpitCI sessionId={sessionId} onOpen={onOpenPRs} />
         <Processes sessionId={sessionId} />
         <Actions s={s} sessionId={sessionId} isShell={false} ended={ended} editor={editor} onDetach={onDetach} />
       </div>
