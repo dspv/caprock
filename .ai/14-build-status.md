@@ -73,6 +73,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — 0.115.0: the rest of the afternoon list, the phone, and Mail
+
+Everything the owner asked for that missed 0.114.0. The sidebar lists every
+agent session under its project with no "+N more", one *More…* row, a *Group
+by project* toggle, rows that keep their places, and one ⌘N numbering shared
+with the tab strip; ⌥⌘ arrows walk sessions and projects (#532). A session
+renames from its tab or row (#539). The deck opens on every PR with its check
+circles, and the cockpit has a CI block with three views (#538); a Repos table
+on Now (#531); burn rate per active hour on the spend chart with a pace line
+(#533); Dark Pastel as the default dark palette (#535). The phone gets a home
+of its own (bottom bar to start a chat or save, Continue, Saved, what waits)
+and an Inbox the Mac shows in Quick chat; Settings → phone and Telegram land
+where the sidebar says (#537). Caprock Mail, built in a parallel session
+(#536). Release notes: the 0.114.0 section was restored to the tagged text;
+entries that merges had dropped into it moved here.
+
 ### 2026-10-13 — unreleased: the phone home, the Inbox, and a findable phone section
 
 - **Phone home** (ADR-056, 04-ui.md § The phone home): at phone width `#/`
