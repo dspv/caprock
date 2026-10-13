@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **phone:** a home for the phone. Caprock on a phone — on its home screen
+  above all — opens on what waits on you (answer a permission prompt there),
+  the sessions to continue and what you saved, with one field docked at the
+  bottom: pick a project and an agent, type, **Start chat**, and the chat
+  opens; or **Save** a note, a link or photos for later. *New chat* also
+  picks what it runs on, DeepSeek included. The full dashboard is one link
+  down (`#/now`). A one-time hint says how to add Caprock to the Home
+  Screen. The manifest declares *New chat* and *Save* shortcuts and a share
+  target; they need Caprock served over `https` and do nothing yet.
+- **app:** what the phone saves shows on the Mac in Quick chat under
+  *Saved*: start a chat from one (its text and photos become the first
+  message, in its project when it has one) or delete it.
+- **daemon:** the Inbox — `GET`/`POST /v1/inbox`, `DELETE /v1/inbox/{id}`,
+  image thumbnails at `/v1/inbox/{id}/files/{n}` and an `inbox` live frame
+  (migration 0052). A phone you let control saves and deletes; any paired
+  phone reads.
+
 - **app:** Settings → *Status line* → *Hidden*: no line under Claude Code, so the
   row goes, while your plan limits keep reaching Caprock's cockpit and Cost
   screen — which *Off* stops. Recommended on the page, never chosen for
@@ -94,6 +111,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   under it shows the raw command only when the phrase does not already say
   it. `GET /v1/sessions/{id}/subagents` carries the phrase as `doing` and
   `doing_from`.
+
+### Fixed
+
+- **app:** Settings → phone and Telegram are where the sidebar says. The
+  words *phone* and *Telegram* beside Settings are links, each opening its
+  section unfolded and scrolled into view; *phone* also shows the pairing
+  QR at once, and the Settings row itself opens on the phone. *Use on your
+  phone* (the QR, three steps — same Wi-Fi or Tailscale, scan the code, Add
+  to Home Screen — and your paired phones) and Telegram now come first in
+  Settings; `#/settings/phone` and `#/settings/telegram` link straight to
+  them.
 
 ## [0.113.0] - 2026-10-13
 

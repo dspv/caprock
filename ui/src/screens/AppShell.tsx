@@ -15,7 +15,7 @@ import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmod
 import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
 import { FIND_EVENT, keys, matchAppShortcut, type AppCommand } from '@/lib/appkeys'
-import { parseHash } from '@/lib/router'
+import { parseHash, type SettingsSection } from '@/lib/router'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
 import { buildSidebar, dotOf, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type WorktreeNode } from '@/lib/sidebar'
 import {
@@ -87,7 +87,7 @@ import { ShortcutsSheet } from '@/components/ShortcutsSheet'
 import { CopiesSheet } from '@/components/CopiesSheet'
 import { CleanupLine } from '@/components/CleanupLine'
 import { worktreeSlug } from '@/lib/slug'
-import { openPhoneSettings, openSettingsAt } from '@/components/Pairing'
+import { openPhoneSettings, openSettingsAt, openSettingsSection } from '@/components/Pairing'
 import { reloadSaved, savedFor, sendPrompt, useSavedPrompts, type SavedPrompt } from '@/lib/saved'
 import { SAVED_SECTION_ID } from '@/components/SavedPromptsSetting'
 
@@ -603,6 +603,9 @@ export function AppShell() {
     { id: 'project', label: 'Add project', hint: keys('⌘O'), icon: <FolderPlusIcon size={13} />, run: onAddProject },
   ], [onNewAgent, onQuickChatChooser, onNewShell, onAddProject])
   const onSettings = useCallback(() => { location.hash = '#/settings' }, [])
+  // The sidebar's "phone" shows the pairing code at once; "Telegram" only
+  // scrolls (owner, 2026-10-13).
+  const onSettingsSection = useCallback((section: SettingsSection) => openSettingsSection(section, { showCode: section === 'phone' }), [])
 
   /**
    * One prompt, N attempts (ADR-052). Each attempt opens in a tab, in order,
@@ -955,7 +958,7 @@ export function AppShell() {
       { id: 'a-dashboard', group: 'Actions', label: 'Open the dashboard', hint: keys('⌘0'), icon: <DashboardIcon size={14} />, run: onDashboard },
       { id: 'a-settings', group: 'Actions', label: 'Settings', detail: 'permission mode, theme, terminal, notifications, phone', hint: keys('⌘,'), icon: <SettingsIcon size={14} />, run: onSettings },
       { id: 'a-phone', group: 'Actions', label: 'Open Caprock on your phone', detail: 'pair with a QR code, then add it to the home screen', icon: <SettingsIcon size={14} />, run: openPhoneSettings },
-      { id: 'a-telegram', group: 'Actions', label: 'Connect Telegram', detail: 'messages when a session needs you; reply from the chat', icon: <SettingsIcon size={14} />, run: () => openSettingsAt('telegram') },
+      { id: 'a-telegram', group: 'Actions', label: 'Connect Telegram', detail: 'messages when a session needs you; reply from the chat', icon: <SettingsIcon size={14} />, run: () => openSettingsSection('telegram') },
       // `caprock doctor` in the window: the status strip's panel. No chord (rule 12).
       { id: 'a-doctor', group: 'Actions', label: 'Caprock doctor', detail: 'what Caprock costs this computer: memory, disk, duplicates', icon: <SparkIcon size={14} />, run: openCaprockDoctor },
       { id: 'a-keys', group: 'Actions', label: 'Keyboard shortcuts', detail: 'every key the app answers to', icon: <SearchIcon size={14} />, run: () => setSheet({ kind: 'keys' }) },
@@ -1214,6 +1217,7 @@ export function AppShell() {
               onAddProject={onAddProject}
               onDashboard={onDashboard}
               onSettings={onSettings}
+              onSettingsSection={onSettingsSection}
               onPalette={onPalette}
               summary={data.summary}
               loaded={data.loaded}

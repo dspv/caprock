@@ -1627,6 +1627,12 @@ export const api = {
   inbox: () => get<{ items: InboxItem[]; max: number }>('/v1/inbox'),
   addInbox: (d: InboxDraft) => post<{ item: InboxItem }>('/v1/inbox', d),
   removeInbox: (id: number) => post<void>(`/v1/inbox/${id}`, {}, 'DELETE'),
+  /** An item's image, for a thumbnail: a blob, since an <img> cannot carry a paired device's token. */
+  inboxFile: async (id: number, n: number): Promise<Blob> => {
+    const res = await fetch(`/v1/inbox/${id}/files/${n}`, { headers: withDevice() })
+    if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText}`)
+    return res.blob()
+  },
   /** Settings → Subscriptions (ADR-048). */
   subscriptions: () => get<SubscriptionsResponse>('/v1/subscriptions'),
   /** 402 at the free number without a licence. */

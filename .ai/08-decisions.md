@@ -3106,3 +3106,49 @@ What the agents allow was read from their own `--help`, not from memory:
   it an ordinary one again.
 - **Merging projects that share only the home folder.** An agent started in
   home reaches everything; the merge is refused with the reason.
+
+## ADR-056 — The phone home and the Inbox: a home-screen web app that starts chats and saves, and a controller phone may write the Inbox
+
+**Date:** 2026-10-13 · **Status:** accepted (owner picked the layout)
+
+**Context.** The owner (translated): "I really miss a Caprock app on the
+phone with quick access — to start new chats, save stuff, and so on." The
+phone already had chat, start work and pairing (Phone v2 Phase A), but it
+opened on the desktop's Now screen, starting a chat was three screens deep,
+and there was nowhere to put a thought for later. A native app is P2 (F22)
+and needs store approval.
+
+**Decision.**
+
+- **The web app becomes the phone app.** At phone width `#/` is the phone
+  home (04-ui.md § The phone home): what waits on you, Continue, Saved, and
+  a field docked at the bottom with **Save** and **Start chat**. The full
+  Now screen is `#/now`. Two layouts were drawn at 390×844; the owner chose
+  the docked one over tiles at the top.
+- **The Inbox is its own table** (migration 0052, 03-contracts.md § Inbox),
+  not saved prompts: a saved prompt has a name and is changed only on the
+  machine (ADR-051), while an Inbox item is unnamed, may carry photos, and
+  is written from the phone.
+- **A controller may save to and delete from the Inbox** (`POST
+  /v1/inbox`, `DELETE /v1/inbox/{id}` join `controllerRoutes`); a viewer
+  reads it. Saving types nothing into any session — a chat starts from an
+  item only when the user starts one — so it is less than what a controller
+  may already do (start a session with a first message).
+- **Files are the daemon's.** Photos are written through the paste path's
+  checks into `<data_dir>/inbox`, kept until their item is deleted, and
+  served back as images only, so a saved HTML file never runs as the
+  dashboard.
+- **Shortcuts and Share are declared, not promised.** `manifest.json` names
+  New chat and Save shortcuts and a GET share target; they work only in an
+  installed web app on an `https` origin, which Caprock does not serve yet
+  (OQ-12), and the user docs say they do nothing today.
+
+**Not chosen.**
+
+- **A native app now.** Store review and signing for both platforms, for
+  what the web app does once on the home screen.
+- **Reusing saved prompts.** It would have opened a machine-only table to
+  phone writes and forced a name onto a note.
+- **A service worker for the share target's POST.** No service worker can
+  register on an `http://` origin, and figures must never be served stale
+  (04-ui.md § From a phone).

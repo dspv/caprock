@@ -6,7 +6,7 @@
  * happens when it is on — not how it works, not why it exists. The how and
  * why live in the code comments and .ai/04-ui.md; the screen is for deciding.
  */
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { SectionIcon } from './SettingsIcons'
 
 /** A section's anchor: its own id, else one made from its title. */
@@ -15,6 +15,9 @@ export function sectionId(title: string): string {
 }
 
 const FOLDS_KEY = 'caprock-settings-folds'
+
+/** The window event that unfolds a section by id: a link landing on it (Pairing's revealSection). */
+export const REVEAL_EVENT = 'caprock:settings-reveal'
 
 function readFolds(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(FOLDS_KEY) ?? '[]') as string[]) } catch { return new Set() }
@@ -32,6 +35,20 @@ export function Section({ id, title, aside, children, explained }: { id?: string
   const sid = id ?? sectionId(title)
   const [folded, setFolded] = useState(() => readFolds().has(sid))
   const [explain, setExplain] = useState(false)
+  // A link that lands here (#/settings/phone) opens a folded section: being
+  // sent somewhere and finding a closed lid was the complaint.
+  useEffect(() => {
+    const on = (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== sid) return
+      setFolded(false)
+      try {
+        const all = readFolds()
+        if (all.delete(sid)) localStorage.setItem(FOLDS_KEY, JSON.stringify([...all]))
+      } catch { /* private window */ }
+    }
+    window.addEventListener(REVEAL_EVENT, on)
+    return () => window.removeEventListener(REVEAL_EVENT, on)
+  }, [sid])
   const fold = () => {
     const next = !folded
     setFolded(next)

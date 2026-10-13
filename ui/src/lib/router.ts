@@ -1,9 +1,11 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start
+// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram]
 import { useEffect, useState } from 'react'
 
 export type Route =
-  | { name: 'now' }
+  // `full` is #/now: the whole Now screen. #/ is the same screen on a
+  // desktop and the phone home at phone width (components/PhoneHome).
+  | { name: 'now'; full?: boolean }
   // `at` is a unix-ms instant to reveal in the timeline: clicking a minute in
   // the pulse should land on those events, not at the top of a long session.
   | { name: 'session'; id: string; tab?: string; at?: number }
@@ -14,11 +16,15 @@ export type Route =
   | { name: 'tasks'; view?: 'queue' }
   | { name: 'graph' }
   | { name: 'notes' }
-  | { name: 'settings' }
+  // section: a deep link to one part of Settings (#/settings/phone, #/settings/telegram).
+  | { name: 'settings'; section?: SettingsSection }
   // Start work from the phone (WP-15): clone, a new project, a worktree.
   | { name: 'start'; mode?: StartMode }
 
 export type StartMode = 'clone' | 'new' | 'worktree'
+
+/** The parts of Settings a link can open on: the phone, and Telegram beside it. */
+export type SettingsSection = 'phone' | 'telegram'
 
 export function parseHash(hash: string): Route {
   const h = hash.replace(/^#\/?/, '')
@@ -31,8 +37,9 @@ export function parseHash(hash: string): Route {
   switch (parts[0]) {
     case undefined:
     case '':
-    case 'now':
       return { name: 'now' }
+    case 'now':
+      return { name: 'now', full: true }
     case 'session':
       return parts[1] ? { name: 'session', id: decodeURIComponent(parts[1]), tab, at } : { name: 'now' }
     case 'cost': {
@@ -54,7 +61,7 @@ export function parseHash(hash: string): Route {
     case 'notes':
       return { name: 'notes' }
     case 'settings':
-      return { name: 'settings' }
+      return parts[1] === 'phone' || parts[1] === 'telegram' ? { name: 'settings', section: parts[1] } : { name: 'settings' }
     case 'start': {
       const mode = params.get('mode')
       return mode === 'clone' || mode === 'new' || mode === 'worktree' ? { name: 'start', mode } : { name: 'start' }
@@ -66,7 +73,7 @@ export function parseHash(hash: string): Route {
 
 export function href(r: Route): string {
   switch (r.name) {
-    case 'now': return '#/'
+    case 'now': return r.full ? '#/now' : '#/'
     case 'session': {
       const q = new URLSearchParams()
       if (r.tab) q.set('tab', r.tab)
@@ -80,7 +87,7 @@ export function href(r: Route): string {
     case 'tasks': return r.view === 'queue' ? '#/queue' : '#/tasks'
     case 'graph': return '#/graph'
     case 'notes': return '#/notes'
-    case 'settings': return '#/settings'
+    case 'settings': return r.section ? `#/settings/${r.section}` : '#/settings'
     case 'start': return r.mode ? `#/start?mode=${r.mode}` : '#/start'
   }
 }

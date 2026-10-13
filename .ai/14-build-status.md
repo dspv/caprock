@@ -73,6 +73,25 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — unreleased: the phone home, the Inbox, and a findable phone section
+
+- **Phone home** (ADR-056, 04-ui.md § The phone home): at phone width `#/`
+  opens on what waits on you, Continue, Saved and a docked field with
+  Save and Start chat; the full Now is `#/now`. New chat and Save sheets;
+  a one-time Add to Home Screen hint; manifest shortcuts and a GET share
+  target that wait for `https`.
+- **Inbox** (migration 0052, 03-contracts.md § Inbox): `GET/POST
+  /v1/inbox`, `DELETE /v1/inbox/{id}`, thumbnails at `…/files/{n}`, an
+  `inbox` live frame; a controller saves and deletes, a viewer reads. On
+  the Mac it is *Saved* in the Quick chat chooser, with Start a chat and
+  Delete.
+- **Settings → Use on your phone**: the sidebar's *phone* and *Telegram*
+  words open their sections; deep links `#/settings/phone`,
+  `#/settings/telegram`.
+- **Removed** `internal/pairing/addr.go`: an unused address picker that
+  still rejected Tailscale's 100.64/10; the daemon binds through
+  `internal/lan`, which admits and prefers it.
+
 ### 2026-10-13 — unreleased: old payloads compacted, free space returned
 
 The rows stored before `event.CapToolField` kept their base64, and SQLite

@@ -28,7 +28,7 @@ import { PlanOptions, usePlan } from '@/components/PlanPicker'
 import { AccountPlans, planText } from '@/components/AccountPlan'
 import { subscriptionsFor, useSubscriptionList } from '@/components/SubscriptionPicker'
 import { LicenseField } from '@/components/LicenseField'
-import { Pairing } from '@/components/Pairing'
+import { Pairing, revealWhenDrawn, settingsSectionId } from '@/components/Pairing'
 import { PhoneAlerts } from '@/components/PhoneAlerts'
 import { TelegramChat } from '@/components/TelegramChat'
 import { DesktopNotifications } from '@/components/DesktopNotifications'
@@ -54,6 +54,7 @@ import { CloseButton, dialogOpen } from '@/components/Dialog'
 import { escapeLeavesPage, useCloseSettings } from '@/lib/settingsClose'
 import { CaprockItself } from '@/components/ResourceMeter'
 import { signIns } from '@/lib/subscriptions'
+import { parseHash } from '@/lib/router'
 
 /**
  * The page's own way out (lib/settingsClose.ts): a × beside the heading, and
@@ -93,6 +94,26 @@ function SettingsHeading({ onClose, explain, onExplain }: { onClose: () => void;
   )
 }
 
+/**
+ * #/settings/phone and #/settings/telegram: once the page has drawn, bring
+ * that section into view, unfolded and lit for a moment (Pairing's
+ * revealSection). Only scrolls: a link never shows a pairing code, which
+ * turns network access on — that takes a click (openSettingsSection).
+ */
+function useSectionLink(ready: boolean) {
+  const [hash, setHash] = useState(() => location.hash)
+  useEffect(() => {
+    const on = () => setHash(location.hash)
+    window.addEventListener('hashchange', on)
+    return () => window.removeEventListener('hashchange', on)
+  }, [])
+  const route = parseHash(hash)
+  const section = route.name === 'settings' ? route.section : undefined
+  useEffect(() => {
+    if (ready && section) revealWhenDrawn(settingsSectionId(section))
+  }, [ready, section])
+}
+
 export function StatusScreen() {
   const close = useCloseSettings()
   useSettingsEscape(close)
@@ -100,6 +121,7 @@ export function StatusScreen() {
   const page = useRef<HTMLDivElement>(null)
   const [explain, setExplain] = useExplain()
   const s = st.data
+  useSectionLink(!!s)
   const head = <SettingsHeading onClose={close} explain={explain} onExplain={setExplain} />
   if (st.error && !s) return <div className="mx-auto grid w-full max-w-3xl gap-3">{head}<Empty title="Cannot reach the daemon">{st.error.message}</Empty></div>
   if (!s) return <div className="mx-auto grid w-full max-w-3xl gap-3">{head}<div className="px-1 text-fg-muted">loading…</div></div>
@@ -112,20 +134,22 @@ export function StatusScreen() {
       {/* Problems first: each one means something is not being captured or
         * cannot be started, and none of them is a preference. */}
       <Problems s={s} />
-      {/* In the desktop app, what you change while working comes first: how
-        * a new agent starts, how the window and terminal look, which editor
-        * opens. The phone and Telegram are set up once. On a phone or in a
-        * browser the phone comes first, as before. */}
+      {/* The phone first, then Telegram beside it, everywhere: in the app
+        * it was eighth of eleven and the owner could not find it from the
+        * sidebar's "phone, Telegram" (2026-10-13). #/settings/phone and
+        * #/settings/telegram land on them. */}
+      {owner && <Pairing />}
+      {owner && <PhoneAlerts />}
+      {owner && <TelegramChatSection />}
+      {/* After the phone and Telegram, in the desktop app what you change
+        * while working: how a new agent starts, how the window and terminal
+        * look, which editor opens. */}
       {isAppMode() && (
         <>
           {owner && <SpawnModeSetting />}
           {owner && <KeepAwakeSetting />}
           {owner && <SavedPromptsSetting />}
           <AppearanceSection />
-          {/* The phone high up: eighth of eleven, people asked where it was. */}
-          {owner && <Pairing />}
-          {owner && <PhoneAlerts />}
-          {owner && <TelegramChatSection />}
           <TerminalSettings />
           {owner && <StatuslineSetting />}
           {owner && <EditorSetting />}
@@ -142,10 +166,7 @@ export function StatusScreen() {
       )}
       {!isAppMode() && (
         <>
-          {owner && <Pairing />}
           {owner && isTauri() && <DesktopNotifications />}
-          {owner && <PhoneAlerts />}
-          {owner && <TelegramChatSection />}
           {owner && <PlanSection />}
           {owner && <WindowStopSection />}
           <AppearanceSection />

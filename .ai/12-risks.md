@@ -88,7 +88,10 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   Host and Origin checks, the pairing token per origin and the "nothing
   listens beyond loopback unless turned on" promise would each need
   re-deciding for a TLS listener. Decided by: the owner, after real-iPhone
-  use of the keyboard-dictation path shows whether it is enough.
+  use of the keyboard-dictation path shows whether it is enough. The same
+  origin keeps the manifest's New chat and Save shortcuts and its share
+  target dormant (ADR-056): Android Chrome installs a web app with them
+  only from `https`, and iOS supports neither.
 
 - `OQ-13` — **DeepSeek's prices and the model name it reports.** Three
   things about Claude Code on DeepSeek are not yet measured.

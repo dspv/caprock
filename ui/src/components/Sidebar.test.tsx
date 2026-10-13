@@ -445,4 +445,20 @@ describe('the sidebar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
     expect(screen.getByText('Dashboard')).toBeTruthy()
   })
+
+  it('lands on the phone or Telegram from the Settings row\'s own words', () => {
+    localStorage.removeItem(FOLDS_KEY)
+    const onSettings = vi.fn()
+    const onSettingsSection = vi.fn()
+    renderSidebar({ onSettings, onSettingsSection })
+    fireEvent.click(screen.getByRole('button', { name: 'phone' }))
+    expect(onSettingsSection).toHaveBeenLastCalledWith('phone')
+    fireEvent.click(screen.getByRole('button', { name: 'Telegram' }))
+    expect(onSettingsSection).toHaveBeenLastCalledWith('telegram')
+    // The row itself, while it names them, goes to the phone too.
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    expect(onSettingsSection).toHaveBeenCalledTimes(3)
+    expect(onSettingsSection).toHaveBeenLastCalledWith('phone')
+    expect(onSettings).not.toHaveBeenCalled()
+  })
 })

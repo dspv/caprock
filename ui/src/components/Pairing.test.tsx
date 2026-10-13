@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
-import { Pairing, pairLink, phoneStatus } from './Pairing'
+import { Pairing, PHONE_SECTION, TELEGRAM_SECTION, openSettingsSection, pairLink, phoneStatus, takeCodeOnArrival } from './Pairing'
+import { Section } from './SettingsParts'
 import { PairScreen, codeFromHash, defaultDeviceName } from '@/screens/Pair'
 import { api, type PairState } from '@/lib/api'
 
@@ -213,5 +214,58 @@ describe('phone access after a restart', () => {
     expect(await screen.findByText('Phone access is off')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
     await waitFor(() => expect(setLAN).toHaveBeenCalledWith(true))
+  })
+})
+
+describe('landing on the phone or Telegram (owner, 2026-10-13)', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    location.hash = ''
+    localStorage.removeItem('caprock-settings-folds')
+  })
+
+  it('opens #/settings/phone, unfolds the section and brings it into view', async () => {
+    localStorage.setItem('caprock-settings-folds', JSON.stringify([PHONE_SECTION]))
+    const scrolled = vi.fn()
+    render(<Section id={PHONE_SECTION} title="Use on your phone"><p>the code</p></Section>)
+    expect(screen.queryByText('the code')).toBeNull()
+    document.getElementById(PHONE_SECTION)!.scrollIntoView = scrolled
+    openSettingsSection('phone')
+    expect(location.hash).toBe('#/settings/phone')
+    await waitFor(() => expect(scrolled).toHaveBeenCalled())
+    expect(await screen.findByText('the code')).toBeTruthy()
+    expect(JSON.parse(localStorage.getItem('caprock-settings-folds')!)).not.toContain(PHONE_SECTION)
+  })
+
+  it('opens #/settings/telegram on the Telegram section', async () => {
+    const scrolled = vi.fn()
+    render(<Section id={TELEGRAM_SECTION} title="Telegram"><p>bot</p></Section>)
+    document.getElementById(TELEGRAM_SECTION)!.scrollIntoView = scrolled
+    openSettingsSection('telegram')
+    expect(location.hash).toBe('#/settings/telegram')
+    await waitFor(() => expect(scrolled).toHaveBeenCalled())
+  })
+
+  it('shows a code on arrival only when asked by a click, never by the link alone', async () => {
+    openSettingsSection('phone')
+    expect(takeCodeOnArrival()).toBe(false)
+
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [] })
+    const setLAN = vi.spyOn(api, 'setLAN').mockResolvedValue({ enabled: true, url: 'http://192.168.1.10:22776' })
+    const pairCode = vi.spyOn(api, 'pairCode').mockResolvedValue({ code: '482913', expires_in_sec: 300, url: 'http://192.168.1.10:22776' })
+    openSettingsSection('phone', { showCode: true })
+    render(<Pairing />)
+    await waitFor(() => expect(pairCode).toHaveBeenCalledTimes(1))
+    expect(setLAN).toHaveBeenCalledWith(true)
+    expect(takeCodeOnArrival()).toBe(false)
+  })
+
+  it('names the three steps: network, scan, home screen', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [] })
+    render(<Pairing />)
+    expect(await screen.findByText('Use on your phone')).toBeTruthy()
+    expect(screen.getByText('Scan the code')).toBeTruthy()
+    expect(screen.getByText('Add to Home Screen')).toBeTruthy()
   })
 })

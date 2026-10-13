@@ -29,31 +29,85 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText, type PairAddress, type PairedDevice, type PairState } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { Section } from '@/components/SettingsParts'
+import { REVEAL_EVENT, Section } from '@/components/SettingsParts'
 import { fmtAgo, fmtWhen } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { encodeQR, qrPath } from '@/lib/qr'
+import type { SettingsSection } from '@/lib/router'
 
 /** The phone section's id: the palette's *Open Caprock on your phone* scrolls to it. */
 export const PHONE_SECTION = 'settings-phone'
+/** The Telegram section's id (PhoneAlerts), right after the phone's. */
+export const TELEGRAM_SECTION = 'telegram'
 
-/** Open Settings and bring the phone section into view once it has rendered. */
+const SECTION_IDS: Record<SettingsSection, string> = { phone: PHONE_SECTION, telegram: TELEGRAM_SECTION }
+
+// Set by a click that means "show me the code" (the sidebar's *phone*, the
+// palette); read once by the phone section, mounted or not yet. Never set by
+// a URL: a link anyone can send must not turn network access on.
+let codeOnArrival = false
+const CODE_EVENT = 'caprock:phone-code'
+
+/** Whether the phone section should show a code now, asked once. */
+export function takeCodeOnArrival(): boolean {
+  const v = codeOnArrival
+  codeOnArrival = false
+  return v
+}
+
+/**
+ * Open Settings on the phone or Telegram (#/settings/phone, /telegram): the
+ * section unfolded, scrolled to the top and lit for a moment. `showCode`
+ * also puts a pairing code on screen, as pressing *Show a code* would (owner,
+ * 2026-10-13, translated: "I go in there and don't understand where phone and
+ * Telegram are").
+ */
+export function openSettingsSection(section: SettingsSection, opts: { showCode?: boolean } = {}): void {
+  if (section === 'phone' && opts.showCode) {
+    codeOnArrival = true
+    window.dispatchEvent(new Event(CODE_EVENT))
+  }
+  openSettingsAt(SECTION_IDS[section], `#/settings/${section}`)
+}
+
+/** The palette's *Open Caprock on your phone*: the section, with a code. */
 export function openPhoneSettings(): void {
-  openSettingsAt(PHONE_SECTION)
+  openSettingsSection('phone', { showCode: true })
+}
+
+/** The element id of a deep-linkable section. */
+export function settingsSectionId(section: SettingsSection): string {
+  return SECTION_IDS[section]
 }
 
 /** Open Settings and bring the section with this id into view once it has rendered. */
-export function openSettingsAt(id: string): void {
-  location.hash = '#/settings'
+export function openSettingsAt(id: string, hash = '#/settings'): void {
+  location.hash = hash
+  revealWhenDrawn(id)
+}
+
+/** Reveal the section with this id as soon as it is on the page (up to a second). */
+export function revealWhenDrawn(id: string): void {
   let tries = 0
   const look = () => {
     // The page can be gone before the section renders (a test's teardown).
     if (typeof document === 'undefined') return
     const el = document.getElementById(id)
-    if (el) el.scrollIntoView({ block: 'start' })
+    if (el) revealSection(el)
     else if (++tries < 40) setTimeout(look, 25)
   }
   setTimeout(look, 0)
+}
+
+/** Unfold a Settings section, scroll it to the top and light its edge briefly. */
+export function revealSection(el: HTMLElement): void {
+  window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: el.id }))
+  el.scrollIntoView?.({ block: 'start' })
+  el.dataset.settingsLit = ''
+  el.style.transition = 'box-shadow 700ms ease-out'
+  el.style.boxShadow = '0 0 0 2px var(--color-accent)'
+  setTimeout(() => { el.style.boxShadow = '' }, 1400)
+  setTimeout(() => { delete el.dataset.settingsLit; el.style.transition = '' }, 2200)
 }
 
 /** The link a phone's camera opens: the address, with the code to redeem. */
@@ -141,6 +195,23 @@ export function Pairing() {
     known.current = ids
   }, [s])
 
+  // Arrived by a click on *phone* (openSettingsSection): show the code at
+  // once, unless one is already on screen. Listening too, for a Settings tab
+  // that was open already.
+  const [arrived, setArrived] = useState(() => takeCodeOnArrival())
+  useEffect(() => {
+    const on = () => { if (takeCodeOnArrival()) setArrived(true) }
+    window.addEventListener(CODE_EVENT, on)
+    return () => window.removeEventListener(CODE_EVENT, on)
+  }, [])
+  useEffect(() => {
+    if (!arrived || !s) return
+    setArrived(false)
+    if (!s.code) void showCode()
+    // showCode reads the state just loaded; running it once per arrival is the point.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrived, s])
+
   async function showCode() {
     setBusy(true)
     setError('')
@@ -214,7 +285,7 @@ export function Pairing() {
 
   if (!s) {
     return (
-      <Section title="Open Caprock on your phone">
+      <Section id={PHONE_SECTION} title="Use on your phone">
         <div className="text-[12px] text-fg-faint">reading…</div>
       </Section>
     )
@@ -229,7 +300,7 @@ export function Pairing() {
   const tunnelOnly = s.enabled && addresses.length > 0 && !addresses.some((a) => a.kind === 'lan')
 
   return (
-    <Section id={PHONE_SECTION} title="Open Caprock on your phone" aside={<StatusPill status={status} />}>
+    <Section id={PHONE_SECTION} title="Use on your phone" aside={<StatusPill status={status} />}>
       <div className="grid gap-4">
         {/* Big and in three words a step: the owner could not read the old
           * five-sentence list (2026-10-10, "make it super large and clear"). */}
@@ -262,8 +333,8 @@ export function Pairing() {
               <BigStep n={2} title="Scan the code">
                 Press <b className="font-medium text-fg">Show a code</b>, point the phone&apos;s camera at it.
               </BigStep>
-              <BigStep n={3} title="Let it work">
-                Press <b className="font-medium text-fg">Let it control sessions</b> next to your phone below.
+              <BigStep n={3} title="Add to Home Screen">
+                iPhone: Share → Add to Home Screen. Android: menu → Add to Home screen.
               </BigStep>
             </ol>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -274,11 +345,14 @@ export function Pairing() {
               >
                 {busy ? 'One moment…' : s.devices.length > 0 ? 'Show a code for another phone' : 'Show a code'}
               </button>
+              <span className="text-[13px] text-fg-muted">
+                To start chats and save from it, press <b className="font-medium text-fg">Let it control sessions</b> next to your phone below.
+              </span>
             </div>
             <details className="group rounded-[10px] border border-border px-4 py-2.5 text-[14px]">
               <summary className="cursor-pointer select-none font-medium text-fg">Then: home screen, carrying on a session, other networks</summary>
               <ul className="mt-2 grid gap-2 text-fg-muted">
-                <li><b className="font-medium text-fg">Home screen.</b> iPhone: Share → Add to Home Screen, open it from there and type a new code once. Android: Chrome menu → Add to Home screen.</li>
+                <li><b className="font-medium text-fg">Home screen.</b> On an iPhone the home-screen app keeps its own storage: open it from there and type a new code once.</li>
                 <li><b className="font-medium text-fg">Carry on a session.</b> On the phone: Now → the session → Chat, and type. Approve and stop from there too.</li>
                 {!hasTailscale && <li><b className="font-medium text-fg">Not on this Wi-Fi?</b> Install <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" className="text-accent">Tailscale</a> on both, then it works anywhere, even on mobile data. A phone off this Wi-Fi cannot reach Caprock otherwise; nothing is relayed through us.</li>}
               </ul>
@@ -380,7 +454,7 @@ function CodeView({
         viewBox={qr.viewBox}
         role="img"
         aria-label={`QR code that opens ${url} and pairs with code ${code}`}
-        className="h-auto w-full max-w-[240px] shrink-0 rounded-md bg-white"
+        className="h-auto w-full max-w-[280px] shrink-0 rounded-md bg-white p-2"
         shapeRendering="crispEdges"
       >
         <path d={qr.d} fill="#000" />

@@ -1,18 +1,27 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CatalogEntry } from '@/lib/api'
 
 const entry = (id: string, more: Partial<CatalogEntry> = {}): CatalogEntry => ({ id, label: id, installed: true, ready: true, models: [], observed: true, prompt: true, ...more })
 const catalog = vi.hoisted(() => ({ agents: [] as unknown[] }))
+const inbox = vi.hoisted(() => ({ items: [] as unknown[], removed: [] as number[] }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, agentCatalog: async () => ({ agents: catalog.agents, licensed: false, home: '/h' }) } }
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      agentCatalog: async () => ({ agents: catalog.agents, licensed: false, home: '/h' }),
+      inbox: async () => ({ items: inbox.items, max: 500 }),
+      removeInbox: async (id: number) => { inbox.removed.push(id) },
+    },
+  }
 })
 vi.mock('@/lib/appmode', async (orig) => ({ ...(await orig<typeof import('@/lib/appmode')>()), isMacPlatform: () => true }))
 
 import { QuickChatSheet, quickChatRequest, quickModels, rememberQuickChoice, rememberedQuickChoice } from './QuickChat'
 
-beforeEach(() => { localStorage.clear(); catalog.agents = [] })
+beforeEach(() => { localStorage.clear(); catalog.agents = []; inbox.items = []; inbox.removed = [] })
 
 describe('the quick chat choice', () => {
   it('is Claude Code on its default until something else was used', () => {
@@ -107,5 +116,53 @@ describe('the chooser', () => {
     expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: /Back to the agents here/ }))
     expect(screen.getByRole('listbox')).toBeInTheDocument()
+  })
+})
+
+describe('the Inbox in the chooser', () => {
+  const saved = [
+    { id: 7, text: 'Queue the CI flake check', files: ['/d/inbox/x/IMG 1.png'], project_id: 3, project_root: '/work/alpha', project_name: 'alpha', from_device: 'iPhone · home screen', created_at: Date.now() - 60_000 },
+    { id: 6, text: 'an idea', files: [], created_at: Date.now() - 3_600_000 },
+  ]
+
+  it('draws nothing while the Inbox is empty', async () => {
+    render(<QuickChatSheet agents={['claude']} onStart={() => {}} onClose={() => {}} />)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByRole('region', { name: 'Saved' })).toBeNull()
+  })
+
+  it('lists what was saved, newest first, with where and from which phone', async () => {
+    inbox.items = saved
+    render(<QuickChatSheet agents={['claude']} onStart={() => {}} onClose={() => {}} />)
+    const section = await screen.findByRole('region', { name: 'Saved' })
+    expect(section).toHaveTextContent('Queue the CI flake check')
+    expect(section).toHaveTextContent('alpha · iPhone · home screen')
+    expect(section).toHaveTextContent('Inbox')
+  })
+
+  it('starts a chat from an item on the agent picked, in its project, with the item as the first message', async () => {
+    inbox.items = saved
+    rememberQuickChoice({ agent: 'claude', model: 'claude-sonnet-5-5' })
+    const onStart = vi.fn()
+    render(<QuickChatSheet agents={['claude', 'codex']} onStart={onStart} onClose={() => {}} />)
+    const [first] = await screen.findAllByRole('button', { name: /Start a chat/ }, { timeout: 5000 })
+    fireEvent.click(first!)
+    expect(onStart).toHaveBeenCalledWith({ agent: 'claude', model: 'claude-sonnet-5-5', prompt: 'Queue the CI flake check\n\n"/d/inbox/x/IMG 1.png"', cwd: '/work/alpha' })
+    const req = quickChatRequest(onStart.mock.calls[0]![0])
+    expect(req).toEqual({ cwd: '/work/alpha', prompt: 'Queue the CI flake check\n\n"/d/inbox/x/IMG 1.png"', model: 'claude-sonnet-5-5' })
+    // The message and folder are this chat's, never remembered for the next.
+    rememberQuickChoice(onStart.mock.calls[0]![0])
+    expect(rememberedQuickChoice(['claude'])).toEqual({ agent: 'claude', model: 'claude-sonnet-5-5' })
+  })
+
+  it('deletes on the second click, not the first', async () => {
+    inbox.items = saved
+    render(<QuickChatSheet agents={['claude']} onStart={() => {}} onClose={() => {}} />)
+    const [del] = await screen.findAllByRole('button', { name: 'Delete' })
+    fireEvent.click(del!)
+    expect(inbox.removed).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: 'Delete it and its files' }))
+    await waitFor(() => expect(inbox.removed).toEqual([7]))
+    await waitFor(() => expect(screen.queryByText('Queue the CI flake check')).toBeNull())
   })
 })

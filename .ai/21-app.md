@@ -1856,6 +1856,13 @@ connection and the work survive a bad network.
   *Wi-Fi*, *Tailscale* or *Tailscale name* for the QR. Without Tailscale the
   panel says that a phone off the Wi-Fi cannot reach Caprock at all.
 
+- **The phone home and the Inbox** (2026-10-13, ADR-056). What the
+  home-screen app opens to: what waits on you, Continue, Saved, and one
+  field docked at the bottom that starts a chat in a chosen project or
+  saves a note or photos to the Inbox, which the Mac lists in Quick chat
+  ([04-ui.md § The phone home](04-ui.md#the-phone-home)). Manifest
+  shortcuts and a share target are declared and need `https` (OQ-12).
+
 ### Phase B — off the owner's network (P1, owner decides)
 
 Today a phone reaches the daemon only on the same Wi-Fi or over Tailscale

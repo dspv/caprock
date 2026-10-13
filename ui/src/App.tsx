@@ -14,6 +14,8 @@ import { OrchestrationScreen } from '@/screens/Orchestration'
 import { NotesScreen } from '@/screens/Notes'
 import { PairScreen } from '@/screens/Pair'
 import { NewProjectScreen } from '@/components/NewProject'
+import { PhoneHome } from '@/components/PhoneHome'
+import { useNarrowScreen } from '@/lib/phone'
 
 /**
  * Whether this browser may see the figures at all.
@@ -59,10 +61,14 @@ export default function App() {
 
 /** The dashboard's screens in their shell: the browser's whole page, and a view inside the app. */
 export function Dashboard({ route, inApp = false }: { route: Route; inApp?: boolean }) {
+  // At phone width the browser's home is the phone home (.ai/04-ui.md § The
+  // phone home): start a chat, save, continue. The full Now screen is #/now.
+  const narrow = useNarrowScreen()
+  const phoneHome = narrow && !inApp && route.name === 'now' && !route.full
   return (
     <Shell route={route}>
       <ErrorBoundary label={route.name}>
-        {route.name === 'now' && <NowScreen inApp={inApp} />}
+        {route.name === 'now' && (phoneHome ? <PhoneHome /> : <NowScreen inApp={inApp} />)}
         {route.name === 'session' && <SessionScreen key={route.id} id={route.id} tab={route.tab} at={route.at} />}
         {route.name === 'cost' && <CostScreen section={route.section} />}
         {route.name === 'settings' && <StatusScreen />}

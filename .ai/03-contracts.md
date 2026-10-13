@@ -2412,7 +2412,7 @@ DELETE /v1/saved-prompts/{id}              → 204
 
 A note, a link or a photo saved for later — from the phone's **Save**, from
 another app's **Share** on the phone, or on the machine — kept for the user to
-start a chat from on the Mac. Code: `internal/api/inbox.go`,
+start a chat from on the Mac ([ADR-056](08-decisions.md)). Code: `internal/api/inbox.go`,
 `internal/store/inbox.go`; the files are written by `writeUpload` in
 `internal/api/paste.go`, with the same checks as a pasted file.
 

@@ -33,6 +33,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { groupProjects, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
 import type { Tab } from '@/lib/tabs'
+import type { SettingsSection } from '@/lib/router'
 import type { TabLabel } from '@/lib/tablabels'
 import type { ProjectSource } from '@/lib/projects'
 import type { ProjectShellsOutcome } from '@/lib/closeShell'
@@ -153,6 +154,9 @@ export interface SidebarProps {
   onAddProject: () => void
   onDashboard: () => void
   onSettings?: () => void
+  /** Settings on the phone or Telegram section: the row's "phone, Telegram"
+   *  words, and the row itself (owner, 2026-10-13). Absent: plain Settings. */
+  onSettingsSection?: (section: SettingsSection) => void
   onPalette: () => void
   /** The day's summary, for the Today strip; absent until it answers. */
   summary?: Summary
@@ -254,6 +258,9 @@ export function Sidebar(props: SidebarProps) {
       return next
     })
   }, [])
+  // The Settings row and its "phone" word land on the phone section; without
+  // a section handler, plain Settings as before.
+  const toPhone = () => (props.onSettingsSection ? props.onSettingsSection('phone') : props.onSettings?.())
   const toggleFold = (f: Fold) => {
     setFolds((cur) => {
       const next = new Set(cur)
@@ -439,7 +446,7 @@ export function Sidebar(props: SidebarProps) {
             <DashboardIcon size={15} />
           </IconButton>
           {props.onSettings && (
-            <IconButton label={`Settings: phone, Telegram (${keys('⌘,')})`} onClick={props.onSettings}>
+            <IconButton label={`Settings: phone, Telegram (${keys('⌘,')})`} onClick={toPhone}>
               <SettingsIcon size={15} />
             </IconButton>
           )}
@@ -474,19 +481,33 @@ export function Sidebar(props: SidebarProps) {
         {/* Settings as a row with its name, not a bare icon (owner, 2026-10-11,
           * translated: "I don't see Settings from here"). Phone, Telegram and
           * subscriptions are set up there. */}
+        {/* The words "phone" and "Telegram" are links of their own, each
+          * landing on its section; the row lands on the phone (owner,
+          * 2026-10-13, translated: "I go in there and don't understand where
+          * phone and Telegram are"). Buttons beside the row's button, never
+          * inside it: a button in a button is invalid and one swallows the
+          * other's click. */}
         {props.onSettings && (
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              data-nav-row
-              onClick={props.onSettings}
-              className="app-row flex h-[32px] min-w-0 flex-1 items-center gap-2 rounded-[8px] border border-[var(--app-hairline-strong)] px-2 text-left text-[13px] text-fg"
-            >
-              <SettingsIcon size={15} className="text-fg-muted" />
-              <span className="flex-1">Settings</span>
-              <span className="truncate text-[11px] text-fg-faint">phone, Telegram</span>
+            <div className="app-row relative flex h-[32px] min-w-0 flex-1 items-center gap-1 rounded-[8px] border border-[var(--app-hairline-strong)] pr-2 text-[13px] text-fg">
+              <button
+                type="button"
+                data-nav-row
+                onClick={toPhone}
+                className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-[8px] pl-2 text-left"
+              >
+                <SettingsIcon size={15} className="text-fg-muted" />
+                <span className="flex-1">Settings</span>
+              </button>
+              {props.onSettingsSection && (
+                <span className="flex min-w-0 shrink items-center truncate text-[11px] text-fg-faint">
+                  <button type="button" onClick={toPhone} className="rounded-sm hover:text-accent hover:underline" title="Settings → Use on your phone">phone</button>
+                  <span aria-hidden>,&nbsp;</span>
+                  <button type="button" onClick={() => props.onSettingsSection?.('telegram')} className="rounded-sm hover:text-accent hover:underline" title="Settings → Telegram">Telegram</button>
+                </span>
+              )}
               <kbd className="app-kbd">{keys('⌘,')}</kbd>
-            </button>
+            </div>
             <ThemeButton />
           </div>
         )}

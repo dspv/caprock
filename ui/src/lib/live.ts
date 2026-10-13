@@ -68,6 +68,8 @@ export type Frame = (
   | { type: 'notify'; data: NotifyFrame }
   // A followed pull request changed, or the GitHub connection did (WP-19).
   | { type: 'github'; data: GitHubFrame }
+  // The Inbox changed: an item saved or deleted (03-contracts.md § Inbox).
+  | { type: 'inbox'; data: { id: number; deleted: boolean } }
 ) & { seq?: number }
 
 /** Control frames: liveness, never part of the stream a screen reads. */

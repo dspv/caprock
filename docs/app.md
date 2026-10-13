@@ -833,34 +833,68 @@ appeared:
 - **Homebrew without the app.** The formula's `caprock` is not signed with
   the hardened runtime, so nothing stops the prompt; it names "caprock".
 
-## Your phone
+## Use Caprock on your phone
 
-The phone opens the same Caprock in its browser, over your Wi-Fi or over
-[Tailscale](https://tailscale.com/download). Nothing passes through a server
-of ours.
+Your phone opens the same Caprock in its browser and keeps it on the home
+screen like an app. It talks to Caprock on this computer, over your Wi-Fi or
+over [Tailscale](https://tailscale.com/download); nothing passes through a
+server of ours, and there is nothing to install from an app store.
 
-### Pairing
+1. **Be on the same network.** The phone and this computer on the same
+   Wi-Fi, or both on Tailscale (install it on each and sign in to the same
+   account) — Tailscale is the one that also works from mobile data. A
+   guest or office Wi-Fi that keeps devices apart will not work; Tailscale
+   will.
+2. **Scan the code.** In the app, click **phone** beside *Settings* in the
+   sidebar (or open Settings → *Use on your phone*) and press **Show a
+   code**. Pick the address the code carries: **Wi-Fi**, or **Tailscale** /
+   **Tailscale name** when this computer is on Tailscale. Point the phone's
+   camera at it: Caprock opens and pairs by itself. The six digits and the
+   address are there to type for a phone without a camera.
+3. **Add it to the Home Screen.** On an iPhone, in Safari: **Share** →
+   **Add to Home Screen**. On Android, in Chrome: **⋮** → **Add to Home
+   screen**. Caprock offers this once, at the top of the page. The icon
+   opens Caprock full screen. On an iPhone the home-screen app keeps its own
+   storage, so it asks to pair once more: type the six digits shown on the
+   computer.
 
-1. In the app, open *Dashboard* → **settings** → *Open Caprock on your phone*
-   and press **Show a code**.
-2. Pick the address the QR code carries: **Wi-Fi** for a phone on the same
-   network, **Tailscale** (or **Tailscale name**) for a phone that has
-   Tailscale on, which then works from mobile data too. The Tailscale choices
-   appear when this computer is on Tailscale.
-3. Point the phone's camera at the code. It opens Caprock and pairs by itself;
-   the six digits and the address are there to type for a phone without a
-   camera.
+The phone appears under *Paired devices*. It can look but not change
+anything until you press **Let it control sessions** beside it; **Take
+control away** undoes that at once. The rest of what pairing allows, and
+why, is in [Open it on your phone](../README.md#open-it-on-your-phone).
 
-The phone appears under *Paired devices*. It can look but not change anything
-until you press **Let it control sessions** beside it; **Take control away**
-undoes that at once. The rest of what pairing allows, and why, is in
-[Open it on your phone](../README.md#open-it-on-your-phone).
+### The phone home
+
+What the phone opens to:
+
+- **Waiting on you** at the top, when a session Caprock started waits on a
+  permission prompt: answer it there, or **Open** the session.
+- **Continue**: the sessions of the last two days, waiting and working ones
+  first. Tap one to open its chat.
+- **Saved**: what you saved, newest first.
+- **The field at the bottom.** Choose the project and the agent on the two
+  chips, type, then **Start chat**: a session starts in that project with
+  your words as its first message, and its chat opens. **Start chat** on an
+  empty field opens *New chat* instead, where you also choose what it runs
+  on — a second subscription, or DeepSeek on your own key.
+- **Save** keeps a note, a link or photos (the camera button) on this
+  computer. It shows in Quick chat on the computer under *Saved*, where
+  **Start a chat** turns it into a first message, its photos included, and
+  **Delete** removes it.
+- **Full dashboard** at the bottom opens everything else.
+
+On Android, holding the icon also offers **New chat** and **Save**, and
+**Share** from another app can send text or a link to Caprock's Save. Both
+need Caprock to be served over `https`, and today it is served over
+`http://` on your network, so for now neither does anything: Android Chrome
+adds a plain shortcut to an `http://` page, and iPhones offer neither
+feature at all. Everything else on this page works on both.
 
 ### Working from the phone
 
 A phone you let control sessions can:
 
-- **Start work.** *+ Start work* on Now offers **Clone** (an `https://` or
+- **Start work.** *+ Start work* on the full dashboard offers **Clone** (an `https://` or
   `git@` address, into a folder under your home), **New project** and
   **Worktree**. Then **Start an agent here** starts a session and opens its
   chat. A clone runs on the computer: lock the phone or lose the signal

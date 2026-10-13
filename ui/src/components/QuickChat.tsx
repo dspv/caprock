@@ -35,10 +35,13 @@ import { AgentObservedNote, AgentSetupNote } from './AgentSetup'
 import { DEFAULT_MODELS, GEMINI_MODELS, listedModels, MODELS } from './SpawnDialog'
 import { Sheet, SheetButton } from './Sheet'
 import { SubscriptionNote, SubscriptionPicker, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
+import { InboxList } from './InboxList'
 import { chosenId, hasSubscriptions, preferredId, rememberedSubscription, rememberSubscription } from '@/lib/subscriptions'
 
-/** `subscription` is the sign-in (ADR-048): "default" is the user's own, absent the one made the default. */
-export interface QuickChoice { agent: SpawnAgent; model: string; subscription?: string }
+/** `subscription` is the sign-in (ADR-048): "default" is the user's own, absent the one made the default.
+ *  `prompt` and `cwd` are a chat started from a saved Inbox item (lib/inbox):
+ *  its first message, and its project's folder in place of a chat folder. */
+export interface QuickChoice { agent: SpawnAgent; model: string; subscription?: string; prompt?: string; cwd?: string }
 
 const KEY = 'caprock.quickchat'
 
@@ -67,12 +70,16 @@ function quickSubscription(agent: string): { subscription?: string } {
 }
 
 export function rememberQuickChoice(c: QuickChoice) {
-  try { localStorage.setItem(KEY, JSON.stringify(c)) } catch { /* not remembering is fine */ }
+  // The vendor, model and sign-in; never one chat's message or folder.
+  const keep: QuickChoice = { agent: c.agent, model: c.model, ...(c.subscription ? { subscription: c.subscription } : {}) }
+  try { localStorage.setItem(KEY, JSON.stringify(keep)) } catch { /* not remembering is fine */ }
 }
 
-/** What `POST /v1/agents` is sent: a chat — the daemon picks its folder — on this agent and model. */
+/** What `POST /v1/agents` is sent: a chat — the daemon picks its folder — on this agent and model.
+ *  From an Inbox item saved to a project, the project's folder instead, and the item as the first message. */
 export function quickChatRequest(c: QuickChoice): SpawnRequest {
-  const req: SpawnRequest = { chat: true }
+  const req: SpawnRequest = c.cwd ? { cwd: c.cwd } : { chat: true }
+  if (c.prompt) req.prompt = c.prompt
   if (c.agent !== 'claude') req.agent = c.agent
   if (c.model) req.model = c.model
   if (c.subscription && hasSubscriptions(c.agent)) req.subscription = c.subscription
@@ -253,6 +260,11 @@ export function QuickChatSheet({
           </p>
         )}
       </div>
+      {/* Outside the keyed area: Enter on one of its buttons presses that
+        * button, not Start. Started on the agent, model and sign-in picked above. */}
+      {!setupFor && agents.length > 0 && (
+        <InboxList onStart={(more) => onStart({ agent, model, ...(subscription ? { subscription } : {}), ...more })} />
+      )}
     </Sheet>
   )
 }

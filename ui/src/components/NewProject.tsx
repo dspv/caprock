@@ -71,7 +71,7 @@ export function NewProjectScreen({ mode: asked }: { mode?: StartMode }) {
       <Frame>
         <div className="grid gap-2 rounded-[var(--radius-panel)] border border-border bg-panel p-4 text-[15px] leading-relaxed text-fg">
           <p>This phone can read Caprock, not start work.</p>
-          <p className="text-fg-muted">On the computer: Settings → Open Caprock on your phone → <span className="text-fg">Let it control sessions</span>.</p>
+          <p className="text-fg-muted">On the computer: Settings → Use on your phone → <span className="text-fg">Let it control sessions</span>.</p>
         </div>
       </Frame>
     )
