@@ -111,6 +111,78 @@ export function isArrowCommand(c: AppCommand): boolean {
   return c.kind === 'session' || c.kind === 'step-project'
 }
 
+/**
+ * The tail of a held arrow chord, kept out of the terminal.
+ *
+ * Holding ⌥⌘↓ (Alt+Shift+↓ off macOS) steps through sessions and repeats,
+ * and every repeat is the app's. Let go of the modifiers a beat before the
+ * arrow, as a hand does, and the OS keeps repeating the arrow with what is
+ * still held: ⌥↓ (`ESC [1;3B`) or a bare ↓ (`ESC [B`), no longer a chord,
+ * so it went to the terminal in front, which by then is the session the
+ * chord had just opened. Claude Code reads either as Down, and Down on its
+ * prompt with background agents running moves into their list and opens
+ * one (owner, 2026-10-14, translated: "sometimes it switches me to a
+ * subagent, I never understood why").
+ *
+ * So an arrow pressed as an app chord stays the app's until that key is
+ * released: its later keydowns, whatever modifiers are left, never reach
+ * the terminal (`ownsTerminalKey`). A fresh press after the release is the
+ * terminal's again, so plain arrows and ⌥← ⌥→ word jumps are untouched.
+ * Tracked by the arrow, on window in the capture phase, so the listener
+ * sees the chord even though AppShell stops it there.
+ */
+const chordArrows = new Set<string>()
+let chordMac = false
+let watching = false
+
+function arrowOf(e: KeyLike): string | undefined {
+  return ARROWS[e.code ?? ''] ?? ARROWS[e.key]
+}
+
+/** Starts tracking held arrow chords; safe to call from every terminal. */
+export function watchChordArrows(isMac: boolean): void {
+  chordMac = isMac
+  if (watching || typeof window === 'undefined') return
+  watching = true
+  window.addEventListener('keydown', (e) => {
+    const a = arrowOf(e)
+    if (!a) return
+    const c = matchAppShortcut(e, chordMac)
+    if (c && isArrowCommand(c)) chordArrows.add(a)
+  }, true)
+  window.addEventListener('keyup', (e) => {
+    const a = arrowOf(e)
+    if (a) chordArrows.delete(a)
+  }, true)
+  // A key let go while the window had no focus never sends its keyup.
+  window.addEventListener('blur', () => chordArrows.clear())
+}
+
+/** Whether this keydown is an arrow still held from an app chord (see above). */
+export function isChordTail(e: KeyLike): boolean {
+  const a = arrowOf(e)
+  return !!a && chordArrows.has(a)
+}
+
+/**
+ * ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift+↑ ↓ off macOS): the sidebar's move-a-row keys, which
+ * act only on a focused row (ProjectRow). Pressed in a terminal they were
+ * typed as `ESC [1;4B` (`ESC [1;6B`), which Claude Code reads as Down, the
+ * same trip into the background-agents list. bash's readline, zsh's emacs
+ * keymap and PSReadLine bind neither, so in a terminal they do nothing.
+ */
+export function isRowMoveKey(e: KeyLike, isMac: boolean): boolean {
+  const a = arrowOf(e)
+  if (a !== '↑' && a !== '↓') return false
+  if (!e.shiftKey || e.metaKey) return false
+  return isMac ? e.altKey && !e.ctrlKey : e.ctrlKey && !e.altKey
+}
+
+/** The terminal's question: is this key the app's, never to be typed? */
+export function ownsTerminalKey(e: KeyLike, isMac: boolean): boolean {
+  return matchAppShortcut(e, isMac) !== null || isChordTail(e) || isRowMoveKey(e, isMac)
+}
+
 /** Which app command a key press is, or null when it belongs to the page or the terminal. */
 export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null {
   // ⌥⌘N (Ctrl+Alt+Shift+N off macOS) is Quick chat: the one chord with
