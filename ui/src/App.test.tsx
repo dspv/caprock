@@ -25,7 +25,9 @@ function stubApi(status = 200) {
       ? []
       : url.includes('/v1/stats/summary')
         ? summary
-        : {}
+        : url.includes('/v1/repos/activity')
+          ? { repos: [], github_connected: false }
+          : {}
     return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }))
 }

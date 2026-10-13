@@ -19,6 +19,74 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   a model on your own computer (Ollama, LM Studio). Off until you add an
   account; it then talks only to the mail servers you entered, passwords in
   the system keychain. A one-time strip offers it after two days of use.
+- **app:** move between projects and their sessions from the keyboard.
+  ⌘1–⌘9 bring a project to the front by its place in the sidebar (⌘9 the
+  last), its key drawn on its row and on the tab it brings; ⌥⌘↓ / ⌥⌘↑ go to
+  the next / previous session of that project, ⌥⌘→ / ⌥⌘← to the next /
+  previous project, both round the end. On Windows and Linux they are
+  Ctrl+Shift+digit and Alt+Shift+arrows (Ctrl+Shift+← → stay PowerShell's
+  select-by-word). Option+← → stay word jumps in the
+  terminal and ⌘↑ ↓ stay the terminal's; in a text field the arrow chords
+  keep selecting there. The project in front has a faint edge in the
+  sidebar, so you see where you are among the others.
+- **app:** *Group by project*, a folder toggle beside the sidebar's
+  heading: off, the sidebar is one list of every agent session in a kept
+  order, each row with its project's colour dot and short name, and ⌘1–⌘9
+  pick sessions instead of projects. The app remembers the choice.
+- **app:** drag a session row under a project onto another to put it
+  there, or focus it and press ⌥⇧↑ / ⌥⇧↓ (Ctrl+Shift off macOS); the order
+  is kept for that project, also after a restart.
+
+### Changed
+
+- **app:** rows under a project keep their places. Picking a session from
+  the sidebar, opening it as a tab or bringing it to the front no longer
+  moves it up: rows go in the order you set by hand, then in the order the
+  sessions started, and a new one lands last.
+- **app:** under each project the sidebar lists every agent session —
+  working, waiting or idle — and nothing hides behind a *+N more* line.
+  Shells and open files have no rows (they are in the tab strip), an ended
+  session drops off, and rows are 28 pixels with no agent mark (the agent
+  is in the tooltip).
+- **app:** one quiet *More…* row at the end of the sidebar replaces the
+  *More projects* and *Hidden* folds: it lists the other projects (click
+  to open) and the hidden projects and session rows (click to show again).
+- **app:** ⌘1–⌘9 now pick the sidebar's Nth item rather than a tab by its
+  place in the strip, and the strip follows the sidebar's order, so the
+  numbers on the left and on top agree; only the tab ⌘N brings shows its
+  digit. ⌃Tab and ⇧⌘[ ] still cycle the tabs.
+- **app:** tabs are named by their session again, so four or six tabs all
+  keep their names: the project is the coloured dot (and in the tooltip
+  with the agent and the branch), the agent mark is gone from the tab, the
+  dots sit closer, and the ⌘ key is a small key at the right end that the
+  × replaces on hover and on the tab in front. The Dashboard tab is its
+  icon alone, its key in the tooltip.
+
+## [0.114.0] - 2026-10-13
+
+### Added
+
+- **app:** a **Repos** table on Now, under Live pulse: a row per repository
+  with a session running in it — commits a day over 14 days, today's and
+  the week's, lines added and removed, files not committed and the last
+  commit, from the repository's own git (read at most every 10 minutes);
+  and, while GitHub is connected, open pull requests, red runs with the
+  median CI time and the newest release, only from what the session deck
+  and its PRs & CI tab already read — the table asks GitHub nothing. Folds
+  like the other panels, remembered per viewer; folded, it asks nothing.
+- **api:** `GET /v1/repos/activity`, the Repos table's rows.
+- **app:** the cockpit's spend chart can show **burn rate** — each bar the
+  stretch's cost over the hours actually worked in it (hours with five or
+  more calls), so an idle afternoon does not water it down and a stretch
+  with none has no bar rather than $0/h — next to cost, tokens and turns.
+  A faint dashed **pace line** marks your usual (for burn rate, your
+  30-day cost per active hour) or the period's average stretch, labelled at its right end (*usual $3.00/h*); bars above it
+  stand stronger, amber only in your top fifth, and hovering a bar says
+  *38% above your usual*. The choice is remembered, and the folded strip
+  follows it. Each project's `spark` in `GET /v1/stats/summary` carries
+  `active_hours` and `active_cost` from the same scan, and each of
+  `usual`'s distributions its `mean`.
+
 - **app:** the session deck's pull requests and CI, large. **Expand** beside
   *Hide ⌘B* opens a *PRs & CI* tab: the repository's last 14 days on top —
   pull requests merged per day, the median time to merge, the median CI run
@@ -57,9 +125,38 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   more arrays over the same buckets, `input` (input tokens with cache reads
   and writes) and `turns`, from the same scan as `cost`, so the chart can
   plot today, 7 or 30 days by tokens or turns without another request.
+- **agents:** Claude Code on DeepSeek, free. Paste your DeepSeek API key in
+  Settings → Subscriptions and *New agent* and *Quick chat* offer
+  **DeepSeek · your API key** in the Subscription picker: the session is
+  Claude Code in your usual setup, with DeepSeek's documented variables and
+  your key in that one process's environment, so its model calls go to
+  DeepSeek's Anthropic-compatible API and DeepSeek bills your key. Your
+  claude.ai sign-in and its plan limits are not used, and the session is
+  kept out of the Claude plan windows and the plan-window stop. The key is
+  write-only (Settings shows `sk-…1a2b`), never on a command line, in the
+  database or a log; Settings and the picker say what the session sends to
+  api.deepseek.com and that Caprock sends nothing. Its card says
+  *DeepSeek*.
+- **app:** each subagent row in the cockpit says what the subagent is doing
+  now in words — the description Claude wrote for its latest command
+  ("Rerun the store tests"), else its tool and target ("Editing
+  Cockpit.tsx"), else its task — after its type as a letter chip (G, E, P,
+  the full type on hover), with calls and cost beside it; the dimmer line
+  under it shows the raw command only when the phrase does not already say
+  it. `GET /v1/sessions/{id}/subagents` carries the phrase as `doing` and
+  `doing_from`.
 
 ### Changed
 
+- **ui:** Dark Pastel is the default dark palette (owner, 2026-10-13), and
+  first among the dark ones in the picker and the cycle; Book stays the
+  default light one. Whoever never picked a palette — a new install, the
+  phone, the menu bar popover, the app's start-up page — now sees Dark
+  Pastel on a dark system, from the first paint. A palette you picked is
+  kept, Dark Warm included, and an old Slate stays Dark Cold; the old
+  Graphite tone was the default rather than a choice, so it moves to Dark
+  Pastel. The home-screen colours and the screenshot scripts' dark pass
+  follow.
 - **dashboard:** the Now screen refreshes once, not once per section. Its
   sections ask on one shared tick, at most every 2 s (all-time figures every
   10 s); sections asking the same question share one request; a folded or
@@ -99,30 +196,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   directly under *Now*. Folded, it is a strip of the chart's own bars and
   three figures, the chart's metric first, instead of a faint sentence a
   narrow cockpit cut off.
-- **agents:** Claude Code on DeepSeek, free. Paste your DeepSeek API key in
-  Settings → Subscriptions and *New agent* and *Quick chat* offer
-  **DeepSeek · your API key** in the Subscription picker: the session is
-  Claude Code in your usual setup, with DeepSeek's documented variables and
-  your key in that one process's environment, so its model calls go to
-  DeepSeek's Anthropic-compatible API and DeepSeek bills your key. Your
-  claude.ai sign-in and its plan limits are not used, and the session is
-  kept out of the Claude plan windows and the plan-window stop. The key is
-  write-only (Settings shows `sk-…1a2b`), never on a command line, in the
-  database or a log; Settings and the picker say what the session sends to
-  api.deepseek.com and that Caprock sends nothing. Its card says
-  *DeepSeek*.
 - **pricing:** `deepseek-flash` at DeepSeek's off-peak list price ($0.15
   input, $0.003 cache hit, $0.60 output per 1M, read 2026-10-13); turns in
   DeepSeek's weekday peak hours bill double and read low. Table
   `2026-10-13.1`.
-- **app:** each subagent row in the cockpit says what the subagent is doing
-  now in words — the description Claude wrote for its latest command
-  ("Rerun the store tests"), else its tool and target ("Editing
-  Cockpit.tsx"), else its task — after its type as a letter chip (G, E, P,
-  the full type on hover), with calls and cost beside it; the dimmer line
-  under it shows the raw command only when the phrase does not already say
-  it. `GET /v1/sessions/{id}/subagents` carries the phrase as `doing` and
-  `doing_from`.
 
 ## [0.113.0] - 2026-10-13
 

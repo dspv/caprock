@@ -12,7 +12,7 @@ describe('the theme picker', () => {
     localStorage.setItem('caprock-theme', 'dark')
     render(<ThemePicker />)
     const names = (g: string) => within(screen.getByRole('group', { name: g })).getAllByRole('radio').map((r) => r.textContent?.replace('✓', ''))
-    expect(names('Dark')).toEqual(['Dark Warm', 'Dark Cold', 'Dark Pastel', 'Dark Side'])
+    expect(names('Dark')).toEqual(['Dark Pastel', 'Dark Warm', 'Dark Cold', 'Dark Side'])
     expect(names('Light')).toEqual(['Light', 'Light Cold', 'Book', 'Light Side'])
   })
 
@@ -28,7 +28,7 @@ describe('the theme picker', () => {
     expect(html.hasAttribute('data-glow')).toBe(true)
     fireEvent.mouseLeave(screen.getByRole('radiogroup'))
     expect(html.getAttribute('data-theme')).toBe('dark')
-    expect(html.getAttribute('data-dark')).toBe('graphite')
+    expect(html.getAttribute('data-dark')).toBe('pastel')
     expect(html.hasAttribute('data-glow')).toBe(false)
     fireEvent.click(screen.getByRole('radio', { name: /Dark Cold/ }))
     expect(html.getAttribute('data-dark')).toBe('slate')

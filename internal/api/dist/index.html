@@ -18,20 +18,22 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <!-- The header's colour, set before first paint by the script below and
          kept in step by lib/theme.ts. -->
-    <meta name="theme-color" content="#211f1d" />
+    <meta name="theme-color" content="#212221" />
     <title>Caprock — mission control</title>
     <script>
       // Set the palette before first paint so nobody sees another one flash.
       // Mirrors resolveMode and THEMES in lib/themes.ts (theme.test.ts runs
       // this script against them): the kept mode while it agrees with
-      // caprock-theme, else the keys from before the rename, else the OS.
+      // caprock-theme, else the keys from before the rename, else the OS
+      // (Dark Pastel or Book). An old graphite tone was the default, not a
+      // choice, so it goes to Dark Pastel; an old slate stays Dark Cold.
       (function () {
         try {
           // id: [side, sub-attribute value, panel colour, glow]
           var M = {
+            'dark-pastel': ['dark', 'pastel', '#212221', 0],
             'dark-warm': ['dark', 'graphite', '#211f1d', 0],
             'dark-cold': ['dark', 'slate', '#1f2023', 0],
-            'dark-pastel': ['dark', 'pastel', '#212221', 0],
             'dark-side': ['dark', 'side', '#15111d', 1],
             'light': ['light', 'white', '#ffffff', 0],
             'light-cold': ['light', 'cold', '#f5f8fc', 0],
@@ -44,7 +46,7 @@
           if (!M.hasOwnProperty(m) || (M[m][0] !== t && (t === 'dark' || t === 'light'))) {
             if (t !== 'dark' && t !== 'light') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
             m = t === 'dark'
-              ? (ls.getItem('caprock-dark-tone') === 'slate' ? 'dark-cold' : 'dark-warm')
+              ? (ls.getItem('caprock-dark-tone') === 'slate' ? 'dark-cold' : 'dark-pastel')
               : (ls.getItem('caprock-light-tone') === 'white' ? 'light' : 'book');
           }
           var r = M[m], el = document.documentElement;
@@ -56,9 +58,9 @@
         } catch (e) {}
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-nzVbc4yY.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-Bms25Pcu.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-BOjCZIjb.css">
+    <script type="module" crossorigin src="/assets/index-DJy4dWNz.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-D4hYjxZ0.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-DSZ4uxpg.css">
   </head>
   <body>
     <div id="root"></div>

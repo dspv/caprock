@@ -275,9 +275,10 @@ def shoot(ws, spec, theme):
         rpc(ws, "Page.navigate", {"url": f"{BASE}/#/{route}"})
         time.sleep(0.8)
         evaluate(ws, BANNERS)
-        # Dark Cold and Light Cold, the palettes caprock.dev shows (owner,
-        # 2026-10-12); the side alone would load Dark Warm or Book.
-        mode = "light-cold" if theme == "light" else "dark-cold"
+        # Dark Pastel, the default dark palette (owner, 2026-10-13), and
+        # Light Cold (owner, 2026-10-12); the side alone would load Dark
+        # Pastel or Book.
+        mode = "light-cold" if theme == "light" else "dark-pastel"
         evaluate(ws, "localStorage.setItem('caprock-theme-mode','%s');"
                      "localStorage.setItem('caprock-theme','%s');"
                      "localStorage.setItem('caprock-glance-open','1');"

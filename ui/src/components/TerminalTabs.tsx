@@ -16,13 +16,14 @@ import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane'
 import { composerFits, useComposerEnabled } from '@/lib/composer'
-import { AgentGlyph } from './AgentMarks'
+import { AgentGlyph, agentGlyphLabel } from './AgentMarks'
 import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
-import { StatusDot, TitleAndBranch } from './ProjectRow'
+import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { NewMenu, type NewMenuItem } from './NewMenu'
-import { keys, tabDigit, tabKey } from '@/lib/appkeys'
+import { keys, tabKey } from '@/lib/appkeys'
+import { isMacPlatform } from '@/lib/appmode'
 import { ChatEnded, ChatHint, type ChatPane } from './QuickChatPane'
 
 /** The pinned Dashboard tab: the dashboard's screens, in the strip with the terminals. */
@@ -70,6 +71,8 @@ export interface TabStripProps {
   /** The + menu's rows; New agent and New shell when absent. */
   newItems?: readonly NewMenuItem[]
   onToggleInspector: () => void
+  /** The ⌘1–⌘9 key drawn on a tab: its project's, on the tab that key brings to the front. */
+  digits?: ReadonlyMap<string, number>
   /** The tab in front shows its chat instead of its terminal (WP-14). */
   chatOpen?: boolean
   /** Absent when the tab in front has no conversation: a shell. */
@@ -133,23 +136,24 @@ export function TabStrip(props: TabStripProps) {
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.dashboard!.onActivate() }}
             title={`${props.dashboard.label} — ${keys(props.dashboard.label === 'Settings' ? '⌘,' : '⌘0')}`}
             aria-label={props.dashboard.label}
-            className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
+            aria-keyshortcuts={props.dashboard.label === 'Settings' ? undefined : (isMacPlatform() ? 'Meta+0' : 'Control+Shift+0')}
+            className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-1 rounded-t-[9px] px-2 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
               props.dashboard.active ? 'app-tab-front app-tab-dash bg-bg font-medium text-fg' : 'app-tab-dash text-fg hover:text-fg'
             }`}
           >
-            {/* Folded to its icon and its key, like a key on a keyboard
-              * (owner, 2026-10-11: "fold it to an icon with a big key, like
-              * the others"); the name is in the tooltip. */}
+            {/* Folded to its icon alone, so the session tabs keep their
+              * names (owner, 2026-10-13, translated: "shrink Dashboard to a
+              * collapsed state"); its name and ⌘0 are in the tooltip, and
+              * its × shows while it is in front. */}
             {props.dashboard.label === 'Settings'
               ? <SettingsIcon size={15} className="text-accent" />
               : <DashboardIcon size={15} className="text-accent" />}
-            <kbd data-dashboard-key aria-hidden className="app-kbd-key">{keys(props.dashboard.label === 'Settings' ? '⌘,' : '⌘0')}</kbd>
             <button
               type="button"
               aria-label={`Close tab ${props.dashboard.label}`}
               title="Close the dashboard tab"
               onClick={(e) => { e.stopPropagation(); props.dashboard!.onClose() }}
-              className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${props.dashboard.active ? '' : 'invisible group-hover:visible'}`}
+              className={`h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${props.dashboard.active ? 'flex' : 'hidden'}`}
             >
               <CloseIcon size={12} />
             </button>
@@ -164,13 +168,15 @@ export function TabStrip(props: TabStripProps) {
           const title = label?.title ?? t.title
           const active = t.id === activeTabId
           const project = props.projectName?.(t.projectId)
-          const digit = tabDigit(i, tabs.length)
-          // A tab is named by its project — the repo is what tells tabs apart
-          // at a glance. A second tab of the same project adds its own title,
-          // faint, so the two still differ; a file tab keeps the file name.
-          // A quick chat is named as one: Outside projects is its group, not its name.
-          const chip = file === undefined && !label?.chat ? project : undefined
-          const twin = chip !== undefined && tabs.some((o) => o.id !== t.id && o.projectId === t.projectId && labels.get(o.id)?.file === undefined)
+          const digit = props.digits?.get(t.id)
+          // A tab is named by its session — the name is what matters (owner,
+          // 2026-10-13, translated: "the session name is very important … I
+          // don't care which agent it is"). The project is its colour dot,
+          // named in the tooltip; the agent is in the tooltip only. A file
+          // tab keeps the file name; a quick chat has no project dot.
+          const dot = file === undefined && !label?.chat && project !== undefined
+          const agent = file === undefined ? agentGlyphLabel(s?.agent, isShell) : undefined
+          const tip = [file ?? title, agent, label?.branch, project].filter(Boolean).join(' · ') + (digit ? ` — ${keys(`⌘${digit}`)}` : '')
           return (
             <div
               key={t.id}
@@ -178,7 +184,7 @@ export function TabStrip(props: TabStripProps) {
               tabIndex={active ? 0 : -1}
               aria-selected={active}
               data-tab-index={i}
-              aria-label={chip ? `${title} · ${chip}` : undefined}
+              aria-label={project && file === undefined ? `${title} · ${project}` : undefined}
               data-dragging={dragging === t.id || undefined}
               onPointerDown={press(t.id)}
               onClick={() => {
@@ -187,44 +193,37 @@ export function TabStrip(props: TabStripProps) {
               }}
               onAuxClick={(e) => { if (e.button === 1) props.onDetach(t.id) }}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
-              title={`${file ?? title}${label?.branch ? ` · ${label.branch}` : ''}${chip ? ` · ${chip}` : ''}${digit ? ` — ${keys(`⌘${digit}`)}` : ''}`}
+              title={tip}
               data-project={t.projectId}
-              className={`group relative flex h-[32px] min-w-[112px] max-w-[260px] flex-1 basis-[200px] cursor-default select-none items-center gap-2 rounded-t-[9px] pl-3 pr-1.5 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
+              className={`group relative flex h-[32px] min-w-[112px] max-w-[260px] flex-1 basis-[200px] cursor-default select-none items-center gap-1 rounded-t-[9px] pl-2 pr-1 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
                 active ? (file !== undefined ? 'app-tab-front bg-bg font-medium text-fg' : 'app-tab-front app-slab font-medium text-fg') : 'app-tab-back text-fg-muted hover:text-fg'
               } ${dragging === t.id ? 'opacity-60' : ''}`}
             >
               {file !== undefined ? (
                 <FileIcon size={13} className="text-fg-faint" />
               ) : (
-                <>
-                  <StatusDot dot={label?.dot ?? 'idle'} />
-                  <AgentGlyph agent={s?.agent} shell={isShell} />
-                </>
+                <StatusDot dot={label?.dot ?? 'idle'} />
               )}
-              {chip ? (
-                <span data-project-chip className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-                  <span aria-hidden className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: `hsl(${projectHue(t.projectId)} 42% 56%)` }} />
-                  <span data-row-title className="shrink-0 truncate">{chip}</span>
-                  {twin && <span data-tab-subtitle className="min-w-0 shrink truncate text-[11px] font-normal text-fg-faint">{title}</span>}
-                </span>
-              ) : (
-                <TitleAndBranch title={title} branch={label?.branch} className="" />
-              )}
+              {dot && <span data-project-dot aria-hidden className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: `hsl(${projectHue(t.projectId)} 42% 56%)` }} />}
+              <span data-row-title className="min-w-0 flex-1 truncate">{title}</span>
               {file === undefined && <HotMark sessionId={s?.session_id} />}
-              {/* The jump key on the tab itself, as iTerm shows it: ⌘1–⌘8 by
-                * position, ⌘9 on the last. In a tooltip nobody found it. */}
-              {digit && (
-                <kbd data-tab-key aria-hidden className="app-kbd-key shrink-0">{tabKey(digit)}</kbd>
-              )}
-              <button
-                type="button"
-                aria-label={`${closeWord(file !== undefined, isShell)} ${title}`}
-                title={closeTitle(file !== undefined, isShell, !!label?.chat)}
-                onClick={(e) => { e.stopPropagation(); props.onDetach(t.id) }}
-                className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'invisible group-hover:visible'}`}
-              >
-                <CloseIcon size={12} />
-              </button>
+              {/* The jump key and the × share one slot at the right end, so
+                * nothing moves the title: the key at rest, the × on hover
+                * and on the tab in front, which needs no key to reach. */}
+              <span data-tab-end className="relative flex h-[20px] min-w-[20px] shrink-0 items-center justify-end">
+                {digit && (
+                  <kbd data-tab-key aria-hidden className={`app-kbd-sm ${active ? 'invisible' : 'group-hover:invisible group-focus-within:invisible'}`}>{tabKey(digit)}</kbd>
+                )}
+                <button
+                  type="button"
+                  aria-label={`${closeWord(file !== undefined, isShell)} ${title}`}
+                  title={closeTitle(file !== undefined, isShell, !!label?.chat)}
+                  onClick={(e) => { e.stopPropagation(); props.onDetach(t.id) }}
+                  className={`absolute right-0 top-0 flex h-[20px] w-[20px] items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'invisible group-hover:visible group-focus-within:visible'}`}
+                >
+                  <CloseIcon size={12} />
+                </button>
+              </span>
             </div>
           )
         })}

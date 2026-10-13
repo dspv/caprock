@@ -12,7 +12,7 @@
  * can import it freely.
  */
 
-export type ThemeMode = 'dark-warm' | 'dark-cold' | 'dark-pastel' | 'dark-side' | 'light' | 'light-cold' | 'book' | 'light-side'
+export type ThemeMode = 'dark-pastel' | 'dark-warm' | 'dark-cold' | 'dark-side' | 'light' | 'light-cold' | 'book' | 'light-side'
 
 export interface ThemeRow {
   id: ThemeMode
@@ -38,6 +38,14 @@ export interface ThemeRow {
 
 export const THEMES: readonly ThemeRow[] = [
   {
+    // Neutral graphite, a dusty blue accent and low-chroma status colours,
+    // for whoever finds the other dark palettes loud (testers, 2026-10-12).
+    // The default dark palette since 2026-10-13 (owner), so listed first.
+    id: 'dark-pastel', name: 'Dark Pastel', theme: 'dark', sub: 'pastel', panel: '#212221',
+    swatch: { bg: '#1c1d1c', panel: '#292a29', fg: '#e3e1db', muted: '#97958e', accent: '#a3b6c9', accent2: '#8fbc98' },
+    terminal: 'dark-pastel', dashTerminal: 'dark-pastel',
+  },
+  {
     id: 'dark-warm', name: 'Dark Warm', theme: 'dark', sub: 'graphite', panel: '#211f1d',
     swatch: { bg: '#1b1b1a', panel: '#262422', fg: '#e8e6e2', muted: '#8f8b84', accent: '#feb157' },
     terminal: 'caprock', dashTerminal: 'caprock',
@@ -46,13 +54,6 @@ export const THEMES: readonly ThemeRow[] = [
     id: 'dark-cold', name: 'Dark Cold', theme: 'dark', sub: 'slate', panel: '#1f2023',
     swatch: { bg: '#1a1b1e', panel: '#26272b', fg: '#e6e7ea', muted: '#8b8e96', accent: '#86a9dc' },
     terminal: 'slate', dashTerminal: 'slate',
-  },
-  {
-    // Neutral graphite, a dusty blue accent and low-chroma status colours,
-    // for whoever finds the other dark palettes loud (testers, 2026-10-12).
-    id: 'dark-pastel', name: 'Dark Pastel', theme: 'dark', sub: 'pastel', panel: '#212221',
-    swatch: { bg: '#1c1d1c', panel: '#292a29', fg: '#e3e1db', muted: '#97958e', accent: '#a3b6c9', accent2: '#8fbc98' },
-    terminal: 'dark-pastel', dashTerminal: 'dark-pastel',
   },
   {
     id: 'dark-side', name: 'Dark Side', theme: 'dark', sub: 'side', panel: '#15111d',
@@ -84,8 +85,12 @@ export const THEMES: readonly ThemeRow[] = [
 /** The order the picker lists them and the cycle walks them: the dark ones, then the light ones. */
 export const THEME_MODES: readonly ThemeMode[] = THEMES.map((t) => t.id)
 
-/** What a viewer who never chose sees, by the OS preference. */
-export const DEFAULT_DARK: ThemeMode = 'dark-warm'
+/**
+ * What a viewer who never chose sees, by the OS preference. Dark Pastel
+ * replaced Dark Warm as the dark default on 2026-10-13 (owner); tokens.css
+ * paints it for a dark <html> with no or an unknown `data-dark` too.
+ */
+export const DEFAULT_DARK: ThemeMode = 'dark-pastel'
 export const DEFAULT_LIGHT: ThemeMode = 'book'
 
 export function themeRow(id: string | null | undefined): ThemeRow | undefined {
@@ -114,9 +119,15 @@ export const LEGACY_LIGHT_KEY = 'caprock-light-tone'
 /**
  * The kept palette. The mode key wins while it agrees with `caprock-theme`;
  * otherwise (nothing kept yet, an install from before the rename, or a script
- * that set only `caprock-theme`) the old keys decide: Graphite is Dark Warm,
- * Slate Dark Cold, White Light, Paper Book. Mirrored in index.html's
- * pre-paint script; theme.test.ts runs that script against this.
+ * that set only `caprock-theme`) the old keys decide: Slate is Dark Cold,
+ * White Light, Paper Book, and anything else the default of its side.
+ *
+ * Only `caprock-theme-mode` is a choice. The old `caprock-dark-tone` key held
+ * `graphite` whether or not anyone picked it (it was the default), so it goes
+ * to the default — Dark Pastel since 2026-10-13 — and not to Dark Warm; Slate
+ * was always picked, so it stays Dark Cold. Whoever chose Dark Warm in the
+ * picker since 2026-10-11 has the mode key and keeps it. Mirrored in
+ * index.html's pre-paint script; theme.test.ts runs that script against this.
  */
 export function resolveMode(get: (k: string) => string | null, prefersLight: boolean): ThemeMode {
   const t = get(THEME_KEY)

@@ -29,6 +29,7 @@ import { useCanControl } from '@/lib/useCanControl'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
+import { Bars } from './DayBars'
 import { CI_IDLE_MS, CI_RUNNING_MS, CIMark, DeckSkeleton, ExpandIcon, Freshness, PRS_PENDING_MS, connectGitHub, usePoll } from './SessionDeck'
 
 export interface PRsCITabProps {
@@ -166,29 +167,6 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
 }
 
 // ---------------------------------------------------------------- the figures
-
-function Bars({ values, labels, red, unit }: { values: number[]; labels: string[]; red?: number[]; unit: string }) {
-  const w = 72
-  const h = 30
-  const max = Math.max(...values, 1)
-  const bw = (w - (values.length - 1) * 2) / values.length
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${unit} per day, ${values.length} days`} className="block shrink-0 overflow-visible">
-      {values.map((v, i) => {
-        const bh = v > 0 ? Math.max(2, (v / max) * h) : 1
-        const rh = red?.[i] ? Math.max(2, (red[i]! / max) * h) : 0
-        const today = i === values.length - 1
-        return (
-          <g key={i}>
-            <title>{`${labels[i] ?? ''}: ${v} ${unit}${red ? `, ${red[i] ?? 0} red` : ''}${today ? ' (today, so far)' : ''}`}</title>
-            <rect x={i * (bw + 2)} y={h - bh} width={bw} height={bh} rx={1.5} fill="var(--color-fg-muted)" opacity={today ? 0.45 : 0.8} />
-            {rh > 0 && <rect x={i * (bw + 2)} y={h - rh} width={bw} height={rh} rx={1.5} fill="var(--color-danger)" />}
-          </g>
-        )
-      })}
-    </svg>
-  )
-}
 
 /** The days with a value as a 2px line, the last one dotted; nothing with fewer than two. */
 function Trend({ values, labels }: { values: number[]; labels: string[] }) {

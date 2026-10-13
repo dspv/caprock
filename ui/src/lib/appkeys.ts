@@ -29,7 +29,12 @@ export type AppCommand =
   | { kind: 'dashboard' }
   | { kind: 'next-tab' }
   | { kind: 'prev-tab' }
-  | { kind: 'tab'; index: number }
+  /** ⌘1–⌘9: a project by its place in the sidebar, ⌘9 the last. */
+  | { kind: 'project'; index: number }
+  /** The next or previous row under the project in front (⌥⌘↓ ⌥⌘↑). */
+  | { kind: 'session'; delta: 1 | -1 }
+  /** The next or previous project in the sidebar (⌥⌘→ ⌥⌘←). */
+  | { kind: 'step-project'; delta: 1 | -1 }
   | { kind: 'split'; direction: 'row' | 'column' }
   | { kind: 'next-pane' }
   | { kind: 'prev-pane' }
@@ -57,7 +62,46 @@ function baseKey(e: KeyLike): string {
   if (e.code === 'Backslash') return '\\'
   if (e.code === 'Equal' || e.code === 'NumpadAdd') return '='
   if (e.code === 'Minus' || e.code === 'NumpadSubtract') return '-'
+  const arrow = ARROWS[e.code ?? ''] ?? ARROWS[e.key]
+  if (arrow) return arrow
   return e.key.length === 1 ? e.key.toLowerCase() : e.key
+}
+
+const ARROWS: Record<string, string> = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' }
+
+/**
+ * The arrow chords: ⌥⌘ arrows on macOS, Alt+Shift arrows elsewhere. The
+ * owner asked for ⌘↑ ⌘↓ and ⌥← ⌥→ (2026-10-13); both belong to the
+ * terminal. ⌥← ⌥→ are word-jump in every shell and in Claude Code's prompt,
+ * and ⌘↑ ⌘↓ (⌘← ⌘→) are scroll-to-top, prompt jumps and line start/end in
+ * the Mac terminals people bring their fingers from. ⌥⌘ arrows reach no
+ * shell, and are next/previous tab or pane in Chrome and iTerm, so the hand
+ * already reads them as "move". Off macOS each other spelling is taken:
+ * Ctrl+Shift+← → are PowerShell's SelectBackwardWord / SelectNextWord
+ * (PSReadLine, Windows mode, and in pwsh on Linux too), Ctrl+arrows its and
+ * readline's word moves, Ctrl+PageUp/PageDown its ScrollDisplayUpLine /
+ * DownLine, Ctrl+Alt arrows switch workspaces in GNOME (and rotate the
+ * screen on some Windows drivers), Ctrl+Alt+Shift arrows move the window
+ * to another workspace there. Alt+Shift arrows are bound by none of them:
+ * not by PSReadLine in any mode, not by bash's readline or zsh's emacs
+ * keymap, not by GNOME; VS Code ships them as its own Windows/Linux
+ * defaults (copy line, expand selection). Alt alone stays the terminal's
+ * Meta. In a text field the arrow chords stay the field's (isTextField,
+ * AppShell).
+ */
+function arrowCommand(k: string): AppCommand | null {
+  switch (k) {
+    case '↓': return { kind: 'session', delta: 1 }
+    case '↑': return { kind: 'session', delta: -1 }
+    case '→': return { kind: 'step-project', delta: 1 }
+    case '←': return { kind: 'step-project', delta: -1 }
+    default: return null
+  }
+}
+
+/** Whether a command is one of the arrow chords, which a text field keeps. */
+export function isArrowCommand(c: AppCommand): boolean {
+  return c.kind === 'session' || c.kind === 'step-project'
 }
 
 /** Which app command a key press is, or null when it belongs to the page or the terminal. */
@@ -67,6 +111,9 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
   if (e.altKey) {
     const quick = isMac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey
     if (quick && baseKey(e) === 'n') return { kind: 'quick-chat' }
+    if (isMac && quick) return arrowCommand(baseKey(e))
+    // Off macOS the arrow chords are Alt+Shift (arrowCommand).
+    if (!isMac && e.shiftKey && !e.ctrlKey && !e.metaKey) return arrowCommand(baseKey(e))
     // Off macOS, a ⇧⌘ chord whose ⌘ twin is also the app's takes Alt too,
     // or both would be Ctrl+Shift+key (OFF_MAC_ALT).
     if (!isMac && e.ctrlKey && e.shiftKey && !e.metaKey) {
@@ -112,6 +159,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
     case 'g': return { kind: 'changes' }
     case '[': return { kind: 'prev-tab' }
     case ']': return { kind: 'next-tab' }
+    // Ctrl+Shift arrows are PowerShell's select-by-word: the terminal's.
     // C and V are the terminal's copy and paste: never ours.
     case 'c':
     case 'v':
@@ -143,7 +191,11 @@ function plain(k: string): AppCommand | null {
     // 2026-10-11: ⇧⌘D was awkward to reach). ⇧⌘D still works.
     case '0': return { kind: 'dashboard' }
     default:
-      if (/^[1-9]$/.test(k)) return { kind: 'tab', index: Number(k) - 1 }
+      // ⌘1–⌘9 are projects, by their place in the sidebar (owner,
+      // 2026-10-13, translated: "Command+digit focuses that project right
+      // away, you see on the left where you are"). They were tabs by their
+      // place in the strip; tabs keep ⌃Tab and ⇧⌘[ ].
+      if (/^[1-9]$/.test(k)) return { kind: 'project', index: Number(k) - 1 }
       return null
   }
 }
@@ -169,7 +221,13 @@ const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0'])
 function offMac(k: string): string {
   if (/[↩↵]/.test(k)) return `${k.includes('⌘') ? 'Ctrl+' : ''}${k.includes('⇧') ? 'Shift+' : ''}Enter`
   if (k.startsWith('⌃')) return `Ctrl+${k.slice(1)}`
+  // ⌥⇧↑ ⌥⇧↓, the sidebar's move-a-row keys, are Ctrl+Shift off macOS:
+  // Alt+Shift arrows are the app's there, and Ctrl+Shift arrows reach the
+  // terminal only from the terminal, never from a focused sidebar row.
+  if (k.includes('⌥') && !k.includes('⌘') && /[↑↓]$/.test(k)) return `Ctrl+Shift+${k.slice(-1)}`
   if (!k.includes('⌘')) return k
+  // The arrow chords are Alt+Shift off macOS (arrowCommand).
+  if (/[↑↓←→]$/.test(k)) return `Alt+Shift+${k.slice(-1)}`
   // Ctrl+Shift+= is the key that reads + with Shift held.
   const key = k.replace(/[⇧⌘⌥⌃]/g, '').replace('+', '=')
   if (k.includes('⌥')) return `Ctrl+Alt+Shift+${key}`
@@ -179,8 +237,8 @@ function offMac(k: string): string {
   return `Ctrl+Shift+${key}`
 }
 
-/** The digit that jumps to the tab at `index` of `count`: ⌘1–⌘8 by
- *  position, ⌘9 the last tab (tabs.ts 'activate-index'), else none. */
+/** The digit that jumps to the project at `index` of `count`: ⌘1–⌘8 by
+ *  position, ⌘9 the last one, else none. */
 export function tabDigit(index: number, count: number): number | null {
   if (index === count - 1 && count > 8) return 9
   return index < 8 ? index + 1 : null
@@ -206,7 +264,10 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],
   ['⌘J', 'Next session waiting on you'],
-  ['⌘1–8, ⌘9', 'A tab by position; the last tab'],
+  ['⌘1–8, ⌘9', 'The sidebar’s Nth item (a project, or a session when not grouped); the last'],
+  ['⌥⌘↓, ⌥⌘↑', 'Next and previous session of the project in front'],
+  ['⌥⌘→, ⌥⌘←', 'Next and previous project'],
+  ['⌥⇧↑, ⌥⇧↓', 'Move the focused session row up or down in the sidebar'],
   ['⌃Tab, ⇧⌘[ ]', 'Next and previous tab'],
   ['⌘W', 'Close the tab or pane — the session keeps going'],
   ['⌘E, ⇧⌘E', 'Split: a new shell beside, below'],

@@ -84,6 +84,22 @@ threading, IDLE push) and in a browser on a preview daemon with
 `CAPROCK_MAIL_DEMO=1`. Not verified against a real Gmail or iCloud account
 yet. Not built: OAuth, server-side drafts, notifications, rules, Mail on a
 paired phone.
+### 2026-10-13 — 0.114.0: the owner's afternoon list, and a lighter Now
+
+Cut while more of the same list was still in flight, because the owner kept
+meeting bugs master had already fixed. In it: Claude Code on DeepSeek through
+the Subscription picker (#522; the live run reached DeepSeek and got 402 for
+an empty balance, so the transcript model name is still unverified, OQ-13);
+subagent rows that say what each one is doing (#523); the spend chart under
+Now with cost, tokens and turns (#524); the cockpit headline against the
+viewer's own usual (#525); a Hidden status line that keeps plan limits coming
+(#526); old base64 payloads stripped and free space returned on idle (#527;
+2.2 GB to 1.38 GB on a copy of the owner's database); the sidebar listing
+only active sessions (#529); the Now screen batching its refreshes, about
+700 to about 100 requests a minute (#530); and pull requests and CI, large,
+in a tab (#528). Still to come: the Repos table, burn rate and a usual line
+on the chart, project keys with fixed row order, the phone home and Inbox,
+Dark Pastel as the default.
 
 ### 2026-10-13 — unreleased: old payloads compacted, free space returned
 

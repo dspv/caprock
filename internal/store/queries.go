@@ -1790,13 +1790,23 @@ type WorkShare struct {
 // as by cost: Input is the input side of Tokens (fresh input plus cache reads
 // and writes, the cockpit's own "tokens"), and Turns the assistant turns, the
 // summary's own `turns` counted per bucket.
+//
+// ActiveHours and ActiveCost are the burn rate's, per bucket, from the same
+// scan: how many active session-hours fell in the bucket — clock hours in
+// which one session made at least UsualMinCalls priced calls costing more
+// than nothing, the very hours Usual's burn is the median of — and what
+// those hours cost. ActiveCost / ActiveHours is the bucket's dollars per
+// active hour, so idle time does not water it down, and a bucket with no
+// active hour has no rate at all rather than $0/h.
 type Spark struct {
-	FromMs  int64     `json:"from_ms"`
-	WidthMs int64     `json:"width_ms"`
-	Cost    []float64 `json:"cost"`
-	Tokens  []int64   `json:"tokens"`
-	Input   []int64   `json:"input"`
-	Turns   []int64   `json:"turns"`
+	FromMs      int64     `json:"from_ms"`
+	WidthMs     int64     `json:"width_ms"`
+	Cost        []float64 `json:"cost"`
+	Tokens      []int64   `json:"tokens"`
+	Input       []int64   `json:"input"`
+	Turns       []int64   `json:"turns"`
+	ActiveHours []int64   `json:"active_hours"`
+	ActiveCost  []float64 `json:"active_cost"`
 }
 
 // SparkSpec asks Summarize for per-project time series. Buckets <= 0 disables
@@ -1832,12 +1842,14 @@ func (sp SparkSpec) bucket(ts int64) (int, bool) {
 }
 
 // sessionBucket is tokens+cost for one session, either in total or within one
-// sparkline bucket; input and turns feed only the series.
+// sparkline bucket; input, turns and the active hours feed only the series.
 type sessionBucket struct {
-	tokens int64
-	cost   float64
-	input  int64
-	turns  int64
+	tokens      int64
+	cost        float64
+	input       int64
+	turns       int64
+	activeHours int64
+	activeCost  float64
 }
 
 // addSpark folds one session's per-bucket totals into a project's series,
@@ -1854,6 +1866,9 @@ func addSpark(p *ProjectShare, spec SparkSpec, series []sessionBucket) {
 			Tokens:  make([]int64, spec.Buckets),
 			Input:   make([]int64, spec.Buckets),
 			Turns:   make([]int64, spec.Buckets),
+
+			ActiveHours: make([]int64, spec.Buckets),
+			ActiveCost:  make([]float64, spec.Buckets),
 		}
 	}
 	for i, v := range series {
@@ -1864,6 +1879,8 @@ func addSpark(p *ProjectShare, spec SparkSpec, series []sessionBucket) {
 		p.Spark.Tokens[i] += v.tokens
 		p.Spark.Input[i] += v.input
 		p.Spark.Turns[i] += v.turns
+		p.Spark.ActiveHours[i] += v.activeHours
+		p.Spark.ActiveCost[i] += v.activeCost
 	}
 }
 
@@ -2174,22 +2191,31 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		// that did not happen there. That is reachable whenever the grid starts
 		// after the range does. Negative offsets are mapped to -1 so the Go side
 		// can reject them as "in the range, but off the picture".
+		//
+		// Each bucket is further split by the hour from the grid's start, so a
+		// row is one session's clock hour and the burn rate's active hours
+		// (Spark.ActiveHours) come from the same scan. The grid starts on a
+		// local hour and its widths are whole hours, so an hour never
+		// straddles two buckets. Measured on a 2.3 GB copy of the owner's
+		// database, 30 days, warm: 0.032s before and 0.033s after, 109 rows
+		// becoming 472, off the same covering index (2026-10-13).
 		rows, err = q.QueryContext(ctx, `
 			SELECT e.session_id,
 			       CASE WHEN e.ts < ? THEN -1 ELSE (e.ts - ?) / ? END AS bucket,
+			       CASE WHEN e.ts < ? THEN -1 ELSE (e.ts - ?) / 3600000 END AS hr,
 			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
 			       COALESCE(SUM(e.cost_usd),0),
 			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
-			       COUNT(*)
+			       COUNT(*), COUNT(e.cost_usd)
 			FROM events e
 			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+nonInternalEventE+evPrefixed+`
-			GROUP BY e.session_id, bucket`,
-			append([]any{spark.FromMs, spark.FromMs, spark.WidthMs, fromMs}, evArgs...)...)
+			GROUP BY e.session_id, bucket, hr`,
+			append([]any{spark.FromMs, spark.FromMs, spark.WidthMs, spark.FromMs, spark.FromMs, fromMs}, evArgs...)...)
 	} else {
 		rows, err = q.QueryContext(ctx, `
-			SELECT e.session_id, 0 AS bucket,
+			SELECT e.session_id, 0 AS bucket, 0 AS hr,
 			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
-			       COALESCE(SUM(e.cost_usd),0), 0, 0
+			       COALESCE(SUM(e.cost_usd),0), 0, 0, 0
 			FROM events e
 			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+nonInternalEventE+evPrefixed+`
 			GROUP BY e.session_id`, append([]any{fromMs}, evArgs...)...)
@@ -2199,9 +2225,9 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	}
 	for rows.Next() {
 		var id string
-		var b int64
+		var b, hr, priced int64
 		var t sessionBucket
-		if err := rows.Scan(&id, &b, &t.tokens, &t.cost, &t.input, &t.turns); err != nil {
+		if err := rows.Scan(&id, &b, &hr, &t.tokens, &t.cost, &t.input, &t.turns, &priced); err != nil {
 			_ = rows.Close()
 			return s, err
 		}
@@ -2230,6 +2256,12 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		series[b].cost += t.cost
 		series[b].input += t.input
 		series[b].turns += t.turns
+		// A row is one session's hour, active by Usual's own rule, so a bar's
+		// burn and the usual it is drawn against measure the same thing.
+		if priced >= UsualMinCalls && t.cost > 0 {
+			series[b].activeHours++
+			series[b].activeCost += t.cost
+		}
 		sparks[id] = series
 	}
 	// A truncated projects list is a wrong number for the same reason a
