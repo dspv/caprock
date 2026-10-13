@@ -1096,6 +1096,37 @@ What still fails or is close, and what to try next:
   p95 is 19 ms in every run. The socket leg is 2 ms; the rest is the page's
   frame. No fix proposed until a quiet run misses.
 
+### A hidden window does no work (2026-10-13)
+
+The owner measured the WebContent process of an app window with nothing
+happening using about 3% of a core, and more while sessions streamed. The
+rule since: a hidden window does no work, and a visible idle one almost
+none ([04-ui.md § A hidden window does no work](04-ui.md#a-hidden-window-does-no-work)).
+Found with a headless profile of the workspace (nine tabs, four agents at
+work) and fixed:
+
+- **A hidden window redrew for every hook event.** Each frame of the live
+  socket went to React whether or not the window was shown: about as many
+  commits a second hidden as visible. Frames are now held while hidden and
+  applied together every 2 s (urgent ones at once), and the debounced tick
+  and every poll and clock rest.
+- **Timers woke a hidden page.** Polls skipped their ticks while hidden but
+  kept their intervals; they now clear them. Each `useApi` hook ran its own
+  debounce timer per burst, and one was set for frames that move no tick;
+  now one timer per pace, only for a new tick.
+- **A hidden terminal blinked and drew.** The tab in front kept parsing and
+  drawing output, and its cursor blinked, with the window hidden.
+- **Clocks redrew whole screens every second.** The cockpit, Now and the
+  Session screen (thousands of timeline rows) re-rendered each second to keep
+  "4m ago" current; now seconds only while something is that fresh.
+- **Live screens rendered per event.** The Session timeline, Live activity,
+  the pulse and the cockpit's events now apply a 250 ms batch at a time.
+
+The popover renders nothing while closed (its tick is held, its fetches were
+already gated on being shown). The shell's own supervisor polls `/healthz`
+every 500 ms while the window is shown and every 5 s while it is hidden, in
+the app's process, not the page's; unchanged.
+
 ### Typing beside busy agents (2026-10-09)
 
 The owner found typing sluggish in 0.94.0 with several agents at work.

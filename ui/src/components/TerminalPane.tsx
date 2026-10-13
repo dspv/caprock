@@ -10,7 +10,8 @@
  * - **Hidden tabs disconnect after 30 s** (`TermClient.suspend`) and catch up
  *   when shown: v2 from the byte last seen, v1 from the daemon's snapshot. The xterm instance and its
  *   scrollback stay, so switching back paints at once.
- * - **A hidden tab does no terminal work.** Once its first output has been
+ * - **A hidden tab does no terminal work** — nor does the tab in front while
+ *   the window is out of sight, and no cursor blinks then. Once its first output has been
  *   drawn, what arrives while it is out of sight is held and handed to xterm
  *   when it is shown (past HIDDEN_HOLD_BYTES the socket is let go and the
  *   daemon keeps the rest). xterm redraws every row of a hidden DOM-rendered
@@ -58,6 +59,7 @@ import { TerminalFind, type TermSearch } from './TerminalFind'
 import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPrefs } from '@/lib/termprefs'
 import { searchColors, terminalTheme } from '@/lib/termthemes'
 import { loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
+import { blinkWhileVisible, pageHidden } from '@/lib/visible'
 
 export { APP_TERMINAL_THEME } from '@/lib/termthemes'
 
@@ -162,6 +164,7 @@ export function TerminalPane({
     const search = new SearchAddon({ highlightLimit: 1000 })
     term.loadAddon(search)
     term.open(el)
+    const unblink = blinkWhileVisible(term, true)
     const unbench = registerBenchTerminal(sessionId, term)
     // URLs and OSC 8 links open on Cmd/Ctrl+click (lib/termlinks).
     const links = attachTerminalLinks(term)
@@ -208,7 +211,9 @@ export function TerminalPane({
       }
       if (out.length) scheduleResume()
     }
-    const holding = () => !visible && settled
+    // The window out of sight holds the tab in front's output too (a hidden
+    // window does no work): parsed and drawn at once when it is shown.
+    const holding = () => (!visible || pageHidden()) && settled
 
     const report = (s: TermState) => {
       setStatus(s)
@@ -380,7 +385,10 @@ export function TerminalPane({
 
     const onWake = () => {
       // A suspended background tab stays let go until it is shown.
-      if (document.visibilityState === 'visible' && visible) conn.wake()
+      if (document.visibilityState !== 'visible' || !visible) return
+      // What the window held while out of sight, before anything newer.
+      flushHeld()
+      conn.wake()
     }
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('online', onWake)
@@ -473,6 +481,7 @@ export function TerminalPane({
       if (settleTimer) window.clearTimeout(settleTimer)
       held = []
       unprefs()
+      unblink()
       unfont()
       resultsSub.dispose()
       if (hideTimer) window.clearTimeout(hideTimer)

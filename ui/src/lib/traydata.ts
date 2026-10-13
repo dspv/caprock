@@ -174,14 +174,15 @@ export interface PopoverData {
  * the live tick while it is visible — never while hidden.
  */
 export function usePopoverData(): PopoverData {
-  const tick = useLiveTick(1000)
+  // Shown until the shell says otherwise, so the page also works in a browser.
+  const [shown, setShown] = useState(true)
+  // Closed, the popover follows nothing: no tick re-renders it while agents work.
+  const tick = useLiveTick(1000, { paused: !shown })
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [permissions, setPermissions] = useState<ReadonlyMap<string, Permission>>(() => new Map())
   const [summary, setSummary] = useState<Summary | undefined>(undefined)
   const [loaded, setLoaded] = useState(false)
   const [nonce, setNonce] = useState(0)
-  // Shown until the shell says otherwise, so the page also works in a browser.
-  const [shown, setShown] = useState(true)
   const refresh = useCallback(() => setNonce((n) => n + 1), [])
 
   useEffect(() => {

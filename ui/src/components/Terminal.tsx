@@ -20,6 +20,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
+import { blinkWhileVisible } from '@/lib/visible'
 
 /**
  * The terminal's palette: graphite, in BOTH app themes, fixed at build time.
@@ -197,6 +198,8 @@ export function TerminalView({
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host.current)
+    // No blink while the page is out of sight: each one is a frame drawn.
+    const unblink = blinkWhileVisible(term, !light)
     const themeWatch = typeof MutationObserver === 'undefined' ? null : new MutationObserver(() => { term.options.theme = dashTerminalTheme() })
     themeWatch?.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-dark', 'data-tone'] })
     const unbench = registerBenchTerminal(sessionId, term)
@@ -426,7 +429,7 @@ export function TerminalView({
       window.removeEventListener('pagehide', gone)
       hostEl.removeEventListener('pointerdown', claim)
       textarea?.removeEventListener('focus', claim)
-      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); out?.dispose(); client.dispose(); unbench(); links.dispose(); unfont(); themeWatch?.disconnect(); term.dispose()
+      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); out?.dispose(); client.dispose(); unbench(); links.dispose(); unfont(); unblink(); themeWatch?.disconnect(); term.dispose()
     }
   }, [sessionId, owned, attempt, phone])
   if (!owned && detached) {

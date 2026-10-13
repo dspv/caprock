@@ -113,9 +113,12 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   // Held once per session and shared with the session deck (lib/sessionEvents.ts).
   const main = useSessionEvents(sessionId)
   const [permission] = usePermission(sessionId)
-  const now = useNow(1000)
-  const runs = useMemo(() => toolRuns(main), [main])
   const state = cockpitState(s, hasPermission || !!permission)
+  // Seconds count only while something runs or waits (a call, the model
+  // thinking, a prompt); an idle or ended agent shows minutes and hours, and
+  // redrawing the cockpit every second for those kept an idle window busy.
+  const now = useNow(state === 'working' || state === 'looping' || permission ? 1000 : 30_000)
+  const runs = useMemo(() => toolRuns(main), [main])
   // The subagent row opened in place (one at a time), and whether "+N
   // finished" is open — which asks the daemon for more than three of them.
   const [openSub, setOpenSub] = useState<string | null>(null)

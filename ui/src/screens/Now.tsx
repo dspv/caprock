@@ -32,7 +32,7 @@ import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { href } from '@/lib/router'
 import { useEffect, useState } from 'react'
-import { useNow } from '@/lib/useNow'
+import { useNow, useNowFor } from '@/lib/useNow'
 import { useNarrowScreen } from '@/lib/phone'
 
 /** How recently a session must have spoken to belong on the Now screen.
@@ -108,7 +108,6 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   // it — the free plan-limit row offers it only when it does not.
   const windowStop = useApi(() => api.windowStop(), [], { intervalMs: 15000 })
   const alerts = useLiveAlerts()
-  const now = useNow(1000)
   const everySession = sessions.data?.items ?? []
   // How many the server holds, against how many it sent. The list is capped at
   // 200; past that the "Ended" label would otherwise count the page.
@@ -117,6 +116,9 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   const list = agent === 'all'
     ? everySession
     : everySession.filter((s) => (s.agent ?? 'claude') === agent)
+  // Every second while something on the screen is under a minute old ("42s
+  // ago"), else every 15 s: an idle Now redrew every card each second.
+  const now = useNowFor(newestOf(list, alerts))
   // Only offer a filter for an agent this machine actually runs: a chip that
   // always finds nothing is a control that lies about what is here. The
   // session list cannot answer this on its own — it holds only live sessions
@@ -441,7 +443,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
             show {Math.min(PAGE, sessionTotal - everySession.length)} more
           </button>
         )}
-        {sessions.loadedAt > 0 && <span className="num ml-auto">refreshed {fmtAgo(sessions.loadedAt, now)}</span>}
+        {sessions.loadedAt > 0 && <RefreshedAgo at={sessions.loadedAt} />}
       </div>
       </>)}
       {spawning && (
@@ -539,6 +541,20 @@ function NewSessionButton({ available, onClick }: { available: boolean | undefin
  * the figures. A session Caprock did not start says it can only be read, so
  * the missing field is not a surprise on the other side of the tap.
  */
+/** The newest moment the screen shows, unix ms: what decides its clock's pace. */
+export function newestOf(list: SessionSummary[], alerts: { ts?: string }[]): number {
+  let at = 0
+  for (const s of list) at = Math.max(at, s.worked_at || 0, s.last_event_at || 0)
+  for (const a of alerts) { const t = a.ts ? Date.parse(a.ts) : NaN; if (Number.isFinite(t)) at = Math.max(at, t) }
+  return at
+}
+
+/** "refreshed 5s ago": its own clock, so its ticking redraws this line and nothing else. */
+function RefreshedAgo({ at }: { at: number }) {
+  const now = useNow(5000)
+  return <span className="num ml-auto">refreshed {fmtAgo(at, now)}</span>
+}
+
 function PhoneSessions({ sessions, now }: { sessions: SessionSummary[]; now: number }) {
   if (sessions.length === 0) return null
   const labels = projectLabels(sessions)

@@ -419,12 +419,20 @@ a.link:hover { text-decoration: underline; }
  * session counts (a lone working session should not look static/sad). */
 .graph-breathe { animation: graphBreathe 2.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 @keyframes graphBreathe {
-  0%, 100% { opacity: 0.9; }
-  50%      { opacity: 1; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--color-ok) 55%, transparent)); }
+  0%, 100% { opacity: 0.75; }
+  50%      { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .graph-dot, .graph-gate { transition: none; }
   .graph-verified, .graph-breathe { animation: none; }
+}
+
+/* A hidden window does no work (lib/visible.ts markPageVisibility): out of
+ * sight, every animation holds still. A pulsing dot nobody sees still asked
+ * the compositor for a frame sixty times a second. Paused, not removed, so
+ * nothing jumps when the window comes back. */
+html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidden] *::after {
+  animation-play-state: paused !important;
 }
 
 /* Scrollbars in the same gray family. */
