@@ -87,6 +87,7 @@ export type ProviderGuess = {
   note?: string
   help_url?: string
   known: boolean
+  needs_username?: boolean
 }
 
 export type Settings = Record<string, string>

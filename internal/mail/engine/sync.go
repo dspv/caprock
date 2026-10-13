@@ -255,7 +255,8 @@ func (w *worker) syncFolder(ctx context.Context, c *imapclient.Client, a store.A
 			fetchUIDs = append(fetchUIDs, older...)
 		}
 	}
-	if err := w.fetchHeaders(ctx, c, a, f, fetchUIDs); err != nil {
+	c, err = w.fetchHeaders(ctx, c, a, f, fetchUIDs)
+	if err != nil {
 		return err
 	}
 	if err := w.fetchBodies(ctx, c, f); err != nil {
@@ -357,104 +358,166 @@ func flagsOf(fl []imap.Flag) (seen, flagged, answered bool) {
 	return
 }
 
-var refsSection = &imap.FetchItemBodySection{
-	Specifier:    imap.PartSpecifierHeader,
-	HeaderFields: []string{"References", "Reply-To", "List-Unsubscribe"},
-	Peek:         true,
-}
+var headerSection = &imap.FetchItemBodySection{Specifier: imap.PartSpecifierHeader, Peek: true}
 
-// fetchHeaders stores envelope, flags and structure for the given UIDs, in batches.
-func (w *worker) fetchHeaders(ctx context.Context, c *imapclient.Client, a store.Account, f store.Folder, uids []imap.UID) error {
+// fetchHeaders stores header, flags and structure for the given UIDs, newest
+// first, in batches. A batch the server answers with something unreadable is
+// split in two until the one bad message is found; that one is stored from
+// what can be read without its body structure, so a single malformed message
+// never stops a folder. It returns the connection to go on with, which is a
+// new one when a bad answer closed the old.
+func (w *worker) fetchHeaders(ctx context.Context, c *imapclient.Client, a store.Account, f store.Folder, uids []imap.UID) (*imapclient.Client, error) {
 	slices.Sort(uids)
-	// Newest first, so the list fills from the top.
 	slices.Reverse(uids)
 	for start := 0; start < len(uids); start += 100 {
-		end := min(start+100, len(uids))
-		var set imap.UIDSet
-		for _, u := range uids[start:end] {
-			set.AddNum(u)
-		}
-		msgs, err := c.Fetch(set, &imap.FetchOptions{
-			UID: true, Flags: true, Envelope: true, RFC822Size: true, InternalDate: true,
-			BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
-			BodySection:   []*imap.FetchItemBodySection{refsSection},
-		}).Collect()
+		var err error
+		c, err = w.fetchHeaderRange(ctx, c, a, f, uids[start:min(start+100, len(uids))])
 		if err != nil {
-			return err
-		}
-		maxUID := uint32(0)
-		for _, buf := range msgs {
-			m := w.messageFromFetch(ctx, a, f, buf)
-			if _, err := w.e.st.UpsertHeader(ctx, m); err != nil {
-				return err
-			}
-			if m.UID > maxUID {
-				maxUID = m.UID
-			}
-			switch f.Role {
-			case "sent":
-				for _, t := range append(m.To, m.Cc...) {
-					_ = w.e.st.NoteContact(ctx, t, 5, m.Date)
-				}
-			case "inbox":
-				_ = w.e.st.NoteContact(ctx, store.Address{Name: m.FromName, Addr: m.FromAddr}, 1, m.Date)
-			}
-		}
-		if err := w.e.st.SetLastUID(ctx, f.ID, maxUID); err != nil {
-			return err
+			return c, err
 		}
 		if err := w.e.st.RecountFolder(ctx, f.ID); err != nil {
-			return err
+			return c, err
 		}
 		w.e.notify("messages", a.ID)
 	}
-	return nil
+	return c, nil
 }
 
-func addrList(as []imap.Address) []store.Address {
-	out := []store.Address{}
-	for _, x := range as {
-		if addr := x.Addr(); addr != "" {
-			out = append(out, store.Address{Name: x.Name, Addr: addr})
+func (w *worker) fetchHeaderRange(ctx context.Context, c *imapclient.Client, a store.Account, f store.Folder, uids []imap.UID) (*imapclient.Client, error) {
+	if ctx.Err() != nil {
+		return c, ctx.Err()
+	}
+	var set imap.UIDSet
+	for _, u := range uids {
+		set.AddNum(u)
+	}
+	msgs, err := c.Fetch(set, &imap.FetchOptions{
+		UID: true, Flags: true, RFC822Size: true, InternalDate: true,
+		BodyStructure: &imap.FetchItemBodyStructure{Extended: true},
+		BodySection:   []*imap.FetchItemBodySection{headerSection},
+	}).Collect()
+	if err == nil {
+		return c, w.storeHeaders(ctx, a, f, msgs)
+	}
+	if !isConnErr(c) && !looksUnreadable(err) {
+		return c, err
+	}
+	// The answer could not be read, and the connection may be gone with it.
+	if c, err = w.reselect(ctx, c, f); err != nil {
+		return c, err
+	}
+	if len(uids) == 1 {
+		return w.fetchHeaderPlain(ctx, c, a, f, uids[0])
+	}
+	half := len(uids) / 2
+	if c, err = w.fetchHeaderRange(ctx, c, a, f, uids[:half]); err != nil {
+		return c, err
+	}
+	return w.fetchHeaderRange(ctx, c, a, f, uids[half:])
+}
+
+// fetchHeaderPlain stores one message the server cannot describe: its header
+// and flags, without a body structure; the body is then the whole TEXT part.
+func (w *worker) fetchHeaderPlain(ctx context.Context, c *imapclient.Client, a store.Account, f store.Folder, uid imap.UID) (*imapclient.Client, error) {
+	msgs, err := c.Fetch(imap.UIDSetNum(uid), &imap.FetchOptions{
+		UID: true, Flags: true, RFC822Size: true, InternalDate: true,
+		BodySection: []*imap.FetchItemBodySection{headerSection},
+	}).Collect()
+	if err != nil {
+		if c, err = w.reselect(ctx, c, f); err != nil {
+			return c, err
+		}
+		// Not even the header: keep a row so the UID is not asked for again.
+		msgs = []*imapclient.FetchMessageBuffer{{UID: uid}}
+	}
+	for _, buf := range msgs {
+		m := w.messageFromFetch(ctx, a, f, buf)
+		m.Structure = store.Structure{Text: &store.Part{Path: "1", Type: "text/plain"}}
+		if m.Subject == "" {
+			m.Subject = "(this message could not be read from the server)"
+		}
+		if _, err := w.e.st.UpsertHeader(ctx, m); err != nil {
+			return c, err
+		}
+		if err := w.e.st.SetLastUID(ctx, f.ID, m.UID); err != nil {
+			return c, err
 		}
 	}
-	return out
+	return c, nil
+}
+
+// looksUnreadable: the reply did not parse (as opposed to a NO or a timeout).
+func looksUnreadable(err error) bool {
+	var ie *imap.Error
+	if errors.As(err, &ie) {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "imapwire") || strings.Contains(s, "expected") || strings.Contains(s, "in response") || strings.Contains(s, "parse")
+}
+
+// reselect redials when the connection died and selects the folder again.
+// The caller holds w.mu (it runs inside w.do).
+func (w *worker) reselect(ctx context.Context, c *imapclient.Client, f store.Folder) (*imapclient.Client, error) {
+	if isConnErr(c) {
+		w.c = nil
+		nc, _, err := w.conn()
+		if err != nil {
+			return c, err
+		}
+		c = nc
+	}
+	if _, err := c.Select(f.Name, &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+		return c, err
+	}
+	return c, ctx.Err()
+}
+
+func (w *worker) storeHeaders(ctx context.Context, a store.Account, f store.Folder, msgs []*imapclient.FetchMessageBuffer) error {
+	maxUID := uint32(0)
+	for _, buf := range msgs {
+		m := w.messageFromFetch(ctx, a, f, buf)
+		if _, err := w.e.st.UpsertHeader(ctx, m); err != nil {
+			return err
+		}
+		if m.UID > maxUID {
+			maxUID = m.UID
+		}
+		switch f.Role {
+		case "sent":
+			for _, t := range append(m.To, m.Cc...) {
+				_ = w.e.st.NoteContact(ctx, t, 5, m.Date)
+			}
+		case "inbox":
+			_ = w.e.st.NoteContact(ctx, store.Address{Name: m.FromName, Addr: m.FromAddr}, 1, m.Date)
+		}
+	}
+	return w.e.st.SetLastUID(ctx, f.ID, maxUID)
 }
 
 func (w *worker) messageFromFetch(ctx context.Context, a store.Account, f store.Folder, buf *imapclient.FetchMessageBuffer) *store.Message {
 	m := &store.Message{AccountID: a.ID, FolderID: f.ID, UID: uint32(buf.UID), Size: buf.RFC822Size}
 	m.Seen, m.Flagged, m.Answered = flagsOf(buf.Flags)
-	if env := buf.Envelope; env != nil {
-		m.Subject = env.Subject
-		m.MessageID = env.MessageID
-		if len(env.InReplyTo) > 0 {
-			m.InReplyTo = env.InReplyTo[0]
-		}
-		if len(env.From) > 0 {
-			m.FromName = env.From[0].Name
-			m.FromAddr = env.From[0].Addr()
-		}
-		m.To = addrList(env.To)
-		m.Cc = addrList(env.Cc)
-		if len(env.ReplyTo) > 0 {
-			m.ReplyTo = env.ReplyTo[0].Addr()
-		}
-		if !env.Date.IsZero() {
-			m.Date = env.Date.Unix()
+	var hi headerInfo
+	for _, sec := range buf.BodySection {
+		if sec.Section != nil && sec.Section.Specifier == imap.PartSpecifierHeader {
+			hi = parseHeader(sec.Bytes)
 		}
 	}
-	if m.Date == 0 || m.Date > buf.InternalDate.Unix()+86400 {
+	m.Subject, m.MessageID, m.InReplyTo, m.ReplyTo = hi.Subject, hi.MessageID, hi.InReplyTo, hi.ReplyTo
+	m.FromName, m.FromAddr = hi.From.Name, hi.From.Addr
+	m.To, m.Cc = hi.To, hi.Cc
+	if !hi.Date.IsZero() {
+		m.Date = hi.Date.Unix()
+	}
+	// A missing or future Date is replaced by when the server received it.
+	if !buf.InternalDate.IsZero() && (m.Date == 0 || m.Date > buf.InternalDate.Unix()+86400) {
 		m.Date = buf.InternalDate.Unix()
 	}
-	var refs []string
-	for _, sec := range buf.BodySection {
-		h := parseHeaderFields(sec.Bytes)
-		refs = msgIDs(h.Get("References"))
-	}
-	m.Refs = strings.Join(refs, " ")
+	m.Refs = strings.Join(hi.Refs, " ")
 	m.Structure = structureOf(buf.BodyStructure)
 	m.HasAttach = hasAttachments(m.Structure)
-	m.ThreadKey = w.threadKey(ctx, a.ID, m, refs)
+	m.ThreadKey = w.threadKey(ctx, a.ID, m, hi.Refs)
 	return m
 }
 

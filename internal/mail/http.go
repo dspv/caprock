@@ -126,7 +126,8 @@ func (s *Service) addAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Checked before anything is stored: a wrong password leaves no trace.
-	if err := engine.TestAccount(a, req.Password); err != nil {
+	a, err := engine.TestAccount(a, req.Password)
+	if err != nil {
 		fail(w, 422, err)
 		return
 	}
@@ -173,7 +174,7 @@ func (s *Service) updateAccount(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			if err := engine.TestAccount(a, pw); err != nil {
+			if a, err = engine.TestAccount(a, pw); err != nil {
 				fail(w, 422, err)
 				return
 			}

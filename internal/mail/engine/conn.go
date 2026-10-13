@@ -35,8 +35,8 @@ func tlsFor(host string) *tls.Config {
 	return &tls.Config{ServerName: host}
 }
 
-// dialIMAP connects and logs in.
-func dialIMAP(a store.Account, password string, h *imapclient.UnilateralDataHandler) (*imapclient.Client, error) {
+// dialIMAP connects and signs in; returns the sign-in name that worked.
+func dialIMAP(a store.Account, password string, h *imapclient.UnilateralDataHandler) (*imapclient.Client, string, error) {
 	addr := net.JoinHostPort(a.IMAPHost, strconv.Itoa(a.IMAPPort))
 	opts := &imapclient.Options{
 		WordDecoder:           wordDecoder,
@@ -55,11 +55,12 @@ func dialIMAP(a store.Account, password string, h *imapclient.UnilateralDataHand
 		c, err = imapclient.DialTLS(addr, opts)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("connect %s: %w", addr, err)
+		return nil, "", fmt.Errorf("connect %s: %w", addr, err)
 	}
-	if err := c.Login(a.Username, password).Wait(); err != nil {
+	name, err := loginIMAP(c, a, password)
+	if err != nil {
 		c.Close()
-		return nil, fmt.Errorf("login: %w", err)
+		return nil, "", fmt.Errorf("login: %w", err)
 	}
-	return c, nil
+	return c, name, nil
 }

@@ -23,6 +23,9 @@ type Settings struct {
 	HelpURL string `json:"help_url,omitempty"`
 	// Known is false when the settings are a guess.
 	Known bool `json:"known"`
+	// NeedsUsername: the sign-in name differs from the address (iCloud+
+	// custom domains), so the form shows the Username field at once.
+	NeedsUsername bool `json:"needs_username,omitempty"`
 }
 
 type preset struct {
@@ -40,9 +43,9 @@ var presets = []preset{
 		help:    "https://myaccount.google.com/apppasswords",
 		domains: []string{"gmail.com", "googlemail.com"}, mxHints: []string{"google.com", "googlemail.com"}},
 	{name: "iCloud", imap: "imap.mail.me.com", smtp: "smtp.mail.me.com", smtpPort: 587, smtpTLS: "starttls",
-		note:    "iCloud needs an app-specific password (account.apple.com → Sign-In and Security). Log in with the address.",
+		note:    "iCloud needs an app-specific password (account.apple.com → Sign-In and Security → App-Specific Passwords), not your Apple Account password.",
 		help:    "https://account.apple.com/account/manage",
-		domains: []string{"icloud.com", "me.com", "mac.com"}},
+		domains: []string{"icloud.com", "me.com", "mac.com"}, mxHints: []string{"mail.icloud.com"}},
 	{name: "Fastmail", imap: "imap.fastmail.com", smtp: "smtp.fastmail.com", smtpPort: 465, smtpTLS: "tls",
 		note:    "Fastmail needs an app password (Settings → Privacy & Security → App passwords).",
 		help:    "https://app.fastmail.com/settings/security/apps",
@@ -116,6 +119,13 @@ func Guess(ctx context.Context, email string) Settings {
 						}
 						if p.name == "Outlook" {
 							s.Provider = "Microsoft 365"
+						}
+						if p.name == "iCloud" {
+							// iCloud+ custom domain: the sign-in is the
+							// @icloud.com address, the mail is still yours.
+							s.Provider = "iCloud+ (custom domain)"
+							s.Note = "Your domain's mail is on iCloud. Sign in with an app-specific password (account.apple.com → Sign-In and Security → App-Specific Passwords) and put your @icloud.com address in Username; mail is still sent from " + strings.ToLower(email) + "."
+							s.NeedsUsername = true
 						}
 						return s
 					}

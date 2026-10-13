@@ -168,9 +168,15 @@ func (w *worker) conn() (*imapclient.Client, store.Account, error) {
 	if err != nil {
 		return nil, a, err
 	}
-	c, err := dialIMAP(a, pw, nil)
+	c, name, err := dialIMAP(a, pw, nil)
 	if err != nil {
 		return nil, a, err
+	}
+	if name != a.Username {
+		// Remember the sign-in name the server took, so the next connection
+		// does not start with a refusal.
+		a.Username = name
+		_ = w.e.st.UpdateAccount(w.ctx, a)
 	}
 	w.c = c
 	return c, a, nil
@@ -293,7 +299,7 @@ func (w *worker) idleOnce(signal func()) error {
 		},
 		Fetch: func(*imapclient.FetchMessageData) { signal() },
 	}
-	c, err := dialIMAP(a, pw, h)
+	c, _, err := dialIMAP(a, pw, h)
 	if err != nil {
 		return err
 	}

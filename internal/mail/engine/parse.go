@@ -7,13 +7,17 @@ import (
 	"html"
 	"io"
 	"mime/quotedprintable"
-	"net/textproto"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"time"
+
 	"github.com/emersion/go-imap/v2"
+	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/charset"
+	"github.com/emersion/go-message/mail"
+	"github.com/emersion/go-message/textproto"
 
 	store "github.com/dspv/caprock/internal/mail/mailstore"
 )
@@ -150,13 +154,6 @@ func decodeTransfer(raw []byte, encoding string) []byte {
 	return raw
 }
 
-// parseHeaderFields reads a fetched HEADER.FIELDS section.
-func parseHeaderFields(b []byte) textproto.MIMEHeader {
-	r := textproto.NewReader(bufio.NewReader(io.MultiReader(bytes.NewReader(b), strings.NewReader("\r\n"))))
-	h, _ := r.ReadMIMEHeader()
-	return h
-}
-
 var msgIDRe = regexp.MustCompile(`<([^<>\s]+)>`)
 
 // msgIDs extracts the identifiers from a References header, without brackets.
@@ -256,4 +253,82 @@ func CleanHTML(h string) string {
 	h = reOnAttr.ReplaceAllString(h, "")
 	h = reJSURL.ReplaceAllString(h, `$1=$2about:blank#`)
 	return h
+}
+
+// headerInfo is what the list needs, read from the message's own header.
+//
+// Read from BODY.PEEK[HEADER] rather than ENVELOPE or HEADER.FIELDS: iCloud
+// has sent ENVELOPEs with unescaped quotes in the Message-ID (a strict parser
+// fails the whole FETCH, and the folder never syncs) and has answered
+// HEADER.FIELDS with another message's lines. The full header is a few KB.
+type headerInfo struct {
+	Subject, MessageID, InReplyTo, ReplyTo string
+	From                                   store.Address
+	To, Cc                                 []store.Address
+	Refs                                   []string
+	Date                                   time.Time
+}
+
+func parseHeader(raw []byte) headerInfo {
+	var hi headerInfo
+	th, err := textproto.ReadHeader(bufio.NewReader(io.MultiReader(bytes.NewReader(raw), strings.NewReader("\r\n\r\n"))))
+	if err != nil && th.Len() == 0 {
+		return hi
+	}
+	h := mail.Header{Header: message.Header{Header: th}}
+	if s, err := h.Subject(); err == nil {
+		hi.Subject = s
+	} else {
+		hi.Subject = h.Get("Subject")
+	}
+	hi.MessageID = firstID(h.Get("Message-Id"))
+	hi.InReplyTo = firstID(h.Get("In-Reply-To"))
+	hi.Refs = msgIDs(h.Get("References"))
+	if from := addresses(h, "From"); len(from) > 0 {
+		hi.From = from[0]
+	}
+	hi.To = addresses(h, "To")
+	hi.Cc = addresses(h, "Cc")
+	if rt := addresses(h, "Reply-To"); len(rt) > 0 {
+		hi.ReplyTo = rt[0].Addr
+	}
+	if d, err := h.Date(); err == nil {
+		hi.Date = d
+	}
+	return hi
+}
+
+// firstID is the first <id> in a header, or the bare value when it has no brackets.
+func firstID(v string) string {
+	if ids := msgIDs(v); len(ids) > 0 {
+		return ids[0]
+	}
+	return strings.Trim(strings.TrimSpace(v), "<>")
+}
+
+var looseAddr = regexp.MustCompile(`[^\s<>"',;:()]+@[^\s<>"',;:()]+`)
+
+// addresses parses an address list, and when it is malformed (common in
+// bulk mail) still recovers every address in it.
+func addresses(h mail.Header, key string) []store.Address {
+	out := []store.Address{}
+	if list, err := h.AddressList(key); err == nil {
+		for _, a := range list {
+			out = append(out, store.Address{Name: a.Name, Addr: a.Address})
+		}
+		return out
+	}
+	raw := h.Get(key)
+	if dec, err := wordDecoder.DecodeHeader(raw); err == nil {
+		raw = dec
+	}
+	for _, addr := range looseAddr.FindAllString(raw, -1) {
+		out = append(out, store.Address{Addr: addr})
+	}
+	if len(out) == 1 {
+		if i := strings.IndexAny(raw, "<"); i > 0 {
+			out[0].Name = strings.Trim(strings.TrimSpace(raw[:i]), `"'`)
+		}
+	}
+	return out
 }

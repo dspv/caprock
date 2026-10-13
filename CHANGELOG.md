@@ -7,6 +7,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **mail:** iCloud and Gmail accounts connect the first time. The sign-in
+  name is retried in the forms iCloud accepts (the full address or the part
+  before the @; for sending, the @icloud.com address), an iCloud+ custom
+  domain is recognised and asks for the @icloud.com sign-in, and a refused
+  password says which app password to make. Mail is read from each message's
+  whole header, so iCloud's malformed answers no longer stop a folder, and one
+  message the server cannot describe is kept and shown instead of halting sync.
+
 ## [0.115.0] - 2026-10-13
 
 ### Added

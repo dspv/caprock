@@ -25,8 +25,10 @@ export function AddAccount({ onDone, onCancel, first }: { onDone: () => void; on
       api.guess(email).then((g) => {
         if (!live) return
         setGuess(g)
-        setS({ imap_host: g.imap_host, imap_port: g.imap_port, imap_tls: g.imap_tls, smtp_host: g.smtp_host, smtp_port: g.smtp_port, smtp_tls: g.smtp_tls, username: email })
-        if (!g.known) setAdv(true)
+        // iCloud+ on a custom domain signs in with the @icloud.com address:
+        // leave Username empty and show it, so it is typed, not assumed.
+        setS({ imap_host: g.imap_host, imap_port: g.imap_port, imap_tls: g.imap_tls, smtp_host: g.smtp_host, smtp_port: g.smtp_port, smtp_tls: g.smtp_tls, username: g.needs_username ? '' : email })
+        if (!g.known || g.needs_username) setAdv(true)
       }).catch(() => {})
     }, 300)
     return () => {
@@ -67,7 +69,7 @@ export function AddAccount({ onDone, onCancel, first }: { onDone: () => void; on
       {!adv && guess && <button type="button" className="link small" onClick={() => setAdv(true)}>Server settings</button>}
       {adv && (
         <div className="servers">
-          <label className="field"><span>Username</span><input value={s.username} onChange={(e) => setS({ ...s, username: e.target.value })} placeholder={email} /></label>
+          <label className="field"><span>Username</span><input value={s.username} onChange={(e) => setS({ ...s, username: e.target.value })} placeholder={guess?.needs_username ? 'you@icloud.com' : email} /></label>
           <div className="row3">
             <label className="field"><span>IMAP server</span><input value={s.imap_host} onChange={(e) => setS({ ...s, imap_host: e.target.value })} /></label>
             <label className="field"><span>Port</span><input type="number" value={s.imap_port} onChange={(e) => setS({ ...s, imap_port: Number(e.target.value) })} /></label>

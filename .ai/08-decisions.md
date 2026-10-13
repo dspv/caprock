@@ -3181,6 +3181,13 @@ dashboard and a desktop app on three OSes.
 - **Passwords in the OS keychain**, a 0600 file only where there is none
   (Linux without a Secret Service). App passwords, not OAuth: Gmail and iCloud
   accept them; Microsoft accounts that refuse passwords are a known gap.
+- **Headers are read whole.** The list is built from `BODY.PEEK[HEADER]`,
+  parsed locally, never from ENVELOPE or `HEADER.FIELDS`: iCloud has sent
+  ENVELOPEs with unescaped quotes in the Message-ID (one bad answer fails
+  the whole FETCH, and clients stop syncing) and has answered HEADER.FIELDS
+  with another message's lines. A batch whose answer cannot be read is split
+  until the one message is found, which is stored without its body structure;
+  a folder never stops on one message.
 - **Sync shape.** The newest 500 messages per folder first, older history in
   steps of 500 per full pass up to 20,000; text parts fetched by IMAP part
   path, attachments only on demand; IMAP IDLE on INBOX for new mail, a poll

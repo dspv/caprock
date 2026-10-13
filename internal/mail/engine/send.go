@@ -6,16 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-message/mail"
-	"github.com/emersion/go-sasl"
-	"github.com/emersion/go-smtp"
 
 	store "github.com/dspv/caprock/internal/mail/mailstore"
 )
@@ -221,58 +217,31 @@ func (e *Engine) Send(ctx context.Context, d Draft) error {
 }
 
 func sendSMTP(a store.Account, password string, rcpt []string, raw []byte) error {
-	addr := net.JoinHostPort(a.SMTPHost, strconv.Itoa(a.SMTPPort))
-	var c *smtp.Client
-	var err error
-	switch a.SMTPTLS {
-	case "starttls":
-		c, err = smtp.DialStartTLS(addr, tlsFor(a.SMTPHost))
-	case "none":
-		c, err = smtp.Dial(addr)
-	default:
-		c, err = smtp.DialTLS(addr, tlsFor(a.SMTPHost))
-	}
+	c, err := loginSMTP(a, password)
 	if err != nil {
-		return fmt.Errorf("smtp connect %s: %w", addr, err)
+		return fmt.Errorf("smtp: %w", err)
 	}
 	defer c.Close()
-	if ok, _ := c.Extension("AUTH"); ok {
-		if err := c.Auth(sasl.NewPlainClient("", a.Username, password)); err != nil {
-			return fmt.Errorf("smtp login: %w", err)
-		}
-	}
 	if err := c.SendMail(a.Email, rcpt, bytes.NewReader(raw)); err != nil {
 		return fmt.Errorf("smtp send: %w", err)
 	}
 	return c.Quit()
 }
 
-// TestAccount checks that IMAP and SMTP accept the credentials.
-func TestAccount(a store.Account, password string) error {
-	c, err := dialIMAP(a, password, nil)
+// TestAccount checks that IMAP and SMTP accept the credentials, and returns
+// the account with the IMAP sign-in name that worked.
+func TestAccount(a store.Account, password string) (store.Account, error) {
+	c, name, err := dialIMAP(a, password, nil)
 	if err != nil {
-		return fmt.Errorf("IMAP: %w", err)
+		return a, fmt.Errorf("IMAP: %w", err)
 	}
 	_ = c.Logout().Wait()
 	c.Close()
-	addr := net.JoinHostPort(a.SMTPHost, strconv.Itoa(a.SMTPPort))
-	var sc *smtp.Client
-	switch a.SMTPTLS {
-	case "starttls":
-		sc, err = smtp.DialStartTLS(addr, tlsFor(a.SMTPHost))
-	case "none":
-		sc, err = smtp.Dial(addr)
-	default:
-		sc, err = smtp.DialTLS(addr, tlsFor(a.SMTPHost))
-	}
+	a.Username = name
+	sc, err := loginSMTP(a, password)
 	if err != nil {
-		return fmt.Errorf("SMTP: connect %s: %w", addr, err)
+		return a, fmt.Errorf("SMTP: %w", err)
 	}
 	defer sc.Close()
-	if ok, _ := sc.Extension("AUTH"); ok {
-		if err := sc.Auth(sasl.NewPlainClient("", a.Username, password)); err != nil {
-			return fmt.Errorf("SMTP: login: %w", err)
-		}
-	}
-	return sc.Quit()
+	return a, sc.Quit()
 }

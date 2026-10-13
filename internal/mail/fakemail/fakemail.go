@@ -4,7 +4,6 @@ package fakemail
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -107,7 +106,8 @@ func (ss *smtpSession) AuthMechanisms() []string { return []string{sasl.Plain} }
 func (ss *smtpSession) Auth(string) (sasl.Server, error) {
 	return sasl.NewPlainServer(func(_, user, pass string) error {
 		if user != ss.s.User || pass != ss.s.Password {
-			return errors.New("invalid credentials")
+			// What Gmail answers; iCloud says 550 for an unknown name.
+			return &smtp.SMTPError{Code: 535, EnhancedCode: smtp.EnhancedCode{5, 7, 8}, Message: "Username and Password not accepted"}
 		}
 		ss.auth = true
 		return nil
