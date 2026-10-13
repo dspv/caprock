@@ -39,7 +39,7 @@ import { useCanControl } from '@/lib/useCanControl'
 import { githubApi } from '@/lib/github'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
-import { PROGRESS_MAX_MS, branchWorktree, fixCIMessage, fixConflictMessage, fixWorktreeName, forceErrText, hasConflict, isBehind, prAgents, prChips, progressStands, rerunText, typeable, type DeckWorktree, type PRAgent, type PRChip, type PRProgress } from '@/lib/prforce'
+import { PROGRESS_MAX_MS, branchWorktree, fixCIMessage, fixConflictMessage, fixWorktreeName, forceErrText, hasConflict, isBehind, prAgents, prStatus, progressStands, queuedFor, quickActions, QUICK_LABEL, rerunText, topChip, typeable, type DeckWorktree, type PRAgent, type PRChip, type PRProgress, type PRStatus } from '@/lib/prforce'
 
 /** How long arrow keys on the divider rest before the terminal is fitted to the new height. */
 export const KEY_SETTLE_MS = 250
@@ -400,21 +400,30 @@ const CHIP_TEXT: Record<PRChip['tone'], string> = {
 const AGENT_TINT: Record<PRAgent['word'], string> = {
   fixing: 'bg-ok/20 text-ok', waiting: 'bg-accent/20 text-accent', idle: 'bg-[var(--app-row-hover)] text-fg-muted',
 }
-const AGENT_WORD: Record<PRAgent['word'], string> = { fixing: 'text-ok', waiting: 'text-accent', idle: 'text-fg-faint' }
 
-/** Who is on the PR's branch: the agent's initial and its word, or "2 agents"; a click opens it. */
-function AgentMark({ agents, onOpen }: { agents: PRAgent[]; onOpen?: (s: SessionSummary) => void }) {
-  if (agents.length === 0) return null
-  const a = agents[0]!
-  const many = agents.length > 1
-  return (
-    <button type="button" data-deck-pr-agent={a.word} disabled={!onOpen} onClick={(e) => { e.stopPropagation(); onOpen?.(a.session) }}
-      title={`${agents.map((x) => x.title).join('\n')}${onOpen ? '\nOpen its tab' : ''}`}
-      className="flex shrink-0 items-center gap-1 rounded-[4px] px-0.5 text-[10.5px] leading-[14px] hover:bg-[var(--app-row-hover)]">
-      <span aria-hidden className={`grid h-[14px] w-[14px] place-items-center rounded-[4px] text-[9px] font-semibold ${AGENT_TINT[a.word]}`}>{a.initial}</span>
-      <span className={many ? 'text-fg-muted' : AGENT_WORD[a.word]}>{many ? `${agents.length} agents` : a.word}</span>
-    </button>
+const STATUS_TEXT: Record<PRStatus['word'], string> = { 'in work': 'text-accent', waiting: 'text-warn', queued: 'text-fg-muted' }
+
+/**
+ * Whether anything is on the PR, in one word — in work, waiting, queued —
+ * with the initial of the agent on its branch beside it; an idle agent is
+ * its initial alone. A click on an agent opens its tab.
+ */
+function StatusMark({ status, agents, onOpen }: { status?: PRStatus; agents: PRAgent[]; onOpen?: (s: SessionSummary) => void }) {
+  const a = status?.agent ?? agents[0]
+  if (!status && !a) return null
+  const title = status?.title || agents.map((x) => x.title).join('\n')
+  const inner = (
+    <>
+      {a && <span aria-hidden data-deck-pr-agent={a.word} className={`grid h-[14px] w-[14px] shrink-0 place-items-center rounded-[4px] text-[9px] font-semibold ${AGENT_TINT[a.word]}`}>{a.initial}</span>}
+      {status?.word === 'in work' && <span aria-hidden className="ci-spin inline-block h-[7px] w-[7px] shrink-0 rounded-full" />}
+      {status && <span className={`whitespace-nowrap ${STATUS_TEXT[status.word]}`}>{status.word}</span>}
+      {agents.length > 1 && <span className="text-fg-faint">+{agents.length - 1}</span>}
+    </>
   )
+  const cls = 'flex shrink-0 items-center gap-1 rounded-[4px] px-0.5 text-[10.5px] leading-[14px]'
+  return a && onOpen
+    ? <button type="button" data-deck-pr-status={status?.word ?? 'idle'} onClick={(e) => { e.stopPropagation(); onOpen(a.session) }} title={`${title}\nOpen its tab`} className={`${cls} hover:bg-[var(--app-row-hover)]`}>{inner}</button>
+    : <span data-deck-pr-status={status?.word ?? 'idle'} title={title} className={cls}>{inner}</span>
 }
 
 const WORD_TEXT: Record<PRWordTone, string> = {
@@ -656,6 +665,25 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   // inside the row, and then says in the row what it is doing.
   const root = s.repo_root || s.cwd
   const agentsOf = (p: SessionPRLive) => prAgents(p.live?.branch, worktrees)
+  // Open, or not known otherwise while GitHub is not read: its actions are offered.
+  const openish = (p: SessionPRLive) => (p.live ? p.live.state === 'open' : !p.merged_at && !p.closed_at)
+  // What is queued for the agents on the open PRs' branches and for this
+  // session, read with each PR poll: a PR with a message waiting is "queued".
+  const [queues, setQueues] = useState<Record<string, { text: string }[]>>({})
+  const queueIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const p of rows) if (p.live?.state === 'open') for (const a of prAgents(p.live.branch, worktrees)) if (typeable(a.session)) ids.add(a.session.session_id)
+    if (typeable(s)) ids.add(sessionId)
+    return [...ids].sort().join(' ')
+  }, [rows, worktrees, s, sessionId])
+  useEffect(() => {
+    if (view !== 'pr' || !queueIds) { setQueues({}); return }
+    let on = true
+    void Promise.all(queueIds.split(' ').map(async (id) => {
+      try { return [id, (await api.queue(id)).messages ?? []] as const } catch { return [id, []] as const }
+    })).then((xs) => { if (on) setQueues(Object.fromEntries(xs)) })
+    return () => { on = false }
+  }, [view, queueIds, prsData])
   // Who a fix goes to: a Caprock-started agent on the branch; for CI, else
   // the session in front as Investigate does; else a new agent in the
   // branch's checkout, or in a new worktree at the PR's head when there is
@@ -754,6 +782,19 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   })
   const actionsFor = (p: SessionPRLive): ReactNode => {
     const live = p.live
+    // Not connected: the actions are there, greyed, with the way to turn them on.
+    if (!live && prsData && !prsData.connected && openish(p)) {
+      return (
+        <div data-deck-pr-actions className="flex min-w-0 items-center gap-1.5 overflow-hidden pb-0.5 pl-[34px] pr-1 text-[11px]">
+          {(['conflict', 'ci', 'rerun', 'update'] as ForceKind[]).map((k) => (
+            <button key={k} type="button" data-deck-pr-action={k} disabled title="Connect GitHub first: Caprock reads and acts on pull requests through your GitHub login"
+              className="shrink-0 cursor-not-allowed rounded-[4px] border border-[var(--app-hairline)] px-1.5 leading-[16px] text-fg-faint opacity-60">{FORCE_LABEL[k]}</button>
+          ))}
+          <button type="button" data-deck-pr-connect disabled={connecting} onClick={() => void connect()} title="Reads CI and acts on pull requests through your GitHub CLI login; turn it off in Settings → GitHub"
+            className="shrink-0 text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'Connect GitHub'}</button>
+        </div>
+      )
+    }
     if (!live || live.state !== 'open') return null
     const kinds: ForceKind[] = []
     if (hasConflict(p)) kinds.push('conflict')
@@ -783,6 +824,23 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
         })}
       </div>
     )
+  }
+  // The one-word actions beside the row's problem chip: each opens the same
+  // confirm line in the row as the ⋯ actions do, without opening its CI.
+  const quickFor = (p: SessionPRLive): ReactNode => {
+    const ks = quickActions(p)
+    if (ks.length === 0) return null
+    return ks.map((k) => {
+      const no = forceWhy(p, k)
+      return (
+        <button key={k} type="button" data-deck-pr-quick={k} disabled={!!no || forcing === p.number}
+          onClick={(e) => { e.stopPropagation(); setConfirm({ pr: p.number, kind: k }) }}
+          title={no || FORCE_TITLE[k]}
+          className="shrink-0 rounded-[3px] px-0.5 text-[11px] font-medium leading-[14px] text-accent hover:bg-accent/10 hover:underline disabled:cursor-not-allowed disabled:font-normal disabled:text-fg-faint disabled:no-underline disabled:hover:bg-transparent">
+          {QUICK_LABEL[k]}
+        </button>
+      )
+    })
   }
   const total = ci ? runnerTime(ci, now) : 0
   const runnerTitle = ci ? `Runner time, measured from GitHub’s job times${ciActive(ci) ? ' and the running jobs on the clock' : ''}${ci.by_os.length ? `\nFinished: ${byOSLine(ci)}` : ''}` : ''
@@ -863,12 +921,14 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
           {rows.map((p) => {
             if (cramped && openPr !== p.number) return null
             const agents = agentsOf(p)
+            const progress = standing(p, agents)
             return (
             <PRRow key={p.url} p={p} now={now} runs={seenRuns[p.number]} cost={prCost(p.number)} open={openPr === p.number}
               onToggle={() => togglePR(p.number)}
               onPick={(node) => pickInRow(p.number, node)}
-              agents={agents} onOpenAgent={onOpenSession} progress={standing(p, agents)}
-              actions={openPr === p.number ? actionsFor(p) : null} onMenu={p.live?.state === 'open' ? () => openActions(p.number) : undefined}>
+              agents={agents} onOpenAgent={onOpenSession} status={prStatus(p, agents, progress, queuedFor(p, agents, queues))}
+              quick={quickFor(p)}
+              actions={openPr === p.number || confirm?.pr === p.number ? actionsFor(p) : null} onMenu={openish(p) ? () => openActions(p.number) : undefined}>
               {openPr === p.number && prDetail(p)}
             </PRRow>
             )
@@ -999,14 +1059,16 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
  * conflict when GitHub said so, and its age. A click opens its CI in place;
  * ↗ opens the PR on GitHub.
  */
-function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpenAgent, progress, actions, onMenu, children }: { p: SessionPRLive; now: number; runs?: CIRun[]; cost?: CICost; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; agents?: PRAgent[]; onOpenAgent?: (s: SessionSummary) => void; progress?: PRProgress; actions?: ReactNode; onMenu?: () => void; children?: ReactNode }) {
+function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpenAgent, status, quick, actions, onMenu, children }: { p: SessionPRLive; now: number; runs?: CIRun[]; cost?: CICost; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; agents?: PRAgent[]; onOpenAgent?: (s: SessionSummary) => void; status?: PRStatus; quick?: ReactNode; actions?: ReactNode; onMenu?: () => void; children?: ReactNode }) {
   const live = p.live
   const dot = prDotState(p)
   const v = prVerdict(p, now, runs)
   // "changes requested" is the review chip; approved and review required stay words.
   const reviewWords = prReviewText(p)
   const review = live?.review === 'changes_requested' ? undefined : reviewWords
-  const chips = prChips(p)
+  // One problem chip, the most important; the rest in its tooltip.
+  const { chip, more } = topChip(p)
+  const chipTitle = chip && `${chip.title}${more.length ? `\nAlso: ${more.join(', ')}` : ''}`
   const age = prAge(p, now)
   // Its runner cost once a job finished: "· $0.42", "· $0 · public repo".
   const money = sumCostLabel(cost)
@@ -1019,7 +1081,7 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpen
         * the chevron that folds it. */}
       <div className={open ? 'sticky top-0 z-[2] shrink-0 bg-[var(--app-chrome-bg)]' : undefined}>
       <div onClick={onToggle}
-        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[10px_8px_minmax(40px,1fr)_auto_auto_minmax(64px,236px)_26px_14px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
+        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[10px_8px_minmax(40px,1fr)_auto_auto_minmax(64px,min(236px,20cqw))_26px_18px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
         <Chevron open={open} />
         <span role="img" aria-label={dot} title={dot} className="pr-dot" data-state={dot} />
         <button type="button" aria-expanded={open} onClick={(e) => { e.stopPropagation(); onToggle() }}
@@ -1032,20 +1094,14 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpen
         {/* What is doing something about it, who is on it, and what stands
           * between it and a merge — beside the mini pipeline. The chips and
           * the agent stay at every width; the review words give way. */}
-        <span className="flex min-w-0 items-center justify-end gap-1">
-          {/* An agent at work says "fixing" in its own mark: no second line for it. */}
-          {progress && !(progress.kind === 'agent' && agents.some((a) => a.word === 'fixing')) && (
-            <span data-deck-pr-progress={progress.kind} title={progress.text} className="flex shrink-0 items-center gap-1 text-[10.5px] text-accent">
-              <span aria-hidden className="ci-spin inline-block h-[7px] w-[7px] shrink-0 rounded-full" />{progress.text}
-            </span>
-          )}
-          <AgentMark agents={agents} onOpen={onOpenAgent} />
-          {chips.map((c) => (
-            <span key={c.word} data-deck-pr-chip={c.word} title={c.title} className={`shrink-0 rounded-[4px] border px-1 text-[10px] font-medium leading-[14px] ${CHIP_TEXT[c.tone]}`}>{c.word}</span>
-          ))}
-          {review && <span data-deck-pr-review className={`hidden max-w-[150px] truncate text-[11px] @min-[640px]:block ${WORD_TEXT[review.tone]}`}>{review.text}</span>}
+        <span className="flex min-w-0 items-center justify-end gap-1.5">
+          <StatusMark status={status} agents={agents} onOpen={onOpenAgent} />
+          {chip && <span data-deck-pr-chip={chip.word} title={chipTitle} className={`shrink-0 rounded-[4px] border px-1 text-[10px] font-medium leading-[14px] ${CHIP_TEXT[chip.tone]}`}>{chip.word}</span>}
+          {quick && <span data-deck-pr-quicks className="flex shrink-0 items-center gap-0.5">{quick}</span>}
+          {review && <span data-deck-pr-review className={`hidden max-w-[150px] truncate text-[11px] @min-[1100px]:block ${WORD_TEXT[review.tone]}`}>{review.text}</span>}
         </span>
-        {nodes.length > 0 ? <span className="flex justify-end"><span className="hidden @min-[520px]:inline-flex"><MiniPipeline nodes={nodes} label={`#${p.number}: its checks`} onPick={onPick} /></span></span> : <span />}
+        {/* The mini pipeline goes before the title gives way: below 1000px the CI words say it. */}
+        {nodes.length > 0 ? <span className="flex justify-end"><span className="hidden @min-[1000px]:inline-flex"><MiniPipeline nodes={nodes} label={`#${p.number}: its checks`} onPick={onPick} /></span></span> : <span />}
         <span data-deck-pr-ci className="flex w-full min-w-0 items-baseline gap-1 overflow-hidden text-[11.5px]">
           <span title={v.title ?? v.text} className={`truncate ${v.strong ? 'font-medium' : ''} ${WORD_TEXT[v.tone]}`}>{v.text}</span>
           {money && <><span aria-hidden className="text-fg-faint">·</span><CostText c={money} data="pr" className="shrink-0" /></>}
@@ -1053,7 +1109,7 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpen
         <span data-deck-pr-age className="num text-right text-[11px] text-fg-faint" title={age.title}>{age.text}</span>
         {onMenu
           ? <button type="button" data-deck-pr-menu onClick={(e) => { e.stopPropagation(); onMenu() }} aria-label={`Actions on #${p.number}`} title="Fix with an agent, re-run checks, update the branch"
-              className="text-[12px] leading-none text-fg-faint hover:text-fg">⋯</button>
+              className="grid h-[16px] w-[18px] place-items-center rounded-[4px] text-[13px] font-semibold leading-none text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">⋯</button>
           : <span />}
         <button type="button" onClick={(e) => { e.stopPropagation(); openExternal(url) }} aria-label={`Open #${p.number} on GitHub`} title="Open the pull request on GitHub"
           className="text-[11px] text-fg-faint hover:text-fg">↗</button>

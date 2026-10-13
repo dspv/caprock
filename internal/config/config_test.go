@@ -193,3 +193,26 @@ func TestDefaultsSane(t *testing.T) {
 		t.Fatalf("defaults: %+v", d)
 	}
 }
+
+// The status line reads its mode on every render: unset, unknown and
+// unreadable are all Full, the line everyone had before the setting.
+func TestReadStatuslineMode(t *testing.T) {
+	dir := t.TempDir()
+	if got := ReadStatuslineMode(dir); got != StatuslineFull {
+		t.Fatalf("no config: %q", got)
+	}
+	for in, want := range map[string]string{
+		`{"statusline_mode":"short"}`: StatuslineShort,
+		`{"statusline_mode":"off"}`:   StatuslineOff,
+		`{"statusline_mode":"tiny"}`:  StatuslineFull,
+		`{"port":1}`:                  StatuslineFull,
+		`{not json`:                   StatuslineFull,
+	} {
+		if err := os.WriteFile(ConfigPath(dir), []byte(in), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := ReadStatuslineMode(dir); got != want {
+			t.Fatalf("%s: %q, want %q", in, got, want)
+		}
+	}
+}

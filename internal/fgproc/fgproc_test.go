@@ -82,6 +82,30 @@ func TestForegroundUnderAPty(t *testing.T) {
 	waitFor("")
 }
 
+// A parent pid is a stale number on Windows: csrss names as its parent the
+// smss.exe that exited at boot, and a later process can draw that pid. Only a
+// process started after the shell is its child — the CI flake where every
+// poll answered "csrss".
+func TestChildNameSkipsAnOrphanOfAReusedPid(t *testing.T) {
+	const shell, start = 4242, 1000
+	procs := []proc{
+		{pid: 600, ppid: shell, exe: "csrss.exe", start: 10},          // older than the shell
+		{pid: 4242, ppid: shell, exe: "pwsh.exe", start: 1000},        // the shell itself
+		{pid: 5000, ppid: 99, exe: "vim.exe", start: 2000},            // someone else's
+		{pid: 5001, ppid: shell, exe: "conhost.exe", start: 1001},     // the console host
+		{pid: 5002, ppid: shell, exe: `C:\bin\PING.EXE`, start: 1500}, // the job
+	}
+	if got := childName(shell, start, procs); got != "PING" {
+		t.Errorf("childName = %q, want PING", got)
+	}
+	if got := childName(shell, start, procs[:4]); got != "" {
+		t.Errorf("childName without a job = %q, want nothing", got)
+	}
+	if got := childName(shell, start, []proc{{pid: 7, ppid: shell, exe: "same.exe", start: start}}); got != "same" {
+		t.Errorf("a child started in the shell's clock tick = %q, want same", got)
+	}
+}
+
 // On Windows there is no foreground group; the shell's child is the program.
 // The test process stands in for the shell.
 func TestForegroundIsAChildOnWindows(t *testing.T) {
@@ -94,10 +118,10 @@ func TestForegroundIsAChildOnWindows(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
 	var got string
-	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
 		if got = Foreground(os.Getpid()); strings.EqualFold(got, "ping") {
 			return
 		}
 	}
-	t.Fatalf("Foreground(test process) = %q, want ping", got)
+	t.Fatalf("Foreground(test process) = %q after 30s, want ping (pid %d, test pid %d)", got, cmd.Process.Pid, os.Getpid())
 }

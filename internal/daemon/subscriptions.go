@@ -96,7 +96,8 @@ func (d *Daemon) prepareSub(sub config.Subscription) error {
 			d.log.Warn("hook shim", "component", "subs", "err", err)
 		}
 		shim = hooks.ShimCommand(d.opt.DataDir)
-		if self, err := os.Executable(); err == nil {
+		// Settings → Status line: Off keeps it out of every sign-in.
+		if self, err := os.Executable(); err == nil && config.NormalizeStatusline(d.config().StatuslineMode) != config.StatuslineOff {
 			statusline = hooks.ShellCommand(self) + " statusline"
 		}
 		defSettings, _ = hooks.DefaultSettingsPath()
@@ -507,4 +508,36 @@ func (s defaultSubSessions) OwnedRunningKind(kind string) []string {
 		out = append(out, id)
 	}
 	return out
+}
+
+// applyStatuslineMode registers or removes Caprock's own statusLine entry to
+// match Settings → Status line: in the user's own Claude Code settings and
+// in each Claude Code subscription's directory. Ownership is the hooks
+// package's (SetStatuslineOn): a statusLine the user set is never replaced
+// or removed. A failure is logged, not returned — the choice is saved and
+// takes effect on the line itself at the next render either way.
+func (d *Daemon) applyStatuslineMode(cfg config.Config) {
+	self, err := os.Executable()
+	if err != nil {
+		d.log.Warn("status line: no executable path", "component", "statusline", "err", err)
+		return
+	}
+	cmd := hooks.ShellCommand(self) + " statusline"
+	on := config.NormalizeStatusline(cfg.StatuslineMode) != config.StatuslineOff
+	var paths []string
+	if sp, err := hooks.DefaultSettingsPath(); err == nil {
+		paths = append(paths, sp)
+	}
+	for _, sub := range cfg.Subscriptions {
+		if sub.Agent == subs.AgentClaude {
+			paths = append(paths, filepath.Join(subs.Dir(d.opt.DataDir, sub.ID), "settings.json"))
+		}
+	}
+	for _, sp := range paths {
+		if changed, err := hooks.SetStatuslineOn(sp, cmd, on); err != nil {
+			d.log.Warn("status line not applied", "component", "statusline", "settings", sp, "err", err)
+		} else if changed {
+			d.log.Info("status line applied", "component", "statusline", "settings", sp, "on", on)
+		}
+	}
 }

@@ -12,12 +12,13 @@ const events: Event[] = [
   { id: 3, ts: iso(4_000), session_id: 's1', source: 'hook', kind: 'tool.pre', tool: 'Bash', payload: { tool_use_id: 'b', tool_input: { command: 'go test ./internal/...' } } },
 ]
 
-const h = vi.hoisted(() => ({ asked: 0, prs: { connected: true, prs: [] as unknown[] }, ci: { connected: true } as unknown, logs: 0, queued: [] as string[], rel: { connected: false } as unknown, main: { connected: false } as unknown, logViews: [] as string[], ciPrs: [] as (number | undefined)[], branches: { connected: true, branches: [] } as unknown, usage: undefined as unknown, usageAsked: 0, queuedTo: [] as string[], forced: [] as string[], rerunFail: undefined as unknown }))
+const h = vi.hoisted(() => ({ asked: 0, prs: { connected: true, prs: [] as unknown[] }, ci: { connected: true } as unknown, logs: 0, queued: [] as string[], rel: { connected: false } as unknown, main: { connected: false } as unknown, logViews: [] as string[], ciPrs: [] as (number | undefined)[], branches: { connected: true, branches: [] } as unknown, usage: undefined as unknown, usageAsked: 0, queuedTo: [] as string[], forced: [] as string[], rerunFail: undefined as unknown, queues: {} as Record<string, { text: string }[]> }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return { ...actual, api: { ...actual.api, recentMainEvents: async () => { h.asked++; return events }, sessionPRs: async () => h.prs, sessionCI: async (_id: string, pr?: number) => { h.ciPrs.push(pr); return h.ci }, sessionCIRelease: async () => h.rel, sessionCIMain: async () => h.main, sessionBranches: async () => h.branches, actionsUsage: async () => { h.usageAsked++; if (!h.usage) throw new Error('not connected'); return h.usage }, queueSend: async (id: string, text: string) => { h.queued.push(text); h.queuedTo.push(id); return { sent: false, queue: { session_id: 's1', messages: [], waiting: 'turn' } } },
     sessionPRRerun: async (_id: string, n: number) => { h.forced.push(`rerun ${n}`); if (h.rerunFail) throw h.rerunFail; return { ok: true, mode: 'failed', runs: 1, jobs: 2 } },
     sessionPRUpdateBranch: async (_id: string, n: number) => { h.forced.push(`update ${n}`); return { ok: true } },
+    queue: async (id: string) => ({ session_id: id, waiting: '', messages: h.queues[id] ?? [] }),
     sessionCILog: async (_id: string, _job: number, view = 'pr') => { h.logs++; h.logViews.push(view); return { job_id: 71, lines: ['go test ./...', '--- FAIL: TestDeck (0.01s)', '##[error]Process completed with exit code 1.'], error_line: 2 } } } }
 })
 
@@ -612,7 +613,9 @@ describe('the deck’s pull request rows: who is on them, and forcing a fix', ()
     const chips = (n: number) => [...document.querySelectorAll(`[data-deck-pr="${n}"] [data-deck-pr-chip]`)].map((c) => c.textContent)
     expect(chips(9)).toEqual(['conflict'])
     expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-chip]')).toHaveClass('text-danger')
-    expect(chips(8)).toEqual(['behind', 'review'])
+    // One chip, the most important; the rest in its tooltip.
+    expect(chips(8)).toEqual(['behind'])
+    expect(document.querySelector('[data-deck-pr="8"] [data-deck-pr-chip]')!.getAttribute('title')).toMatch(/\nAlso: changes requested$/)
     expect(chips(7)).toEqual(['draft'])
     expect(chips(6)).toEqual([])
   })
@@ -626,15 +629,17 @@ describe('the deck’s pull request rows: who is on them, and forcing a fix', ()
       wt('feat/x', [{ s: { session_id: 'c1' }, dot: 'working' }]),
     ] })
     await waitFor(() => rowButton(8))
-    const mark9 = document.querySelector('[data-deck-pr="9"] [data-deck-pr-agent]')!
-    expect(mark9).toHaveAttribute('data-deck-pr-agent', 'fixing')
-    expect(mark9).toHaveTextContent('Mfixing')
+    // One word for whether anything is on it, the agent's initial beside it.
+    const mark9 = document.querySelector('[data-deck-pr="9"] [data-deck-pr-status]')!
+    expect(mark9).toHaveAttribute('data-deck-pr-status', 'in work')
+    expect(mark9).toHaveTextContent(/^Min work$/)
+    expect(mark9.querySelector('[data-deck-pr-agent]')).toHaveAttribute('data-deck-pr-agent', 'fixing')
     fireEvent.click(mark9)
     expect(onOpenSession).toHaveBeenCalledWith(expect.objectContaining({ session_id: 'a1' }))
     // Two live agents, the waiting one first; the ended one is not on it.
-    const mark8 = document.querySelector('[data-deck-pr="8"] [data-deck-pr-agent]')!
-    expect(mark8).toHaveTextContent('2 agents')
-    expect(mark8).toHaveAttribute('data-deck-pr-agent', 'waiting')
+    const mark8 = document.querySelector('[data-deck-pr="8"] [data-deck-pr-status]')!
+    expect(mark8).toHaveAttribute('data-deck-pr-status', 'waiting')
+    expect(mark8).toHaveTextContent(/^Cwaiting\+1$/)
     expect(mark8.getAttribute('title')).toMatch(/carol — waiting on feat\/8\n.*bob — idle/)
   })
 
@@ -660,14 +665,14 @@ describe('the deck’s pull request rows: who is on them, and forcing a fix', ()
     fireEvent.click(document.querySelector('[data-deck-pr-action="rerun"]')!)
     fireEvent.click(document.querySelector('[data-deck-pr-confirm-yes]')!)
     await waitFor(() => expect(h.forced).toEqual(['rerun 9']))
-    expect(await screen.findByText('re-running 2 jobs…')).toBeInTheDocument()
-    expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-progress="rerun"]')).toBeInTheDocument()
+    // The row says it is in work; what it is doing is the word's tooltip.
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-status="in work"]')).toHaveAttribute('title', 're-running 2 jobs…'))
     // Update branch the same way.
     fireEvent.click(document.querySelector('[data-deck-pr-action="update"]')!)
     expect(document.querySelector('[data-deck-pr-confirm]')).toHaveTextContent('Merge main into feat/9 on GitHub (Update branch)?')
     fireEvent.click(document.querySelector('[data-deck-pr-confirm-yes]')!)
     await waitFor(() => expect(h.forced).toEqual(['rerun 9', 'update 9']))
-    expect(await screen.findByText('updating branch…')).toBeInTheDocument()
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-status="in work"]')).toHaveAttribute('title', 'updating branch…'))
   })
 
   it('says which permission GitHub wants when it refuses a re-run', async () => {
@@ -683,7 +688,7 @@ describe('the deck’s pull request rows: who is on them, and forcing a fix', ()
     fireEvent.click(rerun)
     fireEvent.click(document.querySelector('[data-deck-pr-confirm-yes]')!)
     await waitFor(() => expect(onToast).toHaveBeenCalledWith(expect.stringMatching(/^Re-run checks: .*Needs the token's "Actions" repository permission \(write\)/)))
-    expect(document.querySelector('[data-deck-pr-progress]')).toBeNull()
+    expect(document.querySelector('[data-deck-pr-status]')).toBeNull()
   })
 
   it('sends a conflict to the Caprock-started agent on the branch, else starts one, never typing into another', async () => {
@@ -706,7 +711,7 @@ describe('the deck’s pull request rows: who is on them, and forcing a fix', ()
     expect(h.queued[0]).toMatch(/has merge conflicts with main/)
     expect(h.queued[0]).toMatch(/git merge origin\/main/)
     expect(onStartAgent).not.toHaveBeenCalled()
-    expect(await screen.findByText('agent fixing…')).toBeInTheDocument()
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-status="in work"]')!.getAttribute('title')).toMatch(/^agent fixing…/))
     r.unmount()
     forgetPRProgress()
 
@@ -726,6 +731,69 @@ describe('the deck’s pull request rows: who is on them, and forcing a fix', ()
     expect(req).toMatchObject({ cwd: '/w', worktree: 'pr-9-fix', worktree_pr: 9 })
     expect(req.prompt).toMatch(/git push origin HEAD:feat\/9/)
     expect(h.queuedTo).toEqual(['a1'])
+  })
+
+  it('offers the one direct action beside the problem on every open row, asking in the row without opening it', async () => {
+    h.prs = { connected: true, prs: [
+      prRow(9, livePR(9, { state: 'none', passed: 0, failed: 0, pending: 0, items: [] }, { mergeable: false, mergeable_state: 'dirty' })),
+      prRow(8, livePR(8, FAILED, { mergeable: false, mergeable_state: 'dirty' })),
+      prRow(7, livePR(7, FAILED)),
+      prRow(6, livePR(6, PASSED, { mergeable_state: 'behind' })),
+      prRow(5, livePR(5, PASSED, { mergeable: false, mergeable_state: 'dirty', state: 'merged' })),
+    ] }
+    forgetFoldedPRs()
+    show()
+    await waitFor(() => rowButton(5))
+    const quick = (n: number) => [...document.querySelectorAll(`[data-deck-pr="${n}"] [data-deck-pr-quick]`)].map((b) => `${b.getAttribute('data-deck-pr-quick')}:${b.textContent}`)
+    expect(quick(9)).toEqual(['conflict:Fix'])
+    // A conflict outranks the failed CI: one chip, one action, the CI in its tooltip.
+    expect(quick(8)).toEqual(['conflict:Fix'])
+    expect(document.querySelector('[data-deck-pr="8"] [data-deck-pr-chip]')!.getAttribute('title')).toMatch(/Also: CI failed$/)
+    // Failed CI: no chip (the CI words say it), Fix and Re-run.
+    expect(document.querySelector('[data-deck-pr="7"] [data-deck-pr-chip]')).toBeNull()
+    expect(quick(7)).toEqual(['ci:Fix', 'rerun:Re-run'])
+    expect(quick(6)).toEqual(['update:Update'])
+    expect(quick(5)).toEqual([])
+    // Every open row has its ⋯, the merged one none.
+    for (const n of [9, 8, 7, 6]) expect(document.querySelector(`[data-deck-pr="${n}"] [data-deck-pr-menu]`)).toBeInTheDocument()
+    expect(document.querySelector('[data-deck-pr="5"] [data-deck-pr-menu]')).toBeNull()
+    // Update on a row that is not the open one: the confirm in that row, its CI not opened.
+    fireEvent.click(document.querySelector('[data-deck-pr="6"] [data-deck-pr-quick="update"]')!)
+    expect(document.querySelector('[data-deck-pr="6"] [data-deck-pr-confirm]')).toHaveTextContent('Merge main into feat/6 on GitHub (Update branch)?')
+    expect(document.querySelector('[data-deck-pr="6"] [data-deck-pr-detail]')).toBeNull()
+    fireEvent.click(document.querySelector('[data-deck-pr-confirm-yes]')!)
+    await waitFor(() => expect(h.forced).toEqual(['update 6']))
+  })
+
+  it('says queued for a message waiting for the agent on the branch, or GitHub’s auto-merge, and nothing when nobody is on it', async () => {
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED)), prRow(8, livePR(8, PASSED, { auto_merge: true })), prRow(7, livePR(7, PASSED))] }
+    h.queues = { a1: [{ text: 'rebase and push' }] }
+    show({ worktrees: [wt('feat/9', [{ s: { session_id: 'a1', title: 'fixer', owned: true }, dot: 'idle' }])] })
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-status]')).toHaveAttribute('data-deck-pr-status', 'queued'))
+    expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-status]')).toHaveTextContent(/^Fqueued$/)
+    expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-status]')!.getAttribute('title')).toMatch(/1 message queued/)
+    expect(document.querySelector('[data-deck-pr="8"] [data-deck-pr-status]')).toHaveAttribute('data-deck-pr-status', 'queued')
+    expect(document.querySelector('[data-deck-pr="8"] [data-deck-pr-status]')!.getAttribute('title')).toMatch(/auto-merge is on/)
+    expect(document.querySelector('[data-deck-pr="7"] [data-deck-pr-status]')).toBeNull()
+    h.queues = {}
+  })
+
+  it('offers the actions greyed with Connect GitHub while GitHub is not connected', async () => {
+    h.prs = { connected: false, prs: [prRow(9, undefined), prRow(8, undefined, { merged_at: now - 60_000 })] }
+    forgetFoldedPRs()
+    show()
+    await waitFor(() => rowButton(8))
+    expect(document.querySelector('[data-deck-pr="8"] [data-deck-pr-menu]')).toBeNull()
+    fireEvent.click(document.querySelector('[data-deck-pr="9"] [data-deck-pr-menu]')!)
+    const line = await waitFor(() => {
+      const l = document.querySelector('[data-deck-pr="9"] [data-deck-pr-actions]')
+      if (!l) throw new Error('no actions')
+      return l
+    })
+    const acts = [...line.querySelectorAll<HTMLButtonElement>('[data-deck-pr-action]')]
+    expect(acts.map((b) => b.getAttribute('data-deck-pr-action'))).toEqual(['conflict', 'ci', 'rerun', 'update'])
+    expect(acts.every((b) => b.disabled)).toBe(true)
+    expect(line.querySelector('[data-deck-pr-connect]')).toHaveTextContent('Connect GitHub')
   })
 
   it('opens a row at its actions from ⋯, and Fix CI reaches the session in front when nobody is on the branch', async () => {

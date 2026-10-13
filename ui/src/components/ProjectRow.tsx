@@ -17,7 +17,8 @@
  * Open, it lists the project's tabs as the strip shows them, in the same
  * order and under the same names (lib/tablabels.ts); then, muted, what
  * Caprock started that still runs with no tab, a click opening it as a tab;
- * then what another terminal started. Ended sessions are not listed. The
+ * then what another terminal started, a click opening it in a tab of its
+ * own, read-only (components/ObservePane.tsx). Ended sessions are not listed. The
  * order is the strip's, then the order things started: a status change
  * never moves a row within the fold, and a new one appears at the end. The
  * tab in front is the one highlighted row in the whole sidebar. The strip's
@@ -306,7 +307,7 @@ export const ProjectRow = memo(function ProjectRow({
     const canStop = x.session.owned && x.session.status !== 'ended'
     return (
       <MenuBox at={rowMenu} label={`${x.title}: actions`} width={232} onClose={closeRowMenu}>
-        <MenuItem icon={<PlusIcon size={14} />} label={x.session.owned ? 'Open as a tab' : 'Open its details'} onClick={() => { setRowMenu(null); onOpenLive?.(x.session, id) }} />
+        <MenuItem icon={<PlusIcon size={14} />} label={x.session.owned ? 'Open as a tab' : 'Open in a tab, read-only'} onClick={() => { setRowMenu(null); onOpenLive?.(x.session, id) }} />
         {onHideSession && (isHidden
           ? <MenuItem icon={<EyeIcon size={14} />} label="Show in the list again" onClick={() => { setRowMenu(null); onHideSession(x.session.session_id, false) }} />
           : <MenuItem icon={<EyeOffIcon size={14} />} label="Hide from the list" onClick={() => { setRowMenu(null); onHideSession(x.session.session_id, true) }} />)}
@@ -648,7 +649,7 @@ function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onSh
         onClick={onOpen}
         {...menuHandlers(onMenu)}
         className={`app-row flex h-[30px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] text-left ${item.waiting ? '' : hidden ? 'opacity-55' : 'opacity-75'} ${PAD_ON_HOVER[n]}`}
-        title={`${title}${branch ? ` · ${branch}` : ''}: ${s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open its details.'}`}
+        title={`${title}${branch ? ` · ${branch}` : ''}: ${s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}`}
       >
         <StatusDot dot={item.dot} />
         <AgentGlyph agent={s.agent} shell={item.isShell} />
