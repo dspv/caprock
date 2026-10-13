@@ -22,6 +22,13 @@ func TestDecilesNearestRank(t *testing.T) {
 			t.Fatalf("q[%d] = %v, want %v", k, got, want)
 		}
 	}
+	if d.Mean != 50 {
+		t.Fatalf("mean = %v, want 50", d.Mean)
+	}
+	// A skewed one: the mean is what a stretch's rate is set against, and it is not the median.
+	if sk := deciles([]float64{1, 1, 1, 1, 16}, 1); sk.Q[5] != 1 || sk.Mean != 4 {
+		t.Fatalf("skewed = %+v, want median 1 and mean 4", sk)
+	}
 	if one := deciles([]float64{7}, 1); one == nil || one.Q[0] != 7 || one.Q[5] != 7 || one.Q[10] != 7 {
 		t.Fatalf("one sample = %+v", one)
 	}

@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.114.0] - 2026-10-13
+
 ### Added
 
 - **app:** a **Repos** table on Now, under Live pulse: a row per repository
@@ -18,6 +20,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   and its PRs & CI tab already read — the table asks GitHub nothing. Folds
   like the other panels, remembered per viewer; folded, it asks nothing.
 - **api:** `GET /v1/repos/activity`, the Repos table's rows.
+- **app:** the cockpit's spend chart can show **burn rate** — each bar the
+  stretch's cost over the hours actually worked in it (hours with five or
+  more calls), so an idle afternoon does not water it down and a stretch
+  with none has no bar rather than $0/h — next to cost, tokens and turns.
+  A faint dashed **pace line** marks your usual (for burn rate, your
+  30-day cost per active hour) or the period's average stretch, labelled at its right end (*usual $3.00/h*); bars above it
+  stand stronger, amber only in your top fifth, and hovering a bar says
+  *38% above your usual*. The choice is remembered, and the folded strip
+  follows it. Each project's `spark` in `GET /v1/stats/summary` carries
+  `active_hours` and `active_cost` from the same scan, and each of
+  `usual`'s distributions its `mean`.
+
 - **app:** the session deck's pull requests and CI, large. **Expand** beside
   *Hide ⌘B* opens a *PRs & CI* tab: the repository's last 14 days on top —
   pull requests merged per day, the median time to merge, the median CI run
@@ -56,6 +70,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   more arrays over the same buckets, `input` (input tokens with cache reads
   and writes) and `turns`, from the same scan as `cost`, so the chart can
   plot today, 7 or 30 days by tokens or turns without another request.
+- **agents:** Claude Code on DeepSeek, free. Paste your DeepSeek API key in
+  Settings → Subscriptions and *New agent* and *Quick chat* offer
+  **DeepSeek · your API key** in the Subscription picker: the session is
+  Claude Code in your usual setup, with DeepSeek's documented variables and
+  your key in that one process's environment, so its model calls go to
+  DeepSeek's Anthropic-compatible API and DeepSeek bills your key. Your
+  claude.ai sign-in and its plan limits are not used, and the session is
+  kept out of the Claude plan windows and the plan-window stop. The key is
+  write-only (Settings shows `sk-…1a2b`), never on a command line, in the
+  database or a log; Settings and the picker say what the session sends to
+  api.deepseek.com and that Caprock sends nothing. Its card says
+  *DeepSeek*.
+- **app:** each subagent row in the cockpit says what the subagent is doing
+  now in words — the description Claude wrote for its latest command
+  ("Rerun the store tests"), else its tool and target ("Editing
+  Cockpit.tsx"), else its task — after its type as a letter chip (G, E, P,
+  the full type on hover), with calls and cost beside it; the dimmer line
+  under it shows the raw command only when the phrase does not already say
+  it. `GET /v1/sessions/{id}/subagents` carries the phrase as `doing` and
+  `doing_from`.
 
 ### Changed
 
@@ -98,30 +132,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   directly under *Now*. Folded, it is a strip of the chart's own bars and
   three figures, the chart's metric first, instead of a faint sentence a
   narrow cockpit cut off.
-- **agents:** Claude Code on DeepSeek, free. Paste your DeepSeek API key in
-  Settings → Subscriptions and *New agent* and *Quick chat* offer
-  **DeepSeek · your API key** in the Subscription picker: the session is
-  Claude Code in your usual setup, with DeepSeek's documented variables and
-  your key in that one process's environment, so its model calls go to
-  DeepSeek's Anthropic-compatible API and DeepSeek bills your key. Your
-  claude.ai sign-in and its plan limits are not used, and the session is
-  kept out of the Claude plan windows and the plan-window stop. The key is
-  write-only (Settings shows `sk-…1a2b`), never on a command line, in the
-  database or a log; Settings and the picker say what the session sends to
-  api.deepseek.com and that Caprock sends nothing. Its card says
-  *DeepSeek*.
 - **pricing:** `deepseek-flash` at DeepSeek's off-peak list price ($0.15
   input, $0.003 cache hit, $0.60 output per 1M, read 2026-10-13); turns in
   DeepSeek's weekday peak hours bill double and read low. Table
   `2026-10-13.1`.
-- **app:** each subagent row in the cockpit says what the subagent is doing
-  now in words — the description Claude wrote for its latest command
-  ("Rerun the store tests"), else its tool and target ("Editing
-  Cockpit.tsx"), else its task — after its type as a letter chip (G, E, P,
-  the full type on hover), with calls and cost beside it; the dimmer line
-  under it shows the raw command only when the phrase does not already say
-  it. `GET /v1/sessions/{id}/subagents` carries the phrase as `doing` and
-  `doing_from`.
 
 ## [0.113.0] - 2026-10-13
 

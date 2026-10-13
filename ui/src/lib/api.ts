@@ -387,6 +387,8 @@ export interface Spark {
   from_ms: number; width_ms: number; cost: number[]; tokens: number[]
   /** The input side of `tokens` (fresh input, cache reads and writes) and the assistant turns, per bucket; absent from an older daemon. */
   input?: number[]; turns?: number[]
+  /** Active session-hours per bucket (an hour in which one session made five or more priced calls) and what they cost: the chart's burn rate. Absent from an older daemon. */
+  active_hours?: number[]; active_cost?: number[]
 }
 /** One REPOSITORY's spend. `paths` is the per-directory breakdown, absent when
  *  the repository has only one directory (it would restate the row's total).
