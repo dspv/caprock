@@ -124,7 +124,7 @@ export function CapNudge({ daily, now, className = '' }: { daily: Pick<DailyStat
 export function ShareMoment({ now = Date.now() }: { now?: number }) {
   const due = usePromptDue('share-week', now)
   const week = useApi(() => api.summary('7d'), [], { live: false, intervalMs: 600_000 })
-  const hist = useApi(() => api.history('all'), [], { live: false, intervalMs: 600_000 })
+  const hist = useApi(() => api.history('all'), [], { live: false, intervalMs: 600_000, share: 'history:all' })
   const moment = week.data && hist.data ? findMoment(now, week.data, hist.data) : null
   const mine = useNudgeSlot('share-moment', due && !!moment)
   const [open, setOpen] = useState(false)

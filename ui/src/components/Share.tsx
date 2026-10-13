@@ -573,7 +573,9 @@ function Progress({ steps, startedAt }: { steps: { label: string; done: boolean 
 }
 
 export function ShareCard() {
-  const h = useApi(() => api.history('all'), [], { intervalMs: 60000 })
+  // Only whether there is anything to share: no live tick, and the question
+  // the panel around it asks, so it shares that request (lib/refresh.ts).
+  const h = useApi(() => api.history('all'), [], { intervalMs: 60000, live: false, share: 'history:all' })
   const [open, setOpen] = useState(false)
   const t = h.data?.totals
   if (!t || t.sessions === 0) return null

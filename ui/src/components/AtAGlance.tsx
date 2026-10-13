@@ -16,6 +16,7 @@ import { api, type Glance, type History, type WeekAgent } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtTool, fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
+import { SLOW_LIVE_MS, useOnScreen } from '@/lib/refresh'
 import { AgentCharacter, agentName, characterFor, type Character } from '@/components/Characters'
 import { colorOf, Donut, Ring, sharePct, topN, type Segment } from '@/components/Donut'
 
@@ -95,8 +96,12 @@ export function AtAGlancePanel() {
   const [open, setOpen] = useState(() => read(OPEN_KEY, '1') !== '0')
   const [view, setView] = useState<'charts' | 'numbers'>(() => (read(VIEW_KEY, 'charts') === 'numbers' ? 'numbers' : 'charts'))
   const [agentsSmall, setAgentsSmall] = useState(() => read(AGENTS_KEY, 'cards') === 'icons')
-  const h = useApi(() => api.history('all'), [], { intervalMs: 60000 })
-  const g = useApi(() => api.glance(), [], { intervalMs: 60000 })
+  // Folded or scrolled away it asks nothing (lib/refresh.ts); the history
+  // is the same question the strip and All time ask, so it shares theirs.
+  const [seen, onScreen] = useOnScreen()
+  const active = open && onScreen
+  const h = useApi(() => api.history('all'), [], { intervalMs: 60000, share: 'history:all', liveMs: SLOW_LIVE_MS, active })
+  const g = useApi(() => api.glance(), [], { intervalMs: 60000, share: 'glance', liveMs: SLOW_LIVE_MS, active })
   const c = glanceCharts(h.data, g.data)
   const rows = agentRows(g.data?.agents ?? [])
   const agentTotal = rows.reduce((a, r) => a + r.cost, 0)
@@ -110,6 +115,7 @@ export function AtAGlancePanel() {
 
   return (
     <Panel
+      sectionRef={seen}
       title={
         <button type="button" onClick={toggle} aria-expanded={open} className="inline-flex items-center gap-1.5 uppercase tracking-[0.12em] hover:text-fg">
           <span aria-hidden className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span>

@@ -1,6 +1,6 @@
 // Small presentational primitives. Every color comes from tokens.css.
-import { useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import { useState, useSyncExternalStore } from 'react'
+import type { CSSProperties, ReactNode, Ref } from 'react'
 import type { Health } from '@/lib/api'
 
 /** Which folded panels are closed, by their `fold` key; kept per viewer. */
@@ -15,18 +15,40 @@ function readFolds(): Set<string> {
   }
 }
 
+// One copy of the folds for the page, so a section's data hook can ask whether
+// its panel is open (usePanelOpen) and stop refreshing while it is folded.
+const foldSubs = new Set<() => void>()
+let folds: Set<string> | null = null
+const foldsNow = () => (folds ??= readFolds())
+const subscribeFolds = (fn: () => void) => {
+  foldSubs.add(fn)
+  return () => { foldSubs.delete(fn) }
+}
+
 /** Open or closed for one foldable panel, remembered across reloads. */
 export function usePanelFold(key: string | undefined): [boolean, () => void] {
-  const [closed, setClosed] = useState(() => (key ? readFolds().has(key) : false))
+  const open = usePanelOpen(key)
   const toggle = () => {
     if (!key) return
-    const next = readFolds()
-    if (closed) next.delete(key)
-    else next.add(key)
+    const next = new Set(readFolds())
+    if (open) next.add(key)
+    else next.delete(key)
     try { localStorage.setItem(PANEL_FOLDS_KEY, JSON.stringify([...next])) } catch { /* this page only */ }
-    setClosed(!closed)
+    folds = next
+    for (const fn of foldSubs) fn()
   }
-  return [!closed, toggle]
+  return [open, toggle]
+}
+
+/** Whether the panel folded under `key` is open; an unkeyed panel always is. */
+export function usePanelOpen(key: string | undefined): boolean {
+  const closed = useSyncExternalStore(subscribeFolds, () => !!key && foldsNow().has(key), () => false)
+  return !closed
+}
+
+/** Forgets the page's copy of the folds, so the next read is storage's (tests). */
+export function resetPanelFolds(): void {
+  folds = null
 }
 
 /**
@@ -34,10 +56,11 @@ export function usePanelFold(key: string | undefined): [boolean, () => void] {
  * body away and back, remembered per viewer (owner, 2026-10-11, translated:
  * "let me hide some blocks").
  */
-export function Panel({ title, center, right, children, className = '', onMouseEnter, onMouseLeave, fold }: { title?: ReactNode; center?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; onMouseEnter?: () => void; onMouseLeave?: () => void; fold?: string }) {
+export function Panel({ title, center, right, children, className = '', onMouseEnter, onMouseLeave, fold, sectionRef }: { title?: ReactNode; center?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; onMouseEnter?: () => void; onMouseLeave?: () => void; fold?: string; sectionRef?: Ref<HTMLElement> }) {
   const [open, toggle] = usePanelFold(fold)
   return (
     <section
+      ref={sectionRef}
       className={`border border-border bg-panel rounded-[var(--radius-panel)] shadow-[var(--shadow-panel)] min-w-0 ${className}`}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
