@@ -11,6 +11,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** a **Repos** table on Now, under Live pulse: a row per repository
+  with a session running in it — commits a day over 14 days, today's and
+  the week's, lines added and removed, files not committed and the last
+  commit, from the repository's own git (read at most every 10 minutes);
+  and, while GitHub is connected, open pull requests, red runs with the
+  median CI time and the newest release, only from what the session deck
+  and its PRs & CI tab already read — the table asks GitHub nothing. Folds
+  like the other panels, remembered per viewer; folded, it asks nothing.
+- **api:** `GET /v1/repos/activity`, the Repos table's rows.
 - **app:** the cockpit's spend chart can show **burn rate** — each bar the
   stretch's cost over the hours actually worked in it (hours with five or
   more calls), so an idle afternoon does not water it down and a stretch

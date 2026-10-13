@@ -48,6 +48,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/glance": true, "GET /v1/week": true, "GET /v1/tools/drill": true, "GET /v1/saved-prompts": true, "GET /v1/attempts/{group}": true,
 	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true, "GET /v1/projects/{id}/repos": true,
 	"GET /v1/projects/{id}/changes": true, "GET /v1/projects/{id}/changes/diff": true,
+	"GET /v1/repos/activity":     true, // Now's Repos section: counts from git and from GitHub answers already kept
 	"GET /v1/projects/{id}/file": true, "GET /v1/projects/{id}/files": true,
 	// GitHub (WP-19): the connection, the clone picker, pull requests, and
 	// New agent's list of open issues and pull requests.
