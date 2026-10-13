@@ -45,7 +45,7 @@ others. Installing it: [install-app.md](install-app.md).
   none. The one highlighted row in the
   sidebar is the tab you are looking at; the current project's name is
   bold, with a faint edge at its left, and each project row shows its key
-  (⌘1, ⌘2 …). Muted, come the sessions Caprock started
+  (⌃⌘1, ⌃⌘2 …); a session row with a tab shows that tab's key (⌘1, ⌘2 …). Muted, come the sessions Caprock started
   in the project that still run with no tab; click one to open it as a tab.
   Sessions started in another terminal come last. Each row says its
   state in one word at its right: *working* (green), *waiting* (amber — it
@@ -298,9 +298,10 @@ others. Installing it: [install-app.md](install-app.md).
   another project never takes a tab out of the strip: the project's own
   tabs are listed under it in the sidebar, under the same names, or its
   page shows when it has none. Picking a tab makes its project current.
-  ⌃Tab and dragging run along the whole strip. ⌘1–⌘9 bring the sidebar's Nth item to
-  the front — a project when grouped, a session when not (⌘9 the last) —
-  and only the tab each brings shows that key, beside its ×; ⌥⌘↓ / ⌥⌘↑ go to the next / previous session of
+  ⌃Tab and dragging run along the whole strip. ⌘1–⌘9 bring the Nth tab to
+  the front (⌘9 the last), whether the sidebar is grouped or not, and every
+  tab shows its key, as does its row in the sidebar; ⌃⌘1–⌃⌘9 bring the
+  sidebar's Nth project, at its last tab. ⌥⌘↓ / ⌥⌘↑ go to the next / previous session of
   that project and ⌥⌘→ / ⌥⌘← to the next / previous project, both round
   the end. Option+← → stay word jumps in the terminal, and ⌘↑ ↓ stay the
   terminal's. Tabs come back when
@@ -531,34 +532,37 @@ others. Installing it: [install-app.md](install-app.md).
 
 On macOS:
 
-| Keys        | Does                                                                        |
-| ----------- | --------------------------------------------------------------------------- |
-| ⌘T          | New shell in the folder of the tab                                          |
-| ⇧⌘N         | New agent session                                                           |
-| ⌥⌘N         | Quick chat: pick, or Enter for the last                                     |
-| ⌘O          | Add a project (folder, new, clone)                                          |
-| ⌘1–8, ⌘9    | The sidebar’s Nth item (a project, or a session when not grouped); the last |
-| ⌥⌘↓, ⌥⌘↑    | Next and previous session of the project in front                           |
-| ⌥⌘→, ⌥⌘←    | Next and previous project                                                   |
-| ⌥⇧↑, ⌥⇧↓    | Move the focused session row up or down in the sidebar                      |
-| ⌃Tab, ⇧⌘[ ] | Next and previous tab                                                       |
-| ⌘W          | Close the tab (the session keeps going)                                     |
-| ⌘E, ⇧⌘E     | Split: a new shell beside, below                                            |
-| ⌘[ ]        | Previous and next pane                                                      |
-| ⌘J          | Next session waiting on you                                                 |
-| ⌘F          | Find in the terminal or the file                                            |
-| ⌘K          | Command palette                                                             |
-| ⌘,          | Settings                                                                    |
-| ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                    |
-| ⌘I          | Agent cockpit (the inspector)                                               |
-| ⌘B          | Session deck under the agent's terminal                                     |
-| ⌘\          | Hide or show the sidebar                                                    |
-| ⌘0, ⇧⌘D     | Dashboard tab, and back                                                     |
-| ⌘R          | Reload the window (View → Reload)                                           |
+| Keys        | Does                                                      |
+| ----------- | --------------------------------------------------------- |
+| ⌘T          | New shell in the folder of the tab                        |
+| ⇧⌘N         | New agent session                                         |
+| ⌥⌘N         | Quick chat: pick, or Enter for the last                   |
+| ⌘O          | Add a project (folder, new, clone)                        |
+| ⌘1–8, ⌘9    | The Nth tab, as its badge says; the last                  |
+| ⌃⌘1–8, ⌃⌘9  | The Nth project in the sidebar, at its last tab; the last |
+| ⌥⌘↓, ⌥⌘↑    | Next and previous session of the project in front         |
+| ⌥⌘→, ⌥⌘←    | Next and previous project                                 |
+| ⌥⇧↑, ⌥⇧↓    | Move the focused session row up or down in the sidebar    |
+| ⌃Tab, ⇧⌘[ ] | Next and previous tab                                     |
+| ⌘W          | Close the tab (the session keeps going)                   |
+| ⌘E, ⇧⌘E     | Split: a new shell beside, below                          |
+| ⌘[ ]        | Previous and next pane                                    |
+| ⌘J          | Next session waiting on you                               |
+| ⌘F          | Find in the terminal or the file                          |
+| ⌘K          | Command palette                                           |
+| ⌘,          | Settings                                                  |
+| ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                  |
+| ⌘I          | Agent cockpit (the inspector)                             |
+| ⌘B          | Session deck under the agent's terminal                   |
+| ⌘\          | Hide or show the sidebar                                  |
+| ⌘0, ⇧⌘D     | Dashboard tab, and back                                   |
+| ⌘R          | Reload the window (View → Reload)                         |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
-(Quick chat is Ctrl+Alt+Shift+N). The arrow chords are Alt+Shift there
-(Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ← projects), since Ctrl+Shift+← → are
+(Quick chat is Ctrl+Alt+Shift+N). The arrow chords and the project digits
+are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ← projects,
+Alt+Shift+1–9 the Nth project), since Alt+digit is the shell's digit
+argument and Ctrl+Alt+digit is AltGr on many keyboards, and since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
 in a text field the arrow chords stay the field's. Ctrl+Shift+C
 and Ctrl+Shift+V stay the terminal's copy and paste. Reload is F5 there:

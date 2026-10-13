@@ -20,7 +20,8 @@
  * (lib/tablabels.ts). A muted row runs with no tab; a click opens it as a
  * tab, or one started in another terminal read-only
  * (components/ObservePane.tsx). The tab in front is the one highlighted row
- * in the whole sidebar. The project row carries its ⌘1–⌘9 key; ⌥⌘↑ ⌥⌘↓
+ * in the whole sidebar. The project row carries its ⌃⌘1–⌃⌘9 key, each
+ * tab's row the tab's ⌘1–⌘9; ⌥⌘↑ ⌥⌘↓
  * walk its rows (sessionStops). The chevron folds a project by hand.
  *
  * What waits on you is marked on its own row — an amber edge and tint, and
@@ -64,7 +65,7 @@ import { renamable } from '@/lib/sessionNames'
 import { sessionAbout } from '@/lib/sidebar'
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
-import { keys, tabKey } from '@/lib/appkeys'
+import { keys, projectKey, tabKey } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { moveKey, orderRows, tabRowKey } from '@/lib/rowOrder'
 import { namingLeaf } from '@/lib/tabs'
@@ -146,8 +147,10 @@ export interface ProjectRowProps {
   current: boolean
   /** Its tabs, in strip order, with their labels; drawn when the project is open (current, or something runs or waits in it). */
   tabs: readonly Tab[]
-  /** The project's ⌘1–⌘9 digit, by its place in the sidebar; none past the ninth. */
+  /** The project's ⌃⌘1–⌃⌘9 digit, by its place in the sidebar; none past the ninth. */
   digit?: number
+  /** Each tab's ⌘1–⌘9, by tab id, drawn on its row as the strip draws it. */
+  tabDigits?: ReadonlyMap<string, number>
   /** The rows' order set by hand, as row keys (lib/rowOrder.ts). */
   rowOrder?: readonly string[]
   /** Keeps a new order set by hand: every row's key, top to bottom. Absent, rows cannot be moved. */
@@ -184,6 +187,7 @@ export const ProjectRow = memo(function ProjectRow({
   current,
   tabs,
   digit,
+  tabDigits,
   rowOrder,
   onReorder,
   labels,
@@ -255,7 +259,7 @@ export const ProjectRow = memo(function ProjectRow({
           aria-haspopup={menu ? 'menu' : undefined}
           aria-keyshortcuts={menu ? 'Shift+F10' : undefined}
           className={`app-row flex h-[32px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] text-left ${isGroup ? 'pr-2 pointer-coarse:pr-[36px]' : 'pr-9 pointer-coarse:pr-[64px]'}`}
-          title={`${isGroup ? 'Sessions in folders you have not added as a project. Add one with Add project.' : p.repos?.length ? `${p.root} · ${p.repos.map((r) => r.name).join(', ')}` : p.root || p.name}${digit ? ` — ${keys(`⌘${digit}`)}` : ''}`}
+          title={`${isGroup ? 'Sessions in folders you have not added as a project. Add one with Add project.' : p.repos?.length ? `${p.root} · ${p.repos.map((r) => r.name).join(', ')}` : p.root || p.name}${digit ? ` — ${keys(`⌃⌘${digit}`)}` : ''}`}
         >
           <span className={`min-w-0 flex-1 truncate text-[13px] ${current ? 'font-semibold text-fg' : 'text-fg-muted'}`}>
             {p.name}
@@ -270,7 +274,7 @@ export const ProjectRow = memo(function ProjectRow({
             </span>
           )}
           {digit && (
-            <kbd data-project-key aria-hidden className={`app-kbd-key shrink-0 group-hover:invisible ${current ? '' : 'opacity-70'}`}>{tabKey(digit)}</kbd>
+            <kbd data-project-key aria-hidden className={`app-kbd-key shrink-0 group-hover:invisible ${current ? 'opacity-80' : 'opacity-55'}`}>{projectKey(digit)}</kbd>
           )}
           {node.waiting > 0 && (
             <span
@@ -345,6 +349,7 @@ export const ProjectRow = memo(function ProjectRow({
           onOpenLive={onOpenLive}
           onHideSession={onHideSession}
           onReorder={onReorder}
+          digits={tabDigits}
         />
       )}
     </li>
@@ -382,7 +387,7 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
   onOpenLive?: (s: SessionSummary, projectId: string) => void
   onHideSession?: (sessionId: string, hide: boolean) => void
   onReorder?: (orderId: string, keys: string[]) => void
-  /** Each row's ⌘ digit, by row key (the flat list: ⌘N is the Nth session). */
+  /** Each tab's ⌘ digit, by tab id, as the strip numbers it; a row with no tab has none. */
   digits?: ReadonlyMap<string, number>
 }) {
   const allKeys = useMemo(() => items.map(leadKey), [items])
@@ -452,7 +457,7 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
     const k = leadKey(it)
     const drag: RowDrag = { rowKey: k, projectId: orderId, dragging: dragKey === k, onPress: onReorder ? pressRow(k) : undefined }
     const proj = it.projectName !== undefined ? { name: it.projectName, id: it.projectId } : undefined
-    const digit = digits?.get(k)
+    const digit = it.tab ? digits?.get(it.tab.id) : undefined
     if (!it.tab) {
       const x = it.node!
       const named = renamable(x.session, x.isShell)
@@ -464,7 +469,6 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
             item={x}
             drag={drag}
             project={proj}
-            digit={digit}
             ownBranch={it.ownBranch}
             onOpen={() => onOpenLive?.(x.session, it.projectId)}
             onStop={x.session.owned ? () => setStopping({ sessionId: x.session.session_id, what: 'session' }) : undefined}
@@ -647,7 +651,8 @@ function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, on
         {project && <ProjectMark project={project} />}
         {!isFile && <HotMark sessionId={label?.session?.session_id} />}
         {word && <StateWord dot={word} asks={asks} />}
-        {digit && <kbd data-row-key-digit aria-hidden className={`app-kbd-sm shrink-0 ${onClose ? 'group-hover/row:hidden group-focus-within/row:hidden' : ''} ${active && onClose ? 'hidden' : ''}`}>{tabKey(digit)}</kbd>}
+        {/* Every tab's key, the one in front included (owner, 2026-10-14). */}
+        {digit && <kbd data-row-key-digit aria-hidden className={`app-kbd-sm shrink-0 ${onClose && !active ? 'group-hover/row:hidden group-focus-within/row:hidden' : ''}`}>{tabKey(digit)}</kbd>}
       </button>
       {onClose && (
         <span data-row-actions className={`absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 ${active ? 'flex' : ACTIONS_ON_HOVER}`}>
@@ -698,13 +703,12 @@ export function liveWithoutTab(node: ProjectNode, hiddenSessions?: HiddenSession
  * × hides it from the list, ■ stops it when Caprock started it, and a hidden
  * one shown on demand has the open eye that brings it back.
  */
-function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onShow, onMenu, onRename, drag, project, digit }: {
+function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onShow, onMenu, onRename, drag, project }: {
   item: SessionNode
   /** Double-click names it: an agent's session only. */
   onRename?: () => void
   drag?: RowDrag
   project?: { name: string; id: string }
-  digit?: number
   ownBranch?: string
   /** Hidden by hand and shown on demand last inside "+N more". */
   hidden?: boolean
@@ -742,7 +746,6 @@ function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onSh
         {project && <ProjectMark project={project} />}
         <HotMark sessionId={s.session_id} />
         {!item.isShell && <StateWord dot={item.dot} asks={item.asks} />}
-        {digit && <kbd data-row-key-digit aria-hidden className="app-kbd-sm shrink-0 group-hover/row:hidden group-focus-within/row:hidden">{tabKey(digit)}</kbd>}
       </button>
       {n > 0 && (
         <span data-row-actions className={`absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 ${ACTIONS_ON_HOVER}`}>

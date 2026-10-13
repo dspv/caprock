@@ -445,39 +445,47 @@ describe('the app workspace', () => {
   })
 
   // Owner, 2026-10-13 (translated): "top I see 1,2,3; on the left I see 4,2
-  // — why?" One numbering: with the sessions in one flat list, ⌘N is the
-  // Nth session, the row and its tab show the same N, and the strip follows
-  // the sidebar's order whatever order the tabs were opened in.
-  it('numbers the flat list and the strip alike: ⌘N opens the Nth session, and the strip keeps the sidebar\'s order', async () => {
-    localStorage.setItem('caprock.app.sidebar-grouped', 'off')
+  // — why?" and 2026-10-14: "I just want to switch between them with key
+  // combos … not every tab shows the key combination". ⌘N is the Nth tab
+  // of the strip, grouped or not; every tab shows its N, the one in front
+  // included, and its sidebar row the same N; the strip follows the
+  // sidebar's order whatever order the tabs were opened in.
+  it.each([['grouped', 'on'], ['flat', 'off']])('gives every tab its ⌘N, %s: ⌘N opens the Nth tab, its row shows the same N, ⌘9 the last', async (_, mode) => {
+    localStorage.setItem('caprock.app.sidebar-grouped', mode!)
     render(<AppShell />)
-    const list = await screen.findByRole('group', { name: 'Sessions' })
-    await waitFor(() => expect(list.querySelector('[data-live-row="agent-2"]')).toBeTruthy())
-    const rowDigit = (sel: string) => list.querySelector(`${sel} [data-row-key-digit]`)?.textContent
-    expect(rowDigit('[data-live-row="agent-1"]')).toBe('⌘1')
-    expect(rowDigit('[data-live-row="agent-2"]')).toBe('⌘2')
-    await cmd('2')
+    await waitFor(() => expect(document.querySelector('[data-live-row="agent-2"]')).toBeTruthy())
+    // Opened second, listed first.
+    fireEvent.click(document.querySelector('[data-live-row="agent-2"]')!)
     await screen.findByRole('tab', { name: /Waiting one/ })
-    expect(screen.getByTestId('pane-agent-2')).toHaveAttribute('data-active', 'true')
-    await cmd('1')
+    await waitFor(() => expect(document.querySelector('[data-live-row="agent-1"]')).toBeTruthy())
+    fireEvent.click(document.querySelector('[data-live-row="agent-1"]')!)
     await screen.findByRole('tab', { name: /Fix the login bug/ })
-    expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
-    // Opened second, listed first: the strip follows the sidebar.
-    await waitFor(() => expect(screen.getAllByRole('tab').filter((t) => t.hasAttribute('data-tab-index')).map((t) => t.getAttribute('aria-label'))).toEqual(['Fix the login bug · app', 'Waiting one · app']))
-    // Each tab carries the digit of its row.
-    const tabKeyOf = (name: RegExp) => screen.getByRole('tab', { name }).querySelector('[data-tab-key]')?.textContent
-    expect(tabKeyOf(/Fix the login bug/)).toBe('⌘1')
-    expect(tabKeyOf(/Waiting one/)).toBe('⌘2')
-    const rowOf = (title: string) => [...list.querySelectorAll('[data-tab-row]')].find((r) => r.textContent?.includes(title))!
+    const strip = () => screen.getAllByRole('tab').filter((t) => t.hasAttribute('data-tab-index'))
+    await waitFor(() => expect(strip().map((t) => t.getAttribute('aria-label'))).toEqual(['Fix the login bug · app', 'Waiting one · app']))
+    // Every tab carries its key, the one in front too, and its row the same.
+    expect(strip().map((t) => t.querySelector('[data-tab-key]')?.textContent)).toEqual(['⌘1', '⌘2'])
+    expect(strip().every((t) => !t.querySelector('[data-tab-key]')!.className.split(' ').includes('invisible'))).toBe(true)
+    const rowOf = (title: string) => [...document.querySelectorAll('[data-tab-row]')].find((r) => r.textContent?.includes(title))!
     expect(rowOf('Fix the login bug').querySelector('[data-row-key-digit]')!.textContent).toBe('⌘1')
     expect(rowOf('Waiting one').querySelector('[data-row-key-digit]')!.textContent).toBe('⌘2')
+    const front = () => ['agent-1', 'agent-2'].filter((id) => screen.getByTestId(`pane-${id}`).getAttribute('data-active') === 'true')
+    await cmd('2')
+    expect(front()).toEqual(['agent-2'])
+    await cmd('1')
+    expect(front()).toEqual(['agent-1'])
+    await cmd('9')
+    expect(front()).toEqual(['agent-2'])
+    // Past the end, nothing moves.
+    await cmd('5')
+    expect(front()).toEqual(['agent-2'])
   })
 
   // Owner, 2026-10-13 (translated): "Command+digit focuses that project …
-  // and there I can Command+Up/Down to move". ⌘1–⌘9 are projects in the
-  // sidebar's order; ⌥⌘↑ ⌥⌘↓ walk the project's sessions and ⌥⌘← ⌥⌘→ the
-  // projects, round the end, every terminal staying mounted.
-  it('brings a project with ⌘1–9, walks its sessions with ⌥⌘↑ ⌥⌘↓ and the projects with ⌥⌘← ⌥⌘→', async () => {
+  // and there I can Command+Up/Down to move". ⌃⌘1–⌃⌘9 are projects in the
+  // sidebar's order (⌘1–⌘9 are tabs since 2026-10-14); ⌥⌘↑ ⌥⌘↓ walk the
+  // project's sessions and ⌥⌘← ⌥⌘→ the projects, round the end, every
+  // terminal staying mounted.
+  it('brings a project with ⌃⌘1–9, walks its sessions with ⌥⌘↑ ⌥⌘↓ and the projects with ⌥⌘← ⌥⌘→', async () => {
     await renderApp()
     await openFromPalette('Fix the login bug')
     fireEvent.click(waitingRow('Waiting one'))
@@ -496,9 +504,10 @@ describe('the app workspace', () => {
     expect(front()).toEqual(['agent-1'])
     // The second project, then back: the first brings its tab last in front.
     expect(currentProject()).toMatch(/^app/)
-    await cmd('2')
+    expect(document.querySelector('[data-project-row] [data-project-key]')!.textContent).toBe('⌃⌘1')
+    await cmd('2', { ctrlKey: true })
     expect(currentProject()).toMatch(/^other/)
-    await cmd('1')
+    await cmd('1', { ctrlKey: true })
     expect(currentProject()).toMatch(/^app/)
     expect(front()).toEqual(['agent-1'])
     await arrow('ArrowRight')
@@ -507,7 +516,7 @@ describe('the app workspace', () => {
     expect(currentProject()).toMatch(/^app/)
     await arrow('ArrowLeft')
     expect(currentProject()).toMatch(/^other/)
-    await cmd('1')
+    await cmd('1', { ctrlKey: true })
     // ⌥← ⌥→ and ⌘↑ ⌘↓ are the terminal's: not taken, nothing moves.
     for (const [key, mods] of [['ArrowLeft', { altKey: true }], ['ArrowRight', { altKey: true }], ['ArrowUp', { metaKey: true }], ['ArrowDown', { metaKey: true }]] as const) {
       const ev = new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true, ...mods })
@@ -524,6 +533,21 @@ describe('the app workspace', () => {
     expect(inField.defaultPrevented).toBe(false)
     expect(front()).toEqual(['agent-1'])
     field.remove()
+  })
+
+  it('says once how to move around, with a way to every key, and never again after Got it', async () => {
+    const first = await renderApp()
+    expect(screen.queryByRole('status', { name: 'Keys to move around' })).toBeNull()
+    await openFromPalette('Fix the login bug')
+    const hint = await screen.findByRole('status', { name: 'Keys to move around' })
+    expect(hint).toHaveTextContent('⌘1–9 switch tabs · ⌃⌘1–9 projects · ⌥⌘ arrows walk them')
+    fireEvent.click(within(hint).getByRole('button', { name: 'All keys' }))
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toHaveTextContent('⌃⌘1–8, ⌃⌘9')
+    expect(localStorage.getItem('caprock.app.keysHint')).toBe('seen')
+    first.unmount()
+    await renderApp()
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    expect(screen.queryByRole('status', { name: 'Keys to move around' })).toBeNull()
   })
 
   it('restores its tabs after a reload', async () => {

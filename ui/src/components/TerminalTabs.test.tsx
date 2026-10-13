@@ -186,7 +186,8 @@ describe('a file tab', () => {
     expect(one.querySelector('[data-tab-subtitle], [data-project-chip]')).toBeNull()
   })
 
-  it('puts the jump key in the ×\'s slot at the right end: the key at rest, the × on hover and in front', () => {
+  // Owner, 2026-10-14 (translated): "not every tab shows the key combination".
+  it('puts the jump key in the ×\'s slot at the right end on every tab: the × on hover, and beside the key in front', () => {
     render(
       <TabStrip
         tabs={[tab('one'), tab('two')]}
@@ -212,11 +213,13 @@ describe('a file tab', () => {
       // The slot is the tab's last child: nothing after it, the title before it.
       expect(t.lastElementChild).toBe(end)
       expect(end.querySelector('[data-tab-key]')!.className).toContain('app-kbd-sm')
-      expect(end.querySelector('button')!.className).toContain('absolute')
     }
-    // In front: the × shows and the key steps aside; behind: the key, the × on hover.
-    expect(one.querySelector('[data-tab-key]')!.className).toContain('invisible')
+    // In front: the key and the × side by side; behind: the key, the × over it on hover.
+    expect(one.querySelector('[data-tab-key]')!.className).not.toContain('invisible')
+    expect(one.querySelector('[data-tab-key]')!.textContent).toBe('⌘1')
     expect(one.querySelector('[data-tab-end] button')!.className).not.toContain('invisible')
+    expect(one.querySelector('[data-tab-end] button')!.className).not.toContain('absolute')
+    expect(two.querySelector('[data-tab-end] button')!.className).toContain('absolute')
     expect(two.querySelector('[data-tab-key]')!.className).toContain('group-hover:invisible')
     expect(two.querySelector('[data-tab-end] button')!.className).toContain('invisible group-hover:visible')
     expect(two.getAttribute('title')).toContain('— ⌘2')

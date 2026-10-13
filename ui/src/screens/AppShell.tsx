@@ -89,6 +89,7 @@ import { ProjectRepos } from '@/components/ProjectRepos'
 import { isMultiRepo } from '@/lib/multirepo'
 import { CloseChatConfirm, CloseShellConfirm } from '@/components/CloseShellConfirm'
 import { ShortcutsSheet } from '@/components/ShortcutsSheet'
+import { KeysHint } from '@/components/KeysHint'
 import { CopiesSheet } from '@/components/CopiesSheet'
 import { CleanupLine } from '@/components/CleanupLine'
 import { worktreeSlug } from '@/lib/slug'
@@ -432,12 +433,13 @@ export function AppShell() {
   }, [showWorkspace])
 
   // One numbering everywhere (owner, 2026-10-13, translated: "top I see
-  // 1,2,3; on the left I see 4,2 — why?"): ⌘N is the sidebar's Nth
-  // top-level item — a project when sessions are grouped by project, a
-  // session when they are one flat list — and the strip draws N only on
-  // the tab ⌘N brings to the front. The strip's order follows the
-  // sidebar's. Hiding a project or a row, or ordering rows by hand, says so
-  // on window, and all of it is asked again.
+  // 1,2,3; on the left I see 4,2 — why?"), and one meaning (2026-10-14:
+  // "I just want to switch between them with key combos"): ⌘N is the
+  // strip's Nth tab, grouped or not, every tab shows its N, and the
+  // sidebar row of that tab shows the same N. The strip's order follows
+  // the sidebar's, so the numbers run down the sidebar too. ⌃⌘N is the
+  // sidebar's Nth project. Hiding a project or a row, or ordering rows by
+  // hand, says so on window, and all of it is asked again.
   const [orderTick, setOrderTick] = useState(0)
   useEffect(() => {
     const bump = () => setOrderTick((n) => n + 1)
@@ -495,40 +497,30 @@ export function AppShell() {
   useEffect(() => {
     if (stripOrder.join('\n') !== ws.tabs.map((t) => t.id).join('\n')) dispatch({ type: 'order', ids: stripOrder })
   }, [stripOrder, ws.tabs])
-  // The strip draws a key only on the tab that key brings to the front:
-  // grouped, a project's remembered tab, else its first; flat, the row's tab.
+  // Every tab's ⌘N, by its place in the strip: 1–8, and 9 on the last.
   const stripDigits = useMemo(() => {
     const m = new Map<string, number>()
-    if (grouped) {
-      numbered.forEach((pid, i) => {
-        const d = tabDigit(i, numbered.length)
-        const own = tabsOf(ws, pid)
-        const tab = own.find((t) => t.id === ws.activeByProject[pid]) ?? own[0]
-        if (d && tab) m.set(tab.id, d)
-      })
-    } else {
-      flat.forEach((r, i) => {
-        const d = tabDigit(i, flat.length)
-        if (d && r.tab) m.set(r.tab.id, d)
-      })
-    }
+    ws.tabs.forEach((t, i) => {
+      const d = tabDigit(i, ws.tabs.length)
+      if (d) m.set(t.id, d)
+    })
     return m
-  }, [grouped, numbered, flat, ws])
+  }, [ws.tabs])
   /** A sidebar row brought to the front: its tab, or a tab for it, as a click does. */
   const openRow = useCallback((r: SidebarRow) => {
     if (r.tab) onActivateTab(r.tab.id)
     else if (r.node) openSession(r.node.session, r.projectId)
   }, [onActivateTab, openSession])
-  /** ⌘1–⌘9: the sidebar's item at that place, ⌘9 the last; nothing past the end. */
+  /** ⌘1–⌘9: the strip's tab at that place, ⌘9 the last; nothing past the end. */
+  const focusTab = useCallback((index: number) => {
+    const t = index === 8 ? ws.tabs[ws.tabs.length - 1] : ws.tabs[index]
+    if (t) onActivateTab(t.id)
+  }, [ws.tabs, onActivateTab])
+  /** ⌃⌘1–⌃⌘9: the sidebar's project at that place, at its last tab; ⌃⌘9 the last. */
   const focusProject = useCallback((index: number) => {
-    if (!grouped) {
-      const r = index === 8 ? flat[flat.length - 1] : flat[index]
-      if (r) openRow(r)
-      return
-    }
     const id = index === 8 ? numbered[numbered.length - 1] : numbered[index]
     if (id) onSelectProject(id)
-  }, [grouped, flat, numbered, onSelectProject, openRow])
+  }, [numbered, onSelectProject])
   /** ⌥⌘← ⌥⌘→: the project before or after the one in front, round the end. */
   const stepProject = useCallback((delta: 1 | -1) => {
     const n = numbered.length
@@ -951,6 +943,7 @@ export function AppShell() {
       case 'dashboard': if (workspaceShown) onDashboard(); else location.hash = APP_ROUTE; break
       case 'next-tab': dispatch({ type: 'cycle', delta: 1 }); showWorkspace(); break
       case 'prev-tab': dispatch({ type: 'cycle', delta: -1 }); showWorkspace(); break
+      case 'tab': focusTab(c.index); break
       case 'project': focusProject(c.index); break
       case 'step-project': stepProject(c.delta); break
       case 'session': stepSession(c.delta); break
@@ -962,7 +955,7 @@ export function AppShell() {
       case 'settings': onSettings(); break
       case 'zoom': stepUiScale(c.step); break
     }
-  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusProject, stepProject, stepSession])
+  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, focusProject, stepProject, stepSession])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -979,7 +972,7 @@ export function AppShell() {
       const c = matchAppShortcut(e, isMac)
       if (!c) return
       // Held down, only the digits and the arrow chords repeat.
-      if (e.repeat && !/^[1-9]$/.test(e.key) && !isArrowCommand(c)) return
+      if (e.repeat && c.kind !== 'tab' && c.kind !== 'project' && !isArrowCommand(c)) return
       // In a text field the arrow chords select by word and line there
       // (Alt+Shift+← off macOS): the field keeps them. The terminal's own
       // textarea is not a text field here.
@@ -1423,6 +1416,7 @@ export function AppShell() {
               onCleanCopies={source === 'api' ? onCleanCopies : undefined}
               grouped={grouped}
               onToggleGrouped={onToggleGrouped}
+              tabDigits={stripDigits}
             />
           </div>
         )}
@@ -1630,6 +1624,9 @@ export function AppShell() {
       {/* With the sidebar open its Today strip carries the plan windows and the day's spend, so the strip leaves them out. */}
       {/* The GitHub star ask sits above the status strip, never over a
         * terminal; the share toast floats (lib/nudges.ts, one at a time). */}
+      {/* How to move around, once, while tabs are open: a line in the flow
+        * above the strips, so it covers neither a terminal nor a banner. */}
+      {workspaceShown && ws.tabs.length > 0 && <KeysHint isMac={isMac} onAllKeys={() => setSheet({ kind: 'keys' })} />}
       <SetupStrip app />
       <MailStrip />
       <StarStrip app />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchAppShortcut, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
+import { matchAppShortcut, moveKeysLine, projectKey, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
 
 const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
   key,
@@ -15,17 +15,50 @@ describe('the app keyboard map', () => {
   // Owner, 2026-10-13 (translated): "Command+digit focuses that project …
   // Command+Up/Down to move, or Option+Left/Right". ⌥← ⌥→ and ⌘↑ ⌘↓ are the
   // terminal's, so the moves are ⌥⌘ arrows, Alt+Shift arrows elsewhere.
-  it('maps ⌘1–⌘9 to projects and ⌥⌘ arrows to sessions and projects', () => {
-    expect(matchAppShortcut(k('1', { metaKey: true }), true)).toEqual({ kind: 'project', index: 0 })
-    expect(matchAppShortcut(k('9', { metaKey: true }), true)).toEqual({ kind: 'project', index: 8 })
+  // Owner, 2026-10-14 (translated): "I just want to switch between them
+  // with key combos". ⌘N is the Nth tab, always; ⌃⌘N the Nth project.
+  it('maps ⌘1–⌘9 to tabs, ⌃⌘1–⌃⌘9 to projects and ⌥⌘ arrows to sessions and projects', () => {
+    for (let d = 1; d <= 9; d++) {
+      expect(matchAppShortcut(k(String(d), { metaKey: true }), true)).toEqual({ kind: 'tab', index: d - 1 })
+      expect(matchAppShortcut(k(String(d), { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'tab', index: d - 1 })
+      expect(matchAppShortcut(k(String(d), { metaKey: true, ctrlKey: true }), true)).toEqual({ kind: 'project', index: d - 1 })
+      // Off macOS a shifted digit's key is its symbol; the code is what counts.
+      expect(matchAppShortcut(k('!@#$%^&*('[d - 1]!, { code: `Digit${d}`, altKey: true, shiftKey: true }), false)).toEqual({ kind: 'project', index: d - 1 })
+    }
     expect(matchAppShortcut(k('ArrowDown', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'session', delta: 1 })
     expect(matchAppShortcut(k('ArrowUp', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'session', delta: -1 })
     expect(matchAppShortcut(k('ArrowRight', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'step-project', delta: 1 })
     expect(matchAppShortcut(k('ArrowLeft', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'step-project', delta: -1 })
     expect(matchAppShortcut(k('ArrowDown', { altKey: true, shiftKey: true }), false)).toEqual({ kind: 'session', delta: 1 })
     expect(matchAppShortcut(k('ArrowLeft', { altKey: true, shiftKey: true }), false)).toEqual({ kind: 'step-project', delta: -1 })
-    // Alt+Shift+N is no app chord; only the arrows are.
+    // Alt+Shift+N is no app chord; only the arrows and the digits are.
     expect(matchAppShortcut(k('n', { altKey: true, shiftKey: true }), false)).toBeNull()
+    expect(matchAppShortcut(k('0', { altKey: true, shiftKey: true }), false)).toBeNull()
+  })
+
+  // Alt+digit is readline's and PSReadLine's digit-argument and a GNOME
+  // Terminal tab; Ctrl+Alt+digit is AltGr+digit ({ [ @ on European
+  // layouts) and a Windows Terminal tab; Ctrl+digit and ⌃digit the terminal's.
+  it('leaves the terminal its digits: Alt, Ctrl+Alt, Ctrl, ⌃ and ⌥', () => {
+    for (let d = 1; d <= 9; d++) {
+      const key = String(d)
+      expect(matchAppShortcut(k(key, { altKey: true }), false), `Alt+${d}`).toBeNull()
+      expect(matchAppShortcut(k(key, { ctrlKey: true, altKey: true }), false), `Ctrl+Alt+${d}`).toBeNull()
+      expect(matchAppShortcut(k(key, { ctrlKey: true }), false), `Ctrl+${d}`).toBeNull()
+      expect(matchAppShortcut(k(key, { ctrlKey: true }), true), `⌃${d}`).toBeNull()
+      expect(matchAppShortcut(k(key, { altKey: true }), true), `⌥${d}`).toBeNull()
+      expect(matchAppShortcut(k(key, { metaKey: true, ctrlKey: true, shiftKey: true }), true), `⌃⇧⌘${d}`).toBeNull()
+    }
+  })
+
+  it('spells the project digits ⌃⌘ on macOS and Alt+Shift elsewhere, short on a row', () => {
+    expect(keys('⌃⌘1–8, ⌃⌘9', false)).toBe('Alt+Shift+1–8, Alt+Shift+9')
+    expect(keys('⌃⌘3', true)).toBe('⌃⌘3')
+    expect(keys('⌃Tab', false)).toBe('Ctrl+Tab')
+    expect(projectKey(2, true)).toBe('⌃⌘2')
+    expect(projectKey(2, false)).toBe('Alt⇧2')
+    expect(moveKeysLine(true)).toBe('⌘1–9 switch tabs · ⌃⌘1–9 projects · ⌥⌘ arrows walk them')
+    expect(moveKeysLine(false)).toBe('Ctrl+Shift+1–9 switch tabs · Alt+Shift+1–9 projects · Alt+Shift+arrows walk them')
   })
 
   // PowerShell's PSReadLine (Windows mode) binds Ctrl+Shift+← → to
@@ -60,7 +93,7 @@ describe('the app keyboard map', () => {
     expect(matchAppShortcut(k('o', { metaKey: true }), true)).toEqual({ kind: 'add-project' })
     expect(matchAppShortcut(k('w', { metaKey: true }), true)).toEqual({ kind: 'detach-tab' })
     expect(matchAppShortcut(k('k', { metaKey: true }), true)).toEqual({ kind: 'palette' })
-    expect(matchAppShortcut(k('3', { metaKey: true }), true)).toEqual({ kind: 'project', index: 2 })
+    expect(matchAppShortcut(k('3', { metaKey: true }), true)).toEqual({ kind: 'tab', index: 2 })
     expect(matchAppShortcut(k(',', { metaKey: true }), true)).toEqual({ kind: 'settings' })
   })
 
@@ -205,14 +238,14 @@ describe('every listed shortcut, on every OS', () => {
 
   it('has chords to check, the arrow chords among them', () => {
     expect(chords.length).toBeGreaterThan(10)
-    expect(chords).toEqual(expect.arrayContaining(['⌘9', '⌥⌘↓', '⌥⌘↑', '⌥⌘→', '⌥⌘←']))
+    expect(chords).toEqual(expect.arrayContaining(['⌘9', '⌃⌘9', '⌥⌘↓', '⌥⌘↑', '⌥⌘→', '⌥⌘←']))
   })
 
   for (const c of chords) {
     it(`${c} reaches the same command as ${keys(c, false)}`, () => {
       if (c === '⌘R') return // the webview's own reload, not an app command
       const ch = c.slice(-1)
-      const mac = matchAppShortcut(event(codeOf(ch), keyOf(ch), { metaKey: true, shiftKey: c.includes('⇧'), altKey: c.includes('⌥') }), true)
+      const mac = matchAppShortcut(event(codeOf(ch), keyOf(ch), { metaKey: true, shiftKey: c.includes('⇧'), altKey: c.includes('⌥'), ctrlKey: c.includes('⌃') }), true)
       expect(mac, `${c} on macOS`).not.toBeNull()
       const off = keys(c, false)
       if (off === '' || off === 'F5') return // macOS-only, or the browser's own reload
@@ -221,6 +254,19 @@ describe('every listed shortcut, on every OS', () => {
       const k1 = last === 'F5' ? 'F5' : last
       const ev = event(last === 'F5' ? 'F5' : codeOf(k1.toUpperCase().length === 1 ? k1.toUpperCase() : k1), keyOf(k1), { ctrlKey: parts.includes('Ctrl'), shiftKey: parts.includes('Shift'), altKey: parts.includes('Alt') })
       expect(matchAppShortcut(ev, false), `${off} off macOS`).toEqual(mac)
+    })
+  }
+
+  // The ranges list one chord each (⌘1–8); every digit in them is pressed.
+  for (const [mods, off, kind] of [['⌘', 'Ctrl+Shift+', 'tab'], ['⌃⌘', 'Alt+Shift+', 'project']] as const) {
+    it(`${mods}1–${mods}9 reach the same ${kind} as ${off}1–9`, () => {
+      for (let d = 1; d <= 9; d++) {
+        const mac = matchAppShortcut(event(`Digit${d}`, String(d), { metaKey: true, ctrlKey: mods === '⌃⌘' }), true)
+        expect(mac).toEqual({ kind, index: d - 1 })
+        expect(keys(`${mods}${d}`, false)).toBe(`${off}${d}`)
+        const parts = off.split('+')
+        expect(matchAppShortcut(event(`Digit${d}`, String(d), { ctrlKey: parts.includes('Ctrl'), shiftKey: true, altKey: parts.includes('Alt') }), false)).toEqual(mac)
+      }
     })
   }
 

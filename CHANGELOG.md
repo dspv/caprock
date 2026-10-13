@@ -7,6 +7,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** ⌘1–⌘9 switch tabs again, the Nth tab of the strip (⌘9 the
+  last), whether the sidebar groups by project or not, and every tab shows
+  its key, the one in front too; the same key shows on the tab's row in the
+  sidebar. Projects moved to ⌃⌘1–⌃⌘9 (Alt+Shift+1–9 on Windows and Linux),
+  drawn dimmer on each project row; ⌥⌘ arrows still walk sessions and
+  projects. A one-line card says so once, with a way to every key.
+
 ### Fixed
 
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.

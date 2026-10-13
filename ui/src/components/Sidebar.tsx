@@ -13,9 +13,9 @@
  * one highlighted row in the sidebar is the tab in front.
  *
  * Keyboard: Tab reaches every row; ↑ and ↓ move between rows, Enter opens
- * what the row names, ⌥⇧↑ ⌥⇧↓ move a session row within its project. ⌘1–⌘9
- * bring a project to the front by its place here, the key drawn on its row;
- * ⌥⌘← ⌥⌘→ step to the project before or after, ⌥⌘↑ ⌥⌘↓ to the session
+ * what the row names, ⌥⇧↑ ⌥⇧↓ move a session row within its project. A
+ * row with a tab shows the tab's ⌘1–⌘9; ⌃⌘1–⌃⌘9 bring a project to the
+ * front by its place here, the key drawn on its row; ⌥⌘← ⌥⌘→ step to the project before or after, ⌥⌘↑ ⌥⌘↓ to the session
  * above or below in the project in front (lib/appkeys.ts, AppShell).
  *
  * Rows keep their places (owner, 2026-10-13): projects by pin, the order set
@@ -57,7 +57,7 @@ import { TodayStrip } from './TodayStrip'
 import { FeedbackButton } from './Feedback'
 import { CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, EyeIcon, FolderIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 import { keys, tabDigit } from '@/lib/appkeys'
-import { loadRowOrders, ROW_ORDER_EVENT, saveRowOrder, tabRowKey, type RowOrders } from '@/lib/rowOrder'
+import { loadRowOrders, ROW_ORDER_EVENT, saveRowOrder, type RowOrders } from '@/lib/rowOrder'
 
 /** Project ids hidden by hand, with when: this browser's. An older plain list of ids still reads. */
 export const HIDDEN_KEY = 'caprock.app.hidden-projects'
@@ -197,10 +197,12 @@ export interface SidebarProps {
   onCleanCopies?: (projectId: string) => void
   /**
    * Sessions under their projects (the default), or every session in one
-   * flat list; AppShell keeps it per viewer and numbers ⌘1–⌘9 to match.
+   * flat list; AppShell keeps it per viewer.
    */
   grouped?: boolean
   onToggleGrouped?: () => void
+  /** Each tab's ⌘1–⌘9, by tab id, as the strip shows it: drawn on that tab's row too. */
+  tabDigits?: ReadonlyMap<string, number>
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -252,15 +254,14 @@ export function Sidebar(props: SidebarProps) {
     hiddenProjects.length + hiddenRows.length ? `${hiddenProjects.length + hiddenRows.length} hidden` : '',
   ].filter(Boolean).join(' · ')
   const [moreAt, setMoreAt] = useState<MenuAt | null>(null)
-  // Group by project off: every listed project's sessions as one list,
-  // ⌘1–⌘9 the sessions by place (owner, 2026-10-13, translated: "make a
+  // Group by project off: every listed project's sessions as one list
+  // (owner, 2026-10-13, translated: "make a
   // switch like 'group by projects' or not … that frees lots of room").
   const grouped = props.grouped ?? true
   const flat = useMemo(
     () => (grouped ? [] : flatRows(listed, allTabs ?? [], props.tabLabels ?? new Map(), rowOrders, hiddenSessions)),
     [grouped, listed, allTabs, props.tabLabels, rowOrders, hiddenSessions],
   )
-  const flatDigits = useMemo(() => new Map(flat.map((it, i) => [it.tab ? tabRowKeyOf(it) : it.key, tabDigit(i, flat.length)] as const).filter((e): e is [string, number] => e[1] !== null)), [flat])
   const real = model.projects.filter((n) => n.project.root !== '')
   const projectCount = real.length
   const busyCount = real.filter((n) => n.live > 0 || n.waiting > 0).length
@@ -275,8 +276,8 @@ export function Sidebar(props: SidebarProps) {
     }
     return m
   }, [allTabs])
-  // Each project's jump key, ⌘1–⌘8 by its place and ⌘9 the last, drawn on
-  // its row (owner, 2026-10-13); the strip draws it on the tab it brings.
+  // Each project's jump key, ⌃⌘1–⌃⌘8 by its place and ⌃⌘9 the last, drawn
+  // on its row (owner, 2026-10-13); its tabs' rows carry their own ⌘N.
   const projectDigits = useMemo(() => {
     const ids = numberedProjects(groups)
     return new Map(ids.map((id, i) => [id, tabDigit(i, ids.length)] as const))
@@ -359,6 +360,7 @@ export function Sidebar(props: SidebarProps) {
         current={current}
         tabs={tabsByProject.get(n.project.id) ?? noTabs}
         digit={grouped ? projectDigits.get(n.project.id) ?? undefined : undefined}
+        tabDigits={props.tabDigits}
         rowOrder={rowOrders[n.project.id]}
         onReorder={onReorder}
         labels={props.tabLabels ?? noLabels}
@@ -498,7 +500,7 @@ export function Sidebar(props: SidebarProps) {
                 items={flat}
                 orderId={FLAT_ORDER}
                 ariaLabel="Sessions"
-                digits={flatDigits}
+                digits={props.tabDigits}
                 activeTabId={props.dashboardActive ? undefined : props.activeTabId}
                 onActivateTab={props.onActivateTab ?? noop}
                 onCloseTab={props.onCloseTab}
@@ -697,9 +699,4 @@ function ThemeButton() {
       {light ? <SunIcon size={15} /> : <MoonIcon size={15} />}
     </ThemeMenu>
   )
-}
-
-/** A row's place key (ProjectRow leadKey): a tab's is the session it is named after. */
-function tabRowKeyOf(it: { tab?: Tab; key: string }): string {
-  return it.tab ? tabRowKey(it.tab) : it.key
 }

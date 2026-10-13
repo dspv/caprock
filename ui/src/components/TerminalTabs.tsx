@@ -73,7 +73,7 @@ export interface TabStripProps {
   /** The + menu's rows; New agent and New shell when absent. */
   newItems?: readonly NewMenuItem[]
   onToggleInspector: () => void
-  /** The ⌘1–⌘9 key drawn on a tab: its project's, on the tab that key brings to the front. */
+  /** Each tab's ⌘1–⌘9, by its place: 1–8, and 9 on the last. */
   digits?: ReadonlyMap<string, number>
   /** The tab in front shows its chat instead of its terminal (WP-14). */
   chatOpen?: boolean
@@ -215,18 +215,20 @@ export function TabStrip(props: TabStripProps) {
                 : <span data-row-title className="min-w-0 flex-1 truncate">{title}</span>}
               {file === undefined && <HotMark sessionId={s?.session_id} />}
               {/* The jump key and the × share one slot at the right end, so
-                * nothing moves the title: the key at rest, the × on hover
-                * and on the tab in front, which needs no key to reach. */}
-              <span data-tab-end className="relative flex h-[20px] min-w-[20px] shrink-0 items-center justify-end">
+                * nothing moves the title: the key at rest, the × on hover.
+                * The tab in front shows both, side by side: every tab says
+                * its key (owner, 2026-10-14, translated: "not every tab
+                * shows the key combination"). */}
+              <span data-tab-end className="relative flex h-[20px] min-w-[20px] shrink-0 items-center justify-end gap-0.5">
                 {digit && (
-                  <kbd data-tab-key aria-hidden className={`app-kbd-sm ${active ? 'invisible' : 'group-hover:invisible group-focus-within:invisible'}`}>{tabKey(digit)}</kbd>
+                  <kbd data-tab-key aria-hidden className={`app-kbd-sm ${active ? '' : 'group-hover:invisible group-focus-within:invisible'}`}>{tabKey(digit)}</kbd>
                 )}
                 <button
                   type="button"
                   aria-label={`${closeWord(file !== undefined, isShell)} ${title}`}
                   title={closeTitle(file !== undefined, isShell, !!label?.chat)}
                   onClick={(e) => { e.stopPropagation(); props.onDetach(t.id) }}
-                  className={`absolute right-0 top-0 flex h-[20px] w-[20px] items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'invisible group-hover:visible group-focus-within:visible'}`}
+                  className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'absolute right-0 top-0 invisible group-hover:visible group-focus-within:visible'}`}
                 >
                   <CloseIcon size={12} />
                 </button>

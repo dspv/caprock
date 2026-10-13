@@ -165,9 +165,16 @@ One window, three regions:
   toggle beside the heading (`caprock.app.sidebar-grouped`, on by
   default) switches to one flat list of every agent session, each row
   with its project's dot and short name. **One numbering**: ⌘1–⌘9 is the
-  Nth top-level item of the sidebar — a project when grouped, a session
-  when flat — the strip is kept in the sidebar's order (`order` in
-  `lib/tabs.ts`), and only the tab ⌘N brings shows its digit. ⌥⌘↑ ⌥⌘↓
+  strip's Nth tab (⌘9 the last), grouped or flat; every tab shows its
+  digit and its sidebar row the same one, and the strip is kept in the
+  sidebar's order (`order` in `lib/tabs.ts`), so the digits run down the
+  list. ⌃⌘1–⌃⌘9 (Alt+Shift+1–9 off macOS) is the sidebar's Nth project,
+  its key drawn on the project row (owner, 2026-10-14, translated: "I
+  sometimes work with 5 projects at once, sometimes 2. I just want to
+  switch between them with key combos" — for a day ⌘N had been the
+  sidebar's Nth item, a project or a session by grouping, and only the
+  tab it brought showed N). A one-time card says the keys after the
+  update (`KeysHint`). ⌥⌘↑ ⌥⌘↓
   walk the sessions of the project in front (the whole list when flat),
   ⌥⌘← ⌥⌘→ the projects
   (Alt+Shift arrows off macOS; [04-ui.md](04-ui.md) § The app workspace, *Keyboard*, says why not
