@@ -3,12 +3,14 @@ package hookd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -330,5 +332,77 @@ func TestAPermissionRequestIsObservedAndStored(t *testing.T) {
 	}
 	if evs, _ = store.ListEvents(context.Background(), st.DB(), "sess-abc", 0, 0); len(evs) != 2 {
 		t.Fatalf("stored %d events", len(evs))
+	}
+}
+
+// The hook copy of a tool call is held to the transcript parser's cap: the
+// screenshot and the whole file are not stored, everything the screens read
+// is, and tool_bytes still counts what the tool really handed back.
+func TestNormalizeCapsTheToolFieldsLikeTheTranscript(t *testing.T) {
+	shot := strings.Repeat("iVBO", 300<<10)
+	whole := strings.Repeat("line of a large file\n", 20000)
+	body, _ := json.Marshal(map[string]any{
+		"hook_event_name": "PostToolUse", "session_id": "s1", "cwd": "/repo", "tool_name": "Read",
+		"tool_use_id": "toolu_9", "transcript_path": "/t.jsonl",
+		"tool_input": map[string]any{"file_path": "/repo/shot.png"},
+		"tool_response": map[string]any{
+			"type": "image",
+			"file": map[string]any{"base64": shot, "type": "image/png", "originalSize": 123},
+			"text": whole,
+		},
+	})
+	var orig struct {
+		R json.RawMessage `json:"tool_response"`
+	}
+	_ = json.Unmarshal(body, &orig)
+	ev, _, err := Normalize(body, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.ToolBytes != int64(len(orig.R)) {
+		t.Fatalf("ToolBytes = %d, want the original %d", ev.ToolBytes, len(orig.R))
+	}
+	if len(ev.Payload) > 2*event.MaxToolField {
+		t.Fatalf("payload is %d bytes", len(ev.Payload))
+	}
+	var p struct {
+		Cwd       string `json:"cwd"`
+		ToolName  string `json:"tool_name"`
+		ToolUseID string `json:"tool_use_id"`
+		ToolInput struct {
+			FilePath string `json:"file_path"`
+		} `json:"tool_input"`
+		ToolResponse struct {
+			File struct {
+				Base64       string `json:"base64"`
+				OriginalSize int    `json:"originalSize"`
+			} `json:"file"`
+			Text string `json:"text"`
+		} `json:"tool_response"`
+	}
+	if err := json.Unmarshal(ev.Payload, &p); err != nil {
+		t.Fatalf("payload not JSON: %v", err)
+	}
+	if p.Cwd != "/repo" || p.ToolName != "Read" || p.ToolUseID != "toolu_9" || p.ToolInput.FilePath != "/repo/shot.png" {
+		t.Fatalf("fields the screens read were lost: %+v", p)
+	}
+	if p.ToolResponse.File.Base64 != "[image image/png 900 KB not stored]" || p.ToolResponse.File.OriginalSize != 123 {
+		t.Fatalf("image not replaced by its marker: %+v", p.ToolResponse.File)
+	}
+	if !strings.Contains(p.ToolResponse.Text, "…[truncated ") || !strings.HasPrefix(whole, p.ToolResponse.Text[:100]) {
+		t.Fatal("long text not clipped with a marker")
+	}
+	if ev.Tool != "Read" || ev.Key != "post:toolu_9" {
+		t.Fatalf("event: tool %q key %q", ev.Tool, ev.Key)
+	}
+
+	// A small body is stored as it came.
+	small := []byte(`{"hook_event_name":"PostToolUse","session_id":"s1","tool_name":"Bash","tool_use_id":"u","tool_response":{"stdout":"a <b> & c"}}`)
+	ev, _, err = Normalize(small, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(ev.Payload) != string(small) || ev.ToolBytes != 0 {
+		t.Fatalf("small body changed: %s (tool bytes %d)", ev.Payload, ev.ToolBytes)
 	}
 }

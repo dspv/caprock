@@ -89,6 +89,27 @@ memoised; a closed popover is not re-rendered. Rule in
 findings in [21-app.md](21-app.md#a-hidden-window-does-no-work-2026-10-13).
 Tests: `ui/src/lib/visible.test.ts`, `live.test.tsx`, `framebatch.test.ts`,
 `useNow.test.tsx`.
+### 2026-10-13 — unreleased: store what the screens read, read the database less
+
+The owner's database was 2.2 GB, 1.1 GB of it hook tool results stored
+verbatim (screenshots as base64, whole files), and the daemon twice read over
+a gigabyte within a minute with nothing saying why. Now: the hook copy of a
+tool call goes through the transcript parser's cap (one shared function,
+`event.CapToolField`; 841 MB less for the same history on a copy, 6,099 of
+134,099 rows changed; `tool_bytes` keeps the original size). Every statement
+is timed and one over 300 ms is logged with its caller — on a copy it named
+the culprits at once: the storage measurement (a 5.5 s `dbstat` walk of the
+whole file, a minute after start and every 30 minutes) and `Server.Warm`'s
+30-day and all-time Weeks (`scanToolPosts` reading every Bash/Edit/Write
+result payload, 1–4 s per slice). The measurement now runs when the Storage
+panel finds it a day old or once a day while idle; Warm leaves the long
+Weeks to the dialog. `journal_size_limit` is 64 MiB, and an idle daily sweep
+removes old pastes, empty unused chat folders, ended Gemini telemetry and
+the stale `launchd.log` ([02-architecture.md § Retention and
+cleanup](02-architecture.md#retention-and-cleanup)). Not done: rewriting the
+rows stored before the cap — their payloads still cost a full read whenever
+a whole-history scan touches them.
+
 ### 2026-10-13 — unreleased: `caprock doctor` and what Caprock costs this machine
 
 `GET /v1/footprint` and `caprock doctor` ([03-contracts.md § Footprint](03-contracts.md#footprint)):

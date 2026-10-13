@@ -170,7 +170,12 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 	// How much this call handed back, measured once here rather than extracted
 	// from the payload on every read: over 89k tool events that cost 1.3s on a
 	// 641MB database, and this screen refreshes every five seconds.
-	toolBytes := toolResponseLen(ev)
+	// A capped payload (event.CapToolField) carries the size before the cap,
+	// which is the one the tool sizes are about.
+	toolBytes := ev.ToolBytes
+	if toolBytes <= 0 {
+		toolBytes = toolResponseLen(ev)
+	}
 	// Internal classification is a property of the model, written once here so
 	// every aggregate filters one flag rather than re-deriving it from model
 	// names (internal/modelclass is the single allow-list).
@@ -3195,4 +3200,16 @@ func median(xs []float64) float64 {
 		return s[len(s)/2]
 	}
 	return (s[len(s)/2-1] + s[len(s)/2]) / 2
+}
+
+// SessionRanIn reports whether any recorded session ran in dir. The data
+// directory's sweep asks it before removing an empty chat directory, which a
+// resumed chat would start in again.
+func SessionRanIn(ctx context.Context, q Querier, dir string) (bool, error) {
+	var one int
+	err := q.QueryRowContext(ctx, `SELECT 1 FROM sessions WHERE cwd = ? LIMIT 1`, dir).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }

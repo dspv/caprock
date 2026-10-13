@@ -26,8 +26,9 @@ import { Bars } from '@/components/Breakdown'
 import { agentName } from '@/components/Projects'
 
 export function StoragePanel() {
-  // The composition is re-measured every half hour; polling faster only
-  // re-reads the file sizes, which is all that can move in between.
+  // The composition is measured when this panel finds it a day old (and once
+  // a day while the daemon is idle); polling faster only re-reads the file
+  // sizes, which is all that can move in between.
   const r = useApi(() => api.storage(), [], { live: false, intervalMs: 60000 })
   if (!r.data) return null
   return <StorageView report={r.data} now={Date.now()} />
@@ -116,6 +117,7 @@ export function StorageView({ report: s, now }: { report: StorageReport; now: nu
       aside={
         <span className="text-[11px] text-fg-faint">
           {db && s.measured_at ? <span title={`measured in ${((s.measure_ms ?? 0) / 1000).toFixed(1)}s`}>measured {fmtAgo(s.measured_at, now)}</span> : 'measuring…'}
+          {db && s.measured_at && s.measuring ? ' · measuring…' : null}
         </span>
       }
     >

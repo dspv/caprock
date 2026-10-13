@@ -1034,8 +1034,9 @@ export interface Status {
 }
 
 /** What Caprock keeps on disk: GET /v1/storage. The database composition is
- *  measured in the background and cached, so `database` is absent for the
- *  first minute after the daemon starts. */
+ *  measured in the background and cached: a request that finds it a day old
+ *  (or missing) starts a measurement and says `measuring`, and `database` is
+ *  absent until the first one finishes. */
 export interface StorageReport {
   data_dir: string
   total_bytes: number
@@ -1055,6 +1056,8 @@ export interface StorageReport {
   }
   measured_at?: number
   measure_ms?: number
+  /** A measurement is running; the figures are the previous one's. */
+  measuring?: boolean
   error?: string
   reclaimable_bytes: number
   /** An estimate, and named as one: see 03-contracts.md § Storage. */

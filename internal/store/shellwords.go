@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/dspv/caprock/internal/event"
 )
 
 // The Week card counts what the agents did with git and gh: commits made, pull
@@ -339,13 +341,18 @@ func distinctPRs(output string) []prRef {
 }
 
 // lineCount is how many lines a string written by Edit or Write holds. A
-// trailing newline ends the last line rather than starting another.
+// trailing newline ends the last line rather than starting another. A string
+// clipped by event.CapToolField counts the lines it dropped, which its marker
+// names, so a large Write is not undercounted.
 func lineCount(s string) int64 {
+	s, dropped := event.SplitClip(s)
 	if s == "" {
-		return 0
+		return int64(dropped)
 	}
-	n := int64(strings.Count(s, "\n"))
-	if !strings.HasSuffix(s, "\n") {
+	n := int64(strings.Count(s, "\n")) + int64(dropped)
+	// A clipped string's last line ended somewhere in the dropped part, and
+	// its line break is among the ones the marker counted.
+	if dropped == 0 && !strings.HasSuffix(s, "\n") {
 		n++
 	}
 	return n

@@ -99,3 +99,11 @@ it('offers the manual compaction only when it would return something worth stopp
   expect(t).toMatch(/200\.0MB of the database is free pages/)
   expect(t).toMatch(/sqlite3 "\/home\/u\/caprock\/caprock\.db" VACUUM/)
 })
+
+it('says a new measurement is running beside the age of the figures shown', () => {
+  const { rerender } = render(<StorageView report={report({ measuring: true })} now={now} />)
+  expect(screen.getByText(/measured 5m ago/)).toBeTruthy()
+  expect(screen.getByText(/· measuring…/)).toBeTruthy()
+  rerender(<StorageView report={report()} now={now} />)
+  expect(screen.queryByText(/· measuring…/)).toBeNull()
+})
