@@ -378,7 +378,16 @@ others. Installing it: [install-app.md](install-app.md).
   focus the edge and use ↑ ↓; double-click it for the default height. The
   deck button beside the inspector's, ⌘B and the palette open and close it;
   the app remembers its height and whether it was open. A shell tab has no
-  deck.
+  deck. **Expand**, beside *Hide*, opens it large in a tab of its own,
+  *PRs & CI*: the repository's last two weeks on top (pull requests merged
+  per day, the median time to merge, the median CI run, the share of red
+  runs, the Actions minutes GitHub billed this month), its pull requests on
+  the left (this session's, the repository's or the open ones), and the one
+  you pick on the right with its state, review, merge state and diff size,
+  the deck's actions, its jobs by runner OS against each one's usual time,
+  the jobs on a timeline, and a failed job's steps and log with
+  *Investigate*. *Back to the deck* closes the tab and shows the agent with
+  its deck. It reads GitHub only while it is in front.
 - **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
   same button), *Review and commit* in the inspector, or "Review changes" in
   the palette. The files are listed as *Staged*, *Changes* and *Conflicts*;

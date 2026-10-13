@@ -18,6 +18,9 @@ type SessionCIPR struct {
 	State   string `json:"state,omitempty"` // open | merged | closed; "" when GitHub was not read
 	Repo    string `json:"repo"`
 	HeadSHA string `json:"head_sha,omitempty"`
+	// Live is the pull request as GitHub returned it: its review, merge
+	// state and diff size, for the PRs & CI tab's detail.
+	Live *github.PR `json:"live,omitempty"`
 }
 
 // SessionCI is GET /v1/sessions/{id}/ci.
@@ -50,10 +53,18 @@ func (s *Server) sessionCIPR(ctx context.Context, id string, want int) (*Session
 		prs = prs[:sessionPRsShown]
 	}
 	if want > 0 {
+		found := false
 		for _, p := range prs {
 			if p.Number == want {
-				prs = []store.SessionPR{p}
+				prs, found = []store.SessionPR{p}, true
 				break
+			}
+		}
+		// Not the session's own: one of its repository's that the PRs & CI
+		// tab listed, and only such (s.repoPRURL).
+		if !found {
+			if link, ok := s.repoPRURL(ctx, id, want); ok {
+				prs = []store.SessionPR{{SessionID: id, URL: link, Number: want}}
 			}
 		}
 	}
@@ -71,7 +82,7 @@ func (s *Server) sessionCIPR(ctx context.Context, id string, want int) (*Session
 			}
 			continue
 		}
-		c := &SessionCIPR{Number: live.Number, URL: live.URL, Title: live.Title, State: live.State, Repo: repo.FullName(), HeadSHA: live.HeadSHA}
+		c := &SessionCIPR{Number: live.Number, URL: live.URL, Title: live.Title, State: live.State, Repo: repo.FullName(), HeadSHA: live.HeadSHA, Live: &live}
 		if live.State == "open" {
 			return c, nil, nil
 		}

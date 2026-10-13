@@ -470,6 +470,7 @@ GET  /v1/sessions/{id}/ci              → SessionCI — the deck's CI cell: Act
 GET  /v1/sessions/{id}/ci/jobs/{job}/log → CILog — the lines around a failed job's error, on demand (?view=pr|release|main)
 GET  /v1/sessions/{id}/ci/release      → SessionRepoCI — the repository's newest release build, with an estimate
 GET  /v1/sessions/{id}/ci/main         → SessionRepoCI — the newest run of each workflow on the default branch
+GET  /v1/sessions/{id}/ci/stats        → SessionCIStats — the PRs & CI tab: the repository's PRs and its figures over 14 days
 GET  /v1/sessions/{id}/branches        → SessionBranches — the repository's branches with PRs and Caprock spend (§ Session branches)
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
@@ -1438,7 +1439,7 @@ chip.
 
 **The deck's answers are kept** (`internal/api/deckcache.go`). The five
 views of the *Pull requests & CI* cell — `…/prs`, `…/ci`, `…/ci/release`,
-`…/ci/main`, `…/branches` — are each composed from the kept GitHub reads
+`…/ci/main`, `…/branches` — and the PRs & CI tab's `…/ci/stats` are each composed from the kept GitHub reads
 above, and the composed answer is kept per view, session, pull request
 asked for and whether GitHub is connected (at most 256 keys). A key never
 composed is composed while the request waits, and concurrent requests for
@@ -1457,7 +1458,10 @@ used to, each deciding by its own freshness whether to ask.
 
 **`POST /v1/sessions/{id}/prs/{number}/rerun`** (no body) → `{ok, mode,
 runs, jobs}`: the session deck's *Re-run checks*. Acts only on a pull
-request in the session's `session_prs` (404 otherwise), read through
+request in the session's `session_prs`, or one of its repository's that
+the PRs & CI tab listed — in the last `…/ci/stats` list read
+(`github.CachedRepoPull`), so no number a request merely names is acted on
+— 404 otherwise; read through
 `github.PullByURL` for its head commit. `github.RerunChecks` reads that
 commit's runs afresh, then asks GitHub `POST
 /repos/{o}/{r}/actions/runs/{id}/rerun-failed-jobs` for every finished run
@@ -1486,10 +1490,12 @@ the paired-device lists.
 
 **`GET /v1/sessions/{id}/ci`** (`?pr=N` optional) → `SessionCI` `{connected,
 pr?, ci?, error?, fetched_at, refreshing?}`: the session deck's CI cell. `pr` `{number, url, title?,
-state?, repo, head_sha?}` is pull request N when it is among the session's
-latest four (a click on its row or its mini pipeline), else the
+state?, repo, head_sha?, live?}` is pull request N when it is among the session's
+latest four (a click on its row or its mini pipeline) or one of its
+repository's that the PRs & CI tab listed (as the rerun route checks), else the
 session's open one among them, else the newest (each read through `github.PullByURL`, so it shares the PRs
-cell's reads). `ci` is `github.CI` for that PR's head commit: `{repo,
+cell's reads; `live` is that `github.PR`, for the tab's review, merge state
+and diff size). `ci` is `github.CI` for that PR's head commit: `{repo,
 head_sha, state, runs[], runner_ms, by_os[], cost?, at, error?}`, `state` one of
 `running | fail | pass | none`. Each run `{id, name, event?, status,
 conclusion?, attempt?, html_url?, created_at?, updated_at?, started_at?,
@@ -1533,6 +1539,37 @@ to 256 runs and 64 workflows, the oldest read dropped first). Only these
 routes ask for it, so nothing is read while the deck is closed; nothing is
 sent while GitHub is not connected; a failed read is no baseline, not an
 error. The cached answers are never changed: the baselines are set on a copy.
+
+**`GET /v1/sessions/{id}/ci/stats`** → `SessionCIStats` `{connected, repo?,
+reason?, prs[], stats?, error?, fetched_at, refreshing?}`: the PRs & CI tab
+(.ai/21-app.md § PRs & CI tab), asked only while that tab is in front and
+the window visible. `repo` and `reason` as `SessionRepoCI` says them. `prs`
+is the repository's own pull requests — the `BranchPR` list the Branches
+view reads (`GET …/pulls?state=all&sort=updated&direction=desc&per_page=50`,
+kept 2 min; `github.RepoPulls` shares the read with `PullsByBranch`), most
+recently updated first, a fork's left out. `stats` is `github.RepoStats`
+over the 14 local calendar days ending today:
+
+- **Merges** — `days[]` (`2006-01-02`, oldest first), `merged[]` (pull
+  requests merged each day), `ttm_median_ms?` and `ttm_count` (the median
+  of `merged_at - created_at` over the pull requests merged in the window,
+  absent with fewer than two), `prs_listed` (how many the counts read).
+- **Runs** — `ci` `{runs, red, reruns, listed, oldest?, per_day[{runs,
+  red}], workflows[]}` from `GET …/actions/runs?per_page=100` (every
+  workflow and event, without jobs), kept 30 min (`github.RepoRuns`).
+  `runs` counts the finished runs that passed or failed, `red` the failed
+  ones (`failure`, `timed_out`, `startup_failure`); cancelled, skipped and
+  unfinished runs are neither. `reruns` counts runs on an attempt past the
+  first; `listed` and `oldest` (unix ms) say how far back the 100 runs
+  reach. Each workflow `{name, runs, red, median_ms?, median_runs,
+  daily_median_ms[]}`: the median of `updated_at - run_started_at` over its
+  successful runs (absent with fewer than two; a day's 0 likewise), the
+  workflow with the most such time first.
+
+Nothing is sent while GitHub is not connected: `connected` is false, `prs`
+empty, `stats` absent. A failed list keeps the last one; a failed run list
+leaves `stats` counted from the pull requests alone with `error` set. The
+answer is kept with the deck's (key `stats`).
 
 **`GET /v1/sessions/{id}/ci/release`** and **`GET /v1/sessions/{id}/ci/main`**
 → `SessionRepoCI` `{connected, repo?, reason?, branch?, release?, ci?,
@@ -1638,7 +1675,7 @@ view is shown.
   copy are one row (the local one's commit); other remotes and origin's
   `HEAD` are left out. `ahead` and `behind` are absent when not counted.
 - **Its PR** — `pr` `{number, url, title?, state, draft?, base?,
-  head_sha?}` from one `GET /repos/{o}/{r}/pulls?state=all&sort=updated&direction=desc&per_page=50`
+  head_sha?, created_at?, merged_at?}` (unix ms, GitHub's stamps) from one `GET /repos/{o}/{r}/pulls?state=all&sort=updated&direction=desc&per_page=50`
   per repository, kept 2 min (`github.PullsByBranch`): the branch's open
   PR, else its most recently updated; a fork's same-named branch is not
   this repository's; the default branch has none. `live` is an open PR read
@@ -2764,7 +2801,8 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
   (`in:name fork:true`). 30 a page.
 - **`PR`** — `{project_id, worktree, branch, repo, number, url, title,
   state: open|closed|merged, draft, base, head_sha, mergeable: bool|null,
-  mergeable_state?, auto_merge?, review: approved|changes_requested|review_required|
+  mergeable_state?, auto_merge?, created_at?, merged_at?, additions?, deletions?,
+  changed_files?, commits?, review: approved|changes_requested|review_required|
   commented|"", reviews: [{user, state, at?}], checks: {state:
   pass|fail|pending|"", passed, failed, pending, items: [{name, state, url?,
   status?, started_at?, completed_at?, job_id?}]}, at, error?}`. Checks
@@ -2774,7 +2812,11 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
   that `job_id` — the deck's mini pipeline draws them;
   `mergeable` null is GitHub still computing it; `auto_merge` is true while
   GitHub's auto-merge is enabled (its pull request object's `auto_merge`
-  not null, read with the rest, no call of its own). Only pull requests whose
+  not null, read with the rest, no call of its own). `created_at` and
+  `merged_at` are GitHub's stamps (unix ms); `additions`, `deletions`,
+  `changed_files` and `commits` are the diff's size from the same answer for
+  the one pull request (a list leaves them out, so they are absent there).
+  Only pull requests whose
   head is in the same repository as `origin` are followed.
 - **`WorktreeInfo`** — `{connected, repo: {owner, name, full_name, html_url}
   | null, reason?, branch, base, remote?, published, ahead, pr: PR | null,

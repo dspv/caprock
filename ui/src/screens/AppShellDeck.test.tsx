@@ -115,6 +115,19 @@ describe('the session deck in the app', () => {
     expect(h.asked).toBe(1)
   })
 
+  it('expands into a PRs & CI tab, and Back to the deck returns to the agent with its deck open', async () => {
+    await openAgent()
+    cmdB()
+    fireEvent.click(screen.getByRole('button', { name: /^Expand/ }))
+    expect(await screen.findByRole('tab', { name: /PRs & CI · app/ })).toBeInTheDocument()
+    expect(document.querySelector('[data-prs-tab]')).toBeInTheDocument()
+    // Not an agent's tab: no deck under it.
+    expect(deck()).toBeNull()
+    fireEvent.click(document.querySelector('[data-prs-back]')!)
+    await waitFor(() => expect(screen.queryByRole('tab', { name: /PRs & CI/ })).toBeNull())
+    expect(deck()).toBeInTheDocument()
+  })
+
   it('is listed in the palette', async () => {
     await openAgent()
     act(() => { fireEvent.keyDown(window, { key: 'k', code: 'KeyK', metaKey: true }) })

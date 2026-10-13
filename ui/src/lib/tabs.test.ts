@@ -312,3 +312,20 @@ describe('watched session tabs', () => {
     expect(ws.tabs.map((t) => focusedLeaf(t).target)).toEqual([{ kind: 'session', sessionId: 'old' }, { kind: 'session', sessionId: 'a' }])
   })
 })
+
+describe('the PRs & CI tab', () => {
+  const prs = (of: string): WorkspaceAction => ({ type: 'open', target: { kind: 'prs', sessionId: `prs:${of}`, of }, projectId: 'p1', title: `PRs & CI · ${of}` })
+  it('opens once per session, is never split, and is restored from storage', () => {
+    const ws = run(open('a'), prs('a'), open('b'), prs('a'))
+    expect(ws.tabs).toHaveLength(3)
+    expect(focusedLeaf(activeTab(ws)!).target).toEqual({ kind: 'prs', sessionId: 'prs:a', of: 'a' })
+    const split = workspaceReducer(ws, { type: 'split', target: { kind: 'shell', sessionId: 'sh' }, direction: 'row', projectId: 'p1', title: 'shell' })
+    expect(split.tabs).toHaveLength(4)
+    const back = parseWorkspace(JSON.stringify(ws))
+    expect(back.tabs.map((t) => focusedLeaf(t).target.kind)).toEqual(['session', 'prs', 'session'])
+    // A malformed one is dropped, not trusted.
+    const bad = JSON.parse(JSON.stringify(ws)) as Workspace
+    ;(bad.tabs[1]!.root as { target: { of?: string } }).target.of = 'other'
+    expect(parseWorkspace(JSON.stringify(bad)).tabs).toHaveLength(2)
+  })
+})
