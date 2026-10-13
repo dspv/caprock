@@ -123,6 +123,8 @@ export type ChipTone = 'ok' | 'fail' | 'pending' | 'muted' | 'faint' | 'merged'
 /** A card's CI chip: what its head commit's checks say. */
 export function ciChip(c: Pick<BoardCard, 'ci' | 'stage' | 'why'>): { text: string; tone: ChipTone; title: string } | undefined {
   if (c.stage === 'merged' || c.stage === 'released') return undefined
+  // A draft whose checks were not read says nothing: it is not waiting on them.
+  if (c.stage === 'draft' && !c.ci) return undefined
   if (c.why === 'conflict') return { text: 'conflict', tone: 'fail', title: 'GitHub says it conflicts with its base branch' }
   if (c.why === 'changes_requested') return { text: 'changes requested', tone: 'fail', title: 'A reviewer asked for changes' }
   switch (c.ci) {

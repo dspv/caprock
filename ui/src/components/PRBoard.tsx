@@ -36,10 +36,10 @@ export function PRBoardView({ board, prs, now, onOpen }: { board: PRBoard; prs: 
   return (
     <div data-prs-board className="flex min-w-0 flex-col gap-3">
       <FlowStrip board={board} />
-      <div className="app-scroll -mx-1 overflow-x-auto px-1 pb-1">
-        <div className="grid min-w-[1020px] grid-cols-6 gap-2">
-          {cols.map((c) => <Column key={c.stage.key} stage={c.stage.key} label={c.stage.label} note={c.stage.note} cards={c.cards} now={now} onOpen={onOpen} />)}
-        </div>
+      {/* Every column in view, never behind a sideways scroll: six across,
+        * three across in a narrow tab, two on a phone. */}
+      <div data-board-columns className="grid grid-cols-6 gap-2 @max-[1000px]/prs:grid-cols-3 @max-[520px]/prs:grid-cols-2 @max-[380px]/prs:grid-cols-1">
+        {cols.map((c) => <Column key={c.stage.key} stage={c.stage.key} label={c.stage.label} note={c.stage.note} cards={c.cards} now={now} onOpen={onOpen} />)}
       </div>
       <Releases releases={board.releases} prs={prs} now={now} onOpen={onOpen} />
     </div>
@@ -70,7 +70,7 @@ function FlowStrip({ board }: { board: PRBoard }) {
       <Figure label="Merged → released" value={f.release_lag_median_ms ? `~${spanText(f.release_lag_median_ms)}` : '–'} note={f.release_lag_median_ms ? `estimate · ${f.release_lag_count} released` : f.release_lag_count === 1 ? 'one release so far' : 'no release matched'}
         title="An estimate: each merge into the default branch is matched to the first release published after it, and the median taken of merge to publish" />
       <Figure label="CI" value={f.ci_median_ms ? fmtRun(f.ci_median_ms) : '–'} note={f.ci_median_ms ? 'median successful run' : 'fewer than two runs'} title="The busiest workflow's median successful run, start to finish, GitHub's run times" />
-      <Figure label="Agent cost on the board" value={`$${f.cost_usd.toFixed(2)}`} note="API list price" title={AGENT_COST_NOTE} />
+      <Figure label="Agent cost" value={`$${f.cost_usd.toFixed(2)}`} note="on the board · API list price" title={AGENT_COST_NOTE} />
     </section>
   )
 }
@@ -84,8 +84,8 @@ function Column({ stage, label, note, cards, now, onOpen }: { stage: Stage; labe
   return (
     <section data-board-column={stage} aria-label={label} className="flex min-w-0 flex-col rounded-[var(--radius-panel)] border border-border bg-panel-2/40">
       <header title={note} className="flex items-baseline gap-2 border-b border-border px-2.5 pb-1.5 pt-2" style={{ boxShadow: `inset 0 2px 0 ${STAGE_TONE[stage]}` }}>
-        <span className="truncate text-[11px] font-medium uppercase tracking-[0.1em] text-fg-muted">{label}</span>
-        <span className="num text-[15px] font-semibold text-fg">{cards.length}</span>
+        <span className="min-w-0 truncate text-[11px] font-medium uppercase tracking-[0.1em] text-fg-muted">{label}</span>
+        <span className="num shrink-0 text-[15px] font-semibold text-fg">{cards.length}</span>
         {cost > 0 && <span className="num ml-auto shrink-0 text-[11px] text-fg-faint" title={AGENT_COST_NOTE}>${cost >= 100 ? Math.round(cost) : cost.toFixed(2)}</span>}
       </header>
       <ul className="flex min-h-[64px] flex-col gap-1.5 p-1.5">
@@ -116,10 +116,10 @@ function Card({ c, now, onOpen }: { c: BoardItem; now: number; onOpen: () => voi
         </span>
         {(chip || c.release || cost || c.spend.live > 0) && (
           <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px]">
-            {chip && <span data-board-ci={c.ci ?? 'unknown'} title={chip.title} className={`inline-flex h-[18px] items-center rounded-full border px-1.5 ${CHIP[chip.tone]}`}>{chip.text}</span>}
+            {chip && <span data-board-ci={c.ci ?? 'unknown'} title={chip.title} className={`inline-flex h-[18px] items-center whitespace-nowrap rounded-full border px-1.5 ${CHIP[chip.tone]}`}>{chip.text}</span>}
             {c.release && <span className="mono truncate text-accent" title={`Shipped in ${c.release}`}>{c.release}</span>}
             {c.spend.live > 0 && (
-              <span data-board-live className="inline-flex items-center gap-1 text-ok" title={`${c.spend.live} agent session${c.spend.live === 1 ? '' : 's'} running on it now`}>
+              <span data-board-live className="inline-flex items-center gap-1 whitespace-nowrap text-ok" title={`${c.spend.live} agent session${c.spend.live === 1 ? '' : 's'} running on it now`}>
                 <span aria-hidden className="inline-block h-[6px] w-[6px] rounded-full bg-ok" />{c.spend.live} {c.spend.live === 1 ? 'agent' : 'agents'}
               </span>
             )}

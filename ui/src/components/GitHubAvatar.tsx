@@ -27,12 +27,12 @@ export function GitHubAvatar({ login, url, size = 16 }: { login: string; url?: s
   if (!src) {
     return (
       <span aria-hidden style={{ ...box, fontSize: Math.max(8, Math.round(size * 0.45)) }}
-        className="inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--app-row-active)] font-medium leading-none text-fg-muted">
+        className="inline-flex shrink-0 items-center justify-center rounded-full bg-panel-2 font-medium leading-none text-fg-muted">
         {initials(login)}
       </span>
     )
   }
-  return <img src={src} alt="" style={box} width={size} height={size} referrerPolicy="no-referrer" loading="lazy" decoding="async" onError={() => setFailed(true)} className="shrink-0 rounded-full bg-[var(--app-row-active)]" />
+  return <img src={src} alt="" style={box} width={size} height={size} referrerPolicy="no-referrer" loading="lazy" decoding="async" onError={() => setFailed(true)} className="shrink-0 rounded-full bg-panel-2" />
 }
 
 /** Face and name side by side. */

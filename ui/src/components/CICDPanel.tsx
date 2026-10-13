@@ -100,10 +100,10 @@ function CICDBody() {
   return (
     <div data-cicd-panel className="@container/cicd flex flex-col">
       {st && (
-        <div data-cicd-status={st.tone} title={st.title} className={`flex items-center gap-2 border-b border-border px-3 py-1.5 text-[12px] ${st.tone === 'fail' ? 'bg-danger/10 text-danger' : st.tone === 'warn' ? 'bg-warn/10 text-warn' : 'text-fg-muted'}`}>
+        <div data-cicd-status={st.tone} title={st.title} className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-border px-3 py-1.5 text-[12px] ${st.tone === 'fail' ? 'bg-danger/10 text-danger' : st.tone === 'warn' ? 'bg-warn/10 text-warn' : 'text-fg-muted'}`}>
           <span aria-hidden className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${st.tone === 'fail' ? 'bg-danger' : st.tone === 'warn' ? 'bg-warn' : st.tone === 'ok' ? 'bg-ok' : 'bg-fg-faint'}`} />
-          <span className="min-w-0 truncate">{st.text}</span>
-          {data.status?.incidents[0] && <span className="min-w-0 truncate text-fg-muted">· {data.status.incidents[0].name}</span>}
+          <span className="min-w-0">{st.text}</span>
+          {data.status?.incidents[0] && <span className="min-w-0 text-fg-muted">· {data.status.incidents[0].name}</span>}
           <button type="button" onClick={() => openExternal(data.status?.incidents[0]?.url || STATUS_PAGE)} className="ml-auto shrink-0 text-[11.5px] text-fg-faint hover:text-fg-muted hover:underline">githubstatus.com ↗</button>
         </div>
       )}
@@ -118,7 +118,7 @@ function Cell({ label, children, note, title, data }: { label: string; children:
     <div data-cicd-cell={data ?? label} title={title} className="flex min-w-0 flex-col gap-0.5">
       <span className="truncate text-[10.5px] uppercase tracking-[0.12em] text-fg-faint">{label}</span>
       <div className="flex min-h-[30px] items-end justify-between gap-2">{children}</div>
-      {note !== undefined && <span className="truncate text-[11px] text-fg-muted">{note}</span>}
+      {note !== undefined && <span className="line-clamp-2 text-[11px] leading-snug text-fg-muted">{note}</span>}
     </div>
   )
 }
@@ -151,7 +151,7 @@ function RepoBlock({ r, now, usage }: { r: RepoCIRow; now: number; usage?: Actio
       <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-x-5 gap-y-3">
         <Cell label="Actions this month" data="usage" title={u?.title}
           note={!u ? (usage ? '' : 'reading…') : u.kind === 'available' ? 'billed, GitHub’s report' : u.kind === 'permission'
-            ? <button type="button" onClick={() => openExternal(u.url)} className="truncate text-accent hover:underline">grant Plan (read) to see it ↗</button> : u.text}>
+            ? <button type="button" onClick={() => openExternal(u.url)} className="text-left text-accent hover:underline">grant {usage?.org ? 'Administration' : 'Plan'} (read) to see it ↗</button> : u.text}>
           <span className={BIG}>{u?.kind === 'available' ? u.text.replace(/^Actions this month: /, '').split(' · ')[0] : '–'}</span>
           {u?.kind === 'available' && <span className="num shrink-0 text-[12px] text-fg-muted">{u.text.split(' · ')[1]}</span>}
         </Cell>
@@ -181,7 +181,7 @@ function RepoBlock({ r, now, usage }: { r: RepoCIRow; now: number; usage?: Actio
             {r.top_prs.length === 0 ? <p className="text-[11.5px] text-fg-faint">No agent session was recorded on one.</p> : (
               <ul className="flex flex-col">
                 {r.top_prs.map((p) => (
-                  <li key={p.number} className="flex min-w-0 items-center gap-2 border-b border-[var(--app-hairline)] py-1 text-[12px] last:border-b-0">
+                  <li key={p.number} className="flex min-w-0 items-center gap-2 border-b border-border/60 py-1 text-[12px] last:border-b-0">
                     <span aria-hidden className="pr-dot" data-state={p.draft && p.state === 'open' ? 'draft' : p.state} />
                     <button type="button" onClick={() => openExternal(p.url)} className="num shrink-0 text-fg-muted hover:underline">#{p.number}</button>
                     <span className="min-w-0 flex-1 truncate text-fg" title={p.title}>{p.title}</span>
@@ -197,7 +197,7 @@ function RepoBlock({ r, now, usage }: { r: RepoCIRow; now: number; usage?: Actio
             <h4 className="mb-1 text-[10.5px] uppercase tracking-[0.12em] text-fg-faint" title={`Who opened the pull requests open now or merged in 7 days, and what the agents spent on theirs. ${AGENT_COST_NOTE}`}>Who · 7 days</h4>
             <ul className="flex flex-col">
               {r.authors.slice(0, 6).map((a) => (
-                <li key={a.login} className="flex min-w-0 items-center gap-2 border-b border-[var(--app-hairline)] py-1 text-[12px] last:border-b-0">
+                <li key={a.login} className="flex min-w-0 items-center gap-2 border-b border-border/60 py-1 text-[12px] last:border-b-0">
                   <GitHubPerson login={a.login} url={a.avatar} size={18} className="min-w-0 flex-1 text-fg" />
                   <span className="shrink-0 text-[11px] text-fg-muted">{a.prs} PR{a.prs === 1 ? '' : 's'}{a.merged ? ` · ${a.merged} merged` : ''}</span>
                   <span className="num w-[64px] shrink-0 text-right font-medium text-fg">{a.cost_usd > 0 ? `$${a.cost_usd.toFixed(2)}` : '–'}</span>
