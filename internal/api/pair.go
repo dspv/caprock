@@ -57,6 +57,9 @@ type pairState struct {
 	// pairing panel draws a QR for the one the owner picks; a code works on
 	// any of them. Empty when off.
 	Addresses []pairAddress `json:"addresses,omitempty"`
+	// Remote is access from anywhere through a relay (ADR-058); absent in a
+	// build without it. A code works over it and over the network alike.
+	Remote *RemoteState `json:"remote,omitempty"`
 	// ExpiresInSec counts the code down. Zero when there is none.
 	ExpiresInSec int              `json:"expires_in_sec,omitempty"`
 	Devices      []pairing.Public `json:"devices"`
@@ -99,7 +102,9 @@ func (s *Server) handlePairState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ps, lanURL := s.lanState()
-	st := pairState{Enabled: ps != nil, URL: lanURL, Devices: []pairing.Public{}}
+	// Enabled is the network listener. The guest list can be live without it
+	// — access from anywhere uses the same devices — so it is not "ps != nil".
+	st := pairState{Enabled: ps != nil && lanURL != "", URL: lanURL, Devices: []pairing.Public{}}
 	if host := hostOf(lanURL); host != "" {
 		st.Tunnelled = lan.Tunnelled(net.ParseIP(host))
 		st.Addresses = pairAddresses(lanURL, s.lanAlternates())
@@ -110,11 +115,19 @@ func (s *Server) handlePairState(w http.ResponseWriter, r *http.Request) {
 			st.ExpiresInSec = int(left / time.Second)
 		}
 		st.Devices = ps.Devices()
+		if s.d.Remote != nil {
+			rs := s.d.Remote.RemoteState(st.Code)
+			st.Remote = &rs
+		}
 	} else {
 		// Off, but the guest list is kept on disk. "Off · 1 phone paired" is
 		// the honest answer; "Off" alone hid a phone that will be let back in
 		// the moment network access is turned on.
 		st.Devices = s.devicesOnDisk()
+		if s.d.Remote != nil {
+			rs := s.d.Remote.RemoteState("")
+			st.Remote = &rs
+		}
 	}
 	writeJSON(w, http.StatusOK, st)
 }
@@ -135,11 +148,15 @@ func (s *Server) handlePairNewCode(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"code":           code,
 		"expires_in_sec": int(pairing.CodeTTL / time.Second),
 		"url":            lanURL,
-	})
+	}
+	if s.d.Remote != nil {
+		resp["remote"] = s.d.Remote.RemoteState(code)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handlePairClearCode withdraws the outstanding code. The screen's Cancel

@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import '@fontsource-variable/hanken-grotesk'
 import '@fontsource-variable/jetbrains-mono'
 import '@/design/tokens.css'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { isAppMode, isTrayRoute } from '@/lib/appmode'
 import { loadTerminalFont } from '@/lib/termfont'
 import { watchUiVersion } from '@/lib/staleui'
@@ -18,8 +19,13 @@ if (isAppMode() && !isTrayRoute()) loadTerminalFont()
 // The desktop window's interface size; the popover keeps its own (lib/uiscale).
 if (!isTrayRoute()) applyUiScale()
 
-// A daemon updated under this page: reload onto its UI (lib/staleui).
-watchUiVersion()
+// The phone's page, built with --mode remote and served apart from any
+// daemon: it reaches its machine through a relay (remote/, ADR-058).
+const remote = import.meta.env.VITE_CAPROCK_REMOTE === '1'
+
+// A daemon updated under this page: reload onto its UI (lib/staleui). Not on
+// the remote page, which no daemon served.
+if (!remote) watchUiVersion()
 
 // Out of sight, every CSS animation pauses (lib/visible, design/tokens.css).
 markPageVisibility()
@@ -30,14 +36,20 @@ markPageVisibility()
 // Tauri spike measured a terminal beside the full dashboard 4–6 ms slower to
 // echo than a lean one (.ai/21-app.md § Performance budgets).
 // The menu bar popover (macOS) is a third, smaller chunk: no terminal, no dashboard.
-const Root = isTrayRoute()
+const Root = remote
+  ? lazy(() => import('./remote/RemoteRoot'))
+  : isTrayRoute()
   ? lazy(() => import('./screens/TrayPanel'))
   : isAppMode() ? lazy(() => import('./screens/AppShell')) : lazy(() => import('./App'))
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Suspense fallback={null}>
-      <Root />
-    </Suspense>
+    {/* A throw anywhere above a screen's own boundary: a way back and a way
+      * to tell us, never the blank window it used to leave. */}
+    <ErrorBoundary full>
+      <Suspense fallback={null}>
+        <Root />
+      </Suspense>
+    </ErrorBoundary>
   </StrictMode>,
 )

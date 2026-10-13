@@ -25,6 +25,7 @@ func (s *Service) Handler() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /v1/mail/state", s.state)
 	m.HandleFunc("GET /v1/mail/providers", s.guess)
+	s.importRoutes(m)
 	m.HandleFunc("POST /v1/mail/accounts", s.addAccount)
 	m.HandleFunc("PUT /v1/mail/accounts/{id}", s.updateAccount)
 	m.HandleFunc("DELETE /v1/mail/accounts/{id}", s.deleteAccount)
@@ -102,7 +103,7 @@ func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) guess(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second) // MX, SRV, autoconfig: 3 s each at most
 	defer cancel()
 	writeJSON(w, providers.Guess(ctx, r.URL.Query().Get("email")))
 }

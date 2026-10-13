@@ -56,6 +56,7 @@ import (
 	"github.com/dspv/caprock/internal/projcheck"
 	"github.com/dspv/caprock/internal/projects"
 	"github.com/dspv/caprock/internal/ptyman"
+	"github.com/dspv/caprock/internal/remote"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/secret"
 	"github.com/dspv/caprock/internal/sessionlink"
@@ -264,6 +265,11 @@ type Daemon struct {
 	lanLn2 net.Listener
 	// pairing decides which devices get in; nil when LAN access is off.
 	pairing *pairing.Store
+	// remote is access from anywhere through a relay (ADR-058): its settings,
+	// the connection while it is on, and how to stop it.
+	remoteSet  *remote.Settings
+	remoteHost *remote.Host
+	remoteStop context.CancelFunc
 	// ingestErr is the terminal error from the tailer goroutine, if it died.
 	// Ingest is the whole product on Phase 0, so its death is not a log line:
 	// it is reported by /v1/status, `caprock status` and the dashboard.
@@ -640,7 +646,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			Env:       func() []string { return userenv.Environ(d.log) },
 			Preferred: func() string { return d.config().Editor },
 		},
-		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d,
+		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d,
 		Projects: d.projs, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
 		Mail: d.mail.Handler(),
 	})
@@ -824,6 +830,11 @@ func (d *Daemon) run(ctx context.Context) error {
 			d.mu.Unlock()
 		}
 	}
+
+	// Access from anywhere, if it was left on: unlike the LAN listener this is
+	// remembered, because the machine it is for is the one nobody sits at
+	// (ADR-058). A failure is logged and survived.
+	d.startRemoteFromSettings(ctx)
 
 	d.log.Info("caprock daemon listening", "component", "daemon", "url", d.url, "data_dir", d.opt.DataDir, "version", d.opt.Version)
 	// enableHive logs which hive is in force (whether it came from --hive or from
@@ -2544,7 +2555,7 @@ func (d *Daemon) DisableLAN() error {
 	}
 	d.lanLn, d.lanIP, d.lanURL = nil, nil, ""
 	d.lanLn2, d.lanIP2 = nil, nil
-	d.api.SetLAN(nil, "")
+	d.api.SetLAN(d.remoteStoreLocked(), "")
 	d.log.Info("stopped listening on the local network", "component", "daemon")
 	return err
 }

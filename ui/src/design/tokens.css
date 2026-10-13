@@ -517,7 +517,7 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
  * "what am I on" at a glance (owner, 2026-10-09). Not amber: in the sidebar
  * amber means one thing, waiting on you. */
 [data-app] .app-row[data-tab-row][aria-current="true"] { box-shadow: inset 2px 0 0 var(--color-fg); }
-/* The project in front (⌘1–⌘9 land on it): its edge, faint, with no fill,
+/* The project in front (⌃⌘1–⌃⌘9 land on it): its edge, faint, with no fill,
  * so the tab in front stays the one highlighted row and the eye still
  * finds which project it is in among the others (owner, 2026-10-13). */
 [data-app] .app-row[data-project-row][data-current] { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-fg) 40%, transparent); }
