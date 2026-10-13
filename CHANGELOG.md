@@ -7,6 +7,30 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **store:** tool calls are stored the way the screens read them. A hook's
+  tool input and output now go through the same cap as the transcript's:
+  screenshots and other base64 become a marker naming their type and size,
+  text past 32 KB is clipped with a marker saying how much was dropped, and
+  every short field — paths, commands, exit codes — stays. Tool sizes still
+  count what the tool really returned. On a copy of one 2.2 GB database the
+  same history needed 841 MB less.
+- **daemon:** the database is read far less. The Storage figures are measured
+  when the panel finds them a day old, or once a day while nothing is
+  running, instead of a full read of the database every 30 minutes; a start
+  no longer pre-computes the share dialog's 30-day and all-time Weeks; and
+  the write-ahead log shrinks back after a big write.
+- **daemon:** old leftovers are cleaned up on their own, once a day while
+  idle: pasted and dropped files after 30 days, empty quick-chat folders no
+  session used, Gemini telemetry of sessions ended over 30 days ago, and the
+  unused `launchd.log`. Each sweep logs what it removed and how many bytes.
+
+### Added
+
+- **daemon:** any database statement slower than 300 ms is logged with the
+  code that ran it, so a slow screen or a burst of disk reads names its cause.
+
 ## [0.112.4] - 2026-10-13
 
 ### Changed

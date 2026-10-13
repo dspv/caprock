@@ -138,6 +138,11 @@ type Event struct {
 	// TouchDir is the directory this tool call touched, resolved at ingest from
 	// the tool's own input. Empty when the tool named no path.
 	TouchDir string `json:"touch_dir,omitempty"`
+	// ToolBytes is, on tool.post, the size of the tool_response as the tool
+	// handed it back, before CapToolField bounded the stored copy. The store
+	// writes it to events.tool_bytes; zero means "measure the stored
+	// payload", which is the same number for a response that was not capped.
+	ToolBytes int64 `json:"-"`
 }
 
 // Subagent reports whether the event belongs to a subagent working inside the

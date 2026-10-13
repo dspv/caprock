@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -261,7 +260,7 @@ func (l *Line) Events(fallbackTs time.Time) []event.Event {
 			tp.MsgID = l.Message.ID
 			tp.Payload = mustJSON(map[string]any{
 				"hook_event_name": "PreToolUse", "session_id": l.SessionID, "cwd": l.Cwd,
-				"tool_name": b.Name, "tool_input": capRawObj(b.Input, 32<<10), "tool_use_id": b.ID,
+				"tool_name": b.Name, "tool_input": capRawObj(b.Input), "tool_use_id": b.ID,
 				"message_id": l.Message.ID, "_from": "transcript",
 			})
 			out = append(out, tp)
@@ -288,9 +287,11 @@ func (l *Line) Events(fallbackTs time.Time) []event.Event {
 			tp.Key = "post:" + b.ToolUseID
 			tp.Payload = mustJSON(map[string]any{
 				"hook_event_name": "PostToolUse", "session_id": l.SessionID, "cwd": l.Cwd,
-				"tool_use_id": b.ToolUseID, "tool_response": capRaw(b.Content, 32<<10), "is_error": b.IsError,
+				"tool_use_id": b.ToolUseID, "tool_response": capRaw(b.Content), "is_error": b.IsError,
 				"_from": "transcript",
 			})
+			// The size the tool handed back, not the size stored.
+			tp.ToolBytes = int64(len(b.Content))
 			out = append(out, tp)
 		}
 	case "system":
@@ -359,40 +360,20 @@ func mustJSON(v any) json.RawMessage {
 	return b
 }
 
-// capRaw keeps payloads bounded: tool results can carry whole files.
-func capRaw(r json.RawMessage, max int) json.RawMessage {
+// capRaw bounds a tool_result's content by the rule every plane shares
+// (event.CapToolField), so the transcript copy and the hook copy of one call
+// are held to the same limit. An absent one is stored as "".
+func capRaw(r json.RawMessage) json.RawMessage {
 	if len(r) == 0 {
 		return json.RawMessage(`""`)
 	}
-	if len(r) <= max {
-		return r
-	}
-	var s string
-	if err := json.Unmarshal(r, &s); err == nil {
-		return mustJSON(s[:min(len(s), max)] + "…[truncated]")
-	}
-	return mustJSON("[truncated " + strconvItoa(len(r)) + " bytes]")
+	return event.CapToolField(r)
 }
 
-// capRawObj bounds a tool_input object; oversized inputs (whole-file writes) are
-// replaced by a marker object so the row stays small but the tool is still known.
-func capRawObj(r json.RawMessage, max int) json.RawMessage {
+// capRawObj bounds a tool_use's input the same way. An absent one is {}.
+func capRawObj(r json.RawMessage) json.RawMessage {
 	if len(r) == 0 {
 		return json.RawMessage(`{}`)
 	}
-	if len(r) <= max {
-		return r
-	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(r, &m); err == nil {
-		for k, v := range m {
-			if len(v) > 4<<10 {
-				m[k] = mustJSON("[truncated " + strconvItoa(len(v)) + " bytes]")
-			}
-		}
-		return mustJSON(m)
-	}
-	return mustJSON(map[string]string{"_truncated": strconvItoa(len(r)) + " bytes"})
+	return event.CapToolField(r)
 }
-
-func strconvItoa(n int) string { return fmt.Sprintf("%d", n) }

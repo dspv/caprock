@@ -98,22 +98,17 @@ func TestWeekPeriodsAreWholeLocalDaysEndingToday(t *testing.T) {
 	}
 }
 
-// The all-time Week took 7-13 s on the owner's database when first asked for,
-// so a start computes it (and the 30-day one) before anyone opens the dialog.
-func TestWarmComputesTheLongWeeks(t *testing.T) {
+// A start does not compute the share dialog's long Weeks. They read the
+// payload of every Bash, Edit and Write result in the window — the startup's
+// biggest reads on the owner's 2.2 GB database (2026-10-13) — for a dialog
+// most starts never open; the dialog pays for it when it is opened.
+func TestWarmLeavesTheLongWeeksToTheDialog(t *testing.T) {
 	e := newEnv(t)
 	e.api.Warm(context.Background())
-	for _, period := range []string{"all", "30d"} {
-		from, to, err := e.api.weekPeriod(context.Background(), period)
-		if err != nil {
-			t.Fatal(err)
-		}
-		key := "week:" + period + ":" + from.Format("2006-01-02") + ":" + to.Format("2006-01-02")
-		e.api.weekLong.mu.Lock()
-		_, ok := e.api.weekLong.m[key]
-		e.api.weekLong.mu.Unlock()
-		if !ok {
-			t.Errorf("Warm left the %s Week to the first request", period)
-		}
+	e.api.weekLong.mu.Lock()
+	n := len(e.api.weekLong.m)
+	e.api.weekLong.mu.Unlock()
+	if n != 0 {
+		t.Errorf("Warm computed %d long Weeks", n)
 	}
 }

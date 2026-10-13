@@ -4,6 +4,7 @@
 package hookd
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -22,8 +23,9 @@ import (
 // MaxBody bounds a hook payload. tool_response can be large; 4 MiB is generous.
 const MaxBody = 4 << 20
 
-// Payload is the subset of hook JSON that hookd reads. The raw body is stored
-// untouched as the event payload, so nothing here limits what the UI can show.
+// Payload is the subset of hook JSON that hookd reads. The body is stored as
+// the event payload with only its tool_input and tool_response bounded
+// (capBody), so nothing here limits what the UI can show.
 type Payload struct {
 	SessionID      string          `json:"session_id"`
 	PromptID       string          `json:"prompt_id"`
@@ -91,7 +93,9 @@ var ErrUnknownEvent = errors.New("unknown hook event")
 var ErrNoSession = errors.New("hook payload without session_id")
 
 // Normalize converts a raw hook payload into an Event plus what it reveals about
-// the session. The event's Payload is the raw body verbatim.
+// the session. The event's Payload is the body with its tool fields bounded
+// by event.CapToolField — the rule the transcript parser applies — and every
+// other field as it came.
 func Normalize(raw []byte, now time.Time) (*event.Event, rollup.SessionInfo, error) {
 	var p Payload
 	if err := json.Unmarshal(raw, &p); err != nil {
@@ -105,9 +109,9 @@ func Normalize(raw []byte, now time.Time) (*event.Event, rollup.SessionInfo, err
 		Ts:        now,
 		SessionID: p.SessionID,
 		Source:    event.SourceHook,
-		Payload:   json.RawMessage(raw),
 		AgentID:   p.AgentID,
 	}
+	ev.Payload, ev.ToolBytes = capBody(raw)
 	switch p.HookEventName {
 	case "PreToolUse":
 		ev.Kind, ev.Tool = event.KindToolPre, p.ToolName
@@ -176,6 +180,52 @@ func Normalize(raw []byte, now time.Time) (*event.Event, rollup.SessionInfo, err
 		return nil, info, ErrUnknownEvent
 	}
 	return ev, info, nil
+}
+
+// capBody bounds the two fields of a hook body that can be any size — the
+// tool's input and what it handed back — and returns the size tool_response
+// had before, for events.tool_bytes. A body that holds nothing to bound comes
+// back as it is, with a zero size: the store then measures the stored copy,
+// which is the same number.
+//
+// Before this the body was stored verbatim up to MaxBody, and the hook copy
+// is the one that wins the dedup with the transcript copy: 1.1 GB of the
+// owner's 2.2 GB database was hook tool results — screenshots as base64,
+// whole files — that no screen reads past their first lines (2026-10-13).
+func capBody(raw []byte) (json.RawMessage, int64) {
+	if len(raw) <= event.MaxToolField && !bytes.Contains(raw, []byte("base64")) && !bytes.Contains(raw, []byte(`"image"`)) {
+		return json.RawMessage(raw), 0
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil {
+		return json.RawMessage(raw), 0
+	}
+	var orig int64
+	changed := false
+	for _, k := range []string{"tool_input", "tool_response"} {
+		v, ok := m[k]
+		if !ok {
+			continue
+		}
+		c := event.CapToolField(v)
+		if k == "tool_response" {
+			orig = int64(len(v))
+		}
+		if !bytes.Equal(c, v) {
+			m[k] = c
+			changed = true
+		}
+	}
+	if !changed {
+		return json.RawMessage(raw), 0
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false) // keep < > & as they came, not as \u003c escapes
+	if err := enc.Encode(m); err != nil {
+		return json.RawMessage(raw), 0
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), orig
 }
 
 func keyOr(key, id string) string {
