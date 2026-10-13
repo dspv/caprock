@@ -401,8 +401,11 @@ others. Installing it: [install-app.md](install-app.md).
   check or an empty circle, and *3 of 7 done* above them; not there when
   the agent kept none), its subagents (a chip per subagent under the
   agent, and a row each below that leads with its type's letter and what
-  it is doing now in words, from the description Claude gave its latest
-  command, else its tool and file, else its task: click one to open it in place and read the
+  it is doing now in words, up to two lines, from the description Claude
+  gave its latest command, else its tool and file, else its task; the rows
+  keep the order the subagents started in, a finished one dimmed with a ✓
+  where it stood, and *Show* above them picks which of calls, cost, model
+  and time each row carries, cost and time until you choose: click one to open it in place and read the
   task it was given, every call it makes as it makes them, what it
   answered and what it cost), its last tool calls with how long each took, the uncommitted changes in
   its checkout, your plan's 5-hour and weekly windows, and a warning when
@@ -958,6 +961,14 @@ server of ours, and there is nothing to install from an app store.
    opens Caprock full screen. On an iPhone the home-screen app keeps its own
    storage, so it asks to pair once more: type the six digits shown on the
    computer.
+
+The top of the panel says where the phone will work: *Works on this Wi-Fi
+only*, or *Works anywhere (Tailscale)* once this computer has Tailscale. It
+notices Tailscale by itself while the panel is open; nothing to restart.
+
+Phone access switches off when Caprock restarts (an update, a reboot) unless
+you tick **Keep on after Caprock restarts**, beside **Turn on** or under the
+panel. Only phones you paired get in either way; **Turn off** also clears it.
 
 The phone appears under *Paired devices*. It can look but not change
 anything until you press **Let it control sessions** beside it; **Take

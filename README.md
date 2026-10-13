@@ -689,7 +689,10 @@ tokens, viewer and controller roles apply as on the LAN, below.
 
 To run your own relay, put `caprock remote relay --addr 127.0.0.1:8787`
 behind TLS and point the machine at it: `caprock remote on --relay
-wss://your.relay`. `relay/` holds the hosted one, a Cloudflare Worker.
+wss://your.relay`. The phone's page can be yours too: build it with
+`cd ui && npx vite build --mode remote`, serve `ui/dist-remote/` over https,
+and add `--app https://your.page`. `relay/` holds the hosted relay, a
+Cloudflare Worker, and `relay/m/` the hosted page at m.caprock.dev.
 
 ### On the same network
 

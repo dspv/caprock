@@ -20,3 +20,5 @@ npx wrangler deploy                        # needs `wrangler login` and the zone
 The phone's page is the dashboard built for it: `cd ui && npx vite build
 --mode remote`, output in `ui/dist-remote/`, served over https from any static
 host (`caprock remote on --app https://…` to point machines at your own).
+The hosted one is `m/`: static files only, `npx wrangler deploy` from there
+after the build.

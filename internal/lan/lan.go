@@ -75,6 +75,23 @@ func Address() (net.IP, error) {
 	return all[0], nil
 }
 
+// TailscaleUp reports whether this machine has a Tailscale address right now,
+// listened on or not. The pairing panel asks it every few seconds while it is
+// open, so a person who installs Tailscale sees "works anywhere" without a
+// restart; it reads the kernel's interface list and nothing else.
+func TailscaleUp() bool {
+	all, err := Addresses()
+	if err != nil {
+		return false
+	}
+	for _, ip := range all {
+		if Tunnelled(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // Addresses returns every private IPv4 address on an interface that is up,
 // in the order the kernel lists them.
 func Addresses() ([]net.IP, error) {

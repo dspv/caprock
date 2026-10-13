@@ -117,6 +117,10 @@ type Deps struct {
 	LAN interface {
 		EnableLAN() (string, error)
 		DisableLAN() error
+		// LANKeepOn and SetLANKeepOn read and store *Keep on after Caprock
+		// restarts* (ADR-060).
+		LANKeepOn() bool
+		SetLANKeepOn(on bool) error
 	}
 	// Remote is access from anywhere, through a relay (ADR-058): its state for
 	// the pairing panel and the switch. Nil in builds or tests without it.
