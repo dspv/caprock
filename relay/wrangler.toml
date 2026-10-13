@@ -1,0 +1,19 @@
+# The hosted relay (ADR-058). Deploy: `npx wrangler deploy` from this folder,
+# with the route below pointing at a zone you control.
+name = "caprock-relay"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+[[durable_objects.bindings]]
+name = "MACHINE"
+class_name = "Machine"
+
+# SQLite-backed objects are the ones the Workers Free plan offers. Nothing is
+# written to storage; the class only holds sockets.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Machine"]
+
+[[routes]]
+pattern = "relay.caprock.dev"
+custom_domain = true
