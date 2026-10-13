@@ -164,10 +164,23 @@ One window, three regions:
   translated: "top I see 1, 2, 3; on the left I see 4, 2"): a folder
   toggle beside the heading (`caprock.app.sidebar-grouped`, on by
   default) switches to one flat list of every agent session, each row
-  with its project's dot and short name. **One numbering**: ⌘1–⌘9 is the
-  Nth top-level item of the sidebar — a project when grouped, a session
-  when flat — the strip is kept in the sidebar's order (`order` in
-  `lib/tabs.ts`), and only the tab ⌘N brings shows its digit. ⌥⌘↑ ⌥⌘↓
+  with its project's dot and short name. **Tabs are the navigation**
+  (owner, 2026-10-14, translated: "I sometimes work with 5 projects at
+  once, sometimes 2. I just want to switch between them with key combos"):
+  ⌘1–⌘9 (Ctrl+Shift+1–9 off macOS) is the strip's Nth tab, ⌘9 the last,
+  and the strip is in the order the tabs were opened — a new tab goes last
+  with the next number; only a close or a drag changes the numbers; a
+  restart keeps them. Every tab shows its digit, the one in front too,
+  after its session's name and its project's dot and short name, and its
+  sidebar row shows the same digit. The sidebar is **Flat** by default —
+  the tabbed sessions in the strip's order, then the ones running with no
+  tab, without a digit — or **Tree**, projects with their sessions under
+  them (Settings → Appearance, or the folder toggle; `lib/sidebarMode.ts`).
+  Projects have no digit; a click on one opens its page. For a day ⌘N had
+  been the sidebar's Nth item, a project or a session by grouping, with N
+  only on the tab it brought; projects on ⌃⌘1–⌃⌘9 were tried and turned
+  down. A one-time line says the keys after the update (`KeysHint`).
+  ⌥⌘↑ ⌥⌘↓
   walk the sessions of the project in front (the whole list when flat),
   ⌥⌘← ⌥⌘→ the projects
   (Alt+Shift arrows off macOS; [04-ui.md](04-ui.md) § The app workspace, *Keyboard*, says why not
@@ -728,12 +741,15 @@ One window, three regions:
     page. Nothing while no job has finished.
   - **PRs & CI tab** (owner, 2026-10-13, translated: "I also want to expand
     the panel bigger, to see the statuses large and in detail, plus
-    statistics … sometimes it's interesting to look"). *Expand* beside
-    *Hide ⌘B* — one control, no key of its own (rule 12), no sidebar item —
-    opens the cell large as a tab of its own (`kind: 'prs'`, one per agent
-    session, never split; `components/PRsCITab.tsx`, words in
-    `lib/prstats.ts`); *Back to the deck* closes it and brings the agent's
-    tab to the front with its deck open. It shows:
+    statistics … sometimes it's interesting to look"). *Expand ⇧⌘B* beside
+    *Hide ⌘B* — outlined in the accent, no sidebar item — opens the cell
+    large as a tab of its own (`kind: 'prs'`, one per agent session, never
+    split; `components/PRsCITab.tsx`, words in `lib/prstats.ts`); in the tab
+    the same control in the same corner is *Collapse ⇧⌘B*, which closes it
+    and brings the agent's tab to the front with its deck open (owner,
+    2026-10-14, translated: "it should simply be a toggle"). Off macOS the
+    key is Ctrl+Alt+Shift+B: ⌘B's Ctrl+Shift+B is the deck's (rule 12). It
+    shows:
     - **The figures** — over the 14 local days ending today, from `GET
       /v1/sessions/{id}/ci/stats`: *Merged* (the total, the last 7, today,
       bars per day), *Time to merge* (the median from opened to merged of
@@ -1027,7 +1043,7 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
 - **An editor or IDE.** No file editing; F18 opens the user's editor.
 - **Our own agent or chat model.** The app runs the user's agents.
 - **A second engine.** No session, git or pricing logic in the app.
-- **Typing into or signalling a process Caprock did not start** (rule 7).
+- **Typing into or signalling a process Caprock did not start** (rule 7; the doctor's per-item, confirmed stop is the one exception, ADR-059).
 - **Telemetry, crash upload, accounts, cloud sync.**
 - **The manager's dashboard.** That is the Teams web product.
 - **Electron**, a TUI, or a per-OS native rewrite for the MVP (ADR-038).

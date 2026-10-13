@@ -66,7 +66,7 @@ export interface Tab {
 
 export interface Workspace {
   version: 1
-  /** Every open tab of every project, in strip order. */
+  /** Every open tab of every project, in strip order: the order opened (a new tab goes last), changed only by a drag or a close. Kept across restarts. */
   tabs: Tab[]
   /** The tab last in front, per project: what picking the project shows. */
   activeByProject: Record<string, string>
@@ -88,9 +88,10 @@ export type WorkspaceAction =
   | { type: 'activate-index'; index: number }
   | { type: 'cycle'; delta: 1 | -1 }
   | { type: 'move'; tabId: string; toIndex: number }
-  /** The strip in this order (the sidebar's, AppShell); tabs not named keep theirs after. */
+  /** The strip in this order (a drag in the flat sidebar list, AppShell); tabs not named keep theirs after. */
   | { type: 'order'; ids: string[] }
-  | { type: 'project'; projectId: string }
+  /** The project in front; `view` shows its page instead of its last tab (a click on its sidebar row). */
+  | { type: 'project'; projectId: string; view?: boolean }
   /** Puts the pinned Dashboard tab in the strip, or takes it out. */
   | { type: 'dashboard'; open: boolean }
   | { type: 'retitle'; sessionId: string; title: string }
@@ -293,6 +294,7 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       return tabs.every((x, i) => x === ws.tabs[i]) ? ws : { ...ws, tabs }
     }
     case 'project':
+      if (a.view) return { ...withActive(ws, a.projectId, undefined), activeProject: a.projectId }
       return ws.activeProject === a.projectId ? ws : { ...ws, activeProject: a.projectId }
     case 'dashboard': {
       if (!!ws.dashboard === a.open) return ws

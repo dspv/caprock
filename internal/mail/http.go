@@ -15,6 +15,7 @@ import (
 	"github.com/dspv/caprock/internal/mail/ai"
 	"github.com/dspv/caprock/internal/mail/engine"
 	store "github.com/dspv/caprock/internal/mail/mailstore"
+	"github.com/dspv/caprock/internal/mail/oauth"
 	"github.com/dspv/caprock/internal/mail/providers"
 )
 
@@ -41,6 +42,7 @@ func (s *Service) Handler() http.Handler {
 	m.HandleFunc("GET /v1/mail/ai/status", s.aiStatus)
 	m.HandleFunc("POST /v1/mail/ai/summarize", s.aiSummarize)
 	m.HandleFunc("POST /v1/mail/ai/draft", s.aiDraft)
+	s.oauthRoutes(m) // http_oauth.go
 	return m
 }
 
@@ -101,7 +103,7 @@ func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) guess(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second) // MX, SRV, autoconfig: 3 s each at most
 	defer cancel()
 	writeJSON(w, providers.Guess(ctx, r.URL.Query().Get("email")))
 }
@@ -165,12 +167,17 @@ func (s *Service) updateAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		a := req.Account
 		a.ID = id
+		a.Auth = cur.Auth // changed only by signing in again (http_oauth.go)
+		if oauth.ProviderOf(a.Auth) != "" && req.Password != "" {
+			fail(w, 400, errors.New("this account signs in with its provider, not a password"))
+			return
+		}
 		serversChanged := a.IMAPHost != cur.IMAPHost || a.IMAPPort != cur.IMAPPort || a.IMAPTLS != cur.IMAPTLS ||
 			a.SMTPHost != cur.SMTPHost || a.SMTPPort != cur.SMTPPort || a.SMTPTLS != cur.SMTPTLS || a.Username != cur.Username
 		if serversChanged || req.Password != "" {
 			pw := req.Password
 			if pw == "" {
-				if pw, err = s.sec.Get(id); err != nil {
+				if pw, err = eng.Credential(r.Context(), a); err != nil {
 					fail(w, 500, err)
 					return
 				}

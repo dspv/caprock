@@ -24,13 +24,15 @@ export type AppCommand =
   | { kind: 'palette' }
   | { kind: 'inspector' }
   | { kind: 'deck' }
+  /** ⇧⌘B: the deck's Expand, or Collapse in the PRs & CI tab. */
+  | { kind: 'deck-expand' }
   | { kind: 'changes' }
   | { kind: 'sidebar' }
   | { kind: 'dashboard' }
   | { kind: 'next-tab' }
   | { kind: 'prev-tab' }
-  /** ⌘1–⌘9: a project by its place in the sidebar, ⌘9 the last. */
-  | { kind: 'project'; index: number }
+  /** ⌘1–⌘9: a tab by its place in the strip, ⌘9 the last. */
+  | { kind: 'tab'; index: number }
   /** The next or previous row under the project in front (⌥⌘↓ ⌥⌘↑). */
   | { kind: 'session'; delta: 1 | -1 }
   /** The next or previous project in the sidebar (⌥⌘→ ⌥⌘←). */
@@ -99,6 +101,11 @@ function arrowCommand(k: string): AppCommand | null {
   }
 }
 
+/** ⌘1–⌘9: the tab at that place in the strip, ⌘9 the last. */
+function digitCommand(k: string): AppCommand | null {
+  return /^[1-9]$/.test(k) ? { kind: 'tab', index: Number(k) - 1 } : null
+}
+
 /** Whether a command is one of the arrow chords, which a text field keeps. */
 export function isArrowCommand(c: AppCommand): boolean {
   return c.kind === 'session' || c.kind === 'step-project'
@@ -120,6 +127,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
       switch (baseKey(e)) {
         case 'e': return { kind: 'split', direction: 'column' }
         case '0': return { kind: 'zoom', step: 0 }
+        case 'b': return { kind: 'deck-expand' }
       }
     }
     return null
@@ -142,6 +150,10 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         case 'e': return { kind: 'split', direction: 'column' }
         // G for git: the diff of the session in front.
         case 'g': return { kind: 'changes' }
+        // The deck (⌘B) large and back: Expand, Collapse. In a browser
+        // ⇧⌘B is the bookmarks bar, which the browser may keep for itself;
+        // the deck's button is there either way.
+        case 'b': return { kind: 'deck-expand' }
         default: return null
       }
     }
@@ -191,12 +203,12 @@ function plain(k: string): AppCommand | null {
     // 2026-10-11: ⇧⌘D was awkward to reach). ⇧⌘D still works.
     case '0': return { kind: 'dashboard' }
     default:
-      // ⌘1–⌘9 are projects, by their place in the sidebar (owner,
-      // 2026-10-13, translated: "Command+digit focuses that project right
-      // away, you see on the left where you are"). They were tabs by their
-      // place in the strip; tabs keep ⌃Tab and ⇧⌘[ ].
-      if (/^[1-9]$/.test(k)) return { kind: 'project', index: Number(k) - 1 }
-      return null
+      // ⌘1–⌘9 are the strip's tabs by place, ⌘9 the last, and the strip is
+      // in the order the tabs were opened (owner, 2026-10-14, translated:
+      // "I just want to switch between them with key combos"). For a day
+      // they were the sidebar's Nth item, a project or a session by
+      // grouping, and nobody could predict which. Projects have no digits.
+      return digitCommand(k)
   }
 }
 
@@ -215,8 +227,10 @@ export function keys(mac: string, isMac = isMacPlatform()): string {
 }
 
 /** ⇧⌘ chords whose ⌘ twin is also a shortcut: off macOS both would read
- *  Ctrl+Shift+key, so these take Alt as well (split below, default size). */
-const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0'])
+ *  Ctrl+Shift+key, so these take Alt as well (split below, default size,
+ *  the deck's Expand beside the deck's own Ctrl+Shift+B). Ctrl+Alt+Shift+B
+ *  is bound by no shell, PSReadLine, Windows Terminal or GNOME default. */
+const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0', '⇧⌘B'])
 
 function offMac(k: string): string {
   if (/[↩↵]/.test(k)) return `${k.includes('⌘') ? 'Ctrl+' : ''}${k.includes('⇧') ? 'Shift+' : ''}Enter`
@@ -237,8 +251,8 @@ function offMac(k: string): string {
   return `Ctrl+Shift+${key}`
 }
 
-/** The digit that jumps to the project at `index` of `count`: ⌘1–⌘8 by
- *  position, ⌘9 the last one, else none. */
+/** The digit that jumps to the tab at `index` of `count`: 1–8 by
+ *  position, 9 the last one, else none. */
 export function tabDigit(index: number, count: number): number | null {
   if (index === count - 1 && count > 8) return 9
   return index < 8 ? index + 1 : null
@@ -246,7 +260,18 @@ export function tabDigit(index: number, count: number): number | null {
 
 /** A tab's jump key as the tab itself shows it: short enough for a tab. */
 export function tabKey(digit: number, isMac = isMacPlatform()): string {
-  return isMac ? `⌘${digit}` : `Ctrl⇧${digit}`
+  return stripKey(String(digit), isMac)
+}
+
+/** A ⌘ chord drawn on the strip (⌘0, ⌘,): the same short spelling as a tab's
+ *  ⌘N — Ctrl⇧ off macOS, where the chord is Ctrl+Shift with that key. */
+export function stripKey(key: string, isMac = isMacPlatform()): string {
+  return isMac ? `⌘${key}` : `Ctrl⇧${key}`
+}
+
+/** The one line that says how to move around, for the hint after an update. */
+export function moveKeysLine(isMac = isMacPlatform()): string {
+  return `${keys('⌘1', isMac).replace(/1$/, '1–9')} switch tabs in the order you opened them · double-click a tab to rename`
 }
 
 /** How a shortcut is written in a menu or a tooltip on this platform. */
@@ -264,7 +289,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],
   ['⌘J', 'Next session waiting on you'],
-  ['⌘1–8, ⌘9', 'The sidebar’s Nth item (a project, or a session when not grouped); the last'],
+  ['⌘1–8, ⌘9', 'The Nth tab, in the order opened, as its badge says; ⌘9 the last'],
   ['⌥⌘↓, ⌥⌘↑', 'Next and previous session of the project in front'],
   ['⌥⌘→, ⌥⌘←', 'Next and previous project'],
   ['⌥⇧↑, ⌥⇧↓', 'Move the focused session row up or down in the sidebar'],
@@ -275,6 +300,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘F', 'Find in the terminal'],
   ['⌘I', 'Inspector'],
   ['⌘B', 'Session deck: the agent’s live figures under its terminal'],
+  ['⇧⌘B', 'Expand the deck into the PRs & CI tab; in that tab, Collapse back'],
   ['⇧⌘G', 'Changes: the diff of the session in front'],
   ['⌘\\', 'Hide or show the sidebar'],
   ['⌘0, ⇧⌘D', 'Dashboard'],

@@ -2,7 +2,8 @@
 // costs — CPU and resident memory — on macOS, Linux and Windows.
 //
 // It only reads. Nothing here signals, opens or writes to another process;
-// rule 7 forbids signalling a process Caprock did not start, and reading the
+// rule 7 forbids signalling a process Caprock did not start (the doctor's
+// confirmed stop, ADR-059, lives in internal/daemon), and reading the
 // figures a process manager shows is not that.
 //
 // The table comes from one call where the OS has one (sysctl kern.proc.all on
@@ -33,6 +34,20 @@ type Proc struct {
 	// StartMs is when the process started, unix ms, 0 when unknown. A pid
 	// with a different start is a different process.
 	StartMs int64
+	// tty is whether the process has a controlling terminal, where the table
+	// says (macOS); HasTTY reads it elsewhere.
+	tty bool
+}
+
+// StartMs is when pid started, unix ms, as the table reports it; false when
+// there is no such process. A pid whose start differs from the one a caller
+// judged is another process: the check to make before every signal.
+func StartMs(ctx context.Context, pid int32) (int64, bool) {
+	ms, err := (&process.Process{Pid: pid}).CreateTimeWithContext(ctx)
+	if err != nil {
+		return 0, false
+	}
+	return ms, true
 }
 
 // Table is the process table at one moment, with each parent's children.
@@ -187,6 +202,13 @@ func Environ(ctx context.Context, pid int32) []string {
 		return nil
 	}
 	return env
+}
+
+// IsInterpreter is whether a program name (as the process table or argv[0]
+// gives it) is an interpreter or a shell that runs a script named after it.
+func IsInterpreter(name string) bool {
+	low := strings.ToLower(base(name))
+	return interpreters[low] || strings.HasPrefix(low, "python3.")
 }
 
 // interpreters run a script named by their first argument; their label names

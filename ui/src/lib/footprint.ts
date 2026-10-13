@@ -33,6 +33,41 @@ export interface FootprintVerdict {
   text: string
 }
 
+/** One process that looks abandoned (03-contracts.md § Footprint, `orphans`). */
+export interface Orphan {
+  pid: number
+  /** With `pid`, names the process: a stop sends both, and a pid since reused is not touched. */
+  started_at: number
+  kind: 'caprock_daemon' | 'caprock_holder' | 'caprock_other' | 'claude' | 'mcp_server' | 'claude_child' | string
+  label: string
+  exe?: string
+  data_dir?: string
+  data_dir_gone?: boolean
+  /** Absent until there are two samples. */
+  cpu_pct?: number
+  mem_bytes: number
+  why: string
+  /** A holder the daemon stops on its own. */
+  auto?: boolean
+}
+
+export interface OrphanReport {
+  /** True when `list` was taken for this answer; otherwise the counts are the last scan's and the list is empty. */
+  scanned: boolean
+  at: number
+  count: number
+  by_kind: Record<string, number> | null
+  list: Orphan[] | null
+  note?: string
+}
+
+export interface OrphanTarget { pid: number; started_at: number }
+
+export interface OrphanStopResult {
+  stopped: Orphan[] | null
+  failed: { pid: number; error: string }[] | null
+}
+
 export interface Footprint {
   at: number
   daemon_running: boolean
@@ -71,6 +106,8 @@ export interface Footprint {
     apps: CaprockProc[] | null
     other_install_holders: { count: number; orphans: number; exes: { exe: string; count: number }[] | null }
   }
+  /** Processes that look abandoned; absent from a daemon that predates the scan. */
+  orphans?: OrphanReport
   verdicts: FootprintVerdict[] | null
   /** What the daemon did about its footprint on its own, oldest first. */
   actions: { at: number; what: string }[] | null
@@ -83,6 +120,23 @@ export const FOOTPRINT_POLL_MS = 10_000
 /** The latest footprint, or undefined before the first answer and from a daemon without the endpoint. */
 export function useFootprint() {
   return useApi(() => api.footprint(), [], { live: false, intervalMs: FOOTPRINT_POLL_MS, keepUnchanged: true })
+}
+
+/**
+ * The footprint with the orphan list taken now: the open doctor asks for it,
+ * every 10 s like the strip, and only while it is open.
+ */
+export function useFootprintWithOrphans() {
+  return useApi(() => api.footprint(true), [], { live: false, intervalMs: FOOTPRINT_POLL_MS, keepUnchanged: true })
+}
+
+/** daemon.Age: "40s", "12m", "3h", "7d" (days from 48 hours). */
+export function age(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  if (s >= 48 * 3600) return `${Math.floor(s / 86400)}d`
+  if (s >= 3600) return `${Math.floor(s / 3600)}h`
+  if (s >= 60) return `${Math.floor(s / 60)}m`
+  return `${s}s`
 }
 
 /** "2.2 GB", "340 MB", "12 KB": a size on disk, in the binary units fmtMem uses, down to kilobytes. */
@@ -212,6 +266,17 @@ export function footprintText(f: Footprint): string {
   out.push(`  terminal holders from another install: ${o.count}${o.count > 0 ? ` (${o.orphans} orphaned)` : ''}`)
   for (const e of o.exes ?? []) out.push(`    ${e.count}  ${e.exe}`)
 
+  const orph = f.orphans
+  if (orph) {
+    out.push('', 'Orphans (processes that look abandoned)')
+    const list = orph.list ?? []
+    if (!orph.scanned && orph.count > 0) out.push(`  ${orph.count} found at the last check; \`caprock doctor\` lists them`)
+    else if (orph.count === 0) out.push('  none')
+    for (const p of list) out.push(...orphanLines(f.at, p, '  '))
+    if (list.length) out.push('  (stop one: caprock doctor --stop <pid>)')
+    if (orph.note) out.push(`  note: ${orph.note}`)
+  }
+
   if (io) { // the daemon's own report, not one read from outside
     out.push('', 'Done on its own (since the daemon started)')
     const acts = f.actions ?? []
@@ -223,6 +288,31 @@ export function footprintText(f: Footprint): string {
   for (const v of f.verdicts ?? []) out.push(`  ${v.level.toUpperCase().padEnd(4)}  ${v.text}`)
   if (f.error) out.push('', `note: ${f.error}`)
   return out.join('\n') + '\n'
+}
+
+/** doctor.go's printOrphan: what, why, where. */
+function orphanLines(at: number, p: Orphan, indent: string): string[] {
+  const out = [`${indent}pid ${p.pid}  ${p.label} · ${age(at - p.started_at)} old · ${goBytes(p.mem_bytes)}${p.auto ? ' · stopped on its own' : ''}`, `${indent}  ${p.why}`]
+  let where = p.exe ?? ''
+  if (p.data_dir) where += `${where ? ' · ' : ''}data ${p.data_dir}${p.data_dir_gone ? ' (gone)' : ''}`
+  if (where) out.push(`${indent}  ${where}`)
+  return out
+}
+
+/** The kinds a person reads: "claude", "MCP server", "Caprock daemon". */
+export const ORPHAN_KIND: Record<string, string> = {
+  caprock_daemon: 'Caprock daemon',
+  caprock_holder: 'terminal holder',
+  caprock_other: 'Caprock command',
+  claude: 'claude',
+  mcp_server: 'MCP server',
+  claude_child: 'from Claude Code',
+}
+
+/** The orphans the strip warns about: not Caprock's own (those have their own warnings), not what Claude Code left on purpose. */
+export function strayCount(o: OrphanReport | undefined): number {
+  const k = o?.by_kind ?? {}
+  return (k.claude ?? 0) + (k.mcp_server ?? 0) + (k.caprock_other ?? 0)
 }
 
 /** For the strip's tooltip: what the two figures are. */

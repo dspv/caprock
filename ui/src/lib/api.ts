@@ -1,7 +1,7 @@
 // Typed client for the daemon API (.ai/03-contracts.md § HTTP API). snake_case
 // on the wire, kept as-is in the types so the contract is visible in the code.
 import type { ReapResult, ResourceReport } from './resources'
-import type { Footprint } from './footprint'
+import type { Footprint, OrphanStopResult, OrphanTarget } from './footprint'
 import type { PullRequest } from './github'
 import type { Usual } from './usual'
 import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
@@ -1683,8 +1683,13 @@ export const api = {
   resources: () => get<ResourceReport>('/v1/resources'),
   /** Stop the orphaned pty-hosts nothing runs in. Machine only. */
   reapOrphans: () => post<ReapResult>('/v1/resources/reap', {}),
-  /** What Caprock itself costs this machine: memory, disk, its disk I/O, duplicates (lib/footprint.ts). */
-  footprint: () => get<Footprint>('/v1/footprint'),
+  /**
+   * What Caprock itself costs this machine: memory, disk, its disk I/O, duplicates (lib/footprint.ts).
+   * `orphans` takes the orphan list now, for the open doctor; without it the counts are the last scan's.
+   */
+  footprint: (orphans = false) => get<Footprint>(orphans ? '/v1/footprint?orphans=1' : '/v1/footprint'),
+  /** Stop processes the user picked from the doctor's orphan list, each by pid and start time (ADR-059). Machine only. */
+  stopOrphans: (targets: OrphanTarget[]) => post<OrphanStopResult>('/v1/footprint/orphans/stop', { targets }),
   /** Terminal applications installed here, most preferred first. */
   terminals: () => get<TerminalList>('/v1/terminals'),
   /** Open a session in the user's own terminal app. */

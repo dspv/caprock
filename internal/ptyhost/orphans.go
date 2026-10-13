@@ -175,6 +175,10 @@ func unreachable(children []ChildProc) string {
 	return "unreachable-idle"
 }
 
+// RegistryOf is the registry directory a holder registered in, read out of
+// its environment; "" when it does not say.
+func RegistryOf(env []string) string { return registryOf(env) }
+
 // registryOf reads a holder's registry directory out of its environment.
 func registryOf(env []string) string {
 	var dataDir string

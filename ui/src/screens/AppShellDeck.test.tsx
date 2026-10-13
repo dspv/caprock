@@ -55,6 +55,8 @@ vi.mock('@/lib/api', async (orig) => {
 
 beforeEach(() => {
   localStorage.clear()
+  // Most of these were written for the Tree sidebar; Flat, the default, has its own tests.
+  localStorage.setItem('caprock.app.sidebar-grouped', 'on')
   sessionStorage.clear()
   h.asked = 0
   vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })))
@@ -127,6 +129,26 @@ describe('the session deck in the app', () => {
     fireEvent.click(document.querySelector('[data-prs-back]')!)
     await waitFor(() => expect(screen.queryByRole('tab', { name: /PRs & CI/ })).toBeNull())
     expect(deck()).toBeInTheDocument()
+  })
+
+  // Owner, 2026-10-14, translated: "it should simply be a toggle".
+  it('toggles between the deck and the PRs & CI tab on ⇧⌘B, the control in the same corner', async () => {
+    await openAgent()
+    const shiftCmdB = () => act(() => { fireEvent.keyDown(window, { key: 'B', code: 'KeyB', metaKey: true, shiftKey: true }) })
+    cmdB()
+    shiftCmdB()
+    expect(await screen.findByRole('tab', { name: /PRs & CI · app/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Collapse: back/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Expand/ })).toBeNull()
+    shiftCmdB()
+    await waitFor(() => expect(screen.queryByRole('tab', { name: /PRs & CI/ })).toBeNull())
+    expect(deck()).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Expand/ })).toBeInTheDocument()
+    // With the deck hidden, the agent in front still expands.
+    cmdB()
+    expect(deck()).toBeNull()
+    shiftCmdB()
+    expect(await screen.findByRole('tab', { name: /PRs & CI · app/ })).toBeInTheDocument()
   })
 
   it('is listed in the palette', async () => {

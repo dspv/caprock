@@ -420,3 +420,27 @@ func TestCSRFRebindingHostRefused(t *testing.T) {
 		t.Errorf("non-browser client refused by the Host check: %q", reason)
 	}
 }
+
+// The browser comes back from Google or Microsoft to the Mail OAuth callback
+// as a cross-site top-level navigation. That one GET passes the guard (its
+// single-use state is checked by the handler); the same request shape to any
+// other route, a POST to the callback, or the callback under a foreign Host
+// is still refused.
+func TestCSRFMailOAuthCallbackOnlyExemption(t *testing.T) {
+	e := csrfEnv(t)
+	nav := map[string]string{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}
+	if got := do(t, e, "GET", "/v1/mail/oauth/callback?state=x&code=y", "", nav); got == http.StatusForbidden {
+		t.Fatalf("callback navigation refused by the guard")
+	}
+	if got := do(t, e, "GET", "/v1/mail/state", "", nav); got != http.StatusForbidden {
+		t.Fatalf("cross-site GET /v1/mail/state: %d, want 403", got)
+	}
+	if got := do(t, e, "POST", "/v1/mail/oauth/callback", "", nav); got != http.StatusForbidden {
+		t.Fatalf("cross-site POST to the callback: %d, want 403", got)
+	}
+	r := httptest.NewRequest("GET", "http://rebind.example:22776/v1/mail/oauth/callback", nil)
+	r.Header.Set("Sec-Fetch-Site", "cross-site")
+	if reason := checkOrigin(r); reason == "" {
+		t.Fatal("callback under a non-loopback Host passed the guard")
+	}
+}
