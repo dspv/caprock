@@ -18,6 +18,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   job. The circles-or-words switch is gone, a row no longer says *$0* for a
   public repository's free runners, and the cockpit's CI block uses the same
   summary, its view tabs now named *PRs · Ring · OS*.
+- **deck:** Expand is a button you can see — outlined, with its key, ⇧⌘B
+  (Ctrl+Alt+Shift+B on Windows and Linux) — and in the PRs & CI tab the same
+  button in the same corner reads *Collapse* and takes you back to the agent
+  with its deck; the key toggles both ways. *Back to the deck* is gone. A
+  pull request's title gets every pixel its row's checks leave, a step
+  larger, cut only when the row is full. The circle per check is back as the
+  default, with the summary one click away (*Checks: circles | summary*,
+  remembered); hovering the circles shows the same card of every check.
 - **settings:** every saved credential (DeepSeek key, Telegram bot token, a
   pasted GitHub token) is entered in one secure field: a lock inside, masked
   monospace text, an eye only while typing, and once saved a locked pill with

@@ -728,12 +728,15 @@ One window, three regions:
     page. Nothing while no job has finished.
   - **PRs & CI tab** (owner, 2026-10-13, translated: "I also want to expand
     the panel bigger, to see the statuses large and in detail, plus
-    statistics … sometimes it's interesting to look"). *Expand* beside
-    *Hide ⌘B* — one control, no key of its own (rule 12), no sidebar item —
-    opens the cell large as a tab of its own (`kind: 'prs'`, one per agent
-    session, never split; `components/PRsCITab.tsx`, words in
-    `lib/prstats.ts`); *Back to the deck* closes it and brings the agent's
-    tab to the front with its deck open. It shows:
+    statistics … sometimes it's interesting to look"). *Expand ⇧⌘B* beside
+    *Hide ⌘B* — outlined in the accent, no sidebar item — opens the cell
+    large as a tab of its own (`kind: 'prs'`, one per agent session, never
+    split; `components/PRsCITab.tsx`, words in `lib/prstats.ts`); in the tab
+    the same control in the same corner is *Collapse ⇧⌘B*, which closes it
+    and brings the agent's tab to the front with its deck open (owner,
+    2026-10-14, translated: "it should simply be a toggle"). Off macOS the
+    key is Ctrl+Alt+Shift+B: ⌘B's Ctrl+Shift+B is the deck's (rule 12). It
+    shows:
     - **The figures** — over the 14 local days ending today, from `GET
       /v1/sessions/{id}/ci/stats`: *Merged* (the total, the last 7, today,
       bars per day), *Time to merge* (the median from opened to merged of
