@@ -1030,7 +1030,7 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
 - **An editor or IDE.** No file editing; F18 opens the user's editor.
 - **Our own agent or chat model.** The app runs the user's agents.
 - **A second engine.** No session, git or pricing logic in the app.
-- **Typing into or signalling a process Caprock did not start** (rule 7).
+- **Typing into or signalling a process Caprock did not start** (rule 7; the doctor's per-item, confirmed stop is the one exception, ADR-059).
 - **Telemetry, crash upload, accounts, cloud sync.**
 - **The manager's dashboard.** That is the Teams web product.
 - **Electron**, a TUI, or a per-OS native rewrite for the MVP (ADR-038).

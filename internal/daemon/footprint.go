@@ -41,7 +41,11 @@ type FootprintReport struct {
 	Disk          FootprintDisk       `json:"disk"`
 	DiskIO        *FootprintDiskIO    `json:"disk_io,omitempty"`
 	Duplicates    FootprintDuplicates `json:"duplicates"`
-	Verdicts      []FootprintVerdict  `json:"verdicts"`
+	// Orphans is the processes that look abandoned (orphans.go): the list
+	// when it was asked for, the last scan's counts otherwise. Absent from a
+	// daemon that predates it.
+	Orphans  *OrphanReport      `json:"orphans,omitempty"`
+	Verdicts []FootprintVerdict `json:"verdicts"`
 	// Actions is what the daemon did about its own footprint without being
 	// asked, oldest first: the last 50, since it started. Empty offline.
 	Actions []FootprintAction `json:"actions"`
@@ -108,8 +112,10 @@ type FootprintVerdict struct {
 	Text  string `json:"text"`
 }
 
-// footprint answers GET /v1/footprint.
-func (d *Daemon) footprint(ctx context.Context) *FootprintReport {
+// footprint answers GET /v1/footprint; withOrphans (?orphans=1, sent while
+// the doctor is open and by `caprock doctor`) takes the orphan list now
+// instead of answering with the last scan's counts.
+func (d *Daemon) footprint(ctx context.Context, withOrphans bool) *FootprintReport {
 	rep := d.resources(ctx)
 	exe, _ := os.Executable()
 	f := &FootprintReport{At: time.Now().UnixMilli(), DaemonRunning: true, DataDir: d.opt.DataDir, Exe: exe, Error: rep.Error}
@@ -123,6 +129,13 @@ func (d *Daemon) footprint(ctx context.Context) *FootprintReport {
 	f.Disk = diskSplit(dataDirSizes(d.opt.DataDir))
 	f.DiskIO = d.io.report()
 	f.Actions = d.actions.all()
+	var o OrphanReport
+	if withOrphans {
+		o = d.scanOrphans(ctx)
+	} else {
+		o = d.orphanCounts(ctx)
+	}
+	f.Orphans = &o
 	f.finish()
 	return f
 }
@@ -171,6 +184,8 @@ func OfflineFootprint(ctx context.Context, dataDir string, running int32) *Footp
 	// "This install" is the running daemon's when there is one, else the
 	// binary doctor was run from.
 	f.Duplicates.OtherInstallHolders = otherInstallHolders(scan, c.Hosts.List, installDirs(f.Exe, "", dataDir))
+	o := OfflineOrphans(ctx, dataDir, running)
+	f.Orphans = &o
 	f.finish()
 	return f
 }
@@ -315,7 +330,7 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 		for _, p := range others {
 			parts = append(parts, describeProc(p))
 		}
-		w("duplicate_daemon", "%s running beside this one (%s), using %s. Caprock does not stop a daemon it did not start; stop the ones you do not use.",
+		w("duplicate_daemon", "%s running beside this one (%s), using %s. Caprock never stops another daemon on its own; stop the ones you do not use (the doctor's Advanced mode can).",
 			plural(len(others), "other Caprock daemon"), strings.Join(parts, "; "), Bytes(f.Memory.OtherDaemonsMemBytes))
 	}
 	if n := len(f.Duplicates.Apps); n > 1 {
@@ -351,6 +366,20 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 		}
 		info = append(info, FootprintVerdict{Level: "ok", Code: "other_install_holders", Text: text})
 	}
+	if o := f.Orphans; o != nil {
+		stray := o.ByKind[OrphanClaude] + o.ByKind[OrphanMCP] + o.ByKind[OrphanCaprockOther]
+		children := o.ByKind[OrphanClaudeChild]
+		const how = "Caprock never stops them on its own; the doctor's Advanced mode or `caprock doctor --stop <pid>` can."
+		switch {
+		case stray > 0:
+			n := stray + children
+			w("stray_processes", "%s %s abandoned: %s. %s", processes(n), map[bool]string{true: "looks", false: "look"}[n == 1], orphanParts(o.ByKind), how)
+		case children > 0:
+			info = append(info, FootprintVerdict{Level: "ok", Code: "stray_processes",
+				Text: fmt.Sprintf("%s outlived the Claude Code session that started %s (often a server left running on purpose). %s",
+					processes(children), map[bool]string{true: "it", false: "them"}[children == 1], how)})
+		}
+	}
 	if f.Disk.DatabaseBytes > footprintDBWarn {
 		w("database_large", "The database is %s (over %s). Settings shows what fills it, and a retention period there deletes old events.", Bytes(uint64(f.Disk.DatabaseBytes)), Bytes(footprintDBWarn))
 	}
@@ -366,6 +395,13 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 	return append(warn, info...)
 }
 
+// SetOrphans puts an orphan scan into a report that came without one (a
+// daemon that predates the scan) and reaches the verdicts again.
+func (f *FootprintReport) SetOrphans(o OrphanReport) {
+	f.Orphans = &o
+	f.Verdicts = footprintVerdicts(f)
+}
+
 // Warns reports whether any verdict is a warning.
 func (f *FootprintReport) Warns() bool {
 	for _, v := range f.Verdicts {
@@ -374,6 +410,29 @@ func (f *FootprintReport) Warns() bool {
 		}
 	}
 	return false
+}
+
+func processes(n int) string {
+	if n == 1 {
+		return "1 process"
+	}
+	return fmt.Sprintf("%d processes", n)
+}
+
+// orphanParts is the stray kinds counted: "1 claude, 2 MCP servers".
+func orphanParts(by map[string]int) string {
+	var parts []string
+	for _, k := range []struct{ kind, one string }{
+		{OrphanClaude, "claude"}, {OrphanMCP, "MCP server"}, {OrphanCaprockOther, "Caprock command"},
+	} {
+		if n := by[k.kind]; n > 0 {
+			parts = append(parts, plural(n, k.one))
+		}
+	}
+	if n := by[OrphanClaudeChild]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%s started from Claude Code", processes(n)))
+	}
+	return strings.Join(parts, ", ")
 }
 
 func describeProc(p CaprockProc) string {

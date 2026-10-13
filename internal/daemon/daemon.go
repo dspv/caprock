@@ -214,6 +214,9 @@ type Daemon struct {
 	writes writeGate
 	// res is the resource meter (resources.go).
 	res *resourceMeter
+	// sig is what a stop from the doctor's orphan list sends; nil is the
+	// OS (orphans.go). Tests set it.
+	sig signaller
 	// io is the last hour of the daemon's own disk I/O (footprint_io.go).
 	io *ioRing
 	// actions is what the daemon did about its own footprint on its own
@@ -613,7 +616,8 @@ func (d *Daemon) run(ctx context.Context) error {
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, WindowStop: d.windowStopStatus,
 		Resources:   func(ctx context.Context) any { return d.resources(ctx) },
-		Footprint:   func(ctx context.Context) any { return d.footprint(ctx) },
+		Footprint:   func(ctx context.Context, orphans bool) any { return d.footprint(ctx, orphans) },
+		StopOrphans: func(ctx context.Context, t []api.OrphanTarget) any { return d.stopOrphans(ctx, t) },
 		KeepAwake:   d.keepAwakeStatus,
 		ReapOrphans: func(ctx context.Context) (any, error) { return d.reapOrphans(ctx, true) },
 		RateLimitsRecorded: func(ctx context.Context) {
