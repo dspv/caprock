@@ -15,7 +15,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   bottom: pick a project and an agent, type, **Start chat**, and the chat
   opens; or **Save** a note, a link or photos for later. *New chat* also
   picks what it runs on, DeepSeek included. The full dashboard is one link
-  down (`#/now`). A one-time hint says how to add Caprock to the Home
+  down (`#/now`), and the dashboard's header gives way to one bar — Caprock,
+  its connection state and a ⋯ menu. A one-time hint says how to add Caprock to the Home
   Screen. The manifest declares *New chat* and *Save* shortcuts and a share
   target; they need Caprock served over `https` and do nothing yet.
 - **app:** what the phone saves shows on the Mac in Quick chat under

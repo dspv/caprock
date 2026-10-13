@@ -132,7 +132,7 @@ export function FeedbackButton({ screen, variant = 'header' }: { screen?: string
 
 let shotSeq = 0
 
-function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => void }) {
+export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => void }) {
   const [kind, setKind] = useState<FeedbackKind>('bug')
   const [titleText, setTitleText] = useState('')
   const [text, setText] = useState('')

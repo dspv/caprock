@@ -32,6 +32,7 @@ import { ShareMoment } from '@/components/Nudges'
 import { openExternal, usePromptSync } from '@/lib/nudges'
 import { Prose } from './Prose'
 import { ConnectionState } from './ConnectionState'
+import { PhoneBar } from './PhoneBar'
 import { StaleUiPill } from './StaleUiPill'
 import { isAppMode } from '@/lib/appmode'
 import { useNarrowScreen } from '@/lib/phone'
@@ -74,12 +75,16 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   // the way back to Now and the connection's state.
   const narrow = useNarrowScreen()
   const immersive = !app && narrow && route.name === 'session'
+  // The phone home is an app's first screen: one compact bar, no offers and
+  // no site footer (components/PhoneBar, PhoneHome).
+  const phoneHome = !app && narrow && route.name === 'now' && !route.full
   return (
     <div className="min-h-screen flex flex-col">
       {/* Wraps on a phone. One fixed-height row was 882px wide at 390, so
         * every screen on a paired phone scrolled sideways before it showed
         * anything. On a desktop it is still one row. */}
-      <header data-shell-header className={`${immersive ? 'hidden' : 'flex'} min-h-10 border-b border-border bg-panel flex-wrap items-center px-3 pb-1 pt-[max(0.25rem,env(safe-area-inset-top))] gap-x-4 gap-y-1 sticky top-0 z-10`}>
+      {phoneHome && <PhoneBar link={link} heardAt={liveStore.heardAt} />}
+      <header data-shell-header className={`${immersive || phoneHome ? 'hidden' : 'flex'} min-h-10 border-b border-border bg-panel flex-wrap items-center px-3 pb-1 pt-[max(0.25rem,env(safe-area-inset-top))] gap-x-4 gap-y-1 sticky top-0 z-10`}>
         <a href="#/" className="flex items-center gap-2 text-fg no-underline hover:no-underline">
           <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden><path d="M6 22 L16 8 L26 22 Z" fill="none" stroke="var(--color-accent)" strokeWidth="3" strokeLinejoin="round" /><rect x="6" y="22" width="20" height="3" fill="var(--color-accent)" /></svg>
           <span className="font-medium tracking-wide text-[13px]">caprock</span>
@@ -144,10 +149,10 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
       <main className={`flex-1 p-3 max-w-[1600px] w-full mx-auto ${immersive ? 'pt-[max(0.75rem,env(safe-area-inset-top))]' : ''}`}>{children}</main>
       {/* The star strip sits above the footer, never over content; one offer
         * at a time (lib/nudges.ts). The share toast floats bottom-right. */}
-      {!immersive && <SetupStrip app={app} />}
-      {!immersive && <StarStrip app={app} />}
-      <ShareMoment />
-      {!app && !immersive && <SiteFooter />}
+      {!immersive && !phoneHome && <SetupStrip app={app} />}
+      {!immersive && !phoneHome && <StarStrip app={app} />}
+      {!phoneHome && <ShareMoment />}
+      {!app && !immersive && !phoneHome && <SiteFooter />}
     </div>
   )
 }

@@ -893,7 +893,8 @@ What the phone opens to:
   computer. It shows in Quick chat on the computer under *Saved*, where
   **Start a chat** turns it into a first message, its photos included, and
   **Delete** removes it.
-- **Full dashboard** at the bottom opens everything else.
+- **Full dashboard** at the bottom, or **⋯** at the top right, opens
+  everything else: the dashboard, Settings, Feedback and Premium.
 
 On Android, holding the icon also offers **New chat** and **Save**, and
 **Share** from another app can send text or a link to Caprock's Save. Both
