@@ -29,8 +29,8 @@ describe('the spend figures', () => {
   })
 
   it('keeps three distinct figures beside the agent and swaps on a pick', () => {
-    expect(normalizeHero(undefined)).toEqual(['cost', 'burn', 'tokens'])
-    expect(normalizeHero(['last', 'last', 'nope'])).toEqual(['last', 'cost', 'burn'])
+    expect(normalizeHero(undefined)).toEqual(['burn', 'tokens', 'cost'])
+    expect(normalizeHero(['last', 'last', 'nope'])).toEqual(['last', 'burn', 'tokens'])
     expect(pickHero(['cost', 'burn', 'tokens'], 1, 'cache')).toEqual(['cost', 'cache', 'tokens'])
     // A taken one swaps: the headline moves to the line, the line's metric becomes the headline.
     expect(pickHero(['cost', 'burn', 'tokens'], 0, 'tokens')).toEqual(['tokens', 'burn', 'cost'])
@@ -56,12 +56,12 @@ describe('the spend figures', () => {
   })
 
   it('reads stored choices field by field, unfolded on the chart by default, and 0.111.0’s views as Numbers or Chart', () => {
-    expect(normalizeSpendPrefs(undefined)).toEqual({ folded: false, hero: ['cost', 'burn', 'tokens'], headline: 'cost', view: 'chart', period: 'session', slots: ['cost', 'tokens', 'cache'] })
+    expect(normalizeSpendPrefs(undefined)).toEqual({ folded: false, hero: ['burn', 'tokens', 'cost'], headline: 'burn', view: 'chart', period: 'session', slots: ['cost', 'tokens', 'cache'] })
     expect(normalizeSpendPrefs({ folded: true, headline: 'nope', view: 'numbers', period: '7d', slots: ['turns'] }))
-      .toEqual({ folded: true, hero: ['cost', 'burn', 'tokens'], headline: 'cost', view: 'numbers', period: '7d', slots: ['turns', 'cost', 'tokens'] })
+      .toEqual({ folded: true, hero: ['burn', 'tokens', 'cost'], headline: 'burn', view: 'numbers', period: '7d', slots: ['turns', 'cost', 'tokens'] })
     // One stored headline, from before the three figures, stays the big one.
-    expect(normalizeSpendPrefs({ headline: 'tokens' })).toMatchObject({ hero: ['tokens', 'cost', 'burn'], headline: 'tokens' })
-    expect(normalizeSpendPrefs({ hero: ['turns', 'cache', 'turns'] })).toMatchObject({ hero: ['turns', 'cache', 'cost'], headline: 'turns' })
+    expect(normalizeSpendPrefs({ headline: 'tokens' })).toMatchObject({ hero: ['tokens', 'burn', 'cost'], headline: 'tokens' })
+    expect(normalizeSpendPrefs({ hero: ['turns', 'cache', 'turns'] })).toMatchObject({ hero: ['turns', 'cache', 'burn'], headline: 'turns' })
     // 0.111.0 stored Compact | Full: Full drew the chart, Compact the figures.
     expect(normalizeSpendPrefs({ view: 'full', chart: false }).view).toBe('chart')
     expect(normalizeSpendPrefs({ view: 'compact', chart: true }).view).toBe('numbers')
@@ -74,6 +74,13 @@ describe('the spend figures', () => {
     expect(migrateSpendPrefs({ view: 'numbers', folded: true, period: '7d' })).toEqual({ view: 'chart', folded: false, period: '7d' })
     expect(migrateSpendPrefs({ v: 2, view: 'numbers', folded: true })).toEqual({ v: 2, view: 'numbers', folded: true })
     expect(migrateSpendPrefs(undefined)).toBeUndefined()
+  })
+
+  it('gives a stored hero that is exactly the old default the new one, and keeps any picked order', () => {
+    expect(migrateSpendPrefs({ v: 2, hero: ['cost', 'burn', 'tokens'], period: '7d' }))
+      .toEqual({ v: 2, hero: ['burn', 'tokens', 'cost'], headline: 'burn', period: '7d' })
+    expect(migrateSpendPrefs({ v: 2, hero: ['tokens', 'cost', 'burn'] })).toEqual({ v: 2, hero: ['tokens', 'cost', 'burn'] })
+    expect(migrateSpendPrefs({ v: 3, hero: ['cost', 'burn', 'tokens'] })).toEqual({ v: 3, hero: ['cost', 'burn', 'tokens'] })
   })
 
   it('takes the figures from the session, or from the range summary with its sparks as the chart', () => {

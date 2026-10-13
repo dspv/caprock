@@ -426,7 +426,7 @@ One window, three regions:
   the right that the viewer picks from one list (cost, burn rate, tokens,
   cache hit rate, turns, time working, last call, tool calls): a big
   headline and two short lines under it (*$4.08/h burn ▾*, *4.01B tok ▾*),
-  never one twice, cost, burn rate and tokens by default; when the two
+  never one twice, burn rate, tokens and cost by default; when the two
   lines would squeeze the agent's own, they move to the chips' row at its
   right. Below the plan windows, the spend details, open on a chart of the
   period's spend (*Chart | Numbers*, for the session, today, 7 or 30 days;

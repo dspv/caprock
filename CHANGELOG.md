@@ -7,6 +7,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the cockpit's figures beside the agent open on burn rate, big,
+  with tokens and cost under it — what a session is doing now first, what it
+  has added up to under it. A choice someone made stays; one that was only
+  ever the old cost-first default takes the new one.
+
 ### Fixed
 
 - **app:** the spend chart's hovered bar shows its own figure in full. While

@@ -336,7 +336,7 @@ others. Installing it: [install-app.md](install-app.md).
   pick, Esc closes. Picking only fills the field.
 - **Agent cockpit** (⌘I). Open beside an agent's terminal unless you close
   it: the agent and its state, three figures beside it that you pick —
-  what the session has cost in large type, its burn rate and tokens on two
+  its burn rate in large type, its tokens and what it has cost on two
   short lines under it, or any of cache hit rate, turns, time working, the
   last call and tool calls (click a figure's ▾) — its spend for the
   session, today, 7 or 30 days as a chart or as three more figures you
