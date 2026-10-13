@@ -3107,7 +3107,7 @@ What the agents allow was read from their own `--help`, not from memory:
 - **Merging projects that share only the home folder.** An agent started in
   home reaches everything; the merge is refused with the reason.
 
-## ADR-056 — Caprock Mail: an IMAP client inside the daemon, off until the user adds an account
+## ADR-057 — Caprock Mail: an IMAP client inside the daemon, off until the user adds an account
 
 **Date:** 2026-10-13 · **Status:** accepted
 

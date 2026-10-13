@@ -2751,7 +2751,7 @@ GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?
 
 ### Mail (`/v1/mail/*`)
 
-Caprock Mail ([ADR-056](08-decisions.md)). Code: `internal/mail` (HTTP in
+Caprock Mail ([ADR-057](08-decisions.md)). Code: `internal/mail` (HTTP in
 `http.go`), `internal/mail/engine` (IMAP, SMTP), `internal/mail/mailstore`
 (DDL in `schema.sql`), `ui/src/screens/mail`. Every write is JSON, as the CSRF
 guard requires. Before the first account exists only `GET /v1/mail/state` and

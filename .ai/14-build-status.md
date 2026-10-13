@@ -75,7 +75,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ### 2026-10-13 — unreleased: Caprock Mail
 
-An IMAP/SMTP mail client inside the daemon ([ADR-056](08-decisions.md)):
+An IMAP/SMTP mail client inside the daemon ([ADR-057](08-decisions.md)):
 `internal/mail` with its own `mail.db`, `/v1/mail/*`, the `#/mail` screen,
 a *Mail · new* item in the dashboard's screen row and a one-time offer strip.
 Verified against in-process IMAP and SMTP servers (`internal/mail/fakemail`:
