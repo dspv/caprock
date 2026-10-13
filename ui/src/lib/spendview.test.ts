@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { barValue, burnRate, chartValueText, foldedFigures, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, periodFigures, periodScope, pickHero, pickSlot, shownSlots, type SpendFigures } from './spendview'
+import { barCarries, barValue, burnRate, chartTotal, chartValueText, foldedFigures, periodBurn, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, periodFigures, periodScope, pickHero, pickSlot, shownSlots, type SpendBar, type SpendFigures } from './spendview'
 import type { CallPoint } from './scrub'
 import type { Summary } from './api'
 
@@ -80,14 +80,29 @@ describe('the spend figures', () => {
     const v3 = { v: 3, view: 'numbers', folded: true, hero: ['cost', 'burn', 'tokens'], period: '30d' }
     expect(migrateSpendPrefs(v3)).toEqual(v3)
     expect(normalizeSpendPrefs(migrateSpendPrefs(v3))).toMatchObject({ view: 'numbers', folded: true, hero: ['cost', 'burn', 'tokens'], period: '30d', chartBy: 'cost' })
-    // A version 4 choice is current: nothing in it changes.
-    const v4 = { v: 4, view: 'chart', folded: true, chartBy: 'turns' }
-    expect(migrateSpendPrefs(v4)).toBe(v4)
     expect(normalizeSpendPrefs({ chartBy: 'tokens' }).chartBy).toBe('tokens')
     expect(normalizeSpendPrefs({ chartBy: 'turns' }).chartBy).toBe('turns')
+    expect(normalizeSpendPrefs({ chartBy: 'burn' }).chartBy).toBe('burn')
     // A metric the chart does not draw, and 0.111.0's boolean `chart`, read as cost.
     expect(normalizeSpendPrefs({ chartBy: 'cache' }).chartBy).toBe('cost')
-    expect(normalizeSpendPrefs({ chartBy: 'burn', chart: true }).chartBy).toBe('cost')
+    expect(normalizeSpendPrefs({ chartBy: 'time', chart: true }).chartBy).toBe('cost')
+  })
+
+  it('brings a version 4 choice to 5 untouched, and runs each older step only for older versions', () => {
+    // 5 only added burn rate to the menu: a version 4 choice was picked from
+    // cost, tokens and turns and stays exactly as it was.
+    const v4 = { v: 4, view: 'chart', folded: true, chartBy: 'turns', hero: ['cost', 'burn', 'tokens'] }
+    expect(migrateSpendPrefs(v4)).toEqual(v4)
+    expect(normalizeSpendPrefs(migrateSpendPrefs(v4))).toMatchObject({ view: 'chart', folded: true, chartBy: 'turns', hero: ['cost', 'burn', 'tokens'] })
+    // The pre-3 hero step does not touch a version 4 hero that happens to be the old default.
+    expect(normalizeSpendPrefs(migrateSpendPrefs(v4)).hero).toEqual(['cost', 'burn', 'tokens'])
+    // A version 5 choice is current: the very object comes back.
+    const v5 = { v: 5, view: 'numbers', chartBy: 'burn' }
+    expect(migrateSpendPrefs(v5)).toBe(v5)
+    expect(normalizeSpendPrefs(migrateSpendPrefs(v5)).chartBy).toBe('burn')
+    // Older steps still run for older choices.
+    expect(migrateSpendPrefs({ v: 1, view: 'numbers', folded: true })).toMatchObject({ view: 'chart', folded: false })
+    expect(migrateSpendPrefs({ v: 2, hero: ['cost', 'burn', 'tokens'] })).toMatchObject({ hero: ['burn', 'tokens', 'cost'] })
   })
 
   it('reads each bar by the chart’s metric, each in its own format', () => {
@@ -146,5 +161,47 @@ describe('the spend figures', () => {
     expect(periodFigures('30d', f, { ...sum, projects: [] } as Summary).series).toBeUndefined()
     expect(periodScope('session')).toBe('This session')
     expect(periodScope('30d')).toBe('30 days · all sessions')
+  })
+})
+
+describe('burn rate on the chart', () => {
+  const bar = (p: Partial<SpendBar>): SpendBar => ({ start: 0, end: H, cost: 0, ...p })
+
+  it('is a bar’s active hours’ cost over those hours, and no value at all for a bar with none', () => {
+    // A day with $13 spent but one active hour of $5: $5/h, not $13 over 24 hours.
+    expect(barValue('burn', bar({ cost: 13, activeHours: 1, activeCost: 5 }))).toBe(5)
+    expect(barValue('burn', bar({ cost: 9, activeHours: 2, activeCost: 9 }))).toBe(4.5)
+    expect(barValue('burn', bar({ cost: 4, activeHours: 0, activeCost: 0 }))).toBeUndefined()
+    expect(barValue('burn', bar({ cost: 4 }))).toBeUndefined()
+    expect(barCarries('burn', bar({ activeHours: 0, activeCost: 0 }))).toBe(true)
+    expect(barCarries('burn', bar({ cost: 4 }))).toBe(false)
+    expect(chartValueText('burn', 3)).toBe('$3.00/h')
+    expect(chartValueText('burn', undefined)).toBe('—')
+  })
+
+  it('totals the period as every active hour’s cost over every active hour, read from the summary’s sparks', () => {
+    const f: SpendFigures = { cost: 1 }
+    const sum = {
+      range: '7d', cost_usd: 22, tokens_in: 0, cache_read: 0, cache_write: 0, turns: 40, tool_calls: 0, savings: { hit_rate: 0 },
+      projects: [
+        { project: 'a', tokens: 0, cost_usd: 13, sessions: 1, spark: { from_ms: 0, width_ms: 24 * H, cost: [13, 0], tokens: [0, 0], input: [0, 0], turns: [7, 0], active_hours: [1, 0], active_cost: [5, 0] } },
+        { project: 'b', tokens: 0, cost_usd: 9, sessions: 2, spark: { from_ms: 0, width_ms: 24 * H, cost: [0, 9], tokens: [0, 0], input: [0, 0], turns: [0, 12], active_hours: [0, 2], active_cost: [0, 9] } },
+      ],
+    } as unknown as Summary
+    const pf = periodFigures('7d', f, sum)
+    expect(pf.series!.bars.map((b) => [b.activeHours, b.activeCost])).toEqual([[1, 5], [2, 9]])
+    expect(periodBurn(pf.series!.bars)).toBeCloseTo(14 / 3)
+    expect(chartTotal('burn', pf)).toBeCloseTo(14 / 3)
+    // The session's own, when its bars are too fine to carry hours.
+    expect(chartTotal('burn', { activeBurn: 2.5 })).toBe(2.5)
+    // An older daemon sends no active hours: no burn, never $0/h.
+    const old = periodFigures('7d', f, { ...sum, projects: sum.projects!.map((p) => ({ ...p, spark: { ...p.spark!, active_hours: undefined, active_cost: undefined } })) } as Summary)
+    expect(old.series!.bars[0]!.activeHours).toBeUndefined()
+    expect(chartTotal('burn', old)).toBeUndefined()
+  })
+
+  it('leads the folded strip with the chart’s own burn rate', () => {
+    const pf = { cost: 22, tokens: 1000, turns: 40, series: { step: H, bars: [bar({ activeHours: 2, activeCost: 6 })] } }
+    expect(foldedFigures('burn', pf).map((x) => [x.id, x.value])).toEqual([['burn', '$3.00/h'], ['cost', '$22.00'], ['tokens', '1,000']])
   })
 })
