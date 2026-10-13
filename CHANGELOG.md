@@ -7,6 +7,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** a new icon — a bold white C on a near-black tile, with a green dot
+  in its mouth for a session running. The amber triangle got lost among its
+  Dock neighbours; a letter reads at a glance. The menu-bar icon, the
+  dashboard's favicon and the phone's home-screen icon carry the same mark.
+
 ### Added
 
 - **mail:** adding an account finds the servers for about 40 mail services
