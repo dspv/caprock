@@ -51,7 +51,8 @@ It reports:
   previous app bundle).
 - **Done on its own:** what the daemon cleaned up without being asked since
   it started — orphaned terminals it stopped, a write-ahead log it folded
-  back into the database — with the time of each.
+  back into the database, old images it replaced and the space it gave back
+  to the disk — with the time of each.
 - **Verdict:** one line per finding, `WARN` or `OK`.
 
 ## What Caprock fixes by itself
@@ -65,14 +66,28 @@ unattended is fixed unattended, and `caprock doctor` says when it was done:
   Stop button in Settings does the same at once.
 - **A large write-ahead log** (over 256 MB) is folded back into the
   database.
+- **A database bloated by old screenshots.** Versions before 2026-10-13
+  stored the images tools handed back (screenshots, images Claude read) as
+  base64 text. While Caprock is idle — nothing recorded for 30 minutes — it
+  replaces them in older events with the marker new events get, *[image
+  image/png 512 KB not stored]*, a few hundred events at a time; the text of
+  every event is kept as it was. Then it compacts the database once, which
+  gives the space back to the disk, and from then on returns free space as it
+  appears. The compaction needs free disk of about twice the database's size
+  for a moment; without it Caprock says so here and tries again the next
+  day. Anything recorded meanwhile stops it at once, and an interrupted
+  compaction leaves the database as it was. On a copy of the owner's 2.2 GB
+  database (2026-10-13) replacing the images took 79 seconds, the compaction
+  21, and the file was 1.4 GB after.
 - **A second daemon on the same data directory** cannot start: it waits a
   few seconds for a restarting one, then exits naming the pid of the one that
   runs.
 
 What it does not fix: another daemon or a second app (Caprock never stops a
-process it did not start; quit the ones you do not use), and a large
-database (deleting history is your call — set a retention period in
-Settings).
+process it did not start; quit the ones you do not use), and a database that
+is large because of how much history it holds (deleting history is your call
+— set a retention period in Settings; the space it frees goes back to the
+disk on its own).
 
 ## With no daemon running
 

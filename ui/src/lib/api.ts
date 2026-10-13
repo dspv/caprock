@@ -1084,6 +1084,9 @@ export interface StorageReport {
   measuring?: boolean
   error?: string
   reclaimable_bytes: number
+  /** Free pages go back to the disk on their own while Caprock is idle
+   *  (auto_vacuum INCREMENTAL); false until an older database's one VACUUM. */
+  returns_free_space?: boolean
   /** An estimate, and named as one: see 03-contracts.md § Storage. */
   growth_bytes_per_day_est: number
   retention_days: number
