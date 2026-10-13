@@ -16,6 +16,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   password says which app password to make. Mail is read from each message's
   whole header, so iCloud's malformed answers no longer stop a folder, and one
   message the server cannot describe is kept and shown instead of halting sync.
+- **app:** a terminal no longer shows squashed, half-cut letters after the
+  Mac sleeps, the window moves to another display or the tab comes back from
+  a long spell hidden. WebKit can drop the WebGL glyph atlas without saying
+  so; the terminal now rasterises its glyphs again whenever it is seen again
+  and whenever the pixel ratio changes.
 
 ## [0.115.0] - 2026-10-13
 
