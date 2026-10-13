@@ -92,6 +92,15 @@ func imapRefused(err error) bool {
 	return errors.As(err, &ie) && ie.Type == imap.StatusResponseTypeNo
 }
 
+// imapUnavailable reports a NO [UNAVAILABLE]. Dovecot (Spacemail and many
+// hosts) answers a wrong password for a mailbox that exists this way, and
+// also locks sign-in for a while after several failures, so it is not
+// retried with another name.
+func imapUnavailable(err error) bool {
+	var ie *imap.Error
+	return errors.As(err, &ie) && ie.Code == imap.ResponseCodeUnavailable
+}
+
 // smtpRefused reports whether AUTH was refused (535, or iCloud's 550 for an
 // unknown sign-in name).
 func smtpRefused(err error) bool {
@@ -110,7 +119,7 @@ func loginIMAP(c *imapclient.Client, a store.Account, password string) (string, 
 		if first == nil {
 			first = err
 		}
-		if !imapRefused(err) {
+		if !imapRefused(err) || imapUnavailable(err) {
 			break
 		}
 	}
@@ -179,6 +188,8 @@ func explain(host, email string, err error) error {
 		return fmt.Errorf("%w — %s", err, hint)
 	case isGmail(host):
 		return fmt.Errorf("%w — Gmail needs an app password (myaccount.google.com/apppasswords, with 2-Step Verification on); on Google Workspace the admin may have turned IMAP off", err)
+	case imapUnavailable(err):
+		return fmt.Errorf("%w — the server did not accept this password: this is how Dovecot servers (Spacemail and many hosts) answer a wrong password for a mailbox that exists. Use the mailbox's own password, not the hosting account's, and wait a few minutes if you have tried several times", err)
 	}
 	return err
 }

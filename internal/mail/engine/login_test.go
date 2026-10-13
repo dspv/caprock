@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/emersion/go-imap/v2"
+
 	store "github.com/dspv/caprock/internal/mail/mailstore"
 )
 
@@ -57,5 +59,23 @@ func TestRefusedNameFallsBackToTheAddress(t *testing.T) {
 	acc.Username = "not-the-login"
 	if err := sendSMTP(acc, "pw", []string{"x@example.com"}, []byte("Subject: hi\r\n\r\nhi\r\n")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Spacemail's Dovecot answers a wrong password for a real mailbox with
+// NO [UNAVAILABLE] "Temporary authentication failure" (probed 2026-10-14);
+// it reads like an outage, so the error has to say what it means.
+func TestUnavailableSignInSaysWrongPassword(t *testing.T) {
+	err := &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeUnavailable, Text: "Temporary authentication failure."}
+	if !imapUnavailable(err) || !imapRefused(err) {
+		t.Fatal("UNAVAILABLE not recognised")
+	}
+	got := explain("mail.spacemail.com", "ds@caprock.dev", err).Error()
+	if !strings.Contains(got, "did not accept this password") || !strings.Contains(got, "Temporary authentication failure") {
+		t.Fatalf("explain = %q", got)
+	}
+	plain := &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeAuthenticationFailed}
+	if imapUnavailable(plain) {
+		t.Fatal("AUTHENTICATIONFAILED read as UNAVAILABLE")
 	}
 }
