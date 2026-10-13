@@ -52,3 +52,18 @@ describe('helpers', () => {
     expect(relPath('/elsewhere/x.go', '/r/a')).toBe('/elsewhere/x.go')
   })
 })
+
+describe('a warning with a third session that touched nothing', () => {
+  it('names only the one that collides, and moves the newer of the two', () => {
+    const o: Overlap = {
+      window_minutes: 30,
+      sessions: { a: { checkout: '/r/caprock', with: [
+        { session_id: 'b', name: 'Router', name_source: 'name', started_at: 200, files: ['/r/caprock/ui/app.tsx'] },
+        { session_id: 'c', name: 'Notes', name_source: 'name', started_at: 300, files: [] },
+      ] } },
+    }
+    const c = overlapChip(o, { session_id: 'a', started_at: 100 }, 'Login')!
+    expect(c.summary).toBe("Edited by this session and Router in caprock in the last 30 minutes — one can write over the other's change.")
+    expect(c.newer.session_id).toBe('b')
+  })
+})

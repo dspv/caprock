@@ -70,7 +70,9 @@ export interface OverlapChip {
   /** `warn` when files were edited by both; `info` when they share only the folder. */
   tone: 'warn' | 'info'
   label: string
-  /** The hover: who, and every file both touched. */
+  /** Who, where and in what window, as one sentence (the hover card's first line). */
+  summary: string
+  /** The same as plain text with every file, one a line: the chip's accessible name. */
   title: string
   /** Files edited by this session and a neighbour, relative to the checkout. */
   files: string[]
@@ -79,28 +81,38 @@ export interface OverlapChip {
   newer: { session_id: string; name: string }
 }
 
-/** What a session's row says about its neighbours in the checkout; undefined when it has none. */
+/** The last segment of a path, either separator. */
+function baseName(path: string): string {
+  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path
+}
+
+/**
+ * What a session's row says about its neighbours in the checkout; undefined
+ * when it has none. A warning names only the neighbours that edited the same
+ * files, and the session to move is the newer of those — moving a third
+ * session that touched nothing would not part the two that collide.
+ */
 export function overlapChip(o: Overlap, s: Pick<SessionSummary, 'session_id' | 'started_at'>, ownName: string): OverlapChip | undefined {
   const entry = o.sessions[s.session_id]
   if (!entry || entry.with.length === 0) return undefined
-  const names = entry.with.map(peerName)
   const files = [...new Set(entry.with.flatMap((p) => p.files.map((f) => relPath(f, entry.checkout))))].sort()
+  const peers = files.length > 0 ? entry.with.filter((p) => p.files.length > 0) : entry.with
+  const names = peers.map(peerName)
   const who = names.length === 1 ? names[0]! : `${names[0]} and ${names.length - 1} more`
   let newer = { session_id: s.session_id, name: ownName, started_at: s.started_at }
-  for (const p of entry.with) if (p.started_at > newer.started_at) newer = { session_id: p.session_id, name: peerName(p), started_at: p.started_at }
-  const where = `in ${entry.checkout}`
+  for (const p of peers) if (p.started_at > newer.started_at) newer = { session_id: p.session_id, name: peerName(p), started_at: p.started_at }
+  const base = { files, checkout: entry.checkout, newer: { session_id: newer.session_id, name: newer.name } }
+  const where = `in ${baseName(entry.checkout)}`
   if (files.length === 0) {
-    return {
-      tone: 'info',
-      label: `shares checkout with ${who}`,
-      title: `${names.join(', ')} ${names.length === 1 ? 'works' : 'work'} ${where} too. No file edited by both in the last ${o.window_minutes} minutes.`,
-      files, checkout: entry.checkout, newer: { session_id: newer.session_id, name: newer.name },
-    }
+    const summary = `${names.join(', ')} ${names.length === 1 ? 'works' : 'work'} ${where} too, the same folder. No file edited by both in the last ${o.window_minutes} minutes.`
+    return { tone: 'info', label: `shares checkout with ${who}`, summary, title: summary, ...base }
   }
+  const summary = `Edited by this session and ${names.join(', ')} ${where} in the last ${o.window_minutes} minutes — one can write over the other's change.`
   return {
     tone: 'warn',
     label: `${files.length} file${files.length === 1 ? '' : 's'} touched by both`,
-    title: `Edited by this session and ${names.join(', ')} ${where} in the last ${o.window_minutes} minutes — one can write over the other:\n${files.join('\n')}`,
-    files, checkout: entry.checkout, newer: { session_id: newer.session_id, name: newer.name },
+    summary,
+    title: `${summary}\n${files.join('\n')}`,
+    ...base,
   }
 }

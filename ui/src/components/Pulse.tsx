@@ -234,6 +234,9 @@ function PulseRows({ rows, minute, labels, all, open, onToggle, manual, onReorde
   }
   const press = (key: string) => (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0 || (e.target as Element).closest('button, a, canvas, [data-pulse-chip]')) return
+    // A drag selected the rows' text on its way down (seen on the preview,
+    // 2026-10-14); the click that opens a row still fires.
+    if (e.pointerType === 'mouse') e.preventDefault()
     const y0 = e.clientY
     dragged.current = false
     const onMove = (m: PointerEvent) => {

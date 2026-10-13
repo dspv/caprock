@@ -643,7 +643,9 @@ describe('a session sharing its checkout', () => {
     h.overlap = { window_minutes: 30, sessions: { s1: { checkout: '/w', with: [{ session_id: 's2', name: 'Router', name_source: 'name', started_at: 5, files: ['/w/internal/session.go'] }] } } }
     show(agent())
     const chip = await screen.findByText('1 file touched by both')
-    expect(chip.parentElement!.title).toMatch(/Router[\s\S]*internal\/session\.go/)
+    expect(chip.parentElement!.getAttribute('aria-label')).toMatch(/Router[\s\S]*internal\/session\.go/)
+    fireEvent.focus(chip.parentElement!)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('internal/session.go')
     h.overlap = { window_minutes: 30, sessions: {} }
   })
 

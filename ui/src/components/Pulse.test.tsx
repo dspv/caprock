@@ -351,7 +351,14 @@ describe('two sessions in one checkout', () => {
     render(<PulsePanel sessions={pair()} now={NOW} />)
     const chips = await screen.findAllByText('1 file touched by both')
     expect(chips).toHaveLength(2)
-    expect(chips[0]!.parentElement!.title).toMatch(/Router[\s\S]*ui\/main\.ts/)
+    expect(chips[0]!.parentElement!.getAttribute('aria-label')).toMatch(/Router[\s\S]*ui\/main\.ts/)
+    // Hovering opens a card naming the neighbour and every file, relative to the checkout.
+    fireEvent.mouseEnter(chips[0]!.parentElement!)
+    const card = await screen.findByRole('tooltip')
+    expect(card).toHaveTextContent(/Edited by this session and Router/)
+    expect(card).toHaveTextContent('ui/main.ts')
+    fireEvent.mouseLeave(chips[0]!.parentElement!)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Move to a worktree…' })).toHaveLength(2)
   })
 
