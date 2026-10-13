@@ -383,12 +383,35 @@ export function TerminalPane({
     const grid = term.element?.querySelector('.xterm-screen')
     if (grid) ro.observe(grid)
 
+    // WebKit can drop the WebGL glyph atlas's texture on a sleep, a display
+    // change or a long hidden spell without firing contextlost: the grid then
+    // paints every glyph from a stale atlas — squashed, half-cut letters
+    // (owner, 2026-10-13). Rasterising again is cheap; do it whenever the
+    // terminal is seen again and whenever the pixel ratio changes.
+    const repaintGlyphs = () => {
+      if (!webgl) return
+      term.clearTextureAtlas()
+      term.refresh(0, term.rows - 1)
+    }
+    let dprQuery: MediaQueryList | undefined
+    const onDpr = () => {
+      watchDpr()
+      repaintGlyphs()
+    }
+    const watchDpr = () => {
+      dprQuery?.removeEventListener('change', onDpr)
+      dprQuery = window.matchMedia?.(`(resolution: ${window.devicePixelRatio}dppx)`)
+      dprQuery?.addEventListener('change', onDpr)
+    }
+    watchDpr()
+
     const onWake = () => {
       // A suspended background tab stays let go until it is shown.
       if (document.visibilityState !== 'visible' || !visible) return
       // What the window held while out of sight, before anything newer.
       flushHeld()
       conn.wake()
+      repaintGlyphs()
     }
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('online', onWake)
@@ -445,6 +468,7 @@ export function TerminalPane({
         lastGeom = ''
         refit()
         if (webglLost || !webgl) scheduleWebgl()
+        else repaintGlyphs()
         if (focusedRef.current) term.focus()
         claim()
       },
@@ -488,6 +512,7 @@ export function TerminalPane({
       if (raf) cancelAnimationFrame(raf)
       if (fitRaf) cancelAnimationFrame(fitRaf)
       document.removeEventListener('visibilitychange', onWake)
+      dprQuery?.removeEventListener('change', onDpr)
       window.removeEventListener('online', onWake)
       window.removeEventListener('focus', claim)
       document.removeEventListener('visibilitychange', claim)

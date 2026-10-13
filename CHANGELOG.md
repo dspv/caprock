@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **app:** a terminal no longer shows squashed, half-cut letters after the
+  Mac sleeps, the window moves to another display or the tab comes back from
+  a long spell hidden. WebKit can drop the WebGL glyph atlas without saying
+  so; the terminal now rasterises its glyphs again whenever it is seen again
+  and whenever the pixel ratio changes.
+
 ### Added
 
 - **phone:** a home for the phone. Caprock on a phone — on its home screen
