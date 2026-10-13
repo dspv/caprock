@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.112.2] - 2026-10-13
+
 ### Added
 
 - Settings → *Status line*: Full, Short or Off for the line Caprock puts at
