@@ -8,6 +8,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionSummary } from '@/lib/api'
 import { WORKSPACE_KEY } from '@/lib/tabs'
+import { saveSidebarMode } from '@/lib/sidebarMode'
 import { FIND_EVENT } from '@/lib/appkeys'
 // Imported here rather than inside each test: the first dynamic import
 // transformed the whole app inside the first test's 5 s budget, and on a busy
@@ -97,6 +98,8 @@ beforeEach(() => {
   spawned.signals = []
   sessions.splice(3)
   localStorage.clear()
+  // Most of these were written for the Tree sidebar; Flat, the default, has its own tests.
+  localStorage.setItem('caprock.app.sidebar-grouped', 'on')
   sessionStorage.clear()
   vi.stubGlobal('fetch', fetchMock)
   location.hash = '#/app'
@@ -444,40 +447,110 @@ describe('the app workspace', () => {
     expect(spawned.signals).toEqual([])
   })
 
-  // Owner, 2026-10-13 (translated): "top I see 1,2,3; on the left I see 4,2
-  // — why?" One numbering: with the sessions in one flat list, ⌘N is the
-  // Nth session, the row and its tab show the same N, and the strip follows
-  // the sidebar's order whatever order the tabs were opened in.
-  it('numbers the flat list and the strip alike: ⌘N opens the Nth session, and the strip keeps the sidebar\'s order', async () => {
-    localStorage.setItem('caprock.app.sidebar-grouped', 'off')
+  // Owner, 2026-10-14 (translated): "I just want to switch between them
+  // with key combos … not every tab shows the key combination". Tabs are
+  // the navigation: ⌘N is the Nth tab in the order the tabs were opened, a
+  // new tab goes last with the next number, only a close or a drag changes
+  // the numbers, every tab shows its N (the one in front too) and so does
+  // its sidebar row, in Flat (the default) and in Tree.
+  const strip = () => screen.getAllByRole('tab').filter((t) => t.hasAttribute('data-tab-index'))
+  const stripNames = () => strip().map((t) => t.getAttribute('aria-label'))
+  const stripKeys = () => strip().map((t) => t.querySelector('[data-tab-key]')?.textContent)
+  const rowKey = (title: string) => [...document.querySelectorAll('[data-tab-row]')].find((r) => r.textContent?.includes(title))?.querySelector('[data-row-key-digit]')?.textContent
+  const frontPane = () => ['agent-1', 'agent-2'].filter((id) => screen.queryByTestId(`pane-${id}`)?.getAttribute('data-active') === 'true')
+  const openRowOf = async (id: string, tab: RegExp) => {
+    await waitFor(() => expect(document.querySelector(`[data-live-row="${id}"]`)).toBeTruthy())
+    fireEvent.click(document.querySelector(`[data-live-row="${id}"]`)!)
+    await screen.findByRole('tab', { name: tab })
+  }
+
+  it.each([['Tree', 'on'], ['Flat', 'off']])('numbers the tabs in the order opened, %s: every tab and its row show ⌘N, ⌘N opens it, ⌘9 the last', async (_, mode) => {
+    localStorage.setItem('caprock.app.sidebar-grouped', mode!)
     render(<AppShell />)
-    const list = await screen.findByRole('group', { name: 'Sessions' })
-    await waitFor(() => expect(list.querySelector('[data-live-row="agent-2"]')).toBeTruthy())
-    const rowDigit = (sel: string) => list.querySelector(`${sel} [data-row-key-digit]`)?.textContent
-    expect(rowDigit('[data-live-row="agent-1"]')).toBe('⌘1')
-    expect(rowDigit('[data-live-row="agent-2"]')).toBe('⌘2')
-    await cmd('2')
-    await screen.findByRole('tab', { name: /Waiting one/ })
-    expect(screen.getByTestId('pane-agent-2')).toHaveAttribute('data-active', 'true')
+    // Opened in this order, listed in this order — whatever the sidebar's own order.
+    await openRowOf('agent-2', /Waiting one/)
+    await openRowOf('agent-1', /Fix the login bug/)
+    await waitFor(() => expect(stripNames()).toEqual(['Waiting one · app', 'Fix the login bug · app']))
+    // Every tab carries its key, the one in front too, and its row the same.
+    expect(stripKeys()).toEqual(['⌘1', '⌘2'])
+    expect(strip().every((t) => !t.querySelector('[data-tab-key]')!.className.split(' ').includes('invisible'))).toBe(true)
+    expect(rowKey('Waiting one')).toBe('⌘1')
+    expect(rowKey('Fix the login bug')).toBe('⌘2')
+    // The project is on the tab, short, after the session's name.
+    expect(strip()[0]!.querySelector('[data-tab-project]')!.textContent).toBe('app')
     await cmd('1')
-    await screen.findByRole('tab', { name: /Fix the login bug/ })
-    expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
-    // Opened second, listed first: the strip follows the sidebar.
-    await waitFor(() => expect(screen.getAllByRole('tab').filter((t) => t.hasAttribute('data-tab-index')).map((t) => t.getAttribute('aria-label'))).toEqual(['Fix the login bug · app', 'Waiting one · app']))
-    // Each tab carries the digit of its row.
-    const tabKeyOf = (name: RegExp) => screen.getByRole('tab', { name }).querySelector('[data-tab-key]')?.textContent
-    expect(tabKeyOf(/Fix the login bug/)).toBe('⌘1')
-    expect(tabKeyOf(/Waiting one/)).toBe('⌘2')
-    const rowOf = (title: string) => [...list.querySelectorAll('[data-tab-row]')].find((r) => r.textContent?.includes(title))!
-    expect(rowOf('Fix the login bug').querySelector('[data-row-key-digit]')!.textContent).toBe('⌘1')
-    expect(rowOf('Waiting one').querySelector('[data-row-key-digit]')!.textContent).toBe('⌘2')
+    expect(frontPane()).toEqual(['agent-2'])
+    await cmd('2')
+    expect(frontPane()).toEqual(['agent-1'])
+    await cmd('9')
+    expect(frontPane()).toEqual(['agent-1'])
+    // Past the end, nothing moves.
+    await cmd('5')
+    expect(frontPane()).toEqual(['agent-1'])
   })
 
-  // Owner, 2026-10-13 (translated): "Command+digit focuses that project …
-  // and there I can Command+Up/Down to move". ⌘1–⌘9 are projects in the
-  // sidebar's order; ⌥⌘↑ ⌥⌘↓ walk the project's sessions and ⌥⌘← ⌥⌘→ the
-  // projects, round the end, every terminal staying mounted.
-  it('brings a project with ⌘1–9, walks its sessions with ⌥⌘↑ ⌥⌘↓ and the projects with ⌥⌘← ⌥⌘→', async () => {
+  it('puts a tab opened from another project last, as ⌘3; a close renumbers; the order survives a restart', async () => {
+    localStorage.setItem('caprock.app.sidebar-grouped', 'off')
+    const first = render(<AppShell />)
+    await openRowOf('agent-1', /Fix the login bug/)
+    await openRowOf('agent-2', /Waiting one/)
+    await openRowOf('theirs', /Started elsewhere/)
+    await waitFor(() => expect(stripNames()).toEqual(['Fix the login bug · app', 'Waiting one · app', 'Started elsewhere · other']))
+    expect(stripKeys()).toEqual(['⌘1', '⌘2', '⌘3'])
+    expect(rowKey('Started elsewhere')).toBe('⌘3')
+    // The Flat list is the strip, in its order.
+    const list = screen.getByRole('group', { name: 'Sessions' })
+    expect([...list.querySelectorAll('[data-tab-row]')].map((r) => r.querySelector('[data-row-title]')?.textContent ?? r.textContent)).toEqual([
+      expect.stringContaining('Fix the login bug'), expect.stringContaining('Waiting one'), expect.stringContaining('Started elsewhere'),
+    ])
+    await waitFor(() => expect(localStorage.getItem(WORKSPACE_KEY)).toContain('theirs'))
+    first.unmount()
+    render(<AppShell />)
+    await waitFor(() => expect(stripNames()).toEqual(['Fix the login bug · app', 'Waiting one · app', 'Started elsewhere · other']))
+    expect(stripKeys()).toEqual(['⌘1', '⌘2', '⌘3'])
+    // Closing the first moves the others up one.
+    fireEvent.click(within(strip()[0]!).getByRole('button', { name: /^Close/ }))
+    await waitFor(() => expect(stripNames()).toEqual(['Waiting one · app', 'Started elsewhere · other']))
+    expect(stripKeys()).toEqual(['⌘1', '⌘2'])
+  })
+
+  it('moves a tab in the strip when its row is moved in the Flat list, and the numbers follow', async () => {
+    localStorage.setItem('caprock.app.sidebar-grouped', 'off')
+    render(<AppShell />)
+    await openRowOf('agent-1', /Fix the login bug/)
+    await openRowOf('agent-2', /Waiting one/)
+    await waitFor(() => expect(stripNames()).toEqual(['Fix the login bug · app', 'Waiting one · app']))
+    const row = [...document.querySelectorAll<HTMLElement>('[data-tab-row]')].find((r) => r.textContent?.includes('Waiting one'))!
+    fireEvent.keyDown(row, { key: 'ArrowUp', altKey: true, shiftKey: true })
+    await waitFor(() => expect(stripNames()).toEqual(['Waiting one · app', 'Fix the login bug · app']))
+    expect(stripKeys()).toEqual(['⌘1', '⌘2'])
+    expect(rowKey('Waiting one')).toBe('⌘1')
+  })
+
+  it('lists Flat by default, Tree once chosen (Settings → Appearance or the folder toggle), and a click on a project opens its page', async () => {
+    localStorage.removeItem('caprock.app.sidebar-grouped')
+    render(<AppShell />)
+    await screen.findByRole('group', { name: 'Sessions' })
+    expect(document.querySelector('[data-project-row]')).toBeNull()
+    act(() => saveSidebarMode('tree'))
+    await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeTruthy())
+    // No digit on a project, ever.
+    expect(document.querySelector('[data-project-key]')).toBeNull()
+    await openRowOf('agent-1', /Fix the login bug/)
+    expect(frontPane()).toEqual(['agent-1'])
+    const appRow = [...document.querySelectorAll<HTMLElement>('[data-project-row]')].find((b) => b.textContent?.startsWith('app'))!
+    fireEvent.click(appRow)
+    await waitFor(() => expect(frontPane()).toEqual([]))
+    expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'false')
+    fireEvent.click(screen.getByRole('button', { name: 'Group by project' }))
+    await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeNull())
+    expect(localStorage.getItem('caprock.app.sidebar-grouped')).toBe('off')
+  })
+
+  // Owner, 2026-10-13 (translated): "… and there I can Command+Up/Down to
+  // move". ⌥⌘↑ ⌥⌘↓ walk the sessions of the front tab's project and ⌥⌘←
+  // ⌥⌘→ the projects, round the end, every terminal staying mounted.
+  it('walks its sessions with ⌥⌘↑ ⌥⌘↓ and the projects with ⌥⌘← ⌥⌘→', async () => {
     await renderApp()
     await openFromPalette('Fix the login bug')
     fireEvent.click(waitingRow('Waiting one'))
@@ -494,20 +567,21 @@ describe('the app workspace', () => {
     // Round the end.
     await arrow('ArrowDown')
     expect(front()).toEqual(['agent-1'])
-    // The second project, then back: the first brings its tab last in front.
+    // The other project, then back: the first brings its tab last in front.
     expect(currentProject()).toMatch(/^app/)
-    await cmd('2')
+    await arrow('ArrowRight')
     expect(currentProject()).toMatch(/^other/)
-    await cmd('1')
+    await arrow('ArrowRight')
     expect(currentProject()).toMatch(/^app/)
     expect(front()).toEqual(['agent-1'])
-    await arrow('ArrowRight')
-    expect(currentProject()).toMatch(/^other/)
-    await arrow('ArrowRight')
-    expect(currentProject()).toMatch(/^app/)
     await arrow('ArrowLeft')
     expect(currentProject()).toMatch(/^other/)
-    await cmd('1')
+    await arrow('ArrowLeft')
+    // ⌃⌘ digits are no project chords: nothing moves, the key is not taken.
+    const ctrlDigit = new KeyboardEvent('keydown', { key: '2', code: 'Digit2', metaKey: true, ctrlKey: true, bubbles: true, cancelable: true })
+    act(() => { window.dispatchEvent(ctrlDigit) })
+    expect(ctrlDigit.defaultPrevented).toBe(false)
+    expect(currentProject()).toMatch(/^app/)
     // ⌥← ⌥→ and ⌘↑ ⌘↓ are the terminal's: not taken, nothing moves.
     for (const [key, mods] of [['ArrowLeft', { altKey: true }], ['ArrowRight', { altKey: true }], ['ArrowUp', { metaKey: true }], ['ArrowDown', { metaKey: true }]] as const) {
       const ev = new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true, ...mods })
@@ -524,6 +598,21 @@ describe('the app workspace', () => {
     expect(inField.defaultPrevented).toBe(false)
     expect(front()).toEqual(['agent-1'])
     field.remove()
+  })
+
+  it('says once how to move around, with a way to every key, and never again after Got it', async () => {
+    const first = await renderApp()
+    expect(screen.queryByRole('status', { name: 'Keys to move around' })).toBeNull()
+    await openFromPalette('Fix the login bug')
+    const hint = await screen.findByRole('status', { name: 'Keys to move around' })
+    expect(hint).toHaveTextContent('⌘1–9 switch tabs in the order you opened them · double-click a tab to rename')
+    fireEvent.click(within(hint).getByRole('button', { name: 'All keys' }))
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toHaveTextContent('The Nth tab, in the order opened')
+    expect(localStorage.getItem('caprock.app.keysHint')).toBe('seen')
+    first.unmount()
+    await renderApp()
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    expect(screen.queryByRole('status', { name: 'Keys to move around' })).toBeNull()
   })
 
   it('restores its tabs after a reload', async () => {

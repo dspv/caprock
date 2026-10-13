@@ -1540,7 +1540,23 @@ export interface PairState {
   /** Every address a phone can open, `url` first: the LAN one, the Tailscale
    *  one and its MagicDNS name (WP-15). A code works on any of them. */
   addresses?: PairAddress[]
+  /** Access from anywhere through a relay (ADR-058); absent from a daemon
+   *  without it. The same code pairs over it. */
+  remote?: RemoteState
   devices: PairedDevice[]
+}
+
+/** Access from anywhere: this machine waits at a relay (ADR-058). */
+export interface RemoteState {
+  enabled: boolean
+  status: 'off' | 'connecting' | 'online' | 'offline'
+  error?: string
+  phones: number
+  relay: string
+  app: string
+  host_id?: string
+  /** What the QR opens: the phone's page, with the code while one is live. */
+  link?: string
 }
 
 /** One address network access answers on. */
@@ -1548,7 +1564,7 @@ export interface PairAddress {
   url: string
   /** `lan`: the same Wi-Fi only; `tailscale`: a 100.x address, anywhere the
    *  phone has Tailscale; `magicdns`: the same, by its MagicDNS name. */
-  kind: 'lan' | 'tailscale' | 'magicdns'
+  kind: 'lan' | 'tailscale' | 'magicdns' | 'anywhere'
 }
 
 export const api = {
@@ -1639,6 +1655,7 @@ export const api = {
   pairCancelCode: () => post<{ cleared: boolean }>('/v1/pair/code', {}, 'DELETE'),
   /** Turn network access on or off without restarting the daemon. */
   setLAN: (on: boolean) => post<{ enabled: boolean; url?: string }>('/v1/pair/lan', { on }),
+  setRemote: (on: boolean) => post<RemoteState>('/v1/pair/remote', { on }),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
   /** Give a paired device control of sessions, or take it away. Machine only. */
   pairSetRole: (id: string, role: PairedDevice['role']) =>

@@ -23,6 +23,7 @@ var relayMarks = []struct{ name, value string }{
 	{"Ngrok-Skip-Browser-Warning", "1"},
 	{"X-Ngrok-Trace", "abc"},
 	{"Via", "1.1 Caddy"},
+	{"Via", "1.1 caprock-remote"}, // internal/remote's own mark (ADR-058)
 }
 
 // relayedRequest is a request for pattern that reached loopback through a
@@ -164,5 +165,42 @@ func TestARelayedWebSocketIsRefusedBeforeTheHandshake(t *testing.T) {
 		if w.Code != http.StatusUnauthorized {
 			t.Errorf("%s relayed: %d, want 401", path, w.Code)
 		}
+	}
+}
+
+// Access from anywhere with the LAN listener off (ADR-058): the guest list is
+// live with no network address, every request arrives relayed onto loopback,
+// and each is held to its device's role exactly as on the LAN. The pairing
+// panel says the network listener is off while the guest list works.
+func TestRemoteAccessAloneHoldsEveryPhoneToItsRole(t *testing.T) {
+	s, ps, viewer, controller := pairedPhones(t, Deps{})
+	s.SetLAN(ps, "")
+	mark := "1.1 caprock-remote"
+	for _, tc := range []struct {
+		pattern                string
+		none, asViewer, asCtrl int
+	}{
+		{"GET /v1/sessions", 401, 0, 0},
+		{"GET /v1/live", 401, 0, 0},
+		{"POST /v1/agents", 401, 403, 0},
+		{"POST /v1/pair/remote", 401, 403, 403},
+		{"POST /v1/pair/lan", 401, 403, 403},
+		{"GET /v1/pair/state", 401, 403, 403},
+	} {
+		for _, who := range []struct {
+			token string
+			want  int
+		}{{"", tc.none}, {viewer.Token, tc.asViewer}, {controller.Token, tc.asCtrl}} {
+			if got, why := s.gate(relayedRequest(tc.pattern, who.token, "Via", mark)); got != who.want {
+				t.Errorf("%s, token %t: %d, want %d (%s)", tc.pattern, who.token != "", got, who.want, why)
+			}
+		}
+	}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/v1/pair/state", nil)
+	r.RemoteAddr, r.Host = "127.0.0.1:51000", "127.0.0.1:22776"
+	s.ServeHTTP(w, r)
+	if !strings.Contains(w.Body.String(), `"enabled":false`) {
+		t.Errorf("pair state with only remote access on: %s", w.Body.String())
 	}
 }

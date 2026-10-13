@@ -71,6 +71,9 @@ func safeMethod(m string) bool {
 // checkOrigin decides whether a /v1 request may proceed. It returns an empty
 // string when the request is allowed, or a reason to refuse with 403.
 func checkOrigin(r *http.Request, lanHosts ...string) string {
+	if isMailOAuthCallback(r) {
+		return ""
+	}
 	// Fetch metadata first: a browser always sends it and script cannot forge
 	// it, so a cross-site value is decisive regardless of the other headers.
 	// It is checked for reads as well as writes — a cross-site page must not be
@@ -142,6 +145,21 @@ func checkOrigin(r *http.Request, lanHosts ...string) string {
 	}
 
 	return ""
+}
+
+// mailOAuthCallback is where Google or Microsoft sends the user's browser back
+// after "Sign in with ..." in Caprock Mail. That arrival is a top-level
+// navigation from the provider's page, so the browser marks it
+// Sec-Fetch-Site: cross-site, which the guard above refuses for every other
+// route. It is admitted only as a GET on a loopback Host (the redirect URI
+// names 127.0.0.1 or localhost, so a rebinding name still fails), and the
+// handler accepts it only with the random, single-use, ten-minute state that
+// POST /v1/mail/oauth/start issued: the state is this route's CSRF protection
+// (RFC 6749 §10.12). Every other route keeps the full guard.
+const mailOAuthCallback = "/v1/mail/oauth/callback"
+
+func isMailOAuthCallback(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.URL.Path == mailOAuthCallback && isLoopbackHost(r.Host)
 }
 
 // isJSONContentType reports whether the media type is application/json,
