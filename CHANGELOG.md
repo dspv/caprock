@@ -9,6 +9,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **cockpit:** subagent rows stay where they are. They stand in the order the
+  subagents started, first on top, a new one added at the bottom; working,
+  waiting, getting busier or finishing no longer moves a row, and a finished
+  one stays in its place, dimmed with a ✓. What a subagent is doing now gets
+  the row's whole width and two lines, the full text on hover; its figures
+  moved to the line below, and *Show* in the Subagents header picks which of
+  them each row carries — *Compact* (just the phrase), *Cost* (cost and time,
+  the default) or *Full* (calls, cost, model and time), or any mix —
+  remembered on this device.
 - **deck:** a pull request's checks read at a glance. In place of a circle per
   check — twelve tiny circles in a row that said nothing — each row sums them
   up in one short group: *✗ 1 failed ● 1 running ✓ 10*, the failed first, the
