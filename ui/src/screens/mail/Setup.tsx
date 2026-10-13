@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import type { Account, ProviderGuess, Settings } from './mailApi'
 import { api } from './mailApi'
 import { Icon } from './icons'
+import type { Provider } from './Onboarding'
+import { AddFlow } from './Onboarding'
 
 // Adding an account: address and password; servers are filled in from the
-// address and only shown when the guess is unknown or the user asks.
-export function AddAccount({ onDone, onCancel, first }: { onDone: () => void; onCancel?: () => void; first?: boolean }) {
+// address and only shown when the guess is unknown or the user asks. A
+// provider picked from the tiles brings its app-password steps along.
+export function AddAccount({ onDone, onCancel, provider }: { onDone: () => void; onCancel?: () => void; provider?: Provider }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -27,7 +30,7 @@ export function AddAccount({ onDone, onCancel, first }: { onDone: () => void; on
         setGuess(g)
         // iCloud+ on a custom domain signs in with the @icloud.com address:
         // leave Username empty and show it, so it is typed, not assumed.
-        setS({ imap_host: g.imap_host, imap_port: g.imap_port, imap_tls: g.imap_tls, smtp_host: g.smtp_host, smtp_port: g.smtp_port, smtp_tls: g.smtp_tls, username: g.needs_username ? '' : email })
+        setS({ imap_host: g.imap_host, imap_port: g.imap_port, imap_tls: g.imap_tls, smtp_host: g.smtp_host, smtp_port: g.smtp_port, smtp_tls: g.smtp_tls, username: g.username || (g.needs_username ? '' : email) })
         if (!g.known || g.needs_username) setAdv(true)
       }).catch(() => {})
     }, 300)
@@ -53,17 +56,23 @@ export function AddAccount({ onDone, onCancel, first }: { onDone: () => void; on
   }
 
   return (
-    <form className="setup" onSubmit={submit}>
-      <h2>{first ? 'Caprock Mail' : 'Add a mail account'}</h2>
-      {first && <p className="lead">Every inbox in one place: one unified inbox for Gmail, iCloud, Fastmail and your company's server, instant search, a keyboard for everything, and summaries from a model on your own computer.</p>}
-      <p className="muted">Any IMAP account works. Caprock connects only to the mail servers you enter here; the password goes to your system keychain and your mail is kept on this computer. Nothing is sent to Caprock. Remove the account to stop.</p>
+    <form className="addform" onSubmit={submit}>
+      <h2>{provider && provider.id !== 'other' ? provider.name : 'Add a mail account'}</h2>
+      {provider?.steps ? (
+        <div className="hint steps">
+          {provider.why && <div className="muted">{provider.why}</div>}
+          <div>{provider.steps} {provider.help && <a href={provider.help} target="_blank" rel="noreferrer">Open {provider.helpLabel}</a>}</div>
+        </div>
+      ) : (
+        <p className="muted">Any IMAP account works. Caprock connects only to the mail servers you enter here; the password goes to your system keychain and your mail is kept on this computer. Nothing is sent to Caprock. Remove the account to stop.</p>
+      )}
       <label className="field"><span>Your name</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex Morgan" /></label>
-      <label className="field"><span>Email</span><input value={email} onChange={(e) => setEmail(e.target.value.trim())} placeholder="you@company.com" autoFocus required /></label>
-      <label className="field"><span>Password</span><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+      <label className="field"><span>Email</span><input value={email} onChange={(e) => setEmail(e.target.value.trim())} placeholder={provider?.placeholder ?? 'you@company.com'} autoFocus required /></label>
+      <label className="field"><span>{provider?.steps ? (provider.id === 'icloud' ? 'App-specific password' : 'App password') : 'Password'}</span><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
       {guess && (
         <div className="hint">
           <b>{guess.provider}</b>{guess.known ? ' — settings found.' : ' — settings guessed; check them below.'}
-          {guess.note && <div>{guess.note} {guess.help_url && <a href={guess.help_url} target="_blank" rel="noreferrer">Make one</a>}</div>}
+          {guess.note && !provider?.steps && <div>{guess.note} {guess.help_url && <a href={guess.help_url} target="_blank" rel="noreferrer">Make one</a>}</div>}
         </div>
       )}
       {!adv && guess && <button type="button" className="link small" onClick={() => setAdv(true)}>Server settings</button>}
@@ -101,12 +110,14 @@ function Sec({ v, on }: { v: string; on: (v: string) => void }) {
   )
 }
 
-export function SettingsPanel({ accounts, settings, onSettings, onClose, onChanged }: {
+export function SettingsPanel({ accounts, settings, onSettings, onClose, onChanged, onAddAccount }: {
   accounts: Account[]
   settings: Settings
   onSettings: (s: Settings) => void
   onClose: () => void
   onChanged: () => void
+  /** Replaces the add flow (sample mode leaves the sample first). */
+  onAddAccount?: () => void
 }) {
   const [adding, setAdding] = useState(false)
   const [ai, setAi] = useState<{ available: boolean; models: string[]; error?: string } | null>(null)
@@ -117,7 +128,7 @@ export function SettingsPanel({ accounts, settings, onSettings, onClose, onChang
     api.aiStatus().then(setAi).catch(() => setAi(null))
   }, [settings.ai_url])
 
-  if (adding) return <div className="sheet"><AddAccount onDone={() => { setAdding(false); onChanged() }} onCancel={() => setAdding(false)} /></div>
+  if (adding) return <div className="sheet"><div className="setup onboard"><AddFlow onDone={() => { setAdding(false); onChanged() }} onCancel={() => setAdding(false)} /></div></div>
 
   return (
     <div className="sheet settings" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
@@ -140,7 +151,7 @@ export function SettingsPanel({ accounts, settings, onSettings, onClose, onChang
         </div>
       ))}
       {editing && <EditAccount a={editing} onDone={() => { setEditing(null); onChanged() }} />}
-      <button className="btn" onClick={() => setAdding(true)}><Icon name="plus" size={14} /> Add account</button>
+      <button className="btn" onClick={() => (onAddAccount ? onAddAccount() : setAdding(true))}><Icon name="plus" size={14} /> Add account</button>
 
       <h3>Privacy</h3>
       <label className="check">

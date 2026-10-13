@@ -24,6 +24,7 @@ func (s *Service) Handler() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /v1/mail/state", s.state)
 	m.HandleFunc("GET /v1/mail/providers", s.guess)
+	m.HandleFunc("POST /v1/mail/sample", s.setSample)
 	m.HandleFunc("POST /v1/mail/accounts", s.addAccount)
 	m.HandleFunc("PUT /v1/mail/accounts/{id}", s.updateAccount)
 	m.HandleFunc("DELETE /v1/mail/accounts/{id}", s.deleteAccount)
@@ -74,8 +75,9 @@ func (s *Service) with(w http.ResponseWriter, r *http.Request, f func(st *store.
 // was ever used it answers from nothing, so the offer on Now can ask "is Mail
 // set up" without creating a database.
 func (s *Service) state(w http.ResponseWriter, r *http.Request) {
-	if !s.opened() && !s.demo {
-		writeJSON(w, map[string]any{"accounts": []any{}, "folders": []any{}, "counts": store.Counts{}, "version": 0})
+	sample := s.inSample()
+	if !s.opened() && !sample {
+		writeJSON(w, map[string]any{"accounts": []any{}, "folders": []any{}, "counts": store.Counts{}, "version": s.version.Load(), "sample": false})
 		return
 	}
 	s.with(w, r, func(st *store.Store, _ *engine.Engine) {
@@ -95,7 +97,7 @@ func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, err)
 			return
 		}
-		writeJSON(w, map[string]any{"accounts": accts, "folders": folders, "counts": counts, "version": s.version.Load()})
+		writeJSON(w, map[string]any{"accounts": accts, "folders": folders, "counts": counts, "version": s.version.Load(), "sample": sample})
 	})
 }
 
@@ -137,7 +139,7 @@ func (s *Service) addAccount(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, err)
 			return
 		}
-		if err := s.sec.Set(id, req.Password); err != nil {
+		if err := s.secrets().Set(id, req.Password); err != nil {
 			_ = st.DeleteAccount(r.Context(), id)
 			fail(w, 500, fmt.Errorf("keychain: %w", err))
 			return
@@ -169,7 +171,7 @@ func (s *Service) updateAccount(w http.ResponseWriter, r *http.Request) {
 		if serversChanged || req.Password != "" {
 			pw := req.Password
 			if pw == "" {
-				if pw, err = s.sec.Get(id); err != nil {
+				if pw, err = s.secrets().Get(id); err != nil {
 					fail(w, 500, err)
 					return
 				}
@@ -179,7 +181,7 @@ func (s *Service) updateAccount(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if req.Password != "" {
-				if err := s.sec.Set(id, req.Password); err != nil {
+				if err := s.secrets().Set(id, req.Password); err != nil {
 					fail(w, 500, err)
 					return
 				}
@@ -205,13 +207,17 @@ func (s *Service) deleteAccount(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, err)
 			return
 		}
-		_ = s.sec.Delete(id)
+		_ = s.secrets().Delete(id)
 		s.version.Add(1)
 		writeJSON(w, map[string]bool{"ok": true})
 	})
 }
 
 func (s *Service) list(w http.ResponseWriter, r *http.Request) {
+	if !s.opened() && !s.inSample() { // nothing to list, and nothing to create
+		writeJSON(w, []any{})
+		return
+	}
 	s.with(w, r, func(st *store.Store, _ *engine.Engine) {
 		q := r.URL.Query()
 		query := store.Query{View: q.Get("view"), Search: q.Get("q")}
@@ -381,6 +387,14 @@ func readSettings(ctx context.Context, st *store.Store) map[string]string {
 }
 
 func (s *Service) getSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.opened() && !s.inSample() { // opening the screen must not create mail.db
+		out := map[string]string{}
+		for k, def := range settingKeys {
+			out[k] = def
+		}
+		writeJSON(w, out)
+		return
+	}
 	s.with(w, r, func(st *store.Store, _ *engine.Engine) { writeJSON(w, readSettings(r.Context(), st)) })
 }
 

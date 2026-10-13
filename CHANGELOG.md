@@ -7,6 +7,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **mail:** Mail no longer opens on a bare form. The first screen offers three
+  ways in: *Try it with sample mail* (two made-up inboxes on servers inside
+  Caprock, with a slim *Sample mail — nothing here is real* line to leave or
+  to add your own account; your real mail and keychain are never touched),
+  *Import my accounts* from Apple Mail or Thunderbird, ticked one by one, with
+  a password field where none was saved and the Full Disk Access steps when
+  macOS hides one, and *Add an account* as provider tiles — Google, iCloud,
+  Outlook, Yahoo, Fastmail, Other. Google and Outlook sign in through the
+  browser when this build offers it; otherwise, and always for iCloud, the
+  form carries that provider's app-password steps and link. Settings' *Add
+  account* uses the same tiles, and opening the Mail screen no longer creates
+  an empty mail database.
+
 ### Changed
 
 - **deck:** a pull request's checks read at a glance. In place of a circle per

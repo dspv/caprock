@@ -23,7 +23,8 @@ const paths: Record<string, string> = {
   mail: 'M3 6h18v12H3z M3 7l9 6 9-6',
   image: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4 M15 9.5a1 1 0 1 0 0-.1',
   chevron: 'M9 6l6 6-6 6',
-  download: 'M12 4v11 M7 10l5 5 5-5 M5 20h14',
+  cloud: 'M7 18h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.5 1.5A3.3 3.3 0 0 0 7 18z',
+  download:'M12 4v11 M7 10l5 5 5-5 M5 20h14',
 }
 
 export function Icon({ name, size = 16, className }: { name: keyof typeof paths | string; size?: number; className?: string }) {

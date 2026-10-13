@@ -2840,10 +2840,12 @@ GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?
 Caprock Mail ([ADR-057](08-decisions.md)). Code: `internal/mail` (HTTP in
 `http.go`), `internal/mail/engine` (IMAP, SMTP), `internal/mail/mailstore`
 (DDL in `schema.sql`), `ui/src/screens/mail`. Every write is JSON, as the CSRF
-guard requires. Before the first account exists only `GET /v1/mail/state` and
-`GET /v1/mail/providers` answer without opening Mail.
+guard requires. Before the first account exists `GET /v1/mail/state`,
+`GET /v1/mail/providers`, `GET /v1/mail/settings` (the defaults) and `GET
+/v1/mail/messages` (`[]`) answer without opening Mail.
 
-- `GET /v1/mail/state` — `{accounts, folders, counts: {inbox, unread, flagged}, version}`; `version` moves on every local change and is what the screen polls.
+- `GET /v1/mail/state` — `{accounts, folders, counts: {inbox, unread, flagged}, version, sample}`; `version` moves on every local change and is what the screen polls; `sample` is true while sample mode is on.
+- `POST /v1/mail/sample` — `{on}` → `{sample}`. On: two sample accounts on in-process fake servers, a database in a temporary directory and passwords in memory; while it is on every `/v1/mail` route serves the sample, and the real `mail.db` and keychain are not touched (an unused Mail stays unopened). Off: the sample is dropped and the routes serve the real data again. `CAPROCK_MAIL_DEMO=1` turns it on for the whole run and `{on: false}` is then `409`. A mutating route, behind the CSRF guard and pairing like the rest.
 - `GET /v1/mail/providers?email=` — server settings guessed from the address, then its MX record: `{provider, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, note, help_url, known, needs_username}`. iCloud (icloud.com, me.com, mac.com) and Gmail by domain; iCloud+ custom domains, Google Workspace and Microsoft 365 by MX; `needs_username` is set for an iCloud+ custom domain, whose sign-in is the @icloud.com address. The MX lookup is the one network call it makes.
 - `POST /v1/mail/accounts` — `{name, email, username, imap_*, smtp_*, password}`; IMAP and SMTP are tried first and a refusal is `422` with nothing stored. A sign-in name the server refuses is retried with the address and, on iCloud, the part before the @ (SMTP: the @icloud.com form) — at most three names, only on a credentials refusal, never on `NO [UNAVAILABLE]`, which Dovecot (Spacemail and many hosts) sends for a wrong password on a real mailbox and while it locks sign-in after failures; the name that worked is stored. iCloud and Gmail refusals carry what to do (an app-specific password); an `UNAVAILABLE` refusal says the password was not accepted. `PUT /v1/mail/accounts/{id}` edits (a new password is optional), `DELETE` removes the account, its mail and its password.
 - `GET /v1/mail/messages?view=&account=&folder=&q=&before=&before_id=&limit=` — newest first, without bodies. `view`: `inbox unread flagged sent drafts archive junk trash folder all`; `q` is a full-text query (every word a prefix) over subject, people and body.
