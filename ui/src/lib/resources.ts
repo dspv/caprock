@@ -115,6 +115,21 @@ export function useSessionResources(sessionId: string | undefined): SessionResou
   return useSyncExternalStore(subscribe, () => (sessionId ? bySession.get(sessionId) : undefined))
 }
 
+/**
+ * Why a session is hot, or null while it is not: the sidebar's and tabs'
+ * mark. A string, so a row redraws only when what the mark says changes —
+ * reading the whole report redrew every row's mark on every 5 s sample, hot
+ * or not. The minutes count from the sample's own time, so one sample always
+ * gives one answer.
+ */
+export function useSessionHot(sessionId: string | undefined): string | null {
+  useFirstFetch()
+  return useSyncExternalStore(subscribe, () => {
+    const r = sessionId ? bySession.get(sessionId) : undefined
+    return r?.hot ? hotReason(r, report?.thresholds, report?.at || Date.now()) : null
+  })
+}
+
 /** "182%": CPU summed over a tree, rounded; a dash before there is a rate. */
 export function fmtCPU(pct: number | undefined, warm = true): string {
   if (!warm || pct === undefined || !Number.isFinite(pct)) return '—'

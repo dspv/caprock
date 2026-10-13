@@ -18,7 +18,7 @@ import { Banner, BannerButton, BannerDismiss } from './Banner'
 
 /** `app`: kept for the callers; the strip draws the same in the app and the dashboard. */
 export function StarStrip({ now = Date.now() }: { now?: number; app?: boolean }) {
-  const hist = useApi(() => api.history('all'), [], { live: false, intervalMs: 600_000 })
+  const hist = useApi(() => api.history('all'), [], { live: false, intervalMs: 600_000, share: 'history:all' })
   const done = !usePromptDue('star-done', now)
   const snoozed = !usePromptDue('star-dismissed', now)
   const [thanks, setThanks] = useState(false)
