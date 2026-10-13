@@ -322,6 +322,9 @@ export function AppShell() {
   const current = activeTab(shownWs)
   const focused = current ? focusedLeaf(current).target : undefined
   const focusedSession = focused ? sessionsById.get(focused.sessionId) : undefined
+  // The inspector beside a PRs & CI tab describes the agent it was opened from.
+  const inspectedId = focused?.kind === 'prs' ? focused.of : focused?.sessionId
+  const inspectedSession = focused?.kind === 'prs' && focused.of ? sessionsById.get(focused.of) : focusedSession
   // An agent's session is in front: what the session deck and the chat apply to.
   const frontIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const activeProject = projectsById.get(activeProjectId)
@@ -1077,11 +1080,11 @@ export function AppShell() {
     if (!focused || source !== 'api') return undefined
     for (const n of model.projects) {
       for (const w of n.worktrees) {
-        if (w.sessions.some((x) => x.session.session_id === focused.sessionId)) return { projectId: n.project.id, w, repo: n.project.kind === 'repo' }
+        if (w.sessions.some((x) => x.session.session_id === inspectedId)) return { projectId: n.project.id, w, repo: n.project.kind === 'repo' }
       }
     }
     return undefined
-  }, [focused, model.projects, source])
+  }, [focused, inspectedId, model.projects, source])
 
   useEffect(() => {
     openChangesRef.current = focusedWorktree?.repo
@@ -1107,10 +1110,10 @@ export function AppShell() {
   // The project the focused session is listed under, named as the sidebar names it.
   const focusedProject = useMemo(() => {
     if (!focused) return undefined
-    const p = model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((x) => x.session.session_id === focused.sessionId)))?.project
+    const p = model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((x) => x.session.session_id === inspectedId)))?.project
     // "Other folders" is a heading, not a project: the session's own folder names it.
     return p && p.id !== OTHER_FOLDERS_ID ? p : undefined
-  }, [focused, model.projects])
+  }, [focused, inspectedId, model.projects])
 
   const focusedIsAgent = frontIsAgent
   const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
@@ -1453,10 +1456,10 @@ export function AppShell() {
             {workspaceShown && prefs.inspector && (
               <div className="h-full shrink-0" style={{ width: 'var(--app-inspector-w)' }}>
                 <Inspector
-                  session={focusedSession}
+                  session={inspectedSession}
                   project={focusedProject}
-                  sessionId={focusedFile ? undefined : focused?.sessionId}
-                  hasPermission={!!focused && data.permissions.has(focused.sessionId)}
+                  sessionId={focusedFile ? undefined : inspectedId}
+                  hasPermission={!!inspectedId && data.permissions.has(inspectedId)}
                   showPrompt={promptCard}
                   onClose={() => setPrefs((p) => ({ ...p, inspector: false }))}
                   onDetach={detach}
@@ -1465,7 +1468,7 @@ export function AppShell() {
                   onReviewChanges={focusedWorktree?.repo ? () => onOpenChanges(focusedWorktree.projectId, focusedWorktree.w) : undefined}
                   onOpenFile={focusedWorktree?.repo ? (p) => openFile(focusedWorktree.projectId, focusedWorktree.w.isMain ? '' : focusedWorktree.w.key, p) : undefined}
                   summary={data.summary}
-                  onCompare={focusedSession?.attempt_group ? () => onCompare(focusedSession) : undefined}
+                  onCompare={inspectedSession?.attempt_group ? () => onCompare(inspectedSession) : undefined}
                 />
               </div>
             )}

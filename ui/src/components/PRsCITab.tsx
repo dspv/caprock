@@ -20,7 +20,7 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, errText, type CIJob, type CIRun, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary, type SpawnRequest } from '@/lib/api'
-import { ciActive, ciTone, fmtRun, investigateMessage, keyStep, prReviewText, prVerdict, type CITone } from '@/lib/ci'
+import { ciActive, ciTone, fmtRun, investigateMessage, jobVsMedian, keyStep, prReviewText, prVerdict, type CITone } from '@/lib/ci'
 import { hasConflict, isBehind, topChip, type DeckWorktree } from '@/lib/prforce'
 import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
 import { GRID_OS_LABEL, SCOPE_LABEL, firstPick, jobGrid, spanText, statsWords, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
@@ -130,7 +130,7 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
   return (
     <div data-prs-tab onKeyDown={(e) => { if (e.key === 'Escape' && kit.confirm) { kit.setConfirm(undefined); e.preventDefault() } }}
       className="app-scroll @container/prs flex h-full min-h-0 flex-col gap-3 overflow-y-auto bg-bg p-4">
-      <header className="flex min-w-0 items-center gap-3">
+      <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
         <h1 className="shrink-0 text-[15px] font-semibold">Pull requests &amp; CI</h1>
         {stats?.repo && <span className="mono truncate text-[12px] text-fg-muted">{stats.repo}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-2 text-[11.5px]">
@@ -259,10 +259,10 @@ function StatsStrip({ st, usage }: { st: NonNullable<SessionCIStats['stats']>; u
 function PRList({ rows, scope, onScope, pick, onPick, now, counts, loaded }: { rows: TabPR[]; scope: TabScope; onScope: (s: TabScope) => void; pick: number; onPick: (n: number) => void; now: number; counts: Record<TabScope, number>; loaded: boolean }) {
   return (
     <section data-prs-list aria-label="Pull requests" className="flex min-h-0 min-w-0 flex-col rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
-      <div role="tablist" aria-label="Which pull requests" className="flex shrink-0 items-center gap-1 border-b border-border bg-panel-2/60 px-2 py-1.5 text-[11.5px]">
+      <div role="tablist" aria-label="Which pull requests" className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-panel-2/60 px-2 py-1.5 text-[11.5px]">
         {(['session', 'repo', 'open'] as TabScope[]).map((k) => (
           <button key={k} type="button" role="tab" aria-selected={scope === k} data-prs-scope={k} onClick={() => onScope(k)}
-            className={`rounded-[5px] px-2 py-[2px] ${scope === k ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:text-fg'}`}>
+            className={`whitespace-nowrap rounded-[5px] px-2 py-[2px] ${scope === k ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:text-fg'}`}>
             {SCOPE_LABEL[k]} <span className="num text-fg-faint">{counts[k]}</span>
           </button>
         ))}
@@ -382,9 +382,9 @@ function Detail({ p, row, ci, runs, now, sessionId, kit, connected, why, onInves
 function Part({ title, right, children }: { title: string; right?: ReactNode; children: ReactNode }) {
   return (
     <div className="border-t border-border px-4 py-3">
-      <div className="mb-2 flex min-w-0 items-baseline justify-between gap-3">
+      <div className="mb-2 flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
         <h3 className="shrink-0 text-[11px] font-medium uppercase tracking-[0.12em] text-fg-muted">{title}</h3>
-        {right && <span className="min-w-0 truncate text-[11.5px] text-fg-faint">{right}</span>}
+        {right && <span className="min-w-0 text-[11.5px] text-fg-faint">{right}</span>}
       </div>
       {children}
     </div>
@@ -417,8 +417,8 @@ function Grid({ runs, now, on, onPick }: { runs: CIRun[]; now: number; on?: numb
             const tone = ciTone(j)
             const ms = j.duration_ms ?? (j.started_at && tone === 'running' ? now - j.started_at : undefined)
             const vs = tone === 'pass' ? vsMedianText(j.duration_ms, j.baseline?.median_ms) : undefined
+            const running = tone === 'running' ? jobVsMedian(j, now) : undefined
             const step = keyStep(j)
-            const left = tone === 'running' && j.baseline && ms !== undefined ? Math.max(0, j.baseline.median_ms - ms) : undefined
             return (
               <button key={o} type="button" data-prs-cell={j.id} data-tone={tone} onClick={() => onPick(j.id)} aria-pressed={on === j.id}
                 title={`${j.name}${j.baseline ? `\nmedian ${fmtRun(j.baseline.median_ms)}, the last ${j.baseline.runs} successful runs` : ''}`}
@@ -430,7 +430,7 @@ function Grid({ runs, now, on, onPick }: { runs: CIRun[]; now: number; on?: numb
                 </span>
                 {(tone === 'fail' || tone === 'running') && step && (
                   <span className={`truncate text-[11px] ${tone === 'fail' ? 'text-danger' : 'text-fg-muted'}`}>
-                    {tone === 'fail' ? 'failed at ' : 'on '}{step.name}{left !== undefined ? ` · ≈ ${fmtRun(left)} left` : ''}
+                    {tone === 'fail' ? 'failed at ' : 'on '}{step.name}{running ? ` · ${running.text}` : ''}
                   </span>
                 )}
               </button>

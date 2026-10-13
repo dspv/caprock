@@ -121,8 +121,9 @@ describe('the session deck in the app', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Expand/ }))
     expect(await screen.findByRole('tab', { name: /PRs & CI · app/ })).toBeInTheDocument()
     expect(document.querySelector('[data-prs-tab]')).toBeInTheDocument()
-    // Not an agent's tab: no deck under it.
+    // Not an agent's tab: no deck under it; the inspector describes the agent it came from.
     expect(deck()).toBeNull()
+    expect(screen.queryByText('Loading…')).toBeNull()
     fireEvent.click(document.querySelector('[data-prs-back]')!)
     await waitFor(() => expect(screen.queryByRole('tab', { name: /PRs & CI/ })).toBeNull())
     expect(deck()).toBeInTheDocument()

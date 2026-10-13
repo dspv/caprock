@@ -28,7 +28,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   `merged_at` and its diff size (`additions`, `deletions`,
   `changed_files`, `commits`); `…/ci?pr=N` and the rerun and update-branch
   routes also take a pull request of the repository that the tab listed.
-
 - **app:** the cockpit's headline says how it compares with your own usual —
   *▲ 38%*, *≈ usual*, *▼ 55%*, *▲ 4.5×* left of *burn rate ▾* — against
   your median active session-hour (burn rate), your median session (cost,

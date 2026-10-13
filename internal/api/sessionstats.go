@@ -58,7 +58,7 @@ func (s *Server) composeSessionCIStats(ctx context.Context, id string, connected
 	prs, e := s.d.GitHub.RepoPulls(ctx, repo)
 	if e != nil {
 		out.Error = e
-		return out, nil
+		return out, nil //nolint:nilerr // GitHub's refusal is part of the answer
 	}
 	out.PRs = prs
 	runs, e := s.d.GitHub.RepoRuns(ctx, repo)
