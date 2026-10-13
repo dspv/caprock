@@ -5,8 +5,10 @@ import type { Row } from './MailScreen'
 import { MailBody } from './MailBody'
 import { bytes, firstName, hue, initials, longDate, people, sender, shortDate } from './format'
 import { Icon } from './icons'
+import { isTauri } from '@/lib/appmode'
+import { openExternal } from '@/lib/nudges'
 
-export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, onReply, onForward }: {
+export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, onReply, onForward, onMailto }: {
   row: Row
   view: string
   aiOn: boolean
@@ -16,6 +18,7 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
   onAct: (action: string, folder?: number) => void
   onReply: (m: Message, all: boolean) => void
   onForward: (m: Message) => void
+  onMailto?: (addr: string) => void
 }) {
   const [thread, setThread] = useState<Message[] | null>(null)
   const [open, setOpen] = useState<Set<number>>(new Set())
@@ -112,12 +115,16 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
                 <>
                   {(m.to?.length ?? 0) + (m.cc?.length ?? 0) > 3 && <div className="muted small recips">To: {people(m.to)}{m.cc?.length ? ` · Cc: ${people(m.cc)}` : ''}</div>}
                   <div className="body">
-                    <MailBody m={m} allowRemote={allowAll || remote.has(m.id)} onAllowRemote={() => setRemote((r) => new Set(r).add(m.id))} />
+                    <MailBody m={m} allowRemote={allowAll || remote.has(m.id)} onAllowRemote={() => setRemote((r) => new Set(r).add(m.id))} onMailto={onMailto} />
                   </div>
                   {attachments.length > 0 && (
                     <div className="chips">
                       {attachments.map((p) => (
-                        <a key={p.path} className="chip" href={partURL(m.id, p.path, true)} download={p.filename}>
+                        <a key={p.path} className="chip" href={partURL(m.id, p.path, true)} download={p.filename}
+                          onClick={(e) => {
+                            // The app's webview does not download; the system browser does, from this same loopback daemon.
+                            if (isTauri()) { e.preventDefault(); openExternal(location.origin + partURL(m.id, p.path, true)) }
+                          }}>
                           <Icon name={p.type.startsWith('image/') ? 'image' : 'clip'} size={13} /> {p.filename} <span className="muted">{bytes(p.size)}</span>
                         </a>
                       ))}

@@ -347,7 +347,8 @@ export function MailScreen() {
             folders={st.folders.filter((f) => f.account_id === curRow.m.account_id && f.role !== 'noselect')}
             onThread={(t) => (threadRef.current = t)}
             onAct={(a, folder) => act(a, curRow, folder)}
-            onReply={startReply} onForward={startForward} />
+            onReply={startReply} onForward={startForward}
+            onMailto={(addr) => setCompose({ accountId: curRow.m.account_id, to: [{ name: '', addr }], cc: [], subject: '', text: '', inReplyTo: 0 })} />
         ) : (
           <div className="nothing">
             <Icon name="mail" size={40} />

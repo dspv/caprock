@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Message } from './mailApi'
 import { partURL } from './mailApi'
+import { isTauri } from '@/lib/appmode'
+import { openExternal } from '@/lib/nudges'
 
 const remoteImg = /<img[^>]+src\s*=\s*["']?\s*https?:/i
 const remoteBg = /url\(\s*["']?\s*https?:/i
@@ -25,7 +27,7 @@ export function buildDoc(m: Message, origin: string, allowRemote: boolean) {
 
 const urlRe = /(https?:\/\/[^\s<>"')]+[^\s<>"').,;:!?])/g
 
-function Linkified({ text }: { text: string }) {
+function Linkified({ text, onMailto }: { text: string; onMailto?: (addr: string) => void }) {
   // Quoted lines are dimmed, links clickable; nothing is ever rendered as HTML.
   const lines = text.split('\n')
   return (
@@ -34,7 +36,7 @@ function Linkified({ text }: { text: string }) {
         const parts = l.split(urlRe)
         return (
           <div key={i} className={l.startsWith('>') ? 'q' : undefined}>
-            {parts.map((p, j) => (j % 2 === 1 ? <a key={j} href={p} target="_blank" rel="noreferrer noopener">{p}</a> : p))}
+            {parts.map((p, j) => (j % 2 === 1 ? <a key={j} href={p} target="_blank" rel="noreferrer noopener" onClick={(e) => { e.preventDefault(); openMailLink(p, onMailto) }}>{p}</a> : p))}
             {l === '' ? ' ' : null}
           </div>
         )
@@ -43,7 +45,21 @@ function Linkified({ text }: { text: string }) {
   )
 }
 
-export function MailBody({ m, allowRemote, onAllowRemote }: { m: Message; allowRemote: boolean; onAllowRemote: () => void }) {
+/**
+ * Opens a link from a message: mailto: in Mail's own composer, the web in the
+ * system browser (the app's webview would open nothing for a sandboxed frame).
+ */
+export function openMailLink(href: string, onMailto?: (addr: string) => void) {
+  if (/^mailto:/i.test(href)) {
+    if (onMailto) onMailto(decodeURIComponent(href.slice(7).split('?')[0] ?? ''))
+    return
+  }
+  if (!/^https?:/i.test(href)) return
+  if (isTauri()) openExternal(href)
+  else window.open(href, '_blank', 'noopener,noreferrer')
+}
+
+export function MailBody({ m, allowRemote, onAllowRemote, onMailto }: { m: Message; allowRemote: boolean; onAllowRemote: () => void; onMailto?: (addr: string) => void }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const [height, setHeight] = useState(80)
   const html = m.body_html ?? ''
@@ -59,8 +75,16 @@ export function MailBody({ m, allowRemote, onAllowRemote }: { m: Message; allowR
       if (!d?.documentElement) return
       setHeight(Math.max(40, d.documentElement.scrollHeight + 4))
     }
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as Element | null)?.closest?.('a')
+      const href = a?.getAttribute('href')
+      if (!href || href.startsWith('#')) return
+      e.preventDefault()
+      openMailLink(a!.href || href, onMailto)
+    }
     const onLoad = () => {
       fit()
+      f.contentDocument?.addEventListener('click', onClick)
       const body = f.contentDocument?.body
       if (body && 'ResizeObserver' in window) {
         ro = new ResizeObserver(fit)
@@ -72,10 +96,10 @@ export function MailBody({ m, allowRemote, onAllowRemote }: { m: Message; allowR
       f.removeEventListener('load', onLoad)
       ro?.disconnect()
     }
-  }, [doc])
+  }, [doc, onMailto])
 
   if (m.body_state === 0) return <div className="muted pad">Loading…</div>
-  if (!html) return <Linkified text={m.body_text || ''} />
+  if (!html) return <Linkified text={m.body_text || ''} onMailto={onMailto} />
   return (
     <>
       {blocked && (
