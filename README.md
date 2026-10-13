@@ -656,8 +656,44 @@ Downloaded the binary directly? Replace it with a fresh one from
 
 ## Open it on your phone
 
-Caprock answers only the machine it runs on. To read it from a phone or a
-tablet:
+Caprock answers only the machine it runs on. There are two ways to reach it
+from a phone: **from anywhere**, through an encrypted relay, or **on the same
+network** (Wi-Fi or Tailscale).
+
+### From anywhere, through an encrypted relay
+
+For a phone on mobile data, a laptop at home, a Mac mini in a cupboard
+running agents — nothing to install on the phone:
+
+1. On the computer: **Settings → Open Caprock on your phone → From anywhere →
+   Turn on**, or `caprock remote on` in a terminal (handy over SSH).
+2. Press *Show a code* (or run `caprock pair`, which draws the QR in the
+   terminal) and point the phone's camera at it. The phone opens Caprock's
+   page, pairs, and shows the dashboard.
+3. Add it to the home screen. An iPhone keeps a home-screen app's storage
+   apart from Safari's, so paste the link there once: *Copy link* under the
+   code, then *+ Add a machine* on the phone.
+
+The phone can hold several machines and switch between them from the strip
+along its top. It stays on across restarts until you turn it off.
+
+How it works, and what it means for your data: your computer opens a
+connection out to a relay (`wss://relay.caprock.dev`, or one of your own),
+the phone connects to the same relay, and the relay passes bytes between them.
+Those bytes are encrypted end to end with a key the phone read from the QR
+code (Noise NK, X25519, AES-GCM), so the relay cannot read a session, a token
+or a command, and cannot alter them without the phone hanging up. What the
+relay does see is which machine a phone connects to, when, from which IP
+address, and how many bytes pass; it stores nothing. The same pairing, device
+tokens, viewer and controller roles apply as on the LAN, below.
+
+To run your own relay, put `caprock remote relay --addr 127.0.0.1:8787`
+behind TLS and point the machine at it: `caprock remote on --relay
+wss://your.relay`. `relay/` holds the hosted one, a Cloudflare Worker.
+
+### On the same network
+
+To read it from a phone or a tablet on your own network:
 
 1. Your phone and the computer are on the same Wi-Fi — or both have
    [Tailscale](https://tailscale.com/kb/1017/install) on, which works from

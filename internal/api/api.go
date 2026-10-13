@@ -118,6 +118,9 @@ type Deps struct {
 		EnableLAN() (string, error)
 		DisableLAN() error
 	}
+	// Remote is access from anywhere, through a relay (ADR-058): its state for
+	// the pairing panel and the switch. Nil in builds or tests without it.
+	Remote RemoteControl
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
 	ActiveLoops func(sessionID string) *loop.Alert
 	// LoopK and LoopWindow are the loop detector's settings, so the Week
@@ -535,6 +538,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("PUT /v1/pair/devices/{id}/role", s.handlePairSetRole)
 	m.HandleFunc("GET /v1/pair/me", s.handlePairMe)
 	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)
+	m.HandleFunc("POST /v1/pair/remote", s.handleSetRemote)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
 	m.HandleFunc("POST /v1/claude/bypass-consent", s.handleBypassConsent)

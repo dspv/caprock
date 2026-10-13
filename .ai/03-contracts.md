@@ -265,6 +265,19 @@ address; it is the one call a device makes before it is trusted, and
 it answers the same way for a wrong, expired, exhausted or never-issued code,
 because every distinction tells a guesser how close they are.
 
+**Access from anywhere (ADR-058).** `POST /v1/pair/remote` (`{on, relay?,
+app?}`, loopback-only) turns it on or off, remembered in `remote.json` (mode
+0600, with the machine's two keys) and answers the state; `GET /v1/pair/state`
+and `POST /v1/pair/code` carry it as `remote: {enabled, status
+(off|connecting|online|offline), error?, phones, relay, app, host_id, link?}`,
+where `link` is the pairing link the QR draws — the phone's page with `r`
+(relay), `h` (host id), `k` (static key), `c` (the live code) and `n` (name)
+after the `#`. `enabled` at the top of the state is the network listener
+alone; the guest list is live whenever either is on. Requests from the relay
+arrive on loopback with `Via: 1.1 caprock-remote` and are gated as a paired
+device. The relay's wire is `internal/remote/wire.go`, the channel's frames
+`internal/remote/proto.go`.
+
 - `DELETE /v1/pair/code` withdraws the outstanding code and answers
   `{cleared: true}` whether or not there was one — the dashboard's **Cancel**,
   so a code hidden from the owner is not still valid behind them.

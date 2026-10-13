@@ -9,6 +9,24 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **remote:** a phone reaches Caprock from anywhere — mobile data, another
+  Wi-Fi — with nothing to install, through a relay that carries only
+  end-to-end ciphertext (ADR-058). Settings → *Open Caprock on your phone* →
+  *From anywhere*, or `caprock remote on`; it stays on across restarts. The
+  machine dials out to the relay and proves its id with its Ed25519 key; the
+  phone pins the machine's X25519 key from the QR and runs Noise NK with it,
+  so the relay forwards bytes it cannot read or change. Pairing, device
+  tokens and the viewer and controller roles are the LAN's own.
+- **remote:** the phone's page (`ui`, `vite build --mode remote`) keeps
+  several machines and switches between them from a strip along the top that
+  says whether the machine is reachable; *+ Add a machine* takes a pasted
+  pairing link, for an iPhone home-screen app.
+- **cli:** `caprock remote [on|off|reset]`, `caprock pair`, which draws the
+  pairing QR in the terminal, and `caprock remote relay`, a relay of your
+  own. `relay/` is the hosted relay, a Cloudflare Worker with one Durable
+  Object per machine.
+
+
 - **mail:** adding an account finds the servers for about 40 mail services
   and the hosts people put their own domain on. The table now knows Yahoo,
   AOL, AT&T, Verizon, Cox, Xfinity, GMX, WEB.DE, mail.com, Zoho, Mail.ru,
