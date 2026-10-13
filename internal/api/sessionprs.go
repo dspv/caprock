@@ -48,9 +48,29 @@ func (a SessionPRs) stamped(at int64, refreshing bool) any {
 func (s *Server) handleSessionPRs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	connected := s.githubConnected()
-	s.serveDeck(w, r, deckKey("prs", id, connected, 0), func(ctx context.Context) (deckAnswer, error) {
+	s.serveDeckOrQuick(w, r, deckKey("prs", id, connected, 0), func(ctx context.Context) (deckAnswer, error) {
 		return s.composeSessionPRs(ctx, id, connected)
+	}, func(ctx context.Context) (deckAnswer, error) {
+		return s.recordedSessionPRs(ctx, id, connected)
 	}, s.fail)
+}
+
+// recordedSessionPRs is the session's pull requests as the daemon recorded
+// them, without GitHub's live state: the quick answer while the composed one
+// still waits on GitHub (serveDeckOrQuick).
+func (s *Server) recordedSessionPRs(ctx context.Context, id string, connected bool) (deckAnswer, error) {
+	prs, err := store.SessionPRs(ctx, s.d.Store.DB(), id)
+	if err != nil {
+		return nil, err
+	}
+	if len(prs) > sessionPRsShown {
+		prs = prs[:sessionPRsShown]
+	}
+	out := make([]SessionPRLive, len(prs))
+	for i, p := range prs {
+		out[i] = SessionPRLive{SessionPR: p}
+	}
+	return SessionPRs{Connected: connected, PRs: out}, nil
 }
 
 func (s *Server) composeSessionPRs(ctx context.Context, id string, connected bool) (deckAnswer, error) {

@@ -419,7 +419,14 @@ others. Installing it: [install-app.md](install-app.md).
   focus the edge and use ↑ ↓; double-click it for the default height. The
   deck button beside the inspector's, ⌘B and the palette open and close it;
   the app remembers its height and whether it was open. A shell tab has no
-  deck. **Expand**, beside *Hide*, opens it large in a tab of its own,
+  deck. It opens on all of the session's pull requests, each with a circle
+  per check — green passed, red failed, amber pulsing while it runs — and
+  opens one only when you click it; the next time it opens on that one. A
+  small switch beside *PRs · Branches · Release · Main* shows the checks in
+  words instead. The cockpit on the right has a **CI** block with the same
+  circles, or one ring with *10/11 · 5m*, or the jobs by OS, switched in its
+  label; it shows what the deck last read and a click opens *PRs & CI*.
+  **Expand**, beside *Hide*, opens it large in a tab of its own,
   *PRs & CI*: the repository's last two weeks on top (pull requests merged
   per day, the median time to merge, the median CI run, the share of red
   runs, the Actions minutes GitHub billed this month), its pull requests on

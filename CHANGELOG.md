@@ -17,6 +17,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   migration 0052). A session you have not named is called by the agent's
   own title, or else by a few words of your first message (*Fix the login
   bug*) rather than the whole sentence.
+- **mail:** Caprock Mail, a mail client inside Caprock. Every IMAP account —
+  Gmail, iCloud, Fastmail, a company server — in one inbox at *Mail* (last in
+  the dashboard's screen row, marked *new*): conversations, instant search
+  over mail kept on this computer, archive, delete, spam, star, folders,
+  compose, reply, forward and attachments, new mail at once over IMAP IDLE,
+  and a keyboard for all of it. HTML mail never runs scripts or loads
+  trackers until you allow images. Optional summaries and reply drafts from
+  a model on your own computer (Ollama, LM Studio). Off until you add an
+  account; it then talks only to the mail servers you entered, passwords in
+  the system keychain. A one-time strip offers it after two days of use.
 - **app:** move between projects and their sessions from the keyboard.
   ⌘1–⌘9 bring a project to the front by its place in the sidebar (⌘9 the
   last), its key drawn on its row and on the tab it brings; ⌥⌘↓ / ⌥⌘↑ go to
@@ -64,6 +74,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** the cockpit has a **CI** block: the session's pull requests as
+  a circle per check, one ring with *10/11 · 5m* and the time against the
+  median, or the current PR's jobs by OS — switched in its label, kept per
+  viewer. It draws only what the session deck already read and asks
+  nothing; a click opens the PRs & CI tab.
 - **app:** a **Repos** table on Now, under Live pulse: a row per repository
   with a session running in it — commits a day over 14 days, today's and
   the week's, lines added and removed, files not committed and the last
@@ -145,6 +160,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   `doing_from`.
 
 ### Changed
+
+- **app:** the session deck opens on all of the session's pull requests:
+  no row opens by itself, and the one you open is opened again next time.
+  Each row shows a circle per check again — filled, coloured by state, a
+  running one pulsing — at every deck width, with a switch to the words
+  (*running · 10/11*), kept per viewer.
+- **api:** the first `GET /v1/sessions/{id}/prs` of a session whose
+  composition has to wait on GitHub answers at once with the recorded pull
+  requests, without their CI, marked `refreshing`; the next poll has them
+  with it. The deck draws the rows straight away.
 
 - **ui:** Dark Pastel is the default dark palette (owner, 2026-10-13), and
   first among the dark ones in the picker and the cycle; Book stays the

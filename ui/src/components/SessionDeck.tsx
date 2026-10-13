@@ -27,12 +27,12 @@
  * box changes once, on release — one fit and one PTY resize, not one per
  * frame. Arrow keys on the divider settle the same way.
  */
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type DeckFresh, type SessionCI, type SessionPRLive, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type CSSProperties } from 'react'
+import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type DeckFresh, type SessionCI, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
 import { freshText, readDeck, writeDeck } from '@/lib/deckCache'
 import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
-import { MiniPipeline } from './MiniPipeline'
-import { CI_VIEWS, byOSLine, checkNodes, jobVsMedian, runSpan, runVsMedian, type DeltaTone, type VsMedian, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, orderPRs, osTag, prAge, prDotState, prReviewText, prVerdict, readCIView, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveCIView, type CITone, type CIView, type PipeNode, type PRWordTone } from '@/lib/ci'
+import { MiniPipeline, compactWidth } from './MiniPipeline'
+import { CI_VIEWS, byOSLine, checkNodes, jobVsMedian, runSpan, runVsMedian, type DeltaTone, type VsMedian, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, orderPRs, osTag, prAge, prDotState, prReviewText, prVerdict, readCIMarks, readCIView, readOpenPR, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveCIMarks, saveCIView, saveOpenPR, type CIMarks, type CITone, type CIView, type PipeNode, type PRWordTone } from '@/lib/ci'
 import { jobCostLabel, sumCostLabel, sumRuns, usageLine, type CICost, type CostLabel, type CostTone } from '@/lib/runnercost'
 import { BRANCHES_SHOWN, STALE_TITLE, aheadBehind, branchPRDot, branchSpend, lastCommit, shownBranches, type SessionBranch, type SessionBranches } from '@/lib/branches'
 import { sessionTitle } from '@/lib/sidebar'
@@ -344,7 +344,8 @@ export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, bus
             if (cacheKey) writeDeck(cacheKey, d)
           }
           revalidating = !!(d as DeckFresh | undefined)?.refreshing
-          setMeta({ loading: revalidating, failed: worse })
+          // An answer kept back while a newer one is composed is not a failure: it is on its way.
+          setMeta({ loading: revalidating, failed: worse && !revalidating })
           if (fn.current.busy(d)) next = fast
           if (revalidating) next = Math.min(next, REFRESHING_MS)
         } catch {
@@ -365,6 +366,8 @@ export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, bus
 /** A failed read of a repository view kept over the answer it would replace. */
 const keepRepoCI = (prev: SessionRepoCI, next: SessionRepoCI) => !!next.error && ((!!prev.release && !next.release) || (!!prev.ci && !next.ci))
 const keepPRCI = (prev: SessionCI, next: SessionCI) => !!next.error && !!prev.ci && !next.ci
+// The daemon's quick first answer (the rows as recorded, no live state) never replaces a list that had it.
+const keepPRs = (prev: SessionPRs, next: SessionPRs) => !!next.refreshing && next.prs.every((p) => !p.live) && prev.prs.some((p) => !!p.live)
 const keepBranches = (prev: SessionBranches, next: SessionBranches) => !!next.error && !prev.error && prev.branches.length > 0
 
 /**
@@ -423,6 +426,21 @@ export function CIViewSwitch({ view, onChange }: { view: CIView; onChange: (v: C
   )
 }
 
+/** Circles or words for the rows' checks: one small button, kept per viewer. */
+function MarksSwitch({ marks, onChange }: { marks: CIMarks; onChange: (m: CIMarks) => void }) {
+  const next: CIMarks = marks === 'dots' ? 'text' : 'dots'
+  return (
+    <button type="button" data-deck-marks={marks} onClick={() => onChange(next)}
+      aria-label={marks === 'dots' ? 'Show the checks in words' : 'Show the checks as circles'}
+      title={marks === 'dots' ? 'Checks as circles; click for words (“running · 10/11”)' : 'Checks in words; click for a circle per check'}
+      className="flex h-[18px] shrink-0 items-center gap-[2px] rounded-[5px] border border-[var(--app-hairline)] px-1 text-[10.5px] text-fg-faint hover:text-fg-muted">
+      {marks === 'dots'
+        ? <><span aria-hidden className="pipe-node" data-size="sm" data-tone="pass" /><span aria-hidden className="pipe-node" data-size="sm" data-tone="pass" /><span aria-hidden className="pipe-node" data-size="sm" data-tone="queued" /></>
+        : <span className="leading-none">10/11</span>}
+    </button>
+  )
+}
+
 /** Why the Release or Main view has no repository, in a line. */
 function noRepoLine(d: SessionRepoCI): string {
   return d.reason === 'not_github' ? 'This repository is not on GitHub.' : 'This session’s folder has no GitHub repository.'
@@ -452,14 +470,8 @@ function BranchChip({ branch, base, changed, ahead, onReview }: { branch: string
   )
 }
 
-/**
- * The pull requests folded by hand, per session, while the app runs: the
- * current one opens by itself while it has checks, and a fold must not be
- * undone by the next poll or by hiding and showing the deck again.
- */
-const foldedPRs = new Set<string>()
-/** Forgets every fold: for tests. */
-export function forgetFoldedPRs() { foldedPRs.clear() }
+/** Kept for the tests that reset the deck: the rows opened are kept per viewer now (lib/ci readOpenPR). */
+export function forgetFoldedPRs() { /* nothing is held in memory */ }
 
 /**
  * Scrolls `el` within its own scroll area (marked data-deck-scroll) only —
@@ -547,9 +559,13 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   // its scroll area) or just folded (back to its row), or a PR opened.
   const scrollTo = useRef<{ sel: string; mode: 'start' | 'nearest'; focus?: boolean } | undefined>(undefined)
   const cell = useRef<HTMLDivElement>(null)
-  // The row opened by a click: a PR's number, 0 when every row was closed,
-  // undefined while no click chose (the default rule decides).
-  const [chosen, setChosen] = useState<number>()
+  // The row opened by a click, kept per viewer (lib/ci readOpenPR); 0 is the
+  // overview of every row, which is where the deck opens until one is opened.
+  const [chosen, setChosenState] = useState<number>(() => readOpenPR(sessionId))
+  const setChosen = (n: number) => { setChosenState(n); saveOpenPR(sessionId, n) }
+  // A row says its checks as circles or in words, per viewer.
+  const [marks, setMarksState] = useState<CIMarks>(readCIMarks)
+  const setMarks = (m: CIMarks) => { setMarksState(m); saveCIMarks(m) }
   // How many error logs are open: while one is, the earlier PRs fold into
   // one line so the error has the room.
   const [logs, setLogs] = useState(0)
@@ -563,15 +579,12 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   // repository, the branches by folder (its current branch leads).
   const repoScope = s.repo_root || s.cwd || sessionId
   const folderScope = s.cwd || s.repo_root || sessionId
-  const [prsData, prsAt, prsMeta] = usePoll(view === 'pr', key, () => api.sessionPRs(sessionId), (d) => forceSoon.current || d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`)
+  const [prsData, prsAt, prsMeta] = usePoll(view === 'pr', key, () => api.sessionPRs(sessionId), (d) => forceSoon.current || d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`, keepPRs)
   const rows = useMemo(() => orderPRs(prsData?.prs ?? []), [prsData])
-  const lead = rows[0]
-  // The current PR opens by itself while it is open and has checks, whatever
-  // their state: its jobs fill the room the rows leave (owner, 2026-10-12, of
-  // the 0.109 deck: "see how much space is wasted").
-  // Unless it was folded by hand in this session: that holds.
-  const leadOpen = lead?.live?.state === 'open' && !!lead.live && lead.live.checks.items.length > 0 && !foldedPRs.has(`${sessionId}:${lead.number}`)
-  const openPr = chosen ?? (leadOpen ? lead!.number : 0)
+  // No row opens by itself: the deck opens on the overview, every row on its
+  // line with its circles (owner, 2026-10-13). A row opened by hand stays
+  // open — while it is still one of the session's.
+  const openPr = chosen > 0 && (!prsData || rows.some((p) => p.number === chosen)) ? chosen : 0
   const [prData, prAt] = usePoll(view === 'pr' && openPr > 0, `${key}:${openPr}`, () => api.sessionCI(sessionId, openPr), (d) => ciActive(d.ci), CI_RUNNING_MS, openPr > 0 ? `ci:${sessionId}:${openPr}` : undefined, keepPRCI)
   // The answer for the open row only: one for the row open before waits.
   const prCI = prData && prData.pr?.number === openPr ? prData : undefined
@@ -684,13 +697,10 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   // A PR row's click: open it (and only it), or fold it — remembered, so
   // the current PR stays folded once folded by hand.
   const togglePR = (n: number, focus = false) => {
-    const k = `${sessionId}:${n}`
     if (openPr === n) {
-      foldedPRs.add(k)
       setChosen(0)
       scrollTo.current = { sel: `[data-deck-pr="${n}"]`, mode: 'nearest', focus }
     } else {
-      foldedPRs.delete(k)
       setChosen(n)
       scrollTo.current = { sel: `[data-deck-pr="${n}"]`, mode: 'nearest' }
     }
@@ -698,7 +708,6 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   // A circle of a PR row: that row opens, at that job.
   const pickInRow = (pr: number, node: PipeNode) => {
     if (!node.jobId) { if (node.url) openExternal(node.url); return }
-    foldedPRs.delete(`${sessionId}:${pr}`)
     setChosen(pr)
     pick(node)
   }
@@ -706,7 +715,6 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   // A branch's PR: in the PRs view when it is one of this session's, else on GitHub.
   const jumpToPR = (n: number, url: string) => {
     if (prsData && !prsData.prs.some((p) => p.number === n)) { openExternal(url); return }
-    foldedPRs.delete(`${sessionId}:${n}`)
     setChosen(n)
     setView('pr')
   }
@@ -917,7 +925,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
             const agents = agentsOf(p)
             const progress = standing(p, agents, now)
             return (
-            <PRRow key={p.url} p={p} now={now} runs={seenRuns[p.number]} cost={prCost(p.number)} open={openPr === p.number}
+            <PRRow key={p.url} p={p} now={now} marks={marks} runs={seenRuns[p.number]} cost={prCost(p.number)} open={openPr === p.number}
               onToggle={() => togglePR(p.number)}
               onPick={(node) => pickInRow(p.number, node)}
               agents={agents} onOpenAgent={onOpenSession} status={prStatus(p, agents, progress, queuedFor(p, agents, queues))}
@@ -1009,6 +1017,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   if (body === null && !viewData) body = <DeckSkeleton label={`Reading ${VIEW_LABEL[view]}`} />
 
   // The branch's pull request, when the current one is from it: "→ main".
+  const lead = rows[0]
   const base = lead?.live?.state === 'open' && branch && lead.live.branch === branch ? lead.live.base : undefined
   const chip = view !== 'release' ? releaseChip(rel, now) : ''
   // Esc folds the innermost open thing — a job's steps, else the open PR —
@@ -1046,6 +1055,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
             <span data-deck-ci-runner className="num" title={runnerTitle}>runner <span className="text-fg">{fmtRun(total)}</span>{ciCost && <> · <CostText c={ciCost} data="ci" /></>}</span>
           )}
         </span>
+        {view === 'pr' && rows.length > 0 && <MarksSwitch marks={marks} onChange={setMarks} />}
         <CIViewSwitch view={view} onChange={setView} />
       </div>
       {body}
@@ -1061,7 +1071,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
  * conflict when GitHub said so, and its age. A click opens its CI in place;
  * ↗ opens the PR on GitHub.
  */
-function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpenAgent, status, quick, actions, onMenu, children }: { p: SessionPRLive; now: number; runs?: CIRun[]; cost?: CICost; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; agents?: PRAgent[]; onOpenAgent?: (s: SessionSummary) => void; status?: PRStatus; quick?: ReactNode; actions?: ReactNode; onMenu?: () => void; children?: ReactNode }) {
+function PRRow({ p, now, marks = 'dots', runs, cost, open, onToggle, onPick, agents = [], onOpenAgent, status, quick, actions, onMenu, children }: { p: SessionPRLive; now: number; marks?: CIMarks; runs?: CIRun[]; cost?: CICost; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; agents?: PRAgent[]; onOpenAgent?: (s: SessionSummary) => void; status?: PRStatus; quick?: ReactNode; actions?: ReactNode; onMenu?: () => void; children?: ReactNode }) {
   const live = p.live
   const dot = prDotState(p)
   const v = prVerdict(p, now, runs)
@@ -1077,13 +1087,17 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpen
   const title = live?.title || p.title || ''
   const url = live?.url || p.url
   const nodes = live && live.checks.items.length > 0 ? checkNodes(live.checks.items, now) : []
+  // Circles: a circle per check where the words were, the words in its hover
+  // and beside it while the deck is wide (owner, 2026-10-13, translated: "I
+  // stopped seeing the cool little circles — I want them, or a switch").
+  const dots = marks === 'dots' && nodes.length > 0
   return (
     <li data-deck-pr={p.number} data-open={open || undefined} className={open ? 'flex min-h-[72px] flex-1 flex-col' : 'shrink-0'}>
       {/* Open, its line stays at the top of the list whatever scrolls, with
         * the chevron that folds it. */}
       <div className={open ? 'sticky top-0 z-[2] shrink-0 bg-[var(--app-chrome-bg)]' : undefined}>
-      <div onClick={onToggle}
-        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[10px_8px_minmax(40px,1fr)_auto_auto_minmax(64px,min(236px,20cqw))_26px_18px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
+      <div onClick={onToggle} style={dots ? ({ '--dots-w': `${compactWidth(nodes)}px` } as CSSProperties) : undefined}
+        className={`grid min-w-0 shrink-0 cursor-pointer ${dots ? 'grid-cols-[10px_8px_minmax(40px,1fr)_auto_0px_minmax(64px,max(min(236px,20cqw),var(--dots-w)))_26px_18px_14px]' : 'grid-cols-[10px_8px_minmax(40px,1fr)_auto_auto_minmax(64px,min(236px,20cqw))_26px_18px_14px]'} items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
         <Chevron open={open} />
         <span role="img" aria-label={dot} title={dot} className="pr-dot" data-state={dot} />
         <button type="button" aria-expanded={open} onClick={(e) => { e.stopPropagation(); onToggle() }}
@@ -1102,10 +1116,11 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpen
           {quick && <span data-deck-pr-quicks className="flex shrink-0 items-center gap-0.5">{quick}</span>}
           {review && <span data-deck-pr-review className={`hidden max-w-[150px] truncate text-[11px] @min-[1100px]:block ${WORD_TEXT[review.tone]}`}>{review.text}</span>}
         </span>
-        {/* The mini pipeline goes before the title gives way: below 1000px the CI words say it. */}
-        {nodes.length > 0 ? <span className="flex justify-end"><span className="hidden @min-[1000px]:inline-flex"><MiniPipeline nodes={nodes} label={`#${p.number}: its checks`} onPick={onPick} /></span></span> : <span />}
-        <span data-deck-pr-ci className="flex w-full min-w-0 items-baseline gap-1 overflow-hidden text-[11.5px]">
-          <span title={v.title ?? v.text} className={`truncate ${v.strong ? 'font-medium' : ''} ${WORD_TEXT[v.tone]}`}>{v.text}</span>
+        {/* Words: the mini pipeline goes before the title gives way, below 1000px the words say it. */}
+        {!dots && nodes.length > 0 ? <span className="flex justify-end"><span className="hidden @min-[1000px]:inline-flex"><MiniPipeline nodes={nodes} label={`#${p.number}: its checks`} onPick={onPick} /></span></span> : <span />}
+        <span data-deck-pr-ci data-marks={dots ? 'dots' : 'text'} className={`flex w-full min-w-0 items-center gap-1.5 overflow-hidden text-[11.5px] ${dots ? '' : 'items-baseline'}`}>
+          {dots && <MiniPipeline nodes={nodes} label={`#${p.number}: its checks`} onPick={onPick} compact />}
+          <span title={v.title ?? v.text} className={`truncate ${v.strong ? 'font-medium' : ''} ${WORD_TEXT[v.tone]} ${dots ? 'hidden @min-[1100px]:inline' : ''}`}>{v.text}</span>
           {money && <><span aria-hidden className="text-fg-faint">·</span><CostText c={money} data="pr" className="shrink-0" /></>}
         </span>
         <span data-deck-pr-age className="num text-right text-[11px] text-fg-faint" title={age.title}>{age.text}</span>

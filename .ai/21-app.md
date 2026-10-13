@@ -597,12 +597,14 @@ One window, three regions:
     PR — and only while the focus is in the deck, so the terminal keeps its
     own Esc; with nothing open it is not the deck's. Every PR row carries a
     chevron (right folded, down open), and the open PR's line stays pinned
-    at the top of the list. The first failed job of each PR opens by itself. The
-    current PR is open by default while it is open and has checks, whatever
-    their state, so its jobs fill the room the rows would leave empty; a
-    merged or closed one first stays a row, and one folded by hand stays
-    folded for as long as the app runs, the deck hidden and shown again
-    included. Every row keeps its line and the open one's CI takes the
+    at the top of the list. The first failed job of each PR opens by itself. No
+    PR opens by itself: the deck opens on the overview, every row on its
+    line with a circle per check (or its CI in words, a switch beside the
+    view tabs, kept per viewer); a row opened by hand is opened again the
+    next time, kept per viewer and session, until it is folded (owner,
+    2026-10-13, [04-ui.md](04-ui.md) § CI in the session deck). The same
+    circles, a ring or the jobs by OS sit in the cockpit's CI block, from
+    what the deck read ([04-ui.md](04-ui.md) § CI in the cockpit). Every row keeps its line and the open one's CI takes the
     height left, scrolling inside, so the earlier PRs stay in view; while a
     job or an error log is open they fold into one line (*also #13 ✓ #12
     ✓*) so it has the room. A settled PR's runs are read once while the deck is

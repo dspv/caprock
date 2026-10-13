@@ -163,3 +163,64 @@ func TestAnswerCacheBoundsItsKeys(t *testing.T) {
 		t.Fatalf("kept %d keys, the oldest still there: %v", len(c.m), ok)
 	}
 }
+
+// The first time a session's PRs are asked and GitHub is slow, the rows come
+// at once from what the daemon recorded, marked refreshing, and their live
+// state follows on the next request (owner, 2026-10-13: "PRs take long to load").
+func TestDeckPRsFirstAnswerIsTheRecordedRows(t *testing.T) {
+	g := make(chan struct{})
+	route := func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer ghp_good" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("X-OAuth-Scopes", "repo")
+		switch r.URL.Path {
+		case "/user":
+			_, _ = w.Write([]byte(`{"login":"ada"}`))
+		case "/repos/ada/repo/pulls/5":
+			<-g
+			_, _ = w.Write([]byte(`{"number":5,"html_url":"https://github.com/ada/repo/pull/5","title":"Add x","state":"open","head":{"ref":"feat/x","sha":"sha5"},"base":{"ref":"main"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+		}
+	}
+	s, _, _, _, _, _ := githubServer(t, route)
+	s.deck.budget = 50 * time.Millisecond
+	if err := store.RecordPR(context.Background(), s.d.Store.DB(), store.PRAction{SessionID: "s1", URL: "https://github.com/ada/repo/pull/5", Number: 5, Title: "Add x", Action: "created", Ts: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, s, machine, "", "POST", "/v1/github/connect", `{"source":"token","token":"ghp_good"}`); w.Code != http.StatusOK {
+		t.Fatalf("connect: %d %s", w.Code, w.Body.String())
+	}
+	get := func() SessionPRs {
+		t.Helper()
+		w := call(t, s, machine, "", "GET", "/v1/sessions/s1/prs", "")
+		var got SessionPRs
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || w.Code != http.StatusOK {
+			t.Fatalf("%d %s", w.Code, w.Body.String())
+		}
+		return got
+	}
+	start := time.Now()
+	first := get()
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("the first answer waited on GitHub: %s", took)
+	}
+	if !first.Refreshing || len(first.PRs) != 1 || first.PRs[0].Number != 5 || first.PRs[0].Live != nil {
+		t.Fatalf("first: %+v", first)
+	}
+	close(g)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		a := get()
+		if !a.Refreshing && len(a.PRs) == 1 && a.PRs[0].Live != nil && a.PRs[0].Live.Title == "Add x" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the composed answer never came: %+v", a)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
