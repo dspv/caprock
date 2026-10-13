@@ -125,6 +125,10 @@ const (
 	metaInnerToolBackfilled = "inner_tool_backfilled"
 )
 
+// JournalSizeLimit is the size, in bytes, the WAL is truncated to after a
+// checkpoint (PRAGMA journal_size_limit). See Open.
+const JournalSizeLimit = 64 << 20
+
 // maxOpenConns bounds the pool. Loopback traffic is one dashboard plus the
 // ingest path, so this is about removing a queue rather than scaling out; a
 // small number keeps file descriptors and memory predictable.
@@ -210,12 +214,19 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		// that race ~400 times an hour on the owner's machine, and busy_timeout
 		// never got a chance to help. Every transaction in the daemon writes,
 		// so none of them pays for taking the lock early.
-		dsn = "file:" + path + "?_txlock=immediate&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=cache_size(-16384)&_pragma=mmap_size(2147418112)"
+		//
+		// journal_size_limit is what the WAL file is cut back to after a
+		// checkpoint. Without one the -wal file keeps the size of the largest
+		// transaction it ever held: a backfill or a prune that wrote a few
+		// hundred megabytes left a WAL that size on disk for good. 64 MiB is
+		// far above what ordinary ingest needs between checkpoints, so it
+		// costs nothing until a big transaction, and then it gives the space
+		// back.
+		dsn = "file:" + path + "?_txlock=immediate&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=cache_size(-16384)&_pragma=mmap_size(2147418112)&_pragma=journal_size_limit(" + strconv.Itoa(JournalSizeLimit) + ")"
 	}
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
-	}
+	// Every statement is timed, and one slower than SlowQuery is logged with
+	// its caller (slowlog.go).
+	db := openTimed(dsn, log)
 	// SQLite allows one writer but any number of concurrent readers under WAL,
 	// which is why WAL is on. Capping the pool at one connection threw that
 	// away: every dashboard read queued behind ingest, so an endpoint whose

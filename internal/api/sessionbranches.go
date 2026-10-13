@@ -50,6 +50,14 @@ type SessionBranches struct {
 	Current  string          `json:"current,omitempty"`
 	Branches []SessionBranch `json:"branches"`
 	Error    *github.Error   `json:"error,omitempty"`
+	// FetchedAt and Refreshing: as SessionPRs says them.
+	FetchedAt  int64 `json:"fetched_at"`
+	Refreshing bool  `json:"refreshing,omitempty"`
+}
+
+func (a SessionBranches) stamped(at int64, refreshing bool) any {
+	a.FetchedAt, a.Refreshing = at, refreshing
+	return a
 }
 
 // OrderBranches puts the current branch first, then the rest by their last
@@ -71,16 +79,22 @@ func OrderBranches(bs []SessionBranch) {
 // the session's repository from local git (for-each-ref, kept 10 s), each
 // with its pull request from one cached list when GitHub is connected, and
 // the spend of Caprock's sessions on it from one indexed query. Nothing is
-// sent to GitHub while it is not connected (rule 4).
+// sent to GitHub while it is not connected (rule 4). The composed answer is
+// kept (deckcache.go).
 func (s *Server) handleSessionBranches(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-	sess, err := store.GetSession(ctx, s.d.Store.DB(), r.PathValue("id"))
+	id := r.PathValue("id")
+	connected := s.githubConnected()
+	s.serveDeck(w, r, deckKey("branches", id, connected, 0), func(ctx context.Context) (deckAnswer, error) {
+		return s.composeSessionBranches(ctx, id, connected)
+	}, s.notFoundOrFail)
+}
+
+func (s *Server) composeSessionBranches(ctx context.Context, id string, connected bool) (deckAnswer, error) {
+	sess, err := store.GetSession(ctx, s.d.Store.DB(), id)
 	if err != nil {
-		s.notFoundOrFail(w, err)
-		return
+		return nil, err
 	}
-	out := SessionBranches{Connected: s.d.GitHub != nil && s.d.GitHub.Status().Connected, Branches: []SessionBranch{}}
+	out := SessionBranches{Connected: connected, Branches: []SessionBranch{}}
 	dir := sess.Cwd
 	if dir == "" {
 		dir = sess.RepoRoot
@@ -103,14 +117,12 @@ func (s *Server) handleSessionBranches(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		out.Reason = "no_repo"
-		writeJSON(w, http.StatusOK, out)
-		return
+		return out, nil //nolint:nilerr // not a git repository is an answer, not a failure
 	}
 	out.Default, out.Base, out.Current = l.Default, l.Base, l.Current
 	spend, err := store.SpendByBranch(ctx, s.d.Store.DB(), sess.RepoRoot)
 	if err != nil {
-		s.fail(w, err)
-		return
+		return nil, err
 	}
 	var prs map[string]github.BranchPR
 	if out.Connected && hasRepo {
@@ -143,5 +155,5 @@ func (s *Server) handleSessionBranches(w http.ResponseWriter, r *http.Request) {
 			out.Branches[i].Live = &live
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out, nil
 }

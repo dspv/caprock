@@ -12,10 +12,10 @@ const events: Event[] = [
   { id: 3, ts: iso(4_000), session_id: 's1', source: 'hook', kind: 'tool.pre', tool: 'Bash', payload: { tool_use_id: 'b', tool_input: { command: 'go test ./internal/...' } } },
 ]
 
-const h = vi.hoisted(() => ({ asked: 0, prs: { connected: true, prs: [] as unknown[] }, ci: { connected: true } as unknown, logs: 0, queued: [] as string[], rel: { connected: false } as unknown, main: { connected: false } as unknown, logViews: [] as string[], ciPrs: [] as (number | undefined)[], branches: { connected: true, branches: [] } as unknown, usage: undefined as unknown, usageAsked: 0, queuedTo: [] as string[], forced: [] as string[], rerunFail: undefined as unknown, queues: {} as Record<string, { text: string }[]> }))
+const h = vi.hoisted(() => ({ asked: 0, prs: { connected: true, prs: [] as unknown[] }, ci: { connected: true } as unknown, logs: 0, queued: [] as string[], rel: { connected: false } as unknown, main: { connected: false } as unknown, logViews: [] as string[], ciPrs: [] as (number | undefined)[], branches: { connected: true, branches: [] } as unknown, usage: undefined as unknown, usageAsked: 0, queuedTo: [] as string[], forced: [] as string[], rerunFail: undefined as unknown, queues: {} as Record<string, { text: string }[]>, prsGate: undefined as Promise<void> | undefined, prsFail: undefined as unknown, prsAsked: 0, branchesGate: undefined as Promise<void> | undefined }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, recentMainEvents: async () => { h.asked++; return events }, sessionPRs: async () => h.prs, sessionCI: async (_id: string, pr?: number) => { h.ciPrs.push(pr); return h.ci }, sessionCIRelease: async () => h.rel, sessionCIMain: async () => h.main, sessionBranches: async () => h.branches, actionsUsage: async () => { h.usageAsked++; if (!h.usage) throw new Error('not connected'); return h.usage }, queueSend: async (id: string, text: string) => { h.queued.push(text); h.queuedTo.push(id); return { sent: false, queue: { session_id: 's1', messages: [], waiting: 'turn' } } },
+  return { ...actual, api: { ...actual.api, recentMainEvents: async () => { h.asked++; return events }, sessionPRs: async () => { h.prsAsked++; if (h.prsGate) await h.prsGate; if (h.prsFail) throw h.prsFail; return h.prs }, sessionCI: async (_id: string, pr?: number) => { h.ciPrs.push(pr); return h.ci }, sessionCIRelease: async () => h.rel, sessionCIMain: async () => h.main, sessionBranches: async () => { if (h.branchesGate) await h.branchesGate; return h.branches }, actionsUsage: async () => { h.usageAsked++; if (!h.usage) throw new Error('not connected'); return h.usage }, queueSend: async (id: string, text: string) => { h.queued.push(text); h.queuedTo.push(id); return { sent: false, queue: { session_id: 's1', messages: [], waiting: 'turn' } } },
     sessionPRRerun: async (_id: string, n: number) => { h.forced.push(`rerun ${n}`); if (h.rerunFail) throw h.rerunFail; return { ok: true, mode: 'failed', runs: 1, jobs: 2 } },
     sessionPRUpdateBranch: async (_id: string, n: number) => { h.forced.push(`update ${n}`); return { ok: true } },
     queue: async (id: string) => ({ session_id: id, waiting: '', messages: h.queues[id] ?? [] }),
@@ -24,6 +24,7 @@ vi.mock('@/lib/api', async (orig) => {
 
 import { SessionDeck, forgetFoldedPRs, forgetPRProgress } from './SessionDeck'
 import { ApiError } from '@/lib/api'
+import { forgetDeckAnswers, readDeck, writeDeck } from '@/lib/deckCache'
 
 function agent(p: Partial<SessionSummary> = {}): SessionSummary {
   return {
@@ -60,7 +61,7 @@ function show(p: Partial<Parameters<typeof SessionDeck>[0]> = {}) {
   return { ...r, onResize }
 }
 
-afterEach(() => { vi.useRealTimers(); forgetFoldedPRs(); forgetPRProgress(); h.queued = []; h.queuedTo = []; h.forced = []; h.rerunFail = undefined; h.asked = 0; h.prs = { connected: true, prs: [] }; h.ci = { connected: true }; h.rel = { connected: false }; h.main = { connected: false }; h.branches = { connected: true, branches: [] }; h.usage = undefined; h.usageAsked = 0; localStorage.clear() })
+afterEach(() => { vi.useRealTimers(); forgetFoldedPRs(); forgetPRProgress(); forgetDeckAnswers();h.queued = []; h.queuedTo = []; h.forced = []; h.rerunFail = undefined; h.asked = 0; h.prs = { connected: true, prs: [] }; h.ci = { connected: true }; h.rel = { connected: false }; h.main = { connected: false }; h.branches = { connected: true, branches: [] }; h.usage = undefined; h.usageAsked = 0; h.prsGate = undefined; h.prsFail = undefined; h.prsAsked = 0; h.branchesGate = undefined; localStorage.clear() })
 
 describe('the session deck', () => {
   it('asks nothing of the session’s events, and leaves the context to the status bar', async () => {
@@ -810,5 +811,83 @@ describe('the deck’s pull request rows: who is on them, and forcing a fix', ()
     fireEvent.click(document.querySelector('[data-deck-pr-confirm-yes]')!)
     await waitFor(() => expect(h.queuedTo).toEqual(['s1']))
     expect(h.queued[0]).toMatch(/Look at the CI of pull request #9/)
+  })
+})
+
+describe('the pull requests cell opens on what it last knew', () => {
+  /** A read that waits until the test lets it go. */
+  const gate = () => { let open = () => {}; const p = new Promise<void>((r) => { open = r }); return { p, open } }
+
+  it('draws three grey rows the first time ever, never an empty area', async () => {
+    const g = gate()
+    h.prsGate = g.p
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED))] }
+    show()
+    const sk = document.querySelector('[data-deck-skeleton]')
+    expect(sk).toBeInTheDocument()
+    expect(sk!.querySelectorAll('li')).toHaveLength(3)
+    expect(sk).toHaveAttribute('aria-busy', 'true')
+    await act(async () => { g.open() })
+    await waitFor(() => rowButton(9))
+    expect(document.querySelector('[data-deck-skeleton]')).toBeNull()
+    // What it was told is kept for the next open, in memory and in storage.
+    expect(readDeck('prs:s1')).toBeDefined()
+    expect(localStorage.getItem('caprock-swr-v1:deck:prs:s1')).toContain('PR 9')
+  })
+
+  it('draws the last answer at once, says it is updating, then how fresh the new one is', async () => {
+    writeDeck('prs:s1', { connected: true, prs: [prRow(9, livePR(9, PASSED, { title: 'Kept title' }))], fetched_at: now - 60_000 }, now - 60_000)
+    const g = gate()
+    h.prsGate = g.p
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED, { title: 'New title' }))], fetched_at: Date.now() } as typeof h.prs
+    show()
+    // Before any answer: the kept rows, no skeleton, and the quiet marker.
+    expect(rowButton(9)).toHaveTextContent('Kept title')
+    expect(document.querySelector('[data-deck-skeleton]')).toBeNull()
+    await waitFor(() => expect(document.querySelector('[data-deck-fresh]')).toHaveAttribute('data-deck-fresh', 'updating'))
+    expect(document.querySelector('[data-deck-fresh]')).toHaveTextContent('updating…')
+    await act(async () => { g.open() })
+    await waitFor(() => expect(rowButton(9)).toHaveTextContent('New title'))
+    expect(document.querySelector('[data-deck-fresh]')).toHaveAttribute('data-deck-fresh', 'ok')
+    expect(document.querySelector('[data-deck-fresh]')!.textContent).toMatch(/^updated (just now|\d+ s ago)$/)
+  })
+
+  it('keeps the last answer when a read fails, and says it could not refresh', async () => {
+    writeDeck('prs:s1', { connected: true, prs: [prRow(9, livePR(9, PASSED, { title: 'Kept title' }))], fetched_at: now - 60_000 })
+    h.prsFail = new Error('daemon away')
+    show()
+    expect(rowButton(9)).toHaveTextContent('Kept title')
+    await waitFor(() => expect(document.querySelector('[data-deck-fresh]')).toHaveAttribute('data-deck-fresh', 'failed'))
+    expect(document.querySelector('[data-deck-fresh]')).toHaveTextContent('couldn’t refresh')
+    expect(rowButton(9)).toHaveTextContent('Kept title')
+  })
+
+  it('reopens on the answer from before it was closed, and a view switch is instant from what was kept', async () => {
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED))] }
+    const first = show()
+    await waitFor(() => rowButton(9))
+    first.unmount()
+    // Closed and opened again, with the daemon slow this time.
+    const g = gate()
+    h.prsGate = g.p
+    writeDeck('branches:/w', { connected: true, repo: 'a/b', default: 'main', current: 'main', branches: [{ name: 'main', default: true, current: true, local: true, remote: true, committed_ms: now, cost_usd: 0, sessions: 0, agents: [], activity_at: now, ahead: 0, behind: 0 }] })
+    h.branchesGate = new Promise(() => {})
+    show()
+    expect(rowButton(9)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: 'Branches' }))
+    expect(document.querySelector('[data-deck-branch-row="main"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-deck-skeleton]')).toBeNull()
+    await act(async () => { g.open() })
+  })
+
+  it('asks nothing while the window is hidden, and asks once it is shown', async () => {
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    show()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(h.prsAsked).toBe(0)
+    hidden.mockReturnValue(false)
+    await act(async () => { document.dispatchEvent(new window.Event('visibilitychange')) })
+    await waitFor(() => expect(h.prsAsked).toBe(1))
+    hidden.mockRestore()
   })
 })

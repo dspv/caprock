@@ -6,7 +6,7 @@
 // daemon no longer holds them) makes screens refetch. Liveness is protocol v2's:
 // a ping every 10 s, and 25 s of silence means the socket is dead.
 // Retries follow lib/reconnect.ts, the policy every socket shares (WP-13).
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useRef, useSyncExternalStore } from 'react'
 import type { Event, LoopAlert, Permission, QueueView, Session, Stats, TaskFrame } from './api'
 import { deviceToken } from './api'
 import type { OpFrame, ProjectFrame } from './projects'
@@ -15,6 +15,23 @@ import {
   LIVENESS_CHECK_MS, PING_MS, PROBE_MS, Reconnector, isConnectStuck, isProbeLost, isSuspect, isSilent, onNetworkWake,
   type LinkStatus,
 } from './reconnect'
+import { onPageVisibility, pageHidden } from './visible'
+
+/**
+ * While the page is hidden, frames are held and applied together this often
+ * (one render for all of them), and at once when the page is shown. A hidden
+ * window keeps its state current — the tray's "N waiting" and the Dock badge
+ * are drawn from it — without redrawing for every hook event nobody sees.
+ */
+export const HIDDEN_FLUSH_MS = 2_000
+
+/** Held frames past this many are replaced by a `reset`: screens refetch on showing. */
+export const HIDDEN_HELD_MAX = 2_000
+
+/** Frames applied at once even while hidden, with everything held before them:
+ *  a notification, a permission prompt (the badge), a loop alert, and the
+ *  link's own position (hello, reset). */
+const URGENT: ReadonlySet<string> = new Set(['notify', 'permission', 'alert', 'hello', 'reset'])
 
 /**
  * A notification (.ai/21-app.md § Notifications), sent by WP-09. It travels in
@@ -95,6 +112,9 @@ class LiveStore {
   private pingTimer: ReturnType<typeof setInterval> | null = null
   /** Per-frame subscribers (session detail wants raw events without re-rendering everything). */
   private frameSubs = new Set<(f: Frame) => void>()
+  /** Frames received while the page is hidden, not yet applied (HIDDEN_FLUSH_MS). */
+  private held: Frame[] = []
+  private heldTimer: ReturnType<typeof setTimeout> | null = null
 
   getState = () => this.state
   /** When anything last arrived from the daemon: "live" means a round trip within DEAD_MS. */
@@ -125,6 +145,7 @@ class LiveStore {
     if (this.started || typeof WebSocket === 'undefined') return
     this.started = true
     onNetworkWake(() => this.wake())
+    onPageVisibility((hidden) => { if (!hidden) this.flushHeld() })
     this.connect()
   }
 
@@ -193,7 +214,7 @@ class LiveStore {
         if (f.type === 'ping') ws.send(JSON.stringify({ pong: (f as ControlFrame).data }))
         return
       }
-      this.handle(f as Frame)
+      this.receive(f as Frame)
     }
     ws.onclose = () => {
       if (this.ws !== ws) return
@@ -250,8 +271,44 @@ class LiveStore {
     return true
   }
 
+  /**
+   * A frame from the socket: applied now while the page is shown; held while
+   * it is hidden, and applied with the others every HIDDEN_FLUSH_MS, at once
+   * for an URGENT one, and when the page is shown again.
+   */
+  receive(f: Frame) {
+    if (!pageHidden()) {
+      this.flushHeld()
+      this.handle(f)
+      return
+    }
+    if (!this.advance(f)) return
+    this.held.push(f)
+    if (this.held.length > HIDDEN_HELD_MAX) {
+      // What a screen keeps from the stream it reads again on a reset; what
+      // is urgent stays, in order.
+      const seq = f.seq ?? this.lastSeq ?? 0
+      this.held = [...this.held.filter((h) => URGENT.has(h.type) && h.type !== 'reset'), { type: 'reset', seq, data: { seq } }]
+    }
+    if (URGENT.has(f.type)) this.flushHeld()
+    else if (this.heldTimer === null) this.heldTimer = setTimeout(() => this.flushHeld(), HIDDEN_FLUSH_MS)
+  }
+
+  /** Applies every held frame, in order, in one task (so one render). */
+  private flushHeld() {
+    if (this.heldTimer !== null) { clearTimeout(this.heldTimer); this.heldTimer = null }
+    if (this.held.length === 0) return
+    const out = this.held
+    this.held = []
+    for (const f of out) this.apply(f)
+  }
+
   handle(f: Frame) {
     if (!this.advance(f)) return
+    this.apply(f)
+  }
+
+  private apply(f: Frame) {
     const now = Date.now()
     // One throwing subscriber must not starve the others, or stop the state
     // update below: this runs inside ws.onmessage, outside React, so an
@@ -332,27 +389,94 @@ export function useLive(): LiveState {
  * debounced what it returned: the app workspace (useWorkspaceData) redrew its
  * whole tree, nine terminal panes included, about 19 times a second under five
  * hook events a second, while the person typed (bench, 2026-10-09).
+ *
+ * One timer per debounce, shared by every caller (TickStore): a screen with
+ * twenty useApi hooks used to run twenty timers per burst. While the page is
+ * hidden it rests — or keeps `hiddenMs` when given — and catches up at once
+ * on showing; `paused` holds it still (a popover that is closed).
  */
-export function useLiveTick(ms = 400): number {
-  const [v, setV] = useState(() => live.getState().tick)
-  useEffect(() => {
-    let timer: number | null = null
-    // Caught up at once if frames came between the render and this effect.
-    setV(live.getState().tick)
-    const off = live.subscribe(() => {
-      if (timer !== null) return
-      // The timer outlives the component unless it is cancelled: a screen
-      // unmounted inside the window would set state on something gone, and
-      // under a test runner that tears the DOM down first it fires into a
-      // world with no `window` and fails the run.
-      timer = window.setTimeout(() => { timer = null; setV(live.getState().tick) }, ms)
-    })
-    return () => {
-      off()
-      if (timer !== null) { clearTimeout(timer); timer = null }
-    }
-  }, [ms])
+export function useLiveTick(ms = 400, opts: { hiddenMs?: number; paused?: boolean } = {}): number {
+  const store = tickStore(ms, opts.hiddenMs)
+  const frozen = useRef<number | null>(null)
+  const paused = !!opts.paused
+  const get = paused ? () => (frozen.current ??= store.get()) : store.get
+  const v = useSyncExternalStore(paused ? noSubscribe : store.subscribe, get, get)
+  frozen.current = v
   return v
+}
+
+const noSubscribe = () => () => {}
+
+/** The debounced tick for one (ms, hiddenMs): attached to the live store only while someone reads it. */
+class TickStore {
+  private value = live.getState().tick
+  private subs = new Set<() => void>()
+  private timer: ReturnType<typeof setTimeout> | null = null
+  private detach: (() => void) | null = null
+
+  constructor(private readonly ms: number, private readonly hiddenMs: number | undefined) {}
+
+  get = () => this.value
+
+  subscribe = (fn: () => void) => {
+    this.subs.add(fn)
+    if (!this.detach) this.attach()
+    return () => {
+      this.subs.delete(fn)
+      if (this.subs.size === 0 && this.detach) {
+        this.detach()
+        this.detach = null
+        this.clear()
+      }
+    }
+  }
+
+  private attach() {
+    // Caught up at once: frames may have come while nobody was reading.
+    this.value = live.getState().tick
+    const offLive = live.subscribe(() => this.schedule())
+    const offVis = onPageVisibility((hidden) => {
+      if (hidden) {
+        if (this.hiddenMs === undefined) this.clear()
+        return
+      }
+      this.clear()
+      this.take()
+    })
+    this.detach = () => { offLive(); offVis() }
+  }
+
+  private clear() {
+    if (this.timer !== null) { clearTimeout(this.timer); this.timer = null }
+  }
+
+  private schedule() {
+    // Only a new tick is worth a timer: most frames (resources, pings'
+    // link updates, projects) leave it where it was.
+    if (this.timer !== null || live.getState().tick === this.value) return
+    const hidden = pageHidden()
+    if (hidden && this.hiddenMs === undefined) return
+    // The timer outlives the readers unless it is cancelled (subscribe's
+    // stop): a screen unmounted inside the window would otherwise be set on
+    // after it is gone, and under a test runner that tears the DOM down first
+    // it fires into a world with no `window` and fails the run.
+    this.timer = setTimeout(() => { this.timer = null; this.take() }, hidden ? Math.max(this.ms, this.hiddenMs!) : this.ms)
+  }
+
+  private take() {
+    const t = live.getState().tick
+    if (t === this.value) return
+    this.value = t
+    for (const fn of [...this.subs]) fn()
+  }
+}
+
+const tickStores = new Map<string, TickStore>()
+function tickStore(ms: number, hiddenMs: number | undefined): TickStore {
+  const key = `${ms}:${hiddenMs ?? ''}`
+  let s = tickStores.get(key)
+  if (!s) tickStores.set(key, (s = new TickStore(ms, hiddenMs)))
+  return s
 }
 
 /** The connection state alone: re-renders only when it changes, not on every frame. */

@@ -88,6 +88,10 @@ type answerEntry struct {
 	// burst of stale hits starts one refresh, not one each. Guarded by the
 	// cache's mutex.
 	refreshing bool
+	// next is closed when that background refresh ends, installed or not, so
+	// a caller with a budget (answerCache.budget) can wait on it briefly.
+	// Guarded by the cache's mutex.
+	next chan struct{}
 }
 
 // answerCache memoises computed responses by key, makes concurrent callers for
@@ -106,6 +110,15 @@ type answerCache struct {
 	// recheck bounds how long an answer is renewed on an unchanged version
 	// alone (answerRecheck unless set).
 	recheck time.Duration
+	// budget, when set, is how long a caller holding a stale answer waits for
+	// the refresh it started before taking the stale one: a refresh the
+	// sources answer from what they hold lands inside it, so the reader is
+	// not one poll behind, and a slow one (a read from GitHub) does not hold
+	// the reader up. Zero hands the stale answer back at once.
+	budget time.Duration
+	// maxKeys, when set, bounds how many keys are kept: past it, answers
+	// older than maxStale go first, then the oldest settled ones.
+	maxKeys int
 	// bg tracks background refreshes so tests can wait for them.
 	bg sync.WaitGroup
 }
@@ -130,6 +143,13 @@ func newAnswerCache(ttl, maxStale time.Duration, now func() time.Time) *answerCa
 // still waiting for it. fn is therefore expected to run on a context of its
 // own.
 func (c *answerCache) get(ctx context.Context, key string, fn func() (any, error)) (any, error) {
+	v, _, _, err := c.getAt(ctx, key, fn)
+	return v, err
+}
+
+// getAt is get, also saying when the answer handed back was computed and
+// whether it is a stale one whose refresh is still running.
+func (c *answerCache) getAt(ctx context.Context, key string, fn func() (any, error)) (any, time.Time, bool, error) {
 	c.mu.Lock()
 	if e, ok := c.m[key]; ok {
 		select {
@@ -137,17 +157,17 @@ func (c *answerCache) get(ctx context.Context, key string, fn func() (any, error
 			age := c.now().Sub(e.at)
 			if age < c.ttl {
 				c.mu.Unlock()
-				return e.val, e.err
+				return e.val, e.at, false, e.err
 			}
 			if c.version != nil && e.ver >= 0 && age < c.recheckAfter() {
 				if c.unchanged(ctx, key, e) {
-					return e.val, e.err
+					return c.settled(key, e)
 				}
 				c.mu.Lock()
 				if c.m[key] != e {
 					// Replaced while the version was read; start over.
 					c.mu.Unlock()
-					return c.get(ctx, key, fn)
+					return c.getAt(ctx, key, fn)
 				}
 				age = c.now().Sub(e.at)
 			}
@@ -156,11 +176,13 @@ func (c *answerCache) get(ctx context.Context, key string, fn func() (any, error
 				// background refresh replace it.
 				if !e.refreshing {
 					e.refreshing = true
+					e.next = make(chan struct{})
 					c.bg.Add(1)
-					go c.refresh(key, e, fn)
+					go c.refresh(key, e, fn, e.next)
 				}
+				next := e.next
 				c.mu.Unlock()
-				return e.val, e.err
+				return c.waitBudget(ctx, key, e, next)
 			}
 			// Too old to show — recompute while the caller waits.
 			delete(c.m, key)
@@ -169,12 +191,13 @@ func (c *answerCache) get(ctx context.Context, key string, fn func() (any, error
 			c.mu.Unlock()
 			select {
 			case <-e.done:
-				return e.val, e.err
+				return e.val, e.at, false, e.err
 			case <-ctx.Done():
-				return nil, ctx.Err()
+				return nil, time.Time{}, false, ctx.Err()
 			}
 		}
 	}
+	c.prune()
 	e := &answerEntry{done: make(chan struct{})}
 	c.m[key] = e
 	c.mu.Unlock()
@@ -194,18 +217,98 @@ func (c *answerCache) get(ctx context.Context, key string, fn func() (any, error
 		}
 		c.mu.Unlock()
 	}
-	return e.val, e.err
+	return e.val, e.at, false, e.err
+}
+
+// settled is the answer installed for key once it is settled, else e's: what
+// a renewed answer hands back.
+func (c *answerCache) settled(key string, e *answerEntry) (any, time.Time, bool, error) {
+	c.mu.Lock()
+	if f := c.m[key]; f != nil {
+		select {
+		case <-f.done:
+			e = f
+		default:
+		}
+	}
+	c.mu.Unlock()
+	return e.val, e.at, false, e.err
+}
+
+// waitBudget hands back the stale entry e, or what replaced it when the
+// refresh (next) ends inside the cache's budget. The bool is true while the
+// answer handed back is stale and its refresh still runs.
+func (c *answerCache) waitBudget(ctx context.Context, key string, e *answerEntry, next chan struct{}) (any, time.Time, bool, error) {
+	if c.budget <= 0 {
+		return e.val, e.at, true, e.err
+	}
+	t := time.NewTimer(c.budget)
+	defer t.Stop()
+	select {
+	case <-next:
+		c.mu.Lock()
+		f := c.m[key]
+		c.mu.Unlock()
+		if f != nil && f != e {
+			select {
+			case <-f.done:
+				return f.val, f.at, false, f.err
+			default:
+			}
+		}
+		// The refresh failed: the stale answer is still the best there is.
+		return e.val, e.at, false, e.err
+	case <-t.C:
+	case <-ctx.Done():
+	}
+	return e.val, e.at, true, e.err
+}
+
+// prune is called with c.mu held before a key is added. Past maxKeys it drops
+// the answers too old to show, then the oldest settled ones.
+func (c *answerCache) prune() {
+	if c.maxKeys <= 0 || len(c.m) < c.maxKeys {
+		return
+	}
+	now := c.now()
+	settled := func(e *answerEntry) bool {
+		select {
+		case <-e.done:
+			return !e.refreshing
+		default:
+			return false
+		}
+	}
+	for k, e := range c.m {
+		if settled(e) && now.Sub(e.at) >= c.maxStale {
+			delete(c.m, k)
+		}
+	}
+	for len(c.m) >= c.maxKeys {
+		oldest := ""
+		var at time.Time
+		for k, e := range c.m {
+			if settled(e) && (oldest == "" || e.at.Before(at)) {
+				oldest, at = k, e.at
+			}
+		}
+		if oldest == "" {
+			return
+		}
+		delete(c.m, oldest)
+	}
 }
 
 // refresh recomputes a stale entry and installs the result. A failed refresh
 // keeps the stale answer — it is still the best figure there is — and lets the
-// next stale hit try again.
-func (c *answerCache) refresh(key string, old *answerEntry, fn func() (any, error)) {
+// next stale hit try again. next is closed once it is done either way.
+func (c *answerCache) refresh(key string, old *answerEntry, fn func() (any, error), next chan struct{}) {
 	defer c.bg.Done()
 	ver := c.readVersion(context.Background())
 	val, err := fn()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	defer close(next)
 	if err != nil {
 		old.refreshing = false
 		return

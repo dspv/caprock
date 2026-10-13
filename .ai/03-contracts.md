@@ -30,6 +30,41 @@ Claude Code sends one JSON object per event on the shim's stdin. Fields common t
 | `StopFailure`       | `error` / `stop_reason` (rate_limit, overloaded, billing)    |
 | `PermissionRequest` | `tool_name`, `tool_input`, `permission_suggestions`          |
 
+**What is stored is the payload with its tool fields bounded** (`event.CapToolField`,
+2026-10-13). The shim forwards the body verbatim; the daemon stores every field as
+it came except `tool_input` and `tool_response`, which go through the rule the
+transcript parser applies to its own copy of a call — one function, so the two
+planes cannot drift. Before this the hook copy was stored verbatim up to the 4 MiB
+body limit, and it is the copy that wins the dedup: hook tool results were 1.1 GB
+of the owner's 2.2 GB database, mostly base64 screenshots and whole files. Per
+field (`MaxToolField`, 32 KiB of JSON):
+
+- **Base64 content is replaced by a marker at any size**: an image block's
+  `data`, Claude Code's `file.base64` (a Read of an image), an MCP screenshot's
+  `data` beside its `mimeType`, a `data:<type>;base64,` URI. The marker names the
+  media type and decoded size: `[image image/png 512 KB not stored]` (`[file
+  <type> …]` for anything not an image). The rest of the block — `type`,
+  dimensions, `originalSize` — stays.
+- **A string longer than the budget is clipped** on a rune boundary and ends
+  `…[truncated <bytes dropped> bytes]`, plus `, <n> lines` when the dropped part
+  held line breaks, so the Week's lines-added count still counts a large Write
+  whole (`event.SplitClip`).
+- **Short fields always survive.** An object's fields get the budget smallest
+  first, so `file_path`, `command`, exit codes, `interrupted`, `agentId` and
+  `gitOperation` are kept beside a huge `originalFile`; an array keeps elements
+  until the budget is spent and ends with `[<n> more items not stored]`.
+- **A value within the budget with nothing base64 in it is stored byte for byte**,
+  without being decoded.
+- **`tool_bytes` counts the response the tool handed back, not the stored copy**
+  (`Event.ToolBytes`), so tool sizes are unchanged. It applies to every agent
+  observed through hooks (today Claude Code); Codex output is clipped by its own
+  importer (`codex.MaxToolOutput`).
+
+Measured on a copy of the owner's database (2026-10-13): of 134,099 hook tool
+rows, 6,099 change, and their payloads go from 1,229 MB to 388 MB — 841 MB less
+for the same history. Rows stored before the cap keep what they have. The whole
+output of a clipped call is still in the agent's own transcript.
+
 **`PermissionRequest` is observed, and stored as `permission.prompt`**
 ([ADR-035](08-decisions.md), [ADR-036](08-decisions.md)). Claude Code fires it
 as it draws a permission dialog; the shim forwards it fire-and-forget and never
@@ -428,7 +463,7 @@ GET  /v1/sessions/{id}/subagents/{agent} → SubagentDetail — one subagent ope
 GET  /v1/sessions/{id}/calls?limit=…   → SessionCall[] — every priced main-thread model call, oldest first (§ Session calls)
 GET  /v1/sessions/{id}/notes           → AssistantNote[] — what Claude said, newest first
 GET  /v1/sessions/{id}/todos           → SessionTodos — the agent's own task list (§ Session todos)
-GET  /v1/sessions/{id}/prs             → {connected, prs: SessionPRLive[]} — the session deck's PRs with CI
+GET  /v1/sessions/{id}/prs             → {connected, prs: SessionPRLive[], fetched_at, refreshing?} — the session deck's PRs with CI
 POST /v1/sessions/{id}/prs/{number}/rerun → {ok, mode, runs, jobs} — re-run one of the session's PRs' checks on GitHub (machine only)
 POST /v1/sessions/{id}/prs/{number}/update-branch → {ok} — merge the base into one of the session's open PRs on GitHub (machine only)
 GET  /v1/sessions/{id}/ci              → SessionCI — the deck's CI cell: Actions runs, jobs, steps, times
@@ -470,8 +505,11 @@ detector's read-only tools in SQL rather than after reading them. Each reader
 also cuts the window into slices of about equal event counts (four for the
 replay, two for tool calls) read side by side and joined back in time order,
 so the figures are those of a single pass: `all` went from 5.0 s to 1.9 s on
-a warm copy of the 1.2 GB database (2026-10-05). `Server.Warm` computes `all`
-and `30d` when the daemon starts.
+a warm copy of the 1.2 GB database (2026-10-05). They are not computed at
+start any more: `Server.Warm` did, and the slow-query log named those payload
+scans as the startup's biggest reads on the owner's 2.2 GB database
+(2026-10-13) — a gigabyte-scale read on every start for a dialog most starts
+never open. The dialog pays for its period once, when it is opened.
 
 The Week screen's shareable card. `start` is a local date and the window is
 `[start 00:00, start+7 00:00)` in the daemon's time zone: the same days the
@@ -729,7 +767,7 @@ What that file holds bounds what may ever be said about it: a timestamp and two 
 #### Storage
 
 `GET /v1/storage` reports what Caprock keeps on disk: `{data_dir,
-total_bytes, files[], database?, measured_at?, measure_ms?, error?,
+total_bytes, files[], database?, measured_at?, measure_ms?, error?, measuring?,
 reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
 
 - **`files`** is every top-level entry of the data directory, `{name, bytes,
@@ -747,10 +785,16 @@ reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
 - **It is cached, not computed per request.** `dbstat` walks every page and the
   breakdown reads every event; on an 857 MB database the two measured 8 s warm
   and 14 s cold
-  through this driver (2026-10-01). The daemon measures a minute after start,
-  then every 30 minutes, and serves the last result; `database` is absent until
-  the first one finishes. A failed refresh keeps the previous figures and sets
-  `error`. The breakdown is one scan of `events` in rowid order, folded in Go:
+  through this driver (2026-10-01), and 4.8 s reading the whole 2.2 GB file on
+  the owner's machine (2026-10-13). **It is measured only when wanted**: a
+  request that finds the cached figures a day old (`storageMaxAge`), or none,
+  starts one measurement in the background and answers at once with what it
+  has and `measuring: true`; and once a day while the daemon is idle (nothing
+  recorded for 30 minutes) it measures on its own, so the panel finds figures
+  ready. Never on a fixed timer: it used to run a minute after every start and
+  every 30 minutes whether or not anyone looked. `database` is absent until the
+  first one finishes. A failed measurement keeps the previous figures, sets
+  `error`, and is retried no sooner than a day later. The breakdown is one scan of `events` in rowid order, folded in Go:
   it was a `GROUP BY` over a join, which SQLite sorted through temp files
   carrying every payload (11 s in the sqlite3 shell on a 1.8 GB database,
   against 0.4 s for the scan; 2026-10-10).
@@ -922,8 +966,10 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
   limits.
 - **`actions`** is what the daemon did about its footprint on its own,
   oldest first, the last 50 since it started, in memory only: every reap
-  (§ Resources: on its own every 10 minutes, or from the button) and every
-  write-ahead-log checkpoint. Every remedy that is safe to apply unattended
+  (§ Resources: on its own every 10 minutes, or from the button), every
+  write-ahead-log checkpoint, and every daily data-directory sweep that
+  removed something ([02-architecture.md § Retention and
+  cleanup](02-architecture.md#retention-and-cleanup)). Every remedy that is safe to apply unattended
   is applied unattended — nobody else cleans up after a user's Caprock —
   and said here. Nothing is done about another daemon, a second app or a
   large database: stopping a process Caprock did not start is rule 7's
@@ -932,7 +978,9 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
   over 256 MiB is folded back with `PRAGMA wal_checkpoint(TRUNCATE)` — what
   SQLite's automatic checkpoint does in small steps, done at once and the
   file truncated after. A running read can hold part of it back; the next
-  attempt is 10 minutes later.
+  attempt is 10 minutes later. Below that, `journal_size_limit` (64 MiB, set
+  when the database is opened) has SQLite truncate the WAL back after its own
+  checkpoints, so a big transaction does not leave a large file behind.
 - **A paired device may read it**, as it may read `/v1/resources`.
 - **Who asks.** The dashboard's status strip, every 10 s while its page is
   visible (04-ui.md § Caprock footprint); each ask counts as looking, so
@@ -1294,7 +1342,7 @@ which the flag does not take, so that one starts with no flag). Otherwise, and
 when nothing was recorded, it is the `spawn_permission_mode` setting; with
 neither, no mode is sent and the agent starts in its own default. A request
 that names a mode, or carries `command`, is left as it is. No column stores the
-mode: every hook payload is kept verbatim, and the mode changes mid-session.
+mode: every hook payload keeps its `permission_mode`, and the mode changes mid-session.
 
 **`bypassPermissions` is spawned as `--dangerously-skip-permissions`**, the
 flag the orchestrator has always used for its own unattended workers. Claude
@@ -1372,7 +1420,8 @@ with `resume` (a continued session has its conversation), `relay_from` with
 `resume`, an unknown `relay_from`, a source folder that no longer exists when
 no `cwd` is given, and a brief over the limit.
 
-**`GET /v1/sessions/{id}/prs`** → `{connected, prs}`: the session's latest
+**`GET /v1/sessions/{id}/prs`** → `SessionPRs` `{connected, prs, fetched_at,
+refreshing?}`: the session's latest
 four pull requests (`session_prs`, newest first; the current one and up to
 three before it, `sessionPRsShown`; three until 2026-10-12), each a `SessionPR` plus
 `live` — the `github.PR` GitHub returns for its link now (state, checks,
@@ -1384,6 +1433,25 @@ GitHub nothing in between; every read is conditional. The row's state chips
 read fields this answer already carries (`mergeable`, `mergeable_state`,
 `review`, `draft`, and `auto_merge` for its *queued*); nothing is asked per
 chip.
+
+**The deck's answers are kept** (`internal/api/deckcache.go`). The five
+views of the *Pull requests & CI* cell — `…/prs`, `…/ci`, `…/ci/release`,
+`…/ci/main`, `…/branches` — are each composed from the kept GitHub reads
+above, and the composed answer is kept per view, session, pull request
+asked for and whether GitHub is connected (at most 256 keys). A key never
+composed is composed while the request waits, and concurrent requests for
+it share one composition. Within 2 s the kept answer is handed back as it
+is. Past that, the request starts one background composition (on a
+context of its own, 15 s) and waits up to 300 ms for it: when the GitHub
+reads answer from what they keep it lands inside that and is handed back;
+when one has to ask GitHub, the request gets the last answer at once with
+`refreshing: true`, and the next poll finds the new one. A kept answer
+older than an hour is not shown; the request waits for a fresh one. A
+composition that fails (a database error, an unknown session) is not kept
+and the last answer stays. Every answer carries `fetched_at`, Unix ms, when
+the daemon composed it, and `refreshing` only when true. GitHub is asked no
+more often than before: a composition calls the same kept reads a request
+used to, each deciding by its own freshness whether to ask.
 
 **`POST /v1/sessions/{id}/prs/{number}/rerun`** (no body) → `{ok, mode,
 runs, jobs}`: the session deck's *Re-run checks*. Acts only on a pull
@@ -1415,7 +1483,7 @@ click and a confirm, never by a poll (rule 4), and are the machine's: not in
 the paired-device lists.
 
 **`GET /v1/sessions/{id}/ci`** (`?pr=N` optional) → `SessionCI` `{connected,
-pr?, ci?, error?}`: the session deck's CI cell. `pr` `{number, url, title?,
+pr?, ci?, error?, fetched_at, refreshing?}`: the session deck's CI cell. `pr` `{number, url, title?,
 state?, repo, head_sha?}` is pull request N when it is among the session's
 latest four (a click on its row or its mini pipeline), else the
 session's open one among them, else the newest (each read through `github.PullByURL`, so it shares the PRs
@@ -1466,7 +1534,7 @@ error. The cached answers are never changed: the baselines are set on a copy.
 
 **`GET /v1/sessions/{id}/ci/release`** and **`GET /v1/sessions/{id}/ci/main`**
 → `SessionRepoCI` `{connected, repo?, reason?, branch?, release?, ci?,
-error?}`: the CI cell's Release and Main views, for any repository. `repo`
+error?, fetched_at, refreshing?}`: the CI cell's Release and Main views, for any repository. `repo`
 (`owner/name`) is read from the session's working directory's remote, as the
 session page reads it (`gitremote.Lookup`, kept a minute); `reason` is
 `no_repo` (not a git repository, or no remote) or `not_github` when there is
@@ -1550,7 +1618,7 @@ private repository's included minutes, which a job cannot know are left.
 
 **Session branches** — **`GET /v1/sessions/{id}/branches`** →
 `SessionBranches` `{connected, repo?, reason?, default?, base?, current?,
-branches[], error?}`: the session deck's Branches view. Read only while that
+branches[], error?, fetched_at, refreshing?}`: the session deck's Branches view. Read only while that
 view is shown.
 
 - **Git** — local only (`internal/branches`): one `for-each-ref` over
@@ -2798,7 +2866,8 @@ that had merely been cleared. Fixing the writer did not reach the rows already
 stored, and on the owner's database **all 18 of them were the last event of
 their session** — which is the phrase the session card shows.
 
-The rewrite reads rather than guesses: `events.payload` is stored verbatim, so
+The rewrite reads rather than guesses: `events.payload` keeps every field but
+the bounded tool fields as Claude Code sent it, so
 each row already names the hook that produced it. `hook_event_name = 'SessionEnd'`
 is the whole condition, and `reason` picks the kind — `clear` → `context.clear`,
 anything else → `session.continue`. A genuine `PreCompact` is untouched, which
@@ -2943,7 +3012,7 @@ CREATE TABLE events (
   cost_usd    REAL,
   msg_id      TEXT,                          -- assistant message id (migration 0012)
   touch_dir   TEXT,                          -- directory the tool touched (migration 0012)
-  tool_bytes  INTEGER NOT NULL DEFAULT 0,    -- bytes the tool returned (migration 0018)
+  tool_bytes  INTEGER NOT NULL DEFAULT 0,    -- bytes the tool returned, before the payload cap (0018)
   internal    INTEGER NOT NULL DEFAULT 0,    -- 1 = hidden product machinery (0024)
   inner_tool  TEXT                           -- tool a Codex `exec` script ran (0038)
 );

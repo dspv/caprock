@@ -18,6 +18,7 @@ import { branchLabel, projectLabels, sessionHealth } from '@/lib/sessionLabels'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type Event, type SessionSummary } from '@/lib/api'
 import { live } from '@/lib/live'
+import { useFrameBatch } from '@/lib/framebatch'
 import { buildPulse, costTier, medianCost, trackState, windowCost, windowEvents, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
 import { fmtAgo, fmtModel, fmtTokens, fmtUSD, shortId } from '@/lib/format'
 import { AgentCharacter, agentName, characterFor } from '@/components/Characters'
@@ -81,20 +82,25 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
     }
   }, [ids])
 
-  useEffect(() => {
-    return live.onFrame((f) => {
-      if (f.type !== 'event') return
-      const ev = f.data
-      setEvents((cur) => {
-        if (!cur.has(ev.session_id)) return cur
-        const next = new Map(cur)
+  // A batch at a time (lib/framebatch): one render per FRAME_BATCH_MS.
+  const incoming = useFrameBatch<Event>((batch) => {
+    setEvents((cur) => {
+      let next: Map<string, Event[]> | null = null
+      for (const ev of batch) {
+        if (!cur.has(ev.session_id)) continue
+        next ??= new Map(cur)
         const prior = next.get(ev.session_id) ?? []
         // Cap per track: the window only ever renders PULSE_MINUTES of bars.
         next.set(ev.session_id, [...prior, ev].slice(-SEED_LIMIT * 2))
-        return next
-      })
+      }
+      return next ?? cur
     })
-  }, [])
+  })
+  useEffect(() => {
+    return live.onFrame((f) => {
+      if (f.type === 'event') incoming.push(f.data)
+    })
+  }, [incoming])
 
   // `now` is rounded to the minute so a per-second clock does not rebuild
   // every model each tick.

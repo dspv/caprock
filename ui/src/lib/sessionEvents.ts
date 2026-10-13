@@ -16,6 +16,8 @@ import { api, type Event } from './api'
 import { live } from './live'
 import { mergeEvents } from './chat'
 import { mainThread } from './cockpit'
+import { coalesce } from './visible'
+import { FRAME_BATCH_MS } from './framebatch'
 
 /** How many of the main thread's newest calls and turns are held: enough for the last several turns. */
 export const EVENTS_HELD = 400
@@ -34,13 +36,22 @@ interface Entry {
   off: () => void
   /** Bumped per fetch, so an answer to an older one is dropped. */
   gen: number
+  /** Readers told of live events at most once per FRAME_BATCH_MS (lib/framebatch). */
+  tell: ReturnType<typeof coalesce>
 }
 
 const entries = new Map<string, Entry>()
 
-function publish(e: Entry, next: readonly Event[]) {
+function publish(e: Entry, next: readonly Event[], now = false) {
   if (next === e.events) return
   e.events = next
+  // A fetch's answer at once; live events a batch at a time, so the cockpit
+  // and the deck redraw once per batch, not once per tool call.
+  e.tell.ask()
+  if (now) e.tell.flush()
+}
+
+function tellAll(e: Entry) {
   for (const l of [...e.listeners]) l()
 }
 
@@ -49,7 +60,7 @@ function load(id: string, e: Entry) {
   api.recentMainEvents(id, MAIN_KINDS, EVENTS_HELD)
     .then((list) => {
       if (entries.get(id) !== e || e.gen !== gen || !Array.isArray(list)) return
-      publish(e, mergeEvents(e.events, list.filter(isMainKind)).slice(-EVENTS_HELD))
+      publish(e, mergeEvents(e.events, list.filter(isMainKind)).slice(-EVENTS_HELD), true)
     })
     .catch(() => { /* an older daemon or a gone session: the panels show what the row has */ })
 }
@@ -57,7 +68,7 @@ function load(id: string, e: Entry) {
 function subscribe(id: string, cb: () => void): () => void {
   let e = entries.get(id)
   if (!e) {
-    const entry: Entry = { events: EMPTY, listeners: new Set(), off: () => {}, gen: 0 }
+    const entry: Entry = { events: EMPTY, listeners: new Set(), off: () => {}, gen: 0, tell: coalesce(() => tellAll(entry), FRAME_BATCH_MS) }
     entries.set(id, entry)
     entry.off = live.onFrame((f) => {
       if (f.type === 'event' && f.data.session_id === id) {
@@ -77,6 +88,7 @@ function subscribe(id: string, cb: () => void): () => void {
     held.listeners.delete(cb)
     if (held.listeners.size === 0 && entries.get(id) === held) {
       held.off()
+      held.tell.cancel()
       entries.delete(id)
     }
   }

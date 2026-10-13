@@ -424,6 +424,9 @@ type Server struct {
 	glance *answerCache
 	// drill holds the tool drill-downs (drillTTL).
 	drill *answerCache
+	// deck holds the session deck's composed Pull requests & CI answers
+	// (deckcache.go).
+	deck *answerCache
 	// repos answers "which repository, on which host" per directory.
 	repos *repoCache
 	// sizes decides which attached terminal a session's PTY is sized for
@@ -450,7 +453,7 @@ func New(d Deps) *Server {
 	}
 	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now),
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
-		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), repos: newRepoCache()}
+		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache()}
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
 		if s.d.Agents != nil {
 			_ = s.d.Agents.Resize(id, cols, rows)
@@ -1650,9 +1653,15 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 
 // Warm computes the whole-history answers the dashboard asks for first — the
 // lifetime strip's /v1/history?range=all and the 7d, 30d and all-time
-// summaries the Cost screen and the share dialog open with, and the share
-// dialog's all-time and 30-day Weeks — so the first
+// summaries the Cost screen and the share dialog open with — so the first
 // screen after a start finds them cached instead of paying for the scans.
+//
+// It does not warm the share dialog's 30-day and all-time Weeks any more.
+// Those read the payload of every Bash, Edit and Write result in the window
+// — on the owner's 2.2 GB database the slow-query log named them as the
+// startup's biggest reads, seconds of a gigabyte-scale scan (2026-10-13) —
+// on every start, for a dialog most starts never open. The dialog pays for
+// it once, when it is opened.
 // Run in the background; it returns when they are done or ctx ends. Errors are
 // dropped: a key that failed to warm is simply computed on first request, as
 // it would have been without this.
@@ -1671,7 +1680,6 @@ func (s *Server) Warm(ctx context.Context) {
 		from, label := s.rangeFrom(rng)
 		_, _ = s.rangeSummary(ctx, from, label, "")
 	}
-	s.warmWeek(ctx)
 }
 
 // rangeSummary is the aggregate behind /v1/stats/summary for one range.
