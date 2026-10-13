@@ -46,6 +46,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** the desktop app no longer opens to a black window when the deck's
+  CI panel was left on Release and the newest release run lists no jobs. The
+  daemon sent that run's jobs as `null` instead of an empty list; it now sends
+  `[]`, and the dashboard reads a missing list as empty, cached answers
+  included.
+- **app:** a screen that fails to draw no longer blanks the window. The deck
+  fails on its own and the terminal stays; a failure anywhere else shows
+  *Caprock hit a snag* with Reload, *Reset the view and reload* (forgets cached
+  figures and the CI panel's view, keeps tabs and settings), and a report the
+  user sends themselves: a prefilled GitHub issue, an email or the details
+  copied. The report holds the error, where it was thrown, the version and the
+  OS; a home directory is folded to `~`, and nothing is sent by Caprock.
 - **mail:** on macOS, account passwords go to the login keychain through the call that names the keychain file, so saving one can never bring up a "Keychain Not Found" dialog. Passwords saved before are read where they are; Windows and Linux are unchanged.
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.
 

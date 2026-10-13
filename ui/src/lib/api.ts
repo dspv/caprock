@@ -1466,6 +1466,16 @@ export function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
+/**
+ * A run's jobs as a list even when a daemon sent `null`: 0.115.1 did for a
+ * release run GitHub listed no jobs for, and the app's deck read `.some` on
+ * it and went black on every launch.
+ */
+export function listedJobs<T extends { ci?: CIState; release?: ReleaseCI }>(d: T): T {
+  for (const r of [...(d.ci?.runs ?? []), ...(d.release?.run ? [d.release.run] : [])]) r.jobs ??= []
+  return d
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: withDevice({ Accept: 'application/json' }) })
   if (!res.ok) {
@@ -1582,14 +1592,14 @@ export const api = {
   /** Merge the base into a session PR's branch on GitHub (the deck's Update branch). */
   sessionPRUpdateBranch: (id: string, n: number) => post<{ ok: boolean }>(`/v1/sessions/${encodeURIComponent(id)}/prs/${n}/update-branch`, {}),
   /** The GitHub Actions runs, jobs and steps of the session's PR (the session deck's CI cell). */
-  sessionCI: (id: string, pr?: number) => get<SessionCI>(`/v1/sessions/${encodeURIComponent(id)}/ci${pr ? `?pr=${pr}` : ''}`),
+  sessionCI: (id: string, pr?: number) => get<SessionCI>(`/v1/sessions/${encodeURIComponent(id)}/ci${pr ? `?pr=${pr}` : ''}`).then(listedJobs),
   /** The lines around a failed job's error, on demand. */
   sessionCILog: (id: string, job: number, view: 'pr' | 'release' | 'main' = 'pr', pr?: number) =>
     get<CILog>(`/v1/sessions/${encodeURIComponent(id)}/ci/jobs/${job}/log${view !== 'pr' ? `?view=${view}` : pr ? `?pr=${pr}` : ''}`),
   /** The newest release run of the session's repository (the CI cell's Release view, and the deck's release chip). */
-  sessionCIRelease: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/release`),
+  sessionCIRelease: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/release`).then(listedJobs),
   /** The newest run of each workflow on the session's repository's default branch (the CI cell's Main view). */
-  sessionCIMain: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/main`),
+  sessionCIMain: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/main`).then(listedJobs),
   /** The PRs & CI tab: the repository's pull requests and its figures over 14 days. Asked only while the tab is shown. */
   sessionCIStats: (id: string) => get<SessionCIStats>(`/v1/sessions/${encodeURIComponent(id)}/ci/stats`),
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */

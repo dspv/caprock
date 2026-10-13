@@ -28,7 +28,7 @@
  * frame. Arrow keys on the divider settle the same way.
  */
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type DeckFresh, type SessionCI, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
+import { api, errText, listedJobs, type CIJob, type CILog, type CIRun, type CIStep, type DeckFresh, type SessionCI, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
 import { freshText, readDeck, writeDeck } from '@/lib/deckCache'
 import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
 import { MiniPipeline } from './MiniPipeline'
@@ -570,7 +570,9 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   const openPr = chosen > 0 && (!prsData || rows.some((p) => p.number === chosen)) ? chosen : 0
   const [prData, prAt] = usePoll(view === 'pr' && openPr > 0, `${key}:${openPr}`, () => api.sessionCI(sessionId, openPr), (d) => ciActive(d.ci), CI_RUNNING_MS, openPr > 0 ? `ci:${sessionId}:${openPr}` : undefined, keepPRCI)
   // The answer for the open row only: one for the row open before waits.
-  const prCI = prData && prData.pr?.number === openPr ? prData : undefined
+  // listedJobs here as well as in the fetch: a cached answer from an older
+  // daemon can still carry `"jobs": null` (lib/api).
+  const prCI = prData && prData.pr?.number === openPr ? listedJobs(prData) : undefined
   // Each PR's runs once read, so its row keeps its time against the median
   // after it is closed; nothing is asked for a row never opened.
   const [seenRuns, setSeenRuns] = useState<Record<number, CIRun[]>>({})
@@ -602,8 +604,10 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   }, [view, prsData, rows, openPr, seenRuns, sessionId])
   // The release build is asked while the deck is open whatever the view, so
   // its chip shows a build under way from the other views too.
-  const [relData, relAt, relMeta] = usePoll(true, key, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running', CI_RUNNING_MS, `release:${repoScope}`, keepRepoCI)
-  const [mainData, mainAt, mainMeta] = usePoll(view === 'main', key, () => api.sessionCIMain(sessionId), (d) => ciActive(d.ci), CI_RUNNING_MS, `main:${repoScope}`, keepRepoCI)
+  const [relRaw, relAt, relMeta] = usePoll(true, key, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running', CI_RUNNING_MS, `release:${repoScope}`, keepRepoCI)
+  const [mainRaw, mainAt, mainMeta] = usePoll(view === 'main', key, () => api.sessionCIMain(sessionId), (d) => ciActive(d.ci), CI_RUNNING_MS, `main:${repoScope}`, keepRepoCI)
+  const relData = relRaw && listedJobs(relRaw)
+  const mainData = mainRaw && listedJobs(mainRaw)
   // The branches, while that view is shown: local git and one cached list of
   // the repository's pull requests, so a poll costs GitHub nothing new.
   const [brData, brAt, brMeta] = usePoll(view === 'branches', key, () => api.sessionBranches(sessionId), (d) => d.branches.some((b) => b.live?.checks.state === 'pending'), PRS_PENDING_MS, `branches:${folderScope}`, keepBranches)

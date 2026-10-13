@@ -44,6 +44,7 @@ import { useDaemonVersion } from '@/lib/useDaemonVersion'
 import { HIDDEN_PROJECTS_EVENT, hideSessionRow, loadHiddenProjects, loadHiddenSessions, Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { SessionDeck } from '@/components/SessionDeck'
 import { readDeck, saveDeck, type DeckPrefs } from '@/lib/deck'
 import { StatusStrip } from '@/components/StatusStrip'
@@ -1556,6 +1557,7 @@ export function AppShell() {
                   * window's edge. Not mounted while closed or while the
                   * dashboard is in front. */}
                 {deck.open && workspaceShown && focusedIsAgent && focused && focusedSession && (
+                  <ErrorBoundary key={focused.sessionId} label="The deck">
                   <SessionDeck
                     s={focusedSession}
                     sessionId={focused.sessionId}
@@ -1583,6 +1585,7 @@ export function AppShell() {
                       />
                     ) : undefined}
                   />
+                  </ErrorBoundary>
                 )}
                 {promptCard && !prefs.inspector && focused && (
                   <div className="shrink-0 border-t border-[var(--app-hairline)] px-3 empty:hidden [&>*]:mb-2">
