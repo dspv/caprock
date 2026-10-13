@@ -9,6 +9,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **mail:** adding an account finds the servers for about 40 mail services
+  and the hosts people put their own domain on. The table now knows Yahoo,
+  AOL, AT&T, Verizon, Cox, Xfinity, GMX, WEB.DE, mail.com, Zoho, Mail.ru,
+  Rambler, Seznam, Daum, Orange, Free, SFR, La Poste, T-Online, Libero,
+  Virgilio, mailbox.org, Posteo, Purelymail, Runbox, Mailfence and Migadu as
+  well as Gmail, iCloud, Outlook, Fastmail, Yandex and Proton Bridge, each with
+  what it needs (an app password, IMAP switched on) and its help page. A
+  custom domain is recognised by its MX on Google Workspace, Microsoft 365,
+  iCloud+, Zoho, Rackspace, GoDaddy, Namecheap Private Email, Spacemail,
+  IONOS, OVHcloud, Hostinger, Titan, Infomaniak and STRATO. Any other domain
+  is asked for its RFC 6186 SRV records and its own autoconfig file before
+  Caprock falls back to `imap.` and `smtp.`; only the domain itself is asked,
+  no directory. The answer says how it was found (`source`).
 - **mail:** sign in with Google or Microsoft. A Gmail, Google Workspace,
   Outlook.com or Microsoft 365 mailbox connects with a click and an approval
   in the browser, no app password: the installed-app OAuth flow with PKCE,
