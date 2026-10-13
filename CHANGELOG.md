@@ -24,7 +24,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   message, in its project when it has one) or delete it.
 - **daemon:** the Inbox — `GET`/`POST /v1/inbox`, `DELETE /v1/inbox/{id}`,
   image thumbnails at `/v1/inbox/{id}/files/{n}` and an `inbox` live frame
-  (migration 0052). A phone you let control saves and deletes; any paired
+  (migration 0053). A phone you let control saves and deletes; any paired
   phone reads.
 
 ### Fixed

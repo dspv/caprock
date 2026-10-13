@@ -7,7 +7,7 @@ import (
 	"errors"
 )
 
-// InboxItem is one thing saved for later (migration 0052): a note, a link or
+// InboxItem is one thing saved for later (migration 0053): a note, a link or
 // a photo, from the phone or the machine, to start a chat from.
 type InboxItem struct {
 	ID   int64  `json:"id"`

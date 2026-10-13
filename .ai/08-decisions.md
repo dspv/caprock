@@ -3125,7 +3125,7 @@ and needs store approval.
   a field docked at the bottom with **Save** and **Start chat**. The full
   Now screen is `#/now`. Two layouts were drawn at 390×844; the owner chose
   the docked one over tiles at the top.
-- **The Inbox is its own table** (migration 0052, 03-contracts.md § Inbox),
+- **The Inbox is its own table** (migration 0053, 03-contracts.md § Inbox),
   not saved prompts: a saved prompt has a name and is changed only on the
   machine (ADR-051), while an Inbox item is unnamed, may carry photos, and
   is written from the phone.

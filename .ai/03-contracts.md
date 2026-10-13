@@ -3407,7 +3407,7 @@ Saved prompts and commands ([ADR-051](08-decisions.md), § Saved prompts and
 commands). No foreign key: unlisting a project (`archived_at`) keeps its
 rows, and nothing deletes a project row.
 
-### Inbox DDL (migration 0052)
+### Inbox DDL (migration 0053)
 
 ```sql
 CREATE TABLE IF NOT EXISTS inbox (

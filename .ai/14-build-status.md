@@ -80,7 +80,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
   Save and Start chat; the full Now is `#/now`. New chat and Save sheets;
   a one-time Add to Home Screen hint; manifest shortcuts and a GET share
   target that wait for `https`.
-- **Inbox** (migration 0052, 03-contracts.md § Inbox): `GET/POST
+- **Inbox** (migration 0053, 03-contracts.md § Inbox): `GET/POST
   /v1/inbox`, `DELETE /v1/inbox/{id}`, thumbnails at `…/files/{n}`, an
   `inbox` live frame; a controller saves and deletes, a viewer reads. On
   the Mac it is *Saved* in the Quick chat chooser, with Start a chat and
