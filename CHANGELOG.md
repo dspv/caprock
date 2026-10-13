@@ -26,6 +26,45 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   also reads githubstatus.com and shows avatars from
   avatars.githubusercontent.com, neither sent your token; Settings → GitHub
   says so.
+- **mail:** when you first open Mail it offers the accounts you already have in
+  another client, so you add them with a click instead of retyping servers and
+  passwords. Thunderbird comes over whole — servers and, when there is no
+  primary password, the passwords too, decrypted on your machine (nothing is
+  sent anywhere and no password ever crosses the dashboard connection). Apple
+  Mail brings its server settings; its passwords are not readable, so you type
+  each once, and on macOS without Full Disk Access Caprock says so and how to
+  grant it. Each account is signed in to and verified before it is saved, and
+  one account that fails never stops the others.
+- **remote:** a phone reaches Caprock from anywhere — mobile data, another
+  Wi-Fi — with nothing to install, through a relay that carries only
+  end-to-end ciphertext (ADR-058). Settings → *Open Caprock on your phone* →
+  *From anywhere*, or `caprock remote on`; it stays on across restarts. The
+  machine dials out to the relay and proves its id with its Ed25519 key; the
+  phone pins the machine's X25519 key from the QR and runs Noise NK with it,
+  so the relay forwards bytes it cannot read or change. Pairing, device
+  tokens and the viewer and controller roles are the LAN's own.
+- **remote:** the phone's page (`ui`, `vite build --mode remote`) keeps
+  several machines and switches between them from a strip along the top that
+  says whether the machine is reachable; *+ Add a machine* takes a pasted
+  pairing link, for an iPhone home-screen app.
+- **cli:** `caprock remote [on|off|reset]`, `caprock pair`, which draws the
+  pairing QR in the terminal, and `caprock remote relay`, a relay of your
+  own. `relay/` is the hosted relay, a Cloudflare Worker with one Durable
+  Object per machine.
+
+- **mail:** adding an account finds the servers for about 40 mail services
+  and the hosts people put their own domain on. The table now knows Yahoo,
+  AOL, AT&T, Verizon, Cox, Xfinity, GMX, WEB.DE, mail.com, Zoho, Mail.ru,
+  Rambler, Seznam, Daum, Orange, Free, SFR, La Poste, T-Online, Libero,
+  Virgilio, mailbox.org, Posteo, Purelymail, Runbox, Mailfence and Migadu as
+  well as Gmail, iCloud, Outlook, Fastmail, Yandex and Proton Bridge, each with
+  what it needs (an app password, IMAP switched on) and its help page. A
+  custom domain is recognised by its MX on Google Workspace, Microsoft 365,
+  iCloud+, Zoho, Rackspace, GoDaddy, Namecheap Private Email, Spacemail,
+  IONOS, OVHcloud, Hostinger, Titan, Infomaniak and STRATO. Any other domain
+  is asked for its RFC 6186 SRV records and its own autoconfig file before
+  Caprock falls back to `imap.` and `smtp.`; only the domain itself is asked,
+  no directory. The answer says how it was found (`source`).
 - **mail:** sign in with Google or Microsoft. A Gmail, Google Workspace,
   Outlook.com or Microsoft 365 mailbox connects with a click and an approval
   in the browser, no app password: the installed-app OAuth flow with PKCE,
@@ -52,8 +91,54 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   it is still the one listed — same pid, same start time. Caprock never stops
   a process it did not start on its own (ADR-059).
 
+- **phone:** *Keep on after Caprock restarts* in Settings → *Use on your
+  phone*: phone access comes back on by itself after an update or a reboot.
+  Off by default; Turn off clears it; only paired phones get in either way
+  (ADR-060).
+
 ### Changed
 
+- **phone:** the phone panel says first where it works — *Works on this
+  Wi-Fi only* or *Works anywhere (Tailscale)* — instead of folding it under
+  *Then: …*. Without Tailscale it names the one step (Tailscale on this
+  computer and the phone, same account) with the downloads; it notices
+  Tailscale by itself while open, listens on its address without turning
+  access off and on, and a new code opens the Tailscale address. A paired
+  computer is no longer counted as a phone: *No phone paired yet* says so.
+- **remote:** the phone's first screen says what to do in three large steps,
+  keeps the pasted link for a home-screen app behind one tap (shown at once
+  when opened from the home screen), and answers the questions a careful
+  person asks — is it safe, what the relay sees, why not an app, a lost
+  phone, a relay of your own — with links to how it works and the relay's
+  source.
+
+- **app:** a new icon — a bold white C on a near-black tile, with a green dot
+  in its mouth for a session running. The amber triangle got lost among its
+  Dock neighbours; a letter reads at a glance. The menu-bar icon, the
+  dashboard's favicon and the phone's home-screen icon carry the same mark.
+
+- **cockpit:** subagent rows stay where they are. They stand in the order the
+  subagents started, first on top, a new one added at the bottom; working,
+  waiting, getting busier or finishing no longer moves a row, and a finished
+  one stays in its place, dimmed with a ✓. What a subagent is doing now gets
+  the row's whole width and two lines, the full text on hover; its figures
+  moved to the line below, and *Show* in the Subagents header picks which of
+  them each row carries — *Compact* (just the phrase), *Cost* (cost and time,
+  the default) or *Full* (calls, cost, model and time), or any mix —
+  remembered on this device.
+- **app:** tabs are the way around. ⌘1–⌘9 (Ctrl+Shift+1–9 on Windows and
+  Linux) switch to the Nth tab, and the tabs stay in the order you opened
+  them: a new tab goes last with the next number, and the numbers change
+  only when you close or drag a tab; a restart keeps them. Every tab shows
+  its key, the one in front too, and its session's name with its project's
+  dot and short name. The sidebar is Flat by default — the open sessions in
+  the tabs' order, each with the same key and its project, then the ones
+  running without a tab — or Tree, sessions under their projects (Settings
+  → Appearance, or the folder button). Projects have no number keys any
+  more; a click on a project opens its page, and ⌥⌘ arrows still walk
+  sessions and projects. The pinned Dashboard tab shows ⌘0 again (⌘, on
+  Settings) and the inspector's button ⌘I, so every key is on screen. One
+  line says so once, with a way to every key.
 - **deck:** a pull request's checks read at a glance. In place of a circle per
   check — twelve tiny circles in a row that said nothing — each row sums them
   up in one short group: *✗ 1 failed ● 1 running ✓ 10*, the failed first, the
@@ -63,6 +148,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   job. The circles-or-words switch is gone, a row no longer says *$0* for a
   public repository's free runners, and the cockpit's CI block uses the same
   summary, its view tabs now named *PRs · Ring · OS*.
+- **deck:** Expand is a button you can see — outlined, with its key, ⇧⌘B
+  (Ctrl+Alt+Shift+B on Windows and Linux) — and in the PRs & CI tab the same
+  button in the same corner reads *Collapse* and takes you back to the agent
+  with its deck; the key toggles both ways. *Back to the deck* is gone. A
+  pull request's title gets every pixel its row's checks leave, a step
+  larger, cut only when the row is full. The circle per check is back as the
+  default, with the summary one click away (*Checks: circles | summary*,
+  remembered); hovering the circles shows the same card of every check.
 - **settings:** every saved credential (DeepSeek key, Telegram bot token, a
   pasted GitHub token) is entered in one secure field: a lock inside, masked
   monospace text, an eye only while typing, and once saved a locked pill with
@@ -73,7 +166,33 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** switching tabs no longer redraws the terminal's font for a moment. A tab hidden for 30 s had let its WebGL renderer go, so it came back drawn by the DOM renderer, in other glyphs and another cell height, until WebGL was swapped in 1.5 s later; a tab hidden for less had its glyph atlas rebuilt on every switch. The three tabs hidden last now keep their renderer, a tab past that gets it back before it is first painted, and the atlas is rebuilt only after a wake, a pixel-ratio change or a hide of more than five minutes, so the squashed letters of #541 stay fixed.
+- **app:** the version panel in the status bar has a close button; Esc
+  and a click outside still close it.
+- **app:** a button's tooltip no longer covers the panel it opened: the
+  Caprock doctor, the version, the theme picker and the composer's menus
+  show their tooltip only while closed.
+- **app:** a session no longer jumps into Claude Code's background-agents list on its own. Holding ⌥⌘↓ (Alt+Shift+↓ off macOS) to step through sessions and letting go of the modifiers before the arrow left the arrow repeating into the session it had just opened, and Claude Code read that Down as "go to the agents below the prompt". An arrow pressed as an app chord now stays the app's until it is released, and the sidebar's ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift+↑ ↓ off macOS), which typed a Down too when pressed in a terminal, do nothing there. Plain arrows and ⌥← ⌥→ word jumps are unchanged.
+- **app:** the desktop app no longer opens to a black window when the deck's
+  CI panel was left on Release and the newest release run lists no jobs. The
+  daemon sent that run's jobs as `null` instead of an empty list; it now sends
+  `[]`, and the dashboard reads a missing list as empty, cached answers
+  included.
+- **app:** a screen that fails to draw no longer blanks the window. The deck
+  fails on its own and the terminal stays; a failure anywhere else shows
+  *Caprock hit a snag* with Reload, *Reset the view and reload* (forgets cached
+  figures and the CI panel's view, keeps tabs and settings), and a report the
+  user sends themselves: a prefilled GitHub issue, an email or the details
+  copied. The report holds the error, where it was thrown, the version and the
+  OS; a home directory is folded to `~`, and nothing is sent by Caprock.
+- **app:** scrolling up a terminal no longer shows Claude Code's prompt
+  rules and status rows smeared and repeated across the history. A tab
+  restored behind another parsed its replay at xterm's default 80 columns,
+  and told the daemon that size, before it had ever been laid out; it now
+  holds the replay and sends no size until it is shown and fitted.
+
 - **mail:** on macOS, account passwords go to the login keychain through the call that names the keychain file, so saving one can never bring up a "Keychain Not Found" dialog. Passwords saved before are read where they are; Windows and Linux are unchanged.
+- **daemon:** a session with no process behind it ends as soon as its transcript file or its folder is deleted, instead of staying in the sidebar for 24 hours. Nine synthetic transcripts a test script wrote and removed left nine such sessions listed as "working". A session is also no longer shown as working because of an event stamped ahead of the clock.
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.
 
 ### Security

@@ -197,8 +197,8 @@ describe('opening a subagent', () => {
     h.details = { d1: detail('d1', { state: 'finished', stopped_at: now - 200_000, result: 'Found it in Cockpit.tsx.' }) }
     show()
     const section = await screen.findByRole('region', { name: 'Subagents' })
-    const finished = within(section).getByRole('list', { name: 'Finished subagents' })
-    expect(finished.children).toHaveLength(2)
+    const doneRows = () => within(section).getByRole('list', { name: 'Subagent rows' }).querySelectorAll('[data-done="true"]')
+    expect(doneRows()).toHaveLength(2)
     fireEvent.click(rowButton(section, 'Done one'))
     expect(await screen.findByText('Found it in Cockpit.tsx.')).toBeInTheDocument()
 
@@ -209,9 +209,33 @@ describe('opening a subagent', () => {
       recent: [...h.subagents.recent!, ...[3, 4, 5].map((i) => ({ agent_id: `d${i}`, agent_type: 'Explore', description: `Done ${i}`, tool_calls: 1, started_at: now - 400_000, stopped_at: now - 390_000 }))],
     }
     fireEvent.click(more)
-    await waitFor(() => expect(within(section).getByRole('list', { name: 'Finished subagents' }).children).toHaveLength(5))
+    await waitFor(() => expect(doneRows()).toHaveLength(5))
     expect(h.recentAsked.at(-1)).toBe(30)
     expect(within(section).getByRole('button', { name: 'fewer finished' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  // "They jump — their order jumps too, bad, I want fixed positions" (owner,
+  // 2026-10-14, translated).
+  it('keeps every row in its place while states change, appends a new one, and dims a finished one where it stood', async () => {
+    const at = (id: string, started: number, extra: Partial<Subagent> = {}) => working(id, { started_at: now - started, ...extra })
+    // The daemon lists the newest activity first: the reverse of their starts.
+    h.subagents = { working: [at('c', 10_000), at('b', 20_000), at('a', 30_000)], finished: 0 }
+    show()
+    const section = await screen.findByRole('region', { name: 'Subagents' })
+    const order = () => within(section).getAllByRole('listitem').map((li) => li.getAttribute('data-subagent'))
+    expect(order()).toEqual(['a', 'b', 'c'])
+    // a turns busiest and costliest, b finishes, c's window start slides past
+    // the newcomer d's: nothing moves, d lands last, b stays dimmed with ✓.
+    h.subagents = {
+      working: [at('d', 5_000), at('a', 30_000, { tool_calls: 90, cost_usd: 4 }), at('c', 1_000, { asking: true })],
+      finished: 1,
+      recent: [{ agent_id: 'b', agent_type: 'Explore', description: 'Task b', tool_calls: 3, started_at: now - 20_000, stopped_at: now - 500 }],
+    }
+    emit({ type: 'event', data: { id: 50, ts: new Date().toISOString(), session_id: 's1', agent_id: 'a', source: 'hook', kind: 'tool.pre', tool: 'Read', payload: {} } as Event })
+    await waitFor(() => expect(order()).toEqual(['a', 'b', 'c', 'd']), { timeout: 4_000 })
+    const b = within(section).getAllByRole('listitem')[1]!
+    expect(b).toHaveAttribute('data-done', 'true')
+    expect(within(b).getByLabelText('finished')).toHaveTextContent('✓')
   })
 })
 

@@ -148,6 +148,14 @@ describe('the panel', () => {
     expect(container.querySelector('[data-warnings]')).toBeNull()
   })
 
+  it('keeps its tooltip out of the way while the panel is open', async () => {
+    const { button } = await strip(warned())
+    expect(button.getAttribute('title')).toMatch(/Caprock on this computer/)
+    fireEvent.click(button)
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(button.hasAttribute('title')).toBe(false)
+  })
+
   it('closes on Escape', async () => {
     const { button } = await strip(warned())
     fireEvent.click(button)

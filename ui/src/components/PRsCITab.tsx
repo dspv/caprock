@@ -3,7 +3,9 @@
  * requests & CI cell, large (owner, 2026-10-13, translated: "I want to
  * expand the panel bigger, to see the statuses large and in detail, plus
  * statistics … sometimes it's interesting to look"). Opened by Expand beside
- * the deck's Hide; Back to the deck closes it and brings the agent's tab back.
+ * the deck's Hide; Collapse, the same control in the same top-right corner,
+ * closes it and brings the agent's tab back with its deck, and ⇧⌘B does
+ * either (owner, 2026-10-14, translated: "it should simply be a toggle").
  *
  * Two views, Board first (owner, 2026-10-14): the Board — the pull requests
  * by stage, the agents on each and what they cost, the releases
@@ -34,7 +36,7 @@ import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
 import { Bars, Trend } from './DayBars'
 import { PRBoardView } from './PRBoard'
-import { CI_IDLE_MS, CI_RUNNING_MS, CIMark, DeckSkeleton, ExpandIcon, Freshness, PRS_PENDING_MS, connectGitHub, usePoll } from './SessionDeck'
+import { CI_IDLE_MS, CI_RUNNING_MS, CIMark, DeckSkeleton, ExpandToggle, Freshness, PRS_PENDING_MS, connectGitHub, usePoll } from './SessionDeck'
 
 export interface PRsCITabProps {
   /** The agent session the tab was opened from: its repository, its pull requests. */
@@ -78,12 +80,7 @@ export function PRsCITab(props: PRsCITabProps) {
 }
 
 function BackButton({ onBack }: { onBack: () => void }) {
-  return (
-    <button type="button" data-prs-back onClick={onBack} title="Close this tab and show the agent’s terminal with its deck"
-      className="flex h-[26px] shrink-0 items-center gap-1.5 rounded-[6px] px-2 text-[12px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">
-      <ExpandIcon back /> Back to the deck
-    </button>
-  )
+  return <ExpandToggle collapse onClick={onBack} />
 }
 
 function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, onStartAgent }: PRsCITabProps & { session: SessionSummary }) {

@@ -28,12 +28,12 @@
  * frame. Arrow keys on the divider settle the same way.
  */
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type DeckFresh, type SessionCI, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
+import { api, errText, listedJobs, type CIJob, type CILog, type CIRun, type CIStep, type DeckFresh, type SessionCI, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
 import { freshText, readDeck, writeDeck } from '@/lib/deckCache'
 import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
 import { MiniPipeline } from './MiniPipeline'
 import { CheckSummary } from './CheckSummary'
-import { CI_VIEWS, byOSLine, jobVsMedian, runSpan, runVsMedian, type DeltaTone, type VsMedian, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, orderPRs, osTag, prAge, prDotState, prReviewText, prChecks, prVerdict, readCIView, readOpenPR, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveCIView, saveOpenPR, type CITone, type CIView, type PipeNode, type PRWordTone } from '@/lib/ci'
+import { CHECKS_VIEWS, CI_VIEWS, byOSLine, jobVsMedian, runSpan, runVsMedian, type DeltaTone, type VsMedian, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, orderPRs, osTag, prAge, prDotState, prReviewText, prChecks, prVerdict, readChecksView, readCIView, readOpenPR, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveChecksView, saveCIView, saveOpenPR, type ChecksView, type CITone, type CIView, type PipeNode, type PRWordTone } from '@/lib/ci'
 import { jobCostLabel, sumCostLabel, sumRuns, usageLine, type CICost, type CostLabel, type CostTone } from '@/lib/runnercost'
 import { BRANCHES_SHOWN, STALE_TITLE, aheadBehind, branchPRDot, branchSpend, lastCommit, shownBranches, type SessionBranch, type SessionBranches } from '@/lib/branches'
 import { sessionTitle } from '@/lib/sidebar'
@@ -179,21 +179,16 @@ function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClo
     // sidebar's and the inspector's (owner, 2026-10-11: "Spent doesn't
     // help", "Working now is debatable").
     <div className="@container flex min-h-0 flex-1 items-stretch overflow-hidden">
-      <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} worktrees={worktrees} onOpenSession={onOpenSession} onStartAgent={onStartAgent} cleanup={cleanup} />
-      <div className="flex shrink-0 items-start gap-0.5 pr-2 pt-1.5">
-        {/* The large view: one control, no key of its own (rule 12). */}
-        {onExpand && (
-          <button
-            type="button"
-            data-deck-expand
-            onClick={onExpand}
-            aria-label="Expand: pull requests and CI in a tab"
-            title="Pull requests and CI, large: the repository's pull requests, each one's jobs by runner, and the figures over two weeks, in a tab"
-            className="flex h-[24px] items-center gap-1.5 rounded-[6px] px-1.5 text-[11.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
-          >
-            <ExpandIcon /> Expand
-          </button>
-        )}
+      {/* Expand and Hide end the cell's header line, so the rows below run
+        * the deck's whole width: a column of their own left an empty strip
+        * beside every row (owner, 2026-10-14). */}
+      <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} worktrees={worktrees} onOpenSession={onOpenSession} onStartAgent={onStartAgent} cleanup={cleanup} controls={
+      <span className="flex shrink-0 items-center gap-1">
+        {/* The large view. The PRs & CI tab draws the same control in the
+          * same corner as Collapse, and ⇧⌘B flips between them (owner,
+          * 2026-10-14, translated: "you can't see Expand at all … it should
+          * simply be a toggle"). */}
+        {onExpand && <ExpandToggle onClick={onExpand} />}
         <button
           type="button"
           onClick={onClose}
@@ -203,8 +198,31 @@ function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClo
         >
           Hide <kbd aria-hidden className="app-kbd-key">{keys('⌘B')}</kbd>
         </button>
-      </div>
+      </span>
+      } />
     </div>
+  )
+}
+
+/** The large view and back: Expand in the deck, Collapse in the PRs & CI
+ *  tab, the same outlined control in the same top-right corner, one key for
+ *  both (⇧⌘B; Ctrl+Alt+Shift+B off macOS, where ⌘B is Ctrl+Shift+B). */
+export function ExpandToggle({ collapse, onClick }: { collapse?: boolean; onClick: () => void }) {
+  const k = keys('⇧⌘B')
+  return (
+    <button
+      type="button"
+      data-deck-expand={collapse ? undefined : ''}
+      data-prs-back={collapse ? '' : undefined}
+      onClick={onClick}
+      aria-label={collapse ? `Collapse: back to the agent and its deck (${k})` : `Expand: pull requests and CI in a tab (${k})`}
+      title={collapse
+        ? 'Close this tab and show the agent’s terminal with its deck; the same key expands it again'
+        : 'Pull requests and CI, large: the repository’s pull requests, each one’s jobs by runner, and the figures over two weeks, in a tab'}
+      className="flex h-[26px] shrink-0 items-center gap-1.5 rounded-[6px] border border-accent/60 px-2 text-[12px] font-medium text-accent hover:bg-accent/10"
+    >
+      <ExpandIcon back={collapse} /> {collapse ? 'Collapse' : 'Expand'} <kbd aria-hidden className="app-kbd-key">{k}</kbd>
+    </button>
   )
 }
 
@@ -427,6 +445,26 @@ export function CIViewSwitch({ view, onChange }: { view: CIView; onChange: (v: C
   )
 }
 
+const CHECKS_TITLE: Record<ChecksView, string> = {
+  circles: 'A circle per check, in the order they started; hover for each one’s name, OS, state and time',
+  summary: 'The checks counted by state: “✗ 1 failed ● 1 running ✓ 8”; hover for each one',
+}
+
+/** Checks: circles | summary — how the rows draw a PR's checks, kept per viewer. */
+export function ChecksViewSwitch({ view, onChange }: { view: ChecksView; onChange: (v: ChecksView) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Checks" data-deck-checks-view={view} className="flex shrink-0 items-center gap-1 text-[10.5px] text-fg-faint">
+      <span aria-hidden>Checks</span>
+      <span className="flex items-center gap-px rounded-[5px] border border-[var(--app-hairline)] p-px">
+        {CHECKS_VIEWS.map((v) => (
+          <button key={v} type="button" role="radio" aria-checked={view === v} data-deck-checks={v} onClick={() => onChange(v)} title={CHECKS_TITLE[v]}
+            className={`rounded-[4px] px-1.5 leading-[16px] ${view === v ? 'bg-[var(--app-row-hover)] font-medium text-fg' : 'text-fg-faint hover:text-fg-muted'}`}>{v}</button>
+        ))}
+      </span>
+    </div>
+  )
+}
+
 /** Why the Release or Main view has no repository, in a line. */
 function noRepoLine(d: SessionRepoCI): string {
   return d.reason === 'not_github' ? 'This repository is not on GitHub.' : 'This session’s folder has no GitHub repository.'
@@ -527,11 +565,26 @@ const WORD_TEXT: Record<PRWordTone, string> = {
  * and Main views stand behind the same switch. Asked only while the deck is
  * open and the window visible.
  */
-function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, worktrees, onOpenSession, onStartAgent, cleanup }: { sessionId: string; s: SessionSummary; onToast?: (text: string) => void; branch?: string; changed?: number; ahead?: number; onReview?: () => void; worktrees?: DeckWorktree[]; onOpenSession?: (s: SessionSummary) => void; onStartAgent?: (req: SpawnRequest, title: string) => Promise<void>; cleanup?: ReactNode }) {
+function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, worktrees, onOpenSession, onStartAgent, cleanup, controls }: { controls?: ReactNode; sessionId: string; s: SessionSummary; onToast?: (text: string) => void; branch?: string; changed?: number; ahead?: number; onReview?: () => void; worktrees?: DeckWorktree[]; onOpenSession?: (s: SessionSummary) => void; onStartAgent?: (req: SpawnRequest, title: string) => Promise<void>; cleanup?: ReactNode }) {
   const canControl = useCanControl()
   const [busy, setBusy] = useState<number>()
   const [view, setViewState] = useState<CIView>(() => readCIView())
   const setView = (v: CIView) => { setViewState(v); saveCIView(v) }
+  // A row's checks as circles (the default) or counted in words, per viewer.
+  const [checks, setChecksState] = useState<ChecksView>(readChecksView)
+  const setChecks = (v: ChecksView) => { setChecksState(v); saveChecksView(v) }
+  // The rows' checks column is as wide as the widest row's checks need, so a
+  // title takes every pixel the checks leave (owner, 2026-10-14, translated:
+  // "use the space for the PR title — 'feat(app): …' is interesting to read").
+  const prList = useRef<HTMLUListElement>(null)
+  useLayoutEffect(() => {
+    const ul = prList.current
+    if (!ul) return
+    let w = 0
+    ul.querySelectorAll<HTMLElement>('[data-deck-pr-ci-fit]').forEach((el) => { w = Math.max(w, Math.ceil(el.getBoundingClientRect().width)) })
+    if (w > 0) ul.style.setProperty('--deck-ci-w', `${w}px`)
+    else ul.style.removeProperty('--deck-ci-w')
+  })
   const [n, setN] = useState(0)
   const [connecting, setConnecting] = useState(false)
   // One job open at a time: its steps take the row, under a header that
@@ -570,7 +623,9 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   const openPr = chosen > 0 && (!prsData || rows.some((p) => p.number === chosen)) ? chosen : 0
   const [prData, prAt] = usePoll(view === 'pr' && openPr > 0, `${key}:${openPr}`, () => api.sessionCI(sessionId, openPr), (d) => ciActive(d.ci), CI_RUNNING_MS, openPr > 0 ? `ci:${sessionId}:${openPr}` : undefined, keepPRCI)
   // The answer for the open row only: one for the row open before waits.
-  const prCI = prData && prData.pr?.number === openPr ? prData : undefined
+  // listedJobs here as well as in the fetch: a cached answer from an older
+  // daemon can still carry `"jobs": null` (lib/api).
+  const prCI = prData && prData.pr?.number === openPr ? listedJobs(prData) : undefined
   // Each PR's runs once read, so its row keeps its time against the median
   // after it is closed; nothing is asked for a row never opened.
   const [seenRuns, setSeenRuns] = useState<Record<number, CIRun[]>>({})
@@ -602,8 +657,10 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   }, [view, prsData, rows, openPr, seenRuns, sessionId])
   // The release build is asked while the deck is open whatever the view, so
   // its chip shows a build under way from the other views too.
-  const [relData, relAt, relMeta] = usePoll(true, key, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running', CI_RUNNING_MS, `release:${repoScope}`, keepRepoCI)
-  const [mainData, mainAt, mainMeta] = usePoll(view === 'main', key, () => api.sessionCIMain(sessionId), (d) => ciActive(d.ci), CI_RUNNING_MS, `main:${repoScope}`, keepRepoCI)
+  const [relRaw, relAt, relMeta] = usePoll(true, key, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running', CI_RUNNING_MS, `release:${repoScope}`, keepRepoCI)
+  const [mainRaw, mainAt, mainMeta] = usePoll(view === 'main', key, () => api.sessionCIMain(sessionId), (d) => ciActive(d.ci), CI_RUNNING_MS, `main:${repoScope}`, keepRepoCI)
+  const relData = relRaw && listedJobs(relRaw)
+  const mainData = mainRaw && listedJobs(mainRaw)
   // The branches, while that view is shown: local git and one cached list of
   // the repository's pull requests, so a poll costs GitHub nothing new.
   const [brData, brAt, brMeta] = usePoll(view === 'branches', key, () => api.sessionBranches(sessionId), (d) => d.branches.some((b) => b.live?.checks.state === 'pending'), PRS_PENDING_MS, `branches:${folderScope}`, keepBranches)
@@ -902,13 +959,13 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
       body = (
         // A column: every row keeps its line and the open one's CI takes
         // the height left, scrolling inside, so the earlier PRs stay in view.
-        <ul data-deck-prs data-deck-scroll="" className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+        <ul ref={prList} data-deck-prs data-deck-scroll="" className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
           {rows.map((p) => {
             if (cramped && openPr !== p.number) return null
             const agents = agentsOf(p)
             const progress = standing(p, agents, now)
             return (
-            <PRRow key={p.url} p={p} now={now} runs={seenRuns[p.number]} cost={prCost(p.number)} open={openPr === p.number}
+            <PRRow key={p.url} p={p} now={now} checks={checks} runs={seenRuns[p.number]} cost={prCost(p.number)} open={openPr === p.number}
               onToggle={() => togglePR(p.number)}
               onPick={(node) => pickInRow(p.number, node)}
               agents={agents} onOpenAgent={onOpenSession} status={prStatus(p, agents, progress, queuedFor(p, agents, queues))}
@@ -940,7 +997,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
     const d = brData
     if (d && d.reason) body = quiet('This session’s folder is not a git repository.')
     else if (d && d.branches.length === 0) body = quiet('No branches.')
-    else if (d) body = <BranchList d={d} now={now} onJump={jumpToPR} connect={!d.connected && d.repo ? connectButton('Connect GitHub to see each branch’s pull request') : null} cleanup={cleanup} />
+    else if (d) body = <BranchList d={d} now={now} checks={checks} onJump={jumpToPR} connect={!d.connected && d.repo ? connectButton('Connect GitHub to see each branch’s pull request') : null} cleanup={cleanup} />
   } else if (view === 'release') {
     const d = relData
     if (d && d.reason) body = quiet(noRepoLine(d))
@@ -1038,7 +1095,9 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
             <span data-deck-ci-runner className="num" title={runnerTitle}>runner <span className="text-fg">{fmtRun(total)}</span>{ciCost && <> · <CostText c={ciCost} data="ci" /></>}</span>
           )}
         </span>
+        {(view === 'pr' || view === 'branches') && <ChecksViewSwitch view={checks} onChange={setChecks} />}
         <CIViewSwitch view={view} onChange={setView} />
+        {controls}
       </div>
       {body}
     </div>
@@ -1053,7 +1112,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
  * conflict when GitHub said so, and its age. A click opens its CI in place;
  * ↗ opens the PR on GitHub.
  */
-function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpenAgent, status, quick, actions, onMenu, children }: { p: SessionPRLive; now: number; runs?: CIRun[]; cost?: CICost; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; agents?: PRAgent[]; onOpenAgent?: (s: SessionSummary) => void; status?: PRStatus; quick?: ReactNode; actions?: ReactNode; onMenu?: () => void; children?: ReactNode }) {
+function PRRow({ p, now, checks = 'circles', runs, cost, open, onToggle, onPick, agents = [], onOpenAgent, status, quick, actions, onMenu, children }: { p: SessionPRLive; now: number; checks?: ChecksView; runs?: CIRun[]; cost?: CICost; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; agents?: PRAgent[]; onOpenAgent?: (s: SessionSummary) => void; status?: PRStatus; quick?: ReactNode; actions?: ReactNode; onMenu?: () => void; children?: ReactNode }) {
   const live = p.live
   const dot = prDotState(p)
   const v = prVerdict(p, now, runs)
@@ -1080,13 +1139,13 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpen
         * the chevron that folds it. */}
       <div className={open ? 'sticky top-0 z-[2] shrink-0 bg-[var(--app-chrome-bg)]' : undefined}>
       <div onClick={onToggle}
-        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[10px_8px_minmax(40px,1fr)_auto_minmax(72px,min(250px,26cqw))_26px_18px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
+        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[10px_8px_minmax(40px,1fr)_auto_minmax(72px,min(var(--deck-ci-w,250px),38cqw))_26px_18px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
         <Chevron open={open} />
         <span role="img" aria-label={dot} title={dot} className="pr-dot" data-state={dot} />
         <button type="button" aria-expanded={open} onClick={(e) => { e.stopPropagation(); onToggle() }}
           title={`${title}\n${open ? `Fold its CI (${keys('Esc')})` : 'Show its CI'}`} className="flex min-w-0 items-baseline gap-2 text-left">
           <span className="num shrink-0 text-fg">#{p.number}</span>
-          <span className={`truncate ${open ? 'text-fg' : 'text-fg-muted'}`}>{title}</span>
+          <span data-deck-pr-title className={`truncate text-[13.5px] ${open ? 'text-fg' : 'text-fg-muted'}`}>{title}</span>
         </button>
         {/* Every cell stays in the grid; what gives way as the deck narrows is
           * hidden inside it, so the columns never shift. */}
@@ -1099,11 +1158,14 @@ function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpen
           {quick && <span data-deck-pr-quicks className="flex shrink-0 items-center gap-0.5">{quick}</span>}
           {review && <span data-deck-pr-review className={`hidden max-w-[150px] truncate text-[11px] @min-[1100px]:block ${WORD_TEXT[review.tone]}`}>{review.text}</span>}
         </span>
-        <span data-deck-pr-ci className="flex w-full min-w-0 items-center gap-1.5 overflow-hidden text-[11.5px]">
-          {sum
-            ? <CheckSummary s={sum} label={`#${p.number}: its checks`} onPick={onPick} />
-            : <span title={v.title ?? v.text} className={`truncate ${v.strong ? 'font-medium' : ''} ${WORD_TEXT[v.tone]}`}>{v.text}</span>}
-          {money && <><span aria-hidden className="text-fg-faint">·</span><CostText c={money} data="pr" className="shrink-0" /></>}
+        <span data-deck-pr-ci className="flex w-full min-w-0 overflow-hidden text-[11.5px]">
+          {/* Drawn at its natural width, which the list measures for the column. */}
+          <span data-deck-pr-ci-fit className="flex w-max shrink-0 items-center gap-1.5">
+            {sum
+              ? <CheckSummary s={sum} label={`#${p.number}: its checks`} onPick={onPick} view={checks} />
+              : <span title={v.title ?? v.text} className={`truncate ${v.strong ? 'font-medium' : ''} ${WORD_TEXT[v.tone]}`}>{v.text}</span>}
+            {money && <><span aria-hidden className="text-fg-faint">·</span><CostText c={money} data="pr" className="shrink-0" /></>}
+          </span>
         </span>
         <span data-deck-pr-age className="num text-right text-[11px] text-fg-faint" title={age.title}>{age.text}</span>
         {onMenu
@@ -1161,7 +1223,7 @@ function UsageText({ line }: { line?: ReturnType<typeof usageLine> }) {
  * what Caprock's sessions on it cost and how many, and a stale mark. The first
  * BRANCHES_SHOWN, then "Show all". A branch with a PR opens it in the PRs view.
  */
-function BranchList({ d, now, onJump, connect, cleanup }: { d: SessionBranches; now: number; onJump: (n: number, url: string) => void; connect: ReactNode; cleanup?: ReactNode }) {
+function BranchList({ d, now, checks, onJump, connect, cleanup }: { d: SessionBranches; now: number; checks: ChecksView; onJump: (n: number, url: string) => void; connect: ReactNode; cleanup?: ReactNode }) {
   const [all, setAll] = useState(false)
   const rows = shownBranches(d.branches, all)
   return (
@@ -1169,7 +1231,7 @@ function BranchList({ d, now, onJump, connect, cleanup }: { d: SessionBranches; 
       {connect}
       {cleanup && <div className="shrink-0 empty:hidden" data-deck-cleanup>{cleanup}</div>}
       <ul data-deck-branches className="-mx-1 flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-        {rows.map((b) => <BranchRow key={b.name} b={b} now={now} onJump={onJump} />)}
+        {rows.map((b) => <BranchRow key={b.name} b={b} now={now} checks={checks} onJump={onJump} />)}
         {d.branches.length > BRANCHES_SHOWN && (
           <li className="shrink-0 px-1 pt-0.5">
             <button type="button" data-deck-branches-all onClick={() => setAll((x) => !x)} className="text-[11px] text-fg-faint hover:text-fg-muted hover:underline">
@@ -1183,7 +1245,7 @@ function BranchList({ d, now, onJump, connect, cleanup }: { d: SessionBranches; 
   )
 }
 
-function BranchRow({ b, now, onJump }: { b: SessionBranch; now: number; onJump: (n: number, url: string) => void }) {
+function BranchRow({ b, now, checks, onJump }: { b: SessionBranch; now: number; checks: ChecksView; onJump: (n: number, url: string) => void }) {
   const ab = aheadBehind(b)
   const commit = lastCommit(b, now)
   const spend = branchSpend(b)
@@ -1211,7 +1273,7 @@ function BranchRow({ b, now, onJump }: { b: SessionBranch; now: number; onJump: 
               <span className="num text-fg-muted">#{pr.number}</span>
             </span>
           )}
-          {sum && <span className="hidden @min-[560px]:inline-flex"><CheckSummary s={sum} label={`#${pr?.number}: its checks`} onPick={() => jump?.()} /></span>}
+          {sum && <span className="hidden @min-[560px]:inline-flex"><CheckSummary s={sum} label={`#${pr?.number}: its checks`} onPick={() => jump?.()} view={checks} /></span>}
         </span>
         {/* The session count and the author give way first as the deck narrows. */}
         <span data-deck-branch-spend className={`num truncate text-right text-[11px] ${b.sessions ? 'text-fg-muted' : 'text-fg-faint'}`} title={spend.title}>

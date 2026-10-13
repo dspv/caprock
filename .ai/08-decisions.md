@@ -845,6 +845,13 @@ missed that and filled the Now screen with 97-day-old sessions marked live.
 And sessions with no pid at all keep a 24-hour staleness sweep, because there
 is nothing to verify.
 
+**Amended 2026-10-14: the disk is a fact too.** A test script wrote nine
+synthetic transcripts under `~/.claude/projects` and deleted them; the nine
+pid-less sessions read from them sat in the sidebar as working and would have
+stayed a day. A session with no pid whose transcript (one actually read) or
+directory no longer exists now ends on the next sweep. Observed agents stay on
+the clock alone.
+
 **Separately, the Now screen filters by recency.** Status cannot tell a quiet
 session from imported history, so anything silent for two days is not shown
 there whatever its status — two days rather than one so a Friday evening
@@ -966,8 +973,14 @@ controller, on the machine, revocably.
 "loopback is unaffected" means this machine's own clients; a request a proxy
 or tunnel relays onto loopback is a device here, token and role included.
 
+*Amended 2026-10-14 by [ADR-060](#adr-060--phone-access-may-stay-on-across-restarts-when-the-owner-ticks-it):*
+"not a stored setting" holds by default; the owner can tick *Keep on after
+Caprock restarts*, and turning access off clears it.
+
 **Rules out:** a relay of ours (sessions would pass through a machine we run,
-which contradicts rule 4 and three sentences on the site); binding the wildcard
+which contradicts rule 4 and three sentences on the site) — *superseded
+2026-10-13 by [ADR-058](#adr-058--a-phone-reaches-the-machine-from-anywhere-through-a-relay-that-carries-only-ciphertext):
+a relay that carries only end-to-end ciphertext, off by default*; binding the wildcard
 address; a stored "LAN on" setting; pairing from a device that is already
 paired — a tablet is somewhere to read figures, not a second control room, so
 issuing codes and revoking devices stay loopback-only.
@@ -3244,6 +3257,22 @@ dashboard and a desktop app on three OSes.
   offered and nothing else changes. The callback is the one `/v1` route the
   CSRF guard admits as a cross-site GET, on a loopback Host only, with the
   single-use state as its protection.
+- **Import, not retype.** On first use Mail offers the accounts the user
+  already has in another client. `GET /v1/mail/import` reads only that
+  client's own local files under the user's home and opens nothing else.
+  Thunderbird is read in full: servers from `prefs.js`, passwords decrypted in
+  pure Go from `logins.json` + `key4.db` (NSS: PBKDF2-SHA256 + AES-256-CBC key
+  wrap, then a 3DES or AES login blob — no cgo, no NSS library); a profile with
+  a primary password imports settings only. Apple Mail is read from
+  `~/Library/Accounts/Accounts4.sqlite` (the keyed-archiver property store) for
+  server settings only — its passwords live in the login keychain under items
+  that cannot be matched to an account, so the user types the password once;
+  and because that path is TCC-protected, without Full Disk Access the answer
+  is `needs_permission: "full_disk_access"` with how to grant it. Nothing read
+  for import ever leaves the machine and no password is ever put in an HTTP
+  answer (rule 4): on `POST /v1/mail/import` the sources are re-read so the
+  decrypted password goes straight to the user's own IMAP/SMTP server and
+  nowhere else.
 - **Headers are read whole.** The list is built from `BODY.PEEK[HEADER]`,
   parsed locally, never from ENVELOPE or `HEADER.FIELDS`: iCloud has sent
   ENVELOPEs with unescaped quotes in the Message-ID (one bad answer fails
@@ -3266,11 +3295,86 @@ dashboard and a desktop app on three OSes.
   through the nudge system after two days of use, only while no account
   exists; opening Mail or dismissing it answers it.
 
+- **Adding an account is an address and a password.** Server settings come
+  from a table of about 40 consumer and hosting services, each entry citing
+  the provider's own settings page (QQ Mail, NetEase, Naver and Spectrum are
+  left out until one can be read); then the domain's MX against that table;
+  then RFC 6186 SRV records; then the domain's own autoconfig file; then the
+  `imap.` / `smtp.` convention. Discovery asks only the user's own domain,
+  never Mozilla's ISPDB or any other directory, so an address goes nowhere
+  but where its mail already lives (rule 4).
+
 **Consequences.** One more outbound path exists, to destinations the user
 chose; the binary grows by the IMAP, SMTP and MIME libraries. Not built:
 server-side drafts, notifications, rules, mail on a paired phone
 (attachments and the iframe's images need the device token, which plain URLs
 do not carry).
+## ADR-058 — A phone reaches the machine from anywhere, through a relay that carries only ciphertext
+
+**Date:** 2026-10-13 · **Status:** accepted (owner, translated: "I want someone
+without an App Store app to use Caprock running on their machine, local or
+remote — a laptop or a Mac mini for agents — reliably, through a relay over the
+internet, for when I'm out walking the dog. Make it mobile first."). Amends
+[ADR-029](#adr-029--a-second-device-gets-in-over-the-lan-with-a-code-or-not-at-all),
+which ruled out "a relay of ours", and rule 4 in `CLAUDE.md`.
+
+**Context.** A phone could reach the daemon only on the same Wi-Fi or over
+Tailscale, which needs an app from the App Store on the phone — the thing the
+owner is avoiding until Apple approves the developer account. A machine at
+home sits behind a router, often behind carrier NAT too, and accepts no
+connection from the internet. The only route that works behind any router is
+two outbound connections meeting at a public address.
+
+**Decision.**
+
+- **Off by default, on by a decision on the machine** (Settings → Phone →
+  *From anywhere*, or `caprock remote on`), and **remembered**: unlike the LAN
+  listener, the machine this is for is the one nobody sits at. It cannot be
+  turned on, or the relay changed, from a phone.
+- **The daemon dials out** to the relay (`wss://relay.caprock.dev` by default,
+  any relay by `--relay`) at `/v1/host/<id>`; the id is its Ed25519 public key,
+  and it proves it with a signature over the relay's nonce. No inbound port, no
+  account, no database on the relay.
+- **The phone dials the same relay** at `/v1/c/<id>`, and the relay splices
+  the two, one Durable Object per machine on Cloudflare (`relay/`), or
+  `internal/remote/relaysrv` (`caprock remote relay`) for a relay of one's own.
+- **End to end: Noise_NK_25519_AESGCM_SHA256.** The QR carries the machine's
+  static X25519 key; the phone runs NK against it, so a relay — ours or
+  anyone's — forwards bytes it cannot read or alter, and a reply from anything
+  but that machine fails the handshake. Go side `internal/remote/noise.go`,
+  phone side `ui/src/remote/noise.ts`, held to the same bytes by
+  `testdata/remote/noise-vector.json`.
+- **Inside the channel, the phone's dashboard runs unchanged.** Its `fetch()`
+  and `WebSocket` for `/v1/…` become streams (`internal/remote/proto.go`), and
+  the daemon replays each onto its own loopback marked `Via: 1.1
+  caprock-remote` — so the gate treats it as a paired device: the same pairing
+  code, device token, viewer and controller roles and revocation as on the LAN,
+  not a second set. Browser headers (Origin, Sec-Fetch-*, cookies) are dropped
+  inside the channel; paths that could leave loopback are refused.
+- **The phone's page is static**, built with `vite build --mode remote` and
+  served over https (`m.caprock.dev` by default, any by `--app`). It keeps
+  several machines, one at a time, each with its relay, pinned key and token.
+  https gives what a plain LAN address could not: an installable app on
+  Android, and later Web Push.
+
+**What the relay sees.** Which machine id a phone connects to, when, from which
+IP address, and how many bytes pass. Not a session, a token, a command or a
+figure.
+
+**Consequences.**
+
+- Rule 4 now reads "nothing readable is ever sent to Caprock": the relay is a
+  Caprock service, carries ciphertext only, and is optional.
+- The phone's page is code we serve; whoever controls it could read what the
+  phone shows. It is the same trust as any web app, stated here, and the page
+  can be self-hosted (`--app`).
+- The free plan's limits on Durable Object requests are an open question for
+  many users (`.ai/12-risks.md`); `caprock remote relay` is the way out.
+
+**Rules out:** relaying plaintext or terminating TLS for the user; an account
+on the relay; turning remote access on from a phone; storing anything on the
+relay.
+
 
 ## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
 
@@ -3322,3 +3426,60 @@ paired device's route list.
 **Revisit if:** a listed process turns out to be one a user needed and the
 heuristics cannot tell it apart — narrow the heuristics before widening
 anything.
+
+## ADR-060 — Phone access may stay on across restarts, when the owner ticks it
+
+**Date:** 2026-10-14 · **Status:** accepted
+
+**Context.** The owner (2026-10-14, translated): "Is it normal that we still
+have this feeling that there's no connection with the phone such that you can
+reach it from different networks?" His panel said *Phone access is off — It
+switches off whenever Caprock restarts*, with Tailscale folded under *Then:
+…*, and the only paired device was a Mac last seen 41 days earlier. Two
+things made the phone feel disconnected: every restart (an update, a reboot)
+closed the door until someone at the Mac turned it on again, and the panel did
+not say, until a code was on screen, that "anywhere" needs Tailscale on both
+devices. ADR-029 made the listener deliberately not a stored setting.
+
+**Decision.**
+
+- **A stored opt-in, `lan_keep_on` in `config.json`, off by default.** When
+  true, the daemon turns phone access on at start as `--lan` would. It is set
+  only with `POST /v1/pair/lan {on: true, keep: true}` — the checkbox *Keep
+  on after Caprock restarts*, offered beside **Turn on** and under the panel
+  while access is on — and **turning access off always clears it**: an "off"
+  that comes back at the next start is not off. Existing installs keep
+  ADR-029's behaviour until someone ticks it.
+- **Why that is safe enough.** Only paired devices get in: every `/v1` route
+  but `POST /v1/pair` refuses a request without a device token, codes are
+  issued only from the machine, are six digits, single-use, five minutes and
+  burned after five wrong guesses, and pairing itself is unchanged. What the
+  setting keeps open on the network is the pairing page and the dashboard's
+  static files on one named address (or two: LAN and Tailscale), never the
+  wildcard. The residual risk ADR-029 named — a laptop opened in a coworking
+  space still listening — is that a stranger on that Wi-Fi sees the pairing
+  page and cannot get past it. A Tailscale address is reachable only from the
+  owner's own tailnet.
+- **Where the phone works is said first.** `GET /v1/pair/state` reports
+  `tailscale: true` when the machine has a Tailscale address now (read from
+  the interface list, listened on or not, while access is off too), and the
+  panel leads with *Works on this Wi-Fi only* or *Works anywhere (Tailscale)*.
+  Without Tailscale it gives the one step (install it on this computer and
+  the phone, same account) with the three downloads. The panel polls the
+  state every 5 s while visible, so installing Tailscale flips it without a
+  restart.
+- **Tailscale that appears while access is on is listened on.** `POST
+  /v1/pair/lan {on: true}` while already listening now also opens the
+  Tailscale listener when one is missing, leaving the first listener alone;
+  the panel sends it once when it sees `tailscale` without a Tailscale
+  address. The old "turn phone access off and on" is gone.
+- **A new code prefers the Tailscale address** when there is one and the
+  owner has not picked another: a phone's token is per address, so one paired
+  on the Wi-Fi address works on that Wi-Fi only.
+
+**Rules out:** keep-on by default; keep-on surviving Turn off; any relay in
+this decision (that is ADR-058's question, not this one's).
+
+**Revisit if:** a paired device is ever let in without a token, or the
+unauthenticated surface grows past `POST /v1/pair` and static files — keep-on
+would then be keeping that open too.

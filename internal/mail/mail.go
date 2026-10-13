@@ -23,6 +23,7 @@ import (
 	"github.com/dspv/caprock/internal/mail/engine"
 	store "github.com/dspv/caprock/internal/mail/mailstore"
 	"github.com/dspv/caprock/internal/mail/secrets"
+	"github.com/dspv/caprock/internal/secret"
 )
 
 // Service owns Mail's database and sync engine, both opened on first use.
@@ -31,6 +32,7 @@ type Service struct {
 	log  *slog.Logger
 	sec  secrets.Store
 	demo bool
+	home string // the user's home dir, for importing other clients' accounts
 
 	mu      sync.Mutex
 	st      *store.Store
@@ -66,6 +68,15 @@ func New(dataDir string, log *slog.Logger) *Service {
 }
 
 func (s *Service) dbPath() string { return filepath.Join(s.dir, "mail.db") }
+
+// homeDir is the user's home directory, read once and cached. The account
+// importer reads another mail client's local files under it.
+func (s *Service) homeDir() string {
+	if s.home == "" {
+		s.home = secret.UserHome(context.Background())
+	}
+	return s.home
+}
 
 // open opens the database and starts the engine, once.
 func (s *Service) open() (*store.Store, error) {

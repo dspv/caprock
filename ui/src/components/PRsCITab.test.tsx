@@ -175,7 +175,12 @@ describe('the PRs & CI tab', () => {
     render(<PRsCITab sessionId="s1" session={session} visible={false} onBack={back} />)
     await new Promise((r) => setTimeout(r, 20))
     expect(h.asked).toEqual([])
-    fireEvent.click(document.querySelector('[data-prs-back]')!)
+    // The deck's Expand, turned: Collapse, outlined, with the same key.
+    const collapse = screen.getByRole('button', { name: /^Collapse: back/ })
+    expect(collapse).toHaveAttribute('data-prs-back')
+    expect(collapse).toHaveClass('border-accent/60')
+    expect(collapse).toHaveTextContent(/^Collapse (⇧⌘B|Ctrl\+Alt\+Shift\+B)$/)
+    fireEvent.click(collapse)
     expect(back).toHaveBeenCalledTimes(1)
   })
 })
