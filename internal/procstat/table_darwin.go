@@ -25,6 +25,8 @@ func readProcs(_ context.Context) (map[int32]Proc, error) {
 			Name:    cString(k.Proc.P_comm[:]),
 			UID:     int64(k.Eproc.Ucred.Uid),
 			StartMs: k.Proc.P_starttime.Sec*1000 + int64(k.Proc.P_starttime.Usec)/1000,
+			// NODEV (-1) is no controlling terminal.
+			tty: k.Eproc.Tdev != -1,
 		}
 	}
 	return out, nil
