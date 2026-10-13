@@ -112,6 +112,7 @@ export function TerminalPane({
   composer?: PaneComposer
 }) {
   const host = useRef<HTMLDivElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   const api = useRef<{ show: () => void; hide: () => void; scrollToBottom: () => void; focus: () => void } | null>(null)
   const focusedRef = useRef(focused)
   focusedRef.current = focused
@@ -391,12 +392,23 @@ export function TerminalPane({
     // Without it a phone that typed into the session left the agent drawn
     // 45 columns wide in this pane until its box next changed (Vova,
     // 2026-10-12).
-    const claim = () => { if (visible && document.visibilityState === 'visible') conn.focus() }
+    //
+    // The claim carries the pane's size now, so a PTY left at a phone's size
+    // by a detach the daemon never heard of is put right by looking. Focus
+    // anywhere in the pane counts — the composer too, which types over HTTP
+    // and so never claims on the daemon's side. And out of sight (this tab
+    // behind another, the window hidden, the page going away) gives the PTY
+    // back to a terminal still in sight at once (Vova, 2026-10-13).
+    const claim = () => { if (visible && document.visibilityState === 'visible') conn.focus(term.cols, term.rows) }
+    const away = () => { if (document.visibilityState === 'hidden') conn.blur() }
+    const gone = () => conn.blur()
     window.addEventListener('focus', claim)
     document.addEventListener('visibilitychange', claim)
+    document.addEventListener('visibilitychange', away)
+    window.addEventListener('pagehide', gone)
     el.addEventListener('pointerdown', claim)
-    const textarea = term.textarea
-    textarea?.addEventListener('focus', claim)
+    const wrap = wrapRef.current
+    wrap?.addEventListener('focusin', claim)
 
     // A face finishing its load: measure the cell again, drop the atlas,
     // repaint, and fit to the new cell.
@@ -430,6 +442,7 @@ export function TerminalPane({
       },
       hide: () => {
         visible = false
+        conn.blur()
         if (hideTimer) window.clearTimeout(hideTimer)
         hideTimer = window.setTimeout(() => {
           conn.suspend()
@@ -470,7 +483,9 @@ export function TerminalPane({
       window.removeEventListener('focus', claim)
       document.removeEventListener('visibilitychange', claim)
       el.removeEventListener('pointerdown', claim)
-      textarea?.removeEventListener('focus', claim)
+      document.removeEventListener('visibilitychange', away)
+      window.removeEventListener('pagehide', gone)
+      wrap?.removeEventListener('focusin', claim)
       ro.disconnect()
       dropWebgl()
       input.dispose()
@@ -497,7 +512,7 @@ export function TerminalPane({
   return (
     // One shape with the composer or without it (the header): the inner box
     // fills the outer exactly when there is none.
-    <div className="relative flex h-full w-full flex-col bg-term-bg">
+    <div ref={wrapRef} className="relative flex h-full w-full flex-col bg-term-bg">
     <div className="relative min-h-0 w-full flex-1">
       {/* The padding is on a wrapper: FitAddon measures the host's parent box. */}
       <div className="absolute inset-0 pl-3 pt-2 pr-1 pb-1">

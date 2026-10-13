@@ -73,6 +73,21 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — unreleased: a phone put away gives the PTY back
+
+Vova again: with a session open on the laptop and then on the phone, the
+laptop's terminal shrank to the phone's width and stayed there after the
+phone was closed, until the session was reopened. The 0.111.1 rule held only
+while the phone's socket lived, and a phone put away does not close it: a
+frozen page is taken for dead after 25–35 s, and a browser that keeps
+answering pings in the background never is. A terminal going out of sight now
+says `{"blur":true}` (visibility hidden, `pagehide`, an app tab hidden), and
+the daemon hands the PTY at once to the terminal in sight used most recently,
+which also becomes the owner, so the phone reconnecting on unlock does not
+take it back. Every desktop claim re-sends the terminal's size, and focus in
+the app pane's composer claims too. Tests: `internal/api/termsize_test.go`,
+`ui/src/lib/termv2.test.ts`, `Terminal.test.tsx`, `TerminalPane.test.tsx`.
+
 ### 2026-10-13 — 0.112.4: the model on its own line
 
 The cockpit's agent row is name / model / state, so a wide figure at the
