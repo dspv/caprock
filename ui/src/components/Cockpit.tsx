@@ -12,7 +12,7 @@
  * figure an agent does not report is left out rather than drawn as a zero.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
-import { api, type Event, type Permission, type RateWindow, type SessionSummary, type SubagentsNow, type Summary } from '@/lib/api'
+import { api, type Event, type Permission, type RateWindow, type SessionSummary, type Subagent, type SubagentsNow, type Summary } from '@/lib/api'
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
 import { useSessionEvents } from '@/lib/sessionEvents'
@@ -34,7 +34,7 @@ import { PermissionModeChip } from './PermissionModeChip'
 import { KindIcon } from './KindIcon'
 import { SubagentDetail } from './SubagentDetail'
 import {
-  askLine, backgroundAgents, chipGroups, chipGroupsThatFit, subagentChips, CHIP_GROUP, MAX_SUBAGENT_CHIPS, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns,
+  askLine, backgroundAgents, chipGroups, chipGroupsThatFit, subagentChips, subagentDoing, subagentInitial, subagentTone, CHIP_GROUP, MAX_SUBAGENT_CHIPS, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns,
   type CockpitState, type SubagentChip, type ToolRun,
 } from '@/lib/cockpit'
 
@@ -726,12 +726,12 @@ function NowDoing({ s, state, running, last, permission, background, now }: {
 }
 
 /**
- * The subagents at work, one compact row each: a dot that pulses while its
- * call runs, its type and what the parent asked of it, its model and how
- * long it has worked; its current call and how long that has run, how many
- * calls it has made and what it has cost; a badge while it waits on a
- * permission prompt. Those that finished lately are one muted line each:
- * model, time, cost; "+N finished" opens the rest. A cost is shown only when
+ * The subagents at work, one compact row each (WorkingSubagentRow): its
+ * type's letter, pulsing while it works, what it is doing now, its calls and
+ * cost; under it its current tool, its model and how long it has worked; a
+ * badge while it waits on a permission prompt. Those that finished lately
+ * are one muted line each: the letter, the task, model, time, cost; "+N
+ * finished" opens the rest. A cost is shown only when
  * the daemon knows it — never a $0 standing in for unknown.
  *
  * Every row opens in place, one at a time (owner, 2026-10-12: "can we expand
@@ -786,43 +786,12 @@ function Subagents({ subs, permission, now, sessionId, open, onOpen, allFinished
       {shown.length > 0 && (
         <ul aria-label="Working subagents" className="grid gap-1">
           {shown.map((a) => {
-            const waiting = subagentWaiting(a, permission)
-            const tool = a.tool?.replace(/^mcp__(.+?)__/, '$1·') ?? ''
-            const since = a.running && a.tool_at ? fmtRun(Math.max(0, now - a.tool_at)) : ''
             const isOpen = open === a.agent_id
             const panel = `subagent-${a.agent_id}`
+            const waiting = subagentWaiting(a, permission)
             return (
               <li key={a.agent_id} data-subagent={a.agent_id} className="grid rounded-[8px] border border-[var(--app-hairline)]" data-waiting={waiting ? 'true' : undefined} data-open={isOpen ? 'true' : undefined}>
-                <button type="button" onClick={() => toggle(a.agent_id)} aria-expanded={isOpen} aria-controls={isOpen ? panel : undefined}
-                  className="grid gap-0.5 rounded-[8px] px-2 py-1.5 text-left outline-none hover:bg-[var(--app-row-hover)] focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
-                  title={[a.agent_type, a.description, a.tool && `${a.tool}${a.detail ? ` ${a.detail}` : ''}`].filter(Boolean).join(' — ')}>
-                  <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
-                    <span aria-hidden className={`grid h-[12px] w-[12px] shrink-0 place-items-center`}>
-                      <span className={`h-[6px] w-[6px] rounded-full ${waiting ? 'bg-accent' : 'bg-ok'} ${a.running && !waiting ? 'animate-pulse' : ''}`} />
-                    </span>
-                    <span className="shrink-0 font-medium text-fg">{a.agent_type || 'subagent'}</span>
-                    {a.description && <span className="min-w-0 truncate text-fg-muted">· {a.description}</span>}
-                    {waiting
-                      ? <span className="ml-auto shrink-0 rounded-[4px] bg-accent/15 px-1.5 text-[10.5px] font-medium text-accent">waiting on you</span>
-                      : <span className="num ml-auto shrink-0 text-[11px] text-fg-faint">{[a.model_display, a.started_at ? fmtRun(Math.max(0, now - a.started_at)) : ''].filter(Boolean).join(' · ')}</span>}
-                    <Chevron open={isOpen} />
-                  </span>
-                  <span className="grid grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-1.5 text-[11.5px]">
-                    {a.tool ? <span className={a.running ? 'text-ok' : 'text-fg-faint'}><KindIcon kind={toolKind(a.tool)} size={12} /></span> : <span />}
-                    <span className="min-w-0 truncate">
-                      {a.tool ? (
-                        <>
-                          <span className={a.running ? 'text-fg' : 'text-fg-muted'}>{tool}</span>
-                          {a.detail && <span className="mono ml-1 text-[11px] text-fg-muted">{a.detail}</span>}
-                        </>
-                      ) : <span className="text-fg-faint">starting</span>}
-                    </span>
-                    <span className="num text-[11px] text-fg-faint">
-                      {since && <span className="text-ok">{since} · </span>}{a.tool_calls} {a.tool_calls === 1 ? 'call' : 'calls'}
-                      {typeof a.cost_usd === 'number' && <span className="text-fg-muted"> · {fmtUSD(a.cost_usd)}</span>}
-                    </span>
-                  </span>
-                </button>
+                <WorkingSubagentRow a={a} waiting={waiting} now={now} open={isOpen} panel={panel} onToggle={() => toggle(a.agent_id)} />
                 {isOpen && <SubagentDetail id={panel} sessionId={sessionId} agentId={a.agent_id} now={now} />}
               </li>
             )
@@ -845,9 +814,8 @@ function Subagents({ subs, permission, now, sessionId, open, onOpen, allFinished
                 <button type="button" onClick={() => toggle(d.agent_id)} aria-expanded={isOpen} aria-controls={isOpen ? panel : undefined}
                   className="flex min-w-0 items-center gap-1.5 rounded-[8px] px-2 py-[3px] text-left text-[11.5px] text-fg-faint outline-none hover:bg-[var(--app-row-hover)] focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
                   title={[d.agent_type, d.description].filter(Boolean).join(' — ')}>
-                  <span aria-hidden className="grid h-[12px] w-[12px] shrink-0 place-items-center"><span className="h-[6px] w-[6px] rounded-full border border-fg-faint" /></span>
-                  <span className="shrink-0 text-fg-muted">{d.agent_type || 'subagent'}</span>
-                  {d.description && <span className="min-w-0 truncate">· {d.description}</span>}
+                  <TypeChip type={d.agent_type} state="done" />
+                  {d.description && <span className="min-w-0 truncate">{d.description}</span>}
                   <span className="num ml-auto shrink-0">
                     {[d.model_display, d.stopped_at > d.started_at ? fmtRun(d.stopped_at - d.started_at) : '', typeof d.cost_usd === 'number' ? fmtUSD(d.cost_usd) : ''].filter(Boolean).join(' · ')}
                   </span>
@@ -860,6 +828,79 @@ function Subagents({ subs, permission, now, sessionId, open, onOpen, allFinished
         </ul>
       )}
     </section>
+  )
+}
+
+/**
+ * A subagent's type as one letter in its tint — the hero strip's chip, so a
+ * row and its chip read as the same agent; the full type on hover.
+ */
+function TypeChip({ type, state }: { type?: string; state: 'working' | 'waiting' | 'done' }) {
+  const name = type || 'subagent'
+  return (
+    <span title={name} aria-label={name} data-state={state} data-tone={subagentTone(type)}
+      className="cockpit-subchip num relative grid h-[16px] w-[16px] shrink-0 place-items-center rounded-[4px] text-[9.5px] font-semibold">
+      {subagentInitial(type)}
+    </span>
+  )
+}
+
+/**
+ * One working subagent: its type as a letter, then what it is doing now in
+ * words (`subagentDoing`: the call's own description, its tool and target,
+ * or its task — Claude Code's own activity line is not written anywhere to
+ * read), how many calls it has made and what it has cost; under it, dimmer,
+ * its current tool and how long that has run, its model and how long it has
+ * worked. The raw command or file is left out when the phrase already says
+ * it (owner, 2026-10-13: picked over a layout that kept it under the phrase).
+ */
+function WorkingSubagentRow({ a, waiting, now, open, panel, onToggle }: {
+  a: Subagent
+  waiting: boolean
+  now: number
+  open: boolean
+  panel: string
+  onToggle: () => void
+}) {
+  const doing = subagentDoing(a)
+  const tool = a.tool?.replace(/^mcp__(.+?)__/, '$1·') ?? ''
+  const since = a.running && a.tool_at ? fmtRun(Math.max(0, now - a.tool_at)) : ''
+  const model = [a.model_display, a.started_at ? fmtRun(Math.max(0, now - a.started_at)) : ''].filter(Boolean).join(' · ')
+  const calls = (
+    <>
+      {a.tool_calls} {a.tool_calls === 1 ? 'call' : 'calls'}
+      {typeof a.cost_usd === 'number' && <> · {fmtUSD(a.cost_usd)}</>}
+    </>
+  )
+  // The raw line is left out when the phrase already says it: the call's own
+  // description, or a phrase that names the same file or pattern.
+  const showDetail = doing.from !== 'call' && !(a.detail && doing.text.includes(a.detail))
+  return (
+    <button type="button" onClick={onToggle} aria-expanded={open} aria-controls={open ? panel : undefined}
+      className="grid gap-0.5 rounded-[8px] px-2 py-1.5 text-left outline-none hover:bg-[var(--app-row-hover)] focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
+      title={[a.agent_type, a.description, a.tool && `${a.tool}${a.detail ? ` ${a.detail}` : ''}`].filter(Boolean).join(' — ')}>
+      <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
+        <TypeChip type={a.agent_type} state={waiting ? 'waiting' : 'working'} />
+        <span data-doing={doing.from || undefined} className={`min-w-0 truncate ${doing.text ? 'text-fg' : 'text-fg-faint'}`}>{doing.text || 'starting'}</span>
+        {waiting
+          ? <span className="ml-auto shrink-0 rounded-[4px] bg-accent/15 px-1.5 text-[10.5px] font-medium text-accent">waiting on you</span>
+          : <span className="num ml-auto shrink-0 pl-1 text-[11px] text-fg-faint">{calls}</span>}
+        <Chevron open={open} />
+      </span>
+      <span className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5 text-[11px] text-fg-faint">
+        {a.tool ? <span className={`grid place-items-center ${a.running ? 'text-ok' : ''}`}><KindIcon kind={toolKind(a.tool)} size={11} /></span> : <span />}
+        <span className="min-w-0 truncate">
+          {a.tool && (
+            <>
+              <span className="text-fg-muted">{tool}</span>
+              {showDetail && a.detail && <span className="mono ml-1 text-[10.5px]">{a.detail}</span>}
+              {since && <span className="num ml-1 text-ok">{since}</span>}
+            </>
+          )}
+        </span>
+        <span className="num">{model}</span>
+      </span>
+    </button>
   )
 }
 

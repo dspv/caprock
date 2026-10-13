@@ -19,6 +19,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **daemon:** the resource meter counts the app's window: on macOS the
   WebKit helpers that draw it (hundreds of MB that belonged to no one
   before), elsewhere the app's child processes.
+- **app:** each subagent row in the cockpit says what the subagent is doing
+  now in words — the description Claude wrote for its latest command
+  ("Rerun the store tests"), else its tool and target ("Editing
+  Cockpit.tsx"), else its task — after its type as a letter chip (G, E, P,
+  the full type on hover), with calls and cost beside it; the dimmer line
+  under it shows the raw command only when the phrase does not already say
+  it.
+  `GET /v1/sessions/{id}/subagents` carries the phrase as `doing` and
+  `doing_from`.
 
 ### Changed
 

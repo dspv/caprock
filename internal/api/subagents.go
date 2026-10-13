@@ -23,11 +23,17 @@ type SubagentNow struct {
 	LastAt      int64  `json:"last_at"`
 	// Tool and Detail are its newest call — the file, command, pattern or
 	// URL on one short line — and ToolAt when it started (unix ms).
-	Tool    string `json:"tool,omitempty"`
-	Detail  string `json:"detail,omitempty"`
-	ToolAt  int64  `json:"tool_at,omitempty"`
-	Running bool   `json:"running"`
-	Asking  bool   `json:"asking"`
+	Tool   string `json:"tool,omitempty"`
+	Detail string `json:"detail,omitempty"`
+	ToolAt int64  `json:"tool_at,omitempty"`
+	// Doing is roughly what it is doing now, at most 60 runes (subagentDoing),
+	// and DoingFrom where that came from: "call" (its newest call's own
+	// description), "tool" (its tool and target) or "task" (what it was
+	// spawned to do). Both omitted when none of them says anything.
+	Doing     string `json:"doing,omitempty"`
+	DoingFrom string `json:"doing_from,omitempty"`
+	Running   bool   `json:"running"`
+	Asking    bool   `json:"asking"`
 	SubagentModel
 }
 
@@ -126,10 +132,12 @@ func (s *Server) handleSessionSubagents(w http.ResponseWriter, r *http.Request) 
 		})
 	}
 	for _, a := range list {
+		doing, from := subagentDoing(a.Tool, a.Input, a.Description)
 		resp.Working = append(resp.Working, SubagentNow{
 			AgentID: a.AgentID, AgentType: a.AgentType, Description: oneLine(a.Description, 120),
 			ToolCalls: a.ToolCalls, StartedAt: a.StartedAt, LastAt: a.LastAt,
 			Tool: a.Tool, Detail: callDetail(a.Tool, a.Input), ToolAt: a.ToolAt,
+			Doing: doing, DoingFrom: from,
 			Running: a.Running, Asking: a.Asking, SubagentModel: model(a.AgentID),
 		})
 	}

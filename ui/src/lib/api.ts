@@ -1649,6 +1649,14 @@ export interface Subagent {
   tool?: string
   detail?: string
   tool_at?: number
+  /**
+   * Roughly what it is doing now, at most 60 characters, and where that came
+   * from: its newest call's own description ("call"), its tool and target
+   * ("tool", "Editing Cockpit.tsx") or the task it was spawned with ("task").
+   * Absent when none says anything, and from a daemon that predates it.
+   */
+  doing?: string
+  doing_from?: 'call' | 'tool' | 'task'
   /** That call has no result yet. */
   running: boolean
   /** Its newest event is a permission prompt. */
