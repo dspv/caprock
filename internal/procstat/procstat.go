@@ -170,6 +170,16 @@ func Cmdline(ctx context.Context, pid int32) []string {
 	return args
 }
 
+// Exe is the absolute path of a process's executable as the OS reports it
+// (symlinks resolved on macOS and Linux); "" when it cannot be read.
+func Exe(ctx context.Context, pid int32) string {
+	exe, err := (&process.Process{Pid: pid}).ExeWithContext(ctx)
+	if err != nil {
+		return ""
+	}
+	return exe
+}
+
 // Environ is a process's environment; nil when it cannot be read.
 func Environ(ctx context.Context, pid int32) []string {
 	env, err := (&process.Process{Pid: pid}).EnvironWithContext(ctx)

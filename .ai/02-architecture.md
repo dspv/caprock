@@ -269,14 +269,17 @@ install — nobody is expected to run anything by hand — and touches nothing t
 exists nowhere else and is still of use: prose, prompts, costs and stats live in
 the database and are kept for as long as `retention_days` says (forever by
 default). Each automatic sweep that removes anything logs one INFO line saying
-what and how many bytes it freed.
+what and how many bytes it freed, and is listed in the footprint's `actions`
+(`caprock doctor`).
 
 - **Tool output is bounded as it is written**, not cleaned later: images and
   base64 become markers, long text is clipped ([03-contracts.md § Hook
   payload](03-contracts.md#hook-payload-what-the-shim-forwards-verbatim)). The
   full output is still in the agent's own transcript.
 - **The WAL shrinks after a big transaction**: `journal_size_limit` (64 MiB) is
-  set on every connection when the database is opened.
+  set on every connection when the database is opened, and a WAL over 256 MiB
+  is checkpointed and truncated on its own ([03-contracts.md §
+  Footprint](03-contracts.md#footprint)).
 - **Events older than `retention_days`**, when the user sets it: deleted at
   start and every six hours (`pruneLoop`). Off by default.
 - **The data-directory sweep** runs at most once a day, only after the daemon

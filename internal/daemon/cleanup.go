@@ -69,6 +69,25 @@ type sweepResult struct {
 
 func (r sweepResult) removed() int { return r.Paste + r.Chats + r.Gemini + r.Logs }
 
+// sweepAction is the footprint's line for a sweep that removed something
+// (actions.go): what went, and how much it freed.
+func sweepAction(r sweepResult) string {
+	var what []string
+	if r.Paste > 0 {
+		what = append(what, plural(r.Paste, "pasted file")+" older than 30 days")
+	}
+	if r.Chats > 0 {
+		what = append(what, plural(r.Chats, "empty chat folder"))
+	}
+	if r.Gemini > 0 {
+		what = append(what, plural(r.Gemini, "Gemini telemetry file")+" of sessions ended over 30 days ago")
+	}
+	if r.Logs > 0 {
+		what = append(what, plural(r.Logs, "unused log"))
+	}
+	return "removed " + joinAnd(what) + " (" + Bytes(uint64(max(r.Bytes, 0))) + " freed)"
+}
+
 // sweepDataDir applies the cleanup rules to dataDir as of now.
 func sweepDataDir(ctx context.Context, dataDir string, now time.Time, look sweepLookup) sweepResult {
 	var r sweepResult
@@ -237,6 +256,7 @@ func (d *Daemon) idleLoop(ctx context.Context) {
 			swept = now
 			r := sweepDataDir(ctx, d.opt.DataDir, now, storeLookup{d.store})
 			if r.removed() > 0 {
+				d.actions.add(sweepAction(r))
 				d.log.Info("data directory swept", "component", "daemon",
 					"paste", r.Paste, "empty_chats", r.Chats, "gemini_logs", r.Gemini, "stale_logs", r.Logs, "freed_bytes", r.Bytes)
 			}

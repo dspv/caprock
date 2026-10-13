@@ -69,6 +69,14 @@ func TestClassify(t *testing.T) {
 			t.Errorf("host %d: ours=%v", v.PID, v.Ours)
 		}
 	}
+	// Abandoned: the registry directory itself is gone, so no daemon can
+	// ever attach. A live install's directory (201) is not abandoned.
+	abandoned := map[int32]bool{103: true, 104: true, 105: true, 203: true}
+	for _, v := range got {
+		if v.Abandoned != abandoned[v.PID] {
+			t.Errorf("host %d: abandoned=%v", v.PID, v.Abandoned)
+		}
+	}
 	if len(got) != len(hosts) {
 		t.Fatalf("got %d verdicts for %d hosts", len(got), len(hosts))
 	}

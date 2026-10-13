@@ -170,3 +170,13 @@ func TestStorageIsMeasuredOnlyWhenStale(t *testing.T) {
 		t.Fatal("a second measurement was started beside the running one")
 	}
 }
+
+// A sweep that removed something is said in the footprint's actions, with
+// what went and how much it freed.
+func TestSweepActionSaysWhatWentAndWhatItFreed(t *testing.T) {
+	got := sweepAction(sweepResult{Paste: 3, Chats: 1, Logs: 1, Bytes: 5 << 20})
+	want := "removed 3 pasted files older than 30 days, 1 empty chat folder and 1 unused log (5 MB freed)"
+	if got != want {
+		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+}

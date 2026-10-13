@@ -118,6 +118,8 @@ export class TermClient {
   /** A claim on the PTY's size (`focus`) waits to be sent: debounced, or until a socket opens. */
   private focusPending = false
   private focusTimer: ReturnType<typeof setTimeout> | undefined
+  /** The terminal's size at the latest claim, sent with it. */
+  private focusSize: { cols: number; rows: number } | undefined
 
   constructor(private readonly opts: TermOptions) {
     this.random = opts.random ?? Math.random
@@ -174,6 +176,7 @@ export class TermClient {
     if (this.focusPending && this.isV2(ws)) {
       // A claim waiting for this socket goes with its first size: one repaint, not two.
       this.focusPending = false
+      this.focusSize = undefined
       ws.send(JSON.stringify({ resize: { cols, rows }, focus: true }))
       return
     }
@@ -189,17 +192,42 @@ export class TermClient {
    * made while no socket is open goes with the next one's first size. The
    * daemon does nothing when this terminal already has the PTY.
    */
-  focus(): void {
+  focus(cols?: number, rows?: number): void {
     if (this.ended || this.disposed) return
     this.focusPending = true
+    // The size the terminal has now goes with the claim, so a PTY left at
+    // another terminal's size (a detach the daemon never heard of) is put
+    // right by looking, not only by this terminal's box changing.
+    if (cols && rows && cols > 0 && rows > 0) this.focusSize = { cols, rows }
     if (this.focusTimer !== undefined) return
     this.focusTimer = setTimeout(() => {
       this.focusTimer = undefined
       const ws = this.ws
       if (!this.focusPending || !ws || ws.readyState !== WebSocket.OPEN || !this.isV2(ws)) return
       this.focusPending = false
-      ws.send(JSON.stringify({ focus: true }))
+      const size = this.focusSize
+      this.focusSize = undefined
+      ws.send(JSON.stringify(size ? { resize: size, focus: true } : { focus: true }))
     }, FOCUS_DEBOUNCE_MS)
+  }
+
+  /**
+   * This terminal went out of sight — its page was hidden, a phone locked or
+   * went to the background, an app tab went behind another: when it has the
+   * PTY, the daemon gives it at once to a terminal still in sight
+   * (`{"blur":true}`, internal/api/termsize.go), rather than when the socket
+   * is finally taken for dead, which for a phone whose browser keeps
+   * answering in the background is never. A claim still waiting is dropped.
+   */
+  blur(): void {
+    clearTimeout(this.focusTimer)
+    this.focusTimer = undefined
+    this.focusPending = false
+    this.focusSize = undefined
+    if (this.ended || this.disposed) return
+    const ws = this.ws
+    if (!ws || ws.readyState !== WebSocket.OPEN || !this.isV2(ws)) return
+    ws.send(JSON.stringify({ blur: true }))
   }
 
   /**

@@ -81,9 +81,13 @@ type termControl struct {
 	// Focus says the person is looking at this terminal (its window gained
 	// focus, its tab came to the front, a click in it): it becomes the one
 	// in use and the PTY takes its size (termsize.go).
-	Focus bool   `json:"focus"`
-	Ping  *int64 `json:"ping"`
-	Pong  *int64 `json:"pong"`
+	Focus bool `json:"focus"`
+	// Blur says this terminal went out of sight (its page hidden, a phone
+	// locked or in the background, an app tab behind another): when it is
+	// the one in use, the PTY goes back to a terminal in sight (termsize.go).
+	Blur bool   `json:"blur"`
+	Ping *int64 `json:"ping"`
+	Pong *int64 `json:"pong"`
 }
 
 // outputFrame is a binary frame: the 8-byte big-endian offset of its first
@@ -323,6 +327,10 @@ func (t *termConn) read(s *Server, id, client string, ts TermStream, devTok stri
 				s.sizes.size(t.size, m.Resize.Cols, m.Resize.Rows, m.Focus)
 			} else if m.Focus {
 				s.sizes.claim(t.size)
+			}
+			if m.Blur && !m.Focus {
+				// Out of sight: the PTY goes back to a terminal in sight.
+				s.sizes.release(t.size)
 			}
 			if m.Ping != nil {
 				_ = t.text(map[string]int64{"pong": *m.Ping})

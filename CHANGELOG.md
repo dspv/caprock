@@ -7,8 +7,34 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **cli:** `caprock doctor` says what Caprock costs this machine — memory and
+  CPU of the daemon, the app, the app's window and the terminal holders; the
+  data directory split into database, pastes, logs and binaries; the
+  daemon's disk reads and writes over the last minute and hour — flags a
+  second daemon, a second app, orphaned terminals, a database over 2 GB and
+  heavy disk reads, and exits 1 when something is flagged. `--json` prints
+  the new `GET /v1/footprint`. It works with no daemon running.
+- **daemon:** the resource meter counts the app's window: on macOS the
+  WebKit helpers that draw it (hundreds of MB that belonged to no one
+  before), elsewhere the app's child processes.
+- **daemon:** any database statement slower than 300 ms is logged with the
+  code that ran it, so a slow screen or a burst of disk reads names its cause.
+
 ### Changed
 
+- **daemon:** one daemon per data directory. A second one waits 5 s for a
+  restarting one, then exits naming the pid of the one that runs.
+- **daemon:** the automatic orphan sweep runs every 10 minutes and stops
+  every orphaned terminal holding only an idle shell, whichever Caprock
+  started it — eleven left by deleted preview stands survived every hourly
+  sweep before. A write-ahead log over 256 MB is checkpointed on its own.
+  Both are listed in the footprint's `actions` with their time.
+- **app:** the cockpit's figures beside the agent open on burn rate, big,
+  with tokens and cost under it — what a session is doing now first, what it
+  has added up to under it. A choice someone made stays; one that was only
+  ever the old cost-first default takes the new one.
 - **store:** tool calls are stored the way the screens read them. A hook's
   tool input and output now go through the same cap as the transcript's:
   screenshots and other base64 become a marker naming their type and size,
@@ -20,16 +46,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   when the panel finds them a day old, or once a day while nothing is
   running, instead of a full read of the database every 30 minutes; a start
   no longer pre-computes the share dialog's 30-day and all-time Weeks; and
-  the write-ahead log shrinks back after a big write.
+  the write-ahead log shrinks back to 64 MB after a big write.
 - **daemon:** old leftovers are cleaned up on their own, once a day while
   idle: pasted and dropped files after 30 days, empty quick-chat folders no
   session used, Gemini telemetry of sessions ended over 30 days ago, and the
-  unused `launchd.log`. Each sweep logs what it removed and how many bytes.
+  unused `launchd.log`. Each sweep logs what it removed and how many bytes,
+  and is listed in the footprint's `actions`.
 
-### Added
+### Fixed
 
-- **daemon:** any database statement slower than 300 ms is logged with the
-  code that ran it, so a slow screen or a burst of disk reads names its cause.
+- **app:** the spend chart's hovered bar shows its own figure in full. While
+  a bar is hovered (or stepped to with ←/→) its cost takes the big figure's
+  place with a short date beside it (*$287.12 Sun 11 Oct · 06–12*, *of
+  $1,299.44* at the right); leaving the chart puts the total back. In a
+  330px cockpit the figure used to be the part cut off.
+- **terminal:** a phone put away gives the PTY back at once. With a session
+  open on the desktop and a phone, the desktop's terminal shrank to the
+  phone's width and stayed so after the phone was locked or closed, until
+  the session was reopened. A terminal going out of sight now says so and the
+  daemon returns the PTY to the terminal still in sight, at its size; the
+  desktop also re-sends its size whenever it is focused or shown, and
+  focusing the composer counts as using the session.
 
 ## [0.112.4] - 2026-10-13
 

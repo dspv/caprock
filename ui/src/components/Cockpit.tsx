@@ -376,7 +376,7 @@ function HeroMenu({ slot, hero, figures, label, onPick }: { slot: number; hero: 
 }
 
 /**
- * The headline figure beside the agent, and what it is: cost by default, or
+ * The headline figure beside the agent, and what it is: burn rate by default, or
  * whatever the viewer picked from the ▾, remembered per viewer (owner,
  * 2026-10-12: "the number is cool but says nothing; let me switch what
  * matters more to me").
@@ -414,7 +414,7 @@ function HeadlineFigure({ figures }: { figures: SpendFigures }) {
  * the value, then a short word for it and a ▾ (*$4.08/h burn ▾*, *4.01B
  * tok ▾*). Moved under the agent, they stand side by side on a row of
  * their own, or stacked at the right of the subagent chips. Each line is its own chooser over the same metrics as the
- * headline, swapping rather than repeating; burn rate and tokens until a
+ * headline, swapping rather than repeating; tokens and cost until a
  * viewer picks, remembered per viewer.
  */
 function HeroSecondaries({ figures }: { figures: SpendFigures }) {

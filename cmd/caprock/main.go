@@ -44,6 +44,10 @@ func main() {
 	disclaim.Main()
 	disclaim.Enable()
 	if err := newRoot().Execute(); err != nil {
+		var ec exitCodeError
+		if errors.As(err, &ec) {
+			os.Exit(ec.code)
+		}
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
@@ -58,7 +62,7 @@ func newRoot() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version.Version,
 	}
-	root.AddCommand(upCmd(), downCmd(), statusCmd(), reportCmd(), exportCmd(), sessionsCmd(), tasksCmd(), taskCmd(), hooksCmd(), hookCmd(), statuslineCmd(), licenseCmd(), serviceCmd(), versionCmd(), ptyHostCmd(), worktreeSetupCmd())
+	root.AddCommand(upCmd(), downCmd(), statusCmd(), reportCmd(), exportCmd(), sessionsCmd(), tasksCmd(), taskCmd(), hooksCmd(), hookCmd(), statuslineCmd(), licenseCmd(), serviceCmd(), versionCmd(), ptyHostCmd(), worktreeSetupCmd(), doctorCmd())
 	return root
 }
 
@@ -231,6 +235,11 @@ func lastLogError(logPath string) string {
 	for i := len(lines) - 1; i >= 0 && i >= len(lines)-40; i-- {
 		l := strings.TrimSpace(lines[i])
 		low := strings.ToLower(l)
+		if strings.Contains(low, "already running for this data directory") {
+			// The data directory's lock (daemon.AlreadyRunningError): the
+			// line names the pid, which is all there is to say.
+			return strings.TrimPrefix(l, "error: ")
+		}
 		if strings.Contains(low, "address already in use") || strings.Contains(low, "bind:") {
 			return "port 127.0.0.1 is already in use — another caprock may be running (try `caprock status`, or `caprock down`), or pass `--port <n>`"
 		}

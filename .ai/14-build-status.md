@@ -94,6 +94,40 @@ cleanup](02-architecture.md#retention-and-cleanup)). Not done: rewriting the
 rows stored before the cap — their payloads still cost a full read whenever
 a whole-history scan touches them.
 
+### 2026-10-13 — unreleased: `caprock doctor` and what Caprock costs this machine
+
+`GET /v1/footprint` and `caprock doctor` ([03-contracts.md § Footprint](03-contracts.md#footprint)):
+memory and CPU of the daemon, the app, the app's window (macOS WebKit
+helpers found through `responsibility_get_pid_responsible_for_pid`; the
+owner's measured 290–360 MB WebContent + 60–70 MB GPU + 14 MB Networking
+were uncounted) and the holders; the data directory split; the daemon's own
+disk I/O from a 60-reading in-memory ring; other daemons, extra apps and
+holders from another install; verdicts; and the log of what the daemon did
+on its own. One daemon per data directory (`caprock.lock`). The orphan sweep
+now stops every reapable holder every 10 minutes: the owner's 11 orphans
+were idle shells whose registry was a deleted preview stand's `$TMPDIR`
+data directory, skipped because the sweep took only its own directory's. A
+WAL over 256 MiB is checkpointed on its own. The per-event "model not in
+pricing table" flood (46,652 lines on 2026-09-27/29) had already been cut to
+once per model in #99; a test now pins it. Verified on a preview daemon (temp
+HOME and data dir, spare port; stopped before its first sweep) and with
+`caprock doctor` against the owner's running install, read-only.
+
+### 2026-10-13 — unreleased: a phone put away gives the PTY back
+
+Vova again: with a session open on the laptop and then on the phone, the
+laptop's terminal shrank to the phone's width and stayed there after the
+phone was closed, until the session was reopened. The 0.111.1 rule held only
+while the phone's socket lived, and a phone put away does not close it: a
+frozen page is taken for dead after 25–35 s, and a browser that keeps
+answering pings in the background never is. A terminal going out of sight now
+says `{"blur":true}` (visibility hidden, `pagehide`, an app tab hidden), and
+the daemon hands the PTY at once to the terminal in sight used most recently,
+which also becomes the owner, so the phone reconnecting on unlock does not
+take it back. Every desktop claim re-sends the terminal's size, and focus in
+the app pane's composer claims too. Tests: `internal/api/termsize_test.go`,
+`ui/src/lib/termv2.test.ts`, `Terminal.test.tsx`, `TerminalPane.test.tsx`.
+
 ### 2026-10-13 — 0.112.4: the model on its own line
 
 The cockpit's agent row is name / model / state, so a wide figure at the

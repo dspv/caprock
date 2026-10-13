@@ -61,10 +61,13 @@ type Verdict struct {
 	// Reap is true for "dead" and "unreachable-idle": the two a reap stops.
 	Reap bool `json:"reap"`
 	// Ours is set when the holder registered in this daemon's own registry
-	// directory (whether or not it is still listed there). The daemon's own
-	// hourly sweep stops only these; holders of another install wait for
-	// someone to press the button.
+	// directory (whether or not it is still listed there).
 	Ours bool `json:"ours"`
+	// Abandoned is set when the registry directory the holder registered in
+	// no longer exists: the Caprock that started it was deleted (a preview
+	// or test stand in a temporary directory, a removed install), so no
+	// daemon anywhere can attach to it.
+	Abandoned bool `json:"abandoned"`
 	// Child names the child, when there is one.
 	Child string `json:"child,omitempty"`
 }
@@ -154,6 +157,7 @@ func Classify(hosts []HostProc, ownDir string, now time.Time) []Verdict {
 				v.State = "foreign"
 				break
 			}
+			v.Abandoned = !exists
 			v.State = unreachable(h.Children)
 		}
 		v.Reap = v.State == "dead" || v.State == "unreachable-idle"

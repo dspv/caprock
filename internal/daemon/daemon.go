@@ -202,6 +202,14 @@ type Daemon struct {
 	activity atomic.Int64
 	// res is the resource meter (resources.go).
 	res *resourceMeter
+	// io is the last hour of the daemon's own disk I/O (footprint_io.go).
+	io *ioRing
+	// actions is what the daemon did about its own footprint on its own
+	// (actions.go).
+	actions *actionLog
+	// unlock releases <data_dir>/caprock.lock, the one-daemon-per-data-
+	// directory lock (lock.go).
+	unlock func()
 
 	// cap is the daily spend guard. Nil until run() builds it, because it needs
 	// the owned-session manager.
@@ -307,6 +315,18 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 	if err := os.MkdirAll(opt.DataDir, 0o700); err != nil {
 		return nil, err
 	}
+	// One daemon per data directory, held before the database is opened: two
+	// daemons on one database double-record every transcript line.
+	unlock, err := acquireDataDirLock(opt.DataDir, log)
+	if err != nil {
+		return nil, err
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			unlock()
+		}
+	}()
 	st, err := store.Open(ctx, config.DBPath(opt.DataDir), log)
 	if err != nil {
 		return nil, fmt.Errorf("open store: %w", err)
@@ -356,10 +376,14 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 	rec.SubscriptionOf = func(p string) string { return subs.Of(dataDir, p) }
 	det := loop.New(opt.Config.LoopK, time.Duration(opt.Config.LoopTMinutes)*time.Minute)
 	d := &Daemon{opt: opt, log: log, store: st, bus: b, table: table, rec: rec, det: det, alerts: map[string]*loop.Alert{}, start: time.Now(), upd: update.New(), res: newResourceMeter()}
+	d.io, d.unlock, d.actions = newIORing(d.start), unlock, newActionLog()
+	ok = true
 	return d, nil
 }
 
 func (d *Daemon) run(ctx context.Context) error {
+	// Deferred first, so it runs last: the lock outlives the database.
+	defer d.unlock()
 	defer d.store.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -570,7 +594,8 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, WindowStop: d.windowStopStatus,
-		Resources:   d.resources,
+		Resources:   func(ctx context.Context) any { return d.resources(ctx) },
+		Footprint:   func(ctx context.Context) any { return d.footprint(ctx) },
 		KeepAwake:   d.keepAwakeStatus,
 		ReapOrphans: func(ctx context.Context) (any, error) { return d.reapOrphans(ctx, true) },
 		RateLimitsRecorded: func(ctx context.Context) {
@@ -730,6 +755,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.activity.Store(time.Now().UnixMilli())
 	go d.idleLoop(ctx)
 	go d.resourceLoop(ctx)
+	go d.ioLoop(ctx)
 	if d.config().RetentionDays > 0 {
 		go d.pruneLoop(ctx)
 	}
