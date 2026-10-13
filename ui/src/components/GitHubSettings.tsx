@@ -18,6 +18,15 @@ import {
   type GitHubDevice, type GitHubStatus,
 } from '@/lib/github'
 import { Section, Toggle } from './SettingsParts'
+import { SecretInfo, SecretInput, type SecretProvider } from './SecretField'
+
+const GITHUB_PROVIDER: SecretProvider = {
+  name: 'GitHub',
+  host: 'api.github.com',
+  sentWhen: 'when Caprock reads your pull requests and checks, or opens a pull request you asked for.',
+  revokeAt: 'github.com/settings/tokens',
+  revokeHow: 'delete the token there.',
+}
 
 const BUTTON = 'h-[30px] rounded-[7px] border border-border-strong px-3 text-[12.5px] text-fg hover:bg-panel-2 disabled:opacity-50'
 const PRIMARY = 'h-[30px] rounded-[7px] bg-accent px-3 text-[12.5px] font-medium text-panel hover:brightness-110 disabled:opacity-50'
@@ -99,16 +108,13 @@ function Connect({ s, onStatus }: { s: GitHubStatus; onStatus: (s: GitHubStatus)
       <form className="grid gap-1.5" onSubmit={(e) => { e.preventDefault(); if (token.trim()) void run('token') }}>
         <span className="text-fg-muted">Or paste a token</span>
         <div className="flex min-w-0 flex-wrap gap-2">
-          <input
-            className="input min-w-0 flex-1"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            aria-label="GitHub token"
+          <SecretInput
+            label="GitHub token"
             placeholder="github_pat_… or ghp_…"
             value={token}
-            onChange={(e) => setToken(e.target.value)}
+            onChange={setToken}
           />
+          <SecretInfo what="GitHub token" provider={GITHUB_PROVIDER} where={s.sources.store === 'file' ? { kind: 'file' } : undefined} />
           <button type="submit" className={BUTTON} disabled={!token.trim() || !!busy}>{busy === 'token' ? 'Checking…' : 'Connect'}</button>
         </div>
         <p className="text-[12px] leading-relaxed text-fg-faint">

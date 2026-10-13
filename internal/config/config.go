@@ -99,14 +99,17 @@ type Config struct {
 	// ReportBotToken and ReportChatID configure the weekly report's delivery to
 	// the user's own Telegram bot.
 	//
-	// The token is stored here, unlike the Gemini key, and ADR-024 is where
-	// that difference is argued: a bot token drives a bot the user made for
-	// this, with no billing attached, while an AI Studio key spends money.
-	// Putting it in the environment instead would mean editing a launchd plist
-	// to turn on a feature sold as two minutes of setup. The file is 0600
-	// inside a 0700 data dir, and the token is never returned over HTTP.
-	ReportBotToken string `json:"report_bot_token,omitempty"`
-	ReportChatID   string `json:"report_chat_id,omitempty"`
+	// The token is never written here (ADR-024 as amended): it lives in the
+	// macOS login keychain, or a 0600 file in the data directory where there
+	// is none (internal/secret). The field is the daemon's in-memory copy, read
+	// from that store at start; ReportBotStored records that one is kept, so a
+	// daemon that never stored one never asks the Keychain.
+	// LegacyReportBotToken is what releases before the move wrote to
+	// config.json: read once at start, moved to the store, then removed.
+	ReportBotToken       string `json:"-"`
+	ReportBotStored      bool   `json:"report_bot_stored,omitempty"`
+	LegacyReportBotToken string `json:"report_bot_token,omitempty"`
+	ReportChatID         string `json:"report_chat_id,omitempty"`
 	// AlertApproval and AlertFinished switch the phone alerts sent through
 	// the same bot: a session waiting for approval, a session that finished
 	// (ADR-036). "Never set" means off: a bot set up for the weekly report
@@ -143,9 +146,18 @@ type Config struct {
 	// a session started on it gets the key in its own environment as
 	// ANTHROPIC_AUTH_TOKEN and talks to DeepSeek's Anthropic-compatible API
 	// (internal/agents/provider.go). Caprock itself sends nothing with it.
-	// Stored like the Gemini key, never returned over HTTP — only whether one
-	// is set and a masked hint — and never logged; clearing it removes it.
-	DeepSeekAPIKey string `json:"deepseek_api_key,omitempty"`
+	//
+	// Never written here: it lives where the GitHub token does — the macOS
+	// login keychain, or a 0600 file in the data directory (internal/secret) —
+	// and is read from there when a session starts. The field is the daemon's
+	// in-memory copy; DeepSeekKeyStored records that one is kept. Never
+	// returned over HTTP (only whether one is set and a masked hint), never
+	// logged; clearing it deletes it from the store. LegacyDeepSeekAPIKey is
+	// what releases before the move wrote to config.json: read once at start,
+	// moved to the store, then removed.
+	DeepSeekAPIKey       string `json:"-"`
+	DeepSeekKeyStored    bool   `json:"deepseek_key_stored,omitempty"`
+	LegacyDeepSeekAPIKey string `json:"deepseek_api_key,omitempty"`
 	// CustomAgents are coding agents the user added by command (ADR-046), a
 	// paid feature: kept whatever the licence says, offered and started only
 	// while it is active. Edited through PUT /v1/agents/custom, which

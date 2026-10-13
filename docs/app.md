@@ -789,6 +789,39 @@ Settings → GitHub then shows **Sign in with GitHub**. The app asks for
 `repo` and `read:org`. An organization with OAuth app restrictions must
 approve the app before its private repositories show up.
 
+## Where your keys are kept
+
+Caprock keeps four kinds of credential, and none of them is in
+`config.json`, its database or a log. Settings shows only a hint (`sk-…1a2b`)
+and says under each field where it is; the (i) beside it explains the rest.
+
+- **DeepSeek API key, Telegram bot token, a pasted GitHub token.** On macOS,
+  your login keychain (items `dev.caprock.deepseek`, `dev.caprock.telegram`,
+  `dev.caprock.github`; you can see them in Keychain Access). On Windows and
+  Linux, or if the keychain refuses, a file only your user can read in the
+  data directory: `deepseek-api-key`, `telegram-bot-token`, `github-token`.
+  The data directory is `~/Library/Application Support/caprock` on macOS,
+  `%AppData%\caprock` on Windows and `~/.config/caprock` on Linux.
+- **Mail passwords.** Your system keychain: the macOS login keychain, Windows
+  Credential Manager, or the Secret Service on Linux; without one,
+  `mail-secrets.json` in the data directory, readable by you only.
+- **What each is sent to.** The DeepSeek key goes only to `api.deepseek.com`,
+  from the environment of a session you start on DeepSeek. The bot token goes
+  only to `api.telegram.org`. The GitHub token goes only to `api.github.com`.
+  A mail password goes only to the mail servers you entered. Nothing goes to
+  Caprock.
+- **Backups.** Time Machine backs up the login keychain encrypted; it reaches
+  iCloud Keychain only if you move an item there yourself. A key in a file is
+  backed up like any other file in your home folder.
+- **Removing one.** Remove (Disconnect for Telegram and GitHub, Remove
+  account for Mail) deletes it from the keychain or the file. To make a key
+  useless everywhere, revoke it where it was made: DeepSeek's API keys page,
+  `/revoke` to @BotFather, GitHub's token settings, your mail provider's app
+  passwords.
+
+A key that an older Caprock wrote to `config.json` is moved to the keychain
+or the file the next time the daemon starts, and removed from `config.json`.
+
 ## Updates
 
 When a newer Caprock is out, a card in the bottom-right corner says so,

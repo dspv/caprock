@@ -140,7 +140,12 @@ func (d *Daemon) resolveSubscription(sr *agents.SpawnRequest, prev *store.Sessio
 	}
 	sr.Subscription = id
 	if id == subs.DeepSeekID {
-		return resolveDeepSeek(sr, agent, d.config().DeepSeekAPIKey, prev != nil)
+		// Read from the store now; only this session's environment gets it.
+		key, err := d.deepSeekKey(context.Background())
+		if err != nil {
+			return err
+		}
+		return resolveDeepSeek(sr, agent, key, prev != nil)
 	}
 	sub, ok := subs.Find(d.config().Subscriptions, id)
 	if !ok {

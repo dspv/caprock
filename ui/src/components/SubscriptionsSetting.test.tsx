@@ -151,7 +151,7 @@ describe('DeepSeek', () => {
     const input = await screen.findByLabelText('DeepSeek API key')
     expect(input).toHaveAttribute('type', 'password')
     // It says where the work goes before anything is set.
-    expect(screen.getByText(/api\.deepseek\.com/)).toBeInTheDocument()
+    expect(screen.getAllByText(/api\.deepseek\.com/).length).toBeGreaterThan(0)
     expect(screen.getByText(/Caprock itself sends nothing/)).toBeInTheDocument()
     fireEvent.change(input, { target: { value: '  sk-pasted-key-0000  ' } })
     m.settings.mockResolvedValue({ update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0, deepseek_key_set: true, deepseek_key_hint: 'sk-…0000' })
@@ -159,7 +159,7 @@ describe('DeepSeek', () => {
     await waitFor(() => expect(m.save).toHaveBeenCalledWith({ deepseek_api_key: 'sk-pasted-key-0000' }))
     expect(await screen.findByText('sk-…0000')).toBeInTheDocument()
     expect(screen.queryByDisplayValue(/sk-pasted/)).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Remove key' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(m.save).toHaveBeenCalledWith({ deepseek_api_key: '' }))
   })
 
