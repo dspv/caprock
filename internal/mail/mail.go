@@ -5,7 +5,9 @@
 // It is an integration the user switches on by adding an account (ADR-047):
 // until then nothing is opened, no goroutine runs and nothing leaves the
 // machine. Once an account exists, Caprock talks only to the IMAP and SMTP
-// servers the user typed in, and — when local AI is turned on — to the model
+// servers the user typed in (for an account signed in with Google or
+// Microsoft: that provider's servers and token endpoint, internal/mail/oauth),
+// and — when local AI is turned on — to the model
 // server at the address in Mail's settings (loopback by default).
 package mail
 
@@ -35,6 +37,7 @@ type Service struct {
 	eng     *engine.Engine
 	cleanup func()
 	version atomic.Int64 // bumped on every local change; the UI polls it
+	oauth   oauthFlows   // sign-ins with Google/Microsoft waiting for the browser
 }
 
 // New prepares Mail under dataDir. If Mail was used before (mail.db exists)

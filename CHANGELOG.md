@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **mail:** sign in with Google or Microsoft. A Gmail, Google Workspace,
+  Outlook.com or Microsoft 365 mailbox connects with a click and an approval
+  in the browser, no app password: the installed-app OAuth flow with PKCE,
+  back to Caprock on loopback, then IMAP and SMTP over XOAUTH2. The refresh
+  token is kept in the keychain like a password; a revoked or expired sign-in
+  shows as a sync error asking to sign in again. Signing in with an address
+  Mail already has switches that account over and keeps its mail. Nothing is
+  sent to Google or Microsoft until the button is clicked. The buttons need
+  the build's client IDs (`docs/mail-oauth.md`); iCloud keeps app-specific
+  passwords, having no OAuth for mail.
 - **doctor:** an Orphans section lists the processes on the machine that look
   abandoned, each with why: another Caprock daemon (and whether its data
   directory still exists), terminal holders no Caprock will reattach to from
@@ -49,6 +59,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   job. The circles-or-words switch is gone, a row no longer says *$0* for a
   public repository's free runners, and the cockpit's CI block uses the same
   summary, its view tabs now named *PRs · Ring · OS*.
+- **deck:** Expand is a button you can see — outlined, with its key, ⇧⌘B
+  (Ctrl+Alt+Shift+B on Windows and Linux) — and in the PRs & CI tab the same
+  button in the same corner reads *Collapse* and takes you back to the agent
+  with its deck; the key toggles both ways. *Back to the deck* is gone. A
+  pull request's title gets every pixel its row's checks leave, a step
+  larger, cut only when the row is full. The circle per check is back as the
+  default, with the summary one click away (*Checks: circles | summary*,
+  remembered); hovering the circles shows the same card of every check.
 - **settings:** every saved credential (DeepSeek key, Telegram bot token, a
   pasted GitHub token) is entered in one secure field: a lock inside, masked
   monospace text, an eye only while typing, and once saved a locked pill with

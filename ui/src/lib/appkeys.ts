@@ -24,6 +24,8 @@ export type AppCommand =
   | { kind: 'palette' }
   | { kind: 'inspector' }
   | { kind: 'deck' }
+  /** ⇧⌘B: the deck's Expand, or Collapse in the PRs & CI tab. */
+  | { kind: 'deck-expand' }
   | { kind: 'changes' }
   | { kind: 'sidebar' }
   | { kind: 'dashboard' }
@@ -125,6 +127,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
       switch (baseKey(e)) {
         case 'e': return { kind: 'split', direction: 'column' }
         case '0': return { kind: 'zoom', step: 0 }
+        case 'b': return { kind: 'deck-expand' }
       }
     }
     return null
@@ -147,6 +150,10 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         case 'e': return { kind: 'split', direction: 'column' }
         // G for git: the diff of the session in front.
         case 'g': return { kind: 'changes' }
+        // The deck (⌘B) large and back: Expand, Collapse. In a browser
+        // ⇧⌘B is the bookmarks bar, which the browser may keep for itself;
+        // the deck's button is there either way.
+        case 'b': return { kind: 'deck-expand' }
         default: return null
       }
     }
@@ -220,8 +227,10 @@ export function keys(mac: string, isMac = isMacPlatform()): string {
 }
 
 /** ⇧⌘ chords whose ⌘ twin is also a shortcut: off macOS both would read
- *  Ctrl+Shift+key, so these take Alt as well (split below, default size). */
-const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0'])
+ *  Ctrl+Shift+key, so these take Alt as well (split below, default size,
+ *  the deck's Expand beside the deck's own Ctrl+Shift+B). Ctrl+Alt+Shift+B
+ *  is bound by no shell, PSReadLine, Windows Terminal or GNOME default. */
+const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0', '⇧⌘B'])
 
 function offMac(k: string): string {
   if (/[↩↵]/.test(k)) return `${k.includes('⌘') ? 'Ctrl+' : ''}${k.includes('⇧') ? 'Shift+' : ''}Enter`
@@ -291,6 +300,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘F', 'Find in the terminal'],
   ['⌘I', 'Inspector'],
   ['⌘B', 'Session deck: the agent’s live figures under its terminal'],
+  ['⇧⌘B', 'Expand the deck into the PRs & CI tab; in that tab, Collapse back'],
   ['⇧⌘G', 'Changes: the diff of the session in front'],
   ['⌘\\', 'Hide or show the sidebar'],
   ['⌘0, ⇧⌘D', 'Dashboard'],
