@@ -118,9 +118,12 @@ describe('DirPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Choose this folder' }))
     expect(onPick).toHaveBeenLastCalledWith('/Users/x/dev')
     const list = screen.getByRole('listbox', { name: 'Folders' })
+    // Each step waits for its own render: on a loaded CI runner the second
+    // key could land before the first selection had rendered (2026-10-13).
     fireEvent.keyDown(list, { key: 'ArrowDown' })
+    await waitFor(() => expect(screen.getByRole('option', { name: /api/ })).toHaveAttribute('aria-selected', 'true'))
     fireEvent.keyDown(list, { key: 'ArrowDown' })
-    expect(screen.getByRole('option', { name: /web/ })).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() => expect(screen.getByRole('option', { name: /web/ })).toHaveAttribute('aria-selected', 'true'))
     fireEvent.click(screen.getByRole('button', { name: 'Choose web' }))
     expect(onPick).toHaveBeenLastCalledWith('/Users/x/dev/web')
     fireEvent.keyDown(list, { key: 'Enter' })

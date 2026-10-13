@@ -18,11 +18,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   hover instead of wrapping, and the chips fit as many groups of four as the
   inspector is wide.
 
+## [0.112.2] - 2026-10-13
+
+### Added
+
+- Settings → *Status line*: Full, Short or Off for the line Caprock puts at
+  the bottom of Claude Code. Short is model, context and the plan windows
+  (the reset time only from 80%), without the cost and counters the cockpit
+  already shows; Off removes Caprock's own entry from Claude Code's
+  settings, never one you set. Full stays the default.
+
 ### Fixed
 
 - **app:** the cockpit's subagent row keeps its place: with none running it
   says *no subagents running*, so the agent's figures and the sections below
   no longer jump as subagents start and finish.
+- **app:** on Windows, closing a shell tab no longer says it is running
+  `csrss` (or another stranger) when it is at its prompt. A process whose
+  parent exited long ago still names that parent's pid, and Windows reuses
+  pids; a child now also has to have started after the shell.
 
 ## [0.112.1] - 2026-10-13
 

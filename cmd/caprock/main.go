@@ -113,9 +113,13 @@ func upCmd() *cobra.Command {
 				}
 				// The statusLine feeds plan-limit windows (Pro/Max) to the Cost
 				// screen and puts this session's counters on the line; offer it
-				// the same way as hooks. Non-fatal if declined.
-				if err := maybeInstallStatusline(cmd, yes); err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: statusline not installed: %v\n", err)
+				// the same way as hooks. Non-fatal if declined. Not when
+				// Settings → Status line is Off: that removed our entry, and
+				// the next start must not put it back.
+				if config.NormalizeStatusline(cfg.StatuslineMode) != config.StatuslineOff {
+					if err := maybeInstallStatusline(cmd, yes); err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warning: statusline not installed: %v\n", err)
+					}
 				}
 			}
 

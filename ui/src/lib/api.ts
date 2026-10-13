@@ -728,6 +728,9 @@ export interface KeepAwakeStatus {
   error?: string
 }
 
+/** Settings → Status line (config.json statusline_mode). */
+export type StatuslineMode = 'full' | 'short' | 'off'
+
 export interface Settings {
   /** Whether Claude is told what the last session left in the same folder. */
   memory?: boolean
@@ -747,6 +750,8 @@ export interface Settings {
   keep_awake?: KeepAwakeMode
   /** What happens to finished copies (lib/copies CleanupMode). The daemon returns "ask" when never chosen. */
   worktree_cleanup?: 'off' | 'ask' | 'auto'
+  /** What Caprock's Claude Code status line shows. The daemon returns "full" when never chosen; "off" removes Caprock's own statusLine entry. */
+  statusline_mode?: StatuslineMode
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
   /** The share of a Claude plan window (50–99) at which Premium pauses the

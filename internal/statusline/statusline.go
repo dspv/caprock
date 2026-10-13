@@ -111,6 +111,11 @@ type Options struct {
 	// Width is the terminal width to fit the line into; 0 means "detect, and
 	// fall back to defaultWidth".
 	Width int
+	// Mode is which line to print: config.StatuslineFull or
+	// config.StatuslineShort. Empty means "read Settings' choice from
+	// config.json", which is what the registered command does; tests and
+	// callers that already know set it.
+	Mode string
 }
 
 // Run executes one statusline invocation. It always returns (callers exit 0).
@@ -132,6 +137,25 @@ func RunWith(stdin io.Reader, stdout io.Writer, opt Options) {
 		debugf("parse: %v", err)
 		return
 	}
+	// The Settings choice, read per render so a change applies to the next
+	// line without touching Claude Code's settings. A failed read is "full".
+	mode := opt.Mode
+	if mode == "" {
+		mode = config.StatuslineFull
+		if dir, err := config.DataDir(); err == nil {
+			mode = config.ReadStatuslineMode(dir)
+		}
+	}
+	if mode == config.StatuslineShort {
+		// The short line has no counters, so it never waits on the daemon.
+		_, _ = io.WriteString(stdout, renderShort(in))
+		forwardLimits(in)
+		return
+	}
+	// "off" never reaches here in normal use — choosing it removes our
+	// statusLine entry — but an entry put back by hand still runs, and it
+	// prints the full line rather than a blank one that looks broken.
+
 	// 1) In rich mode, fetch the session counters. This is the only step that
 	//    happens before printing, and it is bounded so that a slow or absent
 	//    daemon costs the user nothing but the extra segments: on any failure
@@ -142,8 +166,14 @@ func RunWith(stdin io.Reader, stdout io.Writer, opt Options) {
 	}
 	// 2) Print the status line — this is the only thing Claude Code waits on.
 	_, _ = io.WriteString(stdout, renderWidth(in, st, opt.Width))
-	// 3) Best-effort forward the rate limits to the daemon. Skip entirely when
-	//    there are none (non-Pro/Max) so those users incur no network cost.
+	// 3) Best-effort forward the rate limits to the daemon.
+	forwardLimits(in)
+}
+
+// forwardLimits posts the plan windows to the daemon, best-effort. Skipped
+// entirely when there are none (non-Pro/Max) so those users incur no network
+// cost.
+func forwardLimits(in input) {
 	if in.RateLimits == nil || (in.RateLimits.FiveHour == nil && in.RateLimits.SevenDay == nil) {
 		return
 	}
@@ -248,6 +278,41 @@ func renderWidth(in input, st *stats, width int) string {
 		}
 	}
 	return fit(seg, width)
+}
+
+// shortResetPct is the plan-window use at which the short line adds when the
+// five-hour window resets: below it the time is noise, at it the time is what
+// the user needs next.
+const shortResetPct = 80
+
+// renderShort is the short line (Settings → Status line: Short): the mark,
+// model, context and the two plan windows — no cost and no counters, which
+// the app's cockpit already shows. The reset time appears only once the
+// five-hour window is at shortResetPct or above. It fits any sensible width,
+// so nothing is dropped.
+func renderShort(in input) string {
+	parts := []string{brandMark}
+	if in.Model != nil && in.Model.DisplayName != "" {
+		parts = append(parts, in.Model.DisplayName)
+	}
+	if in.ContextWindow != nil {
+		parts = append(parts, fmt.Sprintf("ctx %.0f%%", in.ContextWindow.UsedPercentage))
+	}
+	if in.RateLimits != nil {
+		if w := in.RateLimits.FiveHour; w != nil {
+			s := colorPct("5h", w.UsedPercentage)
+			if w.UsedPercentage >= shortResetPct {
+				if r := resetIn(w.ResetsAt); r != "" {
+					s += " " + r
+				}
+			}
+			parts = append(parts, s)
+		}
+		if w := in.RateLimits.SevenDay; w != nil {
+			parts = append(parts, colorPct("7d", w.UsedPercentage))
+		}
+	}
+	return strings.Join(parts, " · ")
 }
 
 // fit joins the segments, dropping the highest-ranked ones a rank at a time

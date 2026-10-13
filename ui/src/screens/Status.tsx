@@ -38,6 +38,7 @@ import { GlobalHotkey } from '@/components/GlobalHotkey'
 import { isAppMode, isMacPlatform, isTauri } from '@/lib/appmode'
 import { UI_SCALES, setUiScale, useUiScale, type UiScale } from '@/lib/uiscale'
 import { TerminalSettings } from '@/components/TerminalSettings'
+import { StatuslineSetting } from '@/components/StatuslineSetting'
 import { EditorSetting } from '@/components/EditorSetting'
 import { DefaultFolderSetting } from '@/components/DefaultFolderSetting'
 import { CustomAgentsSetting } from '@/components/CustomAgentsSetting'
@@ -125,6 +126,7 @@ export function StatusScreen() {
           {owner && <PhoneAlerts />}
           {owner && <TelegramChatSection />}
           <TerminalSettings />
+          {owner && <StatuslineSetting />}
           {owner && <EditorSetting />}
           {owner && <DefaultFolderSetting />}
           {owner && <WorktreeCleanupSetting />}
@@ -149,6 +151,7 @@ export function StatusScreen() {
           {owner && <SpawnModeSetting />}
           {owner && <KeepAwakeSetting />}
           {owner && <SavedPromptsSetting />}
+          {owner && <StatuslineSetting />}
           {owner && <EditorSetting />}
           {owner && <DefaultFolderSetting />}
           {owner && <WorktreeCleanupSetting />}
