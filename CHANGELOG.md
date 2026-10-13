@@ -7,13 +7,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-### Changed
-
-- **app:** a new icon — a bold white C on a near-black tile, with a green dot
-  in its mouth for a session running. The amber triangle got lost among its
-  Dock neighbours; a letter reads at a glance. The menu-bar icon, the
-  dashboard's favicon and the phone's home-screen icon carry the same mark.
-
 ### Added
 
 - **now:** two live sessions in one checkout are pointed out. When two
@@ -26,6 +19,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   is moved for you. The agent cockpit shows the same chip, one line under the
   loop warning. New read-only `GET /v1/overlap`.
 
+- **mail:** when you first open Mail it offers the accounts you already have in
+  another client, so you add them with a click instead of retyping servers and
+  passwords. Thunderbird comes over whole — servers and, when there is no
+  primary password, the passwords too, decrypted on your machine (nothing is
+  sent anywhere and no password ever crosses the dashboard connection). Apple
+  Mail brings its server settings; its passwords are not readable, so you type
+  each once, and on macOS without Full Disk Access Caprock says so and how to
+  grant it. Each account is signed in to and verified before it is saved, and
+  one account that fails never stops the others.
 - **remote:** a phone reaches Caprock from anywhere — mobile data, another
   Wi-Fi — with nothing to install, through a relay that carries only
   end-to-end ciphertext (ADR-058). Settings → *Open Caprock on your phone* →
@@ -42,7 +44,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   pairing QR in the terminal, and `caprock remote relay`, a relay of your
   own. `relay/` is the hosted relay, a Cloudflare Worker with one Durable
   Object per machine.
-
 
 - **mail:** adding an account finds the servers for about 40 mail services
   and the hosts people put their own domain on. The table now knows Yahoo,
@@ -85,6 +86,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **remote:** the phone's first screen says what to do in three large steps,
+  keeps the pasted link for a home-screen app behind one tap (shown at once
+  when opened from the home screen), and answers the questions a careful
+  person asks — is it safe, what the relay sees, why not an app, a lost
+  phone, a relay of your own — with links to how it works and the relay's
+  source.
+
+- **app:** a new icon — a bold white C on a near-black tile, with a green dot
+  in its mouth for a session running. The amber triangle got lost among its
+  Dock neighbours; a letter reads at a glance. The menu-bar icon, the
+  dashboard's favicon and the phone's home-screen icon carry the same mark.
+
+- **cockpit:** subagent rows stay where they are. They stand in the order the
+  subagents started, first on top, a new one added at the bottom; working,
+  waiting, getting busier or finishing no longer moves a row, and a finished
+  one stays in its place, dimmed with a ✓. What a subagent is doing now gets
+  the row's whole width and two lines, the full text on hover; its figures
+  moved to the line below, and *Show* in the Subagents header picks which of
+  them each row carries — *Compact* (just the phrase), *Cost* (cost and time,
+  the default) or *Full* (calls, cost, model and time), or any mix —
+  remembered on this device.
 - **app:** tabs are the way around. ⌘1–⌘9 (Ctrl+Shift+1–9 on Windows and
   Linux) switch to the Nth tab, and the tabs stay in the order you opened
   them: a new tab goes last with the next number, and the numbers change
@@ -134,6 +156,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   name in bold, with the project, branch and short id under it, so two
   sessions on the same branch can be told apart.
 
+- **app:** a session no longer jumps into Claude Code's background-agents list on its own. Holding ⌥⌘↓ (Alt+Shift+↓ off macOS) to step through sessions and letting go of the modifiers before the arrow left the arrow repeating into the session it had just opened, and Claude Code read that Down as "go to the agents below the prompt". An arrow pressed as an app chord now stays the app's until it is released, and the sidebar's ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift+↑ ↓ off macOS), which typed a Down too when pressed in a terminal, do nothing there. Plain arrows and ⌥← ⌥→ word jumps are unchanged.
+- **app:** the desktop app no longer opens to a black window when the deck's
+  CI panel was left on Release and the newest release run lists no jobs. The
+  daemon sent that run's jobs as `null` instead of an empty list; it now sends
+  `[]`, and the dashboard reads a missing list as empty, cached answers
+  included.
+- **app:** a screen that fails to draw no longer blanks the window. The deck
+  fails on its own and the terminal stays; a failure anywhere else shows
+  *Caprock hit a snag* with Reload, *Reset the view and reload* (forgets cached
+  figures and the CI panel's view, keeps tabs and settings), and a report the
+  user sends themselves: a prefilled GitHub issue, an email or the details
+  copied. The report holds the error, where it was thrown, the version and the
+  OS; a home directory is folded to `~`, and nothing is sent by Caprock.
 - **app:** scrolling up a terminal no longer shows Claude Code's prompt
   rules and status rows smeared and repeated across the history. A tab
   restored behind another parsed its replay at xterm's default 80 columns,

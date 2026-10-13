@@ -3246,6 +3246,22 @@ dashboard and a desktop app on three OSes.
   offered and nothing else changes. The callback is the one `/v1` route the
   CSRF guard admits as a cross-site GET, on a loopback Host only, with the
   single-use state as its protection.
+- **Import, not retype.** On first use Mail offers the accounts the user
+  already has in another client. `GET /v1/mail/import` reads only that
+  client's own local files under the user's home and opens nothing else.
+  Thunderbird is read in full: servers from `prefs.js`, passwords decrypted in
+  pure Go from `logins.json` + `key4.db` (NSS: PBKDF2-SHA256 + AES-256-CBC key
+  wrap, then a 3DES or AES login blob — no cgo, no NSS library); a profile with
+  a primary password imports settings only. Apple Mail is read from
+  `~/Library/Accounts/Accounts4.sqlite` (the keyed-archiver property store) for
+  server settings only — its passwords live in the login keychain under items
+  that cannot be matched to an account, so the user types the password once;
+  and because that path is TCC-protected, without Full Disk Access the answer
+  is `needs_permission: "full_disk_access"` with how to grant it. Nothing read
+  for import ever leaves the machine and no password is ever put in an HTTP
+  answer (rule 4): on `POST /v1/mail/import` the sources are re-read so the
+  decrypted password goes straight to the user's own IMAP/SMTP server and
+  nowhere else.
 - **Headers are read whole.** The list is built from `BODY.PEEK[HEADER]`,
   parsed locally, never from ENVELOPE or `HEADER.FIELDS`: iCloud has sent
   ENVELOPEs with unescaped quotes in the Message-ID (one bad answer fails
