@@ -7,13 +7,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-### Changed
-
-- **app:** a new icon — a bold white C on a near-black tile, with a green dot
-  in its mouth for a session running. The amber triangle got lost among its
-  Dock neighbours; a letter reads at a glance. The menu-bar icon, the
-  dashboard's favicon and the phone's home-screen icon carry the same mark.
-
 ### Added
 
 - **app:** Claude's little character comes in eight faces — the hard hat,
@@ -44,7 +37,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   pairing QR in the terminal, and `caprock remote relay`, a relay of your
   own. `relay/` is the hosted relay, a Cloudflare Worker with one Durable
   Object per machine.
-
 
 - **mail:** adding an account finds the servers for about 40 mail services
   and the hosts people put their own domain on. The table now knows Yahoo,
@@ -87,6 +79,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** a new icon — a bold white C on a near-black tile, with a green dot
+  in its mouth for a session running. The amber triangle got lost among its
+  Dock neighbours; a letter reads at a glance. The menu-bar icon, the
+  dashboard's favicon and the phone's home-screen icon carry the same mark.
+
+- **cockpit:** subagent rows stay where they are. They stand in the order the
+  subagents started, first on top, a new one added at the bottom; working,
+  waiting, getting busier or finishing no longer moves a row, and a finished
+  one stays in its place, dimmed with a ✓. What a subagent is doing now gets
+  the row's whole width and two lines, the full text on hover; its figures
+  moved to the line below, and *Show* in the Subagents header picks which of
+  them each row carries — *Compact* (just the phrase), *Cost* (cost and time,
+  the default) or *Full* (calls, cost, model and time), or any mix —
+  remembered on this device.
 - **app:** tabs are the way around. ⌘1–⌘9 (Ctrl+Shift+1–9 on Windows and
   Linux) switch to the Nth tab, and the tabs stay in the order you opened
   them: a new tab goes last with the next number, and the numbers change
@@ -132,7 +138,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   restored behind another parsed its replay at xterm's default 80 columns,
   and told the daemon that size, before it had ever been laid out; it now
   holds the replay and sends no size until it is shown and fitted.
-
 
 - **mail:** on macOS, account passwords go to the login keychain through the call that names the keychain file, so saving one can never bring up a "Keychain Not Found" dialog. Passwords saved before are read where they are; Windows and Linux are unchanged.
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.

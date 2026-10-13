@@ -49,10 +49,12 @@ vi.mock('@/lib/live', async (orig) => {
 
 import { Inspector } from './Inspector'
 import { resetSpendPrefsForTest } from '@/lib/spendview'
+import { getSubagentFields, resetSubagentFieldsForTest, setSubagentFields } from '@/lib/subagentview'
 
 beforeEach(() => {
   localStorage.clear()
   resetSpendPrefsForTest()
+  resetSubagentFieldsForTest()
   h.summaries = {}
   h.summaryAsked = []
 })
@@ -139,6 +141,7 @@ describe('the agent cockpit', () => {
   })
 
   it('lists the subagents at work: type, task, current call, calls made, and who waits on you', async () => {
+    setSubagentFields({ calls: true, cost: true, model: true, time: true })
     h.subagents = {
       working: [
         { agent_id: 'a827d9', agent_type: 'general-purpose', description: 'Fix the cockpit', tool_calls: 42, started_at: now - 600_000, last_at: now - 1_000, tool: 'Bash', detail: 'go test ./...', tool_at: now - 12_000, running: true, asking: false },
@@ -156,10 +159,12 @@ describe('the agent cockpit', () => {
       // The type is a letter, its name on hover; the words are what it is doing.
       expect(within(rows[0]!).getByLabelText('general-purpose')).toHaveTextContent('G')
       expect(within(rows[1]!).getByLabelText('Explore')).toHaveTextContent('E')
-      expect(rows[0]).toHaveTextContent('Fix the cockpit')
-      expect(rows[0]).toHaveTextContent('Bashgo test ./...')
-      expect(rows[0]).toHaveTextContent('Fix the cockpit42 calls')
-      expect(rows[0]).toHaveTextContent(/go test \.\/\.\.\.\d+s/)
+      expect(rows[0]!.querySelector('[data-doing]')).toHaveTextContent('Fix the cockpit')
+      // The figures are under the phrase, never beside it.
+      const meta = rows[0]!.querySelector('[data-subagent-meta]')!
+      expect(meta).toHaveTextContent('Bashgo test ./...')
+      expect(meta).toHaveTextContent(/go test \.\/\.\.\.\d+s/)
+      expect(meta.querySelector('[data-figures]')).toHaveTextContent(/^42 calls · 10m 0\ds$/)
       // No task and no daemon phrase: the call itself leads, once.
       expect(rows[1]!.querySelector('[data-doing]')).toHaveTextContent('Edit session.go')
       expect(rows[1]).toHaveTextContent('7 calls')
@@ -173,8 +178,9 @@ describe('the agent cockpit', () => {
 
   // Claude Code's own list says "general-purpose  Rerunning AppShell and
   // DiffFiles tests"; the row leads with that kind of phrase, not the raw
-  // command (owner, 2026-10-13, translated).
-  it('leads a subagent row with what it is doing now', async () => {
+  // command (owner, 2026-10-13, translated). "The text doesn't show enough"
+  // (owner, 2026-10-14, translated): the whole row, two lines.
+  it('leads a subagent row with what it is doing now, across the row, up to two lines', async () => {
     h.subagents = {
       working: [
         { agent_id: 'a1', agent_type: 'general-purpose', description: 'Fix the cockpit', tool_calls: 9, started_at: now - 60_000, last_at: now - 1_000, tool: 'Bash', detail: 'go -C /Users/x test ./...', tool_at: now - 2_000, running: true, asking: false, doing: 'Rerun the store tests', doing_from: 'call' },
@@ -189,9 +195,15 @@ describe('the agent cockpit', () => {
       const doing = a!.querySelector('[data-doing]')
       expect(doing).toHaveTextContent('Rerun the store tests')
       expect(doing).toHaveAttribute('data-doing', 'call')
+      // Two lines, not one truncated; the whole phrase on hover.
+      expect(doing).toHaveClass('line-clamp-2')
+      expect(doing).not.toHaveClass('truncate')
+      expect(a!.querySelector('button[aria-expanded]')).toHaveAttribute('title', expect.stringContaining('Rerun the store tests'))
       // The phrase is the command's own description: the raw command is not repeated.
       expect(a).not.toHaveTextContent('go -C')
-      expect(a).toHaveTextContent('9 calls')
+      // Cost and time by default: no cost known yet, so the time alone.
+      expect(a!.querySelector('[data-figures]')).toHaveTextContent(/^1m 0\ds$/)
+      expect(a).not.toHaveTextContent('calls')
       expect(within(b!).getByLabelText('Plan')).toHaveTextContent('P')
       expect(b).toHaveTextContent('starting')
     } finally {
@@ -201,14 +213,15 @@ describe('the agent cockpit', () => {
 
   // "In subagents I don't see which model is used and costs" (owner,
   // 2026-10-09, translated). A cost the daemon does not know is not drawn.
-  it('shows each subagent’s model, time and cost, the finished ones muted, and the total', async () => {
+  it('shows each subagent’s model, time and cost, the finished ones dimmed in their place, and the total', async () => {
+    setSubagentFields({ calls: true, cost: true, model: true, time: true })
     h.subagents = {
       working: [
         { agent_id: 'a1', agent_type: 'general-purpose', tool_calls: 4, started_at: now - 125_000, last_at: now - 1_000, tool: 'Bash', detail: 'go test ./...', tool_at: now - 3_000, running: true, asking: false, model: 'claude-haiku-4-5', model_display: 'Haiku 4.5', cost_usd: 0.42 },
         { agent_id: 'b2', agent_type: 'Explore', tool_calls: 1, started_at: now - 9_000, last_at: now - 2_000, tool: 'Read', detail: 'a.go', tool_at: now - 4_000, running: false, asking: false, model_display: 'Sonnet 4.5' },
       ],
       finished: 2,
-      recent: [{ agent_id: 'c3', agent_type: 'Explore', tool_calls: 6, started_at: now - 300_000, stopped_at: now - 180_000, model_display: 'Sonnet 4.5', cost_usd: 1.1 }],
+      recent: [{ agent_id: 'c3', agent_type: 'Explore', description: 'Map the store', tool_calls: 6, started_at: now - 300_000, stopped_at: now - 180_000, model_display: 'Sonnet 4.5', cost_usd: 1.1 }],
       cost_usd: 1.52,
     }
     try {
@@ -217,13 +230,49 @@ describe('the agent cockpit', () => {
       expect(section).toHaveTextContent('Subagents · 2')
       expect(section).toHaveTextContent('$1.52')
       expect(section).toHaveTextContent('+1 finished')
-      const [a, b] = within(section).getAllByRole('listitem')
-      expect(a).toHaveTextContent(/Haiku 4\.5 · 2m 0\ds/)
-      expect(a).toHaveTextContent('4 calls · $0.42')
+      // By start: the finished one started first, so it stands first.
+      const [c, a, b] = within(section).getAllByRole('listitem')
+      expect(c).toHaveAttribute('data-done', 'true')
+      expect(c).toHaveTextContent('Map the store')
+      expect(within(c!).getByLabelText('finished')).toHaveTextContent('✓')
+      expect(c!.querySelector('[data-figures]')).toHaveTextContent('6 calls · $1.10 · Sonnet 4.5 · 2m 00s')
+      expect(a!.querySelector('[data-figures]')).toHaveTextContent(/^4 calls · \$0\.42 · Haiku 4\.5 · 2m 0\ds$/)
       expect(b).toHaveTextContent('Sonnet 4.5')
       expect(b).not.toHaveTextContent('$')
-      const done = within(section).getByRole('list', { name: 'Finished subagents' })
-      expect(done).toHaveTextContent('Sonnet 4.5 · 2m 00s · $1.10')
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
+  // "Maybe a switch for what to see?" (owner, 2026-10-14, translated).
+  it('lets the viewer pick what each subagent row shows, and remembers it', async () => {
+    h.subagents = {
+      working: [{ agent_id: 'a1', agent_type: 'Explore', description: 'Map the store', tool_calls: 4, started_at: now - 125_000, last_at: now - 1_000, tool: 'Read', detail: 'a.go', tool_at: now - 3_000, running: true, asking: false, model_display: 'Haiku 4.5', cost_usd: 0.42 }],
+      finished: 0,
+    }
+    try {
+      show(agent({ live_subagents: 1 }))
+      const section = await screen.findByRole('region', { name: 'Subagents' })
+      const row = () => within(section).getAllByRole('listitem')[0]!
+      expect(row().querySelector('[data-figures]')).toHaveTextContent(/^\$0\.42 · 2m 0\ds$/)
+      const show_ = within(section).getByRole('button', { name: /^Show: Cost\./ })
+      fireEvent.click(show_)
+      fireEvent.click(screen.getByRole('menuitemradio', { name: 'Full' }))
+      expect(row().querySelector('[data-figures]')).toHaveTextContent(/^4 calls · \$0\.42 · Haiku 4\.5 · 2m 0\ds$/)
+      expect(JSON.parse(localStorage.getItem('caprock.app.subagent-fields')!)).toEqual({ calls: true, cost: true, model: true, time: true })
+      // One figure off: a custom mix, the menu stays open.
+      fireEvent.click(within(section).getByRole('button', { name: /^Show: Full\./ }))
+      fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Model' }))
+      expect(screen.getByRole('menuitemcheckbox', { name: 'Model' })).toHaveAttribute('aria-checked', 'false')
+      expect(row().querySelector('[data-figures]')).toHaveTextContent(/^4 calls · \$0\.42 · 2m 0\ds$/)
+      expect(within(section).getByRole('button', { name: /^Show: Custom\./ })).toBeInTheDocument()
+      // Compact: the letter and the phrase alone.
+      fireEvent.click(screen.getByRole('menuitemradio', { name: 'Compact' }))
+      expect(row().querySelector('[data-subagent-meta]')).toBeNull()
+      expect(row()).toHaveTextContent('Map the store')
+      // A fresh read from storage keeps the choice.
+      resetSubagentFieldsForTest()
+      expect(getSubagentFields()).toEqual({ calls: false, cost: false, model: false, time: false })
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
