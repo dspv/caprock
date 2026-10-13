@@ -967,7 +967,9 @@ controller, on the machine, revocably.
 or tunnel relays onto loopback is a device here, token and role included.
 
 **Rules out:** a relay of ours (sessions would pass through a machine we run,
-which contradicts rule 4 and three sentences on the site); binding the wildcard
+which contradicts rule 4 and three sentences on the site) — *superseded
+2026-10-13 by [ADR-058](#adr-058--a-phone-reaches-the-machine-from-anywhere-through-a-relay-that-carries-only-ciphertext):
+a relay that carries only end-to-end ciphertext, off by default*; binding the wildcard
 address; a stored "LAN on" setting; pairing from a device that is already
 paired — a tablet is somewhere to read figures, not a second control room, so
 issuing codes and revoking devices stay loopback-only.
@@ -3212,10 +3214,38 @@ dashboard and a desktop app on three OSes.
   the traffic. Once on, Caprock talks only to the IMAP and SMTP servers the
   user typed in, and — only when local AI is turned on in Mail's settings —
   to the model server at the address shown there (Ollama on loopback by
-  default). Nothing is sent to Caprock. The add-account form says so.
+  default) — and, for an account signed in with Google or Microsoft, to
+  that provider (below). Nothing is sent to Caprock. The add-account form
+  says so.
 - **Passwords in the OS keychain**, a 0600 file only where there is none
-  (Linux without a Secret Service). App passwords, not OAuth: Gmail and iCloud
-  accept them; Microsoft accounts that refuse passwords are a known gap.
+  (Linux without a Secret Service). iCloud has no OAuth for mail, so an
+  app-specific password stays the only way there; any IMAP host takes a
+  password.
+- **Sign in with Google or Microsoft** (added 2026-10-14). The installed-app
+  OAuth flow (RFC 8252): authorization code with PKCE (S256) in the user's
+  browser, redirected back to the daemon's own loopback port. What is sent
+  where, all only after the user clicks the button: the browser goes to
+  accounts.google.com or login.microsoftonline.com and the user approves
+  there; the daemon then sends the authorization code and the PKCE verifier
+  (with the client ID, and for Google the desktop client's non-confidential
+  "secret") to that provider's token endpoint — oauth2.googleapis.com or
+  login.microsoftonline.com — and from then on the refresh token to the same
+  endpoint for a new access token, about hourly while Mail syncs. The access
+  token goes only to the provider's own IMAP and SMTP servers (imap.gmail.com
+  and smtp.gmail.com; outlook.office365.com and smtp.office365.com) inside
+  SASL XOAUTH2. The refresh token lives where passwords live — the OS
+  keychain item of the account — and the access token only in memory. The
+  scopes are mail only (`https://mail.google.com/`; Microsoft's
+  `IMAP.AccessAsUser.All` and `SMTP.Send`, `offline_access`) plus `openid
+  email` for the address. Revoking: remove the account in Mail (deletes the
+  token here), and at the provider — Google at myaccount.google.com/permissions,
+  a personal Microsoft account at account.live.com/consent/Manage, a work
+  account at myapps.microsoft.com or by its Entra admin. The client IDs are
+  the Caprock owner's app registrations, compiled in or given by environment
+  ([docs/mail-oauth.md](../docs/mail-oauth.md)); without one the button is not
+  offered and nothing else changes. The callback is the one `/v1` route the
+  CSRF guard admits as a cross-site GET, on a loopback Host only, with the
+  single-use state as its protection.
 - **Headers are read whole.** The list is built from `BODY.PEEK[HEADER]`,
   parsed locally, never from ENVELOPE or `HEADER.FIELDS`: iCloud has sent
   ENVELOPEs with unescaped quotes in the Message-ID (one bad answer fails
@@ -3238,8 +3268,134 @@ dashboard and a desktop app on three OSes.
   through the nudge system after two days of use, only while no account
   exists; opening Mail or dismissing it answers it.
 
+- **Adding an account is an address and a password.** Server settings come
+  from a table of about 40 consumer and hosting services, each entry citing
+  the provider's own settings page (QQ Mail, NetEase, Naver and Spectrum are
+  left out until one can be read); then the domain's MX against that table;
+  then RFC 6186 SRV records; then the domain's own autoconfig file; then the
+  `imap.` / `smtp.` convention. Discovery asks only the user's own domain,
+  never Mozilla's ISPDB or any other directory, so an address goes nowhere
+  but where its mail already lives (rule 4).
+
 **Consequences.** One more outbound path exists, to destinations the user
 chose; the binary grows by the IMAP, SMTP and MIME libraries. Not built:
-OAuth, server-side drafts, notifications, rules, mail on a paired phone
+server-side drafts, notifications, rules, mail on a paired phone
 (attachments and the iframe's images need the device token, which plain URLs
 do not carry).
+## ADR-058 — A phone reaches the machine from anywhere, through a relay that carries only ciphertext
+
+**Date:** 2026-10-13 · **Status:** accepted (owner, translated: "I want someone
+without an App Store app to use Caprock running on their machine, local or
+remote — a laptop or a Mac mini for agents — reliably, through a relay over the
+internet, for when I'm out walking the dog. Make it mobile first."). Amends
+[ADR-029](#adr-029--a-second-device-gets-in-over-the-lan-with-a-code-or-not-at-all),
+which ruled out "a relay of ours", and rule 4 in `CLAUDE.md`.
+
+**Context.** A phone could reach the daemon only on the same Wi-Fi or over
+Tailscale, which needs an app from the App Store on the phone — the thing the
+owner is avoiding until Apple approves the developer account. A machine at
+home sits behind a router, often behind carrier NAT too, and accepts no
+connection from the internet. The only route that works behind any router is
+two outbound connections meeting at a public address.
+
+**Decision.**
+
+- **Off by default, on by a decision on the machine** (Settings → Phone →
+  *From anywhere*, or `caprock remote on`), and **remembered**: unlike the LAN
+  listener, the machine this is for is the one nobody sits at. It cannot be
+  turned on, or the relay changed, from a phone.
+- **The daemon dials out** to the relay (`wss://relay.caprock.dev` by default,
+  any relay by `--relay`) at `/v1/host/<id>`; the id is its Ed25519 public key,
+  and it proves it with a signature over the relay's nonce. No inbound port, no
+  account, no database on the relay.
+- **The phone dials the same relay** at `/v1/c/<id>`, and the relay splices
+  the two, one Durable Object per machine on Cloudflare (`relay/`), or
+  `internal/remote/relaysrv` (`caprock remote relay`) for a relay of one's own.
+- **End to end: Noise_NK_25519_AESGCM_SHA256.** The QR carries the machine's
+  static X25519 key; the phone runs NK against it, so a relay — ours or
+  anyone's — forwards bytes it cannot read or alter, and a reply from anything
+  but that machine fails the handshake. Go side `internal/remote/noise.go`,
+  phone side `ui/src/remote/noise.ts`, held to the same bytes by
+  `testdata/remote/noise-vector.json`.
+- **Inside the channel, the phone's dashboard runs unchanged.** Its `fetch()`
+  and `WebSocket` for `/v1/…` become streams (`internal/remote/proto.go`), and
+  the daemon replays each onto its own loopback marked `Via: 1.1
+  caprock-remote` — so the gate treats it as a paired device: the same pairing
+  code, device token, viewer and controller roles and revocation as on the LAN,
+  not a second set. Browser headers (Origin, Sec-Fetch-*, cookies) are dropped
+  inside the channel; paths that could leave loopback are refused.
+- **The phone's page is static**, built with `vite build --mode remote` and
+  served over https (`m.caprock.dev` by default, any by `--app`). It keeps
+  several machines, one at a time, each with its relay, pinned key and token.
+  https gives what a plain LAN address could not: an installable app on
+  Android, and later Web Push.
+
+**What the relay sees.** Which machine id a phone connects to, when, from which
+IP address, and how many bytes pass. Not a session, a token, a command or a
+figure.
+
+**Consequences.**
+
+- Rule 4 now reads "nothing readable is ever sent to Caprock": the relay is a
+  Caprock service, carries ciphertext only, and is optional.
+- The phone's page is code we serve; whoever controls it could read what the
+  phone shows. It is the same trust as any web app, stated here, and the page
+  can be self-hosted (`--app`).
+- The free plan's limits on Durable Object requests are an open question for
+  many users (`.ai/12-risks.md`); `caprock remote relay` is the way out.
+
+**Rules out:** relaying plaintext or terminating TLS for the user; an account
+on the relay; turning remote access on from a phone; storing anything on the
+relay.
+
+
+## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
+
+**Date:** 2026-10-14 · **Status:** accepted (owner approved, 2026-10-14)
+
+**Context.** The owner asked (2026-10-13, translated): "I'd like to be able
+to monitor such orphans, including Claude's orphans. Maybe also an
+additional cleanup — an advanced mode." On his Mac were a 7-day-old
+`caprock pty-host` from an old Homebrew install, a `caprock up` that another
+tool had started from a job's temporary directory hours earlier, leftover
+preview holders from agent tests, and, he suspected, `claude` processes and
+node MCP servers that outlived their sessions. Caprock already stopped its
+own reapable terminal holders on its own; everything else it only named, and
+rule 7 ("we never signal or type into a process we did not start") kept it
+from offering more — a person had to find each pid and run `kill` by hand.
+
+**Decision.**
+
+- **Monitoring anything is allowed.** Reading the process table — parents,
+  start times, terminals, argv, environment — signals nothing. The footprint
+  gains `orphans`: other Caprock daemons, terminal holders no Caprock will
+  reattach to, any other caprock command whose parent is gone, a `claude`
+  whose session ended in Caprock's history or whose parent is gone, an MCP
+  server whose parent is gone, and what a Claude Code session started
+  (`CLAUDECODE` in its environment) that outlived its parent. Each is listed
+  with why. The heuristics are conservative: a process with a controlling
+  terminal, in a live session's tree, of another user, younger than two
+  minutes or inside a macOS app bundle is never listed. The list is taken on
+  demand (the open doctor, `caprock doctor`); the 10-minute sweep keeps a
+  count for the status strip; there is no new polling.
+- **Signalling a process Caprock did not start is allowed only as a direct,
+  per-item, confirmed user action from the doctor** — the panel's Advanced
+  mode (off by default, on the machine itself: never from a paired phone)
+  with a confirmation, or `caprock doctor --stop <pid>` with a prompt (`--yes`
+  skips it). The request names pid and start time; the daemon takes the list
+  again and signals only a process that list holds with that start time,
+  re-checking the start time before SIGTERM and before SIGKILL five seconds
+  later (Windows: TerminateProcess). Only that pid is signalled, never its
+  children.
+- **Never automatic, never by the orchestrator or an agent, never typing.**
+  No sweep, rule, cap or agent stops a process Caprock did not start; nothing
+  is ever typed into one. Caprock's own reapable holders keep being stopped on
+  their own, as before (§ Resources).
+
+**Rules out:** an automatic cleanup of non-Caprock processes; a "stop all"
+without a per-item list the user saw; stopping a process tree; the stop on a
+paired device's route list.
+
+**Revisit if:** a listed process turns out to be one a user needed and the
+heuristics cannot tell it apart — narrow the heuristics before widening
+anything.

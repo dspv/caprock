@@ -164,11 +164,7 @@ func (w *worker) conn() (*imapclient.Client, store.Account, error) {
 			return w.c, a, nil
 		}
 	}
-	pw, err := w.e.sec.Get(w.id)
-	if err != nil {
-		return nil, a, err
-	}
-	c, name, err := dialIMAP(a, pw, nil)
+	c, name, err := w.e.dial(w.ctx, a, nil)
 	if err != nil {
 		return nil, a, err
 	}
@@ -286,10 +282,6 @@ func (w *worker) idleOnce(signal func()) error {
 	if err != nil {
 		return err
 	}
-	pw, err := w.e.sec.Get(w.id)
-	if err != nil {
-		return err
-	}
 	h := &imapclient.UnilateralDataHandler{
 		Expunge: func(uint32) { signal() },
 		Mailbox: func(d *imapclient.UnilateralDataMailbox) {
@@ -299,7 +291,7 @@ func (w *worker) idleOnce(signal func()) error {
 		},
 		Fetch: func(*imapclient.FetchMessageData) { signal() },
 	}
-	c, _, err := dialIMAP(a, pw, h)
+	c, _, err := w.e.dial(w.ctx, a, h)
 	if err != nil {
 		return err
 	}

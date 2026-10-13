@@ -40,9 +40,11 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 3. **The shim never breaks a user's Claude session.** Every error path is silent `exit 0` within 1s.
 
 4. **All data stays on the machine.** Loopback listeners only, no telemetry,
-   nothing ever sent to Caprock. The only outbound calls are the release check
-   and integrations the user turns on — Telegram, GitHub, Gemini: each off by
-   default, revocable, to a destination the user chose, and saying where it is
+   nothing readable ever sent to Caprock. The only outbound calls are the
+   release check and integrations the user turns on — Telegram, GitHub,
+   Gemini, and access from anywhere, whose relay carries only end-to-end
+   ciphertext ([ADR-058](.ai/08-decisions.md)): each off by default,
+   revocable, to a destination the user chose, and saying where it is
    switched on what it sends ([ADR-047](.ai/08-decisions.md)).
 
 5. **English only, in every file.** Code, comments, docs, data, commits, PR
@@ -56,7 +58,9 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 6. **No invented numbers anywhere public** — prices, costs, forecasts, performance claims. Measured or sourced with a date; otherwise an open question in `.ai/12-risks.md`. Forecasts are labeled estimates.
 
-7. **We never signal or type into a process we did not start.**
+7. **We never signal or type into a process we did not start.** The one
+   exception is the doctor's stop: a direct, per-item, confirmed user action,
+   never automatic ([ADR-059](.ai/08-decisions.md)).
 
 8. **Contracts, DDL, and pricing change only together with `.ai/03-contracts.md`, a migration, or a `pricing_version` bump — in the same commit.**
 

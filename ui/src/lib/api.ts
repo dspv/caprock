@@ -1,7 +1,7 @@
 // Typed client for the daemon API (.ai/03-contracts.md § HTTP API). snake_case
 // on the wire, kept as-is in the types so the contract is visible in the code.
 import type { ReapResult, ResourceReport } from './resources'
-import type { Footprint } from './footprint'
+import type { Footprint, OrphanStopResult, OrphanTarget } from './footprint'
 import type { PullRequest } from './github'
 import type { Usual } from './usual'
 import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
@@ -1546,7 +1546,23 @@ export interface PairState {
   /** Every address a phone can open, `url` first: the LAN one, the Tailscale
    *  one and its MagicDNS name (WP-15). A code works on any of them. */
   addresses?: PairAddress[]
+  /** Access from anywhere through a relay (ADR-058); absent from a daemon
+   *  without it. The same code pairs over it. */
+  remote?: RemoteState
   devices: PairedDevice[]
+}
+
+/** Access from anywhere: this machine waits at a relay (ADR-058). */
+export interface RemoteState {
+  enabled: boolean
+  status: 'off' | 'connecting' | 'online' | 'offline'
+  error?: string
+  phones: number
+  relay: string
+  app: string
+  host_id?: string
+  /** What the QR opens: the phone's page, with the code while one is live. */
+  link?: string
 }
 
 /** One address network access answers on. */
@@ -1554,7 +1570,7 @@ export interface PairAddress {
   url: string
   /** `lan`: the same Wi-Fi only; `tailscale`: a 100.x address, anywhere the
    *  phone has Tailscale; `magicdns`: the same, by its MagicDNS name. */
-  kind: 'lan' | 'tailscale' | 'magicdns'
+  kind: 'lan' | 'tailscale' | 'magicdns' | 'anywhere'
 }
 
 export const api = {
@@ -1647,6 +1663,7 @@ export const api = {
   pairCancelCode: () => post<{ cleared: boolean }>('/v1/pair/code', {}, 'DELETE'),
   /** Turn network access on or off without restarting the daemon. */
   setLAN: (on: boolean) => post<{ enabled: boolean; url?: string }>('/v1/pair/lan', { on }),
+  setRemote: (on: boolean) => post<RemoteState>('/v1/pair/remote', { on }),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
   /** Give a paired device control of sessions, or take it away. Machine only. */
   pairSetRole: (id: string, role: PairedDevice['role']) =>
@@ -1701,8 +1718,13 @@ export const api = {
   resources: () => get<ResourceReport>('/v1/resources'),
   /** Stop the orphaned pty-hosts nothing runs in. Machine only. */
   reapOrphans: () => post<ReapResult>('/v1/resources/reap', {}),
-  /** What Caprock itself costs this machine: memory, disk, its disk I/O, duplicates (lib/footprint.ts). */
-  footprint: () => get<Footprint>('/v1/footprint'),
+  /**
+   * What Caprock itself costs this machine: memory, disk, its disk I/O, duplicates (lib/footprint.ts).
+   * `orphans` takes the orphan list now, for the open doctor; without it the counts are the last scan's.
+   */
+  footprint: (orphans = false) => get<Footprint>(orphans ? '/v1/footprint?orphans=1' : '/v1/footprint'),
+  /** Stop processes the user picked from the doctor's orphan list, each by pid and start time (ADR-059). Machine only. */
+  stopOrphans: (targets: OrphanTarget[]) => post<OrphanStopResult>('/v1/footprint/orphans/stop', { targets }),
   /** Terminal applications installed here, most preferred first. */
   terminals: () => get<TerminalList>('/v1/terminals'),
   /** Open a session in the user's own terminal app. */

@@ -107,14 +107,15 @@ describe('the sessions under a project', () => {
 })
 
 describe('group by project, off', () => {
-  it('lists every session in one flat list, each with its project dimmed, numbered ⌘1–⌘9 by place', () => {
+  it('lists every session in one flat list, each with its project dimmed', () => {
     const onToggleGrouped = vi.fn()
     setup(mix(), [], { grouped: false, onToggleGrouped })
     expect(document.querySelector('[data-project-row]')).toBeNull()
     expect(screen.getByRole('heading', { name: 'Sessions' })).toBeInTheDocument()
     const list = screen.getByRole('group', { name: 'Sessions' })
     expect([...list.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['w1', 'wt', 'i1', 'b1'])
-    expect([...list.querySelectorAll('[data-row-key-digit]')].map((k) => k.textContent)).toEqual(['⌘1', '⌘2', '⌘3', '⌘4'])
+    // ⌘N is a tab's: a row with no tab has no key.
+    expect(list.querySelectorAll('[data-row-key-digit]')).toHaveLength(0)
     expect(list.querySelector('[data-live-row="b1"] [data-row-project-mark]')!.textContent).toBe('beta')
     const toggle = screen.getByRole('button', { name: 'Group by project' })
     expect(toggle).toHaveAttribute('aria-pressed', 'false')
@@ -136,12 +137,12 @@ describe('group by project, off', () => {
       { id: 'tb', projectId: 'beta', root: pane('pb', 'session', 'b1'), focusedPaneId: 'pb', title: 'Beta work' },
       { id: 'tw', projectId: 'alpha', root: pane('pw', 'session', 'wt'), focusedPaneId: 'pw', title: 'Your turn' },
     ]
-    setup(mix(), tabs, { grouped: false, activeTabId: 'tw' })
+    setup(mix(), tabs, { grouped: false, activeTabId: 'tw', tabDigits: new Map([['tw', 1], ['tb', 2]]) })
     const digitOf = (sel: string) => document.querySelector(`${sel} [data-row-key-digit]`)?.textContent
-    // In front, the × takes the key's place; the key is still the row's.
-    expect(document.querySelector('[data-tab-row="tw"] [data-row-key-digit]')!.className).toContain('hidden')
-    expect(digitOf('[data-tab-row="tw"]')).toBe('⌘2')
-    expect(digitOf('[data-tab-row="tb"]')).toBe('⌘4')
-    expect(digitOf('[data-live-row="w1"]')).toBe('⌘1')
+    // In front, the key stays beside the ×: every tab's row says its key.
+    expect(document.querySelector('[data-tab-row="tw"] [data-row-key-digit]')!.className).not.toContain('hidden')
+    expect(digitOf('[data-tab-row="tw"]')).toBe('⌘1')
+    expect(digitOf('[data-tab-row="tb"]')).toBe('⌘2')
+    expect(digitOf('[data-live-row="w1"]')).toBeUndefined()
   })
 })

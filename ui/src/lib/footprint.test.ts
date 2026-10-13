@@ -47,7 +47,7 @@ describe('sizes', () => {
 describe('the one-line verdict', () => {
   it('is All good with no warning, else how many things to look at', () => {
     const f = JSON.parse(fixture('doctor.json')) as Footprint
-    expect(verdictSummary(f)).toBe('3 things to look at')
+    expect(verdictSummary(f)).toBe('4 things to look at')
     expect(verdictSummary({ ...f, verdicts: [{ level: 'ok', code: 'ok', text: 'Nothing here looks wrong.' }] })).toBe('All good')
     expect(verdictSummary({ ...f, verdicts: [f.verdicts![0]!] })).toBe('1 thing to look at')
   })

@@ -186,7 +186,8 @@ describe('a file tab', () => {
     expect(one.querySelector('[data-tab-subtitle], [data-project-chip]')).toBeNull()
   })
 
-  it('puts the jump key in the ×\'s slot at the right end: the key at rest, the × on hover and in front', () => {
+  // Owner, 2026-10-14 (translated): "not every tab shows the key combination".
+  it('puts the jump key in the ×\'s slot at the right end on every tab: the × on hover, and beside the key in front', () => {
     render(
       <TabStrip
         tabs={[tab('one'), tab('two')]}
@@ -212,19 +213,51 @@ describe('a file tab', () => {
       // The slot is the tab's last child: nothing after it, the title before it.
       expect(t.lastElementChild).toBe(end)
       expect(end.querySelector('[data-tab-key]')!.className).toContain('app-kbd-sm')
-      expect(end.querySelector('button')!.className).toContain('absolute')
     }
-    // In front: the × shows and the key steps aside; behind: the key, the × on hover.
-    expect(one.querySelector('[data-tab-key]')!.className).toContain('invisible')
+    // In front: the key and the × side by side; behind: the key, the × over it on hover.
+    expect(one.querySelector('[data-tab-key]')!.className).not.toContain('invisible')
+    expect(one.querySelector('[data-tab-key]')!.textContent).toBe('⌘1')
     expect(one.querySelector('[data-tab-end] button')!.className).not.toContain('invisible')
+    expect(one.querySelector('[data-tab-end] button')!.className).not.toContain('absolute')
+    expect(two.querySelector('[data-tab-end] button')!.className).toContain('absolute')
     expect(two.querySelector('[data-tab-key]')!.className).toContain('group-hover:invisible')
     expect(two.querySelector('[data-tab-end] button')!.className).toContain('invisible group-hover:visible')
     expect(two.getAttribute('title')).toContain('— ⌘2')
-    // The Dashboard tab is its icon alone: no key drawn, no × while it is behind.
+    // The Dashboard tab is its icon and its key, drawn as a tab's (owner,
+    // 2026-10-14, translated: "I must always see the key combinations next
+    // to the tabs"); no × while it is behind.
     const dash = document.querySelector('[data-dashboard-tab]')!
-    expect(dash.querySelector('kbd')).toBeNull()
+    expect(dash.querySelector('[data-tab-key]')!.textContent).toBe('⌘0')
+    expect(dash.querySelector('[data-tab-key]')!.className).toBe('app-kbd-sm')
     expect(dash.getAttribute('title')).toBe('Dashboard — ⌘0')
     expect(screen.getByRole('button', { name: 'Close tab Dashboard' }).className).toContain('hidden')
+    // The inspector's button says its key, as Deck does.
+    expect(screen.getByRole('button', { name: 'Inspector (⌘I)' }).querySelector('[data-strip-key]')!.textContent).toBe('⌘I')
+  })
+
+  it('draws the pinned tab\'s key in front and behind, ⌘, for Settings, and Ctrl⇧ off macOS', () => {
+    const strip = (active: boolean, label: string) => render(
+      <TabStrip tabs={[]} activeTabId={undefined} sessions={new Map()} permissions={new Set()} inspectorOpen={false} sidebarOpen
+        onActivate={() => {}} onDetach={() => {}} onMove={() => {}} onNewAgent={() => {}} onNewShell={() => {}} onToggleInspector={() => {}}
+        dashboard={{ active, label, onActivate: () => {}, onClose: () => {} }} />,
+    )
+    const keyOf = () => document.querySelector('[data-dashboard-tab] [data-tab-key]')?.textContent
+    const a = strip(true, 'Dashboard')
+    expect(keyOf()).toBe('⌘0')
+    a.unmount()
+    const b = strip(false, 'Settings')
+    expect(keyOf()).toBe('⌘,')
+    b.unmount()
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
+    try {
+      const c = strip(false, 'Dashboard')
+      expect(keyOf()).toBe('Ctrl⇧0')
+      c.unmount()
+      strip(true, 'Settings')
+      expect(keyOf()).toBe('Ctrl⇧,')
+    } finally {
+      platform.mockRestore()
+    }
   })
 
   it('shows what the workspace draws for a file, not a terminal', () => {

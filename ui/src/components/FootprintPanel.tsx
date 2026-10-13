@@ -15,7 +15,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { api, errText } from '@/lib/api'
 import { fmtAgo } from '@/lib/format'
 import { fmtCPU, fmtMem, refreshResources, useResources, type ReapResult } from '@/lib/resources'
-import { fmtBytes, footprintText, footprintTitle, useFootprint, verdictSummary, warnings, windowUsage, type Footprint, type FootprintVerdict } from '@/lib/footprint'
+import { age, fmtBytes, footprintText, footprintTitle, ORPHAN_KIND, strayCount, useFootprint, useFootprintWithOrphans, verdictSummary, warnings, windowUsage, type Footprint, type FootprintVerdict, type Orphan, type OrphanStopResult } from '@/lib/footprint'
 import { useNow } from '@/lib/useNow'
 import { useMenuDismiss } from './Cockpit'
 
@@ -111,10 +111,13 @@ export function CaprockFootprint({ owner }: { owner: boolean }) {
   )
 }
 
+/** How much older than the strip's answer the panel's own may be and still be shown. */
+const FRESH_MS = 30_000
+
 const BUTTON = 'h-[26px] shrink-0 rounded-[7px] border border-[var(--app-hairline-strong)] px-2.5 text-[12px] text-fg hover:border-accent disabled:opacity-50'
 
 /** The panel above the strip: `caprock doctor` in the window. */
-export function FootprintPanel({ f, owner, onCheck, onClose, className = 'absolute bottom-[25px] right-0 z-40' }: {
+export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose, className = 'absolute bottom-[25px] right-0 z-40' }: {
   f: Footprint
   owner: boolean
   /** Ask the daemon again now: *Check now*, and after a reap. */
@@ -122,6 +125,14 @@ export function FootprintPanel({ f, owner, onCheck, onClose, className = 'absolu
   onClose?: () => void
   className?: string
 }) {
+  // While open, the panel asks for the footprint with the orphan list taken
+  // now; the strip's answer (counts only) stands in until it lands.
+  const full = useFootprintWithOrphans()
+  const f = full.data && full.data.at >= strip.at - FRESH_MS ? full.data : strip
+  const onCheck = () => {
+    onStripCheck?.()
+    full.refresh()
+  }
   const now = useNow(5_000)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string>()
@@ -135,10 +146,10 @@ export function FootprintPanel({ f, owner, onCheck, onClose, className = 'absolu
   }, [checking, f.at])
   const check = () => {
     setChecking(f.at)
-    onCheck?.()
+    onCheck()
   }
-  const age = now - f.at
-  const checked = checking !== undefined ? 'checking…' : age < 10_000 ? 'checked just now' : `checked ${fmtAgo(f.at, now)}`
+  const sinceCheck = now - f.at
+  const checked = checking !== undefined ? 'checking…' : sinceCheck < 10_000 ? 'checked just now' : `checked ${fmtAgo(f.at, now)}`
   const warns = warnings(f).length
   const h = f.memory.hosts
   const reap = async () => {
@@ -150,7 +161,7 @@ export function FootprintPanel({ f, owner, onCheck, onClose, className = 'absolu
       const failed = r.failed?.length ?? 0
       setNote(`${n === 0 ? 'Nothing to stop' : `Stopped ${n}`}${failed ? `, ${failed} would not stop` : ''}${r.kept.length ? ` · ${r.kept.length} left running: something still runs in them` : ''}.`)
       await refreshResources()
-      onCheck?.()
+      onCheck()
     } catch (e) {
       setNote(errText(e))
     } finally {
@@ -162,12 +173,12 @@ export function FootprintPanel({ f, owner, onCheck, onClose, className = 'absolu
   }
   const body = (
     <ClosePanel.Provider value={onClose}>
-      <Body f={f} now={now} />
+      <Body f={f} now={now} owner={owner} onStopped={onCheck} />
     </ClosePanel.Provider>
   )
   return (
     <div role="dialog" aria-label="Caprock on this computer" data-footprint-panel
-      className={`app-fade-in flex flex-col max-h-[calc(100vh-48px)] w-[320px] max-w-[calc(100vw-24px)] gap-2.5 overflow-y-auto rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-3 text-[12.5px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)] ${className}`}>
+      className={`app-fade-in flex flex-col max-h-[calc(100vh-48px)] w-[340px] max-w-[calc(100vw-24px)] gap-2.5 overflow-y-auto rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-3 text-[12.5px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)] ${className}`}>
       <div className="flex flex-col gap-0.5">
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-[14px] font-semibold">Caprock on this computer</span>
@@ -339,6 +350,10 @@ function warningHead(f: Footprint, v: FootprintVerdict): { head: string; detail?
       const hr = f.disk_io?.last_hour
       return { head: hr ? `Read ${fmtBytes(hr.read_bytes)} from disk in the last ${ioSpan(f)}` : v.text }
     }
+    case 'stray_processes': {
+      const n = strayCount(f.orphans) + (f.orphans?.by_kind?.claude_child ?? 0)
+      return { head: n > 0 ? `${plural(n, 'process', 'processes')} ${n === 1 ? 'looks' : 'look'} abandoned` : v.text }
+    }
     case 'database_large': return { head: `The database is ${fmtBytes(f.disk.database_bytes)}` }
     case 'wal_large': return { head: `The write-ahead log is ${fmtBytes(f.disk.wal_bytes)}` }
   }
@@ -387,11 +402,12 @@ function Actions({ f, now, limit = 2 }: { f: Footprint; now: number; limit?: num
 
 // --- the body: sections stacked under headers (owner's pick, 2026-10-13) ---
 
-function Body({ f, now }: { f: Footprint; now: number }) {
+function Body({ f, now, owner, onStopped }: { f: Footprint; now: number; owner: boolean; onStopped: () => void }) {
   const io = ioLines(f)
   return (
     <>
       <Warnings f={f} />
+      <Orphans f={f} owner={owner} onStopped={onStopped} />
       <section data-memory className="flex flex-col gap-1">
         <Header title="Memory" right={<span className="flex items-baseline gap-2"><span className="num text-[11px] text-fg-faint">{fmtCPU(f.memory.total_cpu_pct)} CPU</span><span className="num font-semibold">{fmtMem(f.memory.total_mem_bytes)}</span></span>} />
         <ul className="flex flex-col">{memoryLines(f).map((l) => <Row key={l.key} l={l} />)}</ul>
@@ -413,5 +429,142 @@ function Body({ f, now }: { f: Footprint; now: number }) {
         </section>
       )}
     </>
+  )
+}
+
+// --- orphans: what looks abandoned, and the Advanced stop (ADR-059) --------
+
+/**
+ * Processes on this machine that look abandoned, each with why. Read-only
+ * until *Advanced* is switched on (off by default, on the computer itself
+ * only): then each gets a checkbox and a Stop, and nothing is stopped
+ * without a second click on the confirmation. The daemon scans again and
+ * signals only what that scan lists with the start time shown here.
+ */
+export function Orphans({ f, owner, onStopped }: { f: Footprint; owner: boolean; onStopped?: () => void }) {
+  const o = f.orphans
+  const [advanced, setAdvanced] = useState(false)
+  const [picked, setPicked] = useState<Set<number>>(() => new Set())
+  const [confirm, setConfirm] = useState<number[]>()
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string>()
+  if (!o) return null
+  const list = o.list ?? []
+  const byPid = new Map(list.map((x) => [x.pid, x]))
+  const chosen = [...picked].filter((p) => byPid.has(p))
+  const toggle = (pid: number) => setPicked((s) => {
+    const n = new Set(s)
+    if (n.has(pid)) n.delete(pid)
+    else n.add(pid)
+    return n
+  })
+  const stop = async (pids: number[]) => {
+    const targets = pids.flatMap((p) => {
+      const x = byPid.get(p)
+      return x ? [{ pid: p, started_at: x.started_at }] : []
+    })
+    if (!targets.length) { setConfirm(undefined); return }
+    setBusy(true)
+    setNote(undefined)
+    try {
+      const r: OrphanStopResult = await api.stopOrphans(targets)
+      const ok = r.stopped ?? []
+      const bad = r.failed ?? []
+      setNote([ok.length ? `Stopped ${ok.map((x) => `${x.label} (pid ${x.pid})`).join(', ')}.` : '', ...bad.map((x) => `pid ${x.pid} not stopped: ${x.error}.`)].filter(Boolean).join(' '))
+      setPicked(new Set())
+      onStopped?.()
+    } catch (e) {
+      setNote(errText(e))
+    } finally {
+      setBusy(false)
+      setConfirm(undefined)
+    }
+  }
+  const count = o.scanned ? list.length : o.count
+  const canStop = advanced && owner
+  return (
+    <section data-orphans className="flex flex-col gap-1">
+      <Header title="Orphans" right={
+        <span className="flex items-baseline gap-2">
+          {owner && list.length > 0 && (
+            <label className="flex cursor-pointer items-center gap-1 text-[11px] font-normal normal-case tracking-normal text-fg-muted" title="Show a Stop for each process. Off by default; nothing is stopped without your click.">
+              <input type="checkbox" data-advanced checked={advanced} onChange={(e) => { setAdvanced(e.target.checked); setConfirm(undefined) }} className="h-3 w-3 accent-accent" />
+              Advanced
+            </label>
+          )}
+          <span className={`num font-semibold ${strayCount(o) ? 'text-warn' : ''}`}>{count}</span>
+        </span>
+      } />
+      {!o.scanned && <p className="text-[11.5px] text-fg-muted">{o.count ? `${plural(o.count, 'process', 'processes')} at the last check; looking now…` : 'Looking…'}</p>}
+      {o.scanned && list.length === 0 && <p data-orphans-none className="text-[11.5px] text-fg-muted">Nothing looks abandoned.</p>}
+      {list.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {list.map((x) => (
+            <OrphanRow key={x.pid} o={x} at={f.at} advanced={canStop} picked={picked.has(x.pid)} busy={busy}
+              onPick={() => toggle(x.pid)} onStop={() => setConfirm([x.pid])} />
+          ))}
+        </ul>
+      )}
+      {canStop && list.length > 0 && !confirm && (
+        <div className="flex items-center gap-2">
+          <button type="button" data-stop-selected className={BUTTON} disabled={busy || chosen.length === 0} onClick={() => setConfirm(chosen)}>
+            Stop selected{chosen.length ? ` (${chosen.length})` : ''}
+          </button>
+          <span className="text-[11px] text-fg-faint">SIGTERM, then SIGKILL after 5 s</span>
+        </div>
+      )}
+      {confirm && (
+        <div role="alertdialog" aria-label="Stop processes" data-stop-confirm className="flex flex-col gap-1.5 rounded-[8px] border border-warn/40 bg-warn/10 px-2.5 py-1.5">
+          <p className="text-[12px] text-fg">
+            Stop {confirm.length === 1 ? `${byPid.get(confirm[0]!)?.label ?? 'it'} (pid ${confirm[0]})` : plural(confirm.length, 'process', 'processes')}?
+            <span className="text-fg-muted"> Caprock may not have started {confirm.length === 1 ? 'it' : 'them'}; anything unsaved in {confirm.length === 1 ? 'it' : 'them'} is lost.</span>
+          </p>
+          <div className="flex gap-2">
+            <button type="button" data-stop-confirm-yes className={`${BUTTON} text-warn`} disabled={busy} onClick={() => void stop(confirm)}>{busy ? 'Stopping…' : 'Stop'}</button>
+            <button type="button" data-stop-confirm-no className={BUTTON} disabled={busy} onClick={() => setConfirm(undefined)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {note && <p role="status" data-orphans-note className="text-[11.5px] text-fg-muted">{note}</p>}
+      {o.note && o.scanned && <p className="text-[11px] text-fg-faint">{o.note}</p>}
+    </section>
+  )
+}
+
+function OrphanRow({ o, at, advanced, picked, busy, onPick, onStop }: {
+  o: Orphan
+  at: number
+  advanced: boolean
+  picked: boolean
+  busy: boolean
+  onPick: () => void
+  onStop: () => void
+}) {
+  const where = [o.exe, o.data_dir ? `data ${o.data_dir}${o.data_dir_gone ? ' (gone)' : ''}` : ''].filter(Boolean).join(' · ')
+  return (
+    <li data-orphan={o.pid} data-kind={o.kind} className="flex items-start gap-1.5">
+      {advanced && (
+        <input type="checkbox" aria-label={`Select pid ${o.pid}`} data-orphan-pick checked={picked} onChange={onPick} disabled={busy} className="mt-[3px] h-3 w-3 shrink-0 accent-accent" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-1.5">
+          <span className="min-w-0 flex-1 truncate" title={`${ORPHAN_KIND[o.kind] ?? o.kind}${where ? ` · ${where}` : ''}`}>
+            <span className="mono text-fg">{o.label}</span>
+            <span className="num text-fg-faint"> · pid {o.pid}</span>
+          </span>
+          <span className="num shrink-0 text-[11px] text-fg-faint" title="how long it has run">{age(at - o.started_at)}</span>
+          <span className="num w-[6ch] shrink-0 text-right text-fg">{fmtMem(o.mem_bytes)}</span>
+        </div>
+        <p className="text-[11px] leading-[15px] text-fg-muted">{o.why}</p>
+        {where && <p className="truncate text-[10.5px] text-fg-faint" title={where}>{where}</p>}
+      </div>
+      {advanced && (
+        <button type="button" data-orphan-stop disabled={busy} onClick={onStop}
+          className="h-[20px] shrink-0 rounded-[6px] border border-[var(--app-hairline-strong)] px-1.5 text-[11px] text-fg-muted hover:border-warn hover:text-warn disabled:opacity-50"
+          title={o.auto ? 'The daemon stops this one on its own; this stops it now.' : 'Stop this process: SIGTERM, then SIGKILL after 5 s.'}>
+          Stop
+        </button>
+      )}
+    </li>
   )
 }

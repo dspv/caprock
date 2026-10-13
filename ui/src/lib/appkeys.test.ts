@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchAppShortcut, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
+import { matchAppShortcut, moveKeysLine, stripKey, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
 
 const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
   key,
@@ -15,9 +15,16 @@ describe('the app keyboard map', () => {
   // Owner, 2026-10-13 (translated): "Command+digit focuses that project …
   // Command+Up/Down to move, or Option+Left/Right". ⌥← ⌥→ and ⌘↑ ⌘↓ are the
   // terminal's, so the moves are ⌥⌘ arrows, Alt+Shift arrows elsewhere.
-  it('maps ⌘1–⌘9 to projects and ⌥⌘ arrows to sessions and projects', () => {
-    expect(matchAppShortcut(k('1', { metaKey: true }), true)).toEqual({ kind: 'project', index: 0 })
-    expect(matchAppShortcut(k('9', { metaKey: true }), true)).toEqual({ kind: 'project', index: 8 })
+  // Owner, 2026-10-14 (translated): "I just want to switch between them
+  // with key combos". ⌘N is the Nth tab, always; projects have no digit.
+  it('maps ⌘1–⌘9 to tabs, no digit chord to projects, and ⌥⌘ arrows to sessions and projects', () => {
+    for (let d = 1; d <= 9; d++) {
+      expect(matchAppShortcut(k(String(d), { metaKey: true }), true)).toEqual({ kind: 'tab', index: d - 1 })
+      expect(matchAppShortcut(k(String(d), { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'tab', index: d - 1 })
+      // The project chords of 2026-10-14's first try are gone (owner: no digits for projects).
+      expect(matchAppShortcut(k(String(d), { metaKey: true, ctrlKey: true }), true)).toBeNull()
+      expect(matchAppShortcut(k('!@#$%^&*('[d - 1]!, { code: `Digit${d}`, altKey: true, shiftKey: true }), false)).toBeNull()
+    }
     expect(matchAppShortcut(k('ArrowDown', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'session', delta: 1 })
     expect(matchAppShortcut(k('ArrowUp', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'session', delta: -1 })
     expect(matchAppShortcut(k('ArrowRight', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'step-project', delta: 1 })
@@ -26,6 +33,28 @@ describe('the app keyboard map', () => {
     expect(matchAppShortcut(k('ArrowLeft', { altKey: true, shiftKey: true }), false)).toEqual({ kind: 'step-project', delta: -1 })
     // Alt+Shift+N is no app chord; only the arrows are.
     expect(matchAppShortcut(k('n', { altKey: true, shiftKey: true }), false)).toBeNull()
+    expect(matchAppShortcut(k('0', { altKey: true, shiftKey: true }), false)).toBeNull()
+  })
+
+  // Alt+digit is readline's and PSReadLine's digit-argument and a GNOME
+  // Terminal tab; Ctrl+Alt+digit is AltGr+digit ({ [ @ on European
+  // layouts) and a Windows Terminal tab; Ctrl+digit and ⌃digit the terminal's.
+  it('leaves the terminal its digits: Alt, Ctrl+Alt, Ctrl, ⌃ and ⌥', () => {
+    for (let d = 1; d <= 9; d++) {
+      const key = String(d)
+      expect(matchAppShortcut(k(key, { altKey: true }), false), `Alt+${d}`).toBeNull()
+      expect(matchAppShortcut(k(key, { ctrlKey: true, altKey: true }), false), `Ctrl+Alt+${d}`).toBeNull()
+      expect(matchAppShortcut(k(key, { ctrlKey: true }), false), `Ctrl+${d}`).toBeNull()
+      expect(matchAppShortcut(k(key, { ctrlKey: true }), true), `⌃${d}`).toBeNull()
+      expect(matchAppShortcut(k(key, { altKey: true }), true), `⌥${d}`).toBeNull()
+      expect(matchAppShortcut(k(key, { metaKey: true, ctrlKey: true, shiftKey: true }), true), `⌃⇧⌘${d}`).toBeNull()
+    }
+  })
+
+  it('says how to move in one line, in this platform\'s words', () => {
+    expect(moveKeysLine(true)).toBe('⌘1–9 switch tabs in the order you opened them · double-click a tab to rename')
+    expect(moveKeysLine(false)).toBe('Ctrl+Shift+1–9 switch tabs in the order you opened them · double-click a tab to rename')
+    expect(keys('⌃Tab', false)).toBe('Ctrl+Tab')
   })
 
   // PowerShell's PSReadLine (Windows mode) binds Ctrl+Shift+← → to
@@ -60,7 +89,7 @@ describe('the app keyboard map', () => {
     expect(matchAppShortcut(k('o', { metaKey: true }), true)).toEqual({ kind: 'add-project' })
     expect(matchAppShortcut(k('w', { metaKey: true }), true)).toEqual({ kind: 'detach-tab' })
     expect(matchAppShortcut(k('k', { metaKey: true }), true)).toEqual({ kind: 'palette' })
-    expect(matchAppShortcut(k('3', { metaKey: true }), true)).toEqual({ kind: 'project', index: 2 })
+    expect(matchAppShortcut(k('3', { metaKey: true }), true)).toEqual({ kind: 'tab', index: 2 })
     expect(matchAppShortcut(k(',', { metaKey: true }), true)).toEqual({ kind: 'settings' })
   })
 
@@ -161,6 +190,16 @@ describe('the jump key on a tab', () => {
     expect(tabDigit(11, 12)).toBe(9)
     expect(tabDigit(8, 9)).toBe(9)
   })
+  // The pinned tab's ⌘0 and ⌘, are drawn short as a tab's ⌘N is, and the
+  // short form off macOS is the chord that works there.
+  it('draws the pinned tab\'s keys short, and the short form is the chord off macOS', () => {
+    expect(stripKey('0', true)).toBe('⌘0')
+    expect(stripKey(',', false)).toBe('Ctrl⇧,')
+    for (const [ch, code, kind] of [['0', 'Digit0', 'dashboard'], [',', 'Comma', 'settings']] as const) {
+      expect(stripKey(ch, false).replace('⇧', '+Shift+')).toBe(keys(`⌘${ch}`, false))
+      expect(matchAppShortcut({ key: ch, code, ctrlKey: true, shiftKey: true, altKey: false, metaKey: false }, false)).toEqual({ kind })
+    }
+  })
   it('is short on every platform', () => {
     expect(tabKey(3, true)).toBe('⌘3')
     expect(tabKey(3, false)).toBe('Ctrl⇧3')
@@ -206,13 +245,14 @@ describe('every listed shortcut, on every OS', () => {
   it('has chords to check, the arrow chords among them', () => {
     expect(chords.length).toBeGreaterThan(10)
     expect(chords).toEqual(expect.arrayContaining(['⌘9', '⌥⌘↓', '⌥⌘↑', '⌥⌘→', '⌥⌘←']))
+    expect(chords.some((c) => c.startsWith('⌃⌘'))).toBe(false)
   })
 
   for (const c of chords) {
     it(`${c} reaches the same command as ${keys(c, false)}`, () => {
       if (c === '⌘R') return // the webview's own reload, not an app command
       const ch = c.slice(-1)
-      const mac = matchAppShortcut(event(codeOf(ch), keyOf(ch), { metaKey: true, shiftKey: c.includes('⇧'), altKey: c.includes('⌥') }), true)
+      const mac = matchAppShortcut(event(codeOf(ch), keyOf(ch), { metaKey: true, shiftKey: c.includes('⇧'), altKey: c.includes('⌥'), ctrlKey: c.includes('⌃') }), true)
       expect(mac, `${c} on macOS`).not.toBeNull()
       const off = keys(c, false)
       if (off === '' || off === 'F5') return // macOS-only, or the browser's own reload
@@ -224,9 +264,34 @@ describe('every listed shortcut, on every OS', () => {
     })
   }
 
+  // The ranges list one chord each (⌘1–8); every digit in them is pressed.
+  it('⌘1–⌘9 reach the same tab as Ctrl+Shift+1–9', () => {
+    for (let d = 1; d <= 9; d++) {
+      const mac = matchAppShortcut(event(`Digit${d}`, String(d), { metaKey: true }), true)
+      expect(mac).toEqual({ kind: 'tab', index: d - 1 })
+      expect(keys(`⌘${d}`, false)).toBe(`Ctrl+Shift+${d}`)
+      // With Shift held a digit's key is its symbol; the code is what counts.
+      expect(matchAppShortcut(event(`Digit${d}`, '!@#$%^&*('[d - 1]!, { ctrlKey: true, shiftKey: true }), false)).toEqual(mac)
+    }
+  })
+
   // Owner, 2026-10-12: ⌥⌘N started a chat "without asking with whom"
   // (translated). The chord is unchanged on every OS; what the list says it
   // does changed with it.
+  // Owner, 2026-10-14: Expand needs a key. ⌘B is the deck, so off macOS
+  // Ctrl+Shift+B is taken by it and Expand takes Alt as well.
+  it('makes ⇧⌘B the deck’s Expand and Collapse, Ctrl+Alt+Shift+B off macOS, beside ⌘B', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⇧⌘B')?.[1]).toMatch(/Expand the deck into the PRs & CI tab; in that tab, Collapse back/)
+    expect(keys('⇧⌘B', false)).toBe('Ctrl+Alt+Shift+B')
+    expect(keys('⌘B', false)).toBe('Ctrl+Shift+B')
+    expect(matchAppShortcut(event('KeyB', 'B', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'deck-expand' })
+    expect(matchAppShortcut(event('KeyB', 'b', { metaKey: true }), true)).toEqual({ kind: 'deck' })
+    expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'deck-expand' })
+    expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'deck' })
+    // Ctrl+B alone stays the terminal's (tmux's prefix, readline's back-char).
+    expect(matchAppShortcut(event('KeyB', 'b', { ctrlKey: true }), false)).toBeNull()
+  })
+
   it('lists ⌥⌘N as asking, Ctrl+Alt+Shift+N off macOS', () => {
     expect(SHORTCUTS.find(([k]) => k === '⌥⌘N')?.[1]).toMatch(/asks which agent and model, Enter takes the last one/)
     expect(keys('⌥⌘N', false)).toBe('Ctrl+Alt+Shift+N')

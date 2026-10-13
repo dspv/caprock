@@ -345,8 +345,9 @@ owned by the file linked, which is the home for the details.
   verification-before-done as Claude Code, green on the 3-OS matrix. The first
   step is a feasibility check of OpenCode's own APIs; the DoD is the target only
   if they support it.
-- **Tablet reach beyond LAN (FB-019).** LAN pairing shipped; the two routes past
-  it are not built. **DoD:** a page explaining how to reach Caprock over a
+- **Tablet reach beyond LAN (FB-019).** *2026-10-13: superseded by access from
+  anywhere (ADR-058), built.* LAN pairing shipped; the two routes past
+  it were not built. **DoD:** a page explaining how to reach Caprock over a
   Tailscale or SSH tunnel — the address, an is-it-up check, a QR — with no relay
   of ours. Gated on someone actually asking for "from a café".
 - **A free sample report (FB-027 leftover).** A reader wanted to try the weekly

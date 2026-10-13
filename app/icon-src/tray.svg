@@ -1,0 +1,6 @@
+<!-- The menu-bar icon: the app icon's C and dot, black on transparent. macOS
+     draws it as a template image, tinting it for the menu bar's appearance. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="200 200 624 624">
+  <path d="M685.51 706.05A290 290 0 1 1 685.51 317.95L574.04 418.32A140 140 0 1 0 574.04 605.68Z"/>
+  <circle cx="742" cy="512" r="72"/>
+</svg>

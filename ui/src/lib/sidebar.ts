@@ -361,7 +361,7 @@ export function groupProjects(
 }
 
 /**
- * The projects ⌘1–⌘9 reach, in the order the sidebar lists them: the ones in
+ * The projects ⌃⌘1–⌃⌘9 reach, in the order the sidebar lists them: the ones in
  * play, not those folded under More projects or Hidden, and not Outside
  * projects, which is a group (owner, 2026-10-13: "Command+digit focuses that
  * project", translated). ⌥⌘← ⌥⌘→ step through the same list.

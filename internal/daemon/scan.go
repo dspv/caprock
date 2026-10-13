@@ -22,6 +22,18 @@ type caprockScan struct {
 	hosts    []ptyhost.HostProc
 	// hostExe is each holder's executable, "" when it cannot be read.
 	hostExe map[int32]string
+	// other is every other caprock process — a CLI command, a `caprock up`
+	// that is detaching or stuck — for the orphan scan (orphans.go).
+	other []otherCaprock
+}
+
+// otherCaprock is a caprock process that is neither a daemon, an app nor a
+// holder. sub is its subcommand (argv[1]), "" when argv cannot be read.
+type otherCaprock struct {
+	pid   int32
+	start int64
+	exe   string
+	sub   string
 }
 
 // CaprockProc is one Caprock process the footprint names.
@@ -97,6 +109,12 @@ func (m *resourceMeter) scanCaprock(ctx context.Context, tab *procstat.Table, se
 				PID: pid, Exe: m.exeOf(ctx, k), StartedAt: p.StartMs,
 				DataDir: daemonDataDir(argv, m.envOf(ctx, k)),
 			})
+		default:
+			o := otherCaprock{pid: pid, start: p.StartMs, exe: m.exeOf(ctx, k)}
+			if len(argv) >= 2 {
+				o.sub = argv[1]
+			}
+			s.other = append(s.other, o)
 		}
 	}
 	// The app's window: on macOS the WebKit helpers it is responsible for
@@ -129,6 +147,7 @@ func (m *resourceMeter) scanCaprock(ctx context.Context, tab *procstat.Table, se
 	sort.Slice(s.apps, func(i, j int) bool { return s.apps[i].PID < s.apps[j].PID })
 	sort.Slice(s.daemons, func(i, j int) bool { return s.daemons[i].PID < s.daemons[j].PID })
 	sort.Slice(s.webviews, func(i, j int) bool { return s.webviews[i] < s.webviews[j] })
+	sort.Slice(s.other, func(i, j int) bool { return s.other[i].pid < s.other[j].pid })
 	return s
 }
 
