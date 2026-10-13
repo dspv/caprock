@@ -12,11 +12,11 @@
  * days of recorded events scaled by what a recorded byte has cost on disk so
  * far — an estimate, and labelled as one.
  *
- * **No Compact button.** VACUUM rewrites the whole file: it needs room for a
- * second copy, holds the write lock for the whole run (ingest stalls behind
- * it), and gives back only the free pages — which on a database that never
- * deletes is nothing. The panel shows how much a compaction would return, and
- * only when that is worth something does it say how to run one by hand.
+ * **No Compact button.** Caprock compacts on its own while idle: it replaces
+ * the base64 images older rows still hold, runs one VACUUM when the disk has
+ * room for a second copy, and from then on gives free pages back to the disk
+ * as they appear (internal/daemon/compact.go). The panel says which of those
+ * is true; there is nothing for the user to run.
  */
 import { api, type StorageReport, type StorageSlice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
@@ -34,7 +34,7 @@ export function StoragePanel() {
   return <StorageView report={r.data} now={Date.now()} />
 }
 
-/** Below this, a compaction is not worth stopping Caprock for. */
+/** Below this, free space inside the database is not worth a sentence. */
 const worthCompacting = 64_000_000
 
 const KIND_LABEL: Record<string, string> = {
@@ -51,11 +51,6 @@ const FILE_LABEL: Record<string, string> = {
   'caprock-hook': 'hook shim',
   chats: 'chats',
   paste: 'pasted files',
-}
-
-/** The database's path, spelled the way this machine spells paths. */
-function dbPath(dir: string): string {
-  return dir + (dir.includes('\\') && !dir.includes('/') ? '\\' : '/') + 'caprock.db'
 }
 
 type Row = { key: string; label: string; bytes: number }
@@ -165,7 +160,9 @@ export function StorageView({ report: s, now }: { report: StorageReport; now: nu
         {s.retention_days > 0 ? (
           <p>
             <span className="text-fg">Events older than {s.retention_days} days are deleted</span>, every six hours.
-            The file does not shrink: new events reuse the space the old ones leave.
+            {s.returns_free_space
+              ? ' The space they leave goes back to the disk while Caprock is idle.'
+              : ' New events reuse the space they leave until Caprock has compacted the database once.'}
           </p>
         ) : (
           <p>
@@ -177,21 +174,23 @@ export function StorageView({ report: s, now }: { report: StorageReport; now: nu
                 <span className="num text-fg">{fmtBytes(older30.payload_bytes)}</span> older than 30
               </>
             ) : null}
-            . The file does not shrink: new events reuse the space the old ones leave, so it stops growing instead.
+            .{s.returns_free_space
+              ? ' The space deleted events leave goes back to the disk while Caprock is idle.'
+              : ' New events reuse the space deleted ones leave until Caprock has compacted the database once.'}
           </p>
         )}
         {db && (
           s.reclaimable_bytes >= worthCompacting ? (
             <p>
-              <span className="num text-fg">{fmtBytes(s.reclaimable_bytes)}</span> of the database is free pages. Caprock does not
-              compact while it runs — that locks the database and needs room for a second copy. To get it back, stop it with{' '}
-              <span className="mono text-fg">caprock down</span>, run{' '}
-              <span className="mono text-fg break-all">sqlite3 "{dbPath(s.data_dir)}" VACUUM</span>, and start it again.
+              <span className="num text-fg">{fmtBytes(s.reclaimable_bytes)}</span> of the database is free space.{' '}
+              {s.returns_free_space
+                ? 'Caprock gives it back to the disk the next time it is idle.'
+                : 'Caprock compacts the database once, on its own, the next time it is idle and the disk has room for a second copy; after that free space goes back to the disk as it appears.'}
             </p>
           ) : (
             <p>
-              Free space inside the database: <span className="num text-fg">{fmtBytes(s.reclaimable_bytes)}</span> — compacting it
-              would give back next to nothing.
+              Free space inside the database: <span className="num text-fg">{fmtBytes(s.reclaimable_bytes)}</span> —
+              {s.returns_free_space ? ' given back to the disk while Caprock is idle.' : ' compacting it would give back next to nothing.'}
             </p>
           )
         )}

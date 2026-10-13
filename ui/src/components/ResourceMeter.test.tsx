@@ -4,6 +4,7 @@
  * particular sessions, or Caprock's own consumption?"
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Profiler } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { CaprockItself, HotMark, Processes, SessionLoad } from './ResourceMeter'
 import { fmtCPU, fmtMem, resetResourcesForTest, type ResourceReport } from '@/lib/resources'
@@ -70,6 +71,31 @@ describe('the session faces', () => {
   it('shows nothing for a session the meter has not measured', () => {
     const { container } = render(<SessionLoad sessionId="nope" />)
     expect(container.textContent).toBe('')
+  })
+
+  it('redraws a mark only when what it says changes, not on every sample', () => {
+    const commits = { quiet: 0, hot: 0 }
+    const count = (id: string) => () => { commits[id as 'quiet' | 'hot']++ }
+    const { container } = render(
+      <>
+        <Profiler id="quiet" onRender={count('quiet')}><HotMark sessionId="s2" /></Profiler>
+        <Profiler id="hot" onRender={count('hot')}><HotMark sessionId="s1" /></Profiler>
+      </>,
+    )
+    const title = () => container.querySelector('[data-hot-mark]')!.getAttribute('title')
+    const before = title()
+    const mounted = { ...commits }
+    // A new sample with the same figures: neither mark draws again.
+    act(() => resetResourcesForTest(report()))
+    expect(commits).toEqual(mounted)
+    expect(title()).toBe(before)
+    // The hot one's figures moved: it, and only it, draws again.
+    const busier = report()
+    busier.sessions[0] = { ...busier.sessions[0]!, cpu_pct: 250 }
+    act(() => resetResourcesForTest(busier))
+    expect(commits.quiet).toBe(mounted.quiet)
+    expect(commits.hot).toBe(mounted.hot + 1)
+    expect(title()).toMatch(/250% CPU/)
   })
 
   it('marks a hot session and says why, and leaves a quiet one unmarked', () => {

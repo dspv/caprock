@@ -581,6 +581,55 @@ func TestModeShortShowsResetWhenHigh(t *testing.T) {
 	}
 }
 
+// Hidden prints nothing — not a space, not a newline: Claude Code draws no
+// row for empty output — and never waits on the daemon for counters, yet the
+// plan windows still reach it. That relay is the point of keeping the entry.
+func TestModeHiddenPrintsNothingAndForwards(t *testing.T) {
+	posted := make(chan struct{}, 1)
+	asked := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			select {
+			case posted <- struct{}{}:
+			default:
+			}
+			return
+		}
+		asked = true
+	}))
+	defer srv.Close()
+	pointAtServer(t, srv.URL)
+	writeMode(t, config.StatuslineHidden)
+	var out bytes.Buffer
+	RunWith(strings.NewReader(fixture), &out, Options{Rich: true, Width: 500})
+	if out.Len() != 0 {
+		t.Fatalf("hidden mode printed %q", out.String())
+	}
+	select {
+	case <-posted:
+	default:
+		t.Fatal("hidden mode did not forward the plan windows")
+	}
+	if asked {
+		t.Fatal("hidden mode asked the daemon for counters it does not show")
+	}
+}
+
+// A config.json that says Hidden but cannot be parsed is Full: a broken file
+// never turns the line off.
+func TestBrokenConfigNeverHides(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(config.EnvDataDir, dir)
+	if err := os.WriteFile(config.ConfigPath(dir), []byte(`{"statusline_mode":"hidden"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	RunWith(strings.NewReader(fixture), &out, Options{Width: 500})
+	if got := out.String(); !strings.Contains(got, "$1597.17") {
+		t.Fatalf("broken config printed %q", got)
+	}
+}
+
 // An entry put back by hand while Settings says Off still prints a line —
 // the full one, not a blank that reads as broken.
 func TestModeOffStillPrintsWhenRun(t *testing.T) {

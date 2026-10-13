@@ -238,12 +238,13 @@ func idleDue(last, activity, now time.Time, every time.Duration) bool {
 	return last.IsZero() || now.Sub(last) >= every
 }
 
-// idleLoop runs the idle-time housekeeping: the data-directory sweep and the
-// daily storage measurement.
+// idleLoop runs the idle-time housekeeping: the data-directory sweep, the
+// daily storage measurement, and making the database smaller (compact.go).
 func (d *Daemon) idleLoop(ctx context.Context) {
 	t := time.NewTicker(idleCheckEvery)
 	defer t.Stop()
 	var swept time.Time
+	var cs compactState
 	for {
 		select {
 		case <-ctx.Done():
@@ -260,6 +261,13 @@ func (d *Daemon) idleLoop(ctx context.Context) {
 				d.log.Info("data directory swept", "component", "daemon",
 					"paste", r.Paste, "empty_chats", r.Chats, "gemini_logs", r.Gemini, "stale_logs", r.Logs, "freed_bytes", r.Bytes)
 			}
+		}
+		// Before the measurement, which reads the whole file: it then
+		// measures what the compaction left, and its long read does not keep
+		// the VACUUM's write-ahead log from being folded back.
+		if d.quiet(now) {
+			d.compactDB(ctx, &cs)
+			now = time.Now()
 		}
 		d.storage.mu.Lock()
 		tried := d.storage.tried

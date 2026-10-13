@@ -113,9 +113,8 @@ async function renderApp() {
   return view
 }
 
-/** The sidebar row of a session waiting on you, by its title: a project shows one row, so its "+N more" opens first. */
+/** The sidebar row of a session waiting on you, by its title: what waits is always listed, never folded. */
 function waitingRow(title: string): HTMLElement {
-  for (const more of document.querySelectorAll<HTMLElement>('[data-more-rows][aria-expanded="false"]')) fireEvent.click(more)
   return [...document.querySelectorAll<HTMLElement>('[data-waiting]')].find((r) => r.textContent?.includes(title))!
 }
 

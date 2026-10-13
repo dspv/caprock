@@ -104,8 +104,7 @@ describe('the permission card in the app', () => {
 
   it('follows the tab: switching to a waiting session shows its card', async () => {
     await openAgent()
-    // The tab in front is the project's one row: the waiting one is under "+N more".
-    fireEvent.click(document.querySelector<HTMLElement>('[data-more-rows]')!)
+    // What waits is listed under its project beside the tab in front, never folded.
     fireEvent.click([...document.querySelectorAll<HTMLElement>('[data-waiting]')].find((r) => r.textContent?.includes('Waiting one'))!)
     await screen.findByRole('tab', { name: /Waiting one/ })
     expect(screen.getByTestId('pane-agent-2')).toHaveAttribute('data-active', 'true')

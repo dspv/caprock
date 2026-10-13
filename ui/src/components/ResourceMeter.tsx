@@ -7,9 +7,9 @@
  * Figures are the daemon's, sampled every 5 s while a dashboard is open. CPU
  * is summed over the session's process tree, so 250% is two and a half cores.
  */
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { api, errText } from '@/lib/api'
-import { fmtCPU, fmtMem, hotReason, refreshResources, useResources, useSessionResources, type ReapResult, type SessionResources } from '@/lib/resources'
+import { fmtCPU, fmtMem, refreshResources, useResources, useSessionHot, useSessionResources, type ReapResult, type SessionResources } from '@/lib/resources'
 import { SectionLabel } from './Cockpit'
 
 function topLines(r: SessionResources): string {
@@ -34,12 +34,14 @@ export function SessionLoad({ sessionId }: { sessionId: string }) {
   )
 }
 
-/** A small mark on a session's row and tab while its processes have been busy for a minute. */
-export function HotMark({ sessionId }: { sessionId: string | undefined }) {
-  const rep = useResources()
-  const r = useSessionResources(sessionId)
-  if (!r?.hot) return null
-  const why = hotReason(r, rep?.thresholds)
+/**
+ * A small mark on a session's row and tab while its processes have been busy
+ * for a minute. Static, and drawn again only when what it says changes
+ * (useSessionHot): a quiet row never redraws for a resources sample.
+ */
+export const HotMark = memo(function HotMark({ sessionId }: { sessionId: string | undefined }) {
+  const why = useSessionHot(sessionId)
+  if (!why) return null
   return (
     <span data-hot-mark role="img" aria-label={why} title={why} className="flex shrink-0 items-center text-warn opacity-80">
       <svg width="9" height="11" viewBox="0 0 9 11" aria-hidden="true">
@@ -47,7 +49,7 @@ export function HotMark({ sessionId }: { sessionId: string | undefined }) {
       </svg>
     </span>
   )
-}
+})
 
 /** The inspector's list of the session's busiest processes. */
 export function Processes({ sessionId }: { sessionId: string }) {

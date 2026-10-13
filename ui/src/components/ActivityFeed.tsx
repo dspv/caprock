@@ -85,7 +85,12 @@ export function ActivityFeed({ sessions, now, emptyHint }: { sessions: SessionSu
     // filter does: without it the panel kept the previous agent's history and
     // only new frames obeyed the filter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions.map((s) => s.session_id).join(',')])
+    //
+    // The set, not the order: the list is sorted by the newest event, and
+    // keyed on its order every swap between two busy sessions read their
+    // history again (50 requests a minute under a steady stream; bench,
+    // 2026-10-13).
+  }, [sessions.map((s) => s.session_id).sort().join(',')])
 
   // Which sessions this feed is allowed to show. A live frame carries no
   // agent, only a session id, so the filter has to be applied by membership —

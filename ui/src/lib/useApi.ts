@@ -1,7 +1,8 @@
 // Fetch-on-mount + refetch-on-live-tick hook. Keeps last-known data on error
 // (staleness dot, not spinner), exposes the error for an inline notice.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useLiveTick } from './live'
+import { LivePace, shared } from './refresh'
 import { readCache, writeCache } from './swr'
 import { everyWhileVisible } from './visible'
 
@@ -41,11 +42,26 @@ export interface ApiOptions {
    * workspace up to twice a second while agents worked.
    */
   keepUnchanged?: boolean
+  /** The slowest a live tick may refetch this, in ms; the screen's pace
+   *  (LivePace, lib/refresh.ts) wins when it is slower. */
+  liveMs?: number
+  /** Share one request with every hook asking the same question at about the
+   *  same time (lib/refresh.ts `shared`). Defaults to `cache`, which already
+   *  names the whole question; `false` never shares. */
+  share?: string | false
+  /**
+   * False while nobody can see what this feeds — a folded or off-screen
+   * section. Live ticks and intervals then ask nothing; the first of them
+   * missed is asked once when it turns true again. A new question (a
+   * dependency change, the first run) is always asked.
+   */
+  active?: boolean
 }
 
 export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiOptions = {}): Loaded<T> {
-  const { live = true, intervalMs = 0, hiddenIntervalMs, cache } = opts
-  const tick = useLiveTick(400)
+  const { live = true, intervalMs = 0, hiddenIntervalMs, cache, active = true } = opts
+  const pace = Math.max(useContext(LivePace), opts.liveMs ?? 0)
+  const tick = useLiveTick(pace)
   const [state, setState] = useState<Loaded<T>>(() => {
     const c = cache ? readCache<T>(cache) : undefined
     return { data: c?.data, error: undefined, loading: true, refresh: () => {}, loadedAt: 0, stale: !!c, cachedAt: c?.at ?? 0 }
@@ -56,6 +72,12 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiO
   trimRef.current = opts.cacheTrim
   const keepRef = useRef(opts.keepUnchanged)
   keepRef.current = opts.keepUnchanged
+  const shareRef = useRef<string | undefined>(undefined)
+  shareRef.current = opts.share === false ? undefined : (opts.share ?? cache)
+  const activeRef = useRef(active)
+  activeRef.current = active
+  const missed = useRef(false)
+  const lastRun = useRef(0)
   const seq = useRef(0)
   const fnRef = useRef(fn)
   fnRef.current = fn
@@ -85,14 +107,23 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiO
   // to the old one.
   const inFlight = useRef(false)
   const again = useRef(false)
-  const run = useCallback((fresh = false) => {
+  const againManual = useRef(false)
+  const run = useCallback((fresh = false, manual = false) => {
+    if (!fresh && !manual && !activeRef.current) {
+      missed.current = true
+      return
+    }
     if (!fresh && inFlight.current) {
       again.current = true
+      againManual.current ||= manual
       return
     }
     const my = ++seq.current
     inFlight.current = true
     again.current = false
+    againManual.current = false
+    missed.current = false
+    lastRun.current = Date.now()
     if (fresh) {
       // A new question shows the last answer to THAT question when this
       // browser kept one, marked stale — never the previous question's.
@@ -103,9 +134,12 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiO
     const settle = () => {
       if (my !== seq.current) return // a newer question owns the flag now
       inFlight.current = false
-      if (again.current) run()
+      if (again.current) run(false, againManual.current)
     }
-    fnRef.current().then(
+    // A button press asks the daemon itself: it follows a change the person
+    // made, and an answer shared from before it would undo what they saw.
+    const share = manual ? undefined : shareRef.current
+    ;(share ? shared(share, fnRef.current) : fnRef.current()).then(
       (data) => {
         if (my === seq.current) {
           setState((s) => (keepRef.current && !s.loading && !s.error && !s.stale && s.loadedAt > 0 && JSON.stringify(s.data) === JSON.stringify(data)
@@ -122,16 +156,28 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiO
   // The first run is a dependency run too — it just has nothing to clear.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => run(true), [run, ...deps])
-  useEffect(() => { if (live && tick > 0) run() }, [live, tick, run])
+  // Only a tick that moved since mount: the first run already asked, and a
+  // page that has seen any event mounted every hook with a tick above zero,
+  // which asked each question twice on opening a screen.
+  const seenTick = useRef(tick)
+  useEffect(() => {
+    if (!live || tick === seenTick.current) return
+    seenTick.current = tick
+    run()
+  }, [live, tick, run])
+  // Seen again: ask once if a tick or an interval came while it was not.
+  useEffect(() => { if (active && missed.current) run() }, [active, run])
   useEffect(() => {
     if (!intervalMs) return
-    // Wrapped, not passed: setInterval hands its callback nothing, but a bare
-    // `run` here would take whatever a future caller passes as `fresh`.
-    return everyWhileVisible(() => run(), intervalMs, hiddenIntervalMs)
+    // The interval is the floor for a quiet feed: a live tick that asked
+    // within it has already answered, so it does not ask again.
+    return everyWhileVisible(() => {
+      if (Date.now() - lastRun.current >= intervalMs * 0.8) run()
+    }, intervalMs, hiddenIntervalMs)
   }, [intervalMs, hiddenIntervalMs, run])
 
   // `refresh` is the manual one — a person pressing a button expects the
   // figures to stay put while it reloads, not to blink out.
-  const refresh = useCallback(() => run(), [run])
+  const refresh = useCallback(() => run(false, true), [run])
   return { ...state, refresh }
 }

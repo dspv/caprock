@@ -111,8 +111,8 @@ type Options struct {
 	// Width is the terminal width to fit the line into; 0 means "detect, and
 	// fall back to defaultWidth".
 	Width int
-	// Mode is which line to print: config.StatuslineFull or
-	// config.StatuslineShort. Empty means "read Settings' choice from
+	// Mode is which line to print: config.StatuslineFull,
+	// config.StatuslineShort or config.StatuslineHidden (none). Empty means "read Settings' choice from
 	// config.json", which is what the registered command does; tests and
 	// callers that already know set it.
 	Mode string
@@ -145,6 +145,14 @@ func RunWith(stdin io.Reader, stdout io.Writer, opt Options) {
 		if dir, err := config.DataDir(); err == nil {
 			mode = config.ReadStatuslineMode(dir)
 		}
+	}
+	if mode == config.StatuslineHidden {
+		// Hidden prints nothing at all. Claude Code trims the output and,
+		// with nothing left, draws no status line row (outside its
+		// fullscreen layout, which keeps one blank row). The plan windows
+		// still reach the daemon — that relay is why the entry stays.
+		forwardLimits(in)
+		return
 	}
 	if mode == config.StatuslineShort {
 		// The short line has no counters, so it never waits on the daemon.

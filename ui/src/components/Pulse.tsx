@@ -61,21 +61,31 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
         .slice(0, MAX_TRACKS),
     [sessions],
   )
-  const ids = tracked.map((s) => s.session_id).join(',')
+  // The set, not the order: `tracked` is sorted by the newest event, so two
+  // busy sessions swap places every few seconds — and keyed on the order,
+  // each swap read 2,000 events per track again (60 requests a minute under
+  // a steady stream; bench, 2026-10-13).
+  const ids = tracked.map((s) => s.session_id).sort().join(',')
   const labels = useMemo(() => projectLabels(sessions), [sessions])
 
   const [events, setEvents] = useState<Map<string, Event[]>>(new Map())
 
   // Seed from history so a track is never blank on open, then follow the live
   // stream. Only the window's worth is kept: an unbounded array would grow for
-  // as long as the tab stays open.
+  // as long as the tab stays open. A track already seeded is followed live,
+  // not read again; one that left and came back is.
+  const seeded = useRef(new Set<string>())
   useEffect(() => {
     let cancelled = false
+    const list = ids ? ids.split(',') : []
+    for (const id of seeded.current) if (!list.includes(id)) seeded.current.delete(id)
+    const fresh = list.filter((id) => !seeded.current.has(id))
     void (async () => {
-      const list = ids ? ids.split(',') : []
-      const batches = await Promise.all(list.map((id) => api.recentEvents(id, SEED_LIMIT).catch(() => [] as Event[])))
+      const batches = await Promise.all(fresh.map((id) => api.recentEvents(id, SEED_LIMIT).catch(() => [] as Event[])))
       if (cancelled) return
-      setEvents(new Map(list.map((id, i) => [id, batches[i] ?? []])))
+      for (const id of fresh) seeded.current.add(id)
+      const got = new Map(fresh.map((id, i) => [id, batches[i] ?? []]))
+      setEvents((cur) => new Map(list.map((id) => [id, got.get(id) ?? cur.get(id) ?? []])))
     })()
     return () => {
       cancelled = true
@@ -316,7 +326,7 @@ function StatePill({ state, title }: { state: { kind: string; label: string }; t
  * two ways in — a terminal in the folder, or the session's own page.
  */
 function ProjectNow({ s, all, now }: { s: SessionSummary; all: SessionSummary[]; now: number }) {
-  const today = useApi(() => api.summary('today'), [], { intervalMs: 30000 })
+  const today = useApi(() => api.summary('today'), [], { intervalMs: 30000, share: 'summary:today:all' })
   // The repository link and the session's PRs live on the session's detail,
   // read once when the row opens (the same buttons as the session page).
   const detail = useApi(() => api.session(s.session_id), [s.session_id], { live: false })
