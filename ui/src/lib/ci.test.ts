@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { CIJob, CIRun, CIState, ReleaseCI, SessionPRLive } from './api'
-import { jobVsMedian, runningVsMedian, runVsMedian, slowestVsMedian, vsMedian, ago, byOSLine, orderPRs, prAge, prDotState, prMergeText, prReviewText, prVerdict, ciElapsed, ciTone, fmtRun, investigateMessage, keyStep, readCIView, releaseChip, releaseDoneText, releaseEstimateText, runnerTime, saveCIView } from './ci'
+import { checksSentence, nameOS, nodeBaseName, prChecks, shortRun, jobVsMedian, runningVsMedian, runVsMedian, slowestVsMedian, vsMedian, ago, byOSLine, orderPRs, prAge, prDotState, prMergeText, prReviewText, prVerdict, ciElapsed, ciTone, fmtRun, investigateMessage, keyStep, readCIView, releaseChip, releaseDoneText, releaseEstimateText, runnerTime, saveCIView } from './ci'
 
 describe('the Investigate message', () => {
   it('names the PR, workflow, job and step, links the job, carries the log’s last 40 lines and says what to do', () => {
@@ -197,5 +197,64 @@ describe('a CI time against its median', () => {
     expect(prVerdict(p, now).text).toBe('✓ 9m 00s')
     const runs = [{ id: 1, name: 'CI', status: 'completed', conclusion: 'success', started_at: now - 600_000, updated_at: now - 50_000, jobs: [], baseline: b(585_000) }] as unknown as CIRun[]
     expect(prVerdict(p, now, runs).text).toBe('✓ 9m 10s · \u22126%')
+  })
+})
+
+describe('a PR’s checks in one short group', () => {
+  const t0 = 1_000_000
+  const at = t0 + 10 * 60_000
+  const ok = (name: string) => ({ name, state: 'pass' as const, status: 'completed', started_at: t0, completed_at: t0 + 6 * 60_000 })
+  const pr = (items: object[]) => ({ live: { checks: { items } } }) as never
+
+  it('says nothing while GitHub reported no check: the words say why', () => {
+    expect(prChecks(pr([]), at)).toBeUndefined()
+    expect(prChecks({}, at)).toBeUndefined()
+  })
+
+  it('collapses all green to one count with the time', () => {
+    const s = prChecks(pr(Array.from({ length: 12 }, (_, i) => ok(`job ${i}`))), at)!
+    expect(s).toMatchObject({ green: true, done: true, ms: 6 * 60_000, counts: { total: 12, pass: 12, fail: 0 } })
+    expect(checksSentence(s)).toBe('All 12 checks passed')
+  })
+
+  it('puts a failure first, names its OS and the step it failed at once its run was read', () => {
+    const items = [ok('lint'), { name: 'go (windows)', state: 'fail', status: 'completed', started_at: t0, completed_at: t0 + 60_000, job_id: 7 }]
+    const runs = [{ id: 1, name: 'CI', status: 'completed', conclusion: 'failure', jobs: [
+      { id: 7, run_id: 1, name: 'go (windows)', status: 'completed', conclusion: 'failure', os: 'windows', labels: [],
+        steps: [{ number: 1, name: 'checkout', status: 'completed', conclusion: 'success' }, { number: 2, name: 'go test', status: 'completed', conclusion: 'failure' }] },
+    ] }] as unknown as CIRun[]
+    const s = prChecks(pr(items), at, runs)!
+    expect(s.green).toBe(false)
+    expect(s.counts).toMatchObject({ pass: 1, fail: 1 })
+    expect(s.nodes[0]).toMatchObject({ name: 'go (windows)', tone: 'fail', os: 'windows', step: 'go test' })
+    expect(nodeBaseName(s.nodes[0]!)).toBe('go')
+    expect(checksSentence(s)).toBe('2 checks: 1 failed, 1 passed')
+  })
+
+  it('counts running and queued apart, the time since the first started', () => {
+    const s = prChecks(pr([ok('lint'), { name: 'test', state: 'pending', status: 'in_progress', started_at: t0 }, { name: 'e2e', state: 'pending' }]), at)!
+    expect(s).toMatchObject({ done: false, green: false, ms: 10 * 60_000, counts: { pass: 1, running: 1, queued: 1 } })
+    expect(s.nodes.map((n) => n.tone)).toEqual(['running', 'queued', 'pass'])
+    expect(checksSentence(s)).toBe('3 checks: 1 running, 1 queued, 1 passed')
+  })
+
+  it('keeps skipped and cancelled checks out of the passed count, counted apart', () => {
+    const s = prChecks(pr([ok('lint'), { name: 'deploy', state: 'skipped', status: 'completed' }]), at)!
+    expect(s).toMatchObject({ green: true, counts: { pass: 1, skipped: 1 } })
+    expect(s.nodes.map((n) => n.tone)).toEqual(['pass', 'skipped'])
+    expect(checksSentence(s)).toBe('All 1 check passed, 1 skipped')
+  })
+
+  it('reads the OS from a check’s name, and keeps a name whose brackets say more', () => {
+    expect(nameOS('go (windows-latest)')).toBe('windows')
+    expect(nameOS('test (macos-14)')).toBe('macos')
+    expect(nameOS('test (ubuntu-latest, 1.22)')).toBe('linux')
+    expect(nameOS('lint')).toBeUndefined()
+    expect(nodeBaseName({ key: 'k', name: 'test (ubuntu-latest, 1.22)', tone: 'pass', os: 'linux' })).toBe('test (ubuntu-latest, 1.22)')
+    expect(nodeBaseName({ key: 'k', name: 'go (windows-latest)', tone: 'pass', os: 'windows' })).toBe('go')
+  })
+
+  it('words a row’s time to the minute', () => {
+    expect([shortRun(42_000), shortRun(6 * 60_000 + 9_000), shortRun(62 * 60_000), shortRun(undefined)]).toEqual(['42s', '6m', '1h 02m', ''])
   })
 })
