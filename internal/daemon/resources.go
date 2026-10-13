@@ -39,9 +39,10 @@ const (
 	hotAfter      = time.Minute
 	hotClearAfter = 15 * time.Second
 	// reapEvery is how often the daemon stops orphaned pty-hosts on its own;
-	// the first sweep waits reapFirst after start.
+	// the first sweep waits reapFirst after start. A sweep is one process
+	// table read when there is nothing to stop.
 	reapFirst = 5 * time.Minute
-	reapEvery = time.Hour
+	reapEvery = 10 * time.Minute
 	// topProcs is how many of a tree's busiest processes are named.
 	topProcs = 3
 )
@@ -71,27 +72,44 @@ type SessionResources struct {
 	OverSince int64 `json:"over_since,omitempty"`
 }
 
-// HostResources is the pty-hosts on this machine.
-type HostResources struct {
+// HostSummary is the pty-hosts on this machine, counted.
+type HostSummary struct {
 	Count    int     `json:"count"`
 	MemBytes uint64  `json:"mem_bytes"`
 	CPUPct   float64 `json:"cpu_pct"`
 	// Orphans are holders no daemon will attach to again; Reapable is the
 	// part of them a reap stops (dead, or an idle shell). The rest run an
 	// agent or a command and are left alone.
-	Orphans  int               `json:"orphans"`
-	Reapable int               `json:"reapable"`
-	List     []ptyhost.Verdict `json:"list"`
+	Orphans  int `json:"orphans"`
+	Reapable int `json:"reapable"`
+}
+
+// HostResources is the pty-hosts on this machine, with the verdict on each.
+type HostResources struct {
+	HostSummary
+	List []ptyhost.Verdict `json:"list"`
+}
+
+// ProcGroup is several processes counted as one: the app's web view.
+type ProcGroup struct {
+	Count    int         `json:"count"`
+	CPUPct   float64     `json:"cpu_pct"`
+	MemBytes uint64      `json:"mem_bytes"`
+	Procs    []ProcUsage `json:"procs"`
 }
 
 // CaprockResources is Caprock's own cost.
 type CaprockResources struct {
 	Daemon ProcUsage `json:"daemon"`
-	// App is the desktop app's own process, when it is running. Its web view
-	// runs in the system's WebKit or WebView2 processes, which are not
-	// counted: nothing in the process table says which page they serve.
-	App   *ProcUsage    `json:"app,omitempty"`
-	Hosts HostResources `json:"hosts"`
+	// App is the desktop app's own process, when it is running.
+	App *ProcUsage `json:"app,omitempty"`
+	// Webview is the processes that draw the app's window: on macOS the
+	// WebKit helpers (WebContent, GPU, Networking) macOS holds the app
+	// responsible for — launchd's children, not the app's — and elsewhere
+	// the app's own child processes (WebView2, WebKitGTK). Absent when the
+	// app is not running or none is found.
+	Webview *ProcGroup    `json:"webview,omitempty"`
+	Hosts   HostResources `json:"hosts"`
 }
 
 // ResourceThresholds are the "hot" limits, so a client can say what they are.
@@ -109,6 +127,11 @@ type ResourceReport struct {
 	Caprock    CaprockResources   `json:"caprock"`
 	Thresholds ResourceThresholds `json:"thresholds"`
 	Error      string             `json:"error,omitempty"`
+
+	// What the footprint needs beyond the contract's figures (footprint.go).
+	scan   caprockScan
+	others []CaprockProc // the other daemons, with their memory
+	apps   []CaprockProc // every app process, with its memory
 }
 
 type pidKey struct {
@@ -127,6 +150,8 @@ type resourceMeter struct {
 	sampler *procstat.Sampler
 	argv    map[pidKey][]string
 	env     map[pidKey][]string
+	exe     map[pidKey]string
+	resp    map[pidKey]int32 // macOS: the process responsible for a WebKit helper
 	over    map[string]*overState
 	last    *ResourceReport
 	asked   time.Time // last GET /v1/resources
@@ -136,6 +161,7 @@ func newResourceMeter() *resourceMeter {
 	return &resourceMeter{
 		sampler: procstat.NewSampler(),
 		argv:    map[pidKey][]string{}, env: map[pidKey][]string{},
+		exe: map[pidKey]string{}, resp: map[pidKey]int32{},
 		over: map[string]*overState{},
 	}
 }
@@ -179,7 +205,7 @@ func (d *Daemon) someoneLooking() bool {
 
 // resources answers GET /v1/resources: the last sample when it is fresh,
 // otherwise a new one.
-func (d *Daemon) resources(ctx context.Context) any {
+func (d *Daemon) resources(ctx context.Context) *ResourceReport {
 	d.res.mu.Lock()
 	d.res.asked = time.Now()
 	last := d.res.last
@@ -240,17 +266,8 @@ func (d *Daemon) sampleResources(ctx context.Context) *ResourceReport {
 	}
 	self := int32(os.Getpid())
 	want = append(want, self)
-	var apps []int32
-	hosts := d.findHosts(ctx, tab, self)
-	for pid, p := range tab.Procs {
-		if isAppName(p.Name) && sameUser(p) {
-			apps = append(apps, pid)
-		}
-	}
-	want = append(want, apps...)
-	for _, h := range hosts {
-		want = append(want, h.PID)
-	}
+	scan := d.res.scanCaprock(ctx, tab, self)
+	want = append(want, scan.pids()...)
 	use := d.res.sampler.Sample(tab, want)
 
 	for id, tr := range trees {
@@ -291,20 +308,77 @@ func (d *Daemon) sampleResources(ctx context.Context) *ResourceReport {
 	}
 	sort.Slice(r.Sessions, func(i, j int) bool { return r.Sessions[i].SessionID < r.Sessions[j].SessionID })
 
+	r.Caprock = d.res.caprockFrom(ctx, tab, scan, use, ptyhost.Dir(d.opt.DataDir), now)
 	r.Caprock.Daemon = usageOf(self, "caprock", use)
-	if len(apps) > 0 {
-		sort.Slice(apps, func(i, j int) bool { return apps[i] < apps[j] })
-		a := ProcUsage{PID: apps[0], Name: "caprock-app"}
-		for _, pid := range apps {
-			u := use[pid]
+	r.scan = scan
+	r.others = withMemory(scan.daemons, use)
+	r.apps = withMemory(scan.apps, use)
+	d.res.forgetGone(tab)
+	d.res.last = r
+	return r
+}
+
+// forgetGone drops the caches keyed by processes that no longer exist.
+func (m *resourceMeter) forgetGone(tab *procstat.Table) {
+	gone := func(k pidKey) bool {
+		p, ok := tab.Procs[k.pid]
+		return !ok || p.StartMs != k.start
+	}
+	for k := range m.argv {
+		if gone(k) {
+			delete(m.argv, k)
+		}
+	}
+	for k := range m.env {
+		if gone(k) {
+			delete(m.env, k)
+		}
+	}
+	for k := range m.exe {
+		if gone(k) {
+			delete(m.exe, k)
+		}
+	}
+	for k := range m.resp {
+		if gone(k) {
+			delete(m.resp, k)
+		}
+	}
+}
+
+// caprockFrom is Caprock's own cost from one scan and one sample: the app,
+// its web view and the holders. The daemon's own line is the caller's.
+func (m *resourceMeter) caprockFrom(ctx context.Context, tab *procstat.Table, scan caprockScan, use map[int32]procstat.Usage, ownRegistry string, now time.Time) CaprockResources {
+	var c CaprockResources
+	if len(scan.apps) > 0 {
+		a := ProcUsage{PID: scan.apps[0].PID, Name: "caprock-app"}
+		for _, p := range scan.apps {
+			u := use[p.PID]
 			a.CPUPct += u.CPUPct
 			a.MemBytes += u.MemBytes
 		}
-		r.Caprock.App = &a
+		c.App = &a
 	}
-	verdicts := ptyhost.Classify(hosts, ptyhost.Dir(d.opt.DataDir), now)
-	hr := HostResources{Count: len(hosts), List: verdicts}
-	for i, h := range hosts {
+	if len(scan.webviews) > 0 {
+		g := &ProcGroup{Procs: []ProcUsage{}}
+		for _, pid := range scan.webviews {
+			u, ok := use[pid]
+			if !ok {
+				continue
+			}
+			g.Count++
+			g.CPUPct += u.CPUPct
+			g.MemBytes += u.MemBytes
+			g.Procs = append(g.Procs, ProcUsage{PID: pid, Name: m.label(ctx, tab.Procs[pid]), CPUPct: u.CPUPct, MemBytes: u.MemBytes})
+		}
+		sort.Slice(g.Procs, func(i, j int) bool { return g.Procs[i].MemBytes > g.Procs[j].MemBytes })
+		if g.Count > 0 {
+			c.Webview = g
+		}
+	}
+	verdicts := ptyhost.Classify(scan.hosts, ownRegistry, now)
+	hr := HostResources{HostSummary: HostSummary{Count: len(scan.hosts)}, List: verdicts}
+	for i, h := range scan.hosts {
 		u := use[h.PID]
 		hr.MemBytes += u.MemBytes
 		hr.CPUPct += u.CPUPct
@@ -315,20 +389,8 @@ func (d *Daemon) sampleResources(ctx context.Context) *ResourceReport {
 			hr.Reapable++
 		}
 	}
-	r.Caprock.Hosts = hr
-	// Caches keyed by processes that no longer exist go.
-	for k := range d.res.argv {
-		if p, ok := tab.Procs[k.pid]; !ok || p.StartMs != k.start {
-			delete(d.res.argv, k)
-		}
-	}
-	for k := range d.res.env {
-		if p, ok := tab.Procs[k.pid]; !ok || p.StartMs != k.start {
-			delete(d.res.env, k)
-		}
-	}
-	d.res.last = r
-	return r
+	c.Hosts = hr
+	return c
 }
 
 // judge updates a session's over/under run and decides whether it is hot.
@@ -388,38 +450,7 @@ func sameUser(p procstat.Proc) bool {
 // whichever Caprock started it, with what Classify needs. Must be called
 // with d.res.mu held.
 func (d *Daemon) findHosts(ctx context.Context, tab *procstat.Table, self int32) []ptyhost.HostProc {
-	var out []ptyhost.HostProc
-	for pid, p := range tab.Procs {
-		if pid == self || !sameUser(p) {
-			continue
-		}
-		n := strings.ToLower(p.Name)
-		if !strings.HasPrefix(n, "caprock") || isAppName(n) || strings.HasPrefix(n, "caprock-hook") {
-			continue
-		}
-		k := pidKey{pid, p.StartMs}
-		argv, ok := d.res.argv[k]
-		if !ok {
-			argv = procstat.Cmdline(ctx, pid)
-			d.res.argv[k] = argv
-		}
-		if len(argv) < 2 || argv[1] != ptyhost.Arg {
-			continue
-		}
-		env, ok := d.res.env[k]
-		if !ok {
-			env = procstat.Environ(ctx, pid)
-			d.res.env[k] = env
-		}
-		h := ptyhost.HostProc{PID: pid, StartMs: p.StartMs, Env: env}
-		for _, c := range tab.Children[pid] {
-			cp := tab.Procs[c]
-			h.Children = append(h.Children, ptyhost.ChildProc{PID: c, Name: cp.Name, Busy: len(tab.Children[c]) > 0})
-		}
-		out = append(out, h)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].PID < out[j].PID })
-	return out
+	return d.res.scanCaprock(ctx, tab, self).hosts
 }
 
 // ReapResult is POST /v1/resources/reap.
@@ -445,11 +476,15 @@ const reapGrace = 3 * time.Second
 // child has exited, or whose registry is gone and whose child is a shell
 // running nothing. It signals only `caprock pty-host` processes of this
 // user — processes a Caprock started (rule 7) — and re-checks each one's
-// identity (pid and start time) immediately before every signal. all is the
-// button: every reapable holder on the machine. Without it (the daemon's own
-// sweep) only holders that registered with this daemon's data directory —
-// a preview daemon must never sweep up another install's leftovers.
-func (d *Daemon) reapOrphans(ctx context.Context, all bool) (ReapResult, error) {
+// identity (pid and start time) immediately before every signal. The
+// daemon's own sweep and the Settings button stop the same holders — every
+// reapable one, whichever Caprock started it: nobody else cleans up after a
+// user's Caprock, and the rule that makes a holder reapable (its program has
+// exited, or it is unreachable holding only an idle shell) is what makes
+// stopping it safe. Every such holder is a Caprock's own — a process some
+// Caprock started — which is what lets rule 7 allow the signal. asked is the
+// button; what was stopped goes into the footprint's action log either way.
+func (d *Daemon) reapOrphans(ctx context.Context, asked bool) (ReapResult, error) {
 	res := ReapResult{Reaped: []ptyhost.Verdict{}, Kept: []ptyhost.Verdict{}}
 	d.res.mu.Lock()
 	tab, err := procstat.Read(ctx)
@@ -462,7 +497,7 @@ func (d *Daemon) reapOrphans(ctx context.Context, all bool) (ReapResult, error) 
 	verdicts := ptyhost.Classify(hosts, ptyhost.Dir(d.opt.DataDir), time.Now())
 	for i, v := range verdicts {
 		switch {
-		case v.Reap && (all || v.Ours):
+		case v.Reap:
 			if err := stopHost(ctx, hosts[i]); err != nil {
 				res.Failed = append(res.Failed, ReapFailure{PID: v.PID, Error: err.Error()})
 				continue
@@ -472,6 +507,9 @@ func (d *Daemon) reapOrphans(ctx context.Context, all bool) (ReapResult, error) 
 		case v.Orphan():
 			res.Kept = append(res.Kept, v)
 		}
+	}
+	if len(res.Reaped) > 0 && d.actions != nil {
+		d.actions.add(reapAction(res.Reaped, asked))
 	}
 	return res, nil
 }

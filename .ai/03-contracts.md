@@ -782,8 +782,10 @@ own memory as below). Only reads: nothing is signalled except by the reap below.
                "hot": true, "over_since": 1791399800000}],
  "caprock": {"daemon": {"pid": 1, "name": "caprock", "cpu_pct": 1.2, "mem_bytes": 220000000},
              "app": {"pid": 2, "name": "caprock-app", "cpu_pct": 2.0, "mem_bytes": 48000000},
+             "webview": {"count": 4, "cpu_pct": 2.1, "mem_bytes": 446000000,
+                         "procs": [{"pid": 3, "name": "com.apple.WebKit.WebContent", "cpu_pct": 2.0, "mem_bytes": 346000000}]},
              "hosts": {"count": 19, "mem_bytes": 95000000, "cpu_pct": 0, "orphans": 15, "reapable": 15,
-                       "list": [{"pid": 2267, "state": "unreachable-idle", "reap": true, "ours": false, "child": "zsh"}]}},
+                       "list": [{"pid": 2267, "state": "unreachable-idle", "reap": true, "ours": false, "abandoned": true, "child": "zsh"}]}},
  "thresholds": {"cpu_pct": 100, "mem_bytes": 2147483648, "after_s": 60, "interval_s": 5},
  "error": "…"}
 ```
@@ -809,8 +811,16 @@ own memory as below). Only reads: nothing is signalled except by the reap below.
   waiting on the model" (a few percent) from "the machine will feel this", not
   measured thresholds.
 - **Caprock itself.** `daemon` is this process; `app` is the desktop app's
-  shell process (`caprock-app`), absent when it is not running — its web view
-  runs in the system's WebKit or WebView2 processes, which are not counted.
+  shell process (`caprock-app`), absent when it is not running. `webview`
+  (2026-10-13) is the processes that draw the app's window, absent without
+  the app: on macOS the WebKit helpers (`WebContent`, `GPU`, `Networking`)
+  macOS holds `caprock-app` responsible for
+  (`responsibility_get_pid_responsible_for_pid` through libSystem; they are
+  launchd's children, so the process tree cannot say whose they are), and
+  on Windows and Linux the app's own child processes (WebView2,
+  WebKitGTK). On the owner's Mac they were 290–360 MB of WebContent, 60–70 MB
+  of GPU and 14 MB of Networking (2026-10-13) — more than the app process
+  itself, and uncounted before. `procs` lists them, largest first.
   `hosts` is every `caprock pty-host` of this user on the machine, whichever
   Caprock started it, with the verdict on each (§ Terminal holders, Orphans).
 - **When it samples.** Every 5 s, and only while a `/v1/live` client is
@@ -824,10 +834,118 @@ own memory as below). Only reads: nothing is signalled except by the reap below.
 `hosts.list`; `failed` is `{pid, error}`): stops every holder whose verdict is
 `reap`, and lists in `kept` the orphans left running because something still
 runs in them. Machine only — not on a paired device's list. The daemon also
-sweeps on its own, five minutes after start and then hourly, but only holders
-whose verdict is `ours` (they registered with its own data directory): a
-preview or test daemon must never stop another install's leftovers, so those
-wait for the button.
+sweeps on its own, five minutes after start and then every 10 minutes, and
+stops the same holders the button does: every one whose verdict is `reap`,
+whichever Caprock started it (2026-10-13). It used to stop only holders of
+its own data directory, so a preview or test daemon could not sweep another
+install's leftovers — which left eleven idle shells from deleted preview
+stands, started by a Homebrew `caprock` and an older app bundle, running on
+the owner's machine through every hourly sweep. The rule that makes a holder
+reapable — its program has exited, or nothing can reach it and it holds only
+an idle shell — is what makes stopping it safe whoever runs the sweep, and
+nobody else cleans up after a user's Caprock. Rule 7 allows it because every
+one is a Caprock's own holder, a process some Caprock started; a holder
+running an agent or a command is never stopped. Each reap that stops
+anything is written to the footprint's `actions` (§ Footprint).
+
+#### Footprint
+
+`GET /v1/footprint` (2026-10-13) says what Caprock itself costs this machine
+— memory, CPU, disk space, the daemon's own disk I/O — and which duplicate or
+orphaned Caprock processes make it cost more, so a person can tell whether a
+slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
+`internal/daemon/footprint.go`, `scan.go`, `footprint_io.go`, `actions.go`.
+
+```json
+{"at": 1791877758573, "daemon_running": true, "data_dir": "…/caprock", "exe": "…/bin/caprock",
+ "memory": {"daemon": {"pid": 1, "name": "caprock", "cpu_pct": 1.2, "mem_bytes": 340000000},
+            "app": {"pid": 2, "name": "caprock-app", "cpu_pct": 0.4, "mem_bytes": 45000000},
+            "webview": {"count": 4, "cpu_pct": 2.1, "mem_bytes": 446000000,
+                        "procs": [{"pid": 3, "name": "com.apple.WebKit.WebContent", "cpu_pct": 2.0, "mem_bytes": 346000000}]},
+            "hosts": {"count": 26, "mem_bytes": 260000000, "cpu_pct": 0, "orphans": 11, "reapable": 11},
+            "other_daemons_mem_bytes": 0, "total_mem_bytes": 1091000000, "total_cpu_pct": 3.7},
+ "disk": {"total_bytes": 2300000000, "database_bytes": 2219000000, "wal_bytes": 6000000, "pastes_bytes": 25000000,
+          "logs_bytes": 15000000, "binaries_bytes": 51000000, "other_bytes": 5000},
+ "disk_io": {"interval_s": 60, "samples": 61,
+             "last_minute": {"read_bytes": 1200000, "write_bytes": 300000, "seconds": 60},
+             "last_hour": {"read_bytes": 90000000, "write_bytes": 20000000, "seconds": 3600},
+             "since_start": {"read_bytes": 400000000, "write_bytes": 90000000, "seconds": 7200}},
+ "duplicates": {"daemons": [{"pid": 9, "exe": "/opt/homebrew/bin/caprock", "data_dir": "/tmp/stand", "mem_bytes": 33000000, "started_at": 1791877083828}],
+                "apps": [{"pid": 2, "exe": "/Applications/Caprock.app/Contents/MacOS/caprock-app", "mem_bytes": 45000000, "started_at": 1791877274439}],
+                "other_install_holders": {"count": 11, "orphans": 11, "exes": [{"exe": "/opt/homebrew/bin/caprock", "count": 9}]}},
+ "verdicts": [{"level": "warn", "code": "orphans", "text": "11 of 26 terminal holders are orphans …"}],
+ "actions": [{"at": 1791877800000, "what": "stopped 11 orphaned terminal holders (11 holding only an idle shell and 11 left by a Caprock whose data directory is deleted)"}],
+ "error": "…"}
+```
+
+- **`memory`** is the resource meter's last sample (§ Resources; asking
+  counts as looking, so the meter samples for 15 s after): `daemon`, `app`,
+  `webview` (the app's window: on macOS the `com.apple.WebKit.*` helpers
+  macOS holds `caprock-app` responsible for —
+  `responsibility_get_pid_responsible_for_pid`, since they are launchd's
+  children, not the app's; elsewhere the app's own child processes), and
+  `hosts` (the holder summary without the list). `other_daemons_mem_bytes`
+  is `duplicates.daemons` summed; `total_*` is all of it. CPU is `0` until
+  the meter has two samples.
+- **`disk`** is the data directory's top-level entries (§ Storage) sorted
+  into groups: `database_bytes` is `caprock.db` with `-wal` and `-shm`
+  (`wal_bytes` the WAL alone), `pastes_bytes` the `paste/` directory,
+  `logs_bytes` every `*.log`, `binaries_bytes` the app's `bin/` and the hook
+  shim, `other_bytes` the rest.
+- **`disk_io`** is the daemon's own reads and writes: its cumulative
+  counters read at start and once a minute (macOS `proc_pid_rusage`
+  `ri_diskio_bytesread/written`; Linux `/proc/self/io`
+  `read_bytes/write_bytes`; Windows `GetProcessIoCounters`, which counts
+  reads the file cache answered too and so reads higher). Sixty-one readings
+  are kept in memory — an hour — and nothing is written to disk.
+  `last_minute` is between the two newest readings, `last_hour` between the
+  oldest kept and the newest (`seconds` says how long while the daemon is
+  younger than an hour); both are absent until there are two readings.
+- **`duplicates.daemons`** is every other `caprock up --foreground` of this
+  user, the data directory it was started with (`--data-dir`, else
+  `CAPROCK_DATA_DIR`; absent for the default) and its memory. `apps` is
+  every `caprock-app`. `other_install_holders` counts the holders whose
+  executable is outside this install (the daemon's directory, the holder's,
+  and on Windows `<data_dir>/ptyhost/bin`); a holder whose executable has
+  since been deleted (an upgraded Homebrew Cellar, a replaced app bundle) is
+  named by its absolute `argv[0]`.
+- **`verdicts`** are `{level: "ok"|"warn", code, text}`, warnings first.
+  Warnings: `duplicate_daemon` (another daemon runs), `duplicate_app` (more
+  than one app), `orphans` (holders no Caprock will reattach to),
+  `database_large` (over 2 GiB), `wal_large` (over 256 MiB),
+  `disk_reads_high` (the daemon read over 500 MiB in the last hour) and,
+  only in `caprock doctor`'s own report, `daemon_not_running`.
+  `other_install_holders` is said at level `ok`: its orphans are the
+  `orphans` warning's, and the rest are sessions that outlived an upgrade.
+  One `{level: "ok", code: "ok"}` stands in when nothing warns. The
+  thresholds are round numbers chosen to say "worth a look", not measured
+  limits.
+- **`actions`** is what the daemon did about its footprint on its own,
+  oldest first, the last 50 since it started, in memory only: every reap
+  (§ Resources: on its own every 10 minutes, or from the button) and every
+  write-ahead-log checkpoint. Every remedy that is safe to apply unattended
+  is applied unattended — nobody else cleans up after a user's Caprock —
+  and said here. Nothing is done about another daemon, a second app or a
+  large database: stopping a process Caprock did not start is rule 7's
+  line, and deleting data is the user's call.
+- **The WAL checkpoint.** Once a minute, on the I/O reading's tick, a WAL
+  over 256 MiB is folded back with `PRAGMA wal_checkpoint(TRUNCATE)` — what
+  SQLite's automatic checkpoint does in small steps, done at once and the
+  file truncated after. A running read can hold part of it back; the next
+  attempt is 10 minutes later.
+- **A paired device may read it**, as it may read `/v1/resources`.
+
+`caprock doctor [--json] [--data-dir <dir>]` prints the footprint as text —
+memory and CPU, disk, the daemon's disk I/O, duplicates, what was done on
+its own, and the verdicts — or with `--json` the object above, and exits
+`1` when any verdict warns, `0` otherwise. With no daemon answering it
+reports what it can read itself (`daemon_running: false`, no `disk_io`, no
+CPU, no `actions`): the data directory's sizes and every Caprock process in
+the process table with its memory; one daemon found there is not a
+duplicate (it is the one that did not answer, or one for another data
+directory). A daemon that answers but predates `/v1/footprint` gets the
+same report with its own memory filled in. User docs:
+[docs/doctor.md](../docs/doctor.md).
 
 #### Keep awake
 
@@ -3545,6 +3663,21 @@ The service runs the daemon with `--foreground` (the supervisor owns the process
 
 ## Runtime file
 
+**One daemon per data directory** (2026-10-13). The daemon holds an
+exclusive advisory lock on `<data_dir>/caprock.lock` (`0600`) for its whole
+life — `flock` on macOS and Linux, `LockFileEx` on one byte at offset 4 GiB
+on Windows — taken before the database is opened, and writes its pid into
+the file. A second daemon waits up to 5 s (a restart: the app's supervisor,
+a login service, an update) and then exits with `another Caprock daemon (pid
+N) is already running for this data directory (<dir>)`, the pid read from
+`runtime.json`, else from the lock file; `caprock up` shows that line. The
+OS drops the lock when the process exits however it exits, so nothing stale
+is left; the file stays. Files are opened close-on-exec, so holders never
+inherit it. A filesystem that cannot lock at all is logged and run without
+the lock rather than refused. Daemons on different data directories (tests,
+preview stands) never meet. Before it, the port's bind was the only lock,
+which a second daemon on another port walked past.
+
 `<data_dir>/runtime.json` = `{"port": 22776, "token": "<random per run>", "pid": <daemon pid>, "started_at": <unix ms>, "version": "<daemon version>", "api_level": 1, "exe": "<absolute path of the daemon binary>"}`; written 0600 by `caprock up`, deleted by `caprock down`; the shim reads it on every invocation.
 
 **`api_level`** (also in `GET /v1/status`) is an integer raised by every change a client must know about and never lowered: `1` is the first level, added for the desktop app ([ADR-038](08-decisions.md#adr-038--the-desktop-app-is-a-thin-tauri-v2-shell-around-the-existing-react-ui-and-xtermjs-on-the-go-daemon)). A client declares the minimum it needs; a daemon below it, or one with no `api_level` (read as `0`), is shown as needing an upgrade. **`exe`** is how the desktop app tells a daemon it installed (`<data_dir>/bin/caprock`, which it may replace) from one a package manager owns (which it must not touch); omitted when the OS cannot say.
@@ -3648,6 +3781,13 @@ child's, whose environment is the spec's), and the daemon judges every
   with nothing running under it. Reaped.
 - **`unreachable-busy`** — unreachable, but the child is an agent, or a shell
   running a command. Reported, never touched: something is still running.
+
+`ours` is set for a holder that registered in this daemon's own registry
+directory; `abandoned` (2026-10-13) for one whose registry directory no
+longer exists at all — the Caprock that started it was deleted (a preview
+stand in `$TMPDIR`, a removed install), so no daemon anywhere can attach to
+it. Neither decides a reap any more: the daemon's own sweep and the button
+stop every `reap` verdict (§ Resources).
 
 A reap re-reads the process table before every signal and acts only when the
 pid still has the start time it was judged with; it sends `SIGTERM` (the holder

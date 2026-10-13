@@ -246,6 +246,16 @@ It reads from the running daemon and only issues GETs. Numbers move as you work,
 so re-running it is the point — a figure you pasted last month is a figure about
 last month.
 
+## Is it Caprock?
+
+`caprock doctor` prints what Caprock itself costs your machine — memory and
+CPU of the daemon, the app and its window, and the terminal holders; the data
+directory on disk; the daemon's own disk reads and writes — and flags a second
+daemon, a second app, orphaned terminals and an oversized database. It works
+with no daemon running and exits 1 when something is flagged. Orphaned idle
+terminals and an oversized write-ahead log are cleaned up on their own, and the
+report says when. Details: [docs/doctor.md](docs/doctor.md).
+
 ## Take the record out
 
 Every agent Caprock reads — Claude Code, Codex, OpenCode, Gemini CLI, DeepSeek —

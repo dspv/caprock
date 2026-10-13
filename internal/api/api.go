@@ -92,6 +92,9 @@ type Deps struct {
 	// nil ⇒ 501.
 	Resources   func(ctx context.Context) any
 	ReapOrphans func(ctx context.Context) (any, error)
+	// Footprint returns what Caprock costs this machine for GET
+	// /v1/footprint. nil ⇒ 501.
+	Footprint func(ctx context.Context) any
 	// KeepAwake returns whether the computer is being kept awake, for GET
 	// /v1/keepawake (keepawake.Status). Nil ⇒ 501.
 	KeepAwake func() any
@@ -539,6 +542,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/storage", s.handleStorage)
 	m.HandleFunc("GET /v1/resources", s.handleResources)
 	m.HandleFunc("POST /v1/resources/reap", s.handleReapOrphans)
+	m.HandleFunc("GET /v1/footprint", s.handleFootprint)
 	// What the paid plan costs, so the dashboard can say it without guessing
 	// and without an outbound call. Static — it is compiled in — but served
 	// rather than duplicated in the UI, so one edit in Go changes every place
