@@ -57,6 +57,8 @@ describe('terminal palettes', () => {
 
   it('reads the app’s look off <html>', () => {
     const root = document.createElement('html')
+    expect(appLook(root)).toEqual({ mode: 'dark-pastel' })
+    root.setAttribute('data-dark', 'graphite')
     expect(appLook(root)).toEqual({ mode: 'dark-warm' })
     root.setAttribute('data-theme', 'light')
     root.setAttribute('data-tone', 'white')
@@ -70,6 +72,8 @@ describe('terminal palettes', () => {
 
   it('gives the dashboard terminal a dark palette in each app palette’s temperature', () => {
     const root = document.createElement('html')
+    expect(dashTerminalTheme(root).background).toBe(DASH_GROUND['dark-pastel'])
+    root.setAttribute('data-dark', 'graphite')
     expect(dashTerminalTheme(root)).toEqual({ ...TERMINAL_THEME })
     root.setAttribute('data-dark', 'slate')
     expect(dashTerminalTheme(root).background).toBe(DASH_GROUND.slate)

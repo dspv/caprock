@@ -108,9 +108,13 @@
 }
 
 /*
- * The palettes (lib/themes.ts is the table): Dark Warm is the default above
- * (`data-dark="graphite"`), Light the `[data-theme="light"]` block (`white`);
- * each other palette is `data-theme` plus its own `data-dark` or `data-tone`.
+ * The palettes (lib/themes.ts is the table): Dark Warm is the @theme block
+ * above (`data-dark="graphite"`) and the base every other palette overrides,
+ * Light the `[data-theme="light"]` block (`white`); each other palette is
+ * `data-theme` plus its own `data-dark` or `data-tone`. Dark Pastel is the
+ * default dark (owner, 2026-10-13): its block below also paints a dark <html>
+ * with no or an unknown `data-dark` — the first paint before any script, and
+ * any surface nothing has marked.
  * Every one keeps body text, faint text included, at 4.5:1 or more on bg,
  * panel and panel-2, and marks (ok, warn, danger, premium) at 3:1 or more —
  * the numbers are in .ai/04-ui.md § Themes.
@@ -157,6 +161,9 @@
  * I love everything neutral and pastel", translated). Body ink 11:1 on
  * panel-2, muted 6.5:1, faint 4.8:1, accent 6.9:1, every mark over 6:1.
  */
+/* The default: not light, and no other dark palette named. :where() so the
+ * fallback weighs nothing; unlayered, it still beats @theme's layer. */
+:where(:root:not([data-theme="light"]):not([data-dark="graphite"], [data-dark="slate"], [data-dark="side"])),
 [data-theme="dark"][data-dark="pastel"] {
   --color-bg: #1c1d1c;
   --color-panel: #212221;

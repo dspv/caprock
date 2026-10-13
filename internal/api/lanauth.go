@@ -295,6 +295,8 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/projects":                true,
 	"GET /v1/projects/ops":            true,
 	"GET /v1/projects/{id}/worktrees": true,
+	// Now's Repos section: counts from git and from GitHub answers already kept.
+	"GET /v1/repos/activity": true,
 	// A multi-repo project's repositories with their branches (ADR-055).
 	"GET /v1/projects/{id}/repos": true,
 

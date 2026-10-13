@@ -19,6 +19,7 @@ import { PremiumBanner } from '@/components/PremiumBanner'
 import { PlanLimitNudge } from '@/components/Nudges'
 import { BreakdownPanel } from '@/components/Breakdown'
 import { PulsePanel } from '@/components/Pulse'
+import { ReposPanel } from '@/components/ReposPanel'
 import { HooksBanner } from '@/components/HooksBanner'
 import { Attention } from '@/components/Attention'
 import { findAttention } from '@/lib/attention'
@@ -341,6 +342,11 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
       {/* The shape of the work, above the detail of it: a glance says which
         * sessions are busy, which are grinding, and which have gone quiet. */}
       <PulsePanel sessions={list} now={now} />
+
+      {/* The repositories the sessions work in, under the sessions themselves:
+        * commits, lines and what is not committed, read locally, and the
+        * GitHub figures the deck already read. Folded, it asks nothing. */}
+      <ReposPanel />
 
       {/* The all-time figures as pictures: donuts with the share printed
         * big, and the agents drawn as the Week card's characters. Collapsible,

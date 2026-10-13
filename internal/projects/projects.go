@@ -134,6 +134,9 @@ type Service struct {
 	members map[int64][]string
 	mgit    map[string]*memberGit
 
+	// activity keeps the Repos section's answers (activity.go).
+	repoActivity activityCache
+
 	// changeLocks holds one mutex per worktree folder: writes to one index
 	// never race (changes.go).
 	changeLocks sync.Map
