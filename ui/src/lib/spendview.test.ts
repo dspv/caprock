@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { burnRate, foldedLine, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, periodFigures, periodScope, pickHero, pickSlot, shownSlots, type SpendFigures } from './spendview'
+import { barValue, burnRate, chartValueText, foldedFigures, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, periodFigures, periodScope, pickHero, pickSlot, shownSlots, type SpendFigures } from './spendview'
 import type { CallPoint } from './scrub'
 import type { Summary } from './api'
 
@@ -48,17 +48,10 @@ describe('the spend figures', () => {
     expect(burnRate([call(1, t, 1)])).toBeUndefined()
   })
 
-  it('folds to one line with the headline first', () => {
-    const f: SpendFigures = { cost: 12.4, turns: 48, timeMs: 72 * 60_000, burn: { perHour: 4.1, minutes: 60 } }
-    expect(foldedLine('cost', f)).toBe('Spent $12.40 · 48 turns · 1h 12m')
-    expect(foldedLine('burn', f)).toBe('$4.10/h · spent $12.40 · 48 turns')
-    expect(foldedLine('turns', { cost: 1, turns: 1 })).toBe('1 turn · spent $1.00')
-  })
-
   it('reads stored choices field by field, unfolded on the chart by default, and 0.111.0’s views as Numbers or Chart', () => {
-    expect(normalizeSpendPrefs(undefined)).toEqual({ folded: false, hero: ['burn', 'tokens', 'cost'], headline: 'burn', view: 'chart', period: 'session', slots: ['cost', 'tokens', 'cache'] })
+    expect(normalizeSpendPrefs(undefined)).toEqual({ folded: false, hero: ['burn', 'tokens', 'cost'], headline: 'burn', view: 'chart', period: 'session', slots: ['cost', 'tokens', 'cache'], chartBy: 'cost' })
     expect(normalizeSpendPrefs({ folded: true, headline: 'nope', view: 'numbers', period: '7d', slots: ['turns'] }))
-      .toEqual({ folded: true, hero: ['burn', 'tokens', 'cost'], headline: 'burn', view: 'numbers', period: '7d', slots: ['turns', 'cost', 'tokens'] })
+      .toEqual({ folded: true, hero: ['burn', 'tokens', 'cost'], headline: 'burn', view: 'numbers', period: '7d', slots: ['turns', 'cost', 'tokens'], chartBy: 'cost' })
     // One stored headline, from before the three figures, stays the big one.
     expect(normalizeSpendPrefs({ headline: 'tokens' })).toMatchObject({ hero: ['tokens', 'burn', 'cost'], headline: 'tokens' })
     expect(normalizeSpendPrefs({ hero: ['turns', 'cache', 'turns'] })).toMatchObject({ hero: ['turns', 'cache', 'burn'], headline: 'turns' })
@@ -83,6 +76,41 @@ describe('the spend figures', () => {
     expect(migrateSpendPrefs({ v: 3, hero: ['cost', 'burn', 'tokens'] })).toEqual({ v: 3, hero: ['cost', 'burn', 'tokens'] })
   })
 
+  it('keeps a version 3 choice as picked, its chart reading as cost', () => {
+    const v3 = { v: 3, view: 'numbers', folded: true, hero: ['cost', 'burn', 'tokens'], period: '30d' }
+    expect(migrateSpendPrefs(v3)).toEqual(v3)
+    expect(normalizeSpendPrefs(migrateSpendPrefs(v3))).toMatchObject({ view: 'numbers', folded: true, hero: ['cost', 'burn', 'tokens'], period: '30d', chartBy: 'cost' })
+    // A version 4 choice is current: nothing in it changes.
+    const v4 = { v: 4, view: 'chart', folded: true, chartBy: 'turns' }
+    expect(migrateSpendPrefs(v4)).toBe(v4)
+    expect(normalizeSpendPrefs({ chartBy: 'tokens' }).chartBy).toBe('tokens')
+    expect(normalizeSpendPrefs({ chartBy: 'turns' }).chartBy).toBe('turns')
+    // A metric the chart does not draw, and 0.111.0's boolean `chart`, read as cost.
+    expect(normalizeSpendPrefs({ chartBy: 'cache' }).chartBy).toBe('cost')
+    expect(normalizeSpendPrefs({ chartBy: 'burn', chart: true }).chartBy).toBe('cost')
+  })
+
+  it('reads each bar by the chart’s metric, each in its own format', () => {
+    const b = { start: 0, end: 1, cost: 2.5, tokens: 1_000, turns: 4 }
+    expect(barValue('cost', b)).toBe(2.5)
+    expect(barValue('tokens', b)).toBe(1_000)
+    expect(barValue('turns', b)).toBe(4)
+    // An older daemon's bar has cost only: the rest are unknown, not zero.
+    expect(barValue('tokens', { start: 0, end: 1, cost: 1 })).toBeUndefined()
+    expect(barValue('turns', { start: 0, end: 1, cost: 1 })).toBeUndefined()
+    expect(chartValueText('tokens', 950_120)).toBe('950.1k')
+    expect(chartValueText('cost', 12.4)).toBe('$12.40')
+    expect(chartValueText('turns', 1204)).toBe('1,204')
+    expect(chartValueText('tokens', undefined)).toBe('—')
+  })
+
+  it('puts the chart’s metric first among the folded figures and leaves out what the period lacks', () => {
+    const f = { cost: 1320.49, tokens: 4.35e9, turns: 1204, timeMs: 3 * 3_600_000 }
+    expect(foldedFigures('cost', f).map((x) => x.value)).toEqual(['$1,320.49', '4.35B', '1,204'])
+    expect(foldedFigures('turns', f).map((x) => x.id)).toEqual(['turns', 'cost', 'tokens'])
+    expect(foldedFigures('tokens', { cost: 2, turns: 3 }).map((x) => x.id)).toEqual(['cost', 'turns'])
+  })
+
   it('takes the figures from the session, or from the range summary with its sparks as the chart', () => {
     const f: SpendFigures = { cost: 2, tokens: 1_000, cache: 80, last: 0.25 }
     expect(periodFigures('session', f, undefined)).toBe(f)
@@ -98,6 +126,18 @@ describe('the spend figures', () => {
       { start: 1_000, end: 1_000 + H, cost: 1 },
       { start: 1_000 + H, end: 1_000 + 2 * H, cost: 4 },
       { start: 1_000 + 2 * H, end: 1_000 + 3 * H, cost: 2 },
+    ])
+    // A daemon that sends input and turns per bucket: summed alike.
+    const full = {
+      ...sum,
+      projects: [
+        { spark: { from_ms: 1_000, width_ms: H, cost: [1, 0], tokens: [0, 0], input: [100, 0], turns: [2, 0] } },
+        { spark: { from_ms: 1_000, width_ms: H, cost: [0, 4], tokens: [0, 0], input: [100, 50], turns: [1, 3] } },
+      ],
+    } as unknown as Summary
+    expect(periodFigures('7d', f, full).series?.bars).toEqual([
+      { start: 1_000, end: 1_000 + H, cost: 1, tokens: 200, turns: 3 },
+      { start: 1_000 + H, end: 1_000 + 2 * H, cost: 4, tokens: 50, turns: 3 },
     ])
     // A session's own figure has no Caprock-wide value: a dash, never a zero.
     expect(metricValue('last', pf)).toBe('—')

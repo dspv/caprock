@@ -383,7 +383,11 @@ export interface PathShare {
  *  Bucket i covers [from_ms + i*width_ms, from_ms + (i+1)*width_ms). Absent on
  *  `range=all`, whose start is the first event ever captured — a fixed bucket
  *  count would make a column mean a different span on every machine. */
-export interface Spark { from_ms: number; width_ms: number; cost: number[]; tokens: number[] }
+export interface Spark {
+  from_ms: number; width_ms: number; cost: number[]; tokens: number[]
+  /** The input side of `tokens` (fresh input, cache reads and writes) and the assistant turns, per bucket; absent from an older daemon. */
+  input?: number[]; turns?: number[]
+}
 /** One REPOSITORY's spend. `paths` is the per-directory breakdown, absent when
  *  the repository has only one directory (it would restate the row's total).
  *  `spark` is the series behind the row's sparkline. */
@@ -1678,6 +1682,14 @@ export interface Subagent {
   tool?: string
   detail?: string
   tool_at?: number
+  /**
+   * Roughly what it is doing now, at most 60 characters, and where that came
+   * from: its newest call's own description ("call"), its tool and target
+   * ("tool", "Editing Cockpit.tsx") or the task it was spawned with ("task").
+   * Absent when none says anything, and from a daemon that predates it.
+   */
+  doing?: string
+  doing_from?: 'call' | 'tool' | 'task'
   /** That call has no result yet. */
   running: boolean
   /** Its newest event is a permission prompt. */

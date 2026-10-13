@@ -153,14 +153,47 @@ describe('the agent cockpit', () => {
       expect(section).toHaveTextContent('Subagents · 3')
       expect(section).toHaveTextContent('3 finished')
       const rows = within(section).getAllByRole('listitem')
-      expect(rows[0]).toHaveTextContent('general-purpose· Fix the cockpit')
+      // The type is a letter, its name on hover; the words are what it is doing.
+      expect(within(rows[0]!).getByLabelText('general-purpose')).toHaveTextContent('G')
+      expect(within(rows[1]!).getByLabelText('Explore')).toHaveTextContent('E')
+      expect(rows[0]).toHaveTextContent('Fix the cockpit')
       expect(rows[0]).toHaveTextContent('Bashgo test ./...')
-      expect(rows[0]).toHaveTextContent(/\d+s · 42 calls/)
-      expect(rows[1]).toHaveTextContent('Editsession.go')
+      expect(rows[0]).toHaveTextContent('Fix the cockpit42 calls')
+      expect(rows[0]).toHaveTextContent(/go test \.\/\.\.\.\d+s/)
+      // No task and no daemon phrase: the call itself leads, once.
+      expect(rows[1]!.querySelector('[data-doing]')).toHaveTextContent('Edit session.go')
       expect(rows[1]).toHaveTextContent('7 calls')
       expect(rows[1]).not.toHaveTextContent('waiting on you')
       expect(rows[2]).toHaveTextContent('waiting on you')
       expect(rows[2]).toHaveTextContent('1 call')
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
+  // Claude Code's own list says "general-purpose  Rerunning AppShell and
+  // DiffFiles tests"; the row leads with that kind of phrase, not the raw
+  // command (owner, 2026-10-13, translated).
+  it('leads a subagent row with what it is doing now', async () => {
+    h.subagents = {
+      working: [
+        { agent_id: 'a1', agent_type: 'general-purpose', description: 'Fix the cockpit', tool_calls: 9, started_at: now - 60_000, last_at: now - 1_000, tool: 'Bash', detail: 'go -C /Users/x test ./...', tool_at: now - 2_000, running: true, asking: false, doing: 'Rerun the store tests', doing_from: 'call' },
+        { agent_id: 'b2', agent_type: 'Plan', tool_calls: 0, started_at: now - 2_000, last_at: now - 1_000, running: false, asking: false },
+      ],
+      finished: 0,
+    }
+    try {
+      show(agent({ live_subagents: 2 }))
+      const section = await screen.findByRole('region', { name: 'Subagents' })
+      const [a, b] = within(section).getAllByRole('listitem')
+      const doing = a!.querySelector('[data-doing]')
+      expect(doing).toHaveTextContent('Rerun the store tests')
+      expect(doing).toHaveAttribute('data-doing', 'call')
+      // The phrase is the command's own description: the raw command is not repeated.
+      expect(a).not.toHaveTextContent('go -C')
+      expect(a).toHaveTextContent('9 calls')
+      expect(within(b!).getByLabelText('Plan')).toHaveTextContent('P')
+      expect(b).toHaveTextContent('starting')
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
@@ -340,7 +373,7 @@ describe('the spend details', () => {
   const stored = () => JSON.parse(localStorage.getItem('caprock.app.cockpit.spend') ?? '{}')
   const slots = () => Array.from(spend().querySelectorAll('[data-slot]')).map((d) => d.getAttribute('data-slot'))
 
-  it('opens on the session’s chart by default, folds to one line, and remembers it', async () => {
+  it('opens on the session’s chart by default, folds to a strip of bars and figures, and remembers it', async () => {
     const { unmount } = await act(async () => show(agent({ started_at: now - 72 * 60_000, worked_at: now })))
     expect(spend()).toHaveAttribute('data-spend-view', 'chart')
     expect(within(spend()).getByRole('button', { name: 'Chart' })).toHaveAttribute('aria-pressed', 'true')
@@ -349,13 +382,33 @@ describe('the spend details', () => {
     const toggle = within(spend()).getByRole('button', { name: /^Spend$/ })
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(toggle)
-    expect(within(spend()).getByRole('button', { name: /spent \$1\.84 · 12 turns/i })).toHaveAttribute('aria-expanded', 'false')
+    // The chart's metric first, then the next two the session carries.
+    expect(within(spend()).getByRole('button', { name: 'Spend $1.84 · 950.1k tok · 12 turns' })).toHaveAttribute('aria-expanded', 'false')
     expect(within(spend()).queryByRole('group', { name: 'Spend view' })).toBeNull()
-    expect(stored()).toMatchObject({ folded: true, v: 3 })
+    expect(stored()).toMatchObject({ folded: true, v: 4 })
     unmount()
     resetSpendPrefsForTest()
     show(agent())
-    expect(spend().querySelector('[data-spend-folded]')).toHaveTextContent(/spent \$1\.84/i)
+    const strip = spend().querySelector('[data-spend-folded]')
+    expect(strip).toHaveTextContent(/\$1\.84/)
+    expect([...strip!.querySelectorAll('[data-fold-fig]')].map((e) => e.getAttribute('data-fold-fig'))).toEqual(['cost', 'tokens', 'turns'])
+  })
+
+  it('switches what the bars measure from the ▾, and puts that figure first when folded', async () => {
+    await act(async () => show(agent()))
+    // Under Now, above the context and the plan.
+    const after = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(after(screen.getByRole('region', { name: 'Now' }), spend())).toBe(true)
+    expect(after(spend(), screen.getByRole('region', { name: 'Context' }))).toBe(true)
+    fireEvent.click(within(spend()).getByRole('button', { name: /^The bars show cost/ }))
+    const menu = within(spend()).getByRole('menu', { name: 'What the bars show' })
+    expect(within(menu).getAllByRole('menuitemradio').map((b) => b.textContent?.split(/[$\d]/)[0])).toEqual(['Cost', 'Tokens', 'Turns'])
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: /^Tokens/ }))
+    expect(stored()).toMatchObject({ chartBy: 'tokens', v: 4 })
+    expect(spend().querySelector('[data-spend-time]')).toHaveAttribute('data-metric', 'tokens')
+    expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('950.1k')
+    fireEvent.click(within(spend()).getByRole('button', { name: /^Spend$/ }))
+    expect(within(spend()).getByRole('button', { name: 'Spend 950.1k tok · $1.84 · 12 turns' })).toBeInTheDocument()
   })
 
   it('opens a choice stored before the chart was the default on the chart, once', async () => {
@@ -366,7 +419,7 @@ describe('the spend details', () => {
     expect(spend()).toHaveAttribute('data-spend-period', '7d')
     // A pick after that holds.
     showNumbers()
-    expect(stored()).toMatchObject({ view: 'numbers', v: 3 })
+    expect(stored()).toMatchObject({ view: 'numbers', v: 4 })
     unmount()
     resetSpendPrefsForTest()
     await act(async () => { show(agent()) })
