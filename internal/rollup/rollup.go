@@ -81,6 +81,11 @@ type Recorder struct {
 	// from under <data dir>/profiles/<id>/ is that subscription's. Nil, or
 	// "", leaves the session on the Default sign-in.
 	SubscriptionOf func(transcriptPath string) string
+	// OnWrite is called as Record begins, before it waits for the database.
+	// The daemon's idle-time VACUUM holds the write lock for its whole run
+	// and stands down the moment something is to be recorded
+	// (daemon/compact.go). Set once, before the first Record; must not block.
+	OnWrite func()
 
 	// unpricedWarned holds the models already reported as missing from the
 	// pricing table.
@@ -99,6 +104,9 @@ func New(st *store.Store, tb *cost.Table, b *bus.Bus, log *slog.Logger) *Recorde
 // multiple goroutines; the store serializes writers.
 func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo) (Result, error) {
 	var res Result
+	if r.OnWrite != nil {
+		r.OnWrite()
+	}
 	if ev.Ts.IsZero() {
 		ev.Ts = r.Now()
 	}

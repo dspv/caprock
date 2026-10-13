@@ -116,6 +116,7 @@ import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { buildSpark, bucketLabel, peak } from '@/lib/spark'
 import { buildPathTree, collapseChains, MAX_DEPTH, type PathNode } from '@/lib/pathtree'
 import { Panel, Skeleton, StaleNote } from '@/components/ui'
+import { useOnScreen } from '@/lib/refresh'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
@@ -237,7 +238,9 @@ export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[];
   // carry a project that was only touched once.
   const [range, setRange] = useState<Range>('7d')
   const [expanded, setExpanded] = useState(false)
-  const summary = useApi(() => api.summary(range), [range], { intervalMs: 30000, cache: `summary:${range}:all` })
+  // Scrolled away it asks nothing (lib/refresh.ts).
+  const [seen, onScreen] = useOnScreen()
+  const summary = useApi(() => api.summary(range), [range], { intervalMs: 30000, cache: `summary:${range}:all`, active: onScreen })
 
   const everything = summary.data?.projects ?? []
   // Whether a machine has both agents at all. The filter appears only then:
@@ -275,6 +278,7 @@ export function ProjectsPanel({ sessions, agent }: { sessions: SessionSummary[];
 
   return (
     <Panel
+      sectionRef={seen}
       onMouseEnter={() => setFrozen(all.map((p) => p.project))}
       onMouseLeave={() => setFrozen(null)}
       title="Projects"

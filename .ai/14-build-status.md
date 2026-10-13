@@ -73,6 +73,28 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — unreleased: old payloads compacted, free space returned
+
+The rows stored before `event.CapToolField` kept their base64, and SQLite
+never gave freed pages back. Owner's mandate: necessary safe optimisations run
+automatically on every machine. Now, on the idle check (nothing recorded and
+no write request for 30 minutes), `daemon/compact.go` runs three steps, each
+standing down the moment anything is to be written: base64 in older events
+becomes CapToolField's marker (`event.StripBinary`; text never clipped;
+resumable through `meta.payload_compact_cursor`, bounded by
+`payload_compact_until`, finished once); then one VACUUM that switches the
+database to `auto_vacuum=INCREMENTAL`, only with free disk of 2.2 × the used
+size (measured peak 1.94 ×), 10-minute limit, interrupted by the recorder's
+`OnWrite` or any non-GET request and rolled back unchanged; then
+`incremental_vacuum` 4 MiB at a time. New databases are incremental from the
+first table (DSN pragma). Footprint `actions` say each step; the Storage panel
+lost its manual `sqlite3 … VACUUM` advice and reads `returns_free_space`. On
+a copy of the owner's 2.2 GB database: 4,181 rows, 750 MB of payload, 79 s;
+VACUUM 2,176 → 1,384 MB in 21 s; a concurrent 20 ms writer never failed
+(slowest commit 38 ms); an interrupted VACUUM let the writer in after 2 ms.
+Figures in [03-contracts.md § Payload compaction and
+auto-vacuum](03-contracts.md#payload-compaction-and-auto-vacuum-no-migration).
+
 ### 2026-10-13 — unreleased: Claude Code on DeepSeek
 
 A user asked to run Claude Code sessions from Caprock on DeepSeek's models

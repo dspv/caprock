@@ -82,22 +82,29 @@ it('states the size, labels growth as an estimate, and names the agents', () => 
   expect(screen.getByText('measured 5m ago')).toBeTruthy()
 })
 
-it('says what a retention setting would delete, and that the file would not shrink', () => {
+it('says what a retention setting would delete, and that space is reused until the one compaction', () => {
   render(<StorageView report={report()} now={now} />)
   const t = document.body.textContent ?? ''
   expect(t).toMatch(/Events are kept forever/)
   expect(t).toMatch(/2\.0MB of recorded events older than 90 days, 380\.0MB older than 30/)
-  expect(t).toMatch(/does not shrink/)
-  expect(t).toMatch(/compacting it\s+would give back next to nothing/)
-  expect(t).not.toMatch(/VACUUM/)
+  expect(t).toMatch(/until Caprock has compacted the database once/)
+  expect(t).toMatch(/compacting it would give back next to nothing/)
+  expect(t).not.toMatch(/VACUUM|sqlite3|caprock down/)
 })
 
-it('offers the manual compaction only when it would return something worth stopping for', () => {
+it('says Caprock compacts on its own, never asks the user to run anything', () => {
   render(<StorageView report={report({ reclaimable_bytes: 200_000_000, retention_days: 90 })} now={now} />)
   const t = document.body.textContent ?? ''
   expect(t).toMatch(/Events older than 90 days are deleted/)
-  expect(t).toMatch(/200\.0MB of the database is free pages/)
-  expect(t).toMatch(/sqlite3 "\/home\/u\/caprock\/caprock\.db" VACUUM/)
+  expect(t).toMatch(/200\.0MB of the database is free space\. Caprock compacts the database once, on its own/)
+  expect(t).not.toMatch(/VACUUM|sqlite3|caprock down/)
+})
+
+it('once the database returns free space, says it goes back to the disk while idle', () => {
+  render(<StorageView report={report({ reclaimable_bytes: 200_000_000, returns_free_space: true })} now={now} />)
+  const t = document.body.textContent ?? ''
+  expect(t).toMatch(/The space deleted events leave goes back to the disk while Caprock is idle/)
+  expect(t).toMatch(/Caprock gives it back to the disk the next time it is idle/)
 })
 
 it('says a new measurement is running beside the age of the figures shown', () => {
