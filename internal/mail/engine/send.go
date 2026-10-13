@@ -163,11 +163,12 @@ func (e *Engine) Send(ctx context.Context, d Draft) error {
 	if err != nil {
 		return err
 	}
-	pw, err := e.sec.Get(a.ID)
+	pw, refresh, err := Credential(ctx, e.sec, a)
 	if err != nil {
 		return err
 	}
 	if err := sendSMTP(a, pw, rcpt, raw); err != nil {
+		forgetRefused(refresh, err)
 		return err
 	}
 	for _, l := range [][]store.Address{d.To, d.Cc, d.Bcc} {
@@ -229,7 +230,8 @@ func sendSMTP(a store.Account, password string, rcpt []string, raw []byte) error
 }
 
 // TestAccount checks that IMAP and SMTP accept the credentials, and returns
-// the account with the IMAP sign-in name that worked.
+// the account with the IMAP sign-in name that worked. For an OAuth account
+// password is the access token.
 func TestAccount(a store.Account, password string) (store.Account, error) {
 	c, name, err := dialIMAP(a, password, nil)
 	if err != nil {

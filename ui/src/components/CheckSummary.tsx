@@ -9,10 +9,16 @@
  * "✓ all 12 · 6m". Hover (or focus) lists every check: its name, OS, state —
  * the step a failed one failed at, once its run was read — and its time; a
  * click on one hands it to the caller, as the circles did.
+ *
+ * The deck offers the circles back beside it (view="circles", its default:
+ * the owner, 2026-10-14, translated, of the circles: "I like everything
+ * now"): a small circle per check in the order they started, coloured by its
+ * state, the running ones pulsing, then the time; the same hover card names
+ * every one. A click on a circle hands that check to the caller.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { checksSentence, fmtRun, nodeBaseName, osName, shortRun, type CITone, type ChecksSummary, type DeltaTone, type PipeNode } from '@/lib/ci'
+import { checksSentence, fmtRun, nodeBaseName, osName, shortRun, type CITone, type ChecksSummary, type ChecksView, type DeltaTone, type PipeNode } from '@/lib/ci'
 
 /** A state's circle: ✓ on green, ✗ on red, amber pulsing while running, hollow queued, a slash skipped. */
 export function StateMark({ tone }: { tone: CITone }) {
@@ -41,8 +47,34 @@ function Part({ tone, n, word = true }: { tone: CITone; n: number; word?: boolea
   )
 }
 
+/** The most circles a row draws; the rest are counted, and the hover lists them all. */
+const CIRCLES_MAX = 24
+
+/** A circle per check, in the order they started; each one a button that hands its check to the caller. */
+function Circles({ s, onPick }: { s: ChecksSummary; onPick?: (n: PipeNode) => void }) {
+  const shown = s.started.length > CIRCLES_MAX ? s.started.slice(0, CIRCLES_MAX - 1) : s.started
+  const more = s.started.length - shown.length
+  const time = shortRun(s.ms)
+  return (
+    <>
+      <span data-check-circles className="inline-flex shrink-0 items-center">
+        {shown.map((n) => (
+          <button key={n.key} type="button" data-pipe-node={n.jobId ?? n.key} data-tone={n.tone} aria-label={`${n.name}: ${WORD[n.tone]}`}
+            tabIndex={-1} disabled={!onPick && !n.url}
+            onClick={(e) => { e.stopPropagation(); onPick?.(n) }}
+            className="flex h-[14px] w-[11px] items-center justify-center rounded-full hover:brightness-125 disabled:cursor-default">
+            <span aria-hidden className="pipe-node" data-size="sm" data-tone={n.tone} />
+          </button>
+        ))}
+        {more > 0 && <span className="num ml-1 text-[10.5px] text-fg-faint">+{more}</span>}
+      </span>
+      {time && <span className="shrink-0 text-fg-faint">· <span className="num">{time}</span></span>}
+    </>
+  )
+}
+
 /** focusable: false inside a control of its own (the cockpit block is one button), so focus lands once. */
-export function CheckSummary({ s, label, onPick, focusable = true, className = '' }: { s: ChecksSummary; label: string; onPick?: (n: PipeNode) => void; focusable?: boolean; className?: string }) {
+export function CheckSummary({ s, label, onPick, focusable = true, className = '', view = 'summary' }: { s: ChecksSummary; label: string; onPick?: (n: PipeNode) => void; focusable?: boolean; className?: string; view?: ChecksView }) {
   const c = s.counts
   const anchor = useRef<HTMLSpanElement>(null)
   const [open, setOpen] = useState(false)
@@ -52,7 +84,7 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
   useEffect(() => () => window.clearTimeout(shut.current), [])
   const sentence = checksSentence(s)
   const time = shortRun(s.ms)
-  const body = s.green ? (
+  const body = view === 'circles' ? <Circles s={s} onPick={onPick} /> : s.green ? (
     <>
       <span data-check-part="pass" className="inline-flex shrink-0 items-center gap-1 font-medium text-ok">
         <StateMark tone="pass" />
@@ -73,7 +105,8 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
     </>
   )
   return (
-    <span ref={anchor} data-check-summary={s.green ? 'green' : c.fail ? 'fail' : s.done ? 'done' : 'running'} tabIndex={focusable ? 0 : undefined} role="img" aria-label={`${label}: ${sentence}`}
+    <span ref={anchor} data-check-summary={s.green ? 'green' : c.fail ? 'fail' : s.done ? 'done' : 'running'} data-check-view={view} tabIndex={focusable ? 0 : undefined}
+      role={view === 'circles' ? 'group' : 'img'} aria-label={`${label}: ${sentence}`}
       onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}
       className={`inline-flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-[4px] text-[11.5px] outline-none focus-visible:ring-1 focus-visible:ring-accent ${className}`}>
       {body}

@@ -3212,10 +3212,38 @@ dashboard and a desktop app on three OSes.
   the traffic. Once on, Caprock talks only to the IMAP and SMTP servers the
   user typed in, and — only when local AI is turned on in Mail's settings —
   to the model server at the address shown there (Ollama on loopback by
-  default). Nothing is sent to Caprock. The add-account form says so.
+  default) — and, for an account signed in with Google or Microsoft, to
+  that provider (below). Nothing is sent to Caprock. The add-account form
+  says so.
 - **Passwords in the OS keychain**, a 0600 file only where there is none
-  (Linux without a Secret Service). App passwords, not OAuth: Gmail and iCloud
-  accept them; Microsoft accounts that refuse passwords are a known gap.
+  (Linux without a Secret Service). iCloud has no OAuth for mail, so an
+  app-specific password stays the only way there; any IMAP host takes a
+  password.
+- **Sign in with Google or Microsoft** (added 2026-10-14). The installed-app
+  OAuth flow (RFC 8252): authorization code with PKCE (S256) in the user's
+  browser, redirected back to the daemon's own loopback port. What is sent
+  where, all only after the user clicks the button: the browser goes to
+  accounts.google.com or login.microsoftonline.com and the user approves
+  there; the daemon then sends the authorization code and the PKCE verifier
+  (with the client ID, and for Google the desktop client's non-confidential
+  "secret") to that provider's token endpoint — oauth2.googleapis.com or
+  login.microsoftonline.com — and from then on the refresh token to the same
+  endpoint for a new access token, about hourly while Mail syncs. The access
+  token goes only to the provider's own IMAP and SMTP servers (imap.gmail.com
+  and smtp.gmail.com; outlook.office365.com and smtp.office365.com) inside
+  SASL XOAUTH2. The refresh token lives where passwords live — the OS
+  keychain item of the account — and the access token only in memory. The
+  scopes are mail only (`https://mail.google.com/`; Microsoft's
+  `IMAP.AccessAsUser.All` and `SMTP.Send`, `offline_access`) plus `openid
+  email` for the address. Revoking: remove the account in Mail (deletes the
+  token here), and at the provider — Google at myaccount.google.com/permissions,
+  a personal Microsoft account at account.live.com/consent/Manage, a work
+  account at myapps.microsoft.com or by its Entra admin. The client IDs are
+  the Caprock owner's app registrations, compiled in or given by environment
+  ([docs/mail-oauth.md](../docs/mail-oauth.md)); without one the button is not
+  offered and nothing else changes. The callback is the one `/v1` route the
+  CSRF guard admits as a cross-site GET, on a loopback Host only, with the
+  single-use state as its protection.
 - **Headers are read whole.** The list is built from `BODY.PEEK[HEADER]`,
   parsed locally, never from ENVELOPE or `HEADER.FIELDS`: iCloud has sent
   ENVELOPEs with unescaped quotes in the Message-ID (one bad answer fails
@@ -3238,9 +3266,18 @@ dashboard and a desktop app on three OSes.
   through the nudge system after two days of use, only while no account
   exists; opening Mail or dismissing it answers it.
 
+- **Adding an account is an address and a password.** Server settings come
+  from a table of about 40 consumer and hosting services, each entry citing
+  the provider's own settings page (QQ Mail, NetEase, Naver and Spectrum are
+  left out until one can be read); then the domain's MX against that table;
+  then RFC 6186 SRV records; then the domain's own autoconfig file; then the
+  `imap.` / `smtp.` convention. Discovery asks only the user's own domain,
+  never Mozilla's ISPDB or any other directory, so an address goes nowhere
+  but where its mail already lives (rule 4).
+
 **Consequences.** One more outbound path exists, to destinations the user
 chose; the binary grows by the IMAP, SMTP and MIME libraries. Not built:
-OAuth, server-side drafts, notifications, rules, mail on a paired phone
+server-side drafts, notifications, rules, mail on a paired phone
 (attachments and the iframe's images need the device token, which plain URLs
 do not carry).
 
