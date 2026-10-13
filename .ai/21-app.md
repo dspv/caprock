@@ -2222,7 +2222,9 @@ The owner said to go ahead with the proposals ("build it to the end"). Taken:
 1. **Phone off the home network:** Tailscale for the MVP, with Phase A
    resilience (resume, replay, endless reconnect). A Caprock relay stays a
    later decision with its own ADR (would override the relay clauses of
-   ADR-029 and ADR-034). F19 waits for it.
+   ADR-029 and ADR-034). F19 waits for it. *Decided 2026-10-13:* the relay
+   is built — ADR-058, end-to-end Noise over a relay that sees ciphertext,
+   for a phone with nothing installed.
 2. **Apple Developer Program:** not yet. The macOS build ships unsigned
    (ad-hoc) with the "Open Anyway" note; signing and notarization when the
    account exists.

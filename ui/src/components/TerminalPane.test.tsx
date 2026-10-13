@@ -8,7 +8,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  terms: [] as { options: Record<string, unknown>; focused: number; buffer: { active: { viewportY: number; baseY: number } }; scrolledTo: number | null }[],
+  terms: [] as { options: Record<string, unknown>; focused: number; cols: number; rows: number; buffer: { active: { viewportY: number; baseY: number } }; scrolledTo: number | null }[],
   calls: [] as [string, string, Record<string, unknown>?][],
   results: [] as ((r: { resultIndex: number; resultCount: number }) => void)[],
   clears: 0,
@@ -19,6 +19,10 @@ const h = vi.hoisted(() => ({
   claims: 0,
   claimSizes: [] as unknown[][],
   blurs: 0,
+  resizes: [] as number[][],
+  wakes: 0,
+  /** What the fit addon measures; null as for a pane never laid out. */
+  fitSize: null as { cols: number; rows: number } | null,
 }))
 
 vi.mock('@xterm/xterm', () => ({
@@ -31,7 +35,8 @@ vi.mock('@xterm/xterm', () => ({
     buffer = { active: { viewportY: 0, baseY: 0 } }
     scrolledTo: number | null = null
     constructor(opts: Record<string, unknown>) { this.options = { ...opts }; h.terms.push(this) }
-    loadAddon() {}
+    loadAddon(a: { term?: unknown }) { a.term = this }
+    resize(cols: number, rows: number) { this.cols = cols; this.rows = rows }
     open(parent: HTMLElement) { h.steps.push('open'); this.element = document.createElement('div'); parent.appendChild(this.element) }
     focus() { this.focused++ }
     write(d: unknown, cb?: () => void) { h.writes.push(d); cb?.() }
@@ -48,7 +53,16 @@ vi.mock('@xterm/xterm', () => ({
     dispose() {}
   },
 }))
-vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { fit() { h.steps.push('fit') } } }))
+vi.mock('@xterm/addon-fit', () => ({
+  FitAddon: class {
+    term?: { resize(c: number, r: number): void }
+    fit() {
+      h.steps.push('fit')
+      if (h.fitSize) this.term?.resize(h.fitSize.cols, h.fitSize.rows)
+    }
+    proposeDimensions() { return h.fitSize ?? undefined }
+  },
+}))
 vi.mock('@xterm/addon-webgl', () => ({ WebglAddon: class { onContextLoss() {} dispose() {} } }))
 vi.mock('@xterm/addon-search', () => ({
   SearchAddon: class {
@@ -68,10 +82,10 @@ vi.mock('@/lib/termv2', () => ({
     protocol = 'v2'
     constructor(opts: { callbacks: { write: (d: Uint8Array, done: () => void) => void; reset: () => void } }) { h.clients.push(opts) }
     start() {}
-    wake() {}
+    wake() { h.wakes++ }
     suspend() { h.suspends++ }
     send() { return true }
-    resize() {}
+    resize(cols: number, rows: number) { h.resizes.push([cols, rows]) }
     focus(...size: unknown[]) { h.claims++; h.claimSizes.push(size) }
     blur() { h.blurs++ }
     dispose() {}
@@ -97,10 +111,19 @@ beforeEach(() => {
   h.claims = 0
   h.claimSizes.length = 0
   h.blurs = 0
+  h.resizes.length = 0
+  h.wakes = 0
+  h.fitSize = { cols: 120, rows: 40 }
   localStorage.clear()
   setTerminalPrefs(DEFAULT_PREFS)
+  // Laid out: jsdom measures every box as zero.
+  widthSpy = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800)
 })
-afterEach(() => setTerminalPrefs(DEFAULT_PREFS))
+let widthSpy: { mockRestore(): void } | undefined
+afterEach(() => {
+  widthSpy?.mockRestore()
+  setTerminalPrefs(DEFAULT_PREFS)
+})
 
 const find = () => act(() => { window.dispatchEvent(new Event(FIND_EVENT)) })
 
@@ -233,7 +256,7 @@ describe('TerminalPane across an app update (F20)', () => {
       const first = render(<TerminalPane sessionId="a" active focused />)
       h.terms[0]!.buffer.active = { viewportY: 100, baseY: 500 }
       act(() => { window.dispatchEvent(new CustomEvent(APP_UPDATE_EVENT, { detail: { phase: 'installing', next: '0.79.0' } })) })
-      expect(JSON.parse(localStorage.getItem(RESUME_KEY)!).panes.a).toEqual({ top: 100, total: 524, fromBottom: 400 })
+      expect(JSON.parse(localStorage.getItem(RESUME_KEY)!).panes.a).toEqual({ top: 100, total: 540, fromBottom: 400 })
       first.unmount()
 
       // The relaunched page: the replay lands at the bottom, then pauses.
@@ -271,10 +294,17 @@ describe('TerminalPane across an app update (F20)', () => {
 describe('a hidden pane does no terminal work', () => {
   const bytes = (n: number) => new Uint8Array(n).fill(120)
 
+  // A pane that has been in front once, so fitted to its box.
+  const behind = () => {
+    const r = render(<TerminalPane sessionId="a" active />)
+    r.rerender(<TerminalPane sessionId="a" active={false} />)
+    return r
+  }
+
   it('draws its first output while hidden, then holds what comes until it is shown', () => {
     vi.useFakeTimers()
     try {
-      const { rerender } = render(<TerminalPane sessionId="a" active={false} />)
+      const { rerender } = behind()
       const write = h.clients[0]!.callbacks.write
       // The replay a tab opens with is drawn in the background.
       act(() => write(bytes(10), () => {}))
@@ -300,7 +330,7 @@ describe('a hidden pane does no terminal work', () => {
   it('a repaint while hidden drops what it replaces and keeps its place in line', () => {
     vi.useFakeTimers()
     try {
-      const { rerender } = render(<TerminalPane sessionId="a" active={false} />)
+      const { rerender } = behind()
       const { write, reset } = h.clients[0]!.callbacks
       act(() => write(bytes(1), () => {}))
       act(() => { vi.advanceTimersByTime(SETTLE_MS) })
@@ -319,7 +349,7 @@ describe('a hidden pane does no terminal work', () => {
   it('lets the socket go past the hold limit, so the daemon keeps the rest', () => {
     vi.useFakeTimers()
     try {
-      render(<TerminalPane sessionId="a" active={false} />)
+      behind()
       const write = h.clients[0]!.callbacks.write
       act(() => write(bytes(1), () => {}))
       act(() => { vi.advanceTimersByTime(SETTLE_MS) })
@@ -344,6 +374,50 @@ describe('a hidden pane does no terminal work', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// A tab restored behind another has never been laid out, so its xterm is at
+// the default 80x24. The replay it opens with was drawn at the PTY's width;
+// parsed 80 wide, Claude Code's cursor moves land on the wrong rows and leave
+// smeared rules and repeated status rows in the scrollback, which no later
+// reflow undoes (user report, 2026-10-13).
+describe('a pane never laid out', () => {
+  const bytes = (n: number) => new Uint8Array(n).fill(120)
+
+  it('holds its replay and sends no size until it is shown and fitted, then writes it at that size', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(<TerminalPane sessionId="a" active={false} />)
+      const { write, open } = h.clients[0]!.callbacks as typeof h.clients[0]['callbacks'] & { open: () => void }
+      act(() => open())
+      const done = vi.fn()
+      act(() => write(bytes(10), done))
+      act(() => { vi.advanceTimersByTime(SETTLE_MS) })
+      act(() => write(bytes(5), done))
+      // Nothing parsed at 80x24, and the daemon was not told 80x24.
+      expect(h.writes).toHaveLength(0)
+      expect(h.resizes).toEqual([])
+      expect(done).not.toHaveBeenCalled()
+      rerender(<TerminalPane sessionId="a" active />)
+      const t = h.terms[0]!
+      expect([t.cols, t.rows]).toEqual([120, 40])
+      expect(h.resizes[0]).toEqual([120, 40])
+      expect(h.writes.map((w) => (w as Uint8Array).length)).toEqual([10, 5])
+      expect(done).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps holding while shown but not yet measurable, and claims without a size', () => {
+    h.fitSize = null
+    const { rerender } = render(<TerminalPane sessionId="a" active={false} />)
+    rerender(<TerminalPane sessionId="a" active />)
+    act(() => h.clients[0]!.callbacks.write(bytes(3), () => {}))
+    expect(h.writes).toHaveLength(0)
+    expect(h.resizes).toEqual([])
+    expect(h.claimSizes.at(-1)).toEqual([])
   })
 })
 
@@ -378,7 +452,7 @@ describe('a pane claims the PTY when it is looked at', () => {
   it('with its size, so a PTY left at another terminal\'s size is put right by looking', () => {
     render(<TerminalPane sessionId="a" active />)
     act(() => { window.dispatchEvent(new Event('focus')) })
-    expect(h.claimSizes.at(-1)).toEqual([80, 24])
+    expect(h.claimSizes.at(-1)).toEqual([120, 40])
   })
 
   it('on focus anywhere in the pane, the composer included', () => {

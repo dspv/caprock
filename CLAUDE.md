@@ -40,9 +40,11 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 3. **The shim never breaks a user's Claude session.** Every error path is silent `exit 0` within 1s.
 
 4. **All data stays on the machine.** Loopback listeners only, no telemetry,
-   nothing ever sent to Caprock. The only outbound calls are the release check
-   and integrations the user turns on — Telegram, GitHub, Gemini: each off by
-   default, revocable, to a destination the user chose, and saying where it is
+   nothing readable ever sent to Caprock. The only outbound calls are the
+   release check and integrations the user turns on — Telegram, GitHub,
+   Gemini, and access from anywhere, whose relay carries only end-to-end
+   ciphertext ([ADR-058](.ai/08-decisions.md)): each off by default,
+   revocable, to a destination the user chose, and saying where it is
    switched on what it sends ([ADR-047](.ai/08-decisions.md)).
 
 5. **English only, in every file.** Code, comments, docs, data, commits, PR

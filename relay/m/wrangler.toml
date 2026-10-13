@@ -1,0 +1,12 @@
+# The phone's page for access from anywhere (ADR-058), served at m.caprock.dev:
+# static files only, no code. Build first: `cd ../../ui && npx vite build --mode remote`.
+# Deploy: `npx wrangler deploy` from this folder.
+name = "caprock-m"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "../../ui/dist-remote"
+
+[[routes]]
+pattern = "m.caprock.dev"
+custom_domain = true
