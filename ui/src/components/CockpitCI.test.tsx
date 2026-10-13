@@ -29,11 +29,16 @@ describe('the cockpit’s CI block', () => {
     act(() => { writeDeck('prs:s1', { connected: true, prs: [row(9, live(9, RUNNING)), row(8, live(8, PASSED, { state: 'merged' }))] }) })
     expect(document.querySelector('[data-cockpit-ci="dots"]')).not.toBeNull()
     expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-tone="running"]')).not.toBeNull()
-    expect(document.querySelector('[data-cockpit-ci-pr="8"]')).not.toBeNull()
+    // The same short group as the deck's rows: no circle per check, no unexplained glyph.
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-check-summary]')).toHaveTextContent(/^1 running2· 4m$/)
+    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-check-summary]')).toHaveTextContent(/^all 1$/)
+    expect(document.querySelector('[data-cockpit-ci-pr="9"]')).toHaveTextContent('PR 9')
+    expect(document.querySelector('[data-cockpit-ci] [data-pipeline]')).toBeNull()
+    expect([...document.querySelectorAll('[data-cockpit-ci-view]')].map((b) => b.textContent)).toEqual(['PRs', 'Ring', 'OS'])
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('switches between circles, a ring and the jobs by OS, kept per viewer, and opens the tab on a click', () => {
+  it('switches between the PRs, a ring and the jobs by OS, kept per viewer, and opens the tab on a click', () => {
     writeDeck('prs:s1', { connected: true, prs: [row(9, live(9, RUNNING))] })
     const onOpen = vi.fn()
     const first = render(<CockpitCI sessionId="s1" onOpen={onOpen} />)

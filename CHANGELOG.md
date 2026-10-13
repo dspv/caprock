@@ -7,6 +7,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **deck:** a pull request's checks read at a glance. In place of a circle per
+  check — twelve tiny circles in a row that said nothing — each row sums them
+  up in one short group: *✗ 1 failed ● 1 running ✓ 10*, the failed first, the
+  running one pulsing, skipped ones a dim count only when there are any, and a
+  finished green PR just *✓ all 12 · 6m*. Hovering it lists every check with
+  its OS, state, time and the step a failed one stopped at; a click opens that
+  job. The circles-or-words switch is gone, a row no longer says *$0* for a
+  public repository's free runners, and the cockpit's CI block uses the same
+  summary, its view tabs now named *PRs · Ring · OS*.
+
 ### Fixed
 
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.

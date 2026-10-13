@@ -227,15 +227,16 @@ describe('the session deck', () => {
       prRow(6, livePR(6, { state: 'none', passed: 0, failed: 0, pending: 0, items: [] }, { state: 'closed', review: 'changes_requested' }), { closed_at: now - 5 * 86_400_000 }),
     ] }
     show()
-    await screen.findByText(/^running · 2\/5 · 4m 0\ds$/)
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"] [data-check-summary="running"]')).not.toBeNull())
     const order = [...document.querySelectorAll('[data-deck-pr]')].map((r) => r.getAttribute('data-deck-pr'))
     expect(order).toEqual(['9', '8', '7', '6'])
     const row = (n: number) => document.querySelector(`[data-deck-pr="${n}"]`)!
     expect(row(9).querySelector('.pr-dot')).toHaveAttribute('data-state', 'open')
     expect(row(8).querySelector('.pr-dot')).toHaveAttribute('data-state', 'merged')
     expect(row(6).querySelector('.pr-dot')).toHaveAttribute('data-state', 'closed')
-    expect(row(8).querySelector('[data-deck-pr-ci]')).toHaveTextContent('✗ failed at test (macos)')
-    expect(row(7).querySelector('[data-deck-pr-ci]')).toHaveTextContent('✓ passed')
+    expect(row(9).querySelector('[data-deck-pr-ci]')).toHaveTextContent(/^1 running2 queued2· 4m$/)
+    expect(row(8).querySelector('[data-deck-pr-ci]')).toHaveTextContent('1 failed')
+    expect(row(7).querySelector('[data-deck-pr-ci]')).toHaveTextContent('all 1')
     expect(row(6).querySelector('[data-deck-pr-ci]')).toHaveTextContent('no checks')
     // Review and conflict only for an open PR, and only as GitHub said them:
     // the conflict a chip beside the pipeline, approved in words.
@@ -259,7 +260,7 @@ describe('the session deck', () => {
     h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED, { state: 'merged' })), prRow(8, livePR(8, FAILED, { state: 'merged' }))] }
     h.ciPrs = []
     const first = show()
-    await screen.findByText(/✓/)
+    await waitFor(() => expect(document.querySelector('[data-check-summary]')).not.toBeNull())
     await new Promise((r) => setTimeout(r, 20))
     expect(document.querySelector('[data-deck-pr-detail]')).toBeNull()
     // Settled rows are read once, closed, for their time against the median.
@@ -279,10 +280,10 @@ describe('the session deck', () => {
     expect(document.querySelector('[data-deck-pr-detail]')).toBeNull()
     first.unmount()
     // An open current PR, failed or not, does not open by itself: the deck
-    // opens on the overview, each row with a circle per check (owner, 2026-10-13).
+    // opens on the overview, each row with its checks summed up (owner, 2026-10-13).
     h.prs = { connected: true, prs: [prRow(5, livePR(5, FAILED))] }
     const second = show()
-    await waitFor(() => expect(document.querySelector('[data-deck-pr="5"] [data-pipeline="compact"]')).not.toBeNull())
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="5"] [data-check-summary="fail"]')).not.toBeNull())
     await new Promise((r) => setTimeout(r, 20))
     expect(document.querySelector('[data-deck-pr-detail]')).toBeNull()
     expect(rowButton(5)).toHaveAttribute('aria-expanded', 'false')
@@ -295,22 +296,37 @@ describe('the session deck', () => {
     await waitFor(() => expect(rowButton(5)).toHaveAttribute('aria-expanded', 'true'))
   })
 
-  it('draws a circle per check on every row, or the words, switched in one click and kept per viewer', async () => {
-    h.prs = { connected: true, prs: [prRow(9, livePR(9, RUNNING)), prRow(8, livePR(8, FAILED, { state: 'merged' }))] }
-    const first = show()
-    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"] [data-pipeline="compact"]')).not.toBeNull())
-    // A running check pulses; the row's words stay in its hover.
-    expect(document.querySelector('[data-deck-pr="9"] [data-pipeline="compact"] [data-tone="running"]')).not.toBeNull()
-    expect(document.querySelector('[data-deck-pr="8"] [data-pipeline="compact"] [data-tone="fail"]')).not.toBeNull()
-    expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-ci]')).toHaveAttribute('data-marks', 'dots')
-    fireEvent.click(screen.getByRole('button', { name: 'Show the checks in words' }))
-    expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-ci]')).toHaveAttribute('data-marks', 'text')
-    expect(document.querySelector('[data-deck-pr="9"] [data-pipeline="compact"]')).toBeNull()
-    first.unmount()
+  it('sums each row’s checks in one short group, every check one hover away, with no switch', async () => {
+    const t0 = now - 6 * 60_000
+    const ok = (name: string, i: number) => ({ name, state: 'pass', status: 'completed', started_at: t0 + i * 1000, completed_at: t0 + 6 * 60_000 })
+    h.prs = { connected: true, prs: [
+      prRow(9, livePR(9, RUNNING)),
+      prRow(8, livePR(8, FAILED, { state: 'merged' })),
+      prRow(7, livePR(7, { state: 'pass', passed: 12, failed: 0, pending: 0, items: Array.from({ length: 12 }, (_, i) => ok(`job ${i}`, i)) }, { state: 'merged' })),
+      prRow(6, livePR(6, { state: 'pass', passed: 2, failed: 0, pending: 0, items: [ok('lint', 0), ok('test', 1), { name: 'deploy', state: 'skipped', status: 'completed' }, { name: 'docs', state: 'skipped', status: 'completed' }] }, { state: 'merged' })),
+    ] }
     show()
-    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-ci]')).toHaveAttribute('data-marks', 'text'))
-    fireEvent.click(screen.getByRole('button', { name: 'Show the checks as circles' }))
-    expect(document.querySelector('[data-deck-pr="9"] [data-pipeline="compact"]')).not.toBeNull()
+    const ci = (n: number) => document.querySelector(`[data-deck-pr="${n}"] [data-deck-pr-ci]`)!
+    await waitFor(() => expect(ci(9).querySelector('[data-check-summary="running"]')).not.toBeNull())
+    // Running: its count and word, pulsing; the passed beside it a count.
+    expect(ci(9)).toHaveTextContent(/^1 running1· 1m$/)
+    expect(ci(9).querySelector('[data-check-part="running"] .pipe-node')).toHaveAttribute('data-tone', 'running')
+    expect(ci(8)).toHaveTextContent(/^1 failed$/)
+    // All green collapses to one token, with the time.
+    expect(ci(7)).toHaveTextContent(/^all 12· 6m$/)
+    // Skipped fold into a dim count, only when there are some.
+    expect(ci(6)).toHaveTextContent(/^2 passed· 6m· 2 skipped$/)
+    expect(ci(7).querySelector('[data-check-part="skipped"]')).toBeNull()
+    expect(ci(7).querySelector('[data-check-summary]')).toHaveAttribute('aria-label', '#7: its checks: All 12 checks passed')
+    // No marks switch in the header, and no per-check circles in a row.
+    expect(document.querySelector('[data-deck-marks]')).toBeNull()
+    expect(document.querySelector('[data-deck-pr] [data-pipeline]')).toBeNull()
+    // Hover lists every check, the failed first.
+    fireEvent.mouseEnter(ci(8).querySelector('[data-check-summary]')!)
+    const list = await screen.findByRole('tooltip')
+    expect(list).toHaveTextContent('1 check: 1 failed')
+    expect(list.querySelector('[data-check-row]')).toHaveTextContent('test')
+    expect(list).toHaveTextContent('macOS')
   })
 
   it('keeps a list with its checks over the daemon’s quick first answer of bare rows', async () => {
@@ -319,7 +335,7 @@ describe('the session deck', () => {
     show()
     await waitFor(() => expect(h.prsAsked).toBeGreaterThan(0))
     await new Promise((r) => setTimeout(r, 20))
-    expect(document.querySelector('[data-deck-pr="9"] [data-pipeline="compact"]')).not.toBeNull()
+    expect(document.querySelector('[data-deck-pr="9"] [data-check-summary]')).not.toBeNull()
   })
 
   it('says CI has not started on a fresh PR, and "no checks" on an old one — never "CI no CI"', async () => {
@@ -451,7 +467,7 @@ describe('the session deck', () => {
     expect(await screen.findByText('This session’s folder has no GitHub repository.')).toBeInTheDocument()
   })
 
-  it('draws each PR’s pipeline, and a click on a job opens it in the CI cell for that PR', async () => {
+  it('lists each PR’s checks on hover, the failed first, and a click on a job opens it in the CI cell for that PR', async () => {
     const t0 = now - 5 * 60_000
     const live = { number: 8, url: 'https://github.com/a/b/pull/8', title: 'PR 8', state: 'open', draft: false, review: '', reviews: [],
       checks: { state: 'fail', passed: 1, failed: 1, pending: 1, items: [
@@ -468,11 +484,17 @@ describe('the session deck', () => {
     show()
     const row = await waitFor(() => {
       const r = document.querySelector('[data-deck-pr="8"]')
-      if (!r?.querySelector('[data-pipeline]')) throw new Error('no pipeline')
+      if (!r?.querySelector('[data-check-summary]')) throw new Error('no summary')
       return r
     })
-    const tones = [...row.querySelectorAll('[data-pipe-node]')].map((b) => b.getAttribute('data-tone'))
-    expect(tones).toEqual(['pass', 'fail', 'running'])
+    expect(row.querySelector('[data-deck-pr-ci]')).toHaveTextContent(/^1 failed1 running1· 5m$/)
+    fireEvent.mouseEnter(row.querySelector('[data-check-summary]')!)
+    const list = await screen.findByRole('tooltip')
+    const tones = [...list.querySelectorAll('[data-check-row]')].map((b) => b.getAttribute('data-tone'))
+    expect(tones).toEqual(['fail', 'running', 'pass'])
+    // The OS is said once, beside the name it came from.
+    expect(list.querySelector('[data-check-row="81"]')).toHaveTextContent(/^test$/)
+    expect(list).toHaveTextContent('Windows')
     // The CI cell turns to #8 and opens its failed job.
     h.ci = { connected: true, pr: { number: 8, url: 'https://github.com/a/b/pull/8', repo: 'a/b', head_sha: 's8' }, ci: {
       repo: 'a/b', head_sha: 's8', state: 'fail', runner_ms: 60_000, by_os: [], at: now, runs: [{ id: 8, name: 'CI', status: 'completed', conclusion: 'failure', jobs: [
@@ -480,7 +502,7 @@ describe('the session deck', () => {
         { id: 81, run_id: 8, name: 'test (windows)', status: 'completed', conclusion: 'failure', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000, labels: [],
           steps: [{ number: 1, name: 'go test', status: 'completed', conclusion: 'failure', started_at: t0, completed_at: t0 + 60_000, duration_ms: 60_000 }] },
       ] }] } }
-    fireEvent.click(row.querySelector('[data-pipe-node="81"]')!)
+    fireEvent.click(list.querySelector('[data-check-row="81"]')!)
     await waitFor(() => expect(h.ciPrs).toContain(8))
     await waitFor(() => expect(document.querySelector('[data-deck-ci-job="81"] [data-deck-ci-step="1"]')).not.toBeNull())
     expect(screen.getByRole('tab', { name: 'PRs' })).toHaveAttribute('aria-selected', 'true')

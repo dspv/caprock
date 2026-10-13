@@ -599,11 +599,11 @@ One window, three regions:
     chevron (right folded, down open), and the open PR's line stays pinned
     at the top of the list. The first failed job of each PR opens by itself. No
     PR opens by itself: the deck opens on the overview, every row on its
-    line with a circle per check (or its CI in words, a switch beside the
-    view tabs, kept per viewer); a row opened by hand is opened again the
+    line with its checks in one short group (*✗ 1 failed ✓ 11*, *✓ all 12 ·
+    6m*; every check on hover); a row opened by hand is opened again the
     next time, kept per viewer and session, until it is folded (owner,
     2026-10-13, [04-ui.md](04-ui.md) § CI in the session deck). The same
-    circles, a ring or the jobs by OS sit in the cockpit's CI block, from
+    summary, a ring or the jobs by OS sit in the cockpit's CI block, from
     what the deck read ([04-ui.md](04-ui.md) § CI in the cockpit). Every row keeps its line and the open one's CI takes the
     height left, scrolling inside, so the earlier PRs stay in view; while a
     job or an error log is open they fold into one line (*also #13 ✓ #12
