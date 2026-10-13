@@ -257,6 +257,32 @@ export function barLabel(b: Pick<TimeBar, 'start' | 'end'>, step: number, now: n
     : `${day(d)} ${hm(d)}–${day(e)} ${hm(e)}`
 }
 
+/**
+ * barLabel, short enough to sit beside its figure in a 330px cockpit:
+ * "Sun 11 Oct · 06–12", "Today · 14:10–14:20", "Fri 9 Oct" for a day.
+ * Whole hours drop their ":00"; a stretch that ends at midnight ends at 24.
+ */
+export function barLabelShort(b: Pick<TimeBar, 'start' | 'end'>, step: number, now: number): string {
+  const d = new Date(b.start)
+  const e = new Date(b.end)
+  const p = (v: number) => String(v).padStart(2, '0')
+  const day = (x: Date) => {
+    const same = (a: Date, z: Date) => a.toDateString() === z.toDateString()
+    if (same(x, new Date(now))) return 'Today'
+    if (same(x, new Date(now - 86_400_000))) return 'Yesterday'
+    return x.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  }
+  if (step >= 86_400_000) return day(d)
+  const midnight = e.getHours() === 0 && e.getMinutes() === 0 && e.getTime() > d.getTime()
+  if (d.toDateString() !== e.toDateString() && !midnight) return barLabel(b, step, now)
+  const whole = d.getMinutes() === 0 && e.getMinutes() === 0
+  const t = (x: Date, end: boolean) => {
+    const h = end && midnight ? 24 : x.getHours()
+    return whole ? p(h) : `${p(h)}:${p(x.getMinutes())}`
+  }
+  return `${day(d)} · ${t(d, false)}–${t(e, true)}`
+}
+
 /** "Bash 40 · Edit 22 · Read 10": the tools a bar's calls asked for most. */
 export function topTools(b: TimeBar, n = 3): string {
   return [...b.tools.entries()].sort((a, z) => z[1] - a[1]).slice(0, n).map(([t, k]) => `${t} ${k}`).join(' · ')

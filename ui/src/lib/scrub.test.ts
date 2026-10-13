@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Event } from './api'
-import { MAX_TIME_BARS, barLabel, bucketCost, bucketOf, bucketize, callAt, callsFromEvents, callsFromSeries, clock, cursorX, mergeCalls, readout, slotsFor, stepText, timeBars, topTools, type CallPoint } from './scrub'
+import { MAX_TIME_BARS, barLabel, barLabelShort, bucketCost, bucketOf, bucketize, callAt, callsFromEvents, callsFromSeries, clock, cursorX, mergeCalls, readout, slotsFor, stepText, timeBars, topTools, type CallPoint } from './scrub'
 
 const T0 = Date.UTC(2026, 9, 9, 12, 0, 0)
 const pt = (id: number, cost: number, p: Partial<CallPoint> = {}): CallPoint => ({ id, ts: T0 + id * 1000, cost, ...p })
@@ -150,5 +150,24 @@ describe('the spend by time', () => {
     expect(stepText(step)).toBe('3 h')
     expect(barLabel(bars[0]!, step, at(9) + 4 * 86_400_000)).toMatch(/^\w{3} \d+ \w{3} 09:00–12:00$/)
     expect(barLabel(bars.at(-1)!, step, at(9) + 4 * 86_400_000)).toBe('Today 09:00–12:00')
+  })
+
+  it('names a stretch short enough to sit beside its figure', () => {
+    const H = 3_600_000
+    const sun = new Date(2026, 9, 11).getTime() // Sun 11 Oct, local midnight
+    const now = sun + 3 * 86_400_000 + 10 * H
+    const bar = (from: number, len: number) => ({ start: from, end: from + len })
+    // Whole hours drop their minutes; the full label is 22 characters, this one 18.
+    expect(barLabelShort(bar(sun + 6 * H, 6 * H), 6 * H, now)).toBe('Sun 11 Oct · 06–12')
+    // A stretch that runs to midnight ends at 24, not 00.
+    expect(barLabelShort(bar(sun + 18 * H, 6 * H), 6 * H, now)).toBe('Sun 11 Oct · 18–24')
+    // Minutes stay when a stretch has them.
+    expect(barLabelShort(bar(sun + 14 * H + 10 * 60_000, 10 * 60_000), 10 * 60_000, now)).toBe('Sun 11 Oct · 14:10–14:20')
+    // Today and yesterday by name; a day-wide step is the day alone.
+    expect(barLabelShort(bar(now - 4 * H, H), H, now)).toBe('Today · 06–07')
+    expect(barLabelShort(bar(now - 28 * H, H), H, now)).toBe('Yesterday · 06–07')
+    expect(barLabelShort(bar(sun, 86_400_000), 86_400_000, now)).toBe('Sun 11 Oct')
+    // Across midnight to another hour: the full label, both days named.
+    expect(barLabelShort(bar(sun + 22 * H, 3 * H), 3 * H, now)).toBe(barLabel(bar(sun + 22 * H, 3 * H), 3 * H, now))
   })
 })

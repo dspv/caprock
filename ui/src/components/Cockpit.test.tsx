@@ -416,7 +416,11 @@ describe('the spend details', () => {
     const chart = within(spend()).getByRole('group', { name: 'Spend by 1 day, 7 days · all sessions' })
     expect(chart.querySelectorAll('rect')).toHaveLength(3)
     expect(chart.querySelector('[data-spend-total]')).toHaveTextContent('$84.50')
+    // At rest the total; a step reads the newest stretch with spend in its place.
+    expect(chart.querySelector('[data-spend-readout]')).toBeNull()
+    fireEvent.keyDown(chart, { code: 'ArrowRight', key: 'ArrowRight' })
     expect(chart.querySelector('[data-spend-readout]')).toHaveTextContent('$3.00')
+    expect(chart.querySelector('[data-spend-total]')).toBeNull()
     await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: '30d' })) })
     // No spark in the range: it says so, never an empty line.
     expect(spend().querySelector('[data-spend-empty]')).toHaveTextContent('no spend by time to draw')

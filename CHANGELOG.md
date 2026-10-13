@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **app:** the spend chart's hovered bar shows its own figure in full. While
+  a bar is hovered (or stepped to with ←/→) its cost takes the big figure's
+  place with a short date beside it (*$287.12 Sun 11 Oct · 06–12*, *of
+  $1,299.44* at the right); leaving the chart puts the total back. In a
+  330px cockpit the figure used to be the part cut off.
+
 ## [0.112.4] - 2026-10-13
 
 ### Changed
