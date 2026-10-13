@@ -78,7 +78,7 @@ export function VersionPanel({ shown, title, status, onStatus }: {
   return (
     <span ref={box} className="relative inline-flex">
       <button type="button" data-version onClick={() => setOpen((o) => !o)} aria-expanded={open}
-        className="flex items-center gap-1.5 text-fg-faint hover:text-accent" title={[apart ? `The daemon runs ${daemon}` : available ? `Caprock ${latest} is available` : 'Version and updates', title].filter(Boolean).join('\n')}>
+        className="flex items-center gap-1.5 text-fg-faint hover:text-accent" title={open ? undefined : [apart ? `The daemon runs ${daemon}` : available ? `Caprock ${latest} is available` : 'Version and updates', title].filter(Boolean).join('\n')}>
         {(available || apart) && <span aria-hidden data-version-apart={apart || undefined} className={`h-[6px] w-[6px] rounded-full ${apart ? 'bg-warn' : 'bg-accent'}`} />}
         <span className="mono">{shown}</span>
       </button>

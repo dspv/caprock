@@ -78,7 +78,7 @@ export function ThemeMenu({ children, label, placement = 'up', className = '' }:
   }, [open])
   return (
     <span ref={box} className="relative inline-flex">
-      <button type="button" aria-label={label} title={label} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={className}>
+      <button type="button" aria-label={label} title={open ? undefined : label} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={className}>
         {children}
       </button>
       {open && (
