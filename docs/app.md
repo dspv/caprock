@@ -152,9 +152,11 @@ others. Installing it: [install-app.md](install-app.md).
   Caprock's line at the bottom of Claude Code shows. *Full* (the default)
   is everything: model, context, cost, turns, steps and your plan limits.
   *Short* is model, context and plan limits, with the reset time only once
-  the 5-hour window reaches 80% — the cockpit already has the rest. *Off*
-  removes Caprock's line from Claude Code; Claude's plan limits then stop
-  reaching Caprock. A status line you set yourself is never changed.
+  the 5-hour window reaches 80% — the cockpit already has the rest.
+  *Hidden*, the one we recommend, shows no line at all, so Claude Code gets
+  its row back, and your plan limits still reach Caprock. *Off* removes
+  Caprock's line from Claude Code; Claude's plan limits then stop reaching
+  Caprock. A status line you set yourself is never changed.
 - **Subscriptions: more than one sign-in.** Settings → *Subscriptions* keeps
   several Claude Code or Codex accounts side by side — a work account and
   your own, say. *Add subscription* makes a folder for it and opens a shell

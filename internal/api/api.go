@@ -324,7 +324,8 @@ type Settings struct {
 	WorktreeCleanup string `json:"worktree_cleanup"`
 	// StatuslineMode is what Caprock's Claude Code status line shows: one
 	// of config.StatuslineModes. GET returns the effective mode, "full"
-	// when never chosen; "off" removes Caprock's own statusLine entry from
+	// when never chosen; "hidden" prints nothing but keeps forwarding the
+	// plan windows; "off" removes Caprock's own statusLine entry from
 	// Claude Code's settings (never the user's own).
 	StatuslineMode string `json:"statusline_mode"`
 }
