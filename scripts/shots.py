@@ -4,6 +4,33 @@ The previous set was captured in a fixed 1600x913 window regardless of how
 much the screen actually drew, so History and Tasks were two-thirds empty
 background. Here the page is measured after it settles and the capture is
 clipped to that height, which is why each screen gets its own aspect ratio.
+
+THE RULES FOR A PRODUCT CAPTURE
+(owner, 2026-10-14, after the site's captures were called "a session about
+nothing": one idle tab, an empty spend chart, no CI. These hold for this
+script, feature-shots.py and the site's stand in caprock-web scripts/demo.)
+
+1. Busy and current. The session on screen is visibly at work: subagents
+   running with real work phrases, a command running now, the spend chart
+   with a filled history and its burn/usual line, the context meter and the
+   plan limits, the deck with pull requests and CI circles (green, running
+   and one red), a cost figure, and more than one project or worktree. One
+   idle tab and an empty chart is not a picture of the product.
+2. From a real session, not from made-up copy. The site's stand replays
+   testdata/demo/caprock-session.json, which scripts/demo-fixture.py derives
+   read-only from a real Caprock work session in this public repository and
+   sanitises (no prompts, no home paths, no other projects, no secrets).
+3. Text that reads on the page. Capture at device scale 2 and crop to the
+   region the copy talks about, instead of shrinking the whole window into
+   a slot: the app's body text must still be about 12 CSS px where the page
+   shows it. A menu bar popover or tray capture is shown large, beside its
+   copy, never as a postage stamp.
+4. No empty states, unless the copy is about the empty state.
+5. Every figure is an example and is labelled so ("Example figures." under
+   the capture, CLAUDE.md rule 6). The release on screen is whatever ran.
+6. Nothing private: the scrub below for copies of a real database, the
+   fixture's allow-list for the stand. Open every PNG before it is
+   committed; a green run has published real names twice.
 """
 import base64, json, os, pathlib, re, shutil, sqlite3, subprocess, sys, time, urllib.request
 

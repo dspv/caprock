@@ -41,15 +41,15 @@ clocks, so neither belongs in this directory.
 
 Supporting directories:
 
-| Path                | Contents                                                                                                                                                                           |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scripts/`          | `align-tables.py`, `check-links.py` — docs gates; `shots.py`, `feature-shots.py`, `refresh-shots.sh` — the documented screenshots; `dev.sh`, `record-stand.sh`, `release-notes.py` |
-| `docs/`             | Human-facing docs; the migration audit record                                                                                                                                      |
-| `cmd/`, `internal/` | Go daemon, CLI, shim (see 02-architecture § Repository layout)                                                                                                                     |
-| `ui/`               | React + Vite dashboard, embedded into the binary                                                                                                                                   |
-| `app/`              | The desktop app: Tauri v2 shell around the dashboard ([app/README.md](../app/README.md))                                                                                           |
-| `pricing/`          | `pricing.json`, `actions.json` — versioned model and runner rates                                                                                                                  |
-| `testdata/`         | Transcript fixtures, hook payloads, fake `claude`                                                                                                                                  |
+| Path                | Contents                                                                                                                                                                                                                                                        |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/`          | `align-tables.py`, `check-links.py` — docs gates; `shots.py`, `feature-shots.py`, `refresh-shots.sh` — the documented screenshots (rules in `shots.py`'s header); `demo-fixture.py` — the site stand's fixture; `dev.sh`, `record-stand.sh`, `release-notes.py` |
+| `docs/`             | Human-facing docs; the migration audit record                                                                                                                                                                                                                   |
+| `cmd/`, `internal/` | Go daemon, CLI, shim (see 02-architecture § Repository layout)                                                                                                                                                                                                  |
+| `ui/`               | React + Vite dashboard, embedded into the binary                                                                                                                                                                                                                |
+| `app/`              | The desktop app: Tauri v2 shell around the dashboard ([app/README.md](../app/README.md))                                                                                                                                                                        |
+| `pricing/`          | `pricing.json`, `actions.json` — versioned model and runner rates                                                                                                                                                                                               |
+| `testdata/`         | Transcript fixtures, hook payloads, fake `claude`; `demo/` — the site stand's real-session fixture                                                                                                                                                              |
 
 ## Current State
 
