@@ -545,9 +545,8 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
 /** A flat row's project: a dot in its hue and its name, dimmed, after the title. */
 function ProjectMark({ project }: { project: { name: string; id: string } }) {
   return (
-    <span data-row-project-mark className="flex min-w-0 max-w-[9ch] shrink items-center gap-1 text-[11px] text-fg-faint" title={project.name}>
-      <span aria-hidden className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: `hsl(${projectHue(project.id)} 42% 56%)` }} />
-      <span className="truncate">{project.name}</span>
+    <span data-row-project-mark className="min-w-0 max-w-[9ch] shrink truncate text-[11px]" title={project.name} style={{ color: `hsl(${projectHue(project.id)} 42% 50%)` }}>
+      {project.name}
     </span>
   )
 }
@@ -640,7 +639,7 @@ function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, on
         className={`app-row flex h-[28px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] text-left ${active ? PAD_ALWAYS[n] : PAD_ON_HOVER[n]}`}
         title={[label?.file ?? title, label?.session ? agentGlyphLabel(label.session.agent, label.isShell) : '', label?.branch, project?.name].filter(Boolean).join(' · ')}
       >
-        {isFile ? <FileIcon size={12} className="text-fg-faint" /> : <StatusDot dot={label?.dot ?? 'idle'} />}
+        {isFile ? <FileIcon size={12} className="text-fg-faint" /> : !project && <StatusDot dot={label?.dot ?? 'idle'} />}
         <TitleAndBranch title={title} branch={project ? undefined : label?.branch} className={active || waiting ? 'text-fg' : 'text-fg-muted'} />
         {project && <ProjectMark project={project} />}
         {!isFile && <HotMark sessionId={label?.session?.session_id} />}
@@ -735,7 +734,7 @@ function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onSh
         className={`app-row flex h-[28px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] text-left ${item.waiting ? '' : hidden ? 'opacity-55' : 'opacity-75'} ${PAD_ON_HOVER[n]}`}
         title={`${[title, agentGlyphLabel(s.agent, item.isShell), branch, project?.name].filter(Boolean).join(' · ')}: ${s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}`}
       >
-        <StatusDot dot={item.dot} />
+        {!project && <StatusDot dot={item.dot} />}
         <TitleAndBranch title={title} branch={project ? undefined : branch} className={item.waiting ? 'text-fg' : 'text-fg-faint'} />
         {project && <ProjectMark project={project} />}
         <HotMark sessionId={s.session_id} />

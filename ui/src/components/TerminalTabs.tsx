@@ -20,6 +20,7 @@ import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane
 import { composerFits, useComposerEnabled } from '@/lib/composer'
 import { AgentGlyph, agentGlyphLabel } from './AgentMarks'
 import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { sessionHealth } from '@/lib/sessionLabels'
 import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
 import { closeTitle, closeWord } from '@/lib/closeShell'
@@ -84,6 +85,9 @@ export interface TabStripProps {
   /** Absent when the tab in front is not an agent's: a shell has no deck. */
   onToggleDeck?: () => void
 }
+
+/** What a tab's edge says, in its tooltip: the only states a tab shows. */
+const ALERT_WORD = { waiting: 'waiting on you', error: 'failed' } as const
 
 export function TabStrip(props: TabStripProps) {
   const { tabs, activeTabId } = props
@@ -178,12 +182,18 @@ export function TabStrip(props: TabStripProps) {
           const digit = props.digits?.get(t.id)
           // A tab is named by its session — the name is what matters (owner,
           // 2026-10-13, translated: "the session name is very important … I
-          // don't care which agent it is"). The project is its colour dot and
-          // its short name after the title (2026-10-14); the agent is in the tooltip only. A file
-          // tab keeps the file name; a quick chat has no project dot.
-          const dot = file === undefined && !label?.chat && project !== undefined
+          // don't care which agent it is"). The project is its short name
+          // after the title, in the project's colour; the agent is in the
+          // tooltip only. A file tab keeps the file name; a quick chat has
+          // no project. No dots (2026-10-14, translated: "the indicators
+          // tell me nothing at all, literally zero"): state shows only when
+          // it asks something of you — an amber edge while the session
+          // waits on you, a red one when it failed; working and idle show
+          // nothing.
+          const named = file === undefined && !label?.chat && project !== undefined
+          const alert = file !== undefined || !s ? undefined : label?.dot === 'waiting' ? 'waiting' : sessionHealth(s) === 'error' ? 'error' : undefined
           const agent = file === undefined ? agentGlyphLabel(s?.agent, isShell) : undefined
-          const tip = [file ?? title, agent, label?.branch, project].filter(Boolean).join(' · ') + (digit ? ` — ${keys(`⌘${digit}`)}` : '')
+          const tip = [file ?? title, agent, label?.branch, project].filter(Boolean).join(' · ') + (alert ? ` — ${ALERT_WORD[alert]}` : '') + (digit ? ` — ${keys(`⌘${digit}`)}` : '')
           return (
             <div
               key={t.id}
@@ -192,6 +202,7 @@ export function TabStrip(props: TabStripProps) {
               aria-selected={active}
               data-tab-index={i}
               aria-label={project && file === undefined ? `${title} · ${project}` : undefined}
+              aria-description={alert ? ALERT_WORD[alert] : undefined}
               data-dragging={dragging === t.id || undefined}
               onPointerDown={press(t.id)}
               onClick={() => {
@@ -207,17 +218,13 @@ export function TabStrip(props: TabStripProps) {
                 active ? (file !== undefined ? 'app-tab-front bg-bg font-medium text-fg' : 'app-tab-front app-slab font-medium text-fg') : 'app-tab-back text-fg-muted hover:text-fg'
               } ${dragging === t.id ? 'opacity-60' : ''}`}
             >
-              {file !== undefined ? (
-                <FileIcon size={13} className="text-fg-faint" />
-              ) : (
-                <StatusDot dot={label?.dot ?? 'idle'} />
-              )}
-              {dot && <span data-project-dot aria-hidden className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: `hsl(${projectHue(t.projectId)} 42% 56%)` }} />}
+              {file !== undefined && <FileIcon size={13} className="text-fg-faint" />}
+              {alert && <span data-tab-alert={alert} aria-hidden className={`pointer-events-none absolute inset-x-2 top-0 h-[3px] rounded-b-full ${alert === 'waiting' ? 'bg-accent' : 'bg-danger'}`} />}
               {renaming === t.id && renamable(s, isShell)
                 ? <InlineRename sessionId={s.session_id} initial={s.name?.trim() || sessionAbout(s)} current={s.name ?? ''} onDone={() => setRenaming(null)} />
                 : <span data-row-title className="min-w-0 flex-1 truncate">{title}</span>}
               {/* Its project, short and faint after the name: fixed, never edited (owner, 2026-10-14). */}
-              {dot && <span data-tab-project aria-hidden className="max-w-[9ch] shrink truncate text-[11px] text-fg-faint">{project}</span>}
+              {named && <span data-tab-project aria-hidden className="max-w-[9ch] shrink truncate text-[11px]" style={{ color: `hsl(${projectHue(t.projectId)} 42% 50%)` }}>{project}</span>}
               {file === undefined && <HotMark sessionId={s?.session_id} />}
               {/* The jump key and the × share one slot at the right end, so
                 * nothing moves the title: the key at rest, the × on hover.

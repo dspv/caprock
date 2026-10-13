@@ -117,6 +117,9 @@ describe('group by project, off', () => {
     // ⌘N is a tab's: a row with no tab has no key.
     expect(list.querySelectorAll('[data-row-key-digit]')).toHaveLength(0)
     expect(list.querySelector('[data-live-row="b1"] [data-row-project-mark]')!.textContent).toBe('beta')
+    // As on the tabs: no status dot and no project dot, the project its coloured name.
+    expect(list.querySelectorAll('[role="img"]')).toHaveLength(0)
+    expect((list.querySelector('[data-live-row="b1"] [data-row-project-mark]') as HTMLElement).style.color).not.toBe('')
     const toggle = screen.getByRole('button', { name: 'Group by project' })
     expect(toggle).toHaveAttribute('aria-pressed', 'false')
     fireEvent.click(toggle)

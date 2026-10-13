@@ -155,7 +155,7 @@ describe('a file tab', () => {
   // Owner, 2026-10-13 (translated): "I have only four tabs and already
   // can't see the 4th one's title. I don't care which agent it is … the
   // session name is very important."
-  it('names a session tab by its session, the project a colour dot and the agent only in the tooltip', () => {
+  it('names a session tab by its session, the project its coloured short name and the agent only in the tooltip', () => {
     const other: Tab = { ...tab('solo'), projectId: 'q' }
     render(
       <TabStrip
@@ -177,13 +177,48 @@ describe('a file tab', () => {
     const [one, , solo] = screen.getAllByRole('tab') as [HTMLElement, HTMLElement, HTMLElement]
     expect(one.querySelector('[data-row-title]')?.textContent).toBe('Shell 1')
     expect(solo.querySelector('[data-row-title]')?.textContent).toBe('Shell 1')
-    expect(one.querySelector('[data-project-dot]')).not.toBeNull()
+    // No dots (owner, 2026-10-14, translated: "the indicators tell me nothing at all").
+    expect(one.querySelector('[data-project-dot], [role="img"]')).toBeNull()
+    expect(one.querySelector('[data-tab-project]')!.textContent).toBe('caprock')
+    expect((one.querySelector('[data-tab-project]') as HTMLElement).style.color).not.toBe('')
     expect(one.getAttribute('aria-label')).toBe('Shell 1 · caprock')
     expect(solo.getAttribute('aria-label')).toBe('Shell 1 · caprock-web')
     // No agent mark on the tab; it is named in the tooltip.
     expect(one.querySelector('[aria-label="Shell"], [aria-label="Claude Code"]')).toBeNull()
     expect(one.getAttribute('title')).toBe('Shell 1 · Shell · caprock')
     expect(one.querySelector('[data-tab-subtitle], [data-project-chip]')).toBeNull()
+  })
+
+  // Owner, 2026-10-14 (translated): "The indicators tell me nothing at all,
+  // literally zero." A tab shows state only when it asks something of you.
+  it('marks a tab only when its session waits on you (amber) or failed (red); working and idle show nothing', () => {
+    const agentTab = (id: string): Tab => ({ ...tab(id), root: { type: 'pane', id: `${id}-pane`, target: { kind: 'session', sessionId: id } } })
+    const sess = (id: string, health?: string): SessionSummary =>
+      ({ session_id: id, owned: true, status: 'active', kind: 'agent', agent: 'claude', title: id, ...(health ? { activity: { phrase: '', at: '', health } } : {}) }) as SessionSummary
+    render(
+      <TabStrip
+        tabs={['asks', 'waits', 'broke', 'works', 'rests'].map(agentTab)}
+        activeTabId="works"
+        sessions={new Map([['asks', sess('asks')], ['waits', sess('waits', 'waiting-on-you')], ['broke', sess('broke', 'error')], ['works', sess('works', 'working')], ['rests', sess('rests')]])}
+        permissions={new Set(['asks'])}
+        projectName={() => 'caprock'}
+        inspectorOpen={false}
+        sidebarOpen
+        onActivate={() => {}}
+        onDetach={() => {}}
+        onMove={() => {}}
+        onNewAgent={() => {}}
+        onNewShell={() => {}}
+        onToggleInspector={() => {}}
+      />,
+    )
+    const alertOf = (i: number) => screen.getAllByRole('tab')[i]!.querySelector('[data-tab-alert]')?.getAttribute('data-tab-alert') ?? null
+    expect([0, 1, 2, 3, 4].map(alertOf)).toEqual(['waiting', 'waiting', 'error', null, null])
+    expect(screen.getAllByRole('tab')[0]!.querySelector('[data-tab-alert]')!.className).toContain('bg-accent')
+    expect(screen.getAllByRole('tab')[2]!.querySelector('[data-tab-alert]')!.className).toContain('bg-danger')
+    expect(screen.getAllByRole('tab')[1]!.getAttribute('title')).toContain('— waiting on you')
+    expect(screen.getAllByRole('tab')[2]!.getAttribute('aria-description')).toBe('failed')
+    expect(document.querySelectorAll('[role="tab"] [role="img"]')).toHaveLength(0)
   })
 
   // Owner, 2026-10-14 (translated): "not every tab shows the key combination".

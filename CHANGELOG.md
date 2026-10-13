@@ -27,6 +27,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** the two dots at the start of every tab are gone. A tab shows
+  state only when it needs you: an amber edge along its top while its
+  session waits on you, a red one when it failed; working and idle show
+  nothing. The project is its short name after the title, in its colour,
+  and the Flat sidebar's rows follow the same rule.
 - **app:** tabs are the way around. ⌘1–⌘9 (Ctrl+Shift+1–9 on Windows and
   Linux) switch to the Nth tab, and the tabs stay in the order you opened
   them: a new tab goes last with the next number, and the numbers change
