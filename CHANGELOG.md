@@ -7,16 +7,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-### Security
-
-- **settings:** the DeepSeek API key and the Telegram bot token are no
-  longer kept in `config.json`. They live where the GitHub token does: the
-  macOS login keychain, or a file only your user can read in the data
-  directory on Windows and Linux (or when the keychain refuses). A key an
-  older release wrote to `config.json` is moved there on the daemon's next
-  start and removed from the file. A DeepSeek session reads its key from
-  there when it starts, into its own environment only.
-
 ### Changed
 
 - **settings:** every saved credential (DeepSeek key, Telegram bot token, a
@@ -26,6 +16,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   where it is stored, what it is sent to, how backups treat it and how to
   revoke it at the provider. Settings says under each field whether it is in
   the macOS login keychain or in a file, with the file's path.
+
+### Fixed
+
+- **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.
+
+### Security
+
+- **settings:** the DeepSeek API key and the Telegram bot token are no
+  longer kept in `config.json`. They live where the GitHub token does: the
+  macOS login keychain, or a file only your user can read in the data
+  directory on Windows and Linux (or when the keychain refuses). A key an
+  older release wrote to `config.json` is moved there on the daemon's next
+  start and removed from the file. A DeepSeek session reads its key from
+  there when it starts, into its own environment only.
 
 ## [0.115.1] - 2026-10-13
 
