@@ -38,9 +38,16 @@ export const HEADLINES: readonly { id: Metric; name: string; short: string; hint
   { id: 'tools', name: 'Tool calls', short: 'tools', hint: 'tool calls made' },
 ]
 
-/** The figures beside the agent before a viewer picks: cost big, then burn rate and tokens. */
-export const DEFAULT_HERO: readonly Metric[] = ['cost', 'burn', 'tokens']
-const HERO_FILL: readonly Metric[] = ['cost', 'burn', 'tokens', 'cache', 'turns', 'time', 'last', 'tools']
+/**
+ * The figures beside the agent before a viewer picks: burn rate big, then
+ * tokens and cost — what a session is doing now first, what it has added up
+ * to under it (owner, 2026-10-13: "the most useful by default; users change
+ * them as they like").
+ */
+export const DEFAULT_HERO: readonly Metric[] = ['burn', 'tokens', 'cost']
+/** The defaults before version 3, which a stored choice may only have been given. */
+const OLD_HERO: readonly Metric[] = ['cost', 'burn', 'tokens']
+const HERO_FILL: readonly Metric[] = ['burn', 'tokens', 'cost', 'cache', 'turns', 'time', 'last', 'tools']
 
 /** Three distinct metrics from whatever was stored, the defaults filling any gap. */
 function distinct3(raw: unknown, fill: readonly Metric[]): Metric[] {
@@ -152,7 +159,7 @@ export interface SpendPrefs {
   slots: Metric[]
 }
 
-export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: false, hero: [...DEFAULT_HERO], headline: 'cost', view: 'chart', period: 'session', slots: [...DEFAULT_SLOTS] }
+export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: false, hero: [...DEFAULT_HERO], headline: DEFAULT_HERO[0]!, view: 'chart', period: 'session', slots: [...DEFAULT_SLOTS] }
 
 /**
  * A stored view, including 0.111.0's: *Full* drew the cells and *Spend
@@ -170,9 +177,11 @@ const KEY = 'caprock.app.cockpit.spend'
 /**
  * The stored choices' version. Before 2, Numbers and a folded block were the
  * defaults, and a stored choice cannot say whether the viewer picked them or
- * was given them, so every older one is opened on the chart once.
+ * was given them, so every older one is opened on the chart once. Before 3,
+ * cost was the big figure by default: a stored hero that is exactly the old
+ * default takes the new one, and any other order was picked and stays.
  */
-const VERSION = 2
+const VERSION = 3
 const listeners = new Set<() => void>()
 
 /** Whatever was stored, made valid field by field. */
@@ -190,12 +199,16 @@ export function normalizeSpendPrefs(raw: unknown): SpendPrefs {
   }
 }
 
-/** A choice stored before version 2 opened on the chart, once (see VERSION). */
+/** A choice stored before the current version, brought up to it once (see VERSION). */
 export function migrateSpendPrefs(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw
-  const v = raw as Record<string, unknown>
+  let v = raw as Record<string, unknown>
   if (v.v === VERSION) return raw
-  return { ...v, view: 'chart', folded: false }
+  if (v.v !== 2) v = { ...v, view: 'chart', folded: false }
+  if (Array.isArray(v.hero) && v.hero.length === OLD_HERO.length && v.hero.every((m, i) => m === OLD_HERO[i])) {
+    v = { ...v, hero: [...DEFAULT_HERO], headline: DEFAULT_HERO[0] }
+  }
+  return v
 }
 
 function read(): SpendPrefs {

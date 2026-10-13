@@ -29,6 +29,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   started it — eleven left by deleted preview stands survived every hourly
   sweep before. A write-ahead log over 256 MB is checkpointed on its own.
   Both are listed in the footprint's `actions` with their time.
+- **app:** the cockpit's figures beside the agent open on burn rate, big,
+  with tokens and cost under it — what a session is doing now first, what it
+  has added up to under it. A choice someone made stays; one that was only
+  ever the old cost-first default takes the new one.
 
 ### Fixed
 
