@@ -1784,11 +1784,19 @@ type WorkShare struct {
 // Bucket i covers [FromMs + i*WidthMs, FromMs + (i+1)*WidthMs). The last bucket
 // is the one containing "now" and is therefore still filling; it is not
 // extrapolated to a full bucket's worth (rule 6).
+//
+// Input and Turns are two more parallel arrays from the same scan, for the
+// cockpit's spend chart, which can plot the period by either of them as well
+// as by cost: Input is the input side of Tokens (fresh input plus cache reads
+// and writes, the cockpit's own "tokens"), and Turns the assistant turns, the
+// summary's own `turns` counted per bucket.
 type Spark struct {
 	FromMs  int64     `json:"from_ms"`
 	WidthMs int64     `json:"width_ms"`
 	Cost    []float64 `json:"cost"`
 	Tokens  []int64   `json:"tokens"`
+	Input   []int64   `json:"input"`
+	Turns   []int64   `json:"turns"`
 }
 
 // SparkSpec asks Summarize for per-project time series. Buckets <= 0 disables
@@ -1824,10 +1832,12 @@ func (sp SparkSpec) bucket(ts int64) (int, bool) {
 }
 
 // sessionBucket is tokens+cost for one session, either in total or within one
-// sparkline bucket.
+// sparkline bucket; input and turns feed only the series.
 type sessionBucket struct {
 	tokens int64
 	cost   float64
+	input  int64
+	turns  int64
 }
 
 // addSpark folds one session's per-bucket totals into a project's series,
@@ -1842,6 +1852,8 @@ func addSpark(p *ProjectShare, spec SparkSpec, series []sessionBucket) {
 			WidthMs: spec.WidthMs,
 			Cost:    make([]float64, spec.Buckets),
 			Tokens:  make([]int64, spec.Buckets),
+			Input:   make([]int64, spec.Buckets),
+			Turns:   make([]int64, spec.Buckets),
 		}
 	}
 	for i, v := range series {
@@ -1850,6 +1862,8 @@ func addSpark(p *ProjectShare, spec SparkSpec, series []sessionBucket) {
 		}
 		p.Spark.Cost[i] += v.cost
 		p.Spark.Tokens[i] += v.tokens
+		p.Spark.Input[i] += v.input
+		p.Spark.Turns[i] += v.turns
 	}
 }
 
@@ -2164,7 +2178,9 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 			SELECT e.session_id,
 			       CASE WHEN e.ts < ? THEN -1 ELSE (e.ts - ?) / ? END AS bucket,
 			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
-			       COALESCE(SUM(e.cost_usd),0)
+			       COALESCE(SUM(e.cost_usd),0),
+			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
+			       COUNT(*)
 			FROM events e
 			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+nonInternalEventE+evPrefixed+`
 			GROUP BY e.session_id, bucket`,
@@ -2173,7 +2189,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		rows, err = q.QueryContext(ctx, `
 			SELECT e.session_id, 0 AS bucket,
 			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
-			       COALESCE(SUM(e.cost_usd),0)
+			       COALESCE(SUM(e.cost_usd),0), 0, 0
 			FROM events e
 			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+nonInternalEventE+evPrefixed+`
 			GROUP BY e.session_id`, append([]any{fromMs}, evArgs...)...)
@@ -2185,7 +2201,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		var id string
 		var b int64
 		var t sessionBucket
-		if err := rows.Scan(&id, &b, &t.tokens, &t.cost); err != nil {
+		if err := rows.Scan(&id, &b, &t.tokens, &t.cost, &t.input, &t.turns); err != nil {
 			_ = rows.Close()
 			return s, err
 		}
@@ -2212,6 +2228,8 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		}
 		series[b].tokens += t.tokens
 		series[b].cost += t.cost
+		series[b].input += t.input
+		series[b].turns += t.turns
 		sparks[id] = series
 	}
 	// A truncated projects list is a wrong number for the same reason a

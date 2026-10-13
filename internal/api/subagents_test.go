@@ -94,11 +94,12 @@ func TestSessionSubagentsSaysWhoIsWorkingOnWhat(t *testing.T) {
 		t.Fatalf("finished %d, working %+v", got.Finished, got.Working)
 	}
 	b, a := got.Working[0], got.Working[1]
-	if b.AgentID != "b" || b.AgentType != "Explore" || !b.Asking || b.Tool != "Bash" || b.Detail != "rm -f out/*" || b.ToolCalls != 1 {
+	if b.AgentID != "b" || b.AgentType != "Explore" || !b.Asking || b.Tool != "Bash" || b.Detail != "rm -f out/*" || b.ToolCalls != 1 ||
+		b.Doing != "Running rm" || b.DoingFrom != "tool" {
 		t.Errorf("b = %+v", b)
 	}
 	if a.AgentID != "a" || a.AgentType != "general-purpose" || a.Description != "Fix the cockpit" || a.Tool != "Bash" ||
-		a.Detail != "go test ./..." || !a.Running || a.Asking || a.ToolCalls != 3 || a.ToolAt != e.now.Add(-10*time.Second).UnixMilli() {
+		a.Detail != "go test ./..." || a.Doing != "Running tests" || !a.Running || a.Asking || a.ToolCalls != 3 || a.ToolAt != e.now.Add(-10*time.Second).UnixMilli() {
 		t.Errorf("a = %+v", a)
 	}
 }

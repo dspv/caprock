@@ -429,6 +429,10 @@ type Server struct {
 	// rangeSummary.
 	today  *answerCache
 	glance *answerCache
+	// usual holds the cockpit's "against your usual" baseline (usualTTL):
+	// thirty days that a few minutes cannot move, so it is served from the
+	// cache and refreshed in the background, never counted on a request.
+	usual *answerCache
 	// drill holds the tool drill-downs (drillTTL).
 	drill *answerCache
 	// deck holds the session deck's composed Pull requests & CI answers
@@ -458,7 +462,7 @@ func New(d Deps) *Server {
 			lanHost = u.Hostname()
 		}
 	}
-	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now),
+	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache()}
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
@@ -1210,6 +1214,10 @@ type SummaryResponse struct {
 	// recorded them: measured, with observed_at, and never a forecast. nil
 	// when no Codex transcript has carried one.
 	CodexRateLimits *RateLimits `json:"codex_rate_limits,omitempty"`
+	// Usual is this machine's own 30-day baseline the cockpit sets a
+	// session's headline against (store.Usual); absent with too little
+	// history, so a new user sees nothing rather than a guess.
+	Usual *store.Usual `json:"usual,omitempty"`
 }
 
 // RateLimits is the current plan-limit window state (from the statusline feed).
@@ -1667,6 +1675,7 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	// Live rate-limit windows (not range-scoped — this is current state).
 	resp.RateLimits = s.rateLimits(ctx)
 	resp.CodexRateLimits = s.codexRateLimits(ctx)
+	resp.Usual = s.usualFor(ctx, agent)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -1699,6 +1708,23 @@ func (s *Server) Warm(ctx context.Context) {
 		from, label := s.rangeFrom(rng)
 		_, _ = s.rangeSummary(ctx, from, label, "")
 	}
+	_ = s.usualFor(ctx, "")
+}
+
+// usualFor is the 30-day baseline through the agent filter, from its own
+// cache: one grouped scan of the priced turns (store.UsualSince), at most
+// every usualTTL and then in the background. An error leaves it out; the
+// cockpit then shows no comparison, which is what it shows a new user.
+func (s *Server) usualFor(ctx context.Context, agent store.AgentFilter) *store.Usual {
+	v, err := s.usual.get(ctx, "usual|"+string(agent), func() (any, error) {
+		from := s.d.Now().Add(-store.UsualDays * 24 * time.Hour).UnixMilli()
+		return store.UsualSince(context.WithoutCancel(ctx), s.d.Store.DB(), from, agent)
+	})
+	if err != nil {
+		return nil
+	}
+	u, _ := v.(*store.Usual)
+	return u
 }
 
 // rangeSummary is the aggregate behind /v1/stats/summary for one range.

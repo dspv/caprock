@@ -348,14 +348,20 @@ others. Installing it: [install-app.md](install-app.md).
   it: the agent and its state, three figures beside it that you pick —
   its burn rate in large type, its tokens and what it has cost on two
   short lines under it, or any of cache hit rate, turns, time working, the
-  last call and tool calls (click a figure's ▾) — its spend for the
-  session, today, 7 or 30 days as a chart or as three more figures you
-  choose (*Chart | Numbers*; fold it to one line if you like), how full its context is and what every call
-  now pays to re-read it, what it is doing this second and for how long,
-  the task list the agent keeps for itself (each task with a spinner, a
+  last call and tool calls (click a figure's ▾), and under the big one how
+  it compares with your own last 30 days (*▲ 38%*, *≈ usual*, *▼ 55%*;
+  amber only in your top fifth; hover for the whole sentence) — what it
+  is doing this second and for how long, right under that its spend for the session,
+  today, 7 or 30 days as a chart or as three more figures you choose
+  (*Chart | Numbers*; the chart's ▾ switches its bars between cost, tokens
+  and turns; fold it to a strip of the same bars and three figures if you
+  like), how full its context is and what every call now pays to re-read
+  it, the task list the agent keeps for itself (each task with a spinner, a
   check or an empty circle, and *3 of 7 done* above them; not there when
   the agent kept none), its subagents (a chip per subagent under the
-  agent, and a row each below: click one to open it in place and read the
+  agent, and a row each below that leads with its type's letter and what
+  it is doing now in words, from the description Claude gave its latest
+  command, else its tool and file, else its task: click one to open it in place and read the
   task it was given, every call it makes as it makes them, what it
   answered and what it cost), its last tool calls with how long each took, the uncommitted changes in
   its checkout, your plan's 5-hour and weekly windows, and a warning when

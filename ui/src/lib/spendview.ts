@@ -157,9 +157,15 @@ export interface SpendPrefs {
   period: SpendPeriod
   /** The Numbers row's three metrics, left to right, never one twice. */
   slots: Metric[]
+  /**
+   * What the chart's bars measure (owner, 2026-10-13: "switch its
+   * parameter, like cost and tokens beside the agent"); cost until a
+   * viewer picks.
+   */
+  chartBy: ChartMetric
 }
 
-export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: false, hero: [...DEFAULT_HERO], headline: DEFAULT_HERO[0]!, view: 'chart', period: 'session', slots: [...DEFAULT_SLOTS] }
+export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: false, hero: [...DEFAULT_HERO], headline: DEFAULT_HERO[0]!, view: 'chart', period: 'session', slots: [...DEFAULT_SLOTS], chartBy: 'cost' }
 
 /**
  * A stored view, including 0.111.0's: *Full* drew the cells and *Spend
@@ -180,8 +186,10 @@ const KEY = 'caprock.app.cockpit.spend'
  * was given them, so every older one is opened on the chart once. Before 3,
  * cost was the big figure by default: a stored hero that is exactly the old
  * default takes the new one, and any other order was picked and stays.
+ * 4 added the chart's metric, which a stored choice from before simply
+ * lacks: it reads as cost, and nothing else of it changes.
  */
-const VERSION = 3
+const VERSION = 4
 const listeners = new Set<() => void>()
 
 /** Whatever was stored, made valid field by field. */
@@ -196,16 +204,22 @@ export function normalizeSpendPrefs(raw: unknown): SpendPrefs {
     view: viewOf(v.view),
     period: SPEND_PERIODS.includes(v.period as SpendPeriod) ? (v.period as SpendPeriod) : DEFAULT_SPEND_PREFS.period,
     slots: normalizeSlots(v.slots),
+    chartBy: CHART_METRICS.some((m) => m.id === v.chartBy) ? (v.chartBy as ChartMetric) : DEFAULT_SPEND_PREFS.chartBy,
   }
 }
 
-/** A choice stored before the current version, brought up to it once (see VERSION). */
+/**
+ * A choice stored before the current version, brought up to it once (see
+ * VERSION). Each step applies only to what was stored before it: a version
+ * 3 choice is past both, and keeps its view, fold and figures as picked.
+ */
 export function migrateSpendPrefs(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw
   let v = raw as Record<string, unknown>
-  if (v.v === VERSION) return raw
-  if (v.v !== 2) v = { ...v, view: 'chart', folded: false }
-  if (Array.isArray(v.hero) && v.hero.length === OLD_HERO.length && v.hero.every((m, i) => m === OLD_HERO[i])) {
+  const was = typeof v.v === 'number' ? v.v : 1
+  if (was >= VERSION) return raw
+  if (was < 2) v = { ...v, view: 'chart', folded: false }
+  if (was < 3 && Array.isArray(v.hero) && v.hero.length === OLD_HERO.length && v.hero.every((m, i) => m === OLD_HERO[i])) {
     v = { ...v, hero: [...DEFAULT_HERO], headline: DEFAULT_HERO[0] }
   }
   return v
@@ -330,8 +344,8 @@ export function metricValue(m: Metric, f: PeriodFigures): string {
     case 'cost': return f.cost === undefined ? '—' : fmtUSD(f.cost)
     case 'burn': return f.burn ? `${fmtUSD(f.burn.perHour)}/h` : '—'
     case 'tokens': return f.tokens === undefined ? '—' : fmtTokens(f.tokens)
-    case 'turns': return f.turns === undefined ? '—' : String(f.turns)
-    case 'tools': return f.tools === undefined ? '—' : String(f.tools)
+    case 'turns': return f.turns === undefined ? '—' : f.turns.toLocaleString('en-US')
+    case 'tools': return f.tools === undefined ? '—' : f.tools.toLocaleString('en-US')
     case 'cache': return f.cache === undefined ? '—' : fmtPct(f.cache)
     case 'time': return f.timeMs === undefined ? '—' : fmtSpan(f.timeMs)
     case 'last': return f.last === undefined ? '—' : fmtUSD(f.last)
@@ -365,27 +379,6 @@ export function metricTitle(m: Metric, f: PeriodFigures, period: SpendPeriod = '
   }
 }
 
-/** A metric as a phrase in the folded line. */
-function phrase(m: Metric, f: SpendFigures): string | undefined {
-  switch (m) {
-    case 'cost': return `spent ${fmtUSD(f.cost)}`
-    case 'burn': return f.burn ? `${fmtUSD(f.burn.perHour)}/h` : undefined
-    case 'tokens': return f.tokens === undefined ? undefined : `${fmtTokens(f.tokens)} tokens`
-    case 'turns': return f.turns === undefined ? undefined : `${f.turns} ${f.turns === 1 ? 'turn' : 'turns'}`
-    case 'tools': return f.tools === undefined ? undefined : `${f.tools} tool calls`
-    case 'cache': return f.cache === undefined ? undefined : `${fmtPct(f.cache)} cache hits`
-    case 'time': return f.timeMs === undefined ? undefined : fmtSpan(f.timeMs)
-    case 'last': return f.last === undefined ? undefined : `last call ${fmtUSD(f.last)}`
-  }
-}
-
-/** The folded line: the headline first, then cost, turns and time. "Spent $12.40 · 48 turns · 1h 12m". */
-export function foldedLine(h: Headline, f: SpendFigures): string {
-  const order: Metric[] = [h, ...(['cost', 'turns', 'time'] as Metric[]).filter((m) => m !== h)]
-  const line = order.map((m) => phrase(m, f)).filter((x): x is string => !!x).slice(0, 3).join(' · ')
-  return line.charAt(0).toUpperCase() + line.slice(1)
-}
-
 /**
  * The figures for a period, and the period's spend as bars. A figure the
  * source does not carry is undefined (a dash); `series` is undefined when
@@ -396,12 +389,79 @@ export interface PeriodFigures extends Omit<SpendFigures, 'cost'> {
   series?: { step: number; bars: SpendBar[] }
 }
 
-/** One stretch of the chart: when, and what was spent in it. */
+/**
+ * One stretch of the chart: when, what was spent in it, and, when the
+ * source says, its input tokens (cache reads and writes included) and its
+ * turns. An older daemon's period series has cost only: the other fields
+ * are absent, never zero.
+ */
 export interface SpendBar {
   /** Unix ms, inclusive. */
   start: number
   end: number
   cost: number
+  tokens?: number
+  turns?: number
+}
+
+/**
+ * What the chart's bars can measure: only what adds up per stretch. Burn
+ * rate, time working and the last call are the session's own single
+ * figures, not a per-stretch sum; the cache hit rate is above 90% in every
+ * stretch of a working session, so its bars all stand the same height and
+ * say nothing (owner, 2026-10-13, picked cost, tokens and turns).
+ */
+export type ChartMetric = 'cost' | 'tokens' | 'turns'
+
+export const CHART_METRICS: readonly { id: ChartMetric; name: string; short: string; hint: string }[] = [
+  { id: 'cost', name: 'Cost', short: 'cost', hint: 'spent, at API list price' },
+  { id: 'tokens', name: 'Tokens', short: 'tokens', hint: 'input, cache reads and writes included' },
+  { id: 'turns', name: 'Turns', short: 'turns', hint: 'model calls, per stretch' },
+]
+
+/** A bar's value for a metric; undefined when the source does not carry it. */
+export function barValue(m: ChartMetric, b: SpendBar): number | undefined {
+  switch (m) {
+    case 'cost': return b.cost
+    case 'tokens': return b.tokens
+    case 'turns': return b.turns
+  }
+}
+
+/** A chart value as its top line draws it: $12.40, 950.1k, 1,204. */
+export function chartValueText(m: ChartMetric, v: number | undefined): string {
+  if (v === undefined || !Number.isFinite(v)) return '—'
+  switch (m) {
+    case 'cost': return fmtUSD(v)
+    case 'tokens': return fmtTokens(v)
+    case 'turns': return Math.round(v).toLocaleString('en-US')
+  }
+}
+
+/**
+ * The folded strip's figures: the chart's metric first, then cost, tokens,
+ * turns and time working, three of them, leaving out any the period does
+ * not carry rather than drawing a dash.
+ */
+export function foldedFigures(first: ChartMetric, f: PeriodFigures): { id: Metric; label: string; value: string }[] {
+  const order: Metric[] = [first, 'cost', 'tokens', 'turns', 'time']
+  const out: { id: Metric; label: string; value: string }[] = []
+  for (const m of order) {
+    if (out.length >= 3 || out.some((x) => x.id === m)) continue
+    const value = metricValue(m, f)
+    if (value === '—') continue
+    out.push({ id: m, label: METRICS.find((x) => x.id === m)!.label, value })
+  }
+  return out
+}
+
+/** The period's own figure for a metric, the chart's total. */
+export function chartTotal(m: ChartMetric, f: PeriodFigures): number | undefined {
+  switch (m) {
+    case 'cost': return f.cost
+    case 'tokens': return f.tokens
+    case 'turns': return f.turns
+  }
 }
 
 /** Whose money the figures are: "This session", "Today · all sessions". */
@@ -427,15 +487,31 @@ export function periodFigures(p: SpendPeriod, f: SpendFigures, summary: Summary 
   if (!summary) return {}
   const tokens = summary.tokens_in + summary.cache_read + summary.cache_write
   const sums: number[] = []
+  // Input and turns, summed alike; a row from an older daemon without them
+  // leaves that series undefined for every bar.
+  const extra = { input: [] as number[], turns: [] as number[] }
+  const has = { input: true, turns: true }
   let grid: { from: number; width: number } | undefined
   for (const proj of summary.projects ?? []) {
     const sp = proj.spark
     if (!sp?.cost?.length) continue
     if (!grid && sp.width_ms > 0) grid = { from: sp.from_ms, width: sp.width_ms }
     sp.cost.forEach((v, i) => { sums[i] = (sums[i] ?? 0) + (Number.isFinite(v) ? v : 0) })
+    for (const k of ['input', 'turns'] as const) {
+      const arr = sp[k]
+      if (!Array.isArray(arr)) { has[k] = false; continue }
+      arr.forEach((v, i) => { extra[k][i] = (extra[k][i] ?? 0) + (Number.isFinite(v) ? v : 0) })
+    }
   }
   const series = grid
-    ? { step: grid.width, bars: Array.from(sums, (v, i) => ({ start: grid!.from + i * grid!.width, end: grid!.from + (i + 1) * grid!.width, cost: v ?? 0 })) }
+    ? {
+        step: grid.width,
+        bars: Array.from(sums, (v, i): SpendBar => ({
+          start: grid!.from + i * grid!.width, end: grid!.from + (i + 1) * grid!.width, cost: v ?? 0,
+          ...(has.input ? { tokens: extra.input[i] ?? 0 } : {}),
+          ...(has.turns ? { turns: extra.turns[i] ?? 0 } : {}),
+        })),
+      }
     : undefined
   return {
     cost: summary.cost_usd,

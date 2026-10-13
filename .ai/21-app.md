@@ -428,9 +428,11 @@ One window, three regions:
   headline and two short lines under it (*$4.08/h burn ▾*, *4.01B tok ▾*),
   never one twice, burn rate, tokens and cost by default; when the two
   lines would squeeze the agent's own, they move to the chips' row at its
-  right. Below the plan windows, the spend details, open on a chart of the
-  period's spend (*Chart | Numbers*, for the session, today, 7 or 30 days;
-  Numbers is three more figures the viewer picks), the context bar and what the next call pays to
+  right. Under what it is doing now, the spend details, open on a chart of the
+  period (*Chart | Numbers*, for the session, today, 7 or 30 days; the
+  bars measure cost, tokens or turns, picked from a ▾ after the total;
+  Numbers is three more figures the viewer picks), folding to one strip of
+  the same bars and three figures, the context bar and what the next call pays to
   re-read it, what it is doing this second (the open tool call and how long
   it has run, or *Thinking* since the last one finished; while a permission
   prompt waits, who asks and what — "Subagent (general-purpose) wants to run

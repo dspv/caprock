@@ -29,6 +29,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   `changed_files`, `commits`); `…/ci?pr=N` and the rerun and update-branch
   routes also take a pull request of the repository that the tab listed.
 
+- **app:** the cockpit's headline says how it compares with your own usual —
+  *▲ 38%*, *≈ usual*, *▼ 55%*, *▲ 4.5×* left of *burn rate ▾* — against
+  your median active session-hour (burn rate), your median session (cost,
+  tokens) or your 30-day hit rate (cache, in points), all measured on this
+  machine over the last 30 days. Amber only in your top fifth; hover says
+  it in full; nothing at all until there is enough history. The new
+  `usual` on `GET /v1/stats/summary` carries the baseline.
+- **app:** the cockpit's spend chart switches what its bars measure —
+  cost, tokens or turns — from a *cost ▾* after its total, in the hero's own
+  menu style and remembered per viewer. Hovering a bar reads its figure in
+  that metric's own format (*$12.40*, *950.1k*, *1,204*).
+- **daemon:** each project's `spark` in `GET /v1/stats/summary` carries two
+  more arrays over the same buckets, `input` (input tokens with cache reads
+  and writes) and `turns`, from the same scan as `cost`, so the chart can
+  plot today, 7 or 30 days by tokens or turns without another request.
+
+### Changed
+
+- **app:** Spend moves up in the cockpit, from after the plan windows to
+  directly under *Now*. Folded, it is a strip of the chart's own bars and
+  three figures, the chart's metric first, instead of a faint sentence a
+  narrow cockpit cut off.
 - **agents:** Claude Code on DeepSeek, free. Paste your DeepSeek API key in
   Settings → Subscriptions and *New agent* and *Quick chat* offer
   **DeepSeek · your API key** in the Subscription picker: the session is
@@ -45,6 +67,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   input, $0.003 cache hit, $0.60 output per 1M, read 2026-10-13); turns in
   DeepSeek's weekday peak hours bill double and read low. Table
   `2026-10-13.1`.
+- **app:** each subagent row in the cockpit says what the subagent is doing
+  now in words — the description Claude wrote for its latest command
+  ("Rerun the store tests"), else its tool and target ("Editing
+  Cockpit.tsx"), else its task — after its type as a letter chip (G, E, P,
+  the full type on hover), with calls and cost beside it; the dimmer line
+  under it shows the raw command only when the phrase does not already say
+  it. `GET /v1/sessions/{id}/subagents` carries the phrase as `doing` and
+  `doing_from`.
 
 ## [0.113.0] - 2026-10-13
 
