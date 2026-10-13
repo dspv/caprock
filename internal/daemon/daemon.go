@@ -197,6 +197,9 @@ type Daemon struct {
 	// storage is the cached measurement of what the data directory holds;
 	// see storage.go.
 	storage storageState
+	// activity is when the last event was recorded (unix ms, wall clock):
+	// the idle housekeeping waits for a quiet spell (cleanup.go).
+	activity atomic.Int64
 	// res is the resource meter (resources.go).
 	res *resourceMeter
 	// io is the last hour of the daemon's own disk I/O (footprint_io.go).
@@ -747,7 +750,10 @@ func (d *Daemon) run(ctx context.Context) error {
 	go d.backfillToolLinks(ctx)
 	go d.repairEmptyText(ctx)
 	go d.backfillPRs(ctx)
-	go d.storageLoop(ctx)
+	// Idle-time housekeeping: the data-directory sweep and the daily storage
+	// measurement (cleanup.go). Nothing on a fixed timer reads the whole file.
+	d.activity.Store(time.Now().UnixMilli())
+	go d.idleLoop(ctx)
 	go d.resourceLoop(ctx)
 	go d.ioLoop(ctx)
 	if d.config().RetentionDays > 0 {
@@ -934,6 +940,7 @@ func (d *Daemon) observeLoops(ctx context.Context, sub *bus.Subscriber) {
 			if !ok {
 				continue
 			}
+			d.activity.Store(time.Now().UnixMilli())
 			// Backfilled history must not raise alerts about loops long over.
 			if time.Since(ev.Ts) > d.det.Window {
 				continue

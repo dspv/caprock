@@ -1,6 +1,6 @@
 import { act, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { live, useLiveTick } from './live'
+import { HIDDEN_FLUSH_MS, HIDDEN_HELD_MAX, live, useLiveTick } from './live'
 
 describe('live store', () => {
   it('collects alerts and bumps tick on session/event frames', () => {
@@ -257,5 +257,154 @@ describe('live replay', () => {
     expect(s2.readyState).toBe(FakeLiveSocket.CLOSED)
     expect(lastSocket()).not.toBe(s2)
     expect(since(lastSocket())).toBe('1')
+  })
+})
+
+/**
+ * A hidden window does no work: frames are held and applied together every
+ * HIDDEN_FLUSH_MS (the tray and the badge stay current), at once for an
+ * urgent one, and at once when the page is shown.
+ */
+describe('a hidden page holds live frames', () => {
+  const lastSocket = () => FakeLiveSocket.all[FakeLiveSocket.all.length - 1]!
+  const fresh = () => new (live.constructor as new () => typeof live)()
+  let vis: DocumentVisibilityState = 'visible'
+  const setVis = (v: DocumentVisibilityState) => { vis = v; document.dispatchEvent(new Event('visibilitychange')) }
+  const ev = (seq: number) => ({ type: 'event', seq, data: { id: seq, ts: '', session_id: 's', source: 'hook', kind: 'tool.pre', payload: {} } })
+
+  beforeEach(() => {
+    FakeLiveSocket.all = []
+    vis = 'visible'
+    vi.useFakeTimers()
+    vi.stubGlobal('WebSocket', FakeLiveSocket)
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => vis)
+  })
+  afterEach(() => {
+    setVis('visible')
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  const open = () => {
+    const store = fresh()
+    const seen: string[] = []
+    store.onFrame((f) => seen.push(`${f.type}:${f.seq}`))
+    store.start()
+    lastSocket().accept()
+    lastSocket().frame({ type: 'hello', seq: 1, data: { server_time: 0, reset: false } })
+    return { store, seen, s: lastSocket() }
+  }
+
+  it('applies held frames together, in order, every HIDDEN_FLUSH_MS', () => {
+    const { store, seen, s } = open()
+    setVis('hidden')
+    const tick = store.getState().tick
+    s.frame(ev(2))
+    s.frame(ev(3))
+    s.frame(ev(3)) // a duplicate is still dropped
+    expect(seen).toEqual(['hello:1'])
+    expect(store.getState().tick).toBe(tick)
+    vi.advanceTimersByTime(HIDDEN_FLUSH_MS)
+    expect(seen).toEqual(['hello:1', 'event:2', 'event:3'])
+    expect(store.getState().tick).toBe(tick + 2)
+  })
+
+  it('applies at once, with everything before it, on a notification or prompt', () => {
+    const { seen, s } = open()
+    setVis('hidden')
+    s.frame(ev(2))
+    s.frame({ type: 'notify', seq: 3, data: { id: 'n1', kind: 'approval', session_id: 's', title: 'Approve?', body: 'x' } })
+    expect(seen).toEqual(['hello:1', 'event:2', 'notify:3'])
+    s.frame({ type: 'permission', seq: 4, data: { session_id: 's', permission: null } })
+    expect(seen).toEqual(['hello:1', 'event:2', 'notify:3', 'permission:4'])
+  })
+
+  it('applies what it held as soon as the page is shown', () => {
+    const { seen, s } = open()
+    setVis('hidden')
+    s.frame(ev(2))
+    setVis('visible')
+    expect(seen).toEqual(['hello:1', 'event:2'])
+    s.frame(ev(3))
+    expect(seen).toEqual(['hello:1', 'event:2', 'event:3'])
+  })
+
+  it('turns a flood held too long into a reset, keeping what is urgent', () => {
+    const { seen, s } = open()
+    setVis('hidden')
+    for (let i = 0; i <= HIDDEN_HELD_MAX; i++) s.frame(ev(10 + i))
+    setVis('visible')
+    expect(seen).toEqual(['hello:1', `reset:${10 + HIDDEN_HELD_MAX}`])
+  })
+})
+
+describe('useLiveTick while hidden', () => {
+  let vis: DocumentVisibilityState = 'visible'
+  const setVis = (v: DocumentVisibilityState) => { vis = v; document.dispatchEvent(new Event('visibilitychange')) }
+  beforeEach(() => {
+    vis = 'visible'
+    vi.useFakeTimers()
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => vis)
+  })
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+
+  it('rests while hidden and catches up the moment the page is shown', () => {
+    let renders = 0
+    const Probe = () => { renders++; return <span data-testid="t">{useLiveTick(400)}</span> }
+    const { getByTestId, unmount } = render(<Probe />)
+    const before = renders
+    const start = Number(getByTestId('t').textContent)
+    act(() => { setVis('hidden') })
+    act(() => { live.handle({ type: 'session', data: {} as never }) })
+    expect(vi.getTimerCount()).toBe(0)
+    act(() => { vi.advanceTimersByTime(10_000) })
+    expect(renders).toBe(before)
+    act(() => { setVis('visible') })
+    expect(Number(getByTestId('t').textContent)).toBe(start + 1)
+    unmount()
+  })
+
+  it('keeps a slower pace while hidden when asked to', () => {
+    const Probe = () => <span data-testid="t">{useLiveTick(1000, { hiddenMs: 5000 })}</span>
+    const { getByTestId, unmount } = render(<Probe />)
+    const start = Number(getByTestId('t').textContent)
+    act(() => { setVis('hidden') })
+    act(() => { live.handle({ type: 'session', data: {} as never }) })
+    act(() => { vi.advanceTimersByTime(4000) })
+    expect(Number(getByTestId('t').textContent)).toBe(start)
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(Number(getByTestId('t').textContent)).toBe(start + 1)
+    act(() => { setVis('visible') })
+    unmount()
+  })
+
+  it('shares one timer between its readers, and sets none for a frame that moves nothing', () => {
+    const Probe = () => <span>{useLiveTick(400)}</span>
+    const a = render(<Probe />)
+    const b = render(<Probe />)
+    act(() => { live.handle({ type: 'stats', data: {} }) })
+    expect(vi.getTimerCount()).toBe(0)
+    act(() => { live.handle({ type: 'session', data: {} as never }) })
+    expect(vi.getTimerCount()).toBe(1)
+    a.unmount()
+    b.unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('stands still while paused', () => {
+    let paused = true
+    const Probe = () => <span data-testid="t">{useLiveTick(400, { paused })}</span>
+    const { getByTestId, rerender, unmount } = render(<Probe />)
+    const start = Number(getByTestId('t').textContent)
+    act(() => { live.handle({ type: 'session', data: {} as never }) })
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(Number(getByTestId('t').textContent)).toBe(start)
+    paused = false
+    rerender(<Probe />)
+    // Following again: caught up with the live tick at once.
+    expect(Number(getByTestId('t').textContent)).toBe(live.getState().tick)
+    expect(live.getState().tick).toBeGreaterThan(start)
+    unmount()
   })
 })

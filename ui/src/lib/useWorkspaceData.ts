@@ -27,7 +27,7 @@ import {
   type Project,
   type ProjectSource,
 } from './projects'
-import { everyWhileVisible } from './visible'
+import { everyWhileVisible, pageHidden } from './visible'
 
 const FULL_LIST_MS = 60_000
 const SUMMARY_MS = 60_000
@@ -113,7 +113,9 @@ export function applySessionFrames(cur: SessionSummary[], frames: ReadonlyArray<
 }
 
 export function useWorkspaceData(): WorkspaceData {
-  const tick = useLiveTick(1000)
+  // Hidden, the live list is still asked every 5 s: a session started then
+  // must reach the tray's "N waiting" and the Dock badge, which read this.
+  const tick = useLiveTick(1000, { hiddenMs: 5_000 })
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [apiProjects, setApiProjects] = useState<Project[] | null>(null)
   const [shells, setShells] = useState<ApiShell[]>([])
@@ -221,7 +223,12 @@ export function useWorkspaceData(): WorkspaceData {
       if (batch.length) setSessions((cur) => applySessionFrames(cur, batch))
       if (pbatch.length) setApiProjects((cur) => pbatch.reduce((acc, f) => f(acc), cur))
     }
-    const later = () => { if (!flushTimer) flushTimer = window.setTimeout(flush, SESSION_FRAMES_MS) }
+    // Hidden, frames come held and together (lib/live.ts HIDDEN_FLUSH_MS):
+    // applied in that same task, so the batch is one render, not two.
+    const later = () => {
+      if (pageHidden()) { flush(); return }
+      if (!flushTimer) flushTimer = window.setTimeout(flush, SESSION_FRAMES_MS)
+    }
     // Frames were lost (a `reset`, or a reconnect the daemon could not
     // replay): a missed `permission` frame would leave a prompt or the badge
     // stale, so every live owned session is asked again.

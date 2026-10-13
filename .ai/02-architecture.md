@@ -232,10 +232,14 @@ type Event struct {
 
 Append-only `events` table + materialized rollups (`session_stats`, `agent_stats`, `daily_stats`). DDL in [03-contracts.md § SQLite schema](03-contracts.md#sqlite-schema-ddl-v1). Note the DDL v1 `events` row carries `source` (`hook` | `transcript`) in addition to the fields above, because the same session is seen through both planes; the planes are reconciled by shared dedupe keys ([03-contracts.md § Hook shim](03-contracts.md#hook-shim)). Three extra kinds exist in code: `context.compact` (PreCompact hooks), and `context.clear` / `session.continue` for the `SessionEnd` reasons that leave the session running. `SessionStart` maps to `agent.spawn`; `Stop`/`SubagentStop` to `agent.stop` (subagents carry `agent_id`). **A subagent's place is not its session's**: hooks fired inside a subagent, and its transcript lines, carry its own `cwd` and `gitBranch` — a background agent often runs in a git worktree of its own — so a subagent event (`agent_id` set, or a sidechain line) only fills a session's `cwd`, `git_branch`, `transcript_path` and repository when they are empty, and never overwrites the main thread's (`store.SessionPatch.FromSubagent`). A row a subagent moved before this is put back by the main thread's next event. **Claude Code's own `gitBranch` is not trusted for a live line either**: while a background agent worked in a linked worktree, the parent's own lines — no `agentId`, not a sidechain, `cwd` the main checkout on master — reported the worktree's branch (2026-10-09, 0.94.2). A transcript line written in the last ten minutes therefore takes the branch its `cwd`'s checkout has now, read from that checkout's `HEAD` (a linked worktree's through its `gitdir:`), and keeps its own `gitBranch` only when there is no such checkout or it is detached; an older line keeps what it says (`ingest.lineBranch`, `store.BranchAt`). The branch read for a folder answers for it for two seconds, so a burst of lines reads `HEAD` once (`ingest.branchCache`). **`SessionEnd` maps to `session.end` only when its reason is an exit** — `clear` becomes `context.clear` and `prompt_input_exit`/`other` become `session.continue`, because rollup retires a session on `session.end` and those reasons do not end one ([03-contracts.md § Hook shim](03-contracts.md#hook-shim)). Gemini answers are recorded as an ordinary `turn.user` + `turn.assistant` pair with `source = gemini`, so they are priced by the same table, searched by the same index and filtered by the same `agent` column as everything else ([ADR-023](08-decisions.md)).
 
+**The payload is the source's record, with the tool fields bounded.** Hook and transcript copies of a tool call keep their `tool_input` and `tool_response` under one rule, `event.CapToolField`: base64 images and files become a marker naming type and size, text past 32 KiB is clipped with a marker naming what was dropped, and every short field stays. `tool_bytes` keeps the size before the cap. The rule and the marker formats are owned by [03-contracts.md § Hook payload](03-contracts.md#hook-payload-what-the-shim-forwards-verbatim).
+
 **How the database is opened** (`store.Open`). WAL, so the dashboard reads while ingest writes, through a pool of eight connections. Three settings carry weight:
 
 - **Every transaction begins IMMEDIATE** (`_txlock=immediate`). A plain `BEGIN` starts as a reader, and a reader that later writes cannot wait for the lock: SQLite fails the upgrade at once with `SQLITE_BUSY`, or `SQLITE_BUSY_SNAPSHOT` (517) if another writer committed meanwhile, and `busy_timeout` never runs. The recorder reads before it writes (`TurnPaidElsewhere`, then the insert), so from migration 0029 on it lost that race ~400 times an hour on the owner's machine. Every transaction in the daemon writes, so taking the lock up front costs none of them anything.
 - **The whole file is memory-mapped** (`mmap_size` at the driver's 2 GB ceiling). Under WAL a connection discards its page cache whenever another connection has committed, which during a working session is several times a second, so every dashboard read started cold. Mapped pages come from the OS page cache, which survives commits and is shared by every connection: `/v1/stats/summary?range=today` went from 587ms to 39ms on a connection's first read after a commit (1 GB database, 2026-10-04).
+- **The WAL is cut back after a big transaction** (`journal_size_limit`, 64 MiB). Without it the `-wal` file keeps the size of the largest transaction it ever held.
+- **Every statement is timed** (`store/slowlog.go`). The pool's connections are wrapped so a statement — or a result set held open — longer than 300 ms logs one INFO line, `slow query`, with the calling function, the milliseconds, the rows, the statement's first 160 bytes, and how often and how long in all it has been slow since start. It exists because the daemon twice read over a gigabyte within a minute and nothing on record said who; on a copy of the owner's database it named the storage measurement and the startup's Week scans at once (2026-10-13).
 - **A write that fails on a busy database is retried, never skipped.** The transcript tailer stops at the line, leaves its offset there, and reads it again on the next pass; keyed dedupe absorbs whatever part of the line did land. It used to log the error and move on, which lost 259 assistant turns ($18.52) on the owner's machine before migration 0034 re-read them.
 
 Every producer writes through one path — `internal/rollup.Recorder.Record` — which stores the event, upserts the session, prices assistant turns, updates `session_stats` / `daily_stats` / `session_files` in one transaction, then publishes `event` + `session` frames on the in-process bus (`internal/bus`) that feeds the WebSocket and the loop detector.
@@ -257,6 +261,50 @@ A reboot is the exception to trusting a pid: it hands the old numbers to other p
 Two carve-outs: agents Caprock only observes (OpenCode) are judged by the clock alone, since their rows come out of another tool's database with no process behind them; and sessions with no pid keep a 24-hour staleness sweep, because there is nothing to ask.
 
 Ending is reversible: a later event on the same id makes the session active again, so an early end costs nothing. `/v1/sessions?active=true` returns everything not ended — separately, the Now screen hides anything silent for more than two days, because status cannot tell a quiet session from imported history. Narration ([04-ui.md § Narration map](04-ui.md#narration-map-t7)) is computed server-side in `internal/narrate` from the last 60 events.
+
+## Retention and cleanup
+
+What Caprock removes, when, and why. Everything here runs on its own on every
+install — nobody is expected to run anything by hand — and touches nothing that
+exists nowhere else and is still of use: prose, prompts, costs and stats live in
+the database and are kept for as long as `retention_days` says (forever by
+default). Each automatic sweep that removes anything logs one INFO line saying
+what and how many bytes it freed, and is listed in the footprint's `actions`
+(`caprock doctor`).
+
+- **Tool output is bounded as it is written**, not cleaned later: images and
+  base64 become markers, long text is clipped ([03-contracts.md § Hook
+  payload](03-contracts.md#hook-payload-what-the-shim-forwards-verbatim)). The
+  full output is still in the agent's own transcript.
+- **The WAL shrinks after a big transaction**: `journal_size_limit` (64 MiB) is
+  set on every connection when the database is opened, and a WAL over 256 MiB
+  is checkpointed and truncated on its own ([03-contracts.md §
+  Footprint](03-contracts.md#footprint)).
+- **Events older than `retention_days`**, when the user sets it: deleted at
+  start and every six hours (`pruneLoop`). Off by default.
+- **The data-directory sweep** runs at most once a day, only after the daemon
+  has been idle — nothing recorded — for 30 minutes (`daemon/cleanup.go`,
+  checked every 15 minutes):
+  - **`paste/` entries older than 30 days**, judged by the newest file inside —
+    files pasted or dropped into a terminal (`paste/<stamp>-<random>/`, the
+    desktop app's `paste/drop-<n>/`, older flat files). They were handed to a
+    session by path to read once; a month later it has read them or never will.
+  - **Empty `chats/<stamp>/` directories older than a day that no session ever
+    ran in** — a quick chat opened and closed before anything started. One a
+    session ran in is kept even when empty, because resuming it starts the
+    agent there.
+  - **`gemini/<id>.otel.log` of sessions that ended more than 30 days ago.** The
+    file is Gemini's telemetry, which Caprock reads into the database as it is
+    written, so an ended session's file is a second copy. A file whose session
+    the database does not know, or that is still running, is kept.
+  - **`launchd.log` once it is 30 days old.** No current version writes it: the
+    LaunchAgent's output goes to `service.log`.
+- **The storage measurement** (a full read of the database) runs only when the
+  Storage panel asks for figures older than a day, and once a day while idle
+  ([03-contracts.md § Storage](03-contracts.md#storage)).
+- **Not done automatically: VACUUM.** It needs a second copy's worth of disk and
+  holds the write lock throughout; the Storage panel says how to run it by hand
+  when the free pages are worth it.
 
 ## Repository layout
 

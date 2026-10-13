@@ -19,6 +19,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **daemon:** the resource meter counts the app's window: on macOS the
   WebKit helpers that draw it (hundreds of MB that belonged to no one
   before), elsewhere the app's child processes.
+- **daemon:** any database statement slower than 300 ms is logged with the
+  code that ran it, so a slow screen or a burst of disk reads names its cause.
 
 ### Changed
 
@@ -33,6 +35,32 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   with tokens and cost under it — what a session is doing now first, what it
   has added up to under it. A choice someone made stays; one that was only
   ever the old cost-first default takes the new one.
+- **app:** a hidden window does no work, and an idle one almost none. Out of
+  sight (minimized, closed or covered), the page stops its polls and clocks,
+  holds live events and applies them together every 2 s (at once for a
+  notification, a permission prompt or a loop alert, and the moment the
+  window is shown), pauses animations, and the terminal in front neither
+  draws nor blinks; the menu bar and Dock badge stay current. Shown, screens
+  that follow agents at work redraw a batch at a time rather than per event,
+  and clocks tick every second only while something on screen is under a
+  minute old.
+- **store:** tool calls are stored the way the screens read them. A hook's
+  tool input and output now go through the same cap as the transcript's:
+  screenshots and other base64 become a marker naming their type and size,
+  text past 32 KB is clipped with a marker saying how much was dropped, and
+  every short field — paths, commands, exit codes — stays. Tool sizes still
+  count what the tool really returned. On a copy of one 2.2 GB database the
+  same history needed 841 MB less.
+- **daemon:** the database is read far less. The Storage figures are measured
+  when the panel finds them a day old, or once a day while nothing is
+  running, instead of a full read of the database every 30 minutes; a start
+  no longer pre-computes the share dialog's 30-day and all-time Weeks; and
+  the write-ahead log shrinks back to 64 MB after a big write.
+- **daemon:** old leftovers are cleaned up on their own, once a day while
+  idle: pasted and dropped files after 30 days, empty quick-chat folders no
+  session used, Gemini telemetry of sessions ended over 30 days ago, and the
+  unused `launchd.log`. Each sweep logs what it removed and how many bytes,
+  and is listed in the footprint's `actions`.
 
 ### Fixed
 
