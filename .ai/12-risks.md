@@ -115,6 +115,17 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
 
   Decided by: one DeepSeek session's transcript (the model id), and
   DeepSeek's own changelog or a bill for the v4-pro date.
+  use of the keyboard-dictation path shows whether it is enough. *2026-10-13:*
+  the phone's page for access from anywhere (ADR-058) is served over https,
+  so speech recognition is available there.
+- `OQ-14` — **Does the hosted relay fit Cloudflare's free plan?** Each
+  WebSocket message to a Durable Object counts toward the plan's request
+  allowance, and a live terminal sends many. One person's phone is far inside
+  it; how many people fit is unmeasured. Decided by: the relay's request
+  count in the Cloudflare dashboard after the first month with users. The
+  fallbacks are the paid Workers plan or a relay on a server of ours
+  (`caprock remote relay`), with no change on any phone or machine beyond
+  the relay address.
 
 ## What would falsify the whole plan
 
