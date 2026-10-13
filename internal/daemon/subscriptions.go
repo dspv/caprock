@@ -97,7 +97,7 @@ func (d *Daemon) prepareSub(sub config.Subscription) error {
 		}
 		shim = hooks.ShimCommand(d.opt.DataDir)
 		// Settings → Status line: Off keeps it out of every sign-in.
-		if self, err := os.Executable(); err == nil && config.NormalizeStatusline(d.config().StatuslineMode) != config.StatuslineOff {
+		if self, err := os.Executable(); err == nil && config.StatuslineRegistered(d.config().StatuslineMode) {
 			statusline = hooks.ShellCommand(self) + " statusline"
 		}
 		defSettings, _ = hooks.DefaultSettingsPath()
@@ -571,7 +571,7 @@ func (d *Daemon) applyStatuslineMode(cfg config.Config) {
 		return
 	}
 	cmd := hooks.ShellCommand(self) + " statusline"
-	on := config.NormalizeStatusline(cfg.StatuslineMode) != config.StatuslineOff
+	on := config.StatuslineRegistered(cfg.StatuslineMode)
 	var paths []string
 	if sp, err := hooks.DefaultSettingsPath(); err == nil {
 		paths = append(paths, sp)

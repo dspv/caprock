@@ -7,10 +7,13 @@ import (
 	"github.com/dspv/caprock/internal/config"
 )
 
-// Settings → Status line takes the three modes and nothing else: a word the
+// Settings → Status line takes the four modes and nothing else: a word the
 // status line command does not know would be read back as Full, silently.
 func TestStatuslineModeSettingValidates(t *testing.T) {
 	e := newEnv(t)
+	if len(config.StatuslineModes) != 4 || !config.ValidStatuslineMode(config.StatuslineHidden) {
+		t.Fatalf("modes: %v", config.StatuslineModes)
+	}
 	for _, mode := range config.StatuslineModes {
 		if code := e.putSettings(t, map[string]any{"statusline_mode": mode}); code != http.StatusOK {
 			t.Fatalf("%s: %d", mode, code)

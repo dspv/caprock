@@ -9,6 +9,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** Settings → *Status line* → *Hidden*: no line under Claude Code, so the
+  row goes, while your plan limits keep reaching Caprock's cockpit and Cost
+  screen — which *Off* stops. Recommended on the page, never chosen for
+  you; Full stays the default.
 - **app:** the cockpit's headline says how it compares with your own usual —
   *▲ 38%*, *≈ usual*, *▼ 55%*, *▲ 4.5×* left of *burn rate ▾* — against
   your median active session-hour (burn rate), your median session (cost,

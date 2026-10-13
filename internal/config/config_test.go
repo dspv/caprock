@@ -194,6 +194,19 @@ func TestDefaultsSane(t *testing.T) {
 	}
 }
 
+// Hidden keeps Caprock's entry in Claude Code's settings — it is what relays
+// the plan windows — and only Off takes it out.
+func TestStatuslineRegistered(t *testing.T) {
+	for mode, want := range map[string]bool{
+		"": true, StatuslineFull: true, StatuslineShort: true, StatuslineHidden: true,
+		"tiny": true, StatuslineOff: false,
+	} {
+		if got := StatuslineRegistered(mode); got != want {
+			t.Fatalf("%q: %v, want %v", mode, got, want)
+		}
+	}
+}
+
 // The status line reads its mode on every render: unset, unknown and
 // unreadable are all Full, the line everyone had before the setting.
 func TestReadStatuslineMode(t *testing.T) {
@@ -202,11 +215,12 @@ func TestReadStatuslineMode(t *testing.T) {
 		t.Fatalf("no config: %q", got)
 	}
 	for in, want := range map[string]string{
-		`{"statusline_mode":"short"}`: StatuslineShort,
-		`{"statusline_mode":"off"}`:   StatuslineOff,
-		`{"statusline_mode":"tiny"}`:  StatuslineFull,
-		`{"port":1}`:                  StatuslineFull,
-		`{not json`:                   StatuslineFull,
+		`{"statusline_mode":"short"}`:  StatuslineShort,
+		`{"statusline_mode":"hidden"}`: StatuslineHidden,
+		`{"statusline_mode":"off"}`:    StatuslineOff,
+		`{"statusline_mode":"tiny"}`:   StatuslineFull,
+		`{"port":1}`:                   StatuslineFull,
+		`{not json`:                    StatuslineFull,
 	} {
 		if err := os.WriteFile(ConfigPath(dir), []byte(in), 0o600); err != nil {
 			t.Fatal(err)
