@@ -480,16 +480,20 @@ One window, three regions:
   `context_note` instead), no plan windows for an agent with none. A shell
   tab keeps the plain inspector (folder, changes, actions). Code:
   `components/Cockpit.tsx`, derivations in `lib/cockpit.ts`.
-- **Claude Code's own status line: Full, Short or Off** (owner, 2026-10-13:
+- **Claude Code's own status line: Full, Short, Hidden or Off** (owner, 2026-10-13:
   the cockpit already shows cost, turns and limits, so the full line inside
   Claude's TUI repeats it and crowds the bottom of the terminal). Settings →
   *Status line* (`components/StatuslineSetting.tsx`, `statusline_mode`),
   Full by default so nothing changes for anyone who does not choose. Short
   is model, context and the two plan windows, with the five-hour reset time
   only from 80%; Off removes Caprock's own `statusLine` entry from Claude
-  Code's settings (never the user's own) and Full or Short puts it back. The
-  line reads the choice as it draws, and Off also stops Claude's plan
-  windows reaching the cockpit, which the setting says
+  Code's settings (never the user's own) and any other choice puts it back.
+  The line reads the choice as it draws, and Off also stops Claude's plan
+  windows reaching the cockpit, which the setting says. Hidden (owner, later
+  the same day: the row should go but the limits must keep coming) keeps the
+  entry and prints nothing, so Claude Code draws no row while the plan
+  windows still reach the cockpit; the page recommends it under every other
+  choice and never picks it for anyone
   ([03-contracts.md § Statusline](03-contracts.md#statusline)).
 - **Session deck (under the agent's terminal)** (owner, 2026-10-11,
   translated: "I want to be able to enlarge the bottom area so that I
