@@ -80,7 +80,7 @@ describe('only active rows under a project', () => {
     expect(more()!.textContent).toBe('+3 more›')
     expect(more()).toHaveAttribute('aria-expanded', 'false')
     expect(more()!.className).toContain('text-fg-faint')
-    expect(more()!.getAttribute('title')).toMatch(/^1 idle · 1 shell · 1 hidden\. Show them here\./)
+    expect(more()!.getAttribute('title')).toMatch(/^1 idle · 1 shell · 1 hidden\. Show them here, each in its place\./)
     expect(document.querySelector('[data-hidden-rows]')).toBeNull()
     expect(screen.queryByText(/hidden · (show|hide again)/)).toBeNull()
     expect(document.querySelector('[data-live-row="e1"]')).toBeNull()
@@ -108,7 +108,8 @@ describe('only active rows under a project', () => {
   it('always lists the tab in front, idle or not, highlighted; out of front, an idle tab folds', () => {
     const tabs: Tab[] = [{ id: 't1', projectId: 'alpha', root: pane('p1', 'session', 'i1'), focusedPaneId: 'p1', title: 'Idle one' }]
     const first = setup(mix(), tabs, { dashboardActive: false, activeTabId: 't1' })
-    expect(rows()).toEqual(['t1', 'w1', 'wt', 'h1', 'sh2'])
+    // In its place by when its session started, not first (lib/rowOrder.ts).
+    expect(rows()).toEqual(['w1', 'wt', 't1', 'h1', 'sh2'])
     expect(document.querySelector('[data-tab-row="t1"]')).toHaveAttribute('aria-current', 'true')
     first.unmount()
     setup(mix(), tabs)
@@ -126,11 +127,14 @@ describe('only active rows under a project', () => {
     expect(more()!.getAttribute('title')).toMatch(/^1 file\./)
   })
 
-  it('opens "+N more" in place: the rest in order, then the hidden ones muted with an eye; kept for the window, not for good', () => {
+  it('opens "+N more" in place: every row in its fixed place, then the hidden ones muted with an eye; kept for the window, not for good', () => {
     hide('h1')
     const first = setup(mix(), [])
     fireEvent.click(more()!)
-    expect(rows()).toEqual(['w1', 'wt', 'sh2', 'i1', 'sh1', 'h1'])
+    // The folded rows among the active ones, where they started; the line
+    // that folds them goes last and says so.
+    expect(rows()).toEqual(['w1', 'wt', 'i1', 'sh1', 'sh2', 'h1'])
+    expect(more()!.textContent).toBe('Fold 3 back›')
     expect(document.querySelector('[data-live-row="h1"]')).toHaveAttribute('data-hidden-row', 'true')
     expect(within(group()!).getByRole('button', { name: 'Show Hidden busy in the list again' })).toBeInTheDocument()
     expect(more()).toHaveAttribute('aria-expanded', 'true')
@@ -139,7 +143,7 @@ describe('only active rows under a project', () => {
     expect(localStorage.getItem(MORE_KEY)).toBeNull()
     first.unmount()
     setup(mix(), [])
-    expect(rows()).toEqual(['w1', 'wt', 'sh2', 'i1', 'sh1', 'h1'])
+    expect(rows()).toEqual(['w1', 'wt', 'i1', 'sh1', 'sh2', 'h1'])
     fireEvent.click(more()!)
     expect(rows()).toEqual(['w1', 'wt', 'sh2'])
   })

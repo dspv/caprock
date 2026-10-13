@@ -68,8 +68,9 @@ describe('the sidebar', () => {
     const titles = () => [...list.querySelectorAll('[data-tab-row] span.flex-1')].map((b) => b.textContent)
     expect(titles()).toEqual(['Shell 1'])
     fireEvent.click(within(list).getByRole('button', { name: /\+2 more/ }))
-    // The one in front, then the rest in strip order.
-    expect(titles()).toEqual(['Shell 1', 'Fix the login', 'Shell 2'])
+    // Opened, every row in its fixed place (lib/rowOrder.ts), the one in
+    // front among them rather than first.
+    expect(titles()).toEqual(['Fix the login', 'Shell 1', 'Shell 2'])
     // One highlighted row.
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)
     expect(document.querySelector('[data-tab-row="t3"]')).toHaveAttribute('aria-current', 'true')

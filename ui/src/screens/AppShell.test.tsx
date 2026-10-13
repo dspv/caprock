@@ -443,14 +443,57 @@ describe('the app workspace', () => {
     expect(spawned.signals).toEqual([])
   })
 
-  it('switches tabs with ⌘1–9 and keeps every terminal mounted', async () => {
+  // Owner, 2026-10-13 (translated): "Command+digit focuses that project …
+  // and there I can Command+Up/Down to move". ⌘1–⌘9 are projects in the
+  // sidebar's order; ⌥⌘↑ ⌥⌘↓ walk the project's sessions and ⌥⌘← ⌥⌘→ the
+  // projects, round the end, every terminal staying mounted.
+  it('brings a project with ⌘1–9, walks its sessions with ⌥⌘↑ ⌥⌘↓ and the projects with ⌥⌘← ⌥⌘→', async () => {
     await renderApp()
     await openFromPalette('Fix the login bug')
     fireEvent.click(waitingRow('Waiting one'))
     await screen.findAllByRole('tab')
+    const arrow = (key: string, mods: Partial<KeyboardEventInit> = { metaKey: true, altKey: true }) =>
+      act(() => { fireEvent.keyDown(window, { key, code: key, ...mods }) })
+    const front = () => ['agent-1', 'agent-2'].filter((id) => screen.getByTestId(`pane-${id}`).getAttribute('data-active') === 'true')
+    const currentProject = () => document.querySelector('[data-project-row][data-current]')?.textContent ?? ''
+    expect(front()).toEqual(['agent-2'])
+    await arrow('ArrowUp')
+    expect(front()).toEqual(['agent-1'])
+    await arrow('ArrowDown')
+    expect(front()).toEqual(['agent-2'])
+    // Round the end.
+    await arrow('ArrowDown')
+    expect(front()).toEqual(['agent-1'])
+    // The second project, then back: the first brings its tab last in front.
+    expect(currentProject()).toMatch(/^app/)
+    await cmd('2')
+    expect(currentProject()).toMatch(/^other/)
     await cmd('1')
-    expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
-    expect(screen.getByTestId('pane-agent-2')).toHaveAttribute('data-active', 'false')
+    expect(currentProject()).toMatch(/^app/)
+    expect(front()).toEqual(['agent-1'])
+    await arrow('ArrowRight')
+    expect(currentProject()).toMatch(/^other/)
+    await arrow('ArrowRight')
+    expect(currentProject()).toMatch(/^app/)
+    await arrow('ArrowLeft')
+    expect(currentProject()).toMatch(/^other/)
+    await cmd('1')
+    // ⌥← ⌥→ and ⌘↑ ⌘↓ are the terminal's: not taken, nothing moves.
+    for (const [key, mods] of [['ArrowLeft', { altKey: true }], ['ArrowRight', { altKey: true }], ['ArrowUp', { metaKey: true }], ['ArrowDown', { metaKey: true }]] as const) {
+      const ev = new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true, ...mods })
+      act(() => { window.dispatchEvent(ev) })
+      expect(ev.defaultPrevented, key).toBe(false)
+    }
+    expect(front()).toEqual(['agent-1'])
+    // In a text field the chord selects there: the field keeps it.
+    const field = document.createElement('input')
+    document.body.append(field)
+    field.focus()
+    const inField = new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', metaKey: true, altKey: true, bubbles: true, cancelable: true })
+    act(() => { field.dispatchEvent(inField) })
+    expect(inField.defaultPrevented).toBe(false)
+    expect(front()).toEqual(['agent-1'])
+    field.remove()
   })
 
   it('restores its tabs after a reload', async () => {

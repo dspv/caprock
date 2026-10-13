@@ -14,16 +14,18 @@ import { useApi } from '@/lib/useApi'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
-import { FIND_EVENT, keys, matchAppShortcut, type AppCommand } from '@/lib/appkeys'
+import { FIND_EVENT, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
+import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { parseHash } from '@/lib/router'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
-import { buildSidebar, dotOf, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type WorktreeNode } from '@/lib/sidebar'
+import { buildSidebar, dotOf, groupProjects, numberedProjects, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type WorktreeNode } from '@/lib/sidebar'
 import {
   activeTab,
   focusedLeaf,
   leaves,
   loadWorkspace,
   saveWorkspace,
+  tabsOf,
   workspaceReducer,
   type PaneLeaf,
   type Tab,
@@ -38,7 +40,7 @@ import { OPEN_SESSION_EVENT } from '@/lib/shell'
 import { useOsNotifications } from '@/lib/notify'
 import { useTheme } from '@/lib/theme'
 import { useDaemonVersion } from '@/lib/useDaemonVersion'
-import { hideSessionRow, Sidebar } from '@/components/Sidebar'
+import { HIDDEN_PROJECTS_EVENT, hideSessionRow, loadHiddenProjects, loadHiddenSessions, Sidebar } from '@/components/Sidebar'
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
 import { SessionDeck } from '@/components/SessionDeck'
@@ -77,7 +79,7 @@ import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { joinPath, preferredName, useEditors } from '@/lib/editors'
 import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs } from '@/lib/termprefs'
 import { warmTerminal } from '@/lib/termwarm'
-import { StatusDot, fmtCostShort } from '@/components/ProjectRow'
+import { StatusDot, fmtCostShort, sessionStops } from '@/components/ProjectRow'
 import { fmtAgo } from '@/lib/format'
 import { RecentInProject } from '@/components/RecentInProject'
 import { ProjectRepos } from '@/components/ProjectRepos'
@@ -396,6 +398,24 @@ export function AppShell() {
   }, [openTab])
 
   const onOpenInbox = useCallback((i: InboxItem) => openSession(i.session, i.projectId), [openSession])
+  /**
+   * ⌥⌘↓ ⌥⌘↑: the row below or above under the project in front, in the
+   * sidebar's fixed order, round the end (components/ProjectRow.tsx
+   * sessionStops). A tab comes to the front; an active session with no tab
+   * opens in one, as a click on its row does.
+   */
+  const stepSession = useCallback((delta: 1 | -1) => {
+    const pid = activeProjectId
+    const node = model.projects.find((n) => n.project.id === pid)
+    const stops = sessionStops(node, tabsOf(ws, pid), labels, loadRowOrders()[pid], loadHiddenSessions())
+    if (stops.length === 0) { setToast(`Nothing is open in ${node?.project.name ?? 'this project'}.`); return }
+    const front = workspaceShown && current?.projectId === pid ? tabRowKey(current) : undefined
+    const at = stops.findIndex((x) => x.key === front)
+    const n = stops.length
+    const next = stops[at < 0 ? (delta === 1 ? 0 : n - 1) : (at + delta + n) % n]!
+    if (next.tabId) onActivateTab(next.tabId)
+    else if (next.session) openSession(next.session, pid)
+  }, [activeProjectId, model.projects, ws, labels, workspaceShown, current, onActivateTab, openSession])
   const jumpToWaiting = useCallback(() => {
     const item = nextWaiting(model.inbox, focused?.sessionId)
     if (item) onOpenInbox(item)
@@ -421,6 +441,52 @@ export function AppShell() {
     dispatch({ type: 'project', projectId: id })
     showWorkspace()
   }, [showWorkspace])
+
+  // The projects ⌘1–⌘9 and ⌥⌘← ⌥⌘→ reach: the sidebar's own list, in its
+  // order (lib/sidebar.ts numberedProjects). Hiding a project, or ordering
+  // rows by hand, says so on window, and the count is asked again.
+  const [orderTick, setOrderTick] = useState(0)
+  useEffect(() => {
+    const bump = () => setOrderTick((n) => n + 1)
+    window.addEventListener(HIDDEN_PROJECTS_EVENT, bump)
+    window.addEventListener(ROW_ORDER_EVENT, bump)
+    return () => {
+      window.removeEventListener(HIDDEN_PROJECTS_EVENT, bump)
+      window.removeEventListener(ROW_ORDER_EVENT, bump)
+    }
+  }, [])
+  const tabbedProjects = useMemo(() => new Set(ws.tabs.map((t) => t.projectId)), [ws.tabs])
+  const numbered = useMemo(
+    () => numberedProjects(groupProjects(model.projects, { hidden: loadHiddenProjects(), activeProjectId, tabbed: tabbedProjects })),
+    // orderTick: the hidden list lives in localStorage, read again when it changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [model.projects, activeProjectId, tabbedProjects, orderTick],
+  )
+  // The strip draws a project's key on the tab it brings to the front: the
+  // project's remembered tab, else its first.
+  const stripDigits = useMemo(() => {
+    const m = new Map<string, number>()
+    numbered.forEach((pid, i) => {
+      const d = tabDigit(i, numbered.length)
+      const own = tabsOf(ws, pid)
+      const tab = own.find((t) => t.id === ws.activeByProject[pid]) ?? own[0]
+      if (d && tab) m.set(tab.id, d)
+    })
+    return m
+  }, [numbered, ws])
+  /** ⌘1–⌘9: the project at that place, ⌘9 the last; nothing past the end. */
+  const focusProject = useCallback((index: number) => {
+    const id = index === 8 ? numbered[numbered.length - 1] : numbered[index]
+    if (id) onSelectProject(id)
+  }, [numbered, onSelectProject])
+  /** ⌥⌘← ⌥⌘→: the project before or after the one in front, round the end. */
+  const stepProject = useCallback((delta: 1 | -1) => {
+    const n = numbered.length
+    if (n === 0) return
+    const at = numbered.indexOf(activeProjectId)
+    const next = at < 0 ? (delta === 1 ? 0 : n - 1) : (at + delta + n) % n
+    onSelectProject(numbered[next]!)
+  }, [numbered, activeProjectId, onSelectProject])
 
   const { source, refresh } = data
   /** The Changes view of a worktree (the main checkout when none is named); needs the projects API. */
@@ -806,7 +872,9 @@ export function AppShell() {
       case 'dashboard': if (workspaceShown) onDashboard(); else location.hash = APP_ROUTE; break
       case 'next-tab': dispatch({ type: 'cycle', delta: 1 }); showWorkspace(); break
       case 'prev-tab': dispatch({ type: 'cycle', delta: -1 }); showWorkspace(); break
-      case 'tab': dispatch({ type: 'activate-index', index: c.index }); showWorkspace(); break
+      case 'project': focusProject(c.index); break
+      case 'step-project': stepProject(c.delta); break
+      case 'session': stepSession(c.delta); break
       case 'split': if (workspaceShown) splitShell(c.direction); break
       case 'next-pane': dispatch({ type: 'cycle-pane', delta: 1 }); break
       case 'prev-pane': dispatch({ type: 'cycle-pane', delta: -1 }); break
@@ -815,7 +883,7 @@ export function AppShell() {
       case 'settings': onSettings(); break
       case 'zoom': stepUiScale(c.step); break
     }
-  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open])
+  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusProject, stepProject, stepSession])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -828,9 +896,15 @@ export function AppShell() {
   // streaming) widens the beat.
   useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.type !== 'keydown' || e.repeat && !/^[1-9]$/.test(e.key)) return
+      if (e.type !== 'keydown') return
       const c = matchAppShortcut(e, isMac)
       if (!c) return
+      // Held down, only the digits and the arrow chords repeat.
+      if (e.repeat && !/^[1-9]$/.test(e.key) && !isArrowCommand(c)) return
+      // In a text field the arrow chords select by word and line there
+      // (Ctrl+Shift+← off macOS): the field keeps them. The terminal's own
+      // textarea is not a text field here.
+      if (isArrowCommand(c) && isTextField(e.target)) return
       // In a browser ⌘+ and ⌘− are the browser's own zoom.
       if (c.kind === 'zoom' && !isTauri()) return
       // A sheet owns the keyboard, except to close itself or switch to the palette.
@@ -1247,6 +1321,7 @@ export function AppShell() {
               sidebarOpen={prefs.sidebar}
               onActivate={onActivateTab}
               onDetach={onCloseTab}
+              digits={stripDigits}
               onMove={(id, to) => dispatch({ type: 'move', tabId: id, toIndex: to })}
               onNewAgent={() => onNewAgent()}
               onNewShell={() => onNewShell()}
@@ -1578,4 +1653,11 @@ function EmptyAction({ icon, label, hint, onClick }: { icon: React.ReactNode; la
       <kbd className="mono text-[11.5px] text-fg-faint">{hint}</kbd>
     </button>
   )
+}
+
+/** A field the user types text into, other than a terminal's own input. */
+function isTextField(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false
+  if (t.classList.contains('xterm-helper-textarea')) return false
+  return t.isContentEditable || t instanceof HTMLTextAreaElement || (t instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'submit', 'range', 'color'].includes(t.type))
 }

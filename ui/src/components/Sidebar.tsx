@@ -15,7 +15,14 @@
  * highlighted row in the sidebar is the tab in front.
  *
  * Keyboard: Tab reaches every row; ↑ and ↓ move between rows, Enter opens
- * what the row names.
+ * what the row names, ⌥⇧↑ ⌥⇧↓ move a session row within its project. ⌘1–⌘9
+ * bring a project to the front by its place here, the key drawn on its row;
+ * ⌥⌘← ⌥⌘→ step to the project before or after, ⌥⌘↑ ⌥⌘↓ to the session
+ * above or below in the project in front (lib/appkeys.ts, AppShell).
+ *
+ * Rows keep their places (owner, 2026-10-13): projects by pin, the order set
+ * by hand and name; the rows under a project by the order set by hand (drag,
+ * or ⌥⇧↑ ⌥⇧↓) and then when each session started (lib/rowOrder.ts).
  *
  * The list stays short: projects in play (running, waiting, a tab open,
  * pinned, current) come first; the rest fold under More projects, and the
@@ -31,7 +38,7 @@
  * from the end of "+N more" (components/ProjectRow.tsx).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { groupProjects, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
+import { groupProjects, numberedProjects, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
 import type { Tab } from '@/lib/tabs'
 import type { TabLabel } from '@/lib/tablabels'
 import type { ProjectSource } from '@/lib/projects'
@@ -48,6 +55,7 @@ import { TodayStrip } from './TodayStrip'
 import { FeedbackButton } from './Feedback'
 import { CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 import { keys, tabDigit } from '@/lib/appkeys'
+import { loadRowOrders, ROW_ORDER_EVENT, saveRowOrder, type RowOrders } from '@/lib/rowOrder'
 
 /** Project ids hidden by hand, with when: this browser's. An older plain list of ids still reads. */
 export const HIDDEN_KEY = 'caprock.app.hidden-projects'
@@ -74,7 +82,7 @@ function saveIds(key: string, ids: ReadonlySet<string>) {
   try { localStorage.setItem(key, JSON.stringify([...ids])) } catch { /* not kept */ }
 }
 
-function loadHiddenProjects(): Map<string, number> {
+export function loadHiddenProjects(): Map<string, number> {
   try {
     const v = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? 'null') as unknown
     // Before 2026-10-13 a plain list, with no time: hidden as of now, so a
@@ -90,11 +98,15 @@ function loadHiddenProjects(): Map<string, number> {
   }
 }
 
+/** Said on window when a project is hidden or shown again, so ⌘1–⌘9 count again (AppShell). */
+export const HIDDEN_PROJECTS_EVENT = 'caprock:hidden-projects'
+
 function saveHiddenProjects(m: HiddenProjects) {
   try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(Object.fromEntries(m))) } catch { /* not kept */ }
+  window.dispatchEvent(new Event(HIDDEN_PROJECTS_EVENT))
 }
 
-function loadHiddenSessions(): Map<string, number> {
+export function loadHiddenSessions(): Map<string, number> {
   try {
     const v = JSON.parse(localStorage.getItem(HIDDEN_SESSIONS_KEY) ?? 'null') as unknown
     if (!v || typeof v !== 'object' || Array.isArray(v)) return new Map()
@@ -200,6 +212,14 @@ export function Sidebar(props: SidebarProps) {
     window.addEventListener(HIDE_SESSION_EVENT, reload)
     return () => window.removeEventListener(HIDE_SESSION_EVENT, reload)
   }, [])
+  // The rows' order set by hand, per project (lib/rowOrder.ts).
+  const [rowOrders, setRowOrders] = useState<RowOrders>(() => loadRowOrders())
+  useEffect(() => {
+    const reload = () => setRowOrders(loadRowOrders())
+    window.addEventListener(ROW_ORDER_EVENT, reload)
+    return () => window.removeEventListener(ROW_ORDER_EVENT, reload)
+  }, [])
+  const onReorder = useCallback((projectId: string, keys: string[]) => saveRowOrder(projectId, keys), [])
   const allTabs = props.tabs
   const tabbed = useMemo(() => new Set((allTabs ?? []).map((t) => t.projectId)), [allTabs])
   const groups = useMemo(() => groupProjects(model.projects, { hidden, activeProjectId, tabbed }), [model.projects, hidden, activeProjectId, tabbed])
@@ -217,12 +237,12 @@ export function Sidebar(props: SidebarProps) {
     }
     return m
   }, [allTabs])
-  // Each tab's jump key, as the strip draws it (⌘1–⌘8, ⌘9 the last): the
-  // sidebar shows the same key on the same tab (owner, 2026-10-11).
-  const tabDigits = useMemo(() => {
-    const list = allTabs ?? []
-    return new Map(list.map((t, i) => [t.id, tabDigit(i, list.length)] as const))
-  }, [allTabs])
+  // Each project's jump key, ⌘1–⌘8 by its place and ⌘9 the last, drawn on
+  // its row (owner, 2026-10-13); the strip draws it on the tab it brings.
+  const projectDigits = useMemo(() => {
+    const ids = numberedProjects(groups)
+    return new Map(ids.map((id, i) => [id, tabDigit(i, ids.length)] as const))
+  }, [groups])
   const noLabels = useMemo(() => new Map<string, TabLabel>(), [])
   const noTabs = useMemo<Tab[]>(() => [], [])
   const now = useNow(30_000)
@@ -297,7 +317,9 @@ export function Sidebar(props: SidebarProps) {
         node={n}
         current={current}
         tabs={tabsByProject.get(n.project.id) ?? noTabs}
-        tabDigits={tabDigits}
+        digit={projectDigits.get(n.project.id) ?? undefined}
+        rowOrder={rowOrders[n.project.id]}
+        onReorder={onReorder}
         labels={props.tabLabels ?? noLabels}
         activeTabId={props.dashboardActive ? undefined : props.activeTabId}
         onSelect={props.onSelectProject}

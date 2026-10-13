@@ -9,6 +9,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** move between projects and their sessions from the keyboard.
+  ⌘1–⌘9 bring a project to the front by its place in the sidebar (⌘9 the
+  last), its key drawn on its row and on the tab it brings; ⌥⌘↓ / ⌥⌘↑ go to
+  the next / previous session of that project, ⌥⌘→ / ⌥⌘← to the next /
+  previous project, both round the end. On Windows and Linux they are
+  Ctrl+Shift with the same digit or arrow. Option+← → stay word jumps in the
+  terminal and ⌘↑ ↓ stay the terminal's; in a text field the arrow chords
+  keep selecting there. The project in front has a faint edge in the
+  sidebar, so you see where you are among the others.
+- **app:** drag a session row under a project onto another to put it
+  there, or focus it and press ⌥⇧↑ / ⌥⇧↓ (Alt+Shift off macOS); the order
+  is kept for that project, also after a restart.
 - **app:** Settings → *Status line* → *Hidden*: no line under Claude Code, so the
   row goes, while your plan limits keep reaching Caprock's cockpit and Cost
   screen — which *Off* stops. Recommended on the page, never chosen for
@@ -31,6 +43,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** rows under a project keep their places. Picking a session from
+  the sidebar, opening it as a tab or bringing it to the front no longer
+  moves it up: rows go in the order you set by hand, then in the order the
+  sessions started, and a new one lands last. With *+N more* open the
+  folded rows sit in their places among the active ones, and the line goes
+  last as *Fold N back*.
+- **app:** ⌘1–⌘9 now pick a project rather than a tab by its place in the
+  strip; ⌃Tab and ⇧⌘[ ] still cycle the tabs.
 - **app:** the sidebar lists only active sessions under a project: what is
   working, looping or waiting on you, plus the tab in front so it always
   has its row. Idle sessions, rows you hid, files and quiet shells sit

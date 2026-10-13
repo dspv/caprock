@@ -149,13 +149,25 @@ One window, three regions:
   it is not left open for good. A project with nothing active that is not
   current is its row alone: its chevron shows the rest, and a click makes it
   current. The chevron of an active project folds it by hand, kept per
-  viewer (`caprock-sidebar-folded`) ([04-ui.md](04-ui.md) § Sidebar). Opened, its tabs as
-  the strip shows them, same order, same names (`lib/tablabels.ts`; shells
+  viewer (`caprock-sidebar-folded`) ([04-ui.md](04-ui.md) § Sidebar). Opened, its tabs
+  under the strip's names (`lib/tablabels.ts`; shells
   numbered *Shell 1*, *Shell 2*; a branch only when it is not the
   project's). No worktree or branch rows, and no session that is not in a
   tab — those are on the project's page (*Recent*), in ⌘K and in the
   Inbox. The one highlighted row in the sidebar is the tab in front; the
-  current project's name is bold. There is no *Waiting on you* section
+  current project's name is bold, with a faint edge and no fill, and every
+  project row above the folds carries its ⌘1–⌘9 key. **Rows keep their
+  places** (owner, 2026-10-13, translated: "fixed positions, I orient
+  visually by them"; `lib/rowOrder.ts`): by the order set by hand, then by
+  when the session started, never by the strip, the front or a state, so a
+  row picked from the list stays where it was when it becomes a tab, and
+  with *+N more* open the folded rows sit in their places among the active
+  ones. A row is moved by dragging it onto another or with ⌥⇧↑ ⌥⇧↓ on it;
+  the order is kept per project and viewer (`caprock.app.row-order`).
+  ⌘1–⌘9 bring a project to the front by its place in the sidebar, ⌥⌘↑ ⌥⌘↓
+  walk the sessions of the project in front, ⌥⌘← ⌥⌘→ the projects
+  (Ctrl+Shift arrows off macOS; [04-ui.md](04-ui.md) § The app workspace, *Keyboard*, says why not
+  ⌥← ⌥→ or ⌘↑ ⌘↓). There is no *Waiting on you* section
   (owner, 2026-10-11: "not needed at all — everything is already visible in
   Projects", translated): a session that waits is marked on its own row,
   amber edge and tint and *waiting* (or *asks* at a permission prompt), and

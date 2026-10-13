@@ -147,7 +147,8 @@ describe('a file tab', () => {
     )
     const t = screen.getByRole('tab')
     expect(t.textContent).toContain('app.md')
-    expect(t.getAttribute('title')).toBe('docs/app.md — ⌘1')
+    // No key: ⌘1–⌘9 are projects, drawn on a tab only when given (digits).
+    expect(t.getAttribute('title')).toBe('docs/app.md')
     expect(screen.getByRole('button', { name: 'Close tab app.md' })).toBeInTheDocument()
   })
 

@@ -12,13 +12,48 @@ const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
 })
 
 describe('the app keyboard map', () => {
+  // Owner, 2026-10-13 (translated): "Command+digit focuses that project …
+  // Command+Up/Down to move, or Option+Left/Right". ⌥← ⌥→ and ⌘↑ ⌘↓ are the
+  // terminal's, so the moves are ⌥⌘ arrows, Ctrl+Shift arrows elsewhere.
+  it('maps ⌘1–⌘9 to projects and ⌥⌘ arrows to sessions and projects', () => {
+    expect(matchAppShortcut(k('1', { metaKey: true }), true)).toEqual({ kind: 'project', index: 0 })
+    expect(matchAppShortcut(k('9', { metaKey: true }), true)).toEqual({ kind: 'project', index: 8 })
+    expect(matchAppShortcut(k('ArrowDown', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'session', delta: 1 })
+    expect(matchAppShortcut(k('ArrowUp', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'session', delta: -1 })
+    expect(matchAppShortcut(k('ArrowRight', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'step-project', delta: 1 })
+    expect(matchAppShortcut(k('ArrowLeft', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'step-project', delta: -1 })
+    expect(matchAppShortcut(k('ArrowDown', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'session', delta: 1 })
+    expect(matchAppShortcut(k('ArrowLeft', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'step-project', delta: -1 })
+  })
+
+  it('leaves the terminal its arrows: ⌥← ⌥→ word-jump, ⌘↑ ⌘↓ ⌘← ⌘→, Ctrl and Alt arrows', () => {
+    for (const a of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+      expect(matchAppShortcut(k(a, { altKey: true }), true), `⌥${a}`).toBeNull()
+      expect(matchAppShortcut(k(a, { metaKey: true }), true), `⌘${a}`).toBeNull()
+      expect(matchAppShortcut(k(a, { metaKey: true, shiftKey: true }), true), `⇧⌘${a}`).toBeNull()
+      expect(matchAppShortcut(k(a, { ctrlKey: true }), true), `⌃${a}`).toBeNull()
+      expect(matchAppShortcut(k(a, { ctrlKey: true }), false), `Ctrl+${a}`).toBeNull()
+      expect(matchAppShortcut(k(a, { altKey: true }), false), `Alt+${a}`).toBeNull()
+      expect(matchAppShortcut(k(a, { altKey: true, shiftKey: true }), false), `Alt+Shift+${a}`).toBeNull()
+      // Ctrl+Alt arrows switch workspaces in GNOME: never asked of the user.
+      expect(matchAppShortcut(k(a, { ctrlKey: true, altKey: true }), false), `Ctrl+Alt+${a}`).toBeNull()
+    }
+  })
+
+  it('spells the arrow chords for Windows and Linux without Alt', () => {
+    expect(keys('⌥⌘↓, ⌥⌘↑', false)).toBe('Ctrl+Shift+↓, Ctrl+Shift+↑')
+    expect(keys('⌥⌘→, ⌥⌘←', false)).toBe('Ctrl+Shift+→, Ctrl+Shift+←')
+    expect(keys('⌥⇧↑, ⌥⇧↓', false)).toBe('Alt+Shift+↑, Alt+Shift+↓')
+    expect(keys('⌥⌘↓', true)).toBe('⌥⌘↓')
+  })
+
   it('binds Cmd on macOS', () => {
     expect(matchAppShortcut(k('t', { metaKey: true }), true)).toEqual({ kind: 'new-shell' })
     expect(matchAppShortcut(k('N', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'new-agent' })
     expect(matchAppShortcut(k('o', { metaKey: true }), true)).toEqual({ kind: 'add-project' })
     expect(matchAppShortcut(k('w', { metaKey: true }), true)).toEqual({ kind: 'detach-tab' })
     expect(matchAppShortcut(k('k', { metaKey: true }), true)).toEqual({ kind: 'palette' })
-    expect(matchAppShortcut(k('3', { metaKey: true }), true)).toEqual({ kind: 'tab', index: 2 })
+    expect(matchAppShortcut(k('3', { metaKey: true }), true)).toEqual({ kind: 'project', index: 2 })
     expect(matchAppShortcut(k(',', { metaKey: true }), true)).toEqual({ kind: 'settings' })
   })
 
@@ -155,24 +190,29 @@ describe('zoom keys', () => {
 import { SHORTCUTS } from './appkeys'
 
 describe('every listed shortcut, on every OS', () => {
-  const chords = SHORTCUTS.flatMap(([k]) => k.split(', ')).filter((c) => /^[⇧⌘⌥⌃]+[A-Z0-9,\\.\-=+[\]]$/.test(c) && c.includes('⌘'))
+  const chords = SHORTCUTS.flatMap(([k]) => k.split(', ')).filter((c) => /^[⇧⌘⌥⌃]+[A-Z0-9,\\.\-=+[\]↑↓←→]$/.test(c) && c.includes('⌘'))
   const event = (code: string, key: string, mods: Partial<KeyLike>): KeyLike => ({ key, code, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...mods } as KeyLike)
-  const codeOf = (ch: string) => (/[A-Z]/.test(ch) ? `Key${ch}` : /[0-9]/.test(ch) ? `Digit${ch}` : ({ ',': 'Comma', '\\': 'Backslash', '.': 'Period', '-': 'Minus', '=': 'Equal', '+': 'Equal', '[': 'BracketLeft', ']': 'BracketRight' } as Record<string, string>)[ch] ?? ch)
+  const codeOf = (ch: string) => (/[A-Z]/.test(ch) ? `Key${ch}` : /[0-9]/.test(ch) ? `Digit${ch}` : ({ ',': 'Comma', '\\': 'Backslash', '.': 'Period', '-': 'Minus', '=': 'Equal', '+': 'Equal', '[': 'BracketLeft', ']': 'BracketRight', '↑': 'ArrowUp', '↓': 'ArrowDown', '←': 'ArrowLeft', '→': 'ArrowRight' } as Record<string, string>)[ch] ?? ch)
+  // An arrow's key is its name, as a browser reports it.
+  const keyOf = (ch: string) => ({ '↑': 'ArrowUp', '↓': 'ArrowDown', '←': 'ArrowLeft', '→': 'ArrowRight' } as Record<string, string>)[ch] ?? ch.toLowerCase()
 
-  it('has chords to check', () => { expect(chords.length).toBeGreaterThan(10) })
+  it('has chords to check, the arrow chords among them', () => {
+    expect(chords.length).toBeGreaterThan(10)
+    expect(chords).toEqual(expect.arrayContaining(['⌘9', '⌥⌘↓', '⌥⌘↑', '⌥⌘→', '⌥⌘←']))
+  })
 
   for (const c of chords) {
     it(`${c} reaches the same command as ${keys(c, false)}`, () => {
       if (c === '⌘R') return // the webview's own reload, not an app command
       const ch = c.slice(-1)
-      const mac = matchAppShortcut(event(codeOf(ch), ch.toLowerCase(), { metaKey: true, shiftKey: c.includes('⇧'), altKey: c.includes('⌥') }), true)
+      const mac = matchAppShortcut(event(codeOf(ch), keyOf(ch), { metaKey: true, shiftKey: c.includes('⇧'), altKey: c.includes('⌥') }), true)
       expect(mac, `${c} on macOS`).not.toBeNull()
       const off = keys(c, false)
       if (off === '' || off === 'F5') return // macOS-only, or the browser's own reload
       const parts = off.split('+')
       const last = parts[parts.length - 1]!
       const k1 = last === 'F5' ? 'F5' : last
-      const ev = event(last === 'F5' ? 'F5' : codeOf(k1.toUpperCase().length === 1 ? k1.toUpperCase() : k1), k1.toLowerCase(), { ctrlKey: parts.includes('Ctrl'), shiftKey: parts.includes('Shift'), altKey: parts.includes('Alt') })
+      const ev = event(last === 'F5' ? 'F5' : codeOf(k1.toUpperCase().length === 1 ? k1.toUpperCase() : k1), keyOf(k1), { ctrlKey: parts.includes('Ctrl'), shiftKey: parts.includes('Shift'), altKey: parts.includes('Alt') })
       expect(matchAppShortcut(ev, false), `${off} off macOS`).toEqual(mac)
     })
   }

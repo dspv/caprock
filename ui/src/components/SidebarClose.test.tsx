@@ -219,9 +219,8 @@ describe('closing in the sidebar', () => {
     // The waiting one is the amber one.
     expect(document.querySelector('[data-state="waiting"]')!.className).toContain('text-accent')
     expect(document.querySelectorAll('.text-accent[data-state]')).toHaveLength(1)
-    // A state flips and a newer session starts: the active rows keep their
-    // order, the one that started working leaves the fold for the list, and
-    // the new one lands last among the active ones.
+    // A state flips and a newer session starts: every row keeps its place
+    // (the fold is open, so the idle one too), and the new one lands last.
     const next = [
       { ...sessions[0]!, activity: { phrase: '', at: '', health: 'idle' } },
       { ...sessions[1]!, activity: { phrase: '', at: '', health: 'working' }, last_event_at: 99 },
@@ -231,7 +230,7 @@ describe('closing in the sidebar', () => {
     ] as SessionSummary[]
     const model = buildSidebar({ projects: [proj('alpha'), proj('beta')], sessions: next, permissions: new Set(), costs: new Map(), openSessions: new Set(['a1', 'sh1']) })
     rerender(<Sidebar {...props} model={model} tabLabels={tabLabels([agentTab, shellTab], new Map(next.map((s) => [s.session_id, s])), new Set(), () => undefined)} />)
-    expect(words()).toEqual([['Fix the login', 'idle'], ['Shell 1', ''], ['Write the docs', 'working'], ['Brand new', 'working'], ['Older one', 'idle']])
+    expect(words()).toEqual([['Fix the login', 'idle'], ['Shell 1', ''], ['Write the docs', 'working'], ['Older one', 'idle'], ['Brand new', 'working']])
   })
 
   it('names what a shell runs, on its tab row and on a running shell with no tab', () => {
@@ -294,7 +293,7 @@ describe('closing in the sidebar', () => {
     expect([...list.querySelectorAll('[data-hidden-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['a2', 'x1'])
     fireEvent.click(screen.getByRole('button', { name: 'Show Write the docs in the list again' }))
     expect(list.querySelector('[data-live-row="a2"]')).not.toHaveAttribute('data-hidden-row')
-    expect(more.textContent).toBe('+1 more›')
+    expect(more.textContent).toBe('Fold 1 back›')
     expect(Object.keys(JSON.parse(localStorage.getItem(HIDDEN_SESSIONS_KEY)!))).toEqual(['x1'])
   })
 

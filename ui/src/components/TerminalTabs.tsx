@@ -22,7 +22,7 @@ import { StatusDot, TitleAndBranch } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { NewMenu, type NewMenuItem } from './NewMenu'
-import { keys, tabDigit, tabKey } from '@/lib/appkeys'
+import { keys, tabKey } from '@/lib/appkeys'
 import { ChatEnded, ChatHint, type ChatPane } from './QuickChatPane'
 
 /** The pinned Dashboard tab: the dashboard's screens, in the strip with the terminals. */
@@ -70,6 +70,8 @@ export interface TabStripProps {
   /** The + menu's rows; New agent and New shell when absent. */
   newItems?: readonly NewMenuItem[]
   onToggleInspector: () => void
+  /** The ⌘1–⌘9 key drawn on a tab: its project's, on the tab that key brings to the front. */
+  digits?: ReadonlyMap<string, number>
   /** The tab in front shows its chat instead of its terminal (WP-14). */
   chatOpen?: boolean
   /** Absent when the tab in front has no conversation: a shell. */
@@ -164,7 +166,7 @@ export function TabStrip(props: TabStripProps) {
           const title = label?.title ?? t.title
           const active = t.id === activeTabId
           const project = props.projectName?.(t.projectId)
-          const digit = tabDigit(i, tabs.length)
+          const digit = props.digits?.get(t.id)
           // A tab is named by its project — the repo is what tells tabs apart
           // at a glance. A second tab of the same project adds its own title,
           // faint, so the two still differ; a file tab keeps the file name.
@@ -211,8 +213,9 @@ export function TabStrip(props: TabStripProps) {
                 <TitleAndBranch title={title} branch={label?.branch} className="" />
               )}
               {file === undefined && <HotMark sessionId={s?.session_id} />}
-              {/* The jump key on the tab itself, as iTerm shows it: ⌘1–⌘8 by
-                * position, ⌘9 on the last. In a tooltip nobody found it. */}
+              {/* The jump key on the tab itself: its project's ⌘1–⌘9, on the
+                * tab that key brings to the front (owner, 2026-10-13). In a
+                * tooltip nobody found it. */}
               {digit && (
                 <kbd data-tab-key aria-hidden className="app-kbd-key shrink-0">{tabKey(digit)}</kbd>
               )}
