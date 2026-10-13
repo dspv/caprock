@@ -34,38 +34,41 @@ others. Installing it: [install-app.md](install-app.md).
   of the count, the badge and ⌘J; when only such turns are left, the block
   is not shown at all (they stay on the Dashboard). Then the projects, one line each: the
   name, a green dot with how many sessions and shells run in it, and how
-  many wait on you. Under each project are only the sessions that are
-  active: working, looping or waiting on you, plus the tab you are looking
-  at, so it always has a row. Everything else — idle sessions, rows you
-  hid, open files, shells with nothing running — sits behind one quiet
-  line, *+3 more*: hover it for what it holds (*2 idle · 1 hidden*), click
-  it to list them, each in its place among the active ones, hidden rows
-  last with an eye to show them again; the line then reads *Fold 3 back*.
-  It stays open until you fold it or close the window. A project
-  with nothing active is just its own line; its arrow lists what is in it.
-  Rows are the project's tabs — the ones in the tab strip, under
-  the same names (*Shell 1*, *Shell 2* for shells, *Shell 1 · claude* while
-  one runs a program; a branch beside a tab
-  only when it is not the project's own). Click another project to make it
+  many wait on you. Under each project is every agent session in it —
+  working, waiting or idle — one 28-pixel row each, and nothing hides
+  behind a *+N more* line. Shells and open files have no rows (they are
+  in the tab strip), an ended session drops off, and a row you hide is
+  gone until you show it again from *More…*. A row reads the session's
+  title (the agent is in its tooltip; a branch shows only when it is not
+  the project's own). Click another project to make it
   current: its last tab comes to the front, or its own page when it has
   none. The one highlighted row in the
   sidebar is the tab you are looking at; the current project's name is
   bold, with a faint edge at its left, and each project row shows its key
-  (⌘1, ⌘2 …). Muted, come the sessions and shells Caprock started
+  (⌘1, ⌘2 …). Muted, come the sessions Caprock started
   in the project that still run with no tab; click one to open it as a tab.
   Sessions started in another terminal come last. Each row says its
   state in one word at its right: *working* (green), *waiting* (amber — it
-  needs you, and nothing else in the list is amber), *idle* or *done*; a
-  shell says nothing. **Rows keep their places**: in the order the
-  sessions started, so picking a row, opening it as a tab or bringing it to
-  the front never moves it, a change of state only shows or folds it, and
+  needs you, and nothing else in the list is amber), *idle* or *done*.
+  **Rows keep their places**: in the order the
+  sessions started, so picking a row, opening it as a tab, bringing it to
+  the front or a change of state never moves it, and
   a new one appears at the end. Drag a row onto another to put it there,
   or focus it and press ⌥⇧↑ / ⌥⇧↓ (Ctrl+Shift off macOS); that order is
-  kept for the project, also after a restart. An ended session is
+  kept, also after a restart. An ended session is
   on the project's page (*Recent*) and in ⌘K. Pinned projects come first,
   then the rest by name, and clicking a project never moves it. Hover a project for *New agent* and *New shell*. Sessions in a
   folder that is not a repository sit under *Outside projects*, and so does a
   quick chat.
+- **Group by project, or one list.** The folder button beside the
+  *Projects* heading switches grouping off and on, and the app remembers
+  it. Off, the sidebar is one flat list of every agent session, headed
+  *Sessions*, in the same kept order (drag or ⌥⇧↑ ↓ to change it); each
+  row carries its project's colour dot and short name, dimmed. Either
+  way there is one numbering: ⌘N is the Nth item at the top level of the
+  sidebar — a project when grouped, a session when not — the tab strip
+  follows the sidebar's order, and the strip shows the digit only on the
+  tab that ⌘N brings to the front.
 - **Closing things: ×.** Hover a tab under the project — or look at the
   one in front, where it always shows — for its **×**: it closes the tab
   exactly as ⌘W and the tab strip's × do. An agent in it keeps running (it
@@ -77,7 +80,7 @@ others. Installing it: [install-app.md](install-app.md).
   idle shell at once; when any runs a program, one question lists them
   (*alpha: Shell 1 is running claude, Shell 2 is running npm. Stop them and
   close?*) with **Stop and close**, **Keep them running, close tabs** and
-  **Cancel** — and moves it under *Hidden*. If an agent still runs or
+  **Cancel** — and hides it (*More…* shows it again). If an agent still runs or
   waits in it, or a shell you kept running, only its tabs close and it
   stays, with its green dot, since hiding it would lose live work. Its
   agents are never stopped. To stop an agent or a shell Caprock started, hover
@@ -94,18 +97,18 @@ others. Installing it: [install-app.md](install-app.md).
   touching its folder, its files or its sessions; *Add project* lists it
   again. ↑ ↓ move through the menu, Esc closes it.
 - **Keeping the list short.** With more than eight projects, the ones with
-  nothing running, no tab open and no pin fold under *More projects* at the
-  bottom of the list; with eight or fewer, every project shows. A
-  project you close with its × or hide from its menu goes under *Hidden*,
-  and the same menu or the open eye on its row there brings it back.
-  Both groups stay closed until you open them, and the app remembers which
-  are open. A project shows in the list again while something runs or
-  waits in it, or while it is the one in front, hidden or not.
+  nothing running, no tab open and no pin leave the list; with eight or
+  fewer, every project shows. A project you close with its × or hide from
+  its menu, and a session row you hide, leave it too. One quiet *More…*
+  row at the end of the list opens all of them: click another project to
+  open it, a hidden project or session to show it again. A project shows
+  in the list again while something runs or waits in it, or while it is
+  the one in front, hidden or not.
 - **Dashboard.** At the bottom of the sidebar, *Dashboard* (⌘0, or ⇧⌘D) opens Now,
   Cost, Lifetime and the other screens in a *Dashboard* tab pinned at the
   left of the tab strip; your terminals stay in the strip beside it, one click
   away, and the tab brings back the screen you left it on until you close it.
-  With five or more tabs open the Dashboard tab shows only its icon and key.
+  The Dashboard tab is just its icon; its × shows while it is in front.
   The arrow beside *Send feedback* folds that bottom block to one row of
   icons and back; the app remembers which way you left it.
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
@@ -280,9 +283,9 @@ others. Installing it: [install-app.md](install-app.md).
   another project never takes a tab out of the strip: the project's own
   tabs are listed under it in the sidebar, under the same names, or its
   page shows when it has none. Picking a tab makes its project current.
-  ⌃Tab and dragging run along the whole strip. ⌘1–⌘9 bring a project to
-  the front by its place in the sidebar (⌘9 the last), and the tab each
-  brings shows that key; ⌥⌘↓ / ⌥⌘↑ go to the next / previous session of
+  ⌃Tab and dragging run along the whole strip. ⌘1–⌘9 bring the sidebar's Nth item to
+  the front — a project when grouped, a session when not (⌘9 the last) —
+  and only the tab each brings shows that key, beside its ×; ⌥⌘↓ / ⌥⌘↑ go to the next / previous session of
   that project and ⌥⌘→ / ⌥⌘← to the next / previous project, both round
   the end. Option+← → stay word jumps in the terminal, and ⌘↑ ↓ stay the
   terminal's. Tabs come back when
@@ -502,30 +505,30 @@ others. Installing it: [install-app.md](install-app.md).
 
 On macOS:
 
-| Keys        | Does                                                   |
-| ----------- | ------------------------------------------------------ |
-| ⌘T          | New shell in the folder of the tab                     |
-| ⇧⌘N         | New agent session                                      |
-| ⌥⌘N         | Quick chat: pick, or Enter for the last                |
-| ⌘O          | Add a project (folder, new, clone)                     |
-| ⌘1–8, ⌘9    | A project by its place in the sidebar; the last one    |
-| ⌥⌘↓, ⌥⌘↑    | Next and previous session of the project in front      |
-| ⌥⌘→, ⌥⌘←    | Next and previous project                              |
-| ⌥⇧↑, ⌥⇧↓    | Move the focused session row up or down in the sidebar |
-| ⌃Tab, ⇧⌘[ ] | Next and previous tab                                  |
-| ⌘W          | Close the tab (the session keeps going)                |
-| ⌘E, ⇧⌘E     | Split: a new shell beside, below                       |
-| ⌘[ ]        | Previous and next pane                                 |
-| ⌘J          | Next session waiting on you                            |
-| ⌘F          | Find in the terminal or the file                       |
-| ⌘K          | Command palette                                        |
-| ⌘,          | Settings                                               |
-| ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default               |
-| ⌘I          | Agent cockpit (the inspector)                          |
-| ⌘B          | Session deck under the agent's terminal                |
-| ⌘\          | Hide or show the sidebar                               |
-| ⌘0, ⇧⌘D     | Dashboard tab, and back                                |
-| ⌘R          | Reload the window (View → Reload)                      |
+| Keys        | Does                                                                        |
+| ----------- | --------------------------------------------------------------------------- |
+| ⌘T          | New shell in the folder of the tab                                          |
+| ⇧⌘N         | New agent session                                                           |
+| ⌥⌘N         | Quick chat: pick, or Enter for the last                                     |
+| ⌘O          | Add a project (folder, new, clone)                                          |
+| ⌘1–8, ⌘9    | The sidebar’s Nth item (a project, or a session when not grouped); the last |
+| ⌥⌘↓, ⌥⌘↑    | Next and previous session of the project in front                           |
+| ⌥⌘→, ⌥⌘←    | Next and previous project                                                   |
+| ⌥⇧↑, ⌥⇧↓    | Move the focused session row up or down in the sidebar                      |
+| ⌃Tab, ⇧⌘[ ] | Next and previous tab                                                       |
+| ⌘W          | Close the tab (the session keeps going)                                     |
+| ⌘E, ⇧⌘E     | Split: a new shell beside, below                                            |
+| ⌘[ ]        | Previous and next pane                                                      |
+| ⌘J          | Next session waiting on you                                                 |
+| ⌘F          | Find in the terminal or the file                                            |
+| ⌘K          | Command palette                                                             |
+| ⌘,          | Settings                                                                    |
+| ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                    |
+| ⌘I          | Agent cockpit (the inspector)                                               |
+| ⌘B          | Session deck under the agent's terminal                                     |
+| ⌘\          | Hide or show the sidebar                                                    |
+| ⌘0, ⇧⌘D     | Dashboard tab, and back                                                     |
+| ⌘R          | Reload the window (View → Reload)                                           |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 (Quick chat is Ctrl+Alt+Shift+N). The arrow chords are Alt+Shift there

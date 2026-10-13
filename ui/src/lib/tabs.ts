@@ -88,6 +88,8 @@ export type WorkspaceAction =
   | { type: 'activate-index'; index: number }
   | { type: 'cycle'; delta: 1 | -1 }
   | { type: 'move'; tabId: string; toIndex: number }
+  /** The strip in this order (the sidebar's, AppShell); tabs not named keep theirs after. */
+  | { type: 'order'; ids: string[] }
   | { type: 'project'; projectId: string }
   /** Puts the pinned Dashboard tab in the strip, or takes it out. */
   | { type: 'dashboard'; open: boolean }
@@ -282,6 +284,13 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       const to = Math.max(0, Math.min(a.toIndex, rest.length))
       rest.splice(to, 0, tab)
       return { ...ws, tabs: rest }
+    }
+    case 'order': {
+      const byId = new Map(ws.tabs.map((x) => [x.id, x] as const))
+      const first = a.ids.map((id) => byId.get(id)).filter((x): x is Tab => !!x)
+      const named = new Set(first.map((x) => x.id))
+      const tabs = [...first, ...ws.tabs.filter((x) => !named.has(x.id))]
+      return tabs.every((x, i) => x === ws.tabs[i]) ? ws : { ...ws, tabs }
     }
     case 'project':
       return ws.activeProject === a.projectId ? ws : { ...ws, activeProject: a.projectId }

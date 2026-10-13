@@ -149,7 +149,7 @@ describe('rows keep their places', () => {
 })
 
 describe('the rows ⌥⌘↑ ⌥⌘↓ walk', () => {
-  it('are the project\'s tabs and its active sessions with no tab, in the fixed order; idle and hidden ones with no tab are not stops', () => {
+  it('are the rows the sidebar lists: every agent session of the project, tab or not, in the fixed order; hidden ones are not stops', () => {
     const sessions = [
       live({ session_id: 'a', started_at: 1 }),
       live({ session_id: 'i', started_at: 2, activity: { phrase: '', at: '', health: 'idle' } }),
@@ -161,7 +161,7 @@ describe('the rows ⌥⌘↑ ⌥⌘↓ walk', () => {
     const p = props(sessions, tabs)
     const node = p.model.projects.find((n) => n.project.id === 'alpha')
     const hidden = new Map([['h', Date.now()]])
-    expect(sessionStops(node, tabs, p.tabLabels!, undefined, hidden).map((s) => s.key)).toEqual(['a', 'b', 'c'])
-    expect(sessionStops(node, tabs, p.tabLabels!, ['c', 'b'], hidden).map((s) => [s.key, s.tabId ?? s.session?.session_id])).toEqual([['c', 'tc'], ['b', 'b'], ['a', 'ta']])
+    expect(sessionStops(node, tabs, p.tabLabels!, undefined, hidden).map((s) => s.key)).toEqual(['a', 'i', 'b', 'c'])
+    expect(sessionStops(node, tabs, p.tabLabels!, ['c', 'b'], hidden).map((s) => [s.key, s.tabId ?? s.session?.session_id])).toEqual([['c', 'tc'], ['b', 'b'], ['a', 'ta'], ['i', 'i']])
   })
 })

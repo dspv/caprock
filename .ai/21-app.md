@@ -138,34 +138,38 @@ One window, three regions:
   *Projects* heading says how many and how many have something running
   (*● 3 of 12*), and *Outside projects* can be hidden from its row like any
   project (it was the one row with no way out; owner, 2026-10-11). **Under
-  each project, only what is active** (owner, 2026-10-13, FB-053: "way too
-  much stuff, I want only active sessions there", translated): what works,
-  loops or waits on you, and the tab in front, so it always has its row. It
-  replaced one row per project (2026-10-12), which still showed an idle tab
-  and, opened, a *N hidden · hide again* line and every idle *new session*.
-  Idle and hidden rows, files and quiet shells fold behind one quiet *+N
-  more* line, which breaks itself down in its tooltip (*2 idle · 1 shell ·
-  1 hidden*) and opens in place for the window's life (sessionStorage), so
-  it is not left open for good. A project with nothing active that is not
-  current is its row alone: its chevron shows the rest, and a click makes it
-  current. The chevron of an active project folds it by hand, kept per
-  viewer (`caprock-sidebar-folded`) ([04-ui.md](04-ui.md) § Sidebar). Opened, its tabs
-  under the strip's names (`lib/tablabels.ts`; shells
-  numbered *Shell 1*, *Shell 2*; a branch only when it is not the
-  project's). No worktree or branch rows, and no session that is not in a
-  tab — those are on the project's page (*Recent*), in ⌘K and in the
-  Inbox. The one highlighted row in the sidebar is the tab in front; the
-  current project's name is bold, with a faint edge and no fill, and every
-  project row above the folds carries its ⌘1–⌘9 key. **Rows keep their
+  each project, every agent session** (owner, 2026-10-13, translated:
+  "when will this *+1 more* go away … show only the agent sessions, don't
+  move anything, don't add extra elements"): working, waiting and idle,
+  one 28px row each with no agent mark (the agent is in the tooltip), and
+  no *+N more* line. That line (FB-053, earlier the same day: only what was
+  active, the rest folded behind *+N more*) hid the very rows the owner
+  steered by. Shells and file tabs have no rows — they are in the strip —
+  an ended session drops off, and a hidden row is gone until *More…*
+  shows it again. A project's chevron folds it by hand, kept per viewer
+  (`caprock-sidebar-folded`); folded, it still lists what waits in it
+  ([04-ui.md](04-ui.md) § Sidebar). Rows read the strip's names
+  (`lib/tablabels.ts`; a branch only when it is not the project's). No
+  worktree or branch rows, and no ended session — those are on the
+  project's page (*Recent*), in ⌘K and in the Inbox. The one highlighted
+  row in the sidebar is the tab in front; the current project's name is
+  bold, with a faint edge and no fill. **Rows keep their
   places** (owner, 2026-10-13, translated: "fixed positions, I orient
   visually by them"; `lib/rowOrder.ts`): by the order set by hand, then by
   when the session started, never by the strip, the front or a state, so a
-  row picked from the list stays where it was when it becomes a tab, and
-  with *+N more* open the folded rows sit in their places among the active
-  ones. A row is moved by dragging it onto another or with ⌥⇧↑ ⌥⇧↓ on it;
-  the order is kept per project and viewer (`caprock.app.row-order`).
-  ⌘1–⌘9 bring a project to the front by its place in the sidebar, ⌥⌘↑ ⌥⌘↓
-  walk the sessions of the project in front, ⌥⌘← ⌥⌘→ the projects
+  row picked from the list stays where it was when it becomes a tab. A
+  row is moved by dragging it onto another or with ⌥⇧↑ ⌥⇧↓ on it; the
+  order is kept per project and viewer (`caprock.app.row-order`; the flat
+  list's under `*`). **Group by project or one list** (owner, same day,
+  translated: "top I see 1, 2, 3; on the left I see 4, 2"): a folder
+  toggle beside the heading (`caprock.app.sidebar-grouped`, on by
+  default) switches to one flat list of every agent session, each row
+  with its project's dot and short name. **One numbering**: ⌘1–⌘9 is the
+  Nth top-level item of the sidebar — a project when grouped, a session
+  when flat — the strip is kept in the sidebar's order (`order` in
+  `lib/tabs.ts`), and only the tab ⌘N brings shows its digit. ⌥⌘↑ ⌥⌘↓
+  walk the sessions of the project in front (the whole list when flat),
+  ⌥⌘← ⌥⌘→ the projects
   (Alt+Shift arrows off macOS; [04-ui.md](04-ui.md) § The app workspace, *Keyboard*, says why not
   ⌥← ⌥→ or ⌘↑ ⌘↓). There is no *Waiting on you* section
   (owner, 2026-10-11: "not needed at all — everything is already visible in
@@ -176,9 +180,8 @@ One window, three regions:
   can't close it or hide it afterwards", translated): a tab row's × closes
   the tab; a row with no tab has a × that hides it from the list, signalling
   nothing (rule 7), and ■ beside it stops what Caprock started after a
-  confirmation. Hidden rows wait last inside *+N more*, muted, each with an
-  eye that shows it again, and come back by themselves when they next wait
-  on you. The same actions are in each row's
+  confirmation. Hidden rows are listed under *More…* and come back by
+  themselves when they next wait on you. The same actions are in each row's
   right-click / Shift+F10 menu; the buttons are 26px, on hover and focus,
   and always shown on a touch screen ([04-ui.md](04-ui.md) § Sidebar). A **Dashboard** entry opens the existing
   screens in a Dashboard tab pinned at the left of the tab strip (2026-10-09:
@@ -395,10 +398,10 @@ One window, three regions:
   because ordering by activity moved a project when it was clicked. A project hidden by hand
   from its menu or closed with its row's × (which since 2026-10-09
   replaces the hover eye, and hides only when nothing runs or waits in it)
-  goes under *Hidden · N*, where the
-  same actions show it again. Hidden wins over what runs in it and over being
-  in front: the project in front moves under *Hidden* with its tabs open and
-  stays in view under that heading while the fold is closed. It comes back
+  is hidden (under *More…* since 2026-10-13), where the
+  same actions show it again. Hidden wins over what runs in it, but not
+  over being in front: the project in front stays listed, last, with its
+  tabs open. It comes back
   out only when it needs you again — a permission prompt, or a turn that ended
   after it was hidden (`projectHidden`, the same rule as a hidden session
   row). Until 0.112.0 a project in front or with any agent at "your turn"
@@ -410,8 +413,11 @@ One window, three regions:
   (`caprock.app.hidden-projects`; an older plain list of ids still reads),
   not the daemon: the projects API has no hide flag, and unlisting
   (`DELETE /v1/projects/{id}`) takes the project out of every list, phone
-  and palette included, which is not what hiding means. Which folds are open is
-  `caprock.app.project-folds`; both start closed.
+  and palette included, which is not what hiding means. Since 2026-10-13 the *More projects*
+  and *Hidden* folds are one quiet *More…* row at the end of the list
+  (owner, translated: "one button like *More…*"): it opens a menu of the
+  other projects (click to open), then hidden projects and hidden session
+  rows (click to show). `caprock.app.project-folds` now holds only the footer fold.
 - **Tabs (main).** Terminal tabs — an agent session or a shell — of every
   project in one strip, each with its project's chip; picking a project
   never takes a tab out of it (2026-10-09: with a strip per project, the

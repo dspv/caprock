@@ -53,38 +53,36 @@ const hiddenIds = () => Object.keys(JSON.parse(localStorage.getItem(HIDDEN_KEY)!
 beforeEach(() => { localStorage.clear(); sessionStorage.clear() })
 
 describe('the sidebar', () => {
-  it('opens only the current project, its tab in front the one row under it and the one highlighted row, the idle rest behind +N more as the strip names them', () => {
+  it('lists every agent session under its project and no shells, the tab in front the one highlighted row', () => {
     const pane = (id: string, kind: 'session' | 'shell', sessionId: string) => ({ type: 'pane' as const, id, target: { kind, sessionId } })
     const tabs: Tab[] = [
       { id: 't1', projectId: 'alpha', root: pane('p1', 'session', 'a1'), focusedPaneId: 'p1', title: 'Fix the login' },
       { id: 't2', projectId: 'beta', root: pane('p2', 'shell', 'b1'), focusedPaneId: 'p2', title: 'shell' },
       { id: 't3', projectId: 'alpha', root: pane('p3', 'shell', 'a2'), focusedPaneId: 'p3', title: 'shell' },
-      { id: 't4', projectId: 'alpha', root: pane('p4', 'shell', 'a3'), focusedPaneId: 'p4', title: 'shell' },
+      { id: 't5', projectId: 'alpha', root: pane('p5', 'session', 'a5'), focusedPaneId: 'p5', title: 'Write the docs' },
     ]
     const labels = tabLabels(tabs, new Map(), new Set(), () => undefined)
     const onActivateTab = vi.fn()
-    const { rerender, props } = renderSidebar({ tabs, tabLabels: labels, activeProjectId: 'alpha', activeTabId: 't3', dashboardActive: false, onActivateTab })
-    const list = screen.getByRole('group', { name: 'alpha: open tabs' })
-    const titles = () => [...list.querySelectorAll('[data-tab-row] span.flex-1')].map((b) => b.textContent)
-    expect(titles()).toEqual(['Shell 1'])
-    fireEvent.click(within(list).getByRole('button', { name: /\+2 more/ }))
-    // Opened, every row in its fixed place (lib/rowOrder.ts), the one in
-    // front among them rather than first.
-    expect(titles()).toEqual(['Fix the login', 'Shell 1', 'Shell 2'])
+    const { rerender, props } = renderSidebar({ tabs, tabLabels: labels, activeProjectId: 'alpha', activeTabId: 't5', dashboardActive: false, onActivateTab })
+    const list = screen.getByRole('group', { name: 'alpha: sessions' })
+    const titles = () => [...list.querySelectorAll('[data-tab-row] [data-row-title]')].map((b) => b.textContent)
+    // Every agent session, in its fixed place; no shell, no "+N more".
+    expect(titles()).toEqual(['Fix the login', 'Write the docs'])
+    expect(document.querySelector('[data-more-rows]')).toBeNull()
     // One highlighted row.
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)
-    expect(document.querySelector('[data-tab-row="t3"]')).toHaveAttribute('aria-current', 'true')
+    expect(document.querySelector('[data-tab-row="t5"]')).toHaveAttribute('aria-current', 'true')
     expect(document.querySelector('[data-project-row="alpha"]')).toHaveAttribute('aria-expanded', 'true')
-    expect(document.querySelector('[data-project-row="beta"]')).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByRole('group', { name: 'beta: open tabs' })).toBeNull()
+    // Beta has only a shell: its row alone.
+    expect(screen.queryByRole('group', { name: 'beta: sessions' })).toBeNull()
     fireEvent.click(within(list).getByText('Fix the login'))
     expect(onActivateTab).toHaveBeenCalledWith('t1')
     fireEvent.click(document.querySelector('[data-project-row="beta"]')!)
     expect(props.onSelectProject).toHaveBeenCalledWith('beta')
-    // Beta current: alpha, with nothing active, is its row alone; beta opens on its own tab list.
+    // Beta current: alpha's sessions stay listed, nothing moves.
     rerender(<Sidebar {...props} activeProjectId="beta" activeTabId="t2" />)
-    expect(screen.queryByRole('group', { name: 'alpha: open tabs' })).toBeNull()
-    expect(within(screen.getByRole('group', { name: 'beta: open tabs' })).getByText('Shell 1')).toBeInTheDocument()
+    expect(titles()).toEqual(['Fix the login', 'Write the docs'])
+    expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(0)
     // No Waiting on you block: what waits is marked on its own row.
     expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull()
   })
@@ -106,7 +104,7 @@ describe('the sidebar', () => {
     expect(listed()).toEqual(['alpha', 'beta', 'stale'])
   })
 
-  it('above eight projects, folds the ones not in play under More projects, closed until opened, and remembers it open', () => {
+  it('above eight projects, keeps the ones not in play behind one More…, which opens them as a list', () => {
     const many = buildSidebar({
       projects: [proj('alpha', 1, true), proj('beta', 2, true), ...['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'].map((id) => proj(id, 30))],
       sessions: [],
@@ -114,17 +112,18 @@ describe('the sidebar', () => {
       costs: new Map(),
       openSessions: new Set(),
     })
-    const rest = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7']
-    const first = renderSidebar({ model: many })
+    const { props } = renderSidebar({ model: many })
     expect(listed()).toEqual(['alpha', 'beta'])
-    const fold = screen.getByRole('button', { name: /More projects · 7/ })
-    expect(fold).toHaveAttribute('aria-expanded', 'false')
-    fireEvent.click(fold)
-    expect(listed()).toEqual(['alpha', 'beta', ...rest])
-    expect(JSON.parse(localStorage.getItem(FOLDS_KEY)!)).toEqual(['more'])
-    first.unmount()
-    renderSidebar({ model: many })
-    expect(listed()).toEqual(['alpha', 'beta', ...rest])
+    expect(screen.queryByRole('button', { name: /More projects/ })).toBeNull()
+    const more = document.querySelector('[data-sidebar-more]') as HTMLElement
+    expect(more.textContent).toBe('More…')
+    expect(more.getAttribute('title')).toBe('7 more projects')
+    fireEvent.click(more)
+    const menu = screen.getByRole('menu', { name: 'More projects and hidden rows' })
+    expect(within(menu).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'].map((id) => `${id}open`))
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /^p3/ }))
+    expect(props.onSelectProject).toHaveBeenCalledWith('p3')
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 
   it('lists, after the current project\'s tabs, what of it still runs with no tab, muted; a click opens it', () => {
@@ -148,24 +147,25 @@ describe('the sidebar', () => {
     const tabs: Tab[] = [{ id: 't1', projectId: 'alpha', root: { type: 'pane', id: 'p1', target: { kind: 'session', sessionId: 'a1' } }, focusedPaneId: 'p1', title: 'Fix the login' }]
     const onOpenLive = vi.fn()
     renderSidebar({ model: withLive, tabs, tabLabels: tabLabels(tabs, new Map(), new Set(), () => undefined), activeProjectId: 'alpha', activeTabId: 't1', dashboardActive: false, onOpenLive })
-    const list = screen.getByRole('group', { name: 'alpha: open tabs' })
+    const list = screen.getByRole('group', { name: 'alpha: sessions' })
     // All of it works: nothing is folded.
     expect(list.querySelector('[data-more-rows]')).toBeNull()
     expect([...list.querySelectorAll('[data-tab-row]')].map((b) => b.getAttribute('data-tab-row'))).toEqual(['t1'])
-    // Agents first, the most recent first; the ended one is not listed.
-    expect([...list.querySelectorAll('[data-live-row] span.flex-1')].map((b) => b.textContent)).toEqual(['Write the docs', 'Shell'])
+    // The agent with no tab; not the shell, not the ended one.
+    expect([...list.querySelectorAll('[data-live-row] [data-row-title]')].map((b) => b.textContent)).toEqual(['Write the docs'])
     expect(within(list).queryByText('No tabs open.')).toBeNull()
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)
-    fireEvent.click(list.querySelector('[data-live-row="a3"]')!)
-    expect(onOpenLive).toHaveBeenCalledWith(sessions[2], 'alpha')
+    fireEvent.click(list.querySelector('[data-live-row="a2"]')!)
+    expect(onOpenLive).toHaveBeenCalledWith(sessions[1], 'alpha')
   })
 
-  it('says no tabs are open only when nothing of the project runs', () => {
+  it('draws no list under a project with no agent session, and no filler line', () => {
     renderSidebar({ activeProjectId: 'alpha', dashboardActive: false })
-    expect(within(screen.getByRole('group', { name: 'alpha: open tabs' })).getByText('No tabs open.')).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'alpha: sessions' })).toBeNull()
+    expect(screen.queryByText('No tabs open.')).toBeNull()
   })
 
-  it('closes a project into Hidden with its × and shows it again from there, across a reload', () => {
+  it('closes a project with its × into More… and shows it again from there, across a reload', () => {
     const first = renderSidebar()
     fireEvent.click(screen.getByRole('button', { name: 'Close project beta' }))
     expect(listed()).toEqual(['alpha', 'stale'])
@@ -174,25 +174,22 @@ describe('the sidebar', () => {
 
     renderSidebar()
     expect(listed()).toEqual(['alpha', 'stale'])
-    const hidden = screen.getByRole('region', { name: 'Hidden' })
-    fireEvent.click(within(hidden).getByRole('button', { name: /Hidden · 1/ }))
-    fireEvent.click(within(hidden).getByRole('button', { name: 'Show beta in the list again' }))
+    fireEvent.click(document.querySelector('[data-sidebar-more]')!)
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: /^beta/ }))
     expect(listed()).toEqual(['alpha', 'beta', 'stale'])
-    expect(screen.queryByRole('region', { name: 'Hidden' })).not.toBeInTheDocument()
+    expect(document.querySelector('[data-sidebar-more]')).toBeNull()
     expect(hiddenIds()).toEqual([])
   })
 
-  it('hides the project in front: it moves under Hidden, still in view with the fold closed, and Show brings it back', () => {
+  it('hides the project in front: it stays listed, last, until it is shown again from its own row', () => {
     renderSidebar({ activeProjectId: 'beta', dashboardActive: false })
     fireEvent.click(screen.getByRole('button', { name: /^Hide beta/ }))
     expect(hiddenIds()).toEqual(['beta'])
-    const hidden = screen.getByRole('region', { name: 'Hidden' })
-    expect(within(hidden).getByRole('button', { name: /Hidden · 1/ })).toHaveAttribute('aria-expanded', 'false')
-    // Out of the list above, kept in view under Hidden: the one in front.
-    expect(top()).toEqual(['alpha', 'stale'])
-    expect(hidden.querySelector('[data-project-row="beta"]')).toHaveAttribute('data-current')
-    fireEvent.click(within(hidden).getByRole('button', { name: 'Show beta in the list again' }))
-    expect(screen.queryByRole('region', { name: 'Hidden' })).toBeNull()
+    expect(top()).toEqual(['alpha', 'stale', 'beta'])
+    expect(document.querySelector('[data-project-row="beta"]')).toHaveAttribute('data-current')
+    // Not in More… while it is in front: it is on screen already.
+    expect(document.querySelector('[data-sidebar-more]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Show beta in the list again' }))
     expect(listed()).toEqual(['alpha', 'beta', 'stale'])
   })
 
@@ -228,7 +225,7 @@ describe('the sidebar', () => {
     expect(top()).toEqual(['other-folders'])
     fireEvent.click(screen.getByRole('button', { name: /^Hide Outside projects/ }))
     expect(top()).toEqual([])
-    expect(within(screen.getByRole('region', { name: 'Hidden' })).getByRole('button', { name: /Hidden · 4/ })).toBeInTheDocument()
+    expect(document.querySelector('[data-sidebar-more]')!.getAttribute('title')).toBe('4 hidden')
   })
 
   it('reads the older list of hidden ids', () => {
@@ -250,7 +247,7 @@ describe('the sidebar', () => {
     fireEvent.click(more)
     const menu = screen.getByRole('menu', { name: 'beta: project actions' })
     const items = within(menu).getAllByRole('menuitem')
-    expect(items.map((b) => b.textContent)).toEqual(['Hide from the sidebarunder Hidden', 'Close its tabnone open', 'Remove from Caprock…files stay'])
+    expect(items.map((b) => b.textContent)).toEqual(['Hide from the sidebarunder More…', 'Close its tabnone open', 'Remove from Caprock…files stay'])
     // Nothing open: the close item says so and cannot be picked.
     expect(items[1]).toBeDisabled()
     expect(document.activeElement).toBe(items[0])
@@ -284,10 +281,9 @@ describe('the sidebar', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /Hide from the sidebar/ }))
     expect(listed()).toEqual(['beta', 'stale'])
     expect(hiddenIds()).toEqual(['alpha'])
-    // From Hidden, the same menu shows it again.
-    fireEvent.click(screen.getByRole('button', { name: /Hidden · 1/ }))
-    fireEvent.contextMenu(document.querySelector('[data-project-row="alpha"]')!)
-    fireEvent.click(screen.getByRole('menuitem', { name: /Show in the sidebar again/ }))
+    // More… shows it again.
+    fireEvent.click(document.querySelector('[data-sidebar-more]')!)
+    fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: /^alpha/ }))
     expect(listed()).toEqual(['alpha', 'beta', 'stale'])
   })
 
@@ -374,9 +370,7 @@ describe('the sidebar', () => {
     renderSidebar({ model: m })
     expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull()
     expect(screen.queryByText(/Older, put down/)).toBeNull()
-    // The one waiting now is the row shown; the old one is under +1 more, which says nothing waits there.
-    expect(screen.getByRole('button', { name: '+1 more' })).not.toHaveAttribute('data-waiting')
-    fireEvent.click(screen.getByRole('button', { name: '+1 more' }))
+    // Both are listed; only the one waiting now is marked.
     expect(document.querySelector('[data-live-row="now1"]')).toHaveAttribute('data-waiting', 'true')
     expect(document.querySelector('[data-live-row="old1"]')).not.toHaveAttribute('data-waiting')
     // The project row still counts only what waits now.

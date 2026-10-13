@@ -264,7 +264,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],
   ['⌘J', 'Next session waiting on you'],
-  ['⌘1–8, ⌘9', 'A project by its place in the sidebar; the last one'],
+  ['⌘1–8, ⌘9', 'The sidebar’s Nth item (a project, or a session when not grouped); the last'],
   ['⌥⌘↓, ⌥⌘↑', 'Next and previous session of the project in front'],
   ['⌥⌘→, ⌥⌘←', 'Next and previous project'],
   ['⌥⇧↑, ⌥⇧↓', 'Move the focused session row up or down in the sidebar'],

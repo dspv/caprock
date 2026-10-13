@@ -19,6 +19,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   terminal and ⌘↑ ↓ stay the terminal's; in a text field the arrow chords
   keep selecting there. The project in front has a faint edge in the
   sidebar, so you see where you are among the others.
+- **app:** *Group by project*, a folder toggle beside the sidebar's
+  heading: off, the sidebar is one list of every agent session in a kept
+  order, each row with its project's colour dot and short name, and ⌘1–⌘9
+  pick sessions instead of projects. The app remembers the choice.
 - **app:** drag a session row under a project onto another to put it
   there, or focus it and press ⌥⇧↑ / ⌥⇧↓ (Ctrl+Shift off macOS); the order
   is kept for that project, also after a restart.
@@ -66,11 +70,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** rows under a project keep their places. Picking a session from
   the sidebar, opening it as a tab or bringing it to the front no longer
   moves it up: rows go in the order you set by hand, then in the order the
-  sessions started, and a new one lands last. With *+N more* open the
-  folded rows sit in their places among the active ones, and the line goes
-  last as *Fold N back*.
-- **app:** ⌘1–⌘9 now pick a project rather than a tab by its place in the
-  strip; ⌃Tab and ⇧⌘[ ] still cycle the tabs.
+  sessions started, and a new one lands last.
+- **app:** under each project the sidebar lists every agent session —
+  working, waiting or idle — and nothing hides behind a *+N more* line.
+  Shells and open files have no rows (they are in the tab strip), an ended
+  session drops off, and rows are 28 pixels with no agent mark (the agent
+  is in the tooltip).
+- **app:** one quiet *More…* row at the end of the sidebar replaces the
+  *More projects* and *Hidden* folds: it lists the other projects (click
+  to open) and the hidden projects and session rows (click to show again).
+- **app:** ⌘1–⌘9 now pick the sidebar's Nth item rather than a tab by its
+  place in the strip, and the strip follows the sidebar's order, so the
+  numbers on the left and on top agree; only the tab ⌘N brings shows its
+  digit. ⌃Tab and ⇧⌘[ ] still cycle the tabs.
 - **app:** tabs are named by their session again, so four or six tabs all
   keep their names: the project is the coloured dot (and in the tooltip
   with the agent and the branch), the agent mark is gone from the tab, the
