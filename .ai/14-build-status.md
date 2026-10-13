@@ -73,6 +73,24 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — 0.113.0: what Caprock costs this computer, and less of it
+
+A user's machine felt slow and the owner could not say whether it was
+Caprock. Measured on his Mac first: about 1 GB of memory once the app's
+WebKit helpers are counted (they were not), a 2.2 GB database half of which
+was verbatim tool output and screenshots from hooks, and the whole database
+read every 30 minutes by the storage figures and on every start by the share
+dialog's warm-up. Shipped together: `caprock doctor` and `GET /v1/footprint`,
+the same report one click from the status bar, one daemon per data
+directory, an orphan sweep every 10 minutes that also stops other installs'
+idle holders, hook payloads clipped like transcript ones (841 MB less on a
+copy of his database), storage measured on demand, a slow-query log, a daily
+idle sweep of old pastes and leftovers, a hidden window that does no work,
+and a pull requests panel that opens on what it last knew. Also: burn rate
+as the cockpit's default headline, the spend chart's hovered figure in full,
+and a phone put away gives the PTY back. Every cleanup runs on its own on a
+user's machine (owner, 2026-10-13); old rows are not rewritten yet.
+
 ### 2026-10-13 — unreleased: a hidden window does no work
 
 The owner measured the app's page at about 3% of a core with nothing

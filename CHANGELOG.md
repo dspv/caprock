@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.113.0] - 2026-10-13
+
 ### Added
 
 - **cli:** `caprock doctor` says what Caprock costs this machine — memory and
