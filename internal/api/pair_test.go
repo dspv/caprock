@@ -586,3 +586,56 @@ func TestCancellingACodeStopsItWorking(t *testing.T) {
 		t.Errorf("withdrawing twice: %d %s", w.Code, w.Body)
 	}
 }
+
+// fakeLAN is the daemon's switch, counted: the handler's job is to pass the
+// owner's choice through and to clear *keep on* whenever access is turned off.
+type fakeLAN struct {
+	on, keep bool
+}
+
+func (f *fakeLAN) EnableLAN() (string, error) { f.on = true; return "http://192.168.1.10:4173", nil }
+func (f *fakeLAN) DisableLAN() error          { f.on = false; return nil }
+func (f *fakeLAN) LANKeepOn() bool            { return f.keep }
+func (f *fakeLAN) SetLANKeepOn(on bool) error { f.keep = on; return nil }
+
+// *Keep on after Caprock restarts* is stored only when asked for, and turning
+// access off clears it: an "off" that comes back at the next start is not off
+// (ADR-060).
+func TestKeepOnIsStoredWithOnAndClearedByOff(t *testing.T) {
+	f := &fakeLAN{}
+	s := New(Deps{Version: "test", Token: "tok", LAN: f, DataDir: t.TempDir()})
+
+	if w := serveAs(s, http.MethodPost, "/v1/pair/lan", owner, `{"on":true}`); w.Code != http.StatusOK || f.keep {
+		t.Fatalf("plain on: %d keep=%v, want 200 and keep untouched", w.Code, f.keep)
+	}
+	if w := serveAs(s, http.MethodPost, "/v1/pair/lan", owner, `{"on":true,"keep":true}`); w.Code != http.StatusOK || !f.keep {
+		t.Fatalf("on with keep: %d keep=%v", w.Code, f.keep)
+	}
+	var st pairState
+	w := serveAs(s, http.MethodGet, "/v1/pair/state", owner, "")
+	if err := json.Unmarshal(w.Body.Bytes(), &st); err != nil || !st.KeepOn {
+		t.Fatalf("state should report keep_on: %s", w.Body)
+	}
+	if w := serveAs(s, http.MethodPost, "/v1/pair/lan", owner, `{"on":false}`); w.Code != http.StatusOK || f.keep || f.on {
+		t.Fatalf("off: %d keep=%v on=%v, want both cleared", w.Code, f.keep, f.on)
+	}
+}
+
+// The panel says "works anywhere" or "this Wi-Fi only" before anything is
+// turned on, so Tailscale is reported while access is off too.
+func TestPairStateReportsTailscaleWhileOff(t *testing.T) {
+	old := tailscaleUp
+	t.Cleanup(func() { tailscaleUp = old })
+	s := New(Deps{Version: "test", Token: "tok", DataDir: t.TempDir()})
+	for _, up := range []bool{true, false} {
+		tailscaleUp = func() bool { return up }
+		var st pairState
+		w := serveAs(s, http.MethodGet, "/v1/pair/state", owner, "")
+		if err := json.Unmarshal(w.Body.Bytes(), &st); err != nil {
+			t.Fatal(err)
+		}
+		if st.Enabled || st.Tailscale != up {
+			t.Fatalf("tailscale up=%v: got enabled=%v tailscale=%v", up, st.Enabled, st.Tailscale)
+		}
+	}
+}

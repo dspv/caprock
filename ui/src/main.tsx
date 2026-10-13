@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import '@fontsource-variable/hanken-grotesk'
 import '@fontsource-variable/jetbrains-mono'
 import '@/design/tokens.css'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { isAppMode, isTrayRoute } from '@/lib/appmode'
 import { loadTerminalFont } from '@/lib/termfont'
 import { watchUiVersion } from '@/lib/staleui'
@@ -43,8 +44,12 @@ const Root = remote
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Suspense fallback={null}>
-      <Root />
-    </Suspense>
+    {/* A throw anywhere above a screen's own boundary: a way back and a way
+      * to tell us, never the blank window it used to leave. */}
+    <ErrorBoundary full>
+      <Suspense fallback={null}>
+        <Root />
+      </Suspense>
+    </ErrorBoundary>
   </StrictMode>,
 )

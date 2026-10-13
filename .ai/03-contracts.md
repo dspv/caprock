@@ -154,11 +154,17 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   browser cannot set one — the WebSocket subprotocol `caprock.device.<token>`,
   echoed back to complete the handshake. Never a query parameter: that writes a
   bearer token into every access log and browser history entry on the device.
-- **Never stored.** Paired devices survive a restart; the decision to listen
-  does not. Settable at startup with `--lan` or at runtime with `POST
-  /v1/pair/lan` (`{on: bool}`, loopback-only) — a restart-only switch is
-  reachable only from a terminal on the machine, which is the one place the
-  person who wants it is not.
+- **Not stored unless the owner asks.** Paired devices survive a restart; the
+  decision to listen does not, unless `lan_keep_on` is true in `config.json`
+  (ADR-060, off by default), when the daemon turns it on at start as `--lan`
+  would. Settable at startup with `--lan` or at runtime with `POST
+  /v1/pair/lan` (`{on: bool, keep?: bool}`, loopback-only; answers
+  `{enabled, url?, keep_on}`) — a restart-only switch is reachable only from a
+  terminal on the machine, which is the one place the person who wants it is
+  not. `keep` is stored only with `on: true`; `on: false` always clears
+  `lan_keep_on`. `on: true` while already listening also opens the Tailscale
+  listener when a Tailscale address has appeared since and none is listened
+  on, leaving the first listener alone.
 - **A token makes a device a reader, not the owner.** A paired device may make
   only the reads named in `pairedDeviceRoutes` (`internal/api/lanauth.go`),
   matched on method and route pattern: `GET`/`HEAD` of `/v1/sessions`,
@@ -248,9 +254,12 @@ or `magicdns` — the last the Tailscale address by its MagicDNS name, from
 `tailscale status --json` when the CLI answers within 2 s and the name is that
 address's. The Host and Origin checks admit exactly these names. A code works
 on any of them; a phone's token is kept per address (browser storage is per
-origin), so each address pairs once. An address appearing later (Tailscale
-installed while LAN access is on) is listened on after LAN access is turned
-off and on.
+origin), so each address pairs once. A Tailscale address appearing later
+(Tailscale installed while LAN access is on) is listened on at the next `POST
+/v1/pair/lan {on: true}`, which the pairing panel sends when it sees one.
+`GET /v1/pair/state` also carries `tailscale: true` when the machine has a
+Tailscale address now — from the interface list, listened on or not, while
+access is off too — and `keep_on`, the stored `lan_keep_on` (ADR-060).
 
 **Pairing endpoints.** `GET /v1/pair/state`, `POST /v1/pair/code`,
 `DELETE /v1/pair/code` and `DELETE /v1/pair/devices/{id|all}` are
@@ -2918,8 +2927,8 @@ Caprock Mail ([ADR-057](08-decisions.md)). Code: `internal/mail` (HTTP in
 (DDL in `schema.sql`), `internal/mail/oauth` (sign-in with Google and
 Microsoft; HTTP in `http_oauth.go`), `ui/src/screens/mail`. Every write is
 JSON, as the CSRF guard requires. Before the first account exists only `GET
-/v1/mail/state`, `GET /v1/mail/providers` and `GET /v1/mail/oauth/providers`
-answer without opening Mail.
+/v1/mail/state`, `GET /v1/mail/providers`, `GET /v1/mail/oauth/providers` and `GET
+/v1/mail/import` answer without opening Mail.
 
 - `GET /v1/mail/state` — `{accounts, folders, counts: {inbox, unread, flagged}, version}`; `version` moves on every local change and is what the screen polls.
 - `GET /v1/mail/providers?email=` — server settings for an address: `{provider, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, note, help_url, known, needs_username, username, source}`. Lookup order, first answer wins, `source` says which: `preset` — the domain is in the table in `internal/mail/providers/providers.go` (about 40 consumer services, each entry citing the provider's own settings page); `mx` — the domain's MX points at a host in that table (Google Workspace, Microsoft 365, iCloud+, Zoho, Fastmail, Yandex 360 and the hosts people put their own domain on: Rackspace, GoDaddy, Namecheap Private Email, Spacemail, IONOS, OVHcloud, Hostinger, Titan, Infomaniak, STRATO, Migadu and others; the longest matching hint wins); `srv` — RFC 6186 records `_imaps._tcp` / `_imap._tcp` and `_submissions._tcp` / `_submission._tcp` (implicit TLS preferred; an IMAP record is required); `autoconfig` — the domain's own Thunderbird-format file, `https://autoconfig.<domain>/mail/config-v1.1.xml?emailaddress=<addr>` then `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, SSL or STARTTLS servers only, `%EMAILADDRESS%` / `%EMAILLOCALPART%` / `%EMAILDOMAIN%` substituted, a redirect followed only within the domain; `guess` — `imap.<domain>` / `smtp.<domain>`, `known: false`. `needs_username` is set for an iCloud+ custom domain (sign-in is the @icloud.com address) and when autoconfig names a sign-in other than the address, given in `username`. Every network call goes to the user's own domain — its DNS and its web server, 3 s each; no third-party directory (Mozilla's ISPDB included) is asked. A preset domain makes no network call at all.
@@ -2927,6 +2936,8 @@ answer without opening Mail.
 - `GET /v1/mail/oauth/providers` — `{google: bool, microsoft: bool}`: which *Sign in with …* buttons work in this build (a provider without a client ID is `false`; see [docs/mail-oauth.md](../docs/mail-oauth.md)). Answers without opening Mail.
 - `POST /v1/mail/oauth/start` — `{provider: "google" | "microsoft"}` → `{auth_url}`, the provider's page for the screen to open in the browser. The authorization code flow with PKCE (S256); `state` and the verifier stay in memory, single use, for 10 minutes. The redirect is this daemon's own port on loopback: `http://127.0.0.1:<port>/v1/mail/oauth/callback` for Google, `http://localhost:<port>/…` for Microsoft (which ignores the port only for `localhost`). `409` when the provider has no client ID, `403` when the request did not reach the daemon by a loopback name (a paired phone: the browser could not come back).
 - `GET /v1/mail/oauth/callback?code=&state=` — where the provider sends the browser. Exchanges the code (with the verifier), reads the address from the ID token, checks IMAP and SMTP with XOAUTH2, stores the refresh token in the secret store under the account's item, and creates the account — or switches an existing account with the same address to the sign-in, keeping its mail. Answers a small self-contained HTML page (*Connected — you can close this tab*, or the error); the screen sees the account through `GET /v1/mail/state`. It is the one `/v1` route admitted as a cross-site top-level GET (the browser arrives from the provider's page): only as `GET`, only on a loopback `Host`; the single-use `state` is its CSRF protection. Unknown, used or expired state is `400`.
+- `GET /v1/mail/import` — the accounts the user already has in another client, so Mail can offer to add them instead of retyping: `{sources: [{kind, label, accounts: [{name, email, username, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, has_password}], needs_permission?, error?}]}`. `kind` is `thunderbird` or `apple_mail`. It reads only that client's own local files and opens nothing else (no `mail.db`, no engine). Passwords are never in the answer: Thunderbird's are decrypted locally (pure-Go NSS: PBKDF2-SHA256 + AES-256-CBC key wrap, 3DES or AES login blobs) and `has_password` is set, but the password stays in the daemon; Apple Mail passwords are not recoverable, so `has_password` is always false there. `needs_permission: "full_disk_access"` is returned for Apple Mail when its account store (`~/Library/Accounts/Accounts4.sqlite`) cannot be read without Full Disk Access.
+- `POST /v1/mail/import` — `{source, emails: [...], passwords?: {email: password}}`; adds the chosen accounts one at a time, exactly like `POST /v1/mail/accounts` (IMAP and SMTP verified first, nothing stored on refusal, password in the keychain). Each password comes from the source (decrypted locally, re-read fresh — it never crossed HTTP) or from `passwords` for accounts without one. Answers `{results: [{email, ok, error?}]}`; one account failing never stops the rest.
 - `GET /v1/mail/messages?view=&account=&folder=&q=&before=&before_id=&limit=` — newest first, without bodies. `view`: `inbox unread flagged sent drafts archive junk trash folder all`; `q` is a full-text query (every word a prefix) over subject, people and body.
 - `GET /v1/mail/messages/{id}` — one message with `body_text` and `body_html` (cleaned), fetched from the server if the background pass has not yet. `GET .../thread` — the conversation, oldest first. `GET .../part/{path}` — one attachment or inline image by IMAP part path or `cid:<id>`; `?download=1` forces an attachment disposition; served with a sandboxing CSP.
 - `POST /v1/mail/actions` — `{ids, action, folder}`; `action`: `read unread flag unflag archive trash spam inbox move`. Archive goes to the Archive folder, else Gmail's All Mail, else a new `Archive`; trash on a message already in Trash deletes it.
@@ -3392,7 +3403,13 @@ Two exceptions, both deliberate:
 - **Sessions with no pid** — written by an older shim, or read from a transcript
   with no live process behind them — fall back to a 24-hour staleness sweep,
   because there is nothing to verify and the only cost of being slow is a stale
-  row.
+  row. One fact is checked first: when such a session's transcript file (only
+  when `has_transcript`, so the file was read and existed) or its `cwd` no
+  longer exists, the next sweep ends it (2026-10-14: a test script wrote nine
+  synthetic transcripts and deleted them, and the nine sessions read from them
+  would otherwise have stayed listed as working for 24 hours). Only "does not
+  exist" counts; a permission error ends nothing. There is no end-reason
+  column, so the row records the end as any other sweep's.
 
 **`sessions.status` is derived, and `ended` is sticky only against the past.**
 An explicit status from a caller (a `SessionEnd` hook, `SetExit`, the sweep)

@@ -972,6 +972,14 @@ server of ours, and there is nothing to install from an app store.
    storage, so it asks to pair once more: type the six digits shown on the
    computer.
 
+The top of the panel says where the phone will work: *Works on this Wi-Fi
+only*, or *Works anywhere (Tailscale)* once this computer has Tailscale. It
+notices Tailscale by itself while the panel is open; nothing to restart.
+
+Phone access switches off when Caprock restarts (an update, a reboot) unless
+you tick **Keep on after Caprock restarts**, beside **Turn on** or under the
+panel. Only phones you paired get in either way; **Turn off** also clears it.
+
 The phone appears under *Paired devices*. It can look but not change
 anything until you press **Let it control sessions** beside it; **Take
 control away** undoes that at once. The rest of what pairing allows, and

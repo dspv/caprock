@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -100,4 +101,23 @@ func count(reqs []string, part string) int {
 		}
 	}
 	return n
+}
+
+// A run GitHub lists no jobs for yet goes out as `"jobs": []`. It went out as
+// null, and the app's deck, reading it as a list, drew a black window on
+// every launch while that release run was the newest.
+func TestWithBaselinesKeepsAnEmptyJobListAList(t *testing.T) {
+	x := newFixture(t)
+	x.connect(t)
+	x.f.failWith("GET /repos/ada/caprock/actions/workflows/7/runs", func(w http.ResponseWriter, r *http.Request) {
+		answer(w, r, 200, map[string]any{"workflow_runs": []any{}})
+	})
+	got := x.s.WithBaselines(context.Background(), Repo{Owner: "ada", Name: "caprock"}, []CIRun{{ID: 70, WorkflowID: 7, Name: "Release", Status: "completed", Jobs: []CIJob{}}})
+	b, err := json.Marshal(got[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"jobs":[]`) {
+		t.Fatalf("jobs not an empty list: %s", b)
+	}
 }
