@@ -168,7 +168,8 @@ One window, three regions:
   screens in a Dashboard tab pinned at the left of the tab strip (2026-10-09:
   it replaced the whole workspace, and the first tester read that as every
   terminal closing, translated); in it, Now leaves out the session cards and
-  the projects panel the sidebar already shows. A session Caprock
+  the projects panel the sidebar already shows, and keeps the Repos table
+  under the pulse ([04-ui.md](04-ui.md) § Repos on Now). A session Caprock
   cannot type into — started in another terminal, ended, or detached by a
   restart — opens in **an app tab of its own**, never the Dashboard tab
   (owner, 2026-10-13: "why when I click one of these on the left am I taken

@@ -117,10 +117,15 @@ others. Installing it: [install-app.md](install-app.md).
 - **Dialogs.** Every dialog — Quick chat, New agent, Add project, the
   palette, Share and the rest — closes with the × in its corner, a click
   outside it, or Esc. In the app,
-  Now keeps its figures — today, plan limits, the pulse, all time, at a
-  glance, the activity feed — and leaves the session cards and the projects
-  panel to the sidebar, which lists the same sessions; the browser dashboard
-  shows both.
+  Now keeps its figures — today, plan limits, the pulse, the repos, all
+  time, at a glance, the activity feed — and leaves the session cards and the
+  projects panel to the sidebar, which lists the same sessions; the browser
+  dashboard shows both. **Repos**, under the pulse, has a row for each
+  repository a session runs in: commits a day over two weeks, today's and the
+  week's, lines added and removed, files not committed, from the
+  repository's own git; with GitHub connected, its open pull requests, red
+  runs, median CI time and newest release, as the session deck last read
+  them. Fold it and it reads nothing.
 - **Quick chat.** Ask something without picking a folder: a session in
   Caprock's data directory opens in a tab, under *Outside projects* in the
   sidebar, and its tab is called *Quick chat* with its model. ⌥⌘N, *Quick

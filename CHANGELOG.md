@@ -9,6 +9,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** a **Repos** table on Now, under Live pulse: a row per repository
+  with a session running in it — commits a day over 14 days, today's and
+  the week's, lines added and removed, files not committed and the last
+  commit, from the repository's own git (read at most every 10 minutes);
+  and, while GitHub is connected, open pull requests, red runs with the
+  median CI time and the newest release, only from what the session deck
+  and its PRs & CI tab already read — the table asks GitHub nothing. Folds
+  like the other panels, remembered per viewer; folded, it asks nothing.
+- **api:** `GET /v1/repos/activity`, the Repos table's rows.
 - **app:** the session deck's pull requests and CI, large. **Expand** beside
   *Hide ⌘B* opens a *PRs & CI* tab: the repository's last 14 days on top —
   pull requests merged per day, the median time to merge, the median CI run
