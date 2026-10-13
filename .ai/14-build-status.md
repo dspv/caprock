@@ -73,6 +73,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — 0.115.1: mail connects first time, terminal glyphs survive a sleep
+
+Two fixes on 0.115.0. iCloud and Gmail sign in the first time and one
+malformed IMAP answer no longer stops a folder (#542, from the Mail session).
+The agent terminal no longer paints squashed, half-cut letters after a sleep,
+a display change or a long hide: WebKit drops the WebGL glyph atlas without
+a contextlost event, so the pane rasterises again on show, on visibility and
+on a pixel-ratio change (#541; the owner saw it on 0.112.4).
+
 ### 2026-10-13 — 0.115.0: the rest of the afternoon list, the phone, and Mail
 
 Everything the owner asked for that missed 0.114.0. The sidebar lists every

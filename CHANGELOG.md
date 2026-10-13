@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.115.1] - 2026-10-13
+
 ### Fixed
 
 - **mail:** iCloud and Gmail accounts connect the first time. The sign-in
