@@ -62,8 +62,10 @@ field (`MaxToolField`, 32 KiB of JSON):
 
 Measured on a copy of the owner's database (2026-10-13): of 134,099 hook tool
 rows, 6,099 change, and their payloads go from 1,229 MB to 388 MB — 841 MB less
-for the same history. Rows stored before the cap keep what they have. The whole
-output of a clipped call is still in the agent's own transcript.
+for the same history. Rows stored before the cap lose their base64 too, once,
+while the daemon is idle, and keep their text whole (§ Payload compaction and
+auto-vacuum). The whole output of a clipped call is still in the agent's own
+transcript.
 
 **`PermissionRequest` is observed, and stored as `permission.prompt`**
 ([ADR-035](08-decisions.md), [ADR-036](08-decisions.md)). Claude Code fires it
@@ -770,7 +772,8 @@ What that file holds bounds what may ever be said about it: a timestamp and two 
 
 `GET /v1/storage` reports what Caprock keeps on disk: `{data_dir,
 total_bytes, files[], database?, measured_at?, measure_ms?, error?, measuring?,
-reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
+reclaimable_bytes, returns_free_space, growth_bytes_per_day_est,
+retention_days}`.
 
 - **`files`** is every top-level entry of the data directory, `{name, bytes,
   dir?}`, largest first; a directory is the sum of the regular files under it.
@@ -800,12 +803,13 @@ reclaimable_bytes, growth_bytes_per_day_est, retention_days}`.
   it was a `GROUP BY` over a join, which SQLite sorted through temp files
   carrying every payload (11 s in the sqlite3 shell on a 1.8 GB database,
   against 0.4 s for the scan; 2026-10-10).
-- **`reclaimable_bytes`** is `free_pages × page_size`: what a VACUUM would
-  return. **Caprock does not run VACUUM.** It rewrites the whole file, needs
-  free disk space for a second copy, and holds the write lock for its whole run,
-  stalling ingest; on a database that never deletes, the freelist is empty and
-  it would return nothing. The dashboard names the manual command (stop Caprock,
-  run `sqlite3 caprock.db VACUUM`) only when the free pages pass 64 MB.
+- **`reclaimable_bytes`** is `free_pages × page_size`: free space inside the
+  file. **`returns_free_space`** is true when the database is in
+  `auto_vacuum=INCREMENTAL` mode, so the daemon gives those pages back to the
+  disk while idle; false on a database created before 2026-10-13 until its one
+  idle-time VACUUM has run (§ Payload compaction and auto-vacuum). Read with a
+  `PRAGMA` on every request. Nothing in the panel asks the user to run anything:
+  it says which of the two is true.
 - **`growth_bytes_per_day_est` is an estimate and named as one** (rule 6): the
   payload recorded over the last 30 days, per day, times the events table's
   on-disk bytes (data and indexes) over the payload it holds. `0` when there is
@@ -969,13 +973,16 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
 - **`actions`** is what the daemon did about its footprint on its own,
   oldest first, the last 50 since it started, in memory only: every reap
   (§ Resources: on its own every 10 minutes, or from the button), every
-  write-ahead-log checkpoint, and every daily data-directory sweep that
+  write-ahead-log checkpoint, every daily data-directory sweep that
   removed something ([02-architecture.md § Retention and
-  cleanup](02-architecture.md#retention-and-cleanup)). Every remedy that is safe to apply unattended
-  is applied unattended — nobody else cleans up after a user's Caprock —
-  and said here. Nothing is done about another daemon, a second app or a
-  large database: stopping a process Caprock did not start is rule 7's
-  line, and deleting data is the user's call.
+  cleanup](02-architecture.md#retention-and-cleanup)), and the database
+  compaction — each run that replaced base64 in older events, the one
+  VACUUM (or why it did not run or stopped), and each incremental vacuum
+  that gave space back (§ Payload compaction and auto-vacuum). Every remedy
+  that is safe to apply unattended is applied unattended — nobody else
+  cleans up after a user's Caprock — and said here. Nothing is done about
+  another daemon or a second app (stopping a process Caprock did not start
+  is rule 7's line), and no history is deleted (that is the user's call).
 - **The WAL checkpoint.** Once a minute, on the I/O reading's tick, a WAL
   over 256 MiB is folded back with `PRAGMA wal_checkpoint(TRUNCATE)` — what
   SQLite's automatic checkpoint does in small steps, done at once and the
@@ -2952,6 +2959,60 @@ Two things about the key are load-bearing:
   those days at zero, which is the bug being fixed. After the migration all ten
   recent days on the owner's database match a `COUNT(DISTINCT session_id)` over
   the events themselves.
+
+### Payload compaction and auto-vacuum (no migration)
+
+Two changes to stored state that no migration can make: a migration runs in a
+transaction, and VACUUM cannot; and rewriting every payload inside one would
+hold the write lock for minutes on a large database. Both run in the daemon,
+only while it is idle (nothing recorded, and no request that may write, for
+30 minutes), and both are recorded in `meta` so they finish once
+(`internal/store/compact.go`, `vacuum.go`, `internal/daemon/compact.go`).
+
+- **Payload compaction.** Events stored before `event.CapToolField` still
+  hold base64. `store.CompactPayloadsStep` replaces it with the same marker the
+  write path writes (`[image image/png 512 KB not stored]`) through
+  `event.StripBinary`, which changes nothing else: **text is not clipped**, no
+  key or array element is dropped, and a payload with no base64 keeps its
+  bytes. It is stricter than the write path about what counts — the string
+  must be at least 256 bytes of the base64 alphabet — because it walks whole
+  payloads of every kind and version. `tool_bytes` keeps the size the tool
+  handed back. Each step reads 500 event ids outside any transaction, then
+  rewrites the rows that changed and moves the cursor in one short write
+  transaction, matching each row on the payload it read so a concurrent
+  rewrite (an assistant turn's merged prose) wins; the daemon pauses 50 ms
+  between steps and stops as soon as anything is recorded.
+  - `meta.payload_compact_until` — the highest event id when the pass began;
+    later rows were written capped and are never examined.
+  - `meta.payload_compact_cursor` — the highest id examined, then `done`.
+- **`auto_vacuum=INCREMENTAL`.** Every connection is opened with
+  `_pragma=auto_vacuum(INCREMENTAL)` before `journal_mode(WAL)`: a new database
+  takes the mode with its first table. An older database (mode NONE) takes it
+  with one VACUUM, which the daemon runs after the compaction has finished,
+  while idle, and only with the room for it: free disk of at least 2.2 × the
+  used size (file minus free pages) on the data directory's volume and 1.1 ×
+  on the temporary directory's. VACUUM copies the database to a temporary file
+  and writes it back through the WAL, so both copies exist at the peak. It is
+  limited to 10 minutes and interrupted by anything that wants to write (the
+  recorder's `OnWrite`, any API request but GET, HEAD and OPTIONS); an
+  interrupted VACUUM rolls back and changes nothing, and is tried again a day
+  later. The WAL it leaves is checkpointed with `TRUNCATE` at once. From then
+  on `PRAGMA incremental_vacuum(1024)` (4 MiB at a time, 50 ms apart) gives
+  the freelist back whenever it passes 8 MiB on an idle tick.
+
+Measured on a copy of the owner's database (2.2 GB, 484,842 events,
+2026-10-13), with a concurrent writer committing every 20 ms throughout:
+
+- **Compaction:** 4,181 rows rewritten, 750 MB of payload removed, 975 steps
+  in 79 s; slowest step 312 ms. The writer made 3,612 commits, none failed,
+  slowest 38 ms. A second pass changed nothing.
+- **VACUUM:** 2,176 MB to 1,384 MB in 21 s; the WAL reached 1,392 MB before
+  the checkpoint (72 ms); free disk fell by 2,777 MB at the peak — 1.94 × the
+  1,430 MB in use, which is where the 2.2 × requirement comes from. A
+  VACUUM interrupted 5 s in by a writer returned at once, the writer waited
+  2 ms, and the database was unchanged.
+- **Incremental:** 40 MB of freelist (20,000 events deleted) returned in 10
+  steps, 272 ms, slowest step 40 ms.
 
 ### Tool bytes DDL (migration 0018)
 

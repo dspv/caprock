@@ -200,6 +200,9 @@ type Daemon struct {
 	// activity is when the last event was recorded (unix ms, wall clock):
 	// the idle housekeeping waits for a quiet spell (cleanup.go).
 	activity atomic.Int64
+	// writes is when something last asked to write, and interrupts the
+	// idle-time VACUUM when it does (compact.go).
+	writes writeGate
 	// res is the resource meter (resources.go).
 	res *resourceMeter
 	// io is the last hour of the daemon's own disk I/O (footprint_io.go).
@@ -377,6 +380,7 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 	det := loop.New(opt.Config.LoopK, time.Duration(opt.Config.LoopTMinutes)*time.Minute)
 	d := &Daemon{opt: opt, log: log, store: st, bus: b, table: table, rec: rec, det: det, alerts: map[string]*loop.Alert{}, start: time.Now(), upd: update.New(), res: newResourceMeter()}
 	d.io, d.unlock, d.actions = newIORing(d.start), unlock, newActionLog()
+	rec.OnWrite = d.writes.want
 	ok = true
 	return d, nil
 }
@@ -621,7 +625,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d,
 		Projects: d.projs, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
 	})
-	srv := &http.Server{Handler: d.api, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: d.markWrites(d.api), ReadHeaderTimeout: 10 * time.Second}
 	// Held so LAN access can be switched on later without a restart. The
 	// dashboard is the only place a user is when they want it, and telling
 	// someone to go and find a terminal is telling them not to bother.

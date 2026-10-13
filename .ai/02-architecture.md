@@ -302,9 +302,20 @@ what and how many bytes it freed, and is listed in the footprint's `actions`
 - **The storage measurement** (a full read of the database) runs only when the
   Storage panel asks for figures older than a day, and once a day while idle
   ([03-contracts.md § Storage](03-contracts.md#storage)).
-- **Not done automatically: VACUUM.** It needs a second copy's worth of disk and
-  holds the write lock throughout; the Storage panel says how to run it by hand
-  when the free pages are worth it.
+- **The database compaction** runs on the same idle check, before the
+  measurement, and stands down the moment anything is to be written
+  (`daemon/compact.go`; details and measurements in [03-contracts.md § Payload
+  compaction and auto-vacuum](03-contracts.md#payload-compaction-and-auto-vacuum-no-migration)):
+  - **Base64 in older events** — screenshots and files stored before the write
+    path bounded them — becomes the same marker new events get, a few hundred
+    rows at a time, resumable, once. Text is kept whole.
+  - **One VACUUM**, after that, gives the space back and switches the database
+    to incremental auto-vacuum — only with free disk of 2.2 × the database's
+    used size, within 10 minutes, and rolled back unchanged if anything wants
+    to write meanwhile. Tried again daily until it has run.
+  - **Incremental vacuum** from then on returns free pages — from the retention
+    prune, from rows that shrank — 4 MiB at a time. A database created since
+    2026-10-13 is incremental from the start.
 
 ## Repository layout
 

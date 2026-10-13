@@ -44,6 +44,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** the hot-process flame on a sidebar row or tab draws again only
   when what it says changes: every row's mark redrew on each 5 s resources
   sample, hot or not. It stays a static mark — no animation to pause.
+- **daemon:** the database gets smaller on its own. While Caprock is idle
+  (nothing recorded for 30 minutes) it replaces the screenshots and files
+  that events stored before 0.113.0 still hold as base64 with the marker new
+  events get, *[image image/png 512 KB not stored]*, a few hundred events at
+  a time; the text of every event is kept whole. It then compacts the
+  database once — only with free disk of about twice its size, rolled back
+  unchanged if anything is recorded meanwhile — and from then on gives free
+  space back to the disk as it appears, including what a retention period
+  deletes. New databases do that from the start. On a copy of a 2.2 GB
+  database (2026-10-13): 4,181 events rewritten, 750 MB of payload removed in
+  79 s, compaction to 1.4 GB in 21 s; a writer committing every 20 ms
+  throughout never failed. `caprock doctor` lists each step under *done on
+  its own*; the Storage panel no longer tells you to stop Caprock and run
+  VACUUM, and `GET /v1/storage` carries `returns_free_space`.
 - **app:** the sidebar lists only active sessions under a project: what is
   working, looping or waiting on you, plus the tab in front so it always
   has its row. Idle sessions, rows you hid, files and quiet shells sit
