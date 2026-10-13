@@ -14,6 +14,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   place with a short date beside it (*$287.12 Sun 11 Oct · 06–12*, *of
   $1,299.44* at the right); leaving the chart puts the total back. In a
   330px cockpit the figure used to be the part cut off.
+- **terminal:** a phone put away gives the PTY back at once. With a session
+  open on the desktop and a phone, the desktop's terminal shrank to the
+  phone's width and stayed so after the phone was locked or closed, until
+  the session was reopened. A terminal going out of sight now says so and the
+  daemon returns the PTY to the terminal still in sight, at its size; the
+  desktop also re-sends its size whenever it is focused or shown, and
+  focusing the composer counts as using the session.
 
 ## [0.112.4] - 2026-10-13
 

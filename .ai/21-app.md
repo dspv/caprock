@@ -1337,7 +1337,14 @@ and the points below say where the build settled what this plan left open.
   types, and the desktop takes the PTY back, with a full repaint, the moment
   it is focused, clicked or typed into. It used to be "the last resize wins",
   and the desktop only sent a size when its own box changed (Vova,
-  2026-10-12).
+  2026-10-12). Every claim carries the terminal's size, and focus anywhere in
+  the pane counts, the composer included (it types over HTTP, so the daemon
+  never sees it as input). Going out of sight gives the PTY back at once, on
+  every device: the page hidden, a phone locked or sent to the background, a
+  tab hidden behind another, or the page going away sends `{"blur":true}`
+  (`TermClient.blur`), and the daemon hands the PTY to the terminal in sight
+  used most recently. Without it the desktop stayed at the phone's width after
+  the phone was put away, until the session was reopened (Vova, 2026-10-13).
 - **Modes on exit and restore.** When the child exits, or a snapshot repaints,
   the client resets mouse tracking, bracketed paste and the alternate screen
   before drawing, so a dead TUI's modes never leak into the next one.

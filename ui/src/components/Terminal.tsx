@@ -345,9 +345,20 @@ export function TerminalView({
     // the page coming back into view, a click in the terminal. A touch device
     // only watches until it types — picking a phone up is not taking the
     // session over, and its 45 columns would squeeze the desktop's agent.
-    const claim = () => { if (document.visibilityState === 'visible') client.focus() }
+    //
+    // The claim carries the size the terminal has now, so a PTY left at
+    // another terminal's size is put right by looking. And on every device,
+    // going out of sight (the page hidden, a phone locked or sent to the
+    // background) gives the PTY back to a terminal still in sight at once:
+    // waiting for the socket to be taken for dead left the desktop drawn at
+    // the phone's width (Vova, 2026-10-13).
+    const claim = () => { if (document.visibilityState === 'visible') client.focus(term.cols, term.rows) }
+    const away = () => { if (document.visibilityState === 'hidden') client.blur() }
+    const gone = () => client.blur()
     const hostEl = host.current
     const textarea = term.textarea
+    document.addEventListener('visibilitychange', away)
+    window.addEventListener('pagehide', gone)
     if (!light) {
       window.addEventListener('focus', claim)
       document.addEventListener('visibilitychange', claim)
@@ -411,6 +422,8 @@ export function TerminalView({
       attachRef.current = async () => {}
       window.removeEventListener('focus', claim)
       document.removeEventListener('visibilitychange', claim)
+      document.removeEventListener('visibilitychange', away)
+      window.removeEventListener('pagehide', gone)
       hostEl.removeEventListener('pointerdown', claim)
       textarea?.removeEventListener('focus', claim)
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); out?.dispose(); client.dispose(); unbench(); links.dispose(); unfont(); themeWatch?.disconnect(); term.dispose()

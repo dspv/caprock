@@ -565,4 +565,41 @@ describe('TermClient — claiming the PTY (focus)', () => {
     t.c.resize(100, 30)
     expect(texts(s1)).toEqual(['{"resize":{"cols":100,"rows":30}}'])
   })
+
+  // Vova (2026-10-13): the desktop stayed at a phone's width after the phone
+  // was put away. The claim re-sends the size, the latest of a burst.
+  it('a claim with a size sends it in the same frame', () => {
+    const t = mount()
+    const s1 = last()
+    s1.accept()
+    t.c.focus(150, 40)
+    t.c.focus(151, 40)
+    vi.advanceTimersByTime(FOCUS_DEBOUNCE_MS)
+    expect(texts(s1)).toEqual(['{"resize":{"cols":151,"rows":40},"focus":true}'])
+    t.c.focus()
+    vi.advanceTimersByTime(FOCUS_DEBOUNCE_MS)
+    expect(texts(s1)[1]).toBe('{"focus":true}')
+  })
+
+  it('going out of sight sends blur at once and drops a claim still waiting', () => {
+    const t = mount()
+    const s1 = last()
+    s1.accept()
+    t.c.focus(150, 40)
+    t.c.blur()
+    vi.advanceTimersByTime(FOCUS_DEBOUNCE_MS)
+    expect(texts(s1)).toEqual(['{"blur":true}'])
+    // The next first size is not a claim.
+    t.c.resize(150, 40)
+    expect(texts(s1)[1]).toBe('{"resize":{"cols":150,"rows":40}}')
+  })
+
+  it('a blur with no socket, or to a daemon from before v2, says nothing', () => {
+    const t = mount()
+    const s1 = last()
+    t.c.blur()
+    s1.accept('')
+    t.c.blur()
+    expect(texts(s1)).toEqual([])
+  })
 })

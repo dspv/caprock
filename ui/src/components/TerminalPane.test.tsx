@@ -17,6 +17,8 @@ const h = vi.hoisted(() => ({
   writes: [] as unknown[],
   suspends: 0,
   claims: 0,
+  claimSizes: [] as unknown[][],
+  blurs: 0,
 }))
 
 vi.mock('@xterm/xterm', () => ({
@@ -70,7 +72,8 @@ vi.mock('@/lib/termv2', () => ({
     suspend() { h.suspends++ }
     send() { return true }
     resize() {}
-    focus() { h.claims++ }
+    focus(...size: unknown[]) { h.claims++; h.claimSizes.push(size) }
+    blur() { h.blurs++ }
     dispose() {}
   },
 }))
@@ -92,6 +95,8 @@ beforeEach(() => {
   h.writes.length = 0
   h.suspends = 0
   h.claims = 0
+  h.claimSizes.length = 0
+  h.blurs = 0
   localStorage.clear()
   setTerminalPrefs(DEFAULT_PREFS)
 })
@@ -366,5 +371,38 @@ describe('a pane claims the PTY when it is looked at', () => {
     act(() => { window.dispatchEvent(new Event('focus')) })
     act(() => { document.dispatchEvent(new Event('visibilitychange')) })
     expect(h.claims).toBe(0)
+  })
+
+  // Vova (2026-10-13): the phone put away, the pane stayed drawn at the
+  // phone's width until the session was reopened.
+  it('with its size, so a PTY left at another terminal\'s size is put right by looking', () => {
+    render(<TerminalPane sessionId="a" active />)
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(h.claimSizes.at(-1)).toEqual([80, 24])
+  })
+
+  it('on focus anywhere in the pane, the composer included', () => {
+    const { container } = render(<TerminalPane sessionId="a" active />)
+    const before = h.claims
+    const field = document.createElement('textarea')
+    container.firstElementChild!.appendChild(field)
+    act(() => { field.focus() })
+    expect(h.claims).toBe(before + 1)
+  })
+
+  it('and gives it back on going out of sight: behind another tab, the window hidden, the page gone', () => {
+    const { rerender } = render(<TerminalPane sessionId="a" active />)
+    const before = h.blurs
+    rerender(<TerminalPane sessionId="a" active={false} />)
+    expect(h.blurs).toBe(before + 1)
+    rerender(<TerminalPane sessionId="a" active />)
+    const claims = h.claims
+    const vis = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(h.blurs).toBe(before + 2)
+    expect(h.claims).toBe(claims)
+    vis.mockRestore()
+    act(() => { window.dispatchEvent(new Event('pagehide')) })
+    expect(h.blurs).toBe(before + 3)
   })
 })
