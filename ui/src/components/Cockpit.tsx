@@ -192,9 +192,9 @@ function useChipRoom(row: RefObject<HTMLDivElement | null>, total: number): numb
  * going on and when it waits"). Three fixed rows:
  *
  * - **The agent's row**, as tall as the avatar: the character, whose ring
- *   carries the state's colour; the agent and model on one line (the model
- *   gives way, cut with the full name on hover); the state line in the same
- *   colour; how many subagents work. At its right, in a place of its own, the
+ *   carries the state's colour; the agent, its model on a line of its own
+ *   (never cut to make room for the figure), the state line in the same
+ *   colour. At its right, in a place of its own, the
  *   headline figure and what it is (owner, 2026-10-12: "put it to the right
  *   of the agent").
  * - **The detail row**: the permission mode and when it started under the
@@ -224,20 +224,22 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
         <div className="cockpit-avatar relative grid place-items-center rounded-[15px] [grid-area:av]" data-state={state}>
           <AgentCharacter who={characterFor(s.agent ?? 'claude')} size={46} className="cockpit-character" />
         </div>
+        {/* Name, model, state: three lines, so the model is never cut to
+          * make room for the figure at the right (owner, 2026-10-13, picked
+          * from three variants). */}
         <div className="grid min-w-0 content-start [grid-area:info]">
-          <p className="flex min-w-0 items-baseline whitespace-nowrap text-[13px] leading-[19px]">
-            <span className="shrink-0 font-semibold text-fg">{agentName(s.agent ?? 'claude')}</span>
-            {model ? <span className="min-w-0 truncate text-[12px] text-fg-muted" title={model}>&nbsp;· {model}</span> : null}
-            <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} className="min-w-0 shrink truncate text-[12px] text-fg-muted" />
-          </p>
+          <p className="truncate whitespace-nowrap text-[13px] font-semibold leading-[19px] text-fg">{agentName(s.agent ?? 'claude')}</p>
+          {model ? (
+            <p data-hero-model className="flex min-w-0 items-baseline whitespace-nowrap text-[12px] leading-[17px] text-fg-muted" title={model}>
+              <span className="truncate">{model}</span>
+              <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} className="min-w-0 shrink truncate text-[12px] text-fg-muted" />
+            </p>
+          ) : null}
           <p className={`flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[12.5px] font-medium leading-[19px] ${STATE_TEXT[state]}`} role="status"
             title={saysBackground ? backgroundLabel(background) : undefined}>
             <span className="cockpit-dot inline-block h-[7px] w-[7px] shrink-0 rounded-full" data-state={state} />
             <span className="truncate">{label}{ago ? <span className="font-normal text-fg-faint"> · {ago}</span> : null}</span>
           </p>
-          {count > 0 && state !== 'ended' && (
-            <p data-hero-count className="truncate text-[11.5px] leading-[17px] text-fg-muted">{count} {count === 1 ? 'subagent' : 'subagents'} working</p>
-          )}
         </div>
         {s.stats && <div data-hero-fig className="min-w-0 justify-self-end [grid-area:fig]"><HeadlineFigure figures={figures} /></div>}
         {/* The permission mode, and for a session Caprock started, the way
@@ -253,6 +255,9 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
           * when subagents start or finish (owner, 2026-10-13: "fix its
           * position and mark the subagents' place when nothing runs"). */}
         <div ref={chipRow} data-hero-chips className="flex min-w-0 items-center overflow-hidden [grid-area:chips]">
+          {count > 0 && state !== 'ended' && (
+            <span data-hero-count className="mr-2.5 shrink-0 text-[11px] text-fg-muted" title={`${count} ${count === 1 ? 'subagent' : 'subagents'} working`}>{count} working</span>
+          )}
           {strip.chips.length > 0
             ? <SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} />
             : state !== 'ended' && <span data-hero-nosubs className="text-[11px] text-fg-faint">no subagents running</span>}

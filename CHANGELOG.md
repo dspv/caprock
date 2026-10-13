@@ -7,6 +7,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the cockpit puts the model on its own line under the agent's
+  name, so a wide figure at the right no longer cuts it to *Opus …*; how
+  many subagents work now leads their row (*3 working*).
+
 ## [0.112.3] - 2026-10-13
 
 ### Changed

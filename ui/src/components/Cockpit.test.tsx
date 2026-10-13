@@ -228,7 +228,7 @@ describe('the agent cockpit', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Background agents')
     expect(screen.getByRole('status')).toHaveAttribute('title', 'Background agents working · 1')
     expect(screen.getByRole('status')).not.toHaveTextContent('Waiting')
-    expect(document.querySelector('[data-hero-count]')).toHaveTextContent('1 subagent working')
+    expect(document.querySelector('[data-hero-count]')).toHaveTextContent('1 working')
     const nowCard = screen.getByRole('region', { name: 'Now' })
     expect(within(nowCard).getByText('Background agents working · 1')).toBeInTheDocument()
     expect(within(nowCard).queryByText(/Waiting|Thinking/)).toBeNull()
