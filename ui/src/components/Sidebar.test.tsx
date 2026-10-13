@@ -50,10 +50,10 @@ const top = () => [...document.querySelectorAll('.app-scroll > ul [data-project-
 /** The project ids hidden by hand, as stored (id → when). */
 const hiddenIds = () => Object.keys(JSON.parse(localStorage.getItem(HIDDEN_KEY)!) as Record<string, number>)
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => { localStorage.clear(); sessionStorage.clear() })
 
 describe('the sidebar', () => {
-  it('opens only the current project, its tab in front the one row under it and the one highlighted row, the rest behind +N more as the strip names them', () => {
+  it('opens only the current project, its tab in front the one row under it and the one highlighted row, the idle rest behind +N more as the strip names them', () => {
     const pane = (id: string, kind: 'session' | 'shell', sessionId: string) => ({ type: 'pane' as const, id, target: { kind, sessionId } })
     const tabs: Tab[] = [
       { id: 't1', projectId: 'alpha', root: pane('p1', 'session', 'a1'), focusedPaneId: 'p1', title: 'Fix the login' },
@@ -80,7 +80,7 @@ describe('the sidebar', () => {
     expect(onActivateTab).toHaveBeenCalledWith('t1')
     fireEvent.click(document.querySelector('[data-project-row="beta"]')!)
     expect(props.onSelectProject).toHaveBeenCalledWith('beta')
-    // Beta current: alpha folds, beta opens on its own tab list.
+    // Beta current: alpha, with nothing active, is its row alone; beta opens on its own tab list.
     rerender(<Sidebar {...props} activeProjectId="beta" activeTabId="t2" />)
     expect(screen.queryByRole('group', { name: 'alpha: open tabs' })).toBeNull()
     expect(within(screen.getByRole('group', { name: 'beta: open tabs' })).getByText('Shell 1')).toBeInTheDocument()
@@ -148,7 +148,8 @@ describe('the sidebar', () => {
     const onOpenLive = vi.fn()
     renderSidebar({ model: withLive, tabs, tabLabels: tabLabels(tabs, new Map(), new Set(), () => undefined), activeProjectId: 'alpha', activeTabId: 't1', dashboardActive: false, onOpenLive })
     const list = screen.getByRole('group', { name: 'alpha: open tabs' })
-    fireEvent.click(within(list).getByRole('button', { name: /\+2 more/ }))
+    // All of it works: nothing is folded.
+    expect(list.querySelector('[data-more-rows]')).toBeNull()
     expect([...list.querySelectorAll('[data-tab-row]')].map((b) => b.getAttribute('data-tab-row'))).toEqual(['t1'])
     // Agents first, the most recent first; the ended one is not listed.
     expect([...list.querySelectorAll('[data-live-row] span.flex-1')].map((b) => b.textContent)).toEqual(['Write the docs', 'Shell'])
@@ -394,8 +395,8 @@ describe('the sidebar', () => {
     expect([...document.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['asking'])
   })
 
-  it('draws a project’s last hour, offers a new agent at rest, and folds a live project by hand', () => {
-    const live = { session_id: 'a1', cwd: '/w/alpha', project: 'alpha', model: '', started_at: 1, last_event_at: Date.now(), status: 'active', git_branch: '', owned: true, title: 'Fix the login' } as unknown as SessionSummary
+  it('draws a project’s last hour, offers a new agent at rest, and folds a working project by hand', () => {
+    const live = { session_id: 'a1', cwd: '/w/alpha', project: 'alpha', model: '', started_at: 1, last_event_at: Date.now(), status: 'active', git_branch: '', owned: true, title: 'Fix the login', activity: { phrase: '', at: '', health: 'working' } } as unknown as SessionSummary
     const ended = { ...live, session_id: 'a0', status: 'ended', title: 'old' } as unknown as SessionSummary
     const m = buildSidebar({
       projects: [proj('alpha', 1, true)], sessions: [live, ended], permissions: new Set(), costs: new Map(), openSessions: new Set(),

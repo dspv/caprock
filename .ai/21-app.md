@@ -134,19 +134,22 @@ One window, three regions:
   project) that needs no hover — no branch, no ±, no spend. The owner asked
   for the three on 2026-10-11 (translated: "neat small activity charts, a
   button to fold or hide, a quick button to add something in the same
-  project"); hide, a new shell, the menu and close stay on hover. The current
-  project and any with something live or waiting are open; the chevron folds
-  one by hand, kept per viewer (`caprock-sidebar-folded`). The *Projects*
-  heading says how many and how many have something running (*● 3 of 12*),
-  and *Outside projects* can be hidden from its row like any project (it was
-  the one row with no way out; owner, 2026-10-11). Under an open one, **one
-  row** (owner, 2026-10-12: "there should be the project, but only ONE card
-  under it; hide the rest inside", translated): its tab in front, or the one
-  last in front; else what asks, what waits, the agent that worked last, the
-  most recent. The rest fold behind one quiet *+N more* line, which says in
-  amber what in it waits (*+4 more · 1 asks*), breaks itself down in its
-  tooltip (*2 working · 1 idle · 1 shell*), and opens in place, remembered
-  per project ([04-ui.md](04-ui.md) § Sidebar). Opened, its tabs as
+  project"); hide, a new shell, the menu and close stay on hover. The
+  *Projects* heading says how many and how many have something running
+  (*● 3 of 12*), and *Outside projects* can be hidden from its row like any
+  project (it was the one row with no way out; owner, 2026-10-11). **Under
+  each project, only what is active** (owner, 2026-10-13, FB-053: "way too
+  much stuff, I want only active sessions there", translated): what works,
+  loops or waits on you, and the tab in front, so it always has its row. It
+  replaced one row per project (2026-10-12), which still showed an idle tab
+  and, opened, a *N hidden · hide again* line and every idle *new session*.
+  Idle and hidden rows, files and quiet shells fold behind one quiet *+N
+  more* line, which breaks itself down in its tooltip (*2 idle · 1 shell ·
+  1 hidden*) and opens in place for the window's life (sessionStorage), so
+  it is not left open for good. A project with nothing active that is not
+  current is its row alone: its chevron shows the rest, and a click makes it
+  current. The chevron of an active project folds it by hand, kept per
+  viewer (`caprock-sidebar-folded`) ([04-ui.md](04-ui.md) § Sidebar). Opened, its tabs as
   the strip shows them, same order, same names (`lib/tablabels.ts`; shells
   numbered *Shell 1*, *Shell 2*; a branch only when it is not the
   project's). No worktree or branch rows, and no session that is not in a
@@ -161,8 +164,9 @@ One window, three regions:
   can't close it or hide it afterwards", translated): a tab row's × closes
   the tab; a row with no tab has a × that hides it from the list, signalling
   nothing (rule 7), and ■ beside it stops what Caprock started after a
-  confirmation. Hidden rows wait behind *N hidden · show* and come back by
-  themselves when they next wait on you. The same actions are in each row's
+  confirmation. Hidden rows wait last inside *+N more*, muted, each with an
+  eye that shows it again, and come back by themselves when they next wait
+  on you. The same actions are in each row's
   right-click / Shift+F10 menu; the buttons are 26px, on hover and focus,
   and always shown on a touch screen ([04-ui.md](04-ui.md) § Sidebar). A **Dashboard** entry opens the existing
   screens in a Dashboard tab pinned at the left of the tab strip (2026-10-09:
@@ -476,16 +480,20 @@ One window, three regions:
   `context_note` instead), no plan windows for an agent with none. A shell
   tab keeps the plain inspector (folder, changes, actions). Code:
   `components/Cockpit.tsx`, derivations in `lib/cockpit.ts`.
-- **Claude Code's own status line: Full, Short or Off** (owner, 2026-10-13:
+- **Claude Code's own status line: Full, Short, Hidden or Off** (owner, 2026-10-13:
   the cockpit already shows cost, turns and limits, so the full line inside
   Claude's TUI repeats it and crowds the bottom of the terminal). Settings →
   *Status line* (`components/StatuslineSetting.tsx`, `statusline_mode`),
   Full by default so nothing changes for anyone who does not choose. Short
   is model, context and the two plan windows, with the five-hour reset time
   only from 80%; Off removes Caprock's own `statusLine` entry from Claude
-  Code's settings (never the user's own) and Full or Short puts it back. The
-  line reads the choice as it draws, and Off also stops Claude's plan
-  windows reaching the cockpit, which the setting says
+  Code's settings (never the user's own) and any other choice puts it back.
+  The line reads the choice as it draws, and Off also stops Claude's plan
+  windows reaching the cockpit, which the setting says. Hidden (owner, later
+  the same day: the row should go but the limits must keep coming) keeps the
+  entry and prints nothing, so Claude Code draws no row while the plan
+  windows still reach the cockpit; the page recommends it under every other
+  choice and never picks it for anyone
   ([03-contracts.md § Statusline](03-contracts.md#statusline)).
 - **Session deck (under the agent's terminal)** (owner, 2026-10-11,
   translated: "I want to be able to enlarge the bottom area so that I

@@ -9,6 +9,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** Settings → *Status line* → *Hidden*: no line under Claude Code, so the
+  row goes, while your plan limits keep reaching Caprock's cockpit and Cost
+  screen — which *Off* stops. Recommended on the page, never chosen for
+  you; Full stays the default.
 - **app:** the cockpit's headline says how it compares with your own usual —
   *▲ 38%*, *≈ usual*, *▼ 55%*, *▲ 4.5×* left of *burn rate ▾* — against
   your median active session-hour (burn rate), your median session (cost,
@@ -40,6 +44,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** the hot-process flame on a sidebar row or tab draws again only
   when what it says changes: every row's mark redrew on each 5 s resources
   sample, hot or not. It stays a static mark — no animation to pause.
+- **app:** the sidebar lists only active sessions under a project: what is
+  working, looping or waiting on you, plus the tab in front so it always
+  has its row. Idle sessions, rows you hid, files and quiet shells sit
+  behind one faint *+N more* (its tooltip says what it holds, hidden rows
+  included); opened, the hidden ones come last with an eye to show them
+  again. The separate *N hidden · show* line is gone, *+N more* no longer
+  stays open across restarts, and a project with nothing active is just
+  its own line, its arrow listing what is in it.
 - **app:** Spend moves up in the cockpit, from after the plan windows to
   directly under *Now*. Folded, it is a strip of the chart's own bars and
   three figures, the chart's metric first, instead of a faint sentence a

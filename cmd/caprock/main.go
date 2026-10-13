@@ -120,7 +120,7 @@ func upCmd() *cobra.Command {
 				// the same way as hooks. Non-fatal if declined. Not when
 				// Settings → Status line is Off: that removed our entry, and
 				// the next start must not put it back.
-				if config.NormalizeStatusline(cfg.StatuslineMode) != config.StatuslineOff {
+				if config.StatuslineRegistered(cfg.StatuslineMode) {
 					if err := maybeInstallStatusline(cmd, yes); err != nil {
 						fmt.Fprintf(cmd.ErrOrStderr(), "warning: statusline not installed: %v\n", err)
 					}

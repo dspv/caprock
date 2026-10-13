@@ -1,6 +1,7 @@
 /**
  * Settings → Status line. Full until chosen, so nobody's line changes unless
- * they pick something; a choice saves only the mode and shows at once.
+ * they pick something; a choice saves only the mode and shows at once. Hidden
+ * is recommended in words, never picked for anyone.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
@@ -46,6 +47,22 @@ describe('StatuslineSetting', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Off' }))
     await waitFor(() => expect(state.saved.at(-1)).toEqual({ statusline_mode: 'off' }))
     expect(screen.getByText(/removed from Claude Code/)).toBeTruthy()
+    expect(screen.getByText(/stops your plan limits reaching Caprock/)).toBeTruthy()
+    expect(screen.getByText(/pick Hidden/)).toBeTruthy()
     expect(screen.getByText(/never changed/)).toBeTruthy()
+  })
+
+  it('offers Hidden, recommends it until chosen, and says the limits keep coming', async () => {
+    state.mode = 'full'
+    state.saved = []
+    const { container } = render(<StatuslineSetting />)
+    const radios = (await screen.findAllByRole('radio')).map((r) => r.textContent)
+    expect(radios).toEqual(['Full', 'Short', 'Hidden', 'Off'])
+    expect(container.querySelector('[data-statusline-recommend]')?.textContent).toMatch(/Recommended: Hidden/)
+    fireEvent.click(screen.getByRole('radio', { name: 'Hidden' }))
+    await waitFor(() => expect(state.saved).toEqual([{ statusline_mode: 'hidden' }]))
+    expect(screen.getByRole('radio', { name: 'Hidden' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByText(/still reach Caprock/)).toBeTruthy()
+    expect(container.querySelector('[data-statusline-recommend]')).toBeNull()
   })
 })
