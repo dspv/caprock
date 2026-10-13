@@ -64,4 +64,12 @@ describe('the version panel', () => {
     render(<VersionPanel shown="0.106.0" title="" onStatus={() => {}} status={{ ...base, current: 'v0.106.0' }} />)
     expect(document.querySelector('[data-version-apart]')).toBeNull()
   })
+
+  it('closes from its own button, not only from outside or Esc', () => {
+    render(<VersionPanel shown="0.105.0" title="" onStatus={() => {}} status={{ ...base, current: '0.105.0', latest: '0.105.0', checked_at: Date.now() }} />)
+    fireEvent.click(screen.getByRole('button', { name: /0\.105\.0/ }))
+    expect(screen.getByRole('dialog', { name: 'Caprock version' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog', { name: 'Caprock version' })).toBeNull()
+  })
 })

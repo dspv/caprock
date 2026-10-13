@@ -20,6 +20,7 @@ import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { upgradeCommands } from './AppUpdateNotice'
 import { Copyable } from './ui'
+import { CloseIcon } from './AppIcons'
 
 export function VersionPanel({ shown, title, status, onStatus }: {
   /** The version on screen: the app's own, else the daemon's. */
@@ -84,13 +85,19 @@ export function VersionPanel({ shown, title, status, onStatus }: {
       {open && (
         <div role="dialog" aria-label="Caprock version" data-version-panel
           className="app-fade-in absolute bottom-[22px] right-0 z-40 grid w-[320px] max-w-[calc(100vw-24px)] gap-3 rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-4 text-[13.5px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-[16px] font-semibold">Caprock <span className="mono">{shown}</span></span>
+          <div className="flex items-center gap-2">
+            <span className="mr-auto text-[16px] font-semibold">Caprock <span className="mono">{shown}</span></span>
             {available
               ? <span className="font-medium text-accent">{latest} is out</span>
               : st?.enabled === false
                 ? <span className="text-fg-faint">checks are off</span>
                 : latest ? <span className="font-medium text-ok">✓ up to date</span> : null}
+            {/* A close button too: clicking outside or Esc closed it, but
+                nothing said so (owner, 2026-10-14). */}
+            <button type="button" aria-label="Close" title="Close (Esc)" onClick={() => setOpen(false)}
+              className="-mr-1.5 ml-1 self-center rounded-[6px] p-1 text-fg-faint hover:bg-panel-2 hover:text-fg">
+              <CloseIcon size={14} />
+            </button>
           </div>
           <p className="text-fg-muted" data-checked>
             {st?.enabled === false
