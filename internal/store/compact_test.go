@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,6 +16,10 @@ import (
 
 // oldRow stores a payload the way a version before event.CapToolField did:
 // verbatim.
+// oldRowSeq keys the rows: Windows' clock can return the same nanosecond
+// twice in a tight loop, and a repeated key is a duplicate event.
+var oldRowSeq atomic.Int64
+
 func oldRow(t *testing.T, st *Store, kind event.Kind, payload string) int64 {
 	t.Helper()
 	ctx := context.Background()
@@ -26,7 +31,7 @@ func oldRow(t *testing.T, st *Store, kind event.Kind, payload string) int64 {
 		var err error
 		id, err = InsertEvent(ctx, q, &event.Event{
 			Ts: time.UnixMilli(1_790_000_000_000), SessionID: "s1", Source: event.SourceHook, Kind: kind,
-			Tool: "mcp__browser__screenshot", Key: "k" + strconv.Itoa(int(time.Now().UnixNano())), Payload: json.RawMessage(payload),
+			Tool: "mcp__browser__screenshot", Key: "k" + strconv.FormatInt(oldRowSeq.Add(1), 10), Payload: json.RawMessage(payload),
 		})
 		return err
 	}); err != nil {
