@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.112.4] - 2026-10-13
+
 ### Changed
 
 - **app:** the cockpit puts the model on its own line under the agent's

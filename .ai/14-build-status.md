@@ -73,6 +73,14 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — 0.112.4: the model on its own line
+
+The cockpit's agent row is name / model / state, so a wide figure at the
+right never cuts the model to *Opus …*; the subagent count leads the chips'
+row. Picked by the owner from three variants on a local compare page
+before release, rather than shipped and corrected. Also the UI toolchain
+bump (vite 8.3.4, jsdom 30.1.2).
+
 ### 2026-10-13 — 0.112.3: the cockpit's hero holds one layout in every state
 
 The agent's row with the headline figure fixed at its right, a detail row
