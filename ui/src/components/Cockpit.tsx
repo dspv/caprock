@@ -901,7 +901,8 @@ function WorkingSubagentRow({ a, waiting, now, open, panel, onToggle }: {
             </>
           )}
         </span>
-        <span className="num">{model}</span>
+        {/* While the badge holds line 1, its calls and cost move down here. */}
+        <span className="num">{waiting ? <>{calls}{model && <> · {model}</>}</> : model}</span>
       </span>
     </button>
   )

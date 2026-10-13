@@ -158,8 +158,10 @@ describe('the agent cockpit', () => {
       expect(within(rows[1]!).getByLabelText('Explore')).toHaveTextContent('E')
       expect(rows[0]).toHaveTextContent('Fix the cockpit')
       expect(rows[0]).toHaveTextContent('Bashgo test ./...')
-      expect(rows[0]).toHaveTextContent(/\d+s · 42 calls/)
-      expect(rows[1]).toHaveTextContent('Editsession.go')
+      expect(rows[0]).toHaveTextContent('Fix the cockpit42 calls')
+      expect(rows[0]).toHaveTextContent(/go test \.\/\.\.\.\d+s/)
+      // No task and no daemon phrase: the call itself leads, once.
+      expect(rows[1]!.querySelector('[data-doing]')).toHaveTextContent('Edit session.go')
       expect(rows[1]).toHaveTextContent('7 calls')
       expect(rows[1]).not.toHaveTextContent('waiting on you')
       expect(rows[2]).toHaveTextContent('waiting on you')
@@ -187,6 +189,9 @@ describe('the agent cockpit', () => {
       const doing = a!.querySelector('[data-doing]')
       expect(doing).toHaveTextContent('Rerun the store tests')
       expect(doing).toHaveAttribute('data-doing', 'call')
+      // The phrase is the command's own description: the raw command is not repeated.
+      expect(a).not.toHaveTextContent('go -C')
+      expect(a).toHaveTextContent('9 calls')
       expect(within(b!).getByLabelText('Plan')).toHaveTextContent('P')
       expect(b).toHaveTextContent('starting')
     } finally {
