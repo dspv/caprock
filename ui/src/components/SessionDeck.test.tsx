@@ -25,6 +25,8 @@ vi.mock('@/lib/api', async (orig) => {
 import { SessionDeck, forgetFoldedPRs, forgetPRProgress } from './SessionDeck'
 import { ApiError } from '@/lib/api'
 import { forgetDeckAnswers, readDeck, writeDeck } from '@/lib/deckCache'
+import { orderPRs, saveOpenPR } from '@/lib/ci'
+import type { SessionPRLive } from '@/lib/api'
 
 function agent(p: Partial<SessionSummary> = {}): SessionSummary {
   return {
@@ -53,6 +55,12 @@ const rowButton = (n: number) => {
   const b = document.querySelector(`[data-deck-pr="${n}"] button[aria-expanded]`)
   if (!b) throw new Error(`no row #${n}`)
   return b
+}
+
+/** Opens the current PR's row, as a viewer who opened it before would find it. */
+function openLead() {
+  const lead = orderPRs((h.prs as { prs: SessionPRLive[] }).prs)[0]
+  if (lead) saveOpenPR('s1', lead.number)
 }
 
 function show(p: Partial<Parameters<typeof SessionDeck>[0]> = {}) {
@@ -108,6 +116,7 @@ describe('the session deck', () => {
           steps: [st(1, 'go test', 'in_progress', undefined, now - 120_000)] },
       ] }] } }
     h.prs = { connected: true, prs: [prRow(9, livePR(9, RUNNING)), prRow(8, livePR(8, PASSED, { state: 'merged' }))] }
+    openLead()
     show()
     const lint = await screen.findByText('lint')
     expect(lint.closest('[data-deck-ci-job]')).toHaveAttribute('data-tone', 'pass')
@@ -158,6 +167,7 @@ describe('the session deck', () => {
     h.queued = []
     h.prs = { connected: true, prs: [prRow(428, livePR(428, FAILED, { title: 'Add CI' }))] }
     const onToast = vi.fn()
+    openLead()
     const first = show({ onToast })
     const b = await screen.findByRole('button', { name: 'Investigate' })
     fireEvent.click(b)
@@ -268,17 +278,48 @@ describe('the session deck', () => {
     fireEvent.click(rowButton(9))
     expect(document.querySelector('[data-deck-pr-detail]')).toBeNull()
     first.unmount()
-    // An open current PR whose checks passed opens by itself: its jobs fill the room.
-    h.prs = { connected: true, prs: [prRow(6, livePR(6, PASSED))] }
-    const second = show()
-    await waitFor(() => expect(document.querySelector('[data-deck-pr="6"] [data-deck-pr-detail]')).not.toBeNull())
-    second.unmount()
-    // A failed current PR opens by itself; with nothing before it, the list says so.
+    // An open current PR, failed or not, does not open by itself: the deck
+    // opens on the overview, each row with a circle per check (owner, 2026-10-13).
     h.prs = { connected: true, prs: [prRow(5, livePR(5, FAILED))] }
-    show()
-    await waitFor(() => expect(document.querySelector('[data-deck-pr="5"] [data-deck-pr-detail]')).not.toBeNull())
-    expect(rowButton(5)).toHaveAttribute('aria-expanded', 'true')
+    const second = show()
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="5"] [data-pipeline="compact"]')).not.toBeNull())
+    await new Promise((r) => setTimeout(r, 20))
+    expect(document.querySelector('[data-deck-pr-detail]')).toBeNull()
+    expect(rowButton(5)).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByText('No earlier PRs from this session.')).toBeInTheDocument()
+    // Opened by hand, it is remembered for this viewer: the next deck opens on it.
+    fireEvent.click(rowButton(5))
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="5"] [data-deck-pr-detail]')).not.toBeNull())
+    second.unmount()
+    show()
+    await waitFor(() => expect(rowButton(5)).toHaveAttribute('aria-expanded', 'true'))
+  })
+
+  it('draws a circle per check on every row, or the words, switched in one click and kept per viewer', async () => {
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, RUNNING)), prRow(8, livePR(8, FAILED, { state: 'merged' }))] }
+    const first = show()
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"] [data-pipeline="compact"]')).not.toBeNull())
+    // A running check pulses; the row's words stay in its hover.
+    expect(document.querySelector('[data-deck-pr="9"] [data-pipeline="compact"] [data-tone="running"]')).not.toBeNull()
+    expect(document.querySelector('[data-deck-pr="8"] [data-pipeline="compact"] [data-tone="fail"]')).not.toBeNull()
+    expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-ci]')).toHaveAttribute('data-marks', 'dots')
+    fireEvent.click(screen.getByRole('button', { name: 'Show the checks in words' }))
+    expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-ci]')).toHaveAttribute('data-marks', 'text')
+    expect(document.querySelector('[data-deck-pr="9"] [data-pipeline="compact"]')).toBeNull()
+    first.unmount()
+    show()
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="9"] [data-deck-pr-ci]')).toHaveAttribute('data-marks', 'text'))
+    fireEvent.click(screen.getByRole('button', { name: 'Show the checks as circles' }))
+    expect(document.querySelector('[data-deck-pr="9"] [data-pipeline="compact"]')).not.toBeNull()
+  })
+
+  it('keeps a list with its checks over the daemon’s quick first answer of bare rows', async () => {
+    writeDeck('prs:s1', { connected: true, fetched_at: now, prs: [prRow(9, livePR(9, RUNNING))] })
+    h.prs = { connected: true, refreshing: true, prs: [prRow(9)] }
+    show()
+    await waitFor(() => expect(h.prsAsked).toBeGreaterThan(0))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(document.querySelector('[data-deck-pr="9"] [data-pipeline="compact"]')).not.toBeNull()
   })
 
   it('says CI has not started on a fresh PR, and "no checks" on an old one — never "CI no CI"', async () => {
@@ -455,6 +496,7 @@ describe('the session deck', () => {
     h.ci = { connected: true, pr: { number: 9, url: 'https://github.com/a/b/pull/9', repo: 'a/b', head_sha: 's' }, ci: {
       repo: 'a/b', head_sha: 's', state: 'pass', runner_ms: 120_000, by_os: [], at: now, runs: [{ id: 7, name: 'CI', status: 'completed', conclusion: 'success', jobs: [job(70), job(71)] }] } }
     h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED)), prRow(8, livePR(8, PASSED, { state: 'merged' }))] }
+    openLead()
     const first = show()
     const jobButton = (id: number) => document.querySelector<HTMLElement>(`[data-deck-ci-job="${id}"] button[aria-expanded]`)!
     await waitFor(() => expect(jobButton(70)).not.toBeNull())
@@ -531,6 +573,7 @@ describe('the session deck', () => {
           cost: { priced: false, reason: 'self_hosted', minutes_billed: 3, usd: 0, free_public: false } },
       ] }] } }
     h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED))] }
+    openLead()
     show()
     // An open PR with checks opens by itself.
     await waitFor(() => expect(rowButton(9)).toHaveAttribute('aria-expanded', 'true'))
@@ -659,6 +702,7 @@ describe('the deck’s pull request rows: who is on them, and forcing a fix', ()
   it('re-runs the checks after a confirm in the row, and says so in the row', async () => {
     h.prs = { connected: true, prs: [prRow(9, livePR(9, FAILED, { head_sha: 'h1', mergeable: true, mergeable_state: 'behind' }))] }
     h.ci = { connected: true, pr: { number: 9, url: 'https://github.com/a/b/pull/9', repo: 'a/b', head_sha: 'h1' }, ci: { repo: 'a/b', head_sha: 'h1', state: 'fail', runner_ms: 0, by_os: [], at: now, runs: [] } }
+    openLead()
     show()
     const rerun = await waitFor(() => {
       const b = document.querySelector<HTMLButtonElement>('[data-deck-pr="9"] [data-deck-pr-action="rerun"]')
@@ -692,6 +736,7 @@ describe('the deck’s pull request rows: who is on them, and forcing a fix', ()
     h.prs = { connected: true, prs: [prRow(9, livePR(9, FAILED, { head_sha: 'h1' }))] }
     h.rerunFail = new ApiError(502, '502', { error: 'Re-running the checks: Resource not accessible by personal access token (403).', needs: ['"Actions" repository permission (write), for a fine-grained token'] })
     const onToast = vi.fn()
+    openLead()
     show({ onToast })
     const rerun = await waitFor(() => {
       const b = document.querySelector('[data-deck-pr="9"] [data-deck-pr-action="rerun"]')
@@ -709,6 +754,7 @@ describe('the deck’s pull request rows: who is on them, and forcing a fix', ()
     h.prs = { connected: true, prs: [prRow(9, conflict)] }
     const onStartAgent = vi.fn(async () => {})
     const owned = wt('feat/9', [{ s: { session_id: 'a1', title: 'fixer', owned: true }, dot: 'idle' }])
+    openLead()
     const r = show({ onStartAgent, worktrees: [owned] })
     const fix = await waitFor(() => {
       const b = document.querySelector('[data-deck-pr="9"] [data-deck-pr-action="conflict"]')
@@ -731,6 +777,7 @@ describe('the deck’s pull request rows: who is on them, and forcing a fix', ()
     // Someone Caprock did not start is on it: a new agent in a new worktree
     // at the PR's head, and nothing typed into theirs (rule 7).
     const foreign = wt('feat/9', [{ s: { session_id: 'f1', title: 'theirs', owned: false }, dot: 'working' }])
+    openLead()
     show({ onStartAgent, worktrees: [foreign], s: agent({ repo_root: '/w' }) })
     fireEvent.click(await waitFor(() => {
       const b = document.querySelector('[data-deck-pr="9"] [data-deck-pr-action="conflict"]')

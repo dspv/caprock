@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** the cockpit has a **CI** block: the session's pull requests as
+  a circle per check, one ring with *10/11 · 5m* and the time against the
+  median, or the current PR's jobs by OS — switched in its label, kept per
+  viewer. It draws only what the session deck already read and asks
+  nothing; a click opens the PRs & CI tab.
+
 - **app:** the session deck's pull requests and CI, large. **Expand** beside
   *Hide ⌘B* opens a *PRs & CI* tab: the repository's last 14 days on top —
   pull requests merged per day, the median time to merge, the median CI run
@@ -49,6 +55,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   plot today, 7 or 30 days by tokens or turns without another request.
 
 ### Changed
+
+- **app:** the session deck opens on all of the session's pull requests:
+  no row opens by itself, and the one you open is opened again next time.
+  Each row shows a circle per check again — filled, coloured by state, a
+  running one pulsing — at every deck width, with a switch to the words
+  (*running · 10/11*), kept per viewer.
+- **api:** the first `GET /v1/sessions/{id}/prs` of a session whose
+  composition has to wait on GitHub answers at once with the recorded pull
+  requests, without their CI, marked `refreshing`; the next poll has them
+  with it. The deck draws the rows straight away.
 
 - **dashboard:** the Now screen refreshes once, not once per section. Its
   sections ask on one shared tick, at most every 2 s (all-time figures every

@@ -95,6 +95,57 @@ func (s *Server) serveDeck(w http.ResponseWriter, r *http.Request, key string, c
 	writeJSON(w, http.StatusOK, v.(deckAnswer).stamped(at.UnixMilli(), refreshing))
 }
 
+// serveDeckOrQuick is serveDeck for a view that has a quick answer of its
+// own: when the composition takes longer than deckBudget — a key never
+// composed, whose sources have to ask GitHub — the request gets quick's
+// answer at once, marked `refreshing`, and the composition goes on in the
+// background so the next poll (the deck asks again after 1.5 s while an
+// answer says refreshing) finds it. The PRs view's quick answer is the
+// session's pull requests as the daemon recorded them, without GitHub's
+// live state: the rows are drawn at once and their CI fills in (owner,
+// 2026-10-13, translated: "PRs take long to load").
+func (s *Server) serveDeckOrQuick(w http.ResponseWriter, r *http.Request, key string, compose func(ctx context.Context) (deckAnswer, error), quick func(ctx context.Context) (deckAnswer, error), fail func(http.ResponseWriter, error)) {
+	if s.deck.kept(key) {
+		// The last answer comes within the budget anyway, live state and all.
+		s.serveDeck(w, r, key, compose, fail)
+		return
+	}
+	base := context.WithoutCancel(r.Context())
+	type result struct {
+		v          any
+		at         time.Time
+		refreshing bool
+		err        error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		v, at, refreshing, err := s.deck.getAt(base, key, func() (any, error) {
+			ctx, cancel := context.WithTimeout(base, deckComposeTimeout)
+			defer cancel()
+			return compose(ctx)
+		})
+		ch <- result{v, at, refreshing, err}
+	}()
+	t := time.NewTimer(s.deck.budget)
+	defer t.Stop()
+	select {
+	case x := <-ch:
+		if x.err != nil {
+			fail(w, x.err)
+			return
+		}
+		writeJSON(w, http.StatusOK, x.v.(deckAnswer).stamped(x.at.UnixMilli(), x.refreshing))
+	case <-t.C:
+		q, err := quick(r.Context())
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, q.stamped(s.deck.now().UnixMilli(), true))
+	case <-r.Context().Done():
+	}
+}
+
 // githubConnected says whether GitHub is connected now.
 func (s *Server) githubConnected() bool {
 	return s.d.GitHub != nil && s.d.GitHub.Status().Connected

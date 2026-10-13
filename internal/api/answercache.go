@@ -376,6 +376,24 @@ func (c *answerCache) readVersion(ctx context.Context) int64 {
 	return v
 }
 
+// kept reports whether key has a finished answer young enough to be shown:
+// a request for it gets that answer (stale, refreshing) within the budget,
+// so it needs no quick answer of its own (serveDeckOrQuick).
+func (c *answerCache) kept(key string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.m[key]
+	if !ok {
+		return false
+	}
+	select {
+	case <-e.done:
+		return e.err == nil && c.now().Sub(e.at) < c.maxStale
+	default:
+		return false
+	}
+}
+
 // wait blocks until every background refresh started so far has finished.
 func (c *answerCache) wait() { c.bg.Wait() }
 

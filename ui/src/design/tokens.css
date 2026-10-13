@@ -725,6 +725,12 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 .pr-dot[data-state="merged"] { background: var(--color-merged); }
 .pr-dot[data-state="closed"] { background: var(--color-fg-faint); }
 .pr-dot[data-state="draft"] { border: 1.5px solid var(--color-fg-faint); }
+/* The deck's rows and the cockpit draw the circles small: a filled circle per
+   check, coloured by its state, a running one pulsing (owner, 2026-10-13). */
+.pipe-node[data-size="sm"] { width: 8px; height: 8px; }
+.pipe-node[data-tone="running"] { background: var(--color-warn); animation: pipePulse 1200ms ease-in-out infinite; }
+@keyframes pipePulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .pipe-node[data-tone="running"] { animation: none; } }
 .pipe-link { display: inline-block; width: 4px; height: 1px; flex: none; background: var(--color-fg-faint); opacity: 0.6; }
 .ci-failed-step { background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
 .ci-failed-step:hover { background: color-mix(in srgb, var(--color-danger) 17%, transparent); }

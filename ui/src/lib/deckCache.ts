@@ -46,6 +46,17 @@ export function writeDeck<T>(key: string, d: T, at = Date.now()): void {
     mem.delete(oldest)
   }
   writeCache(`deck:${key}`, d, at)
+  for (const fn of listeners) fn(key)
+}
+
+/**
+ * Who wants to hear of a new answer: the cockpit's CI block draws from what
+ * the deck was told and never asks anything itself.
+ */
+const listeners = new Set<(key: string) => void>()
+export function onDeckAnswer(fn: (key: string) => void): () => void {
+  listeners.add(fn)
+  return () => { listeners.delete(fn) }
 }
 
 /** Drops the answers kept in memory (tests). */

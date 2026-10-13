@@ -1468,6 +1468,7 @@ export function AppShell() {
                   onOpenFile={focusedWorktree?.repo ? (p) => openFile(focusedWorktree.projectId, focusedWorktree.w.isMain ? '' : focusedWorktree.w.key, p) : undefined}
                   summary={data.summary}
                   onCompare={inspectedSession?.attempt_group ? () => onCompare(inspectedSession) : undefined}
+                  onOpenPRs={inspectedSession && inspectedSession.kind !== 'shell' ? () => openPRsTab(inspectedSession, projectOfSession(inspectedSession.session_id)?.project.id ?? activeProjectId) : undefined}
                 />
               </div>
             )}
