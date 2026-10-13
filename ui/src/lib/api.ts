@@ -159,6 +159,22 @@ export interface OpenTerminalInfo {
  *  then resume it there. fork: branch it under a new id; the original runs on. */
 export type OpenTerminalMode = 'resume' | 'move' | 'fork'
 
+/** Another live session in the same checkout (`GET /v1/overlap`): named as
+ *  its card names it, with the files both edited in the window. */
+export interface OverlapPeer {
+  session_id: string
+  name: string
+  name_source?: 'name' | 'title' | 'prompt'
+  started_at: number
+  files: string[]
+}
+
+/** `GET /v1/overlap`: only sessions with a neighbour in their checkout are keyed. */
+export interface Overlap {
+  window_minutes: number
+  sessions: Record<string, { checkout: string; with: OverlapPeer[] }>
+}
+
 /** A session as POST /v1/sessions/remove lists it (ADR-037). */
 export interface RemovalCandidate {
   session_id: string
@@ -1549,6 +1565,8 @@ export const api = {
   session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
   /** The user's own name for a session; '' clears it. */
   renameSession: (id: string, name: string) => post<{ session_id: string; name: string }>(`/v1/sessions/${encodeURIComponent(id)}/name`, { name }, 'PUT'),
+  /** Live sessions sharing a checkout with another, and the files both edited lately (lib/overlap.ts). */
+  overlap: () => get<Overlap>('/v1/overlap'),
   events: (id: string, after = 0, limit = 500) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?after=${after}&limit=${limit}`),
   /** The events immediately preceding `before`, oldest-first — paging back
    *  through a long session without refetching from its start. */

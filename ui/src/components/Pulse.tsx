@@ -15,7 +15,7 @@
  * newest bar, which costs nothing and means "this minute is still filling".
  */
 import { branchLabel, projectLabels, sessionHealth } from '@/lib/sessionLabels'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { api, type Event, type SessionSummary } from '@/lib/api'
 import { live } from '@/lib/live'
 import { useFrameBatch } from '@/lib/framebatch'
@@ -29,6 +29,15 @@ import { Panel } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
 import { showsAgentMark } from '@/components/Projects'
 import { AgentGlyph } from '@/components/AgentMarks'
+import { sessionTitle } from '@/lib/sidebar'
+import { loadPulseOrder, pulseOrder, savePulseOrder, tabSessionOrder } from '@/lib/pulseOrder'
+import { moveKey } from '@/lib/rowOrder'
+import { isMacPlatform } from '@/lib/appmode'
+import { keys } from '@/lib/appkeys'
+import { mayShare, overlapChip, useOverlap, type OverlapChip } from '@/lib/overlap'
+import { SpawnDialog } from '@/components/SpawnDialog'
+import { worktreeSlug } from '@/lib/slug'
+import { OverlapLine } from '@/components/OverlapLine'
 
 /** How many tracks to show. More than this and no single one is readable. */
 const MAX_TRACKS = 6
@@ -49,22 +58,30 @@ function readOpen(): Set<string> {
 }
 
 export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now: number }) {
-  // Newest first — the tracks people care about are the ones running. Ended
-  // sessions are dropped here rather than relying on the caller's filter: the
-  // Now screen offers a "show ended" tick, and a finished session has no
-  // pulse to show whether or not the list it came from includes it.
+  // The order set by hand (lib/pulseOrder.ts), this viewer's.
+  const [manual, setManual] = useState<string[]>(loadPulseOrder)
+  // Which sessions get a track: the running ones, newest first, when there
+  // are more than fit. Ended sessions are dropped here rather than relying on
+  // the caller's filter: the Now screen offers a "show ended" tick, and a
+  // finished session has no pulse to show whether or not the list it came
+  // from includes it. Where a track SITS is fixed (owner, 2026-10-14): by
+  // hand, the tab strip, then start time — never by the newest event, which
+  // swapped two busy sessions every few seconds.
   const tracked = useMemo(
     () =>
-      [...sessions]
-        .filter((s) => s.status !== 'ended')
-        .sort((a, b) => b.last_event_at - a.last_event_at)
-        .slice(0, MAX_TRACKS),
-    [sessions],
+      pulseOrder(
+        [...sessions]
+          .filter((s) => s.status !== 'ended')
+          .sort((a, b) => b.last_event_at - a.last_event_at)
+          .slice(0, MAX_TRACKS),
+        manual,
+        tabSessionOrder(),
+      ),
+    [sessions, manual],
   )
-  // The set, not the order: `tracked` is sorted by the newest event, so two
-  // busy sessions swap places every few seconds — and keyed on the order,
-  // each swap read 2,000 events per track again (60 requests a minute under
-  // a steady stream; bench, 2026-10-13).
+  // The set, not the order: keyed on the order, a move would read 2,000
+  // events per track again (60 requests a minute when busy sessions swapped
+  // places; bench, 2026-10-13).
   const ids = tracked.map((s) => s.session_id).sort().join(',')
   const labels = useMemo(() => projectLabels(sessions), [sessions])
 
@@ -152,10 +169,8 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
             Nothing ran in the last {PULSE_MINUTES} minutes.
           </div>
         ) : (
-          rows.map(({ s, pulse }) => (
-            <Track key={s.session_id} s={s} pulse={pulse} minute={minute} showId={rows.length > 1} label={labels.get(s.session_id)}
-              all={sessions} open={open.has(s.session_id)} onToggle={() => toggle(s.session_id)} />
-          ))
+          <PulseRows rows={rows} minute={minute} labels={labels} all={sessions} open={open} onToggle={toggle}
+            manual={manual} onReorder={(next) => { setManual(next); savePulseOrder(next) }} />
         )}
       </div>
       {/* Height and colour answer different questions, and saying so first is
@@ -183,6 +198,93 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
         </span>
       </div>
     </Panel>
+  )
+}
+
+/**
+ * The tracks, in their fixed order, moved by hand: dragged onto another
+ * (pointer events, as the sidebar's rows, since the desktop shell takes
+ * HTML5 drops) or with ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift off macOS) from a focused row.
+ * Also where two sessions sharing a checkout are told apart and warned
+ * about (lib/overlap.ts) — asked only while the panel is unfolded, since a
+ * folded panel does not render this, and only when two tracks could share
+ * a folder at all.
+ */
+function PulseRows({ rows, minute, labels, all, open, onToggle, manual, onReorder }: {
+  rows: { s: SessionSummary; pulse: PulseModel }[]
+  minute: number
+  labels: Map<string, string>
+  all: SessionSummary[]
+  open: Set<string>
+  onToggle: (id: string) => void
+  manual: readonly string[]
+  onReorder: (ids: string[]) => void
+}) {
+  const shown = rows.map((r) => r.s)
+  const overlap = useOverlap(mayShare(shown))
+  const [moving, setMoving] = useState<OverlapChip | null>(null)
+  const order = shown.map((s) => s.session_id)
+  const [dragKey, setDragKey] = useState<string | null>(null)
+  const dragged = useRef(false)
+  const reorder = (key: string, target: string, where: 'before' | 'after') => {
+    const next = moveKey(order, key, target, where)
+    if (next.join('\n') === order.join('\n')) return
+    // Rows placed by hand that are not on screen now keep their turn after these.
+    onReorder([...next, ...manual.filter((k) => !next.includes(k))])
+  }
+  const press = (key: string) => (e: ReactPointerEvent<HTMLElement>) => {
+    if (e.button !== 0 || (e.target as Element).closest('button, a, canvas, [data-pulse-chip]')) return
+    const y0 = e.clientY
+    dragged.current = false
+    const onMove = (m: PointerEvent) => {
+      if (!dragged.current && Math.abs(m.clientY - y0) > 4) { dragged.current = true; setDragKey(key) }
+    }
+    const onUp = (u: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      setDragKey(null)
+      if (!dragged.current) return
+      const over = document.elementFromPoint(u.clientX, u.clientY)?.closest<HTMLElement>('[data-pulse-key]')
+      if (over?.dataset.pulseKey) reorder(key, over.dataset.pulseKey, u.clientY > y0 ? 'after' : 'before')
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+  // The click that ends a drag opens nothing.
+  const onClickCapture = (e: ReactMouseEvent) => {
+    if (dragged.current) { dragged.current = false; e.preventDefault(); e.stopPropagation() }
+  }
+  // ⌥⇧↑ ⌥⇧↓ on macOS; Ctrl+Shift off it, where Alt+Shift arrows are the app's (lib/appkeys.ts).
+  const onKey = (e: ReactKeyboardEvent<HTMLElement>) => {
+    const mods = isMacPlatform() ? e.altKey && !e.ctrlKey : e.ctrlKey && !e.altKey
+    if (!mods || !e.shiftKey || e.metaKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
+    const key = (e.target as HTMLElement).closest<HTMLElement>('[data-pulse-key]')?.dataset.pulseKey
+    if (!key) return
+    e.preventDefault()
+    e.stopPropagation()
+    const at = order.indexOf(key)
+    const to = order[at + (e.key === 'ArrowUp' ? -1 : 1)]
+    if (at < 0 || !to) return
+    reorder(key, to, e.key === 'ArrowUp' ? 'before' : 'after')
+  }
+  return (
+    <div onKeyDown={onKey} onClickCapture={onClickCapture}>
+      {rows.map(({ s, pulse }) => (
+        <Track key={s.session_id} s={s} pulse={pulse} minute={minute} showId={rows.length > 1} label={labels.get(s.session_id)}
+          all={all} open={open.has(s.session_id)} onToggle={() => onToggle(s.session_id)}
+          chip={overlapChip(overlap, s, sessionTitle(s))} onMove={setMoving}
+          dragging={dragKey === s.session_id} onPress={press(s.session_id)} />
+      ))}
+      {moving && (
+        <SpawnDialog
+          available
+          initialCwd={moving.checkout}
+          initialWorktree={worktreeSlug(moving.newer.name) || 'separate'}
+          note={<><b className="font-medium text-fg">{moving.newer.name}</b> keeps running where it is: stop it once the new session has the work. Caprock types nothing into it.</>}
+          onClose={() => setMoving(null)}
+        />
+      )}
+    </div>
   )
 }
 
@@ -219,6 +321,10 @@ function Track({
   all,
   open,
   onToggle,
+  chip,
+  onMove,
+  dragging = false,
+  onPress,
 }: {
   s: SessionSummary
   pulse: PulseModel
@@ -231,20 +337,29 @@ function Track({
   all: SessionSummary[]
   open: boolean
   onToggle: () => void
+  /** Another live session in the same checkout (lib/overlap.ts). */
+  chip?: OverlapChip
+  onMove?: (chip: OverlapChip) => void
+  dragging?: boolean
+  onPress?: (e: ReactPointerEvent<HTMLElement>) => void
 }) {
   // Health comes from the daemon's narrator, which knows "your turn" from the
   // agent.stop event. The bars cannot: they describe the hour, not this moment.
   const state = trackState(pulse, sessionHealth(s))
+  // The session's own name leads (owner, 2026-10-14: two rows read
+  // "dev/caprock master" and could not be told apart); the project, branch
+  // and short id are the line under it.
+  const name = sessionTitle(s)
 
   // The row opens in place rather than navigating: the owner wanted to see
   // what a project's sessions are doing without leaving Now. The session page
   // is one click further, from inside. A click on the chart itself still
   // opens the session at that minute (PulseCanvas stops the event).
   return (
-    <div className="border-t border-border first:border-t-0">
+    <div data-pulse-key={s.session_id} onPointerDown={onPress} className={`border-t border-border first:border-t-0 ${dragging ? 'opacity-60' : ''}`}>
       <div
         onClick={onToggle}
-        className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] sm:grid-cols-[150px_1fr_92px_minmax(150px,auto)] items-center gap-x-3 gap-y-1.5 px-3 py-2 hover:bg-panel-2 text-fg"
+        className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] sm:grid-cols-[190px_1fr_92px_minmax(150px,auto)] items-center gap-x-3 gap-y-1.5 px-3 py-2 hover:bg-panel-2 text-fg"
       >
         {/* Working all day in one repository used to draw six rows all labelled
           * "caprock", told apart only by a phrase like "was responding" that
@@ -259,27 +374,25 @@ function Track({
           * branch floating with no repository. A label that can erase the
           * primary identity is worse than no label. */}
         <div className="min-w-0">
-          <div className="text-[13px] font-medium flex items-baseline gap-1.5 min-w-0">
+          <div className="text-[13px] flex items-baseline gap-1.5 min-w-0">
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onToggle() }}
               aria-expanded={open}
-              aria-label={`${open ? 'Hide' : 'Show'} what is running in ${s.project || 'this project'}`}
+              aria-label={`${open ? 'Hide' : 'Show'} what is running in ${name}`}
+              title={`Open or close. Drag the row, or ${keys('⌥⇧↑, ⌥⇧↓')} here, to move it.`}
               className="shrink-0 -ml-1 w-4 text-center text-fg-faint hover:text-fg"
             >
               <span aria-hidden className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
             </button>
-            <span className="shrink-0" title={s.repo_root || s.cwd}>{label || s.project || 'unknown project'}</span>
-            {branchLabel(s.git_branch) && (
-              <span className="min-w-0 truncate text-[10px] text-fg-faint mono" title={s.git_branch}>
-                {branchLabel(s.git_branch)}
-              </span>
-            )}
+            <span className="min-w-0 truncate font-semibold" title={name}>{name}</span>
             {showsAgentMark(s.agent) && <AgentGlyph agent={s.agent} />}
           </div>
-          <div className="text-[10px] text-fg-faint mono truncate pl-3.5">
-            {showId && <span title={`session ${s.session_id} · started ${fmtAgo(s.started_at)} ago`}>{shortId(s.session_id)} · </span>}
-            {s.activity?.phrase ?? ''}
+          <div className="text-[10px] text-fg-faint mono truncate pl-3.5" title={`${s.repo_root || s.cwd}${s.git_branch ? ` · ${s.git_branch}` : ''} · session ${s.session_id} · started ${fmtAgo(s.started_at)} ago`}>
+            <span className="text-fg-muted">{label || s.project || 'unknown project'}</span>
+            {branchLabel(s.git_branch) && <> {branchLabel(s.git_branch)}</>}
+            {showId && <> · {shortId(s.session_id)}</>}
+            {s.activity?.phrase ? <> · {s.activity.phrase}</> : null}
           </div>
         </div>
         {/* At phone width the chart takes its own line under the row: squeezed
@@ -298,6 +411,7 @@ function Track({
         </div>
         <WorkingNow s={s} state={state} repeatSample={pulse.repeatSample} />
       </div>
+      {chip && <OverlapLine chip={chip} onMove={onMove} className="px-3 pb-2 pl-[26px] -mt-1" />}
       {open && <ProjectNow s={s} all={all} now={minute * 60_000} />}
     </div>
   )

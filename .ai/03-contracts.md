@@ -1348,7 +1348,28 @@ POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, na
 POST   /v1/sessions/{id}/open-terminal {terminal?, mode?: resume|move|fork} → {terminal: {id, name}, mode, command}
 PUT    /v1/sessions/{id}/name        {name} → {session_id, name}; "" clears it; 400 without name, 404 for an unknown session (§ Session name DDL)
 POST   /v1/sessions/remove           {ids?: [id], cwd_prefix?, dry_run?} → {dry_run, sessions: [RemovalCandidate], skipped: [RemovalCandidate + reason], cost_usd, unmatched_usd}
+GET    /v1/overlap                   → {window_minutes, sessions: {id: {checkout, with: [OverlapPeer]}}}; live sessions sharing a checkout (§ Same-checkout overlap)
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
+```
+
+**Same-checkout overlap** (`GET /v1/overlap`, `internal/api/overlap.go`,
+`store.Overlaps`). The live sessions (status not `ended`) grouped by
+**checkout**: the folder of the nearest `.git` entry above the session's
+`cwd` — a clone's root, or a linked worktree's own folder, never folded into
+its main repository (`store.CheckoutOf`); a folder in no repository is its own
+checkout. Only a session with at least one neighbour is keyed, so the usual
+answer is `{"window_minutes": 30, "sessions": {}}`. An `OverlapPeer` is
+`{session_id, name, name_source?, started_at, files}`: the neighbour named as
+its card names it (`name_source` as `description_source`: `name`, `title` or
+`prompt`, a prompt clipped to its first line), and `files`, the absolute paths
+both sessions edited in the last 30 minutes (Edit, Write, MultiEdit,
+NotebookEdit — `session_files.last_ts` at or after now − 30 min), sorted, `[]`
+when they share only the folder. Peers are in start order. Read only: one
+query on `session_files` for the sessions in a shared checkout, none when
+nobody shares.
+
+```json
+{ "window_minutes": 30, "sessions": { "b": { "checkout": "/Users/me/dev/caprock", "with": [ { "session_id": "a", "name": "Login fix", "name_source": "name", "started_at": 1791730800000, "files": ["/Users/me/dev/caprock/ui/main.ts"] } ] } } }
 ```
 
 **Removing sessions** ([ADR-037](08-decisions.md)). `POST /v1/sessions/remove`

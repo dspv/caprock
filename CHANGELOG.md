@@ -7,6 +7,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **now:** two live sessions in one checkout are pointed out. When two
+  sessions work in the same folder of a repository (not in separate
+  worktrees), each Live pulse row gets a small chip naming the other; when
+  both edited the same files in the last 30 minutes it turns amber, *2 files
+  touched by both*, with the files on hover, since one can write over the
+  other's change. *Move to a worktree…* beside it opens the New session
+  dialog on a new copy of the folder, named after the newer session; nothing
+  is moved for you. The agent cockpit shows the same chip, one line under the
+  loop warning. New read-only `GET /v1/overlap`.
+
 ### Changed
 
 - **deck:** a pull request's checks read at a glance. In place of a circle per
@@ -27,6 +39,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   the macOS login keychain or in a file, with the file's path.
 
 ### Fixed
+
+- **now:** Live pulse rows stay where they are. They were sorted by the
+  newest event, so two busy sessions swapped places every few seconds; now a
+  row keeps the order its session started in (sessions open as tabs follow
+  the tab strip among themselves), a new one lands last, and you can drag a
+  row, or press ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift on Windows and Linux) on it, to set the
+  order, remembered in this browser. Each row now leads with the session's
+  name in bold, with the project, branch and short id under it, so two
+  sessions on the same branch can be told apart.
 
 - **mail:** on macOS, account passwords go to the login keychain through the call that names the keychain file, so saving one can never bring up a "Keychain Not Found" dialog. Passwords saved before are read where they are; Windows and Linux are unchanged.
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.

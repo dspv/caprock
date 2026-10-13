@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   mainAsked: [] as string[][],
   summaries: {} as Record<string, Summary>,
   summaryAsked: [] as string[],
+  overlap: { window_minutes: 30, sessions: {} } as unknown,
 }))
 
 vi.mock('@/lib/api', async (orig) => {
@@ -31,6 +32,7 @@ vi.mock('@/lib/api', async (orig) => {
       recentMainEvents: async (_id: string, kinds: string[]) => { h.mainAsked.push(kinds); return events },
       permission: async () => ({ permission: h.permission }),
       sessionCalls: async () => [],
+      overlap: async () => h.overlap,
       summary: async (range: string) => {
         h.summaryAsked.push(range)
         const s = h.summaries[range]
@@ -584,5 +586,23 @@ describe('the headline against your usual', () => {
     const row = document.querySelector('[data-usual-on]')!
     expect(row.querySelector('[data-label-long]')).toHaveTextContent('cache hit rate')
     expect(row.querySelector('[data-label-short]')).toHaveTextContent('cache')
+  })
+})
+
+describe('a session sharing its checkout', () => {
+  it('says so on one line, a warning when both edited the same file', async () => {
+    h.overlap = { window_minutes: 30, sessions: { s1: { checkout: '/w', with: [{ session_id: 's2', name: 'Router', name_source: 'name', started_at: 5, files: ['/w/internal/session.go'] }] } } }
+    show(agent())
+    const chip = await screen.findByText('1 file touched by both')
+    expect(chip.parentElement!.title).toMatch(/Router[\s\S]*internal\/session\.go/)
+    h.overlap = { window_minutes: 30, sessions: {} }
+  })
+
+  it('shows nothing for an ended session', async () => {
+    h.overlap = { window_minutes: 30, sessions: { s1: { checkout: '/w', with: [{ session_id: 's2', name: 'Router', name_source: 'name', started_at: 5, files: [] }] } } }
+    show(agent({ status: 'ended' }))
+    await act(async () => {})
+    expect(screen.queryByText(/shares checkout/)).not.toBeInTheDocument()
+    h.overlap = { window_minutes: 30, sessions: {} }
   })
 })

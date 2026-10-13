@@ -145,6 +145,17 @@ others. Installing it: [install-app.md](install-app.md).
   repository's own git; with GitHub connected, its open pull requests, red
   runs, median CI time and newest release, as the session deck last read
   them. Fold it and it reads nothing.
+- **Live pulse.** One row per running session, led by the session's name,
+  with the project, branch and short id under it. Rows keep their places:
+  the order sessions started in (tabs follow the tab strip among
+  themselves), a new one last; drag a row, or press ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift on
+  Windows and Linux) on it, to move it. Two sessions working in the same
+  folder of a repository (not separate worktrees) each get a chip naming
+  the other; when both edited the same files in the last 30 minutes it
+  turns amber, *N files touched by both*, the files on hover. *Move to a
+  worktree…* opens New session on a new copy of the folder, named after the
+  newer session; the running one keeps going until you stop it. The
+  cockpit beside that session shows the same chip.
 - **Quick chat.** Ask something without picking a folder: a session in
   Caprock's data directory opens in a tab, under *Outside projects* in the
   sidebar, and its tab is called *Quick chat* with its model. ⌥⌘N, *Quick
@@ -541,7 +552,7 @@ On macOS:
 | ⌘1–8, ⌘9    | The sidebar’s Nth item (a project, or a session when not grouped); the last |
 | ⌥⌘↓, ⌥⌘↑    | Next and previous session of the project in front                           |
 | ⌥⌘→, ⌥⌘←    | Next and previous project                                                   |
-| ⌥⇧↑, ⌥⇧↓    | Move the focused session row up or down in the sidebar                      |
+| ⌥⇧↑, ⌥⇧↓    | Move the focused session row up or down in the sidebar or the Live pulse    |
 | ⌃Tab, ⇧⌘[ ] | Next and previous tab                                                       |
 | ⌘W          | Close the tab (the session keeps going)                                     |
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                            |

@@ -34,6 +34,9 @@ import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
 import { PermissionModeChip } from './PermissionModeChip'
 import { KindIcon } from './KindIcon'
+import { OverlapLine } from './OverlapLine'
+import { overlapChip, useOverlap } from '@/lib/overlap'
+import { sessionTitle } from '@/lib/sidebar'
 import { SubagentDetail } from './SubagentDetail'
 import {
   askLine, backgroundAgents, chipGroups, chipGroupsThatFit, subagentChips, subagentDoing, subagentInitial, subagentTone, CHIP_GROUP, MAX_SUBAGENT_CHIPS, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns,
@@ -145,6 +148,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
       <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} />
       <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
       {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
+      <CheckoutShared s={s} live={state !== 'ended'} />
       <Spend s={s} sessionId={sessionId} events={main} now={now} figures={figures} summary={summary} />
       {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && (
         <Subagents subs={subs} permission={permission} now={now} sessionId={sessionId} open={openSub} onOpen={setOpenSub}
@@ -1002,6 +1006,16 @@ function WorkingSubagentRow({ a, waiting, now, open, panel, onToggle }: {
 
 function capital(t: string): string {
   return t ? t[0]!.toUpperCase() + t.slice(1) : t
+}
+
+/**
+ * One line when another live session works in this one's checkout — a
+ * warning when both edited the same files in the last half hour — the same
+ * chip as the Live pulse row (lib/overlap.ts), where the work is watched.
+ */
+function CheckoutShared({ s, live: running }: { s: SessionSummary; live: boolean }) {
+  const chip = overlapChip(useOverlap(running), s, sessionTitle(s))
+  return chip ? <OverlapLine chip={chip} /> : null
 }
 
 function LoopWarning({ s, now }: { s: SessionSummary; now: number }) {

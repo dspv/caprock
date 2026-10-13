@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { narrowScreen } from '@/lib/phone'
 import { CloseButton, DialogBackdrop } from './Dialog'
 import { DirPicker } from './DirPicker'
@@ -163,6 +163,8 @@ export function SpawnDialog({
   // whose repository is on screen and then asking for the directory again is
   // asking someone to retype what they are looking at.
   initialCwd = '',
+  initialWorktree = '',
+  note,
   // A phone lands on the chat, where its field is; a desktop on the terminal.
   landOn = narrowScreen() ? 'chat' : 'terminal',
 }: {
@@ -175,6 +177,10 @@ export function SpawnDialog({
   agents?: SpawnAgent[]
   onClose: () => void
   initialCwd?: string
+  /** A git worktree to start in, proposed: Advanced opens with it filled (the Live pulse's Move to a worktree…). */
+  initialWorktree?: string
+  /** A line above the fields saying why the dialog was opened. */
+  note?: ReactNode
   /** The session's tab to open once started: the phone's start-work flow lands on the chat. */
   landOn?: 'terminal' | 'chat'
 }) {
@@ -195,7 +201,7 @@ export function SpawnDialog({
   // Which OpenCode is installed decides what a mode becomes in it.
   const status = useApi(() => api.status(), [], { live: false })
   const notes = modeNotes(agent, status.data?.opencode_version)
-  const [worktree, setWorktree] = useState('')
+  const [worktree, setWorktree] = useState(initialWorktree)
   const [create, setCreate] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -257,6 +263,7 @@ export function SpawnDialog({
           // holds.
           // ↑ and ↓ change a select in place, as in the app's New agent sheet.
           <div className="px-4 py-3 grid min-w-0 gap-3 text-[13px]" onKeyDown={(e) => { stepSelect(e) }}>
+            {note && <p className="text-[12.5px] text-fg-muted">{note}</p>}
             <Field label="Working directory" hint={remote ? 'a folder under your home' : 'pick one, or type a path'}>
               {/* No autofocus on a phone: it would open the keyboard over the
                 * picker the phone is meant to use. 16px there, or iOS zooms;
@@ -299,7 +306,7 @@ export function SpawnDialog({
             {/* Two settings that matter to a handful of runs and to nobody
               * else, folded away rather than deleted. Every field on screen is
               * a decision asked of someone who wanted to press one button. */}
-            <details className="text-[12px] group">
+            <details className="text-[12px] group" open={!!initialWorktree || undefined}>
               <summary className="cursor-pointer select-none text-fg-muted hover:text-fg list-none marker:content-none">
                 <span className="inline-block transition-transform group-open:rotate-90 text-fg-faint">▶</span> Advanced
               </summary>
