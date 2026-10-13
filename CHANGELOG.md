@@ -22,6 +22,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **app:** drag a session row under a project onto another to put it
   there, or focus it and press ⌥⇧↑ / ⌥⇧↓ (Ctrl+Shift off macOS); the order
   is kept for that project, also after a restart.
+- **app:** the session deck's pull requests and CI, large. **Expand** beside
+  *Hide ⌘B* opens a *PRs & CI* tab: the repository's last 14 days on top —
+  pull requests merged per day, the median time to merge, the median CI run
+  of its slowest workflow, the share of red runs with re-runs, and the
+  Actions minutes GitHub billed this month — its pull requests on the left
+  (this session's, the repository's newest 50, or the open ones), and the
+  chosen one on the right: state, CI, merge state and review as large
+  pills, the diff's size, the deck's Fix / Re-run / Update actions, its jobs
+  as a grid of job × runner OS against each job's median, the jobs on the
+  run's clock, and a failed job's steps and log with *Investigate*. *Back to
+  the deck* returns to the agent. It asks GitHub only while it is the tab in
+  front, through the deck's kept answers, plus one list of the repository's
+  newest 100 runs kept 30 minutes; nothing at all while GitHub is not
+  connected. No new key and no sidebar item.
+- **api:** `GET /v1/sessions/{id}/ci/stats` (the tab's figures and the
+  repository's pull requests); a pull request carries `created_at`,
+  `merged_at` and its diff size (`additions`, `deletions`,
+  `changed_files`, `commits`); `…/ci?pr=N` and the rerun and update-branch
+  routes also take a pull request of the repository that the tab listed.
 - **app:** Settings → *Status line* → *Hidden*: no line under Claude Code, so the
   row goes, while your plan limits keep reaching Caprock's cockpit and Cost
   screen — which *Off* stops. Recommended on the page, never chosen for

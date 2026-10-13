@@ -24,6 +24,7 @@ import {
   focusedLeaf,
   leaves,
   loadWorkspace,
+  prsTabKey,
   saveWorkspace,
   tabsOf,
   workspaceReducer,
@@ -61,6 +62,7 @@ import { ChangesView } from '@/components/ChangesView'
 import { AttemptsCompare } from '@/components/AttemptsCompare'
 import { FileView } from '@/components/FileView'
 import { attachable, ObservePane } from '@/components/ObservePane'
+import { PRsCITab } from '@/components/PRsCITab'
 import { FilePicker } from '@/components/FilePicker'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import type { HandoffTarget } from '@/components/AgentHandoff'
@@ -322,6 +324,9 @@ export function AppShell() {
   const current = activeTab(shownWs)
   const focused = current ? focusedLeaf(current).target : undefined
   const focusedSession = focused ? sessionsById.get(focused.sessionId) : undefined
+  // The inspector beside a PRs & CI tab describes the agent it was opened from.
+  const inspectedId = focused?.kind === 'prs' ? focused.of : focused?.sessionId
+  const inspectedSession = focused?.kind === 'prs' && focused.of ? sessionsById.get(focused.of) : focusedSession
   // An agent's session is in front: what the session deck and the chat apply to.
   const frontIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const activeProject = projectsById.get(activeProjectId)
@@ -1149,11 +1154,11 @@ export function AppShell() {
     if (!focused || source !== 'api') return undefined
     for (const n of model.projects) {
       for (const w of n.worktrees) {
-        if (w.sessions.some((x) => x.session.session_id === focused.sessionId)) return { projectId: n.project.id, w, repo: n.project.kind === 'repo' }
+        if (w.sessions.some((x) => x.session.session_id === inspectedId)) return { projectId: n.project.id, w, repo: n.project.kind === 'repo' }
       }
     }
     return undefined
-  }, [focused, model.projects, source])
+  }, [focused, inspectedId, model.projects, source])
 
   useEffect(() => {
     openChangesRef.current = focusedWorktree?.repo
@@ -1179,10 +1184,10 @@ export function AppShell() {
   // The project the focused session is listed under, named as the sidebar names it.
   const focusedProject = useMemo(() => {
     if (!focused) return undefined
-    const p = model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((x) => x.session.session_id === focused.sessionId)))?.project
+    const p = model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((x) => x.session.session_id === inspectedId)))?.project
     // "Other folders" is a heading, not a project: the session's own folder names it.
     return p && p.id !== OTHER_FOLDERS_ID ? p : undefined
-  }, [focused, model.projects])
+  }, [focused, inspectedId, model.projects])
 
   const focusedIsAgent = frontIsAgent
   const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
@@ -1262,6 +1267,48 @@ export function AppShell() {
       />
     )
   }, [sessionsById, data.permissions, openTab, refresh])
+
+  // The PRs & CI tab (components/PRsCITab.tsx): the deck's cell, large,
+  // opened by the deck's Expand; one per agent session.
+  const projectOfSession = useCallback((id: string) => model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((y) => y.session.session_id === id))), [model.projects])
+  const openPRsTab = useCallback((s: SessionSummary, projectId: string) => {
+    openTab({ kind: 'prs', sessionId: prsTabKey(s.session_id), of: s.session_id }, projectId, `PRs & CI · ${s.project || sessionTitle(s)}`)
+  }, [openTab])
+  const onExpandDeck = useCallback(() => {
+    if (focusedSession) openPRsTab(focusedSession, projectOfSession(focusedSession.session_id)?.project.id ?? activeProjectId)
+  }, [focusedSession, openPRsTab, projectOfSession, activeProjectId])
+  // Back to the deck: this tab closes, the agent's comes to the front with its deck open.
+  const wsRef = useRef(ws)
+  wsRef.current = ws
+  const backToDeck = useCallback((tabId: string, of: string) => {
+    const agentTab = wsRef.current.tabs.find((t) => leaves(t.root).some((l) => l.target.sessionId === of && l.target.kind !== 'prs'))
+    dispatch({ type: 'close', tabId })
+    const s = sessionsById.get(of)
+    if (agentTab) dispatch({ type: 'activate', tabId: agentTab.id })
+    else if (s) openSession(s, projectOfSession(of)?.project.id ?? activeProjectId)
+    setDeck((d) => ({ ...d, open: true }))
+    showWorkspace()
+  }, [sessionsById, openSession, projectOfSession, activeProjectId, showWorkspace])
+  const renderPRs = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
+    const of = leaf.target.of ?? ''
+    const n = projectOfSession(of)
+    const worktrees = n?.worktrees.map((w) => ({ branch: w.branch, path: w.path, agents: w.sessions.filter((y) => !y.isShell).map((y) => ({ session: y.session, dot: y.dot })) }))
+    return (
+      <PRsCITab
+        sessionId={of}
+        session={sessionsById.get(of)}
+        visible={visible}
+        onBack={() => backToDeck(tab.id, of)}
+        onToast={setToast}
+        worktrees={worktrees}
+        onStartAgent={async (req, title) => {
+          const { session_id } = await api.spawn(req)
+          openTab({ kind: 'session', sessionId: session_id }, tab.projectId, title)
+          data.refresh()
+        }}
+      />
+    )
+  }, [projectOfSession, sessionsById, backToDeck, openTab, data])
 
   return (
     <div className="flex h-dvh flex-col text-fg">
@@ -1348,6 +1395,7 @@ export function AppShell() {
                     onResize={onResizePanes}
                     renderFile={renderFile}
                     renderObserve={renderObserve}
+                    renderPRs={renderPRs}
                     chats={chatPanes}
                     onChatClose={onClosePane}
                     onChatRestart={onChatRestart}
@@ -1447,6 +1495,7 @@ export function AppShell() {
                     worktrees={deckWorktrees}
                     onOpenSession={onDeckOpenSession}
                     onStartAgent={onDeckStartAgent}
+                    onExpand={onExpandDeck}
                     cleanup={focusedWorktree?.repo && projectsById.get(focusedWorktree.projectId) ? (
                       <CleanupLine
                         projectId={focusedWorktree.projectId}
@@ -1481,10 +1530,10 @@ export function AppShell() {
             {workspaceShown && prefs.inspector && (
               <div className="h-full shrink-0" style={{ width: 'var(--app-inspector-w)' }}>
                 <Inspector
-                  session={focusedSession}
+                  session={inspectedSession}
                   project={focusedProject}
-                  sessionId={focusedFile ? undefined : focused?.sessionId}
-                  hasPermission={!!focused && data.permissions.has(focused.sessionId)}
+                  sessionId={focusedFile ? undefined : inspectedId}
+                  hasPermission={!!inspectedId && data.permissions.has(inspectedId)}
                   showPrompt={promptCard}
                   onClose={() => setPrefs((p) => ({ ...p, inspector: false }))}
                   onDetach={detach}
@@ -1493,7 +1542,7 @@ export function AppShell() {
                   onReviewChanges={focusedWorktree?.repo ? () => onOpenChanges(focusedWorktree.projectId, focusedWorktree.w) : undefined}
                   onOpenFile={focusedWorktree?.repo ? (p) => openFile(focusedWorktree.projectId, focusedWorktree.w.isMain ? '' : focusedWorktree.w.key, p) : undefined}
                   summary={data.summary}
-                  onCompare={focusedSession?.attempt_group ? () => onCompare(focusedSession) : undefined}
+                  onCompare={inspectedSession?.attempt_group ? () => onCompare(inspectedSession) : undefined}
                 />
               </div>
             )}

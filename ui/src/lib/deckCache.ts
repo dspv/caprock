@@ -9,7 +9,8 @@
  * anything: it only remembers what the deck was told.
  *
  * Keys name the view and its scope: `prs:<session>`, `ci:<session>:<pr>`,
- * `release:<repository>`, `main:<repository>`, `branches:<folder>`.
+ * `release:<repository>`, `main:<repository>`, `branches:<folder>`, and the
+ * PRs & CI tab's `stats:<repository>`.
  */
 import { readCache, writeCache } from './swr'
 

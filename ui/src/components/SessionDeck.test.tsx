@@ -64,6 +64,18 @@ function show(p: Partial<Parameters<typeof SessionDeck>[0]> = {}) {
 afterEach(() => { vi.useRealTimers(); forgetFoldedPRs(); forgetPRProgress(); forgetDeckAnswers();h.queued = []; h.queuedTo = []; h.forced = []; h.rerunFail = undefined; h.asked = 0; h.prs = { connected: true, prs: [] }; h.ci = { connected: true }; h.rel = { connected: false }; h.main = { connected: false }; h.branches = { connected: true, branches: [] }; h.usage = undefined; h.usageAsked = 0; h.prsGate = undefined; h.prsFail = undefined; h.prsAsked = 0; h.branchesGate = undefined; localStorage.clear() })
 
 describe('the session deck', () => {
+  it('expands into the PRs & CI tab with one control beside Hide, and only where the shell offers it', () => {
+    const onExpand = vi.fn()
+    const { unmount } = show({ onExpand })
+    const b = screen.getByRole('button', { name: /^Expand/ })
+    expect(b).toHaveAttribute('data-deck-expand')
+    fireEvent.click(b)
+    expect(onExpand).toHaveBeenCalledTimes(1)
+    unmount()
+    show()
+    expect(document.querySelector('[data-deck-expand]')).toBeNull()
+  })
+
   it('asks nothing of the session’s events, and leaves the context to the status bar', async () => {
     show()
     expect(screen.queryByRole('meter', { name: 'Context used' })).toBeNull()

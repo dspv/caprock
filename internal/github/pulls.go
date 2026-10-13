@@ -83,11 +83,21 @@ type PR struct {
 	MergeableState string `json:"mergeable_state,omitempty"`
 	// AutoMerge is GitHub's auto-merge turned on: it merges once the checks
 	// and reviews allow (the deck's "queued").
-	AutoMerge bool     `json:"auto_merge,omitempty"`
-	Review    string   `json:"review"` // approved | changes_requested | review_required | commented | ""
-	Reviews   []Review `json:"reviews"`
-	Checks    Checks   `json:"checks"`
-	At        int64    `json:"at"` // when it was last read, unix ms
+	AutoMerge bool `json:"auto_merge,omitempty"`
+	// CreatedAt and MergedAt are GitHub's own stamps (unix ms); MergedAt is 0
+	// until merged.
+	CreatedAt int64 `json:"created_at,omitempty"`
+	MergedAt  int64 `json:"merged_at,omitempty"`
+	// The diff's size, as GitHub reports it on the pull request itself (the
+	// list answers leave them out); absent when not read.
+	Additions    *int     `json:"additions,omitempty"`
+	Deletions    *int     `json:"deletions,omitempty"`
+	ChangedFiles *int     `json:"changed_files,omitempty"`
+	Commits      *int     `json:"commits,omitempty"`
+	Review       string   `json:"review"` // approved | changes_requested | review_required | commented | ""
+	Reviews      []Review `json:"reviews"`
+	Checks       Checks   `json:"checks"`
+	At           int64    `json:"at"` // when it was last read, unix ms
 	// Error is why the last read failed; the rest is the last good answer.
 	Error *Error `json:"error,omitempty"`
 }
@@ -359,9 +369,15 @@ type apiPull struct {
 	Draft   bool   `json:"draft"`
 	Merged  bool   `json:"merged"`
 	// MergedAt is set on a merged pull request in a list, where Merged is not.
-	MergedAt       *string `json:"merged_at"`
-	Mergeable      *bool   `json:"mergeable"`
-	MergeableState string  `json:"mergeable_state"`
+	MergedAt  *string `json:"merged_at"`
+	CreatedAt string  `json:"created_at"`
+	// Only the answer for one pull request carries these; a list leaves them out.
+	Additions      *int   `json:"additions"`
+	Deletions      *int   `json:"deletions"`
+	ChangedFiles   *int   `json:"changed_files"`
+	Commits        *int   `json:"commits"`
+	Mergeable      *bool  `json:"mergeable"`
+	MergeableState string `json:"mergeable_state"`
 	// AutoMerge is null unless auto-merge is enabled on the pull request.
 	AutoMerge *struct {
 		MergeMethod string `json:"merge_method"`
@@ -379,6 +395,21 @@ type apiPull struct {
 	RequestedReviewers []struct {
 		Login string `json:"login"`
 	} `json:"requested_reviewers"`
+}
+
+// mergedMS is when it was merged (unix ms), 0 when it was not.
+func (p apiPull) mergedMS() int64 {
+	if p.MergedAt == nil {
+		return 0
+	}
+	return unixMS(*p.MergedAt)
+}
+
+// withSizes copies what only a single pull request's answer carries: its
+// stamps and the diff's size.
+func (p apiPull) withSizes(pr *PR) {
+	pr.CreatedAt, pr.MergedAt = unixMS(p.CreatedAt), p.mergedMS()
+	pr.Additions, pr.Deletions, pr.ChangedFiles, pr.Commits = p.Additions, p.Deletions, p.ChangedFiles, p.Commits
 }
 
 func (p apiPull) state() string {
@@ -522,6 +553,7 @@ func (s *Service) refreshPull(ctx context.Context, f *followed, number int) bool
 	pr := &PR{ProjectID: t.projectID, Worktree: t.worktree, Branch: t.branch, Repo: t.repo.FullName(), Number: p.Number, URL: p.HTMLURL,
 		Title: p.Title, State: p.state(), Draft: p.Draft, Base: p.Base.Ref, HeadSHA: p.Head.SHA, Mergeable: p.Mergeable,
 		MergeableState: p.MergeableState, AutoMerge: p.AutoMerge != nil, Reviews: []Review{}, Checks: Checks{State: "none", Items: []Check{}}, At: s.Now().UnixMilli()}
+	p.withSizes(pr)
 	var firstErr *Error
 	checks, ch, e := s.readChecks(ctx, t.repo, p.Head.SHA)
 	if e != nil {
