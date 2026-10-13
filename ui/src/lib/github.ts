@@ -99,6 +99,14 @@ export interface PullRequest {
   mergeable_state?: string
   /** GitHub's auto-merge is on: it merges once the checks and reviews allow. */
   auto_merge?: boolean
+  /** GitHub's stamps (unix ms); merged_at absent until merged. */
+  created_at?: number
+  merged_at?: number
+  /** The diff's size, from GitHub's answer for this pull request; absent when not read. */
+  additions?: number
+  deletions?: number
+  changed_files?: number
+  commits?: number
   review: '' | 'approved' | 'changes_requested' | 'review_required' | 'commented'
   reviews: PRReview[]
   checks: { state: 'pass' | 'fail' | 'pending' | 'none'; passed: number; failed: number; pending: number; items: PRCheck[] }

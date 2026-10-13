@@ -40,7 +40,8 @@ import { useCanControl } from '@/lib/useCanControl'
 import { githubApi } from '@/lib/github'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
-import { PROGRESS_MAX_MS, branchWorktree, fixCIMessage, fixConflictMessage, fixWorktreeName, forceErrText, hasConflict, isBehind, prAgents, prStatus, progressStands, queuedFor, quickActions, QUICK_LABEL, rerunText, topChip, typeable, type DeckWorktree, type PRAgent, type PRChip, type PRProgress, type PRStatus } from '@/lib/prforce'
+import { hasConflict, isBehind, prAgents, prStatus, queuedFor, quickActions, QUICK_LABEL, topChip, typeable, type DeckWorktree, type PRAgent, type PRChip, type PRStatus } from '@/lib/prforce'
+import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
 
 /** How long arrow keys on the divider rest before the terminal is fitted to the new height. */
 export const KEY_SETTLE_MS = 250
@@ -72,6 +73,8 @@ export interface SessionDeckProps {
   onStartAgent?: (req: SpawnRequest, title: string) => Promise<void>
   /** The project's finished copies, over the Branches view (components/CleanupLine). */
   cleanup?: ReactNode
+  /** Opens the large view, the PRs & CI tab; absent where there is none. */
+  onExpand?: () => void
 }
 
 export function SessionDeck(props: SessionDeckProps) {
@@ -167,7 +170,7 @@ export function SessionDeck(props: SessionDeckProps) {
 }
 
 
-function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClose, onToast, worktrees, onOpenSession, onStartAgent, cleanup }: SessionDeckProps) {
+function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClose, onToast, worktrees, onOpenSession, onStartAgent, cleanup, onExpand }: SessionDeckProps) {
   return (
     // A container, so the row's quieter columns give way as the terminal
     // narrows (the sidebar and the inspector both open). No clock and no
@@ -176,7 +179,20 @@ function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClo
     // help", "Working now is debatable").
     <div className="@container flex min-h-0 flex-1 items-stretch overflow-hidden">
       <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} worktrees={worktrees} onOpenSession={onOpenSession} onStartAgent={onStartAgent} cleanup={cleanup} />
-      <div className="flex shrink-0 items-start pr-2 pt-1.5">
+      <div className="flex shrink-0 items-start gap-0.5 pr-2 pt-1.5">
+        {/* The large view: one control, no key of its own (rule 12). */}
+        {onExpand && (
+          <button
+            type="button"
+            data-deck-expand
+            onClick={onExpand}
+            aria-label="Expand: pull requests and CI in a tab"
+            title="Pull requests and CI, large: the repository's pull requests, each one's jobs by runner, and the figures over two weeks, in a tab"
+            className="flex h-[24px] items-center gap-1.5 rounded-[6px] px-1.5 text-[11.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+          >
+            <ExpandIcon /> Expand
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
@@ -191,12 +207,21 @@ function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onClo
   )
 }
 
+/** Two arrows out to the corners: the large view. */
+export function ExpandIcon({ back }: { back?: boolean }) {
+  return (
+    <svg aria-hidden width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      {back ? <path d="M6 2v4H2M10 14v-4h4M6 6 2 2M10 10l4 4" /> : <path d="M10 2h4v4M6 14H2v-4M14 2 9 7M2 14l5-5" />}
+    </svg>
+  )
+}
+
 /**
  * One click turns the GitHub integration on through the GitHub CLI's own
  * login (ADR-047: off until the user turns it on; this button is that).
  * Without a usable `gh`, Settings is where a token goes. True when connected.
  */
-async function connectGitHub(): Promise<boolean> {
+export async function connectGitHub(): Promise<boolean> {
   try {
     const st = await githubApi.connect('gh')
     if (st.connected) return true
@@ -209,19 +234,19 @@ async function connectGitHub(): Promise<boolean> {
  *  again: soon while a job runs, else rarely. The daemon keeps a commit's
  *  runs 10 s while one runs and 2 min once all settled, so a poll inside
  *  that costs GitHub nothing. */
-const CI_RUNNING_MS = 12_000
-const CI_IDLE_MS = 60_000
+export const CI_RUNNING_MS = 12_000
+export const CI_IDLE_MS = 60_000
 /** The pull requests: sooner while a check runs. The daemon keeps each pull
  *  request about as long, so a poll it can answer from what it holds costs
  *  GitHub nothing. */
-const PRS_PENDING_MS = 20_000
+export const PRS_PENDING_MS = 20_000
 
 const CI_TEXT: Record<CITone, string> = {
   running: 'text-warn', queued: 'text-fg-faint', pass: 'text-ok', fail: 'text-danger', skipped: 'text-fg-faint',
 }
 
 /** A job's or a step's state as a mark: a turning ring while it runs. */
-function CIMark({ tone }: { tone: CITone }) {
+export function CIMark({ tone }: { tone: CITone }) {
   if (tone === 'running') return <span role="img" aria-label="running" className="ci-spin inline-block h-[9px] w-[9px] shrink-0 rounded-full" />
   const mark = tone === 'pass' ? '✓' : tone === 'fail' ? '✗' : tone === 'queued' ? '○' : '–'
   return <span role="img" aria-label={tone === 'pass' ? 'passed' : tone === 'fail' ? 'failed' : tone} className={`w-[9px] shrink-0 text-center text-[11px] leading-none ${CI_TEXT[tone]}`}>{mark}</span>
@@ -265,7 +290,7 @@ const LogView = createContext<{ view: LogViewName; pr?: number; onShown?: (d: 1 
 const REFRESHING_MS = 1_500
 
 /** A poll's state beside its answer: a read under way, the last one failed. */
-interface PollMeta {
+export interface PollMeta {
   loading: boolean
   failed: boolean
 }
@@ -284,14 +309,15 @@ function fromCache<T>(k: string | undefined): PollSnap<T> {
 /**
  * Asks read() while `on`, the deck open and the window visible: every
  * `fast` ms while busy() says something runs, else every CI_IDLE_MS. Hidden,
- * nothing is asked; it asks again once the window is shown.
+ * nothing is asked and no timer is armed; it asks again once the window is
+ * shown (lib/visible: a hidden window does no work).
  * The last answer stays while it is off. With a cache key, the answer last
  * kept under it (lib/deckCache) is shown at once — after a remount, a
  * restart of the app, a switch of view — while the read revalidates it.
  * keep(prev, next) says a failed read's answer is worse than the one shown:
  * the shown one stays, marked failed.
  */
-function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: T) => boolean, fast = CI_RUNNING_MS, cacheKey?: string, keep?: (prev: T, next: T) => boolean): [T | undefined, number, PollMeta] {
+export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: T) => boolean, fast = CI_RUNNING_MS, cacheKey?: string, keep?: (prev: T, next: T) => boolean): [T | undefined, number, PollMeta] {
   const [snap, setSnap] = useState<PollSnap<T>>(() => fromCache<T>(cacheKey))
   const [meta, setMeta] = useState<PollMeta>({ loading: false, failed: false })
   const shown = !cacheKey || snap.k === cacheKey ? snap : fromCache<T>(cacheKey)
@@ -326,7 +352,7 @@ function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: 
           if (alive) setMeta({ loading: false, failed: true })
         }
       }
-      if (alive) timer = window.setTimeout(() => void tick(), next)
+      if (alive && !document.hidden) timer = window.setTimeout(() => void tick(), next)
     }
     void tick()
     const onVisible = () => { if (!document.hidden) { window.clearTimeout(timer); void tick() } }
@@ -346,7 +372,7 @@ const keepBranches = (prev: SessionBranches, next: SessionBranches) => !!next.er
  * a kept answer runs, "couldn't refresh" when the last one failed, else how
  * long ago the daemon composed it. Its own clock, every 5 s while visible.
  */
-function Freshness({ at, loading, failed }: { at?: number; loading: boolean; failed: boolean }) {
+export function Freshness({ at, loading, failed }: { at?: number; loading: boolean; failed: boolean }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!at) return
@@ -362,7 +388,7 @@ function Freshness({ at, loading, failed }: { at?: number; loading: boolean; fai
 }
 
 /** Three grey rows in the shape of the list: the first read ever of a view. */
-function DeckSkeleton({ label }: { label: string }) {
+export function DeckSkeleton({ label }: { label: string }) {
   return (
     <ul data-deck-skeleton aria-busy="true" aria-label={label} className="-mx-1 flex flex-col gap-[5px] px-1 pt-1">
       {[0.62, 0.48, 0.55].map((w, i) => (
@@ -450,32 +476,7 @@ function scrollInDeck(el: HTMLElement, mode: 'start' | 'nearest') {
   else if (r.bottom > a.bottom) area.scrollTop += Math.min(r.top - a.top, r.bottom - a.bottom)
 }
 
-/** The force actions on a pull request row. */
-type ForceKind = 'conflict' | 'ci' | 'rerun' | 'update'
-const FORCE_LABEL: Record<ForceKind, string> = {
-  conflict: 'Fix conflict with agent', ci: 'Fix CI with agent', rerun: 'Re-run checks', update: 'Update branch',
-}
-const FORCE_TITLE: Record<ForceKind, string> = {
-  conflict: 'An agent merges the base in, resolves the conflicts, runs the checks and pushes: the agent on this branch when Caprock started it, else a new one in the branch’s checkout',
-  ci: 'An agent looks at this pull request’s CI — the failed job with its log, or the flaky checks — fixes it and pushes',
-  rerun: 'Run the checks again on GitHub: the failed jobs, else every finished run. Needs the token’s Actions (write) permission',
-  update: 'Merge the base into this branch on GitHub, as its Update branch button does. Needs the token’s Pull requests (write) permission',
-}
-/** Where a fix goes: typed into an agent Caprock started, or a new agent. */
-type FixPlan = { mode: 'queue'; to: SessionSummary } | { mode: 'spawn'; wt?: DeckWorktree; foreign: boolean }
-
-/** What each PR row is doing after a force action, per session, while the app runs: hiding the deck keeps it. */
-const prProgress = new Map<string, PRProgress>()
-function progressOf(sessionId: string): Record<number, PRProgress> {
-  const out: Record<number, PRProgress> = {}
-  for (const [k, g] of prProgress) {
-    const i = k.lastIndexOf(':')
-    if (k.slice(0, i) === sessionId) out[Number(k.slice(i + 1))] = g
-  }
-  return out
-}
-/** Forgets every progress line: for tests. */
-export function forgetPRProgress() { prProgress.clear() }
+export { forgetPRProgress } from '@/lib/usePRForce'
 
 const CHIP_TEXT: Record<PRChip['tone'], string> = {
   fail: 'border-danger/45 text-danger', warn: 'border-warn/45 text-warn', muted: 'border-[var(--app-hairline)] text-fg-faint',
@@ -553,23 +554,6 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   // one line so the error has the room.
   const [logs, setLogs] = useState(0)
   const onShown = useCallback((d: 1 | -1) => setLogs((x) => Math.max(0, x + d)), [])
-  const [confirm, setConfirm] = useState<{ pr: number; kind: ForceKind }>()
-  const [forcing, setForcing] = useState<number>()
-  const [progress, setProgressState] = useState<Record<number, PRProgress>>(() => progressOf(sessionId))
-  const setProgress = (n: number, g: PRProgress | undefined) => {
-    const k = `${sessionId}:${n}`
-    if (g) prProgress.set(k, g)
-    else prProgress.delete(k)
-    setProgressState(progressOf(sessionId))
-  }
-  // A progress line goes once GitHub shows it done, or after a while.
-  const standing = (p: SessionPRLive, agents: PRAgent[]): PRProgress | undefined => {
-    const g = progress[p.number]
-    return g && progressStands(g, p, agents, now) ? g : undefined
-  }
-  // While one stands, the PRs are asked sooner and the clock ticks, so it
-  // goes as soon as it is done.
-  const forceActive = Object.values(progress).some((g) => now - g.at < PROGRESS_MAX_MS)
 
   const key = `${sessionId}:${n}`
   // Sooner while a force action's progress stands, so it goes once done.
@@ -636,6 +620,16 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   const rel = relData?.release
   const ci = view === 'pr' ? prCI?.ci : view === 'main' ? mainData?.ci : undefined
   const runs: CIRun[] = useMemo(() => (view === 'release' ? (rel?.run ? [rel.run] : []) : ci?.runs ?? []), [view, rel?.run, ci?.runs])
+  const why = !canControl ? 'This device may only watch: queue it from the Mac, or make this device a controller in Settings.'
+    : !s.owned ? 'Caprock did not start this session, so it never types into it. Start the agent from Caprock to queue CI failures to it.'
+      : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
+  // The force actions (lib/usePRForce), shared with the PRs & CI tab.
+  const { confirm, setConfirm, forcing, standing, active: forcingActive, forceWhy, confirmText, force } = usePRForce({
+    sessionId, s, worktrees, onStartAgent, onToast, canControl, connected: prsData?.connected, why,
+    runsOf: (p) => (prCI?.pr?.number === p.number ? prCI.ci?.runs : undefined),
+    onDone: () => setN((x) => x + 1),
+  })
+  const forceActive = forcingActive(now)
   const relRunning = rel?.state === 'running'
   const prsRunning = view === 'pr' && rows.some((p) => p.live?.checks.state === 'pending')
   const active = ciActive(ci) || relRunning || prsRunning || forceActive
@@ -725,9 +719,6 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
 
   const pr = prCI?.pr
   const logView: LogViewName = view === 'branches' ? 'pr' : view
-  const why = !canControl ? 'This device may only watch: queue it from the Mac, or make this device a controller in Settings.'
-    : !s.owned ? 'Caprock did not start this session, so it never types into it. Start the agent from Caprock to queue CI failures to it.'
-      : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
   const investigate = async (job: CIJob, step?: string) => {
     if (why) return
     const run = runs.find((r) => r.id === job.run_id)
@@ -751,7 +742,6 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   // The force actions on a pull request (owner, 2026-10-12, translated: "if
   // needed I want to FORCE a fix or a check"): each asks once, in a line
   // inside the row, and then says in the row what it is doing.
-  const root = s.repo_root || s.cwd
   const agentsOf = (p: SessionPRLive) => prAgents(p.live?.branch, worktrees)
   // Open, or not known otherwise while GitHub is not read: its actions are offered.
   const openish = (p: SessionPRLive) => (p.live ? p.live.state === 'open' : !p.merged_at && !p.closed_at)
@@ -772,90 +762,6 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
     })).then((xs) => { if (on) setQueues(Object.fromEntries(xs)) })
     return () => { on = false }
   }, [view, queueIds, prsData])
-  // Who a fix goes to: a Caprock-started agent on the branch; for CI, else
-  // the session in front as Investigate does; else a new agent in the
-  // branch's checkout, or in a new worktree at the PR's head when there is
-  // none or someone Caprock did not start works in it (rule 7).
-  const fixPlan = (p: SessionPRLive, kind: 'conflict' | 'ci'): FixPlan => {
-    const on = agentsOf(p)
-    const mine = on.find((a) => typeable(a.session))
-    if (mine) return { mode: 'queue', to: mine.session }
-    if (kind === 'ci' && !why) return { mode: 'queue', to: s }
-    const wt = branchWorktree(p.live?.branch, worktrees)
-    const foreign = on.some((a) => !typeable(a.session))
-    return { mode: 'spawn', wt: wt && !foreign ? wt : undefined, foreign }
-  }
-  const forceWhy = (p: SessionPRLive, kind: ForceKind): string => {
-    if (!canControl) return 'This device may only watch: do it from the Mac, or make this device a controller in Settings.'
-    const live = p.live
-    if (!live || live.state !== 'open') return 'Only an open pull request.'
-    if (kind === 'rerun' || kind === 'update') {
-      if (prsData && !prsData.connected) return 'Connect GitHub first.'
-      if (kind === 'rerun' && live.checks.items.length === 0) return 'No checks to re-run.'
-      if (kind === 'rerun' && live.checks.state === 'pending') return 'The checks are still running; GitHub re-runs a run once it has finished.'
-      return ''
-    }
-    const plan = fixPlan(p, kind)
-    if (plan.mode === 'spawn' && !onStartAgent) return 'An agent cannot be started from here.'
-    if (plan.mode === 'spawn' && !root) return 'This session has no folder to start an agent in.'
-    return ''
-  }
-  const confirmText = (p: SessionPRLive, kind: ForceKind): string => {
-    const live = p.live!
-    if (kind === 'rerun') return live.checks.failed > 0 ? `Re-run #${p.number}’s failed jobs on GitHub?` : `Re-run every check of #${p.number} on GitHub?`
-    if (kind === 'update') return `Merge ${live.base} into ${live.branch} on GitHub (Update branch)?`
-    const plan = fixPlan(p, kind)
-    const what = kind === 'conflict' ? `merge origin/${live.base}, resolve the conflicts, run the checks and push` : 'fix #' + p.number + '’s CI and push'
-    if (plan.mode === 'queue') return `Ask ${sessionTitle(plan.to)} to ${what}?`
-    const where = plan.wt ? `in ${plan.wt.path.split(/[\\/]/).pop()}` : `in a new worktree at #${p.number}’s head`
-    return `Start an agent ${where} to ${what}?${plan.foreign ? ' The agent on the branch was not started by Caprock, so nothing is typed into it.' : ''}`
-  }
-  // Fix CI's message: Investigate's for the first failed job, with its log;
-  // else the flaky-check one.
-  const ciMessage = async (p: SessionPRLive, fresh: boolean): Promise<string> => {
-    const live = p.live!
-    const failed = prCI?.pr?.number === p.number ? jobs.find((j) => ciTone(j) === 'fail') : undefined
-    if (!failed) return fixCIMessage(live, fresh)
-    let lines: string[] = []
-    try { lines = (await api.sessionCILog(sessionId, failed.id, 'pr', p.number)).lines } catch { /* the job's link has it */ }
-    const run = runs.find((r) => r.id === failed.run_id)
-    const text = investigateMessage({ pr: { number: p.number, title: live.title, url: live.url }, workflow: run?.name, job: failed, step: keyStep(failed)?.name, lines })
-    return fresh && live.branch ? `${text}\nPush to the pull request's branch: git push origin HEAD:${live.branch}` : text
-  }
-  const force = async (p: SessionPRLive, kind: ForceKind) => {
-    setConfirm(undefined)
-    const live = p.live
-    if (!live || forceWhy(p, kind)) return
-    setForcing(p.number)
-    const label = FORCE_LABEL[kind]
-    try {
-      if (kind === 'rerun') {
-        const r = await api.sessionPRRerun(sessionId, p.number)
-        setProgress(p.number, { kind: 'rerun', text: rerunText(r.jobs), at: Date.now(), head: live.head_sha })
-      } else if (kind === 'update') {
-        await api.sessionPRUpdateBranch(sessionId, p.number)
-        setProgress(p.number, { kind: 'update', text: 'updating branch…', at: Date.now(), head: live.head_sha })
-      } else {
-        const plan = fixPlan(p, kind)
-        const fresh = plan.mode === 'spawn' && !plan.wt
-        const text = kind === 'conflict' ? fixConflictMessage(live, fresh) : await ciMessage(p, fresh)
-        if (plan.mode === 'queue') {
-          const res = await api.queueSend(plan.to.session_id, text)
-          onToast?.(`${res.sent ? 'Sent to' : 'Queued for'} ${sessionTitle(plan.to)}`)
-        } else {
-          const req: SpawnRequest = plan.wt ? { cwd: plan.wt.path, prompt: text } : { cwd: root, worktree: fixWorktreeName(p.number), worktree_pr: p.number, prompt: text }
-          await onStartAgent!(req, `#${p.number} ${kind === 'conflict' ? 'conflict' : 'CI'}`)
-          onToast?.(`Started an agent on #${p.number}`)
-        }
-        setProgress(p.number, { kind: 'agent', text: 'agent fixing…', at: Date.now(), head: live.head_sha })
-      }
-      setN((x) => x + 1)
-    } catch (e) {
-      onToast?.(`${label}: ${forceErrText(e)}`)
-    } finally {
-      setForcing(undefined)
-    }
-  }
   // ⋯ on a row: open it, with the focus on its first action.
   const focusActions = useRef<number | undefined>(undefined)
   const openActions = (n: number) => {
@@ -1009,7 +915,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
           {rows.map((p) => {
             if (cramped && openPr !== p.number) return null
             const agents = agentsOf(p)
-            const progress = standing(p, agents)
+            const progress = standing(p, agents, now)
             return (
             <PRRow key={p.url} p={p} now={now} runs={seenRuns[p.number]} cost={prCost(p.number)} open={openPr === p.number}
               onToggle={() => togglePR(p.number)}

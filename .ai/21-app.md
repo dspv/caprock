@@ -688,6 +688,46 @@ One window, three regions:
     tooltip says it is an estimate at list rate, before a private
     repository's included minutes, and names the table's version and source
     page. Nothing while no job has finished.
+  - **PRs & CI tab** (owner, 2026-10-13, translated: "I also want to expand
+    the panel bigger, to see the statuses large and in detail, plus
+    statistics … sometimes it's interesting to look"). *Expand* beside
+    *Hide ⌘B* — one control, no key of its own (rule 12), no sidebar item —
+    opens the cell large as a tab of its own (`kind: 'prs'`, one per agent
+    session, never split; `components/PRsCITab.tsx`, words in
+    `lib/prstats.ts`); *Back to the deck* closes it and brings the agent's
+    tab to the front with its deck open. It shows:
+    - **The figures** — over the 14 local days ending today, from `GET
+      /v1/sessions/{id}/ci/stats`: *Merged* (the total, the last 7, today,
+      bars per day), *Time to merge* (the median from opened to merged of
+      those merged, nothing with fewer than two), *CI time* (the median
+      successful run of the workflow taking the most time, a line per day),
+      *Red runs* (failed of the runs that passed or failed, with re-runs;
+      runs per day with the red part), and *Actions this month* when
+      GitHub's billing report is readable. Every figure is counted from
+      GitHub's stamps; the tooltips say which pull requests and how many
+      runs (the newest 100) they rest on.
+    - **The list** — *This session* (its own, the open one first),
+      *Repository* (the repository's 50 most recently updated, the default,
+      kept per viewer) or *Open*; a row says its state, number, title, age,
+      its CI in words where read (the session's own) or *merged in 8m*, and
+      *this session*.
+    - **The chosen one** — the session's open PR first: its state, CI,
+      merge state and review as large pills, branch → base, the diff's size
+      (*+181 −59 · 13 files · 2 commits*, from GitHub's answer for the pull
+      request), when it was opened and how long it took to merge; the
+      deck's actions (lib/usePRForce, shared with the deck's rows; on a
+      pull request of the repository that is not the session's too, once
+      the tab has listed it); its jobs as a grid of job × runner OS (a
+      matrix job's OS taken out of its name), each cell its state, time,
+      time against its median and the step it failed at or is on; the jobs
+      on the run's clock, each with its median as a tick; and a job's steps
+      — the first failed job by itself — with the end of its log and
+      *Investigate*.
+    It asks only while it is the tab in front and the window is visible,
+    through the deck's routes and kept answers (it opens on what the deck
+    last knew), and one more read of GitHub: the repository's newest 100
+    runs, kept 30 minutes by the daemon. Below 760px the list and the
+    chosen one stack.
   - **Branches view** (owner, 2026-10-12, translated: "seeing branches with
     statistics would also be interesting"; `GET
     /v1/sessions/{id}/branches`, `lib/branches.ts`): the session's
