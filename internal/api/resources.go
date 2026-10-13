@@ -17,6 +17,18 @@ func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.d.Resources(r.Context()))
 }
 
+// handleFootprint answers GET /v1/footprint: what Caprock itself costs this
+// machine — memory, CPU, disk and the daemon's disk I/O — and the duplicate
+// and orphaned processes that make it cost more (03-contracts.md
+// § Footprint).
+func (s *Server) handleFootprint(w http.ResponseWriter, r *http.Request) {
+	if s.d.Footprint == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("footprint not available"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.Footprint(r.Context()))
+}
+
 // handleReapOrphans stops the orphaned pty-hosts nothing runs in. Not on a
 // paired device's list: it signals processes on this machine.
 func (s *Server) handleReapOrphans(w http.ResponseWriter, r *http.Request) {

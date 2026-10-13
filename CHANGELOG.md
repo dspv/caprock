@@ -7,6 +7,29 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **cli:** `caprock doctor` says what Caprock costs this machine — memory and
+  CPU of the daemon, the app, the app's window and the terminal holders; the
+  data directory split into database, pastes, logs and binaries; the
+  daemon's disk reads and writes over the last minute and hour — flags a
+  second daemon, a second app, orphaned terminals, a database over 2 GB and
+  heavy disk reads, and exits 1 when something is flagged. `--json` prints
+  the new `GET /v1/footprint`. It works with no daemon running.
+- **daemon:** the resource meter counts the app's window: on macOS the
+  WebKit helpers that draw it (hundreds of MB that belonged to no one
+  before), elsewhere the app's child processes.
+
+### Changed
+
+- **daemon:** one daemon per data directory. A second one waits 5 s for a
+  restarting one, then exits naming the pid of the one that runs.
+- **daemon:** the automatic orphan sweep runs every 10 minutes and stops
+  every orphaned terminal holding only an idle shell, whichever Caprock
+  started it — eleven left by deleted preview stands survived every hourly
+  sweep before. A write-ahead log over 256 MB is checkpointed on its own.
+  Both are listed in the footprint's `actions` with their time.
+
 ## [0.112.4] - 2026-10-13
 
 ### Changed

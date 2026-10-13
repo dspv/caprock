@@ -3,8 +3,9 @@
 //! § Architecture):
 //!
 //! - One daemon per data directory. A running daemon always wins, whoever
-//!   installed it (Homebrew, Scoop, `go install`, this app); the configured
-//!   port's bind is the lock that stops a second one.
+//!   installed it (Homebrew, Scoop, `go install`, this app); the daemon's
+//!   own `<data_dir>/caprock.lock` (and the configured port's bind) stops a
+//!   second one, after waiting 5 s for a restarting one to let go.
 //! - Never stop a daemon it did not start. Quitting the app leaves the daemon
 //!   and every session running.
 //! - Only a Homebrew `caprock` or the bundled one (from `<data_dir>/bin`)

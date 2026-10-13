@@ -1,0 +1,200 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/daemon"
+)
+
+// exitCodeError ends the process with a code and no "error:" line: the
+// output already said what there is to say.
+type exitCodeError struct{ code int }
+
+func (e exitCodeError) Error() string { return fmt.Sprintf("exit status %d", e.code) }
+
+// --- doctor ---
+
+func doctorCmd() *cobra.Command {
+	var (
+		asJSON   bool
+		dataDirF string
+	)
+	c := &cobra.Command{
+		Use:   "doctor",
+		Short: "What Caprock costs this machine, and duplicate or orphaned Caprock processes",
+		Long: "Prints the memory, CPU and disk Caprock uses on this machine — the daemon, the desktop app and its window, the terminal holders, " +
+			"the data directory, the daemon's own disk reads and writes — and flags another daemon, a second app, orphaned terminals and an " +
+			"oversized database. Exits 1 when something is flagged. Works with no daemon running, from the process table and the data directory.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if dataDirF != "" {
+				_ = os.Setenv(config.EnvDataDir, dataDirF)
+			}
+			dir, err := config.DataDir()
+			if err != nil {
+				return err
+			}
+			f := doctorReport(cmd, dir)
+			out := cmd.OutOrStdout()
+			if asJSON {
+				enc := json.NewEncoder(out)
+				enc.SetIndent("", "  ")
+				if err := enc.Encode(f); err != nil {
+					return err
+				}
+			} else {
+				printDoctor(out, f)
+			}
+			if f.Warns() {
+				return exitCodeError{code: 1}
+			}
+			return nil
+		},
+	}
+	c.Flags().BoolVar(&asJSON, "json", false, "print the footprint as JSON (the shape of GET /v1/footprint)")
+	c.Flags().StringVar(&dataDirF, "data-dir", "", "the data directory to check (also $CAPROCK_DATA_DIR)")
+	return c
+}
+
+// doctorReport asks the running daemon, and reads what it can itself when
+// none answers — or when the one that answers predates /v1/footprint.
+func doctorReport(cmd *cobra.Command, dir string) *daemon.FootprintReport {
+	rt, err := config.ReadRuntime(dir)
+	if err == nil && daemonAlive(rt) {
+		var f daemon.FootprintReport
+		if err := getJSON(rt.Port, "/v1/footprint", &f); err == nil {
+			return &f
+		}
+		return daemon.OfflineFootprint(cmd.Context(), dir, int32(rt.PID))
+	}
+	return daemon.OfflineFootprint(cmd.Context(), dir, 0)
+}
+
+func printDoctor(w io.Writer, f *daemon.FootprintReport) {
+	mem := daemon.Bytes
+	cpu := func(p float64) string { return fmt.Sprintf("%.1f%%", p) }
+	fmt.Fprintf(w, "data directory  %s\n", f.DataDir)
+	m := f.Memory
+	switch {
+	case f.DaemonRunning && m.Daemon != nil:
+		fmt.Fprintf(w, "daemon          running, pid %d\n", m.Daemon.PID)
+	case f.DaemonRunning:
+		fmt.Fprintln(w, "daemon          running")
+	default:
+		fmt.Fprintln(w, "daemon          not running (figures read from the process table and the disk)")
+	}
+
+	fmt.Fprintln(w, "\nMemory and CPU")
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	if m.Daemon != nil {
+		fmt.Fprintf(tw, "  daemon\t%s\t%s\t\n", mem(m.Daemon.MemBytes), cpu(m.Daemon.CPUPct))
+	}
+	if m.App != nil {
+		fmt.Fprintf(tw, "  desktop app\t%s\t%s\t\n", mem(m.App.MemBytes), cpu(m.App.CPUPct))
+	}
+	if m.Webview != nil {
+		fmt.Fprintf(tw, "  app window\t%s\t%s\t%d web view processes\n", mem(m.Webview.MemBytes), cpu(m.Webview.CPUPct), m.Webview.Count)
+	}
+	h := m.Hosts
+	fmt.Fprintf(tw, "  terminal holders\t%s\t%s\t%d, %d orphaned, %d reapable\n", mem(h.MemBytes), cpu(h.CPUPct), h.Count, h.Orphans, h.Reapable)
+	if n := len(f.Duplicates.Daemons); n > 0 {
+		fmt.Fprintf(tw, "  other daemons\t%s\t\t%d\n", mem(m.OtherDaemonsMemBytes), n)
+	}
+	fmt.Fprintf(tw, "  total\t%s\t%s\t\n", mem(m.TotalMemBytes), cpu(m.TotalCPUPct))
+	_ = tw.Flush()
+	if !f.DaemonRunning {
+		fmt.Fprintln(w, "  (CPU needs two samples; with no daemon it is not measured)")
+	}
+
+	d := f.Disk
+	fmt.Fprintf(w, "\nDisk (%s in the data directory)\n", mem(uint64(d.TotalBytes)))
+	tw = tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(tw, "  database\t%s\twrite-ahead log %s\n", mem(uint64(d.DatabaseBytes)), mem(uint64(d.WALBytes)))
+	fmt.Fprintf(tw, "  pastes\t%s\t\n", mem(uint64(d.PastesBytes)))
+	fmt.Fprintf(tw, "  logs\t%s\t\n", mem(uint64(d.LogsBytes)))
+	fmt.Fprintf(tw, "  binaries\t%s\t\n", mem(uint64(d.BinariesBytes)))
+	fmt.Fprintf(tw, "  other\t%s\t\n", mem(uint64(d.OtherBytes)))
+	_ = tw.Flush()
+
+	if dio := f.DiskIO; dio != nil {
+		fmt.Fprintln(w, "\nThe daemon's disk I/O")
+		tw = tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		win := func(label string, x *daemon.IOWindow) {
+			if x == nil {
+				return
+			}
+			fmt.Fprintf(tw, "  %s\tread %s\twritten %s\tover %s\n", label, mem(x.ReadBytes), mem(x.WriteBytes), span(x.Seconds))
+		}
+		win("last minute", dio.LastMinute)
+		win("last hour", dio.LastHour)
+		win("since start", dio.SinceStart)
+		_ = tw.Flush()
+		if dio.LastMinute == nil {
+			fmt.Fprintln(w, "  (read once a minute; the first interval is not over yet)")
+		}
+		if dio.Error != "" {
+			fmt.Fprintf(w, "  not measured: %s\n", dio.Error)
+		}
+	}
+
+	fmt.Fprintln(w, "\nDuplicates")
+	if len(f.Duplicates.Daemons) == 0 {
+		fmt.Fprintln(w, "  other daemons: none")
+	}
+	for _, p := range f.Duplicates.Daemons {
+		fmt.Fprintf(w, "  other daemon: pid %d %s %s%s\n", p.PID, p.Exe, mem(p.MemBytes), dataDirNote(p.DataDir))
+	}
+	fmt.Fprintf(w, "  desktop apps: %d\n", len(f.Duplicates.Apps))
+	o := f.Duplicates.OtherInstallHolders
+	fmt.Fprintf(w, "  terminal holders from another install: %d", o.Count)
+	if o.Count > 0 {
+		fmt.Fprintf(w, " (%d orphaned)", o.Orphans)
+	}
+	fmt.Fprintln(w)
+	for _, e := range o.Exes {
+		fmt.Fprintf(w, "    %d  %s\n", e.Count, e.Exe)
+	}
+
+	if f.DiskIO != nil { // the daemon's own report, not one read from outside
+		fmt.Fprintln(w, "\nDone on its own (since the daemon started)")
+		if len(f.Actions) == 0 {
+			fmt.Fprintln(w, "  nothing needed doing")
+		}
+		for _, a := range f.Actions {
+			fmt.Fprintf(w, "  %s  %s\n", time.UnixMilli(a.At).Format("Jan 2 15:04"), a.What)
+		}
+	}
+
+	fmt.Fprintln(w, "\nVerdict")
+	for _, v := range f.Verdicts {
+		fmt.Fprintf(w, "  %-4s  %s\n", strings.ToUpper(v.Level), v.Text)
+	}
+	if f.Error != "" {
+		fmt.Fprintf(w, "\nnote: %s\n", f.Error)
+	}
+}
+
+func dataDirNote(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	return ", data " + dir
+}
+
+func span(sec int64) string {
+	switch {
+	case sec >= 3600:
+		return fmt.Sprintf("%dh%02dm", sec/3600, sec%3600/60)
+	case sec >= 60:
+		return fmt.Sprintf("%dm", (sec+30)/60)
+	}
+	return fmt.Sprintf("%ds", sec)
+}

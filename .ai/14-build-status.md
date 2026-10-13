@@ -73,6 +73,25 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — unreleased: `caprock doctor` and what Caprock costs this machine
+
+`GET /v1/footprint` and `caprock doctor` ([03-contracts.md § Footprint](03-contracts.md#footprint)):
+memory and CPU of the daemon, the app, the app's window (macOS WebKit
+helpers found through `responsibility_get_pid_responsible_for_pid`; the
+owner's measured 290–360 MB WebContent + 60–70 MB GPU + 14 MB Networking
+were uncounted) and the holders; the data directory split; the daemon's own
+disk I/O from a 60-reading in-memory ring; other daemons, extra apps and
+holders from another install; verdicts; and the log of what the daemon did
+on its own. One daemon per data directory (`caprock.lock`). The orphan sweep
+now stops every reapable holder every 10 minutes: the owner's 11 orphans
+were idle shells whose registry was a deleted preview stand's `$TMPDIR`
+data directory, skipped because the sweep took only its own directory's. A
+WAL over 256 MiB is checkpointed on its own. The per-event "model not in
+pricing table" flood (46,652 lines on 2026-09-27/29) had already been cut to
+once per model in #99; a test now pins it. Verified on a preview daemon (temp
+HOME and data dir, spare port; stopped before its first sweep) and with
+`caprock doctor` against the owner's running install, read-only.
+
 ### 2026-10-13 — 0.112.4: the model on its own line
 
 The cockpit's agent row is name / model / state, so a wide figure at the
