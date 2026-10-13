@@ -532,6 +532,10 @@ def main():
                         // not a total still loading, so they are left out.
                         let t = document.body.innerText;
                         for (const el of document.querySelectorAll('[data-session-figures]')) t = t.replace(el.innerText, '');
+                        // The live pulse's rows carry no such mark: a row is
+                        // the session's short id and state, then its cost on
+                        // a line of its own, $0.00 for one just started.
+                        t = t.replace(/^[0-9a-f]{8} · .*\\n\\$0\\.00\\s*$/gm, '');
                         if (document.querySelector('.skeleton-pulse')) return false;
                         if (t.includes('reading your figures')) return false;
                         if (t.includes('nothing measured')) return false;
@@ -551,6 +555,7 @@ def main():
                       (() => {
                         let t = document.body.innerText;
                         for (const el of document.querySelectorAll('[data-session-figures]')) t = t.replace(el.innerText, '');
+                        t = t.replace(/^[0-9a-f]{8} · .*\n\$0\.00\s*$/gm, '');
                         const z = t.search(/^\$0\.00\s*$/m);
                         return JSON.stringify({
                           skeletons: document.querySelectorAll('.skeleton-pulse').length,
