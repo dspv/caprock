@@ -76,8 +76,9 @@ const hiddenIds = () => Object.keys(JSON.parse(localStorage.getItem(HIDDEN_KEY)!
 beforeEach(() => {
   localStorage.clear()
   // These are about each row's actions, so every row is out: alpha's
-  // "+N more" open. The one row and the fold are tested at the end.
-  localStorage.setItem(MORE_KEY, JSON.stringify(['alpha']))
+  // "+N more" open (SidebarActiveRows.test.tsx tests the fold itself).
+  sessionStorage.clear()
+  sessionStorage.setItem(MORE_KEY, JSON.stringify(['alpha']))
   signal.mockClear()
 })
 
@@ -202,7 +203,7 @@ describe('closing in the sidebar', () => {
     expect(props.onSelectProject).not.toHaveBeenCalled()
   })
 
-  it('says each row\'s state in one word, a shell none, and never reorders rows when a state changes', () => {
+  it('says each row\'s state in one word, a shell none, and moves a row only between the list and the fold when a state changes', () => {
     const sessions = [
       live({ session_id: 'a1', title: 'Fix the login' }),
       live({ session_id: 'a2', title: 'Write the docs', started_at: 2, activity: { phrase: '', at: '', health: 'waiting-on-you' } }),
@@ -218,7 +219,9 @@ describe('closing in the sidebar', () => {
     // The waiting one is the amber one.
     expect(document.querySelector('[data-state="waiting"]')!.className).toContain('text-accent')
     expect(document.querySelectorAll('.text-accent[data-state]')).toHaveLength(1)
-    // A state flips and a newer session starts: rows keep their places, the new one lands last.
+    // A state flips and a newer session starts: the active rows keep their
+    // order, the one that started working leaves the fold for the list, and
+    // the new one lands last among the active ones.
     const next = [
       { ...sessions[0]!, activity: { phrase: '', at: '', health: 'idle' } },
       { ...sessions[1]!, activity: { phrase: '', at: '', health: 'working' }, last_event_at: 99 },
@@ -228,7 +231,7 @@ describe('closing in the sidebar', () => {
     ] as SessionSummary[]
     const model = buildSidebar({ projects: [proj('alpha'), proj('beta')], sessions: next, permissions: new Set(), costs: new Map(), openSessions: new Set(['a1', 'sh1']) })
     rerender(<Sidebar {...props} model={model} tabLabels={tabLabels([agentTab, shellTab], new Map(next.map((s) => [s.session_id, s])), new Set(), () => undefined)} />)
-    expect(words()).toEqual([['Fix the login', 'idle'], ['Shell 1', ''], ['Write the docs', 'working'], ['Older one', 'idle'], ['Brand new', 'working']])
+    expect(words()).toEqual([['Fix the login', 'idle'], ['Shell 1', ''], ['Write the docs', 'working'], ['Brand new', 'working'], ['Older one', 'idle']])
   })
 
   it('names what a shell runs, on its tab row and on a running shell with no tab', () => {
@@ -259,7 +262,8 @@ describe('closing in the sidebar', () => {
     expect(row.getAttribute('title')).toContain(`Context recovery · ${branchLabel(branch)}`)
   })
 
-  it('hides a row with no tab from its ×, signalling nothing, and brings it back from "N hidden · show"', () => {
+  it('hides a row with no tab from its ×, signalling nothing, and brings it back from the end of "+N more"', () => {
+    sessionStorage.clear()
     const sessions = [
       live({ session_id: 'a2', title: 'Write the docs', started_at: 2 }),
       live({ session_id: 'x1', title: 'Context recovery', owned: false, started_at: 3 }),
@@ -278,21 +282,24 @@ describe('closing in the sidebar', () => {
     expect(screen.queryByRole('button', { name: 'Stop the session…' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Hide Context recovery from the list' }))
     expect(list.querySelector('[data-live-row="x1"]')).toBeNull()
-    // Nothing left to fold: no "+N more" line.
-    expect(list.querySelector('[data-more-rows]')).toBeNull()
     expect(signal).not.toHaveBeenCalled()
 
-    const more = within(list).getByRole('button', { name: /2 hidden · show/ })
+    // Both wait behind "+N more", with no line of their own.
+    const more = list.querySelector('[data-more-rows]') as HTMLElement
+    expect(more.textContent).toBe('+2 more›')
+    expect(more.getAttribute('title')).toMatch(/^2 hidden\./)
     expect(more).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText(/hidden · (show|hide again)/)).toBeNull()
     fireEvent.click(more)
     expect([...list.querySelectorAll('[data-hidden-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['a2', 'x1'])
     fireEvent.click(screen.getByRole('button', { name: 'Show Write the docs in the list again' }))
     expect(list.querySelector('[data-live-row="a2"]')).not.toHaveAttribute('data-hidden-row')
-    expect(within(list).getByRole('button', { name: /1 hidden · hide again/ })).toBeInTheDocument()
+    expect(more.textContent).toBe('+1 more›')
     expect(Object.keys(JSON.parse(localStorage.getItem(HIDDEN_SESSIONS_KEY)!))).toEqual(['x1'])
   })
 
   it('offers the same from the keyboard: Shift+F10 on a row with no tab opens Open, Hide, Stop…', () => {
+    sessionStorage.clear()
     setup([live({ session_id: 'a2', title: 'Write the docs' }), live({ session_id: 'x1', title: 'Theirs', owned: false, started_at: 3 })], [])
     const row = document.querySelector('[data-live-row="a2"]') as HTMLElement
     fireEvent.keyDown(row, { key: 'F10', shiftKey: true })
@@ -323,18 +330,20 @@ describe('closing in the sidebar', () => {
     localStorage.setItem(HIDDEN_SESSIONS_KEY, JSON.stringify({ x2: Date.now() - 1000, x1: Date.now() - 10 * 60_000 }))
     setup(sessions, [], {}, new Set(['x2']))
     const list = screen.getByRole('group', { name: 'alpha: open tabs' })
-    // The one that asks leads; the other waiting one is under "+N more", which says so.
-    expect([...list.querySelectorAll('[data-live-row][data-waiting]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['x2', 'x1'])
-    expect(list.querySelector('[data-more-rows]')!.textContent).toBe('+2 more · 1 waiting›')
+    // Both are listed, in the order they started, with the busy one: nothing is folded.
+    expect([...list.querySelectorAll('[data-live-row][data-waiting]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['x1', 'x2'])
+    expect([...list.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['x1', 'x2', 'x3'])
+    expect(list.querySelector('[data-more-rows]')).toBeNull()
     expect(list.querySelector('[data-live-row="x2"] [data-state]')!.textContent).toBe('asks')
     expect(list.querySelector('[data-live-row="x1"] [data-state]')!.textContent).toBe('waiting')
   })
 
   it('keeps a row hidden while what it waits on is older than the hiding', () => {
+    sessionStorage.clear()
     const old = new Date(Date.now() - 60 * 60_000).toISOString()
     localStorage.setItem(HIDDEN_SESSIONS_KEY, JSON.stringify({ x1: Date.now() - 1000 }))
     setup([live({ session_id: 'x1', title: 'Theirs waiting', owned: false, activity: { phrase: '', at: old, health: 'waiting-on-you' } })], [])
     expect(document.querySelector('[data-live-row="x1"]')).toBeNull()
-    expect(screen.getByRole('button', { name: /1 hidden · show/ })).toBeInTheDocument()
+    expect(document.querySelector('[data-more-rows]')!.textContent).toBe('+1 more›')
   })
 })

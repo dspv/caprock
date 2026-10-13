@@ -45,6 +45,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   throughout never failed. `caprock doctor` lists each step under *done on
   its own*; the Storage panel no longer tells you to stop Caprock and run
   VACUUM, and `GET /v1/storage` carries `returns_free_space`.
+- **app:** the sidebar lists only active sessions under a project: what is
+  working, looping or waiting on you, plus the tab in front so it always
+  has its row. Idle sessions, rows you hid, files and quiet shells sit
+  behind one faint *+N more* (its tooltip says what it holds, hidden rows
+  included); opened, the hidden ones come last with an eye to show them
+  again. The separate *N hidden · show* line is gone, *+N more* no longer
+  stays open across restarts, and a project with nothing active is just
+  its own line, its arrow listing what is in it.
 - **app:** Spend moves up in the cockpit, from after the plan windows to
   directly under *Now*. Folded, it is a strip of the chart's own bars and
   three figures, the chart's metric first, instead of a faint sentence a
