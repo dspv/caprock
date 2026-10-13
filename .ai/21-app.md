@@ -286,6 +286,23 @@ One window, three regions:
   Enter, Esc. The separate >_ new-shell button is gone: it is the menu's
   third row and ⌘T, and two lone icons side by side read as one ambiguous
   control.
+- **Renaming a session** (owner, 2026-10-13: "edit a session's name in a
+  few clicks from the tabs and the projects on the left; the new name must
+  show at once in the top tab", translated). A double-click on an agent's
+  tab or sidebar row (a tab row or a muted live row), or *Rename…* in the
+  row's menu, puts a field in place of the name (`components/InlineRename.tsx`):
+  Enter or blur saves, Esc cancels, its keys reach nothing else. The held
+  session list is patched before the request (`lib/sessionNames.ts`
+  `renameSession`, applied by `useWorkspaceData`), so the tab and the row
+  change in the same frame; a refusal rolls it back. `PUT
+  /v1/sessions/{id}/name` stores it (`sessions.name`, migration 0052) and
+  sends a session frame, which renames it in every other window. A shell
+  or a file tab has no rename. Unnamed, a session is called by
+  `sessionTitle`: the agent's title, else `promptTitle` — up to four words
+  that carry meaning from its first meaningful prompt, the request's
+  opening ("can you please", "I want you to") dropped, cut at the first
+  "to / in / and …" after two of them, a path as its last part. String
+  work on text the list already holds; nothing is computed on the daemon.
 - **Every agent in New agent, with what it lacks** (owner, 2026-10-10:
   "OpenCode there is empty — either give buttons to connect it or remove
   it", translated; ADR-046). The Agent select lists the startable agents

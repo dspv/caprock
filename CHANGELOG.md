@@ -9,6 +9,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** rename a session from its tab or its sidebar row: double-click
+  the name, or right-click the row for *Rename…*; Enter or clicking away
+  saves, Esc keeps the old name, an empty name gives back the one Caprock
+  made. The new name shows at once in the tab and the sidebar, in every
+  window, and stays after a restart (`PUT /v1/sessions/{id}/name`,
+  migration 0052). A session you have not named is called by the agent's
+  own title, or else by a few words of your first message (*Fix the login
+  bug*) rather than the whole sentence.
 - **app:** move between projects and their sessions from the keyboard.
   ⌘1–⌘9 bring a project to the front by its place in the sidebar (⌘9 the
   last), its key drawn on its row and on the tab it brings; ⌥⌘↓ / ⌥⌘↑ go to

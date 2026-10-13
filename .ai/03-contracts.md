@@ -190,7 +190,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `POST /v1/agents`, `GET /v1/agents/models`, `GET /v1/agents/catalog`, `GET /v1/recent-dirs`,
   `GET /v1/browse`, `GET /v1/browse/stat` and `GET /v1/browse/repos` (rooted inside home, see below), `GET /v1/sessions/{id}/relay`, `GET /v1/agents/{id}/term`,
   `POST /v1/agents/{id}/input`, `POST /v1/agents/{id}/signal`,
-  `POST /v1/agents/{id}/permission`, the message queue (`POST /v1/agents/{id}/queue`,
+  `POST /v1/agents/{id}/permission`, `PUT /v1/sessions/{id}/name` (a label in
+  Caprock's own database), the message queue (`POST /v1/agents/{id}/queue`,
   `PATCH` and `DELETE /v1/agents/{id}/queue/{qid}`, `POST /v1/agents/{id}/queue/{qid}/send`),
   `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`, and — to
   start work from the phone (2026-10-05, [21-app.md](21-app.md) decision 8) —
@@ -1316,6 +1317,7 @@ GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; t
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
 POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, name}}; this machine only
 POST   /v1/sessions/{id}/open-terminal {terminal?, mode?: resume|move|fork} → {terminal: {id, name}, mode, command}
+PUT    /v1/sessions/{id}/name        {name} → {session_id, name}; "" clears it; 400 without name, 404 for an unknown session (§ Session name DDL)
 POST   /v1/sessions/remove           {ids?: [id], cwd_prefix?, dry_run?} → {dry_run, sessions: [RemovalCandidate], skipped: [RemovalCandidate + reason], cost_usd, unmatched_usd}
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
 ```
@@ -2080,7 +2082,8 @@ dialogs open on it, and `POST /v1/agents` uses it for a request with no mode
 and nothing to carry one from.
 
 **`SessionSummary.description` / `description_source`** — what tells a session
-from the others on the screen (FB-035): the stored `sessions.title`
+from the others on the screen (FB-035): the name the user gave it,
+`sessions.name` (`"name"`), else the stored `sessions.title`
 (`"title"`), else the first of the session's earliest eight `turn.user`
 prompts — or the stored `sessions.prompt`, for Codex — that says something (`"prompt"`):
 not a tag-wrapped command or notification, not a bare path, at least 12
@@ -3288,6 +3291,23 @@ for an agent whose prompts never become events. The rollout transcript's own
 user messages cannot serve: all 60 checked opened with injected AGENTS.md or
 auto-review text. `prompt` is empty for every other agent, whose first prompt
 is read from events.
+
+### Session name DDL (migration 0052)
+
+```sql
+ALTER TABLE sessions ADD COLUMN name TEXT NOT NULL DEFAULT '';
+```
+
+The user's own name for a session, set by `PUT /v1/sessions/{id}/name`
+`{name}` from its tab or sidebar row ([21-app.md](21-app.md) § What the user
+sees). The name is made one line (whitespace collapsed) and clipped to 120
+characters; `""` clears it. It outranks `title` wherever a session is named
+(`description_source: "name"`), and nothing the agent writes touches it, so a
+later `ai-title` cannot undo a rename. Searching sessions matches it. `Session`
+carries it as `name`, never omitted — a live `session` frame patches the
+client's copy, and a frame without the key would leave a cleared name
+standing. A rename publishes that frame, so every window shows it without a
+refetch. A controller device may rename; a viewer may not.
 
 ### Worked-at and parent DDL (migration 0027)
 

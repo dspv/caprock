@@ -89,6 +89,16 @@ others. Installing it: [install-app.md](install-app.md).
   A session started in another terminal has no stop — Caprock never
   signals a process it did not start. Right-click a tab for *Close tab*
   and, when there is one, *Stop…*. Delete and Backspace close nothing.
+- **Naming a session.** Double-click an agent's tab in the tab strip, or
+  its row in the sidebar, or right-click the row for *Rename…*: the name
+  becomes a field. Enter or clicking away saves it, Esc keeps the old one,
+  and an emptied field gives the session back the name Caprock made for
+  it. The new name shows at once in the tab, the sidebar, ⌘K and Now, in
+  this window and every other one, and it stays after a restart; a
+  session's own title from the agent never overwrites it. Until you name
+  one, a session is called by the agent's own title, or else by a few
+  words of your first message — *Fix the login bug* for "can you please
+  fix the login bug in auth.go". Shells are numbered, not named.
 - **A project's menu.** Click the ⋯ on its row (it shows on hover), right-click the row, or press Shift+F10
   on it: *Hide from the sidebar* (or *Show in the sidebar again*), *Close
   its tabs* — every tab and split of that project; the sessions and shells

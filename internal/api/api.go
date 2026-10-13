@@ -489,6 +489,7 @@ func New(d Deps) *Server {
 	m := s.mux
 	m.HandleFunc("GET /v1/sessions", s.handleSessions)
 	m.HandleFunc("GET /v1/sessions/{id}", s.handleSession)
+	m.HandleFunc("PUT /v1/sessions/{id}/name", s.handleRenameSession)
 	m.HandleFunc("GET /v1/sessions/{id}/events", s.handleSessionEvents)
 	m.HandleFunc("GET /v1/sessions/{id}/subagents", s.handleSessionSubagents)
 	m.HandleFunc("GET /v1/sessions/{id}/subagents/{agent}", s.handleSubagentDetail)

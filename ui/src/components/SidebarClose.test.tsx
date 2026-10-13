@@ -106,19 +106,19 @@ describe('closing in the sidebar', () => {
     expect(localStorage.getItem(HIDDEN_KEY)).toBeNull()
   })
 
-  it('opens a tab menu on a right-click: Close tab, Close and hide for an agent, and Stop… only for what Caprock started', async () => {
+  it('opens a tab menu on a right-click: Rename… and Close tab, Close and hide for an agent, and Stop… only for what Caprock started', async () => {
     const { props } = setup(
       [live({ session_id: 'a1', title: 'Fix the login' }), live({ session_id: 'x1', title: 'Theirs', owned: false })],
       [agentTab, { id: 't9', projectId: 'alpha', root: pane('p9', 'session', 'x1'), focusedPaneId: 'p9', title: 'Theirs' }, fileTab],
     )
     fireEvent.contextMenu(tabRow('t9'), { clientX: 10, clientY: 10 })
-    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Close tab⌘W', 'Close tab and hide from the list'])
+    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Rename…', 'Close tab⌘W', 'Close tab and hide from the list'])
     fireEvent.click(screen.getByRole('menuitem', { name: /^Close tab⌘W/ }))
     expect(props.onCloseTab).toHaveBeenCalledWith('t9')
     expect(screen.queryByRole('menu')).toBeNull()
 
     fireEvent.contextMenu(tabRow('t1'))
-    expect(within(screen.getByRole('menu', { name: 'Fix the login: tab actions' })).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Close tab⌘W', 'Close tab and hide from the list', 'Stop the session…'])
+    expect(within(screen.getByRole('menu', { name: 'Fix the login: tab actions' })).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Rename…', 'Close tab⌘W', 'Close tab and hide from the list', 'Stop the session…'])
     fireEvent.click(screen.getByRole('menuitem', { name: 'Stop the session…' }))
     // The cockpit's confirmation, nothing stopped yet.
     const confirm = screen.getByRole('alertdialog', { name: 'Confirm stop' })
@@ -275,15 +275,15 @@ describe('closing in the sidebar', () => {
     expect(Object.keys(JSON.parse(localStorage.getItem(HIDDEN_SESSIONS_KEY)!))).toEqual(['x1'])
   })
 
-  it('offers the same from the keyboard: Shift+F10 on a row with no tab opens Open, Hide, Stop…', () => {
+  it('offers the same from the keyboard: Shift+F10 on a row with no tab opens Open, Rename…, Hide, Stop…', () => {
     setup([live({ session_id: 'a2', title: 'Write the docs' }), live({ session_id: 'x1', title: 'Theirs', owned: false, started_at: 3 })], [])
     const row = document.querySelector('[data-live-row="a2"]') as HTMLElement
     fireEvent.keyDown(row, { key: 'F10', shiftKey: true })
-    expect(within(screen.getByRole('menu', { name: 'Write the docs: actions' })).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open as a tab', 'Hide from the list', 'Stop the session…'])
+    expect(within(screen.getByRole('menu', { name: 'Write the docs: actions' })).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open as a tab', 'Rename…', 'Hide from the list', 'Stop the session…'])
     fireEvent.click(screen.getByRole('menuitem', { name: 'Hide from the list' }))
     expect(document.querySelector('[data-live-row="a2"]')).toBeNull()
     fireEvent.contextMenu(document.querySelector('[data-live-row="x1"]')!)
-    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open in a tab, read-only', 'Hide from the list'])
+    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Open in a tab, read-only', 'Rename…', 'Hide from the list'])
   })
 
   it("closes a tab and hides its agent from the tab's menu, so it does not come back as a muted row", () => {

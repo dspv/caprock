@@ -63,6 +63,7 @@ var controllerMayAlso = map[string]bool{
 	"GET /v1/sessions/{id}/relay": true, "GET /v1/agents/{id}/term": true,
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
 	"POST /v1/agents/{id}/permission": true, "POST /v1/agents/{id}/permission-mode": true,
+	"PUT /v1/sessions/{id}/name": true,
 	"POST /v1/agents/{id}/queue": true, "PATCH /v1/agents/{id}/queue/{qid}": true, "DELETE /v1/agents/{id}/queue/{qid}": true, "POST /v1/agents/{id}/queue/{qid}/send": true,
 	"POST /v1/tasks/{id}/approve": true, "POST /v1/tasks/{id}/reject": true,
 	// Start work from the phone (21-app.md decision 8). Shells are not

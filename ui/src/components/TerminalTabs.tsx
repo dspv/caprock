@@ -12,7 +12,9 @@
 import { Fragment, memo, useCallback, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { SessionSummary } from '@/lib/api'
 import { ownTab, type PaneLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
-import { dotOf, sessionTitle } from '@/lib/sidebar'
+import { dotOf, sessionAbout, sessionTitle } from '@/lib/sidebar'
+import { renamable } from '@/lib/sessionNames'
+import { InlineRename } from './InlineRename'
 import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane'
 import { composerFits, useComposerEnabled } from '@/lib/composer'
@@ -93,6 +95,8 @@ export function TabStrip(props: TabStripProps) {
   // past a few pixels is a drag; released over another tab, the tab moves
   // there, and the click that follows the release is not an activation.
   const [dragging, setDragging] = useState<string | null>(null)
+  // The tab whose name is being typed (double-click on an agent's tab).
+  const [renaming, setRenaming] = useState<string | null>(null)
   const dragged = useRef(false)
   const press = (id: string) => (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 || (e.target as Element).closest('button')) return
@@ -192,6 +196,7 @@ export function TabStrip(props: TabStripProps) {
                 props.onActivate(t.id)
               }}
               onAuxClick={(e) => { if (e.button === 1) props.onDetach(t.id) }}
+              onDoubleClick={file === undefined && renamable(s, isShell) ? () => setRenaming(t.id) : undefined}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
               title={tip}
               data-project={t.projectId}
@@ -205,7 +210,9 @@ export function TabStrip(props: TabStripProps) {
                 <StatusDot dot={label?.dot ?? 'idle'} />
               )}
               {dot && <span data-project-dot aria-hidden className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: `hsl(${projectHue(t.projectId)} 42% 56%)` }} />}
-              <span data-row-title className="min-w-0 flex-1 truncate">{title}</span>
+              {renaming === t.id && renamable(s, isShell)
+                ? <InlineRename sessionId={s.session_id} initial={s.name?.trim() || sessionAbout(s)} current={s.name ?? ''} onDone={() => setRenaming(null)} />
+                : <span data-row-title className="min-w-0 flex-1 truncate">{title}</span>}
               {file === undefined && <HotMark sessionId={s?.session_id} />}
               {/* The jump key and the × share one slot at the right end, so
                 * nothing moves the title: the key at rest, the × on hover
