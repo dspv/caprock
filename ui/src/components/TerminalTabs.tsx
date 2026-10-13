@@ -24,7 +24,7 @@ import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { NewMenu, type NewMenuItem } from './NewMenu'
-import { keys, tabKey } from '@/lib/appkeys'
+import { keys, stripKey, tabKey } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { ChatEnded, ChatHint, type ChatPane } from './QuickChatPane'
 
@@ -73,7 +73,7 @@ export interface TabStripProps {
   /** The + menu's rows; New agent and New shell when absent. */
   newItems?: readonly NewMenuItem[]
   onToggleInspector: () => void
-  /** The ⌘1–⌘9 key drawn on a tab: its project's, on the tab that key brings to the front. */
+  /** Each tab's ⌘1–⌘9, by its place: 1–8, and 9 on the last. */
   digits?: ReadonlyMap<string, number>
   /** The tab in front shows its chat instead of its terminal (WP-14). */
   chatOpen?: boolean
@@ -145,13 +145,16 @@ export function TabStrip(props: TabStripProps) {
               props.dashboard.active ? 'app-tab-front app-tab-dash bg-bg font-medium text-fg' : 'app-tab-dash text-fg hover:text-fg'
             }`}
           >
-            {/* Folded to its icon alone, so the session tabs keep their
-              * names (owner, 2026-10-13, translated: "shrink Dashboard to a
-              * collapsed state"); its name and ⌘0 are in the tooltip, and
-              * its × shows while it is in front. */}
+            {/* Folded to its icon and its key, so the session tabs keep
+              * their names (owner, 2026-10-13, translated: "shrink Dashboard
+              * to a collapsed state"); its name is in the tooltip, and its ×
+              * shows while it is in front. The key is always drawn, as on
+              * every tab (2026-10-14, translated: "I must always see the key
+              * combinations next to the tabs"). */}
             {props.dashboard.label === 'Settings'
               ? <SettingsIcon size={15} className="text-accent" />
               : <DashboardIcon size={15} className="text-accent" />}
+            <kbd data-tab-key aria-hidden className="app-kbd-sm">{stripKey(props.dashboard.label === 'Settings' ? ',' : '0')}</kbd>
             <button
               type="button"
               aria-label={`Close tab ${props.dashboard.label}`}
@@ -175,8 +178,8 @@ export function TabStrip(props: TabStripProps) {
           const digit = props.digits?.get(t.id)
           // A tab is named by its session — the name is what matters (owner,
           // 2026-10-13, translated: "the session name is very important … I
-          // don't care which agent it is"). The project is its colour dot,
-          // named in the tooltip; the agent is in the tooltip only. A file
+          // don't care which agent it is"). The project is its colour dot and
+          // its short name after the title (2026-10-14); the agent is in the tooltip only. A file
           // tab keeps the file name; a quick chat has no project dot.
           const dot = file === undefined && !label?.chat && project !== undefined
           const agent = file === undefined ? agentGlyphLabel(s?.agent, isShell) : undefined
@@ -213,20 +216,24 @@ export function TabStrip(props: TabStripProps) {
               {renaming === t.id && renamable(s, isShell)
                 ? <InlineRename sessionId={s.session_id} initial={s.name?.trim() || sessionAbout(s)} current={s.name ?? ''} onDone={() => setRenaming(null)} />
                 : <span data-row-title className="min-w-0 flex-1 truncate">{title}</span>}
+              {/* Its project, short and faint after the name: fixed, never edited (owner, 2026-10-14). */}
+              {dot && <span data-tab-project aria-hidden className="max-w-[9ch] shrink truncate text-[11px] text-fg-faint">{project}</span>}
               {file === undefined && <HotMark sessionId={s?.session_id} />}
               {/* The jump key and the × share one slot at the right end, so
-                * nothing moves the title: the key at rest, the × on hover
-                * and on the tab in front, which needs no key to reach. */}
-              <span data-tab-end className="relative flex h-[20px] min-w-[20px] shrink-0 items-center justify-end">
+                * nothing moves the title: the key at rest, the × on hover.
+                * The tab in front shows both, side by side: every tab says
+                * its key (owner, 2026-10-14, translated: "not every tab
+                * shows the key combination"). */}
+              <span data-tab-end className="relative flex h-[20px] min-w-[20px] shrink-0 items-center justify-end gap-0.5">
                 {digit && (
-                  <kbd data-tab-key aria-hidden className={`app-kbd-sm ${active ? 'invisible' : 'group-hover:invisible group-focus-within:invisible'}`}>{tabKey(digit)}</kbd>
+                  <kbd data-tab-key aria-hidden className={`app-kbd-sm ${active ? '' : 'group-hover:invisible group-focus-within:invisible'}`}>{tabKey(digit)}</kbd>
                 )}
                 <button
                   type="button"
                   aria-label={`${closeWord(file !== undefined, isShell)} ${title}`}
                   title={closeTitle(file !== undefined, isShell, !!label?.chat)}
                   onClick={(e) => { e.stopPropagation(); props.onDetach(t.id) }}
-                  className={`absolute right-0 top-0 flex h-[20px] w-[20px] items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'invisible group-hover:visible group-focus-within:visible'}`}
+                  className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'absolute right-0 top-0 invisible group-hover:visible group-focus-within:visible'}`}
                 >
                   <CloseIcon size={12} />
                 </button>
@@ -258,13 +265,14 @@ export function TabStrip(props: TabStripProps) {
             <kbd aria-hidden className="app-kbd-key">{keys('⌘B')}</kbd>
           </button>
         )}
-        {props.paneTools !== false && <StripButton label={`Inspector (${keys('⌘I')})`} pressed={props.inspectorOpen} onClick={props.onToggleInspector}><InspectorIcon size={15} /></StripButton>}
+        {props.paneTools !== false && <StripButton label={`Inspector (${keys('⌘I')})`} pressed={props.inspectorOpen} onClick={props.onToggleInspector} shortcut={keys('⌘I')}><InspectorIcon size={15} /></StripButton>}
       </div>
     </div>
   )
 }
 
-function StripButton({ label, onClick, pressed, children }: { label: string; onClick: () => void; pressed?: boolean; children: ReactNode }) {
+/** A strip button; one with a `shortcut` draws its key beside the icon, as Deck does. */
+function StripButton({ label, onClick, pressed, shortcut, children }: { label: string; onClick: () => void; pressed?: boolean; shortcut?: string; children: ReactNode }) {
   return (
     <button
       type="button"
@@ -272,11 +280,12 @@ function StripButton({ label, onClick, pressed, children }: { label: string; onC
       aria-label={label}
       aria-pressed={pressed}
       onClick={onClick}
-      className={`flex h-[28px] w-[28px] items-center justify-center rounded-[7px] transition-colors duration-100 motion-reduce:transition-none ${
+      className={`flex h-[28px] items-center justify-center gap-1.5 rounded-[7px] transition-colors duration-100 motion-reduce:transition-none ${shortcut ? 'px-1.5' : 'w-[28px]'} ${
         pressed ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
       }`}
     >
       {children}
+      {shortcut && <kbd data-strip-key aria-hidden className="app-kbd-key">{shortcut}</kbd>}
     </button>
   )
 }

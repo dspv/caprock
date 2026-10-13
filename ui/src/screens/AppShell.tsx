@@ -15,7 +15,7 @@ import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmod
 import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
 import { FIND_EVENT, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
-import { loadRowOrders, moveKey, ROW_ORDER_EVENT, saveRowOrder, tabRowKey } from '@/lib/rowOrder'
+import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { parseHash, type SettingsSection } from '@/lib/router'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
 import { buildSidebar, dotOf, groupProjects, numberedProjects, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type WorktreeNode } from '@/lib/sidebar'
@@ -82,13 +82,15 @@ import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { joinPath, preferredName, useEditors } from '@/lib/editors'
 import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs } from '@/lib/termprefs'
 import { warmTerminal } from '@/lib/termwarm'
-import { FLAT_ORDER, StatusDot, fmtCostShort, flatRows, leadKey, projectRows, type SidebarRow } from '@/components/ProjectRow'
+import { StatusDot, fmtCostShort, leadKey, projectRows, type SidebarRow } from '@/components/ProjectRow'
 import { fmtAgo } from '@/lib/format'
 import { RecentInProject } from '@/components/RecentInProject'
 import { ProjectRepos } from '@/components/ProjectRepos'
 import { isMultiRepo } from '@/lib/multirepo'
 import { CloseChatConfirm, CloseShellConfirm } from '@/components/CloseShellConfirm'
 import { ShortcutsSheet } from '@/components/ShortcutsSheet'
+import { KeysHint } from '@/components/KeysHint'
+import { useSidebarMode } from '@/lib/sidebarMode'
 import { CopiesSheet } from '@/components/CopiesSheet'
 import { CleanupLine } from '@/components/CleanupLine'
 import { worktreeSlug } from '@/lib/slug'
@@ -430,14 +432,22 @@ export function AppShell() {
     dispatch({ type: 'project', projectId: id })
     showWorkspace()
   }, [showWorkspace])
+  /** A click on a project in the sidebar: its page, whatever tab it had in front. */
+  const onOpenProjectView = useCallback((id: string) => {
+    setChangesView((cur) => (cur && cur.projectId !== id ? null : cur))
+    setCompare(null)
+    dispatch({ type: 'project', projectId: id, view: true })
+    showWorkspace()
+  }, [showWorkspace])
 
-  // One numbering everywhere (owner, 2026-10-13, translated: "top I see
-  // 1,2,3; on the left I see 4,2 — why?"): ⌘N is the sidebar's Nth
-  // top-level item — a project when sessions are grouped by project, a
-  // session when they are one flat list — and the strip draws N only on
-  // the tab ⌘N brings to the front. The strip's order follows the
-  // sidebar's. Hiding a project or a row, or ordering rows by hand, says so
-  // on window, and all of it is asked again.
+  // Tabs are the navigation (owner, 2026-10-14): ⌘N is the strip's Nth tab,
+  // the strip is in the order the tabs were opened — a new one goes last
+  // and takes the next number; only a close or a drag changes the numbers
+  // — every tab shows its N, and the sidebar row of that tab shows the same
+  // N. The Flat sidebar lists the tabs in the strip's order; Tree lists
+  // them under their projects, numbers and all. Projects have no digit.
+  // Hiding a project or a row, or ordering rows by hand, says so on
+  // window, and all of it is asked again.
   const [orderTick, setOrderTick] = useState(0)
   useEffect(() => {
     const bump = () => setOrderTick((n) => n + 1)
@@ -448,13 +458,10 @@ export function AppShell() {
       window.removeEventListener(ROW_ORDER_EVENT, bump)
     }
   }, [])
-  const [grouped, setGrouped] = useState(() => { try { return localStorage.getItem(GROUPED_KEY) !== 'off' } catch { return true } })
-  const onToggleGrouped = useCallback(() => {
-    setGrouped((g) => {
-      try { localStorage.setItem(GROUPED_KEY, g ? 'off' : 'on') } catch { /* for this page only */ }
-      return !g
-    })
-  }, [])
+  // Flat by default; Tree from the folder toggle or Settings → Appearance.
+  const [sidebarMode, setSidebarMode] = useSidebarMode()
+  const grouped = sidebarMode === 'tree'
+  const onToggleGrouped = useCallback(() => setSidebarMode(grouped ? 'flat' : 'tree'), [grouped, setSidebarMode])
   const tabbedProjects = useMemo(() => new Set(ws.tabs.map((t) => t.projectId)), [ws.tabs])
   // What the sidebar lists, as it lists it (components/Sidebar.tsx `listed`).
   const sidebarState = useMemo(() => {
@@ -465,70 +472,30 @@ export function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.projects, activeProjectId, tabbedProjects, orderTick])
   const { numbered } = sidebarState
-  const flat = useMemo(
-    () => (grouped ? [] : flatRows(sidebarState.listed, ws.tabs, labels, sidebarState.orders, sidebarState.hiddenRows)),
-    [grouped, sidebarState, ws.tabs, labels],
-  )
   /** A project's rows as the sidebar lists them. */
   const rowsOf = useCallback((pid: string) => {
     const node = model.projects.find((n) => n.project.id === pid)
     return node ? projectRows(node, tabsOf(ws, pid), labels, sidebarState.orders[pid], sidebarState.hiddenRows) : []
   }, [model.projects, ws, labels, sidebarState])
-  // The strip in the sidebar's order: grouped, each listed project's rows
-  // and then its other tabs (shells, files); flat, the flat list's; what
-  // the sidebar does not list keeps its place after them.
-  const stripOrder = useMemo(() => {
-    const placed: string[] = []
-    const seen = new Set<string>()
-    const put = (t?: Tab) => { if (t && !seen.has(t.id)) { seen.add(t.id); placed.push(t.id) } }
-    if (grouped) {
-      for (const n of sidebarState.listed) {
-        rowsOf(n.project.id).forEach((r) => put(r.tab))
-        tabsOf(ws, n.project.id).forEach(put)
-      }
-    } else {
-      flat.forEach((r) => put(r.tab))
-    }
-    ws.tabs.forEach(put)
-    return placed
-  }, [grouped, sidebarState, rowsOf, flat, ws])
-  useEffect(() => {
-    if (stripOrder.join('\n') !== ws.tabs.map((t) => t.id).join('\n')) dispatch({ type: 'order', ids: stripOrder })
-  }, [stripOrder, ws.tabs])
-  // The strip draws a key only on the tab that key brings to the front:
-  // grouped, a project's remembered tab, else its first; flat, the row's tab.
+  // Every tab's ⌘N, by its place in the strip: 1–8, and 9 on the last.
   const stripDigits = useMemo(() => {
     const m = new Map<string, number>()
-    if (grouped) {
-      numbered.forEach((pid, i) => {
-        const d = tabDigit(i, numbered.length)
-        const own = tabsOf(ws, pid)
-        const tab = own.find((t) => t.id === ws.activeByProject[pid]) ?? own[0]
-        if (d && tab) m.set(tab.id, d)
-      })
-    } else {
-      flat.forEach((r, i) => {
-        const d = tabDigit(i, flat.length)
-        if (d && r.tab) m.set(r.tab.id, d)
-      })
-    }
+    ws.tabs.forEach((t, i) => {
+      const d = tabDigit(i, ws.tabs.length)
+      if (d) m.set(t.id, d)
+    })
     return m
-  }, [grouped, numbered, flat, ws])
+  }, [ws.tabs])
   /** A sidebar row brought to the front: its tab, or a tab for it, as a click does. */
   const openRow = useCallback((r: SidebarRow) => {
     if (r.tab) onActivateTab(r.tab.id)
     else if (r.node) openSession(r.node.session, r.projectId)
   }, [onActivateTab, openSession])
-  /** ⌘1–⌘9: the sidebar's item at that place, ⌘9 the last; nothing past the end. */
-  const focusProject = useCallback((index: number) => {
-    if (!grouped) {
-      const r = index === 8 ? flat[flat.length - 1] : flat[index]
-      if (r) openRow(r)
-      return
-    }
-    const id = index === 8 ? numbered[numbered.length - 1] : numbered[index]
-    if (id) onSelectProject(id)
-  }, [grouped, flat, numbered, onSelectProject, openRow])
+  /** ⌘1–⌘9: the strip's tab at that place, ⌘9 the last; nothing past the end. */
+  const focusTab = useCallback((index: number) => {
+    const t = index === 8 ? ws.tabs[ws.tabs.length - 1] : ws.tabs[index]
+    if (t) onActivateTab(t.id)
+  }, [ws.tabs, onActivateTab])
   /** ⌥⌘← ⌥⌘→: the project before or after the one in front, round the end. */
   const stepProject = useCallback((delta: 1 | -1) => {
     const n = numbered.length
@@ -538,31 +505,30 @@ export function AppShell() {
     onSelectProject(numbered[next]!)
   }, [numbered, activeProjectId, onSelectProject])
   /**
-   * ⌥⌘↓ ⌥⌘↑: the row below or above, round the end — under the project in
-   * front when grouped, in the one list when not. A tab comes to the front;
-   * a session with no tab opens in one, as a click on its row does.
+   * ⌥⌘↓ ⌥⌘↑: the row below or above under the project in front (the front
+   * tab's), round the end, in either sidebar mode. A tab comes to the
+   * front; a session with no tab opens in one, as a click on its row does.
    */
   const stepSession = useCallback((delta: 1 | -1) => {
-    const rows = grouped ? rowsOf(activeProjectId) : flat
-    if (rows.length === 0) { setToast(grouped ? `Nothing is open in ${projectsById.get(activeProjectId)?.name ?? 'this project'}.` : 'No agent sessions running.'); return }
+    const rows = rowsOf(activeProjectId)
+    if (rows.length === 0) { setToast(`Nothing is open in ${projectsById.get(activeProjectId)?.name ?? 'this project'}.`); return }
     const front = workspaceShown && current ? tabRowKey(current) : undefined
     const at = rows.findIndex((r) => leadKey(r) === front)
     const n = rows.length
     openRow(rows[at < 0 ? (delta === 1 ? 0 : n - 1) : (at + delta + n) % n]!)
-  }, [grouped, rowsOf, activeProjectId, flat, projectsById, workspaceShown, current, openRow])
-  /** A tab dragged in the strip moves its row in the sidebar's order, which the strip follows. */
-  const onStripMove = useCallback((id: string, to: number) => {
-    const tab = ws.tabs.find((t) => t.id === id)
-    const target = ws.tabs[to]
-    if (!tab || !target || target.id === id) return
-    const where = ws.tabs.indexOf(tab) < to ? 'after' : 'before'
-    const rows = grouped ? (tab.projectId === target.projectId ? rowsOf(tab.projectId) : []) : flat
-    const keys = rows.map(leadKey)
-    const a = tabRowKey(tab)
-    const b = tabRowKey(target)
-    if (!keys.includes(a) || !keys.includes(b)) return
-    saveRowOrder(grouped ? tab.projectId : FLAT_ORDER, moveKey(keys, a, b, where))
-  }, [ws.tabs, grouped, rowsOf, flat])
+  }, [rowsOf, activeProjectId, projectsById, workspaceShown, current, openRow])
+  /** A tab dragged in the strip: it takes that place, and the numbers follow. */
+  const onStripMove = useCallback((id: string, to: number) => dispatch({ type: 'move', tabId: id, toIndex: to }), [])
+  /**
+   * Tabbed rows dragged in the Flat sidebar, in their new order: they take
+   * the strip's places the same tabs held, so a shell or file tab the list
+   * does not show keeps its own.
+   */
+  const onOrderTabs = useCallback((ids: string[]) => {
+    const moved = new Set(ids)
+    let k = 0
+    dispatch({ type: 'order', ids: ws.tabs.map((t) => (moved.has(t.id) ? ids[k++]! : t.id)) })
+  }, [ws.tabs])
 
   const { source, refresh } = data
   /** The Changes view of a worktree (the main checkout when none is named); needs the projects API. */
@@ -927,6 +893,9 @@ export function AppShell() {
   // ⇧⌘G opens the diff of the session in front; what that is is known further
   // down (focusedWorktree), so it is reached through a ref set there.
   const openChangesRef = useRef<(() => void) | undefined>(undefined)
+  // ⇧⌘B: Expand from an agent's tab, Collapse from its PRs & CI tab — set
+  // further down, where both are known (onExpandDeck, backToDeck).
+  const expandRef = useRef<(() => void) | undefined>(undefined)
   const run = useCallback((c: AppCommand) => {
     switch (c.kind) {
       // In the folder of the session in front — its worktree, not the project's root.
@@ -944,6 +913,10 @@ export function AppShell() {
         setDeck((d) => ({ ...d, open: !d.open }))
         showWorkspace()
         break
+      case 'deck-expand':
+        if (expandRef.current) expandRef.current()
+        else setToast('Expand shows an agent’s pull requests and CI: bring an agent’s tab to the front.')
+        break
       case 'changes':
         if (openChangesRef.current) openChangesRef.current()
         else setToast('Changes shows a git project’s diff: bring a session in one to the front.')
@@ -951,7 +924,7 @@ export function AppShell() {
       case 'dashboard': if (workspaceShown) onDashboard(); else location.hash = APP_ROUTE; break
       case 'next-tab': dispatch({ type: 'cycle', delta: 1 }); showWorkspace(); break
       case 'prev-tab': dispatch({ type: 'cycle', delta: -1 }); showWorkspace(); break
-      case 'project': focusProject(c.index); break
+      case 'tab': focusTab(c.index); break
       case 'step-project': stepProject(c.delta); break
       case 'session': stepSession(c.delta); break
       case 'split': if (workspaceShown) splitShell(c.direction); break
@@ -962,7 +935,7 @@ export function AppShell() {
       case 'settings': onSettings(); break
       case 'zoom': stepUiScale(c.step); break
     }
-  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusProject, stepProject, stepSession])
+  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -979,7 +952,7 @@ export function AppShell() {
       const c = matchAppShortcut(e, isMac)
       if (!c) return
       // Held down, only the digits and the arrow chords repeat.
-      if (e.repeat && !/^[1-9]$/.test(e.key) && !isArrowCommand(c)) return
+      if (e.repeat && c.kind !== 'tab' && !isArrowCommand(c)) return
       // In a text field the arrow chords select by word and line there
       // (Alt+Shift+← off macOS): the field keeps them. The terminal's own
       // textarea is not a text field here.
@@ -1363,6 +1336,13 @@ export function AppShell() {
     setDeck((d) => ({ ...d, open: true }))
     showWorkspace()
   }, [sessionsById, openSession, projectOfSession, activeProjectId, showWorkspace])
+  // In a layout effect, so a key pressed right after a tab switch acts on the tab now in front.
+  const frontTabId = current?.id
+  useLayoutEffect(() => {
+    expandRef.current = workspaceShown && frontTabId && focused?.kind === 'prs'
+      ? () => backToDeck(frontTabId, focused.of ?? '')
+      : workspaceShown && focusedIsAgent && focusedSession ? onExpandDeck : undefined
+  }, [workspaceShown, frontTabId, focused, backToDeck, focusedIsAgent, focusedSession, onExpandDeck])
   const renderPRs = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
     const of = leaf.target.of ?? ''
     const n = projectOfSession(of)
@@ -1400,7 +1380,7 @@ export function AppShell() {
               onActivateTab={onActivateTab}
               onCloseTab={onCloseTab}
               onOpenLive={openSession}
-              onSelectProject={onSelectProject}
+              onSelectProject={onOpenProjectView}
               onOpenInbox={onOpenInbox}
               onNewAgent={onNewAgent}
               onNewShell={onNewShell}
@@ -1423,6 +1403,8 @@ export function AppShell() {
               onCleanCopies={source === 'api' ? onCleanCopies : undefined}
               grouped={grouped}
               onToggleGrouped={onToggleGrouped}
+              tabDigits={stripDigits}
+              onOrderTabs={onOrderTabs}
             />
           </div>
         )}
@@ -1630,6 +1612,9 @@ export function AppShell() {
       {/* With the sidebar open its Today strip carries the plan windows and the day's spend, so the strip leaves them out. */}
       {/* The GitHub star ask sits above the status strip, never over a
         * terminal; the share toast floats (lib/nudges.ts, one at a time). */}
+      {/* How to move around, once, while tabs are open: a line in the flow
+        * above the strips, so it covers neither a terminal nor a banner. */}
+      {workspaceShown && ws.tabs.length > 0 && <KeysHint isMac={isMac} onAllKeys={() => setSheet({ kind: 'keys' })} />}
       <SetupStrip app />
       <MailStrip />
       <StarStrip app />
@@ -1791,4 +1776,3 @@ function isTextField(t: EventTarget | null): boolean {
 }
 
 /** Whether the sidebar groups sessions by project ('on', the default) or lists them flat ('off'): this viewer's. */
-const GROUPED_KEY = 'caprock.app.sidebar-grouped'

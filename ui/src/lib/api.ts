@@ -1535,7 +1535,23 @@ export interface PairState {
   tailscale?: boolean
   /** *Keep on after Caprock restarts* (ADR-060). */
   keep_on?: boolean
+  /** Access from anywhere through a relay (ADR-058); absent from a daemon
+   *  without it. The same code pairs over it. */
+  remote?: RemoteState
   devices: PairedDevice[]
+}
+
+/** Access from anywhere: this machine waits at a relay (ADR-058). */
+export interface RemoteState {
+  enabled: boolean
+  status: 'off' | 'connecting' | 'online' | 'offline'
+  error?: string
+  phones: number
+  relay: string
+  app: string
+  host_id?: string
+  /** What the QR opens: the phone's page, with the code while one is live. */
+  link?: string
 }
 
 /** One address network access answers on. */
@@ -1543,7 +1559,7 @@ export interface PairAddress {
   url: string
   /** `lan`: the same Wi-Fi only; `tailscale`: a 100.x address, anywhere the
    *  phone has Tailscale; `magicdns`: the same, by its MagicDNS name. */
-  kind: 'lan' | 'tailscale' | 'magicdns'
+  kind: 'lan' | 'tailscale' | 'magicdns' | 'anywhere'
 }
 
 export const api = {
@@ -1637,6 +1653,7 @@ export const api = {
    *  after a restart. Turning it off always clears that (ADR-060). */
   setLAN: (on: boolean, keep?: boolean) =>
     post<{ enabled: boolean; url?: string; keep_on?: boolean }>('/v1/pair/lan', keep === undefined ? { on } : { on, keep }),
+  setRemote: (on: boolean) => post<RemoteState>('/v1/pair/remote', { on }),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
   /** Give a paired device control of sessions, or take it away. Machine only. */
   pairSetRole: (id: string, role: PairedDevice['role']) =>

@@ -971,7 +971,9 @@ or tunnel relays onto loopback is a device here, token and role included.
 Caprock restarts*, and turning access off clears it.
 
 **Rules out:** a relay of ours (sessions would pass through a machine we run,
-which contradicts rule 4 and three sentences on the site); binding the wildcard
+which contradicts rule 4 and three sentences on the site) — *superseded
+2026-10-13 by [ADR-058](#adr-058--a-phone-reaches-the-machine-from-anywhere-through-a-relay-that-carries-only-ciphertext):
+a relay that carries only end-to-end ciphertext, off by default*; binding the wildcard
 address; a stored "LAN on" setting; pairing from a device that is already
 paired — a tablet is somewhere to read figures, not a second control room, so
 issuing codes and revoking devices stay loopback-only.
@@ -3270,11 +3272,86 @@ dashboard and a desktop app on three OSes.
   through the nudge system after two days of use, only while no account
   exists; opening Mail or dismissing it answers it.
 
+- **Adding an account is an address and a password.** Server settings come
+  from a table of about 40 consumer and hosting services, each entry citing
+  the provider's own settings page (QQ Mail, NetEase, Naver and Spectrum are
+  left out until one can be read); then the domain's MX against that table;
+  then RFC 6186 SRV records; then the domain's own autoconfig file; then the
+  `imap.` / `smtp.` convention. Discovery asks only the user's own domain,
+  never Mozilla's ISPDB or any other directory, so an address goes nowhere
+  but where its mail already lives (rule 4).
+
 **Consequences.** One more outbound path exists, to destinations the user
 chose; the binary grows by the IMAP, SMTP and MIME libraries. Not built:
 server-side drafts, notifications, rules, mail on a paired phone
 (attachments and the iframe's images need the device token, which plain URLs
 do not carry).
+## ADR-058 — A phone reaches the machine from anywhere, through a relay that carries only ciphertext
+
+**Date:** 2026-10-13 · **Status:** accepted (owner, translated: "I want someone
+without an App Store app to use Caprock running on their machine, local or
+remote — a laptop or a Mac mini for agents — reliably, through a relay over the
+internet, for when I'm out walking the dog. Make it mobile first."). Amends
+[ADR-029](#adr-029--a-second-device-gets-in-over-the-lan-with-a-code-or-not-at-all),
+which ruled out "a relay of ours", and rule 4 in `CLAUDE.md`.
+
+**Context.** A phone could reach the daemon only on the same Wi-Fi or over
+Tailscale, which needs an app from the App Store on the phone — the thing the
+owner is avoiding until Apple approves the developer account. A machine at
+home sits behind a router, often behind carrier NAT too, and accepts no
+connection from the internet. The only route that works behind any router is
+two outbound connections meeting at a public address.
+
+**Decision.**
+
+- **Off by default, on by a decision on the machine** (Settings → Phone →
+  *From anywhere*, or `caprock remote on`), and **remembered**: unlike the LAN
+  listener, the machine this is for is the one nobody sits at. It cannot be
+  turned on, or the relay changed, from a phone.
+- **The daemon dials out** to the relay (`wss://relay.caprock.dev` by default,
+  any relay by `--relay`) at `/v1/host/<id>`; the id is its Ed25519 public key,
+  and it proves it with a signature over the relay's nonce. No inbound port, no
+  account, no database on the relay.
+- **The phone dials the same relay** at `/v1/c/<id>`, and the relay splices
+  the two, one Durable Object per machine on Cloudflare (`relay/`), or
+  `internal/remote/relaysrv` (`caprock remote relay`) for a relay of one's own.
+- **End to end: Noise_NK_25519_AESGCM_SHA256.** The QR carries the machine's
+  static X25519 key; the phone runs NK against it, so a relay — ours or
+  anyone's — forwards bytes it cannot read or alter, and a reply from anything
+  but that machine fails the handshake. Go side `internal/remote/noise.go`,
+  phone side `ui/src/remote/noise.ts`, held to the same bytes by
+  `testdata/remote/noise-vector.json`.
+- **Inside the channel, the phone's dashboard runs unchanged.** Its `fetch()`
+  and `WebSocket` for `/v1/…` become streams (`internal/remote/proto.go`), and
+  the daemon replays each onto its own loopback marked `Via: 1.1
+  caprock-remote` — so the gate treats it as a paired device: the same pairing
+  code, device token, viewer and controller roles and revocation as on the LAN,
+  not a second set. Browser headers (Origin, Sec-Fetch-*, cookies) are dropped
+  inside the channel; paths that could leave loopback are refused.
+- **The phone's page is static**, built with `vite build --mode remote` and
+  served over https (`m.caprock.dev` by default, any by `--app`). It keeps
+  several machines, one at a time, each with its relay, pinned key and token.
+  https gives what a plain LAN address could not: an installable app on
+  Android, and later Web Push.
+
+**What the relay sees.** Which machine id a phone connects to, when, from which
+IP address, and how many bytes pass. Not a session, a token, a command or a
+figure.
+
+**Consequences.**
+
+- Rule 4 now reads "nothing readable is ever sent to Caprock": the relay is a
+  Caprock service, carries ciphertext only, and is optional.
+- The phone's page is code we serve; whoever controls it could read what the
+  phone shows. It is the same trust as any web app, stated here, and the page
+  can be self-hosted (`--app`).
+- The free plan's limits on Durable Object requests are an open question for
+  many users (`.ai/12-risks.md`); `caprock remote relay` is the way out.
+
+**Rules out:** relaying plaintext or terminating TLS for the user; an account
+on the relay; turning remote access on from a phone; storing anything on the
+relay.
+
 
 ## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
 

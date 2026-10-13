@@ -55,6 +55,8 @@ vi.mock('@/lib/api', async (orig) => {
 
 beforeEach(() => {
   localStorage.clear()
+  // Most of these were written for the Tree sidebar; Flat, the default, has its own tests.
+  localStorage.setItem('caprock.app.sidebar-grouped', 'on')
   sessionStorage.clear()
   vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })))
   location.hash = '#/app'

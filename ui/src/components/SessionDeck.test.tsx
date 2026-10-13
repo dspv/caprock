@@ -77,6 +77,10 @@ describe('the session deck', () => {
     const { unmount } = show({ onExpand })
     const b = screen.getByRole('button', { name: /^Expand/ })
     expect(b).toHaveAttribute('data-deck-expand')
+    // Seen at once: outlined in the accent, its key beside the word (owner, 2026-10-14).
+    expect(b).toHaveClass('border-accent/60', 'text-accent')
+    expect(b).toHaveTextContent(/^Expand (⇧⌘B|Ctrl\+Alt\+Shift\+B)$/)
+    expect(b).toHaveAccessibleName(/^Expand: pull requests and CI in a tab \((⇧⌘B|Ctrl\+Alt\+Shift\+B)\)$/)
     fireEvent.click(b)
     expect(onExpand).toHaveBeenCalledTimes(1)
     unmount()
@@ -219,6 +223,7 @@ describe('the session deck', () => {
   })
 
   it('lists the current PR first, then the earlier ones, each with its state, CI, review, conflict and age', async () => {
+    localStorage.setItem('caprock.deck.checksView', 'summary')
     h.prs = { connected: true, prs: [
       prRow(8, livePR(8, FAILED, { state: 'merged' }), { merged_at: now - 2 * 3_600_000 }),
       prRow(9, livePR(9, { state: 'pending', passed: 2, failed: 0, pending: 3, items: [{ name: 'a', state: 'pass' }, { name: 'b', state: 'pass' }, { name: 'c', state: 'pending', status: 'in_progress', started_at: now - 4 * 60_000 }, { name: 'd', state: 'pending' }, { name: 'e', state: 'pending' }] },
@@ -296,7 +301,8 @@ describe('the session deck', () => {
     await waitFor(() => expect(rowButton(5)).toHaveAttribute('aria-expanded', 'true'))
   })
 
-  it('sums each row’s checks in one short group, every check one hover away, with no switch', async () => {
+  it('sums each row’s checks in one short group in the summary view, every check one hover away', async () => {
+    localStorage.setItem('caprock.deck.checksView', 'summary')
     const t0 = now - 6 * 60_000
     const ok = (name: string, i: number) => ({ name, state: 'pass', status: 'completed', started_at: t0 + i * 1000, completed_at: t0 + 6 * 60_000 })
     h.prs = { connected: true, prs: [
@@ -318,15 +324,70 @@ describe('the session deck', () => {
     expect(ci(6)).toHaveTextContent(/^2 passed· 6m· 2 skipped$/)
     expect(ci(7).querySelector('[data-check-part="skipped"]')).toBeNull()
     expect(ci(7).querySelector('[data-check-summary]')).toHaveAttribute('aria-label', '#7: its checks: All 12 checks passed')
-    // No marks switch in the header, and no per-check circles in a row.
-    expect(document.querySelector('[data-deck-marks]')).toBeNull()
-    expect(document.querySelector('[data-deck-pr] [data-pipeline]')).toBeNull()
+    // The summary chosen: no circle per check in a row.
+    expect(document.querySelector('[data-deck-checks-view]')).toHaveAttribute('data-deck-checks-view', 'summary')
+    expect(document.querySelector('[data-deck-pr] [data-check-circles]')).toBeNull()
     // Hover lists every check, the failed first.
     fireEvent.mouseEnter(ci(8).querySelector('[data-check-summary]')!)
     const list = await screen.findByRole('tooltip')
     expect(list).toHaveTextContent('1 check: 1 failed')
     expect(list.querySelector('[data-check-row]')).toHaveTextContent('test')
     expect(list).toHaveTextContent('macOS')
+  })
+
+  // Owner, 2026-10-14, translated, of the circles: "I like everything now".
+  it('draws a circle per check by default, the summary one labelled switch away, kept per viewer', async () => {
+    const t0 = now - 5 * 60_000
+    h.prs = { connected: true, prs: [prRow(8, livePR(8, { state: 'fail', passed: 1, failed: 1, pending: 1, items: [
+      { name: 'lint', state: 'pass', status: 'completed', started_at: t0, completed_at: t0 + 30_000, job_id: 80 },
+      { name: 'test (windows)', state: 'fail', status: 'completed', started_at: t0 + 1_000, completed_at: t0 + 61_000, job_id: 81 },
+      { name: 'smoke', state: 'pending', status: 'in_progress', started_at: t0 + 2_000, job_id: 82 },
+    ] }))] }
+    const first = show()
+    const ci = () => document.querySelector('[data-deck-pr="8"] [data-deck-pr-ci]')!
+    await waitFor(() => expect(ci().querySelector('[data-check-circles]')).not.toBeNull())
+    // One circle per check, in the order they started, coloured by state; the running one pulses (tokens.css).
+    const tones = [...ci().querySelectorAll('[data-check-circles] .pipe-node')].map((n) => n.getAttribute('data-tone'))
+    expect(tones).toEqual(['pass', 'fail', 'running'])
+    expect(ci()).toHaveTextContent(/^· 5m$/)
+    const sw = screen.getByRole('radiogroup', { name: 'Checks' })
+    expect(sw).toHaveTextContent('Checkscirclessummary')
+    expect(screen.getByRole('radio', { name: 'circles' })).toHaveAttribute('aria-checked', 'true')
+    // Hovering the circles shows the summary's card: every check, its OS and state.
+    fireEvent.mouseEnter(ci().querySelector('[data-check-summary]')!)
+    const list = await screen.findByRole('tooltip')
+    expect([...list.querySelectorAll('[data-check-row]')].map((b) => b.getAttribute('data-tone'))).toEqual(['fail', 'running', 'pass'])
+    expect(list).toHaveTextContent('Windows')
+    fireEvent.mouseLeave(ci().querySelector('[data-check-summary]')!)
+    // The switch turns the rows to the counted summary, and is remembered.
+    fireEvent.click(screen.getByRole('radio', { name: 'summary' }))
+    expect(ci().querySelector('[data-check-circles]')).toBeNull()
+    expect(ci()).toHaveTextContent(/^1 failed1 running1· 5m$/)
+    first.unmount()
+    show()
+    await waitFor(() => expect(document.querySelector('[data-deck-pr="8"] [data-check-summary]')).not.toBeNull())
+    expect(screen.getByRole('radio', { name: 'summary' })).toHaveAttribute('aria-checked', 'true')
+    expect(document.querySelector('[data-check-circles]')).toBeNull()
+  })
+
+  it('gives a PR’s title the room the checks leave: the checks column as wide as its widest row needs', async () => {
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, RUNNING)), prRow(8, livePR(8, FAILED, { state: 'merged' }))] }
+    // jsdom lays nothing out: each row's checks report a width as a browser would.
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const w = this.hasAttribute('data-deck-pr-ci-fit') ? (this.closest('[data-deck-pr="9"]') ? 96.4 : 60) : 0
+      return { width: w, height: 0, top: 0, left: 0, right: w, bottom: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+    })
+    show()
+    await waitFor(() => expect(document.querySelectorAll('[data-deck-pr-ci-fit]')).toHaveLength(2))
+    await waitFor(() => expect((document.querySelector('[data-deck-prs]') as HTMLElement).style.getPropertyValue('--deck-ci-w')).toBe('97px'))
+    rect.mockRestore()
+    // The title is a step larger than the row, and whole on hover.
+    const title = document.querySelector('[data-deck-pr="9"] [data-deck-pr-title]')!
+    expect(title).toHaveClass('truncate', 'text-[13.5px]')
+    expect(rowButton(9).getAttribute('title')).toMatch(/^PR 9\n/)
+    // The column's template takes that width, capped by the deck's own.
+    const grid = document.querySelector('[data-deck-pr="9"] [data-deck-pr-ci]')!.parentElement!
+    expect(grid.className).toContain('minmax(72px,min(var(--deck-ci-w,250px),38cqw))')
   })
 
   it('keeps a list with its checks over the daemon’s quick first answer of bare rows', async () => {
@@ -468,6 +529,7 @@ describe('the session deck', () => {
   })
 
   it('lists each PR’s checks on hover, the failed first, and a click on a job opens it in the CI cell for that PR', async () => {
+    localStorage.setItem('caprock.deck.checksView', 'summary')
     const t0 = now - 5 * 60_000
     const live = { number: 8, url: 'https://github.com/a/b/pull/8', title: 'PR 8', state: 'open', draft: false, review: '', reviews: [],
       checks: { state: 'fail', passed: 1, failed: 1, pending: 1, items: [
