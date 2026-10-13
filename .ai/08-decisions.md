@@ -3238,6 +3238,15 @@ dashboard and a desktop app on three OSes.
   through the nudge system after two days of use, only while no account
   exists; opening Mail or dismissing it answers it.
 
+- **Adding an account is an address and a password.** Server settings come
+  from a table of about 40 consumer and hosting services, each entry citing
+  the provider's own settings page (QQ Mail, NetEase, Naver and Spectrum are
+  left out until one can be read); then the domain's MX against that table;
+  then RFC 6186 SRV records; then the domain's own autoconfig file; then the
+  `imap.` / `smtp.` convention. Discovery asks only the user's own domain,
+  never Mozilla's ISPDB or any other directory, so an address goes nowhere
+  but where its mail already lives (rule 4).
+
 **Consequences.** One more outbound path exists, to destinations the user
 chose; the binary grows by the IMAP, SMTP and MIME libraries. Not built:
 OAuth, server-side drafts, notifications, rules, mail on a paired phone

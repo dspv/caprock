@@ -100,7 +100,7 @@ func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) guess(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second) // MX, SRV, autoconfig: 3 s each at most
 	defer cancel()
 	writeJSON(w, providers.Guess(ctx, r.URL.Query().Get("email")))
 }
