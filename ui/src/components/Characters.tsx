@@ -12,6 +12,8 @@
  * vanishes into a cream ground.
  */
 
+import type { Face } from '@/lib/faces'
+
 export type Character = 'lead' | 'crowd' | 'codex' | 'opencode' | 'gemini' | 'deepseek'
 
 const INK = '#201c16'
@@ -32,9 +34,144 @@ function Shadow({ rx = 22 }: { rx?: number }) {
   return <ellipse cx="40" cy="73" rx={rx} ry="3.5" fill="#000" opacity=".22" />
 }
 
+/** The pebble every face of Claude shares: one body, one shadow, the cheeks in its deeper shade. */
+const PEBBLE = 'M14 46c0-17 11-28 26-28s26 11 26 28c0 14-11 24-26 24S14 60 14 46z'
+
+/**
+ * Claude's seven other faces (lib/faces.ts): the same pebble, hat and face
+ * in the same places, so any one reads as Claude at 40 pixels. The bodies
+ * are the pastel set the Dark Pastel palette is built from — sage, lavender,
+ * dusty blue, sand, rose, periwinkle, soft amber — fixed like the classic
+ * amber, since a character is an illustration; what follows the theme is the
+ * outline round a pale hat.
+ */
+function FaceBody({ face, outline }: { face: Exclude<Face, 'cap'>; outline: { stroke: string; strokeWidth: number } }) {
+  const eyes = (r = 4) => (<><circle cx="31" cy="46" r={r} fill={INK} /><circle cx="49" cy="46" r={r} fill={INK} /><circle cx="32.3" cy="44.6" r="1.3" fill="#fff" /><circle cx="50.3" cy="44.6" r="1.3" fill="#fff" /></>)
+  const cheeks = (c: string) => (<><circle cx="23" cy="53" r="3.2" fill={c} opacity=".75" /><circle cx="57" cy="53" r="3.2" fill={c} opacity=".75" /></>)
+  switch (face) {
+    case 'beanie':
+      // Sage, in a rose beanie with a pompom; eyes shut, content.
+      return (
+        <>
+          <Shadow />
+          <path d={PEBBLE} fill="#8fbc98" />
+          <path d="M17 34c0-13 10-21 23-21s23 8 23 21z" fill="#e3a0a0" {...outline} />
+          <rect x="15" y="29" width="50" height="9" rx="4.5" fill="#c98282" {...outline} />
+          <path d="M22 31v5M28 31v5M34 31v5M40 31v5M46 31v5M52 31v5M58 31v5" stroke="#e8b3b3" strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="40" cy="12" r="5" fill="#f4d6d6" {...outline} />
+          <path d="M27 47q4-4.5 8 0M45 47q4-4.5 8 0" stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M34 56c3 3 9 3 12 0" stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round" />
+          {cheeks('#6f9e7a')}
+        </>
+      )
+    case 'headphones':
+      // Lavender, in big headphones, singing along.
+      return (
+        <>
+          <Shadow />
+          <path d={PEBBLE} fill="#b8a8d6" />
+          <path d="M16 42c0-18 11-27 24-27s24 9 24 27" stroke="#3a3733" strokeWidth="5" fill="none" strokeLinecap="round" />
+          <rect x="8" y="37" width="12" height="18" rx="5" fill="#3a3733" />
+          <rect x="60" y="37" width="12" height="18" rx="5" fill="#3a3733" />
+          <rect x="16" y="39.5" width="4" height="13" rx="2" fill={CREAM} />
+          <rect x="60" y="39.5" width="4" height="13" rx="2" fill={CREAM} />
+          <path d="M66 6v10" stroke={AMBER} strokeWidth="2.2" strokeLinecap="round" />
+          <path d="M66 6l5 2" stroke={AMBER} strokeWidth="2.2" strokeLinecap="round" />
+          <circle cx="63.5" cy="16" r="2.8" fill={AMBER} />
+          {eyes()}
+          <ellipse cx="40" cy="57.5" rx="3.6" ry="4.2" fill={INK} />
+          {cheeks('#9886c0')}
+        </>
+      )
+    case 'crown':
+      // Dusty blue, crowned, a little smug.
+      return (
+        <>
+          <Shadow />
+          <path d={PEBBLE} fill="#a3b6c9" />
+          <path d="M23 33l-2-17 9.5 8L40 11l9.5 13 9.5-8-2 17z" fill="#f2c94c" strokeLinejoin="round" {...outline} />
+          <rect x="22.5" y="29" width="35" height="5.5" rx="2.5" fill="#d9a92e" />
+          <circle cx="21" cy="15.5" r="2.3" fill="#f2c94c" /><circle cx="40" cy="10.5" r="2.5" fill="#f2c94c" /><circle cx="59" cy="15.5" r="2.3" fill="#f2c94c" />
+          <circle cx="40" cy="31.7" r="1.9" fill="#d9725f" />
+          <path d="M27 46a4 4 0 0 0 8 0zM45 46a4 4 0 0 0 8 0z" fill={INK} />
+          <path d="M26 45.5h10M44 45.5h10" stroke={INK} strokeWidth="2.4" strokeLinecap="round" />
+          <path d="M34 57c3.5 2 8 1.5 12-2" stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round" />
+          {cheeks('#8299b2')}
+        </>
+      )
+    case 'wizard':
+      // Sand, under a starry wizard's hat, wide-eyed.
+      return (
+        <>
+          <Shadow />
+          <path d={PEBBLE} fill="#d2bb88" />
+          <path d="M23 31L39 3c1-2 3-2 4 0l15 28z" fill="#4b4f8f" strokeLinejoin="round" {...outline} />
+          <ellipse cx="40" cy="31" rx="25" ry="4.5" fill="#3d4178" {...outline} />
+          <path d="M44 14l1.2 2.8 2.8 1.2-2.8 1.2L44 22l-1.2-2.8-2.8-1.2 2.8-1.2z" fill="#f2c94c" />
+          <circle cx="35" cy="24" r="1.3" fill="#f2c94c" />
+          <circle cx="31" cy="46" r="4.6" fill={INK} /><circle cx="49" cy="46" r="4.6" fill={INK} />
+          <circle cx="32.6" cy="44.3" r="1.6" fill="#fff" /><circle cx="50.6" cy="44.3" r="1.6" fill="#fff" />
+          <circle cx="29.6" cy="47.6" r=".8" fill="#fff" /><circle cx="47.6" cy="47.6" r=".8" fill="#fff" />
+          <ellipse cx="40" cy="57.5" rx="2.6" ry="3" fill={INK} />
+          {cheeks('#b89d64')}
+        </>
+      )
+    case 'tuft':
+      // Rose, no hat, a tuft of hair; winks.
+      return (
+        <>
+          <Shadow />
+          <path d={PEBBLE} fill="#e3a0a0" />
+          <path d="M17 37c1-13 10-21 23-21s22 8 23 19c-5-4-10-6-15-6l1.5-5c-5 3-10 4.5-16 4.5l1-4c-6 3-12 7-17.5 12.5z" fill="#4a3a2e" />
+          <path d="M40 17c-1-5 2-9 7-10" stroke="#4a3a2e" strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M27 47q4-3.5 8 0" stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round" />
+          <circle cx="49" cy="46" r="4" fill={INK} /><circle cx="50.3" cy="44.6" r="1.3" fill="#fff" />
+          <path d="M33 54h14c0 5-3 8.5-7 8.5s-7-3.5-7-8.5z" fill={INK} />
+          {cheeks('#c98282')}
+        </>
+      )
+    case 'bandana':
+      // Periwinkle, in a coral bandana, set to work.
+      return (
+        <>
+          <Shadow />
+          <path d={PEBBLE} fill="#a9a6e3" />
+          <path d="M16 33c6-6 15-9 24-9s18 3 24 9l-1.5 6.5c-6-4.5-14-7-22.5-7s-16.5 2.5-22.5 7z" fill="#d9725f" />
+          <path d="M62 33l11-3-4 6.5 6 5-11.5-2z" fill="#c4614f" />
+          <circle cx="27" cy="31" r="1.2" fill={CREAM} /><circle cx="36" cy="28.5" r="1.2" fill={CREAM} /><circle cx="45" cy="28.5" r="1.2" fill={CREAM} /><circle cx="54" cy="31" r="1.2" fill={CREAM} />
+          <path d="M26 41l8.5 2.2M54 41l-8.5 2.2" stroke={INK} strokeWidth="2.6" strokeLinecap="round" />
+          <circle cx="31" cy="47.5" r="3.6" fill={INK} /><circle cx="49" cy="47.5" r="3.6" fill={INK} />
+          <circle cx="32.2" cy="46.3" r="1.1" fill="#fff" /><circle cx="50.2" cy="46.3" r="1.1" fill="#fff" />
+          <path d="M34 57c4 2 8 2 12 0" stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round" />
+          {cheeks('#8a86cc')}
+        </>
+      )
+    case 'propeller':
+      // Soft amber, in a propeller cap, delighted.
+      return (
+        <>
+          <Shadow />
+          <path d={PEBBLE} fill={AMBER_SOFT} />
+          <path d="M20 32c2-10 10-15 20-15s18 5 20 15z" fill="#86a9dc" {...outline} />
+          <path d="M34 32c0-9 2-14.5 6-15 4 .5 6 6 6 15z" fill="#e3a0a0" />
+          <path d="M38 32h28c0 3-3 4.5-6.5 4.5H38z" fill="#6b8fc4" {...outline} />
+          <rect x="39" y="9" width="2" height="9" fill={INK} />
+          <ellipse cx="33" cy="9.5" rx="7" ry="2.3" fill="#f2c94c" />
+          <ellipse cx="47" cy="9.5" rx="7" ry="2.3" fill="#e3a0a0" />
+          <circle cx="40" cy="9.5" r="2" fill={INK} />
+          {eyes()}
+          <path d="M32 54h16c0 6-4 9-8 9s-8-3-8-9z" fill={INK} />
+          <path d="M36 60.5c2-1.8 6-1.8 8 0-1 1.6-2.5 2.4-4 2.4s-3-.8-4-2.4z" fill="#e3807f" />
+          {cheeks(AMBER_DEEP)}
+        </>
+      )
+  }
+}
+
 /** A character's drawing in its 80x80 box, for composing several into one scene (BannerArt). */
-export function Body({ who }: { who: Character }) {
+export function Body({ who, face = 'cap' }: { who: Character; face?: Face }) {
   const outline = { stroke: 'var(--character-outline, transparent)', strokeWidth: 1.5 }
+  if (who === 'lead' && face !== 'cap') return <FaceBody face={face} outline={outline} />
   switch (who) {
     case 'lead':
       // Claude Code: an amber pebble in a hard hat.
@@ -120,11 +257,15 @@ export function Body({ who }: { who: Character }) {
   }
 }
 
-/** One character, `size` pixels square. Decorative: the name beside it says who. */
-export function AgentCharacter({ who, size = 62, className }: { who: Character; size?: number; className?: string }) {
+/**
+ * One character, `size` pixels square. Decorative: the name beside it says
+ * who. `face` dresses Claude ('lead') in one of its eight looks; every other
+ * agent keeps its own mark.
+ */
+export function AgentCharacter({ who, size = 62, className, face }: { who: Character; size?: number; className?: string; face?: Face }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 80 80" aria-hidden="true" className={className} style={{ flex: 'none', display: 'block' }}>
-      <Body who={who} />
+    <svg width={size} height={size} viewBox="0 0 80 80" aria-hidden="true" className={className} style={{ flex: 'none', display: 'block' }} data-face={who === 'lead' ? face ?? 'cap' : undefined}>
+      <Body who={who} face={face} />
     </svg>
   )
 }

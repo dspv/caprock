@@ -19,6 +19,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { ThemePicker } from '@/components/ThemePicker'
+import { FaceDefaultSetting } from '@/components/SessionFace'
 import { api, isPairedDevice, type Status } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { SettingsNav } from '@/components/SettingsNav'
@@ -266,6 +267,7 @@ function AppearanceSection() {
       <ThemePicker size="cards" />
       {isTauri() && <InterfaceSize />}
       <SidebarModeSetting />
+      <FaceDefaultSetting />
       <p className="text-[12px] text-fg-muted">Saved in this browser only.</p>
     </Section>
   )

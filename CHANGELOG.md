@@ -16,6 +16,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** Claude's little character comes in eight faces — the hard hat,
+  a beanie, headphones, a crown, a wizard's hat, a tuft of hair, a bandana
+  and a propeller cap, each in its own pastel and expression. Each session
+  gets one at random from its id and keeps it everywhere it shows; click
+  the portrait in the cockpit to give a session another, and pick the
+  default — a face per session or one for all — in Settings → Appearance.
+  Kept in this browser only.
+- **app:** the cockpit's state line and permission mode sit under the
+  agent's portrait, so the figures at the right get the row; *started*
+  moves under the model. The subagent chips come in groups of five and wrap
+  onto a second line instead of being cut; past two lines they shrink to
+  small squares, and past that a *+N* says how many more.
 - **remote:** a phone reaches Caprock from anywhere — mobile data, another
   Wi-Fi — with nothing to install, through a relay that carries only
   end-to-end ciphertext (ADR-058). Settings → *Open Caprock on your phone* →

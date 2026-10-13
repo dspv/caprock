@@ -29,14 +29,15 @@ import { everyWhileVisible } from '@/lib/visible'
 import { CHART_METRICS, HEADLINES, METRICS, SPEND_PERIODS, chartTotal, chartValueText, foldedFigures, metricTitle, metricValue, periodFigures, periodScope, pickHero, pickSlot, setSpendPrefs, shownSlots, spendFigures, useSpendPrefs, type ChartMetric, type Metric, type PeriodFigures, type SpendBar, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
-import { AgentCharacter, agentName, characterFor } from './Characters'
+import { agentName } from './Characters'
+import { PickableFace, SessionCharacter } from './SessionFace'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
 import { PermissionModeChip } from './PermissionModeChip'
 import { KindIcon } from './KindIcon'
 import { SubagentDetail } from './SubagentDetail'
 import {
-  askLine, backgroundAgents, chipGroups, chipGroupsThatFit, subagentChips, subagentDoing, subagentInitial, subagentTone, CHIP_GROUP, MAX_SUBAGENT_CHIPS, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns,
+  askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns,
   type CockpitState, type SubagentChip, type ToolRun,
 } from '@/lib/cockpit'
 
@@ -169,56 +170,58 @@ export function SectionLabel({ children, right }: { children: ReactNode; right?:
 }
 
 /**
- * How many chips the hero's one row of subagents holds: as many whole
- * groups of four as its width fits (three in a 324px inspector, five in a
- * 480px one), "+N" after them for the working left out. Measured from the
- * row's width only, never from what it shows, so a subagent starting or
- * finishing never changes the layout; until laid out, three groups.
+ * How the hero's subagent chips sit in the width beside "N working": full
+ * size or compact, and how many to draw (lib/cockpit chipLayout). Measured
+ * from that width and the working count only, never from which chips show;
+ * until laid out, a 324px inspector's width.
  */
-function useChipRoom(row: RefObject<HTMLDivElement | null>, total: number): number {
+function useChipLayout(box: RefObject<HTMLDivElement | null>, working: number): { compact: boolean; room: number } {
   const [width, setWidth] = useState(0)
   useLayoutEffect(() => {
-    const el = row.current
+    const el = box.current
     if (!el || typeof ResizeObserver !== 'function') return
     const read = () => { if (el.clientWidth > 0) setWidth(el.clientWidth) }
     read()
     const ro = new ResizeObserver(read)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [row])
-  if (!(width > 0)) return 3 * CHIP_GROUP
-  const all = chipGroupsThatFit(width, false) * CHIP_GROUP
-  return Math.min(MAX_SUBAGENT_CHIPS, total <= all ? all : chipGroupsThatFit(width, true) * CHIP_GROUP)
+  }, [box])
+  return chipLayout(width > 0 ? width : 230, working)
 }
 
 /**
  * The agent, its figures and its subagents, in one grid that never changes
- * shape (owner, 2026-10-13: "restore the awesome look — both when work is
- * going on and when it waits"). Three fixed rows:
+ * shape when the state does (owner, 2026-10-13: "restore the awesome look —
+ * both when work is going on and when it waits"). Three rows:
  *
  * - **The agent's row**, as tall as the avatar: the character, whose ring
  *   carries the state's colour; the agent, its model on a line of its own
- *   (never cut to make room for the figure), the state line in the same
- *   colour. At its right, in a place of its own, the
- *   headline figure and what it is (owner, 2026-10-12: "put it to the right
- *   of the agent").
- * - **The detail row**: the permission mode and when it started under the
- *   agent's lines, the two smaller figures under the headline, quieter.
- * - **The subagents' row**, one line high: a chip per subagent in groups of
- *   four, or *no subagents running*.
+ *   (never cut to make room for the figure), and when it started. At its
+ *   right, in a place of its own, the headline figure and what it is
+ *   (owner, 2026-10-12: "put it to the right of the agent").
+ * - **The detail row**: under the portrait, centred, the state line (dot and
+ *   word, in the state's colour) and the permission mode under it (owner,
+ *   2026-10-14: "status and mode can both go under the portrait — then the
+ *   figures get better visibility", translated); the two smaller figures at
+ *   the right, with the rest of the row to themselves.
+ * - **The subagents' row**: a chip per subagent in groups of five, in the
+ *   order they started, wrapping onto a second line; compact chips when two
+ *   lines of full ones would not hold them (lib/cockpit chipLayout); or *no
+ *   subagents running*.
  *
  * A state change recolours the ring, the dot and the state line and changes
  * the chips; nothing moves. A longer figure takes room from the agent's
  * lines, which are left-aligned and cut rather than wrapped; a narrower
- * inspector steps the headline down (.cockpit-hero, a container query).
+ * inspector steps the headline down (.cockpit-hero, a container query). A
+ * click on Claude's portrait picks this session's face (SessionFace).
  */
 function Hero({ s, sessionId, state, now, background, subs, permission, figures, usual, onChip }: { s: SessionSummary; sessionId: string; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null; figures: SpendFigures; usual?: Usual; onChip: (id: string) => void }) {
   const since = s.worked_at || s.last_event_at
   const saysBackground = background > 0 && state === 'working'
   const working = subs?.working.length ?? 0
-  const chipRow = useRef<HTMLDivElement>(null)
-  const room = useChipRoom(chipRow, working + (subs?.recent?.length ?? 0))
-  const strip = subagentChips(subs, permission, room)
+  const chipBox = useRef<HTMLDivElement>(null)
+  const layout = useChipLayout(chipBox, working)
+  const strip = subagentChips(subs, permission, layout.room)
   const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? background : 0)
   const model = s.model_display || s.model
   const label = saysBackground ? 'Background agents' : STATE_LABEL[state]
@@ -226,12 +229,12 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
   return (
     <div className="@container min-w-0">
       <div className="cockpit-hero" data-state={state}>
-        <div className="cockpit-avatar relative grid place-items-center rounded-[15px] [grid-area:av]" data-state={state}>
-          <AgentCharacter who={characterFor(s.agent ?? 'claude')} size={46} className="cockpit-character" />
-        </div>
-        {/* Name, model, state: three lines, so the model is never cut to
-          * make room for the figure at the right (owner, 2026-10-13, picked
-          * from three variants). */}
+        <PickableFace agent={s.agent} sessionId={sessionId}
+          className="cockpit-avatar relative grid place-items-center justify-self-center rounded-[15px] [grid-area:av]" data-state={state}>
+          <SessionCharacter agent={s.agent} sessionId={sessionId} size={46} className="cockpit-character" />
+        </PickableFace>
+        {/* Name, model, since when: the state moved under the portrait, so
+          * the name and the model have the column to themselves. */}
         <div className="grid min-w-0 content-start [grid-area:info]">
           <p className="truncate whitespace-nowrap text-[13px] font-semibold leading-[19px] text-fg">{agentName(s.agent ?? 'claude')}</p>
           {model ? (
@@ -240,32 +243,37 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
               <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} className="min-w-0 shrink truncate text-[12px] text-fg-muted" />
             </p>
           ) : null}
-          <p className={`flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[12.5px] font-medium leading-[19px] ${STATE_TEXT[state]}`} role="status"
-            title={saysBackground ? backgroundLabel(background) : undefined}>
-            <span className="cockpit-dot inline-block h-[7px] w-[7px] shrink-0 rounded-full" data-state={state} />
-            <span className="truncate">{label}{ago ? <span className="font-normal text-fg-faint"> · {ago}</span> : null}</span>
-          </p>
+          {s.started_at > 0 && state !== 'ended' && (
+            <p data-hero-started className="truncate text-[11px] leading-[16px] text-fg-faint">started {fmtAgo(s.started_at, now)}</p>
+          )}
         </div>
         {s.stats && <div data-hero-fig className="min-w-0 justify-self-end [grid-area:fig]"><HeadlineFigure figures={figures} usual={usual} /></div>}
-        {/* The permission mode, and for a session Caprock started, the way
-          * to change it while it runs (ADR-054); then since when it runs. */}
-        <div data-hero-meta className="grid min-w-0 content-start gap-[3px] [grid-area:meta]">
-          {state !== 'ended' && <p className="flex min-w-0"><PermissionModeChip sessionId={sessionId} agent={s.agent} /></p>}
-          {s.started_at > 0 && state !== 'ended' && (
-            <p className="truncate text-[11px] leading-[15px] text-fg-faint">started {fmtAgo(s.started_at, now)}</p>
-          )}
+        {/* Under the portrait: the state, then the permission mode and, for
+          * a session Caprock started, the way to change it while it runs
+          * (ADR-054). */}
+        <div data-hero-lead className="grid min-w-0 content-start justify-items-center gap-[4px] text-center [grid-area:lead]">
+          {/* The dot inline with the word, so a label that wraps ("Waiting /
+            * on you" in a narrow inspector) keeps it beside its first line. */}
+          <p data-hero-state className={`max-w-full text-[11.5px] font-medium leading-[14px] [text-wrap:balance] ${STATE_TEXT[state]}`} role="status"
+            title={saysBackground ? backgroundLabel(background) : undefined}>
+            <span className="cockpit-dot mr-1.5 inline-block h-[7px] w-[7px] rounded-full align-[1px]" data-state={state} />
+            {label}{ago ? <span className="block font-normal text-fg-faint">{ago}</span> : null}
+          </p>
+          {state !== 'ended' && <p data-hero-mode className="flex max-w-full justify-center"><PermissionModeChip sessionId={sessionId} agent={s.agent} /></p>}
         </div>
         {s.stats && <div data-hero-sec className="min-w-0 justify-self-end [grid-area:sec]"><HeroSecondaries figures={figures} /></div>}
-        {/* Always there, one line high, so nothing above or below it moves
+        {/* Always there, at least one line high, so nothing above it moves
           * when subagents start or finish (owner, 2026-10-13: "fix its
           * position and mark the subagents' place when nothing runs"). */}
-        <div ref={chipRow} data-hero-chips className="flex min-w-0 items-center overflow-hidden [grid-area:chips]">
+        <div data-hero-chips className="flex min-w-0 items-start [grid-area:chips]">
           {count > 0 && state !== 'ended' && (
-            <span data-hero-count className="mr-2.5 shrink-0 text-[11px] text-fg-muted" title={`${count} ${count === 1 ? 'subagent' : 'subagents'} working`}>{count} working</span>
+            <span data-hero-count className="mr-2.5 shrink-0 text-[11px] leading-[22px] text-fg-muted" title={`${count} ${count === 1 ? 'subagent' : 'subagents'} working`}>{count} working</span>
           )}
-          {strip.chips.length > 0
-            ? <SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} />
-            : state !== 'ended' && <span data-hero-nosubs className="text-[11px] text-fg-faint">no subagents running</span>}
+          <div ref={chipBox} className="flex min-w-0 flex-1 items-center">
+            {strip.chips.length > 0
+              ? <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} onChip={onChip} />
+              : state !== 'ended' && <span data-hero-nosubs className="text-[11px] leading-[22px] text-fg-faint">no subagents running</span>}
+          </div>
         </div>
       </div>
     </div>
@@ -275,26 +283,30 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
 /**
  * One mini-avatar per subagent on the hero's last row: its type's initial
  * in a tint fixed per type, pulsing while it works, accent while it waits
- * on you, muted once finished. In groups of four on one line, as many
- * groups as fit, then "+N" (owner, 2026-10-12: "why doesn't it show more
- * agents?"). A chip opens its subagent's row in the Subagents section below.
+ * on you, muted once finished. In groups of five, a wider gap between
+ * groups, wrapping between groups onto a second line, so the count reads by
+ * fives (owner, 2026-10-14). Compact, when there are more than two full
+ * lines' worth: a smaller square with no letter, its tint and state kept.
+ * Then "+N" for the working left out. A chip opens its subagent's row in
+ * the Subagents section below.
  */
-function SubagentStrip({ chips, more, onChip }: { chips: SubagentChip[]; more: number; onChip: (id: string) => void }) {
+function SubagentStrip({ chips, more, compact, onChip }: { chips: SubagentChip[]; more: number; compact: boolean; onChip: (id: string) => void }) {
   const groups = chipGroups(chips)
+  const box = compact ? 'h-[10px] w-[10px] rounded-[3px]' : 'h-[18px] w-[18px] rounded-[5px] text-[10px] font-semibold'
   return (
-    <div role="group" aria-label={`Subagents${more > 0 ? `, and ${more} more working` : ''}`}
-      className="flex flex-nowrap items-center gap-x-2 p-[2px]" data-chips={chips.length}>
+    <div role="group" aria-label={`Subagents${more > 0 ? `, and ${more} more working` : ''}`} data-compact={compact || undefined}
+      className={`flex min-w-0 flex-wrap items-center p-[2px] ${compact ? 'gap-x-[6px] gap-y-[6px]' : 'gap-x-2 gap-y-[4px]'}`} data-chips={chips.length}>
       {groups.map((g, i) => (
-        <span key={i} className="flex shrink-0 gap-[3px]">
+        <span key={i} data-chip-group className={`flex shrink-0 ${compact ? 'gap-[2px]' : 'gap-[3px]'}`}>
           {g.map((c) => (
             <button key={c.id} type="button" title={c.label} aria-label={`${c.label}. Open`} data-state={c.state} data-tone={c.tone}
               onClick={() => onChip(c.id)}
-              className="cockpit-subchip num relative grid h-[18px] w-[18px] place-items-center rounded-[5px] text-[10px] font-semibold outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
-              {c.initial}
+              className={`cockpit-subchip num relative grid place-items-center outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${box}`}>
+              {compact ? null : c.initial}
             </button>
           ))}
           {i === groups.length - 1 && more > 0 && (
-            <span title={`${more} more working`} className="cockpit-subchip num relative grid h-[18px] min-w-[18px] place-items-center rounded-[5px] px-1 text-[10px] font-medium" data-state="more">+{more}</span>
+            <span title={`${more} more working`} className={`cockpit-subchip num relative ml-1 grid min-w-[18px] place-items-center rounded-[5px] px-1 text-[10px] font-medium ${compact ? 'h-[14px] leading-[14px]' : 'h-[18px]'}`} data-state="more">+{more}</span>
           )}
         </span>
       ))}

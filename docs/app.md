@@ -383,7 +383,8 @@ others. Installing it: [install-app.md](install-app.md).
   `~/.claude`), or `@` for a file in the session's folder: ↑ ↓ and Enter
   pick, Esc closes. Picking only fills the field.
 - **Agent cockpit** (⌘I). Open beside an agent's terminal unless you close
-  it: the agent and its state, three figures beside it that you pick —
+  it: the agent's portrait with its state and permission mode under it,
+  three figures beside it that you pick —
   its burn rate in large type, its tokens and what it has cost on two
   short lines under it, or any of cache hit rate, turns, time working, the
   last call and tool calls (click a figure's ▾), and under the big one how
@@ -400,7 +401,8 @@ others. Installing it: [install-app.md](install-app.md).
   it, the task list the agent keeps for itself (each task with a spinner, a
   check or an empty circle, and *3 of 7 done* above them; not there when
   the agent kept none), its subagents (a chip per subagent under the
-  agent, and a row each below that leads with its type's letter and what
+  agent, in groups of five so you can count them at a glance, on up to
+  two lines and smaller squares when there are many, and a row each below that leads with its type's letter and what
   it is doing now in words, from the description Claude gave its latest
   command, else its tool and file, else its task: click one to open it in place and read the
   task it was given, every call it makes as it makes them, what it
@@ -411,6 +413,13 @@ others. Installing it: [install-app.md](install-app.md).
   (in a folder that is not a git repository, it opens in your editor at
   its first change). Beside a shell tab it shows the folder and its
   changes.
+- **Claude's faces.** Claude's little character comes in eight looks — the
+  hard hat, a beanie, headphones, a crown, a wizard's hat, a tuft of hair,
+  a bandana and a propeller cap. Each session gets one at random and keeps
+  it everywhere it shows, on your phone too; click the portrait in the
+  cockpit to give a session another. Settings → Appearance → *Claude's
+  face* picks the default: a face per session, or the same one for all.
+  Remembered in this browser only. Other agents keep their own marks.
 - **Session deck** (⌘B). A band under the terminal of the agent in front,
   so the prompt sits above the window's edge, nearer the middle of the
   screen, with what is useful while you work in the room it makes: the CI
