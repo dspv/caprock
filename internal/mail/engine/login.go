@@ -13,6 +13,7 @@ import (
 	"github.com/emersion/go-smtp"
 
 	store "github.com/dspv/caprock/internal/mail/mailstore"
+	"github.com/dspv/caprock/internal/mail/oauth"
 )
 
 // The sign-in name a server wants is not always the address the mail goes
@@ -109,7 +110,14 @@ func smtpRefused(err error) bool {
 }
 
 // loginIMAP signs in on c, trying the likely names; returns the one that worked.
+// An OAuth account signs in once, with XOAUTH2 and secret as the access token.
 func loginIMAP(c *imapclient.Client, a store.Account, password string) (string, error) {
+	if p := oauth.ProviderOf(a.Auth); p != "" {
+		if err := c.Authenticate(oauth.XOAuth2(a.Email, password)); err != nil {
+			return "", oauthRefused(p, "IMAP", err, imapRefused(err))
+		}
+		return a.Email, nil
+	}
 	var first error
 	for _, name := range imapNames(a) {
 		err := c.Login(name, password).Wait()
@@ -147,6 +155,17 @@ func dialSMTP(a store.Account) (*smtp.Client, error) {
 // loginSMTP signs in, trying the likely names on fresh connections (a
 // refused AUTH can leave a server unwilling to try again on the same one).
 func loginSMTP(a store.Account, password string) (*smtp.Client, error) {
+	if p := oauth.ProviderOf(a.Auth); p != "" {
+		c, err := dialSMTP(a)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.Auth(oauth.XOAuth2(a.Email, password)); err != nil {
+			c.Close()
+			return nil, oauthRefused(p, "SMTP", err, smtpRefused(err))
+		}
+		return c, nil
+	}
 	var first error
 	for _, name := range smtpNames(a) {
 		c, err := dialSMTP(a)
@@ -169,6 +188,20 @@ func loginSMTP(a store.Account, password string) (*smtp.Client, error) {
 		}
 	}
 	return nil, explain(a.SMTPHost, a.Email, first)
+}
+
+// oauthRefused turns a refused XOAUTH2 sign-in into what to do: sign in in
+// the browser again. It wraps oauth.ErrSignInAgain so the caller drops the
+// cached access token.
+func oauthRefused(provider, proto string, err error, refused bool) error {
+	if !refused {
+		return err
+	}
+	label := provider
+	if p, ok := oauth.Lookup(provider); ok {
+		label = p.Label
+	}
+	return fmt.Errorf("%w with %s: %s did not accept the sign-in (%w). If signing in again does not help, %s may be turned off for this mailbox by its administrator", oauth.ErrSignInAgain, label, proto, err, proto)
 }
 
 // explain adds what to do to a refused sign-in on the hosts people use most.

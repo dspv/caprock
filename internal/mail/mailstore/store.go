@@ -37,7 +37,33 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("schema: %w", err)
 	}
+	if err := addColumns(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("schema: %w", err)
+	}
 	return &Store{db: db}, nil
+}
+
+// addedColumns are columns added after a table first shipped. CREATE TABLE IF
+// NOT EXISTS leaves an existing table as it was, so each is added here when
+// missing: idempotent, and a fresh database already has it from schema.sql.
+var addedColumns = []struct{ table, column, ddl string }{
+	{"accounts", "auth", `ALTER TABLE accounts ADD COLUMN auth TEXT NOT NULL DEFAULT 'password'`},
+}
+
+func addColumns(db *sql.DB) error {
+	for _, c := range addedColumns {
+		var n int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, c.table, c.column).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			if _, err := db.Exec(c.ddl); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Close closes the database.
@@ -60,30 +86,47 @@ type Account struct {
 	CreatedAt int64  `json:"created_at"`
 	LastSync  int64  `json:"last_sync"`
 	LastError string `json:"last_error"`
+	// Auth is how the account signs in: "password" (the default; the secret
+	// store holds the password) or "oauth2:google" / "oauth2:microsoft" (it
+	// holds the refresh token).
+	Auth string `json:"auth"`
 }
 
-const accountCols = `id, name, email, username, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, color, signature, created_at, last_sync, last_error`
+const accountCols = `id, name, email, username, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, color, signature, created_at, last_sync, last_error, auth`
 
 func scanAccount(r interface{ Scan(...any) error }) (Account, error) {
 	var a Account
 	err := r.Scan(&a.ID, &a.Name, &a.Email, &a.Username, &a.IMAPHost, &a.IMAPPort, &a.IMAPTLS,
-		&a.SMTPHost, &a.SMTPPort, &a.SMTPTLS, &a.Color, &a.Signature, &a.CreatedAt, &a.LastSync, &a.LastError)
+		&a.SMTPHost, &a.SMTPPort, &a.SMTPTLS, &a.Color, &a.Signature, &a.CreatedAt, &a.LastSync, &a.LastError, &a.Auth)
 	return a, err
 }
 
 // AddAccount inserts an account and returns its id.
 func (s *Store) AddAccount(ctx context.Context, a Account) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `INSERT INTO accounts
-		(name, email, username, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, color, signature, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-		a.Name, a.Email, a.Username, a.IMAPHost, a.IMAPPort, a.IMAPTLS, a.SMTPHost, a.SMTPPort, a.SMTPTLS, a.Color, a.Signature, time.Now().Unix())
+		(name, email, username, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, color, signature, created_at, auth)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		a.Name, a.Email, a.Username, a.IMAPHost, a.IMAPPort, a.IMAPTLS, a.SMTPHost, a.SMTPPort, a.SMTPTLS, a.Color, a.Signature, time.Now().Unix(), authOrPassword(a.Auth))
 	if err != nil {
 		return 0, err
 	}
 	return res.LastInsertId()
 }
 
-// UpdateAccount rewrites the editable fields.
+func authOrPassword(auth string) string {
+	if auth == "" {
+		return "password"
+	}
+	return auth
+}
+
+// SetAuth records how an account signs in.
+func (s *Store) SetAuth(ctx context.Context, id int64, auth string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE accounts SET auth=? WHERE id=?`, authOrPassword(auth), id)
+	return err
+}
+
+// UpdateAccount rewrites the editable fields; not auth (SetAuth).
 func (s *Store) UpdateAccount(ctx context.Context, a Account) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE accounts SET name=?, email=?, username=?, imap_host=?, imap_port=?, imap_tls=?,
 		smtp_host=?, smtp_port=?, smtp_tls=?, color=?, signature=? WHERE id=?`,

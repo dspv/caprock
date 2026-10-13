@@ -26,6 +26,31 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   also reads githubstatus.com and shows avatars from
   avatars.githubusercontent.com, neither sent your token; Settings → GitHub
   says so.
+- **mail:** sign in with Google or Microsoft. A Gmail, Google Workspace,
+  Outlook.com or Microsoft 365 mailbox connects with a click and an approval
+  in the browser, no app password: the installed-app OAuth flow with PKCE,
+  back to Caprock on loopback, then IMAP and SMTP over XOAUTH2. The refresh
+  token is kept in the keychain like a password; a revoked or expired sign-in
+  shows as a sync error asking to sign in again. Signing in with an address
+  Mail already has switches that account over and keeps its mail. Nothing is
+  sent to Google or Microsoft until the button is clicked. The buttons need
+  the build's client IDs (`docs/mail-oauth.md`); iCloud keeps app-specific
+  passwords, having no OAuth for mail.
+- **doctor:** an Orphans section lists the processes on the machine that look
+  abandoned, each with why: another Caprock daemon (and whether its data
+  directory still exists), terminal holders no Caprock will reattach to from
+  any install, a `claude` whose session ended or whose parent exited, MCP
+  servers whose `claude` is gone, and what a Claude Code session started that
+  outlived it. Anything in a terminal you are in, in a live session, of
+  another user or inside an app is never listed. The list is taken when you
+  open the doctor or run `caprock doctor`; the 10-minute sweep keeps a count
+  for the status bar.
+- **doctor:** an Advanced mode (off by default, on the computer only) adds a
+  Stop to each orphan and *Stop selected*, each confirmed once more; `caprock
+  doctor --stop <pid>` does the same from a terminal and asks first (`--yes`
+  skips). The process gets SIGTERM, then SIGKILL after 5 seconds, and only if
+  it is still the one listed — same pid, same start time. Caprock never stops
+  a process it did not start on its own (ADR-059).
 
 ### Changed
 
