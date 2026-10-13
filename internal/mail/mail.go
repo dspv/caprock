@@ -5,7 +5,9 @@
 // It is an integration the user switches on by adding an account (ADR-047):
 // until then nothing is opened, no goroutine runs and nothing leaves the
 // machine. Once an account exists, Caprock talks only to the IMAP and SMTP
-// servers the user typed in, and — when local AI is turned on — to the model
+// servers the user typed in (for an account signed in with Google or
+// Microsoft: that provider's servers and token endpoint, internal/mail/oauth),
+// and — when local AI is turned on — to the model
 // server at the address in Mail's settings (loopback by default).
 package mail
 
@@ -21,6 +23,7 @@ import (
 	"github.com/dspv/caprock/internal/mail/engine"
 	store "github.com/dspv/caprock/internal/mail/mailstore"
 	"github.com/dspv/caprock/internal/mail/secrets"
+	"github.com/dspv/caprock/internal/secret"
 )
 
 // Service owns Mail's database and sync engine, both opened on first use.
@@ -35,13 +38,15 @@ type Service struct {
 	dir  string
 	log  *slog.Logger
 	sec  secrets.Store
-	demo bool // CAPROCK_MAIL_DEMO=1: sample mode for the whole run
+	demo bool   // CAPROCK_MAIL_DEMO=1: sample mode for the whole run
+	home string // the user's home dir, for importing other clients' accounts
 
 	mu      sync.Mutex
 	st      *store.Store
 	eng     *engine.Engine
 	sample  *sampleBox   // non-nil while sample mode is on
 	version atomic.Int64 // bumped on every local change; the UI polls it
+	oauth   oauthFlows   // sign-ins with Google/Microsoft waiting for the browser
 }
 
 // sampleBox is the throwaway instance behind sample mode.
@@ -73,6 +78,15 @@ func New(dataDir string, log *slog.Logger) *Service {
 }
 
 func (s *Service) dbPath() string { return filepath.Join(s.dir, "mail.db") }
+
+// homeDir is the user's home directory, read once and cached. The account
+// importer reads another mail client's local files under it.
+func (s *Service) homeDir() string {
+	if s.home == "" {
+		s.home = secret.UserHome(context.Background())
+	}
+	return s.home
+}
 
 // open opens the real database and starts its engine, once.
 func (s *Service) open() (*store.Store, error) {

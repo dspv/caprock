@@ -45,7 +45,7 @@ import '@xterm/xterm/css/xterm.css'
 import { deviceToken } from '@/lib/api'
 import { TermClient, type TermState } from '@/lib/termv2'
 import { attachTerminalInput } from '@/lib/xtermInput'
-import { FIND_EVENT, matchAppShortcut } from '@/lib/appkeys'
+import { FIND_EVENT, ownsTerminalKey, watchChordArrows } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { registerBenchTerminal } from '@/lib/benchhook'
 import { writeSliced } from '@/lib/termwrite'
@@ -72,8 +72,9 @@ export const HIDDEN_HOLD_BYTES = 256 * 1024
 
 /**
  * How long a terminal's first output may run before what comes next is held
- * while hidden: the replay a tab opens with is drawn in the background, as it
- * always was, so the first switch to it paints a finished screen.
+ * while hidden: the replay a tab opens with is drawn in the background once
+ * the pane has been fitted, so a switch to it paints a finished screen. A
+ * pane never yet laid out holds even that (see `fitted` below).
  */
 export const SETTLE_MS = 3000
 
@@ -138,6 +139,7 @@ export function TerminalPane({
     const el = host.current
     if (!el) return
     const isMac = isMacPlatform()
+    watchChordArrows(isMac)
     const css = getComputedStyle(document.documentElement)
     // The resolved stack, never var(): xterm hands this to a canvas, which
     // does not resolve custom properties (see Terminal.tsx).
@@ -181,6 +183,19 @@ export function TerminalPane({
 
     let disposed = false
     let visible = false
+    // Fitted to its pane at least once. Until then xterm is at its default
+    // 80×24 — a tab restored behind another has never been laid out, and a
+    // `display: none` box measures nothing — and the replay it opens with
+    // was drawn at the PTY's width. Claude Code draws its prompt and status
+    // rows with cursor moves counted for that width, so the same bytes parsed
+    // 80 columns wide wrap where they should not, the moves land on the
+    // wrong rows, and the copies they leave behind are baked into the
+    // scrollback: reflowing to the real width later cannot undo them. Rules
+    // smeared across the screen, the status rows repeated, fragments at the
+    // far right, seen on scrolling up (user report, 2026-10-13). So a pane
+    // not yet fitted writes nothing and tells the daemon no size; what
+    // arrives is held, and written once it has its real size.
+    let fitted = false
     let gotOutput = false
     let lastInput = 0
     let webgl: WebglAddon | undefined
@@ -202,6 +217,7 @@ export function TerminalPane({
       settleTimer = window.setTimeout(() => { settleTimer = 0; settled = true }, Math.max(0, Math.min(400, settleBy - now)))
     }
     const flushHeld = () => {
+      if (!fitted) return
       const out = held
       held = []
       heldBytes = 0
@@ -213,7 +229,7 @@ export function TerminalPane({
     }
     // The window out of sight holds the tab in front's output too (a hidden
     // window does no work): parsed and drawn at once when it is shown.
-    const holding = () => (!visible || pageHidden()) && settled
+    const holding = () => !fitted || ((!visible || pageHidden()) && settled)
 
     const report = (s: TermState) => {
       setStatus(s)
@@ -259,8 +275,7 @@ export function TerminalPane({
           if (!gotOutput) {
             gotOutput = true
             setPhase('ready')
-            try { if (visible) fit.fit() } catch { /* not laid out */ }
-            conn.resize(term.cols, term.rows)
+            if (fitNow()) conn.resize(term.cols, term.rows)
           }
           if (holding()) {
             held.push({ data: d, done })
@@ -285,8 +300,7 @@ export function TerminalPane({
         },
         state: report,
         open: () => {
-          try { if (visible) fit.fit() } catch { /* not laid out */ }
-          conn.resize(term.cols, term.rows)
+          if (fitNow()) conn.resize(term.cols, term.rows)
           report(conn.state)
         },
         exit: (code) => onExitRef.current?.(code),
@@ -333,7 +347,7 @@ export function TerminalPane({
     })
     const sizeSub = term.onResize(({ cols, rows }) => conn.resize(cols, rows))
     const input = attachTerminalInput(term, el, (d) => conn.send(d), {
-      isAppKey: (e) => matchAppShortcut(e, isMac) !== null,
+      isAppKey: (e) => ownsTerminalKey(e, isMac),
     })
     filesRef.current = input.sendFiles
 
@@ -362,6 +376,22 @@ export function TerminalPane({
       }
     })
 
+    // Fits the pane when it can be measured: shown, with a width, its cell
+    // measured. The first time, the size goes to the daemon and what was held
+    // is written, at that size. False while it is still xterm's default.
+    const fitNow = (): boolean => {
+      if (!visible || el.clientWidth === 0) return false
+      try { fit.fit() } catch { return false }
+      if (!fitted) {
+        if (!fit.proposeDimensions()) return false
+        fitted = true
+        conn.resize(term.cols, term.rows)
+        flushHeld()
+        conn.wake()
+      }
+      return true
+    }
+
     // One fit per frame, only when the size really changed, never while hidden.
     let fitRaf = 0
     let lastGeom = ''
@@ -371,7 +401,7 @@ export function TerminalPane({
       const geom = `${el.clientWidth}x${el.clientHeight}:${grid?.clientHeight ?? 0}`
       if (geom === lastGeom) return
       lastGeom = geom
-      try { fit.fit() } catch { /* not laid out */ }
+      fitNow()
     }
     const ro = new ResizeObserver(() => {
       if (!fitRaf) fitRaf = requestAnimationFrame(refit)
@@ -430,7 +460,12 @@ export function TerminalPane({
     // and so never claims on the daemon's side. And out of sight (this tab
     // behind another, the window hidden, the page going away) gives the PTY
     // back to a terminal still in sight at once (Vova, 2026-10-13).
-    const claim = () => { if (visible && document.visibilityState === 'visible') conn.focus(term.cols, term.rows) }
+    // Never with xterm's default size: a pane not yet fitted claims without one.
+    const claim = () => {
+      if (!visible || document.visibilityState !== 'visible') return
+      if (fitted) conn.focus(term.cols, term.rows)
+      else conn.focus()
+    }
     const away = () => { if (document.visibilityState === 'hidden') conn.blur() }
     const gone = () => conn.blur()
     window.addEventListener('focus', claim)

@@ -2,7 +2,7 @@
 # Renders the desktop app's icons in app/src-tauri/icons from icon.svg: the
 # PNGs, the macOS .icns (iconutil) and the Windows .ico (ImageMagick). Needs
 # rsvg-convert (brew install librsvg) and magick; the outputs are committed,
-# so a build never needs either. tray.png is drawn separately and untouched.
+# so a build never needs either. tray.png is the menu-bar template, from tray.svg.
 set -eu
 cd "$(dirname "$0")"
 out=../src-tauri/icons
@@ -21,4 +21,5 @@ done
 iconutil -c icns "$set_dir" -o "$out/icon.icns"
 for s in 16 24 32 48 64 256; do png "$s" "$tmp/ico-$s.png"; done
 magick "$tmp"/ico-16.png "$tmp"/ico-24.png "$tmp"/ico-32.png "$tmp"/ico-48.png "$tmp"/ico-64.png "$tmp"/ico-256.png "$out/icon.ico"
+rsvg-convert -w 64 -h 64 tray.svg -o "$out/tray.png"
 rm -rf "$tmp"

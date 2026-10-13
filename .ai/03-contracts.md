@@ -265,6 +265,19 @@ address; it is the one call a device makes before it is trusted, and
 it answers the same way for a wrong, expired, exhausted or never-issued code,
 because every distinction tells a guesser how close they are.
 
+**Access from anywhere (ADR-058).** `POST /v1/pair/remote` (`{on, relay?,
+app?}`, loopback-only) turns it on or off, remembered in `remote.json` (mode
+0600, with the machine's two keys) and answers the state; `GET /v1/pair/state`
+and `POST /v1/pair/code` carry it as `remote: {enabled, status
+(off|connecting|online|offline), error?, phones, relay, app, host_id, link?}`,
+where `link` is the pairing link the QR draws — the phone's page with `r`
+(relay), `h` (host id), `k` (static key), `c` (the live code) and `n` (name)
+after the `#`. `enabled` at the top of the state is the network listener
+alone; the guest list is live whenever either is on. Requests from the relay
+arrive on loopback with `Via: 1.1 caprock-remote` and are gated as a paired
+device. The relay's wire is `internal/remote/wire.go`, the channel's frames
+`internal/remote/proto.go`.
+
 - `DELETE /v1/pair/code` withdraws the outstanding code and answers
   `{cleared: true}` whether or not there was one — the dashboard's **Cancel**,
   so a code hidden from the owner is not still valid behind them.
@@ -908,8 +921,14 @@ anything is written to the footprint's `actions` (§ Footprint).
 `GET /v1/footprint` (2026-10-13) says what Caprock itself costs this machine
 — memory, CPU, disk space, the daemon's own disk I/O — and which duplicate or
 orphaned Caprock processes make it cost more, so a person can tell whether a
-slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
-`internal/daemon/footprint.go`, `scan.go`, `footprint_io.go`, `actions.go`.
+slow machine is Caprock or not, and which processes on the machine look
+abandoned (`orphans`, 2026-10-14, [ADR-059](08-decisions.md)). `caprock
+doctor` prints it (§ below). Code: `internal/daemon/footprint.go`,
+`scan.go`, `orphans.go`, `footprint_io.go`, `actions.go`.
+
+`GET /v1/footprint?orphans=1` takes the orphan list now (the open doctor
+panel and `caprock doctor` ask so); without it `orphans` carries the last
+scan's counts and an empty list.
 
 ```json
 {"at": 1791877758573, "daemon_running": true, "data_dir": "…/caprock", "exe": "…/bin/caprock",
@@ -928,6 +947,11 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
  "duplicates": {"daemons": [{"pid": 9, "exe": "/opt/homebrew/bin/caprock", "data_dir": "/tmp/stand", "mem_bytes": 33000000, "started_at": 1791877083828}],
                 "apps": [{"pid": 2, "exe": "/Applications/Caprock.app/Contents/MacOS/caprock-app", "mem_bytes": 45000000, "started_at": 1791877274439}],
                 "other_install_holders": {"count": 11, "orphans": 11, "exes": [{"exe": "/opt/homebrew/bin/caprock", "count": 9}]}},
+ "orphans": {"scanned": true, "at": 1791877758573, "count": 2, "by_kind": {"claude": 1, "mcp_server": 1},
+             "list": [{"pid": 48120, "started_at": 1791784158573, "kind": "claude", "label": "claude",
+                       "exe": "/Users/you/.local/share/claude/versions/2.1.296", "cpu_pct": 0.1, "mem_bytes": 222298112,
+                       "why": "A claude whose session ended (last heard from 25h ago), still running with no terminal."}],
+             "note": "…"},
  "verdicts": [{"level": "warn", "code": "orphans", "text": "11 of 26 terminal holders are orphans …"}],
  "actions": [{"at": 1791877800000, "what": "stopped 11 orphaned terminal holders (11 holding only an idle shell and 11 left by a Caprock whose data directory is deleted)"}],
  "error": "…"}
@@ -964,9 +988,37 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
   and on Windows `<data_dir>/ptyhost/bin`); a holder whose executable has
   since been deleted (an upgraded Homebrew Cellar, a replaced app bundle) is
   named by its absolute `argv[0]`.
+- **`orphans`** is the processes that look abandoned (`internal/daemon/orphans.go`).
+  `scanned` is true when `list` was taken for this answer; otherwise `count`
+  and `by_kind` are the last scan's (the 10-minute sweep after its reap, the
+  doctor's last look, or — the first time a footprint is asked — one taken
+  then) and `list` is empty. `at` is when the counted scan ran. Each item:
+  `pid` and `started_at` (unix ms; together they name the process), `kind`,
+  `label` (the program and, for Caprock, its subcommand — never the rest of
+  argv), `exe`, `data_dir` and `data_dir_gone` (a Caprock daemon's or
+  holder's data directory, when it can be told), `cpu_pct` (absent until
+  two samples; the orphan list has its own sampler, so it never resets the
+  session meter's rates), `mem_bytes`, `why` (a sentence) and `auto` (a
+  holder the sweep stops on its own). Kinds: `caprock_daemon` (another
+  `caprock up --foreground`), `caprock_holder` (a holder whose verdict is an
+  orphan, any install), `caprock_other` (another caprock command whose
+  parent is gone), `claude` (no terminal, and its parent gone, or the
+  latest ended session in `sessions` with its pid started after the process
+  did), `mcp_server` (parent gone, argv or name says MCP), `claude_child`
+  (parent gone, `CLAUDECODE` set in its environment). Parent gone: pid 1, a
+  `systemd`/`init`/`launchd` parent (a Linux subreaper), or — Windows does
+  not reparent — a parent pid not running or naming a younger process. Never
+  listed: a controlling terminal (`e_tdev` on macOS, `tty_nr` on Linux;
+  Windows has none to check), a live session's process tree, another user,
+  younger than two minutes (`ptyhost.OrphanAge`), an executable inside a
+  macOS app bundle, this daemon, the doctor, and the daemon it asked.
+  `note` says what a scan could not look at (Windows; no daemon, so no
+  sessions).
 - **`verdicts`** are `{level: "ok"|"warn", code, text}`, warnings first.
   Warnings: `duplicate_daemon` (another daemon runs), `duplicate_app` (more
   than one app), `orphans` (holders no Caprock will reattach to),
+  `stray_processes` (a `claude`, an MCP server or a Caprock command in
+  `orphans`; only `claude_child` ones are said at level `ok`),
   `database_large` (over 2 GiB), `wal_large` (over 256 MiB),
   `disk_reads_high` (the daemon read over 500 MiB in the last hour) and,
   only in `caprock doctor`'s own report, `daemon_not_running`.
@@ -985,9 +1037,11 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
   VACUUM (or why it did not run or stopped), and each incremental vacuum
   that gave space back (§ Payload compaction and auto-vacuum). Every remedy
   that is safe to apply unattended is applied unattended — nobody else
-  cleans up after a user's Caprock — and said here. Nothing is done about
-  another daemon or a second app (stopping a process Caprock did not start
-  is rule 7's line), and no history is deleted (that is the user's call).
+  cleans up after a user's Caprock — and said here. Nothing is done on its
+  own about another daemon, a second app or any process in `orphans` that
+  is not a reapable holder (stopping a process Caprock did not start is the
+  user's click, below — ADR-059), and no history is deleted (that is the
+  user's call).
 - **The WAL checkpoint.** Once a minute, on the I/O reading's tick, a WAL
   over 256 MiB is folded back with `PRAGMA wal_checkpoint(TRUNCATE)` — what
   SQLite's automatic checkpoint does in small steps, done at once and the
@@ -995,23 +1049,45 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
   attempt is 10 minutes later. Below that, `journal_size_limit` (64 MiB, set
   when the database is opened) has SQLite truncate the WAL back after its own
   checkpoints, so a big transaction does not leave a large file behind.
-- **A paired device may read it**, as it may read `/v1/resources`.
+- **A paired device may read it**, as it may read `/v1/resources`, orphans
+  included; it may not stop one.
 - **Who asks.** The dashboard's status strip, every 10 s while its page is
   visible (04-ui.md § Caprock footprint); each ask counts as looking, so
   the meter samples while it does. The panel's *Copy report* renders this
   object as `caprock doctor`'s text, and `testdata/footprint/doctor.json`
   with `doctor.txt` pin the two renderings to each other.
 
-`caprock doctor [--json] [--data-dir <dir>]` prints the footprint as text —
-memory and CPU, disk, the daemon's disk I/O, duplicates, what was done on
-its own, and the verdicts — or with `--json` the object above, and exits
+`POST /v1/footprint/orphans/stop` `{targets: [{pid, started_at}]}` (1 to 256)
+→ `{stopped: [orphan…], failed: [{pid, error}]}`: the Advanced mode's Stop
+and Stop selected ([ADR-059](08-decisions.md)). The daemon takes the orphan
+list again and stops only a target that list holds with the same
+`started_at`; anything else fails with *not on the doctor's list now*.
+Each is sent SIGTERM, then SIGKILL after 5 s if it is still there (Windows:
+TerminateProcess), the start time checked again before each signal (a pid
+whose start changed fails with *the process changed*); targets are stopped
+at once, in parallel, and only the named pid is signalled, never its
+children. A pid of 1 or below or a missing `started_at` is a 400. Machine
+only — on no paired device's list. Every stop is logged. It is never called
+by the daemon itself, the orchestrator or an agent.
+
+`caprock doctor [--json] [--data-dir <dir>] [--stop <pid>… [--yes]]` prints
+the footprint as text — memory and CPU, disk, the daemon's disk I/O,
+duplicates, orphans, what was done on its own, and the verdicts — or with
+`--json` the object above, and exits
 `1` when any verdict warns, `0` otherwise. With no daemon answering it
 reports what it can read itself (`daemon_running: false`, no `disk_io`, no
 CPU, no `actions`): the data directory's sizes and every Caprock process in
 the process table with its memory; one daemon found there is not a
 duplicate (it is the one that did not answer, or one for another data
 directory). A daemon that answers but predates `/v1/footprint` gets the
-same report with its own memory filled in. User docs:
+same report with its own memory filled in, and the doctor takes the orphan
+list itself (no sessions to check, so a `claude` is judged by its parent
+alone; `note` says so). `--stop <pid>` (repeatable) shows each process from
+the list just taken and asks `[y/N]` (`--yes` skips the question), then
+stops it through the endpoint above — or, with no daemon (or one without
+the endpoint), itself, by the same rule against its own scan; a pid not on
+the list is refused, and the exit status is `1` when any was not stopped.
+User docs:
 [docs/doctor.md](../docs/doctor.md).
 
 #### Keep awake
@@ -2839,15 +2915,22 @@ GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?
 
 Caprock Mail ([ADR-057](08-decisions.md)). Code: `internal/mail` (HTTP in
 `http.go`), `internal/mail/engine` (IMAP, SMTP), `internal/mail/mailstore`
-(DDL in `schema.sql`), `ui/src/screens/mail`. Every write is JSON, as the CSRF
-guard requires. Before the first account exists `GET /v1/mail/state`,
-`GET /v1/mail/providers`, `GET /v1/mail/settings` (the defaults) and `GET
+(DDL in `schema.sql`), `internal/mail/oauth` (sign-in with Google and
+Microsoft; HTTP in `http_oauth.go`), `ui/src/screens/mail`. Every write is
+JSON, as the CSRF guard requires. Before the first account exists only `GET
+/v1/mail/state`, `GET /v1/mail/providers`, `GET /v1/mail/oauth/providers` and `GET
+/v1/mail/import`, `GET /v1/mail/settings` (the defaults) and `GET
 /v1/mail/messages` (`[]`) answer without opening Mail.
 
 - `GET /v1/mail/state` — `{accounts, folders, counts: {inbox, unread, flagged}, version, sample}`; `version` moves on every local change and is what the screen polls; `sample` is true while sample mode is on.
 - `POST /v1/mail/sample` — `{on}` → `{sample}`. On: two sample accounts on in-process fake servers, a database in a temporary directory and passwords in memory; while it is on every `/v1/mail` route serves the sample, and the real `mail.db` and keychain are not touched (an unused Mail stays unopened). Off: the sample is dropped and the routes serve the real data again. `CAPROCK_MAIL_DEMO=1` turns it on for the whole run and `{on: false}` is then `409`. A mutating route, behind the CSRF guard and pairing like the rest.
-- `GET /v1/mail/providers?email=` — server settings guessed from the address, then its MX record: `{provider, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, note, help_url, known, needs_username}`. iCloud (icloud.com, me.com, mac.com) and Gmail by domain; iCloud+ custom domains, Google Workspace and Microsoft 365 by MX; `needs_username` is set for an iCloud+ custom domain, whose sign-in is the @icloud.com address. The MX lookup is the one network call it makes.
-- `POST /v1/mail/accounts` — `{name, email, username, imap_*, smtp_*, password}`; IMAP and SMTP are tried first and a refusal is `422` with nothing stored. A sign-in name the server refuses is retried with the address and, on iCloud, the part before the @ (SMTP: the @icloud.com form) — at most three names, only on a credentials refusal, never on `NO [UNAVAILABLE]`, which Dovecot (Spacemail and many hosts) sends for a wrong password on a real mailbox and while it locks sign-in after failures; the name that worked is stored. iCloud and Gmail refusals carry what to do (an app-specific password); an `UNAVAILABLE` refusal says the password was not accepted. `PUT /v1/mail/accounts/{id}` edits (a new password is optional), `DELETE` removes the account, its mail and its password.
+- `GET /v1/mail/providers?email=` — server settings for an address: `{provider, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, note, help_url, known, needs_username, username, source}`. Lookup order, first answer wins, `source` says which: `preset` — the domain is in the table in `internal/mail/providers/providers.go` (about 40 consumer services, each entry citing the provider's own settings page); `mx` — the domain's MX points at a host in that table (Google Workspace, Microsoft 365, iCloud+, Zoho, Fastmail, Yandex 360 and the hosts people put their own domain on: Rackspace, GoDaddy, Namecheap Private Email, Spacemail, IONOS, OVHcloud, Hostinger, Titan, Infomaniak, STRATO, Migadu and others; the longest matching hint wins); `srv` — RFC 6186 records `_imaps._tcp` / `_imap._tcp` and `_submissions._tcp` / `_submission._tcp` (implicit TLS preferred; an IMAP record is required); `autoconfig` — the domain's own Thunderbird-format file, `https://autoconfig.<domain>/mail/config-v1.1.xml?emailaddress=<addr>` then `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, SSL or STARTTLS servers only, `%EMAILADDRESS%` / `%EMAILLOCALPART%` / `%EMAILDOMAIN%` substituted, a redirect followed only within the domain; `guess` — `imap.<domain>` / `smtp.<domain>`, `known: false`. `needs_username` is set for an iCloud+ custom domain (sign-in is the @icloud.com address) and when autoconfig names a sign-in other than the address, given in `username`. Every network call goes to the user's own domain — its DNS and its web server, 3 s each; no third-party directory (Mozilla's ISPDB included) is asked. A preset domain makes no network call at all.
+- `POST /v1/mail/accounts` — `{name, email, username, imap_*, smtp_*, password}`; IMAP and SMTP are tried first and a refusal is `422` with nothing stored. A sign-in name the server refuses is retried with the address and, on iCloud, the part before the @ (SMTP: the @icloud.com form) — at most three names, only on a credentials refusal, never on `NO [UNAVAILABLE]`, which Dovecot (Spacemail and many hosts) sends for a wrong password on a real mailbox and while it locks sign-in after failures; the name that worked is stored. iCloud and Gmail refusals carry what to do (an app-specific password); an `UNAVAILABLE` refusal says the password was not accepted. `PUT /v1/mail/accounts/{id}` edits (a new password is optional; refused with `400` on an OAuth account, whose `auth` only a new sign-in changes), `DELETE` removes the account, its mail and its password or refresh token. Every account carries `auth`: `password` (the default), `oauth2:google` or `oauth2:microsoft`. An OAuth account signs in with SASL XOAUTH2 using an access token refreshed from the stored refresh token and cached in memory until a minute before it expires (a rotated refresh token is saved back); a refresh token the provider refuses (`invalid_grant`), or a token the server refuses, is a sync error that says to sign in again.
+- `GET /v1/mail/oauth/providers` — `{google: bool, microsoft: bool}`: which *Sign in with …* buttons work in this build (a provider without a client ID is `false`; see [docs/mail-oauth.md](../docs/mail-oauth.md)). Answers without opening Mail.
+- `POST /v1/mail/oauth/start` — `{provider: "google" | "microsoft"}` → `{auth_url}`, the provider's page for the screen to open in the browser. The authorization code flow with PKCE (S256); `state` and the verifier stay in memory, single use, for 10 minutes. The redirect is this daemon's own port on loopback: `http://127.0.0.1:<port>/v1/mail/oauth/callback` for Google, `http://localhost:<port>/…` for Microsoft (which ignores the port only for `localhost`). `409` when the provider has no client ID, `403` when the request did not reach the daemon by a loopback name (a paired phone: the browser could not come back).
+- `GET /v1/mail/oauth/callback?code=&state=` — where the provider sends the browser. Exchanges the code (with the verifier), reads the address from the ID token, checks IMAP and SMTP with XOAUTH2, stores the refresh token in the secret store under the account's item, and creates the account — or switches an existing account with the same address to the sign-in, keeping its mail. Answers a small self-contained HTML page (*Connected — you can close this tab*, or the error); the screen sees the account through `GET /v1/mail/state`. It is the one `/v1` route admitted as a cross-site top-level GET (the browser arrives from the provider's page): only as `GET`, only on a loopback `Host`; the single-use `state` is its CSRF protection. Unknown, used or expired state is `400`.
+- `GET /v1/mail/import` — the accounts the user already has in another client, so Mail can offer to add them instead of retyping: `{sources: [{kind, label, accounts: [{name, email, username, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, has_password}], needs_permission?, error?}]}`. `kind` is `thunderbird` or `apple_mail`. It reads only that client's own local files and opens nothing else (no `mail.db`, no engine). Passwords are never in the answer: Thunderbird's are decrypted locally (pure-Go NSS: PBKDF2-SHA256 + AES-256-CBC key wrap, 3DES or AES login blobs) and `has_password` is set, but the password stays in the daemon; Apple Mail passwords are not recoverable, so `has_password` is always false there. `needs_permission: "full_disk_access"` is returned for Apple Mail when its account store (`~/Library/Accounts/Accounts4.sqlite`) cannot be read without Full Disk Access.
+- `POST /v1/mail/import` — `{source, emails: [...], passwords?: {email: password}}`; adds the chosen accounts one at a time, exactly like `POST /v1/mail/accounts` (IMAP and SMTP verified first, nothing stored on refusal, password in the keychain). Each password comes from the source (decrypted locally, re-read fresh — it never crossed HTTP) or from `passwords` for accounts without one. Answers `{results: [{email, ok, error?}]}`; one account failing never stops the rest.
 - `GET /v1/mail/messages?view=&account=&folder=&q=&before=&before_id=&limit=` — newest first, without bodies. `view`: `inbox unread flagged sent drafts archive junk trash folder all`; `q` is a full-text query (every word a prefix) over subject, people and body.
 - `GET /v1/mail/messages/{id}` — one message with `body_text` and `body_html` (cleaned), fetched from the server if the background pass has not yet. `GET .../thread` — the conversation, oldest first. `GET .../part/{path}` — one attachment or inline image by IMAP part path or `cid:<id>`; `?download=1` forces an attachment disposition; served with a sandboxing CSP.
 - `POST /v1/mail/actions` — `{ids, action, folder}`; `action`: `read unread flag unflag archive trash spam inbox move`. Archive goes to the Archive folder, else Gmail's All Mail, else a new `Archive`; trash on a message already in Trash deletes it.
@@ -2858,11 +2941,16 @@ guard requires. Before the first account exists `GET /v1/mail/state`,
 
 **`mail.db`** is not part of the event store's migration chain; its schema is
 `internal/mail/mailstore/schema.sql`, applied idempotently at open: `accounts`
-(servers, signature, last sync and error — never the password), `folders`
+(servers, signature, last sync and error, `auth` — never the password or
+token), `folders`
 (name, role, `uidvalidity`, highest stored UID, counts), `messages` (envelope,
 flags, thread key, snippet, decoded text and HTML bodies, the body structure
 as JSON), `messages_fts` (FTS5 over subject, people, body), `settings`,
-`contacts` (addresses seen, weighted towards ones written to).
+`contacts` (addresses seen, weighted towards ones written to). `CREATE TABLE
+IF NOT EXISTS` does not change a table that exists, so a column added after a
+table shipped is also listed in `addedColumns` (`store.go`), which adds it to
+an existing file when `pragma_table_info` lacks it: `accounts.auth TEXT NOT
+NULL DEFAULT 'password'`.
 
 ### GitHub
 
