@@ -28,7 +28,7 @@ func (f *fakeSecurity) run(_ context.Context, args ...string) (string, int, erro
 // token goes as an argument, never through a shell.
 func TestKeychainArgv(t *testing.T) {
 	sec := &fakeSecurity{out: "ghp_x\n"}
-	k := Keychain{Service: KeychainService, Path: "/Users/u/Library/Keychains/login.keychain-db", Run: sec.run}
+	k := Keychain{Service: KeychainService, Label: keychainLabel, Path: "/Users/u/Library/Keychains/login.keychain-db", Run: sec.run}
 	ctx := context.Background()
 	if got, err := k.Get(ctx); err != nil || got != "ghp_x" {
 		t.Fatalf("get %q %v", got, err)
@@ -60,7 +60,7 @@ func TestKeychainArgv(t *testing.T) {
 // bare `security add-generic-password` is what opens "Keychain Not Found".
 func TestKeychainWithoutPathRunsNothing(t *testing.T) {
 	sec := &fakeSecurity{}
-	k := Keychain{Service: KeychainService, Run: sec.run}
+	k := Keychain{Service: KeychainService, Label: keychainLabel, Run: sec.run}
 	ctx := context.Background()
 	if err := k.Set(ctx, "ghp_y"); err == nil {
 		t.Fatal("set without a keychain file succeeded")
@@ -130,7 +130,7 @@ func TestDefaultStoreKeychainPath(t *testing.T) {
 func TestFallbackWhenSecurityFails(t *testing.T) {
 	sec := &fakeSecurity{code: 51, err: errors.New("security add-generic-password: User interaction is not allowed.")}
 	data := t.TempDir()
-	f := &Fallback{Keychain: Keychain{Service: KeychainService, Path: "/k/login.keychain-db", Run: sec.run}, File: File{Path: filepath.Join(data, TokenFile)}}
+	f := &Fallback{Keychain: Keychain{Service: KeychainService, Label: keychainLabel, Path: "/k/login.keychain-db", Run: sec.run}, File: File{Path: filepath.Join(data, TokenFile)}}
 	ctx := context.Background()
 	if err := f.Set(ctx, "ghp_f"); err != nil {
 		t.Fatal(err)

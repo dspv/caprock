@@ -27,12 +27,13 @@
  * box changes once, on release — one fit and one PTY resize, not one per
  * frame. Arrow keys on the divider settle the same way.
  */
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type CSSProperties } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type DeckFresh, type SessionCI, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
 import { freshText, readDeck, writeDeck } from '@/lib/deckCache'
 import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
-import { MiniPipeline, compactWidth } from './MiniPipeline'
-import { CI_VIEWS, byOSLine, checkNodes, jobVsMedian, runSpan, runVsMedian, type DeltaTone, type VsMedian, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, orderPRs, osTag, prAge, prDotState, prReviewText, prVerdict, readCIMarks, readCIView, readOpenPR, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveCIMarks, saveCIView, saveOpenPR, type CIMarks, type CITone, type CIView, type PipeNode, type PRWordTone } from '@/lib/ci'
+import { MiniPipeline } from './MiniPipeline'
+import { CheckSummary } from './CheckSummary'
+import { CI_VIEWS, byOSLine, jobVsMedian, runSpan, runVsMedian, type DeltaTone, type VsMedian, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, orderPRs, osTag, prAge, prDotState, prReviewText, prChecks, prVerdict, readCIView, readOpenPR, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveCIView, saveOpenPR, type CITone, type CIView, type PipeNode, type PRWordTone } from '@/lib/ci'
 import { jobCostLabel, sumCostLabel, sumRuns, usageLine, type CICost, type CostLabel, type CostTone } from '@/lib/runnercost'
 import { BRANCHES_SHOWN, STALE_TITLE, aheadBehind, branchPRDot, branchSpend, lastCommit, shownBranches, type SessionBranch, type SessionBranches } from '@/lib/branches'
 import { sessionTitle } from '@/lib/sidebar'
@@ -426,21 +427,6 @@ export function CIViewSwitch({ view, onChange }: { view: CIView; onChange: (v: C
   )
 }
 
-/** Circles or words for the rows' checks: one small button, kept per viewer. */
-function MarksSwitch({ marks, onChange }: { marks: CIMarks; onChange: (m: CIMarks) => void }) {
-  const next: CIMarks = marks === 'dots' ? 'text' : 'dots'
-  return (
-    <button type="button" data-deck-marks={marks} onClick={() => onChange(next)}
-      aria-label={marks === 'dots' ? 'Show the checks in words' : 'Show the checks as circles'}
-      title={marks === 'dots' ? 'Checks as circles; click for words (“running · 10/11”)' : 'Checks in words; click for a circle per check'}
-      className="flex h-[18px] shrink-0 items-center gap-[2px] rounded-[5px] border border-[var(--app-hairline)] px-1 text-[10.5px] text-fg-faint hover:text-fg-muted">
-      {marks === 'dots'
-        ? <><span aria-hidden className="pipe-node" data-size="sm" data-tone="pass" /><span aria-hidden className="pipe-node" data-size="sm" data-tone="pass" /><span aria-hidden className="pipe-node" data-size="sm" data-tone="queued" /></>
-        : <span className="leading-none">10/11</span>}
-    </button>
-  )
-}
-
 /** Why the Release or Main view has no repository, in a line. */
 function noRepoLine(d: SessionRepoCI): string {
   return d.reason === 'not_github' ? 'This repository is not on GitHub.' : 'This session’s folder has no GitHub repository.'
@@ -563,9 +549,6 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   // overview of every row, which is where the deck opens until one is opened.
   const [chosen, setChosenState] = useState<number>(() => readOpenPR(sessionId))
   const setChosen = (n: number) => { setChosenState(n); saveOpenPR(sessionId, n) }
-  // A row says its checks as circles or in words, per viewer.
-  const [marks, setMarksState] = useState<CIMarks>(readCIMarks)
-  const setMarks = (m: CIMarks) => { setMarksState(m); saveCIMarks(m) }
   // How many error logs are open: while one is, the earlier PRs fold into
   // one line so the error has the room.
   const [logs, setLogs] = useState(0)
@@ -925,7 +908,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
             const agents = agentsOf(p)
             const progress = standing(p, agents, now)
             return (
-            <PRRow key={p.url} p={p} now={now} marks={marks} runs={seenRuns[p.number]} cost={prCost(p.number)} open={openPr === p.number}
+            <PRRow key={p.url} p={p} now={now} runs={seenRuns[p.number]} cost={prCost(p.number)} open={openPr === p.number}
               onToggle={() => togglePR(p.number)}
               onPick={(node) => pickInRow(p.number, node)}
               agents={agents} onOpenAgent={onOpenSession} status={prStatus(p, agents, progress, queuedFor(p, agents, queues))}
@@ -1055,7 +1038,6 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
             <span data-deck-ci-runner className="num" title={runnerTitle}>runner <span className="text-fg">{fmtRun(total)}</span>{ciCost && <> · <CostText c={ciCost} data="ci" /></>}</span>
           )}
         </span>
-        {view === 'pr' && rows.length > 0 && <MarksSwitch marks={marks} onChange={setMarks} />}
         <CIViewSwitch view={view} onChange={setView} />
       </div>
       {body}
@@ -1071,7 +1053,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
  * conflict when GitHub said so, and its age. A click opens its CI in place;
  * ↗ opens the PR on GitHub.
  */
-function PRRow({ p, now, marks = 'dots', runs, cost, open, onToggle, onPick, agents = [], onOpenAgent, status, quick, actions, onMenu, children }: { p: SessionPRLive; now: number; marks?: CIMarks; runs?: CIRun[]; cost?: CICost; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; agents?: PRAgent[]; onOpenAgent?: (s: SessionSummary) => void; status?: PRStatus; quick?: ReactNode; actions?: ReactNode; onMenu?: () => void; children?: ReactNode }) {
+function PRRow({ p, now, runs, cost, open, onToggle, onPick, agents = [], onOpenAgent, status, quick, actions, onMenu, children }: { p: SessionPRLive; now: number; runs?: CIRun[]; cost?: CICost; open: boolean; onToggle: () => void; onPick: (n: PipeNode) => void; agents?: PRAgent[]; onOpenAgent?: (s: SessionSummary) => void; status?: PRStatus; quick?: ReactNode; actions?: ReactNode; onMenu?: () => void; children?: ReactNode }) {
   const live = p.live
   const dot = prDotState(p)
   const v = prVerdict(p, now, runs)
@@ -1082,22 +1064,23 @@ function PRRow({ p, now, marks = 'dots', runs, cost, open, onToggle, onPick, age
   const { chip, more } = topChip(p)
   const chipTitle = chip && `${chip.title}${more.length ? `\nAlso: ${more.join(', ')}` : ''}`
   const age = prAge(p, now)
-  // Its runner cost once a job finished: "· $0.42", "· $0 · public repo".
-  const money = sumCostLabel(cost)
+  // Its runner cost once a job finished, "· $0.42"; nothing at $0 — a
+  // public repository's free runners are noise on every row (owner,
+  // 2026-10-14). The open row's CI still says what was free and why.
+  const money = cost && cost.usd > 0 ? sumCostLabel(cost) : undefined
   const title = live?.title || p.title || ''
   const url = live?.url || p.url
-  const nodes = live && live.checks.items.length > 0 ? checkNodes(live.checks.items, now) : []
-  // Circles: a circle per check where the words were, the words in its hover
-  // and beside it while the deck is wide (owner, 2026-10-13, translated: "I
-  // stopped seeing the cool little circles — I want them, or a switch").
-  const dots = marks === 'dots' && nodes.length > 0
+  // The checks in one short group — "✗ 1 failed ✓ 11", "✓ all 12 · 6m" —
+  // every check one hover away (components/CheckSummary). With none
+  // reported yet, the words say why ("CI not started", "no checks").
+  const sum = prChecks(p, now, runs)
   return (
     <li data-deck-pr={p.number} data-open={open || undefined} className={open ? 'flex min-h-[72px] flex-1 flex-col' : 'shrink-0'}>
       {/* Open, its line stays at the top of the list whatever scrolls, with
         * the chevron that folds it. */}
       <div className={open ? 'sticky top-0 z-[2] shrink-0 bg-[var(--app-chrome-bg)]' : undefined}>
-      <div onClick={onToggle} style={dots ? ({ '--dots-w': `${compactWidth(nodes)}px` } as CSSProperties) : undefined}
-        className={`grid min-w-0 shrink-0 cursor-pointer ${dots ? 'grid-cols-[10px_8px_minmax(40px,1fr)_auto_0px_minmax(64px,max(min(236px,20cqw),var(--dots-w)))_26px_18px_14px]' : 'grid-cols-[10px_8px_minmax(40px,1fr)_auto_auto_minmax(64px,min(236px,20cqw))_26px_18px_14px]'} items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
+      <div onClick={onToggle}
+        className={`grid min-w-0 shrink-0 cursor-pointer grid-cols-[10px_8px_minmax(40px,1fr)_auto_minmax(72px,min(250px,26cqw))_26px_18px_14px] items-center gap-x-2 rounded-[5px] px-1 py-[1px] text-[12.5px] hover:bg-[var(--app-row-hover)] ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
         <Chevron open={open} />
         <span role="img" aria-label={dot} title={dot} className="pr-dot" data-state={dot} />
         <button type="button" aria-expanded={open} onClick={(e) => { e.stopPropagation(); onToggle() }}
@@ -1116,11 +1099,10 @@ function PRRow({ p, now, marks = 'dots', runs, cost, open, onToggle, onPick, age
           {quick && <span data-deck-pr-quicks className="flex shrink-0 items-center gap-0.5">{quick}</span>}
           {review && <span data-deck-pr-review className={`hidden max-w-[150px] truncate text-[11px] @min-[1100px]:block ${WORD_TEXT[review.tone]}`}>{review.text}</span>}
         </span>
-        {/* Words: the mini pipeline goes before the title gives way, below 1000px the words say it. */}
-        {!dots && nodes.length > 0 ? <span className="flex justify-end"><span className="hidden @min-[1000px]:inline-flex"><MiniPipeline nodes={nodes} label={`#${p.number}: its checks`} onPick={onPick} /></span></span> : <span />}
-        <span data-deck-pr-ci data-marks={dots ? 'dots' : 'text'} className={`flex w-full min-w-0 items-center gap-1.5 overflow-hidden text-[11.5px] ${dots ? '' : 'items-baseline'}`}>
-          {dots && <MiniPipeline nodes={nodes} label={`#${p.number}: its checks`} onPick={onPick} compact />}
-          <span title={v.title ?? v.text} className={`truncate ${v.strong ? 'font-medium' : ''} ${WORD_TEXT[v.tone]} ${dots ? 'hidden @min-[1100px]:inline' : ''}`}>{v.text}</span>
+        <span data-deck-pr-ci className="flex w-full min-w-0 items-center gap-1.5 overflow-hidden text-[11.5px]">
+          {sum
+            ? <CheckSummary s={sum} label={`#${p.number}: its checks`} onPick={onPick} />
+            : <span title={v.title ?? v.text} className={`truncate ${v.strong ? 'font-medium' : ''} ${WORD_TEXT[v.tone]}`}>{v.text}</span>}
           {money && <><span aria-hidden className="text-fg-faint">·</span><CostText c={money} data="pr" className="shrink-0" /></>}
         </span>
         <span data-deck-pr-age className="num text-right text-[11px] text-fg-faint" title={age.title}>{age.text}</span>
@@ -1205,7 +1187,7 @@ function BranchRow({ b, now, onJump }: { b: SessionBranch; now: number; onJump: 
   const ab = aheadBehind(b)
   const commit = lastCommit(b, now)
   const spend = branchSpend(b)
-  const nodes = b.live && b.live.checks.items.length > 0 ? checkNodes(b.live.checks.items, now) : []
+  const sum = prChecks(b, now)
   const pr = b.pr
   const jump = pr ? () => onJump(pr.number, pr.url) : undefined
   // Below 460px the deck keeps the name, the PR and the spend; ahead and
@@ -1229,7 +1211,7 @@ function BranchRow({ b, now, onJump }: { b: SessionBranch; now: number; onJump: 
               <span className="num text-fg-muted">#{pr.number}</span>
             </span>
           )}
-          {nodes.length > 0 && <span className="hidden @min-[560px]:inline-flex"><MiniPipeline nodes={nodes} label={`#${pr?.number}: its checks`} onPick={() => jump?.()} /></span>}
+          {sum && <span className="hidden @min-[560px]:inline-flex"><CheckSummary s={sum} label={`#${pr?.number}: its checks`} onPick={() => jump?.()} /></span>}
         </span>
         {/* The session count and the author give way first as the deck narrows. */}
         <span data-deck-branch-spend className={`num truncate text-right text-[11px] ${b.sessions ? 'text-fg-muted' : 'text-fg-faint'}`} title={spend.title}>

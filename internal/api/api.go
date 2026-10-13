@@ -243,6 +243,11 @@ type Settings struct {
 	// makes "write-only" true rather than merely intended. It is set by the PUT
 	// handler and read by the daemon; GET renders ReportBotSet instead.
 	ReportBotToken string `json:"-"`
+	// ReportBotWhere and DeepSeekKeyWhere say where each credential is kept —
+	// the macOS login keychain, or a 0600 file with its path — so Settings can
+	// say so. Absent when none is set.
+	ReportBotWhere   *SecretWhere `json:"report_bot_where,omitempty"`
+	DeepSeekKeyWhere *SecretWhere `json:"deepseek_key_where,omitempty"`
 	// GeminiKeySet reports whether a Gemini key is available — from the
 	// environment or entered here — without revealing it. Same write-only rule
 	// as the bot token (ADR-025).

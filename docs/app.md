@@ -419,12 +419,13 @@ others. Installing it: [install-app.md](install-app.md).
   focus the edge and use ↑ ↓; double-click it for the default height. The
   deck button beside the inspector's, ⌘B and the palette open and close it;
   the app remembers its height and whether it was open. A shell tab has no
-  deck. It opens on all of the session's pull requests, each with a circle
-  per check — green passed, red failed, amber pulsing while it runs — and
-  opens one only when you click it; the next time it opens on that one. A
-  small switch beside *PRs · Branches · Release · Main* shows the checks in
-  words instead. The cockpit on the right has a **CI** block with the same
-  circles, or one ring with *10/11 · 5m*, or the jobs by OS, switched in its
+  deck. It opens on all of the session's pull requests, each with its checks
+  summed up in a few words — *✗ 1 failed ● 1 running ✓ 10*, the failed first
+  and the running one pulsing, or just *✓ all 12 · 6m* once everything
+  passed — and opens one only when you click it; the next time it opens on
+  that one. Hover the summary for every check: its name, OS, state, time and
+  the step a failed one stopped at. The cockpit on the right has a **CI**
+  block with the same summary, or one ring with *10/11 · 5m*, or the jobs by OS, switched in its
   label; it shows what the deck last read and a click opens *PRs & CI*.
   **Expand**, beside *Hide*, opens it large in a tab of its own,
   *PRs & CI*: the repository's last two weeks on top (pull requests merged
@@ -788,6 +789,39 @@ and there is no secret on anyone's machine.
 Settings → GitHub then shows **Sign in with GitHub**. The app asks for
 `repo` and `read:org`. An organization with OAuth app restrictions must
 approve the app before its private repositories show up.
+
+## Where your keys are kept
+
+Caprock keeps four kinds of credential, and none of them is in
+`config.json`, its database or a log. Settings shows only a hint (`sk-…1a2b`)
+and says under each field where it is; the (i) beside it explains the rest.
+
+- **DeepSeek API key, Telegram bot token, a pasted GitHub token.** On macOS,
+  your login keychain (items `dev.caprock.deepseek`, `dev.caprock.telegram`,
+  `dev.caprock.github`; you can see them in Keychain Access). On Windows and
+  Linux, or if the keychain refuses, a file only your user can read in the
+  data directory: `deepseek-api-key`, `telegram-bot-token`, `github-token`.
+  The data directory is `~/Library/Application Support/caprock` on macOS,
+  `%AppData%\caprock` on Windows and `~/.config/caprock` on Linux.
+- **Mail passwords.** Your system keychain: the macOS login keychain, Windows
+  Credential Manager, or the Secret Service on Linux; without one,
+  `mail-secrets.json` in the data directory, readable by you only.
+- **What each is sent to.** The DeepSeek key goes only to `api.deepseek.com`,
+  from the environment of a session you start on DeepSeek. The bot token goes
+  only to `api.telegram.org`. The GitHub token goes only to `api.github.com`.
+  A mail password goes only to the mail servers you entered. Nothing goes to
+  Caprock.
+- **Backups.** Time Machine backs up the login keychain encrypted; it reaches
+  iCloud Keychain only if you move an item there yourself. A key in a file is
+  backed up like any other file in your home folder.
+- **Removing one.** Remove (Disconnect for Telegram and GitHub, Remove
+  account for Mail) deletes it from the keychain or the file. To make a key
+  useless everywhere, revoke it where it was made: DeepSeek's API keys page,
+  `/revoke` to @BotFather, GitHub's token settings, your mail provider's app
+  passwords.
+
+A key that an older Caprock wrote to `config.json` is moved to the keychain
+or the file the next time the daemon starts, and removed from `config.json`.
 
 ## Updates
 

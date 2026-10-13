@@ -128,20 +128,6 @@ export function saveCIView(v: CIView): void {
   try { localStorage.setItem(CI_VIEW_KEY, v) } catch { /* kept for this page only */ }
 }
 
-/** How a deck row says its checks: a circle per check, or in words. */
-export type CIMarks = 'dots' | 'text'
-const CI_MARKS_KEY = 'caprock.deck.ciMarks'
-
-/** The circles unless this viewer chose the words (owner, 2026-10-13). */
-export function readCIMarks(): CIMarks {
-  try { if (localStorage.getItem(CI_MARKS_KEY) === 'text') return 'text' } catch { /* not kept */ }
-  return 'dots'
-}
-
-export function saveCIMarks(v: CIMarks): void {
-  try { localStorage.setItem(CI_MARKS_KEY, v) } catch { /* kept for this page only */ }
-}
-
 const OPEN_PR_KEY = 'caprock.deck.openPR'
 /** The most sessions whose opened row is remembered. */
 const OPEN_PR_KEPT = 50
@@ -273,6 +259,10 @@ export interface PipeNode {
   jobId?: number
   url?: string
   group?: string
+  /** The runner OS: the job's, else read from a check name like "go (windows)". */
+  os?: string
+  /** The step a failed job failed at, once its run was read. */
+  step?: string
 }
 
 const TONE_WORD: Record<CITone, string> = { pass: 'passed', fail: 'failed', running: 'running', queued: 'queued', skipped: 'skipped or cancelled' }
@@ -293,14 +283,109 @@ export function jobNodes(runs: CIRun[], now: number): PipeNode[] {
   })))
 }
 
-/** The circles of a PR's checks, in the order they started; a pending one runs once its run says so. */
-export function checkNodes(items: PRCheck[], now: number): PipeNode[] {
+/** The circles of a PR's checks, in the order they started; a pending one runs once its run says so.
+ *  With the PR's runs read, each Actions check carries its job's OS and the step it failed at. */
+export function checkNodes(items: PRCheck[], now: number, runs?: CIRun[]): PipeNode[] {
+  const jobs = new Map<number, CIJob>()
+  for (const r of runs ?? []) for (const j of r.jobs) jobs.set(j.id, j)
   return startOrder(items, (c) => c.started_at).map((c, i) => {
     const tone: CITone = c.state === 'pass' ? 'pass' : c.state === 'fail' ? 'fail' : c.state === 'skipped' ? 'skipped'
       : c.status === 'in_progress' ? 'running' : 'queued'
     const ms = c.started_at ? Math.max(0, (c.completed_at || (tone === 'running' ? now : 0)) - c.started_at) : undefined
-    return { key: `c${i}:${c.name}`, name: c.name, tone, ms: ms && ms > 0 ? ms : undefined, jobId: c.job_id || undefined, url: c.url }
+    const job = c.job_id ? jobs.get(c.job_id) : undefined
+    const step = job && tone === 'fail' ? keyStep(job)?.name : undefined
+    return { key: `c${i}:${c.name}`, name: c.name, tone, ms: ms && ms > 0 ? ms : undefined, jobId: c.job_id || undefined, url: c.url, os: job?.os || nameOS(c.name), step }
   })
+}
+
+/** The runner OS a check's name says, as in "go (windows)" or "test (ubuntu-latest, 1.22)"; undefined when it names none. */
+export function nameOS(name: string): string | undefined {
+  const m = /\(([^)]*)\)/.exec(name)
+  const s = (m ? m[1]! : name).toLowerCase()
+  if (/\bwin(dows)?\b|windows-/.test(s)) return 'windows'
+  if (/\bmac(os)?\b|macos-|darwin/.test(s)) return 'macos'
+  if (/\bubuntu|\blinux\b/.test(s)) return 'linux'
+  return undefined
+}
+
+/** A check's name without an OS-only suffix, when the OS is said beside it: "go (windows)" is "go". */
+export function nodeBaseName(n: PipeNode): string {
+  const m = /^(.*\S)\s*\(([^),]*)\)$/.exec(n.name)
+  return m && n.os && nameOS(`(${m[2]})`) === n.os ? m[1]! : n.name
+}
+
+/** The OS as a person reads it: Windows, macOS, Linux. */
+export function osName(os: string | undefined): string {
+  return os ? OS_NAME[os] ?? os : ''
+}
+
+/** How many of a PR's checks stand in each state. */
+export interface CheckCounts { total: number; pass: number; fail: number; running: number; queued: number; skipped: number }
+
+export function countNodes(nodes: PipeNode[]): CheckCounts {
+  const c: CheckCounts = { total: nodes.length, pass: 0, fail: 0, running: 0, queued: 0, skipped: 0 }
+  for (const n of nodes) c[n.tone]++
+  return c
+}
+
+/**
+ * A PR's checks in one short group (owner, 2026-10-14, translated: "now the
+ * indicators are completely incomprehensible"): how many failed, run, wait
+ * and passed, the time, and against the median when the runs were read. The
+ * row draws it; its hover lists every check.
+ */
+export interface ChecksSummary {
+  counts: CheckCounts
+  /** None is left and none failed, and at least one passed: the row says "all 12". */
+  green: boolean
+  /** None is running or queued. */
+  done: boolean
+  /** Finished: first start to last end; running: since the first started. Measured. */
+  ms?: number
+  vs?: VsMedian
+  /** The checks, the failed first, then running, queued, passed, skipped. */
+  nodes: PipeNode[]
+}
+
+const TONE_ORDER: Record<CITone, number> = { fail: 0, running: 1, queued: 2, pass: 3, skipped: 4 }
+
+/** A PR's checks summed up; undefined while GitHub reported none. */
+export function prChecks(p: { live?: { checks: { items: PRCheck[] } } }, now: number, runs?: CIRun[]): ChecksSummary | undefined {
+  const items = p.live?.checks.items ?? []
+  if (items.length === 0) return undefined
+  const nodes = checkNodes(items, now, runs)
+  const counts = countNodes(nodes)
+  const done = counts.running === 0 && counts.queued === 0
+  const green = done && counts.fail === 0 && counts.pass > 0
+  const starts = items.map((i) => i.started_at).filter((t): t is number => !!t)
+  const ends = items.map((i) => i.completed_at).filter((t): t is number => !!t)
+  const first = starts.length ? Math.min(...starts) : undefined
+  const vs = runs && (green || !done) ? slowestVsMedian(runs, now) : undefined
+  let ms: number | undefined
+  if (first !== undefined) ms = done ? (vs?.kind === 'delta' && vs.ms ? vs.ms : ends.length ? Math.max(...ends) - first : undefined) : now - first
+  const sorted = nodes.map((n, i) => ({ n, i })).sort((a, b) => TONE_ORDER[a.n.tone] - TONE_ORDER[b.n.tone] || a.i - b.i).map((e) => e.n)
+  return { counts, green, done, ms: ms && ms > 0 ? ms : undefined, vs, nodes: sorted }
+}
+
+/** The summary in a sentence, for a screen reader and the hover's head: "12 checks: 1 failed, 1 running, 10 passed". */
+export function checksSentence(s: ChecksSummary): string {
+  const c = s.counts
+  if (s.green) return `All ${c.pass} check${c.pass === 1 ? '' : 's'} passed${c.skipped ? `, ${c.skipped} skipped` : ''}`
+  const parts = [
+    c.fail && `${c.fail} failed`, c.running && `${c.running} running`, c.queued && `${c.queued} queued`,
+    c.pass && `${c.pass} passed`, c.skipped && `${c.skipped} skipped or cancelled`,
+  ].filter(Boolean)
+  return `${c.total} check${c.total === 1 ? '' : 's'}: ${parts.join(', ')}`
+}
+
+/** A duration in a row, to the minute past one: "42s", "6m", "1h 02m". The hover has the seconds. */
+export function shortRun(ms: number | undefined): string {
+  if (ms === undefined || !Number.isFinite(ms)) return ''
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m`
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
 }
 
 /**

@@ -1,15 +1,23 @@
 // Package secrets keeps account passwords out of the database: in the OS
-// keychain (macOS Keychain, Windows Credential Manager, Secret Service).
+// keychain (macOS login keychain, Windows Credential Manager, Secret
+// Service), else a file only this user can read.
 package secrets
 
 import (
+	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/zalando/go-keyring"
+
+	"github.com/dspv/caprock/internal/secret"
 )
 
 const service = "dev.caprock.mail"
@@ -24,7 +32,9 @@ type Store interface {
 	Delete(accountID int64) error
 }
 
-// Keychain is the OS keychain.
+// Keychain is the OS keychain through go-keyring: Windows Credential Manager
+// and Secret Service. Not used on macOS, where go-keyring runs `security`
+// without naming the keychain file (ADR-039's dialog risk); MacKeychain is.
 type Keychain struct{}
 
 func key(id int64) string { return "account-" + strconv.FormatInt(id, 10) }
@@ -49,6 +59,89 @@ func (Keychain) Delete(id int64) error {
 	}
 	return err
 }
+
+// MacKeychain keeps each password as a generic password in the user's login
+// keychain through internal/secret, which names the keychain file on every
+// call, so no call can open a dialog. Items keep go-keyring's service and
+// account, so a password saved by an earlier build is found.
+type MacKeychain struct {
+	Path string        // the login keychain file
+	Run  secret.Runner // nil runs /usr/bin/security; tests replace it
+}
+
+// goKeyringPrefix marks a value go-keyring stored base64-encoded.
+const goKeyringPrefix = "go-keyring-base64:"
+
+func (k MacKeychain) item(id int64) secret.Keychain {
+	return secret.Keychain{Service: service, Account: key(id), Label: "Caprock Mail password", Path: k.Path, Run: k.Run}
+}
+
+// Get reads a secret, decoding one go-keyring wrote.
+func (k MacKeychain) Get(id int64) (string, error) {
+	s, err := k.item(id).Get(context.Background())
+	if err != nil {
+		return "", err
+	}
+	if s == "" {
+		return "", ErrNotFound
+	}
+	if b64, ok := strings.CutPrefix(s, goKeyringPrefix); ok {
+		b, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil {
+			return "", err
+		}
+		return string(b), nil
+	}
+	return s, nil
+}
+
+// Set writes a secret.
+func (k MacKeychain) Set(id int64, v string) error { return k.item(id).Set(context.Background(), v) }
+
+// Delete removes a secret; a missing one is not an error.
+func (k MacKeychain) Delete(id int64) error { return k.item(id).Delete(context.Background()) }
+
+// Default is where Mail keeps passwords: on macOS the login keychain when its
+// file exists, elsewhere the OS keychain, with the 0600 file behind either;
+// only the file when CAPROCK_SECRET_STORE=file or there is no login keychain.
+// Nothing runs until the first password is read or written: an unused Mail
+// starts no process.
+func Default(dataDir string) Store {
+	return &lazy{make: func() Store {
+		file := &File{Path: filepath.Join(dataDir, "mail-secrets.json")}
+		if os.Getenv(secret.EnvStore) == "file" {
+			return file
+		}
+		if runtime.GOOS != "darwin" {
+			return Fallback{Primary: Keychain{}, File: file}
+		}
+		home := secret.UserHome(context.Background())
+		if home == "" {
+			return file
+		}
+		kc := filepath.Join(home, "Library", "Keychains", "login.keychain-db")
+		if st, err := os.Stat(kc); err != nil || st.IsDir() {
+			return file
+		}
+		return Fallback{Primary: MacKeychain{Path: kc}, File: file}
+	}}
+}
+
+// lazy builds its store on first use.
+type lazy struct {
+	once sync.Once
+	make func() Store
+	s    Store
+}
+
+func (l *lazy) get() Store {
+	l.once.Do(func() { l.s = l.make() })
+	return l.s
+}
+
+func (l *lazy) Get(id int64) (string, error) { return l.get().Get(id) }
+func (l *lazy) Set(id int64, v string) error { return l.get().Set(id, v) }
+func (l *lazy) Delete(id int64) error        { return l.get().Delete(id) }
 
 // Memory is an in-process store for tests and previews; it never touches the OS.
 type Memory struct {

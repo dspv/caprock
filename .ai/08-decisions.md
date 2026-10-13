@@ -531,7 +531,7 @@ long would not be dishonest so much as unused. A feature nobody finishes setting
 up is not a feature.
 
 It is stored the way the licence key already is: `config.json`, mode `0600`,
-inside a `0700` data dir. It never appears in an error either: a network
+inside a `0700` data dir (amended 2026-10-14, below: no longer). It never appears in an error either: a network
 failure's text carries the request URL, which carries the token, and that text
 was logged and shown on the Settings screen until 2026-10-01 —
 `weekly.Sender.Send` now reports the cause without the URL. It is **write-only over HTTP** — accepted by
@@ -582,6 +582,41 @@ assumes — a bot added to a company Slack-style group chat is a wider blast rad
 than a personal one, and that would be the signal to move it out of the file.
 
 ---
+
+**Amended 2026-10-14: the token, and the DeepSeek key, live in the secret
+store, not `config.json`.** The owner asked how a user is reassured the
+DeepSeek key (ADR-048 amendment, 2026-10-13) is safe, and the honest answer
+was that it sat in plain text in `config.json` — the file Time Machine copies,
+support bundles carry and dotfile syncs publish — while the GitHub token
+(ADR-039) and Mail passwords already lived in the keychain. The precedent
+had moved; this decision had not.
+
+- **One store, `internal/secret`,** factored out of `internal/github`
+  unchanged: the macOS login keychain through `/usr/bin/security` with the
+  value as an argument and the keychain file named explicitly (no dialog,
+  ever), else a `0600` file in the data directory, and the store says which.
+  The GitHub token keeps its service, account, label, file and notes.
+- **Moved once, at start.** A value in `config.json` goes to the store and
+  out of the file in one atomic write. A store that refuses leaves it where
+  it was and still used: a start must never lose a key.
+- **Write-only stays.** `GET /v1/settings` still never returns either; it
+  says whether one is set, a hint, and now where it is kept.
+- **The DeepSeek key is read at spawn,** so one deleted in Keychain Access is
+  gone for the next session too.
+- **Settings shows it** in one secure field (lock, masked monospace, an eye
+  only while typing, a locked pill once saved) with an (i) that says where it
+  is, what it is sent to, how backups treat it, and how to revoke it.
+
+**Mail's passwords, on macOS only, moved after** (2026-10-14): one item
+per account in the login keychain through this store's `security` call,
+which names the keychain file, with Mail's `0600` file
+(`mail-secrets.json`) behind it. The items keep `go-keyring`'s service
+(`dev.caprock.mail`) and account (`account-<id>`), and a value `go-keyring`
+wrote base64-encoded is decoded, so a password saved by an earlier build is
+found where it is. On Windows and Linux they stay on `go-keyring` (Credential
+Manager, Secret Service), so nothing there changes place. The store is built
+on the first password read or write: an unused Mail runs no process. The
+Gemini key (ADR-025) is unchanged here.
 
 ## ADR-025 — Keys go in the interface, stored write-only, because a key nobody can enter is a feature nobody uses
 

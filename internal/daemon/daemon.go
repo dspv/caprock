@@ -57,6 +57,7 @@ import (
 	"github.com/dspv/caprock/internal/projects"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/rollup"
+	"github.com/dspv/caprock/internal/secret"
 	"github.com/dspv/caprock/internal/sessionlink"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/subs"
@@ -126,11 +127,16 @@ type Options struct {
 	// cmd/caprock passes keepawake.NewOS(); nil — tests, the smoke run —
 	// reports the feature unavailable and never touches the OS.
 	KeepAwake keepawake.Holder
+	// Secrets is where the DeepSeek key and the Telegram bot token are kept.
+	// nil is internal/secret's choice for this OS; tests pass a fake, so no
+	// test ever touches a keychain.
+	Secrets func(secret.Item) secret.Store
 }
 
 // Daemon is a running instance.
 type Daemon struct {
-	opt Options
+	opt     Options
+	secrets secretStores
 	// slow holds the status figures that read the event table in bulk.
 	slowMu sync.Mutex
 	slow   slowStatus
@@ -399,6 +405,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	defer cancel()
 	d.baseCtx = ctx
 	startPprof(ctx, d.log)
+	// Before anything reads a credential: a key an older release left in
+	// config.json moves to the secret store here, once.
+	d.loadSecrets(ctx)
 
 	// Listener.
 	ln := d.opt.Listener
@@ -1506,12 +1515,14 @@ func (a *settingsAdapter) Get() api.Settings {
 		// exists, which is what a screen needs to render a state.
 		ReportBotSet:     c.ReportBotToken != "",
 		ReportBotToken:   c.ReportBotToken,
+		ReportBotWhere:   a.d.secretWhere(telegramSecret, c.ReportBotToken != "", c.ReportBotStored),
 		GeminiAPIKey:     c.GeminiAPIKey,
 		GeminiKeySet:     gemini.Available(c.GeminiAPIKey),
 		GeminiKeyFromEnv: gemini.EnvKeyValue() != "",
 		DeepSeekKeySet:   c.DeepSeekAPIKey != "",
 		DeepSeekKeyHint:  api.MaskKey(c.DeepSeekAPIKey),
 		DeepSeekAPIKey:   c.DeepSeekAPIKey,
+		DeepSeekKeyWhere: a.d.secretWhere(deepSeekSecret, c.DeepSeekAPIKey != "", c.DeepSeekKeyStored),
 		ReportLastError:  a.d.reportLastError(),
 		ReportLastSentMs: a.d.reportLastSent(),
 		AlertApproval:    c.AlertApprovalOn(),
@@ -1531,7 +1542,29 @@ func (a *settingsAdapter) Get() api.Settings {
 }
 
 func (a *settingsAdapter) Set(in api.Settings) error {
+	// The two credentials go to the secret store first, outside the lock (a
+	// keychain write runs a process); a refusal changes nothing else.
+	cur := a.d.config()
+	botToken, dsKey := strings.TrimSpace(in.ReportBotToken), strings.TrimSpace(in.DeepSeekAPIKey)
+	botChanged, dsChanged := botToken != cur.ReportBotToken, dsKey != cur.DeepSeekAPIKey
+	ctx := context.Background()
+	if botChanged {
+		if err := a.d.putSecret(ctx, telegramSecret, botToken); err != nil {
+			return fmt.Errorf("could not keep the bot token in the %s: %w", a.d.secretStore(telegramSecret).Kind(), err)
+		}
+	}
+	if dsChanged {
+		if err := a.d.putSecret(ctx, deepSeekSecret, dsKey); err != nil {
+			return fmt.Errorf("could not keep the DeepSeek key in the %s: %w", a.d.secretStore(deepSeekSecret).Kind(), err)
+		}
+	}
 	a.d.cfgMu.Lock()
+	if botChanged {
+		applySecret(&a.d.opt.Config, telegramSecret, botToken)
+	}
+	if dsChanged {
+		applySecret(&a.d.opt.Config, deepSeekSecret, dsKey)
+	}
 	justEnabled := in.UpdateChecks && !a.d.opt.Config.UpdateChecks
 	a.d.opt.Config.UpdateChecks = in.UpdateChecks
 	// Stored as a pointer so "never set" stays distinguishable from "turned
@@ -1562,10 +1595,8 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.Terminal = in.Terminal
 	a.d.opt.Config.Editor = in.Editor
 	a.d.opt.Config.SpawnPermissionMode = in.SpawnMode
-	a.d.opt.Config.ReportBotToken = strings.TrimSpace(in.ReportBotToken)
 	a.d.opt.Config.ReportChatID = strings.TrimSpace(in.ReportChatID)
 	a.d.opt.Config.GeminiAPIKey = strings.TrimSpace(in.GeminiAPIKey)
-	a.d.opt.Config.DeepSeekAPIKey = strings.TrimSpace(in.DeepSeekAPIKey)
 	approval, finished, reply := in.AlertApproval, in.AlertFinished, in.AlertReply
 	a.d.opt.Config.AlertApproval = &approval
 	a.d.opt.Config.AlertFinished = &finished

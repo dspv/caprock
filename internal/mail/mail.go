@@ -49,7 +49,7 @@ func New(dataDir string, log *slog.Logger) *Service {
 		log = slog.Default()
 	}
 	s := &Service{dir: dataDir, log: log.With("component", "mail"),
-		sec: secrets.Fallback{Primary: secrets.Keychain{}, File: &secrets.File{Path: filepath.Join(dataDir, "mail-secrets.json")}}}
+		sec: secrets.Default(dataDir)}
 	if os.Getenv("CAPROCK_MAIL_DEMO") == "1" {
 		s.demo = true
 		s.sec = &secrets.Memory{}

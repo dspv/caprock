@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Subscription, SubscriptionsResponse } from '@/lib/api'
 
@@ -151,7 +151,7 @@ describe('DeepSeek', () => {
     const input = await screen.findByLabelText('DeepSeek API key')
     expect(input).toHaveAttribute('type', 'password')
     // It says where the work goes before anything is set.
-    expect(screen.getByText(/api\.deepseek\.com/)).toBeInTheDocument()
+    expect(screen.getAllByText(/api\.deepseek\.com/).length).toBeGreaterThan(0)
     expect(screen.getByText(/Caprock itself sends nothing/)).toBeInTheDocument()
     fireEvent.change(input, { target: { value: '  sk-pasted-key-0000  ' } })
     m.settings.mockResolvedValue({ update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0, deepseek_key_set: true, deepseek_key_hint: 'sk-…0000' })
@@ -159,7 +159,7 @@ describe('DeepSeek', () => {
     await waitFor(() => expect(m.save).toHaveBeenCalledWith({ deepseek_api_key: 'sk-pasted-key-0000' }))
     expect(await screen.findByText('sk-…0000')).toBeInTheDocument()
     expect(screen.queryByDisplayValue(/sk-pasted/)).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Remove key' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(m.save).toHaveBeenCalledWith({ deepseek_api_key: '' }))
   })
 
@@ -170,7 +170,14 @@ describe('DeepSeek', () => {
     const rows = screen.getByRole('list', { name: 'Claude Code subscriptions' })
     expect(rows.querySelectorAll('li')).toHaveLength(2)
     expect(screen.queryByText(/the free number/)).toBeNull()
-    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1)
+    // Remove is a sign-in row's action: only the added "Work" row has one.
+    // The DeepSeek block's own Remove deletes the key (SecretField), not a
+    // sign-in, so it is checked apart: no Make default or sign-in Remove there.
+    expect(within(rows).getAllByRole('button', { name: 'Remove' })).toHaveLength(1)
+    const ds = screen.getByLabelText('DeepSeek')
+    expect(rows.contains(ds)).toBe(false)
+    expect(within(ds).queryByRole('button', { name: /Make default/ })).toBeNull()
+    expect(within(ds).queryByRole('button', { name: /Sign in/ })).toBeNull()
   })
 
   it('says in the launcher what it sends where, and is never offered as the way past a limit', () => {

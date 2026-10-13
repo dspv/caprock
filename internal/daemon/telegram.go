@@ -59,8 +59,13 @@ func (h *tgHost) saveConfig(f func(*config.Config)) error {
 	return config.Save(h.d.opt.DataDir, cfg)
 }
 
+// SaveBot keeps the token in the secret store, never in config.json.
 func (h *tgHost) SaveBot(token string) error {
-	return h.saveConfig(func(c *config.Config) { c.ReportBotToken = strings.TrimSpace(token) })
+	token = strings.TrimSpace(token)
+	if err := h.d.putSecret(context.Background(), telegramSecret, token); err != nil {
+		return err
+	}
+	return h.saveConfig(func(c *config.Config) { applySecret(c, telegramSecret, token) })
 }
 
 func (h *tgHost) SaveChat(chat string) error {
