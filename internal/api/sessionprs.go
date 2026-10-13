@@ -78,8 +78,9 @@ func (s *Server) composeSessionPRs(ctx context.Context, id string, connected boo
 	return SessionPRs{Connected: connected, PRs: out}, nil
 }
 
-// sessionPR is one of the session's own pull requests by number, read live:
-// the force actions below act only on a pull request the session recorded,
+// sessionPR is one of the session's own pull requests by number, read live,
+// or one of its repository's that the PRs & CI tab listed: the force actions
+// below act only on a pull request the session recorded or the tab showed,
 // never on any number a request names.
 func (s *Server) sessionPR(w http.ResponseWriter, r *http.Request, doing string) (github.Repo, github.PR, bool) {
 	if !s.requireGitHub(w) {
@@ -94,6 +95,11 @@ func (s *Server) sessionPR(w http.ResponseWriter, r *http.Request, doing string)
 	if err != nil {
 		s.fail(w, err)
 		return github.Repo{}, github.PR{}, false
+	}
+	if !hasPR(prs, n) {
+		if link, ok := s.repoPRURL(r.Context(), r.PathValue("id"), n); ok {
+			prs = append(prs, store.SessionPR{URL: link, Number: n})
+		}
 	}
 	for _, p := range prs {
 		if p.Number != n {
@@ -110,7 +116,7 @@ func (s *Server) sessionPR(w http.ResponseWriter, r *http.Request, doing string)
 		}
 		return repo, live, true
 	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": doing + ": this session opened no pull request #" + strconv.Itoa(n)})
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": doing + ": #" + strconv.Itoa(n) + " is neither this session's pull request nor one the PRs & CI tab listed"})
 	return github.Repo{}, github.PR{}, false
 }
 

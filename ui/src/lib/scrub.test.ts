@@ -171,3 +171,44 @@ describe('the spend by time', () => {
     expect(barLabelShort(bar(sun + 22 * H, 3 * H), 3 * H, now)).toBe(barLabel(bar(sun + 22 * H, 3 * H), 3 * H, now))
   })
 })
+
+describe('timeBars for burn rate', () => {
+  const H = 3_600_000
+  // Local midnight, so bars and hours line up whatever the time zone.
+  const day0 = new Date(2026, 9, 12, 0).getTime()
+  const at = (id: number, ts: number, cost: number): CallPoint => ({ id, ts, cost })
+
+  it('floors the step at an hour and counts an hour active only with five calls that cost something', () => {
+    // Twelve minutes of work: by itself drawn in 5-minute bars, but a rate needs an hour.
+    const calls = [0, 2, 4, 6, 8, 10, 12].map((m, i) => at(i, day0 + 9 * H + m * 60_000, 0.5))
+    expect(timeBars(calls).step).toBe(5 * 60_000)
+    expect(timeBars(calls).bars[0]!.activeHours).toBeUndefined()
+    const t = timeBars(calls, 60)
+    expect(t.step).toBe(H)
+    expect(t.bars).toHaveLength(1)
+    expect(t.bars[0]).toMatchObject({ activeHours: 1, activeCost: 3.5 })
+  })
+
+  it('leaves an idle hour and a thin hour with no active hour, so they have no rate rather than $0/h', () => {
+    const busy = [0, 1, 2, 3, 4].map((m, i) => at(i, day0 + 9 * H + m * 60_000, 1))
+    const thin = [at(10, day0 + 11 * H, 2), at(11, day0 + 11 * H + 60_000, 2)]
+    const later = [0, 1, 2, 3, 4, 5].map((m, i) => at(20 + i, day0 + 12 * H + m * 60_000, 0.5))
+    const t = timeBars([...busy, ...thin, ...later], 60)
+    expect(t.step).toBe(H)
+    expect(t.bars.map((b) => b.activeHours)).toEqual([1, 0, 0, 1])
+    expect(t.bars.map((b) => b.activeCost)).toEqual([5, 0, 0, 3])
+    // The thin hour's spend still counts as cost.
+    expect(t.bars[2]!.cost).toBe(4)
+    // Five free calls are not an active hour either.
+    const free = timeBars([0, 1, 2, 3, 4].map((m, i) => at(i, day0 + m * 60_000, 0)), 60)
+    expect(free.bars[0]!.activeHours).toBe(0)
+  })
+
+  it('counts every active hour inside a longer bar', () => {
+    const hour = (h: number, cost: number, base: number) => [0, 1, 2, 3, 4].map((m) => at(base + m, day0 + h * H + m * 60_000, cost))
+    // 50 hours of span: 1-hour bars would be too many, so they are 3 hours.
+    const t = timeBars([...hour(0, 1, 0), ...hour(1, 2, 10), ...hour(50, 1, 20)], 60)
+    expect(t.step).toBe(3 * H)
+    expect(t.bars[0]).toMatchObject({ activeHours: 2, activeCost: 15 })
+  })
+})

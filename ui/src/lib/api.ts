@@ -5,7 +5,7 @@ import type { Footprint } from './footprint'
 import type { PullRequest } from './github'
 import type { Usual } from './usual'
 import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
-import type { SessionBranches } from './branches'
+import type { BranchPR, SessionBranches } from './branches'
 
 export type Health = 'working' | 'idle' | 'waiting-on-you' | 'looping' | 'error' | 'ended'
 
@@ -387,6 +387,8 @@ export interface Spark {
   from_ms: number; width_ms: number; cost: number[]; tokens: number[]
   /** The input side of `tokens` (fresh input, cache reads and writes) and the assistant turns, per bucket; absent from an older daemon. */
   input?: number[]; turns?: number[]
+  /** Active session-hours per bucket (an hour in which one session made five or more priced calls) and what they cost: the chart's burn rate. Absent from an older daemon. */
+  active_hours?: number[]; active_cost?: number[]
 }
 /** One REPOSITORY's spend. `paths` is the per-directory breakdown, absent when
  *  the repository has only one directory (it would restate the row's total).
@@ -509,7 +511,7 @@ export interface CIState {
 /** `GET /v1/sessions/{id}/ci`: the CI of the session's open PR, else its newest. */
 export interface SessionCI extends DeckFresh {
   connected: boolean
-  pr?: { number: number; url: string; title?: string; state?: string; repo: string; head_sha?: string }
+  pr?: { number: number; url: string; title?: string; state?: string; repo: string; head_sha?: string; live?: PullRequest }
   ci?: CIState
   error?: { message: string; kind?: string }
 }
@@ -527,6 +529,44 @@ export interface ReleaseCI {
   error?: { message: string; kind?: string }
 }
 /** `GET /v1/sessions/{id}/ci/release` and `…/ci/main`: the session's repository's release build or default branch. */
+/** One workflow's runs over the window (`github.WorkflowStats`). */
+export interface WorkflowStats {
+  name: string
+  runs: number
+  red: number
+  /** The median of its successful runs (ms); absent with fewer than two. */
+  median_ms?: number
+  median_runs: number
+  /** Per day, oldest first; 0 for a day without two successful runs. */
+  daily_median_ms: number[]
+}
+/** A repository's figures over the last 14 days (`github.RepoStats`). */
+export interface RepoStats {
+  /** Local calendar days, oldest first, "2006-01-02". */
+  days: string[]
+  merged: number[]
+  ttm_median_ms?: number
+  ttm_count: number
+  prs_listed: number
+  ci: {
+    runs: number
+    red: number
+    reruns: number
+    listed: number
+    oldest?: number
+    per_day: { runs: number; red: number }[]
+    workflows: WorkflowStats[]
+  }
+}
+/** `GET /v1/sessions/{id}/ci/stats`: the PRs & CI tab. */
+export interface SessionCIStats extends DeckFresh {
+  connected: boolean
+  repo?: string
+  reason?: string
+  prs: BranchPR[]
+  stats?: RepoStats
+  error?: { message: string; kind?: string }
+}
 export interface SessionRepoCI extends DeckFresh {
   connected: boolean
   /** owner/name, from the session's directory's remote. */
@@ -1480,6 +1520,8 @@ export const api = {
   sessionCIRelease: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/release`),
   /** The newest run of each workflow on the session's repository's default branch (the CI cell's Main view). */
   sessionCIMain: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/main`),
+  /** The PRs & CI tab: the repository's pull requests and its figures over 14 days. Asked only while the tab is shown. */
+  sessionCIStats: (id: string) => get<SessionCIStats>(`/v1/sessions/${encodeURIComponent(id)}/ci/stats`),
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */
   sessionBranches: (id: string) => get<SessionBranches>(`/v1/sessions/${encodeURIComponent(id)}/branches`),
   /** What GitHub billed for Actions this month (its billing report); ?owner= an organization. */

@@ -171,6 +171,9 @@ type Service struct {
 	// branchPulls keeps each repository's pull requests by head branch
 	// (branchpulls.go).
 	branchPulls branchPullsCache
+	// repoRuns keeps each repository's newest runs for the PRs & CI tab's
+	// figures (stats.go).
+	repoRuns repoRunsCache
 }
 
 func (s *Service) init() {

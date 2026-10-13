@@ -356,3 +356,51 @@ func TestSummarizeSparkCarriesInputAndTurns(t *testing.T) {
 		t.Fatalf("series sum to (%d, %d), summary says (%d, %d)", in, turns, sum.TokensIn+sum.CacheRead+sum.CacheWrite, sum.Turns)
 	}
 }
+
+// The chart's burn rate per bucket is dollars per active session-hour: the
+// hours in which one session made UsualMinCalls priced calls, and what they
+// cost. A daily bucket with one busy hour and a long idle afternoon is that
+// hour's rate, not the day's cost spread over 24 hours; a thin hour (fewer
+// calls) is not a rate; two sessions in the same hour are two hours.
+func TestSummarizeSparkCountsActiveHours(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	const hour = int64(3_600_000)
+	const day = 24 * hour
+	from := 100 * day
+	// Day 0: session a, hour 3, five calls of $1 → one active hour, $5.
+	for i := int64(0); i < 5; i++ {
+		spend(t, s, "a", from+3*hour+i*60_000, 10, 1)
+	}
+	// Day 0: session a, hour 9, two calls → spent, but not an active hour.
+	spend(t, s, "a", from+9*hour, 10, 4)
+	spend(t, s, "a", from+9*hour+60_000, 10, 4)
+	// Day 1: sessions a and b in the same hour, six calls each → two hours.
+	for i := int64(0); i < 6; i++ {
+		spend(t, s, "a", from+day+5*hour+i*60_000, 10, 0.5)
+		spend(t, s, "b", from+day+5*hour+i*60_000+1, 10, 1)
+	}
+	for _, id := range []string{"a", "b"} {
+		if err := UpsertSession(ctx, s.db, id, SessionPatch{Project: "alpha"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sum, err := SummarizeSpark(ctx, s.db, from, SparkSpec{Buckets: 3, WidthMs: day, FromMs: from})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sum.Projects) != 1 || sum.Projects[0].Spark == nil {
+		t.Fatalf("want one project with a spark: %+v", sum.Projects)
+	}
+	sp := sum.Projects[0].Spark
+	if fmt.Sprint(sp.ActiveHours) != "[1 2 0]" {
+		t.Fatalf("active hours = %v, want [1 2 0]", sp.ActiveHours)
+	}
+	if fmt.Sprint(sp.ActiveCost) != "[5 9 0]" {
+		t.Fatalf("active cost = %v, want [5 9 0]", sp.ActiveCost)
+	}
+	// The cost series is untouched by the split: the thin hour still counts.
+	if fmt.Sprint(sp.Cost) != "[13 9 0]" {
+		t.Fatalf("cost = %v, want [13 9 0]", sp.Cost)
+	}
+}
