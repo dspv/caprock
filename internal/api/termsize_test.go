@@ -199,3 +199,118 @@ func TestTermV2TwoClientsTheOneInUseSizesThePTY(t *testing.T) {
 		t.Fatalf("a second focus resized the PTY: %v", ag.sized())
 	}
 }
+
+// The bug (Vova, 2026-10-13): a session open on the laptop and then on a
+// phone, the phone types, the phone is put away — and the laptop stayed
+// drawn at the phone's width until the session was reopened. Going out of
+// sight gives the PTY back at once, without waiting for the socket to die.
+func TestPTYSizeGoesBackWhenTheOneInUseGoesOutOfSight(t *testing.T) {
+	p, l := newTestSizes()
+	desk := p.join("s1", "desk")
+	p.size(desk, 150, 40, false)
+	phone := p.join("s1", "phone")
+	p.size(phone, 45, 30, false)
+	p.claim(phone)
+	l.take()
+
+	p.release(phone)
+	wantSizes(t, l, "the phone locks", [2]int{150, 39}, [2]int{150, 40})
+	p.size(phone, 44, 30, false)
+	wantSizes(t, l, "the phone out of sight is a viewer")
+	p.size(desk, 151, 40, false)
+	wantSizes(t, l, "the desktop is in use again", [2]int{151, 40})
+
+	// Its socket dies while locked and comes back when it is unlocked:
+	// picking the phone up again is not taking the session over.
+	p.leave(phone)
+	wantSizes(t, l, "the locked phone's socket is taken for dead")
+	phone2 := p.join("s1", "phone")
+	p.size(phone2, 44, 30, false)
+	wantSizes(t, l, "the phone reconnects, a viewer", [2]int{151, 39}, [2]int{151, 40})
+
+	p.claim(phone2)
+	wantSizes(t, l, "the phone types again", [2]int{44, 29}, [2]int{44, 30})
+}
+
+// A viewer going out of sight changes nothing, and neither does the one in
+// use when no other terminal is in sight: a lone desktop window hidden and
+// shown keeps its size.
+func TestPTYSizeReleaseWithNobodyToTakeItKeepsTheSize(t *testing.T) {
+	p, l := newTestSizes()
+	desk := p.join("s1", "desk")
+	p.size(desk, 150, 40, false)
+	l.take()
+	p.release(desk)
+	wantSizes(t, l, "the only terminal goes out of sight")
+	p.size(desk, 140, 40, false)
+	wantSizes(t, l, "still the one in use", [2]int{140, 40})
+
+	phone := p.join("s1", "phone")
+	p.size(phone, 45, 30, false)
+	l.take()
+	p.release(phone)
+	wantSizes(t, l, "a viewer goes out of sight")
+	p.claim(phone)
+	l.take()
+	p.release(phone)
+	wantSizes(t, l, "the phone in use goes out of sight while the desktop is out of sight too")
+}
+
+// The PTY goes to the terminal used most recently among those in sight: a
+// hidden browser tab used later than the app does not win over it.
+func TestPTYSizeReleasePrefersATerminalInSight(t *testing.T) {
+	p, l := newTestSizes()
+	app := p.join("s1", "app")
+	p.size(app, 150, 40, false)
+	tab := p.join("s1", "tab")
+	p.size(tab, 120, 35, false)
+	p.claim(tab)
+	p.release(tab)
+	wantSizes(t, l, "the app, then the tab, then the tab hidden",
+		[2]int{150, 39}, [2]int{150, 40}, [2]int{150, 39}, [2]int{150, 40},
+		[2]int{120, 34}, [2]int{120, 35}, [2]int{150, 39}, [2]int{150, 40})
+
+	phone := p.join("s1", "phone")
+	p.size(phone, 45, 30, false)
+	p.claim(phone)
+	l.take()
+	// The phone's socket closes: the app is in sight, the tab is not.
+	p.leave(phone)
+	wantSizes(t, l, "the phone leaves", [2]int{150, 39}, [2]int{150, 40})
+
+	// With nobody in sight, a socket closing still hands the PTY on.
+	p.release(app)
+	p.claim(tab)
+	p.release(tab)
+	l.take()
+	p.leave(tab)
+	wantSizes(t, l, "the tab leaves, only the hidden app is left", [2]int{150, 39}, [2]int{150, 40})
+}
+
+// Over the socket: a blur frame from the phone in use gives the desktop its
+// size back while the phone stays connected.
+func TestTermV2BlurGivesThePTYBack(t *testing.T) {
+	ft := newFakeTerm(1 << 10)
+	srv, ag := v2Server(t, ft)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	desk := dialV2(ctx, t, srv, "?client=desk")
+	defer func() { _ = desk.CloseNow() }()
+	mustHello(ctx, t, desk)
+	mustFrame(ctx, t, desk)
+	_ = desk.Write(ctx, websocket.MessageText, []byte(`{"resize":{"cols":150,"rows":40}}`))
+	waitFor(t, func() bool { return len(ag.sized()) == 2 })
+
+	phone := dialV2(ctx, t, srv, "?client=phone")
+	defer func() { _ = phone.CloseNow() }()
+	mustHello(ctx, t, phone)
+	mustFrame(ctx, t, phone)
+	_ = phone.Write(ctx, websocket.MessageText, []byte(`{"resize":{"cols":45,"rows":30},"focus":true}`))
+	waitFor(t, func() bool { return len(ag.sized()) == 4 })
+
+	_ = phone.Write(ctx, websocket.MessageText, []byte(`{"blur":true}`))
+	waitFor(t, func() bool { return len(ag.sized()) == 6 })
+	if got := ag.sized()[4:]; fmt.Sprint(got) != "[[150 39] [150 40]]" {
+		t.Fatalf("after the phone went out of sight the PTY was given %v; want the desktop's 150x40", got)
+	}
+}

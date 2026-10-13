@@ -1001,4 +1001,35 @@ describe('claiming the PTY', () => {
     container.querySelector('.xterm-screen')!.dispatchEvent(new Event('pointerdown', { bubbles: true }))
     expect(claim).not.toHaveBeenCalled()
   })
+
+  // Vova (2026-10-13): the phone put away, the desktop stayed drawn at the
+  // phone's width until the session was reopened.
+  it('re-sends its size with the claim, so a PTY left at another size is put right by looking', () => {
+    const claim = vi.spyOn(TermClient.prototype, 'focus')
+    render(<TerminalView sessionId="s-claim-size" owned />)
+    window.dispatchEvent(new Event('focus'))
+    const [cols, rows] = claim.mock.calls.at(-1)!
+    expect(cols).toBeGreaterThan(0)
+    expect(rows).toBeGreaterThan(0)
+  })
+
+  it.each([
+    ['a desktop', false],
+    ['a touch device', true],
+  ])('on %s, going out of sight gives the PTY back', (_name, touch) => {
+    if (touch) vi.stubGlobal('matchMedia', (q: string) => ({ matches: q === '(pointer: coarse)', addEventListener() {}, removeEventListener() {} }))
+    const blur = vi.spyOn(TermClient.prototype, 'blur')
+    const claim = vi.spyOn(TermClient.prototype, 'focus')
+    render(<TerminalView sessionId={`s-blur-${touch}`} owned />)
+    claim.mockClear()
+    const vis = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(blur).toHaveBeenCalledTimes(1)
+    expect(claim).not.toHaveBeenCalled()
+    vis.mockReturnValue('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(blur).toHaveBeenCalledTimes(1)
+    window.dispatchEvent(new Event('pagehide'))
+    expect(blur).toHaveBeenCalledTimes(2)
+  })
 })

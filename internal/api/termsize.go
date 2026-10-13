@@ -19,6 +19,16 @@ import (
 // or whose box changes while another is in use, is a viewer: its size is
 // remembered and not applied, and it is drawn at the size of the one in use.
 // A terminal alone on a session is in use by being there.
+//
+// A terminal that goes out of sight (`{"blur":true}`: its page was hidden, a
+// phone locked or went to the background, an app tab went behind another)
+// gives the PTY back at once: it goes to the terminal used most recently among
+// those still in sight, at that terminal's last size. A socket that closes
+// does the same. Waiting for the socket to die took up to 35 s on a phone that
+// locked, and never came on one whose browser kept answering pings in the
+// background, so the desktop stayed drawn at the phone's width until the
+// session was reopened (Vova, 2026-10-13). A terminal out of sight is still a
+// viewer; its next claim brings it back.
 
 // ptySizes holds, per session, which attached terminal the PTY is sized for.
 type ptySizes struct {
@@ -56,6 +66,10 @@ type sizeConn struct {
 	cols, rows int
 	// used is when it attached or last claimed the PTY.
 	used time.Time
+	// away is set while the terminal is out of sight (a blur frame) and
+	// cleared by its next claim; the PTY does not go to an away terminal
+	// while one in sight has a size.
+	away bool
 }
 
 func newPTYSizes(resize func(id string, cols, rows int)) *ptySizes {
@@ -110,19 +124,53 @@ func (p *ptySizes) leave(c *sizeConn) {
 		return
 	}
 	st.active = nil
+	if next := st.next(c, true); next != nil {
+		p.apply(st, next, false)
+	}
+}
+
+// release is a terminal going out of sight. When it was the one in use and a
+// terminal in sight has a size, the PTY goes to the one of those used most
+// recently; with none it stays, so a lone terminal keeps sizing its PTY.
+func (p *ptySizes) release(c *sizeConn) {
+	st := p.state(c.id)
+	if st == nil {
+		return
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	c.away = true
+	if st.active != c {
+		return
+	}
+	if next := st.next(c, false); next != nil {
+		// The PTY is the other terminal's now, so a phone whose socket died
+		// while it was locked does not take it back by reconnecting.
+		st.owner = next.client
+		p.apply(st, next, false)
+	}
+}
+
+// next picks who the PTY goes to when c stops being the terminal in use:
+// another socket of c's tab first, else the terminal used most recently;
+// one in sight before one out of sight, which is picked only when anyAway.
+// A terminal with no size yet is never picked.
+func (st *ptySizeState) next(c *sizeConn, anyAway bool) *sizeConn {
 	same := func(o *sizeConn) bool { return c.client != "" && o.client == c.client }
 	var next *sizeConn
 	for o := range st.conns {
-		if o.cols == 0 {
+		if o == c || o.cols == 0 || (o.away && !anyAway) {
 			continue
 		}
-		if next == nil || (same(o) && !same(next)) || (same(o) == same(next) && o.used.After(next.used)) {
+		switch {
+		case next == nil,
+			next.away && !o.away,
+			next.away == o.away && same(o) && !same(next),
+			next.away == o.away && same(o) == same(next) && o.used.After(next.used):
 			next = o
 		}
 	}
-	if next != nil {
-		p.apply(st, next, false)
-	}
+	return next
 }
 
 // size records a terminal's size. It reaches the PTY when the terminal is
@@ -138,6 +186,9 @@ func (p *ptySizes) size(c *sizeConn, cols, rows int, claim bool) {
 	defer st.mu.Unlock()
 	first := c.cols == 0
 	c.cols, c.rows = cols, rows
+	if claim {
+		c.away = false
+	}
 	switch {
 	case st.active == c:
 		if claim {
@@ -172,6 +223,7 @@ func (p *ptySizes) claim(c *sizeConn) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	c.used = time.Now()
+	c.away = false
 	if c.client != "" {
 		st.owner = c.client
 	}
