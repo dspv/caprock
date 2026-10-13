@@ -66,7 +66,9 @@ func (s *Service) WithBaselines(ctx context.Context, repo Repo, runs []CIRun) []
 	out := make([]CIRun, len(runs))
 	past := map[int64][]CIRun{}
 	for i, r := range runs {
-		r.Jobs = append([]CIJob(nil), r.Jobs...)
+		// Never nil: a run GitHub lists no jobs for yet is `"jobs": []`, not
+		// null, which the dashboard reads as a list and the app crashed on.
+		r.Jobs = append([]CIJob{}, r.Jobs...)
 		if r.WorkflowID != 0 {
 			p, ok := past[r.WorkflowID]
 			if !ok {

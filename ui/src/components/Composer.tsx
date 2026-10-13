@@ -243,14 +243,14 @@ export function Composer({ sessionId, agent, asking, onFiles, onBack }: {
           </span>
         )}
         {saved.length > 0 && (
-          <button type="button" aria-haspopup="menu" aria-expanded={menu === 'saved'} title="Saved prompts: put one in the box"
+          <button type="button" aria-haspopup="menu" aria-expanded={menu === 'saved'} title={menu === 'saved' ? undefined : 'Saved prompts: put one in the box'}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setMenu((m) => (m === 'saved' ? '' : 'saved'))}
             className="mb-[5px] h-[24px] shrink-0 rounded-[6px] px-1.5 text-[12px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">
             Saved
           </button>
         )}
-        <button type="button" aria-haspopup="menu" aria-expanded={menu === 'more'} aria-label="Composer options" title="Composer options"
+        <button type="button" aria-haspopup="menu" aria-expanded={menu === 'more'} aria-label="Composer options" title={menu === 'more' ? undefined : 'Composer options'}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setMenu((m) => (m === 'more' ? '' : 'more'))}
           className="mb-[5px] flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-[6px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg">
