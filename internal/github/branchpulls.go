@@ -38,6 +38,12 @@ type BranchPR struct {
 	// merged: what the PRs & CI tab's merges per day and time to merge count.
 	CreatedAt int64 `json:"created_at,omitempty"`
 	MergedAt  int64 `json:"merged_at,omitempty"`
+	// Head is the head branch; Author and AuthorAvatar who opened it, as
+	// GitHub names them (the avatar a URL on avatars.githubusercontent.com):
+	// the PRs & CI board's cards and the Now screen's "who".
+	Head         string `json:"head,omitempty"`
+	Author       string `json:"author,omitempty"`
+	AuthorAvatar string `json:"author_avatar,omitempty"`
 }
 
 type branchPullsEntry struct {
@@ -81,8 +87,12 @@ func ownPulls(repo Repo, list []apiPull) []ownPull {
 		if p.Head.Ref == "" || (p.Head.Repo != nil && !strings.EqualFold(p.Head.Repo.FullName, repo.FullName())) {
 			continue
 		}
-		out = append(out, ownPull{branch: p.Head.Ref, pr: BranchPR{Number: p.Number, URL: p.HTMLURL, Title: p.Title, State: p.state(), Draft: p.Draft,
-			Base: p.Base.Ref, HeadSHA: p.Head.SHA, CreatedAt: unixMS(p.CreatedAt), MergedAt: p.mergedMS()}})
+		pr := BranchPR{Number: p.Number, URL: p.HTMLURL, Title: p.Title, State: p.state(), Draft: p.Draft,
+			Base: p.Base.Ref, HeadSHA: p.Head.SHA, CreatedAt: unixMS(p.CreatedAt), MergedAt: p.mergedMS(), Head: p.Head.Ref}
+		if p.User != nil {
+			pr.Author, pr.AuthorAvatar = p.User.Login, p.User.AvatarURL
+		}
+		out = append(out, ownPull{branch: p.Head.Ref, pr: pr})
 	}
 	return out
 }

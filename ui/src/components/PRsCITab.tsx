@@ -5,7 +5,9 @@
  * statistics … sometimes it's interesting to look"). Opened by Expand beside
  * the deck's Hide; Back to the deck closes it and brings the agent's tab back.
  *
- * Three parts: the repository's figures over two weeks on top (merged per
+ * Two views, Board first (owner, 2026-10-14): the Board — the pull requests
+ * by stage, the agents on each and what they cost, the releases
+ * (components/PRBoard.tsx) — and the List. The List has three parts: the repository's figures over two weeks on top (merged per
  * day, time to merge, CI time, red runs, Actions billed); the pull requests
  * on the left — this session's, the repository's newest, or the open ones;
  * the chosen one on the right — its state, review, merge state and diff,
@@ -25,11 +27,13 @@ import { hasConflict, isBehind, topChip, type DeckWorktree } from '@/lib/prforce
 import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
 import { GRID_OS_LABEL, SCOPE_LABEL, firstPick, jobGrid, spanText, statsWords, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
 import { usageLine } from '@/lib/runnercost'
+import { asBoard } from '@/lib/prboard'
 import { useCanControl } from '@/lib/useCanControl'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
-import { Bars } from './DayBars'
+import { Bars, Trend } from './DayBars'
+import { PRBoardView } from './PRBoard'
 import { CI_IDLE_MS, CI_RUNNING_MS, CIMark, DeckSkeleton, ExpandIcon, Freshness, PRS_PENDING_MS, connectGitHub, usePoll } from './SessionDeck'
 
 export interface PRsCITabProps {
@@ -51,6 +55,13 @@ function readScope(): TabScope {
     const v = localStorage.getItem(SCOPE_KEY)
     return v === 'session' || v === 'repo' || v === 'open' ? v : 'repo'
   } catch { return 'repo' }
+}
+
+/** Board (the pull requests by stage, the releases) or List (one pull request in detail); Board unless the user chose List. */
+type TabView = 'board' | 'list'
+const VIEW_KEY = 'caprock.prsTab.view'
+function readView(): TabView {
+  try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'board' } catch { return 'board' }
 }
 
 export function PRsCITab(props: PRsCITabProps) {
@@ -79,6 +90,8 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
   const canControl = useCanControl()
   const [scope, setScopeState] = useState<TabScope>(readScope)
   const setScope = (v: TabScope) => { setScopeState(v); try { localStorage.setItem(SCOPE_KEY, v) } catch { /* this page only */ } }
+  const [view, setViewState] = useState<TabView>(readView)
+  const setView = (v: TabView) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v) } catch { /* this page only */ } }
   const [n, setN] = useState(0)
   const [chosen, setChosen] = useState<number>()
   const [now, setNow] = useState(() => Date.now())
@@ -90,7 +103,16 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
   const sessionPRs = useMemo(() => prs?.prs ?? [], [prs])
   const rows = useMemo(() => tabRows(scope, sessionPRs, stats?.prs ?? []), [scope, sessionPRs, stats?.prs])
   const pick = chosen ?? firstPick(rows, sessionPRs) ?? 0
-  const [ciData, ciAt] = usePoll<SessionCI>(visible && pick > 0, `${sessionId}:${pick}:${n}`, () => api.sessionCI(sessionId, pick), (d) => ciActive(d.ci), CI_RUNNING_MS, pick > 0 ? `ci:${sessionId}:${pick}` : undefined)
+  const board = useMemo(() => asBoard(stats?.board), [stats?.board])
+  const boardOn = view === 'board' && !stats?.reason && stats?.connected !== false
+  // A card opens its pull request in the List view, in a scope that lists it.
+  const openFromBoard = (num: number) => {
+    if (!tabRows(scope, sessionPRs, stats?.prs ?? []).some((r) => r.number === num)) setScope('repo')
+    setChosen(num)
+    setView('list')
+  }
+  // The chosen pull request's CI is read only while the List view shows it.
+  const [ciData, ciAt] = usePoll<SessionCI>(visible && view === 'list' && pick > 0,`${sessionId}:${pick}:${n}`, () => api.sessionCI(sessionId, pick), (d) => ciActive(d.ci), CI_RUNNING_MS, pick > 0 ? `ci:${sessionId}:${pick}` : undefined)
   const ci = ciData?.pr?.number === pick ? ciData : undefined
   const connected = stats?.connected ?? prs?.connected
   const owner = stats?.repo?.split('/')[0] ?? ''
@@ -147,46 +169,56 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
           <button type="button" data-prs-connect disabled={connecting} onClick={() => void connect()} title="Reads GitHub through your GitHub CLI login; turn it off in Settings → GitHub"
             className="text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'Connect GitHub'}</button>
         </div>
-      ) : stats?.stats ? (
-        <StatsStrip st={stats.stats} usage={usageLine(usage)} />
-      ) : !stats ? <DeckSkeleton label="Reading the figures" /> : stats.error ? <p className="truncate text-[12px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p> : null}
+      ) : <ViewSwitch view={view} onView={setView} />}
 
-      <div className="grid min-h-[420px] flex-1 grid-cols-[minmax(280px,0.8fr)_minmax(0,1.4fr)] gap-3 @max-[760px]/prs:grid-cols-1">
-        <PRList rows={rows} scope={scope} onScope={setScope} pick={pick} onPick={setChosen} now={now} counts={{ session: sessionPRs.length, repo: tabRows('repo', sessionPRs, stats?.prs ?? []).length, open: tabRows('open', sessionPRs, stats?.prs ?? []).length }} loaded={!!prs || !!stats} />
-        <section data-prs-detail aria-label="The chosen pull request" className="app-scroll min-h-0 min-w-0 overflow-y-auto rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
-          {p ? (
-            <Detail p={p} row={row!} ci={ci} runs={runs} now={now} sessionId={sessionId} kit={kit} connected={connected}
-              why={why} onInvestigated={(t) => onToast?.(t)} sessionName={sessionTitle(s)} onConnect={() => void connect()} />
-          ) : (
-            <p className="p-4 text-[13px] text-fg-muted">{rows.length === 0 && (prs || stats) ? 'No pull requests here.' : 'Pick a pull request.'}</p>
-          )}
-        </section>
-      </div>
+      {boardOn ? (
+        board ? <PRBoardView board={board} prs={stats?.prs ?? []} now={now} onOpen={openFromBoard} />
+          : !stats ? <DeckSkeleton label="Reading the pull requests" />
+            : stats.error ? <p className="truncate text-[12px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p>
+              : <p className="text-[12.5px] text-fg-muted">The board comes with a newer Caprock daemon: restart it after the update. The List view works meanwhile.</p>
+      ) : (
+        <>
+          {stats?.reason || stats?.connected === false ? null : stats?.stats ? <StatsStrip st={stats.stats} usage={usageLine(usage)} />
+            : !stats ? <DeckSkeleton label="Reading the figures" /> : stats.error ? <p className="truncate text-[12px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p> : null}
+          <div className="grid min-h-[420px] flex-1 grid-cols-[minmax(280px,0.8fr)_minmax(0,1.4fr)] gap-3 @max-[760px]/prs:grid-cols-1">
+            <PRList rows={rows} scope={scope} onScope={setScope} pick={pick} onPick={setChosen} now={now} counts={{ session: sessionPRs.length, repo: tabRows('repo', sessionPRs, stats?.prs ?? []).length, open: tabRows('open', sessionPRs, stats?.prs ?? []).length }} loaded={!!prs || !!stats} />
+            <section data-prs-detail aria-label="The chosen pull request" className="app-scroll min-h-0 min-w-0 overflow-y-auto rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
+              {p ? (
+                <Detail p={p} row={row!} ci={ci} runs={runs} now={now} sessionId={sessionId} kit={kit} connected={connected}
+                  why={why} onInvestigated={(t) => onToast?.(t)} sessionName={sessionTitle(s)} onConnect={() => void connect()} />
+              ) : (
+                <p className="p-4 text-[13px] text-fg-muted">{rows.length === 0 && (prs || stats) ? 'No pull requests here.' : 'Pick a pull request.'}</p>
+              )}
+            </section>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------- the view switch
+
+const VIEW_LABEL: Record<TabView, string> = { board: 'Board', list: 'List' }
+const VIEW_TITLE: Record<TabView, string> = {
+  board: 'The pull requests by stage — draft, CI running, needing a fix, ready, merged, released — with the agents on each and what they cost, and the releases',
+  list: 'The figures over two weeks, and one pull request in detail: its checks, jobs and logs',
+}
+
+function ViewSwitch({ view, onView }: { view: TabView; onView: (v: TabView) => void }) {
+  return (
+    <div role="tablist" aria-label="View" data-prs-view={view} className="flex w-fit shrink-0 items-center gap-0.5 rounded-[7px] border border-[var(--app-hairline)] bg-panel-2/60 p-0.5 text-[12px]">
+      {(['board', 'list'] as TabView[]).map((v) => (
+        <button key={v} type="button" role="tab" aria-selected={view === v} data-prs-view-tab={v} onClick={() => onView(v)} title={VIEW_TITLE[v]}
+          className={`rounded-[5px] px-2.5 py-[3px] ${view === v ? 'bg-[var(--app-row-active)] font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}>
+          {VIEW_LABEL[v]}
+        </button>
+      ))}
     </div>
   )
 }
 
 // ---------------------------------------------------------------- the figures
-
-/** The days with a value as a 2px line, the last one dotted; nothing with fewer than two. */
-function Trend({ values, labels }: { values: number[]; labels: string[] }) {
-  const w = 72
-  const h = 30
-  const pts = values.map((v, i) => ({ v, i })).filter((x) => x.v > 0)
-  if (pts.length < 2) return null
-  const lo = Math.min(...pts.map((x) => x.v))
-  const hi = Math.max(...pts.map((x) => x.v))
-  const x = (i: number) => 3 + (i / Math.max(values.length - 1, 1)) * (w - 6)
-  const y = (v: number) => h - 3 - ((v - lo) / Math.max(hi - lo, 1)) * (h - 6)
-  const last = pts[pts.length - 1]!
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="median per day" className="block shrink-0 overflow-visible">
-      <path d={pts.map((q, k) => `${k ? 'L' : 'M'}${x(q.i).toFixed(1)},${y(q.v).toFixed(1)}`).join(' ')} fill="none" stroke="var(--color-fg-muted)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={x(last.i)} cy={y(last.v)} r={3} fill="var(--color-fg)" stroke="var(--color-panel)" strokeWidth={1.5} />
-      {pts.map((q) => <circle key={q.i} cx={x(q.i)} cy={y(q.v)} r={6} fill="transparent"><title>{`${labels[q.i] ?? ''}: ${fmtRun(q.v)}`}</title></circle>)}
-    </svg>
-  )
-}
 
 function Stat({ label, value, note, title, children }: { label: string; value: ReactNode; note: ReactNode; title?: string; children?: ReactNode }) {
   return (

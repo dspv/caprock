@@ -24,6 +24,10 @@ export interface BranchPR {
   /** GitHub's stamps (unix ms): the PRs & CI tab's merges per day and time to merge. */
   created_at?: number
   merged_at?: number
+  /** The head branch, and who opened it as GitHub names them (the avatar on avatars.githubusercontent.com). */
+  head?: string
+  author?: string
+  author_avatar?: string
 }
 
 /** One row (`api.SessionBranch`). */

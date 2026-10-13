@@ -92,7 +92,9 @@ function Connect({ s, onStatus }: { s: GitHubStatus; onStatus: (s: GitHubStatus)
     <div className="grid gap-4">
       <p className="text-[12.5px] leading-relaxed text-fg-muted">
         Clone from your repositories, open pull requests from a worktree, and see their checks and reviews. Caprock
-        talks to GitHub only once you connect, and only to api.github.com; the token stays in Caprock's daemon.
+        talks to GitHub only once you connect, and only to api.github.com; the token stays in Caprock's daemon. While
+        connected it also reads githubstatus.com's public status for Now's CI/CD section, and pages show pull request
+        authors' pictures from avatars.githubusercontent.com; neither is sent the token.
       </p>
       <div className="grid gap-1.5">
         <div className="flex flex-wrap items-center gap-2">

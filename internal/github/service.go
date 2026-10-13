@@ -115,14 +115,16 @@ type Status struct {
 // Service is the integration. Fill the exported fields, then Start.
 type Service struct {
 	API, Web string
-	HTTP     *http.Client
-	Store    TokenStore
-	GH       TokenSource
-	Config   Config
-	Projects Worktrees
-	Bus      *bus.Bus
-	Log      *slog.Logger
-	Now      func() time.Time
+	// StatusURL replaces DefaultStatusURL (tests).
+	StatusURL string
+	HTTP      *http.Client
+	Store     TokenStore
+	GH        TokenSource
+	Config    Config
+	Projects  Worktrees
+	Bus       *bus.Bus
+	Log       *slog.Logger
+	Now       func() time.Time
 	// Sleep waits between device-flow polls; tests shorten it.
 	Sleep func(context.Context, time.Duration) bool
 	// OnMerged is told the head branches of a repository whose pull
@@ -174,6 +176,10 @@ type Service struct {
 	// repoRuns keeps each repository's newest runs for the PRs & CI tab's
 	// figures (stats.go).
 	repoRuns repoRunsCache
+	// releases keeps each repository's newest releases (releases.go).
+	releases releasesCache
+	// status keeps GitHub's status page summary (status.go).
+	status statusCache
 }
 
 func (s *Service) init() {

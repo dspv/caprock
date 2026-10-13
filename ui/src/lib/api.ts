@@ -6,6 +6,8 @@ import type { PullRequest } from './github'
 import type { Usual } from './usual'
 import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
 import type { BranchPR, SessionBranches } from './branches'
+import type { PRBoard } from './prboard'
+import type { ReposCI } from './reposci'
 
 export type Health = 'working' | 'idle' | 'waiting-on-you' | 'looping' | 'error' | 'ended'
 
@@ -598,6 +600,8 @@ export interface SessionCIStats extends DeckFresh {
   reason?: string
   prs: BranchPR[]
   stats?: RepoStats
+  /** The Board view: the pull requests by stage, the releases, the flow strip. */
+  board?: PRBoard
   error?: { message: string; kind?: string }
 }
 export interface SessionRepoCI extends DeckFresh {
@@ -1595,6 +1599,8 @@ export const api = {
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */
   /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */
   reposActivity: () => get<ReposActivity>('/v1/repos/activity'),
+  /** The Now screen's CI/CD section (.ai/04-ui.md § CI/CD on Now). */
+  reposCI: () => get<ReposCI>('/v1/repos/ci'),
   sessionBranches: (id: string) => get<SessionBranches>(`/v1/sessions/${encodeURIComponent(id)}/branches`),
   /** What GitHub billed for Actions this month (its billing report); ?owner= an organization. */
   actionsUsage: (owner?: string) => get<ActionsUsage>(`/v1/github/actions-usage${owner ? `?owner=${encodeURIComponent(owner)}` : ''}`),

@@ -395,6 +395,11 @@ type apiPull struct {
 	RequestedReviewers []struct {
 		Login string `json:"login"`
 	} `json:"requested_reviewers"`
+	// User is who opened it: the PRs & CI board's author (login, avatar).
+	User *struct {
+		Login     string `json:"login"`
+		AvatarURL string `json:"avatar_url"`
+	} `json:"user"`
 }
 
 // mergedMS is when it was merged (unix ms), 0 when it was not.

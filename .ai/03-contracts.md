@@ -478,6 +478,7 @@ GET  /v1/sessions/{id}/ci/main         → SessionRepoCI — the newest run of e
 GET  /v1/sessions/{id}/ci/stats        → SessionCIStats — the PRs & CI tab: the repository's PRs and its figures over 14 days
 GET  /v1/sessions/{id}/branches        → SessionBranches — the repository's branches with PRs and Caprock spend (§ Session branches)
 GET  /v1/repos/activity                → ReposActivity — Now's Repos section: each listed repository with a live session, from git and kept GitHub answers
+GET  /v1/repos/ci                      → ReposCI — Now's CI/CD section: runs, stuck runs, releases, cost per PR and who, GitHub's status
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
@@ -1097,6 +1098,17 @@ GitHub token is (§ GitHub, "Where the token lives"):
 
 On a paired device's read list (counts only). `501` without the projects service.
 
+`GET /v1/repos/ci` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, those with a session running first, at most 6 (`reposCIMax`), each read through the kept GitHub reads the PRs & CI tab makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci`).
+
+- **Row** — `RepoCIRow` `{project_id, name, repo, live, ci?, days?, stuck[], open, merged_7d, top_prs[], authors[], release?, error?}`. `live` counts the sessions not ended under the project's root; `ci` is `github.RunStats` over the runs, 14 days (the `CIStats` of `…/ci/stats`), `days` its local calendar days; `open` and `merged_7d` count the listed pull requests; `release` is the newest published release (`RepoRelease`); a failed list is `error` with the rest absent.
+- **Stuck** — `github.StuckRuns`: `{id, name, branch?, status, url?, since, median_ms?}` for a run `in_progress` longer than twice its workflow's median successful run over the 14 days and at least 10 minutes over it (no median, never), or waiting for a runner (`queued`, `waiting`, `pending`, `requested`) longer than 15 minutes; `since` is `run_started_at`, else `created_at`. The runs list is kept 2 minutes instead of 30 while any run in it is unfinished (`repoRunsActiveKept`), so a stuck run is seen within minutes; a conditional read costs a 304 when nothing changed.
+- **Cost per pull request** — `top_prs` `{number, title?, url, state, draft?, author?, author_avatar?, cost_usd, sessions, live}`: the open pull requests and those merged in the last 7 days, charged with `store.SpendByPR` (§ Pull request spend, below), the 5 with the highest `cost_usd` above 0. `authors` `{login, avatar?, prs, merged, cost_usd}`: who opened those same pull requests (GitHub's `user.login` and `avatar_url`), by `cost_usd`, then `prs`.
+- **GitHub's status** — `status` `{indicator, description, components[{name, status}], incidents[{name, impact?, status?, url?}], at, error?}` from `GET https://www.githubstatus.com/api/v2/summary.json` (`github.StatusPage`), only while GitHub is connected, kept 5 minutes, sent with no token, cookie or anything about the user. `components` are those not `operational` plus Actions, Pull Requests, API Requests and Git Operations whatever their state; `incidents` the unresolved ones. A failed read keeps the last answer with `error` set and is not retried for 5 minutes. `Service.StatusURL` replaces the address (tests).
+
+On a paired device's read list. `501` without the projects service.
+
+**Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole; where two pull requests share a head branch the open one owns it, else the most recently updated. A session not on such a branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice}`: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and one sum per slice over a session's events (`(session_id, ts)` index). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them.
+
 **Phone alerts** ([ADR-036](08-decisions.md)) go through the same bot and are
 free: no licence is checked. `PUT /v1/settings` accepts `alert_approval` and
 `alert_finished` (bools, both off unless turned on, stored as pointers in
@@ -1608,7 +1620,8 @@ over the 14 local calendar days ending today:
   absent with fewer than two), `prs_listed` (how many the counts read).
 - **Runs** — `ci` `{runs, red, reruns, listed, oldest?, per_day[{runs,
   red}], workflows[]}` from `GET …/actions/runs?per_page=100` (every
-  workflow and event, without jobs), kept 30 min (`github.RepoRuns`).
+  workflow and event, without jobs), kept 30 min, 2 min while one of them
+  is unfinished (`github.RepoRuns`).
   `runs` counts the finished runs that passed or failed, `red` the failed
   ones (`failure`, `timed_out`, `startup_failure`); cancelled, skipped and
   unfinished runs are neither. `reruns` counts runs on an attempt past the
@@ -1618,8 +1631,41 @@ over the 14 local calendar days ending today:
   successful runs (absent with fewer than two; a day's 0 likewise), the
   workflow with the most such time first.
 
+- **Board** (2026-10-14) — `board` `{cards[], releases[], flow,
+  default_branch?}`, the tab's Board view (`internal/api/prboard.go`). Each
+  `BoardCard` `{number, stage, stage_at?, ci?, why?, review?, release?,
+  spend}` is a pull request of `prs` (its title, `author`, `author_avatar`
+  and link are that entry's); closed unmerged ones and merges before the 14
+  days are left out. `stage` is `draft`, `open` (checks running, or not
+  read), `fix` (`why`: `ci` a failed check, `conflict` GitHub's `mergeable`
+  false or `mergeable_state` `dirty`, `changes_requested`), `ready` (checks
+  passed, or none ran), `merged` or `released`. An open pull request's
+  checks are the deck's kept read (`github.PullByURL`) for the newest 12
+  open ones, else the runs list by head commit (`ci` absent when it has none
+  of them); `stage_at` is when its checks started (open) or ended (fix,
+  ready), else when it was opened. A merge into the default branch is
+  `released` in the first release published after it — matched by time, an
+  estimate — and `stage_at` is that release's publish time, else `merged`
+  at `merged_at`. Waiting stages are ordered longest-waiting first, merges
+  newest first. `spend` is `store.PRSpend` (§ Pull request spend). Each
+  `BoardRelease` is a `RepoRelease` plus `prs[]` (the listed merges it
+  shipped), `cost_usd`, `sessions` and `partial` (the list may not reach
+  back to the release before it), newest first, at most 6. `flow`
+  `{counts{stage}, days, merged, ttm_median_ms?, ttm_count,
+  release_lag_median_ms?, release_lag_count, ci_median_ms?, cost_usd}`:
+  merged → released is the median of publish minus merge over the window's
+  released cards (absent with fewer than two), CI the busiest workflow's
+  median. The releases are `GET …/releases?per_page=10`
+  (`github.RepoReleases`): `{tag, name?, url?, published_at, prerelease?}`,
+  drafts and unpublished ones left out, kept 10 minutes; a failed list is no
+  releases, not an error.
+- **Who opened it** — each `BranchPR` (here and in the Branches view) also
+  carries `head` (the head branch), `author` and `author_avatar` (GitHub's
+  `user.login` and `user.avatar_url`, an address on
+  `avatars.githubusercontent.com`) from the same list.
+
 Nothing is sent while GitHub is not connected: `connected` is false, `prs`
-empty, `stats` absent. A failed list keeps the last one; a failed run list
+empty, `stats` and `board` absent. A failed list keeps the last one; a failed run list
 leaves `stats` counted from the pull requests alone with `error` set. The
 answer is kept with the deck's (key `stats`).
 
@@ -3003,6 +3049,16 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
 - **Who.** The `GET`s (`…/github/items` included) are every paired device's; `…/github/pr` and
   `…/github/refresh` a controller's (ADR-034 amended); connect, device,
   disconnect, `PATCH` and `…/github/repo` the machine's only.
+- **Where it talks to** (rule 4, [ADR-047](08-decisions.md)). The token goes
+  only to `api.github.com` (a failed job's log comes from the signed address
+  GitHub points to, without it). Two more destinations, only while GitHub is
+  connected and only for what is on screen, neither sent the token or
+  anything about the user: `www.githubstatus.com`'s public summary, by the
+  daemon while Now's CI/CD section is open (§ `GET /v1/repos/ci`, kept 5
+  minutes); and `avatars.githubusercontent.com`, the pull request authors'
+  pictures GitHub named, loaded by the page itself (no referrer) on the PRs
+  & CI Board and the CI/CD section — any other address draws initials.
+  Settings → GitHub says so.
 - **Where the token lives.** The GitHub CLI's: nowhere in Caprock. A pasted
   or device-flow token: on macOS the login keychain (service
   `dev.caprock.github`, account `caprock`) through `/usr/bin/security`,

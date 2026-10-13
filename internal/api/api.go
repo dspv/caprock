@@ -617,6 +617,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/projects", s.handleProjects)
 	m.HandleFunc("GET /v1/team-signal", s.handleTeamSignal)
 	m.HandleFunc("GET /v1/repos/activity", s.handleReposActivity)
+	m.HandleFunc("GET /v1/repos/ci", s.handleReposCI)
 	m.HandleFunc("POST /v1/projects", s.handleAddProject)
 	m.HandleFunc("GET /v1/projects/ops", s.handleProjectOps)
 	// Multi-repo projects (ADR-055, multirepo.go).

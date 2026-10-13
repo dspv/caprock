@@ -21,7 +21,10 @@ type SessionCIStats struct {
 	// first, from the list the Branches view reads (its newest 50).
 	PRs   []github.BranchPR `json:"prs"`
 	Stats *github.RepoStats `json:"stats,omitempty"`
-	Error *github.Error     `json:"error,omitempty"`
+	// Board is the Board view: the pull requests by stage, the releases and
+	// the flow strip (prboard.go).
+	Board *PRBoard      `json:"board,omitempty"`
+	Error *github.Error `json:"error,omitempty"`
 	// FetchedAt and Refreshing: as SessionPRs says them.
 	FetchedAt  int64 `json:"fetched_at"`
 	Refreshing bool  `json:"refreshing,omitempty"`
@@ -47,7 +50,7 @@ func (s *Server) handleSessionCIStats(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) composeSessionCIStats(ctx context.Context, id string, connected bool) (deckAnswer, error) {
 	var where SessionRepoCI
-	repo, _, ok, err := s.sessionRepo(ctx, id, &where)
+	repo, localDefault, ok, err := s.sessionRepo(ctx, id, &where)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +75,17 @@ func (s *Server) composeSessionCIStats(ctx context.Context, id string, connected
 	}
 	st := github.Stats(prs, runs, now, github.StatsDays)
 	out.Stats = &st
+	sess, err := store.GetSession(ctx, s.d.Store.DB(), id)
+	if err != nil {
+		return nil, err
+	}
+	root := sess.RepoRoot
+	if root == "" {
+		root = sess.Cwd
+	}
+	if out.Board, err = s.composeBoard(ctx, repo, root, localDefault, prs, runs, now); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 

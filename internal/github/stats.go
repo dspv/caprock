@@ -21,6 +21,10 @@ const (
 	// repoRunsKept is how long that list is reused: the figures are about
 	// days, not minutes.
 	repoRunsKept = 30 * time.Minute
+	// repoRunsActiveKept is how long it is reused while one of its runs is
+	// queued or running: the Now screen's CI/CD section flags a run stuck
+	// past its median, which a half-hour-old list cannot see.
+	repoRunsActiveKept = 2 * time.Minute
 	// StatsDays is how many days the series cover, today the last.
 	StatsDays = 14
 )
@@ -53,7 +57,7 @@ func (s *Service) RepoRuns(ctx context.Context, repo Repo) ([]CIRun, *Error) {
 	}
 	e, have := s.repoRuns.m[key]
 	s.repoRuns.mu.Unlock()
-	if have && now.Sub(e.at) < repoRunsKept {
+	if have && now.Sub(e.at) < runsKeep(e.runs) {
 		return e.runs, nil
 	}
 	if s.source() == "" {

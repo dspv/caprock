@@ -734,7 +734,16 @@ One window, three regions:
     session, never split; `components/PRsCITab.tsx`, words in
     `lib/prstats.ts`); *Back to the deck* closes it and brings the agent's
     tab to the front with its deck open. It shows:
-    - **The figures** — over the 14 local days ending today, from `GET
+    - **The Board** (owner, 2026-10-14, translated: "something like a
+      KANBAN: how tasks come in, what stage they're in, maybe how many
+      agents are working, even some costs … essentially accounting of
+      releases and commits-PRs") — the default of two views, *Board | List*:
+      the pull requests in six stage columns with author, age in stage, CI,
+      agents running and agent cost; the flow strip; the releases with what
+      each shipped and its agent cost ([04-ui.md](04-ui.md) § Session deck,
+      `board` in [03-contracts.md](03-contracts.md) § `…/ci/stats`). A card
+      opens the List below on that pull request.
+    - **The figures** (List) — over the 14 local days ending today, from `GET
       /v1/sessions/{id}/ci/stats`: *Merged* (the total, the last 7, today,
       bars per day), *Time to merge* (the median from opened to merged of
       those merged, nothing with fewer than two), *CI time* (the median

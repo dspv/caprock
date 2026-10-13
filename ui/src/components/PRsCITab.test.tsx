@@ -53,6 +53,7 @@ afterEach(() => { h.stats = undefined; h.prs = { connected: true, prs: [] }; h.c
 describe('the PRs & CI tab', () => {
   it('shows the figures, the repository’s pull requests and the session’s open one in detail', async () => {
     connected()
+    localStorage.setItem('caprock.prsTab.view', 'list')
     render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
     const merged = await screen.findByText('400')
     expect(merged.closest('[data-prs-stat]')).toHaveTextContent('19 today')
@@ -93,6 +94,7 @@ describe('the PRs & CI tab', () => {
 
   it('switches between this session’s, the repository’s and the open pull requests, remembering the choice', async () => {
     connected()
+    localStorage.setItem('caprock.prsTab.view', 'list')
     render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
     await screen.findByText('400')
     fireEvent.click(document.querySelector('[data-prs-scope="session"]')!)
@@ -112,6 +114,59 @@ describe('the PRs & CI tab', () => {
     expect(await screen.findByRole('button', { name: 'Connect GitHub' })).toBeInTheDocument()
     expect(document.querySelector('[data-prs-stats]')).toBeNull()
     expect(h.asked).not.toContain('usage')
+  })
+
+  it('opens on the Board: each pull request in its stage with its author, agents and agent cost, and the releases', async () => {
+    connected()
+    const st = h.stats as { prs: Record<string, unknown>[] } & Record<string, unknown>
+    st.prs[0] = { ...st.prs[0], author: 'grace', author_avatar: 'https://avatars.githubusercontent.com/u/2' }
+    st.board = {
+      default_branch: 'main',
+      cards: [
+        { number: 22, stage: 'open', ci: 'running', stage_at: now - 5 * 60_000, spend: { cost_usd: 3.5, sessions: 2, live: 2, agents: ['claude'] } },
+        { number: 21, stage: 'fix', ci: 'fail', why: 'ci', stage_at: now - 3_600_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } },
+        { number: 20, stage: 'released', release: 'v1.2.0', stage_at: now - 600_000, spend: { cost_usd: 12, sessions: 1, live: 0, agents: ['codex'] } },
+      ],
+      releases: [{ tag: 'v1.2.0', url: 'https://github.com/a/b/releases/tag/v1.2.0', published_at: now - 600_000, prs: [20], cost_usd: 12, sessions: 1 }],
+      flow: { counts: { draft: 0, open: 1, fix: 1, ready: 0, merged: 0, released: 1 }, days: 14, merged: 7, ttm_median_ms: 2 * 3_600_000, ttm_count: 7, release_lag_median_ms: 5 * 3_600_000, release_lag_count: 4, ci_median_ms: 430_000, cost_usd: 15.5 },
+    }
+    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    const card = await waitFor(() => {
+      const c = document.querySelector('[data-board-card="22"]')
+      if (!c) throw new Error('no board')
+      return c
+    })
+    expect(card.closest('[data-board-column]')).toHaveAttribute('data-board-column', 'open')
+    expect(card).toHaveTextContent('Bump deps')
+    expect(card).toHaveTextContent('grace')
+    expect(card.querySelector('img')).toHaveAttribute('src', 'https://avatars.githubusercontent.com/u/2')
+    expect(card.querySelector('[data-board-live]')).toHaveTextContent('2 agents')
+    expect(card.querySelector('[data-board-cost]')).toHaveTextContent('$3.50')
+    expect(card.querySelector('[data-board-cost]')?.getAttribute('title')).toContain('API list price')
+    expect(document.querySelector('[data-board-card="21"]')!.closest('[data-board-column]')).toHaveAttribute('data-board-column', 'fix')
+    expect(document.querySelector('[data-board-card="21"] [data-board-cost]')).toBeNull()
+    expect(document.querySelector('[data-board-card="20"]')).toHaveTextContent('v1.2.0')
+    // The flow strip: throughput, the stage medians (the release one an estimate), the cost on the board.
+    expect(document.querySelector('[data-board-figure="Throughput · 14 days"]')).toHaveTextContent('0.5/day')
+    expect(document.querySelector('[data-board-figure="Opened → merged"]')).toHaveTextContent('2h')
+    expect(document.querySelector('[data-board-figure="Merged → released"]')).toHaveTextContent('~5h')
+    expect(document.querySelector('[data-board-figure="Merged → released"]')).toHaveTextContent('estimate')
+    expect(document.querySelector('[data-board-release="v1.2.0"]')).toHaveTextContent('#20')
+    expect(document.querySelector('[data-board-release="v1.2.0"]')).toHaveTextContent('$12.00')
+    // The Board asks no pull request's CI; a card opens it in the List.
+    expect(h.asked.some((a) => a.startsWith('ci '))).toBe(false)
+    fireEvent.click(card)
+    await waitFor(() => expect(h.asked).toContain('ci 22'))
+    expect(document.querySelector('[data-prs-row="22"] button')).toHaveAttribute('aria-current', 'true')
+    expect(localStorage.getItem('caprock.prsTab.view')).toBe('list')
+  })
+
+  it('tells an older daemon’s answer (no board) from a failure', async () => {
+    connected()
+    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    expect(await screen.findByText(/The board comes with a newer Caprock daemon/)).toBeInTheDocument()
+    fireEvent.click(document.querySelector('[data-prs-view-tab="list"]')!)
+    expect(await screen.findByText('400')).toBeInTheDocument()
   })
 
   it('asks nothing while it is not the tab in front, and goes back to the deck', async () => {
