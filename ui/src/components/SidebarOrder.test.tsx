@@ -124,6 +124,20 @@ describe('rows keep their places', () => {
     expect(rows()).toEqual(['a', 'c', 'b'])
   })
 
+  it('moves a focused row with Ctrl+Shift+↑ ↓ on Windows and Linux, where Alt+Shift arrows are the app\'s', () => {
+    Object.defineProperty(navigator, 'platform', { value: 'Win32', configurable: true })
+    try {
+      render(<Sidebar {...props(three(), [])} />)
+      const btn = (k: string) => document.querySelector(`[data-row-key="${k}"] [data-nav-row]`) as HTMLElement
+      fireEvent.keyDown(btn('c'), { key: 'ArrowUp', altKey: true, shiftKey: true })
+      expect(rows()).toEqual(['a', 'b', 'c'])
+      fireEvent.keyDown(btn('c'), { key: 'ArrowUp', ctrlKey: true, shiftKey: true })
+      expect(rows()).toEqual(['a', 'c', 'b'])
+    } finally {
+      Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
+    }
+  })
+
   it('draws ⌘1–⌘9 on the project rows in the sidebar order, and marks the project in front', () => {
     render(<Sidebar {...props(three(), [], { activeProjectId: 'beta' })} />)
     const keyOf = (id: string) => document.querySelector(`[data-project-row="${id}"] [data-project-key]`)?.textContent

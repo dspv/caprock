@@ -70,18 +70,24 @@ function baseKey(e: KeyLike): string {
 const ARROWS: Record<string, string> = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' }
 
 /**
- * The arrow chords: ⌥⌘ arrows on macOS, Ctrl+Shift arrows elsewhere. The
+ * The arrow chords: ⌥⌘ arrows on macOS, Alt+Shift arrows elsewhere. The
  * owner asked for ⌘↑ ⌘↓ and ⌥← ⌥→ (2026-10-13); both belong to the
  * terminal. ⌥← ⌥→ are word-jump in every shell and in Claude Code's prompt,
  * and ⌘↑ ⌘↓ (⌘← ⌘→) are scroll-to-top, prompt jumps and line start/end in
  * the Mac terminals people bring their fingers from. ⌥⌘ arrows reach no
  * shell, and are next/previous tab or pane in Chrome and iTerm, so the hand
- * already reads them as "move". Off macOS Ctrl+Alt arrows switch
- * workspaces in GNOME (and rotate the screen on some Windows drivers), and
- * Ctrl+Alt+Shift arrows move the window there, so they are Ctrl+Shift, like
- * every other app chord; readline binds nothing to them. In a text field
- * they select by word and line, so there they stay the field's
- * (isTextField, AppShell).
+ * already reads them as "move". Off macOS each other spelling is taken:
+ * Ctrl+Shift+← → are PowerShell's SelectBackwardWord / SelectNextWord
+ * (PSReadLine, Windows mode, and in pwsh on Linux too), Ctrl+arrows its and
+ * readline's word moves, Ctrl+PageUp/PageDown its ScrollDisplayUpLine /
+ * DownLine, Ctrl+Alt arrows switch workspaces in GNOME (and rotate the
+ * screen on some Windows drivers), Ctrl+Alt+Shift arrows move the window
+ * to another workspace there. Alt+Shift arrows are bound by none of them:
+ * not by PSReadLine in any mode, not by bash's readline or zsh's emacs
+ * keymap, not by GNOME; VS Code ships them as its own Windows/Linux
+ * defaults (copy line, expand selection). Alt alone stays the terminal's
+ * Meta. In a text field the arrow chords stay the field's (isTextField,
+ * AppShell).
  */
 function arrowCommand(k: string): AppCommand | null {
   switch (k) {
@@ -106,6 +112,8 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
     const quick = isMac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey
     if (quick && baseKey(e) === 'n') return { kind: 'quick-chat' }
     if (isMac && quick) return arrowCommand(baseKey(e))
+    // Off macOS the arrow chords are Alt+Shift (arrowCommand).
+    if (!isMac && e.shiftKey && !e.ctrlKey && !e.metaKey) return arrowCommand(baseKey(e))
     // Off macOS, a ⇧⌘ chord whose ⌘ twin is also the app's takes Alt too,
     // or both would be Ctrl+Shift+key (OFF_MAC_ALT).
     if (!isMac && e.ctrlKey && e.shiftKey && !e.metaKey) {
@@ -151,11 +159,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
     case 'g': return { kind: 'changes' }
     case '[': return { kind: 'prev-tab' }
     case ']': return { kind: 'next-tab' }
-    case '↑':
-    case '↓':
-    case '←':
-    case '→':
-      return arrowCommand(k)
+    // Ctrl+Shift arrows are PowerShell's select-by-word: the terminal's.
     // C and V are the terminal's copy and paste: never ours.
     case 'c':
     case 'v':
@@ -217,11 +221,13 @@ const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0'])
 function offMac(k: string): string {
   if (/[↩↵]/.test(k)) return `${k.includes('⌘') ? 'Ctrl+' : ''}${k.includes('⇧') ? 'Shift+' : ''}Enter`
   if (k.startsWith('⌃')) return `Ctrl+${k.slice(1)}`
-  // ⌥⇧↑: Option is Alt (the sidebar's move-a-row keys).
-  if (k.includes('⌥') && !k.includes('⌘')) return `Alt+${k.includes('⇧') ? 'Shift+' : ''}${k.replace(/[⇧⌥]/g, '')}`
+  // ⌥⇧↑ ⌥⇧↓, the sidebar's move-a-row keys, are Ctrl+Shift off macOS:
+  // Alt+Shift arrows are the app's there, and Ctrl+Shift arrows reach the
+  // terminal only from the terminal, never from a focused sidebar row.
+  if (k.includes('⌥') && !k.includes('⌘') && /[↑↓]$/.test(k)) return `Ctrl+Shift+${k.slice(-1)}`
   if (!k.includes('⌘')) return k
-  // The arrow chords are Ctrl+Shift off macOS, without Alt (arrowCommand).
-  if (/[↑↓←→]$/.test(k)) return `Ctrl+Shift+${k.slice(-1)}`
+  // The arrow chords are Alt+Shift off macOS (arrowCommand).
+  if (/[↑↓←→]$/.test(k)) return `Alt+Shift+${k.slice(-1)}`
   // Ctrl+Shift+= is the key that reads + with Shift held.
   const key = k.replace(/[⇧⌘⌥⌃]/g, '').replace('+', '=')
   if (k.includes('⌥')) return `Ctrl+Alt+Shift+${key}`

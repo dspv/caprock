@@ -69,6 +69,7 @@ import { CloseIcon, EyeIcon, EyeOffIcon, FileIcon, MoreIcon, PlusIcon, StopIcon,
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
 import { keys, tabKey } from '@/lib/appkeys'
+import { isMacPlatform } from '@/lib/appmode'
 import { moveKey, orderRows, tabRowKey } from '@/lib/rowOrder'
 import { HotMark } from './ResourceMeter'
 
@@ -279,8 +280,10 @@ export const ProjectRow = memo(function ProjectRow({
   const onClickCapture = (e: React.MouseEvent) => {
     if (dragged.current) { dragged.current = false; e.preventDefault(); e.stopPropagation() }
   }
+  // ⌥⇧↑ ⌥⇧↓ on macOS; Ctrl+Shift off it, where Alt+Shift arrows are the app's (lib/appkeys.ts).
   const onMoveKey = (e: ReactKeyboardEvent<HTMLElement>) => {
-    if (!onReorder || !e.altKey || !e.shiftKey || e.metaKey || e.ctrlKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
+    const mods = isMacPlatform() ? e.altKey && !e.ctrlKey : e.ctrlKey && !e.altKey
+    if (!onReorder || !mods || !e.shiftKey || e.metaKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
     const key = (e.target as HTMLElement).closest<HTMLElement>('[data-row-key]')?.dataset.rowKey
     if (!key) return
     e.preventDefault()

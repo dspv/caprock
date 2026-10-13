@@ -14,12 +14,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   last), its key drawn on its row and on the tab it brings; ⌥⌘↓ / ⌥⌘↑ go to
   the next / previous session of that project, ⌥⌘→ / ⌥⌘← to the next /
   previous project, both round the end. On Windows and Linux they are
-  Ctrl+Shift with the same digit or arrow. Option+← → stay word jumps in the
+  Ctrl+Shift+digit and Alt+Shift+arrows (Ctrl+Shift+← → stay PowerShell's
+  select-by-word). Option+← → stay word jumps in the
   terminal and ⌘↑ ↓ stay the terminal's; in a text field the arrow chords
   keep selecting there. The project in front has a faint edge in the
   sidebar, so you see where you are among the others.
 - **app:** drag a session row under a project onto another to put it
-  there, or focus it and press ⌥⇧↑ / ⌥⇧↓ (Alt+Shift off macOS); the order
+  there, or focus it and press ⌥⇧↑ / ⌥⇧↓ (Ctrl+Shift off macOS); the order
   is kept for that project, also after a restart.
 - **app:** Settings → *Status line* → *Hidden*: no line under Claude Code, so the
   row goes, while your plan limits keep reaching Caprock's cockpit and Cost

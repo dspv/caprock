@@ -60,7 +60,7 @@ others. Installing it: [install-app.md](install-app.md).
   sessions started, so picking a row, opening it as a tab or bringing it to
   the front never moves it, a change of state only shows or folds it, and
   a new one appears at the end. Drag a row onto another to put it there,
-  or focus it and press ⌥⇧↑ / ⌥⇧↓ (Alt+Shift off macOS); that order is
+  or focus it and press ⌥⇧↑ / ⌥⇧↓ (Ctrl+Shift off macOS); that order is
   kept for the project, also after a restart. An ended session is
   on the project's page (*Recent*) and in ⌘K. Pinned projects come first,
   then the rest by name, and clicking a project never moves it. Hover a project for *New agent* and *New shell*. Sessions in a
@@ -517,8 +517,10 @@ On macOS:
 | ⌘R          | Reload the window (View → Reload)                      |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
-(Quick chat is Ctrl+Alt+Shift+N; moving a sidebar row is Alt+Shift+↑ ↓);
-in a text field Ctrl+Shift+arrows keep selecting by word. Ctrl+Shift+C
+(Quick chat is Ctrl+Alt+Shift+N). The arrow chords are Alt+Shift there
+(Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ← projects), since Ctrl+Shift+← → are
+PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
+in a text field the arrow chords stay the field's. Ctrl+Shift+C
 and Ctrl+Shift+V stay the terminal's copy and paste. Reload is F5 there:
 Ctrl+R stays the shell's history search, and F5 in a focused terminal goes
 to the program running in it. The terminal's own keys (Ctrl+C, Ctrl+W,

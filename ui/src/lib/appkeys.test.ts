@@ -14,7 +14,7 @@ const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
 describe('the app keyboard map', () => {
   // Owner, 2026-10-13 (translated): "Command+digit focuses that project …
   // Command+Up/Down to move, or Option+Left/Right". ⌥← ⌥→ and ⌘↑ ⌘↓ are the
-  // terminal's, so the moves are ⌥⌘ arrows, Ctrl+Shift arrows elsewhere.
+  // terminal's, so the moves are ⌥⌘ arrows, Alt+Shift arrows elsewhere.
   it('maps ⌘1–⌘9 to projects and ⌥⌘ arrows to sessions and projects', () => {
     expect(matchAppShortcut(k('1', { metaKey: true }), true)).toEqual({ kind: 'project', index: 0 })
     expect(matchAppShortcut(k('9', { metaKey: true }), true)).toEqual({ kind: 'project', index: 8 })
@@ -22,11 +22,16 @@ describe('the app keyboard map', () => {
     expect(matchAppShortcut(k('ArrowUp', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'session', delta: -1 })
     expect(matchAppShortcut(k('ArrowRight', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'step-project', delta: 1 })
     expect(matchAppShortcut(k('ArrowLeft', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'step-project', delta: -1 })
-    expect(matchAppShortcut(k('ArrowDown', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'session', delta: 1 })
-    expect(matchAppShortcut(k('ArrowLeft', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'step-project', delta: -1 })
+    expect(matchAppShortcut(k('ArrowDown', { altKey: true, shiftKey: true }), false)).toEqual({ kind: 'session', delta: 1 })
+    expect(matchAppShortcut(k('ArrowLeft', { altKey: true, shiftKey: true }), false)).toEqual({ kind: 'step-project', delta: -1 })
+    // Alt+Shift+N is no app chord; only the arrows are.
+    expect(matchAppShortcut(k('n', { altKey: true, shiftKey: true }), false)).toBeNull()
   })
 
-  it('leaves the terminal its arrows: ⌥← ⌥→ word-jump, ⌘↑ ⌘↓ ⌘← ⌘→, Ctrl and Alt arrows', () => {
+  // PowerShell's PSReadLine (Windows mode) binds Ctrl+Shift+← → to
+  // SelectBackwardWord / SelectNextWord and Ctrl+← → to word moves; bash and
+  // zsh bind Ctrl+← → and Alt+← → (Meta) to word moves.
+  it('leaves the terminal its arrows: ⌥← ⌥→ word-jump, ⌘↑ ⌘↓ ⌘← ⌘→, Ctrl, Alt and Ctrl+Shift arrows', () => {
     for (const a of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
       expect(matchAppShortcut(k(a, { altKey: true }), true), `⌥${a}`).toBeNull()
       expect(matchAppShortcut(k(a, { metaKey: true }), true), `⌘${a}`).toBeNull()
@@ -34,16 +39,18 @@ describe('the app keyboard map', () => {
       expect(matchAppShortcut(k(a, { ctrlKey: true }), true), `⌃${a}`).toBeNull()
       expect(matchAppShortcut(k(a, { ctrlKey: true }), false), `Ctrl+${a}`).toBeNull()
       expect(matchAppShortcut(k(a, { altKey: true }), false), `Alt+${a}`).toBeNull()
-      expect(matchAppShortcut(k(a, { altKey: true, shiftKey: true }), false), `Alt+Shift+${a}`).toBeNull()
-      // Ctrl+Alt arrows switch workspaces in GNOME: never asked of the user.
+      expect(matchAppShortcut(k(a, { ctrlKey: true, shiftKey: true }), false), `Ctrl+Shift+${a}`).toBeNull()
+      expect(matchAppShortcut(k(a, { altKey: true, shiftKey: true }), true), `⌥⇧${a}`).toBeNull()
+      // Ctrl+Alt arrows switch workspaces in GNOME, Ctrl+Alt+Shift move the window there.
       expect(matchAppShortcut(k(a, { ctrlKey: true, altKey: true }), false), `Ctrl+Alt+${a}`).toBeNull()
+      expect(matchAppShortcut(k(a, { ctrlKey: true, altKey: true, shiftKey: true }), false), `Ctrl+Alt+Shift+${a}`).toBeNull()
     }
   })
 
-  it('spells the arrow chords for Windows and Linux without Alt', () => {
-    expect(keys('⌥⌘↓, ⌥⌘↑', false)).toBe('Ctrl+Shift+↓, Ctrl+Shift+↑')
-    expect(keys('⌥⌘→, ⌥⌘←', false)).toBe('Ctrl+Shift+→, Ctrl+Shift+←')
-    expect(keys('⌥⇧↑, ⌥⇧↓', false)).toBe('Alt+Shift+↑, Alt+Shift+↓')
+  it('spells the arrow chords Alt+Shift for Windows and Linux, and moving a row Ctrl+Shift', () => {
+    expect(keys('⌥⌘↓, ⌥⌘↑', false)).toBe('Alt+Shift+↓, Alt+Shift+↑')
+    expect(keys('⌥⌘→, ⌥⌘←', false)).toBe('Alt+Shift+→, Alt+Shift+←')
+    expect(keys('⌥⇧↑, ⌥⇧↓', false)).toBe('Ctrl+Shift+↑, Ctrl+Shift+↓')
     expect(keys('⌥⌘↓', true)).toBe('⌥⌘↓')
   })
 

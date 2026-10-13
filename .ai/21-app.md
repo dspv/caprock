@@ -166,7 +166,7 @@ One window, three regions:
   the order is kept per project and viewer (`caprock.app.row-order`).
   ⌘1–⌘9 bring a project to the front by its place in the sidebar, ⌥⌘↑ ⌥⌘↓
   walk the sessions of the project in front, ⌥⌘← ⌥⌘→ the projects
-  (Ctrl+Shift arrows off macOS; [04-ui.md](04-ui.md) § The app workspace, *Keyboard*, says why not
+  (Alt+Shift arrows off macOS; [04-ui.md](04-ui.md) § The app workspace, *Keyboard*, says why not
   ⌥← ⌥→ or ⌘↑ ⌘↓). There is no *Waiting on you* section
   (owner, 2026-10-11: "not needed at all — everything is already visible in
   Projects", translated): a session that waits is marked on its own row,

@@ -902,7 +902,7 @@ export function AppShell() {
       // Held down, only the digits and the arrow chords repeat.
       if (e.repeat && !/^[1-9]$/.test(e.key) && !isArrowCommand(c)) return
       // In a text field the arrow chords select by word and line there
-      // (Ctrl+Shift+← off macOS): the field keeps them. The terminal's own
+      // (Alt+Shift+← off macOS): the field keeps them. The terminal's own
       // textarea is not a text field here.
       if (isArrowCommand(c) && isTextField(e.target)) return
       // In a browser ⌘+ and ⌘− are the browser's own zoom.
