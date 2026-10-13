@@ -247,6 +247,13 @@ type Settings struct {
 	GeminiKeyFromEnv bool `json:"gemini_key_from_env"`
 	// GeminiAPIKey is never serialised, for the same reason as the bot token.
 	GeminiAPIKey string `json:"-"`
+	// DeepSeekKeySet reports whether a DeepSeek key is stored, and
+	// DeepSeekKeyHint shows its first and last few characters (MaskKey) so the
+	// user can tell which key it is; the key itself is write-only, like the
+	// two above.
+	DeepSeekKeySet  bool   `json:"deepseek_key_set"`
+	DeepSeekKeyHint string `json:"deepseek_key_hint,omitempty"`
+	DeepSeekAPIKey  string `json:"-"`
 	// ReportLastError is why the last send failed, empty when it did not.
 	//
 	// A weekly message that silently stops arriving is the failure mode this
@@ -1322,6 +1329,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		ReportBotToken *string `json:"report_bot_token"`
 		ReportChatID   *string `json:"report_chat_id"`
 		GeminiAPIKey   *string `json:"gemini_api_key"`
+		DeepSeekAPIKey *string `json:"deepseek_api_key"`
 		AlertApproval  *bool   `json:"alert_approval"`
 		AlertFinished  *bool   `json:"alert_finished"`
 		AlertReply     *bool   `json:"alert_reply"`
@@ -1451,6 +1459,16 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.GeminiAPIKey != nil {
 		in.GeminiAPIKey = strings.TrimSpace(*patch.GeminiAPIKey)
+	}
+	if patch.DeepSeekAPIKey != nil {
+		k := strings.TrimSpace(*patch.DeepSeekAPIKey)
+		// It becomes one environment variable of a child process: a value
+		// with a line break or a NUL in it is not a key and cannot be one.
+		if strings.ContainsAny(k, "\r\n\x00") || len(k) > 512 {
+			s.failCode(w, http.StatusBadRequest, errors.New("that does not look like a DeepSeek API key"))
+			return
+		}
+		in.DeepSeekAPIKey = k
 	}
 	if patch.AlertApproval != nil {
 		in.AlertApproval = *patch.AlertApproval

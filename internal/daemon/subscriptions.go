@@ -139,6 +139,9 @@ func (d *Daemon) resolveSubscription(sr *agents.SpawnRequest, prev *store.Sessio
 		return nil
 	}
 	sr.Subscription = id
+	if id == subs.DeepSeekID {
+		return resolveDeepSeek(sr, agent, d.config().DeepSeekAPIKey, prev != nil)
+	}
 	sub, ok := subs.Find(d.config().Subscriptions, id)
 	if !ok {
 		if prev != nil {
@@ -154,6 +157,31 @@ func (d *Daemon) resolveSubscription(sr *agents.SpawnRequest, prev *store.Sessio
 	}
 	d.startSubIngest(sub)
 	sr.ConfigDir = subs.Dir(d.opt.DataDir, sub.ID)
+	return nil
+}
+
+// resolveDeepSeek fills in a Claude Code session on DeepSeek: the user's own
+// configuration directory (none is set), and the key from the daemon's
+// settings — never from the request.
+func resolveDeepSeek(sr *agents.SpawnRequest, agent, key string, resumed bool) error {
+	if agent != agents.AgentClaude {
+		return fmt.Errorf("DeepSeek runs Claude Code sessions, not %s", agentName(agent))
+	}
+	if strings.TrimSpace(key) == "" {
+		if resumed {
+			return fmt.Errorf("this session ran on DeepSeek and no DeepSeek key is set; add it in Settings → Subscriptions to continue it")
+		}
+		return fmt.Errorf("no DeepSeek key is set; add it in Settings → Subscriptions")
+	}
+	sr.ConfigDir = ""
+	sr.DeepSeekKey = strings.TrimSpace(key)
+	// The launcher's model list is Claude's. A Claude id sent to DeepSeek is
+	// mapped by DeepSeek to a model of its choosing (claude-opus* to
+	// deepseek-v4-pro, the rest to deepseek-flash), so it is dropped and the
+	// session runs on the model the environment names (agents.DeepSeekModel).
+	if !strings.HasPrefix(strings.ToLower(sr.Model), "deepseek-") {
+		sr.Model = ""
+	}
 	return nil
 }
 
@@ -210,9 +238,29 @@ func (a *subsAdapter) List(ctx context.Context) (api.SubscriptionsResponse, erro
 			v.Preferred = preferred == s.ID
 			g.Subscriptions = append(g.Subscriptions, v)
 		}
+		if agent == subs.AgentClaude && strings.TrimSpace(cfg.DeepSeekAPIKey) != "" {
+			g.Subscriptions = append(g.Subscriptions, deepSeekView(spend, running))
+		}
 		out.Agents = append(out.Agents, g)
 	}
 	return out, nil
+}
+
+// deepSeekView is Claude Code on DeepSeek as the pickers show it: ready
+// whenever a key is set, billed per token by DeepSeek, and with no plan
+// windows — a Claude plan's limits say nothing about it.
+func deepSeekView(spend map[string]store.SubscriptionSpend, running map[string]int) api.Subscription {
+	v := api.Subscription{
+		ID: subs.DeepSeekID, Agent: subs.AgentClaude, Label: "DeepSeek", Provider: subs.DeepSeekID,
+		SignedIn: true, Account: "your DeepSeek API key",
+		Plan:    &api.SubscriptionPlan{Kind: "metered", Label: "DeepSeek API"},
+		Windows: []api.SubscriptionWindow{},
+	}
+	if s, ok := spend[subs.AgentClaude+"|"+subs.DeepSeekID]; ok {
+		v.Sessions7d, v.Cost7dUSD = s.Sessions, s.CostUSD
+	}
+	v.Running = running[subs.AgentClaude+"|"+subs.DeepSeekID]
+	return v
 }
 
 // view is one subscription as the page shows it. sub.ID "" is the Default.

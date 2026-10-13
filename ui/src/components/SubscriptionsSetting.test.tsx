@@ -9,7 +9,11 @@ function sub(over: Partial<Subscription>): Subscription {
   }
 }
 
-const m = vi.hoisted(() => ({ list: vi.fn(), add: vi.fn(), remove: vi.fn(), update: vi.fn() }))
+const m = vi.hoisted(() => ({
+  list: vi.fn(), add: vi.fn(), remove: vi.fn(), update: vi.fn(),
+  settings: vi.fn(async () => ({ update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0 } as Record<string, unknown>)),
+  save: vi.fn(async () => ({})),
+}))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
@@ -17,6 +21,7 @@ vi.mock('@/lib/api', async (orig) => {
     api: {
       ...actual.api,
       subscriptions: m.list, addSubscription: m.add, removeSubscription: m.remove, updateSubscription: m.update,
+      settings: m.settings, saveSettings: m.save,
       premium: async () => ({
         yearly: { per_month_usd: 2.5, charged_usd: 30, period: 'year', url: 'https://buy/y' },
         lifetime: { per_month_usd: 0, charged_usd: 100, period: 'once', url: 'https://buy/l' },
@@ -29,7 +34,7 @@ vi.mock('@/lib/api', async (orig) => {
 
 import { SubscriptionsSetting } from './SubscriptionsSetting'
 import { SetupShellContext } from '@/lib/setupShell'
-import { SubscriptionNote } from './SubscriptionPicker'
+import { SubscriptionNote, SubscriptionPicker } from './SubscriptionPicker'
 import { AccountPlans } from './AccountPlan'
 
 function response(claude: Subscription[], licensed = false): SubscriptionsResponse {
@@ -130,6 +135,59 @@ describe('Settings → Subscriptions', () => {
     expect(screen.getByText(/Its folder is deleted/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Remove Work' }))
     await waitFor(() => expect(m.remove).toHaveBeenCalledWith('a1'))
+  })
+})
+
+// Claude Code on DeepSeek (owner, 2026-10-13, translated: "in sessions you
+// should be able to use DeepSeek").
+describe('DeepSeek', () => {
+  const deepseek = sub({ id: 'deepseek', label: 'DeepSeek', default: false, dir: '', login_command: '', provider: 'deepseek', account: 'your DeepSeek API key', plan: { kind: 'metered', label: 'DeepSeek API' } })
+
+  it('saves a pasted key write-only, shows only its mask, and removes it', async () => {
+    m.save.mockClear()
+    m.settings.mockResolvedValueOnce({ update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0, deepseek_key_set: false })
+    m.list.mockResolvedValue(response([sub({})]))
+    render(<SubscriptionsSetting />)
+    const input = await screen.findByLabelText('DeepSeek API key')
+    expect(input).toHaveAttribute('type', 'password')
+    // It says where the work goes before anything is set.
+    expect(screen.getByText(/api\.deepseek\.com/)).toBeInTheDocument()
+    expect(screen.getByText(/Caprock itself sends nothing/)).toBeInTheDocument()
+    fireEvent.change(input, { target: { value: '  sk-pasted-key-0000  ' } })
+    m.settings.mockResolvedValue({ update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0, deepseek_key_set: true, deepseek_key_hint: 'sk-…0000' })
+    fireEvent.click(screen.getByRole('button', { name: 'Save key' }))
+    await waitFor(() => expect(m.save).toHaveBeenCalledWith({ deepseek_api_key: 'sk-pasted-key-0000' }))
+    expect(await screen.findByText('sk-…0000')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue(/sk-pasted/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove key' }))
+    await waitFor(() => expect(m.save).toHaveBeenCalledWith({ deepseek_api_key: '' }))
+  })
+
+  it('is not a sign-in: no row, no Make default or Remove, and not counted toward the free number', async () => {
+    m.list.mockResolvedValue(response([sub({}), sub({ id: 'a1', label: 'Work', default: false }), deepseek]))
+    render(<SubscriptionsSetting />)
+    await screen.findByText('Work')
+    const rows = screen.getByRole('list', { name: 'Claude Code subscriptions' })
+    expect(rows.querySelectorAll('li')).toHaveLength(2)
+    expect(screen.queryByText(/the free number/)).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1)
+  })
+
+  it('says in the launcher what it sends where, and is never offered as the way past a limit', () => {
+    const soon = Date.now() / 1000 + 3600
+    const full = sub({ windows: [{ window: 'five_hour', used_percentage: 95, resets_at: soon, observed_at: 0 }] })
+    const { unmount } = render(<SubscriptionNote list={[full, deepseek]} value="deepseek" onUse={() => {}} />)
+    expect(screen.getByRole('note')).toHaveTextContent(/api\.deepseek\.com/)
+    expect(screen.getByRole('note')).toHaveTextContent(/Caprock sends nothing/)
+    unmount()
+    render(<SubscriptionNote list={[full, deepseek]} value="default" onUse={() => {}} />)
+    expect(screen.getByRole('note')).toHaveTextContent('95% of its 5-hour window used')
+    expect(screen.queryByRole('button', { name: 'DeepSeek' })).toBeNull()
+  })
+
+  it('names itself in the picker as a key, not a sign-in', () => {
+    render(<SubscriptionPicker list={[sub({ label: 'Own sign-in', preferred: true }), deepseek]} value="default" onChange={() => {}} />)
+    expect(screen.getByRole('option', { name: 'DeepSeek · your API key' })).toBeInTheDocument()
   })
 })
 

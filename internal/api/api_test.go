@@ -488,6 +488,7 @@ func (f *fakeSettings) Get() Settings {
 	out := f.cur
 	out.ReportBotSet = f.cur.ReportBotToken != ""
 	out.GeminiKeySet = f.cur.GeminiAPIKey != ""
+	out.DeepSeekKeySet, out.DeepSeekKeyHint = f.cur.DeepSeekAPIKey != "", MaskKey(f.cur.DeepSeekAPIKey)
 	if !f.memorySet {
 		out.Memory = true
 	}

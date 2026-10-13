@@ -7,6 +7,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **agents:** Claude Code on DeepSeek, free. Paste your DeepSeek API key in
+  Settings → Subscriptions and *New agent* and *Quick chat* offer
+  **DeepSeek · your API key** in the Subscription picker: the session is
+  Claude Code in your usual setup, with DeepSeek's documented variables and
+  your key in that one process's environment, so its model calls go to
+  DeepSeek's Anthropic-compatible API and DeepSeek bills your key. Your
+  claude.ai sign-in and its plan limits are not used, and the session is
+  kept out of the Claude plan windows and the plan-window stop. The key is
+  write-only (Settings shows `sk-…1a2b`), never on a command line, in the
+  database or a log; Settings and the picker say what the session sends to
+  api.deepseek.com and that Caprock sends nothing. Its card says
+  *DeepSeek*.
+- **pricing:** `deepseek-flash` at DeepSeek's off-peak list price ($0.15
+  input, $0.003 cache hit, $0.60 output per 1M, read 2026-10-13); turns in
+  DeepSeek's weekday peak hours bill double and read low. Table
+  `2026-10-13.1`.
+
 ## [0.113.0] - 2026-10-13
 
 ### Added
