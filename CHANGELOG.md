@@ -77,6 +77,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** a session no longer jumps into Claude Code's background-agents list on its own. Holding ⌥⌘↓ (Alt+Shift+↓ off macOS) to step through sessions and letting go of the modifiers before the arrow left the arrow repeating into the session it had just opened, and Claude Code read that Down as "go to the agents below the prompt". An arrow pressed as an app chord now stays the app's until it is released, and the sidebar's ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift+↑ ↓ off macOS), which typed a Down too when pressed in a terminal, do nothing there. Plain arrows and ⌥← ⌥→ word jumps are unchanged.
 - **mail:** on macOS, account passwords go to the login keychain through the call that names the keychain file, so saving one can never bring up a "Keychain Not Found" dialog. Passwords saved before are read where they are; Windows and Linux are unchanged.
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.
 
