@@ -33,6 +33,7 @@ import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { href } from '@/lib/router'
 import { useEffect, useState } from 'react'
 import { useNow, useNowFor } from '@/lib/useNow'
+import { LivePace, NOW_LIVE_MS, SLOW_LIVE_MS } from '@/lib/refresh'
 import { useNarrowScreen } from '@/lib/phone'
 
 /** How recently a session must have spoken to belong on the Now screen.
@@ -94,19 +95,19 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   const sessions = useApi(
     () => api.sessionsWithTotal(!showEnded, showEnded ? query : '', showEnded ? pageSize : 0),
     [showEnded, query, pageSize],
-    { intervalMs: 5000 },
+    { intervalMs: 5000, liveMs: NOW_LIVE_MS },
   )
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 30000 })
   // The last figures this browser kept show at once, marked, while today's are
   // read (lib/swr.ts): on a busy daemon the first answer can take seconds.
-  const summary = useApi(() => api.summary('today', agent), [agent], { intervalMs: 5000, cache: `summary:today:${agent}` })
+  const summary = useApi(() => api.summary('today', agent), [agent], { intervalMs: 5000, cache: `summary:today:${agent}`, liveMs: NOW_LIVE_MS })
   // All-time totals, for the one line that mentions the paid version. Slow
   // enough to be worth a long interval and cheap enough to share with the
   // strip below, which asks for the same thing.
-  const lifetime = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all' })
+  const lifetime = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all', liveMs: SLOW_LIVE_MS })
   // The plan-window stop: what it has paused, and whether this install has
   // it — the free plan-limit row offers it only when it does not.
-  const windowStop = useApi(() => api.windowStop(), [], { intervalMs: 15000 })
+  const windowStop = useApi(() => api.windowStop(), [], { intervalMs: 15000, liveMs: NOW_LIVE_MS })
   const alerts = useLiveAlerts()
   const everySession = sessions.data?.items ?? []
   // How many the server holds, against how many it sent. The list is capped at
@@ -172,7 +173,10 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   // the all-time query takes about half a second — long enough to read.
   const loading = isLoading(summary.data, summary.error)
   const ingestError = status.data?.ingest_error
+  // Every section below refreshes on one shared tick, at most every
+  // NOW_LIVE_MS (lib/refresh.ts): each used to ask on every live event.
   return (
+    <LivePace.Provider value={NOW_LIVE_MS}>
     <div className="grid grid-cols-1 gap-3">
       {/* A dead tailer used to be a log line: the daemon reported healthy, the
         * status said "backfill done", and this screen told the user to start
@@ -455,6 +459,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
         />
       )}
     </div>
+    </LivePace.Provider>
   )
 }
 

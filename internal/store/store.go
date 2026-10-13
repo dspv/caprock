@@ -222,7 +222,13 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		// far above what ordinary ingest needs between checkpoints, so it
 		// costs nothing until a big transaction, and then it gives the space
 		// back.
-		dsn = "file:" + path + "?_txlock=immediate&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=cache_size(-16384)&_pragma=mmap_size(2147418112)&_pragma=journal_size_limit(" + strconv.Itoa(JournalSizeLimit) + ")"
+		//
+		// auto_vacuum(INCREMENTAL) comes first, before anything writes the
+		// file: on a new database it takes effect with the first table, so
+		// the file can give free pages back to the disk a few at a time
+		// (vacuum.go). On an existing one it changes nothing until the one
+		// VACUUM the daemon runs while idle (daemon/compact.go).
+		dsn = "file:" + path + "?_txlock=immediate&_pragma=auto_vacuum(INCREMENTAL)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_pragma=cache_size(-16384)&_pragma=mmap_size(2147418112)&_pragma=journal_size_limit(" + strconv.Itoa(JournalSizeLimit) + ")"
 	}
 	// Every statement is timed, and one slower than SlowQuery is logged with
 	// its caller (slowlog.go).

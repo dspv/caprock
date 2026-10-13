@@ -91,6 +91,11 @@ type StorageReport struct {
 	// ReclaimableBytes is the database's free pages: what a VACUUM would hand
 	// back to the disk. Zero until measured.
 	ReclaimableBytes int64 `json:"reclaimable_bytes"`
+	// ReturnsFreeSpace is true when the database is in incremental
+	// auto-vacuum mode: free pages go back to the disk on their own while
+	// the daemon is idle (compact.go). False until the one VACUUM that
+	// switches an older database over has run.
+	ReturnsFreeSpace bool `json:"returns_free_space"`
 	// GrowthBytesPerDayEst is an estimate, and named as one: the bytes of
 	// event payload recorded over the last 30 days, per day, scaled by how
 	// many bytes on disk each payload byte has cost so far (the events table
@@ -128,7 +133,7 @@ func (d *Daemon) measureStorage(ctx context.Context) {
 
 // storageReport answers GET /v1/storage, starting a measurement when the
 // cached one is older than storageMaxAge.
-func (d *Daemon) storageReport(_ context.Context) any {
+func (d *Daemon) storageReport(ctx context.Context) any {
 	measuring := d.startMeasure(time.Now())
 	files, total := dataDirSizes(d.opt.DataDir)
 	r := StorageReport{
@@ -140,6 +145,11 @@ func (d *Daemon) storageReport(_ context.Context) any {
 	d.storage.mu.Unlock()
 	r.Error = errText
 	r.Measuring = measuring
+	if d.store != nil {
+		if m, err := d.store.AutoVacuum(ctx); err == nil {
+			r.ReturnsFreeSpace = m == store.AutoVacuumIncremental
+		}
+	}
 	if db != nil {
 		r.Database = db
 		r.MeasuredAt, r.MeasureMs = at.UnixMilli(), took.Milliseconds()

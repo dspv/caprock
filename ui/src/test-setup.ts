@@ -1,5 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { beforeEach } from 'vitest'
+import { clearShared } from './lib/refresh'
+import { resetPanelFolds } from './components/ui'
 
 // jsdom implements neither ResizeObserver nor a canvas 2D context, and the
 // dashboard's canvas components (Pulse, the Projects sparkline) construct a
@@ -30,4 +32,8 @@ beforeEach(() => {
   } catch {
     /* no storage in this environment */
   }
+  // Module state that outlives a test the same way: an answer one test's
+  // hooks shared (lib/refresh.ts) and the page's copy of the panel folds.
+  clearShared()
+  resetPanelFolds()
 })

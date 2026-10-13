@@ -14,6 +14,7 @@
  */
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
+import { SLOW_LIVE_MS } from '@/lib/refresh'
 import { StaleNote } from '@/components/ui'
 import { fmtUSD } from '@/lib/format'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
@@ -23,7 +24,7 @@ import { useLicensed, useNudgeSlot } from '@/lib/nudges'
 export function LifetimeStrip({ plan }: { plan?: Settings }) {
   // Lifetime totals move slowly; a minute is far more often than they change,
   // and this must never compete with the live panels below it for the socket.
-  const h = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all' })
+  const h = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all', liveMs: SLOW_LIVE_MS })
   const t = h.data?.totals
   if (!t || t.sessions === 0) return null
 
@@ -84,7 +85,7 @@ function Figure({ value, label }: { value: string; label: string }) {
  * hint on exactly the days that follow it.
  */
 function CapHint() {
-  const daily = useApi(() => api.daily(30), [], { intervalMs: 300000, cache: 'daily:30' })
+  const daily = useApi(() => api.daily(30), [], { intervalMs: 300000, cache: 'daily:30', liveMs: SLOW_LIVE_MS })
   const today = useApi(() => api.summary('today'), [], { intervalMs: 30000, cache: 'summary:today:all' })
 
   const rows = daily.data ?? []

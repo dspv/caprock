@@ -416,7 +416,10 @@ class TickStore {
 
   constructor(private readonly ms: number, private readonly hiddenMs: number | undefined) {}
 
-  get = () => this.value
+  // Unread, it is caught up: the first render of a screen opened after
+  // frames came would otherwise see the old value, then the attached one,
+  // and ask every question twice.
+  get = () => (this.detach ? this.value : (this.value = live.getState().tick))
 
   subscribe = (fn: () => void) => {
     this.subs.add(fn)

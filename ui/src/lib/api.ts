@@ -786,7 +786,7 @@ export interface KeepAwakeStatus {
 }
 
 /** Settings → Status line (config.json statusline_mode). */
-export type StatuslineMode = 'full' | 'short' | 'off'
+export type StatuslineMode = 'full' | 'short' | 'hidden' | 'off'
 
 export interface Settings {
   /** Whether Claude is told what the last session left in the same folder. */
@@ -807,7 +807,7 @@ export interface Settings {
   keep_awake?: KeepAwakeMode
   /** What happens to finished copies (lib/copies CleanupMode). The daemon returns "ask" when never chosen. */
   worktree_cleanup?: 'off' | 'ask' | 'auto'
-  /** What Caprock's Claude Code status line shows. The daemon returns "full" when never chosen; "off" removes Caprock's own statusLine entry. */
+  /** What Caprock's Claude Code status line shows. The daemon returns "full" when never chosen; "hidden" prints nothing but keeps relaying plan limits; "off" removes Caprock's own statusLine entry. */
   statusline_mode?: StatuslineMode
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
@@ -1122,6 +1122,9 @@ export interface StorageReport {
   measuring?: boolean
   error?: string
   reclaimable_bytes: number
+  /** Free pages go back to the disk on their own while Caprock is idle
+   *  (auto_vacuum INCREMENTAL); false until an older database's one VACUUM. */
+  returns_free_space?: boolean
   /** An estimate, and named as one: see 03-contracts.md § Storage. */
   growth_bytes_per_day_est: number
   retention_days: number

@@ -210,9 +210,10 @@ type Config struct {
 	// chosen.
 	WorktreeCleanup string `json:"worktree_cleanup,omitempty"`
 	// StatuslineMode is what Caprock's Claude Code status line shows:
-	// "full", "short" or "off" (StatuslineModes). Empty is "full". The
-	// status line command reads it at render time (ReadStatuslineMode);
-	// "off" also removes Caprock's own statusLine entry from Claude Code's
+	// "full", "short", "hidden" or "off" (StatuslineModes). Empty is
+	// "full". The status line command reads it at render time
+	// (ReadStatuslineMode); "hidden" prints nothing but still forwards the
+	// plan windows to the daemon; "off" also removes Caprock's own statusLine entry from Claude Code's
 	// settings, and choosing again puts it back. Written only once chosen.
 	StatuslineMode string `json:"statusline_mode,omitempty"`
 }
@@ -221,15 +222,19 @@ type Config struct {
 const (
 	StatuslineFull  = "full"
 	StatuslineShort = "short"
-	StatuslineOff   = "off"
+	// StatuslineHidden keeps Caprock's entry registered and its plan-window
+	// relay running, and prints nothing: Claude Code then draws no status
+	// line row (.ai/03-contracts.md § Statusline).
+	StatuslineHidden = "hidden"
+	StatuslineOff    = "off"
 )
 
 // StatuslineModes lists the accepted values of StatuslineMode.
-var StatuslineModes = []string{StatuslineFull, StatuslineShort, StatuslineOff}
+var StatuslineModes = []string{StatuslineFull, StatuslineShort, StatuslineHidden, StatuslineOff}
 
 // ValidStatuslineMode reports whether v is one of StatuslineModes.
 func ValidStatuslineMode(v string) bool {
-	return v == StatuslineFull || v == StatuslineShort || v == StatuslineOff
+	return v == StatuslineFull || v == StatuslineShort || v == StatuslineHidden || v == StatuslineOff
 }
 
 // NormalizeStatusline is the effective mode: anything unknown or unset is
@@ -239,6 +244,13 @@ func NormalizeStatusline(v string) string {
 		return v
 	}
 	return StatuslineFull
+}
+
+// StatuslineRegistered reports whether Caprock's statusLine entry belongs in
+// Claude Code's settings under mode v: every mode but Off. Hidden keeps it —
+// the entry is what relays the plan windows, even when it prints nothing.
+func StatuslineRegistered(v string) bool {
+	return NormalizeStatusline(v) != StatuslineOff
 }
 
 // ReadStatuslineMode is the status line command's read of its one setting,

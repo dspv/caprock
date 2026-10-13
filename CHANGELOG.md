@@ -28,6 +28,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   `merged_at` and its diff size (`additions`, `deletions`,
   `changed_files`, `commits`); `…/ci?pr=N` and the rerun and update-branch
   routes also take a pull request of the repository that the tab listed.
+- **app:** Settings → *Status line* → *Hidden*: no line under Claude Code, so the
+  row goes, while your plan limits keep reaching Caprock's cockpit and Cost
+  screen — which *Off* stops. Recommended on the page, never chosen for
+  you; Full stays the default.
 - **app:** the cockpit's headline says how it compares with your own usual —
   *▲ 38%*, *≈ usual*, *▼ 55%*, *▲ 4.5×* left of *burn rate ▾* — against
   your median active session-hour (burn rate), your median session (cost,
@@ -46,6 +50,41 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **dashboard:** the Now screen refreshes once, not once per section. Its
+  sections ask on one shared tick, at most every 2 s (all-time figures every
+  10 s); sections asking the same question share one request; a folded or
+  scrolled-away section asks nothing until it is seen again; and the live
+  pulse and activity feed no longer read every track's history again each
+  time two busy sessions swap places. Under a steady stream of hook events
+  (five sessions, ten events a second) the open screen went from about 650–770
+  requests a minute to about 100, and the daemon's CPU for it on a copy of a
+  2.2 GB database from 36 s to 17 s per minute (measured 2026-10-13). A screen
+  opened after events had arrived no longer asks every question twice.
+- **app:** the hot-process flame on a sidebar row or tab draws again only
+  when what it says changes: every row's mark redrew on each 5 s resources
+  sample, hot or not. It stays a static mark — no animation to pause.
+- **daemon:** the database gets smaller on its own. While Caprock is idle
+  (nothing recorded for 30 minutes) it replaces the screenshots and files
+  that events stored before 0.113.0 still hold as base64 with the marker new
+  events get, *[image image/png 512 KB not stored]*, a few hundred events at
+  a time; the text of every event is kept whole. It then compacts the
+  database once — only with free disk of about twice its size, rolled back
+  unchanged if anything is recorded meanwhile — and from then on gives free
+  space back to the disk as it appears, including what a retention period
+  deletes. New databases do that from the start. On a copy of a 2.2 GB
+  database (2026-10-13): 4,181 events rewritten, 750 MB of payload removed in
+  79 s, compaction to 1.4 GB in 21 s; a writer committing every 20 ms
+  throughout never failed. `caprock doctor` lists each step under *done on
+  its own*; the Storage panel no longer tells you to stop Caprock and run
+  VACUUM, and `GET /v1/storage` carries `returns_free_space`.
+- **app:** the sidebar lists only active sessions under a project: what is
+  working, looping or waiting on you, plus the tab in front so it always
+  has its row. Idle sessions, rows you hid, files and quiet shells sit
+  behind one faint *+N more* (its tooltip says what it holds, hidden rows
+  included); opened, the hidden ones come last with an eye to show them
+  again. The separate *N hidden · show* line is gone, *+N more* no longer
+  stays open across restarts, and a project with nothing active is just
+  its own line, its arrow listing what is in it.
 - **app:** Spend moves up in the cockpit, from after the plan windows to
   directly under *Now*. Folded, it is a strip of the chart's own bars and
   three figures, the chart's metric first, instead of a faint sentence a
