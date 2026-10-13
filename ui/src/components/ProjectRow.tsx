@@ -3,26 +3,25 @@
  * 2026-10-09: "which one is active, which to pick, unclear", translated).
  *
  * A project is one line: its name, a green dot with how many sessions and
- * shells run in it, and how many wait on you. Under it, only what is active
- * (owner, 2026-10-13, FB-053: "way too much stuff, I want only active
- * sessions there", translated; isActiveRow): what works, loops or waits on
- * you, and the tab in front, so the tab in front always has its row. It
- * replaced one row per project (2026-10-12), which still listed an idle
- * session when nothing else was going on. Everything else (idle sessions,
- * files, quiet shells, rows hidden by hand) folds into one quiet line, "+N
- * more", whose tooltip says what it holds ("2 idle · 1 shell · 1 hidden").
- * It opens in place and stays open for this window's life
- * (`caprock-sidebar-more-open`, sessionStorage). A project with nothing
- * active that is not current is its row alone: its chevron opens the same
- * list, and a click makes it current, which brings its last tab to the
- * front. The chevron of an active project folds it by hand. Rows keep the
- * strip's order for tabs (same names, lib/tablabels.ts), then, muted, what
- * Caprock started that still runs with no tab, a click opening it as a tab;
- * then what another terminal started, a click opening it in a tab of its
- * own, read-only (components/ObservePane.tsx). Ended sessions are not
- * listed. A status change adds or removes a row and never reorders the
- * others. The tab in front is the one highlighted row in the whole sidebar.
- * The strip's ⌘1–⌘9 reach every tab, shown or folded.
+ * shells run in it, and how many wait on you. Under it, every agent session
+ * of the project, working, waiting or idle (owner, 2026-10-13, translated:
+ * "show ONLY the agent sessions there; let the user hide or close them
+ * himself; but don't move anything, don't add any of these extra
+ * elements"): its tabs and its live sessions with no tab, one row each.
+ * Shells and files have no row (they are in the tab strip), an ended
+ * session drops off, and one hidden by hand is gone until it is shown
+ * again from the sidebar's More… (or it next waits on you). It replaced,
+ * the same day, only the active rows with the rest behind "+N more", and
+ * before that one row per project. Rows sit in a fixed order
+ * (lib/rowOrder.ts): by hand, then by when the session started, so picking
+ * a row, opening it as a tab or a new event never moves it, and a new
+ * session lands last. A row is dragged, or moved with ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift
+ * off macOS), to set the order. Rows keep the strip's names
+ * (lib/tablabels.ts). A muted row runs with no tab; a click opens it as a
+ * tab, or one started in another terminal read-only
+ * (components/ObservePane.tsx). The tab in front is the one highlighted row
+ * in the whole sidebar. The project row carries its ⌘1–⌘9 key; ⌥⌘↑ ⌥⌘↓
+ * walk its rows (sessionStops). The chevron folds a project by hand.
  *
  * What waits on you is marked on its own row — an amber edge and tint, and
  * the word "waiting" (or "asks", at a permission prompt) — since the
@@ -48,7 +47,7 @@
  * its tabs close and it stays, its dot green. Delete and Backspace close
  * nothing.
  */
-import { Fragment, memo, useMemo, useState } from 'react'
+import { Fragment, memo, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import type { SessionSummary } from '@/lib/api'
 import { rowHidden, type HiddenSessions, type ProjectNode, type SessionNode } from '@/lib/sidebar'
 import type { Dot } from '@/lib/sidebar'
@@ -57,11 +56,15 @@ import type { Tab } from '@/lib/tabs'
 import type { TabLabel } from '@/lib/tablabels'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { fmtUSD } from '@/lib/format'
-import { AgentGlyph } from './AgentMarks'
+import { agentGlyphLabel } from './AgentMarks'
+import { projectHue } from './TerminalTabs'
 import { CloseIcon, EyeIcon, EyeOffIcon, FileIcon, MoreIcon, PlusIcon, StopIcon, TerminalIcon } from './AppIcons'
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
 import { keys, tabKey } from '@/lib/appkeys'
+import { isMacPlatform } from '@/lib/appmode'
+import { moveKey, orderRows, tabRowKey } from '@/lib/rowOrder'
+import { namingLeaf } from '@/lib/tabs'
 import { HotMark } from './ResourceMeter'
 
 const DOT_CLASS: Record<Dot, string> = {
@@ -140,8 +143,12 @@ export interface ProjectRowProps {
   current: boolean
   /** Its tabs, in strip order, with their labels; drawn when the project is open (current, or something runs or waits in it). */
   tabs: readonly Tab[]
-  /** Each tab's jump-key digit in the strip, if it has one. */
-  tabDigits?: ReadonlyMap<string, number | null>
+  /** The project's ⌘1–⌘9 digit, by its place in the sidebar; none past the ninth. */
+  digit?: number
+  /** The rows' order set by hand, as row keys (lib/rowOrder.ts). */
+  rowOrder?: readonly string[]
+  /** Keeps a new order set by hand: every row's key, top to bottom. Absent, rows cannot be moved. */
+  onReorder?: (projectId: string, keys: string[]) => void
   labels: ReadonlyMap<string, TabLabel>
   /** The tab in front, when the terminals are on screen. */
   activeTabId?: string
@@ -173,7 +180,9 @@ export const ProjectRow = memo(function ProjectRow({
   node,
   current,
   tabs,
-  tabDigits,
+  digit,
+  rowOrder,
+  onReorder,
   labels,
   activeTabId,
   onSelect,
@@ -192,45 +201,15 @@ export const ProjectRow = memo(function ProjectRow({
 }: ProjectRowProps) {
   const p = node.project
   const id = p.id
-  // Under a project, only what is active (owner, 2026-10-13, FB-053: "way
-  // too much stuff, I want only active sessions there", translated): what
-  // works, loops or waits on you, and the tab in front, so the tab in front
-  // always has its row. Idle, hidden and the rest go behind one quiet line,
-  // "+N more"; a project with nothing active is its row alone, and its
-  // chevron (or a click, which makes it current) shows the rest.
-  // The chevron folds an active project by hand (owner, 2026-10-11: "a
-  // button to fold, hide"); folded, what waits on you still shows under it.
+  // Every agent session of the project, in one fixed order (see above);
+  // folded by hand, only what waits on you, so a fold never hides it.
   const [folded, setFolded] = useFolded(id)
   const live = useMemo(() => liveWithoutTab(node, hiddenSessions), [node, hiddenSessions])
   const nodes = useMemo(() => new Map(node.worktrees.flatMap((w) => w.sessions).map((x) => [x.session.session_id, x] as const)), [node])
-  const nodeOfTab = (t: Tab) => { const sid = labels.get(t.id)?.session?.session_id; return sid ? nodes.get(sid) : undefined }
-  // Everything listable under the project, in the list's order: its tabs as
-  // the strip has them, then what Caprock started with no tab, then what
-  // another terminal started (waiting first). Hidden rows are apart.
-  const items = useMemo<LeadItem[]>(() => [
-    ...tabs.map((t) => { const l = labels.get(t.id); const sid = l?.session?.session_id; return { key: t.id, tab: t, label: l, node: sid ? nodes.get(sid) : undefined } }),
-    ...[...live.own, ...live.waitingOther, ...live.other].map((x) => ({ key: x.session.session_id, node: x })),
-  ], [tabs, labels, nodes, live])
-  const front = activeTabId && tabs.some((t) => t.id === activeTabId) ? activeTabId : undefined
-  const shown = items.filter((it) => isActiveRow(it, front))
-  const rest = items.filter((it) => !isActiveRow(it, front))
-  const restCount = rest.length + live.hidden.length
-  // Nothing active and not the project in front: the project row alone.
-  const quiet = !current && shown.length === 0
-  const [moreOpen, setMoreOpen] = useMoreOpen(id)
-  // A quiet project shown through its chevron: while it stays quiet and on
-  // screen. Picking it, or something in it starting, ends that.
-  const [peek, setPeek] = useState(false)
-  if (peek && !quiet) setPeek(false)
-  const showRest = quiet ? peek : moreOpen
-  const open = quiet ? peek && restCount > 0 : !folded
-  // Folded by hand while something in it waits on you: what waits still
-  // shows under it, and nothing else. A fold never hides what needs you.
-  const waitingOnly = !quiet && folded && node.waiting > 0
-  const shownTabs = waitingOnly ? tabs.filter((t) => !!nodeOfTab(t)?.waiting) : tabs
-  const ownRows = waitingOnly ? live.own.filter((x) => x.waiting) : live.own
-  const [rowMenu, setRowMenu] = useState<RowMenuState | null>(null)
-  const [stopping, setStopping] = useState<{ sessionId: string; what: StopWhat } | null>(null)
+  const items = useMemo(() => agentRows(tabs, labels, nodes, live, rowOrder, hiddenSessions).map((it) => ({ ...it, projectId: id, ownBranch: p.branch })), [tabs, labels, nodes, live, rowOrder, hiddenSessions, id, p.branch])
+  const open = !folded
+  const waitingOnly = folded && node.waiting > 0
+  const visible = waitingOnly ? items.filter((it) => !!it.node?.waiting) : items
   // Other folders is a group, not a folder: no menu, no new agent in it.
   const isGroup = p.root === ''
   const menu = !isGroup && onMenu
@@ -240,107 +219,16 @@ export const ProjectRow = memo(function ProjectRow({
     const r = el.getBoundingClientRect()
     onMenu?.(id, { x: r.right - 4, y: r.bottom + 2 }, el)
   }
-  const closeRowMenu = () => {
-    const from = rowMenu?.from
-    setRowMenu(null)
-    if (from?.isConnected) requestAnimationFrame(() => { if (document.activeElement === document.body) from.focus() })
-  }
-  const confirm = (sessionId: string) => stopping?.sessionId === sessionId && (
-    <li className="py-1 pl-[22px] pr-1">
-      <StopConfirm sessionId={stopping.sessionId} what={stopping.what} onDone={() => setStopping(null)} />
-    </li>
-  )
-  const hideSession = onHideSession ? (sid: string) => () => onHideSession(sid, true) : undefined
-  const liveRow = (x: SessionNode, rowHiddenNow = false) => (
-    <LiveRow
-      item={x}
-      ownBranch={p.branch}
-      hidden={rowHiddenNow}
-      onOpen={() => onOpenLive?.(x.session, id)}
-      onStop={x.session.owned ? () => setStopping({ sessionId: x.session.session_id, what: x.isShell ? 'shell' : 'session' }) : undefined}
-      onHide={rowHiddenNow ? undefined : hideSession?.(x.session.session_id)}
-      onShow={rowHiddenNow && onHideSession ? () => onHideSession(x.session.session_id, false) : undefined}
-      onMenu={(at, from) => setRowMenu({ ...at, from, kind: 'live', id: x.session.session_id })}
-    />
-  )
-  const itemRow = (it: LeadItem) => {
-    if (!it.tab) return <>{liveRow(it.node!)}{confirm(it.node!.session.session_id)}</>
-    const t = it.tab
-    const l = it.label
-    return (
-      <>
-        <TabRow
-          tab={t}
-          label={l}
-          waiting={!!it.node?.waiting}
-          asks={!!it.node?.asks}
-          digit={tabDigits?.get(t.id) ?? undefined}
-          active={t.id === activeTabId}
-          onOpen={() => onActivateTab(t.id)}
-          onClose={onCloseTab ? () => onCloseTab(t.id) : undefined}
-          onMenu={(at, from) => setRowMenu({ ...at, from, kind: 'tab', id: t.id })}
-        />
-        {l?.session && confirm(l.session.session_id)}
-      </>
-    )
-  }
-  const rowMenuContent = () => {
-    if (!rowMenu) return null
-    if (rowMenu.kind === 'tab') {
-      const tab = tabs.find((t) => t.id === rowMenu.id)
-      if (!tab) return null
-      const l = labels.get(tab.id)
-      const stop = stoppable(l)
-      const sid = l?.session?.session_id
-      const hideable = !!onHideSession && !!sid && l?.file === undefined && !l?.isShell && l?.session?.status !== 'ended'
-      return (
-        <MenuBox at={rowMenu} label={`${l?.title ?? tab.title}: tab actions`} width={232} onClose={closeRowMenu}>
-          {onCloseTab && <MenuItem icon={<CloseIcon size={14} />} label={closeWord(l?.file !== undefined, !!l?.isShell)} hint={keys('⌘W')} onClick={() => { setRowMenu(null); onCloseTab(tab.id) }} />}
-          {onCloseTab && hideable && (
-            <MenuItem icon={<EyeOffIcon size={14} />} label="Close tab and hide from the list" onClick={() => { setRowMenu(null); onCloseTab(tab.id); onHideSession!(sid!, true) }} />
-          )}
-          {stop && <MenuItem icon={<StopIcon size={14} />} label={stopLabel(stop.what)} tone="danger" onClick={() => { setRowMenu(null); setStopping(stop) }} />}
-        </MenuBox>
-      )
-    }
-    const x = nodes.get(rowMenu.id)
-    if (!x) return null
-    const isHidden = rowHidden(x, hiddenSessions)
-    const canStop = x.session.owned && x.session.status !== 'ended'
-    return (
-      <MenuBox at={rowMenu} label={`${x.title}: actions`} width={232} onClose={closeRowMenu}>
-        <MenuItem icon={<PlusIcon size={14} />} label={x.session.owned ? 'Open as a tab' : 'Open in a tab, read-only'} onClick={() => { setRowMenu(null); onOpenLive?.(x.session, id) }} />
-        {onHideSession && (isHidden
-          ? <MenuItem icon={<EyeIcon size={14} />} label="Show in the list again" onClick={() => { setRowMenu(null); onHideSession(x.session.session_id, false) }} />
-          : <MenuItem icon={<EyeOffIcon size={14} />} label="Hide from the list" onClick={() => { setRowMenu(null); onHideSession(x.session.session_id, true) }} />)}
-        {canStop && <MenuItem icon={<StopIcon size={14} />} label={stopLabel(x.isShell ? 'shell' : 'session')} tone="danger" onClick={() => { setRowMenu(null); setStopping({ sessionId: x.session.session_id, what: x.isShell ? 'shell' : 'session' }) }} />}
-      </MenuBox>
-    )
-  }
   return (
     <li className="grid grid-cols-1" data-project={id}>
       <div className="group relative">
-        {/* Active, the chevron folds it by hand. Quiet (nothing active, not
-          * in front), it shows what is behind it: the one way in besides
-          * picking the project. Quiet and empty, there is nothing to show. */}
-        {quiet ? restCount > 0 && (
-          <button
-            type="button"
-            data-project-fold
-            aria-label={`${peek ? 'Fold' : 'Show'} ${p.name}: ${restCount} not active`}
-            title={`${moreBreakdown(rest, live.hidden.length)}. ${peek ? 'Fold them back.' : 'Show them here.'} Nothing in it is active.`}
-            aria-expanded={peek}
-            onClick={() => setPeek(!peek)}
-            className="absolute left-0 top-1/2 z-[1] flex h-[26px] w-[20px] -translate-y-1/2 items-center justify-center rounded-[5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
-          >
-            <Chevron open={open} />
-          </button>
-        ) : (
+        {/* The chevron folds it by hand: one line, what waits still listed. */}
+        {items.length > 0 && (
           <button
             type="button"
             data-project-fold
             aria-label={`${folded ? 'Unfold' : 'Fold'} ${p.name}`}
-            title={folded ? 'Unfold: show what is active in it' : 'Fold: one line, what runs in it keeps running'}
+            title={folded ? 'Unfold: list its sessions' : 'Fold: one line, what runs in it keeps running'}
             aria-expanded={!folded}
             onClick={() => setFolded(!folded)}
             className="absolute left-0 top-1/2 z-[1] flex h-[26px] w-[20px] -translate-y-1/2 items-center justify-center rounded-[5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
@@ -353,7 +241,7 @@ export const ProjectRow = memo(function ProjectRow({
           data-nav-row
           data-project-row={id}
           data-current={current || undefined}
-          aria-expanded={open}
+          aria-expanded={items.length > 0 ? open : undefined}
           onClick={() => onSelect(id)}
           onContextMenu={menu
             ? (e) => { e.preventDefault(); onMenu(id, { x: e.clientX, y: e.clientY }, e.currentTarget) }
@@ -364,7 +252,7 @@ export const ProjectRow = memo(function ProjectRow({
           aria-haspopup={menu ? 'menu' : undefined}
           aria-keyshortcuts={menu ? 'Shift+F10' : undefined}
           className={`app-row flex h-[32px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] text-left ${isGroup ? 'pr-2 pointer-coarse:pr-[36px]' : 'pr-9 pointer-coarse:pr-[64px]'}`}
-          title={isGroup ? 'Sessions in folders you have not added as a project. Add one with Add project.' : p.repos?.length ? `${p.root} · ${p.repos.map((r) => r.name).join(', ')}` : p.root || p.name}
+          title={`${isGroup ? 'Sessions in folders you have not added as a project. Add one with Add project.' : p.repos?.length ? `${p.root} · ${p.repos.map((r) => r.name).join(', ')}` : p.root || p.name}${digit ? ` — ${keys(`⌘${digit}`)}` : ''}`}
         >
           <span className={`min-w-0 flex-1 truncate text-[13px] ${current ? 'font-semibold text-fg' : 'text-fg-muted'}`}>
             {p.name}
@@ -377,6 +265,9 @@ export const ProjectRow = memo(function ProjectRow({
               <span aria-hidden className="inline-block h-[6px] w-[6px] rounded-full bg-ok" />
               {node.live}
             </span>
+          )}
+          {digit && (
+            <kbd data-project-key aria-hidden className={`app-kbd-key shrink-0 group-hover:invisible ${current ? '' : 'opacity-70'}`}>{tabKey(digit)}</kbd>
           )}
           {node.waiting > 0 && (
             <span
@@ -439,53 +330,209 @@ export const ProjectRow = memo(function ProjectRow({
           </span>
         )}
       </div>
-      {(open || waitingOnly) && (
-        <ul className="grid grid-cols-1 pb-1" role="group" aria-label={`${p.name}: open tabs`}>
-          {current && !waitingOnly && items.length === 0 && live.hidden.length === 0 && (
-            <li className="flex h-[30px] items-center pl-[22px] pr-2 text-[12px] text-fg-faint">No tabs open.</li>
-          )}
-          {waitingOnly ? (
-            <>
-              {shownTabs.map((t) => <Fragment key={t.id}>{itemRow({ key: t.id, tab: t, label: labels.get(t.id), node: nodeOfTab(t) })}</Fragment>)}
-              {ownRows.map((x) => <Fragment key={x.session.session_id}>{itemRow({ key: x.session.session_id, node: x })}</Fragment>)}
-              {live.waitingOther.map((x) => <Fragment key={x.session.session_id}>{itemRow({ key: x.session.session_id, node: x })}</Fragment>)}
-            </>
-          ) : (
-            <>
-              {/* What is active, in the list's order: a state change adds or
-                * removes a row and never reorders the others. */}
-              {shown.map((it) => <Fragment key={it.key}>{itemRow(it)}</Fragment>)}
-              {/* The rest (idle, hidden by hand, files, quiet shells) behind
-                * one quiet line (owner, 2026-10-13, FB-053). A quiet project
-                * has no line: its chevron is the way in. */}
-              {!quiet && restCount > 0 && (
-                <li>
-                  <button
-                    type="button"
-                    data-nav-row
-                    data-more-rows
-                    aria-expanded={moreOpen}
-                    onClick={() => setMoreOpen(!moreOpen)}
-                    className="app-row flex h-[26px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] pr-2 text-left text-[12px] text-fg-faint"
-                    title={`${moreBreakdown(rest, live.hidden.length)}. ${moreOpen ? 'Fold them back under this line.' : 'Show them here.'} Nothing in them is active.`}
-                  >
-                    <span className="min-w-0 flex-1 truncate"><span className="num">+{restCount}</span> more</span>
-                    <span className={`inline-block transition-transform motion-reduce:transition-none ${moreOpen ? 'rotate-90' : ''}`} aria-hidden>›</span>
-                  </button>
-                </li>
-              )}
-              {showRest && rest.map((it) => <Fragment key={it.key}>{itemRow(it)}</Fragment>)}
-              {/* Hidden by hand, never lost: last in the fold, muted, each
-                * with the open eye that brings it back; no line of their own. */}
-              {showRest && live.hidden.map((x) => <Fragment key={x.session.session_id}>{liveRow(x, true)}{confirm(x.session.session_id)}</Fragment>)}
-            </>
-          )}
-        </ul>
+      {visible.length > 0 && (open || waitingOnly) && (
+        <SessionList
+          items={items}
+          visible={visible}
+          orderId={id}
+          ariaLabel={`${p.name}: sessions`}
+          activeTabId={activeTabId}
+          onActivateTab={onActivateTab}
+          onCloseTab={onCloseTab}
+          onOpenLive={onOpenLive}
+          onHideSession={onHideSession}
+          onReorder={onReorder}
+        />
       )}
-      {rowMenuContent()}
     </li>
   )
 })
+
+/** A session row with the project it belongs to: what SessionList draws. */
+export type SidebarRow = LeadItem & {
+  projectId: string
+  /** The project's own branch: a row names its branch only when it differs. */
+  ownBranch?: string
+  /** Drawn after the title in the flat list (a dot in the project's hue and its name). */
+  projectName?: string
+}
+
+/**
+ * Session rows, one line each (28px), in their fixed order: under a
+ * project, or every project's in one flat list (the sidebar's *Group by
+ * project* off). A row opens on a click, closes its tab or hides itself
+ * from its ×, has a menu (right-click, Shift+F10) with Stop…, and moves by
+ * hand: dragged onto another (pointer events, as the strip's tabs, since
+ * the desktop shell takes HTML5 drops) or with ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift off
+ * macOS) on a focused row; the order is kept under `orderId`.
+ */
+export function SessionList({ items, visible = items, orderId, ariaLabel, activeTabId, onActivateTab, onCloseTab, onOpenLive, onHideSession, onReorder, digits }: {
+  items: readonly SidebarRow[]
+  /** The rows on screen; `items` when absent. Moving keeps the whole order. */
+  visible?: readonly SidebarRow[]
+  /** Where the order set by hand is kept: a project's id, or '*' for the flat list. */
+  orderId: string
+  ariaLabel: string
+  activeTabId?: string
+  onActivateTab: (tabId: string) => void
+  onCloseTab?: (tabId: string) => void
+  onOpenLive?: (s: SessionSummary, projectId: string) => void
+  onHideSession?: (sessionId: string, hide: boolean) => void
+  onReorder?: (orderId: string, keys: string[]) => void
+  /** Each row's ⌘ digit, by row key (the flat list: ⌘N is the Nth session). */
+  digits?: ReadonlyMap<string, number>
+}) {
+  const allKeys = useMemo(() => items.map(leadKey), [items])
+  const [dragKey, setDragKey] = useState<string | null>(null)
+  const dragged = useRef(false)
+  const reorder = (key: string, target: string, where: 'before' | 'after') => {
+    const next = moveKey(allKeys, key, target, where)
+    if (next.join('\n') !== allKeys.join('\n')) onReorder?.(orderId, next)
+  }
+  const pressRow = (key: string) => (e: ReactPointerEvent<HTMLElement>) => {
+    if (!onReorder || e.button !== 0 || (e.target as Element).closest('[data-row-actions]')) return
+    const y0 = e.clientY
+    dragged.current = false
+    const onMove = (m: PointerEvent) => {
+      if (!dragged.current && Math.abs(m.clientY - y0) > 4) { dragged.current = true; setDragKey(key) }
+    }
+    const onUp = (u: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      setDragKey(null)
+      if (!dragged.current) return
+      const over = document.elementFromPoint(u.clientX, u.clientY)?.closest<HTMLElement>('[data-row-key]')
+      if (!over || over.dataset.rowProject !== orderId || !over.dataset.rowKey) return
+      reorder(key, over.dataset.rowKey, u.clientY > y0 ? 'after' : 'before')
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+  // The click that ends a drag opens nothing.
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (dragged.current) { dragged.current = false; e.preventDefault(); e.stopPropagation() }
+  }
+  // ⌥⇧↑ ⌥⇧↓ on macOS; Ctrl+Shift off it, where Alt+Shift arrows are the app's (lib/appkeys.ts).
+  const onMoveKey = (e: ReactKeyboardEvent<HTMLElement>) => {
+    const mods = isMacPlatform() ? e.altKey && !e.ctrlKey : e.ctrlKey && !e.altKey
+    if (!onReorder || !mods || !e.shiftKey || e.metaKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
+    const key = (e.target as HTMLElement).closest<HTMLElement>('[data-row-key]')?.dataset.rowKey
+    if (!key) return
+    e.preventDefault()
+    e.stopPropagation()
+    const on = visible.map(leadKey)
+    const at = on.indexOf(key)
+    const to = on[at + (e.key === 'ArrowUp' ? -1 : 1)]
+    if (at < 0 || !to) return
+    reorder(key, to, e.key === 'ArrowUp' ? 'before' : 'after')
+  }
+  const [rowMenu, setRowMenu] = useState<RowMenuState | null>(null)
+  const [stopping, setStopping] = useState<{ sessionId: string; what: StopWhat } | null>(null)
+  const closeRowMenu = () => {
+    const from = rowMenu?.from
+    setRowMenu(null)
+    if (from?.isConnected) requestAnimationFrame(() => { if (document.activeElement === document.body) from.focus() })
+  }
+  const confirm = (sessionId: string) => stopping?.sessionId === sessionId && (
+    <li className="py-1 pl-[22px] pr-1">
+      <StopConfirm sessionId={stopping.sessionId} what={stopping.what} onDone={() => setStopping(null)} />
+    </li>
+  )
+  const itemRow = (it: SidebarRow) => {
+    const k = leadKey(it)
+    const drag: RowDrag = { rowKey: k, projectId: orderId, dragging: dragKey === k, onPress: onReorder ? pressRow(k) : undefined }
+    const proj = it.projectName !== undefined ? { name: it.projectName, id: it.projectId } : undefined
+    const digit = digits?.get(k)
+    if (!it.tab) {
+      const x = it.node!
+      return (
+        <>
+          <LiveRow
+            item={x}
+            drag={drag}
+            project={proj}
+            digit={digit}
+            ownBranch={it.ownBranch}
+            onOpen={() => onOpenLive?.(x.session, it.projectId)}
+            onStop={x.session.owned ? () => setStopping({ sessionId: x.session.session_id, what: 'session' }) : undefined}
+            onHide={onHideSession ? () => onHideSession(x.session.session_id, true) : undefined}
+            onMenu={(at, from) => setRowMenu({ ...at, from, kind: 'live', id: k })}
+          />
+          {confirm(x.session.session_id)}
+        </>
+      )
+    }
+    const t = it.tab
+    const l = it.label
+    return (
+      <>
+        <TabRow
+          drag={drag}
+          project={proj}
+          digit={digit}
+          tab={t}
+          label={l}
+          waiting={!!it.node?.waiting}
+          asks={!!it.node?.asks}
+          active={t.id === activeTabId}
+          onOpen={() => onActivateTab(t.id)}
+          onClose={onCloseTab ? () => onCloseTab(t.id) : undefined}
+          onMenu={(at, from) => setRowMenu({ ...at, from, kind: 'tab', id: k })}
+        />
+        {l?.session && confirm(l.session.session_id)}
+      </>
+    )
+  }
+  const rowMenuContent = () => {
+    if (!rowMenu) return null
+    const it = items.find((x) => leadKey(x) === rowMenu.id)
+    if (!it) return null
+    if (it.tab) {
+      const tab = it.tab
+      const l = it.label
+      const stop = stoppable(l)
+      const sid = l?.session?.session_id
+      const hideable = !!onHideSession && !!sid && l?.file === undefined && !l?.isShell && l?.session?.status !== 'ended'
+      return (
+        <MenuBox at={rowMenu} label={`${l?.title ?? tab.title}: tab actions`} width={232} onClose={closeRowMenu}>
+          {onCloseTab && <MenuItem icon={<CloseIcon size={14} />} label={closeWord(l?.file !== undefined, !!l?.isShell)} hint={keys('⌘W')} onClick={() => { setRowMenu(null); onCloseTab(tab.id) }} />}
+          {onCloseTab && hideable && (
+            <MenuItem icon={<EyeOffIcon size={14} />} label="Close tab and hide from the list" onClick={() => { setRowMenu(null); onCloseTab(tab.id); onHideSession!(sid!, true) }} />
+          )}
+          {stop && <MenuItem icon={<StopIcon size={14} />} label={stopLabel(stop.what)} tone="danger" onClick={() => { setRowMenu(null); setStopping(stop) }} />}
+        </MenuBox>
+      )
+    }
+    const x = it.node!
+    const canStop = x.session.owned && x.session.status !== 'ended'
+    return (
+      <MenuBox at={rowMenu} label={`${x.title}: actions`} width={232} onClose={closeRowMenu}>
+        <MenuItem icon={<PlusIcon size={14} />} label={x.session.owned ? 'Open as a tab' : 'Open in a tab, read-only'} onClick={() => { setRowMenu(null); onOpenLive?.(x.session, it.projectId) }} />
+        {onHideSession && <MenuItem icon={<EyeOffIcon size={14} />} label="Hide from the list" onClick={() => { setRowMenu(null); onHideSession(x.session.session_id, true) }} />}
+        {canStop && <MenuItem icon={<StopIcon size={14} />} label={stopLabel('session')} tone="danger" onClick={() => { setRowMenu(null); setStopping({ sessionId: x.session.session_id, what: 'session' }) }} />}
+      </MenuBox>
+    )
+  }
+  return (
+    <>
+      <ul className="grid grid-cols-1 pb-1" role="group" aria-label={ariaLabel} onKeyDown={onMoveKey} onClickCapture={onClickCapture}>
+        {/* Every agent session in its fixed place (lib/rowOrder.ts). */}
+        {visible.map((it) => <Fragment key={leadKey(it)}>{itemRow(it)}</Fragment>)}
+      </ul>
+      {rowMenuContent()}
+    </>
+  )
+}
+
+/** A flat row's project: a dot in its hue and its name, dimmed, after the title. */
+function ProjectMark({ project }: { project: { name: string; id: string } }) {
+  return (
+    <span data-row-project-mark className="flex min-w-0 max-w-[9ch] shrink items-center gap-1 text-[11px] text-fg-faint" title={project.name}>
+      <span aria-hidden className="h-[6px] w-[6px] shrink-0 rounded-full" style={{ background: `hsl(${projectHue(project.id)} 42% 56%)` }} />
+      <span className="truncate">{project.name}</span>
+    </span>
+  )
+}
 
 /** What a tab's Stop… would stop: its session, when Caprock started it and it still runs (rule 7). */
 function stoppable(l?: TabLabel): { sessionId: string; what: StopWhat } | undefined {
@@ -519,9 +566,30 @@ function menuHandlers(onMenu: (at: MenuAt, from: HTMLElement | null) => void) {
 }
 
 /** One open tab under the current project: what the strip calls it, its dot, its state, its branch when not the project's own. */
-function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, digit }: {
+/** A row's place for moving it by hand: its key, its project, and the press that starts a drag. */
+interface RowDrag {
+  rowKey: string
+  projectId: string
+  dragging: boolean
+  onPress?: (e: ReactPointerEvent<HTMLElement>) => void
+}
+
+/** The attributes that make a row's <li> a drop target and a drag handle. */
+function dragProps(drag?: RowDrag) {
+  if (!drag) return {}
+  return {
+    'data-row-key': drag.rowKey,
+    'data-row-project': drag.projectId,
+    'data-dragging': drag.dragging || undefined,
+    onPointerDown: drag.onPress,
+  }
+}
+
+function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, drag, project, digit }: {
   tab: Tab
   label?: TabLabel
+  drag?: RowDrag
+  project?: { name: string; id: string }
   digit?: number
   active: boolean
   /** Waits on you now: the amber mark (lib/sidebar.ts SessionNode.waiting). */
@@ -537,7 +605,7 @@ function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, di
   const closeTip = closeTitle(isFile, !!label?.isShell, !!label?.chat)
   const n = onClose ? 1 : 0
   return (
-    <li className="group/row relative">
+    <li className={`group/row relative ${drag?.dragging ? 'opacity-60' : ''}`} {...dragProps(drag)}>
       <button
         type="button"
         data-nav-row
@@ -548,23 +616,15 @@ function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, di
         aria-keyshortcuts="Shift+F10"
         onClick={onOpen}
         {...menuHandlers(onMenu)}
-        className={`app-row flex h-[30px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] text-left ${active ? PAD_ALWAYS[n] : PAD_ON_HOVER[n]}`}
-        title={label?.file ?? (label?.branch ? `${title} · ${label.branch}` : title)}
+        className={`app-row flex h-[28px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] text-left ${active ? PAD_ALWAYS[n] : PAD_ON_HOVER[n]}`}
+        title={[label?.file ?? title, label?.session ? agentGlyphLabel(label.session.agent, label.isShell) : '', label?.branch, project?.name].filter(Boolean).join(' · ')}
       >
-        {isFile ? (
-          <FileIcon size={12} className="text-fg-faint" />
-        ) : (
-          <>
-            <StatusDot dot={label?.dot ?? 'idle'} />
-            <AgentGlyph agent={label?.session?.agent} shell={label?.isShell} />
-          </>
-        )}
-        <TitleAndBranch title={title} branch={label?.branch} className={active || waiting ? 'text-fg' : 'text-fg-muted'} />
+        {isFile ? <FileIcon size={12} className="text-fg-faint" /> : <StatusDot dot={label?.dot ?? 'idle'} />}
+        <TitleAndBranch title={title} branch={project ? undefined : label?.branch} className={active || waiting ? 'text-fg' : 'text-fg-muted'} />
+        {project && <ProjectMark project={project} />}
         {!isFile && <HotMark sessionId={label?.session?.session_id} />}
         {word && <StateWord dot={word} asks={asks} />}
-        {digit && (
-          <kbd data-tab-key aria-hidden className={`app-kbd-key shrink-0 ${onClose ? 'group-hover/row:hidden group-focus-within/row:hidden pointer-coarse:hidden' : ''} ${active && onClose ? 'hidden' : ''}`}>{tabKey(digit)}</kbd>
-        )}
+        {digit && <kbd data-row-key-digit aria-hidden className={`app-kbd-sm shrink-0 ${onClose ? 'group-hover/row:hidden group-focus-within/row:hidden' : ''} ${active && onClose ? 'hidden' : ''}`}>{tabKey(digit)}</kbd>}
       </button>
       {onClose && (
         <span data-row-actions className={`absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 ${active ? 'flex' : ACTIONS_ON_HOVER}`}>
@@ -615,8 +675,11 @@ export function liveWithoutTab(node: ProjectNode, hiddenSessions?: HiddenSession
  * × hides it from the list, ■ stops it when Caprock started it, and a hidden
  * one shown on demand has the open eye that brings it back.
  */
-function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onShow, onMenu }: {
+function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onShow, onMenu, drag, project, digit }: {
   item: SessionNode
+  drag?: RowDrag
+  project?: { name: string; id: string }
+  digit?: number
   ownBranch?: string
   /** Hidden by hand and shown on demand last inside "+N more". */
   hidden?: boolean
@@ -634,7 +697,7 @@ function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onSh
   const canStop = !!onStop && s.owned && s.status !== 'ended'
   const n = (onHide || onShow ? 1 : 0) + (canStop ? 1 : 0)
   return (
-    <li className="group/row relative">
+    <li className={`group/row relative ${drag?.dragging ? 'opacity-60' : ''}`} {...dragProps(drag)}>
       <button
         type="button"
         data-nav-row
@@ -645,20 +708,21 @@ function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onSh
         aria-keyshortcuts="Shift+F10"
         onClick={onOpen}
         {...menuHandlers(onMenu)}
-        className={`app-row flex h-[30px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] text-left ${item.waiting ? '' : hidden ? 'opacity-55' : 'opacity-75'} ${PAD_ON_HOVER[n]}`}
-        title={`${title}${branch ? ` · ${branch}` : ''}: ${s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}`}
+        className={`app-row flex h-[28px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] text-left ${item.waiting ? '' : hidden ? 'opacity-55' : 'opacity-75'} ${PAD_ON_HOVER[n]}`}
+        title={`${[title, agentGlyphLabel(s.agent, item.isShell), branch, project?.name].filter(Boolean).join(' · ')}: ${s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}`}
       >
         <StatusDot dot={item.dot} />
-        <AgentGlyph agent={s.agent} shell={item.isShell} />
-        <TitleAndBranch title={title} branch={branch} className={item.waiting ? 'text-fg' : 'text-fg-faint'} />
+        <TitleAndBranch title={title} branch={project ? undefined : branch} className={item.waiting ? 'text-fg' : 'text-fg-faint'} />
+        {project && <ProjectMark project={project} />}
         <HotMark sessionId={s.session_id} />
         {!item.isShell && <StateWord dot={item.dot} asks={item.asks} />}
+        {digit && <kbd data-row-key-digit aria-hidden className="app-kbd-sm shrink-0 group-hover/row:hidden group-focus-within/row:hidden">{tabKey(digit)}</kbd>}
       </button>
       {n > 0 && (
         <span data-row-actions className={`absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 ${ACTIONS_ON_HOVER}`}>
           {onShow && <RowAction label={`Show ${title} in the list again`} onClick={onShow}><EyeIcon size={14} /></RowAction>}
           {onHide && (
-            <RowAction label={`Hide ${title} from the list`} title={`Hide from the list: ${s.owned ? 'it keeps running' : 'nothing is sent to it'}; it stays under “+N more” with an eye to show it again`} onClick={onHide}>
+            <RowAction label={`Hide ${title} from the list`} title={`Hide from the list: ${s.owned ? 'it keeps running' : 'nothing is sent to it'}; More… at the end of the list shows it again`} onClick={onHide}>
               <CloseIcon size={14} />
             </RowAction>
           )}
@@ -710,15 +774,6 @@ function RowAction({ label, title, onClick, popup, children }: { label: string; 
 }
 
 const FOLDED_KEY = 'caprock-sidebar-folded'
-/**
- * Projects whose "+N more" is open: for this window's life only
- * (sessionStorage), so what was asked for once does not stay in the list
- * for good (owner, 2026-10-13, FB-053). It was kept in localStorage until
- * then; that copy is dropped once, below.
- */
-export const MORE_KEY = 'caprock-sidebar-more-open'
-try { localStorage.removeItem(MORE_KEY) } catch { /* nothing kept */ }
-
 function readIds(store: Storage, key: string): Set<string> {
   try { return new Set(JSON.parse(store.getItem(key) ?? '[]') as string[]) } catch { return new Set() }
 }
@@ -742,11 +797,6 @@ function useFolded(id: string): [boolean, (v: boolean) => void] {
   return useIdFlag(() => localStorage, FOLDED_KEY, id)
 }
 
-/** A project's "+N more" open, for this window's life. */
-function useMoreOpen(id: string): [boolean, (v: boolean) => void] {
-  return useIdFlag(() => sessionStorage, MORE_KEY, id)
-}
-
 /** A row under a project: a tab (with the session it shows, if any), or a live session or shell with no tab. */
 export interface LeadItem {
   key: string
@@ -755,43 +805,71 @@ export interface LeadItem {
   node?: SessionNode
 }
 
-/**
- * Whether a row shows under its project rather than behind "+N more" (owner,
- * 2026-10-13, FB-053: "I want only active sessions there", translated): the
- * tab in front, so it always has its row; what waits on you now (a turn
- * older than 12 h is not waiting: lib/sidebar.ts); what works or loops,
- * an agent or a shell running a program. Idle and ended sessions, files and
- * quiet shells are not. Hidden rows are never items (liveWithoutTab).
- */
-export function isActiveRow(it: LeadItem, activeTabId?: string): boolean {
-  if (it.tab && it.tab.id === activeTabId) return true
-  if (it.label?.file !== undefined) return false
-  if (it.node) return !!it.node.waiting || it.node.dot === 'working' || it.node.dot === 'looping'
-  const dot = it.label?.dot
-  return dot === 'working' || dot === 'looping' || (dot === 'waiting' && it.label?.session?.status !== 'ended')
+/** A row's place key: the session it shows, tab or not (lib/rowOrder.ts tabRowKey). */
+export function leadKey(it: LeadItem): string {
+  return it.tab ? tabRowKey(it.tab) : it.key
 }
 
-/** What "+N more" folds, for its tooltip: "2 idle · 1 shell · 1 hidden". */
-export function moreBreakdown(rest: readonly LeadItem[], hidden = 0): string {
-  const counts = new Map<string, number>()
-  const add = (k: string) => counts.set(k, (counts.get(k) ?? 0) + 1)
-  for (const it of rest) {
-    if (it.label?.file !== undefined) add('file')
-    else if (it.node?.isShell || it.label?.isShell) add('shell')
-    else {
-      // A turn that ended long ago no longer waits: it reads as idle.
-      const dot = it.node?.dot ?? it.label?.dot ?? 'idle'
-      add(dot === 'waiting' ? 'idle' : STATE_WORD[dot])
-    }
-  }
-  const order = ['working', 'looping', 'idle', 'done', 'shell', 'file']
-  const parts = order.filter((k) => counts.has(k)).map((k) => {
-    const n = counts.get(k)!
-    return k === 'shell' || k === 'file' ? `${n} ${k}${n > 1 ? 's' : ''}` : `${n} ${k}`
+/** When a row's session started; unknown (a file, a tab before the list answers) sorts last. */
+function leadStarted(it: LeadItem): number | undefined {
+  return it.node?.session.started_at ?? it.label?.session?.started_at
+}
+
+/** One stop of ⌥⌘↑ ⌥⌘↓: a tab, or a live session with no tab, opened when reached. */
+export interface SessionStop {
+  key: string
+  tabId?: string
+  session?: SessionSummary
+}
+
+/**
+ * The rows under a project, in their fixed order: every agent session —
+ * its tabs (not shells, not files, not an ended session's) and its live
+ * sessions with no tab — leaving out what was hidden by hand.
+ */
+function agentRows(tabs: readonly Tab[], labels: ReadonlyMap<string, TabLabel>, nodes: ReadonlyMap<string, SessionNode>, live: LiveWithoutTab, rowOrder?: readonly string[], hiddenSessions?: HiddenSessions): LeadItem[] {
+  const tabRows = tabs.flatMap((t): LeadItem[] => {
+    const kind = namingLeaf(t).target.kind
+    if (kind !== 'session' && kind !== 'observe') return []
+    const l = labels.get(t.id)
+    if (l?.isShell || l?.file !== undefined || l?.session?.status === 'ended') return []
+    const sid = l?.session?.session_id
+    const n = sid ? nodes.get(sid) : undefined
+    if (n && rowHidden(n, hiddenSessions)) return []
+    return [{ key: t.id, tab: t, label: l, node: n }]
   })
-  if (hidden > 0) parts.push(`${hidden} hidden`)
-  const others = rest.filter((it) => !it.tab && it.node && !it.node.session.owned).length
-  return parts.join(' · ') + (others ? ` (${others} from other terminals)` : '')
+  const liveRows = [...live.own, ...live.waitingOther, ...live.other].filter((x) => !x.isShell).map((x) => ({ key: x.session.session_id, node: x }))
+  return orderRows([...tabRows, ...liveRows], leadKey, leadStarted, rowOrder)
+}
+
+/** A project's session rows as the sidebar lists them, with the project on each. */
+export function projectRows(node: ProjectNode, tabs: readonly Tab[], labels: ReadonlyMap<string, TabLabel>, rowOrder?: readonly string[], hiddenSessions?: HiddenSessions): SidebarRow[] {
+  const nodes = new Map(node.worktrees.flatMap((w) => w.sessions).map((x) => [x.session.session_id, x] as const))
+  return agentRows(tabs, labels, nodes, liveWithoutTab(node, hiddenSessions), rowOrder, hiddenSessions)
+    .map((it) => ({ ...it, projectId: node.project.id, ownBranch: node.project.branch }))
+}
+
+/** The order the flat list keeps by hand, among the per-project ones (lib/rowOrder.ts). */
+export const FLAT_ORDER = '*'
+
+/**
+ * Every listed project's session rows as one list (*Group by project* off):
+ * the order set by hand in the flat list, then when each session started.
+ */
+export function flatRows(projects: readonly ProjectNode[], tabs: readonly Tab[], labels: ReadonlyMap<string, TabLabel>, rowOrders: Readonly<Record<string, readonly string[]>>, hiddenSessions?: HiddenSessions): SidebarRow[] {
+  const all = projects.flatMap((n) => projectRows(n, tabs.filter((t) => t.projectId === n.project.id), labels, undefined, hiddenSessions)
+    .map((it) => ({ ...it, projectName: n.project.name })))
+  return orderRows(all, leadKey, leadStarted, rowOrders[FLAT_ORDER])
+}
+
+/**
+ * The rows ⌥⌘↑ ⌥⌘↓ walk under a project: the rows the sidebar lists, in
+ * the same order (a session with no tab opens in one when reached).
+ */
+export function sessionStops(node: ProjectNode | undefined, tabs: readonly Tab[], labels: ReadonlyMap<string, TabLabel>, rowOrder?: readonly string[], hiddenSessions?: HiddenSessions): SessionStop[] {
+  const nodes = new Map((node?.worktrees ?? []).flatMap((w) => w.sessions).map((x) => [x.session.session_id, x] as const))
+  const live: LiveWithoutTab = node ? liveWithoutTab(node, hiddenSessions) : { own: [], waitingOther: [], other: [], hidden: [] }
+  return agentRows(tabs, labels, nodes, live, rowOrder, hiddenSessions).map((it) => (it.tab ? { key: leadKey(it), tabId: it.tab.id } : { key: it.key, session: it.node!.session }))
 }
 
 function Chevron({ open }: { open: boolean }) {

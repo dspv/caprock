@@ -10,14 +10,17 @@
   --accent-text: #1c1c1a;
   color-scheme: light dark;
 }
+/* Dark is the dashboard's default dark palette, Dark Pastel (ui/src/design/
+   tokens.css), so the window does not go from amber to dusty blue once the
+   daemon answers. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1c1c1a;
-    --text: #ecebe6;
-    --muted: #9c9a92;
+    --bg: #1c1d1c;
+    --text: #e3e1db;
+    --muted: #97958e;
     --line: rgba(255, 255, 255, 0.12);
     --field: rgba(255, 255, 255, 0.06);
-    --accent: #ffad5a;
+    --accent: #a3b6c9;
   }
 }
 * { box-sizing: border-box; }

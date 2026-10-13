@@ -246,7 +246,7 @@ describe('the app workspace', () => {
     const appRow = () => [...document.querySelectorAll<HTMLElement>('[data-project-row]')].find((b) => b.textContent?.startsWith('app'))!
     const otherRow = () => [...document.querySelectorAll<HTMLElement>('[data-project-row]')].find((b) => b.textContent?.startsWith('other'))!
     // The sidebar's list under the current project is the strip, word for word.
-    const list = screen.getByRole('group', { name: 'app: open tabs' })
+    const list = screen.getByRole('group', { name: 'app: sessions' })
     expect(within(list).getByText('Fix the login bug')).toBeInTheDocument()
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)
     // Another project: its empty state, the app's tab still in the strip with
@@ -255,15 +255,16 @@ describe('the app workspace', () => {
     // runs stays expanded (owner, 2026-10-11).
     fireEvent.click(otherRow())
     await waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'false'))
-    expect(within(screen.getByRole('tab', { name: /Fix the login bug/ })).getByText('app')).toBeInTheDocument()
+    // Named by its session; its project in the name read out and the tooltip.
+    expect(screen.getByRole('tab', { name: 'Fix the login bug · app' }).getAttribute('title')).toContain('· app')
     expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
-    expect(within(screen.getByRole('group', { name: 'app: open tabs' })).getByText('Fix the login bug')).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'app: sessions' })).getByText('Fix the login bug')).toBeInTheDocument()
     expect(within(appRow()).getByLabelText(/running/)).toBeInTheDocument()
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(0)
     // One click back on the tab, and its project is current again.
     fireEvent.click(screen.getByRole('tab', { name: /Fix the login bug/ }))
     expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('group', { name: 'app: open tabs' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'app: sessions' })).toBeInTheDocument()
   })
 
   it('opens the dashboard as a tab beside the terminals, and one click comes back', async () => {
@@ -443,14 +444,86 @@ describe('the app workspace', () => {
     expect(spawned.signals).toEqual([])
   })
 
-  it('switches tabs with ⌘1–9 and keeps every terminal mounted', async () => {
+  // Owner, 2026-10-13 (translated): "top I see 1,2,3; on the left I see 4,2
+  // — why?" One numbering: with the sessions in one flat list, ⌘N is the
+  // Nth session, the row and its tab show the same N, and the strip follows
+  // the sidebar's order whatever order the tabs were opened in.
+  it('numbers the flat list and the strip alike: ⌘N opens the Nth session, and the strip keeps the sidebar\'s order', async () => {
+    localStorage.setItem('caprock.app.sidebar-grouped', 'off')
+    render(<AppShell />)
+    const list = await screen.findByRole('group', { name: 'Sessions' })
+    await waitFor(() => expect(list.querySelector('[data-live-row="agent-2"]')).toBeTruthy())
+    const rowDigit = (sel: string) => list.querySelector(`${sel} [data-row-key-digit]`)?.textContent
+    expect(rowDigit('[data-live-row="agent-1"]')).toBe('⌘1')
+    expect(rowDigit('[data-live-row="agent-2"]')).toBe('⌘2')
+    await cmd('2')
+    await screen.findByRole('tab', { name: /Waiting one/ })
+    expect(screen.getByTestId('pane-agent-2')).toHaveAttribute('data-active', 'true')
+    await cmd('1')
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
+    // Opened second, listed first: the strip follows the sidebar.
+    await waitFor(() => expect(screen.getAllByRole('tab').filter((t) => t.hasAttribute('data-tab-index')).map((t) => t.getAttribute('aria-label'))).toEqual(['Fix the login bug · app', 'Waiting one · app']))
+    // Each tab carries the digit of its row.
+    const tabKeyOf = (name: RegExp) => screen.getByRole('tab', { name }).querySelector('[data-tab-key]')?.textContent
+    expect(tabKeyOf(/Fix the login bug/)).toBe('⌘1')
+    expect(tabKeyOf(/Waiting one/)).toBe('⌘2')
+    const rowOf = (title: string) => [...list.querySelectorAll('[data-tab-row]')].find((r) => r.textContent?.includes(title))!
+    expect(rowOf('Fix the login bug').querySelector('[data-row-key-digit]')!.textContent).toBe('⌘1')
+    expect(rowOf('Waiting one').querySelector('[data-row-key-digit]')!.textContent).toBe('⌘2')
+  })
+
+  // Owner, 2026-10-13 (translated): "Command+digit focuses that project …
+  // and there I can Command+Up/Down to move". ⌘1–⌘9 are projects in the
+  // sidebar's order; ⌥⌘↑ ⌥⌘↓ walk the project's sessions and ⌥⌘← ⌥⌘→ the
+  // projects, round the end, every terminal staying mounted.
+  it('brings a project with ⌘1–9, walks its sessions with ⌥⌘↑ ⌥⌘↓ and the projects with ⌥⌘← ⌥⌘→', async () => {
     await renderApp()
     await openFromPalette('Fix the login bug')
     fireEvent.click(waitingRow('Waiting one'))
     await screen.findAllByRole('tab')
+    const arrow = (key: string, mods: Partial<KeyboardEventInit> = { metaKey: true, altKey: true }) =>
+      act(() => { fireEvent.keyDown(window, { key, code: key, ...mods }) })
+    const front = () => ['agent-1', 'agent-2'].filter((id) => screen.getByTestId(`pane-${id}`).getAttribute('data-active') === 'true')
+    const currentProject = () => document.querySelector('[data-project-row][data-current]')?.textContent ?? ''
+    expect(front()).toEqual(['agent-2'])
+    await arrow('ArrowUp')
+    expect(front()).toEqual(['agent-1'])
+    await arrow('ArrowDown')
+    expect(front()).toEqual(['agent-2'])
+    // Round the end.
+    await arrow('ArrowDown')
+    expect(front()).toEqual(['agent-1'])
+    // The second project, then back: the first brings its tab last in front.
+    expect(currentProject()).toMatch(/^app/)
+    await cmd('2')
+    expect(currentProject()).toMatch(/^other/)
     await cmd('1')
-    expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
-    expect(screen.getByTestId('pane-agent-2')).toHaveAttribute('data-active', 'false')
+    expect(currentProject()).toMatch(/^app/)
+    expect(front()).toEqual(['agent-1'])
+    await arrow('ArrowRight')
+    expect(currentProject()).toMatch(/^other/)
+    await arrow('ArrowRight')
+    expect(currentProject()).toMatch(/^app/)
+    await arrow('ArrowLeft')
+    expect(currentProject()).toMatch(/^other/)
+    await cmd('1')
+    // ⌥← ⌥→ and ⌘↑ ⌘↓ are the terminal's: not taken, nothing moves.
+    for (const [key, mods] of [['ArrowLeft', { altKey: true }], ['ArrowRight', { altKey: true }], ['ArrowUp', { metaKey: true }], ['ArrowDown', { metaKey: true }]] as const) {
+      const ev = new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true, ...mods })
+      act(() => { window.dispatchEvent(ev) })
+      expect(ev.defaultPrevented, key).toBe(false)
+    }
+    expect(front()).toEqual(['agent-1'])
+    // In a text field the chord selects there: the field keeps it.
+    const field = document.createElement('input')
+    document.body.append(field)
+    field.focus()
+    const inField = new KeyboardEvent('keydown', { key: 'ArrowDown', code: 'ArrowDown', metaKey: true, altKey: true, bubbles: true, cancelable: true })
+    act(() => { field.dispatchEvent(inField) })
+    expect(inField.defaultPrevented).toBe(false)
+    expect(front()).toEqual(['agent-1'])
+    field.remove()
   })
 
   it('restores its tabs after a reload', async () => {

@@ -7,31 +7,38 @@
  * its project, and the Today strip's Waiting count opens the first of them.
  *
  * The projects are an accordion (owner, 2026-10-09: "which one is active,
- * which to pick, unclear", translated): under each project only what is
- * active — works, loops, waits on you, or is the tab in front — and the rest
- * behind one "+N more" (owner, 2026-10-13, FB-053; ProjectRow decides it).
- * A project with nothing active is one line. Picking another
- * project makes it current; the chevron folds one by hand. The one
- * highlighted row in the sidebar is the tab in front.
+ * which to pick, unclear", translated): under each project every agent
+ * session it has, working, waiting or idle, and nothing else — no shells,
+ * files or "+N more" line (owner, 2026-10-13; ProjectRow decides it). The
+ * one highlighted row in the sidebar is the tab in front.
  *
  * Keyboard: Tab reaches every row; ↑ and ↓ move between rows, Enter opens
- * what the row names.
+ * what the row names, ⌥⇧↑ ⌥⇧↓ move a session row within its project. ⌘1–⌘9
+ * bring a project to the front by its place here, the key drawn on its row;
+ * ⌥⌘← ⌥⌘→ step to the project before or after, ⌥⌘↑ ⌥⌘↓ to the session
+ * above or below in the project in front (lib/appkeys.ts, AppShell).
+ *
+ * Rows keep their places (owner, 2026-10-13): projects by pin, the order set
+ * by hand and name; the rows under a project by the order set by hand (drag,
+ * or ⌥⇧↑ ⌥⇧↓) and then when each session started (lib/rowOrder.ts).
  *
  * The list stays short: projects in play (running, waiting, a tab open,
- * pinned, current) come first; the rest fold under More projects, and the
- * ones hidden by hand under Hidden, both closed by default. Hidden wins over
- * running and over being in front: the project in front stays in view under
- * Hidden's heading, its tabs open; one comes back out only when it needs you
- * again (lib/sidebar.ts projectHidden).
- * A project's × closes it: its tabs close and it moves under Hidden, unless
- * something still runs in it (components/ProjectRow.tsx). Each project's ⋯
- * menu (or a right-click, or Shift+F10 on its row) hides it, closes its tabs,
- * opens it in an editor or removes it from Caprock. Every row under a
- * project can be closed or hidden from its own ×, and hidden rows come back
- * from the end of "+N more" (components/ProjectRow.tsx).
+ * pinned, current) are listed; the rest, the projects hidden by hand and
+ * the session rows hidden by hand wait behind one quiet More… at the end of
+ * the list, which opens them as one list (owner, 2026-10-13, translated:
+ * "'More projects' and 'Hidden' I'd hide in one button like 'More…', and
+ * it opens a list right away"): a project there opens on a click, a hidden
+ * one or a hidden session comes back. Hidden wins over running; the project
+ * in front stays listed even while hidden, and one comes back by itself
+ * when it needs you again (lib/sidebar.ts projectHidden).
+ * A project's × closes it: its tabs close and it moves under More…,
+ * unless something still runs in it (components/ProjectRow.tsx). Each
+ * project's ⋯ menu (or a right-click, or Shift+F10 on its row) hides it,
+ * closes its tabs, opens it in an editor or removes it from Caprock. Every
+ * session row can be closed or hidden from its own ×.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { groupProjects, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
+import { groupProjects, numberedProjects, rowHidden, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
 import type { Tab } from '@/lib/tabs'
 import type { SettingsSection } from '@/lib/router'
 import type { TabLabel } from '@/lib/tablabels'
@@ -43,12 +50,14 @@ import { useNow } from '@/lib/useNow'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { THEMES } from '@/lib/themes'
 import { ThemeMenu } from './ThemePicker'
-import { keepsProject, ProjectRow } from './ProjectRow'
+import { FLAT_ORDER, flatRows, keepsProject, ProjectRow, SessionList } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
+import { MenuBox, MenuItem, MenuSeparator, type MenuAt } from './RowMenu'
 import { TodayStrip } from './TodayStrip'
 import { FeedbackButton } from './Feedback'
-import { CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
+import { CaprockMark, ChatIcon, ChevronIcon, DashboardIcon, EyeIcon, FolderIcon, FolderPlusIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from './AppIcons'
 import { keys, tabDigit } from '@/lib/appkeys'
+import { loadRowOrders, ROW_ORDER_EVENT, saveRowOrder, tabRowKey, type RowOrders } from '@/lib/rowOrder'
 
 /** Project ids hidden by hand, with when: this browser's. An older plain list of ids still reads. */
 export const HIDDEN_KEY = 'caprock.app.hidden-projects'
@@ -60,7 +69,7 @@ const HIDDEN_SESSIONS_MAX = 300
 export const FOLDS_KEY = 'caprock.app.project-folds'
 
 /** `footer`: the bottom block (feedback, Dashboard, Settings) collapsed to one row of icons. */
-type Fold = 'more' | 'hidden' | 'footer'
+type Fold = 'footer'
 
 function loadIds(key: string): Set<string> {
   try {
@@ -75,7 +84,7 @@ function saveIds(key: string, ids: ReadonlySet<string>) {
   try { localStorage.setItem(key, JSON.stringify([...ids])) } catch { /* not kept */ }
 }
 
-function loadHiddenProjects(): Map<string, number> {
+export function loadHiddenProjects(): Map<string, number> {
   try {
     const v = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? 'null') as unknown
     // Before 2026-10-13 a plain list, with no time: hidden as of now, so a
@@ -91,11 +100,15 @@ function loadHiddenProjects(): Map<string, number> {
   }
 }
 
+/** Said on window when a project is hidden or shown again, so ⌘1–⌘9 count again (AppShell). */
+export const HIDDEN_PROJECTS_EVENT = 'caprock:hidden-projects'
+
 function saveHiddenProjects(m: HiddenProjects) {
   try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(Object.fromEntries(m))) } catch { /* not kept */ }
+  window.dispatchEvent(new Event(HIDDEN_PROJECTS_EVENT))
 }
 
-function loadHiddenSessions(): Map<string, number> {
+export function loadHiddenSessions(): Map<string, number> {
   try {
     const v = JSON.parse(localStorage.getItem(HIDDEN_SESSIONS_KEY) ?? 'null') as unknown
     if (!v || typeof v !== 'object' || Array.isArray(v)) return new Map()
@@ -108,6 +121,7 @@ function loadHiddenSessions(): Map<string, number> {
 function saveHiddenSessions(m: ReadonlyMap<string, number>) {
   const kept = [...m].sort((a, b) => b[1] - a[1]).slice(0, HIDDEN_SESSIONS_MAX)
   try { localStorage.setItem(HIDDEN_SESSIONS_KEY, JSON.stringify(Object.fromEntries(kept))) } catch { /* not kept */ }
+  window.dispatchEvent(new Event(HIDDEN_PROJECTS_EVENT))
 }
 
 /** Says a session row was hidden from outside the sidebar (a watched session's tab, ObservePane). */
@@ -181,6 +195,12 @@ export interface SidebarProps {
   onRemoveProject?: (projectId: string) => Promise<void> | void
   /** Opens Clean up copies for a repository (components/CopiesSheet). */
   onCleanCopies?: (projectId: string) => void
+  /**
+   * Sessions under their projects (the default), or every session in one
+   * flat list; AppShell keeps it per viewer and numbers ⌘1–⌘9 to match.
+   */
+  grouped?: boolean
+  onToggleGrouped?: () => void
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -204,9 +224,43 @@ export function Sidebar(props: SidebarProps) {
     window.addEventListener(HIDE_SESSION_EVENT, reload)
     return () => window.removeEventListener(HIDE_SESSION_EVENT, reload)
   }, [])
+  // The rows' order set by hand, per project (lib/rowOrder.ts).
+  const [rowOrders, setRowOrders] = useState<RowOrders>(() => loadRowOrders())
+  useEffect(() => {
+    const reload = () => setRowOrders(loadRowOrders())
+    window.addEventListener(ROW_ORDER_EVENT, reload)
+    return () => window.removeEventListener(ROW_ORDER_EVENT, reload)
+  }, [])
+  const onReorder = useCallback((projectId: string, keys: string[]) => saveRowOrder(projectId, keys), [])
   const allTabs = props.tabs
   const tabbed = useMemo(() => new Set((allTabs ?? []).map((t) => t.projectId)), [allTabs])
   const groups = useMemo(() => groupProjects(model.projects, { hidden, activeProjectId, tabbed }), [model.projects, hidden, activeProjectId, tabbed])
+  // The project in front is listed even while hidden or among the rest.
+  const listed = useMemo(() => {
+    const front = [...groups.more, ...groups.hidden].find((n) => n.project.id === activeProjectId)
+    return front ? [...groups.shown, front] : groups.shown
+  }, [groups, activeProjectId])
+  const moreProjects = groups.more.filter((n) => n.project.id !== activeProjectId)
+  const hiddenProjects = groups.hidden.filter((n) => n.project.id !== activeProjectId)
+  // Session rows hidden by hand that are still live: More… shows them again.
+  const hiddenRows = useMemo(() => model.projects.flatMap((n) => n.worktrees.flatMap((w) => w.sessions)
+    .filter((x) => !x.isShell && x.session.status !== 'ended' && rowHidden(x, hiddenSessions))
+    .map((x) => ({ x, project: n.project.name }))), [model.projects, hiddenSessions])
+  const moreCount = moreProjects.length + hiddenProjects.length + hiddenRows.length
+  const moreTitle = [
+    moreProjects.length ? `${moreProjects.length} more ${moreProjects.length === 1 ? 'project' : 'projects'}` : '',
+    hiddenProjects.length + hiddenRows.length ? `${hiddenProjects.length + hiddenRows.length} hidden` : '',
+  ].filter(Boolean).join(' · ')
+  const [moreAt, setMoreAt] = useState<MenuAt | null>(null)
+  // Group by project off: every listed project's sessions as one list,
+  // ⌘1–⌘9 the sessions by place (owner, 2026-10-13, translated: "make a
+  // switch like 'group by projects' or not … that frees lots of room").
+  const grouped = props.grouped ?? true
+  const flat = useMemo(
+    () => (grouped ? [] : flatRows(listed, allTabs ?? [], props.tabLabels ?? new Map(), rowOrders, hiddenSessions)),
+    [grouped, listed, allTabs, props.tabLabels, rowOrders, hiddenSessions],
+  )
+  const flatDigits = useMemo(() => new Map(flat.map((it, i) => [it.tab ? tabRowKeyOf(it) : it.key, tabDigit(i, flat.length)] as const).filter((e): e is [string, number] => e[1] !== null)), [flat])
   const real = model.projects.filter((n) => n.project.root !== '')
   const projectCount = real.length
   const busyCount = real.filter((n) => n.live > 0 || n.waiting > 0).length
@@ -221,12 +275,12 @@ export function Sidebar(props: SidebarProps) {
     }
     return m
   }, [allTabs])
-  // Each tab's jump key, as the strip draws it (⌘1–⌘8, ⌘9 the last): the
-  // sidebar shows the same key on the same tab (owner, 2026-10-11).
-  const tabDigits = useMemo(() => {
-    const list = allTabs ?? []
-    return new Map(list.map((t, i) => [t.id, tabDigit(i, list.length)] as const))
-  }, [allTabs])
+  // Each project's jump key, ⌘1–⌘8 by its place and ⌘9 the last, drawn on
+  // its row (owner, 2026-10-13); the strip draws it on the tab it brings.
+  const projectDigits = useMemo(() => {
+    const ids = numberedProjects(groups)
+    return new Map(ids.map((id, i) => [id, tabDigit(i, ids.length)] as const))
+  }, [groups])
   const noLabels = useMemo(() => new Map<string, TabLabel>(), [])
   const noTabs = useMemo<Tab[]>(() => [], [])
   const now = useNow(30_000)
@@ -304,7 +358,9 @@ export function Sidebar(props: SidebarProps) {
         node={n}
         current={current}
         tabs={tabsByProject.get(n.project.id) ?? noTabs}
-        tabDigits={tabDigits}
+        digit={grouped ? projectDigits.get(n.project.id) ?? undefined : undefined}
+        rowOrder={rowOrders[n.project.id]}
+        onReorder={onReorder}
         labels={props.tabLabels ?? noLabels}
         activeTabId={props.dashboardActive ? undefined : props.activeTabId}
         onSelect={props.onSelectProject}
@@ -409,9 +465,24 @@ export function Sidebar(props: SidebarProps) {
 
         {/* How many, and how many have something running, so the heading
           * says something (owner, 2026-10-11: "nothing on the right"). */}
-        <SectionHead label="Projects" action={projectCount > 0 ? (
-          <span className="num text-[11.5px] text-fg-faint" title={`${projectCount} ${projectCount === 1 ? 'project' : 'projects'}, ${busyCount} with something running`}>
-            {busyCount > 0 && <><span aria-hidden className="mr-1 inline-block h-[6px] w-[6px] rounded-full bg-ok align-middle" />{busyCount} of </>}{projectCount}
+        <SectionHead label={grouped ? 'Projects' : 'Sessions'} action={projectCount > 0 ? (
+          <span className="flex items-center gap-1">
+            <span className="num text-[11.5px] text-fg-faint" title={`${projectCount} ${projectCount === 1 ? 'project' : 'projects'}, ${busyCount} with something running`}>
+              {busyCount > 0 && <><span aria-hidden className="mr-1 inline-block h-[6px] w-[6px] rounded-full bg-ok align-middle" />{busyCount} of </>}{projectCount}
+            </span>
+            {props.onToggleGrouped && (
+              <button
+                type="button"
+                data-group-toggle
+                aria-pressed={grouped}
+                aria-label="Group by project"
+                title={grouped ? 'Group by project: on. Turn off for one list of every session.' : 'Group by project: off. Turn on to list sessions under their projects.'}
+                onClick={props.onToggleGrouped}
+                className={`flex h-[20px] w-[20px] items-center justify-center rounded-[5px] hover:bg-[var(--app-row-hover)] ${grouped ? 'text-fg-muted' : 'text-fg-faint'}`}
+              >
+                <FolderIcon size={13} />
+              </button>
+            )}
           </span>
         ) : undefined} />
         {model.projects.length === 0 ? (
@@ -422,12 +493,38 @@ export function Sidebar(props: SidebarProps) {
           </div>
         ) : (
           <>
-            <ul className="grid grid-cols-1 gap-px">{groups.shown.map(row)}</ul>
-            <Fold label="More projects" title="Nothing running and no tab open" items={groups.more} open={folds.has('more')} onToggle={() => toggleFold('more')} row={row} />
-            {/* The project in front stays in view under Hidden even while the fold
-              * is closed: hiding it moves it there, its tabs open, rather than
-              * leaving it where it was or taking it off the screen. */}
-            <Fold label="Hidden" title="Hidden by hand; one comes back when an agent there asks or finishes a turn" items={groups.hidden} open={folds.has('hidden')} keep={activeProjectId} onToggle={() => toggleFold('hidden')} row={row} />
+            {grouped ? <ul className="grid grid-cols-1 gap-px">{listed.map(row)}</ul> : flat.length > 0 ? (
+              <SessionList
+                items={flat}
+                orderId={FLAT_ORDER}
+                ariaLabel="Sessions"
+                digits={flatDigits}
+                activeTabId={props.dashboardActive ? undefined : props.activeTabId}
+                onActivateTab={props.onActivateTab ?? noop}
+                onCloseTab={props.onCloseTab}
+                onOpenLive={props.onOpenLive}
+                onHideSession={onHideSession}
+                onReorder={onReorder}
+              />
+            ) : (
+              <p className="px-2 py-1 text-[12px] text-fg-faint">No agent sessions running.</p>
+            )}
+            {/* One quiet line for the rest: other projects, and what was
+              * hidden by hand (owner, 2026-10-13). */}
+            {moreCount > 0 && (
+              <button
+                type="button"
+                data-nav-row
+                data-sidebar-more
+                aria-haspopup="menu"
+                aria-expanded={!!moreAt}
+                title={moreTitle}
+                onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMoreAt({ x: r.left, y: r.bottom + 2 }) }}
+                className="mt-1 flex h-[26px] w-full items-center rounded-[6px] pl-[22px] pr-2 text-left text-[12px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg-muted"
+              >
+                More…
+              </button>
+            )}
           </>
         )}
         {props.source === 'derived' && model.projects.length > 0 && (
@@ -513,6 +610,20 @@ export function Sidebar(props: SidebarProps) {
         )}
       </div>
       )}
+      {moreAt && (
+        <MenuBox at={moreAt} label="More projects and hidden rows" width={260} onClose={() => setMoreAt(null)}>
+          {moreProjects.map((n) => (
+            <MenuItem key={n.project.id} icon={<FolderIcon size={14} />} label={n.project.name} hint="open" onClick={() => { setMoreAt(null); props.onSelectProject(n.project.id) }} />
+          ))}
+          {moreProjects.length > 0 && hiddenProjects.length + hiddenRows.length > 0 && <MenuSeparator />}
+          {hiddenProjects.map((n) => (
+            <MenuItem key={n.project.id} icon={<EyeIcon size={14} />} label={n.project.name} hint="show" onClick={() => { setMoreAt(null); onHide(n.project.id, false) }} />
+          ))}
+          {hiddenRows.map(({ x, project }) => (
+            <MenuItem key={x.session.session_id} icon={<EyeIcon size={14} />} label={`${x.title} · ${project}`} hint="show" onClick={() => { setMoreAt(null); onHideSession(x.session.session_id, false) }} />
+          ))}
+        </MenuBox>
+      )}
       {menuAt && menuNode && (
         <ProjectMenu
           at={menuAt}
@@ -535,39 +646,6 @@ export function Sidebar(props: SidebarProps) {
 }
 
 /** A folded group at the bottom of the projects: Quiet or Hidden, closed until opened. */
-function Fold({ label, title, items, open, keep, onToggle, row }: {
-  label: string
-  title: string
-  items: ProjectNode[]
-  open: boolean
-  /** A project listed even while closed: the one in front. */
-  keep?: string
-  onToggle: () => void
-  row: (n: ProjectNode) => ReactNode
-}) {
-  if (items.length === 0) return null
-  return (
-    <section aria-label={label} className="mt-1">
-      <button
-        type="button"
-        data-nav-row
-        aria-expanded={open}
-        title={title}
-        onClick={onToggle}
-        className="flex h-[26px] w-full items-center gap-1.5 rounded-[6px] pl-1.5 pr-2 text-left text-[11.5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg-muted"
-      >
-        <span className={`flex h-4 w-4 items-center justify-center transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} aria-hidden>
-          <ChevronIcon size={11} />
-        </span>
-        <span className="font-medium">{label} <span className="num font-normal">· {items.length}</span></span>
-      </button>
-      {open
-        ? <ul className="grid grid-cols-1 gap-px">{items.map(row)}</ul>
-        : keep !== undefined && items.some((n) => n.project.id === keep) && <ul className="grid grid-cols-1 gap-px">{items.filter((n) => n.project.id === keep).map(row)}</ul>}
-    </section>
-  )
-}
-
 function SectionHead({ label, action }: { label: string; action?: ReactNode }) {
   return (
     <div className="flex h-[28px] items-center gap-1.5 px-2 pt-1.5">
@@ -619,4 +697,9 @@ function ThemeButton() {
       {light ? <SunIcon size={15} /> : <MoonIcon size={15} />}
     </ThemeMenu>
   )
+}
+
+/** A row's place key (ProjectRow leadKey): a tab's is the session it is named after. */
+function tabRowKeyOf(it: { tab?: Tab; key: string }): string {
+  return it.tab ? tabRowKey(it.tab) : it.key
 }

@@ -346,6 +346,16 @@ export function groupProjects(
   return out
 }
 
+/**
+ * The projects ⌘1–⌘9 reach, in the order the sidebar lists them: the ones in
+ * play, not those folded under More projects or Hidden, and not Outside
+ * projects, which is a group (owner, 2026-10-13: "Command+digit focuses that
+ * project", translated). ⌥⌘← ⌥⌘→ step through the same list.
+ */
+export function numberedProjects(groups: ProjectGroups): string[] {
+  return groups.shown.filter((n) => n.project.root !== '' && n.project.id !== OTHER_FOLDERS_ID).map((n) => n.project.id)
+}
+
 /** Project ids hidden from the sidebar by hand, and when: this browser's. */
 export type HiddenProjects = ReadonlyMap<string, number>
 
