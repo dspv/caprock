@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 )
 
@@ -26,7 +28,47 @@ func (s *Server) handleFootprint(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusNotImplemented, errors.New("footprint not available"))
 		return
 	}
-	writeJSON(w, http.StatusOK, s.d.Footprint(r.Context()))
+	writeJSON(w, http.StatusOK, s.d.Footprint(r.Context(), r.URL.Query().Get("orphans") == "1"))
+}
+
+// OrphanTarget names one process from the footprint's orphan list: its pid
+// and the start time the list gave, so a pid reused since is not touched.
+type OrphanTarget struct {
+	PID       int32 `json:"pid"`
+	StartedAt int64 `json:"started_at"`
+}
+
+// maxStopTargets bounds one stop request; the list is never near it.
+const maxStopTargets = 256
+
+// handleStopOrphans stops processes the user picked from the doctor's
+// orphan list, each named by pid and start time (ADR-059). The daemon
+// scans again and signals only what that scan lists. Machine only: it is
+// on no paired device's list, so a phone can read the orphans but never
+// stop one.
+func (s *Server) handleStopOrphans(w http.ResponseWriter, r *http.Request) {
+	if s.d.StopOrphans == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("the orphan stop is not available"))
+		return
+	}
+	var body struct {
+		Targets []OrphanTarget `json:"targets"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&body); err != nil {
+		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
+		return
+	}
+	if len(body.Targets) == 0 || len(body.Targets) > maxStopTargets {
+		s.failCode(w, http.StatusBadRequest, fmt.Errorf("targets: name 1 to %d processes", maxStopTargets))
+		return
+	}
+	for _, t := range body.Targets {
+		if t.PID <= 1 || t.StartedAt <= 0 {
+			s.failCode(w, http.StatusBadRequest, fmt.Errorf("target %d: a pid above 1 and its started_at are required", t.PID))
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, s.d.StopOrphans(r.Context(), body.Targets))
 }
 
 // handleReapOrphans stops the orphaned pty-hosts nothing runs in. Not on a

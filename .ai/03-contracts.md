@@ -908,8 +908,14 @@ anything is written to the footprint's `actions` (§ Footprint).
 `GET /v1/footprint` (2026-10-13) says what Caprock itself costs this machine
 — memory, CPU, disk space, the daemon's own disk I/O — and which duplicate or
 orphaned Caprock processes make it cost more, so a person can tell whether a
-slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
-`internal/daemon/footprint.go`, `scan.go`, `footprint_io.go`, `actions.go`.
+slow machine is Caprock or not, and which processes on the machine look
+abandoned (`orphans`, 2026-10-14, [ADR-059](08-decisions.md)). `caprock
+doctor` prints it (§ below). Code: `internal/daemon/footprint.go`,
+`scan.go`, `orphans.go`, `footprint_io.go`, `actions.go`.
+
+`GET /v1/footprint?orphans=1` takes the orphan list now (the open doctor
+panel and `caprock doctor` ask so); without it `orphans` carries the last
+scan's counts and an empty list.
 
 ```json
 {"at": 1791877758573, "daemon_running": true, "data_dir": "…/caprock", "exe": "…/bin/caprock",
@@ -928,6 +934,11 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
  "duplicates": {"daemons": [{"pid": 9, "exe": "/opt/homebrew/bin/caprock", "data_dir": "/tmp/stand", "mem_bytes": 33000000, "started_at": 1791877083828}],
                 "apps": [{"pid": 2, "exe": "/Applications/Caprock.app/Contents/MacOS/caprock-app", "mem_bytes": 45000000, "started_at": 1791877274439}],
                 "other_install_holders": {"count": 11, "orphans": 11, "exes": [{"exe": "/opt/homebrew/bin/caprock", "count": 9}]}},
+ "orphans": {"scanned": true, "at": 1791877758573, "count": 2, "by_kind": {"claude": 1, "mcp_server": 1},
+             "list": [{"pid": 48120, "started_at": 1791784158573, "kind": "claude", "label": "claude",
+                       "exe": "/Users/you/.local/share/claude/versions/2.1.296", "cpu_pct": 0.1, "mem_bytes": 222298112,
+                       "why": "A claude whose session ended (last heard from 25h ago), still running with no terminal."}],
+             "note": "…"},
  "verdicts": [{"level": "warn", "code": "orphans", "text": "11 of 26 terminal holders are orphans …"}],
  "actions": [{"at": 1791877800000, "what": "stopped 11 orphaned terminal holders (11 holding only an idle shell and 11 left by a Caprock whose data directory is deleted)"}],
  "error": "…"}
@@ -964,9 +975,37 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
   and on Windows `<data_dir>/ptyhost/bin`); a holder whose executable has
   since been deleted (an upgraded Homebrew Cellar, a replaced app bundle) is
   named by its absolute `argv[0]`.
+- **`orphans`** is the processes that look abandoned (`internal/daemon/orphans.go`).
+  `scanned` is true when `list` was taken for this answer; otherwise `count`
+  and `by_kind` are the last scan's (the 10-minute sweep after its reap, the
+  doctor's last look, or — the first time a footprint is asked — one taken
+  then) and `list` is empty. `at` is when the counted scan ran. Each item:
+  `pid` and `started_at` (unix ms; together they name the process), `kind`,
+  `label` (the program and, for Caprock, its subcommand — never the rest of
+  argv), `exe`, `data_dir` and `data_dir_gone` (a Caprock daemon's or
+  holder's data directory, when it can be told), `cpu_pct` (absent until
+  two samples; the orphan list has its own sampler, so it never resets the
+  session meter's rates), `mem_bytes`, `why` (a sentence) and `auto` (a
+  holder the sweep stops on its own). Kinds: `caprock_daemon` (another
+  `caprock up --foreground`), `caprock_holder` (a holder whose verdict is an
+  orphan, any install), `caprock_other` (another caprock command whose
+  parent is gone), `claude` (no terminal, and its parent gone, or the
+  latest ended session in `sessions` with its pid started after the process
+  did), `mcp_server` (parent gone, argv or name says MCP), `claude_child`
+  (parent gone, `CLAUDECODE` set in its environment). Parent gone: pid 1, a
+  `systemd`/`init`/`launchd` parent (a Linux subreaper), or — Windows does
+  not reparent — a parent pid not running or naming a younger process. Never
+  listed: a controlling terminal (`e_tdev` on macOS, `tty_nr` on Linux;
+  Windows has none to check), a live session's process tree, another user,
+  younger than two minutes (`ptyhost.OrphanAge`), an executable inside a
+  macOS app bundle, this daemon, the doctor, and the daemon it asked.
+  `note` says what a scan could not look at (Windows; no daemon, so no
+  sessions).
 - **`verdicts`** are `{level: "ok"|"warn", code, text}`, warnings first.
   Warnings: `duplicate_daemon` (another daemon runs), `duplicate_app` (more
   than one app), `orphans` (holders no Caprock will reattach to),
+  `stray_processes` (a `claude`, an MCP server or a Caprock command in
+  `orphans`; only `claude_child` ones are said at level `ok`),
   `database_large` (over 2 GiB), `wal_large` (over 256 MiB),
   `disk_reads_high` (the daemon read over 500 MiB in the last hour) and,
   only in `caprock doctor`'s own report, `daemon_not_running`.
@@ -985,9 +1024,11 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
   VACUUM (or why it did not run or stopped), and each incremental vacuum
   that gave space back (§ Payload compaction and auto-vacuum). Every remedy
   that is safe to apply unattended is applied unattended — nobody else
-  cleans up after a user's Caprock — and said here. Nothing is done about
-  another daemon or a second app (stopping a process Caprock did not start
-  is rule 7's line), and no history is deleted (that is the user's call).
+  cleans up after a user's Caprock — and said here. Nothing is done on its
+  own about another daemon, a second app or any process in `orphans` that
+  is not a reapable holder (stopping a process Caprock did not start is the
+  user's click, below — ADR-059), and no history is deleted (that is the
+  user's call).
 - **The WAL checkpoint.** Once a minute, on the I/O reading's tick, a WAL
   over 256 MiB is folded back with `PRAGMA wal_checkpoint(TRUNCATE)` — what
   SQLite's automatic checkpoint does in small steps, done at once and the
@@ -995,23 +1036,45 @@ slow machine is Caprock or not. `caprock doctor` prints it (§ below). Code:
   attempt is 10 minutes later. Below that, `journal_size_limit` (64 MiB, set
   when the database is opened) has SQLite truncate the WAL back after its own
   checkpoints, so a big transaction does not leave a large file behind.
-- **A paired device may read it**, as it may read `/v1/resources`.
+- **A paired device may read it**, as it may read `/v1/resources`, orphans
+  included; it may not stop one.
 - **Who asks.** The dashboard's status strip, every 10 s while its page is
   visible (04-ui.md § Caprock footprint); each ask counts as looking, so
   the meter samples while it does. The panel's *Copy report* renders this
   object as `caprock doctor`'s text, and `testdata/footprint/doctor.json`
   with `doctor.txt` pin the two renderings to each other.
 
-`caprock doctor [--json] [--data-dir <dir>]` prints the footprint as text —
-memory and CPU, disk, the daemon's disk I/O, duplicates, what was done on
-its own, and the verdicts — or with `--json` the object above, and exits
+`POST /v1/footprint/orphans/stop` `{targets: [{pid, started_at}]}` (1 to 256)
+→ `{stopped: [orphan…], failed: [{pid, error}]}`: the Advanced mode's Stop
+and Stop selected ([ADR-059](08-decisions.md)). The daemon takes the orphan
+list again and stops only a target that list holds with the same
+`started_at`; anything else fails with *not on the doctor's list now*.
+Each is sent SIGTERM, then SIGKILL after 5 s if it is still there (Windows:
+TerminateProcess), the start time checked again before each signal (a pid
+whose start changed fails with *the process changed*); targets are stopped
+at once, in parallel, and only the named pid is signalled, never its
+children. A pid of 1 or below or a missing `started_at` is a 400. Machine
+only — on no paired device's list. Every stop is logged. It is never called
+by the daemon itself, the orchestrator or an agent.
+
+`caprock doctor [--json] [--data-dir <dir>] [--stop <pid>… [--yes]]` prints
+the footprint as text — memory and CPU, disk, the daemon's disk I/O,
+duplicates, orphans, what was done on its own, and the verdicts — or with
+`--json` the object above, and exits
 `1` when any verdict warns, `0` otherwise. With no daemon answering it
 reports what it can read itself (`daemon_running: false`, no `disk_io`, no
 CPU, no `actions`): the data directory's sizes and every Caprock process in
 the process table with its memory; one daemon found there is not a
 duplicate (it is the one that did not answer, or one for another data
 directory). A daemon that answers but predates `/v1/footprint` gets the
-same report with its own memory filled in. User docs:
+same report with its own memory filled in, and the doctor takes the orphan
+list itself (no sessions to check, so a `claude` is judged by its parent
+alone; `note` says so). `--stop <pid>` (repeatable) shows each process from
+the list just taken and asks `[y/N]` (`--yes` skips the question), then
+stops it through the endpoint above — or, with no daemon (or one without
+the endpoint), itself, by the same rule against its own scan; a pid not on
+the list is refused, and the exit status is `1` when any was not stopped.
+User docs:
 [docs/doctor.md](../docs/doctor.md).
 
 #### Keep awake
