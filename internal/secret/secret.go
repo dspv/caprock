@@ -59,6 +59,7 @@ type Runner func(ctx context.Context, args ...string) (stdout string, code int, 
 // never cause. Default only builds one for a Path that exists.
 type Keychain struct {
 	Service string
+	Account string // the item within its service; "" is Account
 	Label   string
 	Path    string // the keychain file, e.g. ~/Library/Keychains/login.keychain-db
 	Run     Runner // nil runs /usr/bin/security
@@ -95,8 +96,15 @@ func (k Keychain) run(ctx context.Context, args ...string) (string, int, error) 
 	return run(ctx, append(args, k.Path)...)
 }
 
+func (k Keychain) account() string {
+	if k.Account == "" {
+		return Account
+	}
+	return k.Account
+}
+
 func (k Keychain) Get(ctx context.Context) (string, error) {
-	out, code, err := k.run(ctx, "find-generic-password", "-s", k.Service, "-a", Account, "-w")
+	out, code, err := k.run(ctx, "find-generic-password", "-s", k.Service, "-a", k.account(), "-w")
 	if code == NotFound {
 		return "", nil
 	}
@@ -107,12 +115,12 @@ func (k Keychain) Get(ctx context.Context) (string, error) {
 }
 
 func (k Keychain) Set(ctx context.Context, value string) error {
-	_, _, err := k.run(ctx, "add-generic-password", "-U", "-s", k.Service, "-a", Account, "-l", k.Label, "-w", value)
+	_, _, err := k.run(ctx, "add-generic-password", "-U", "-s", k.Service, "-a", k.account(), "-l", k.Label, "-w", value)
 	return err
 }
 
 func (k Keychain) Delete(ctx context.Context) error {
-	_, code, err := k.run(ctx, "delete-generic-password", "-s", k.Service, "-a", Account)
+	_, code, err := k.run(ctx, "delete-generic-password", "-s", k.Service, "-a", k.account())
 	if code == NotFound {
 		return nil
 	}

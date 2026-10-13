@@ -607,13 +607,16 @@ had moved; this decision had not.
   only while typing, a locked pill once saved) with an (i) that says where it
   is, what it is sent to, how backups treat it, and how to revoke it.
 
-**Not moved:** Mail's passwords stay on `go-keyring` (`internal/mail/secrets`),
-one item per account and Windows Credential Manager or Secret Service where
-those exist. Folding them into this store would change where existing
-passwords are on Windows and Linux. On macOS `go-keyring` runs `security`
-without naming the keychain file — the call ADR-039 names as the "Keychain
-Not Found" dialog risk, left for its own change. The Gemini key (ADR-025)
-is unchanged here.
+**Mail's passwords, on macOS only, moved after** (2026-10-14): one item
+per account in the login keychain through this store's `security` call,
+which names the keychain file, with Mail's `0600` file
+(`mail-secrets.json`) behind it. The items keep `go-keyring`'s service
+(`dev.caprock.mail`) and account (`account-<id>`), and a value `go-keyring`
+wrote base64-encoded is decoded, so a password saved by an earlier build is
+found where it is. On Windows and Linux they stay on `go-keyring` (Credential
+Manager, Secret Service), so nothing there changes place. The store is built
+on the first password read or write: an unused Mail runs no process. The
+Gemini key (ADR-025) is unchanged here.
 
 ## ADR-025 — Keys go in the interface, stored write-only, because a key nobody can enter is a feature nobody uses
 
