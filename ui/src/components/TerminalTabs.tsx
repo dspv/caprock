@@ -24,7 +24,7 @@ import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { NewMenu, type NewMenuItem } from './NewMenu'
-import { keys, tabKey } from '@/lib/appkeys'
+import { keys, stripKey, tabKey } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { ChatEnded, ChatHint, type ChatPane } from './QuickChatPane'
 
@@ -145,13 +145,16 @@ export function TabStrip(props: TabStripProps) {
               props.dashboard.active ? 'app-tab-front app-tab-dash bg-bg font-medium text-fg' : 'app-tab-dash text-fg hover:text-fg'
             }`}
           >
-            {/* Folded to its icon alone, so the session tabs keep their
-              * names (owner, 2026-10-13, translated: "shrink Dashboard to a
-              * collapsed state"); its name and ⌘0 are in the tooltip, and
-              * its × shows while it is in front. */}
+            {/* Folded to its icon and its key, so the session tabs keep
+              * their names (owner, 2026-10-13, translated: "shrink Dashboard
+              * to a collapsed state"); its name is in the tooltip, and its ×
+              * shows while it is in front. The key is always drawn, as on
+              * every tab (2026-10-14, translated: "I must always see the key
+              * combinations next to the tabs"). */}
             {props.dashboard.label === 'Settings'
               ? <SettingsIcon size={15} className="text-accent" />
               : <DashboardIcon size={15} className="text-accent" />}
+            <kbd data-tab-key aria-hidden className="app-kbd-sm">{stripKey(props.dashboard.label === 'Settings' ? ',' : '0')}</kbd>
             <button
               type="button"
               aria-label={`Close tab ${props.dashboard.label}`}
@@ -262,13 +265,14 @@ export function TabStrip(props: TabStripProps) {
             <kbd aria-hidden className="app-kbd-key">{keys('⌘B')}</kbd>
           </button>
         )}
-        {props.paneTools !== false && <StripButton label={`Inspector (${keys('⌘I')})`} pressed={props.inspectorOpen} onClick={props.onToggleInspector}><InspectorIcon size={15} /></StripButton>}
+        {props.paneTools !== false && <StripButton label={`Inspector (${keys('⌘I')})`} pressed={props.inspectorOpen} onClick={props.onToggleInspector} shortcut={keys('⌘I')}><InspectorIcon size={15} /></StripButton>}
       </div>
     </div>
   )
 }
 
-function StripButton({ label, onClick, pressed, children }: { label: string; onClick: () => void; pressed?: boolean; children: ReactNode }) {
+/** A strip button; one with a `shortcut` draws its key beside the icon, as Deck does. */
+function StripButton({ label, onClick, pressed, shortcut, children }: { label: string; onClick: () => void; pressed?: boolean; shortcut?: string; children: ReactNode }) {
   return (
     <button
       type="button"
@@ -276,11 +280,12 @@ function StripButton({ label, onClick, pressed, children }: { label: string; onC
       aria-label={label}
       aria-pressed={pressed}
       onClick={onClick}
-      className={`flex h-[28px] w-[28px] items-center justify-center rounded-[7px] transition-colors duration-100 motion-reduce:transition-none ${
+      className={`flex h-[28px] items-center justify-center gap-1.5 rounded-[7px] transition-colors duration-100 motion-reduce:transition-none ${shortcut ? 'px-1.5' : 'w-[28px]'} ${
         pressed ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
       }`}
     >
       {children}
+      {shortcut && <kbd data-strip-key aria-hidden className="app-kbd-key">{shortcut}</kbd>}
     </button>
   )
 }

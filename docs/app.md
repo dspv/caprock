@@ -118,7 +118,8 @@ others. Installing it: [install-app.md](install-app.md).
   Cost, Lifetime and the other screens in a *Dashboard* tab pinned at the
   left of the tab strip; your terminals stay in the strip beside it, one click
   away, and the tab brings back the screen you left it on until you close it.
-  The Dashboard tab is just its icon; its × shows while it is in front.
+  The Dashboard tab is its icon and its key, ⌘0 (⌘, while it shows
+  Settings); its × shows while it is in front.
   The arrow beside *Send feedback* folds that bottom block to one row of
   icons and back; the app remembers which way you left it.
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
@@ -293,8 +294,9 @@ others. Installing it: [install-app.md](install-app.md).
 - **Tabs.** One strip holds every open tab of every project, in the order
   you opened them — an agent session, a shell or a file each — and each tab
   is named by its session, after a dot in its project's colour; hover it
-  for the project, the agent and the branch. The Dashboard tab is just its
-  icon. Picking
+  for the project, the agent and the branch. The Dashboard tab is its icon
+  and ⌘0, and the inspector's button shows ⌘I beside it, as Deck shows ⌘B.
+  Picking
   another project never takes a tab out of the strip: the project's own
   tabs are listed under it in the sidebar, under the same names, or its
   page shows when it has none. Picking a tab makes its project current.

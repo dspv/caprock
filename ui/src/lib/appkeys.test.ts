@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchAppShortcut, moveKeysLine, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
+import { matchAppShortcut, moveKeysLine, stripKey, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
 
 const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
   key,
@@ -189,6 +189,16 @@ describe('the jump key on a tab', () => {
     expect(tabDigit(8, 12)).toBeNull()
     expect(tabDigit(11, 12)).toBe(9)
     expect(tabDigit(8, 9)).toBe(9)
+  })
+  // The pinned tab's ⌘0 and ⌘, are drawn short as a tab's ⌘N is, and the
+  // short form off macOS is the chord that works there.
+  it('draws the pinned tab\'s keys short, and the short form is the chord off macOS', () => {
+    expect(stripKey('0', true)).toBe('⌘0')
+    expect(stripKey(',', false)).toBe('Ctrl⇧,')
+    for (const [ch, code, kind] of [['0', 'Digit0', 'dashboard'], [',', 'Comma', 'settings']] as const) {
+      expect(stripKey(ch, false).replace('⇧', '+Shift+')).toBe(keys(`⌘${ch}`, false))
+      expect(matchAppShortcut({ key: ch, code, ctrlKey: true, shiftKey: true, altKey: false, metaKey: false }, false)).toEqual({ kind })
+    }
   })
   it('is short on every platform', () => {
     expect(tabKey(3, true)).toBe('⌘3')

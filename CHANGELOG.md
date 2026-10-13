@@ -37,7 +37,9 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   running without a tab — or Tree, sessions under their projects (Settings
   → Appearance, or the folder button). Projects have no number keys any
   more; a click on a project opens its page, and ⌥⌘ arrows still walk
-  sessions and projects. One line says so once, with a way to every key.
+  sessions and projects. The pinned Dashboard tab shows ⌘0 again (⌘, on
+  Settings) and the inspector's button ⌘I, so every key is on screen. One
+  line says so once, with a way to every key.
 - **deck:** a pull request's checks read at a glance. In place of a circle per
   check — twelve tiny circles in a row that said nothing — each row sums them
   up in one short group: *✗ 1 failed ● 1 running ✓ 10*, the failed first, the

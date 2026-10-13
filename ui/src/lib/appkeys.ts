@@ -251,7 +251,13 @@ export function tabDigit(index: number, count: number): number | null {
 
 /** A tab's jump key as the tab itself shows it: short enough for a tab. */
 export function tabKey(digit: number, isMac = isMacPlatform()): string {
-  return isMac ? `⌘${digit}` : `Ctrl⇧${digit}`
+  return stripKey(String(digit), isMac)
+}
+
+/** A ⌘ chord drawn on the strip (⌘0, ⌘,): the same short spelling as a tab's
+ *  ⌘N — Ctrl⇧ off macOS, where the chord is Ctrl+Shift with that key. */
+export function stripKey(key: string, isMac = isMacPlatform()): string {
+  return isMac ? `⌘${key}` : `Ctrl⇧${key}`
 }
 
 /** The one line that says how to move around, for the hint after an update. */
