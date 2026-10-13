@@ -415,6 +415,17 @@ export interface SessionPRLive extends SessionPR {
   live?: PullRequest
   error?: { message: string }
 }
+/** How fresh a deck answer is: when the daemon composed it (unix ms), and
+ *  whether it is the one kept while a newer one is composed. */
+export interface DeckFresh {
+  fetched_at?: number
+  refreshing?: boolean
+}
+/** `GET /v1/sessions/{id}/prs`. */
+export interface SessionPRs extends DeckFresh {
+  connected: boolean
+  prs: SessionPRLive[]
+}
 /** One step of a GitHub Actions job (`GET /v1/sessions/{id}/ci`). Times are unix ms. */
 export interface CIStep {
   number: number
@@ -490,7 +501,7 @@ export interface CIState {
   error?: { message: string; kind?: string }
 }
 /** `GET /v1/sessions/{id}/ci`: the CI of the session's open PR, else its newest. */
-export interface SessionCI {
+export interface SessionCI extends DeckFresh {
   connected: boolean
   pr?: { number: number; url: string; title?: string; state?: string; repo: string; head_sha?: string }
   ci?: CIState
@@ -510,7 +521,7 @@ export interface ReleaseCI {
   error?: { message: string; kind?: string }
 }
 /** `GET /v1/sessions/{id}/ci/release` and `…/ci/main`: the session's repository's release build or default branch. */
-export interface SessionRepoCI {
+export interface SessionRepoCI extends DeckFresh {
   connected: boolean
   /** owner/name, from the session's directory's remote. */
   repo?: string
@@ -1432,7 +1443,7 @@ export const api = {
   todos: (id: string) => get<SessionTodos>(`/v1/sessions/${encodeURIComponent(id)}/todos`),
   diff: (id: string) => get<DiffResult>(`/v1/sessions/${encodeURIComponent(id)}/diff`),
   /** The session's latest PRs, with CI and review when GitHub is connected (the session deck). */
-  sessionPRs: (id: string) => get<{ connected: boolean; prs: SessionPRLive[] }>(`/v1/sessions/${encodeURIComponent(id)}/prs`),
+  sessionPRs: (id: string) => get<SessionPRs>(`/v1/sessions/${encodeURIComponent(id)}/prs`),
   /** Re-run a session PR's checks on GitHub: its failed jobs, else every finished run (the deck's Re-run checks). */
   sessionPRRerun: (id: string, n: number) => post<{ ok: boolean; mode: 'failed' | 'all'; runs: number; jobs: number }>(`/v1/sessions/${encodeURIComponent(id)}/prs/${n}/rerun`, {}),
   /** Merge the base into a session PR's branch on GitHub (the deck's Update branch). */

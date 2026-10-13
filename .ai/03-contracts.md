@@ -428,7 +428,7 @@ GET  /v1/sessions/{id}/subagents/{agent} → SubagentDetail — one subagent ope
 GET  /v1/sessions/{id}/calls?limit=…   → SessionCall[] — every priced main-thread model call, oldest first (§ Session calls)
 GET  /v1/sessions/{id}/notes           → AssistantNote[] — what Claude said, newest first
 GET  /v1/sessions/{id}/todos           → SessionTodos — the agent's own task list (§ Session todos)
-GET  /v1/sessions/{id}/prs             → {connected, prs: SessionPRLive[]} — the session deck's PRs with CI
+GET  /v1/sessions/{id}/prs             → {connected, prs: SessionPRLive[], fetched_at, refreshing?} — the session deck's PRs with CI
 POST /v1/sessions/{id}/prs/{number}/rerun → {ok, mode, runs, jobs} — re-run one of the session's PRs' checks on GitHub (machine only)
 POST /v1/sessions/{id}/prs/{number}/update-branch → {ok} — merge the base into one of the session's open PRs on GitHub (machine only)
 GET  /v1/sessions/{id}/ci              → SessionCI — the deck's CI cell: Actions runs, jobs, steps, times
@@ -1249,7 +1249,8 @@ with `resume` (a continued session has its conversation), `relay_from` with
 `resume`, an unknown `relay_from`, a source folder that no longer exists when
 no `cwd` is given, and a brief over the limit.
 
-**`GET /v1/sessions/{id}/prs`** → `{connected, prs}`: the session's latest
+**`GET /v1/sessions/{id}/prs`** → `SessionPRs` `{connected, prs, fetched_at,
+refreshing?}`: the session's latest
 four pull requests (`session_prs`, newest first; the current one and up to
 three before it, `sessionPRsShown`; three until 2026-10-12), each a `SessionPR` plus
 `live` — the `github.PR` GitHub returns for its link now (state, checks,
@@ -1261,6 +1262,25 @@ GitHub nothing in between; every read is conditional. The row's state chips
 read fields this answer already carries (`mergeable`, `mergeable_state`,
 `review`, `draft`, and `auto_merge` for its *queued*); nothing is asked per
 chip.
+
+**The deck's answers are kept** (`internal/api/deckcache.go`). The five
+views of the *Pull requests & CI* cell — `…/prs`, `…/ci`, `…/ci/release`,
+`…/ci/main`, `…/branches` — are each composed from the kept GitHub reads
+above, and the composed answer is kept per view, session, pull request
+asked for and whether GitHub is connected (at most 256 keys). A key never
+composed is composed while the request waits, and concurrent requests for
+it share one composition. Within 2 s the kept answer is handed back as it
+is. Past that, the request starts one background composition (on a
+context of its own, 15 s) and waits up to 300 ms for it: when the GitHub
+reads answer from what they keep it lands inside that and is handed back;
+when one has to ask GitHub, the request gets the last answer at once with
+`refreshing: true`, and the next poll finds the new one. A kept answer
+older than an hour is not shown; the request waits for a fresh one. A
+composition that fails (a database error, an unknown session) is not kept
+and the last answer stays. Every answer carries `fetched_at`, Unix ms, when
+the daemon composed it, and `refreshing` only when true. GitHub is asked no
+more often than before: a composition calls the same kept reads a request
+used to, each deciding by its own freshness whether to ask.
 
 **`POST /v1/sessions/{id}/prs/{number}/rerun`** (no body) → `{ok, mode,
 runs, jobs}`: the session deck's *Re-run checks*. Acts only on a pull
@@ -1292,7 +1312,7 @@ click and a confirm, never by a poll (rule 4), and are the machine's: not in
 the paired-device lists.
 
 **`GET /v1/sessions/{id}/ci`** (`?pr=N` optional) → `SessionCI` `{connected,
-pr?, ci?, error?}`: the session deck's CI cell. `pr` `{number, url, title?,
+pr?, ci?, error?, fetched_at, refreshing?}`: the session deck's CI cell. `pr` `{number, url, title?,
 state?, repo, head_sha?}` is pull request N when it is among the session's
 latest four (a click on its row or its mini pipeline), else the
 session's open one among them, else the newest (each read through `github.PullByURL`, so it shares the PRs
@@ -1343,7 +1363,7 @@ error. The cached answers are never changed: the baselines are set on a copy.
 
 **`GET /v1/sessions/{id}/ci/release`** and **`GET /v1/sessions/{id}/ci/main`**
 → `SessionRepoCI` `{connected, repo?, reason?, branch?, release?, ci?,
-error?}`: the CI cell's Release and Main views, for any repository. `repo`
+error?, fetched_at, refreshing?}`: the CI cell's Release and Main views, for any repository. `repo`
 (`owner/name`) is read from the session's working directory's remote, as the
 session page reads it (`gitremote.Lookup`, kept a minute); `reason` is
 `no_repo` (not a git repository, or no remote) or `not_github` when there is
@@ -1427,7 +1447,7 @@ private repository's included minutes, which a job cannot know are left.
 
 **Session branches** — **`GET /v1/sessions/{id}/branches`** →
 `SessionBranches` `{connected, repo?, reason?, default?, base?, current?,
-branches[], error?}`: the session deck's Branches view. Read only while that
+branches[], error?, fetched_at, refreshing?}`: the session deck's Branches view. Read only while that
 view is shown.
 
 - **Git** — local only (`internal/branches`): one `for-each-ref` over

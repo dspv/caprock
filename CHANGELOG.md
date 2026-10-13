@@ -16,6 +16,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **deck:** the Pull requests & CI panel opens on what it last knew. Its
+  PRs, Branches, Release and Main views draw the last list at once — when
+  the deck opens, when the app starts, when you switch views — and read
+  again behind it, with *updating…*, *updated 12 s ago* or *couldn't
+  refresh* in the header; the very first read shows three grey rows rather
+  than an empty area. The daemon keeps each composed answer too, so a
+  request whose GitHub reads have expired is answered at once from the last
+  one while one refresh runs behind it, instead of waiting seconds on
+  GitHub. GitHub is asked no more often than before.
 - **app:** the spend chart's hovered bar shows its own figure in full. While
   a bar is hovered (or stepped to with ←/→) its cost takes the big figure's
   place with a short date beside it (*$287.12 Sun 11 Oct · 06–12*, *of

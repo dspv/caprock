@@ -24,22 +24,45 @@ type SessionPRLive struct {
 	Error *github.Error `json:"error,omitempty"`
 }
 
+// SessionPRs is GET /v1/sessions/{id}/prs.
+type SessionPRs struct {
+	Connected bool            `json:"connected"`
+	PRs       []SessionPRLive `json:"prs"`
+	// FetchedAt is when the daemon composed this answer (Unix ms);
+	// Refreshing is true when it is the last one kept while a newer one is
+	// composed (deckcache.go).
+	FetchedAt  int64 `json:"fetched_at"`
+	Refreshing bool  `json:"refreshing,omitempty"`
+}
+
+func (a SessionPRs) stamped(at int64, refreshing bool) any {
+	a.FetchedAt, a.Refreshing = at, refreshing
+	return a
+}
+
 // handleSessionPRs is the session deck's PR cell: the session's latest pull
 // requests and, with GitHub connected, their CI and review. Reads are kept
 // per pull request (github.PullByURL), so polling this costs GitHub nothing
-// between them; nothing is sent while GitHub is not connected (rule 4).
+// between them, and the composed answer is kept (deckcache.go), so the cell
+// opens on it at once; nothing is sent while GitHub is not connected (rule 4).
 func (s *Server) handleSessionPRs(w http.ResponseWriter, r *http.Request) {
-	prs, err := store.SessionPRs(r.Context(), s.d.Store.DB(), r.PathValue("id"))
+	id := r.PathValue("id")
+	connected := s.githubConnected()
+	s.serveDeck(w, r, deckKey("prs", id, connected, 0), func(ctx context.Context) (deckAnswer, error) {
+		return s.composeSessionPRs(ctx, id, connected)
+	}, s.fail)
+}
+
+func (s *Server) composeSessionPRs(ctx context.Context, id string, connected bool) (deckAnswer, error) {
+	prs, err := store.SessionPRs(ctx, s.d.Store.DB(), id)
 	if err != nil {
-		s.fail(w, err)
-		return
+		return nil, err
 	}
 	if len(prs) > sessionPRsShown {
 		prs = prs[:sessionPRsShown]
 	}
-	connected := s.d.GitHub != nil && s.d.GitHub.Status().Connected
 	out := make([]SessionPRLive, len(prs))
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	for i, p := range prs {
 		out[i] = SessionPRLive{SessionPR: p}
@@ -52,7 +75,7 @@ func (s *Server) handleSessionPRs(w http.ResponseWriter, r *http.Request) {
 			out[i].Live = &pr
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"connected": connected, "prs": out})
+	return SessionPRs{Connected: connected, PRs: out}, nil
 }
 
 // sessionPR is one of the session's own pull requests by number, read live:

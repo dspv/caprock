@@ -28,7 +28,8 @@
  * frame. Arrow keys on the divider settle the same way.
  */
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type SessionPRLive, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
+import { api, errText, type CIJob, type CILog, type CIRun, type CIStep, type DeckFresh, type SessionCI, type SessionPRLive, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
+import { freshText, readDeck, writeDeck } from '@/lib/deckCache'
 import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
 import { MiniPipeline } from './MiniPipeline'
 import { CI_VIEWS, byOSLine, checkNodes, jobVsMedian, runSpan, runVsMedian, type DeltaTone, type VsMedian, ciActive, ciElapsed, ciTone, fmtRun, investigateMessage, jobNodes, keyStep, orderPRs, osTag, prAge, prDotState, prReviewText, prVerdict, readCIView, releaseChip, releaseDoneText, releaseElapsed, releaseEstimateText, runnerTime, saveCIView, type CITone, type CIView, type PipeNode, type PRWordTone } from '@/lib/ci'
@@ -259,30 +260,71 @@ function InvestigateButton({ job, step }: { job: CIJob; step?: string }) {
 type LogViewName = Exclude<CIView, 'branches'>
 const LogView = createContext<{ view: LogViewName; pr?: number; onShown?: (d: 1 | -1) => void }>({ view: 'pr' })
 
+/** How soon a poll is repeated when the daemon handed back the answer it
+ *  kept while it composes a newer one: a local read, nothing asked of GitHub. */
+const REFRESHING_MS = 1_500
+
+/** A poll's state beside its answer: a read under way, the last one failed. */
+interface PollMeta {
+  loading: boolean
+  failed: boolean
+}
+
+interface PollSnap<T> {
+  k?: string
+  d?: T
+  at: number
+}
+
+function fromCache<T>(k: string | undefined): PollSnap<T> {
+  const c = readDeck<T>(k)
+  return { k, d: c?.d, at: c?.at ?? 0 }
+}
+
 /**
  * Asks read() while `on`, the deck open and the window visible: every
- * `fast` ms while busy() says something runs, else every CI_IDLE_MS.
- * The last answer stays while it is off.
+ * `fast` ms while busy() says something runs, else every CI_IDLE_MS. Hidden,
+ * nothing is asked; it asks again once the window is shown.
+ * The last answer stays while it is off. With a cache key, the answer last
+ * kept under it (lib/deckCache) is shown at once — after a remount, a
+ * restart of the app, a switch of view — while the read revalidates it.
+ * keep(prev, next) says a failed read's answer is worse than the one shown:
+ * the shown one stays, marked failed.
  */
-function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: T) => boolean, fast = CI_RUNNING_MS): [T | undefined, number] {
-  const [data, setData] = useState<T>()
-  const [at, setAt] = useState(0)
-  const fn = useRef({ read, busy })
-  useEffect(() => { fn.current = { read, busy } })
+function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: T) => boolean, fast = CI_RUNNING_MS, cacheKey?: string, keep?: (prev: T, next: T) => boolean): [T | undefined, number, PollMeta] {
+  const [snap, setSnap] = useState<PollSnap<T>>(() => fromCache<T>(cacheKey))
+  const [meta, setMeta] = useState<PollMeta>({ loading: false, failed: false })
+  const shown = !cacheKey || snap.k === cacheKey ? snap : fromCache<T>(cacheKey)
+  const fn = useRef({ read, busy, keep, shown })
+  useEffect(() => { fn.current = { read, busy, keep, shown } })
   useEffect(() => {
     if (!on) return
     let alive = true
     let timer = 0
+    // "updating…" stands for the first read of what is shown and while the
+    // daemon says a newer answer is being composed, not for every poll.
+    let revalidating = true
     const tick = async () => {
       let next = CI_IDLE_MS
       if (!document.hidden) {
+        if (revalidating) setMeta((m) => (m.loading ? m : { ...m, loading: true }))
         try {
           const d = await fn.current.read()
           if (!alive) return
-          setData(d)
-          setAt(Date.now())
+          const prev = fn.current.shown.d
+          const worse = prev !== undefined && !!fn.current.keep?.(prev, d)
+          if (!worse) {
+            setSnap({ k: cacheKey, d, at: Date.now() })
+            if (cacheKey) writeDeck(cacheKey, d)
+          }
+          revalidating = !!(d as DeckFresh | undefined)?.refreshing
+          setMeta({ loading: revalidating, failed: worse })
           if (fn.current.busy(d)) next = fast
-        } catch { /* the last answer stays */ }
+          if (revalidating) next = Math.min(next, REFRESHING_MS)
+        } catch {
+          // The last answer stays, said to be not refreshed.
+          if (alive) setMeta({ loading: false, failed: true })
+        }
       }
       if (alive) timer = window.setTimeout(() => void tick(), next)
     }
@@ -290,8 +332,49 @@ function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: 
     const onVisible = () => { if (!document.hidden) { window.clearTimeout(timer); void tick() } }
     document.addEventListener('visibilitychange', onVisible)
     return () => { alive = false; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
-  }, [on, key, fast])
-  return [data, at]
+  }, [on, key, fast, cacheKey])
+  return [shown.d, shown.at, meta]
+}
+
+/** A failed read of a repository view kept over the answer it would replace. */
+const keepRepoCI = (prev: SessionRepoCI, next: SessionRepoCI) => !!next.error && ((!!prev.release && !next.release) || (!!prev.ci && !next.ci))
+const keepPRCI = (prev: SessionCI, next: SessionCI) => !!next.error && !!prev.ci && !next.ci
+const keepBranches = (prev: SessionBranches, next: SessionBranches) => !!next.error && !prev.error && prev.branches.length > 0
+
+/**
+ * The header's quiet word on what the cell shows: "updating…" while a read of
+ * a kept answer runs, "couldn't refresh" when the last one failed, else how
+ * long ago the daemon composed it. Its own clock, every 5 s while visible.
+ */
+function Freshness({ at, loading, failed }: { at?: number; loading: boolean; failed: boolean }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!at) return
+    setNow(Date.now())
+    const t = window.setInterval(() => { if (!document.hidden) setNow(Date.now()) }, 5_000)
+    return () => window.clearInterval(t)
+  }, [at])
+  if (!at) return null
+  const when = new Date(at).toLocaleTimeString()
+  if (loading) return <span data-deck-fresh="updating" className="shrink-0 text-fg-faint" title={`Showing the answer from ${when} while it is read again`}>updating…</span>
+  if (failed) return <span data-deck-fresh="failed" className="shrink-0 text-warn" title={`The last read failed; this is the answer from ${when}`}>couldn’t refresh</span>
+  return <span data-deck-fresh="ok" className="num shrink-0 text-fg-faint" title={`Composed at ${when}`}>{freshText(Math.max(0, now - at))}</span>
+}
+
+/** Three grey rows in the shape of the list: the first read ever of a view. */
+function DeckSkeleton({ label }: { label: string }) {
+  return (
+    <ul data-deck-skeleton aria-busy="true" aria-label={label} className="-mx-1 flex flex-col gap-[5px] px-1 pt-1">
+      {[0.62, 0.48, 0.55].map((w, i) => (
+        <li key={i} aria-hidden className="flex h-[14px] items-center gap-2 animate-pulse motion-reduce:animate-none">
+          <span className="h-[8px] w-[8px] shrink-0 rounded-full bg-[var(--app-hairline)]" />
+          <span className="h-[8px] w-[28px] shrink-0 rounded-[3px] bg-[var(--app-hairline)]" />
+          <span className="h-[8px] rounded-[3px] bg-[var(--app-hairline)]" style={{ width: `${w * 100}%` }} />
+          <span className="ml-auto h-[8px] w-[64px] shrink-0 rounded-[3px] bg-[var(--app-hairline)]" />
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 const VIEW_LABEL: Record<CIView, string> = { pr: 'PRs', branches: 'Branches', release: 'Release', main: 'Main' }
@@ -491,7 +574,12 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   const key = `${sessionId}:${n}`
   // Sooner while a force action's progress stands, so it goes once done.
   const forceSoon = useRef(false)
-  const [prsData, prsAt] = usePoll(view === 'pr', key, () => api.sessionPRs(sessionId), (d) => forceSoon.current || d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS)
+  // Each view opens on the answer it was last given (lib/deckCache): a
+  // session's PRs and their CI by session, the release build and Main by
+  // repository, the branches by folder (its current branch leads).
+  const repoScope = s.repo_root || s.cwd || sessionId
+  const folderScope = s.cwd || s.repo_root || sessionId
+  const [prsData, prsAt, prsMeta] = usePoll(view === 'pr', key, () => api.sessionPRs(sessionId), (d) => forceSoon.current || d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`)
   const rows = useMemo(() => orderPRs(prsData?.prs ?? []), [prsData])
   const lead = rows[0]
   // The current PR opens by itself while it is open and has checks, whatever
@@ -500,7 +588,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   // Unless it was folded by hand in this session: that holds.
   const leadOpen = lead?.live?.state === 'open' && !!lead.live && lead.live.checks.items.length > 0 && !foldedPRs.has(`${sessionId}:${lead.number}`)
   const openPr = chosen ?? (leadOpen ? lead!.number : 0)
-  const [prData, prAt] = usePoll(view === 'pr' && openPr > 0, `${key}:${openPr}`, () => api.sessionCI(sessionId, openPr), (d) => ciActive(d.ci))
+  const [prData, prAt] = usePoll(view === 'pr' && openPr > 0, `${key}:${openPr}`, () => api.sessionCI(sessionId, openPr), (d) => ciActive(d.ci), CI_RUNNING_MS, openPr > 0 ? `ci:${sessionId}:${openPr}` : undefined, keepPRCI)
   // The answer for the open row only: one for the row open before waits.
   const prCI = prData && prData.pr?.number === openPr ? prData : undefined
   // Each PR's runs once read, so its row keeps its time against the median
@@ -534,11 +622,11 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   }, [view, prsData, rows, openPr, seenRuns, sessionId])
   // The release build is asked while the deck is open whatever the view, so
   // its chip shows a build under way from the other views too.
-  const [relData, relAt] = usePoll(true, key, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running')
-  const [mainData, mainAt] = usePoll(view === 'main', key, () => api.sessionCIMain(sessionId), (d) => ciActive(d.ci))
+  const [relData, relAt, relMeta] = usePoll(true, key, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running', CI_RUNNING_MS, `release:${repoScope}`, keepRepoCI)
+  const [mainData, mainAt, mainMeta] = usePoll(view === 'main', key, () => api.sessionCIMain(sessionId), (d) => ciActive(d.ci), CI_RUNNING_MS, `main:${repoScope}`, keepRepoCI)
   // The branches, while that view is shown: local git and one cached list of
   // the repository's pull requests, so a poll costs GitHub nothing new.
-  const [brData, brAt] = usePoll(view === 'branches', key, () => api.sessionBranches(sessionId), (d) => d.branches.some((b) => b.live?.checks.state === 'pending'), PRS_PENDING_MS)
+  const [brData, brAt, brMeta] = usePoll(view === 'branches', key, () => api.sessionBranches(sessionId), (d) => d.branches.some((b) => b.live?.checks.state === 'pending'), PRS_PENDING_MS, `branches:${folderScope}`, keepBranches)
   // What GitHub billed for Actions this month, only while Main is shown; the
   // daemon keeps the answer 30 minutes, so the minute's poll costs nothing.
   const owner = mainData?.repo?.split('/')[0] ?? ''
@@ -1007,6 +1095,13 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
     }
   }
 
+  // The shown view's answer: three grey rows the first time it is ever
+  // asked, else what it was last told, with how fresh that is.
+  const viewData: DeckFresh | undefined = view === 'pr' ? prsData : view === 'branches' ? brData : view === 'release' ? relData : mainData
+  const viewMeta = view === 'pr' ? prsMeta : view === 'branches' ? brMeta : view === 'release' ? relMeta : mainMeta
+  const viewAt = viewData ? viewData.fetched_at || (view === 'pr' ? prsAt : view === 'branches' ? brAt : view === 'release' ? relAt : mainAt) : undefined
+  if (body === null && !viewData) body = <DeckSkeleton label={`Reading ${VIEW_LABEL[view]}`} />
+
   // The branch's pull request, when the current one is from it: "→ main".
   const base = lead?.live?.state === 'open' && branch && lead.live.branch === branch ? lead.live.base : undefined
   const chip = view !== 'release' ? releaseChip(rel, now) : ''
@@ -1036,6 +1131,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
           </button>
         )}
         <span className="ml-auto flex min-w-0 shrink-0 items-baseline justify-end gap-2 text-[11px] text-fg-faint">
+          <Freshness at={viewAt} loading={viewMeta.loading} failed={viewMeta.failed} />
           {view === 'pr' && prsData && !prsData.connected && rows.length > 0 && (
             <button type="button" disabled={connecting} onClick={() => void connect()} title="Reads CI and reviews through your GitHub CLI login; turn it off in Settings → GitHub" className="text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'connect GitHub for CI'}</button>
           )}

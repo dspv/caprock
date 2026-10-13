@@ -10,6 +10,7 @@
 import type { PRDot } from './ci'
 import { fmtCost } from './runnercost'
 import type { PullRequest } from './github'
+import type { DeckFresh } from './api'
 
 /** A branch's pull request (`github.BranchPR`). */
 export interface BranchPR {
@@ -46,7 +47,7 @@ export interface SessionBranch {
 }
 
 /** GET /v1/sessions/{id}/branches. */
-export interface SessionBranches {
+export interface SessionBranches extends DeckFresh {
   connected: boolean
   repo?: string
   reason?: 'no_repo'

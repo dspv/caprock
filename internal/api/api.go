@@ -421,6 +421,9 @@ type Server struct {
 	glance *answerCache
 	// drill holds the tool drill-downs (drillTTL).
 	drill *answerCache
+	// deck holds the session deck's composed Pull requests & CI answers
+	// (deckcache.go).
+	deck *answerCache
 	// repos answers "which repository, on which host" per directory.
 	repos *repoCache
 	// sizes decides which attached terminal a session's PTY is sized for
@@ -447,7 +450,7 @@ func New(d Deps) *Server {
 	}
 	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now),
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
-		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), repos: newRepoCache()}
+		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache()}
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
 		if s.d.Agents != nil {
 			_ = s.d.Agents.Resize(id, cols, rows)
