@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Subscription, SubscriptionsResponse } from '@/lib/api'
 
@@ -170,7 +170,14 @@ describe('DeepSeek', () => {
     const rows = screen.getByRole('list', { name: 'Claude Code subscriptions' })
     expect(rows.querySelectorAll('li')).toHaveLength(2)
     expect(screen.queryByText(/the free number/)).toBeNull()
-    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1)
+    // Remove is a sign-in row's action: only the added "Work" row has one.
+    // The DeepSeek block's own Remove deletes the key (SecretField), not a
+    // sign-in, so it is checked apart: no Make default or sign-in Remove there.
+    expect(within(rows).getAllByRole('button', { name: 'Remove' })).toHaveLength(1)
+    const ds = screen.getByLabelText('DeepSeek')
+    expect(rows.contains(ds)).toBe(false)
+    expect(within(ds).queryByRole('button', { name: /Make default/ })).toBeNull()
+    expect(within(ds).queryByRole('button', { name: /Sign in/ })).toBeNull()
   })
 
   it('says in the launcher what it sends where, and is never offered as the way past a limit', () => {
