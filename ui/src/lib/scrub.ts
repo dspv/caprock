@@ -209,22 +209,35 @@ export interface TimeBar {
   tokens: number
   /** Tool name → how many calls asked for it, from the calls that say. */
   tools: Map<string, number>
+  /**
+   * The bar's active hours (clock hours with at least USUAL_MIN_CALLS calls
+   * costing more than nothing) and what they cost: the burn rate's halves.
+   * Absent for steps under an hour, which cannot hold a whole hour.
+   */
+  activeHours?: number
+  activeCost?: number
 }
+
+/** How many priced calls make an hour active: the daemon's UsualMinCalls, so a bar's burn and the usual measure the same hours. */
+export const USUAL_MIN_CALLS = 5
+const HOUR_MS = 3_600_000
 
 /**
  * The session's calls by time rather than one bar a call (owner, 2026-10-11:
  * the per-call view was "not informative and not convenient"). Bars follow
  * the clock, so an idle stretch is an empty bar, and the step grows with the
  * session: 5 minutes for a short one up to a day for a long one. Steps of an
- * hour and up start on the local hour.
+ * hour and up start on the local hour. `minStepMin` floors the step: burn
+ * rate is per active hour, so its bars are never finer than an hour.
  */
-export function timeBars(calls: readonly CallPoint[]): { step: number; bars: TimeBar[] } {
+export function timeBars(calls: readonly CallPoint[], minStepMin = 0): { step: number; bars: TimeBar[] } {
   const timed = calls.filter((c) => c.ts > 0)
   if (timed.length === 0) return { step: 0, bars: [] }
   const first = Math.min(...timed.map((c) => c.ts))
   const last = Math.max(...timed.map((c) => c.ts))
   const span = Math.max(1, last - first)
-  const stepMin = STEPS_MIN.find((m) => Math.ceil(span / (m * 60_000)) + 1 <= MAX_TIME_BARS) ?? STEPS_MIN[STEPS_MIN.length - 1]!
+  const steps = STEPS_MIN.filter((m) => m >= minStepMin)
+  const stepMin = steps.find((m) => Math.ceil(span / (m * 60_000)) + 1 <= MAX_TIME_BARS) ?? STEPS_MIN[STEPS_MIN.length - 1]!
   const step = stepMin * 60_000
   const offset = new Date(first).getTimezoneOffset() * 60_000
   const start0 = Math.floor((first - offset) / step) * step + offset
@@ -236,6 +249,26 @@ export function timeBars(calls: readonly CallPoint[]): { step: number; bars: Tim
     b.calls++
     if (c.tokens) b.tokens += (c.tokens.in || 0) + (c.tokens.cache_read || 0) + (c.tokens.cache_write || 0)
     for (const t of c.tools ?? []) b.tools.set(t.tool, (b.tools.get(t.tool) ?? 0) + 1)
+  }
+  if (step >= HOUR_MS) {
+    // Hours from the first bar's start: every bar starts on a local hour, so
+    // an hour never straddles two bars.
+    const hours = new Map<number, { calls: number; cost: number }>()
+    for (const c of timed) {
+      if (!Number.isFinite(c.cost)) continue
+      const h = Math.floor((c.ts - start0) / HOUR_MS)
+      const v = hours.get(h) ?? { calls: 0, cost: 0 }
+      v.calls++
+      v.cost += c.cost
+      hours.set(h, v)
+    }
+    for (const b of bars) { b.activeHours = 0; b.activeCost = 0 }
+    for (const [h, v] of hours) {
+      if (v.calls < USUAL_MIN_CALLS || !(v.cost > 0)) continue
+      const b = bars[Math.min(n - 1, Math.floor((h * HOUR_MS) / step))]!
+      b.activeHours!++
+      b.activeCost! += v.cost
+    }
   }
   return { step, bars }
 }

@@ -23,12 +23,12 @@ import { readWindow } from './PlanLimits'
 import { PlanChip } from './PlanPicker'
 import { useSessionPlan, windowsOf, type SessionPlan } from './AccountPlan'
 import { WINDOW_MS, pace } from '@/lib/pace'
-import { SpendBars, SpendChart, SpendOverTime, useSessionBars } from './SpendScrub'
+import { SessionChart, SpendBars, SpendChart, useSessionBars } from './SpendScrub'
 import { callsFromEvents } from '@/lib/scrub'
 import { everyWhileVisible } from '@/lib/visible'
 import { CHART_METRICS, HEADLINES, METRICS, SPEND_PERIODS, chartTotal, chartValueText, foldedFigures, metricTitle, metricValue, periodFigures, periodScope, pickHero, pickSlot, setSpendPrefs, shownSlots, spendFigures, useSpendPrefs, type ChartMetric, type Metric, type PeriodFigures, type SpendBar, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
 import { UsualDelta } from './HeroUsual'
-import { versus, type Usual } from '@/lib/usual'
+import { paceOf, versus, type Usual } from '@/lib/usual'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
@@ -466,8 +466,9 @@ function HeroSecondaries({ figures }: { figures: SpendFigures }) {
  * **Chart**, the default since the figures beside the agent carry the
  * numbers (owner, 2026-10-12: "where did you put the chart?"): the
  * period's spend by time, its total on the top line and the stretch under
- * the pointer at its right, and what the bars measure — cost, tokens or
- * turns — picked from the ▾ after the total (ChartChooser). **Numbers**: three figures in one row, each
+ * the pointer at its right, and what the bars measure — cost, burn rate,
+ * tokens or turns — picked from the ▾ after the total (ChartChooser), with
+ * a dashed pace line for the usual stretch. **Numbers**: three figures in one row, each
  * label a menu that picks what sits there, never one twice and, for the
  * session, never one of the figures beside the agent again.
  */
@@ -475,9 +476,16 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
   const { folded, hero, view, period, slots, chartBy } = useSpendPrefs()
   // Folded, the strip shows the period and the metric the chart shows.
   const range = usePeriodSummary(period, summary)
+  // The session's bars, read once for the chart, the folded strip and the
+  // menu's burn rate; nothing is read for Numbers.
+  const own = useSessionBars(sessionId, events, chartBy, period === 'session' && (folded || view === 'chart'))
   if (!s.stats) return null
   const scope = periodScope(period)
-  const pf = periodFigures(period, figures, range)
+  const pf: PeriodFigures = period === 'session'
+    ? { ...figures, series: { step: own.step, bars: own.bars }, activeBurn: own.burn }
+    : periodFigures(period, figures, range)
+  // The usual is the last 30 days whatever the period; today's summary carries it.
+  const usual = range?.usual ?? summary?.usual
   const chooser = <ChartChooser metric={chartBy} figures={pf} />
   return (
     <section aria-label="Spend" data-spend-view={folded ? undefined : view} data-spend-period={folded ? undefined : period} className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
@@ -488,9 +496,7 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
           className={`-mx-1 flex min-w-0 flex-1 items-center gap-1.5 rounded-[6px] px-1 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${folded ? 'py-1' : 'py-0.5'}`}>
           <Chevron open={!folded} />
           {folded ? (
-            period === 'session'
-              ? <SessionFoldSpark sessionId={sessionId} events={events} metric={chartBy} figures={pf} period={period} />
-              : <FoldSpark bars={pf.series?.bars} metric={chartBy} figures={pf} period={period} />
+            <FoldSpark bars={pf.series?.bars} metric={chartBy} figures={pf} period={period} usual={usual} />
           ) : (
             <h4 className="min-w-0 truncate text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Spend</h4>
           )}
@@ -504,12 +510,12 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
       </div>
       {!folded && view === 'numbers' && <SpendNumbers period={period} hero={hero} slots={slots} figures={pf} scope={scope} />}
       {!folded && view === 'chart' && (period === 'session'
-        ? <SpendOverTime sessionId={sessionId} events={events} now={now} total={chartTotal(chartBy, figures)} metric={chartBy} chooser={chooser} />
+        ? <SessionChart sessionId={sessionId} bars={own.bars} step={own.step} now={now} total={chartTotal(chartBy, pf)} metric={chartBy} chooser={chooser} usual={usual} />
         : !range
           ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">Reading {scope.split(' · ')[0]!.toLowerCase()}…</p>
           : !pf.series
             ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">This range’s summary has no spend by time to draw.</p>
-            : <SpendChart id={`spend-time-${sessionId}`} bars={pf.series.bars} step={pf.series.step} now={now} total={chartTotal(chartBy, pf)} scope={scope.toLowerCase()} metric={chartBy} chooser={chooser} />)}
+            : <SpendChart id={`spend-time-${sessionId}`} bars={pf.series.bars} step={pf.series.step} now={now} total={chartTotal(chartBy, pf)} scope={scope.toLowerCase()} metric={chartBy} chooser={chooser} usual={usual} />)}
     </section>
   )
 }
@@ -559,25 +565,22 @@ function foldWord(m: Metric): string {
   return m === 'cost' ? '' : HEADLINES.find((h) => h.id === m)?.short ?? ''
 }
 
-function SessionFoldSpark(p: { sessionId: string; events: readonly Event[]; metric: ChartMetric; figures: PeriodFigures; period: SpendPeriod }) {
-  const { bars } = useSessionBars(p.sessionId, p.events)
-  return <FoldSpark bars={bars} metric={p.metric} figures={p.figures} period={p.period} />
-}
-
 /**
- * The folded Spend: the chart's bars, 20px tall, and three figures beside
- * them — the chart's metric first in 13px semibold, two quieter after it;
+ * The folded Spend: the chart's bars, 20px tall, with its pace line and
+ * tones, and three figures beside them — the chart's metric first in 13px
+ * semibold, two quieter after it;
  * the third gives way in a cockpit under 340px (a container query on the
  * section). It replaced a faint one-line sentence that a 330px cockpit cut
  * off (owner, 2026-10-13: "folded, a more noticeable line with metrics").
  */
-function FoldSpark({ bars, metric, figures, period }: { bars?: readonly SpendBar[]; metric: ChartMetric; figures: PeriodFigures; period: SpendPeriod }) {
+function FoldSpark({ bars, metric, figures, period, usual }: { bars?: readonly SpendBar[]; metric: ChartMetric; figures: PeriodFigures; period: SpendPeriod; usual?: Usual }) {
   const figs = foldedFigures(metric, figures)
+  const pace = bars ? paceOf(metric, bars, usual) : undefined
   return (
     <span data-spend-folded className="flex min-w-0 flex-1 items-center gap-2.5">
       <FoldPeriod period={period} />
       <span className="h-[20px] min-w-[40px] flex-1 border-b border-[var(--app-hairline)]">
-        {bars && bars.length > 0 && <SpendBars bars={bars} metric={metric} height={20} />}
+        {bars && bars.length > 0 && <SpendBars bars={bars} metric={metric} height={20} pace={pace} />}
       </span>
       {figs.map((f, i) => (
         <span key={f.id} data-fold-fig={f.id} className={`num shrink-0 whitespace-nowrap text-[13px] leading-[18px] ${i === 0 ? 'font-semibold text-fg' : 'font-medium text-fg-muted'} ${i === 2 ? '@max-[340px]:hidden' : ''}`}>
