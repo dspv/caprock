@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 )
 
 // Per-directory attribution — charging a repository's spend to the directories
@@ -240,6 +241,13 @@ const UnattributedPath = "\x00unattributed"
 // shares and for why "another checkout" is not split out separately.
 const OutsidePath = "\x00outside"
 
+// seekSessionsWithin is the widest range turnSpendBySession reads session by
+// session. Past it most of the index is in range anyway, and the seeks cost
+// more than the scan they skip: on a copy of the owner's database, 7 days took 114 ms scanned
+// and 139 ms sought, 30 days 225 ms and 325 ms, while today took 79 ms
+// scanned and 52 ms sought (2026-10-14).
+const seekSessionsWithin = 48 * time.Hour
+
 // turnSpendBySession returns, per session, one entry per assistant turn in the
 // range: what it cost and which directory was carried into it.
 //
@@ -276,6 +284,16 @@ const OutsidePath = "\x00outside"
 // temp B-tree: ~290 ms, against a ~250 ms budget for the whole summary. Pinning
 // idx_events_attr makes the plan a covering scan in index order with no sort,
 // measured at ~93 ms on the owner's database (2026-08-22, 30d, Go driver).
+//
+// The index leads on session_id, so `ts >= ?` alone could not seek: every
+// range scanned the whole index, all of history, to keep the rows in range —
+// 41 ms for ten minutes on a 517,000-event copy of the owner's database
+// (2026-10-14), and today's summary is counted again every two seconds while
+// anything is written. The sessions with rows in range come first, off
+// idx_events_ts_cover, and each is then a seek on (session_id, ts>=); the IN
+// list is walked in order, so the scan still needs no sort. Only for ranges
+// within seekSessionsWithin.
+//
 // It also returns how many tool calls in the range carried no message id and so
 // could not be attached to any turn — the honest upper bound on how much of the
 // work-kind breakdown's "no tool" row is really unlinked work (see workkind.go).
@@ -287,15 +305,22 @@ func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[strin
 	// index order with no sort and no table access.
 	// inner_tool, when set, is the tool a Codex `exec` script really ran
 	// (migration 0038) and classifies the call in place of `exec`.
+	inRange, args := "session_id IS NOT NULL", []any{fromMs}
+	if nowMs()-fromMs <= seekSessionsWithin.Milliseconds() {
+		inRange = `session_id IN (
+		        SELECT DISTINCT session_id FROM events INDEXED BY idx_events_ts_cover
+		         WHERE ts >= ? AND internal = 0 AND kind IN ('tool.pre', 'turn.assistant'))`
+		args = []any{fromMs, fromMs}
+	}
 	rows, err := q.QueryContext(ctx, `
 		SELECT session_id, kind, COALESCE(touch_dir, ''), COALESCE(msg_id,''), COALESCE(inner_tool, tool, ''),
 		       COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0),
 		       COALESCE(cost_usd,0)
 		FROM events INDEXED BY idx_events_attr_work
-		WHERE session_id IS NOT NULL AND ts >= ?
+		WHERE `+inRange+` AND ts >= ?
 		  AND internal = 0
 		  AND kind IN ('tool.pre', 'turn.assistant')
-		ORDER BY session_id, ts, id`, fromMs)
+		ORDER BY session_id, ts, id`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
