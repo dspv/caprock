@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **cockpit:** the context and the plan limits are back near the top, right
+  under *Now* and above the spend, and each has two looks. Compact, the
+  default, is one line: *62% · 124.0k / 200.0k* with a thin bar, and *5h 41% ·
+  05:40  Week 24% · Mon 13:00* with a tiny bar per window, the reset times
+  cut first in a narrow panel. Click *Context* or *Plan* for the full view
+  as it was — the meter, what each call re-reads, the plan and each window's
+  bar and forecast. The choice is remembered on this device.
 - **cockpit:** subagent rows stay where they are. They stand in the order the
   subagents started, first on top, a new one added at the bottom; working,
   waiting, getting busier or finishing no longer moves a row, and a finished
