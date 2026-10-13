@@ -808,6 +808,11 @@ export interface Settings {
   gemini_key_from_env?: boolean
   /** Write-only, like the bot token. */
   gemini_api_key?: string
+  /** Whether a DeepSeek key is stored, and its first and last characters. */
+  deepseek_key_set?: boolean
+  deepseek_key_hint?: string
+  /** Write-only: an empty string removes it. */
+  deepseek_api_key?: string
   update_checks: boolean
   plan_kind: '' | 'flat' | 'metered'
   plan_label: string
@@ -1180,6 +1185,10 @@ export interface Subscription {
   /** Sessions Caprock started that are running on it. */
   running: number
   created_at?: number
+  /** Set on an entry that is not a sign-in but a model provider Claude Code
+   *  runs on with the user's own key ("deepseek", id "deepseek"): offered in
+   *  the pickers, never renamed, removed, made the default or counted. */
+  provider?: 'deepseek'
 }
 
 export interface SubscriptionsResponse {
@@ -1670,6 +1679,14 @@ export interface Subagent {
   tool?: string
   detail?: string
   tool_at?: number
+  /**
+   * Roughly what it is doing now, at most 60 characters, and where that came
+   * from: its newest call's own description ("call"), its tool and target
+   * ("tool", "Editing Cockpit.tsx") or the task it was spawned with ("task").
+   * Absent when none says anything, and from a daemon that predates it.
+   */
+  doing?: string
+  doing_from?: 'call' | 'tool' | 'task'
   /** That call has no result yet. */
   running: boolean
   /** Its newest event is a permission prompt. */

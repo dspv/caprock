@@ -24,6 +24,30 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   directly under *Now*. Folded, it is a strip of the chart's own bars and
   three figures, the chart's metric first, instead of a faint sentence a
   narrow cockpit cut off.
+- **agents:** Claude Code on DeepSeek, free. Paste your DeepSeek API key in
+  Settings → Subscriptions and *New agent* and *Quick chat* offer
+  **DeepSeek · your API key** in the Subscription picker: the session is
+  Claude Code in your usual setup, with DeepSeek's documented variables and
+  your key in that one process's environment, so its model calls go to
+  DeepSeek's Anthropic-compatible API and DeepSeek bills your key. Your
+  claude.ai sign-in and its plan limits are not used, and the session is
+  kept out of the Claude plan windows and the plan-window stop. The key is
+  write-only (Settings shows `sk-…1a2b`), never on a command line, in the
+  database or a log; Settings and the picker say what the session sends to
+  api.deepseek.com and that Caprock sends nothing. Its card says
+  *DeepSeek*.
+- **pricing:** `deepseek-flash` at DeepSeek's off-peak list price ($0.15
+  input, $0.003 cache hit, $0.60 output per 1M, read 2026-10-13); turns in
+  DeepSeek's weekday peak hours bill double and read low. Table
+  `2026-10-13.1`.
+- **app:** each subagent row in the cockpit says what the subagent is doing
+  now in words — the description Claude wrote for its latest command
+  ("Rerun the store tests"), else its tool and target ("Editing
+  Cockpit.tsx"), else its task — after its type as a letter chip (G, E, P,
+  the full type on hover), with calls and cost beside it; the dimmer line
+  under it shows the raw command only when the phrase does not already say
+  it. `GET /v1/sessions/{id}/subagents` carries the phrase as `doing` and
+  `doing_from`.
 
 ## [0.113.0] - 2026-10-13
 

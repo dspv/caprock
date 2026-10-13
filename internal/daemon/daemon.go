@@ -1495,6 +1495,9 @@ func (a *settingsAdapter) Get() api.Settings {
 		GeminiAPIKey:     c.GeminiAPIKey,
 		GeminiKeySet:     gemini.Available(c.GeminiAPIKey),
 		GeminiKeyFromEnv: gemini.EnvKeyValue() != "",
+		DeepSeekKeySet:   c.DeepSeekAPIKey != "",
+		DeepSeekKeyHint:  api.MaskKey(c.DeepSeekAPIKey),
+		DeepSeekAPIKey:   c.DeepSeekAPIKey,
 		ReportLastError:  a.d.reportLastError(),
 		ReportLastSentMs: a.d.reportLastSent(),
 		AlertApproval:    c.AlertApprovalOn(),
@@ -1548,6 +1551,7 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.ReportBotToken = strings.TrimSpace(in.ReportBotToken)
 	a.d.opt.Config.ReportChatID = strings.TrimSpace(in.ReportChatID)
 	a.d.opt.Config.GeminiAPIKey = strings.TrimSpace(in.GeminiAPIKey)
+	a.d.opt.Config.DeepSeekAPIKey = strings.TrimSpace(in.DeepSeekAPIKey)
 	approval, finished, reply := in.AlertApproval, in.AlertFinished, in.AlertReply
 	a.d.opt.Config.AlertApproval = &approval
 	a.d.opt.Config.AlertFinished = &finished

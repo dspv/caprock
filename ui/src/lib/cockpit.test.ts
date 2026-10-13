@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Event, SessionSummary, Subagent, Summary } from './api'
 import {
-  askLine, chipGroups, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runShare, runningTool, subagentChips, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
+  askLine, chipGroups, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runShare, runningTool, subagentChips, subagentDoing, subagentInitial, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
   MAX_SUBAGENT_CHIPS, RUNNING_STALE_MS,
 } from './cockpit'
 
@@ -90,6 +90,27 @@ describe('turnCosts', () => {
       ev({ kind: 'turn.assistant', ts: T(2), cost_usd: 0.02, payload: { sidechain: true } }),
     ])
     expect(out.map((t) => t.cost)).toEqual([0.5])
+  })
+})
+
+describe('subagentDoing', () => {
+  it('takes the daemon’s phrase and says where it came from', () => {
+    expect(subagentDoing({ doing: 'Rerun the store tests', doing_from: 'call', tool: 'Bash', detail: 'go test ./...' })).toEqual({ text: 'Rerun the store tests', from: 'call' })
+    expect(subagentDoing({ doing: 'Editing Cockpit.tsx', doing_from: 'tool', description: 'Fix rows' })).toEqual({ text: 'Editing Cockpit.tsx', from: 'tool' })
+  })
+  it('falls back, for a daemon that predates it, to the task and then the raw call', () => {
+    expect(subagentDoing({ description: 'Fix rows', tool: 'Read', detail: 'a.go' })).toEqual({ text: 'Fix rows', from: 'task' })
+    expect(subagentDoing({ tool: 'mcp__github__get_pr', detail: '#12' })).toEqual({ text: 'github·get_pr #12', from: 'tool' })
+    expect(subagentDoing({})).toEqual({ text: '', from: '' })
+  })
+})
+
+describe('subagentInitial', () => {
+  it('is the type’s letter, the same one the hero chip shows', () => {
+    expect(subagentInitial('general-purpose')).toBe('G')
+    expect(subagentInitial('Explore')).toBe('E')
+    expect(subagentInitial('Plan')).toBe('P')
+    expect(subagentInitial(undefined)).toBe('·')
   })
 })
 

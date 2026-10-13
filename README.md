@@ -372,6 +372,34 @@ Caprock refreshes every few seconds rather than instantly, so the Now screen
 lags a little behind it — the Cost and Lifetime screens are unaffected. Verified on macOS; it builds and its tests pass on Linux and
 Windows, but it has not been run on either.
 
+### Claude Code on DeepSeek
+
+Caprock can also start Claude Code itself on DeepSeek's models, on your own
+DeepSeek API key — free. Paste the key in Settings → *Subscriptions*, under
+Claude Code; *New agent* and *Quick chat* then offer **DeepSeek · your API
+key** in their *Subscription* picker. A session started on it runs in your
+usual Claude Code setup, with DeepSeek's
+[documented variables](https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code)
+and your key set for that one process, so its model calls go to
+`api.deepseek.com` instead of Anthropic and DeepSeek bills your key; your
+claude.ai sign-in is not used and its plan limits do not apply.
+
+- **What leaves the machine.** The session sends DeepSeek what Claude Code
+  would otherwise send Anthropic: your prompts, the files it reads and tool
+  output. Caprock itself sends nothing, and the key goes into that session's
+  environment only — never its command line, the database or a log. *Remove
+  key* in Settings takes it away for every new session.
+- **What you see.** The session's card says *DeepSeek*, its model is
+  DeepSeek's, and its cost is priced at DeepSeek Flash's off-peak list price
+  (DeepSeek bills double in its weekday peak hours, so those turns read low).
+  It is never counted against your Claude plan's 5-hour or weekly window.
+- **Model.** Every session runs on DeepSeek Flash; the launcher's Claude
+  model choice does not apply to it.
+- **Not yet verified** against a funded DeepSeek account: the endpoint, the
+  key and Claude Code's routing were checked live, but the model name
+  DeepSeek reports back has not been seen, so if it is not `deepseek-flash`
+  those turns show as unpriced rather than mispriced.
+
 ## Why
 
 - **See it** — live activity, tokens, cost, and loop alerts per session, plus

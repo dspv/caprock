@@ -73,6 +73,24 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-13 — unreleased: Claude Code on DeepSeek
+
+A user asked to run Claude Code sessions from Caprock on DeepSeek's models
+(owner, 2026-10-13; free). Built as a subscription entry, `deepseek`
+(ADR-048, amended): the user pastes a DeepSeek key in Settings →
+Subscriptions, *DeepSeek · your API key* appears in New agent's and Quick
+chat's Subscription picker, and a session started on it gets DeepSeek's
+published variables and the key in its own environment, with
+`ANTHROPIC_AUTH_TOKEN` replacing the claude.ai login for that process. It
+runs in the user's own `~/.claude`, records `subscription = deepseek`, is
+priced at a new `deepseek-flash` row (table `2026-10-13.1`, off-peak list
+price) and is kept out of the Claude plan windows and the plan-window stop.
+Verified live on 2026-10-13 with the owner's key: the endpoint accepts the
+key as a bearer token, and a real `claude -p` with exactly these variables
+reached DeepSeek with no sign-in prompt and no Keychain dialog — and got
+`402 Insufficient Balance`, so no reply has yet shown which model id
+DeepSeek reports in a transcript ([OQ-13](12-risks.md#open-questions)).
+
 ### 2026-10-13 — 0.113.0: what Caprock costs this computer, and less of it
 
 A user's machine felt slow and the owner could not say whether it was

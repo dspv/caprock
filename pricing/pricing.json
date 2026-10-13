@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-08.1",
+  "version": "2026-10-13.1",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "fetched_at": "2026-10-08",
   "currency": "USD",
@@ -24,7 +24,8 @@
     "Claude Opus 5.5 and Claude Sonnet 5.5 were read from the API pricing page on 2026-10-01. Opus 5.5 is $4/$20 and reads cache at 0.05x ($0.20 per 1M), another deliberate break from the 0.1x rule. Before it had a row, `claude-opus-5-5` matched `claude-opus-5` by prefix and was priced at Opus 5's $5/$25 and $0.50 cache read. The page gives Claude 4.6 and later models a 1M context window at standard pricing.",
     "`corrections` name turns an earlier version of this table priced wrongly, as opposed to a price that changed. The daemon reprices those turns once per table version, at the row in force at each turn's own time, and moves the session and daily totals by the difference. 2026-10-01.1 corrects Opus 5.5 (every turn) and Sonnet 5 from 2026-08-31.",
     "gpt-6-astra ($10.00/$50.00 per 1M, $1.00 cached, $12.50 cache write) and gpt-6.1-sol ($2.00/$10.00, $0.10 cached, $2.50 cache write), 1.05M context, are OpenAI's list prices read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-30. The same over-272K long-context surcharge applies as to gpt-6-sol and is not modelled.",
-    "claude-haiku-5-5 read from https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-08. It is priced by prompt length: up to 100,000 tokens $0.10 input, $0.125 5m write, $0.20 1h write, $0.01 cache read, $0.50 output per 1M; over 100,000 tokens $0.50 / $0.625 / $1.00 / $0.05 / $2.50. The row carries the lower tier, so a prompt over 100,000 tokens is under-reported fivefold, as the Gemini rows are over 200k. 1M context (models overview, same date). No correction: no earlier row matched it by prefix, so its turns were unpriced, not mispriced."
+    "claude-haiku-5-5 read from https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-08. It is priced by prompt length: up to 100,000 tokens $0.10 input, $0.125 5m write, $0.20 1h write, $0.01 cache read, $0.50 output per 1M; over 100,000 tokens $0.50 / $0.625 / $1.00 / $0.05 / $2.50. The row carries the lower tier, so a prompt over 100,000 tokens is under-reported fivefold, as the Gemini rows are over 200k. 1M context (models overview, same date). No correction: no earlier row matched it by prefix, so its turns were unpriced, not mispriced.",
+    "deepseek-flash read from https://api-docs.deepseek.com/quick_start/pricing on 2026-10-13: $0.15 input (cache miss), $0.003 cache hit, $0.60 output per 1M off-peak; peak hours (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday, excluding Chinese public holidays) bill exactly double. The row carries the off-peak rate, so a turn in peak hours is under-reported by half. DeepSeek bills no cache write, so cache_write_* equal input, as on the deepseek-v4-pro row. 1M context. It is the model Caprock's Claude Code on DeepSeek sessions run on. No correction: no earlier row matched it by prefix. The same page lists deepseek-v4-pro at $0.66/$1.98 off-peak, not the $0.435/$0.87 its row carries; the date that price changed is not on DeepSeek's page, so the row is left as it is and the gap is an open question (OQ-13 in .ai/12-risks.md)."
   ],
   "corrections": [
     { "model": "claude-opus-5-5", "reason": "No row before 2026-10-01.1; priced as claude-opus-5 by prefix." },
@@ -250,6 +251,16 @@
       "cache_read": 0.0036,
       "output": 0.87,
       "context_window": 128000
+    },
+    {
+      "id": "deepseek-flash",
+      "display": "DeepSeek Flash",
+      "input": 0.15,
+      "cache_write_5m": 0.15,
+      "cache_write_1h": 0.15,
+      "cache_read": 0.003,
+      "output": 0.6,
+      "context_window": 1000000
     },
     {
       "id": "minimax-m3",

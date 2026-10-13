@@ -297,6 +297,24 @@ export function subagentTone(type: string | undefined): 0 | 1 | 2 | 3 {
   return (h % 4) as 0 | 1 | 2 | 3
 }
 
+/** A subagent type's letter, upper case: G for general-purpose, E for Explore; "·" when no hook named one. */
+export function subagentInitial(type: string | undefined): string {
+  return (type?.trim()[0] ?? '·').toUpperCase()
+}
+
+/**
+ * What a subagent row says it is doing: the daemon's `doing` (its newest
+ * call's own description, a phrase from its tool and target, or its task);
+ * from a daemon that predates it, the task, else the raw call. `from` says
+ * which, so the row can leave out a raw command a description already says.
+ */
+export function subagentDoing(a: Pick<Subagent, 'doing' | 'doing_from' | 'description' | 'tool' | 'detail'>): { text: string; from: 'call' | 'tool' | 'task' | '' } {
+  if (a.doing) return { text: a.doing, from: a.doing_from ?? 'tool' }
+  if (a.description) return { text: a.description, from: 'task' }
+  if (a.tool) return { text: [a.tool.replace(/^mcp__(.+?)__/, '$1·'), a.detail].filter(Boolean).join(' '), from: 'tool' }
+  return { text: '', from: '' }
+}
+
 /**
  * The header's strip: the working subagents first (as the daemon orders them,
  * newest activity first), then the recently finished, muted, up to `max`;
@@ -307,7 +325,7 @@ export function subagentChips(subs: SubagentsNow | undefined, permission?: Permi
   if (!subs) return { chips: [], more: 0 }
   const chip = (a: { agent_id: string; agent_type?: string; description?: string; model_display?: string }, state: SubagentChip['state']): SubagentChip => ({
     id: a.agent_id,
-    initial: (a.agent_type?.trim()[0] ?? '·').toUpperCase(),
+    initial: subagentInitial(a.agent_type),
     state,
     tone: subagentTone(a.agent_type),
     label: [a.agent_type || 'subagent', a.description, a.model_display, state === 'waiting' ? 'waiting on you' : state === 'working' ? 'working' : 'finished'].filter(Boolean).join(' · '),

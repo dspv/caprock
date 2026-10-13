@@ -138,6 +138,14 @@ type Config struct {
 	// the same 0600/0700 posture as everything else here, and never returned
 	// over HTTP.
 	GeminiAPIKey string `json:"gemini_api_key,omitempty"`
+	// DeepSeekAPIKey is the user's DeepSeek platform key, entered in Settings →
+	// Subscriptions. Set, it offers "DeepSeek" beside the Claude Code sign-ins:
+	// a session started on it gets the key in its own environment as
+	// ANTHROPIC_AUTH_TOKEN and talks to DeepSeek's Anthropic-compatible API
+	// (internal/agents/provider.go). Caprock itself sends nothing with it.
+	// Stored like the Gemini key, never returned over HTTP — only whether one
+	// is set and a masked hint — and never logged; clearing it removes it.
+	DeepSeekAPIKey string `json:"deepseek_api_key,omitempty"`
 	// CustomAgents are coding agents the user added by command (ADR-046), a
 	// paid feature: kept whatever the licence says, offered and started only
 	// while it is active. Edited through PUT /v1/agents/custom, which

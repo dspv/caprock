@@ -94,10 +94,14 @@ type SpawnRequest struct {
 	// daemon from its own settings — never from the request, so a page cannot
 	// point a session at a directory of its choosing. It becomes
 	// CLAUDE_CONFIG_DIR or CODEX_HOME in the child's environment.
-	ConfigDir string   `json:"-"`
-	Args      []string `json:"args,omitempty"` // extra args
-	Cols      int      `json:"cols,omitempty"`
-	Rows      int      `json:"rows,omitempty"`
+	ConfigDir string `json:"-"`
+	// DeepSeekKey is the user's DeepSeek key, for a Claude Code session on
+	// DeepSeek (Subscription subs.DeepSeekID). Like GeminiKey it is never
+	// accepted from the browser: the daemon fills it in from its settings.
+	DeepSeekKey string   `json:"-"`
+	Args        []string `json:"args,omitempty"` // extra args
+	Cols        int      `json:"cols,omitempty"`
+	Rows        int      `json:"rows,omitempty"`
 }
 
 // Agent is a live owned session.
@@ -572,7 +576,11 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	if sub == "default" {
 		sub = ""
 	}
-	if sub != "" && (req.ConfigDir == "" || (agent != AgentClaude && agent != AgentCodex)) {
+	onDeepSeek := sub == subs.DeepSeekID
+	switch {
+	case onDeepSeek && (agent != AgentClaude || req.DeepSeekKey == ""):
+		return nil, fmt.Errorf("DeepSeek runs Claude Code sessions on your DeepSeek key: set the key in Settings → Subscriptions")
+	case !onDeepSeek && sub != "" && (req.ConfigDir == "" || (agent != AgentClaude && agent != AgentCodex)):
 		return nil, fmt.Errorf("subscription %q cannot start a %s session", sub, agent)
 	}
 	if agent == AgentClaude {
@@ -595,6 +603,11 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		// to this directory (ADR-048). It replaces any value the login shell
 		// exports, which is the user's own default.
 		env = withEnv(env, []string{subs.EnvVar(agent) + "=" + req.ConfigDir})
+	}
+	// Claude Code on DeepSeek (provider.go): the model calls go to DeepSeek on
+	// the user's key, which reaches this child's environment and nothing else.
+	if onDeepSeek {
+		env = withDeepSeek(env, req.DeepSeekKey)
 	}
 	// The Gemini CLI reads GEMINI_API_KEY from its environment, and the key the
 	// user pasted into the dashboard lives in the daemon's config — so it has

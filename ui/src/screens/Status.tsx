@@ -53,6 +53,7 @@ import { Locked } from '@/components/Locked'
 import { CloseButton, dialogOpen } from '@/components/Dialog'
 import { escapeLeavesPage, useCloseSettings } from '@/lib/settingsClose'
 import { CaprockItself } from '@/components/ResourceMeter'
+import { signIns } from '@/lib/subscriptions'
 
 /**
  * The page's own way out (lib/settingsClose.ts): a × beside the heading, and
@@ -173,7 +174,7 @@ export function StatusScreen() {
 function PlanSection() {
   const [plan, savePlan] = usePlan()
   // More than one Claude Code sign-in: a plan per account (AccountPlan).
-  const accounts = subscriptionsFor(useSubscriptionList().all, 'claude')
+  const accounts = signIns(subscriptionsFor(useSubscriptionList().all, 'claude'))
   if (!plan) return null
   const current = planText(plan, fmtUSD) || 'not set'
   return (

@@ -90,6 +90,29 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   re-deciding for a TLS listener. Decided by: the owner, after real-iPhone
   use of the keyboard-dictation path shows whether it is enough.
 
+- `OQ-13` — **DeepSeek's prices and the model name it reports.** Three
+  things about Claude Code on DeepSeek are not yet measured.
+  - **The model id in the transcript.** Claude Code writes the model the
+    API answered with. Sessions start on `deepseek-flash`, and the
+    `deepseek-flash` row prices any id that begins with it. If DeepSeek
+    answers with another spelling, its turns show as unpriced and are named
+    in `unpriced`, not mispriced. A live check on 2026-10-13 reached the
+    endpoint and was authenticated, but the account had no balance, so no
+    reply carried a model id.
+  - **Peak hours.** DeepSeek bills double from 01:00 to 04:00 and 06:00 to
+    10:00 UTC on weekdays. The table prices every turn at the off-peak rate,
+    so a turn in those hours is under-reported by half. Pricing by the hour
+    would need a time-of-day rule in `pricing.json`, which does not exist.
+  - **deepseek-v4-pro.** DeepSeek's pricing page, read 2026-10-13, lists it
+    at $0.66/$1.98 per 1M off-peak; its row still carries $0.435/$0.87
+    (read 2026-08-27). The date the price changed is not on DeepSeek's page.
+    A third-party note gives 2026-08-16, and another says requests to it
+    have been served and billed as `deepseek-flash` since 2026-09-14.
+    Neither is DeepSeek's own word, so the row is not dated from them.
+
+  Decided by: one DeepSeek session's transcript (the model id), and
+  DeepSeek's own changelog or a bill for the v4-pro date.
+
 ## What would falsify the whole plan
 
 - Anthropic ships an equivalent first-party mission control before Phase 1 — observe-only loses its reason to exist and only the orchestration/verification layer remains defensible.

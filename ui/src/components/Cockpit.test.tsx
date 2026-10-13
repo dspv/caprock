@@ -153,14 +153,47 @@ describe('the agent cockpit', () => {
       expect(section).toHaveTextContent('Subagents · 3')
       expect(section).toHaveTextContent('3 finished')
       const rows = within(section).getAllByRole('listitem')
-      expect(rows[0]).toHaveTextContent('general-purpose· Fix the cockpit')
+      // The type is a letter, its name on hover; the words are what it is doing.
+      expect(within(rows[0]!).getByLabelText('general-purpose')).toHaveTextContent('G')
+      expect(within(rows[1]!).getByLabelText('Explore')).toHaveTextContent('E')
+      expect(rows[0]).toHaveTextContent('Fix the cockpit')
       expect(rows[0]).toHaveTextContent('Bashgo test ./...')
-      expect(rows[0]).toHaveTextContent(/\d+s · 42 calls/)
-      expect(rows[1]).toHaveTextContent('Editsession.go')
+      expect(rows[0]).toHaveTextContent('Fix the cockpit42 calls')
+      expect(rows[0]).toHaveTextContent(/go test \.\/\.\.\.\d+s/)
+      // No task and no daemon phrase: the call itself leads, once.
+      expect(rows[1]!.querySelector('[data-doing]')).toHaveTextContent('Edit session.go')
       expect(rows[1]).toHaveTextContent('7 calls')
       expect(rows[1]).not.toHaveTextContent('waiting on you')
       expect(rows[2]).toHaveTextContent('waiting on you')
       expect(rows[2]).toHaveTextContent('1 call')
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
+  // Claude Code's own list says "general-purpose  Rerunning AppShell and
+  // DiffFiles tests"; the row leads with that kind of phrase, not the raw
+  // command (owner, 2026-10-13, translated).
+  it('leads a subagent row with what it is doing now', async () => {
+    h.subagents = {
+      working: [
+        { agent_id: 'a1', agent_type: 'general-purpose', description: 'Fix the cockpit', tool_calls: 9, started_at: now - 60_000, last_at: now - 1_000, tool: 'Bash', detail: 'go -C /Users/x test ./...', tool_at: now - 2_000, running: true, asking: false, doing: 'Rerun the store tests', doing_from: 'call' },
+        { agent_id: 'b2', agent_type: 'Plan', tool_calls: 0, started_at: now - 2_000, last_at: now - 1_000, running: false, asking: false },
+      ],
+      finished: 0,
+    }
+    try {
+      show(agent({ live_subagents: 2 }))
+      const section = await screen.findByRole('region', { name: 'Subagents' })
+      const [a, b] = within(section).getAllByRole('listitem')
+      const doing = a!.querySelector('[data-doing]')
+      expect(doing).toHaveTextContent('Rerun the store tests')
+      expect(doing).toHaveAttribute('data-doing', 'call')
+      // The phrase is the command's own description: the raw command is not repeated.
+      expect(a).not.toHaveTextContent('go -C')
+      expect(a).toHaveTextContent('9 calls')
+      expect(within(b!).getByLabelText('Plan')).toHaveTextContent('P')
+      expect(b).toHaveTextContent('starting')
     } finally {
       h.subagents = { working: [], finished: 0 }
     }

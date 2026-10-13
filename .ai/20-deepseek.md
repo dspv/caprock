@@ -1,5 +1,11 @@
 # DeepSeek Harness support
 
+This file is about DeepSeek Harness, DeepSeek's own agent. Claude Code
+running on DeepSeek's models — a Claude Code session Caprock starts with a
+DeepSeek key — is a different thing: see the `deepseek` subscription in
+[03-contracts.md § Subscriptions](03-contracts.md) and
+[ADR-048](08-decisions.md) (amended 2026-10-13).
+
 **Status: the observation half is built.** Sessions, turns, tool calls and cost
 are imported from DeepSeek Harness's own session transcripts, tagged with their
 agent, and shown on the same screens as Claude Code, OpenCode, Gemini and Codex.

@@ -171,6 +171,16 @@ others. Installing it: [install-app.md](install-app.md).
   agent's defaults: your settings, plugins and servers are not copied.
   Three per agent are free, your own sign-in included; more come with
   Premium. *Remove* deletes the folder after asking.
+- **Claude Code on DeepSeek.** Under Claude Code in Settings →
+  *Subscriptions*, paste your DeepSeek API key and *Save key*. *New agent*
+  and *Quick chat* then offer **DeepSeek · your API key** in the
+  *Subscription* picker; a session started on it is Claude Code in your
+  usual setup, talking to DeepSeek's models on your key instead of to
+  Anthropic, so your Claude plan and its limits are not used. The note under
+  the picker says what it sends to api.deepseek.com; Caprock itself sends
+  nothing, and the key reaches only that session. Its card says *DeepSeek*
+  and its cost is priced at DeepSeek's list price. Free. *Remove key* turns
+  it off.
 - **The tab strip.** The tab in front has an amber top edge; the others are
   shaded tabs of their own. The amber + opens a menu: New agent, Quick
   chat, New shell, Run saved…, Open file, Add project, each with its key.
@@ -347,7 +357,9 @@ others. Installing it: [install-app.md](install-app.md).
   it, the task list the agent keeps for itself (each task with a spinner, a
   check or an empty circle, and *3 of 7 done* above them; not there when
   the agent kept none), its subagents (a chip per subagent under the
-  agent, and a row each below: click one to open it in place and read the
+  agent, and a row each below that leads with its type's letter and what
+  it is doing now in words, from the description Claude gave its latest
+  command, else its tool and file, else its task: click one to open it in place and read the
   task it was given, every call it makes as it makes them, what it
   answered and what it cost), its last tool calls with how long each took, the uncommitted changes in
   its checkout, your plan's 5-hour and weekly windows, and a warning when
