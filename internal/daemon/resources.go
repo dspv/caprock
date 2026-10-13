@@ -541,7 +541,7 @@ func stopHost(ctx context.Context, h ptyhost.HostProc) error {
 			return false
 		}
 		p, ok := tab.Procs[h.PID]
-		return ok && p.StartMs == h.StartMs
+		return ok && p.StartMs == h.StartMs && !exited(h.PID)
 	}
 	if !same() {
 		return errChanged

@@ -577,6 +577,9 @@ type osSignaller struct{}
 func (osSignaller) terminate(pid int32) error { return terminate(int(pid)) }
 func (osSignaller) kill(pid int32) error      { return kill(int(pid)) }
 func (osSignaller) startOf(ctx context.Context, pid int32) (int64, bool) {
+	if exited(pid) {
+		return 0, false
+	}
 	return procstat.StartMs(ctx, pid)
 }
 
@@ -594,6 +597,9 @@ func stopProc(ctx context.Context, s signaller, pid int32, start int64, grace ti
 		return errChanged
 	}
 	if err := s.terminate(pid); err != nil {
+		if !same() {
+			return nil // it ended on its own meanwhile
+		}
 		return err
 	}
 	deadline := time.Now().Add(grace)
@@ -610,7 +616,10 @@ func stopProc(ctx context.Context, s signaller, pid int32, start int64, grace ti
 	if !same() {
 		return nil
 	}
-	return s.kill(pid)
+	if err := s.kill(pid); err != nil && same() {
+		return err
+	}
+	return nil
 }
 
 // errNotListed is a target the fresh scan does not list.
