@@ -31,6 +31,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **ui:** Dark Pastel is the default dark palette (owner, 2026-10-13), and
+  first among the dark ones in the picker and the cycle; Book stays the
+  default light one. Whoever never picked a palette — a new install, the
+  phone, the menu bar popover, the app's start-up page — now sees Dark
+  Pastel on a dark system, from the first paint. A palette you picked is
+  kept, Dark Warm included, and an old Slate stays Dark Cold; the old
+  Graphite tone was the default rather than a choice, so it moves to Dark
+  Pastel. The home-screen colours and the screenshot scripts' dark pass
+  follow.
 - **dashboard:** the Now screen refreshes once, not once per section. Its
   sections ask on one shared tick, at most every 2 s (all-time figures every
   10 s); sections asking the same question share one request; a folded or

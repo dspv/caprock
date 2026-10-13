@@ -448,9 +448,10 @@ others. Installing it: [install-app.md](install-app.md).
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
 - **Themes.** Eight, picked from the sun/moon button at the foot of the
-  sidebar or Settings → *Appearance*: Dark Warm, Dark Cold, Dark Pastel (a
-  neutral graphite with soft, muted colours) and Dark Side;
-  Light, Light Cold, Book and Light Side. Point at one to try it on the
+  sidebar or Settings → *Appearance*: Dark Pastel (a neutral graphite with
+  soft, muted colours, the default dark one), Dark Warm, Dark Cold and Dark
+  Side; Light, Light Cold, Book (the default light one) and Light Side. Until
+  you pick one, the app follows your system's light or dark setting. Point at one to try it on the
   whole window, click to keep it. Dark Side and Light Side add a soft glow to
   the focused field, the primary button and the tab in front.
 - **Terminal look.** Settings → *Terminal*: the colours (*Match app*,

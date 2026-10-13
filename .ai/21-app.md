@@ -1240,7 +1240,13 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
 - **The UI is served by the daemon.** The WebView loads the dashboard from the
   daemon, exactly as a browser does, so the app's UI and the daemon's API can
   never be from different releases. The shell bundles one small fallback page
-  for when no daemon answers. The React code detects the app
+  for when no daemon answers; on a dark system it is drawn in Dark Pastel's
+  colours (`app/fallback/fallback.css`), the dashboard's default dark palette
+  since 2026-10-13, so the window does not change palette once the daemon
+  answers. Both windows are transparent with no background colour of their
+  own; the first paint is the page's (the pre-paint script in
+  `ui/index.html`, then `tokens.css`, which paints Dark Pastel for a dark
+  `<html>` nothing has marked yet). The React code detects the app
   (`window.__TAURI_INTERNALS__`) and turns on the app-only surfaces: tabs
   layout, native notifications instead of in-page ones, the badge.
 - **The shell talks to the page through Tauri commands**, allowlisted for the

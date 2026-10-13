@@ -1,5 +1,5 @@
 /**
- * The seven palettes as swatches, in two groups — Dark, then Light: hovering
+ * The eight palettes as swatches, in two groups — Dark, then Light: hovering
  * one shows it on the whole page, leaving puts back what is kept, and a click
  * keeps it (owner, 2026-10-11: "not just poking — you open it, move across,
  * it changes, and you pick what you like", translated). Used by the theme
