@@ -71,6 +71,11 @@ const (
 	// version alone. A write that removes rows (retention, removing a
 	// session) adds no event, so past this an answer is recomputed anyway.
 	answerRecheck = 10 * time.Minute
+	// usualTTL is how long the cockpit's 30-day baseline is served as it is,
+	// and usualMaxStale how long past that it is still handed back while one
+	// refresh runs: thirty days of history do not move in an afternoon.
+	usualTTL      = 10 * time.Minute
+	usualMaxStale = 24 * time.Hour
 )
 
 // answerEntry is one key's cached answer, or the in-flight computation of it.

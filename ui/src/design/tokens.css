@@ -623,10 +623,17 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 .cockpit-hero [data-hero-chips] { margin-top: 3px; }
 .cockpit-hero-num { font-size: 24px; }
 .cockpit-hero-num[data-long] { font-size: 19px; }
+/* The headline's name: its short word only beside a comparison in a narrow
+ * hero (*▼ 9 pts cache ▾*), where the long one cut the agent's name. */
+.cockpit-hero [data-label-short] { display: none; }
+.cockpit-hero [data-usual-on] [data-label-long] { display: none; }
+.cockpit-hero [data-usual-on] [data-label-short] { display: inline; }
 @container (min-width: 340px) {
   .cockpit-hero { --hero-av: 56px; column-gap: 14px; }
   .cockpit-hero-num { font-size: 28px; }
   .cockpit-hero-num[data-long] { font-size: 22px; }
+  .cockpit-hero [data-usual-on] [data-label-long] { display: inline; }
+  .cockpit-hero [data-usual-on] [data-label-short] { display: none; }
 }
 @container (min-width: 420px) {
   .cockpit-hero { --hero-av: 58px; }

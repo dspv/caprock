@@ -338,7 +338,9 @@ others. Installing it: [install-app.md](install-app.md).
   it: the agent and its state, three figures beside it that you pick —
   its burn rate in large type, its tokens and what it has cost on two
   short lines under it, or any of cache hit rate, turns, time working, the
-  last call and tool calls (click a figure's ▾) — its spend for the
+  last call and tool calls (click a figure's ▾), and under the big one how
+  it compares with your own last 30 days (*▲ 38%*, *≈ usual*, *▼ 55%*;
+  amber only in your top fifth; hover for the whole sentence) — its spend for the
   session, today, 7 or 30 days as a chart or as three more figures you
   choose (*Chart | Numbers*; fold it to one line if you like), how full its context is and what every call
   now pays to re-read it, what it is doing this second and for how long,

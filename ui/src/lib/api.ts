@@ -3,6 +3,7 @@
 import type { ReapResult, ResourceReport } from './resources'
 import type { Footprint } from './footprint'
 import type { PullRequest } from './github'
+import type { Usual } from './usual'
 import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
 import type { SessionBranches } from './branches'
 
@@ -615,6 +616,8 @@ export interface Summary {
   unpriced?: Unpriced
   /** Known internal model work, measured but excluded from user-work totals. */
   background?: BackgroundUsage
+  /** The viewer's own usual over the last 30 days (lib/usual.ts); absent with too little history. */
+  usual?: Usual
 }
 
 export interface RateWindow {

@@ -474,3 +474,62 @@ describe('the spend details', () => {
     expect(spend().querySelector('[role="dialog"]')).toBeNull()
   })
 })
+
+describe('the headline against your usual', () => {
+  // The session's burn: $0.11 over the five-minute floor, $1.32/h.
+  const SHAPE = [0.003, 0.03, 0.08, 0.22, 0.56, 1, 1.65, 2.6, 3.7, 6, 22.7]
+  const dist = (median: number) => ({ n: 362, q: SHAPE.map((k) => k * median) })
+  const withUsual = (u: Partial<NonNullable<Summary['usual']>> | undefined) =>
+    ({ ...summary, usual: u ? { days: 30, ...u } : undefined }) as Summary
+  const delta = () => document.querySelector('[data-hero-fig] [data-usual]')
+  const pick = (m: string) => localStorage.setItem('caprock.app.cockpit.spend', JSON.stringify({ v: 3, hero: [m, 'burn', 'cost'] }))
+
+  it('says above, with the full sentence on hover, toned only in the top fifth', async () => {
+    await act(async () => { show(agent(), withUsual({ burn: dist(0.956) })) })
+    expect(delta()).toHaveTextContent('▲ 38%')
+    expect(delta()).toHaveAttribute('data-usual', 'above')
+    expect(delta()).toHaveAttribute('title', '38% above your usual $0.96/h (the median active session-hour, 30 days) · higher than 56% of your session-hours')
+    expect(delta()!.className).toMatch(/text-fg-muted/)
+  })
+
+  it('says a far-above figure as a multiple, in amber', async () => {
+    await act(async () => { show(agent(), withUsual({ burn: dist(0.293) })) })
+    expect(delta()).toHaveTextContent('▲ 4.5×')
+    expect(delta()!.className).toMatch(/text-warn/)
+  })
+
+  it('says near as about usual, and below with a down arrow', async () => {
+    let unmount = () => {}
+    await act(async () => { unmount = show(agent(), withUsual({ burn: dist(1.27) })).unmount })
+    expect(delta()).toHaveTextContent('≈ usual')
+    expect(delta()).toHaveAttribute('data-usual', 'near')
+    unmount()
+    await act(async () => { show(agent(), withUsual({ burn: dist(2.93) })) })
+    expect(delta()).toHaveTextContent('▼ 55%')
+    expect(delta()).toHaveAttribute('data-usual', 'below')
+  })
+
+  it('shows nothing, and moves nothing, with no history yet', () => {
+    show(agent(), withUsual(undefined))
+    expect(delta()).toBeNull()
+    expect(document.querySelector('[data-usual-on]')).toBeNull()
+    expect(screen.getByRole('button', { name: /Headline: Burn rate/ })).toBeInTheDocument()
+  })
+
+  it('compares tokens with your median session', () => {
+    pick('tokens')
+    show(agent(), withUsual({ tokens: dist(688_478) }))
+    expect(delta()).toHaveTextContent('▲ 38%')
+    expect(delta()!.getAttribute('title')).toMatch(/^38% above your median session, 688\.5k tokens \(30 days\) · already more than 56% of your sessions$/)
+  })
+
+  it('compares the cache rate in points, and steps the long name down beside it', () => {
+    pick('cache')
+    show(agent(), withUsual({ cache: 97.4 }))
+    expect(delta()).toHaveTextContent('▼ 2 pts')
+    expect(delta()).toHaveAttribute('title', '2 pts below your 30-day hit rate of 97.4%')
+    const row = document.querySelector('[data-usual-on]')!
+    expect(row.querySelector('[data-label-long]')).toHaveTextContent('cache hit rate')
+    expect(row.querySelector('[data-label-short]')).toHaveTextContent('cache')
+  })
+})

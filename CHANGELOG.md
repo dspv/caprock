@@ -7,6 +7,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **app:** the cockpit's headline says how it compares with your own usual —
+  *▲ 38%*, *≈ usual*, *▼ 55%*, *▲ 4.5×* left of *burn rate ▾* — against
+  your median active session-hour (burn rate), your median session (cost,
+  tokens) or your 30-day hit rate (cache, in points), all measured on this
+  machine over the last 30 days. Amber only in your top fifth; hover says
+  it in full; nothing at all until there is enough history. The new
+  `usual` on `GET /v1/stats/summary` carries the baseline.
+
 ## [0.113.0] - 2026-10-13
 
 ### Added

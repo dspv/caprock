@@ -27,6 +27,8 @@ import { SpendChart, SpendOverTime } from './SpendScrub'
 import { callsFromEvents } from '@/lib/scrub'
 import { everyWhileVisible } from '@/lib/visible'
 import { HEADLINES, METRICS, SPEND_PERIODS, foldedLine, metricTitle, metricValue, periodFigures, periodScope, pickHero, pickSlot, setSpendPrefs, shownSlots, spendFigures, useSpendPrefs, type Metric, type PeriodFigures, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
+import { UsualDelta } from './HeroUsual'
+import { versus, type Usual } from '@/lib/usual'
 import { AgentCharacter, agentName, characterFor } from './Characters'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
@@ -140,7 +142,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   // folded until a viewer opens them.
   return (
     <>
-      <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} onChip={openFromChip} />
+      <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} />
       <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
       {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
       {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && (
@@ -210,7 +212,7 @@ function useChipRoom(row: RefObject<HTMLDivElement | null>, total: number): numb
  * lines, which are left-aligned and cut rather than wrapped; a narrower
  * inspector steps the headline down (.cockpit-hero, a container query).
  */
-function Hero({ s, sessionId, state, now, background, subs, permission, figures, onChip }: { s: SessionSummary; sessionId: string; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null; figures: SpendFigures; onChip: (id: string) => void }) {
+function Hero({ s, sessionId, state, now, background, subs, permission, figures, usual, onChip }: { s: SessionSummary; sessionId: string; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null; figures: SpendFigures; usual?: Usual; onChip: (id: string) => void }) {
   const since = s.worked_at || s.last_event_at
   const saysBackground = background > 0 && state === 'working'
   const working = subs?.working.length ?? 0
@@ -244,7 +246,7 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
             <span className="truncate">{label}{ago ? <span className="font-normal text-fg-faint"> · {ago}</span> : null}</span>
           </p>
         </div>
-        {s.stats && <div data-hero-fig className="min-w-0 justify-self-end [grid-area:fig]"><HeadlineFigure figures={figures} /></div>}
+        {s.stats && <div data-hero-fig className="min-w-0 justify-self-end [grid-area:fig]"><HeadlineFigure figures={figures} usual={usual} /></div>}
         {/* The permission mode, and for a session Caprock started, the way
           * to change it while it runs (ADR-054); then since when it runs. */}
         <div data-hero-meta className="grid min-w-0 content-start gap-[3px] [grid-area:meta]">
@@ -384,7 +386,7 @@ function HeroMenu({ slot, hero, figures, label, onPick }: { slot: number; hero: 
  * 2026-10-12: "the number is cool but says nothing; let me switch what
  * matters more to me").
  */
-function HeadlineFigure({ figures }: { figures: SpendFigures }) {
+function HeadlineFigure({ figures, usual }: { figures: SpendFigures; usual?: Usual }) {
   const { hero } = useSpendPrefs()
   const headline = hero[0]!
   const [open, setOpen] = useState(false)
@@ -395,18 +397,26 @@ function HeadlineFigure({ figures }: { figures: SpendFigures }) {
   const value = headline === 'cost' ? fmtUSD(tweened) : metricValue(headline, figures)
   const [num, unit] = value.endsWith('/h') ? [value.slice(0, -2), '/h'] : [value, '']
   const choose = (m: Metric) => { setSpendPrefs({ hero: pickHero(hero, 0, m) }); setOpen(false) }
+  const vs = versus(headline, figures, usual)
+  const days = usual?.days ?? 30
   return (
     <div ref={box} className="relative grid min-w-0 justify-items-end gap-[5px]" data-headline={headline}>
       <span className="cockpit-hero-num num whitespace-nowrap font-semibold leading-none tracking-[-0.03em] text-fg" data-long={num.length >= 8 ? '' : undefined}
         aria-label={`${meta.name} ${metricValue(headline, figures)}`} title={metricTitle(headline, figures)}>
         {num}{unit && <span className="text-[16px] font-medium text-fg-muted">{unit}</span>}
       </span>
+      {/* How the headline compares with the viewer's own usual, left of
+        * its name; under 340px a long name steps down to its short word
+        * beside it, so the agent's name is never the one cut. */}
+      <span className="flex items-center gap-1.5" data-usual-on={vs ? '' : undefined}>
+      {vs && <UsualDelta v={vs} days={days} />}
       <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={`Headline: ${meta.name}. Choose what it shows`}
         onClick={() => setOpen((o) => !o)}
         title="Choose what this figure shows"
         className="-mr-1 inline-flex items-center gap-1 rounded-[5px] px-1 text-[11.5px] leading-[16px] text-fg-faint outline-none hover:bg-panel-2 hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] aria-expanded:bg-panel-2">
-        {meta.name.toLowerCase()}<span aria-hidden className="text-[9px]">▾</span>
+        <span data-label-long>{meta.name.toLowerCase()}</span><span data-label-short>{meta.short}</span><span aria-hidden className="text-[9px]">▾</span>
       </button>
+      </span>
       {open && <HeroMenu slot={0} hero={hero} figures={figures} label="Headline figure" onPick={choose} />}
     </div>
   )
