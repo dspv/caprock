@@ -79,6 +79,8 @@ describe('the session deck', () => {
     expect(document.querySelector('[data-deck-expand]')).toBeNull()
     expect(screen.queryByRole('button', { name: /^Expand/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /Close the session deck/ })).toBeNull()
+    // Its header wraps rather than running past the deck's edge (owner, 2026-10-14).
+    expect(document.querySelector('[data-deck-head]')).toHaveClass('flex-wrap')
   })
 
   it('asks nothing of the session’s events, and leaves the context to the status bar', async () => {

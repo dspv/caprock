@@ -20,7 +20,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   click moves to the next. ⌘B and ⇧⌘B work as before and the button
   follows them. The deck's own *Expand* and *Hide* buttons are gone. The
   theme button moved beside it, out of the Settings row.
-
 - **app:** the sidebar's heading has a worded switch, **Projects | Tabs**,
   in place of the small folder icon: Projects lists the sessions under
   their projects, Tabs in one list in the tabs' order. Settings →
@@ -33,6 +32,9 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** the PRs & CI bar's header no longer runs past its right edge
+  when the sidebar and the cockpit are both open on a laptop screen: the
+  least useful words drop first and the rest wraps to a second line.
 - **app:** updating no longer moves you off the sidebar you had. 0.116.0
   switched everyone who had never touched the sidebar toggle to the flat
   list; if you used Caprock before and never chose, the sidebar lists the

@@ -434,7 +434,7 @@ const CHECKS_TITLE: Record<ChecksView, string> = {
 export function ChecksViewSwitch({ view, onChange }: { view: ChecksView; onChange: (v: ChecksView) => void }) {
   return (
     <div role="radiogroup" aria-label="Checks" data-deck-checks-view={view} className="flex shrink-0 items-center gap-1 text-[10.5px] text-fg-faint">
-      <span aria-hidden>Checks</span>
+      <span aria-hidden className="hidden @min-[560px]:inline">Checks</span>
       <span className="flex items-center gap-px rounded-[5px] border border-[var(--app-hairline)] p-px">
         {CHECKS_VIEWS.map((v) => (
           <button key={v} type="button" role="radio" aria-checked={view === v} data-deck-checks={v} onClick={() => onChange(v)} title={CHECKS_TITLE[v]}
@@ -1055,7 +1055,13 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
     <Investigate.Provider value={{ run: (j, st) => void investigate(j, st), why, busy }}>
     <LogView.Provider value={{ view: logView, pr: view === 'pr' ? pr?.number : undefined, onShown }}>
     <div ref={cell} data-deck-cell onKeyDown={onEsc} className="flex min-w-0 flex-1 flex-col gap-1 overflow-hidden px-3 pb-2 pt-2">
-      <div className="flex min-w-0 items-center gap-2">
+      {/* The header never runs past the deck's right edge (owner, 2026-10-14:
+        * on a 14-inch MacBook with the sidebar and the cockpit open, the
+        * end of it was cut off at the cockpit). The least useful words go
+        * first as the deck narrows — "updated …" under 640px, the word
+        * "Checks" under 560px, the branch chip under 480px — and what is
+        * still too wide wraps to a second line rather than overflowing. */}
+      <div data-deck-head className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <h4 className="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Pull requests &amp; CI</h4>
         {branch && <BranchChip branch={branch} base={base} changed={changed} ahead={ahead} onReview={onReview} />}
         {/* A release under way, said from the other views, in the header. */}
@@ -1065,8 +1071,8 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
             <span aria-hidden className="ci-spin inline-block h-[7px] w-[7px] shrink-0 rounded-full" /><span className="truncate">{chip}</span>
           </button>
         )}
-        <span className="ml-auto flex min-w-0 shrink-0 items-baseline justify-end gap-2 text-[11px] text-fg-faint">
-          <Freshness at={viewAt} loading={viewMeta.loading} failed={viewMeta.failed} />
+        <span className="ml-auto flex min-w-0 items-baseline justify-end gap-2 text-[11px] text-fg-faint">
+          <span data-deck-fresh-slot className="hidden @min-[640px]:contents"><Freshness at={viewAt} loading={viewMeta.loading} failed={viewMeta.failed} /></span>
           {view === 'pr' && prsData && !prsData.connected && rows.length > 0 && (
             <button type="button" disabled={connecting} onClick={() => void connect()} title="Reads CI and reviews through your GitHub CLI login; turn it off in Settings → GitHub" className="text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'connect GitHub for CI'}</button>
           )}
