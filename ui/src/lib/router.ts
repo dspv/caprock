@@ -1,10 +1,12 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=]
+// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=]
 import { useEffect, useState } from 'react'
 
 export type Route =
-  // `full` is #/now: the whole Now screen. #/ is the same screen on a
-  // desktop and the phone home at phone width (components/PhoneHome).
+  // Home: the dashboard's main screen, named 'now' in code (it was "Now" on
+  // screen until 2026-10-14). `full` is #/home (or the older #/now): the whole
+  // screen. #/ is the same screen on a desktop and the phone home at phone
+  // width (components/PhoneHome).
   | { name: 'now'; full?: boolean }
   // `at` is a unix-ms instant to reveal in the timeline: clicking a minute in
   // the pulse should land on those events, not at the top of a long session.
@@ -42,6 +44,7 @@ export function parseHash(hash: string): Route {
     case undefined:
     case '':
       return { name: 'now' }
+    case 'home':
     case 'now':
       return { name: 'now', full: true }
     case 'session':
@@ -83,7 +86,7 @@ export function parseHash(hash: string): Route {
 
 export function href(r: Route): string {
   switch (r.name) {
-    case 'now': return r.full ? '#/now' : '#/'
+    case 'now': return r.full ? '#/home' : '#/'
     case 'session': {
       const q = new URLSearchParams()
       if (r.tab) q.set('tab', r.tab)

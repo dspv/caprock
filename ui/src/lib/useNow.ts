@@ -7,7 +7,8 @@
  * age indefinitely. On an idle machine that is not an edge case — it is the
  * normal state, and the moment the label matters most.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
+import { ScreenShown } from './refresh'
 import { everyWhileVisible } from './visible'
 
 /**
@@ -17,13 +18,18 @@ import { everyWhileVisible } from './visible'
  * afresh when it does, so a label never starts from a stale time.
  */
 export function useNow(ms: number): number {
+  const shown = useContext(ScreenShown)
   const [now, setNow] = useState(() => Date.now())
   const pace = useRef(ms)
+  const wasShown = useRef(shown)
   useEffect(() => {
-    if (pace.current !== ms) setNow(Date.now())
+    if (pace.current !== ms || (shown && !wasShown.current)) setNow(Date.now())
     pace.current = ms
+    wasShown.current = shown
+    // A kept screen out of sight (lib/screenPlace.ts) has no clock at all; shown again, it reads the time at once.
+    if (!shown) return
     return everyWhileVisible(() => setNow(Date.now()), ms)
-  }, [ms])
+  }, [ms, shown])
   return now
 }
 
@@ -39,9 +45,16 @@ export const SLOW_NOW_MS = 15_000
  * to keep "4m ago" saying "4m ago".
  */
 export function useNowFor(latest: number | undefined): number {
+  const shown = useContext(ScreenShown)
   const [now, setNow] = useState(() => Date.now())
   const fresh = !!latest && now - latest < FRESH_MS
-  useEffect(() => everyWhileVisible(() => setNow(Date.now()), fresh ? 1000 : SLOW_NOW_MS), [fresh])
+  const wasShown = useRef(shown)
+  useEffect(() => {
+    if (shown && !wasShown.current) setNow(Date.now())
+    wasShown.current = shown
+    if (!shown) return
+    return everyWhileVisible(() => setNow(Date.now()), fresh ? 1000 : SLOW_NOW_MS)
+  }, [fresh, shown])
   // A new event makes the screen fresh: read the clock now, not at the next slow tick.
   useEffect(() => { if (latest) setNow(Date.now()) }, [latest])
   return now

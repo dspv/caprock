@@ -50,7 +50,7 @@ export function PhoneBar({ link, heardAt }: { link: LinkStatus; heardAt: () => n
         </button>
         {open && (
           <div role="menu" aria-label="More" className="absolute right-0 top-[calc(100%+4px)] w-[230px] overflow-hidden rounded-[12px] border border-border-strong bg-panel py-1 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.6)]">
-            <a role="menuitem" href="#/now" className={item} onClick={() => setOpen(false)}>
+            <a role="menuitem" href="#/home" className={item} onClick={() => setOpen(false)}>
               <DashboardIcon size={18} /> Dashboard
             </a>
             <a role="menuitem" href="#/settings" className={item} onClick={() => setOpen(false)}>

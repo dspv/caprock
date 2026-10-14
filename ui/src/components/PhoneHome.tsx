@@ -189,7 +189,7 @@ export function PhoneHome() {
       {waiting[0] && <Waiting session={waiting[0]} more={waiting.length - 1} now={now} />}
       <Continue rows={rows} now={now} loading={!sessions.data && !sessions.error} />
       <Saved items={inbox.items} now={now} canDelete={canControl} />
-      <a href="#/now" className="flex min-h-11 items-center justify-center gap-1 text-[14px] text-fg-muted no-underline">
+      <a href="#/home" className="flex min-h-11 items-center justify-center gap-1 text-[14px] text-fg-muted no-underline">
         Full dashboard <ChevronIcon size={14} />
       </a>
       <Dock
@@ -253,7 +253,7 @@ function Continue({ rows, now, loading }: { rows: SessionSummary[]; now: number;
   const labels = projectLabels(rows)
   return (
     <section aria-label="Continue">
-      <SectionLabel right={<a href="#/now" className="text-accent no-underline">All sessions</a>}>Continue</SectionLabel>
+      <SectionLabel right={<a href="#/home" className="text-accent no-underline">All sessions</a>}>Continue</SectionLabel>
       {rows.length === 0 ? (
         <div className="rounded-[12px] border border-border bg-panel px-3 py-4 text-[14px] text-fg-muted">
           {loading ? 'Reading your sessions…' : 'Nothing from the last two days. Start a chat below.'}

@@ -31,6 +31,14 @@ export const SLOW_LIVE_MS = 10_000
 /** The live pace for every useApi under it; a hook's own `liveMs` may only slow it. */
 export const LivePace = createContext<number>(DEFAULT_LIVE_MS)
 
+/**
+ * False under a screen that is kept but not shown: a dashboard screen behind
+ * another one, or the whole dashboard behind a terminal tab (lib/screenPlace.ts).
+ * useApi asks nothing and its tick rests; clocks (useNow) stop. Shown again,
+ * each asks once, as a folded section does.
+ */
+export const ScreenShown = createContext<boolean>(true)
+
 /** How long a settled answer is handed to a hook that asks the same question late. */
 export const SHARE_MS = 500
 

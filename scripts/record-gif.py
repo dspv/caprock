@@ -126,7 +126,7 @@ def main():
         # Dismiss the first-run strips before the first frame, not after: they
         # are answered from localStorage at mount, and hash navigations never
         # re-read the document, so setting them later changes nothing.
-        rpc(ws, "Page.navigate", {"url": f"{BASE}/#/now"})
+        rpc(ws, "Page.navigate", {"url": f"{BASE}/#/home"})
         time.sleep(2)
         evaluate(ws, """
           try {

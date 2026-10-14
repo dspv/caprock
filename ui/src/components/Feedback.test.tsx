@@ -217,7 +217,7 @@ describe('the feedback form', () => {
     expect(row.textContent).toContain('Send feedback')
     expect(currentScreen('#/app', true)).toBe('App tabs')
     expect(currentScreen('#/cost', true)).toBe('Cost')
-    expect(currentScreen('', false)).toBe('Now')
+    expect(currentScreen('', false)).toBe('Home')
   })
 })
 

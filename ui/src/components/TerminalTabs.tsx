@@ -198,7 +198,7 @@ export function TabStrip(props: TabStripProps) {
             onClick={props.dashboard.onActivate}
             onAuxClick={(e) => { if (e.button === 1) props.dashboard!.onClose() }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.dashboard!.onActivate() }}
-            title={`${props.dashboard.label} — ${keys(props.dashboard.label === 'Settings' ? '⌘,' : '⌘0')}`}
+            title={props.dashboard.label === 'Settings' ? `Settings — ${keys('⌘,')}` : `Dashboard — ${keys('⌘0')}; ${keys('⌘0')} again: Home, at its top`}
             aria-label={props.dashboard.label}
             aria-keyshortcuts={props.dashboard.label === 'Settings' ? undefined : (isMacPlatform() ? 'Meta+0' : 'Control+Shift+0')}
             className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-1 rounded-t-[9px] px-2 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${

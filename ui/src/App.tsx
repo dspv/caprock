@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Shell } from '@/components/Shell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useRoute, type Route } from '@/lib/router'
@@ -18,6 +18,8 @@ import { PhoneHome } from '@/components/PhoneHome'
 import { LanOnlyNotice } from '@/components/LanOnlyNotice'
 import { useNarrowScreen } from '@/lib/phone'
 import { BrainCaptureHost } from '@/components/BrainCapture'
+import { ScreenShown } from '@/lib/refresh'
+import { keptScreen, pageScroller, placeKey, useScrollPlace } from '@/lib/screenPlace'
 
 // Mail is its own world (internal/mail); its code loads only when opened.
 const MailScreen = lazy(() => import('@/screens/mail/MailScreen').then((m) => ({ default: m.MailScreen })))
@@ -72,29 +74,54 @@ export default function App() {
   )
 }
 
-/** The dashboard's screens in their shell: the browser's whole page, and a view inside the app. */
-export function Dashboard({ route, inApp = false }: { route: Route; inApp?: boolean }) {
+/**
+ * The dashboard's screens in their shell: the browser's whole page, and a view inside the app.
+ *
+ * The dashboard keeps its place (lib/screenPlace.ts): a screen of its own,
+ * once opened, stays mounted behind the others, and each screen's scroll is
+ * put back. In the app the whole dashboard stays mounted behind the terminal
+ * tabs too: `shown` is false there, and `scroller` is its scroll box.
+ */
+export function Dashboard({ route, inApp = false, shown = true, scroller = pageScroller }: { route: Route; inApp?: boolean; shown?: boolean; scroller?: () => HTMLElement | null }) {
   // At phone width the browser's home is the phone home (.ai/04-ui.md § The
-  // phone home): start a chat, save, continue. The full Now screen is #/now.
+  // phone home): start a chat, save, continue. The full Home screen is #/home.
   const narrow = useNarrowScreen()
-  const phoneHome = narrow && !inApp && route.name === 'now' && !route.full
+  const screen = (r: Route): ReactNode => {
+    const phoneHome = narrow && !inApp && r.name === 'now' && !r.full
+    switch (r.name) {
+      case 'now': return phoneHome ? <PhoneHome /> : <NowScreen inApp={inApp} />
+      case 'session': return <SessionScreen key={r.id} id={r.id} tab={r.tab} at={r.at} />
+      case 'cost': return <CostScreen section={r.section} />
+      case 'settings': return <StatusScreen />
+      case 'history': return <HistoryScreen />
+      case 'week': return <WeekScreen start={r.start} />
+      case 'tasks': return <TasksScreen view={r.view} />
+      case 'graph': return <OrchestrationScreen />
+      case 'notes': return <NotesScreen />
+      case 'start': return <NewProjectScreen mode={r.mode} />
+      case 'mail': return <Suspense fallback={null}><MailScreen /></Suspense>
+      case 'brain': return <Suspense fallback={null}><BrainScreen node={r.node} /></Suspense>
+    }
+  }
+  // The kept screens opened so far, each with the route it last showed.
+  const kept = useRef(new Map<Route['name'], Route>())
+  const front = keptScreen(route)
+  if (front) kept.current.set(front, route)
+  useScrollPlace(placeKey(route), shown, scroller)
   return (
-    <Shell route={route}>
-      {!inApp && <LanOnlyNotice />}
-      <ErrorBoundary label={route.name}>
-        {route.name === 'now' && (phoneHome ? <PhoneHome /> : <NowScreen inApp={inApp} />)}
-        {route.name === 'session' && <SessionScreen key={route.id} id={route.id} tab={route.tab} at={route.at} />}
-        {route.name === 'cost' && <CostScreen section={route.section} />}
-        {route.name === 'settings' && <StatusScreen />}
-        {route.name === 'history' && <HistoryScreen />}
-        {route.name === 'week' && <WeekScreen start={route.start} />}
-        {route.name === 'tasks' && <TasksScreen view={route.view} />}
-        {route.name === 'graph' && <OrchestrationScreen />}
-        {route.name === 'notes' && <NotesScreen />}
-        {route.name === 'start' && <NewProjectScreen mode={route.mode} />}
-        {route.name === 'mail' && <Suspense fallback={null}><MailScreen /></Suspense>}
-        {route.name === 'brain' && <Suspense fallback={null}><BrainScreen node={route.node} /></Suspense>}
-      </ErrorBoundary>
-    </Shell>
+    <ScreenShown.Provider value={shown}>
+      <Shell route={route}>
+        {!inApp && <LanOnlyNotice />}
+        {[...kept.current].map(([name, r]) => (
+          <div key={name} data-kept-screen={name} hidden={name !== front}>
+            <ScreenShown.Provider value={shown && name === front}>
+              <ErrorBoundary label={name}>{screen(r)}</ErrorBoundary>
+            </ScreenShown.Provider>
+          </div>
+        ))}
+        {/* Not kept: mounted only while in front (Settings listens for Escape on the window). */}
+        {!front && shown && <ErrorBoundary label={route.name}>{screen(route)}</ErrorBoundary>}
+      </Shell>
+    </ScreenShown.Provider>
   )
 }

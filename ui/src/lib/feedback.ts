@@ -159,7 +159,7 @@ export function isSendable(titleText: string): boolean {
 /** A human name for a dashboard screen, for a report's title and context. */
 export function screenName(r: Route): string {
   switch (r.name) {
-    case 'now': return 'Now'
+    case 'now': return 'Home'
     case 'session': return 'Session detail'
     case 'cost': return 'Cost'
     case 'history': return 'Lifetime'

@@ -124,7 +124,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       return (
         <div className="grid grid-cols-1 gap-2">
           <div className="flex items-center gap-3 flex-wrap">
-            <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>
+            <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Home</a>
             <span className="mono text-[11px] text-fg-faint">{id}</span>
           </div>
           {terminal}
@@ -203,7 +203,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {compact && (
         <div data-compact-header className="grid gap-1.5">
           <div className="flex min-w-0 items-center gap-2">
-            <a href={href({ name: 'now' })} aria-label="Back to Now" className="link shrink-0 text-fg-muted text-[13px] py-1">←</a>
+            <a href={href({ name: 'now' })} aria-label="Back to Home" className="link shrink-0 text-fg-muted text-[13px] py-1">←</a>
             <h1 className="max-w-[45%] shrink-0 truncate text-[15px] font-medium">{s.project || 'unknown project'}</h1>
             <span className={`min-w-0 flex-1 truncate text-[12px] ${s.description_source !== 'prompt' ? 'text-fg' : 'text-fg-muted'}`}>{s.description}</span>
             {!detail.stale && <Badge health={s.activity.health} />}
@@ -228,7 +228,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       )}
       {(!compact || details) && <>
       <div className="flex items-center gap-3 flex-wrap">
-        {!compact && <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>}
+        {!compact && <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Home</a>}
         {!compact && <h1 className="text-[15px] font-medium">{s.project || 'unknown project'}</h1>}
         <span className="mono text-[11px] text-fg-faint">{s.session_id}</span>
         {s.native_id && (

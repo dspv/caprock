@@ -26,7 +26,7 @@ others. Installing it: [install-app.md](install-app.md).
   running (the dot is green while one is working) and how many wait on
   you, then your Claude plan's 5-hour and weekly windows — the share used
   and when each resets. Click the spend for Cost, a window for the plan
-  limits, *Running* for Now, *Waiting* for the session that has waited
+  limits, *Running* for Home, *Waiting* for the session that has waited
   longest. On API billing there are no windows, so there are no bars. Then,
   only while something waits, *Waiting on you*: sessions blocked on a
   permission prompt, then sessions whose turn has ended, oldest first. A
@@ -101,7 +101,7 @@ others. Installing it: [install-app.md](install-app.md).
   its row in the sidebar, or right-click the row for *Rename…*: the name
   becomes a field. Enter or clicking away saves it, Esc keeps the old one,
   and an emptied field gives the session back the name Caprock made for
-  it. The new name shows at once in the tab, the sidebar, ⌘K and Now, in
+  it. The new name shows at once in the tab, the sidebar, ⌘K and Home, in
   this window and every other one, and it stays after a restart; a
   session's own title from the agent never overwrites it. Until you name
   one, a session is called by the agent's own title, or else by a few
@@ -122,10 +122,14 @@ others. Installing it: [install-app.md](install-app.md).
   open it, a hidden project or session to show it again. A project shows
   in the list again while something runs or waits in it, or while it is
   the one in front, hidden or not.
-- **Dashboard.** At the bottom of the sidebar, *Dashboard* (⌘0, or ⇧⌘D) opens Now,
+- **Dashboard.** At the bottom of the sidebar, *Dashboard* (⌘0, or ⇧⌘D) opens Home,
   Cost, Lifetime and the other screens in a *Dashboard* tab pinned at the
   left of the tab strip; your terminals stay in the strip beside it, one click
-  away, and the tab brings back the screen you left it on until you close it.
+  away, and the tab brings back the screen you left it on until you close it —
+  scrolled where you left it, with the rows you opened still open. Each
+  dashboard screen keeps its own place too, so Home → Cost → Home lands
+  where Home was. ⌘0 again, with the dashboard in front, goes to Home at
+  its top; on Home's top it goes back to your terminals.
   The Dashboard tab is its icon and its key, ⌘0 (⌘, while it shows
   Settings); its × shows while it is in front.
   Under *Dashboard*, one row in two halves: the **PRs & CI** mode, named
@@ -165,7 +169,7 @@ others. Installing it: [install-app.md](install-app.md).
 - **Dialogs.** Every dialog — Quick chat, New agent, Add project, the
   palette, Share and the rest — closes with the × in its corner, a click
   outside it, or Esc. In the app,
-  Now keeps its figures — today, plan limits, the pulse, the repos, all
+  Home keeps its figures — today, plan limits, the pulse, the repos, all
   time, at a glance, *What happened* — and leaves the session cards and the
   projects panel to the sidebar, which lists the same sessions; the browser
   dashboard shows both. **Repos**, under the pulse, has a row for each
@@ -698,7 +702,7 @@ On macOS:
 | ⌘B          | Session deck (the PRs & CI bar) under the agent's terminal               |
 | ⇧⌘B         | PRs & CI as a full page in a tab; back to the bar                        |
 | ⌘\          | Hide or show the sidebar                                                 |
-| ⌘0, ⇧⌘D     | Dashboard tab, and back                                                  |
+| ⌘0, ⇧⌘D     | Dashboard tab, where you left it; again: Home, at its top                |
 | ⌘R          | Reload the window (View → Reload)                                        |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
@@ -778,7 +782,7 @@ it: nothing that updates behind the sheet takes it from the field you are in.
   give apps global shortcuts; the tray's *Show Caprock* still works there.
 - **Folding dashboard panels.** Click a panel's title (the arrow beside it)
   to fold it down to the title, and again to bring it back; Caprock remembers
-  each one. On Now, *fold to icons* turns the agents' cards into one line of
+  each one. On Home, *fold to icons* turns the agents' cards into one line of
   characters with their shares.
 - **The version in the status bar.** Click it to see whether an update is
   out and when Caprock last checked, update in one click (sessions keep
@@ -877,7 +881,7 @@ Settings → **GitHub** connects your account. Caprock then talks to
 phone. Nothing is sent to GitHub until you connect. Besides
 `api.github.com`, and never with your token: when you click a failed CI step
 in the session deck, the job's log is downloaded from the signed address
-GitHub points to on its log storage; while Now's CI/CD section is open, the
+GitHub points to on its log storage; while Home's CI/CD section is open, the
 daemon reads `www.githubstatus.com`'s public status at most every five
 minutes; and the PRs & CI Board and the CI/CD section show pull request
 authors' pictures from `avatars.githubusercontent.com`, loaded by the page

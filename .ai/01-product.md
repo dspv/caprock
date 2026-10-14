@@ -51,7 +51,7 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
 
 1. **"One session in a loop can drain your daily budget in minutes."**
    - Evidence: Reddit threads on Claude usage limits (widely reported, incl. BBC coverage).
-   - Feature: loop detector + auto-pause ([04-ui.md § Now](04-ui.md#now-default-the-useful-waiting-screen)). Phase 0.
+   - Feature: loop detector + auto-pause ([04-ui.md § Home](04-ui.md#home-default-the-useful-waiting-screen)). Phase 0.
 2. **"Usage limits hit way faster than expected / consumption is opaque."**
    - Evidence: same wave of complaints; Anthropic acknowledged and investigated.
    - Feature: live burn-rate + limit forecast ([04-ui.md § Cost & Burn](04-ui.md#cost--burn)). Phase 0.

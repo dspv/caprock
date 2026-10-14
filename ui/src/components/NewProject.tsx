@@ -132,7 +132,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto grid w-full max-w-[560px] min-w-0 gap-4 pb-8">
       <div className="flex items-center gap-3">
-        <a href="#/" className="flex h-11 items-center pr-2 text-[15px] text-accent">← Now</a>
+        <a href="#/" className="flex h-11 items-center pr-2 text-[15px] text-accent">← Home</a>
         <h1 className="text-[18px] font-semibold text-fg">Start work</h1>
       </div>
       {children}

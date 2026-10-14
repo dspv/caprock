@@ -47,7 +47,7 @@ describe('PhoneHome', () => {
     expect(await screen.findByText('work in alpha')).toBeTruthy()
     expect(screen.getByText('work in beta')).toBeTruthy()
     expect(await screen.findByText('an idea for later')).toBeTruthy()
-    expect(screen.getByText('Full dashboard').closest('a')?.getAttribute('href')).toBe('#/now')
+    expect(screen.getByText('Full dashboard').closest('a')?.getAttribute('href')).toBe('#/home')
   })
 
   it('starts a chat in the chosen project with the typed words as its first message', async () => {

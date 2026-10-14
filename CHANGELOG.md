@@ -90,6 +90,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   under *phone, Telegram*, and *Send feedback*'s key is no longer cut
   off at the sidebar's edge.
 
+### Changed
+
+- **app:** the dashboard keeps its place. Switch to a terminal tab and back,
+  or from Home to Cost and back, and each screen is where you left it:
+  scrolled to the same spot, with the Live pulse rows, panels and folds you
+  opened still open. A screen out of sight asks the daemon nothing.
+- **app:** ⌘0 (Ctrl+Shift+0 on Windows and Linux) brings the dashboard back
+  where you left it; pressed again, it goes to Home at its top. The
+  sidebar's *Dashboard* row does the same, and *Home* in the dashboard's
+  bar scrolls Home to its top.
+- **ui:** the main dashboard screen is called **Home** (it was *Now*), in
+  the bar, the palette and the back links. `#/home` opens it; old `#/now`
+  links still work.
+
 ## [0.117.0] - 2026-10-14
 
 ### Added

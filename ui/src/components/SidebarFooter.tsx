@@ -173,6 +173,7 @@ export function SidebarFooter(props: SidebarFooterProps) {
         data-nav-row
         aria-current={props.dashboardActive ? 'true' : undefined}
         onClick={props.onDashboard}
+        title={`The dashboard, where you left it (${keys('⌘0')}); again: Home, at its top`}
         className={ROW}
       >
         <DashboardIcon size={15} className="text-fg-muted" />

@@ -2,7 +2,7 @@
 // (staleness dot, not spinner), exposes the error for an inline notice.
 import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useLiveTick } from './live'
-import { LivePace, shared } from './refresh'
+import { LivePace, ScreenShown, shared } from './refresh'
 import { readCache, writeCache } from './swr'
 import { everyWhileVisible } from './visible'
 
@@ -59,9 +59,13 @@ export interface ApiOptions {
 }
 
 export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = [], opts: ApiOptions = {}): Loaded<T> {
-  const { live = true, intervalMs = 0, hiddenIntervalMs, cache, active = true } = opts
+  const shown = useContext(ScreenShown)
+  const { live = true, intervalMs = 0, hiddenIntervalMs, cache } = opts
+  // A kept screen out of sight (lib/screenPlace.ts) is a folded section: it asks nothing.
+  const active = (opts.active ?? true) && shown
   const pace = Math.max(useContext(LivePace), opts.liveMs ?? 0)
-  const tick = useLiveTick(pace)
+  // Its tick rests too, so a hidden screen does not even re-render on events.
+  const tick = useLiveTick(pace, { paused: !shown })
   const [state, setState] = useState<Loaded<T>>(() => {
     const c = cache ? readCache<T>(cache) : undefined
     return { data: c?.data, error: undefined, loading: true, refresh: () => {}, loadedAt: 0, stale: !!c, cachedAt: c?.at ?? 0 }

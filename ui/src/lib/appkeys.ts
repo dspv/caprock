@@ -406,7 +406,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⇧⌘B', 'PRs & CI as a full page in a tab; there, back to the bar'],
   ['⇧⌘G', 'Changes: the diff of the session in front'],
   ['⌘\\', 'Hide or show the sidebar'],
-  ['⌘0, ⇧⌘D', 'Dashboard'],
+  ['⌘0, ⇧⌘D', 'Dashboard, where you left it; again: Home, at its top'],
   ['⌘,', 'Settings'],
   ['⇧⌘F', 'Send feedback: a bug, an idea or a question'],
   ['⇧⌘M', 'Mail, in a tab of its own'],

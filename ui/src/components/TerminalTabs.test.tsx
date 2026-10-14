@@ -264,7 +264,7 @@ describe('a file tab', () => {
     const dash = document.querySelector('[data-dashboard-tab]')!
     expect(dash.querySelector('[data-tab-key]')!.textContent).toBe('⌘0')
     expect(dash.querySelector('[data-tab-key]')!.className).toBe('app-kbd-sm')
-    expect(dash.getAttribute('title')).toBe('Dashboard — ⌘0')
+    expect(dash.getAttribute('title')).toBe('Dashboard — ⌘0; ⌘0 again: Home, at its top')
     expect(screen.getByRole('button', { name: 'Close tab Dashboard' }).className).toContain('hidden')
     // The inspector's button says its key, as Deck does.
     expect(screen.getByRole('button', { name: 'Inspector (⌘I)' }).querySelector('[data-strip-key]')!.textContent).toBe('⌘I')

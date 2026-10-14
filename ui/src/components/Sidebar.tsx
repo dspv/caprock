@@ -469,7 +469,7 @@ export function Sidebar(props: SidebarProps) {
             loaded={props.loaded ?? true}
             onSpend={() => props.onRoute!('#/cost')}
             onWindows={() => props.onRoute!('#/cost?section=limits')}
-            onRunning={() => props.onRoute!('#/now')}
+            onRunning={() => props.onRoute!('#/home')}
             onWaiting={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
           />
         )}

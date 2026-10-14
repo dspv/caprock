@@ -6,6 +6,7 @@ import { href, type Route } from '@/lib/router'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { THEMES } from '@/lib/themes'
 import { ThemeMenu } from './ThemePicker'
+import { goHomeTop } from '@/lib/screenPlace'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
 import {
   PLATFORMS,
@@ -39,7 +40,10 @@ import { isAppMode } from '@/lib/appmode'
 import { useNarrowScreen } from '@/lib/phone'
 
 const NAV: { route: Route; label: string; phase?: string }[] = [
-  { route: { name: 'now' }, label: 'Now' },
+  // "Home", not "Now" (owner, 2026-10-14, translated: "'Now' as the name of
+  // the main button is depressing — it's not clear that it's the main one,
+  // and you're always trying to get back to the main one").
+  { route: { name: 'now' }, label: 'Home' },
   { route: { name: 'cost' }, label: 'Cost' },
   // 'History' read as a log of past sessions. The screen is the opposite: one
   // set of lifetime totals — every session, every day, what it all cost —
@@ -107,6 +111,9 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           {NAV.map((n) => (
             <a key={n.label} href={href(n.route)}
               aria-current={active(n.route) ? 'page' : undefined}
+              // Home where it already is: its top. Elsewhere each screen opens where it was left (lib/screenPlace.ts).
+              title={n.route.name === 'now' ? 'Home: every session, live. Again: back to its top' : undefined}
+              onClick={n.route.name === 'now' && route.name === 'now' ? (e) => { e.preventDefault(); goHomeTop() } : undefined}
               className={`px-2.5 py-1 rounded-[5px] text-[12px] no-underline hover:no-underline transition-colors ${
                 active(n.route)
                   ? 'bg-accent text-panel font-medium'

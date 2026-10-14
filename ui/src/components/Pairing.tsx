@@ -488,7 +488,7 @@ export function Pairing() {
               <summary className="cursor-pointer select-none font-medium text-fg">Then: home screen, carrying on a session</summary>
               <ul className="mt-2 grid gap-2 text-fg-muted">
                 <li><b className="font-medium text-fg">Home screen.</b> On Android, tap <b className="font-medium text-fg">Install</b> on the phone&apos;s page. On an iPhone, Share → Add to Home Screen; the home-screen app keeps its own storage, so copy the link under the code and paste it there once.</li>
-                <li><b className="font-medium text-fg">Carry on a session.</b> On the phone: Now → the session → Chat, and type. Approve and stop from there too.</li>
+                <li><b className="font-medium text-fg">Carry on a session.</b> On the phone: Home → the session → Chat, and type. Approve and stop from there too.</li>
               </ul>
             </details>
           </>

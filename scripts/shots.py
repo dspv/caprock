@@ -490,7 +490,7 @@ def main():
         # the frame before a single figure appeared. Set the keys against the
         # origin, then load the document once so they are read.
         wait_for_burn_window()
-        rpc(ws, "Page.navigate", {"url": f"{BASE}/#/now"})
+        rpc(ws, "Page.navigate", {"url": f"{BASE}/#/home"})
         time.sleep(1.5)
         evaluate(ws, interrupted_dismissal())
         evaluate(ws, """

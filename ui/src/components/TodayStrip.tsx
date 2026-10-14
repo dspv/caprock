@@ -63,7 +63,7 @@ export function TodayStrip({ today, loaded, onSpend, onWindows, onRunning, onWai
         </Cell>
         <Cell
           label="Running"
-          title={loaded ? `${agents} ${agents === 1 ? 'agent' : 'agents'} running${working > 0 ? `, ${working} working` : ''}. Opens Now.` : 'Not known yet'}
+          title={loaded ? `${agents} ${agents === 1 ? 'agent' : 'agents'} running${working > 0 ? `, ${working} working` : ''}. Opens Home.` : 'Not known yet'}
           onClick={onRunning}
         >
           <span className="num inline-flex items-center gap-1 text-[14px] font-semibold leading-none text-fg">

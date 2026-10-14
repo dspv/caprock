@@ -346,7 +346,7 @@ describe('the sidebar', () => {
     fireEvent.click(within(today).getByRole('button', { name: /Claude 5-hour window: 62% used/ }))
     expect(onRoute).toHaveBeenLastCalledWith('#/cost?section=limits')
     fireEvent.click(within(today).getByRole('button', { name: /0 agents running/ }))
-    expect(onRoute).toHaveBeenLastCalledWith('#/now')
+    expect(onRoute).toHaveBeenLastCalledWith('#/home')
     // Nothing waits: the cell is a figure, not a button that does nothing.
     expect(within(today).getByRole('button', { name: 'Nothing is waiting on you' })).toBeDisabled()
     expect(props.onOpenInbox).not.toHaveBeenCalled()

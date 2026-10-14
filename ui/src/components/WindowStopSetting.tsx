@@ -59,7 +59,7 @@ export function WindowStopSetting({ now = Date.now() }: { now?: number }) {
             window. Sessions you started yourself are never touched.
           </>
         ) : (
-          <>Off. Nothing is paused, whatever the window. The alert at 90% on Now stays either way.</>
+          <>Off. Nothing is paused, whatever the window. The alert at 90% on Home stays either way.</>
         )}
       </p>
       <Figures ws={ws.data} now={now} />

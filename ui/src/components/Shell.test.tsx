@@ -252,7 +252,7 @@ describe('header nav', () => {
 
   it('keeps a session under its parent screen', () => {
     render(<Shell route={{ name: 'session', id: 'abc' }}>{null}</Shell>)
-    expect(screen.getByRole('link', { name: 'Now' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
   })
 })
 

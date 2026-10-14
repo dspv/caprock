@@ -11,7 +11,7 @@ describe('PhoneBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'More' }))
     const items = screen.getAllByRole('menuitem').map((e) => e.textContent?.replace(/[^A-Za-z ]/g, '').trim())
     expect(items).toEqual(['Dashboard', 'Settings', 'Feedback', 'Get premium'])
-    expect(screen.getByRole('menuitem', { name: 'Dashboard' }).getAttribute('href')).toBe('#/now')
+    expect(screen.getByRole('menuitem', { name: 'Dashboard' }).getAttribute('href')).toBe('#/home')
     expect(screen.getByRole('menuitem', { name: 'Settings' }).getAttribute('href')).toBe('#/settings')
   })
 })

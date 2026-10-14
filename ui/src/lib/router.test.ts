@@ -5,9 +5,11 @@ describe('router', () => {
   it('parses and renders routes symmetrically', () => {
     expect(parseHash('')).toEqual({ name: 'now' })
     expect(parseHash('#/')).toEqual({ name: 'now' })
-    // #/now is the whole Now screen, which a phone reaches past its home.
+    // #/home is the whole Home screen, which a phone reaches past its home;
+    // #/now, its name until 2026-10-14, still opens it.
+    expect(parseHash('#/home')).toEqual({ name: 'now', full: true })
     expect(parseHash('#/now')).toEqual({ name: 'now', full: true })
-    expect(href({ name: 'now', full: true })).toBe('#/now')
+    expect(href({ name: 'now', full: true })).toBe('#/home')
     expect(href({ name: 'now' })).toBe('#/')
     expect(parseHash('#/cost')).toEqual({ name: 'cost' })
     expect(parseHash('#/session/abc%2Fdef?tab=diff')).toEqual({ name: 'session', id: 'abc/def', tab: 'diff' })

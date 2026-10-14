@@ -17,6 +17,7 @@ import { installExternalLinks } from '@/lib/externalLinks'
 import { FIND_EVENT, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { parseHash, type SettingsSection } from '@/lib/router'
+import { goHomeTop, isHomeHash } from '@/lib/screenPlace'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
 import { buildSidebar, dotOf, groupProjects, numberedProjects, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type WorktreeNode } from '@/lib/sidebar'
 import {
@@ -187,7 +188,7 @@ type SheetState =
 
 /** The dashboard's screens, reachable from the palette by name: [route, label, what is on it]. */
 const SCREENS: [string, string, string][] = [
-  ['now', 'Now', 'every session on the machine, live'],
+  ['home', 'Home', 'every session on the machine, live'],
   ['cost', 'Cost', 'spend by day, project and model'],
   ['history', 'Lifetime', 'every session, every day, in totals'],
   ['week', 'Week', 'one week, as a card'],
@@ -678,7 +679,18 @@ export function AppShell() {
   // The wizard needs the projects API (scan); without it, the plain sheet.
   const onAddProject = useCallback(() => setSheet(source === 'api' ? { kind: 'new-project' } : { kind: 'project' }), [source])
   const onPalette = useCallback(() => setSheet({ kind: 'palette' }), [])
-  const onDashboard = useCallback(() => { location.hash = lastDashboard.current || '#/' }, [])
+  /**
+   * To the dashboard where it was left (lib/screenPlace.ts); from the
+   * dashboard itself, Home at its top — the quick way home (owner,
+   * 2026-10-14, translated: "at worst, be able to quickly go back to the main
+   * screen").
+   */
+  const dashScroll = useRef<HTMLDivElement>(null)
+  const getDashScroll = useCallback(() => dashScroll.current, [])
+  const onDashboard = useCallback(() => {
+    if (!isWorkspaceHash(location.hash) && parseHash(location.hash).name !== 'mail') goHomeTop(goHash)
+    else goHash(lastDashboard.current || '#/')
+  }, [goHash])
   /**
    * A session that needs no folder — the Now screen's Quick chat — in a tab
    * of the strip. The daemon finds it a home in its data directory; it shows
@@ -977,8 +989,12 @@ export function AppShell() {
         if (openChangesRef.current) openChangesRef.current()
         else setToast('Changes shows a git project’s diff: bring a session in one to the front.')
         break
-      // From a terminal or the Mail tab to the dashboard; from the dashboard back.
-      case 'dashboard': if (!dashboardShown) onDashboard(); else location.hash = APP_ROUTE; break
+      // From a terminal or the Mail tab to the dashboard, where it was left;
+      // there, to Home at its top; from Home at its top, back to the terminals.
+      case 'dashboard':
+        if (dashboardShown && isHomeHash(location.hash) && (dashScroll.current?.scrollTop ?? 0) < 4) goHash(APP_ROUTE)
+        else onDashboard()
+        break
       case 'next-tab': dispatch({ type: 'cycle', delta: 1 }); showWorkspace(); break
       case 'prev-tab': dispatch({ type: 'cycle', delta: -1 }); showWorkspace(); break
       case 'tab': focusTab(c.index); break
@@ -994,7 +1010,7 @@ export function AppShell() {
       case 'mail': onMail(); break
       case 'zoom': stepUiScale(c.step); break
     }
-  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession, onMail, dashboardShown])
+  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession, onMail, dashboardShown, goHash])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -1497,7 +1513,8 @@ export function AppShell() {
               dashboard={ws.dashboard || dashboardShown ? {
                 active: dashboardShown,
                 label: dashboardRoute.name === 'settings' ? 'Settings' : 'Dashboard',
-                onActivate: onDashboard,
+                // A tab click brings it back where it was; ⌘0 and the sidebar's row go on to Home.
+                onActivate: () => { if (!dashboardShown) goHash(lastDashboard.current || '#/') },
                 onClose: closeDashboard,
               } : undefined}
               mail={ws.mail || mailShown ? { active: mailShown, onActivate: onMail, onClose: closeMail } : undefined}
@@ -1666,14 +1683,17 @@ export function AppShell() {
                   </ErrorBoundary>
                 </div>
               )}
-              {dashboardShown && (
-                <div className="app-scroll absolute inset-0 overflow-y-auto bg-bg">
+              {/* Kept mounted behind the terminals once opened, so it comes
+                * back where it was left (lib/screenPlace.ts); hidden, it asks
+                * nothing and its clocks stop. */}
+              {(ws.dashboard || dashboardShown) && (
+                <div ref={dashScroll} data-dashboard-view className="app-scroll absolute inset-0 overflow-y-auto bg-bg" hidden={!dashboardShown}>
                   {/* Settings' own × and Escape close it as its tab's × does (lib/settingsClose.ts). */}
                   <CloseSettingsContext.Provider value={closeDashboard}>
                     {/* Settings → Subscriptions types a sign-in into a shell tab (ADR-048). */}
                     <SetupShellContext.Provider value={onSetupAgent}>
                       <Suspense fallback={null}>
-                        <Dashboard route={parseHash(hash)} inApp />
+                        <Dashboard route={dashboardRoute} inApp shown={dashboardShown} scroller={getDashScroll} />
                       </Suspense>
                     </SetupShellContext.Provider>
                   </CloseSettingsContext.Provider>

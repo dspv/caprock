@@ -378,7 +378,7 @@ split across tools that each see part of it; here the projects list, the history
 and the cost add up over all of them, and the rows carry each agent's own mark
 so you can still tell them apart.
 
-**Or see one at a time.** The Now screen carries
+**Or see one at a time.** The Home screen carries
 `all / claude / opencode / gemini / codex / deepseek` in the middle of its
 header, and it applies to the whole screen — today's totals, the live pulse, the
 activity feed, the projects list and the session cards all answer the same
@@ -421,7 +421,7 @@ never forecast.
 **What is not there yet.** Caprock starts, types into and stops the Codex and
 OpenCode sessions it started, in terminal tabs; DeepSeek Harness is read only,
 and the task runner works with Claude Code alone. A session started outside
-Caprock refreshes every few seconds rather than instantly, so the Now screen
+Caprock refreshes every few seconds rather than instantly, so the Home screen
 lags a little behind it — the Cost and Lifetime screens are unaffected. Verified on macOS; it builds and its tests pass on Linux and
 Windows, but it has not been run on either.
 
@@ -474,12 +474,12 @@ claude.ai sign-in is not used and its plan limits do not apply.
   what your plan actually costs.
 - **1-click terminal** — the Terminal button on a project opens the session
   Caprock is running there, picks up one started elsewhere, or starts a new one.
-  A running card on Now opens in its terminal too. Session pages and projects
+  A running card on Home opens in its terminal too. Session pages and projects
   link to the repository and the pull requests a session opened.
 - **Steer it** — spawn, pause, and kill sessions from the dashboard, and continue
   one that has ended. Each card says what the session was about and when it was
   worked in, says why when it cannot be continued, and ended sessions are
-  searchable. After a reboot the Now screen lists the sessions it interrupted,
+  searchable. After a reboot the Home screen lists the sessions it interrupted,
   each with continue.
 - **Trust it** — an opt-in task runner whose tasks finish only when the checks
   Caprock runs come back green.
@@ -615,7 +615,7 @@ them after the window resets — nobody has to type "continue". Resume one
 yourself and it is left alone until the next window. Sessions you started
 yourself are never touched, and Caprock never pauses on figures more than ten
 minutes old. The figures come from Caprock's status line
-(`caprock statusline install`). Without Premium the 90% alert on Now stays as
+(`caprock statusline install`). Without Premium the 90% alert on Home stays as
 it is.
 
 **Ask Gemini about your numbers, on your own key.** A second model inside
@@ -700,7 +700,7 @@ sessions outlive a service restart (`caprock service status` tells you when it
 differs).
 
 Caprock can also tell you when a release is out: turn on release checks from
-the banner on the Now screen, or under Privacy in settings. That is the only outbound
+the banner on the Home screen, or under Privacy in settings. That is the only outbound
 call it makes, it is off until you switch it on, and it sends nothing about
 you. It never installs anything by itself — it shows the one command above for
 your install method, and you run it.
@@ -818,7 +818,7 @@ place Caprock stops being loopback-only:
   field plus Esc, Tab, arrows, Enter and Ctrl+C buttons; `/` and `@` pick a
   command or a file, and a message sent while the agent works waits in a queue
   the computer holds and goes in when the turn ends), answer approvals and
-  stop it. *Start work* on Now also lets it clone a repository, make a new
+  stop it. *Start work* on Home also lets it clone a repository, make a new
   project or a worktree, and start an agent there, opening on the session's
   chat. That is as much power as a shell in your home directory, so grant it
   only to your own phone. *Take control away* undoes it at once, including in a
