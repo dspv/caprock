@@ -3795,9 +3795,12 @@ restart.
 A new prompt's row is committed on the `PermissionRequest` hook's own request,
 before the hook is answered and before the prompt is served, so a daemon killed
 the moment after (a crash, or a Windows stop, which has no SIGTERM) still finds
-it. A cleared prompt's row is deleted off the caller's goroutine, so a
-keystroke never waits on the database; the writes are serialised and each
-rewrites the session's queue as it stands when it runs. On reattach a Claude
+it. A prompt a button answers or dismisses has its row deleted before the
+`POST /v1/agents/{id}/permission` returns (after the key is typed), since a
+session may write no event that says the dialog went; one cleared by a
+keystroke or a hook is deleted off the caller's goroutine, so a keystroke never
+waits on the database. The writes are serialised and each rewrites the
+session's queue as it stands when it runs. On reattach a Claude
 Code session gets each prompt back under the same `prompt_id`, so the `409`
 check holds, unless the session recorded a `tool.post`, `turn.user`,
 `turn.assistant`, `agent.stop` or `session.end` after that prompt's `since` (a
