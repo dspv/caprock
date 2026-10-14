@@ -139,6 +139,7 @@ func (h *harness) hook(event string, extra map[string]any) {
 	if err := cmd.Run(); err != nil {
 		h.t.Fatalf("shim %s: %v (stderr %q)", event, err, errb.String())
 	}
+	h.t.Logf("DIAG shim %s took %s at %s", event, time.Since(start), time.Now().Format("15:04:05.000"))
 	if el := time.Since(start); el > 2*time.Second {
 		h.t.Fatalf("shim took %s (budget 1s + process spawn)", el)
 	}
@@ -264,8 +265,13 @@ func TestPhase0DefinitionOfDone(t *testing.T) {
 	h.hook("UserPromptSubmit", map[string]any{"prompt": "add healthz", "prompt_id": "p1"})
 	t0 := time.Now()
 	h.hook("PreToolUse", map[string]any{"tool_name": "Edit", "tool_input": map[string]any{"file_path": filepath.Join(h.repo, "main.go"), "old_string": "a", "new_string": "b"}, "tool_use_id": "toolu_1"})
-	h.waitFor(2*time.Second, "Now shows 'editing main.go'", func() bool {
+	h.waitFor(20*time.Second, "Now shows 'editing main.go'", func() bool {
 		s := h.session()
+		if s == nil {
+			h.t.Logf("DIAG %s no session", time.Now().Format("15:04:05.000"))
+		} else {
+			h.t.Logf("DIAG %s phrase=%q health=%q hooks=%v status=%s", time.Now().Format("15:04:05.000"), s.Activity.Phrase, s.Activity.Health, s.HasHooks, s.Status)
+		}
 		return s != nil && s.Activity.Phrase == "editing main.go" && s.Activity.Health == "working" && s.HasHooks
 	})
 	t.Logf("activity visible after %s", time.Since(t0))

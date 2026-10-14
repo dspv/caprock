@@ -346,7 +346,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// cannot pile handlers up forever.
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), RecordTimeout)
 	defer cancel()
+	diagT := time.Now()
 	res, err := h.Recorder.Record(wctx, ev, info)
+	log.Info("DIAG record", "kind", ev.Kind, "tool", ev.Tool, "took", time.Since(diagT), "ctx_err", r.Context().Err())
 	if err != nil {
 		log.Error("record hook event", "component", "hookd", "err", err, "session_id", ev.SessionID, "kind", ev.Kind)
 		http.Error(w, "store", http.StatusInternalServerError)
@@ -363,7 +365,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if ev.Kind == event.KindAgentSpawn && ev.AgentID == "" && h.Handoff != nil {
 		var p Payload
 		_ = json.Unmarshal(body, &p)
-		if reply := h.Handoff(r.Context(), p); len(reply) > 0 {
+		diagH := time.Now()
+		reply := h.Handoff(r.Context(), p)
+		log.Info("DIAG handoff", "took", time.Since(diagH))
+		if len(reply) > 0 {
 			h.afterMain(ev, false)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
