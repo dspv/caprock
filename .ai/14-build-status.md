@@ -73,6 +73,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — 0.117.4: terminals that draw right, a dashboard that keeps its place, Second Brain by name
+
+A terminal no longer draws from a glyph atlas another tab rebuilt, and it
+measures its font again once the font has loaded, so the app no longer opens
+on a terminal with stretched letters after an update. The dashboard keeps its
+scroll and open rows when you switch away and back; ⌘0 again goes to Home,
+the screen once called Now. A loop alert says what happened and can tell the
+agent. Brain is called Second Brain, with its own icon and one line on what
+it is.
+
 ### 2026-10-14 — 0.117.3: Pipeline, and Second Brain for everyone
 
 The PRs & CI page is now Pipeline: one list of pull requests with full

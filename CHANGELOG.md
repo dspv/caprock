@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.117.4] - 2026-10-15
+
 ### Changed
 
 - **alerts:** a loop alert is now one sentence and three actions. It
