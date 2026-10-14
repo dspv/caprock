@@ -39,7 +39,13 @@ import { useApi } from '@/lib/useApi'
 import { AgentCharacter } from './Characters'
 import { Benefit, Icon, MiniCard, UpsellDialog } from './UpsellDialog'
 
-export type PaidFeature = 'cap' | 'window' | 'report' | 'gemini' | 'drill' | 'agents' | 'telegram' | 'subscriptions'
+/**
+ * A Premium feature sold before it ships, with a dated pre-order line
+ * (Second Brain, ADR-062). Not a PaidFeature: nothing is locked behind it yet.
+ */
+export type SoldAhead = 'second-brain'
+
+export type PaidFeature = 'cap' | 'window' | 'report' | 'gemini' | 'drill' | 'agents' | 'telegram' | 'subscriptions' | 'brain'
 
 /**
  * `body` says what the feature is in one sentence; `points` say why you would
@@ -121,6 +127,17 @@ const FEATURES: Record<
       { icon: 'user', text: 'Each sign-in in its own folder, picked per session in New agent and Quick chat' },
       { icon: 'pie', text: 'Every sign-in’s plan windows and the last seven days of work beside it' },
       { icon: 'key', text: 'Caprock types the agent’s own sign-in command; you run it, and Caprock never holds a token' },
+    ],
+  },
+  // ADR-063: twenty memories dropped in by hand are free; the rest is Premium.
+  brain: {
+    title: 'Second Brain: what your sessions decided, as a graph',
+    body: 'Built from your finished sessions as you work, or dropped in by hand: ideas, decisions and findings, linked by project and topic. Search it, open the session it came from.',
+    points: [
+      { icon: 'moon', text: 'Built automatically by your own claude, within a daily limit you set' },
+      { icon: 'stack', text: 'Every memory you keep, not just the first twenty' },
+      { icon: 'arrow', text: 'Each one links back to the moment in the session it came from' },
+      { icon: 'shield', text: 'Kept in Caprock’s database on this machine; nothing is sent to Caprock' },
     ],
   },
   report: {
@@ -265,6 +282,26 @@ function Picture({ feature }: { feature: PaidFeature }) {
       </MiniCard>
     )
   }
+  if (feature === 'brain') {
+    const nodes: [number, number, string][] = [[38, 34, 'var(--brain-project)'], [92, 22, 'var(--brain-decision)'], [104, 64, 'var(--brain-finding)'], [150, 40, 'var(--brain-topic)'], [196, 24, 'var(--brain-idea)'], [188, 70, 'var(--brain-question)'], [62, 76, 'var(--brain-decision)']]
+    const links: [number, number][] = [[0, 1], [0, 2], [0, 6], [1, 3], [2, 3], [3, 4], [3, 5]]
+    return (
+      <MiniCard label="Example: a few memories from one project, linked to a shared topic">
+        <p className="wk-eyebrow" style={{ fontSize: 11 }}>Second Brain · acme-api</p>
+        <svg viewBox="0 0 230 92" className="mt-1.5 h-[92px] w-full" aria-hidden>
+          {links.map(([a, b]) => (
+            <line key={`${a}-${b}`} x1={nodes[a]![0]} y1={nodes[a]![1]} x2={nodes[b]![0]} y2={nodes[b]![1]} stroke="var(--color-border-strong)" strokeWidth={1.2} />
+          ))}
+          {nodes.map(([x, y, c], i) => <circle key={i} cx={x} cy={y} r={i === 0 || i === 3 ? 7 : 5} fill={c} />)}
+        </svg>
+        <p className="mt-1 text-[12.5px] leading-snug text-fg">
+          <span className="font-semibold">Decision: keep SQLite with WAL for the cache</span>
+          <br />
+          <span className="text-fg-muted">from a session on Tuesday · topic: storage</span>
+        </p>
+      </MiniCard>
+    )
+  }
   if (feature === 'telegram') {
     return (
       <MiniCard label="Example: a Claude Code session's reply in Telegram, headed with the agent, project and session, and the owner's reply under it">
@@ -307,7 +344,7 @@ function Picture({ feature }: { feature: PaidFeature }) {
  * site page lands on that feature's own entry. Nothing about the user is in
  * it — only the name of the feature they were reading about.
  */
-export function fromFeature(url: string, feature: PaidFeature, kind: 'buy' | 'info'): string {
+export function fromFeature(url: string, feature: PaidFeature | SoldAhead, kind: 'buy' | 'info'): string {
   if (!url) return url
   if (kind === 'info') return `${url.split('#')[0]}#${feature}`
   return `${url}${url.includes('?') ? '&' : '?'}client_reference_id=app-${feature}`
@@ -317,7 +354,7 @@ export function fromFeature(url: string, feature: PaidFeature, kind: 'buy' | 'in
  * The two ways to buy, as the site sells them: a year, or once. The lifetime
  * is the one the site marks "Best value", so it is the filled button.
  */
-function Price({ p, feature, onClose }: { p: PremiumPricing | undefined; feature: PaidFeature; onClose: () => void }) {
+export function Price({ p, feature, onClose }: { p: PremiumPricing | undefined; feature: PaidFeature | SoldAhead; onClose: () => void }) {
   if (!p) return <div className="h-[92px] text-[13px] text-fg-faint">…</div>
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

@@ -1,6 +1,6 @@
 import { act, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { HIDDEN_FLUSH_MS, HIDDEN_HELD_MAX, live, useLiveTick } from './live'
+import { HIDDEN_FLUSH_MS, HIDDEN_HELD_MAX, live, statusStep, useLiveTick } from './live'
 
 describe('live store', () => {
   it('collects alerts and bumps tick on session/event frames', () => {
@@ -100,6 +100,62 @@ describe('useLiveTick renders at the debounce, not per frame', () => {
       act(() => { vi.advanceTimersByTime(400) })
       expect(renders).toBe(before + 1)
       expect(Number(getByTestId('tick').textContent)).toBe(start + 20)
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('a frame that moves a status is taken at once', () => {
+  const ev = (session_id: string, kind: string, agent_id?: string) =>
+    ({ type: 'event', data: { id: 1, ts: '', session_id, source: 'hook', kind, payload: {}, ...(agent_id ? { agent_id } : {}) } }) as never
+
+  it('says which events move a status', () => {
+    expect(statusStep({ kind: 'turn.user' }, 'stop')).toEqual({ moves: true, wait: undefined })
+    expect(statusStep({ kind: 'agent.stop' }, undefined)).toEqual({ moves: true, wait: 'stop' })
+    expect(statusStep({ kind: 'permission.prompt' }, undefined)).toEqual({ moves: true, wait: 'prompt' })
+    // The call a dialog allowed, answered where no nudge said so.
+    expect(statusStep({ kind: 'tool.post' }, 'prompt')).toEqual({ moves: true, wait: undefined })
+    // A subagent's stop, and its work after the main thread stopped, are not the turn.
+    expect(statusStep({ kind: 'agent.stop', agent_id: 'a1' }, undefined)).toEqual({ moves: false, wait: undefined })
+    expect(statusStep({ kind: 'tool.pre', agent_id: 'a1' }, 'stop')).toEqual({ moves: false, wait: 'stop' })
+    expect(statusStep({ kind: 'tool.pre' }, undefined)).toEqual({ moves: false, wait: undefined })
+  })
+
+  it('renders the prompt that starts a turn without the debounce, and tool calls with it', () => {
+    vi.useFakeTimers()
+    try {
+      let renders = 0
+      const Probe = () => { renders++; return <span>{useLiveTick(1000)}</span> }
+      const { unmount } = render(<Probe />)
+      act(() => { live.handle(ev('s1', 'agent.stop')) })
+      expect(renders).toBe(2)
+      act(() => { live.handle(ev('s1', 'turn.user')) })
+      expect(renders).toBe(3)
+      act(() => { live.handle(ev('s1', 'tool.pre')); live.handle(ev('s1', 'tool.post')) })
+      expect(renders).toBe(3)
+      act(() => { vi.advanceTimersByTime(1000) })
+      expect(renders).toBe(4)
+      // Input the session has not answered yet (a nudge) is a status too.
+      act(() => { live.handle({ type: 'status', data: { session_id: 's1', kind: 'submit', at: 1 } }) })
+      expect(renders).toBe(5)
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('leaves a slow pace to its debounce', () => {
+    vi.useFakeTimers()
+    try {
+      let renders = 0
+      const Probe = () => { renders++; return <span>{useLiveTick(10_000)}</span> }
+      const { unmount } = render(<Probe />)
+      act(() => { live.handle(ev('s2', 'turn.user')) })
+      expect(renders).toBe(1)
+      act(() => { vi.advanceTimersByTime(10_000) })
+      expect(renders).toBe(2)
       unmount()
     } finally {
       vi.useRealTimers()

@@ -59,7 +59,8 @@ func New(log *slog.Logger) *Server {
 type host struct {
 	id   string
 	conn *websocket.Conn
-	wmu  sync.Mutex // one writer at a time on conn
+	ctx  context.Context // the machine's connection's: ends when it does
+	wmu  sync.Mutex      // one writer at a time on conn
 	// heard is when the machine last sent anything, in UnixNano.
 	heard atomic.Int64
 
@@ -68,12 +69,21 @@ type host struct {
 	next   uint32
 }
 
+// write sends b to the machine for a caller whose context is ctx (a phone's,
+// or the machine's own). A caller whose context has ended sends nothing, but
+// the write itself is bounded by the machine's connection alone: the
+// WebSocket library closes a connection whose write context ends part-way,
+// and a phone hanging up must not take the machine, and every other phone on
+// it, off the relay.
 func (h *host) write(ctx context.Context, b []byte) error {
 	h.wmu.Lock()
 	defer h.wmu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	wctx, cancel := context.WithTimeout(h.ctx, writeTimeout)
 	defer cancel()
-	return h.conn.Write(ctx, websocket.MessageBinary, b)
+	return h.conn.Write(wctx, websocket.MessageBinary, b)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +145,7 @@ func (s *Server) serveHost(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 
-	h := &host{id: id, conn: c, phones: map[uint32]*websocket.Conn{}}
+	h := &host{id: id, conn: c, ctx: ctx, phones: map[uint32]*websocket.Conn{}}
 	h.heard.Store(time.Now().UnixNano())
 	s.mu.Lock()
 	old := s.hosts[id]

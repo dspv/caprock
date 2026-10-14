@@ -125,6 +125,9 @@ type Deps struct {
 	// Remote is access from anywhere, through a relay (ADR-058): its state for
 	// the pairing panel and the switch. Nil in builds or tests without it.
 	Remote RemoteControl
+	// BrainAuto is Second Brain's automatic extraction (ADR-063). Nil in
+	// builds or tests without it; the graph and manual drops work either way.
+	BrainAuto BrainAuto
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
 	ActiveLoops func(sessionID string) *loop.Alert
 	// LoopK and LoopWindow are the loop detector's settings, so the Week
@@ -451,6 +454,8 @@ type Server struct {
 	// thirty days that a few minutes cannot move, so it is served from the
 	// cache and refreshed in the background, never counted on a request.
 	usual *answerCache
+	// trends holds the Today cells' 14-day trends (trendsTTL).
+	trends *answerCache
 	// drill holds the tool drill-downs (drillTTL).
 	drill *answerCache
 	// deck holds the session deck's composed Pull requests & CI answers
@@ -481,7 +486,8 @@ func New(d Deps) *Server {
 		}
 	}
 	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
-		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
+		trends: newAnswerCache(trendsTTL, trendsMaxStale, time.Now),
+		week:   newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache()}
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
 		if s.d.Agents != nil {
@@ -531,6 +537,9 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/editors", s.handleEditors)
 	m.HandleFunc("POST /v1/editors/open", s.handleOpenEditor)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
+	m.HandleFunc("GET /v1/stats/trends", s.handleTrends)
+	// The offer survey: forwards one answer to caprock.dev on a click (offer.go, ADR-062).
+	m.HandleFunc("POST /v1/offer", s.handleOffer)
 	m.HandleFunc("GET /v1/update", s.handleUpdate)
 	// Pairing. Only the redeem endpoint is reachable from the network; the
 	// rest are refused off-loopback inside the handlers, so a paired tablet
@@ -691,6 +700,17 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/inbox", s.handleAddInbox)
 	m.HandleFunc("DELETE /v1/inbox/{id}", s.handleDeleteInbox)
 	m.HandleFunc("GET /v1/inbox/{id}/files/{n}", s.handleInboxFile)
+	// Second Brain (brain.go, ADR-063).
+	m.HandleFunc("GET /v1/brain", s.handleBrainGraph)
+	m.HandleFunc("GET /v1/brain/status", s.handleBrainStatus)
+	m.HandleFunc("POST /v1/brain/nodes", s.handleBrainDrop)
+	m.HandleFunc("GET /v1/brain/nodes/{id}", s.handleBrainNode)
+	m.HandleFunc("PATCH /v1/brain/nodes/{id}", s.handlePatchBrainNode)
+	m.HandleFunc("DELETE /v1/brain/nodes/{id}", s.handleDeleteBrainNode)
+	m.HandleFunc("POST /v1/brain/links", s.handleBrainLink)
+	m.HandleFunc("DELETE /v1/brain/links", s.handleBrainLink)
+	m.HandleFunc("PUT /v1/brain/settings", s.handleBrainSettings)
+	m.HandleFunc("POST /v1/brain/backfill", s.handleBrainBackfill)
 	m.HandleFunc("POST /v1/shells", s.handleStartShell)
 	m.HandleFunc("GET /v1/shells", s.handleShells)
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)
@@ -816,6 +836,13 @@ type SessionSummary struct {
 // outlive the daemon. Optional so test doubles need not grow a method.
 type survivor interface{ Survives(sessionID string) bool }
 
+// nudger is the optional half of AgentController that knows the newest input
+// typed into a session it holds (narrate.Nudge), which the status reads
+// until the session writes an event after it.
+type nudger interface {
+	Nudge(sessionID string) (narrate.Nudge, bool)
+}
+
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
 type ContextFill struct {
 	Tokens int64   `json:"tokens"`
@@ -880,8 +907,15 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 			}
 		}
 	}
+	if sess.Owned && sess.Status != store.StatusEnded {
+		if nd, ok := s.d.Agents.(nudger); ok {
+			if n, ok := nd.Nudge(sess.SessionID); ok {
+				opt.Nudge = &n
+			}
+		}
+	}
 	act := narrate.Summarize(last, opt)
-	if act.Health == narrate.HealthWorking && act.Background == 0 && sess.Status == store.StatusIdle {
+	if act.Health == narrate.HealthWorking && act.Background == 0 && !act.FromInput && sess.Status == store.StatusIdle {
 		act.Health = narrate.HealthIdle
 		act.Phrase = "was " + act.Phrase
 	}
@@ -1569,7 +1603,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 
 // maxPrompts bounds the prompts map: the dashboard has a handful of offers,
 // and a config file that any page can grow without limit is a bug.
-const maxPrompts = 32
+const maxPrompts = 64
 
 // mergePrompts applies a prompts patch: each named id takes the later of its
 // stored time and the new one, 0 removes it. Ids are short lower-case words with dashes; anything else is
@@ -1741,6 +1775,7 @@ func (s *Server) Warm(ctx context.Context) {
 		_, _ = s.rangeSummary(ctx, from, label, "")
 	}
 	_ = s.usualFor(ctx, "")
+	_, _ = s.trendsFor(ctx, "")
 }
 
 // usualFor is the 30-day baseline through the agent filter, from its own
@@ -1757,6 +1792,36 @@ func (s *Server) usualFor(ctx context.Context, agent store.AgentFilter) *store.U
 	}
 	u, _ := v.(*store.Usual)
 	return u
+}
+
+// handleTrends answers the Now screen's Today trends: each of the previous
+// 14 days cut at this time of day, today so far, and the typical burn
+// (store.TrendsAt), through ?agent=. Cached per agent and local day for
+// trendsTTL (0.28s a count on the owner's 1.6 GB copy): the past days cannot
+// move, a cut five minutes behind shifts them by one bucket of the scan's grain,
+// and the client draws today's point from the live summary.
+func (s *Server) handleTrends(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	agent, err := agentFilter(r.URL.Query().Get("agent"))
+	if err != nil {
+		s.failCode(w, http.StatusBadRequest, err)
+		return
+	}
+	v, err := s.trendsFor(ctx, agent)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// trendsFor is the Today trends through the agent filter, from their cache;
+// Warm counts the unfiltered one at start, so the first screen does not.
+func (s *Server) trendsFor(ctx context.Context, agent store.AgentFilter) (any, error) {
+	from, _ := s.rangeFrom("today")
+	return s.trends.get(ctx, "trends|"+strconv.FormatInt(from, 10)+"|"+string(agent), func() (any, error) {
+		return store.TrendsAt(context.WithoutCancel(ctx), s.d.Store.DB(), s.d.Now(), agent)
+	})
 }
 
 // rangeSummary is the aggregate behind /v1/stats/summary for one range.

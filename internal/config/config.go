@@ -43,6 +43,10 @@ type Config struct {
 	// pairing page on a named address, not the data. Turning phone access off
 	// clears it.
 	LANKeepOn bool `json:"lan_keep_on,omitempty"`
+	// Brain is Second Brain's automatic extraction (ADR-063): whether it
+	// runs, how much of the user's own claude it may spend a day, and how far
+	// back it reads. Empty until the user answers the offer to turn it on.
+	Brain BrainConfig `json:"brain,omitzero"`
 	// AutoPause applies to owned sessions only (Phase 1). Default off.
 	AutoPause bool `json:"auto_pause"`
 	// Memory decides whether a session opening a folder is told what the last
@@ -590,4 +594,23 @@ func (c Config) TelegramCodeOn() bool { return c.TelegramCode != nil && *c.Teleg
 // final reply. On unless switched off.
 func (c Config) AlertReplyOn() bool {
 	return c.AlertReply == nil || *c.AlertReply
+}
+
+// BrainConfig is Second Brain's automatic extraction (ADR-063).
+type BrainConfig struct {
+	// Auto is whether finished sessions are read into the brain. nil until
+	// the user answers; it never runs before a yes, because each read sends
+	// a session's prose through the user's own claude login.
+	Auto *bool `json:"auto,omitempty"`
+	// Since is when Auto was last turned on, unix ms: sessions active before
+	// it are read only through a backfill.
+	Since int64 `json:"since,omitempty"`
+	// BackfillSince, unix ms, widens what is read back to then (the "Build
+	// from my last 30 days" button). 0 is no backfill.
+	BackfillSince int64 `json:"backfill_since,omitempty"`
+	// DailyTokens caps what the extraction spends in a rolling day, input and
+	// output as claude reports them. 0 is the default (brain.DefaultDailyTokens).
+	DailyTokens int `json:"daily_tokens,omitempty"`
+	// Model is passed to claude --model; "" is brain.DefaultModel.
+	Model string `json:"model,omitempty"`
 }

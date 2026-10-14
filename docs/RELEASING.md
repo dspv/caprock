@@ -56,6 +56,17 @@ that cannot run everywhere is a gate people learn to skip.
   release page. **Never replace the key casually:** every installed app trusts
   only this public key, so a new key means everyone installs the next app by
   hand once.
+- ⚠️ **The macOS self-signed code-signing identity** (2026-10-14;
+  [.ai/21-app.md](../.ai/21-app.md#privacy-prompts-on-macos)): two secrets,
+  **`MACOS_SELFSIGN_P12_BASE64`** (the `.p12`, base64 on one line) and
+  **`MACOS_SELFSIGN_P12_PASSWORD`**. The certificate is "Caprock Self-Signed
+  Code Signing" (RSA 2048, code-signing EKU, valid to 2036), generated with
+  `openssl` on the maintainer's Mac and kept there. With them,
+  `scripts/macos-selfsign-keychain.sh` signs the app and its daemon with one
+  certificate, so macOS keeps the microphone and folder answers across
+  updates; without them the app is ad-hoc signed and asks again after each
+  update. **Never replace it casually:** a new certificate makes every user
+  answer once more. It gives way to the Developer ID when that exists.
 
 - **Mail's sign-in client IDs** (optional): secrets
   **`CAPROCK_MAIL_GOOGLE_CLIENT_ID`**, **`CAPROCK_MAIL_GOOGLE_CLIENT_SECRET`**
@@ -169,8 +180,11 @@ nothing) and attaches the files after goreleaser has published the release
 
 - **`app-macos`** gets what `app-macos-build` made with
   `scripts/app-release.sh <tag> --no-upload`:
-  `Caprock_<version>_universal.dmg` (arm64 + x86_64, ad-hoc signed), checked
-  before upload (`hdiutil verify`, `codesign --verify`, `lipo` on the app and
+  `Caprock_<version>_universal.dmg` (arm64 + x86_64, signed with the
+  self-signed identity when its secrets are set, else ad-hoc), checked
+  before upload (`hdiutil verify`, `scripts/check-app-signature.sh`: the
+  signature verifies and every binary's designated requirement is the
+  certificate's leaf, or ad-hoc without it; `lipo` on the app and
   the bundled daemon, bundle id `dev.caprock.app`, `caprock version` of the
   bundled daemon, and `scripts/check-app-mic.sh`: both binaries carry the
   microphone entitlement and the Info.plist its usage string, ADR-045). It
@@ -246,15 +260,23 @@ unless given `--clobber`. The `.dmg` and the rendered `caprock-app.rb` land in
 through Finder; with `CI=true` in the environment it skips that and the window
 keeps Finder's default arrangement.
 
-**Signing.** No Apple Developer ID yet (decision 2), so the app is ad-hoc
-signed (`signingIdentity: "-"` in `tauri.conf.json`) and the cask clears the
-quarantine flag after Homebrew's sha256 check; [docs/install-app.md](install-app.md)
-tells `.dmg` users how to open it. When the account exists: put the Developer ID
+**Signing.** No Apple Developer ID yet (decision 2). `tauri.conf.json` says
+`signingIdentity: "-"` (ad-hoc); in Actions, with the `MACOS_SELFSIGN_P12_*`
+secrets, `scripts/macos-selfsign-keychain.sh` sets `APPLE_SIGNING_IDENTITY` to
+the stable self-signed certificate instead, so macOS keeps the microphone and
+folder answers across updates. A `.dmg` built by hand is ad-hoc unless that
+identity is in a keychain on the search list and `APPLE_SIGNING_IDENTITY`
+names its SHA-1; an ad-hoc release makes everyone answer again once, so
+prefer Actions. To Gatekeeper both are from an unidentified developer: the
+cask clears the quarantine flag after Homebrew's sha256 check, and
+[docs/install-app.md](install-app.md) tells `.dmg` users how to open it.
+When the account exists: put the Developer ID
 certificate (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`) and an App
 Store Connect API key in the release secrets, set `APPLE_SIGNING_IDENTITY` and
 `APPLE_API_KEY`/`APPLE_API_ISSUER`/`APPLE_API_KEY_PATH` for `tauri build` (Tauri signs and notarizes when they are present), change
-the script's `Signature=adhoc` check to `Authority=Developer ID Application`,
-and delete the cask's `postflight_steps`. The update tarball is made from the
+`scripts/check-app-signature.sh` to expect `Authority=Developer ID Application`
+and an `anchor apple generic` requirement, drop the self-signed step and its
+secrets, and delete the cask's `postflight_steps`. The update tarball is made from the
 same signed `.app`, so it is notarized with it; the minisign signature stays as
 the updater's own check. Windows stays unsigned until a certificate
 is chosen (decision 3).

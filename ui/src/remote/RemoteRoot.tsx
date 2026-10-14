@@ -9,9 +9,14 @@
  * own, and the camera opens links in Safari).
  */
 import { Suspense, lazy, useEffect, useState } from 'react'
-import { currentChannel, currentMachine, forgetMachine, install, machines, parsePairLink, prepare, selectMachine } from './boot'
+import { abandonPairing, currentChannel, currentMachine, forgetMachine, install, machines, parsePairLink, prepare, selectMachine } from './boot'
+import { PAIR_FAILED_EVENT } from '@/screens/Pair'
 import { needsPairing, type ChannelState, type Problem } from './transport'
 import { promptInstall, useInstallOffer, type InstallOffer } from './install'
+import { useRoute } from '@/lib/router'
+import { useNarrowScreen } from '@/lib/phone'
+import { provideMachineSwitch } from '@/lib/machineswitch'
+import { ReadyGate } from './ReadyCard'
 
 const App = lazy(() => import('../App'))
 
@@ -26,18 +31,64 @@ window.addEventListener('hashchange', () => {
   if (parsePairLink(window.location.hash)) window.location.reload()
 })
 
+// A scanned code that did not work (spent by the camera's tab, expired)
+// must not cost a pairing that did: back to it, rather than a code form.
+window.addEventListener(PAIR_FAILED_EVENT, () => {
+  if (!abandonPairing()) return
+  window.location.replace(window.location.pathname + '#/')
+  window.location.reload()
+})
+
 /** How long the channel may be down before the page says why, in full. */
 export const EXPLAIN_AFTER_MS = 5_000
+
+/** How long a dropped channel may be back to connecting before the bar shows:
+ *  a reconnect that takes a second is not news, and the bar would push the
+ *  page down and back. */
+export const BAR_GRACE_MS = 2_000
+
+/**
+ * Whether the machine bar is drawn (owner, 2026-10-14, translated: "the
+ * 'DimaS-MBP' info isn't really needed either — I don't see the point of it
+ * for now"). Connected with one machine it says nothing worth a row, so it
+ * is not drawn. It shows while something is wrong — never connected yet,
+ * down past the grace, removed — and with several machines paired, except
+ * on a phone's session screen, whose title sheet lists them instead
+ * (components/PhoneSessionBar).
+ */
+export function machineBarShown(link: Pick<Link, 'state' | 'problem' | 'everOpen' | 'downFor'>, several: boolean, inSession: boolean): boolean {
+  if (link.problem === 'removed' || needsPairing(link.problem)) return true
+  if (link.state !== 'open' && (!link.everOpen || link.downFor >= BAR_GRACE_MS)) return true
+  return several && !inSession
+}
 
 export default function RemoteRoot() {
   const link = useChannel()
   const [pairing, setPairing] = useState(false)
+  const route = useRoute()
+  const narrow = useNarrowScreen()
+  const several = machines().length > 1
+  useEffect(() => {
+    if (!several) return
+    provideMachineSwitch({
+      list: () => {
+        const cur = currentMachine()
+        return machines().map((m) => ({ id: m.id, name: m.name, current: m.id === cur?.id, paired: !!m.token }))
+      },
+      select: (id) => {
+        selectMachine(id)
+        window.location.replace(window.location.pathname + '#/')
+        window.location.reload()
+      },
+    })
+    return () => provideMachineSwitch(null)
+  }, [several])
   if (!machine) return <AddMachine first />
   const blocked = needsPairing(link.problem)
   return (
     <div className="flex min-h-dvh flex-col">
-      <MachineBar link={link} />
-      {!blocked && <InstallStrip />}
+      {machineBarShown(link, several, narrow && route.name === 'session') && <MachineBar link={link} />}
+      {!blocked && !link.everOpen && <InstallStrip />}
       <div className="min-h-0 flex-1">
         {pairing ? (
           <AddMachine onCancel={() => setPairing(false)} />
@@ -49,9 +100,14 @@ export default function RemoteRoot() {
           <p className="px-6 pt-10 text-center text-[15px] text-fg-muted">Reaching {currentMachine()?.name ?? 'your computer'}…</p>
         ) : null}
         {link.everOpen && !blocked && !pairing && (
-          <Suspense fallback={null}>
-            <App />
-          </Suspense>
+          // Once after pairing, and while this phone cannot type: what is
+          // done and what is left, before the dashboard (owner, 2026-10-14).
+          <ReadyGate machineId={machine.id} machineName={machine.name}>
+            <InstallStrip />
+            <Suspense fallback={null}>
+              <App />
+            </Suspense>
+          </ReadyGate>
         )}
       </div>
     </div>
@@ -161,12 +217,12 @@ export function explain(problem: Problem, name: string, relay: string): { title:
     case 'wrong-machine':
       return {
         title: 'This isn’t the computer this phone paired with',
-        body: `The computer answering as ${name} has different keys, so nothing it sends is trusted. If its keys were reset, pair again: on the computer, Settings → Use on your phone → Show a code.`,
+        body: `The computer answering as ${name} turned this phone away three times in a row: its keys are not the ones this phone paired with. If its keys were reset, pair again: on the computer, Settings → Use on your phone → Show a code. This page keeps checking, and reconnects by itself if it can.`,
       }
     case 'removed':
       return {
         title: 'This phone was removed: pair again',
-        body: `${name} no longer lets this phone in. On the computer, open Caprock: Settings → Use on your phone → Show a code, and scan it.`,
+        body: `${name} no longer lets this phone in. On the computer, open Caprock: Settings → Use on your phone → Show a code, and scan it. This page keeps checking, and comes back by itself if it was a mistake.`,
       }
     case 'lost':
       return { title: 'Connection lost', body: `Reconnecting to ${name}.` }
@@ -272,7 +328,7 @@ function MachineBar({ link }: { link: Link }) {
   const cur = currentMachine()
   const label = barLabel(state, link.problem)
   return (
-    <div className="sticky top-0 z-50 border-b border-border bg-panel pt-[env(safe-area-inset-top)]">
+    <div data-machine-bar className="sticky top-0 z-50 border-b border-border bg-panel pt-[env(safe-area-inset-top)]">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -427,10 +483,14 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
           {first && <SettingsSketch />}
         </Step>
         <Step n={2}>
-          Press <b className="font-semibold text-fg">Show a code</b>. It turns on access from anywhere
+          Leave <b className="font-semibold text-fg">This phone can type and start agents</b> ticked, and press{' '}
+          <b className="font-semibold text-fg">Show a code</b>
         </Step>
         <Step n={3}>
-          Scan the code with this phone&apos;s camera
+          Scan the code with this phone&apos;s camera and open the link; the phone pairs
+        </Step>
+        <Step n={4}>
+          Optional: install the app when this page offers it
         </Step>
       </ol>
 

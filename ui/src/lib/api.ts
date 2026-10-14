@@ -1081,6 +1081,32 @@ export interface ToolDrill {
 /** Which Caprock hook events are registered in Claude Code's settings file. */
 export interface HooksStatus { settings_path: string; shim_path: string; installed: string[] | null; missing: string[] | null; shim_exists: boolean }
 
+/** One local day of /v1/stats/trends, up to the same time of day as now. */
+export interface TrendDay {
+  day: string
+  cost_usd: number
+  sessions: number
+  turns: number
+  tool_calls: number
+  /** 0..1; absent with no input at all. */
+  hit_rate?: number
+  /** Median of the day's active 10-minute windows, $/h (whole day). */
+  burn_usd_per_hour?: number
+  /** Any priced turn that day, at any hour. */
+  active: boolean
+}
+
+/** The Today cells' trends: the previous `days` days and today, cut at `cut_min`. */
+export interface Trends {
+  days: number
+  /** Minutes after local midnight at which every day is cut. */
+  cut_min: number
+  /** Oldest first; the last entry is today so far. */
+  series: TrendDay[]
+  /** The median active 10-minute window of the previous days, as $/h. */
+  burn?: { median_usd_per_hour: number; windows: number; days: number }
+}
+
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary; tax?: ContextTax }
 
 export interface Status {
@@ -1257,6 +1283,110 @@ export interface SavedPrompt {
 
 /** What a saved prompt is made or changed from; project_id 0 is every project. */
 export interface SavedDraft { kind: 'prompt' | 'command'; name: string; text: string; project_id: number }
+
+/** Second Brain's node kinds (03-contracts.md § Second Brain): four memories, then three entities. */
+export type BrainKind = 'idea' | 'decision' | 'finding' | 'question' | 'topic' | 'person' | 'project'
+export type BrainEdgeKind = 'relates' | 'follows' | 'contradicts' | 'part_of'
+
+/** One node of Second Brain: a memory, or a topic, person or project it hangs off. */
+export interface BrainNode {
+  id: number
+  kind: BrainKind
+  title: string
+  /** Empty in a graph read unless asked for; the node's own read carries it. */
+  summary: string
+  /** Where it was taken from; empty for a line typed into the quick capture. */
+  source: { session_id?: string; event_id?: number; ts?: number; project?: string }
+  manual: boolean
+  pinned: boolean
+  run_id?: number
+  created_at: number
+  updated_at: number
+  /** Edges in the graph read that touch it. */
+  degree?: number
+}
+
+export interface BrainEdge { from: number; to: number; kind: BrainEdgeKind; weight: number }
+
+export interface BrainGraph { nodes: BrainNode[]; edges: BrainEdge[]; total: number }
+
+/** A node's neighbour and the edge between them; `out` when the edge leaves the node asked about. */
+export interface BrainLink { node: BrainNode; kind: BrainEdgeKind; out: boolean; weight: number }
+
+export interface BrainStatus {
+  licensed: boolean
+  memories: number
+  manual: number
+  /** How many an install without a licence may drop in by hand, and how many remain (-1 with a licence). */
+  free_max: number
+  free_left: number
+  projects: { project: string; count: number }[]
+  auto?: BrainAutoStatus
+}
+
+/** The automatic extraction's state; absent from a daemon without it (03-contracts.md § Second Brain). */
+export interface BrainAutoStatus {
+  /** The user has answered the question; until then it never runs. */
+  chosen: boolean
+  /** Turned on. */
+  on: boolean
+  /** On, and a licence is active: it reads. */
+  enabled: boolean
+  claude_found: boolean
+  model: string
+  daily_tokens: number
+  /** Tokens the reads used in the last 24 hours. */
+  spent: number
+  running: boolean
+  /** Sessions waiting to be read. */
+  pending: number
+  since?: number
+  backfill_since?: number
+  last_wake?: number
+  last_error?: string
+  recent: BrainRun[]
+}
+
+/** One read of one session. */
+export interface BrainRun {
+  id: number
+  session_id: string
+  status: 'ok' | 'failed' | 'skipped'
+  model?: string
+  tokens_in: number
+  tokens_out: number
+  cost_usd: number
+  nodes: number
+  error?: string
+  finished_at: number
+  project?: string
+}
+
+/** What a backfill would read: an estimate, from the transcript's length. */
+export interface BrainEstimate {
+  sessions: number
+  tokens_estimate: number
+  days_estimate: number
+  daily_tokens: number
+  truncated?: boolean
+}
+
+export interface BrainSettings { auto?: boolean; daily_tokens?: number; model?: string }
+
+/** What POST /v1/brain/nodes takes: text (or a title), or an assistant note by its event id. */
+export interface BrainDrop {
+  text?: string
+  title?: string
+  summary?: string
+  kind?: BrainKind
+  event_id?: number
+  session_id?: string
+  project?: string
+  topics?: string[]
+  pinned?: boolean
+}
+
+export interface BrainFilterQuery { q?: string; project?: string; since?: number; until?: number; limit?: number; summaries?: boolean }
 
 /** One thing saved for later from the phone or the machine (03-contracts.md § Inbox). */
 export interface InboxItem {
@@ -1542,13 +1672,16 @@ export interface PairedDevice {
   paired_at: number
   last_seen: number
   /** A viewer reads; a controller may also start, type into and stop
-   *  sessions (ADR-034). Granted on the machine, never by pairing. */
+   *  sessions (ADR-034). Decided on the machine: by the tick beside Show a
+   *  code, which the code carries, or by Let it control sessions afterwards. */
   role: 'viewer' | 'controller'
   /** How it last reached the machine: `relay` (anywhere, ADR-058),
    *  `tailscale` (the network listener over Tailscale), `lan` (the network
    *  listener on the home Wi-Fi: that link works nowhere else). Absent when
    *  it has not been seen since this was recorded. */
   via?: PairedVia
+  /** The phone last said it runs as the installed app. A label only. */
+  app?: boolean
 }
 
 export type PairedVia = 'lan' | 'tailscale' | 'relay'
@@ -1564,6 +1697,8 @@ export interface PairMe {
   anywhere?: boolean
   /** The phone's page for access from anywhere, sent with anywhere. */
   app?: string
+  /** The machine has this device down as running the installed app. */
+  installed?: boolean
 }
 
 /** What the owner sees on the pairing panel. */
@@ -1574,6 +1709,8 @@ export interface PairState {
   url?: string
   /** The outstanding code, shown only on the machine itself. */
   code?: string
+  /** The role a phone pairing with `code` gets. */
+  code_role?: PairedDevice['role']
   expires_in_sec?: number
   /** The address reaches other networks (a tunnel), not just this one. */
   tunnelled?: boolean
@@ -1619,6 +1756,8 @@ export const api = {
   sessionsInDir: (dir: string) => get<SessionSummary[]>(`/v1/sessions?dir=${encodeURIComponent(dir)}`),
   session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
   /** The user's own name for a session; '' clears it. */
+  /** Send one offer-survey answer to caprock.dev, through the daemon (ADR-062). Only on the user's click. */
+  sendOffer: (a: { offer: string; answers: Record<string, string>; email?: string }) => post<{ status: string }>('/v1/offer', a),
   renameSession: (id: string, name: string) => post<{ session_id: string; name: string }>(`/v1/sessions/${encodeURIComponent(id)}/name`, { name }, 'PUT'),
   /** Live sessions sharing a checkout with another, and the files both edited lately (lib/overlap.ts). */
   overlap: () => get<Overlap>('/v1/overlap'),
@@ -1669,7 +1808,13 @@ export const api = {
   /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */
   reposActivity: () => get<ReposActivity>('/v1/repos/activity'),
   /** The Now screen's CI/CD section (.ai/04-ui.md § CI/CD on Now). */
-  reposCI: () => get<ReposCI>('/v1/repos/ci'),
+  reposCI: (q: { older?: boolean; hide?: readonly string[] } = {}) => {
+    const p = new URLSearchParams()
+    if (q.older) p.set('older', '1')
+    if (q.hide && q.hide.length > 0) p.set('hide', q.hide.join(','))
+    const qs = p.toString()
+    return get<ReposCI>(`/v1/repos/ci${qs ? `?${qs}` : ''}`)
+  },
   sessionBranches: (id: string) => get<SessionBranches>(`/v1/sessions/${encodeURIComponent(id)}/branches`),
   /** What GitHub billed for Actions this month (its billing report); ?owner= an organization. */
   actionsUsage: (owner?: string) => get<ActionsUsage>(`/v1/github/actions-usage${owner ? `?owner=${encodeURIComponent(owner)}` : ''}`),
@@ -1699,7 +1844,9 @@ export const api = {
   /** Exchange a code for a token. The one call a device makes before it is trusted. */
   pairRedeem: (code: string, name: string) =>
     post<{ token: string; id: string; name: string }>('/v1/pair', { code, name }),
-  pairCode: () => post<{ code: string; expires_in_sec: number; url: string }>('/v1/pair/code', {}),
+  /** A code that pairs a phone as `role` — the owner's tick, on the machine. */
+  pairCode: (role: PairedDevice['role'] = 'viewer') =>
+    post<{ code: string; role?: PairedDevice['role']; expires_in_sec: number; url: string }>('/v1/pair/code', { role }),
   /** Withdraw the outstanding code, so it stops working before it expires. */
   pairCancelCode: () => post<{ cleared: boolean }>('/v1/pair/code', {}, 'DELETE'),
   /** Turn network access on or off without restarting the daemon. */
@@ -1713,7 +1860,9 @@ export const api = {
   pairSetRole: (id: string, role: PairedDevice['role']) =>
     post<{ id: string; role: string }>(`/v1/pair/devices/${encodeURIComponent(id)}/role`, { role }, 'PUT'),
   /** Which role this dashboard's device holds: "owner" on the machine itself. */
-  pairMe: () => get<PairMe>('/v1/pair/me'),
+  /** `app` reports whether this phone runs as the installed app, for the
+   *  owner's checklist on the machine; omitted, nothing is reported. */
+  pairMe: (app?: boolean) => get<PairMe>(app === undefined ? '/v1/pair/me' : `/v1/pair/me?app=${app ? 1 : 0}`),
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),
@@ -1721,6 +1870,7 @@ export const api = {
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
+  trends: (agent?: string) => get<Trends>(`/v1/stats/trends${agent && agent !== 'all' ? `?agent=${agent}` : ''}`),
   premium: () => get<PremiumPricing>('/v1/premium'),
   /** How many people committed to the listed repositories in 30 days (counts only). */
   teamSignal: () => get<TeamSignal>('/v1/team-signal'),
@@ -1799,6 +1949,30 @@ export const api = {
   addSavedPrompt: (d: SavedDraft) => post<{ item: SavedPrompt }>('/v1/saved-prompts', d),
   updateSavedPrompt: (id: number, d: Partial<SavedDraft>) => post<{ item: SavedPrompt }>(`/v1/saved-prompts/${id}`, d, 'PATCH'),
   removeSavedPrompt: (id: number) => post<void>(`/v1/saved-prompts/${id}`, {}, 'DELETE'),
+  /** Second Brain (03-contracts.md § Second Brain). Writing it is the machine's. */
+  brain: (f: BrainFilterQuery = {}) => {
+    const qs = new URLSearchParams()
+    if (f.q) qs.set('q', f.q)
+    if (f.project) qs.set('project', f.project)
+    if (f.since) qs.set('since', String(f.since))
+    if (f.until) qs.set('until', String(f.until))
+    if (f.limit) qs.set('limit', String(f.limit))
+    if (f.summaries) qs.set('summaries', '1')
+    const tail = qs.toString()
+    return get<BrainGraph>(`/v1/brain${tail ? `?${tail}` : ''}`)
+  },
+  brainStatus: () => get<BrainStatus>('/v1/brain/status'),
+  brainNode: (id: number) => get<{ node: BrainNode; links: BrainLink[] }>(`/v1/brain/nodes/${id}`),
+  dropBrain: (d: BrainDrop) => post<{ node: BrainNode; created: boolean }>('/v1/brain/nodes', d),
+  patchBrain: (id: number, p: Partial<Pick<BrainNode, 'kind' | 'title' | 'summary' | 'pinned'>>) =>
+    post<{ node: BrainNode }>(`/v1/brain/nodes/${id}`, p, 'PATCH'),
+  removeBrain: (id: number) => post<void>(`/v1/brain/nodes/${id}`, {}, 'DELETE'),
+  linkBrain: (from: number, to: number, kind: BrainEdgeKind = 'relates') => post<void>('/v1/brain/links', { from, to, kind }),
+  unlinkBrain: (from: number, to: number) => post<void>('/v1/brain/links', { from, to }, 'DELETE'),
+  /** The automatic extraction: on or off and its limits (machine only; on needs Premium). */
+  brainSettings: (b: BrainSettings) => post<BrainAutoStatus>('/v1/brain/settings', b, 'PUT'),
+  /** What reading the last `days` would take; with run, starts it (Premium). */
+  brainBackfill: (days: number, run = false) => post<BrainEstimate>('/v1/brain/backfill', { days, dry_run: !run }),
   /** The Inbox (03-contracts.md § Inbox). Saving and deleting: the machine and a controller. */
   inbox: () => get<{ items: InboxItem[]; max: number }>('/v1/inbox'),
   addInbox: (d: InboxDraft) => post<{ item: InboxItem }>('/v1/inbox', d),

@@ -2095,8 +2095,11 @@ guide [docs/app.md § GitHub](../docs/app.md#github).
 
 - **macOS.** Universal `.dmg` and a Homebrew cask in `dspv/homebrew-tap`.
   Signed with a Developer ID and notarized once the owner has an Apple
-  Developer account ($99 a year); until then, ad-hoc signed, and the install
-  page says how to open an app from an unidentified developer.
+  Developer account ($99 a year); until then, release builds are signed
+  with a stable self-signed certificate so macOS keeps privacy answers
+  across updates ([§ Privacy prompts](#privacy-prompts-on-macos)), other
+  builds ad-hoc, and the install page says how to open an app from an
+  unidentified developer.
 - **Windows.** NSIS or MSI installer from Tauri's bundler, Scoop
   (`dspv/scoop-bucket`) and winget. Without a code-signing certificate,
   SmartScreen warns on first run; which certificate or signing service to buy
@@ -2116,7 +2119,7 @@ guide [docs/app.md § GitHub](../docs/app.md#github).
 
 macOS asks before a program reads Desktop, Documents, Downloads and a few
 other places, and remembers the answer per program and per code signature
-(ADR-040). What follows from Caprock being ad-hoc signed:
+(ADR-040). What follows from Caprock having no Developer ID yet:
 
 - **A session asks in its own name** (ADR-044). Until then the daemon was
   the program that asked for every session it ran: a pty-host and the agent
@@ -2132,8 +2135,48 @@ other places, and remembers the answer per program and per code signature
   the daemon still asks for is what the user opened, and Desktop, Documents
   or Downloads when a session runs there (finding its repository reads up
   that folder, `tcc.GuardedBeyondWork`).
-- **Every release asks again.** An ad-hoc signature's designated
-  requirement is its cdhash, so each build is new code to TCC.
+- **One certificate, one answer** (2026-10-14). TCC stores an answer with
+  the program's designated requirement and asks again when the next build
+  does not satisfy it. An ad-hoc signature's requirement is its cdhash
+  (`cdhash H"…"`), new with every build, so every release asked again for
+  the microphone and the folders: the owner was asked for the microphone
+  after each update. Release builds are now signed with one long-lived
+  **self-signed** code-signing certificate ("Caprock Self-Signed Code
+  Signing", RSA 2048, code-signing EKU, valid to 2036), whose requirement is
+  `identifier "dev.caprock.app" and certificate leaf = H"<the certificate's
+  SHA-1>"` for the app and `identifier caprock` / `"caprock-pty-host"` and
+  the same leaf for the daemon binaries (the bundler signs the sidecars
+  without an explicit identifier, so codesign takes the file name). Neither
+  half changes between builds, so an answer given once survives updates.
+  Measured locally: two daemon builds with different version stamps, signed
+  with the certificate, print the identical requirement and each satisfies
+  the other's (`codesign --verify -R=`); the same two signed ad-hoc print
+  different cdhashes and do not.
+  - **How.** The `.p12` and its password are the secrets
+    `MACOS_SELFSIGN_P12_BASE64` and `MACOS_SELFSIGN_P12_PASSWORD`;
+    `scripts/macos-selfsign-keychain.sh` imports them into a temporary
+    keychain on the macOS runner (release.yml's `app-macos-build`, ci.yml's
+    macOS `app` job) and exports the certificate's SHA-1 as
+    `APPLE_SIGNING_IDENTITY`, which `tauri build` uses in place of the
+    config's `"-"`, keeping the hardened runtime and
+    `Entitlements.plist`. `scripts/check-app-signature.sh` (in CI and
+    `app-release.sh`) prints each binary's requirement and fails unless all
+    three are `identifier … and certificate leaf = H"…"` with that
+    certificate. Without the secrets (a fork's pull request, `make
+    app-local`) the build stays ad-hoc exactly as before and the check
+    expects ad-hoc. The private key exists only in the secrets and with the
+    maintainer; a new certificate would ask every user once more, like the
+    switch itself.
+  - **The switch asks once more.** The first release signed this way
+    satisfies no stored cdhash, so it asks one last time for the
+    microphone and each folder; from the next update on it does not.
+  - **Gatekeeper is unchanged.** The certificate is not from Apple, so to
+    Gatekeeper the app is still from an unidentified developer (`spctl
+    --assess` rejects both, ad-hoc and self-signed, the same way): the
+    `.dmg`'s first open and the cask's quarantine step stay as they were.
+    Not notarized, and the TeamIdentifier stays unset.
+  - **The Homebrew formula's daemon** is goreleaser's, linker-signed ad-hoc,
+    and still asks per release whenever it is the daemon that runs.
 - **One path, one entry.** The app runs its daemon from
   `<data_dir>/bin/caprock` and moves a Homebrew daemon (a new Cellar path per
   release) onto it, so a new release replaces the entry instead of adding
@@ -2150,9 +2193,15 @@ other places, and remembers the answer per program and per code signature
   `NSMicrophoneUsageDescription` (`app/src-tauri/Info.plist`), and
   `scripts/check-app-mic.sh` checks both in CI and in `app-release.sh`. The formula's binary has no runtime
   flag and needs neither.
-- **With a Developer ID** (the Apple account): one entry that survives
-  updates, and, with the daemon as an `SMAppService` helper of the app, the
-  app's name and icon — to verify on the first signed build.
+- **With a Developer ID** (the Apple account): the Developer ID
+  certificate replaces the self-signed one (`APPLE_CERTIFICATE` and
+  notarization, docs/RELEASING.md), the requirement becomes `anchor apple
+  generic and … certificate leaf[subject.OU] = <team id>`, Gatekeeper opens
+  the app without "Open Anyway", and, with the daemon as an `SMAppService`
+  helper of the app, the prompts carry the app's name and icon — to verify
+  on the first signed build. The change of requirement asks every user once
+  more, as the switch to the self-signed certificate did; drop
+  `macos-selfsign-keychain.sh` and its secrets then.
 
 The user-facing note is in [docs/app.md](../docs/app.md#macos-privacy-prompts).
 

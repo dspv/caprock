@@ -2,11 +2,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReposCI, RepoCIRow } from '@/lib/reposci'
 
-const h = vi.hoisted(() => ({ answer: undefined as unknown, asked: 0, usage: [] as string[] }))
+const h = vi.hoisted(() => ({ answer: undefined as unknown, asked: 0, usage: [] as string[], q: [] as unknown[] }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return { ...actual, api: { ...actual.api,
-    reposCI: async () => { h.asked++; return h.answer },
+    reposCI: async (q?: unknown) => { h.asked++; h.q.push(q); return typeof h.answer === 'function' ? (h.answer as (q: unknown) => unknown)(q) : h.answer },
     actionsUsage: async (owner?: string) => {
       h.usage.push(owner ?? '')
       return { account: owner, org: false, year: 2026, month: 10, available: false, reason: 'permission', minutes: 0, gross_usd: 0, discount_usd: 0, net_usd: 0, by_sku: [], at: 0 }
@@ -17,7 +17,7 @@ vi.mock('@/lib/api', async (orig) => {
 import { CICDPanel } from './CICDPanel'
 import { PANEL_FOLDS_KEY } from './ui'
 import { forgetDeckAnswers } from '@/lib/deckCache'
-import { redPct, statusLine, stuckText } from '@/lib/reposci'
+import { compactTokens, HIDDEN_REPOS_KEY, keepWhileReading, prTokens, quietText, redPct, rowErrorText, sectionErrorText, statusLine, stuckText } from '@/lib/reposci'
 import { spanText } from '@/lib/prstats'
 
 const now = Date.now()
@@ -28,7 +28,7 @@ const row = (p: Partial<RepoCIRow>): RepoCIRow => ({
   ...p,
 })
 
-afterEach(() => { h.answer = undefined; h.asked = 0; h.usage = []; forgetDeckAnswers(); localStorage.clear() })
+afterEach(() => { h.answer = undefined; h.asked = 0; h.usage = []; h.q = []; forgetDeckAnswers(); localStorage.clear() })
 
 describe('the CI/CD section', () => {
   it('shows each repository’s CI, stuck runs, release, the costliest pull requests and who opened them', async () => {
@@ -41,6 +41,7 @@ describe('the CI/CD section', () => {
         top_prs: [{ number: 41, title: 'Kanban board', url: 'https://github.com/ada/app/pull/41', state: 'open', author: 'grace', author_avatar: 'https://avatars.githubusercontent.com/u/2', cost_usd: 18.25, sessions: 3, live: 1 }],
         authors: [{ login: 'grace', avatar: 'https://avatars.githubusercontent.com/u/2', prs: 2, merged: 1, cost_usd: 18.25 }, { login: 'ada', prs: 1, merged: 1, cost_usd: 0 }],
       })],
+      quiet: [],
     } satisfies ReposCI
     render(<CICDPanel />)
     const block = await waitFor(() => {
@@ -77,6 +78,88 @@ describe('the CI/CD section', () => {
     expect(await screen.findByText(/Connect GitHub in Settings/)).toBeInTheDocument()
     expect(h.asked).toBe(1)
     expect(h.usage).toEqual([])
+  })
+
+  it('folds older and hidden repositories into one line, reads them only when shown, and hides a row from its menu', async () => {
+    h.answer = (q: { older?: boolean; hide?: string[] } | undefined) => ({
+      github_connected: true,
+      recent_days: 14,
+      repos: [
+        row({ project_id: 1, name: 'app', repo: 'ada/app' }),
+        row({ project_id: 2, name: 'site', repo: 'ada/site', live: 0, last_active: now - 3 * 86_400_000 }),
+        ...(q?.older ? [row({ project_id: 3, name: 'bloq', repo: 'ada/bloq', live: 0, older: true, last_active: now - 200 * 86_400_000 })] : []),
+      ].filter((r) => !(q?.hide ?? []).includes(r.repo)),
+      quiet: [
+        ...(q?.older ? [] : [{ project_id: 3, name: 'bloq', repo: 'ada/bloq', last_active: now - 200 * 86_400_000, why: 'older' }]),
+        { project_id: 4, name: 'amarketer', repo: 'ada/amarketer', last_active: now - 90 * 86_400_000, why: 'older' },
+        ...(q?.hide ?? []).map((r) => ({ project_id: 9, name: r.split('/')[1], repo: r, why: 'hidden' })),
+      ].filter((x) => !(q?.older && x.why === 'older' && x.repo === 'ada/bloq')),
+    })
+    render(<CICDPanel />)
+    const line = await screen.findByText(/2 older repositories/)
+    expect(document.querySelector('[data-cicd-repo="ada/bloq"]')).toBeNull()
+    expect(h.q[0]).toEqual({ older: false, hide: [] })
+    // Hide one from its menu: gone at once, remembered, and the next ask names it.
+    fireEvent.click(screen.getByRole('button', { name: 'site: actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Hide from CI\/CD/ }))
+    expect(document.querySelector('[data-cicd-repo="ada/site"]')).toBeNull()
+    expect(JSON.parse(localStorage.getItem(HIDDEN_REPOS_KEY) ?? '[]')).toEqual(['ada/site'])
+    await waitFor(() => expect(h.q.at(-1)).toEqual({ older: false, hide: ['ada/site'] }))
+    await waitFor(() => expect(document.querySelector('[data-cicd-quiet]')).toHaveTextContent('2 older repositories · 1 hidden'))
+    // Shown: the older one is read and drawn; the hidden one can come back.
+    fireEvent.click(document.querySelector('[data-cicd-quiet] button')!)
+    await waitFor(() => expect(document.querySelector('[data-cicd-repo="ada/bloq"]')).not.toBeNull())
+    expect(h.q.at(-1)).toEqual({ older: true, hide: ['ada/site'] })
+    fireEvent.click(screen.getByRole('button', { name: 'Show again' }))
+    await waitFor(() => expect(document.querySelector('[data-cicd-repo="ada/site"]')).not.toBeNull())
+    expect(JSON.parse(localStorage.getItem(HIDDEN_REPOS_KEY) ?? '[]')).toEqual([])
+    expect(line).toBeTruthy()
+  })
+
+  it('says a slow GitHub calmly, once for the section when every row is the same', async () => {
+    const slow = { message: 'could not reach GitHub (api.github.com): context deadline exceeded. Check the connection; Caprock tries again later.', kind: 'network' }
+    h.answer = { github_connected: true, repos: [row({ repo: 'ada/a', project_id: 1, slow: true, error: slow, ci: undefined }), row({ repo: 'ada/b', project_id: 2, slow: true, error: slow, ci: undefined })], quiet: [] }
+    render(<CICDPanel />)
+    expect(await screen.findByText('GitHub didn’t answer in time — retrying')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-cicd-error]')).toHaveLength(0)
+    expect(document.body).not.toHaveTextContent('context deadline exceeded')
+  })
+
+  it('puts the tokens beside a pull request’s cost, and marks a shared session', async () => {
+    h.answer = { github_connected: true, quiet: [], repos: [row({ top_prs: [{ number: 601, title: 'chore(release)', url: 'u', state: 'open', cost_usd: 2.12, sessions: 1, live: 0, shared: 1, tokens_in: 74, tokens_out: 5431, cache_read: 9_388_958, cache_write: 23_881 }] })] }
+    render(<CICDPanel />)
+    const tok = await waitFor(() => {
+      const t = document.querySelector('[data-cicd-tokens]')
+      if (!t) throw new Error('no tokens')
+      return t
+    })
+    expect(tok).toHaveTextContent('9.4M tok')
+    expect(tok.getAttribute('title')).toMatch(/cache read 9.4M/)
+    expect(document.querySelector('[data-cicd-shared]')?.getAttribute('title')).toMatch(/also worked on other pull requests/)
+  })
+
+  it('keeps the figures already drawn while a new ask is read', () => {
+    const prev = { github_connected: true, quiet: [], status: { indicator: 'none', description: 'ok', components: [], incidents: [], at: 0 }, repos: [row({ repo: 'ada/app', open: 7 })] }
+    const next = { github_connected: true, quiet: [], refreshing: true, repos: [row({ repo: 'ada/app', open: 0, pending: true, ci: undefined }), row({ repo: 'ada/old', pending: true, older: true })] }
+    const got = keepWhileReading(prev, next)
+    expect(got.repos[0]).toMatchObject({ repo: 'ada/app', open: 7 })
+    expect(got.repos[0]!.pending).toBeFalsy()
+    expect(got.repos[1]).toMatchObject({ repo: 'ada/old', pending: true })
+    expect(got.status?.description).toBe('ok')
+  })
+
+  it('says the quiet parts in words', () => {
+    expect(compactTokens(412_300_000)).toBe('412.3M')
+    expect(compactTokens(18_000)).toBe('18k')
+    expect(compactTokens(950)).toBe('950')
+    expect(prTokens({ number: 1, url: '', state: 'open', cost_usd: 0, sessions: 0, live: 0 })).toBeUndefined()
+    expect(quietText([], 14)).toBeUndefined()
+    expect(quietText([{ project_id: 1, name: 'a', repo: 'o/a', why: 'older' }], 14)?.text).toBe('1 older repository')
+    expect(rowErrorText({ error: { message: 'Bad credentials', kind: 'auth' } })).toBe('Bad credentials')
+    expect(rowErrorText({ error: { message: 'x', kind: 'network' } })).toBe('GitHub not reachable — retrying')
+    const r = row({ error: { message: 'x', kind: 'network' } })
+    expect(sectionErrorText([r, row({})])).toBeUndefined()
+    expect(sectionErrorText([r, r])).toBe('GitHub not reachable — retrying')
   })
 
   it('says GitHub’s status, red share and stuck runs in words', () => {

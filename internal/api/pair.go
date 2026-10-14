@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -46,6 +47,10 @@ type pairState struct {
 	URL string `json:"url,omitempty"`
 	// Code is the outstanding pairing code, shown only to the owner.
 	Code string `json:"code,omitempty"`
+	// CodeRole is the role a device pairing with Code gets: "controller"
+	// when the owner left *This phone can type and start agents* ticked,
+	// else "viewer". Empty without a live code.
+	CodeRole string `json:"code_role,omitempty"`
 	// Tunnelled says the address reaches other networks (Tailscale) rather
 	// than only this one. The distinction is the whole difference between
 	// "works from the sofa" and "works from anywhere", and a screen that does
@@ -126,6 +131,7 @@ func (s *Server) handlePairState(w http.ResponseWriter, r *http.Request) {
 	if ps != nil {
 		if live, left := ps.CodeActive(); live {
 			st.Code = ps.Code()
+			st.CodeRole = ps.CodeRole()
 			st.ExpiresInSec = int(left / time.Second)
 		}
 		st.Devices = ps.Devices()
@@ -147,9 +153,31 @@ func (s *Server) handlePairState(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePairNewCode issues a code for the owner to read out or scan.
+//
+// The body may name the role the device pairing with it gets —
+// {"role": "controller"} when the owner left *This phone can type and start
+// agents* ticked (ADR-034, amended 2026-10-14). Loopback-only like the rest
+// of the owner's side, so the role is still decided on the machine. No body,
+// or no role, pairs a viewer, as every code did before.
 func (s *Server) handlePairNewCode(w http.ResponseWriter, r *http.Request) {
 	if !isLocal(r) {
 		s.failCode(w, http.StatusForbidden, errors.New("pairing is managed from the machine Caprock runs on"))
+		return
+	}
+	var req struct {
+		Role string `json:"role"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			s.failCode(w, http.StatusBadRequest, errors.New(`send {"role": "viewer"|"controller"}, or no body`))
+			return
+		}
+	}
+	if req.Role == "" {
+		req.Role = pairing.RoleViewer
+	}
+	if !pairing.ValidRole(req.Role) {
+		s.failCode(w, http.StatusBadRequest, errors.New(`send {"role": "viewer"|"controller"}, or no body`))
 		return
 	}
 	ps, lanURL := s.lanState()
@@ -157,13 +185,14 @@ func (s *Server) handlePairNewCode(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusConflict, errors.New("network access is off — turn it on from Settings"))
 		return
 	}
-	code, err := ps.NewCode()
+	code, err := ps.NewCodeAs(req.Role)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	resp := map[string]any{
 		"code":           code,
+		"role":           req.Role,
 		"expires_in_sec": int(pairing.CodeTTL / time.Second),
 		"url":            lanURL,
 	}
@@ -391,6 +420,9 @@ type pairMe struct {
 	// the owner chose another), sent with Anywhere so a Wi-Fi link's notice
 	// can name where the app it should use lives.
 	App string `json:"app,omitempty"`
+	// Installed echoes what the device reported with ?app= and the machine
+	// recorded: whether it runs as the installed app.
+	Installed bool `json:"installed,omitempty"`
 }
 
 // handlePairMe tells a dashboard which controls to draw (ADR-034). The daemon
@@ -402,7 +434,16 @@ func (s *Server) handlePairMe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, pairMe{Role: "owner"})
 		return
 	}
-	me := pairMe{Role: dev.Role, ID: dev.ID, Name: dev.Name, Via: transportOf(r)}
+	me := pairMe{Role: dev.Role, ID: dev.ID, Name: dev.Name, Via: transportOf(r), Installed: dev.App}
+	// The phone says whether it runs as the installed app (?app=1) or as a
+	// tab Chrome offers to install (?app=0), so the owner's checklist on the
+	// machine can tick *App installed*. A label, never an authorisation.
+	if v := r.URL.Query().Get("app"); v == "1" || v == "0" {
+		me.Installed = v == "1"
+		if ps, _ := s.lanState(); ps != nil && ps.SetApp(deviceTokenOf(r), me.Installed) {
+			s.saveDevices()
+		}
+	}
 	if s.d.Remote != nil {
 		if st := s.d.Remote.RemoteState(""); st.Enabled {
 			me.Anywhere, me.App = true, st.App

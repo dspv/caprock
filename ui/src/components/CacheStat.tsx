@@ -13,6 +13,7 @@
  * good number is charming once and an irritation by the afternoon, and this
  * product's rule is that motion means live data and nothing else.
  */
+import type { ReactNode } from 'react'
 import { Stat } from '@/components/ui'
 import { cacheLevel } from '@/lib/cachelevel'
 import { fmtPct } from '@/lib/format'
@@ -23,6 +24,7 @@ export function CacheStat({
   measured,
   size = 'compact',
   label = 'Cache hit',
+  trend,
 }: {
   /** 0–1, as the API reports it. */
   hitRate: number | undefined
@@ -31,6 +33,8 @@ export function CacheStat({
   measured: boolean
   size?: 'hero' | 'default' | 'compact'
   label?: string
+  /** The 14-day line under the figure (Now's Today panel). */
+  trend?: ReactNode
 }) {
   const pct = measured && hitRate !== undefined ? hitRate * 100 : undefined
   const level = cacheLevel(pct)
@@ -52,6 +56,7 @@ export function CacheStat({
       }
       sub={measured && cutPct !== undefined ? `${fmtPct(cutPct)} input cost cut` : undefined}
       size={size}
+      trend={trend}
     />
   )
 }

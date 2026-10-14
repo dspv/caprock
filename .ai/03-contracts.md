@@ -77,9 +77,10 @@ Claude Code shows) until something answers it; a later hook never replaces an
 earlier unanswered prompt. For every
 session the stored event makes Now and the session page say *waiting for
 approval* (naming the call; *waiting for your answer* for `AskUserQuestion`)
-with the *waiting on you* badge, until the session's next event, and is what a
-phone alert is sent on. A dialog dismissed with Esc fires no hook, so the state
-holds until the next prompt.
+with the *waiting on you* badge, until the session's next event — or, in a
+session Caprock started, until the dialog is answered there (§ Nudges) — and
+is what a phone alert is sent on. A dialog dismissed with Esc fires no hook, so
+in a session Caprock did not start the state holds until the next prompt.
 
 The daemon stores the raw payload untouched in `events.payload`; unknown events and unknown fields are logged and ignored, never fatal ([06-engineering-rules.md](06-engineering-rules.md)).
 
@@ -169,14 +170,15 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   only the reads named in `pairedDeviceRoutes` (`internal/api/lanauth.go`),
   matched on method and route pattern: `GET`/`HEAD` of `/v1/sessions`,
   `/v1/sessions/{id}` and its `events`, `notes`, `todos` and `diff`, `/v1/notes`,
-  `/v1/stats/summary`, `/v1/stats/daily`, `/v1/window-stop`, `/v1/events`, `/v1/history`,
+  `/v1/stats/summary`, `/v1/stats/daily`, `/v1/stats/trends`, `/v1/window-stop`, `/v1/events`, `/v1/history`,
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
   `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/queue`,
   `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
-  `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file` and
-  `/v1/projects/{id}/files`. Everything else is `403` — every `POST`, `PUT` and
+  `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file`,
+  `/v1/projects/{id}/files`, `/v1/brain`, `/v1/brain/status` and
+  `/v1/brain/nodes/{id}`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
   orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
   not reads: `/v1/agents/{id}/term` (its socket types into the session), and
@@ -185,9 +187,14 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   named. `GET /v1/settings` omits `license_key` for a paired device. Loopback is
   unaffected. `GET /v1/pair/me` is on the list too: it answers `{role}` —
   `"owner"` on loopback, else `{role: "viewer"|"controller", id, name, via,
-  anywhere?, app?}`, where `via` is how this request arrived (below),
+  anywhere?, app?, installed?}`, where `via` is how this request arrived (below),
   `anywhere` is true while access from anywhere is on, and `app` (sent with
   it) is the phone's page, so a Wi-Fi link's notice names where the app is.
+  `?app=1` or `?app=0` reports whether the phone runs as the installed app
+  (2026-10-14); the machine stores it per device as `app` in `devices.json`
+  (saved when it changes), lists it in `GET /v1/pair/state`'s `devices`, and
+  answers it as `installed`. Any other value records nothing. A label for the
+  owner's checklist; it never decides access.
 - **How a device last arrived** (`via`, 2026-10-14): the gate records it on
   every request a device makes, and at pairing — `relay` for a request on
   loopback carrying `Via: …caprock-remote…`, `tailscale` for a peer in
@@ -198,7 +205,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   /v1/pair/state`'s `devices`. A label for the owner's list and the phone's
   notice; it never decides access.
 - **A controller may also work on sessions** ([ADR-034](08-decisions.md)). A
-  device is paired as a viewer; the owner makes it a controller with `PUT
+  device pairs with the role its code carries — `POST /v1/pair/code` with
+  `{role: "controller"}`, the owner's tick *This phone can type and start
+  agents*, else a viewer (amended 2026-10-14) — and the owner changes it with `PUT
   /v1/pair/devices/{id}/role` (`{role: "viewer"|"controller"}`, loopback-only,
   `400` for any other role, `404` for an unknown id, and while network access
   is off it edits `devices.json`). `role` is stored per device in
@@ -279,7 +288,13 @@ access is off too — and `keep_on`, the stored `lan_keep_on` (ADR-060).
 than by the gate: a paired tablet is somewhere to read figures, not a second
 control room, and it must not be able to admit a third device or revoke the
 laptop that let it in. `PUT /v1/pair/devices/{id}/role` is loopback-only the same
-way: a controller cannot promote another device, or itself. `POST /v1/pair`
+way: a controller cannot promote another device, or itself. `POST /v1/pair/code`
+takes an optional `{role: "viewer"|"controller"}` (no body, or no role, is a
+viewer, as `caprock pair` and `caprock remote` send; any other role, or a
+body that is not JSON, is `400`) and answers `{code, role, expires_in_sec,
+url, remote?}`; `GET /v1/pair/state` names the outstanding code's role as
+`code_role`. The device pairing with that code gets that role; nothing the
+device sends names one. `POST /v1/pair`
 takes `{code, name}` and returns `{token, id, name}` — the name prefixed
 `This computer · ` when the request came from the machine's own network
 address; it is the one call a device makes before it is trusted, and
@@ -345,6 +360,11 @@ that has not appeared yet — and a daemon that cannot answer in time simply say
 nothing. [ADR-030](08-decisions.md). A session opening in the filesystem root,
 the home directory or the temp directory (`store.NotAProject`) gets nothing and
 runs no lookup.
+
+A served handoff also carries up to five of the repository's Second Brain
+memories (§ Second Brain), pinned first then newest, each `- kind: title —
+summary` with the summary clipped to 160 runes, in a budget of 700 runes of
+their own after the passage; none when the repository has none.
 
 **Measuring it.** Whenever there is a passage to hand over, the session records
 whether it got it: `sessions.handoff` is `1` (served) or `2` (held back);
@@ -521,11 +541,13 @@ GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
 GET  /v1/settings                      → user-stated settings (plan, update checks)
 PUT  /v1/settings                      → store them
+POST /v1/offer                         → {status: "sent"} — forward one offer-survey answer to caprock.dev on the user's click (§ Offer survey, ADR-062)
 GET  /v1/update                        → cached release status (no network I/O)
 POST /v1/update/check                  → check now (403 unless enabled)
 POST /v1/hooks/install                 → {hooks: HooksStatus, backup?} — `caprock hooks install`, from the dashboard
 POST /v1/claude/bypass-consent         → {accepted: true} — the user accepted Caprock's copy of Claude Code's bypass warning (ADR-041)
 GET  /v1/stats/daily?days=30           → DailyStat[]
+GET  /v1/stats/trends?agent=…         → Trends — Now's Today cells: 14 previous days cut at this time of day, today, the usual burn
 POST /v1/hook                          → 204 (shim only, bearer-token gated; the event is written even after the shim hangs up)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
@@ -675,6 +697,49 @@ you" beside "1 subagent working" (2026-10-09). The project list's `waiting`
 count, the sidebar's waiting rows, ⌘J and the "finished" alert (`internal/alerts`,
 held until the last subagent stops and a minute after) follow the same rule.
 
+### Nudges
+
+**Input typed into a session Caprock started moves its status before the
+session writes an event for it** (2026-10-14). Every key and button reaches
+such a session through the daemon (`agents.Manager.Input`, `InputSeq`,
+`AnswerPermission` — the terminal, the composer and queue, the card, the
+phone, Telegram), which keeps each session's newest *nudge*
+(`narrate.Nudge`, in memory, gone with the session): what was typed and
+when. `activity` reads it only while it is newer than the session's newest
+event, so the next event always wins:
+
+- **`approved`** — a permission dialog answered with an option that runs the
+  call: a button's *allow* or *always*, or a digit or Enter in the terminal
+  whose option (read off the screen as the buttons read it, the marked one
+  for Enter) is not a "No". Over a newest `permission.prompt` it reads
+  `health: "working"`, `phrase: "approved — <the call>"`. A dialog writes
+  nothing when it is answered; without this the session read *waiting for
+  approval* until the call's `PostToolUse`, the whole run of a build.
+- **`rejected`** — the *deny* button, a "No" option, or Esc or Ctrl+C with a
+  dialog up: over a newest `permission.prompt`, `waiting-on-you`, *waiting
+  for you* — Claude Code drops the call and returns to its prompt.
+- **`submit`** — Enter (a typed `\r`, not ESC CR) with no dialog up. For 5 s
+  (`narrate.NudgeWindow`) a session that read `waiting-on-you` (its turn
+  ended) or `idle` reads `working`, *starting on your message*, with
+  `activity.provisional: true`; then, with no event behind it, what the
+  events say again. A prompt Claude Code accepts fires `UserPromptSubmit`
+  within milliseconds; Enter that submitted nothing is not work.
+
+A dialog for `AskUserQuestion` is answered by its own call's hook and is
+left alone; looping, error and ended outrank a nudge; with two or more
+dialogs outstanding a key answers one Caprock cannot name and nudges
+nothing. A session Caprock did not start has no nudge (rule 7: nothing
+here sees its keys). An approval older than the idle window reads idle
+(*was approved — …*), as a call does; a session row marked `idle` by the
+sweep does not turn a nudged *working* back to idle.
+
+Each nudge is published as a `status` frame on `/v1/live`,
+`{session_id, kind, at}` (unix ms), and a `submit` once more when its 5 s
+are up, so every screen reads the session again at once (04-ui.md § A
+status moves at once). After a `submit` into an owned Codex or Gemini
+session the daemon reads their transcripts or telemetry at 0.3, 1.2 and
+3 s instead of waiting for the poll (Codex every 5 s, Gemini every 3).
+
 `GET /v1/status` gained `platform` (`GOOS/GOARCH`) — the first thing a bug report needs and the last thing anyone remembers to include.
 
 The dashboard route `#/session/{id}?at=<unix-ms>` reveals a moment in the timeline (used by the pulse); it is a client-side concern and needs no endpoint.
@@ -714,7 +779,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -802,6 +867,8 @@ terminal, for as long as the stranger ran.
 `GET /v1/status` carries `ingest_error` — the terminal error that stopped transcript ingest, when one happened — and omits it while ingest is running. The tailer runs in a goroutine whose failure used to be logged and swallowed, so a fatal ingest error (a read-only `~/.claude` reproduces it) left the daemon reporting healthy, `caprock status` printing `backfill done`, and the dashboard showing its "No sessions yet — start `claude` in any terminal" empty state forever, while nothing was being captured at all. `caprock status` and the Now and Status screens all report it.
 
 `/v1/stats/summary` and `/v1/history` carry `unpriced` — `{turns, tokens, models[]}` — the volume in range whose model has no row in the pricing table, and which models caused it. It is **omitted entirely when everything in range was priced**, which is the normal case. A model missing from the table leaves `cost_usd` NULL (the rollup logs "model not in pricing table; cost left unknown"), and every aggregate flattens NULL with `COALESCE(SUM(cost_usd),0)` — so tens of thousands of tokens of an unpriced model summed to exactly `$0.00` and rendered as a confident, indistinguishable-from-free number. That is an invented number (rule 6), and it is certain to occur the day a model ships newer than the pricing table, or on a gateway whose model ids do not normalise. The models are **named**, not merely counted: an unknown model id is something a user can report or add a pricing override for, whereas "some tokens are unpriced" is not actionable. `cost_usd` continues to mean "the cost we could price", so the two are reported side by side and never summed.
+
+`GET /v1/stats/trends` is what the Now screen's Today cells are set against (see [04-ui.md](04-ui.md) § Today's trends): `{days, cut_min, series[], burn?}`. `series` is the previous `days` (14) local days, oldest first, then today; each entry is `{day, cost_usd, sessions, turns, tool_calls, hit_rate?, burn_usd_per_hour?, active}`, and every figure but the burn is **cut at the same time of day as now** (`cut_min`, minutes after local midnight): yesterday's `cost_usd` is what yesterday had spent by this hour, because a morning set against whole days reads low every morning. `sessions` counts the sessions with any event by the cut, as the summary counts today's; `hit_rate` (0–1) is absent with no input at all. `active` is whether the day had any priced turn at any hour — the client takes its median over active days only, so a weekend off is not a usual of zero. `burn_usd_per_hour` is the median of the day's **active 10-minute windows** (UTC-aligned windows in which anything was spent, as dollars per hour), over the whole day; `burn` is `{median_usd_per_hour, windows, days}` over the previous days' active windows, omitted when there is none — the figure *Burn now*, itself the last 10 minutes, is set against. Nothing is withheld here: the client says "not enough history" below five active days. It follows `?agent=` (a 400 for an unknown one) and ignores `?range=`. One grouped range scan per (5-minute bucket, session, kind) off `idx_events_ts_cover` — five minutes divides every UTC offset, so a bucket never straddles a local midnight, and a day's cut is at most one bucket late. On a copy of the owner's 1.6 GB database, 15 days (200k events, 10k groups): 0.14 s in the sqlite shell, 0.28 s warm through the Go driver (2026-10-14), so it is cached per agent and local day for 5 minutes (`trendsTTL`, then refreshed in the background, served stale up to 30 minutes) and warmed at start for every agent together; the client draws today's point from the live summary. The rollups cannot answer it: `daily_stats` has no time of day, no turn or tool counts and no agent.
 
 `/v1/stats/summary` carries `usual` — this machine's own baseline over the last 30 days, which the cockpit sets a session's headline against (*▲ 38%*, [04-ui.md](04-ui.md) § Inspector): `{days, burn?, cost?, tokens?, cache?}`. `burn`, `cost` and `tokens` are distributions, each `{n, q[11], mean}` — the sample count, the nearest-rank minimum, every tenth percentile and maximum, ascending, and the samples' mean (the spend chart's pace line sets each bar, itself a mean of its active hours, against `burn.mean`; a client given no `mean` by an older daemon draws no usual line). `burn` is dollars per **active session-hour**: every clock hour in which one session made at least five priced calls costing more than nothing, its spend in that hour — a session's hour, not the machine's, because four sessions at once are not one burning four times as fast. `cost` and `tokens` are every session's total over the window (tokens: input with cache reads and writes). `cache` is the window's hit rate, 0–100. A distribution with fewer than 20 hours (`burn`) or 8 sessions (`cost`, `tokens`, `cache`) is **omitted**, and `usual` itself is omitted when nothing is left: a new user is shown nothing rather than a median of three (rule 6). It follows `?agent=` like the figures beside it, and ignores `?range=`: it is always the last 30 days. One grouped scan of the priced turns per (session, clock hour) off the covering `idx_events_turn_agent` — 0.02 s warm, 0.12 s cold for 30 days on a 1.7 GB copy of the owner's database (2026-10-13) — cached for 10 minutes and then refreshed in the background (`usualTTL`, served stale up to a day), and warmed at start, so no request counts it on the way.
 
@@ -1187,7 +1254,7 @@ GitHub token is (§ GitHub, "Where the token lives"):
 
 `PUT /v1/settings` accepts `default_folder` (2026-10-09): where the app's Add project sheet starts — its folder field, a new project's parent, a clone's destination and the folder browser. Empty is the home folder; otherwise an absolute path or one led by `~`, one line, at most 1024 bytes (`400` otherwise). Stored as `default_folder` in `config.json` and returned by `GET`. It changes no boundary: `/v1/browse` and `/v1/browse/stat` stay rooted at `browse_root`.
 
-`GET`/`PUT /v1/settings` carry `prompts` (2026-10-09): when each of the dashboard's own offers was last answered, a map of prompt id → Unix ms, stored in `config.json` so an answer given in the desktop app holds in a browser tab too ([04-ui.md § Product-led surfaces](04-ui.md#product-led-surfaces)). Ids in use: `star-done`, `star-dismissed`, `premium-limit`, `premium-cap`, `premium-hint`, `premium-banner`, `teams-nudge`, `share-week`, `share-month`. `PUT` **merges**: each named id keeps the later of its stored time and the new one, `0` removes it, ids not named are untouched. An id must be `a-z`, `0-9` and `-`, at most 40 bytes; a negative time or more than 32 ids is a `400`. Absent from `GET` when empty. A paired device does not write it; its answers stay in its own browser.
+`GET`/`PUT /v1/settings` carry `prompts` (2026-10-09): when each of the dashboard's own offers was last answered, a map of prompt id → Unix ms, stored in `config.json` so an answer given in the desktop app holds in a browser tab too ([04-ui.md § Product-led surfaces](04-ui.md#product-led-surfaces)). Ids in use: `star-done`, `star-dismissed`, `premium-limit`, `premium-cap`, `premium-hint`, `premium-banner`, `teams-nudge`, `share-week`, `share-month`, and the offer survey's (`offer-variant-ads`, `offer-variant-youtube`, `offer-last`, and `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2` per offer; ADR-062). `PUT` **merges**: each named id keeps the later of its stored time and the new one, `0` removes it, ids not named are untouched. An id must be `a-z`, `0-9` and `-`, at most 40 bytes; a negative time or more than 64 ids is a `400`. Absent from `GET` when empty. A paired device does not write it; its answers stay in its own browser.
 
 `GET /v1/team-signal` (2026-10-09) → `{authors, repos, window_days, checked_ms}`: how many distinct people committed to the listed repositories in the last 30 days, for the Caprock for Teams card (shown at `authors ≥ 2`). Read with `git log --all --no-merges --since=30.days.ago --format=%an%x09%ae` in at most 25 repositories, 2000 commits each, under the projects' git timeout; people are counted by lower-cased author name (one person, two addresses is one), bot authors left out; a repository whose git fails is skipped. Cached for six hours in the projects service. Counts only — no name or address leaves `internal/projects/authors.go` — and nothing leaves the machine. Not on a paired device's read list. `501` without the projects service.
 
@@ -1198,7 +1265,7 @@ GitHub token is (§ GitHub, "Where the token lives"):
 
 On a paired device's read list (counts only). `501` without the projects service.
 
-`GET /v1/repos/ci` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, those with a session running first, at most 6 (`reposCIMax`), each read through the kept GitHub reads the PRs & CI tab makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci`).
+`GET /v1/repos/ci[?older=1][&hide=owner/name,…]` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], quiet[], recent_days, fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, with activity in the last `recent_days` (14: a session's last event in the project's root, or the project's `added_at`), those with a session running first, then by `last_active`, at most 6 (`reposCIMax`); with `older=1` the older ones too, marked `older`, at most 12 in all (`reposCIOlderMax`). A repository named in `hide` (this viewer's hidden ones, case-insensitive, at most 200), one without recent activity while `older` is not asked, and one past the bound are listed in `quiet[]` `{project_id, name, repo, last_active?, why: older|hidden|more}` and nothing is sent to GitHub for them. Each row is read through the kept GitHub reads the PRs & CI tab makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. Rows are read at most 3 at once (`reposCIParallel`), each within 12 s (`reposCIRepoTimeout`), the status page beside them, the whole within 30 s; a row GitHub did not answer in time carries `slow: true` beside its `error`. A row also carries `last_active` (Unix ms) and, in the quick answer, `pending`. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci` with `older` and the sorted `hide`); a key never composed is answered at once with the rows unread (`pending`, `refreshing`) while the composition goes on. Each `top_prs[]` entry adds `shared` (sessions charged only in part) and `tokens_in`, `tokens_out`, `cache_read`, `cache_write` (`store.PRSpend`, below).
 
 - **Row** — `RepoCIRow` `{project_id, name, repo, live, ci?, days?, stuck[], open, merged_7d, top_prs[], authors[], release?, error?}`. `live` counts the sessions not ended under the project's root; `ci` is `github.RunStats` over the runs, 14 days (the `CIStats` of `…/ci/stats`), `days` its local calendar days; `open` and `merged_7d` count the listed pull requests; `release` is the newest published release (`RepoRelease`); a failed list is `error` with the rest absent.
 - **Stuck** — `github.StuckRuns`: `{id, name, branch?, status, url?, since, median_ms?}` for a run `in_progress` longer than twice its workflow's median successful run over the 14 days and at least 10 minutes over it (no median, never), or waiting for a runner (`queued`, `waiting`, `pending`, `requested`) longer than 15 minutes; `since` is `run_started_at`, else `created_at`. The runs list is kept 2 minutes instead of 30 while any run in it is unfinished (`repoRunsActiveKept`), so a stuck run is seen within minutes; a conditional read costs a 304 when nothing changed.
@@ -1207,7 +1274,7 @@ On a paired device's read list (counts only). `501` without the projects service
 
 On a paired device's read list. `501` without the projects service.
 
-**Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole; where two pull requests share a head branch the open one owns it, else the most recently updated. A session not on such a branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice}`: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and one sum per slice over a session's events (`(session_id, ts)` index). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them.
+**Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole, unless it opened or merged more than one pull request (`session_prs` rows with `opened_at` or `merged_at`): `git_branch` is the branch a session was on last, and a long session that drove hundreds of pull requests and ended on a release branch was charged whole to the release's pull request (#601 read as $1,884.29, the session's entire spend; cut as below it is $2.12, measured on the owner's database 2026-10-14). Where two pull requests share a head branch the open one owns it, else the most recently updated. A session not charged by its branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice, shared?, tokens_in, tokens_out, cache_read, cache_write}`: the tokens are the same work's (`session_stats` for a whole session, the slice's `events` sums for a cut one), `shared` counts the cut sessions: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and one sum per slice over a session's events (`(session_id, ts)` index). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them.
 
 **Phone alerts** ([ADR-036](08-decisions.md)) go through the same bot and are
 free: no licence is checked. `PUT /v1/settings` accepts `alert_approval` and
@@ -1332,13 +1399,15 @@ token stays in `config.json`.
 
 `POST /v1/hooks/install` runs the same install as `caprock hooks install` (`hooks.InstallFor`: copy the shim into the data dir, merge Caprock's entries into the settings file this daemon reports in `/v1/status.hooks.settings_path`, backing it up first) and answers with what is registered afterwards (`{hooks: {settings_path, shim_path, installed, missing, shim_exists}, backup?}`); an error is an error status, never a quiet 200, and a daemon without an installer answers 501. It is a mutating route, so the CSRF guard refuses a cross-site request and a paired device cannot make it. Nothing else in settings.json is touched. `/v1/status.hooks`, `caprock status` and this answer all check against the command an install writes (`hooks.StatusFor`): the shim in the data dir, or the fallback `"<exe>" hook` when none sits beside the binary. Checking against the shim path alone recognised that fallback only for an executable named `caprock`, so on a renamed or preview build the button said installed and the next status said all nine were missing.
 
+**Offer survey** ([ADR-062](08-decisions.md)). `POST /v1/offer {offer, answers, email?}` is the one route that sends what the user chose to Caprock, and the dashboard calls it only from the survey card's **Send** button. `offer` is one of the dashboard's surveys (the Second Brain offer is a sale and sends nothing), and `answers` is exactly `{q1, q2}`, each one allowed value: `ads` and `youtube` — `q1` `under-4`, `4-8`, `8-12`, `12+`; `q2` `under-30`, `30-70`, `over-70`. `local-models` — `q1` `coding`, `chat`, `search`, `trying`; `q2` `mac-16`, `mac-24-64`, `mac-96`, `pc-nvidia`, `other`. `email`, when present, is one plain address of at most 254 characters. Anything else is `400` and nothing is sent. The daemon rebuilds the body from those fields alone and POSTs `{offer, answers, email?}` — no version, no identifier — to `https://caprock.dev/api/offer` with a 10 s limit; `CAPROCK_OFFER_URL` replaces the address for a preview stand or a test, which must never reach the real site. `200 {status: "sent"}` when the site took it, `502 {error}` when it did not — the error never carries the email or the address. Machine-only: a paired device gets `403` like every write. The enums live in `internal/api/offer.go`, `ui/src/lib/offer.ts` and the site's `functions/api/offer.ts`, and change together. What keeps a card away is ordinary `settings.prompts` entries: the draw (`offer-variant-ads` or `offer-variant-youtube`), the day any offer last showed (`offer-last`), and per offer `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2`.
+
 `GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once every 6 hours unless forced — at startup, when the switch is turned on, and on an hourly tick that asks whether one is due (so a daemon that runs for weeks still hears of a release) — and each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
 
 **`PUT /v1/settings` is a patch, not a replace.** Fields are decoded as pointers, so a body changes only the keys it names and leaves the rest as they were; `PUT {}` is a no-op. An explicit `false` is still honoured, so nothing here is write-only. This is not a convenience: decoding into a plain struct made an absent field indistinguishable from a cleared one, so a short body — or a retry that dropped fields — answered 200 while resetting the stated plan *and* switching the release-check opt-in off. The plan decides what every cost figure on the dashboard claims to be, and `update_checks` gates rule 4's single outbound call; neither may be toggled by omission.
 
 `GET`/`PUT /v1/settings` carry `{plan_kind, plan_label, plan_usd_per_month}` — how the user pays for Claude Code. Caprock **cannot detect this and never guesses**: Claude Code does not report the plan, and inferring one from usage would be an invented number (rule 6), so the user states it and it is stored in `config.json` like every other setting. `plan_kind` is `""` (not stated), `"flat"` (Pro/Max/Team seat — usage at API list price is an *equivalent*, so comparing it to the fee is meaningful), or `"metered"` (API key, Bedrock, Vertex, or Enterprise usage billed at API rates — the API-list figure **is** approximately the bill, so it is never framed as a saving). `PUT` validates rather than coerces: an unknown `plan_kind` or a negative/non-finite price is a 400, because a typo would otherwise drive a wrong headline figure. Both return 501 when the daemon has no settings controller.
 
-`SessionSummary` = the `sessions` row + `stats` (session_stats) + `activity` ({phrase, tool, at, health, plan, repeats, background} from `internal/narrate`) + `savings` (cache math) + `loop` (active alert, if any) + `context` ({tokens, window, pct} — the main thread's last turn's prompt size vs that turn's model's context window from `pricing.json`; a subagent's turn is used only when the session has no main-thread turn at all, as in an OpenCode child session). When `context` is absent, **`context_note` says why**: `no turn yet` (the session has not answered, so there is no prompt to measure), `<id> not in pricing table` (naming the id, which is the one thing a user can report and we can fix), `unknown model`, or `no pricing table`. The reasons call for opposite reactions — one resolves itself in seconds, the other never will — and the client cannot tell them apart from the session row alone; captioning every empty Context "unknown model" put those words beside a Cost stat naming `claude-opus-5` in the same row. `SessionDetail` adds `files`, the last 60 `events`, `repo` and `prs` (see **Repository and pull-request links** under Phase 1 additions), and the relay chain: `relayed_from` (`{session_id, agent, title?, started_at}`, absent when none) and `relayed_to` (a list of the same, oldest first, `[]` when none). `?range=` on `/v1/stats/summary` accepts `today` (default), `7d`, `30d`, `all`, or a Go duration; ranges are calendar-aware in the daemon's local time zone. The summary carries `burn` ($/h and tokens/min over the last 10 minutes) and `pricing_version`. Each entry in `projects` is `{project, tokens, cost_usd, sessions, dir?, paths?}` — one row per **repository** (see § Repository grouping DDL), where `sessions` counts the distinct sessions that touched it in the range, so a per-repo roll-up can state both what a repo cost and how many sessions worked in it. `dir` is the directory the row is keyed on — the repository root, or the session's own directory for work outside any repository — and is absent only on the row for spend whose session was deleted. `GET /v1/sessions?dir=<dir>` lists exactly that row's sessions: an **exact** match on `repo_root`, plus sessions with no repository whose `cwd` is the directory — the same grouping the summary uses, never the free-text search (`?q=`), which also reads prompts and would pull in every session that mentioned the name. Each entry there carries `resume` for live sessions too, not only ended ones, because the caller (1-click terminal, see [04-ui.md](04-ui.md)) offers to open, continue or branch from the list; `resume` is `null` for a session Caprock holds the terminal of. `paths` is the per-directory breakdown: `{path, tokens, cost_usd, turns, unattributed?, outside?, tokens_pct, cost_pct}`, charged by **carry-forward** from the files the repository's turns touched rather than by the directory a session was launched from (see § Touch attribution DDL). Two entries are not directories and must be rendered as their own thing: `unattributed` (turns before their session touched any file) and `outside` (turns whose most recent touch was outside the repository); a bucket row that cost $0 is omitted. `path` is the full directory relative to the repository root, written from it (`/`, `/services/api`). It is **omitted for a repository with fewer than two rows**, which would merely restate the row's own total, and it always sums exactly to the parent row — the panel must never state two different totals for one repository (rule 6). `turns` replaces a session count because a session touches many directories while a turn is charged to exactly one, so turns partition and add up. `tokens_pct` and `cost_pct` are shares of the **repository total including the unattributed row**, so each column sums to 100% and the share nothing could be attributed to is visible as its own number rather than hidden in the denominator; both are sent because cost per token varies by model and the two genuinely differ. Each entry may also carry `spark` — `{from_ms, width_ms, cost[], tokens[], input[], turns[], active_hours[], active_cost[]}`, the row's spend over time, where bucket `i` covers `[from_ms + i*width_ms, from_ms + (i+1)*width_ms)`. All six are parallel arrays over the **same** buckets, from the same scan, so which one a picture plots stays a display choice rather than a request — changing the basis must never cost a round-trip on a polled endpoint. `tokens` is input plus output; `input` is the input side alone (fresh input, cache reads and cache writes — the cockpit's own *tokens*), and `turns` the assistant turns, the summary's own `turns` per bucket. `active_hours` counts the bucket's **active session-hours** — clock hours (from the grid's start, so an hour never straddles two buckets) in which one session made at least five priced calls costing more than nothing, the same rule as `usual.burn` — and `active_cost` what those hours cost, so `active_cost / active_hours` is the bucket's burn rate per hour actually worked, and a bucket with no active hour has no rate rather than $0/h; the scan groups by (session, bucket, hour) instead of (session, bucket), 0.032 s → 0.033 s warm for 30 days on a 2.3 GB copy of the owner's database (2026-10-13), off the same covering index. A daemon from before `input` and `turns` sends neither, and one from before `active_hours` and `active_cost` sends neither of those; a client draws that series as unknown, never as zeros. The Projects panel plots tokens; the cockpit's spend chart sums every row's series bucket by bucket and plots cost, burn rate, input or turns (see [04-ui.md](04-ui.md)). The grid follows the range and starts at the same calendar-aligned instant: `today` → 24 hourly buckets, `7d` → 7 daily, `30d` → 30 daily, a typed `<n>d` (n ≤ 90) → n daily. `spark` is **absent for `range=all`**, whose start is the first event ever captured — a fixed bucket count would make a column mean a different span on every machine. The columns sum to at most the row total and never more: spend inside the range but outside the bucket grid still counts toward the row, because dropping it would understate the bill (rule 6). `paths` entries carry no series — a sparkline per directory would multiply a polled payload for a picture hidden until the row is expanded. The summary also carries `work` and `work_unlinked_calls` — what the money was spent **on**, by the kind of work each turn did (see § Work attribution DDL).
+`SessionSummary` = the `sessions` row + `stats` (session_stats) + `activity` ({phrase, tool, at, health, plan, repeats, background, provisional} from `internal/narrate`; `provisional` while a submit nudge, not an event, says working — § Nudges) + `savings` (cache math) + `loop` (active alert, if any) + `context` ({tokens, window, pct} — the main thread's last turn's prompt size vs that turn's model's context window from `pricing.json`; a subagent's turn is used only when the session has no main-thread turn at all, as in an OpenCode child session). When `context` is absent, **`context_note` says why**: `no turn yet` (the session has not answered, so there is no prompt to measure), `<id> not in pricing table` (naming the id, which is the one thing a user can report and we can fix), `unknown model`, or `no pricing table`. The reasons call for opposite reactions — one resolves itself in seconds, the other never will — and the client cannot tell them apart from the session row alone; captioning every empty Context "unknown model" put those words beside a Cost stat naming `claude-opus-5` in the same row. `SessionDetail` adds `files`, the last 60 `events`, `repo` and `prs` (see **Repository and pull-request links** under Phase 1 additions), and the relay chain: `relayed_from` (`{session_id, agent, title?, started_at}`, absent when none) and `relayed_to` (a list of the same, oldest first, `[]` when none). `?range=` on `/v1/stats/summary` accepts `today` (default), `7d`, `30d`, `all`, or a Go duration; ranges are calendar-aware in the daemon's local time zone. The summary carries `burn` ($/h and tokens/min over the last 10 minutes) and `pricing_version`. Each entry in `projects` is `{project, tokens, cost_usd, sessions, dir?, paths?}` — one row per **repository** (see § Repository grouping DDL), where `sessions` counts the distinct sessions that touched it in the range, so a per-repo roll-up can state both what a repo cost and how many sessions worked in it. `dir` is the directory the row is keyed on — the repository root, or the session's own directory for work outside any repository — and is absent only on the row for spend whose session was deleted. `GET /v1/sessions?dir=<dir>` lists exactly that row's sessions: an **exact** match on `repo_root`, plus sessions with no repository whose `cwd` is the directory — the same grouping the summary uses, never the free-text search (`?q=`), which also reads prompts and would pull in every session that mentioned the name. Each entry there carries `resume` for live sessions too, not only ended ones, because the caller (1-click terminal, see [04-ui.md](04-ui.md)) offers to open, continue or branch from the list; `resume` is `null` for a session Caprock holds the terminal of. `paths` is the per-directory breakdown: `{path, tokens, cost_usd, turns, unattributed?, outside?, tokens_pct, cost_pct}`, charged by **carry-forward** from the files the repository's turns touched rather than by the directory a session was launched from (see § Touch attribution DDL). Two entries are not directories and must be rendered as their own thing: `unattributed` (turns before their session touched any file) and `outside` (turns whose most recent touch was outside the repository); a bucket row that cost $0 is omitted. `path` is the full directory relative to the repository root, written from it (`/`, `/services/api`). It is **omitted for a repository with fewer than two rows**, which would merely restate the row's own total, and it always sums exactly to the parent row — the panel must never state two different totals for one repository (rule 6). `turns` replaces a session count because a session touches many directories while a turn is charged to exactly one, so turns partition and add up. `tokens_pct` and `cost_pct` are shares of the **repository total including the unattributed row**, so each column sums to 100% and the share nothing could be attributed to is visible as its own number rather than hidden in the denominator; both are sent because cost per token varies by model and the two genuinely differ. Each entry may also carry `spark` — `{from_ms, width_ms, cost[], tokens[], input[], turns[], active_hours[], active_cost[]}`, the row's spend over time, where bucket `i` covers `[from_ms + i*width_ms, from_ms + (i+1)*width_ms)`. All six are parallel arrays over the **same** buckets, from the same scan, so which one a picture plots stays a display choice rather than a request — changing the basis must never cost a round-trip on a polled endpoint. `tokens` is input plus output; `input` is the input side alone (fresh input, cache reads and cache writes — the cockpit's own *tokens*), and `turns` the assistant turns, the summary's own `turns` per bucket. `active_hours` counts the bucket's **active session-hours** — clock hours (from the grid's start, so an hour never straddles two buckets) in which one session made at least five priced calls costing more than nothing, the same rule as `usual.burn` — and `active_cost` what those hours cost, so `active_cost / active_hours` is the bucket's burn rate per hour actually worked, and a bucket with no active hour has no rate rather than $0/h; the scan groups by (session, bucket, hour) instead of (session, bucket), 0.032 s → 0.033 s warm for 30 days on a 2.3 GB copy of the owner's database (2026-10-13), off the same covering index. A daemon from before `input` and `turns` sends neither, and one from before `active_hours` and `active_cost` sends neither of those; a client draws that series as unknown, never as zeros. The Projects panel plots tokens; the cockpit's spend chart sums every row's series bucket by bucket and plots cost, burn rate, input or turns (see [04-ui.md](04-ui.md)). The grid follows the range and starts at the same calendar-aligned instant: `today` → 24 hourly buckets, `7d` → 7 daily, `30d` → 30 daily, a typed `<n>d` (n ≤ 90) → n daily. `spark` is **absent for `range=all`**, whose start is the first event ever captured — a fixed bucket count would make a column mean a different span on every machine. The columns sum to at most the row total and never more: spend inside the range but outside the bucket grid still counts toward the row, because dropping it would understate the bill (rule 6). `paths` entries carry no series — a sparkline per directory would multiply a polled payload for a picture hidden until the row is expanded. The summary also carries `work` and `work_unlinked_calls` — what the money was spent **on**, by the kind of work each turn did (see § Work attribution DDL).
 
 **The session's `model` is its main thread's.** `sessions.model` is the model of the newest event from the session's main thread (`rollup.Record`); a subagent's event — `agent_id` set, or `payload.sidechain` true, the same test the notes query uses (`event.Event.Subagent`, `store.MainThreadWhere`) — fills it only while it is empty, through `SessionPatch.SubagentModel`. An Opus session whose Explore subagent runs on Haiku is an Opus session on its card, in every list and in the window its context fill is measured against; the subagent's turns are still priced by their own model and counted in `session_stats` and `daily_stats` (keyed by the turn's model) exactly as before. A session whose every turn is a subagent's (an OpenCode child session) is named by them. Earlier versions let a subagent's turn overwrite the column; `rollup.RepairSessionModels` sets each session's model once (`meta.session_model_repaired`) to that of its newest main-thread `turn.assistant` (by `ts`, internal turns excluded) where the stored value differs, and leaves sessions with no main-thread turn alone. Measured on a copy of the owner's database (2026-10-01): 6 of the 140 sessions with a main-thread turn were wrong, all six named after a subagent's model; the pass took 3.3 s on an 879 MB file, once, in the background after the port opens. The context badge looks for the main thread's last turn among the session's newest 5000 events when the newest 60 hold none (`store.LastMainTurn`, about 20 ms on a 51k-event session).
 
@@ -1454,6 +1523,15 @@ GET    /v1/inbox                     → {items, max}; what was saved for later 
 POST   /v1/inbox                     {text?, project_id?, files?} → {item}; save a note, a link or a photo (§ Inbox)
 DELETE /v1/inbox/{id}                → 204; with its files (§ Inbox)
 GET    /v1/inbox/{id}/files/{n}      → an item's image, for its thumbnail (§ Inbox)
+GET    /v1/brain                     ?q=&project=&since=&until=&limit=&summaries=1 → BrainGraph (§ Second Brain)
+GET    /v1/brain/status              → BrainStatus: counts, the free allowance, projects (§ Second Brain)
+POST   /v1/brain/nodes               {text | title, summary?, kind?, event_id?, session_id?, project?, topics?, pinned?} → {node, created}; 402 past the free allowance
+GET    /v1/brain/nodes/{id}          → {node, links}
+PATCH  /v1/brain/nodes/{id}          {kind?, title?, summary?, pinned?} → {node}
+DELETE /v1/brain/nodes/{id}          → 204; its edges go with it
+POST   /v1/brain/links               {from, to, kind?} → 204; DELETE with {from, to} → 204
+PUT    /v1/brain/settings            {auto?, daily_tokens?, model?} → BrainAutoStatus; 402 to turn on without a licence
+POST   /v1/brain/backfill            {days?, dry_run?} → BrainEstimate; 402 without a licence, 409 while off (dry run: neither)
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
 POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, name}}; this machine only
@@ -2702,6 +2780,107 @@ GET    /v1/inbox/{id}/files/{n}     → the n-th file's bytes, images only (thum
 - **Live.** Each save and delete publishes an `inbox` frame, `{id,
   deleted}`, on `/v1/live`.
 
+### Second Brain
+
+What the sessions decided, found and left open, kept as a graph
+([ADR-063](08-decisions.md)). Code: `internal/api/brain.go`,
+`internal/store/brain.go`; DDL in § Second Brain DDL (migration 0055).
+
+```
+GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total}
+GET    /v1/brain/status         → {licensed, memories, manual, free_max, free_left, projects: [{project, count}], auto?}
+POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
+GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
+PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
+DELETE /v1/brain/nodes/{id}     → 204
+POST   /v1/brain/links          {from, to, kind?} → 204
+DELETE /v1/brain/links          {from, to} → 204
+PUT    /v1/brain/settings       {auto?, daily_tokens?, model?} → BrainAutoStatus
+POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
+```
+
+- **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
+  event_id?, ts?, project?}, manual, pinned, run_id?, created_at, updated_at,
+  degree?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or
+  `question` (a memory) or `topic`, `person` or `project` (an entity).
+  `title` is at most 80 runes and `summary` 400, clipped with `…` on the way
+  in. `manual` is true for a node dropped in by hand; `run_id` names the
+  automatic extraction's read that made it. `degree` is the number of
+  returned edges touching the node, in a graph read only.
+- **`BrainEdge`** — `{from, to, kind, weight}`; `kind` is `relates`,
+  `follows`, `contradicts` or `part_of`. One edge per `(from, to, kind)`;
+  linking an existing pair again adds its weight, capped at 10. A memory
+  hangs off its project and topics with `part_of`.
+- **The graph read** returns the newest memories that pass the filter
+  (pinned first, then by `created_at`), at most `limit` (default and ceiling
+  5,000), the entities their edges reach, and every edge between returned
+  nodes; with no filter, every entity too, linked or not. `q` matches title
+  or summary, anywhere, wildcards literal; `project` is exact; `since` and
+  `until` bound `created_at`. `total` counts the memories that pass the
+  filter, whatever the limit. Summaries are `""` unless `summaries=1`; a
+  node's own read carries its summary.
+- **A drop.** `kind` defaults to `idea`. With `event_id` the daemon reads
+  the note's text, session, time and project from `events` itself — the event
+  must be main-thread assistant prose (§ Phase 0's notes rules), else `400`.
+  The same answer dropped again returns the memory already made from it
+  (`created: false`). With `session_id` alone the source is that session at the current time.
+  Without a `title`, the first line of `text` (or the note) that says
+  something, its Markdown stripped, is the title and the passage, flattened,
+  the summary — none when one short line is the whole of it. An entity whose
+  normalised title exists (lower case, spaces collapsed, punctuation at the
+  ends dropped) is returned with `created: false` rather than added again.
+  The memory is linked `part_of` its project (an entity made on demand) and
+  each topic (at most 8). `text` at most 64 KiB, valid UTF-8, no NUL.
+- **The free allowance.** Without an active licence (ADR-022) a `POST` of a
+  memory when twenty memories dropped in by hand exist is `402` `{error:
+  "premium required", detail}`. Entities, edits, links, deletes and reads
+  are never refused for want of a licence. `free_left` is the allowance
+  remaining, `-1` with a licence.
+- **Errors.** `404` for an unknown node; `409` when a rename would give an
+  entity the normalised title of another of its kind; `400` for an unknown
+  kind, an empty title, a self-link.
+- **Who.** The three `GET`s are open to every paired device; every write,
+  settings and backfill included, is the machine's (a device gets `403`).
+- **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
+  "added" | "changed" | "deleted", kind?, title?, auto?}` (`kind` and `title`
+  absent on a delete).
+- **The automatic extraction** (`internal/brain`, Premium). `auto` in the
+  status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
+  daily_tokens, spent, running, pending, since?, backfill_since?,
+  last_wake?, last_error?, recent: [BrainRun]}`: `chosen` once the user has
+  answered, `enabled` when on and licensed (only then does it read), `spent`
+  the tokens of the reads in the last 24 hours, `pending` the sessions
+  waiting, `recent` the last reads that were not skipped. `BrainRun` is
+  `{id, session_id, from_event_id, through_event_id, status: ok | failed |
+  skipped, model?, tokens_in, tokens_out, cost_usd, nodes, error?,
+  started_at, finished_at, project?}`.
+- **Settings.** `auto: true` needs an active licence (`402` otherwise) and
+  starts reading from that moment; `false` never needs one. `daily_tokens`
+  is 20,000–5,000,000 (the screen offers 100k, 300k and 1M; the default is
+  300,000) and `model` is `""`, `haiku` (the default) or `sonnet`; anything
+  else is `400`. Kept in `config.json` as `brain: {auto?, since?,
+  backfill_since?, daily_tokens?, model?}`; `auto` absent means the user has
+  not answered, and nothing runs.
+- **Backfill.** `BrainEstimate` is `{sessions, tokens_estimate,
+  days_estimate, daily_tokens, truncated?}`: the sessions since `days` ago
+  with unread prose worth a read, and an estimate of their tokens (a
+  quarter of the characters sent, plus the call's measured fixed cost,
+  4,300, plus 400 for the answer), labelled an estimate on screen. Without
+  `dry_run` it also sets `backfill_since`, which needs a licence (`402`)
+  and the extraction on (`409`), and wakes the reader.
+- **A read.** A session is a candidate when its last event is after
+  `since` (or `backfill_since`), it has ended or been quiet ten minutes, and
+  it has main-thread prompts or answers after the last read that did not
+  fail. Its passages are numbered and sent, with the project and up to 60
+  existing topic titles, on stdin to the user's `claude` (flags in
+  ADR-063). The answer is `{memories: [{kind, title, summary, topics?,
+  passage?, related?, contradicts?}]}`, at most eight kept: each a node with
+  `run_id`, `manual: false` and the cited passage's event as its source,
+  `part_of` the project and its topics, `relates`/`contradicts` to the
+  others named. Fewer than 300 runes of agent prose: recorded `skipped`,
+  never sent. A failure is recorded with its error and retried after 15
+  minutes, doubling; after four the session waits for new prose.
+
 ### Queued messages
 
 What the chat field sends to a session Caprock started ([ADR-053](08-decisions.md)).
@@ -3714,6 +3893,73 @@ CREATE INDEX IF NOT EXISTS idx_inbox_created ON inbox(created_at);
 What was saved for later (§ Inbox). `files` is a JSON array of paths the
 daemon wrote under `<data_dir>/inbox`. No foreign key: unlisting a project
 keeps its items, as it keeps its saved prompts.
+
+### Second Brain DDL (migration 0055)
+
+Second Brain's graph and the automatic extraction's reads (§ Second Brain,
+[ADR-063](08-decisions.md)). Every write goes through `internal/store/brain.go`.
+
+```sql
+CREATE TABLE IF NOT EXISTS brain_nodes (
+  id          INTEGER PRIMARY KEY,
+  kind        TEXT    NOT NULL CHECK (kind IN ('idea','decision','finding','question','topic','person','project')),
+  title       TEXT    NOT NULL,
+  norm        TEXT    NOT NULL DEFAULT '',
+  summary     TEXT    NOT NULL DEFAULT '',
+  session_id  TEXT    NOT NULL DEFAULT '',
+  event_id    INTEGER,
+  source_ts   INTEGER NOT NULL DEFAULT 0,  -- unix ms of the source moment
+  project     TEXT    NOT NULL DEFAULT '',
+  manual      INTEGER NOT NULL DEFAULT 0 CHECK (manual IN (0,1)),
+  pinned      INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0,1)),
+  run_id      INTEGER,                     -- brain_runs.id; NULL when manual
+  created_at  INTEGER NOT NULL,            -- unix ms
+  updated_at  INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_brain_nodes_entity ON brain_nodes(kind, norm)
+  WHERE kind IN ('topic','person','project');
+CREATE INDEX IF NOT EXISTS idx_brain_nodes_created ON brain_nodes(created_at);
+CREATE INDEX IF NOT EXISTS idx_brain_nodes_session ON brain_nodes(session_id);
+CREATE INDEX IF NOT EXISTS idx_brain_nodes_event ON brain_nodes(event_id) WHERE event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_brain_nodes_project ON brain_nodes(project, created_at);
+
+CREATE TABLE IF NOT EXISTS brain_edges (
+  src         INTEGER NOT NULL REFERENCES brain_nodes(id) ON DELETE CASCADE,
+  dst         INTEGER NOT NULL REFERENCES brain_nodes(id) ON DELETE CASCADE,
+  kind        TEXT    NOT NULL CHECK (kind IN ('relates','follows','contradicts','part_of')),
+  weight      REAL    NOT NULL DEFAULT 1,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (src, dst, kind),
+  CHECK (src != dst)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_brain_edges_dst ON brain_edges(dst);
+
+CREATE TABLE IF NOT EXISTS brain_runs (
+  id               INTEGER PRIMARY KEY,
+  session_id       TEXT    NOT NULL,
+  from_event_id    INTEGER NOT NULL DEFAULT 0,
+  through_event_id INTEGER NOT NULL DEFAULT 0,
+  status           TEXT    NOT NULL CHECK (status IN ('ok','failed','skipped')),
+  model            TEXT    NOT NULL DEFAULT '',
+  tokens_in        INTEGER NOT NULL DEFAULT 0,
+  tokens_out       INTEGER NOT NULL DEFAULT 0,
+  cost_usd         REAL    NOT NULL DEFAULT 0,
+  nodes            INTEGER NOT NULL DEFAULT 0,
+  error            TEXT    NOT NULL DEFAULT '',
+  started_at       INTEGER NOT NULL,
+  finished_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_brain_runs_session ON brain_runs(session_id, id);
+CREATE INDEX IF NOT EXISTS idx_brain_runs_finished ON brain_runs(finished_at);
+```
+
+`norm` is the title folded for comparison (`store.NormTitle`); the partial
+unique index makes an entity one per normalised title while memories may
+share one. Deleting a node deletes its edges (foreign keys are on), and the
+topics and people the delete leaves unlinked go too unless dropped in by hand
+or pinned. A session's newest `brain_runs` row says how far the extraction has
+read it (`through_event_id`); `tokens_in` is input, cache read and cache write
+as `claude` reported them, `cost_usd` its own `total_cost_usd`.
 
 ### Turn bounds DDL (migration 0048)
 

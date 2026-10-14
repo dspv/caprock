@@ -54,8 +54,16 @@ export type ChannelState = 'connecting' | 'open' | 'offline' | 'closed'
  * - `relay-unreachable`: the phone could not reach the relay at all.
  * - `no-internet`: the phone itself is offline.
  * - `lost`: an open channel dropped, or stopped answering.
- * - `wrong-machine`: the reply was not from the key the QR carried.
- * - `removed`: the machine no longer knows this phone's token.
+ * - `wrong-machine`: the machine refused this phone's handshake
+ *   REFUSALS_FOR_WRONG_MACHINE times in a row: its keys are not the ones
+ *   the QR carried.
+ * - `removed`: the machine said, on REMOVAL_CONNECTIONS separate
+ *   connections, that it no longer knows this phone's token.
+ *
+ * The last two are the only ones that send the owner to pair again, and both
+ * are confirmed, never read off one answer (owner, 2026-10-14, translated:
+ * "it has to never drop — hold firm and for a long time"). Even then the
+ * channel keeps checking, slowly, and comes back by itself if it was wrong.
  */
 export type Problem = '' | 'machine-offline' | 'no-answer' | 'relay-unreachable' | 'no-internet' | 'lost' | 'wrong-machine' | 'removed'
 
@@ -72,7 +80,14 @@ export const PROBE_MS = 15_000
 /** …and within this after the page comes back to the foreground. */
 export const WAKE_MS = 5_000
 
-/** Problems that a retry cannot fix: only pairing again can. */
+/** Handshakes the machine refuses in a row before the phone says "wrong machine". */
+export const REFUSALS_FOR_WRONG_MACHINE = 3
+/** Separate connections on which the machine must disown the token before "removed". */
+export const REMOVAL_CONNECTIONS = 2
+/** How often a phone told to pair again still checks whether it has to. */
+export const RECHECK_MS = 60_000
+
+/** Problems that a retry has not fixed: the page asks to pair again (and keeps checking). */
 export function needsPairing(p: Problem): boolean {
   return p === 'wrong-machine' || p === 'removed'
 }
@@ -134,6 +149,16 @@ export class Channel {
   private retry: ReturnType<typeof setTimeout> | null = null
   private heard = 0
   private stopped = false
+  /** Handshakes the machine refused since one last succeeded. */
+  private refusals = 0
+  /** Counts the channel's openings, so a check knows which connection it ran on. */
+  private serial = 0
+  /** The openings on which GET /v1/pair/me said 401 to this phone's token. */
+  private disowned = new Set<number>()
+  /** The token a 401 was answered to, to ask about. */
+  private token = ''
+  private checking = false
+  private recheck: ReturnType<typeof setTimeout> | null = null
 
   constructor(
     readonly machine: Machine,
@@ -178,8 +203,17 @@ export class Channel {
    * if no answer comes in WAKE_MS. A channel that is not open tries at once.
    */
   wake() {
-    if (this.stopped || needsPairing(this.problem)) return
+    if (this.stopped) return
+    if (this.problem === 'removed' && this.state === 'open') {
+      this.verify()
+      return
+    }
     if (this.state !== 'open') {
+      if (needsPairing(this.problem)) {
+        // Quietly: the screen still says pair again unless this works.
+        if (!this.opening) this.attemptNow()
+        return
+      }
       if (!this.opening) void this.retryNow().catch(() => { /* scheduled again */ })
       return
     }
@@ -220,16 +254,79 @@ export class Channel {
 
   /**
    * A response for a /v1 route that said 401 to a request carrying a device
-   * token: the machine removed this phone (Settings → Use on your phone).
-   * Pairing is the way back, and nothing retries until then. A request with
-   * no token — a phone part-way through pairing — is not a removal.
+   * token. It may mean the machine removed this phone (Settings → Use on
+   * your phone), and it is never taken on its own word: the channel asks
+   * GET /v1/pair/me with the same token, and only the machine disowning the
+   * token on REMOVAL_CONNECTIONS separate connections makes it `removed`.
+   * Until then the dashboard carries on. A request with no token — a phone
+   * part-way through pairing — and the pairing routes themselves say nothing.
+   *
+   * The daemon answers an unknown token and a revoked one alike, on purpose
+   * (internal/api/lanauth.go), and a machine running an older Caprock is
+   * asked the same way, so the phone needs nothing new from it.
    */
-  noteStatus(path: string, status: number, sentToken: boolean) {
-    if (status !== 401 || !sentToken || path.startsWith('/v1/pair')) return
-    if (this.problem === 'removed') return
-    this.problem = 'removed'
-    this.reason = 'This phone was removed on the computer.'
-    for (const fn of this.listeners) fn(this.state)
+  noteStatus(path: string, status: number, token: string) {
+    if (status !== 401 || !token || path.startsWith('/v1/pair')) return
+    this.token = token
+    this.verify()
+  }
+
+  /** Asks the machine whether it still knows this phone's token. */
+  private verify() {
+    if (this.checking || !this.token || this.state !== 'open') return
+    this.checking = true
+    const serial = this.serial
+    channelFetch(this, 'https://machine/v1/pair/me', { headers: { 'X-Caprock-Device': this.token } })
+      .then(
+        (r) => {
+          void r.arrayBuffer().catch(() => {})
+          if (r.status === 401) this.disown(serial)
+          else if (r.ok) this.owned()
+          // Anything else (a 5xx, a 429) says nothing about the token.
+        },
+        () => { /* the channel dropped; the next opening asks again */ },
+      )
+      .finally(() => {
+        this.checking = false
+      })
+  }
+
+  private disown(serial: number) {
+    this.disowned.add(serial)
+    if (this.disowned.size >= REMOVAL_CONNECTIONS) {
+      if (this.problem !== 'removed') {
+        this.problem = 'removed'
+        this.reason = 'This phone was removed on the computer.'
+        for (const fn of this.listeners) fn(this.state)
+      }
+      this.slowRecheck()
+      return
+    }
+    // Once is not enough: on a fresh connection, ask again.
+    const ws = this.ws
+    if (ws && serial === this.serial) this.drop(ws, 'lost', 'checking this phone is still paired')
+  }
+
+  private owned() {
+    this.disowned.clear()
+    if (this.recheck) clearTimeout(this.recheck)
+    this.recheck = null
+    if (this.problem === 'removed') {
+      this.problem = ''
+      this.reason = ''
+      for (const fn of this.listeners) fn(this.state)
+    }
+  }
+
+  /** Removed, the phone still asks now and then: back by itself if it was wrong. */
+  private slowRecheck() {
+    if (this.recheck || this.stopped) return
+    this.recheck = setTimeout(() => {
+      this.recheck = null
+      if (this.problem !== 'removed') return
+      this.verify()
+      this.slowRecheck()
+    }, RECHECK_MS)
   }
 
   private clearRetry() {
@@ -238,16 +335,29 @@ export class Channel {
     this.nextAt = null
   }
 
+  /** One attempt now, whatever the problem: the quiet retry behind a pair-again screen. */
+  private attemptNow() {
+    this.clearRetry()
+    if (this.opening || this.state === 'open') return
+    this.opening = this.open().finally(() => {
+      this.opening = null
+    })
+    void this.opening.catch(() => { /* scheduled again */ })
+  }
+
   private schedule() {
     this.clearRetry()
-    if (this.stopped || needsPairing(this.problem)) return
-    const wait = BACKOFF_MS[Math.min(this.attempt, BACKOFF_MS.length - 1)]!
+    if (this.stopped) return
+    // Behind a pair-again screen the channel still tries, once a minute and
+    // without a countdown: a key reset undone, a phone not removed after all.
+    const quiet = needsPairing(this.problem)
+    const wait = quiet ? RECHECK_MS : BACKOFF_MS[Math.min(this.attempt, BACKOFF_MS.length - 1)]!
     this.attempt++
-    this.nextAt = Date.now() + wait
+    if (!quiet) this.nextAt = Date.now() + wait
     this.retry = setTimeout(() => {
       this.retry = null
       this.nextAt = null
-      void this.connect().catch(() => { /* scheduled again */ })
+      this.attemptNow()
     }, wait)
     for (const fn of this.listeners) fn(this.state)
   }
@@ -285,6 +395,7 @@ export class Channel {
       this.ws = ws
       let init: Initiator | null = null
       let reached = false // the relay took the connection
+      let handshook = false // the machine answered the handshake
       let settled = false
       let done = false
       const fail = (reason: string) => {
@@ -311,22 +422,35 @@ export class Channel {
         const data = new Uint8Array(m.data as ArrayBuffer)
         if (!this.session) {
           if (!init) return
+          let payload: Uint8Array
           try {
-            const { payload, session } = init.finish(data)
-            this.session = session
-            this.welcome = JSON.parse(dec.decode(payload))
+            ;({ payload, session: this.session } = init.finish(data))
           } catch {
-            // The reply did not come from the machine whose key the QR
-            // carried. Nothing it sent is trusted, and nothing is retried
-            // against it until the phone pairs again.
-            this.drop(ws, 'wrong-machine', 'This is not the computer this phone paired with.')
+            // Not the machine's reply. Nothing in it is trusted, and it is
+            // not a verdict either: a relay can hand a new phone a frame
+            // still on its way to the phone before it, and the real reply
+            // follows. A machine with other keys sends no reply at all — it
+            // cannot read the handshake, and hangs up (onClose below). The
+            // deadline still bounds the wait. Before 2026-10-14 this one
+            // message sent the owner to pair again.
             return
           }
+          try {
+            this.welcome = JSON.parse(dec.decode(payload))
+          } catch {
+            this.welcome = null
+          }
+          handshook = true
           settled = true
           clearTimeout(deadline)
           this.attempt = 0
+          this.refusals = 0
           this.everOpen = true
-          this.set('open')
+          this.serial++
+          // A phone found removed stays so until the machine says otherwise.
+          const removed = this.problem === 'removed'
+          this.set('open', removed ? this.reason : '', removed ? 'removed' : '')
+          if (removed || this.disowned.size > 0) queueMicrotask(() => this.verify())
           this.ping = setInterval(() => {
             if (Date.now() - this.heard > SILENT_MS) {
               this.drop(ws, 'lost', 'not answering')
@@ -371,6 +495,19 @@ export class Channel {
         } else if (!reached) {
           problem = this.online() ? 'relay-unreachable' : 'no-internet'
           why = 'could not reach the relay'
+        } else if (!handshook && init && code === 1000) {
+          // The machine hung up on the handshake: it could not read it, so
+          // its keys are not the ones this phone has. Said only once it has
+          // happened REFUSALS_FOR_WRONG_MACHINE times in a row; before
+          // that, it is a machine restarting.
+          this.refusals++
+          if (this.refusals >= REFUSALS_FOR_WRONG_MACHINE) {
+            problem = 'wrong-machine'
+            why = 'This is not the computer this phone paired with.'
+          } else {
+            problem = 'no-answer'
+            why = 'the computer did not take the connection'
+          }
         } else {
           problem = 'lost'
           why = closeReason || 'connection lost'
@@ -463,7 +600,7 @@ export async function channelFetch(ch: Channel, input: RequestInfo | URL, init?:
         if (kind === KIND.res) {
           head = JSON.parse(dec.decode(b))
           const status = head!.s
-          ch.noteStatus(url.pathname, status, Boolean(headers['x-caprock-device']))
+          ch.noteStatus(url.pathname, status, headers['x-caprock-device'] ?? '')
           // A Response cannot carry a body on these statuses.
           const nobody = status === 204 || status === 304 || req.method === 'HEAD'
           resolve(new Response(nobody ? null : stream, { status, headers: head!.h ?? {} }))

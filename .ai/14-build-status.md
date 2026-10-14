@@ -73,6 +73,46 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-14 — unreleased: Second Brain builds itself
+
+The automatic extraction ([ADR-063](08-decisions.md)): `internal/brain`
+reads a session quiet for ten minutes through the user's own `claude -p`
+(Haiku, no tools, no transcript, hooks off), keeps up to eight memories per
+read with the cited passage as their source, records every read in
+`brain_runs`, and holds a daily token limit. Off until the user says yes —
+a card on the Brain screen, the switch in Settings → Second Brain — and
+only with a licence. `PUT /v1/brain/settings`, `POST /v1/brain/backfill`
+(an estimate before *Build from my last 30 days*), and the handoff carries
+up to five of a repository's memories. Tested with the fake `claude`'s new
+print mode, which refuses a call without the flags that keep hooks and the
+transcript off; one real call checked the argv and the answer's shape. Not
+built yet: the sidebar block and the drawn graph.
+
+### 2026-10-14 — 0.117.1: Second Brain, a phone that pairs ready to type and never hangs on Connecting
+
+Second Brain arrives: keep answers worth keeping as memories linked to their
+project, topics and session moment, searchable on the Brain screen
+([ADR-063](08-decisions.md)). A phone now pairs with its role chosen on the
+computer, ticked to type by default, and both sides show a checklist of what
+is done and what is left. A sleeping computer no longer leaves the phone on
+Connecting forever: the relay drops a silent host and the phone retries with
+backoff and says what is wrong. CI/CD lists recent repositories only, splits a
+shared session's cost across its pull requests, and shows tokens beside cost.
+
+The live feed on the dashboard is now What happened: edits, tests, commits,
+pull requests and subagents as moments rather than every command.
+
+### 2026-10-14 — unreleased: Second Brain, by hand
+
+Memories kept as a graph ([ADR-063](08-decisions.md)): migration 0055
+(`brain_nodes`, `brain_edges`, `brain_runs`), `/v1/brain*`, the `brain`
+live frame, *Drop into brain* on Memory, a session's Answers and the chat
+view, the quick capture (⇧⌘H, ⌘K *Add to brain…*) and the `#/brain` screen
+(search, project, span, a memory's detail with edit, pin, link and delete).
+Twenty memories by hand are free; the twenty-first is `402` from the
+daemon. The graph read measured 45–50 ms for 5,000 memories and 15,000 edges
+(`TestBrainGraphReadsFiveThousandNodesQuickly`).
+
 ### 2026-10-14 — 0.117.0: Mail one key away, a cockpit you arrange, new projects in three steps, the phone from anywhere only
 
 Mail has its own button and tab (⇧⌘M) and opens on a sample inbox until an

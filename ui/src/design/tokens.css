@@ -335,6 +335,19 @@
   --agent-deepseek: color-mix(in srgb, #5786fe 70%, var(--color-fg-muted));
 }
 
+/* Second Brain's kinds (lib/brain.ts KIND_COLOR): the same 70/30-style mix
+ * with the muted ink, so each follows the theme. Memories take a hue each;
+ * the entities they hang off are ink: a topic muted, a project full. */
+:root {
+  --brain-idea: color-mix(in srgb, var(--color-accent) 85%, var(--color-fg-muted));
+  --brain-decision: color-mix(in srgb, var(--color-ok) 85%, var(--color-fg-muted));
+  --brain-finding: color-mix(in srgb, #4f9fe0 75%, var(--color-fg-muted));
+  --brain-question: color-mix(in srgb, var(--color-merged) 80%, var(--color-fg-muted));
+  --brain-topic: var(--color-fg-muted);
+  --brain-person: color-mix(in srgb, #d97757 65%, var(--color-fg-muted));
+  --brain-project: var(--color-fg);
+}
+
 /* Edge to edge on a phone (viewport-fit=cover in index.html): keep content
  * clear of the notch in landscape and of the home bar. The top inset is the
  * sticky header's own padding (Shell), so its colour runs up under the status
@@ -460,6 +473,28 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
 }
 .input:focus { outline: 1px solid var(--color-accent); border-color: var(--color-accent); }
 
+/* The chat composer's field (TerminalKeys): a calm glow while it has the
+ * focus, so it is plain where typing goes (owner, 2026-10-14, translated: "a
+ * light highlight on the chat input line so I understand I'm actively
+ * focused in it"). The accent at 60% and a faint 3px ring; a little stronger
+ * once there is text in it. Border and shadow only, so its size never
+ * changes; no animation beyond a short fade, none with reduced motion. */
+.input.composer-field { transition: border-color 150ms ease, box-shadow 150ms ease; }
+.input.composer-field:focus,
+[data-glow] .input.composer-field:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+.input.composer-field[data-filled]:focus,
+[data-glow] .input.composer-field[data-filled]:focus {
+  border-color: color-mix(in srgb, var(--color-accent) 85%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 26%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .input.composer-field { transition: none; }
+}
+
 /* Loading placeholders: a slow, low-contrast pulse. Deliberately subtle — it
  * should read as "not ready yet", never compete with real data for attention. */
 .skeleton-pulse { animation: skeletonPulse 1.4s ease-in-out infinite; }
@@ -582,6 +617,26 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--color-fg) 22%, transparent);
   background: color-mix(in srgb, var(--color-fg) 7%, transparent);
+}
+/* The key over an icon in the folded sidebar footer (components/SidebarFooter
+ * KeySlot; owner, 2026-10-14, translated: "I'd put the key combos above
+ * them"): the tab key's shape, smaller and faint, so a row of six reads as
+ * labels, not as six more buttons. `.app-kbd-float` is the off-macOS form,
+ * shown over the icon under the pointer: on the panel, above the list. */
+[data-app] .app-kbd-faint {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--color-fg-faint);
+  padding: 2px 3px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-fg) 16%, transparent);
+}
+[data-app] .app-kbd-float {
+  background: var(--color-panel);
+  box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.4);
 }
 /* A tab's project name when even a whole tab cannot hold it
  * (components/TerminalTabs.tsx TabProject): cut with an ellipsis at rest; under

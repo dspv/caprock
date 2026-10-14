@@ -83,7 +83,7 @@ export function Fig({ children, title }: { children: ReactNode; title?: string }
   return <span className="bn-fig" title={title}>{children}</span>
 }
 
-export type Scene = 'team' | 'cap' | 'window' | 'phone' | 'star' | 'update' | 'hooks' | 'done' | 'lock' | 'plan'
+export type Scene = 'team' | 'cap' | 'window' | 'phone' | 'star' | 'update' | 'hooks' | 'done' | 'lock' | 'plan' | 'ask' | 'graph'
 
 /** A character at (x, y) in the 120x84 scene, `s` times its 80px size. */
 function Who({ who, x, y, s }: { who: Character; x: number; y: number; s: number }) {
@@ -196,6 +196,28 @@ function SceneBody({ scene }: { scene: Scene }) {
         <>
           <Who who="lead" x={4} y={4} s={1} />
           <Badge x={94} y={30} r={13}><path d="M-5.5 0.5L-1.5 4.5L6 -4" /></Badge>
+        </>
+      )
+    case 'ask':
+      // A question to the reader: the lead beside a question mark.
+      return (
+        <>
+          <Who who="lead" x={4} y={4} s={1} />
+          <Badge x={94} y={30} r={13}><path d="M-3.8 -3.2a3.8 3.8 0 1 1 5 3.6c-1 .4-1.2 1-1.2 2.2M0 6.2v.1" /></Badge>
+        </>
+      )
+    case 'graph':
+      // The lead beside a small graph of linked ideas (Second Brain).
+      return (
+        <>
+          <Who who="lead" x={-4} y={4} s={1} />
+          <g stroke="var(--bn-tone)" strokeWidth="1.6" opacity="0.7">
+            <path d="M94 40L80 22M94 40L110 26M94 40L108 58M94 40L78 60M80 22L110 26M78 60L108 58" />
+          </g>
+          <circle cx="94" cy="40" r="6" fill="var(--bn-tone)" />
+          {[[80, 22], [110, 26], [108, 58], [78, 60]].map(([x, y]) => (
+            <circle key={`${x}-${y}`} cx={x} cy={y} r="3.6" fill="var(--color-panel)" stroke="var(--bn-tone)" strokeWidth="1.6" />
+          ))}
         </>
       )
     case 'lock':
