@@ -302,6 +302,14 @@ func (m *Manager) headLocked(sessionID string) (*Permission, bool) {
 // the menu on its screen has that option. With several outstanding it types
 // nothing (ErrSeveralPrompts); dismiss, which types nothing, takes any of
 // them.
+//
+// A prompt a button settles is cleared from the store before this returns,
+// not later the way a keystroke's is (persistLater). A button is a request,
+// not a keystroke, so it can wait on the database; and nothing after it says
+// the dialog went away when the session writes no event for it — a crash a
+// moment after the answer otherwise brought back buttons for a dialog
+// already answered. The key is typed first, so a busy database never delays
+// it.
 func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice) error {
 	a, ok := m.Get(sessionID)
 	if !ok {
@@ -322,7 +330,9 @@ func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice
 		if !found {
 			return ErrNoPermission
 		}
-		m.dropPermissions(sessionID, func(p *Permission, _ bool) bool { return p.ID == id })
+		if m.dropOnly(sessionID, func(p *Permission, _ bool) bool { return p.ID == id }) {
+			m.persistPermission(sessionID)
+		}
 		return nil
 	}
 	m.permMu.Lock()
@@ -360,7 +370,7 @@ func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice
 		head, _ := m.headLocked(sessionID)
 		m.permMu.Unlock()
 		m.notifyPermission(sessionID, head)
-		m.persistLater(sessionID)
+		m.persistPermission(sessionID)
 		return ErrNoPermission
 	}
 	if err != nil {
@@ -386,7 +396,7 @@ func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice
 	m.permMu.Unlock()
 	m.notifyPermission(sessionID, head)
 	_, err = a.sess.Write([]byte(key))
-	m.persistLater(sessionID)
+	m.persistPermission(sessionID)
 	return err
 }
 
@@ -451,9 +461,11 @@ func (m *Manager) typedIntoMenu(sessionID string, data []byte) {
 // that already waits on the database (hookd.RecordTimeout), not a new kind of
 // wait.
 //
-// Clearing stays off the caller's goroutine (persistLater): a keystroke must
-// not wait on the database, and a clear lost to a crash is caught on restore
-// by the events that say the session moved on.
+// A clear a keystroke or a hook makes stays off the caller's goroutine
+// (persistLater): a keystroke must not wait on the database, and a clear lost
+// to a crash is caught on restore by the events that say the session moved
+// on. A button's clear is written before its request returns
+// (AnswerPermission).
 func (m *Manager) addPermission(sessionID string, p *Permission) {
 	if a, ok := m.Get(sessionID); ok && p.ringAt == 0 {
 		p.ringAt = a.ring.r.Total()
@@ -485,11 +497,19 @@ func (m *Manager) addPermission(sessionID string, p *Permission) {
 // dropPermissions removes the prompts drop picks, oldest first; done says
 // whether one was removed already. The card is told when its prompt changes.
 func (m *Manager) dropPermissions(sessionID string, drop func(p *Permission, done bool) bool) {
+	if m.dropOnly(sessionID, drop) {
+		m.persistLater(sessionID)
+	}
+}
+
+// dropOnly is dropPermissions without the write: it reports whether any
+// prompt went, and the caller stores the change.
+func (m *Manager) dropOnly(sessionID string, drop func(p *Permission, done bool) bool) bool {
 	m.permMu.Lock()
 	q := m.perms[sessionID]
 	if len(q) == 0 {
 		m.permMu.Unlock()
-		return
+		return false
 	}
 	var keep []*Permission
 	removed := false
@@ -502,7 +522,7 @@ func (m *Manager) dropPermissions(sessionID string, drop func(p *Permission, don
 	}
 	if !removed {
 		m.permMu.Unlock()
-		return
+		return false
 	}
 	if len(keep) == 0 {
 		delete(m.perms, sessionID)
@@ -512,7 +532,7 @@ func (m *Manager) dropPermissions(sessionID string, drop func(p *Permission, don
 	head, _ := m.headLocked(sessionID)
 	m.permMu.Unlock()
 	m.notifyPermission(sessionID, head)
-	m.persistLater(sessionID)
+	return true
 }
 
 func (m *Manager) clearPermission(sessionID string) {
@@ -529,7 +549,8 @@ func (m *Manager) clearPermission(sessionID string) {
 // persistLater writes a session's prompts — or their absence — to the store
 // off the caller's goroutine: a keystroke that answers a menu must not wait on
 // a busy database. Used for clears; a new prompt is written in addPermission,
-// before the hook that drew it is answered.
+// before the hook that drew it is answered, and a button's answer in
+// AnswerPermission, before the request returns.
 func (m *Manager) persistLater(sessionID string) {
 	if m.store == nil {
 		return
