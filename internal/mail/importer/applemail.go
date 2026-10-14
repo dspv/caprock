@@ -57,6 +57,13 @@ func appleMail(home string) *Source {
 		src.Error = err.Error()
 		return src
 	}
+	var used int64
+	if st, err := os.Stat(accounts4); err == nil {
+		used = st.ModTime().UnixMilli()
+	}
+	for i := range accts {
+		accts[i].LastUsed = used
+	}
 	src.Accounts = accts
 	return src
 }

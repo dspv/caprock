@@ -3284,9 +3284,10 @@ dashboard and a desktop app on three OSes.
   the ticked ones one at a time through the single step each still needs:
   nothing for a saved password, the browser sign-in for Google and
   Microsoft (an app password when the build has no client ID), an
-  app-specific password for iCloud, the server's password otherwise. The
-  Full Disk Access card can open System Settings' pane — one fixed URL,
-  from a loopback request only. Outlook for Mac is not read: its profile is
+  app-specific password for iCloud, the server's password otherwise. A
+  source it cannot read (Apple Mail without Full Disk Access) is not shown
+  at all, and each shown source says when its profile was last used.
+  Outlook for Mac is not read: its profile is
   in another app's group container, behind an OS prompt Caprock does not
   raise, and its accounts are mostly Microsoft 365, which sign-in covers.
 - **Headers are read whole.** The list is built from `BODY.PEEK[HEADER]`,

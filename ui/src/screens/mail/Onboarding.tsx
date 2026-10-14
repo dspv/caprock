@@ -98,8 +98,10 @@ export function FirstRun({ initial = 'choose', provider, onDone, onSample, onBus
   if (step === 'import') return <Card><ImportAll onDone={onDone} onBack={() => setStep('choose')} onBusy={onBusy} /></Card>
   if (step === 'add') return <Card><AddFlow onDone={onDone} onCancel={() => setStep('choose')} /></Card>
 
-  const found = Array.isArray(sources) ? sources.reduce((n, s) => n + (s.accounts?.length ?? 0), 0) : 0
-  const from = Array.isArray(sources) ? sources.map((s) => s.label).join(', ') : ''
+  // Only sources with accounts it could read are named.
+  const readable = Array.isArray(sources) ? sources.filter((s) => (s.accounts?.length ?? 0) > 0) : []
+  const found = readable.reduce((n, s) => n + s.accounts.length, 0)
+  const from = readable.map((s) => s.label).join(', ')
   return (
     <Card>
       <h2>Caprock Mail</h2>

@@ -37,7 +37,8 @@ describe('mail first run', () => {
     const r = render(<FirstRun onDone={() => {}} onSample={async () => {}} />)
     expect(screen.getByText('Try it with sample mail')).toBeTruthy()
     expect(screen.getByText('Add an account')).toBeTruthy()
-    expect(await screen.findByText(/2 accounts found in Apple Mail, Thunderbird/)).toBeTruthy()
+    // Apple Mail read no account (Full Disk Access): it is not named.
+    expect(await screen.findByText(/2 accounts found in Thunderbird\./)).toBeTruthy()
     r.unmount()
 
     vi.spyOn(api, 'importSources').mockRejectedValue(new HttpError('not found', 404))

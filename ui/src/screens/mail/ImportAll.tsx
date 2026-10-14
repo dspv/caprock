@@ -15,7 +15,20 @@ const PROVIDER_NAME: Record<string, string> = {
   google: 'Google', microsoft: 'Microsoft', icloud: 'iCloud', yahoo: 'Yahoo', fastmail: 'Fastmail',
 }
 
-const APP_NAME: Record<string, string> = { thunderbird: 'Thunderbird', apple_mail: 'Apple Mail' }
+/** A profile untouched this long is probably not in use: its accounts start unticked. */
+export const STALE_MS = 90 * 24 * 3600 * 1000
+
+/** Whether an account's profile was used recently enough to tick it by default. */
+export function fresh(lastUsed: number | undefined, now = Date.now()): boolean {
+  return !lastUsed || now - lastUsed < STALE_MS
+}
+
+/** 12 Mar 2025. */
+export function day(ms: number): string {
+  return new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+const usedLabel = (kind: string) => (kind === 'apple_mail' ? 'account list last changed' : 'profile last used')
 
 /** Where an app password is made, and the one line of how. */
 export const APP_PASSWORD: Record<string, { url: string; label: string; how: string; kind: string }> = {
@@ -89,7 +102,7 @@ export function ImportAll({ onDone, onBack, onBusy }: {
   }, [])
   useEffect(() => { void rescan() }, [rescan])
 
-  // Back from System Settings (Full Disk Access granted): look again.
+  // Back in the window (an account added in another mail app meanwhile): look again.
   useEffect(() => {
     if (flow) return
     const again = () => { if (document.visibilityState === 'visible') void rescan() }
@@ -120,8 +133,13 @@ export function ImportAll({ onDone, onBack, onBusy }: {
 
   if (!scan) return <p className="muted"><span className="pulse" /> Looking for mail accounts on this computer…</p>
 
-  const isOn = (a: FoundAccount) => !have.has(lower(a.email)) && (picked[a.email] ?? true)
-  const fda = scan.sources.find((s) => s.needs_permission === 'full_disk_access')
+  // Only what can be read is shown: a source with no readable account is
+  // simply not there (owner, 2026-10-14, translated: "don't even show me
+  // this; the Apple integration is unclear, not concrete about what to do").
+  const groups = scan.sources
+    .map((s) => ({ s, accounts: scan.accounts.filter((a) => a.source === s.kind) }))
+    .filter((g) => g.accounts.length > 0)
+  const isOn = (a: FoundAccount) => !have.has(lower(a.email)) && (picked[a.email] ?? fresh(a.last_used))
 
   if (!flow) {
     const chosen = scan.accounts.filter(isOn)
@@ -132,33 +150,30 @@ export function ImportAll({ onDone, onBack, onBusy }: {
     return (
       <>
         <h2>Import everything</h2>
-        <p className="muted">Every mail account found on this computer. Tick the ones to bring over; each then needs at most one sign-in, one at a time.</p>
-        {fda && <FullDiskAccess label={fda.label} target={scan.full_disk_access} onRescan={rescan} />}
-        {scan.sources.filter((s) => s.error && !s.needs_permission).map((s) => <div key={s.kind} className="error">{s.label}: {s.error}</div>)}
-        {scan.accounts.length === 0 ? (
-          <div className="hint">{fda ? 'Nothing else found yet.' : 'No accounts found in Apple Mail or Thunderbird on this computer.'} Add one by hand instead.</div>
-        ) : (
-          <div className="found" role="list" aria-label="Accounts found">
-            {scan.accounts.map((a) => {
-              const there = have.has(lower(a.email))
-              return (
-                <label key={a.email} className="foundrow" role="listitem">
-                  <input type="checkbox" checked={isOn(a)} disabled={there}
-                    aria-label={`Import ${a.email}`}
-                    onChange={(e) => setPicked({ ...picked, [a.email]: e.target.checked })} />
-                  <span className="who">
-                    <b>{a.email}</b>
-                    <span className="muted small">{[a.name, (a.from ?? [a.source]).map((k) => APP_NAME[k] ?? k).join(' · ')].filter(Boolean).join(' — ')}</span>
-                  </span>
-                  <span className={'need ' + (there ? 'done' : a.signin)}
-                    title={a.signin === 'app_password' && (a.provider === 'google' || a.provider === 'microsoft') ? notSetUp(a.provider) : undefined}>
-                    {there ? 'Already in Mail' : needLabel(a.signin, a.provider ?? '')}
-                  </span>
-                </label>
-              )
-            })}
+        <p className="muted">Mail accounts found in the mail apps on this computer. Tick the ones to bring over; each then needs at most one sign-in, one at a time.</p>
+        {groups.length === 0 && <div className="hint">No mail app on this computer has accounts Caprock can read. Add one by hand instead.</div>}
+        {groups.map(({ s, accounts }) => (
+          <div key={s.kind} className="srcgroup">
+            <div className="srchead"><b>{s.label}</b>{s.last_used ? <span className="muted"> · {usedLabel(s.kind)} {day(s.last_used)}</span> : null}</div>
+            <div className="found" role="list" aria-label={`Accounts in ${s.label}`}>
+              {accounts.map((a) => {
+                const there = have.has(lower(a.email))
+                return (
+                  <label key={a.email} className="foundrow" role="listitem">
+                    <input type="checkbox" checked={isOn(a)} disabled={there}
+                      aria-label={`Import ${a.email}`}
+                      onChange={(e) => setPicked({ ...picked, [a.email]: e.target.checked })} />
+                    <span className="who"><b>{a.email}</b></span>
+                    <span className={'need ' + (there ? 'done' : a.signin)}
+                      title={a.signin === 'app_password' && (a.provider === 'google' || a.provider === 'microsoft') ? notSetUp(a.provider) : undefined}>
+                      {there ? 'Already in Mail' : needLabel(a.signin, a.provider ?? '')}
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
           </div>
-        )}
+        ))}
         {err && <div className="error">{err}</div>}
         <div className="actions">
           {onBack && <button type="button" className="btn" onClick={onBack}>Back</button>}
@@ -328,33 +343,6 @@ function OAuthStep({ r, dispatch, others, skip }: { r: Row; dispatch: (e: FlowEv
         {waiting
           ? <button type="button" className="btn" onClick={() => { stop(); setUrl(''); dispatch({ type: 'cancel', email: r.email }) }}>Cancel</button>
           : <button type="button" className="btn primary" disabled={r.status === 'working'} onClick={start}>{r.status === 'failed' ? 'Sign in again' : `Sign in with ${name}`}</button>}
-      </div>
-    </div>
-  )
-}
-
-/** Apple Mail's settings sit behind Full Disk Access: how to grant it, a button to the pane, and a look again on return. */
-function FullDiskAccess({ label, target, onRescan }: { label: string; target?: ImportScan['full_disk_access']; onRescan: () => Promise<void> }) {
-  const [msg, setMsg] = useState('')
-  const open = async () => {
-    setMsg('')
-    try { await api.openPrivacy() } catch (e) { setMsg((e as Error).message) }
-  }
-  const add = target?.kind === 'binary' && target.path
-    ? <>press <b>+</b>, press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>G</kbd>, paste <code>{target.path}</code> and choose <b>Open</b></>
-    : <>press <b>+</b> and choose <b>{target?.name || 'Caprock'}</b> in Applications</>
-  return (
-    <div className="hint fda">
-      <b>{label} needs Full Disk Access.</b> macOS keeps its account list there. To let Caprock read it:
-      <ol>
-        <li>Open <b>System Settings → Privacy &amp; Security → Full Disk Access</b>.</li>
-        <li>Turn on <b>{target?.name || 'Caprock'}</b> if it is listed; if not, {add}.</li>
-        <li>Come back here: Caprock looks again by itself. If {label} still is not listed, quit and reopen Caprock.</li>
-      </ol>
-      {msg && <div className="error">{msg}</div>}
-      <div className="actions left">
-        <button type="button" className="btn primary small" onClick={open}>Open Full Disk Access settings</button>
-        <button type="button" className="btn small" onClick={() => void onRescan()}>Look again</button>
       </div>
     </div>
   )

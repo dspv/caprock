@@ -6,7 +6,7 @@
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ImportAll, notSetUp } from './ImportAll'
+import { day, fresh, ImportAll, notSetUp, STALE_MS } from './ImportAll'
 import { connected, finished, plan, step, type Flow } from './importFlow'
 import { api, type FoundAccount, type ImportScan, type State } from './mailApi'
 
@@ -74,7 +74,10 @@ describe('the import walk', () => {
 
 describe('Import everything', () => {
   const scan = (over: Partial<ImportScan> = {}): ImportScan => ({
-    sources: [{ kind: 'thunderbird', label: 'Thunderbird', accounts: [] }],
+    sources: [
+      { kind: 'thunderbird', label: 'Thunderbird', accounts: [], last_used: Date.UTC(2026, 9, 1) },
+      { kind: 'apple_mail', label: 'Apple Mail', accounts: [], last_used: Date.UTC(2026, 9, 2) },
+    ],
     accounts: [tb, gmail, icloud],
     oauth: { google: true, microsoft: true },
     ...over,
@@ -100,7 +103,10 @@ describe('Import everything', () => {
     expect(screen.getByText('Password saved')).toBeTruthy()
     expect(screen.getByText('Sign in with Google')).toBeTruthy()
     expect(screen.getByText('App-specific password')).toBeTruthy()
-    expect(screen.getByText('Apple Mail · Thunderbird')).toBeTruthy()
+    // Each source says where it came from; an account says nothing else.
+    expect(screen.getByText(/profile last used 1 Oct 2026/)).toBeTruthy()
+    expect(screen.getByText(/account list last changed 2 Oct 2026/)).toBeTruthy()
+    expect(screen.queryByText('Work')).toBeNull()
 
     vi.useFakeTimers({ shouldAdvanceTime: true })
     await act(async () => { fireEvent.click(screen.getByText('Import 3 accounts')) })
@@ -143,7 +149,8 @@ describe('Import everything', () => {
     await act(async () => { fireEvent.click(screen.getByText('Import 2 accounts')) })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Sign in with Google' })) })
     await act(async () => { await vi.advanceTimersByTimeAsync(1600) })
-    expect(screen.getAllByText('Google did not sign you in: access_denied').length).toBeGreaterThan(0)
+    // One line for the reason, never the same error twice.
+    expect(screen.getByText('Google did not sign you in: access_denied')).toBeTruthy()
     expect(screen.getByText('Sign in again')).toBeTruthy()
 
     fireEvent.click(screen.getByText('Skip for now'))
@@ -151,7 +158,7 @@ describe('Import everything', () => {
     fireEvent.change(screen.getByLabelText('Password for me@example.org'), { target: { value: 'nope' } })
     await act(async () => { fireEvent.click(screen.getByText('Connect')) })
     expect(imp).toHaveBeenCalledWith('thunderbird', ['me@example.org'], { 'me@example.org': 'nope' })
-    expect(screen.getAllByText('login refused').length).toBeGreaterThan(0)
+    expect(screen.getByText('login refused')).toBeTruthy()
     fireEvent.click(screen.getByText('Skip for now'))
     expect(screen.getByText(/Done for now/)).toBeTruthy()
     expect(screen.getAllByText('Come back')).toHaveLength(2)
@@ -173,24 +180,43 @@ describe('Import everything', () => {
     expect(start).not.toHaveBeenCalled()
   })
 
-  it('says how to grant Full Disk Access, opens the pane, and looks again on return', async () => {
-    const scanSpy = vi.spyOn(api, 'importScan').mockResolvedValue(scan({
+  it('never shows a source it could not read, and leaves a long-unused profile unticked', async () => {
+    const old = Date.now() - STALE_MS - 86400000
+    vi.spyOn(api, 'importScan').mockResolvedValue(scan({
+      sources: [
+        { kind: 'apple_mail', label: 'Apple Mail', accounts: [], needs_permission: 'full_disk_access', error: 'grant Caprock Full Disk Access' },
+        { kind: 'thunderbird', label: 'Thunderbird', accounts: [], last_used: old },
+      ],
+      accounts: [{ ...other, last_used: old }],
+    }))
+    render(<ImportAll onDone={() => {}} />)
+    expect(await screen.findByText('me@example.org')).toBeTruthy()
+    expect(screen.queryByText(/Apple Mail/)).toBeNull()
+    expect(screen.queryByText(/Full Disk Access/)).toBeNull()
+    expect(screen.queryByText('Retry')).toBeNull()
+    expect(screen.getByText(new RegExp('profile last used ' + day(old)))).toBeTruthy()
+    expect((screen.getByLabelText('Import me@example.org') as HTMLInputElement).checked).toBe(false)
+    expect(screen.getByText('Import 0 accounts')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('Import me@example.org'))
+    expect(screen.getByText('Import 1 account')).toBeTruthy()
+  })
+
+  it('says so when nothing readable was found', async () => {
+    vi.spyOn(api, 'importScan').mockResolvedValue(scan({
       sources: [{ kind: 'apple_mail', label: 'Apple Mail', accounts: [], needs_permission: 'full_disk_access' }],
       accounts: [],
-      full_disk_access: { name: 'caprock', path: '/opt/homebrew/bin/caprock', kind: 'binary' },
     }))
-    const pane = vi.spyOn(api, 'openPrivacy').mockResolvedValue({ ok: true })
     render(<ImportAll onDone={() => {}} />)
-    expect(await screen.findByText('Apple Mail needs Full Disk Access.')).toBeTruthy()
-    expect(screen.getByText('System Settings → Privacy & Security → Full Disk Access')).toBeTruthy()
-    expect(screen.getByText('/opt/homebrew/bin/caprock')).toBeTruthy()
-    await act(async () => { fireEvent.click(screen.getByText('Open Full Disk Access settings')) })
-    expect(pane).toHaveBeenCalled()
+    expect(await screen.findByText(/No mail app on this computer has accounts Caprock can read/)).toBeTruthy()
+    expect(screen.queryByText(/Apple Mail/)).toBeNull()
+  })
 
-    scanSpy.mockResolvedValue(scan({ accounts: [icloud] }))
-    await act(async () => { window.dispatchEvent(new Event('focus')) })
-    expect(await screen.findByText('me@icloud.com')).toBeTruthy()
-    expect(screen.queryByText('Apple Mail needs Full Disk Access.')).toBeNull()
+  it('ticks a profile used in the last 90 days', () => {
+    const now = Date.UTC(2026, 9, 14)
+    expect(fresh(now - 89 * 86400000, now)).toBe(true)
+    expect(fresh(now - 91 * 86400000, now)).toBe(false)
+    expect(fresh(undefined, now)).toBe(true)
+    expect(day(Date.UTC(2025, 2, 12, 12))).toBe('12 Mar 2025')
   })
 
   it('leaves an account Mail already has unticked', async () => {

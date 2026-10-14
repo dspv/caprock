@@ -91,6 +91,8 @@ export type ImportAccount = {
   has_password: boolean
   /** google | microsoft | icloud | yahoo | fastmail, or absent for any other server. */
   provider?: string
+  /** When the mail app last wrote the profile it came from (unix ms). */
+  last_used?: number
 }
 
 export type ImportSource = {
@@ -99,6 +101,8 @@ export type ImportSource = {
   accounts: ImportAccount[]
   needs_permission?: string
   error?: string
+  /** The newest last_used of its accounts (unix ms). */
+  last_used?: number
 }
 
 export type ImportResult = { email: string; ok: boolean; error?: string; already?: boolean }
@@ -113,8 +117,6 @@ export type ImportScan = {
   sources: ImportSource[]
   accounts: FoundAccount[]
   oauth: OAuthProviders
-  /** Set when Apple Mail needs Full Disk Access: what to add in System Settings. */
-  full_disk_access?: { name: string; path?: string; kind?: 'app' | 'binary' }
 }
 
 export type OAuthFlowStatus = { status: 'pending' | 'ok' | 'error' | 'expired'; email?: string; error?: string }
@@ -187,10 +189,8 @@ export const api = {
   /** The same scan with every account merged across mail apps and the step each needs. */
   importScan: () => req<Partial<ImportScan>>('GET', '/v1/mail/import').then((r): ImportScan => {
     const sources = (r.sources ?? []).map((x) => ({ ...x, accounts: x.accounts ?? [] }))
-    return { sources, accounts: r.accounts ?? [], oauth: r.oauth ?? {}, full_disk_access: r.full_disk_access }
+    return { sources, accounts: r.accounts ?? [], oauth: r.oauth ?? {} }
   }),
-  /** Opens System Settings › Privacy & Security › Full Disk Access on this Mac. */
-  openPrivacy: () => req<{ ok: boolean }>('POST', '/v1/mail/import/privacy'),
   oauthProviders: () => req<OAuthProviders>('GET', '/v1/mail/oauth/providers'),
   oauthStart: (provider: string, loginHint?: string) =>
     req<{ auth_url: string; flow?: string }>('POST', '/v1/mail/oauth/start', loginHint ? { provider, login_hint: loginHint } : { provider }),

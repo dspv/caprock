@@ -256,9 +256,8 @@
 .cm .prow.st-failed .state { color: var(--danger); }
 .cm .prow.on .state { color: var(--accent); }
 .cm .prow .err { white-space: normal; }
-.cm .hint.fda ol { list-style: decimal; margin: 6px 0 2px; padding-left: 20px; }
-.cm .hint.fda li { margin: 2px 0; }
-.cm .hint.fda code { word-break: break-all; }
+.cm .srcgroup { margin: 4px 0 12px; }
+.cm .srcgroup .srchead { margin-bottom: 6px; }
 .cm .fromhere { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; }
 /* sample mode */
 .cm.withbar { display: flex; flex-direction: column; }

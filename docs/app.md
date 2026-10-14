@@ -143,18 +143,18 @@ others. Installing it: [install-app.md](install-app.md).
   *Add account*: Google, Microsoft, iCloud, Other, or import from Apple Mail
   or Thunderbird. Adding your account leaves the sample; *Exit sample* goes
   to the ways to start.
-  **Import everything** lists every mail account on the computer — Apple
-  Mail (including the Google, iCloud and Exchange accounts in System
-  Settings › Internet Accounts) and Thunderbird, each address once. Tick the
-  ones to bring over and press *Import*: accounts whose password Thunderbird
+  **Import everything** lists the mail accounts Caprock can read on the
+  computer — Thunderbird, and Apple Mail (including the Google, iCloud and
+  Exchange accounts in System Settings › Internet Accounts) when macOS lets
+  Caprock read it — each address once, under the app it came from and when
+  that profile was last used. Accounts from a profile unused for 90 days
+  start unticked. Tick the ones to bring over and press *Import*: accounts whose password Thunderbird
   saved connect by themselves, then Caprock asks for each other account's
   one sign-in in turn — *Sign in with Google* or *Microsoft* in your browser,
   an app-specific password for iCloud (made at appleid.apple.com), or the
   account's password. A list below shows each account connected, waiting or
   failed with the reason and *Retry*; *Skip for now* moves on and *Come
-  back* returns to it. If Apple Mail's accounts need Full Disk Access, the
-  screen says how and opens that System Settings pane; it looks again when
-  you come back. Outlook for Mac's accounts are not read — add them with
+  back* returns to it. Outlook for Mac's accounts are not read — add them with
   *Sign in with Microsoft*.
   The arrow beside *Send feedback* folds that bottom block to one row of
   icons and back; the app remembers which way you left it.

@@ -37,6 +37,10 @@ type Account struct {
 	// Provider is ProviderFor's answer: google | microsoft | icloud | yahoo |
 	// fastmail, or "" for any other server.
 	Provider string `json:"provider,omitempty"`
+	// LastUsed is when the mail app last wrote the profile this account came
+	// from (unix ms; Thunderbird's prefs.js, Apple's account store), so the
+	// screen can say where it was found and leave stale ones unticked.
+	LastUsed int64 `json:"last_used,omitempty"`
 }
 
 // Source is one other mail client found on the machine.
@@ -49,6 +53,8 @@ type Source struct {
 	NeedsPermission string `json:"needs_permission,omitempty"`
 	// Error is a human-readable reason this source could not be fully read.
 	Error string `json:"error,omitempty"`
+	// LastUsed is the newest LastUsed of its accounts (unix ms).
+	LastUsed int64 `json:"last_used,omitempty"`
 
 	// creds maps an account email to its decrypted password. Unexported, so it
 	// is never part of the JSON sent to the dashboard (rule 4).
@@ -87,6 +93,9 @@ func Sources(home string) []Source {
 			a := &out[i].Accounts[j]
 			if a.Provider == "" {
 				a.Provider = ProviderFor(a.Email, a.IMAPHost)
+			}
+			if a.LastUsed > out[i].LastUsed {
+				out[i].LastUsed = a.LastUsed
 			}
 		}
 	}
