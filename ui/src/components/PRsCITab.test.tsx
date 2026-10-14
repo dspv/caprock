@@ -50,26 +50,77 @@ function connected() {
 
 afterEach(() => { h.statsGate = undefined; h.stats = undefined; h.prs = { connected: true, prs: [] }; h.ci = {}; h.asked = []; h.queued = []; h.logs = 0; forgetDeckAnswers(); localStorage.clear() })
 
-describe('the PRs & CI tab', () => {
-  it('shows the figures, the repository’s pull requests and the session’s open one in detail', async () => {
-    connected()
-    localStorage.setItem('caprock.prsTab.view', 'list')
+const card = (number: number, stage: string, p: object = {}) => ({ number, stage, stage_at: now - 600_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] }, ...p })
+const FLOW = { counts: { draft: 0, open: 1, fix: 1, ready: 0, merged: 0, released: 1 }, days: 14, merged: 7, ttm_median_ms: 2 * 3_600_000, ttm_count: 7, release_lag_median_ms: 5 * 3_600_000, release_lag_count: 4, ci_median_ms: 430_000, cost_usd: 15.5 }
+
+function withBoard() {
+  connected()
+  const st = h.stats as { prs: Record<string, unknown>[] } & Record<string, unknown>
+  st.prs[0] = { ...st.prs[0], author: 'grace', author_avatar: 'https://avatars.githubusercontent.com/u/2', labels: [{ name: 'dependencies', color: '0366d6' }] }
+  st.board = {
+    default_branch: 'main',
+    cards: [
+      card(22, 'open', { ci: 'running', stage_at: now - 5 * 60_000, spend: { cost_usd: 3.5, sessions: 2, live: 2, agents: ['claude'] } }),
+      card(21, 'fix', { ci: 'fail', why: 'ci', stage_at: now - 3_600_000 }),
+      card(20, 'released', { release: 'v1.2.0', spend: { cost_usd: 12, sessions: 1, live: 0, agents: ['codex'] } }),
+    ],
+    releases: [{ tag: 'v1.2.0', url: 'https://github.com/a/b/releases/tag/v1.2.0', published_at: now - 600_000, prs: [20], cost_usd: 12, sessions: 1 }],
+    flow: FLOW,
+  }
+}
+
+const rowOrder = () => [...document.querySelectorAll('[data-prs-row]')].map((e) => e.getAttribute('data-prs-row'))
+async function rowsDrawn() {
+  await waitFor(() => { if (!document.querySelector('[data-prs-row]')) throw new Error('no rows') })
+}
+
+describe('the Pipeline page', () => {
+  // Owner, 2026-10-14, translated: "PR titles are missing … I'd merge it all
+  // into one — PR rows with their statuses, so I understand how things
+  // travel, what gets released".
+  it('is one list: the flow strip, each pull request with its whole title, labels and four steps, in flight first, and the releases', async () => {
+    withBoard()
     render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
-    const merged = await screen.findByText('400')
-    expect(merged.closest('[data-prs-stat]')).toHaveTextContent('19 today')
-    expect(document.querySelector('[data-prs-stat="Time to merge"]')).toHaveTextContent('8m')
-    expect(document.querySelector('[data-prs-stat="CI time · ci"]')).toHaveTextContent('7m 10s')
-    expect(document.querySelector('[data-prs-stat="Red runs"]')).toHaveTextContent('6.4%')
-    // The repository's list by default; the session's own one is chosen.
-    expect([...document.querySelectorAll('[data-prs-row]')].map((e) => e.getAttribute('data-prs-row'))).toEqual(['22', '21', '20'])
+    await rowsDrawn()
+    expect(screen.getByRole('heading', { name: 'Pipeline' })).toBeInTheDocument()
+    expect(document.querySelector('[data-prs-view]')).toBeNull()
+    // Needs a fix, then CI running, then released.
+    expect(rowOrder()).toEqual(['21', '22', '20'])
+    const r22 = document.querySelector('[data-prs-row="22"]')!
+    expect(r22).toHaveTextContent('Bump deps')
+    expect(r22.querySelector('[data-prs-label="dependencies"]')).toBeInTheDocument()
+    expect(r22).toHaveTextContent('grace')
+    expect(r22.querySelector('[data-journey-step="ci"]')).toHaveAttribute('data-step-state', 'current')
+    expect(r22.querySelector('[data-journey-step="ci"]')).toHaveTextContent('CI running')
+    expect(r22.querySelector('[data-journey-step="open"]')).toHaveAttribute('data-step-state', 'done')
+    expect(r22).toHaveTextContent('$3.50')
+    expect(document.querySelector('[data-prs-row="21"] [data-journey-step="ci"]')).toHaveTextContent('CI red')
+    const r20 = document.querySelector('[data-prs-row="20"]')!
+    expect(r20.querySelector('[data-journey-step="released"]')).toHaveTextContent('v1.2.0')
+    expect(r20.querySelector('[data-journey-step="released"]')).toHaveAttribute('data-step-state', 'current')
+    // The flow strip on top, the releases below; no pull request's CI asked until one is opened.
+    expect(document.querySelector('[data-board-figure="Throughput · 14 days"]')).toHaveTextContent('0.5/day')
+    expect(document.querySelector('[data-board-figure="Merged → released"]')).toHaveTextContent('estimate')
+    expect(document.querySelector('[data-board-release="v1.2.0"]')).toHaveTextContent('#20')
+    expect(h.asked.some((a) => a.startsWith('ci '))).toBe(false)
+    expect(document.querySelector('[data-prs-detail]')).toBeNull()
+  })
+
+  it('opens a row in detail over the list, its checks by runner and its log, and closes on Esc', async () => {
+    connected()
+    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    fireEvent.click(document.querySelector('[data-prs-row="21"] button')!)
+    await waitFor(() => expect(h.asked).toContain('ci 21'))
     const detail = await waitFor(() => {
       const d = document.querySelector('[data-prs-pr="21"]')
       if (!d) throw new Error('no detail')
       return d
     })
+    expect(document.querySelector('[data-prs-detail]')).toHaveAttribute('role', 'dialog')
+    expect(document.querySelector('[data-prs-row="21"] button')).toHaveAttribute('aria-current', 'true')
     expect(detail.querySelector('[data-prs-diff]')).toHaveTextContent('+181 −59 · 13 files · 2 commits')
     expect(detail.querySelector('[data-prs-pill="merge"]')).toHaveTextContent('mergeable')
-    // The jobs by runner OS, against their median; the skipped one is left out.
     const grid = await waitFor(() => {
       const g = detail.querySelector('[data-prs-grid]')
       if (!g) throw new Error('no grid')
@@ -77,34 +128,42 @@ describe('the PRs & CI tab', () => {
     })
     expect(grid).toHaveTextContent('Linux')
     expect(grid).toHaveTextContent('macOS')
-    expect(grid).not.toHaveTextContent('app')
-    expect(grid.querySelector('[data-prs-cell="71"]')).toHaveTextContent('1m 58s+18%')
-    expect(grid.querySelector('[data-prs-cell="72"]')).toHaveAttribute('data-tone', 'fail')
     expect(grid.querySelector('[data-prs-cell="72"]')).toHaveTextContent('failed at go test')
-    // The failed job's log is read once, and Investigate queues it into the agent.
     expect(await screen.findByText('##[error]Process completed with exit code 1.')).toHaveClass('ci-error-line')
-    expect(h.logs).toBe(1)
     fireEvent.click(screen.getByRole('button', { name: 'Investigate' }))
     await waitFor(() => expect(h.queued).toHaveLength(1))
     expect(h.queued[0]).toContain('go (macos-latest)')
-    // The deck's actions, asked first in a line.
-    fireEvent.click(document.querySelector('[data-prs-action="rerun"]')!)
-    expect(document.querySelector('[data-prs-confirm]')).toHaveTextContent('Re-run #21’s failed jobs on GitHub?')
+    fireEvent.keyDown(document.querySelector('[data-prs-detail]')!, { key: 'Escape' })
+    expect(document.querySelector('[data-prs-detail]')).toBeNull()
   })
 
   it('switches between this session’s, the repository’s and the open pull requests, remembering the choice', async () => {
     connected()
-    localStorage.setItem('caprock.prsTab.view', 'list')
     render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
-    await screen.findByText('400')
+    await rowsDrawn()
+    expect(rowOrder()).toEqual(['22', '21', '20'])
     fireEvent.click(document.querySelector('[data-prs-scope="session"]')!)
-    expect([...document.querySelectorAll('[data-prs-row]')].map((e) => e.getAttribute('data-prs-row'))).toEqual(['21'])
+    expect(rowOrder()).toEqual(['21'])
     fireEvent.click(document.querySelector('[data-prs-scope="open"]')!)
-    expect([...document.querySelectorAll('[data-prs-row]')].map((e) => e.getAttribute('data-prs-row'))).toEqual(['22', '21'])
+    expect(rowOrder()).toEqual(['22', '21'])
     expect(localStorage.getItem('caprock.prsTab.scope')).toBe('open')
-    // A pull request that is not the session's is read when picked.
+    // A pull request that is not the session's is read when opened.
     fireEvent.click(screen.getByText('Bump deps'))
     await waitFor(() => expect(h.asked).toContain('ci 22'))
+  })
+
+  it('shows ten released pull requests, then the rest on Show more', async () => {
+    connected()
+    const st = h.stats as Record<string, unknown>
+    const merged = Array.from({ length: 12 }, (_, i) => ({ number: 100 + i, url: `https://github.com/a/b/pull/${100 + i}`, title: `Shipped ${i}`, state: 'merged', merged_at: now - i * 60_000 }))
+    st.prs = merged
+    st.board = { cards: merged.map((m) => card(m.number, 'released', { release: 'v2.0.0', stage_at: m.merged_at })), releases: [], flow: FLOW }
+    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    const released = () => document.querySelectorAll('[data-prs-row][data-stage="released"]').length
+    expect(released()).toBe(10)
+    fireEvent.click(screen.getByRole('button', { name: 'Show 2 more released' }))
+    expect(released()).toBe(12)
   })
 
   it('asks GitHub for nothing while GitHub is not connected, and says how to connect', async () => {
@@ -112,62 +171,17 @@ describe('the PRs & CI tab', () => {
     h.prs = { connected: false, prs: [{ session_id: 's1', url: live.url, number: 21, title: live.title, last_at: now }] }
     render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
     expect(await screen.findByRole('button', { name: 'Connect GitHub' })).toBeInTheDocument()
-    expect(document.querySelector('[data-prs-stats]')).toBeNull()
+    expect(document.querySelector('[data-prs-list]')).toBeNull()
     expect(h.asked).not.toContain('usage')
-  })
-
-  it('opens on the Board: each pull request in its stage with its author, agents and agent cost, and the releases', async () => {
-    connected()
-    const st = h.stats as { prs: Record<string, unknown>[] } & Record<string, unknown>
-    st.prs[0] = { ...st.prs[0], author: 'grace', author_avatar: 'https://avatars.githubusercontent.com/u/2' }
-    st.board = {
-      default_branch: 'main',
-      cards: [
-        { number: 22, stage: 'open', ci: 'running', stage_at: now - 5 * 60_000, spend: { cost_usd: 3.5, sessions: 2, live: 2, agents: ['claude'] } },
-        { number: 21, stage: 'fix', ci: 'fail', why: 'ci', stage_at: now - 3_600_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } },
-        { number: 20, stage: 'released', release: 'v1.2.0', stage_at: now - 600_000, spend: { cost_usd: 12, sessions: 1, live: 0, agents: ['codex'] } },
-      ],
-      releases: [{ tag: 'v1.2.0', url: 'https://github.com/a/b/releases/tag/v1.2.0', published_at: now - 600_000, prs: [20], cost_usd: 12, sessions: 1 }],
-      flow: { counts: { draft: 0, open: 1, fix: 1, ready: 0, merged: 0, released: 1 }, days: 14, merged: 7, ttm_median_ms: 2 * 3_600_000, ttm_count: 7, release_lag_median_ms: 5 * 3_600_000, release_lag_count: 4, ci_median_ms: 430_000, cost_usd: 15.5 },
-    }
-    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
-    const card = await waitFor(() => {
-      const c = document.querySelector('[data-board-card="22"]')
-      if (!c) throw new Error('no board')
-      return c
-    })
-    expect(card.closest('[data-board-column]')).toHaveAttribute('data-board-column', 'open')
-    expect(card).toHaveTextContent('Bump deps')
-    expect(card).toHaveTextContent('grace')
-    expect(card.querySelector('img')).toHaveAttribute('src', 'https://avatars.githubusercontent.com/u/2')
-    expect(card.querySelector('[data-board-live]')).toHaveTextContent('2 agents')
-    expect(card.querySelector('[data-board-cost]')).toHaveTextContent('$3.50')
-    expect(card.querySelector('[data-board-cost]')?.getAttribute('title')).toContain('API list price')
-    expect(document.querySelector('[data-board-card="21"]')!.closest('[data-board-column]')).toHaveAttribute('data-board-column', 'fix')
-    expect(document.querySelector('[data-board-card="21"] [data-board-cost]')).toBeNull()
-    expect(document.querySelector('[data-board-card="20"]')).toHaveTextContent('v1.2.0')
-    // The flow strip: throughput, the stage medians (the release one an estimate), the cost on the board.
-    expect(document.querySelector('[data-board-figure="Throughput · 14 days"]')).toHaveTextContent('0.5/day')
-    expect(document.querySelector('[data-board-figure="Opened → merged"]')).toHaveTextContent('2h')
-    expect(document.querySelector('[data-board-figure="Merged → released"]')).toHaveTextContent('~5h')
-    expect(document.querySelector('[data-board-figure="Merged → released"]')).toHaveTextContent('estimate')
-    expect(document.querySelector('[data-board-release="v1.2.0"]')).toHaveTextContent('#20')
-    expect(document.querySelector('[data-board-release="v1.2.0"]')).toHaveTextContent('$12.00')
-    // The Board asks no pull request's CI; a card opens it in the List.
-    expect(h.asked.some((a) => a.startsWith('ci '))).toBe(false)
-    fireEvent.click(card)
-    await waitFor(() => expect(h.asked).toContain('ci 22'))
-    expect(document.querySelector('[data-prs-row="22"] button')).toHaveAttribute('aria-current', 'true')
-    expect(localStorage.getItem('caprock.prsTab.view')).toBe('list')
   })
 
   // Owner, 2026-10-14: the board showed an afternoon answer at night behind a
   // bare "updating…" — merged pull requests in CI running, releases missing.
-  it('says how old a kept board is while it is read again, draws its cards faint, and says a refused read with its time', async () => {
+  it('says how old a kept list is while it is read again, draws its rows faint, and says a refused read with its time', async () => {
     const board = (stage: string) => ({
       default_branch: 'main', releases: [],
-      cards: [{ number: 22, stage, ci: stage === 'open' ? 'running' : undefined, stage_at: now - 5 * 3_600_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } }],
-      flow: { counts: { draft: 0, open: 1, fix: 0, ready: 0, merged: 0, released: 0 }, days: 14, merged: 0, ttm_count: 0, release_lag_count: 0, cost_usd: 0 },
+      cards: [card(22, stage, { ci: stage === 'open' ? 'running' : undefined, stage_at: now - 5 * 3_600_000 })],
+      flow: FLOW,
     })
     connected()
     const fresh = h.stats as Record<string, unknown>
@@ -177,21 +191,21 @@ describe('the PRs & CI tab', () => {
     h.statsGate = new Promise<void>((r) => { open = r })
     h.stats = { ...fresh, fetched_at: Date.now(), read_at: Date.now(), board: board('merged') }
     const view = render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
-    // Cold start on the kept copy: its age, refreshing, the cards faint.
+    // Cold start on the kept copy: its age, refreshing, the rows faint.
     const fresh0 = await waitFor(() => {
       const f = document.querySelector('[data-deck-fresh="updating"]')
       if (!f) throw new Error('no marker')
       return f
     })
     expect(fresh0.textContent).toBe('Saved 5 h ago · refreshing…')
-    expect(document.querySelector('[data-board-card="22"]')).toHaveAttribute('data-board-unconfirmed')
-    expect(document.querySelector('[data-board-card="22"]')!.closest('[data-board-column]')).toHaveAttribute('data-board-column', 'open')
-    // The fresh answer: the merge moves the card, the marker says it, the faint goes.
+    expect(document.querySelector('[data-prs-row="22"]')).toHaveAttribute('data-prs-unconfirmed')
+    expect(document.querySelector('[data-prs-row="22"]')).toHaveAttribute('data-stage', 'open')
+    // The fresh answer: the merge moves the row, the marker says it, the faint goes.
     open()
-    await waitFor(() => expect(document.querySelector('[data-board-card="22"]')!.closest('[data-board-column]')).toHaveAttribute('data-board-column', 'merged'))
+    await waitFor(() => expect(document.querySelector('[data-prs-row="22"]')).toHaveAttribute('data-stage', 'merged'))
     expect(document.querySelector('[data-deck-fresh]')).toHaveAttribute('data-deck-fresh', 'ok')
-    expect(document.querySelector('[data-deck-fresh]')!.textContent).toMatch(/^Updated (just now|\d+ s ago)$/)
-    expect(document.querySelector('[data-board-card="22"]')).not.toHaveAttribute('data-board-unconfirmed')
+    expect(document.querySelector('[data-deck-fresh]')!.textContent).toMatch(/^Updated (just now|\\d+ s ago)$/)
+    expect(document.querySelector('[data-prs-row="22"]')).not.toHaveAttribute('data-prs-unconfirmed')
     // GitHub refuses the list: the reason and the time of what is shown, and Retry.
     h.stats = { ...fresh, fetched_at: Date.now(), read_at: kept, board: board('merged'), error: { message: 'GitHub answered 502', kind: 'github' } }
     view.unmount()
@@ -204,29 +218,28 @@ describe('the PRs & CI tab', () => {
     expect(failed).toHaveTextContent('Couldn’t refresh: GitHub answered 502')
     expect(failed).toHaveTextContent('showing data from')
     expect(failed.querySelector('[data-deck-fresh-retry]')).toBeInTheDocument()
-    expect(document.querySelector('[data-board-card="22"]')).toHaveAttribute('data-board-unconfirmed')
+    expect(document.querySelector('[data-prs-row="22"]')).toHaveAttribute('data-prs-unconfirmed')
   })
 
-  it('tells an older daemon’s answer (no board) from a failure', async () => {
+  it('lists the pull requests from an older daemon’s answer too, with no flow strip', async () => {
     connected()
     render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
-    expect(await screen.findByText(/The board comes with a newer Caprock daemon/)).toBeInTheDocument()
-    fireEvent.click(document.querySelector('[data-prs-view-tab="list"]')!)
-    expect(await screen.findByText('400')).toBeInTheDocument()
+    await rowsDrawn()
+    expect(document.querySelector('[data-board-flow]')).toBeNull()
+    expect(rowOrder()).toEqual(['22', '21', '20'])
+    expect(document.querySelector('[data-prs-row="20"] [data-journey-step="merged"]')).toHaveAttribute('data-step-state', 'current')
   })
 
-  it('asks nothing while it is not the tab in front, and goes back to the deck', async () => {
+  it('asks nothing while it is not the tab in front, and goes back to the tab before', async () => {
     connected()
     const back = vi.fn()
     render(<PRsCITab sessionId="s1" session={session} visible={false} onBack={back} />)
     await new Promise((r) => setTimeout(r, 20))
     expect(h.asked).toEqual([])
-    // The deck's Expand, turned: Collapse, outlined, with the same key.
-    const collapse = screen.getByRole('button', { name: /^Collapse: back/ })
-    expect(collapse).toHaveAttribute('data-prs-back')
-    expect(collapse).toHaveClass('border-accent/60')
-    expect(collapse).toHaveTextContent(/^Collapse (⇧⌘B|Ctrl\+Alt\+Shift\+B)$/)
-    fireEvent.click(collapse)
+    const b = screen.getByRole('button', { name: /^Back to the tab you were on/ })
+    expect(b).toHaveAttribute('data-prs-back')
+    expect(b).toHaveTextContent(/^Back (⇧⌘B|Ctrl\+Alt\+Shift\+B)$/)
+    fireEvent.click(b)
     expect(back).toHaveBeenCalledTimes(1)
   })
 })

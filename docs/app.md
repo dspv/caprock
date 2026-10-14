@@ -132,16 +132,12 @@ others. Installing it: [install-app.md](install-app.md).
   days under it and one word: *usual*, *above usual +38%*, *below usual
   −20%*, or *not enough history* in your first days. It compares with your
   own median by the same time of day; hover it for the figures behind it.
-  Under *Dashboard*, one row in two halves: the **PRs & CI** mode, named
-  *CI Off*, *CI Bar* or *CI Page* (its key, ⇧⌘B, is in its tooltip), and
-  the theme, named too. On Windows and Linux each takes a row, and there
-  the PRs & CI row shows its key, Ctrl+Alt+Shift+B. The PRs & CI button's
-  picture is what is on screen —
-  an empty window (Hidden), a band along its bottom (Bar: the session
-  deck), a filled window (Full page: the *PRs & CI* tab) — and a click
-  moves to the next, Hidden → Bar → Full page → Hidden; ⌘B and ⇧⌘B do
-  the same from the keyboard, and the button follows them. Its tooltip
-  says the mode and the keys.
+  Under *Dashboard*, one row in two halves: **Pipeline** (its key, ⇧⌘B,
+  is in its tooltip) and the theme, named too. On Windows and Linux each
+  takes a row, and there the Pipeline row shows its key, Ctrl+Alt+Shift+B.
+  A click on *Pipeline* opens the Pipeline page in a tab, or brings it to
+  the front; from it, a click goes back to the tab you were on. The button
+  is in the accent while the page is in front.
   **Mail** sits above *Dashboard*, with its key, ⇧⌘M. It opens Mail in a
   tab of its own beside the Dashboard tab (the envelope and ⇧⌘M); pressed
   again it brings that tab to the front, and its × closes it. With no mail
@@ -547,8 +543,8 @@ others. Installing it: [install-app.md](install-app.md).
   log, with a link to the job on GitHub. CI needs GitHub connected (one
   click, through `gh`). Drag its top edge to resize it (up to 60% of the pane), or
   focus the edge and use ↑ ↓; double-click it for the default height. The
-  PRs & CI button at the foot of the sidebar, the deck button beside the
-  inspector's, ⌘B and the palette open and close it;
+  deck button beside the inspector's, ⌘B and the palette (*Pipeline bar:
+  On/Off*) open and close it, and the × in its header hides it;
   the app remembers its height and whether it was open. A shell tab has no
   deck. It opens on all of the session's pull requests, each title as long
   as the row allows, with its checks as a circle per check (coloured by
@@ -558,34 +554,43 @@ others. Installing it: [install-app.md](install-app.md).
   when you click it; the next time it opens on that one. Hover the checks for
   every one: its name, OS, state, time and the step a failed one stopped
   at. The cockpit on the right has a **CI**
-  block with the same summary, or one ring with *10/11 · 5m*, or the jobs by OS, switched in its
-  label; it shows what the deck last read and a click opens *PRs & CI*.
-  ⇧⌘B, or the sidebar's PRs & CI button from *Bar*, opens it large in a tab of its own,
-  *PRs & CI*. It opens on the **Board**: the repository's pull requests as
-  cards in six columns — Draft, CI running, Needs a fix, Ready, Merged,
-  Released — each card with its title, the author's face and name, how long
-  it has been in that column, its CI, the agents working on it now and its
-  *agent cost* (what Caprock recorded agents spending on it, at API list
-  price — not a bill); above, how fast work flows (merges a day, opened →
-  merged, merged → released as an estimate, the CI median); below, each
-  recent release with the pull requests it shipped and what the agents spent
-  on them. Click a card to open it in the **List**:
-  the repository's last two weeks on top (pull requests merged
-  per day, the median time to merge, the median CI run, the share of red
-  runs, the Actions minutes GitHub billed this month), its pull requests on
-  the left (this session's, the repository's or the open ones), and the one
-  you pick on the right with its state, review, merge state and diff size,
-  the deck's actions, its jobs by runner OS against each one's usual time,
-  the jobs on a timeline, and a failed job's steps and log with
-  *Investigate*. Its header always says how current what you see is:
-  *Updated just now*; *Saved 5 h ago · refreshing…* with a faint pulse while
-  a copy kept from before is read again (its cards drawn faint until the
-  fresh answer lands); and *Couldn't refresh: <why> · showing data from
-  15:02 · Retry* when GitHub or the daemon could not be read. The CI/CD
-  section on Now says the same in its header. **Collapse** in its top-right corner, and ⇧⌘B
-  again, close the tab and show the agent with its deck; the sidebar's
-  button closes it and hides the deck too. It reads GitHub
-  only while it is in front.
+  block. Its *PRs* view is the repository's pull requests as thin progress
+  bars toward a release — the four steps Open → CI → Merged → Released, the
+  step each one is on coloured (CI in its check colour: red, amber, green)
+  — each with its number, title and how long it has been on that step; in
+  flight first, then merged, then released. The list scrolls inside the
+  block; *Expand* makes the block taller (remembered), *Pipeline ↗* opens
+  the page. Its other views are one ring with *10/11 · 5m* or the jobs by
+  OS, switched in its label.
+  ⇧⌘B, *Pipeline* at the foot of the sidebar, *Pipeline* in the deck's
+  header, *Open Pipeline* in the palette or *Pipeline ↗* in the cockpit
+  opens the **Pipeline**: the repository's pull requests in a tab of its
+  own, *Pipeline · repo* (a tab saved as *PRs & CI* comes back under the new
+  name). Above, how fast work flows (merges a day, opened → merged, merged →
+  released as an estimate, the CI median, agent cost). Then one list, a row
+  per pull request: its number, its whole title (up to two lines), its
+  labels, and the four steps as pills — *Open → CI → Merged → Released* —
+  the step it is on highlighted, the ones behind it muted (*CI red*, *CI
+  running*, *Conflict*, *Changes requested*, or the release's tag on
+  *Released*), then how long ago and its *agent cost* (what Caprock recorded
+  agents spending on it, at API list price — not a bill). The rows in
+  flight come first — needing a fix, CI running, ready, draft — then merged
+  and not yet released, then released: ten of those, and *Show N more
+  released* for the rest. *This session*, *Repository* and *Open* choose
+  which pull requests are listed. Below, each recent release with the pull
+  requests it shipped and what the agents spent on them. Click a row for
+  its detail over the right of the page — state, review, merge state and
+  diff size, the deck's actions, its jobs by runner OS against each one's
+  usual time, the jobs on a timeline, and a failed job's steps and log with
+  *Investigate*; × or Esc closes it. Its header always says how current
+  what you see is: *Updated just now*; *Saved 5 h ago · refreshing…* with a
+  faint pulse while a copy kept from before is read again (its rows drawn
+  faint until the fresh answer lands); and *Couldn't refresh: <why> ·
+  showing data from 15:02 · Retry* when GitHub or the daemon could not be
+  read. The CI/CD section on Now says the same in its header. **Back** in
+  its top-right corner, ⇧⌘B again or *Pipeline* in the sidebar go back to
+  the tab you were on; the Pipeline tab stays open. It reads GitHub only
+  while it is in front.
 - **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
   same button), *Review and commit* in the inspector, or "Review changes" in
   the palette. The files are listed as *Staged*, *Changes* and *Conflicts*;
@@ -704,14 +709,14 @@ On macOS:
 | ⇧⌘M         | Mail, in a tab of its own                                                |
 | ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                 |
 | ⌘I          | Agent cockpit (the inspector)                                            |
-| ⌘B          | Session deck (the PRs & CI bar) under the agent's terminal               |
-| ⇧⌘B         | PRs & CI as a full page in a tab; back to the bar                        |
+| ⌘B          | Pipeline bar under the agent's terminal, shown or hidden                 |
+| ⇧⌘B         | Pipeline in a tab; there, back to the tab before                         |
 | ⌘\          | Hide or show the sidebar                                                 |
 | ⌘0, ⇧⌘D     | Dashboard tab, and back                                                  |
 | ⌘R          | Reload the window (View → Reload)                                        |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
-(Quick chat is Ctrl+Alt+Shift+N, the PRs & CI full page Ctrl+Alt+Shift+B,
+(Quick chat is Ctrl+Alt+Shift+N, the Pipeline Ctrl+Alt+Shift+B,
 Send feedback Ctrl+Alt+Shift+F, since Ctrl+Shift+F is Find; tabs are
 Ctrl+Shift+1–9; Add to brain is Ctrl+Shift+H). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
@@ -904,7 +909,7 @@ phone. Nothing is sent to GitHub until you connect. Besides
 in the session deck, the job's log is downloaded from the signed address
 GitHub points to on its log storage; while Now's CI/CD section is open, the
 daemon reads `www.githubstatus.com`'s public status at most every five
-minutes; and the PRs & CI Board and the CI/CD section show pull request
+minutes; and the Pipeline and the CI/CD section show pull request
 authors' pictures from `avatars.githubusercontent.com`, loaded by the page
 with no referrer.
 

@@ -599,7 +599,7 @@ export interface RepoActivity {
   sessions: number
   checked_ms: number
   error?: string
-  /** Only while GitHub is connected and the remote is on GitHub; each part only once the deck or the PRs & CI tab read it. */
+  /** Only while GitHub is connected and the remote is on GitHub; each part only once the deck or the Pipeline page read it. */
   github?: {
     repo: string
     pulls?: { open: number; merged_7d: number; ttm_median_ms?: number; listed: number }
@@ -613,7 +613,7 @@ export interface ReposActivity {
   github_connected: boolean
 }
 
-/** `GET /v1/sessions/{id}/ci/stats`: the PRs & CI tab. */
+/** `GET /v1/sessions/{id}/ci/stats`: the Pipeline page. */
 export interface SessionCIStats extends DeckFresh {
   connected: boolean
   repo?: string
@@ -1809,7 +1809,7 @@ export const api = {
   sessionCIRelease: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/release`).then(listedJobs),
   /** The newest run of each workflow on the session's repository's default branch (the CI cell's Main view). */
   sessionCIMain: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/main`).then(listedJobs),
-  /** The PRs & CI tab: the repository's pull requests and its figures over 14 days. Asked only while the tab is shown. */
+  /** The Pipeline page: the repository's pull requests and its figures over 14 days. Asked only while the tab is shown. */
   sessionCIStats: (id: string) => get<SessionCIStats>(`/v1/sessions/${encodeURIComponent(id)}/ci/stats`),
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */
   /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */

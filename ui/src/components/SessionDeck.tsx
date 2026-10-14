@@ -74,6 +74,10 @@ export interface SessionDeckProps {
   onStartAgent?: (req: SpawnRequest, title: string) => Promise<void>
   /** The project's finished copies, over the Branches view (components/CleanupLine). */
   cleanup?: ReactNode
+  /** The Pipeline page in a tab (⇧⌘B): the header's *Pipeline*. */
+  onOpenPipeline?: () => void
+  /** Hides the bar (⌘B): the header's ×. */
+  onHide?: () => void
 }
 
 export function SessionDeck(props: SessionDeckProps) {
@@ -169,7 +173,18 @@ export function SessionDeck(props: SessionDeckProps) {
 }
 
 
-function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onToast, worktrees, onOpenSession, onStartAgent, cleanup }: SessionDeckProps) {
+function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onToast, worktrees, onOpenSession, onStartAgent, cleanup, onOpenPipeline, onHide }: SessionDeckProps) {
+  // The bar's own two controls (owner, 2026-10-14): the Pipeline page, and
+  // hiding the bar. The sidebar footer's button opens the page only.
+  const controls = (onOpenPipeline || onHide) ? (
+    <span className="flex shrink-0 items-center gap-0.5">
+      {onOpenPipeline && <ExpandToggle compact onClick={onOpenPipeline} />}
+      {onHide && (
+        <button type="button" data-deck-hide onClick={onHide} title={`Hide the Pipeline bar (${keys('⌘B')})`} aria-label={`Hide the Pipeline bar (${keys('⌘B')})`}
+          className="flex h-[18px] w-[18px] items-center justify-center rounded-[4px] text-[13px] leading-none text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg">×</button>
+      )}
+    </span>
+  ) : undefined
   return (
     // A container, so the row's quieter columns give way as the terminal
     // narrows (the sidebar and the inspector both open). No clock and no
@@ -177,18 +192,16 @@ function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onToa
     // sidebar's and the inspector's (owner, 2026-10-11: "Spent doesn't
     // help", "Working now is debatable").
     <div className="@container flex min-h-0 flex-1 items-stretch overflow-hidden">
-      {/* No Expand or Hide here: the sidebar footer's PRs & CI button cycles
-        * Hidden, Bar and Full page, beside ⌘B and ⇧⌘B (owner, 2026-10-14,
-        * translated: "Expand/Hide inside the bar is not noticeable"). */}
-      <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} worktrees={worktrees} onOpenSession={onOpenSession} onStartAgent={onStartAgent} cleanup={cleanup} />
+      <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} worktrees={worktrees} onOpenSession={onOpenSession} onStartAgent={onStartAgent} cleanup={cleanup} controls={controls} />
     </div>
   )
 }
 
-/** Back from the large view: Collapse in the PRs & CI tab's top-right
- *  corner (⇧⌘B; Ctrl+Alt+Shift+B off macOS, where ⌘B is Ctrl+Shift+B).
- *  The deck itself has no Expand: the sidebar footer's button and ⇧⌘B. */
-export function ExpandToggle({ collapse, onClick }: { collapse?: boolean; onClick: () => void }) {
+/** The Pipeline page's way back (`collapse`: *Back*, to the tab before it),
+ *  or the deck's way there (*Pipeline*), both ⇧⌘B (Ctrl+Alt+Shift+B off
+ *  macOS, where ⌘B is Ctrl+Shift+B). `compact`: the deck's header, the key
+ *  in the tooltip only. */
+export function ExpandToggle({ collapse, onClick, compact }: { collapse?: boolean; onClick: () => void; compact?: boolean }) {
   const k = keys('⇧⌘B')
   return (
     <button
@@ -196,13 +209,15 @@ export function ExpandToggle({ collapse, onClick }: { collapse?: boolean; onClic
       data-deck-expand={collapse ? undefined : ''}
       data-prs-back={collapse ? '' : undefined}
       onClick={onClick}
-      aria-label={collapse ? `Collapse: back to the agent and its deck (${k})` : `Expand: pull requests and CI in a tab (${k})`}
+      aria-label={collapse ? `Back to the tab you were on (${k})` : `Open the Pipeline: every pull request on its way to a release, in a tab (${k})`}
       title={collapse
-        ? 'Close this tab and show the agent’s terminal with its deck; the same key expands it again'
-        : 'Pull requests and CI, large: the repository’s pull requests, each one’s jobs by runner, and the figures over two weeks, in a tab'}
-      className="flex h-[26px] shrink-0 items-center gap-1.5 rounded-[6px] border border-accent/60 px-2 text-[12px] font-medium text-accent hover:bg-accent/10"
+        ? `Back to the tab you were on; ${k} opens the Pipeline again`
+        : `The Pipeline: every pull request of the repository on its way — open, CI, merged, released — in a tab (${k})`}
+      className={compact
+        ? 'flex h-[18px] shrink-0 items-center gap-1 rounded-[4px] px-1 text-[10.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-accent'
+        : 'flex h-[26px] shrink-0 items-center gap-1.5 rounded-[6px] border border-accent/60 px-2 text-[12px] font-medium text-accent hover:bg-accent/10'}
     >
-      <ExpandIcon back={collapse} /> {collapse ? 'Collapse' : 'Expand'} <kbd aria-hidden className="app-kbd-key">{k}</kbd>
+      <ExpandIcon back={collapse} /> {collapse ? 'Back' : 'Pipeline'} {!compact && <kbd aria-hidden className="app-kbd-key">{k}</kbd>}
     </button>
   )
 }
@@ -662,7 +677,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   const why = !canControl ? 'This device can only watch. To act from it, open the Caprock app on your computer: Settings → Use on your phone, then press Let it control sessions next to this device.'
     : !s.owned ? 'Caprock did not start this session, so it never types into it. Start the agent from Caprock to queue CI failures to it.'
       : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
-  // The force actions (lib/usePRForce), shared with the PRs & CI tab.
+  // The force actions (lib/usePRForce), shared with the Pipeline page.
   const { confirm, setConfirm, forcing, standing, active: forcingActive, forceWhy, confirmText, force } = usePRForce({
     sessionId, s, worktrees, onStartAgent, onToast, canControl, connected: prsData?.connected, why,
     runsOf: (p) => (prCI?.pr?.number === p.number ? prCI.ci?.runs : undefined),
@@ -1068,7 +1083,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
         * "Checks" under 560px, the branch chip under 480px — and what is
         * still too wide wraps to a second line rather than overflowing. */}
       <div data-deck-head className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <h4 className="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Pull requests &amp; CI</h4>
+        <h4 className="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint" title="Pull requests and CI on their way to a release">Pipeline</h4>
         {branch && <BranchChip branch={branch} base={base} changed={changed} ahead={ahead} onReview={onReview} />}
         {/* A release under way, said from the other views, in the header. */}
         {chip && (

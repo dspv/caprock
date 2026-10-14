@@ -72,7 +72,7 @@ function show(p: Partial<Parameters<typeof SessionDeck>[0]> = {}) {
 afterEach(() => { vi.useRealTimers(); forgetFoldedPRs(); forgetPRProgress(); forgetDeckAnswers();h.queued = []; h.queuedTo = []; h.forced = []; h.rerunFail = undefined; h.asked = 0; h.prs = { connected: true, prs: [] }; h.ci = { connected: true }; h.rel = { connected: false }; h.main = { connected: false }; h.branches = { connected: true, branches: [] }; h.usage = undefined; h.usageAsked = 0; h.prsGate = undefined; h.prsFail = undefined; h.prsAsked = 0; h.branchesGate = undefined; localStorage.clear() })
 
 describe('the session deck', () => {
-  // Owner, 2026-10-14: the sidebar footer's PRs & CI button is the one place
+  // Owner, 2026-10-14: the sidebar footer's Pipeline button is the one place
   // for Hidden, Bar and Full page; the deck's own Expand and Hide went.
   it('draws no Expand or Hide of its own', () => {
     show()
@@ -206,7 +206,7 @@ describe('the session deck', () => {
     h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED, { branch: 'feat/deck', base: 'main' }))] }
     show({ branch: 'feat/deck', changed: 3, ahead: 2, onReviewChanges: onReview })
     expect(screen.queryByRole('heading', { name: 'Branch' })).toBeNull()
-    expect(screen.getByRole('heading', { name: 'Pull requests & CI' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Pipeline' })).toBeInTheDocument()
     const chip = document.querySelector('[data-deck-branch]')!
     expect(chip.textContent).toBe('feat/deck')
     // The current PR is from this branch: where it goes.

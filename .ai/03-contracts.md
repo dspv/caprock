@@ -532,7 +532,7 @@ GET  /v1/sessions/{id}/ci              → SessionCI — the deck's CI cell: Act
 GET  /v1/sessions/{id}/ci/jobs/{job}/log → CILog — the lines around a failed job's error, on demand (?view=pr|release|main)
 GET  /v1/sessions/{id}/ci/release      → SessionRepoCI — the repository's newest release build, with an estimate
 GET  /v1/sessions/{id}/ci/main         → SessionRepoCI — the newest run of each workflow on the default branch
-GET  /v1/sessions/{id}/ci/stats        → SessionCIStats — the PRs & CI tab: the repository's PRs and its figures over 14 days
+GET  /v1/sessions/{id}/ci/stats        → SessionCIStats — the Pipeline: the repository's PRs and its figures over 14 days
 GET  /v1/sessions/{id}/branches        → SessionBranches — the repository's branches with PRs and Caprock spend (§ Session branches)
 GET  /v1/repos/activity                → ReposActivity — Now's Repos section: each listed repository with a live session, from git and kept GitHub answers
 GET  /v1/repos/ci                      → ReposCI — Now's CI/CD section: runs, stuck runs, releases, cost per PR and who, GitHub's status
@@ -1261,11 +1261,11 @@ GitHub token is (§ GitHub, "Where the token lives"):
 `GET /v1/repos/activity` (2026-10-13) → `ReposActivity` `{repos[], github_connected}`: the Now screen's Repos section ([04-ui.md § Repos on Now](04-ui.md#repos-on-now)), asked only while that section is unfolded and the window visible. A row per listed project of kind `repo` (at most 12, in the sidebar's order) with a session that has not ended in it — the session's `repo_root`, else its `cwd`, at or below the project's root, so an agent's worktree under it counts:
 
 - **Local** — `projects.RepoActivity` `{root, name, days[], commits[], added[], deleted[], last_commit_at?, dirty, checked_ms, error?}` and `project_id`, `sessions`. Over the 14 local calendar days ending today, per day: `git log --all --no-merges -n 5000 --since=<first midnight> --format=%x1e%ct --shortstat` (`projects.ParseShortstat`, CRLF read like LF), and `dirty` the lines of `git status --porcelain=v1`. Read under the projects' git timeout — finished even when the request that started it is cancelled — and kept 10 minutes per root (64 roots at most), a failure too (`error`, the arrays zero).
-- **GitHub** — `github?` `{repo, pulls?, ci?, release?}` only while GitHub is connected and the remote (read through the repository cache, else the project's `remote_url`) is on GitHub; each part only from an answer Caprock already keeps, however old — this route sends GitHub nothing. `pulls` `{open, merged_7d, ttm_median_ms?, listed}` from the last pull request list the Branches view or the PRs & CI tab read (`github.CachedRepoPulls`); `ci` `{runs, red, workflow?, median_ms?}` is `github.RunStats` over the last runs list the PRs & CI tab read (`github.CachedRepoRuns`, 14 days, the workflow taking the most time first); `release` `{tag?, state, at?}` from the deck's last Release answer (`github.CachedRelease`; absent with no release run). A part nobody read yet is absent.
+- **GitHub** — `github?` `{repo, pulls?, ci?, release?}` only while GitHub is connected and the remote (read through the repository cache, else the project's `remote_url`) is on GitHub; each part only from an answer Caprock already keeps, however old — this route sends GitHub nothing. `pulls` `{open, merged_7d, ttm_median_ms?, listed}` from the last pull request list the Branches view or the Pipeline read (`github.CachedRepoPulls`); `ci` `{runs, red, workflow?, median_ms?}` is `github.RunStats` over the last runs list the Pipeline read (`github.CachedRepoRuns`, 14 days, the workflow taking the most time first); `release` `{tag?, state, at?}` from the deck's last Release answer (`github.CachedRelease`; absent with no release run). A part nobody read yet is absent.
 
 On a paired device's read list (counts only). `501` without the projects service.
 
-`GET /v1/repos/ci[?older=1][&hide=owner/name,…]` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], quiet[], recent_days, fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, with activity in the last `recent_days` (14: a session's last event in the project's root, or the project's `added_at`), those with a session running first, then by `last_active`, at most 6 (`reposCIMax`); with `older=1` the older ones too, marked `older`, at most 12 in all (`reposCIOlderMax`). A repository named in `hide` (this viewer's hidden ones, case-insensitive, at most 200), one without recent activity while `older` is not asked, and one past the bound are listed in `quiet[]` `{project_id, name, repo, last_active?, why: older|hidden|more}` and nothing is sent to GitHub for them. Each row is read through the kept GitHub reads the PRs & CI tab makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. Rows are read at most 3 at once (`reposCIParallel`), each within 12 s (`reposCIRepoTimeout`), the status page beside them, the whole within 30 s; a row GitHub did not answer in time carries `slow: true` beside its `error`. A row also carries `last_active` (Unix ms), `read_at` (Unix ms, when GitHub last answered its pull request list; with `error`, the row draws on that older read) and, in the quick answer, `pending`. The answer carries `refresh_error` and `refresh_failed_at` as the deck's do. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci` with `older` and the sorted `hide`); a key never composed is answered at once with the rows unread (`pending`, `refreshing`) while the composition goes on. Each `top_prs[]` entry adds `shared` (sessions charged only in part) and `tokens_in`, `tokens_out`, `cache_read`, `cache_write` (`store.PRSpend`, below).
+`GET /v1/repos/ci[?older=1][&hide=owner/name,…]` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], quiet[], recent_days, fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, with activity in the last `recent_days` (14: a session's last event in the project's root, or the project's `added_at`), those with a session running first, then by `last_active`, at most 6 (`reposCIMax`); with `older=1` the older ones too, marked `older`, at most 12 in all (`reposCIOlderMax`). A repository named in `hide` (this viewer's hidden ones, case-insensitive, at most 200), one without recent activity while `older` is not asked, and one past the bound are listed in `quiet[]` `{project_id, name, repo, last_active?, why: older|hidden|more}` and nothing is sent to GitHub for them. Each row is read through the kept GitHub reads the Pipeline makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. Rows are read at most 3 at once (`reposCIParallel`), each within 12 s (`reposCIRepoTimeout`), the status page beside them, the whole within 30 s; a row GitHub did not answer in time carries `slow: true` beside its `error`. A row also carries `last_active` (Unix ms), `read_at` (Unix ms, when GitHub last answered its pull request list; with `error`, the row draws on that older read) and, in the quick answer, `pending`. The answer carries `refresh_error` and `refresh_failed_at` as the deck's do. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci` with `older` and the sorted `hide`); a key never composed is answered at once with the rows unread (`pending`, `refreshing`) while the composition goes on. Each `top_prs[]` entry adds `shared` (sessions charged only in part) and `tokens_in`, `tokens_out`, `cache_read`, `cache_write` (`store.PRSpend`, below).
 
 - **Row** — `RepoCIRow` `{project_id, name, repo, live, ci?, days?, stuck[], open, merged_7d, top_prs[], authors[], release?, error?}`. `live` counts the sessions not ended under the project's root; `ci` is `github.RunStats` over the runs, 14 days (the `CIStats` of `…/ci/stats`), `days` its local calendar days; `open` and `merged_7d` count the listed pull requests; `release` is the newest published release (`RepoRelease`); a failed list is `error` with the rest absent.
 - **Stuck** — `github.StuckRuns`: `{id, name, branch?, status, url?, since, median_ms?}` for a run `in_progress` longer than twice its workflow's median successful run over the 14 days and at least 10 minutes over it (no median, never), or waiting for a runner (`queued`, `waiting`, `pending`, `requested`) longer than 15 minutes; `since` is `run_started_at`, else `created_at`. The runs list is kept 2 minutes instead of 30 while any run in it is unfinished (`repoRunsActiveKept`), so a stuck run is seen within minutes; a conditional read costs a 304 when nothing changed.
@@ -1698,7 +1698,7 @@ chip.
 
 **The deck's answers are kept** (`internal/api/deckcache.go`). The five
 views of the *Pull requests & CI* cell — `…/prs`, `…/ci`, `…/ci/release`,
-`…/ci/main`, `…/branches` — and the PRs & CI tab's `…/ci/stats` are each composed from the kept GitHub reads
+`…/ci/main`, `…/branches` — and the Pipeline's `…/ci/stats` are each composed from the kept GitHub reads
 above, and the composed answer is kept per view, session, pull request
 asked for and whether GitHub is connected (at most 256 keys). A key never
 composed is composed while the request waits, and concurrent requests for
@@ -1727,7 +1727,7 @@ used to, each deciding by its own freshness whether to ask.
 **`POST /v1/sessions/{id}/prs/{number}/rerun`** (no body) → `{ok, mode,
 runs, jobs}`: the session deck's *Re-run checks*. Acts only on a pull
 request in the session's `session_prs`, or one of its repository's that
-the PRs & CI tab listed — in the last `…/ci/stats` list read
+the Pipeline listed — in the last `…/ci/stats` list read
 (`github.CachedRepoPull`), so no number a request merely names is acted on
 — 404 otherwise; read through
 `github.PullByURL` for its head commit. `github.RerunChecks` reads that
@@ -1760,7 +1760,7 @@ the paired-device lists.
 pr?, ci?, error?, fetched_at, refreshing?}`: the session deck's CI cell. `pr` `{number, url, title?,
 state?, repo, head_sha?, live?}` is pull request N when it is among the session's
 latest four (a click on its row or its mini pipeline) or one of its
-repository's that the PRs & CI tab listed (as the rerun route checks), else the
+repository's that the Pipeline listed (as the rerun route checks), else the
 session's open one among them, else the newest (each read through `github.PullByURL`, so it shares the PRs
 cell's reads; `live` is that `github.PR`, for the tab's review, merge state
 and diff size). `ci` is `github.CI` for that PR's head commit: `{repo,
@@ -1810,8 +1810,8 @@ error. The cached answers are never changed: the baselines are set on a copy.
 
 **`GET /v1/sessions/{id}/ci/stats`** → `SessionCIStats` `{connected, repo?,
 reason?, prs[], stats?, board?, error?, read_at?, fetched_at, refreshing?,
-refresh_error?, refresh_failed_at?}`: the PRs & CI tab
-(.ai/21-app.md § PRs & CI tab), asked only while that tab is in front and
+refresh_error?, refresh_failed_at?}`: the Pipeline
+(.ai/21-app.md § Pipeline), asked only while that tab is in front and
 the window visible. `repo` and `reason` as `SessionRepoCI` says them. `prs`
 is the repository's own pull requests — the `BranchPR` list the Branches
 view reads (`GET …/pulls?state=all&sort=updated&direction=desc&per_page=50`,
@@ -1871,7 +1871,9 @@ over the 14 local calendar days ending today:
 - **Who opened it** — each `BranchPR` (here and in the Branches view) also
   carries `head` (the head branch), `author` and `author_avatar` (GitHub's
   `user.login` and `user.avatar_url`, an address on
-  `avatars.githubusercontent.com`) from the same list.
+  `avatars.githubusercontent.com`) from the same list, and `labels?`
+  `[{name, color?}]` (2026-10-14; GitHub's label names and hex colours, at
+  most 6, absent with none) for the Pipeline's label chips.
 
 Nothing is sent while GitHub is not connected: `connected` is false, `prs`
 empty, `stats` and `board` absent. A failed list keeps the last one, with

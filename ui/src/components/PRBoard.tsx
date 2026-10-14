@@ -1,50 +1,19 @@
 /**
- * The PRs & CI tab's Board view (.ai/21-app.md § PRs & CI tab; owner,
- * 2026-10-14, translated: "I want to see something like a KANBAN: how tasks
- * come in, what stage they're in, maybe how many agents are working, even
- * some costs, and how they move through stages — essentially accounting of
- * releases and commits-PRs. That's the stat to watch.").
- *
- * The flow strip on top (throughput, the time a pull request takes from
- * opened to merged and from merged to released, the CI median, the agent
- * cost on the board), a column per stage, and the releases with what each
- * shipped and what the agents spent on it. A card opens the pull request in
- * the List view. Everything comes in the tab's one answer (…/ci/stats'
- * `board`): this view asks nothing of its own.
+ * The Pipeline page's flow strip and releases (.ai/04-ui.md § Pipeline;
+ * owner, 2026-10-14, translated: "essentially accounting of releases and
+ * commits-PRs. That's the stat to watch."): on top, how fast work flows —
+ * throughput, opened → merged, merged → released (an estimate), the CI
+ * median, the agent cost listed; below the list, each recent release with
+ * the pull requests it shipped and what the agents spent on them. Both come
+ * in the page's one answer (…/ci/stats' `board`): nothing here asks.
  */
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { BranchPR } from '@/lib/branches'
-import { AGENT_COST_NOTE, COLUMN_SHOWN, boardColumns, ciChip, costText, costTitle, perDay, type BoardItem, type BoardRelease, type ChipTone, type PRBoard, type Stage } from '@/lib/prboard'
+import { AGENT_COST_NOTE, perDay, type BoardRelease, type PRBoard } from '@/lib/prboard'
 import { spanText } from '@/lib/prstats'
 import { fmtAgo } from '@/lib/format'
 import { fmtRun } from '@/lib/ci'
 import { openExternal } from '@/lib/nudges'
-import { GitHubPerson } from './GitHubAvatar'
-
-const STAGE_TONE: Record<Stage, string> = {
-  draft: 'var(--color-fg-faint)', open: 'var(--color-warn)', fix: 'var(--color-danger)',
-  ready: 'var(--color-ok)', merged: 'var(--color-merged)', released: 'var(--color-accent)',
-}
-
-const CHIP: Record<ChipTone, string> = {
-  ok: 'border-ok/40 text-ok', fail: 'border-danger/45 bg-danger/10 text-danger', pending: 'border-warn/40 text-warn',
-  muted: 'border-[var(--app-hairline)] text-fg-muted', faint: 'border-[var(--app-hairline)] text-fg-faint', merged: 'border-merged/45 text-merged',
-}
-
-export function PRBoardView({ board, prs, now, onOpen, unconfirmed }: { board: PRBoard; prs: BranchPR[]; now: number; onOpen: (n: number) => void; unconfirmed?: boolean }) {
-  const cols = boardColumns(board, prs)
-  return (
-    <div data-prs-board className="flex min-w-0 flex-col gap-3">
-      <FlowStrip board={board} />
-      {/* Every column in view, never behind a sideways scroll: six across,
-        * three across in a narrow tab, two on a phone. */}
-      <div data-board-columns className="grid grid-cols-6 gap-2 @max-[1000px]/prs:grid-cols-3 @max-[520px]/prs:grid-cols-2 @max-[380px]/prs:grid-cols-1">
-        {cols.map((c) => <Column key={c.stage.key} stage={c.stage.key} label={c.stage.label} note={c.stage.note} cards={c.cards} now={now} onOpen={onOpen} unconfirmed={unconfirmed} />)}
-      </div>
-      <Releases releases={board.releases} prs={prs} now={now} onOpen={onOpen} />
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------- the flow
 
@@ -58,7 +27,7 @@ function Figure({ label, value, note, title }: { label: string; value: ReactNode
   )
 }
 
-function FlowStrip({ board }: { board: PRBoard }) {
+export function FlowStrip({ board }: { board: PRBoard }) {
   const f = board.flow
   const open = f.counts.draft + f.counts.open + f.counts.fix + f.counts.ready
   return (
@@ -75,68 +44,9 @@ function FlowStrip({ board }: { board: PRBoard }) {
   )
 }
 
-// ---------------------------------------------------------------- the columns
-
-function Column({ stage, label, note, cards, now, onOpen, unconfirmed }: { stage: Stage; label: string; note: string; cards: BoardItem[]; now: number; onOpen: (n: number) => void; unconfirmed?: boolean }) {
-  const [all, setAll] = useState(false)
-  const shown = all ? cards : cards.slice(0, COLUMN_SHOWN)
-  const cost = cards.reduce((t, c) => t + c.spend.cost_usd, 0)
-  return (
-    <section data-board-column={stage} aria-label={label} className="flex min-w-0 flex-col rounded-[var(--radius-panel)] border border-border bg-panel-2/40">
-      <header title={note} className="flex items-baseline gap-2 border-b border-border px-2.5 pb-1.5 pt-2" style={{ boxShadow: `inset 0 2px 0 ${STAGE_TONE[stage]}` }}>
-        <span className="min-w-0 truncate text-[11px] font-medium uppercase tracking-[0.1em] text-fg-muted">{label}</span>
-        <span className="num shrink-0 text-[15px] font-semibold text-fg">{cards.length}</span>
-        {cost > 0 && <span className="num ml-auto shrink-0 text-[11px] text-fg-faint" title={AGENT_COST_NOTE}>${cost >= 100 ? Math.round(cost) : cost.toFixed(2)}</span>}
-      </header>
-      <ul className="flex min-h-[64px] flex-col gap-1.5 p-1.5">
-        {cards.length === 0 && <li className="px-1 py-2 text-[11.5px] text-fg-faint">Nothing here</li>}
-        {shown.map((c) => <Card key={c.number} c={c} now={now} onOpen={() => onOpen(c.number)} dim={unconfirmed || !!c.stale} />)}
-        {cards.length > shown.length && (
-          <li><button type="button" onClick={() => setAll(true)} className="w-full rounded-[6px] px-2 py-1 text-left text-[11.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">+{cards.length - shown.length} more</button></li>
-        )}
-      </ul>
-    </section>
-  )
-}
-
-/** A card drawn faint (`dim`) is not re-confirmed: the copy kept from
- *  before, or its checks from an earlier read (`stale`). */
-function Card({ c, now, onOpen, dim }: { c: BoardItem; now: number; onOpen: () => void; dim?: boolean }) {
-  const chip = ciChip(c)
-  const cost = costText(c.spend)
-  const title = c.pr?.title ?? `#${c.number}`
-  const since = c.stage_at ? spanText(Math.max(0, now - c.stage_at)) : ''
-  return (
-    <li>
-      <button type="button" data-board-card={c.number} data-board-unconfirmed={dim ? '' : undefined} onClick={onOpen}
-        title={`${title}${dim ? '\nNot re-confirmed: from an earlier read of GitHub' : ''}\nOpen #${c.number} in the list`}
-        className={`${dim ? 'opacity-55 ' : ''}flex w-full min-w-0 flex-col gap-1.5 rounded-[6px] border border-[var(--app-hairline)] bg-panel px-2 py-1.5 text-left shadow-[var(--shadow-panel)] hover:border-[var(--app-hairline-strong)] hover:bg-[var(--app-row-hover)]`}>
-        <span className="line-clamp-2 text-[12.5px] leading-[1.35] text-fg">{title}</span>
-        <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-fg-muted">
-          <span className="num shrink-0">#{c.number}</span>
-          {c.pr?.author && <GitHubPerson login={c.pr.author} url={c.pr.author_avatar} size={14} className="min-w-0" />}
-          {since && <span className="num ml-auto shrink-0 text-fg-faint" title={c.stage_at ? `In this stage since ${new Date(c.stage_at).toLocaleString()}` : undefined}>{since}</span>}
-        </span>
-        {(chip || c.release || cost || c.spend.live > 0) && (
-          <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px]">
-            {chip && <span data-board-ci={c.ci ?? 'unknown'} title={chip.title} className={`inline-flex h-[18px] items-center whitespace-nowrap rounded-full border px-1.5 ${CHIP[chip.tone]}`}>{chip.text}</span>}
-            {c.release && <span className="mono truncate text-accent" title={`Shipped in ${c.release}`}>{c.release}</span>}
-            {c.spend.live > 0 && (
-              <span data-board-live className="inline-flex items-center gap-1 whitespace-nowrap text-ok" title={`${c.spend.live} agent session${c.spend.live === 1 ? '' : 's'} running on it now`}>
-                <span aria-hidden className="inline-block h-[6px] w-[6px] rounded-full bg-ok" />{c.spend.live} {c.spend.live === 1 ? 'agent' : 'agents'}
-              </span>
-            )}
-            {cost && <span data-board-cost className="num ml-auto shrink-0 text-fg-muted" title={costTitle(c.spend)}>{cost}</span>}
-          </span>
-        )}
-      </button>
-    </li>
-  )
-}
-
 // ---------------------------------------------------------------- the releases
 
-function Releases({ releases, prs, now, onOpen }: { releases: BoardRelease[]; prs: BranchPR[]; now: number; onOpen: (n: number) => void }) {
+export function Releases({ releases, prs, now, onOpen }: { releases: BoardRelease[]; prs: BranchPR[]; now: number; onOpen: (n: number) => void }) {
   const byNum = new Map(prs.map((p) => [p.number, p]))
   return (
     <section data-board-releases aria-label="Releases" className="rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">

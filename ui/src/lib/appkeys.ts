@@ -26,7 +26,7 @@ export type AppCommand =
   | { kind: 'palette' }
   | { kind: 'inspector' }
   | { kind: 'deck' }
-  /** ⇧⌘B: the deck's Expand, or Collapse in the PRs & CI tab. */
+  /** ⇧⌘B: the Pipeline page in a tab, or, from it, back to the tab before. */
   | { kind: 'deck-expand' }
   | { kind: 'changes' }
   | { kind: 'sidebar' }
@@ -402,8 +402,8 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘[ ]', 'Previous and next pane'],
   ['⌘F', 'Find in the terminal'],
   ['⌘I', 'Inspector'],
-  ['⌘B', 'Session deck: the PRs & CI bar under the agent’s terminal, shown or hidden'],
-  ['⇧⌘B', 'PRs & CI as a full page in a tab; there, back to the bar'],
+  ['⌘B', 'Pipeline bar under the agent’s terminal, shown or hidden'],
+  ['⇧⌘B', 'Pipeline in a tab; there, back to the tab before'],
   ['⇧⌘G', 'Changes: the diff of the session in front'],
   ['⌘\\', 'Hide or show the sidebar'],
   ['⌘0, ⇧⌘D', 'Dashboard'],

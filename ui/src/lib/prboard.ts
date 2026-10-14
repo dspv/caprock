@@ -1,5 +1,5 @@
 /**
- * The PRs & CI tab's Board (components/PRBoard.tsx, .ai/21-app.md § PRs & CI
+ * The Pipeline page's Board (components/PRBoard.tsx, .ai/21-app.md § Pipeline
  * tab): the pull requests by the stage they are in, the releases they shipped
  * in, and the flow between. The daemon decides each card's stage
  * (internal/api/prboard.go); this file names the stages, reads the answer

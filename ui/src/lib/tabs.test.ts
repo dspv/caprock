@@ -347,7 +347,7 @@ describe('watched session tabs', () => {
   })
 })
 
-describe('the PRs & CI tab', () => {
+describe('the Pipeline tab', () => {
   const prs = (of: string): WorkspaceAction => ({ type: 'open', target: { kind: 'prs', sessionId: `prs:${of}`, of }, projectId: 'p1', title: `PRs & CI · ${of}` })
   it('opens once per session, is never split, and is restored from storage', () => {
     const ws = run(open('a'), prs('a'), open('b'), prs('a'))
@@ -357,6 +357,8 @@ describe('the PRs & CI tab', () => {
     expect(split.tabs).toHaveLength(4)
     const back = parseWorkspace(JSON.stringify(ws))
     expect(back.tabs.map((t) => focusedLeaf(t).target.kind)).toEqual(['session', 'prs', 'session'])
+    // Its title before the rename is restored under the new name.
+    expect(back.tabs[1]!.title).toBe('Pipeline · a')
     // A malformed one is dropped, not trusted.
     const bad = JSON.parse(JSON.stringify(ws)) as Workspace
     ;(bad.tabs[1]!.root as { target: { of?: string } }).target.of = 'other'

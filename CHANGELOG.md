@@ -38,6 +38,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   until you press **Send**, which sends those answers to caprock.dev and
   nothing else; *Not interested* and × send nothing, and an answered strip
   never returns.
+- **pipeline:** ⇧⌘B (Ctrl+Alt+Shift+B on Windows and Linux) opens the
+  Pipeline in a tab, or brings it to the front; pressed again there, it goes
+  back to the tab you were on. *Open Pipeline* is in ⌘K too.
+- **cockpit:** the CI block's *PRs* view shows the repository's pull
+  requests as thin progress bars toward a release — Open → CI → Merged →
+  Released, CI in its check colour — with each one's number, title and time
+  on its step. It scrolls; *Expand* makes it taller and is remembered;
+  *Pipeline ↗* opens the page.
 
 ### Fixed
 
@@ -78,6 +86,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   at once instead of on its next poll. Measured with a test agent: a
   prompt to *working* about 1 s → under 10 ms; an approved 15 s command
   16 s → under 10 ms.
+
+
+### Changed
+
+- **pipeline:** *PRs & CI* is now **Pipeline**, everywhere: the tab, the
+  sidebar footer, the palette, the deck. Tabs you had open come back under
+  the new name. The page is one list of pull requests instead of a board
+  and a list: each row its number, its whole title, its labels, and the
+  steps Open → CI → Merged → Released as pills, the one it is on
+  highlighted, then its agent cost. In flight first, then merged, then
+  released (ten, then *Show more*). Click a row for its detail over the
+  page; × or Esc closes it. The red-runs and Actions-minutes figures went
+  with the old list.
+- **app:** the sidebar footer's button is *Pipeline*: a click opens the page
+  or goes back from it. Showing or hiding the bar under the agent is now on
+  the bar itself (*Pipeline* and ×), ⌘B, and *Pipeline bar: On/Off* in ⌘K.
 
 ## [0.117.1] - 2026-10-14
 
