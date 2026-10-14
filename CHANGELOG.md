@@ -7,6 +7,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **cockpit:** put the sections in your own order. *Arrange sections*
+  under the last one lists them with ↑ and ↓ for each, *Reset to default
+  order* and *Done*; nothing moves by dragging a heading, so it never
+  happens by accident, and the order is kept for you.
+- **cockpit:** Subagents and Recent tools fold to one line on their label,
+  like Context and Plan, and stay folded or open as you left them.
+
+### Changed
+
+- **cockpit:** Recent tools says something. Each call shows what it acted
+  on — a file relative to the project, or a command's program and first
+  words instead of the variables set ahead of it — and how it ended: a
+  quiet ✓, *exit 1* or *error* in red, the time only when it was slow,
+  and how long ago. The same call repeated in a row is one row with ×N.
+  The bar beside each call is gone, and the count in the heading now says
+  what it counts (*31,713 this session*).
+
 ### Fixed
 
 - **app:** a tab's project name fits. It was cut at nine characters

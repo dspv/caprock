@@ -446,9 +446,19 @@ others. Installing it: [install-app.md](install-app.md).
   where it stood, and *Show* above them picks which of calls, cost, model
   and time each row carries, cost and time until you choose: click one to open it in place and read the
   task it was given, every call it makes as it makes them, what it
-  answered and what it cost), its last tool calls with how long each took, the uncommitted changes in
-  its checkout, and a warning when
-  it is repeating the same call. The permission prompt and its buttons sit
+  answered and what it cost), its last tool calls — each with the file it
+  touched (relative to the project) or the program a command ran, how it
+  ended (a quiet ✓, *exit 1* or *error* in red, the time it took when it
+  was slow, the clock running for the one running now) and how long ago,
+  the same call repeated in a row shown once with *×3* — the uncommitted
+  changes in its checkout, and a warning when
+  it is repeating the same call. Subagents and Recent tools fold to one
+  line on their label, like Context and Plan, and stay as you left them.
+  To put the sections in another order, click *Arrange sections* under
+  the last one: each section gets ↑ and ↓, *Reset to default order* puts
+  them back, and *Done* (or Esc) returns. Nothing moves by dragging a
+  heading, so it never happens by accident, and the order is kept for
+  you on this computer. The permission prompt and its buttons sit
   at the top while one waits. Click a changed file to read it in a tab
   (in a folder that is not a git repository, it opens in your editor at
   its first change). Beside a shell tab it shows the folder and its

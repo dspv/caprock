@@ -816,7 +816,6 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 @keyframes cockpitScan { from { transform: translateX(-60%); } to { transform: translateX(210%); } }
 [data-app] .cockpit-row + .cockpit-row { border-top: 1px solid color-mix(in srgb, var(--color-fg) 5%, transparent); }
 [data-app] .cockpit-row[data-live="true"] { animation: appFadeIn 220ms var(--app-ease); }
-[data-app] .cockpit-bar-live { animation: cockpitBreath 1.4s ease-in-out infinite; }
 @keyframes cockpitBreath { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 [data-app] .cockpit-spark-new { animation: cockpitBreath 2s ease-in-out 1; }
 /* The header's subagent strip: a tint per type, pulsing while it works. The
@@ -848,7 +847,7 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 @media (prefers-reduced-motion: reduce) {
   [data-app] .cockpit-subchip::after { animation: none !important; }
   [data-app] .cockpit-avatar::after, [data-app] .cockpit-avatar .cockpit-character, [data-app] .cockpit-dot::after,
-  [data-app] .cockpit-now::after, [data-app] .cockpit-row, [data-app] .cockpit-bar-live, [data-app] .cockpit-spark-new { animation: none !important; }
+  [data-app] .cockpit-now::after, [data-app] .cockpit-row, [data-app] .cockpit-spark-new { animation: none !important; }
   [data-app] .cockpit-fill { transition: none; }
 }
 /* The terminal slab: the terminal palette's ground, so anything drawn on it

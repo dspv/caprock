@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   summaries: {} as Record<string, Summary>,
   summaryAsked: [] as string[],
   overlap: { window_minutes: 30, sessions: {} } as unknown,
+  events: undefined as Event[] | undefined,
 }))
 
 vi.mock('@/lib/api', async (orig) => {
@@ -29,7 +30,7 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       subagents: async () => h.subagents,
       todos: async () => ({ items: [], updated_at: 0 }),
-      recentMainEvents: async (_id: string, kinds: string[]) => { h.mainAsked.push(kinds); return events },
+      recentMainEvents: async (_id: string, kinds: string[]) => { h.mainAsked.push(kinds); return h.events ?? events },
       permission: async () => ({ permission: h.permission }),
       sessionCalls: async () => [],
       overlap: async () => h.overlap,
@@ -52,6 +53,7 @@ vi.mock('@/lib/live', async (orig) => {
 import { Inspector } from './Inspector'
 import { resetSpendPrefsForTest } from '@/lib/spendview'
 import { LOOKS_KEY, getLooks, resetLooksForTest, setLook } from '@/lib/cockpitlooks'
+import { ORDER_KEY, resetOrderForTest } from '@/lib/cockpitorder'
 import { getSubagentFields, resetSubagentFieldsForTest, setSubagentFields } from '@/lib/subagentview'
 
 beforeEach(() => {
@@ -59,6 +61,8 @@ beforeEach(() => {
   resetSpendPrefsForTest()
   resetSubagentFieldsForTest()
   resetLooksForTest()
+  resetOrderForTest()
+  h.events = undefined
   h.summaries = {}
   h.summaryAsked = []
 })
@@ -155,7 +159,7 @@ describe('the agent cockpit', () => {
     expect(plan()).toHaveAttribute('data-look', 'full')
     expect(within(plan()).getByRole('meter', { name: '5 hours window used' })).toHaveAttribute('aria-valuenow', '41')
     expect(plan().querySelector('[data-window="5 hours"]')?.textContent).toMatch(/resets in/)
-    expect(JSON.parse(localStorage.getItem(LOOKS_KEY)!)).toEqual({ context: 'full', limits: 'full' })
+    expect(JSON.parse(localStorage.getItem(LOOKS_KEY)!)).toEqual({ context: 'full', limits: 'full', subagents: 'full', tools: 'full' })
     // A fresh page reads the choice back.
     unmount()
     resetLooksForTest()
@@ -169,10 +173,10 @@ describe('the agent cockpit', () => {
   it('falls back to compact when the stored looks are broken', () => {
     localStorage.setItem(LOOKS_KEY, '{not json')
     resetLooksForTest()
-    expect(getLooks()).toEqual({ context: 'compact', limits: 'compact' })
-    localStorage.setItem(LOOKS_KEY, JSON.stringify({ context: 'huge', limits: 'full' }))
+    expect(getLooks()).toEqual({ context: 'compact', limits: 'compact', subagents: 'full', tools: 'full' })
+    localStorage.setItem(LOOKS_KEY, JSON.stringify({ context: 'huge', limits: 'full', tools: 7 }))
     resetLooksForTest()
-    expect(getLooks()).toEqual({ context: 'compact', limits: 'full' })
+    expect(getLooks()).toEqual({ context: 'compact', limits: 'full', subagents: 'full', tools: 'full' })
     show(agent())
     expect(screen.getByRole('region', { name: 'Context' })).toHaveAttribute('data-look', 'compact')
     expect(screen.getByRole('region', { name: 'Plan limits' })).toHaveAttribute('data-look', 'full')
@@ -737,5 +741,160 @@ describe('a session sharing its checkout', () => {
     await act(async () => {})
     expect(screen.queryByText(/shares checkout/)).not.toBeInTheDocument()
     h.overlap = { window_minutes: 30, sessions: {} }
+  })
+})
+
+describe('the recent tool calls', () => {
+  const pre = (id: number, agoMs: number, tool: string, input: unknown, use: string): Event =>
+    ({ id, ts: iso(agoMs), session_id: 's1', source: 'hook', kind: 'tool.pre', tool, payload: { tool_use_id: use, tool_input: input } })
+  const post = (id: number, agoMs: number, tool: string, use: string, extra: Record<string, unknown> = {}): Event =>
+    ({ id, ts: iso(agoMs), session_id: 's1', source: extra.is_error ? 'transcript' : 'hook', kind: 'tool.post', tool, payload: { tool_use_id: use, ...extra } })
+
+  // "Honestly gives little information — the indicators say nothing, the
+  // time is clear, OK" (owner, 2026-10-14, translated).
+  it('says how each call ended, what it acted on, and folds repeats', async () => {
+    h.events = [
+      pre(1, 600_000, 'Bash', { command: 'S=/tmp/claude-501/x/scratchpad python3 /tmp/claude-501/x/scratchpad/shots.py --out a' }, 'a'),
+      post(2, 599_700, 'Bash', 'a'),
+      pre(3, 300_000, 'Read', { file_path: '/w/ui/src/lib/cockpit.ts' }, 'b'),
+      post(4, 299_900, 'Read', 'b'),
+      pre(5, 290_000, 'Read', { file_path: '/w/ui/src/lib/cockpit.ts' }, 'c'),
+      post(6, 289_900, 'Read', 'c'),
+      pre(7, 280_000, 'Read', { file_path: '/w/ui/src/lib/cockpit.ts' }, 'd'),
+      post(8, 279_900, 'Read', 'd'),
+      pre(9, 120_000, 'Bash', { command: 'cd /w && go test ./internal/api', description: 'Run the API tests' }, 'e'),
+      post(10, 80_000, 'Bash', 'e', { is_error: true, tool_response: 'Exit code 1\nFAIL github.com/x/internal/api' }),
+      pre(11, 2_000, 'Edit', { file_path: '/w/internal/session.go' }, 'f'),
+    ]
+    show(agent())
+    const list = screen.getByRole('region', { name: 'Recent tool calls' })
+    await within(list).findByText('internal/session.go')
+    const rows = within(list).getAllByRole('listitem')
+    expect(rows).toHaveLength(4)
+    const [edit, test, read, shot] = rows
+    // Running now: green elapsed time.
+    expect(edit).toHaveAttribute('data-tool-row', 'running')
+    // A failure: its exit code, the program and what it ran, not the cd.
+    expect(test).toHaveAttribute('data-tool-row', 'failed')
+    expect(test!.querySelector('[data-tool-target]')).toHaveTextContent(/^go test \.\/internal\/api$/)
+    expect(test!.querySelector('[data-tool-outcome]')).toHaveTextContent('exit 1')
+    expect(test!.querySelector('[data-tool-age]')).toHaveTextContent('1m')
+    expect(test).toHaveAttribute('title', expect.stringContaining('Run the API tests'))
+    // Three reads of one file in a row: one row, ×3, relative to the folder, a quiet ✓.
+    expect(read!.querySelector('[data-tool-target]')).toHaveTextContent(/^ui\/src\/lib\/cockpit\.ts$/)
+    expect(read!.querySelector('[data-tool-repeat]')).toHaveTextContent('×3')
+    expect(read!.querySelector('[data-tool-outcome]')).toHaveTextContent('✓')
+    expect(read!.querySelector('[data-tool-outcome]')).toHaveAttribute('aria-label', 'succeeded in 0.1s')
+    // The variable assignment ahead of the program is not the target.
+    expect(shot!.querySelector('[data-tool-target]')).toHaveTextContent(/^python3 …\/scratchpad\/shots\.py$/)
+    expect(shot).not.toHaveTextContent('S=/tmp')
+    // No bar; the heading says what the total counts, and the failures.
+    expect(list.querySelector('[role="meter"]')).toBeNull()
+    expect(list.querySelector('[data-tools-total]')).toHaveTextContent('40 this session')
+    expect(list.querySelector('[data-tools-failed]')).toHaveTextContent('1 failed')
+  })
+
+  it('shows a slow call’s duration and a quick one’s tick', async () => {
+    show(agent())
+    const list = screen.getByRole('region', { name: 'Recent tool calls' })
+    await within(list).findByText('Edit')
+    const bash = within(list).getAllByRole('listitem')[1]!
+    expect(bash).toHaveAttribute('data-tool-row', 'slow')
+    expect(bash.querySelector('[data-tool-outcome]')).toHaveTextContent('38s')
+  })
+})
+
+// "Subagents and Recent tools should be collapsible like Context, Plan,
+// Spend" (owner, 2026-10-14, translated).
+describe('folding Subagents and Recent tools', () => {
+  it('folds each on its label to one line, and remembers it', async () => {
+    h.subagents = {
+      working: [{ agent_id: 'a1', agent_type: 'Explore', description: 'Map the store', tool_calls: 4, started_at: now - 125_000, last_at: now - 1_000, tool: 'Read', detail: 'a.go', tool_at: now - 3_000, running: true, asking: false, cost_usd: 0.42 }],
+      finished: 2,
+      cost_usd: 0.42,
+    }
+    try {
+      const { unmount } = show(agent({ live_subagents: 1 }))
+      const subs = () => screen.getByRole('region', { name: 'Subagents' })
+      const tools = () => screen.getByRole('region', { name: 'Recent tool calls' })
+      await screen.findByRole('region', { name: 'Subagents' })
+      expect(subs()).toHaveAttribute('data-look', 'full')
+      expect(tools()).toHaveAttribute('data-look', 'full')
+      const subLabel = within(subs()).getByRole('button', { name: 'Subagents · 1' })
+      expect(subLabel).toHaveAttribute('aria-expanded', 'true')
+      fireEvent.click(subLabel)
+      expect(subs()).toHaveAttribute('data-look', 'compact')
+      expect(within(subs()).queryByRole('listitem')).toBeNull()
+      expect(subs().querySelector('[data-fold-summary]')).toHaveTextContent('2 finished$0.42')
+      await within(tools()).findByText('Edit')
+      fireEvent.click(within(tools()).getByRole('button', { name: 'Recent tools' }))
+      expect(tools()).toHaveAttribute('data-look', 'compact')
+      expect(within(tools()).queryByRole('listitem')).toBeNull()
+      expect(tools().querySelector('[data-fold-summary]')).toHaveTextContent(/^Editinternal\/session\.go/)
+      expect(JSON.parse(localStorage.getItem(LOOKS_KEY)!)).toMatchObject({ subagents: 'compact', tools: 'compact' })
+      unmount()
+      resetLooksForTest()
+      show(agent({ live_subagents: 1 }))
+      await screen.findByRole('region', { name: 'Subagents' })
+      expect(subs()).toHaveAttribute('data-look', 'compact')
+      expect(tools()).toHaveAttribute('data-look', 'compact')
+      // A chip under the agent opens its row: the section unfolds for it.
+      fireEvent.click(await screen.findByRole('button', { name: /Map the store.*Open/ }))
+      expect(subs()).toHaveAttribute('data-look', 'full')
+      fireEvent.click(within(tools()).getByRole('button', { name: 'Recent tools' }))
+      expect(tools()).toHaveAttribute('data-look', 'full')
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+})
+
+// "I want to be able to reorder the sections, but so it doesn't trigger by
+// accident — so everyone sets up what interests them" (owner, 2026-10-14,
+// translated).
+describe('arranging the cockpit', () => {
+  const regions = () => ['Now', 'Context', 'Plan limits', 'Spend', 'Recent tool calls']
+    .map((name) => screen.getByRole('region', { name }))
+    .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+    .map((r) => r.getAttribute('aria-label'))
+
+  it('moves a section only in Arrange mode, keeps the order, and resets it', () => {
+    const { unmount } = show(agent())
+    expect(regions()).toEqual(['Now', 'Context', 'Plan limits', 'Spend', 'Recent tool calls'])
+    expect(screen.queryByRole('button', { name: /Move .* up/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Arrange sections' }))
+    const arrange = screen.getByRole('region', { name: 'Arrange sections' })
+    // The sections give way to the list while arranging.
+    expect(screen.queryByRole('region', { name: 'Spend' })).toBeNull()
+    expect(within(arrange).getByRole('button', { name: 'Move Now up' })).toBeDisabled()
+    expect(within(arrange).getByRole('button', { name: 'Reset to default order' })).toBeDisabled()
+    within(arrange).getByRole('button', { name: 'Move Recent tools up' }).focus()
+    for (let i = 0; i < 5; i++) fireEvent.click(within(arrange).getByRole('button', { name: 'Move Recent tools up' }))
+    // The focus stays on the button pressed, so it can be pressed again.
+    expect(document.activeElement).toHaveAccessibleName('Move Recent tools up')
+    fireEvent.click(within(arrange).getByRole('button', { name: 'Move Spend up' }))
+    expect(within(arrange).getAllByRole('listitem').map((li) => li.textContent?.replace(/[↑↓\d]/g, ''))).toEqual(
+      ['Now', 'Recent tools', 'Context', 'Spend', 'Plan limits', 'Subagents', 'Tasks', 'Changes'])
+    expect(JSON.parse(localStorage.getItem(ORDER_KEY)!)).toEqual(['now', 'tools', 'context', 'spend', 'limits', 'subagents', 'tasks', 'changes'])
+    fireEvent.click(within(arrange).getByRole('button', { name: 'Done' }))
+    expect(regions()).toEqual(['Now', 'Recent tool calls', 'Context', 'Spend', 'Plan limits'])
+    // A fresh page reads the order back.
+    unmount()
+    resetOrderForTest()
+    show(agent())
+    expect(regions()).toEqual(['Now', 'Recent tool calls', 'Context', 'Spend', 'Plan limits'])
+    fireEvent.click(screen.getByRole('button', { name: 'Arrange sections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to default order' }))
+    expect(localStorage.getItem(ORDER_KEY)).toBeNull()
+    // Esc leaves, as Done does.
+    fireEvent.keyDown(screen.getByRole('region', { name: 'Arrange sections' }), { code: 'Escape' })
+    expect(screen.queryByRole('region', { name: 'Arrange sections' })).toBeNull()
+    expect(regions()).toEqual(['Now', 'Context', 'Plan limits', 'Spend', 'Recent tool calls'])
+  })
+
+  it('reads a broken stored order as the default', () => {
+    localStorage.setItem(ORDER_KEY, '{nope')
+    show(agent())
+    expect(regions()).toEqual(['Now', 'Context', 'Plan limits', 'Spend', 'Recent tool calls'])
   })
 })

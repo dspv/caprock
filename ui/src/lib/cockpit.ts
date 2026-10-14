@@ -23,6 +23,12 @@ export interface ToolRun {
   startMs: number
   endMs?: number
   failed: boolean
+  /** A failed command's exit code, where its result said one (*Exit code 1*, Codex's `exit_code`). */
+  exit?: number
+  /** The call was stopped before it finished (the hook's `tool_response.interrupted`, Codex's interrupted record). */
+  interrupted?: boolean
+  /** What the call was given, for the tool list's target (toolTarget). */
+  input?: unknown
 }
 
 /** One priced turn: what the model call cost. */
@@ -124,7 +130,7 @@ export function toolRuns(events: readonly Event[]): ToolRun[] {
     if (e.kind === 'tool.pre') {
       if (!tool) continue
       if (use && byUse.has(use)) continue
-      const run: ToolRun = { id: e.id, tool, kind: toolKind(tool), detail: toolDetail(tool, p.tool_input), startMs: msOf(e.ts), failed: false }
+      const run: ToolRun = { id: e.id, tool, kind: toolKind(tool), detail: toolDetail(tool, p.tool_input), startMs: msOf(e.ts), failed: false, input: p.tool_input }
       runs.push(run)
       if (use) byUse.set(use, run)
       else open.set(tool, [...(open.get(tool) ?? []), run])
@@ -137,6 +143,9 @@ export function toolRuns(events: readonly Event[]): ToolRun[] {
       if (!run || run.endMs !== undefined) continue
       run.endMs = Math.max(run.startMs, msOf(e.ts))
       run.failed = p.is_error === true
+      const how = resultOutcome(p)
+      if (how.exit !== undefined) run.exit = how.exit
+      if (how.interrupted) run.interrupted = true
     }
   }
   return runs
@@ -210,11 +219,180 @@ export function fmtRun(ms: number): string {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
 }
 
-/** A duration's share of the bar beside it: log-scaled, so a 40 s build and a 0.3 s read both show. */
-export function runShare(ms: number, maxMs: number): number {
-  if (!(ms > 0) || !(maxMs > 0)) return 0
-  const v = Math.log10(1 + ms / 100) / Math.log10(1 + maxMs / 100)
-  return Math.max(0.04, Math.min(1, v))
+/** A finished call this long or longer shows its duration in the tool list; a quicker one only its outcome. */
+export const SLOW_MS = 5_000
+
+/** The start of a call's result as text: a string, the first text block, or a shell's stderr. */
+function resultText(r: unknown): string {
+  if (typeof r === 'string') return r
+  if (Array.isArray(r)) {
+    for (const b of r) {
+      const t = (b as { text?: unknown } | null)?.text
+      if (typeof t === 'string') return t
+    }
+    return ''
+  }
+  if (r && typeof r === 'object') {
+    const o = r as Record<string, unknown>
+    return str(o.content) || str(o.error) || str(o.stderr)
+  }
+  return ''
+}
+
+/**
+ * What a `tool.post` says beyond success: a failed command's exit code
+ * (Claude Code's transcript writes *Exit code 1* at the head of an erroring
+ * Bash result; Codex records `exit_code`), and whether the call was stopped.
+ */
+export function resultOutcome(p: Record<string, unknown>): { exit?: number; interrupted?: boolean } {
+  const out: { exit?: number; interrupted?: boolean } = {}
+  if (typeof p.exit_code === 'number' && Number.isFinite(p.exit_code) && p.exit_code !== 0) out.exit = p.exit_code
+  const r = p.tool_response
+  if (p.interrupted === true || (r && typeof r === 'object' && !Array.isArray(r) && (r as { interrupted?: unknown }).interrupted === true)) out.interrupted = true
+  if (p.is_error === true && out.exit === undefined) {
+    const m = /^\s*(?:Error:\s*)?Exit code (\d+)/i.exec(resultText(r).slice(0, 200))
+    if (m) out.exit = Number(m[1])
+  }
+  return out
+}
+
+function slashes(p: string): string {
+  return p.replace(/\\/g, '/')
+}
+
+/**
+ * A file as the tool list names it: relative to the session's folder when it
+ * is inside it (*ui/src/lib/cockpit.ts*), else its last two parts
+ * (*…/scratchpad/shots.py*). A long relative path keeps its first folder
+ * and its last two parts (*ui/…/components/Cockpit.tsx*), so the file's
+ * name is never the part cut.
+ */
+export function shortPath(path: string, cwd?: string): string {
+  const p = slashes(path)
+  const root = slashes(cwd ?? '').replace(/\/+$/, '')
+  // Windows paths compare without case.
+  const fold = /^[A-Za-z]:/.test(p) ? (x: string) => x.toLowerCase() : (x: string) => x
+  const rel = root && fold(p).startsWith(fold(root) + '/') ? p.slice(root.length + 1) : ''
+  const parts = (rel || p).split('/').filter(Boolean)
+  if (!rel) return parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : parts.join('/') || path
+  if (rel.length <= 40 || parts.length <= 3) return rel
+  return `${parts[0]}/…/${parts.slice(-2).join('/')}`
+}
+
+/** Shell words that run the next word rather than being the program. */
+const WRAPPERS = new Set(['env', 'sudo', 'time', 'exec', 'nohup', 'command', 'xargs'])
+/** Flags whose value is a folder, not something the command acts on. */
+const DIR_FLAGS = new Set(['-C', '--prefix', '--cwd', '--dir', '--manifest-path'])
+
+function isAbs(w: string): boolean {
+  return w.startsWith('/') || /^[A-Za-z]:[\\/]/.test(w)
+}
+
+/**
+ * What a command line runs, as a person would name it: its program and the
+ * first two words it acts on (*go test ./internal/api*, *git commit*,
+ * *python3 shots.py*). Leading `cd`, `set -e`, variable assignments
+ * (`S=/private/tmp/… python3 …`) and `env`/`sudo` are skipped, as is
+ * everything after a pipe; redirections are left out, a flag after the
+ * first word and quoted text end it, and an absolute path reads as
+ * shortPath does.
+ */
+export function commandTarget(cmd: string, cwd?: string): string {
+  const parts = cmd.split(/\n|;|&&|\|\|/).map((x) => x.trim()).filter(Boolean)
+  const setup = (x: string) => /^(export\s+)?[A-Za-z_][A-Za-z0-9_]*=\S*$/.test(x) || /^(cd|pushd|popd)(\s|$)/.test(x) || /^set\s+[-+]\w+$/.test(x)
+  const first = parts.find((x) => !setup(x))
+  if (!first) return ''
+  const words = first.split(/\s\|(?:\s|$)/)[0]!.trim().split(/\s+/)
+  let i = 0
+  while (i < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]!) || WRAPPERS.has(words[i]!))) i++
+  const prog = words[i]
+  if (!prog) return ''
+  const out = [base(prog.replace(/^['"]|['"]$/g, ''))]
+  for (let j = i + 1; j < words.length && out.length < 3; j++) {
+    const w = words[j]!
+    if (DIR_FLAGS.has(w)) { j++; continue }
+    // A redirection and its file: `> out.txt`, `2>/dev/null`, `<<EOF`.
+    if (/^\d*[<>]+&?$/.test(w)) { j++; continue }
+    if (/^\d*[<>]/.test(w)) continue
+    // A flag before the first word is skipped (`python3 -m pytest`); after
+    // it, what follows is the flags' business (`shots.py --out a`).
+    if (w.startsWith('-')) { if (out.length > 1) break; continue }
+    if (/^['"$`(]/.test(w)) break
+    out.push(isAbs(w) ? shortPath(w, cwd) : w)
+  }
+  return oneLine(out.join(' '), 48)
+}
+
+/**
+ * The target the tool list shows for a call: a file relative to the
+ * session's folder, a command as commandTarget names it, a search's pattern
+ * in quotes, a page's host and path; else the short line the call already
+ * carries (toolDetail).
+ */
+export function toolTarget(r: Pick<ToolRun, 'tool' | 'detail' | 'input'>, cwd?: string): string {
+  const i = (r.input && typeof r.input === 'object' && !Array.isArray(r.input) ? r.input : {}) as Record<string, unknown>
+  const file = str(i.file_path) || str(i.notebook_path) || str(i.filePath)
+  if (file) return shortPath(file, cwd)
+  const cmd = toolCommand(r.tool, r.input)
+  if (cmd) return commandTarget(cmd, cwd) || r.detail
+  const pattern = str(i.pattern)
+  if (pattern) return `'${oneLine(pattern, 40)}'`
+  const url = str(i.url)
+  if (url) {
+    try {
+      const u = new URL(url)
+      return oneLine(u.host.replace(/^www\./, '') + (u.pathname === '/' ? '' : u.pathname), 48)
+    } catch { /* not a URL: the detail */ }
+  }
+  if (!str(i.query) && str(i.path)) return shortPath(str(i.path), cwd)
+  return r.detail
+}
+
+/** One row of the tool list: the newest of `count` calls in a row with the same tool, target and outcome. */
+export interface ToolGroup {
+  run: ToolRun
+  count: number
+  target: string
+  /** The group's calls together, start to end, for the hover. */
+  totalMs: number
+}
+
+/**
+ * The newest calls as the tool list draws them, newest first, at most `rows`:
+ * a run of finished calls with the same tool, target and outcome in a row
+ * is one row with ×N (a Read of the same file five times, a test run
+ * retried); a running or stopped call is never folded into another.
+ */
+export function toolGroups(runs: readonly ToolRun[], rows: number, cwd?: string): ToolGroup[] {
+  const out: ToolGroup[] = []
+  for (let k = runs.length - 1; k >= 0; k--) {
+    const r = runs[k]!
+    const target = toolTarget(r, cwd)
+    const ms = r.endMs !== undefined ? Math.max(0, r.endMs - r.startMs) : 0
+    const last = out[out.length - 1]
+    if (last && r.endMs !== undefined && last.run.endMs !== undefined && last.run.tool === r.tool && last.target === target
+      && last.run.failed === r.failed && last.run.exit === r.exit && !last.run.interrupted && !r.interrupted) {
+      last.count++
+      last.totalMs += ms
+      continue
+    }
+    if (out.length === rows) break
+    out.push({ run: r, count: 1, target, totalMs: ms })
+  }
+  return out
+}
+
+/** "now", "12s", "4m", "3h", "2d": how long ago, short enough for a column. */
+export function fmtAge(ms: number): string {
+  if (!(ms >= 0)) return ''
+  const s = Math.floor(ms / 1000)
+  if (s < 5) return 'now'
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  if (h < 48) return `${h}h`
+  return `${Math.floor(h / 24)}d`
 }
 
 /** The verb a running call is described by. */
