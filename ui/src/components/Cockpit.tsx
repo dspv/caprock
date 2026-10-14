@@ -11,7 +11,7 @@
  * and the day's summary for the plan windows. Nothing here is estimated, and a
  * figure an agent does not report is left out rather than drawn as a zero.
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { Fragment, createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { api, type Event, type Permission, type RateWindow, type SessionSummary, type Subagent, type SubagentDone, type SubagentsNow, type Summary } from '@/lib/api'
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
@@ -22,6 +22,7 @@ import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
 import { PlanChip } from './PlanPicker'
 import { setLook, useLooks } from '@/lib/cockpitlooks'
+import { DEFAULT_ORDER, SECTION_NAMES, isDefaultOrder, moveSection, setOrder, useSectionOrder, type CockpitSection } from '@/lib/cockpitorder'
 import { useSessionPlan, windowsOf, type SessionPlan } from './AccountPlan'
 import { WINDOW_MS, pace } from '@/lib/pace'
 import { SessionChart, SpendBars, SpendChart, useSessionBars } from './SpendScrub'
@@ -42,8 +43,8 @@ import { sessionTitle } from '@/lib/sidebar'
 import { orderSubagents, presetOf, setSubagentFields, useSubagentFields, SUBAGENT_FIELDS, SUBAGENT_PRESETS, type SubagentFields } from '@/lib/subagentview'
 import { SubagentDetail } from './SubagentDetail'
 import {
-  askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns,
-  type CockpitState, type SubagentChip, type ToolRun,
+  askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtAge, fmtRun, planWindowsFor, requester, runningTool, runVerb, subagentWaiting, toolGroups, toolKind, toolRuns, RUNNING_STALE_MS, SLOW_MS,
+  type CockpitState, type SubagentChip, type ToolGroup, type ToolRun,
 } from '@/lib/cockpit'
 
 const TIMELINE_ROWS = 7
@@ -110,13 +111,17 @@ const STATE_TEXT: Record<CockpitState, string> = {
 }
 
 /** The cockpit's sections below the permission card, in reading order. */
-export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
+export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, processes }: {
   s: SessionSummary
   sessionId: string
   hasPermission: boolean
   summary?: Summary
   /** The working tree's changes, drawn by the inspector (it owns the diff fetch). */
   changes?: ReactNode
+  /** The session's pull requests and their checks (CockpitCI), placed and folded with the rest. */
+  ci?: ReactNode
+  /** The session's busiest processes (ResourceMeter's Processes), likewise. */
+  processes?: ReactNode
 }) {
   // Held once per session and shared with the session deck (lib/sessionEvents.ts).
   const main = useSessionEvents(sessionId)
@@ -134,7 +139,8 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const [reveal, setReveal] = useState(0)
   // Claude Code is the agent with subagents Caprock hears from.
   const subs = useSubagents(sessionId, state !== 'ended' && (s.agent ?? 'claude') === 'claude', allFinished ? FINISHED_OPEN : 0)
-  const openFromChip = (id: string) => { setOpenSub(id); setReveal((n) => n + 1) }
+  // A chip opens its subagent's row, unfolding the section if it was folded.
+  const openFromChip = (id: string) => { setLook('subagents', 'full'); setOpenSub(id); setReveal((n) => n + 1) }
   const running = state === 'working' || state === 'looping' ? runningTool(runs, now) : undefined
   // A session on one of the user's subscriptions shows that account's
   // windows and plan; the day's summary carries the own sign-in's.
@@ -149,27 +155,162 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   // compact or like now, plan and limits too", translated), then the spend
   // chart (owner, 2026-10-13: "I like looking at it", picked from three
   // places), its subagents, its task list.
+  // That is the default; each viewer can put the sections in another order
+  // in Arrange mode (owner, 2026-10-14, translated: "so everyone sets up
+  // what interests them"). The agent's own block stays on top.
+  const order = useSectionOrder()
+  const [arranging, setArranging] = useState(false)
+  const sections: Record<CockpitSection, ReactNode> = {
+    now: (
+      <>
+        <Foldable id="now"><NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} /></Foldable>
+        {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
+        <CheckoutShared s={s} live={state !== 'ended'} />
+      </>
+    ),
+    context: <ContextMeter s={s} />,
+    limits: plan ? <PlanWindows limits={plan} agent={s.agent} now={now} acct={acct} /> : null,
+    spend: <Spend s={s} sessionId={sessionId} events={main} now={now} figures={figures} summary={summary} />,
+    subagents: subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) ? (
+      <Subagents subs={subs} permission={permission} now={now} sessionId={sessionId} open={openSub} onOpen={setOpenSub}
+        allFinished={allFinished} onAllFinished={setAllFinished} reveal={reveal} />
+    ) : null,
+    tasks: <Foldable id="tasks"><TodoBlock sessionId={sessionId} /></Foldable>,
+    tools: <Timeline runs={runs} total={s.stats?.tool_calls} now={now} cwd={s.cwd} />,
+    changes: changes ? <Foldable id="changes">{changes}</Foldable> : null,
+    ci: ci ? <Foldable id="ci">{ci}</Foldable> : null,
+    processes: processes ? <Foldable id="processes">{processes}</Foldable> : null,
+  }
   return (
     <>
       <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} />
-      <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
-      {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
-      <CheckoutShared s={s} live={state !== 'ended'} />
-      <ContextMeter s={s} />
-      {plan && <PlanWindows limits={plan} agent={s.agent} now={now} acct={acct} />}
-      <Spend s={s} sessionId={sessionId} events={main} now={now} figures={figures} summary={summary} />
-      {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && (
-        <Subagents subs={subs} permission={permission} now={now} sessionId={sessionId} open={openSub} onOpen={setOpenSub}
-          allFinished={allFinished} onAllFinished={setAllFinished} reveal={reveal} />
-      )}
-      <TodoBlock sessionId={sessionId} />
-      <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
-      {changes}
+      {arranging
+        ? <ArrangeSections order={order} onDone={() => setArranging(false)} />
+        : order.map((id) => <Fragment key={id}>{sections[id]}</Fragment>)}
+      {!arranging && <ArrangeButton onArrange={() => setArranging(true)} />}
     </>
   )
 }
 
+/**
+ * The quiet way into Arrange mode, under the last section: the order never
+ * changes from a stray click or a drag on a heading, only here.
+ */
+function ArrangeButton({ onArrange }: { onArrange: () => void }) {
+  return (
+    <div className="flex justify-end">
+      <button type="button" onClick={onArrange} data-arrange-open title="Change the order of the cockpit's sections"
+        className="flex items-center gap-1 rounded-[5px] px-1 text-[11px] leading-[16px] text-fg-faint outline-none hover:bg-panel-2 hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+        <svg aria-hidden width="11" height="11" viewBox="0 0 12 12" className="shrink-0">
+          <path d="M4 1.5v9M4 1.5L2 3.5M4 1.5l2 2M8 10.5v-9M8 10.5l-2-2M8 10.5l2-2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        Arrange sections
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Arrange mode: the sections under the agent as a short list, each with ↑
+ * and ↓, *Reset to default order* and *Done* (Esc too). No dragging: a
+ * section moves one place per press, with the keyboard as with the
+ * pointer, and the focus stays on the button pressed so pressing it again
+ * moves it on. Every move is kept at once, per viewer (lib/cockpitorder).
+ */
+function ArrangeSections({ order, onDone }: { order: readonly CockpitSection[]; onDone: () => void }) {
+  const box = useRef<HTMLElement>(null)
+  // The button to give the focus back to after a move re-orders the list.
+  const refocus = useRef<{ id: CockpitSection; by: -1 | 1 } | null>(null)
+  useLayoutEffect(() => {
+    const want = refocus.current
+    refocus.current = null
+    if (!want) return
+    const row = box.current?.querySelector(`[data-arrange-row="${want.id}"]`)
+    const same = row?.querySelector<HTMLButtonElement>(`[data-move="${want.by}"]`)
+    const other = row?.querySelector<HTMLButtonElement>(`[data-move="${-want.by}"]`)
+    ;(same && !same.disabled ? same : other)?.focus()
+  }, [order])
+  useEffect(() => {
+    box.current?.querySelector<HTMLButtonElement>('[data-move]:not(:disabled)')?.focus()
+  }, [])
+  const move = (id: CockpitSection, by: -1 | 1) => {
+    refocus.current = { id, by }
+    setOrder(moveSection(order, id, by))
+  }
+  const btn = 'grid h-[22px] w-[24px] place-items-center rounded-[5px] text-[12px] text-fg-muted outline-none hover:bg-panel-2 hover:text-fg focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] disabled:opacity-30 disabled:hover:bg-transparent'
+  return (
+    <section ref={box} aria-label="Arrange sections" data-arranging className="grid gap-2 rounded-[10px] border border-[var(--app-hairline)] p-2.5"
+      onKeyDown={(e) => { if (e.code === 'Escape') { e.preventDefault(); onDone() } }}>
+      <div className="flex items-baseline gap-2">
+        <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Arrange sections</h4>
+        <span className="ml-auto text-[11px] text-fg-faint">kept for you on this computer</span>
+      </div>
+      <ol aria-label="Section order" className="grid">
+        {order.map((id, i) => (
+          <li key={id} data-arrange-row={id} className="cockpit-row flex items-center gap-1 py-[3px]">
+            <span className="num w-[16px] shrink-0 text-[11px] text-fg-faint">{i + 1}</span>
+            <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg">{SECTION_NAMES[id]}</span>
+            <button type="button" data-move="-1" disabled={i === 0} onClick={() => move(id, -1)} aria-label={`Move ${SECTION_NAMES[id]} up`} title="Move up" className={btn}>↑</button>
+            <button type="button" data-move="1" disabled={i === order.length - 1} onClick={() => move(id, 1)} aria-label={`Move ${SECTION_NAMES[id]} down`} title="Move down" className={btn}>↓</button>
+          </li>
+        ))}
+      </ol>
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={isDefaultOrder(order)} onClick={() => setOrder(DEFAULT_ORDER)}
+          className="rounded-[5px] px-1 text-[11.5px] text-fg-muted outline-none hover:bg-panel-2 hover:text-fg focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] disabled:opacity-40 disabled:hover:bg-transparent">
+          Reset to default order
+        </button>
+        <button type="button" onClick={onDone}
+          className="ml-auto rounded-[6px] border border-[var(--app-hairline)] px-2.5 py-0.5 text-[12px] font-medium text-fg outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+          Done
+        </button>
+      </div>
+    </section>
+  )
+}
+
+/** A section the cockpit folds for it: its SectionLabel becomes the chevron that folds it. */
+const FoldCtx = createContext<{ full: boolean; toggle: () => void } | null>(null)
+
+/**
+ * Folds a section that has no fold of its own (Now, Tasks, Changes, CI,
+ * Processes) the way Context and Plan fold: its label turns into the same
+ * chevron button, and folded, everything under the label row is hidden by
+ * `[data-folded]` in tokens.css, so the figures the label carries at its
+ * right (*3 of 7 done*, *4 min ago*, *12% · 210 MB*) are its one line.
+ * Kept per viewer with the other looks (lib/cockpitlooks).
+ */
+function Foldable({ id, children }: { id: 'now' | 'tasks' | 'changes' | 'ci' | 'processes'; children: ReactNode }) {
+  const looks = useLooks()
+  const full = looks[id] === 'full'
+  const ctx = useMemo(() => ({ full, toggle: () => setLook(id, full ? 'compact' : 'full') }), [id, full])
+  return (
+    <FoldCtx.Provider value={ctx}>
+      <div data-fold={id} data-folded={full ? undefined : ''} className="grid min-w-0 grid-cols-[minmax(0,1fr)]">{children}</div>
+    </FoldCtx.Provider>
+  )
+}
+
+/** Whether the section this is drawn in is folded by the cockpit: what its label carries then. */
+export function useFolded(): boolean {
+  const fold = useContext(FoldCtx)
+  return !!fold && !fold.full
+}
+
 export function SectionLabel({ children, right }: { children: ReactNode; right?: ReactNode }) {
+  const fold = useContext(FoldCtx)
+  if (fold) {
+    return (
+      <div data-section-head className="flex min-w-0 items-center gap-2">
+        <button type="button" aria-expanded={fold.full} onClick={fold.toggle} title={fold.full ? 'Fold this section to one line' : 'Show the whole section'}
+          className="-mx-1 flex min-w-0 shrink-0 items-center gap-1 rounded-[6px] px-1 py-0.5 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+          <Chevron open={fold.full} />
+          <h4 className="truncate text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">{children}</h4>
+        </button>
+        {right && <div className="ml-auto flex min-w-0 items-baseline gap-2 text-[11.5px]">{right}</div>}
+      </div>
+    )
+  }
   return (
     <div className="flex items-baseline gap-2">
       <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">{children}</h4>
@@ -866,9 +1007,16 @@ function NowDoing({ s, state, running, last, permission, background, now }: {
     verb = s.activity?.phrase ? capital(s.activity.phrase) : 'Nothing running'
   }
   const plan = s.activity?.plan
+  const folded = useFolded()
   return (
     <section aria-label="Now" className="grid gap-2">
-      <SectionLabel right={plan && plan.total > 0 ? <span className="num text-fg-muted" title={plan.next ? `Next: ${plan.next}` : undefined}>plan {plan.done}/{plan.total}</span> : undefined}>Now</SectionLabel>
+      <SectionLabel right={(
+        <>
+          {/* Folded, the section's one line: what it is doing. */}
+          {folded && <span data-fold-only className="min-w-0 truncate text-fg-muted" title={detail || verb}>{verb}</span>}
+          {plan && plan.total > 0 ? <span className="num shrink-0 text-fg-muted" title={plan.next ? `Next: ${plan.next}` : undefined}>plan {plan.done}/{plan.total}</span> : null}
+        </>
+      )}>Now</SectionLabel>
       <div className="cockpit-now flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2" data-state={state} data-running={running ? 'true' : undefined}>
         <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[7px] bg-[var(--app-row-active)]">{icon}</span>
         <span className="grid min-w-0 flex-1 leading-tight">
@@ -939,11 +1087,26 @@ function Subagents({ subs, permission, now, sessionId, open, onOpen, allFinished
     row?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
   }, [reveal, open])
   const toggle = (id: string) => onOpen(open === id ? null : id)
+  const { subagents: look } = useLooks()
+  const cost = typeof subs.cost_usd === 'number' && <span className="num text-fg-muted" title="What every subagent of this session has cost">{fmtUSD(subs.cost_usd)}</span>
+  if (look === 'compact') {
+    // Folded: the heading and one line of what is in it.
+    return (
+      <section aria-label="Subagents" data-look="compact" className="flex min-w-0 items-center gap-2">
+        <LookLabel name="Subagents" full={false} onToggle={() => setLook('subagents', 'full')}>Subagents · {subs.working.length}</LookLabel>
+        <span data-fold-summary className="num ml-auto flex min-w-0 items-baseline gap-2 truncate whitespace-nowrap text-[11.5px] text-fg-faint">
+          {subs.finished > 0 && <span>{subs.finished} finished</span>}
+          {cost}
+        </span>
+      </section>
+    )
+  }
   return (
-    <section ref={box} aria-label="Subagents" className="grid gap-2">
-      <SectionLabel right={
-        <>
-          {typeof subs.cost_usd === 'number' && <span className="num text-fg-muted" title="What every subagent of this session has cost">{fmtUSD(subs.cost_usd)}</span>}
+    <section ref={box} aria-label="Subagents" data-look="full" className="grid gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <LookLabel name="Subagents" full onToggle={() => setLook('subagents', 'compact')}>Subagents · {subs.working.length}</LookLabel>
+        <div className="ml-auto flex items-baseline gap-2 text-[11.5px]">
+          {cost}
           {(moreDone > 0 || allFinished) && subs.finished > 0 && (
             <button type="button" onClick={() => onAllFinished(!allFinished)} aria-expanded={allFinished}
               className="rounded-[4px] text-fg-faint outline-none hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
@@ -951,10 +1114,8 @@ function Subagents({ subs, permission, now, sessionId, open, onOpen, allFinished
             </button>
           )}
           <SubagentShow fields={fields} />
-        </>
-      }>
-        Subagents · {subs.working.length}
-      </SectionLabel>
+        </div>
+      </div>
       {rows.length > 0 && (
         <ul aria-label="Subagent rows" className="grid gap-1">
           {rows.map((r) => {
@@ -1276,31 +1437,106 @@ function WindowBar({ label, w, lenMs, now, source, forecasts }: { label: string;
   )
 }
 
-function Timeline({ runs, total, now }: { runs: ToolRun[]; total?: number; now: number }) {
-  const rows = runs.slice(-TIMELINE_ROWS).reverse()
-  const durations = rows.map((r) => Math.max(0, (r.endMs ?? now) - r.startMs))
-  const max = Math.max(...durations, 1)
+/** A tool's name as the list writes it: an MCP tool as *server·tool*. */
+function toolName(tool: string): string {
+  return tool.startsWith('mcp__') ? tool.replace(/^mcp__(.+?)__/, '$1·') : tool
+}
+
+type OutcomeState = 'running' | 'lost' | 'failed' | 'stopped' | 'slow' | 'ok'
+
+/** How a call ended, in the words and tone the list uses for it. */
+function outcomeOf(r: ToolRun, now: number): { text: string; words: string; tone: string; state: OutcomeState } {
+  if (r.endMs === undefined) {
+    const ms = Math.max(0, now - r.startMs)
+    return ms < RUNNING_STALE_MS
+      ? { text: fmtRun(ms), words: `running for ${fmtRun(ms)}`, tone: 'text-ok', state: 'running' }
+      : { text: 'no result', words: 'no result was recorded', tone: 'text-fg-faint', state: 'lost' }
+  }
+  const ms = Math.max(0, r.endMs - r.startMs)
+  if (r.failed) {
+    const text = r.exit !== undefined ? `exit ${r.exit}` : 'error'
+    return { text, words: `failed${r.exit !== undefined ? ` with exit code ${r.exit}` : ''} after ${fmtRun(ms)}`, tone: 'text-danger', state: 'failed' }
+  }
+  if (r.interrupted) return { text: 'stopped', words: `stopped after ${fmtRun(ms)}`, tone: 'text-fg-muted', state: 'stopped' }
+  if (ms >= SLOW_MS) return { text: fmtRun(ms), words: `succeeded in ${fmtRun(ms)}`, tone: 'text-fg-muted', state: 'slow' }
+  return { text: '✓', words: `succeeded in ${fmtRun(ms)}`, tone: 'text-fg-faint', state: 'ok' }
+}
+
+/** A row's hover: the call in full, what Claude said it does, how it went, and when. */
+function groupTitle(g: ToolGroup, now: number): string {
+  const r = g.run
+  const input = (r.input && typeof r.input === 'object' ? r.input : {}) as Record<string, unknown>
+  const full = typeof input.command === 'string' ? input.command.split('\n')[0]! : typeof input.file_path === 'string' ? input.file_path : r.detail
+  const said = typeof input.description === 'string' && input.description !== full ? input.description : ''
+  const times = g.count > 1 ? ` · ${g.count} times in a row, ${fmtRun(g.totalMs)} in all` : ''
+  return [`${toolName(r.tool)} ${full}`.trim(), said, `${outcomeOf(r, now).words}${times} · ${new Date(r.startMs).toLocaleTimeString()}`].filter(Boolean).join('\n')
+}
+
+/**
+ * The main thread's newest calls, newest first, one row each: the kind's
+ * glyph, the tool and what it acted on — a file relative to the session's
+ * folder, a command's program and first words past its `cd` and variable
+ * assignments (lib/cockpit toolTarget) — then how it ended and how long
+ * ago. How it ended is the column that says something (owner, 2026-10-14,
+ * translated: "honestly gives little information — the indicators say
+ * nothing"): a faint ✓ for a quick success, the duration for a call of five
+ * seconds or more, *exit 1* or *error* in red for a failure, *stopped*, the
+ * running time in green for the call running now. The same call repeated in
+ * a row is one row with ×N. The heading counts the failures among the rows
+ * and every call the session has made (its subagents' included). It folds
+ * on its label to one line, the newest call, like Context and Plan.
+ */
+function Timeline({ runs, total, now, cwd }: { runs: ToolRun[]; total?: number; now: number; cwd?: string }) {
+  const { tools: look } = useLooks()
+  const groups = useMemo(() => toolGroups(runs, TIMELINE_ROWS, cwd), [runs, cwd])
+  const failed = groups.reduce((n, g) => n + (g.run.failed ? g.count : 0), 0)
+  const scope = typeof total === 'number' && total > 0
+    ? <span data-tools-total className="num text-fg-faint" title="Every tool call this session has made, its subagents' included">{total.toLocaleString('en-US')} this session</span>
+    : null
+  if (look === 'compact') {
+    const g = groups[0]
+    const how = g ? outcomeOf(g.run, now) : undefined
+    return (
+      <section aria-label="Recent tool calls" data-look="compact" className="flex min-w-0 items-center gap-2">
+        <LookLabel name="Recent tools" full={false} onToggle={() => setLook('tools', 'full')} />
+        {g && how ? (
+          <span data-fold-summary className="flex min-w-0 flex-1 items-baseline justify-end gap-1.5 whitespace-nowrap text-[11.5px]" title={groupTitle(g, now)}>
+            <span className="min-w-0 truncate text-fg-muted">{toolName(g.run.tool)}{g.target && <span className="mono ml-1 text-[11px] text-fg-faint">{g.target}</span>}</span>
+            <span className={`num shrink-0 ${how.tone}`}>{how.text}</span>
+            <span className="num shrink-0 text-fg-faint">{fmtAge(now - (g.run.endMs ?? g.run.startMs))}</span>
+          </span>
+        ) : <span className="ml-auto text-[11.5px] text-fg-faint">none yet</span>}
+      </section>
+    )
+  }
   return (
-    <section aria-label="Recent tool calls" className="grid gap-2">
-      <SectionLabel right={typeof total === 'number' && total > 0 ? <span className="num text-fg-faint">{total} in all</span> : undefined}>Recent tools</SectionLabel>
-      {rows.length === 0 ? (
+    <section aria-label="Recent tool calls" data-look="full" className="grid gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <LookLabel name="Recent tools" full onToggle={() => setLook('tools', 'compact')} />
+        <span className="ml-auto flex items-baseline gap-2 text-[11.5px]">
+          {failed > 0 && <span data-tools-failed className="num text-danger" title="Failed calls among the rows below">{failed} failed</span>}
+          {scope}
+        </span>
+      </div>
+      {groups.length === 0 ? (
         <p className="text-[11.5px] text-fg-faint">No tool calls yet.</p>
       ) : (
         <ol className="grid">
-          {rows.map((r, i) => {
-            const ms = durations[i]!
-            const live = r.endMs === undefined
+          {groups.map((g) => {
+            const r = g.run
+            const how = outcomeOf(r, now)
+            const live = how.state === 'running'
             return (
-              <li key={r.id} className="cockpit-row grid grid-cols-[18px_minmax(0,1fr)_34px_42px] items-center gap-2 py-[5px]" data-live={live ? 'true' : undefined} title={`${r.tool}${r.detail ? ` — ${r.detail}` : ''} · ${new Date(r.startMs).toLocaleTimeString()}`}>
-                <span className={`grid place-items-center ${r.failed ? 'text-danger' : r.kind === 'edit' ? 'text-accent' : 'text-fg-muted'}`}><KindIcon kind={r.kind} size={14} /></span>
-                <span className="min-w-0 truncate text-[12px]">
-                  <span className={r.failed ? 'text-danger' : 'text-fg'}>{r.tool.startsWith('mcp__') ? r.tool.replace(/^mcp__(.+?)__/, '$1·') : r.tool}</span>
-                  {r.detail && <span className="mono ml-1.5 text-[11px] text-fg-muted">{r.detail}</span>}
+              <li key={r.id} data-tool-row={how.state} className="cockpit-row grid grid-cols-[14px_minmax(0,1fr)_auto_28px] items-center gap-2 py-[4px]"
+                data-live={live ? 'true' : undefined} title={groupTitle(g, now)}>
+                <span className={`grid place-items-center ${how.state === 'failed' ? 'text-danger' : live ? 'text-ok' : 'text-fg-faint'}`}><KindIcon kind={r.kind} size={13} /></span>
+                <span className="flex min-w-0 items-baseline gap-1.5 text-[12px]">
+                  <span className={`shrink-0 ${how.state === 'failed' ? 'text-danger' : 'text-fg'}`}>{toolName(r.tool)}</span>
+                  {g.target && <span data-tool-target className="mono min-w-0 truncate text-[11px] text-fg-muted">{g.target}</span>}
+                  {g.count > 1 && <span data-tool-repeat className="num shrink-0 text-[11px] text-fg-faint">×{g.count}</span>}
                 </span>
-                <span className="h-[3px] overflow-hidden rounded-full bg-[var(--app-hairline)]" aria-hidden>
-                  <span className={`block h-full rounded-full ${r.failed ? 'bg-danger' : live ? 'cockpit-bar-live bg-ok' : 'bg-fg-faint'}`} style={{ width: `${runShare(ms, max) * 100}%` }} />
-                </span>
-                <span className={`num text-right text-[11px] ${live ? 'text-ok' : r.failed ? 'text-danger' : 'text-fg-muted'}`}>{live ? fmtRun(ms) : r.failed ? 'failed' : fmtRun(ms)}</span>
+                <span data-tool-outcome aria-label={how.words} className={`num whitespace-nowrap text-right text-[11px] ${how.tone}`}>{how.text}</span>
+                <span data-tool-age className="num text-right text-[11px] text-fg-faint">{fmtAge(now - (r.endMs ?? r.startMs))}</span>
               </li>
             )
           })}

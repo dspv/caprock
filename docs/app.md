@@ -452,9 +452,24 @@ others. Installing it: [install-app.md](install-app.md).
   where it stood, and *Show* above them picks which of calls, cost, model
   and time each row carries, cost and time until you choose: click one to open it in place and read the
   task it was given, every call it makes as it makes them, what it
-  answered and what it cost), its last tool calls with how long each took, the uncommitted changes in
-  its checkout, and a warning when
-  it is repeating the same call. The permission prompt and its buttons sit
+  answered and what it cost), its last tool calls — each with the file it
+  touched (relative to the project) or the program a command ran, how it
+  ended (a quiet ✓, *exit 1* or *error* in red, the time it took when it
+  was slow, the clock running for the one running now) and how long ago,
+  the same call repeated in a row shown once with *×3* — the uncommitted
+  changes in its checkout, and a warning when
+  it is repeating the same call. Every section — Now, Subagents, Tasks,
+  Recent tools, Changes, CI, Processes — folds to one line on its label,
+  like Context and Plan, and stays as you left it. In CI, hover a pull
+  request's checks for a moment to list them all beside the panel;
+  *PRs*, *Ring* and *By OS* switch what it shows (*By OS*: the newest pull
+  request's checks on Linux, macOS and Windows, each with its state and
+  time).
+  To put the sections in another order, click *Arrange sections* under
+  the last one: each section gets ↑ and ↓, *Reset to default order* puts
+  them back, and *Done* (or Esc) returns. Nothing moves by dragging a
+  heading, so it never happens by accident, and the order is kept for
+  you on this computer. The permission prompt and its buttons sit
   at the top while one waits. Click a changed file to read it in a tab
   (in a folder that is not a git repository, it opens in your editor at
   its first change). Beside a shell tab it shows the folder and its
@@ -1005,37 +1020,43 @@ appeared:
 ## Use Caprock on your phone
 
 Your phone opens the same Caprock in its browser and keeps it on the home
-screen like an app. It talks to Caprock on this computer, over your Wi-Fi or
-over [Tailscale](https://tailscale.com/download); nothing passes through a
-server of ours, and there is nothing to install from an app store.
+screen like an app — on any network, Wi-Fi or mobile data, with nothing to
+install from an app store. It reaches this computer through an encrypted
+relay that passes bytes it cannot read
+([how it works](../README.md#from-anywhere-through-an-encrypted-relay)).
 
-1. **Be on the same network.** The phone and this computer on the same
-   Wi-Fi, or both on Tailscale (install it on each and sign in to the same
-   account) — Tailscale is the one that also works from mobile data. A
-   guest or office Wi-Fi that keeps devices apart will not work; Tailscale
-   will.
-2. **Scan the code.** In the app, click **phone** beside *Settings* in the
+1. **Show a code.** In the app, click **phone** beside *Settings* in the
    sidebar (or open Settings → *Use on your phone*) and press **Show a
-   code**. Pick the address the code carries: **Wi-Fi**, or **Tailscale** /
-   **Tailscale name** when this computer is on Tailscale. Point the phone's
-   camera at it: Caprock opens and pairs by itself. The six digits and the
-   address are there to type for a phone without a camera.
+   code**. The line under the button says what that press does: it turns on
+   access from anywhere for this computer, and keeps it on until you press
+   **Turn off** beside it.
+2. **Scan it.** Point the phone's camera at the code and tap the link:
+   Caprock opens and pairs by itself. **Copy link** under the code is for a
+   phone that cannot scan.
 3. **Add it to the Home Screen.** On an iPhone, in Safari: **Share** →
    **Add to Home Screen**. On Android, in Chrome: **⋮** → **Add to Home
    screen**. Caprock offers this once, at the top of the page. The icon
    opens Caprock full screen. On an iPhone the home-screen app keeps its own
-   storage, so it asks to pair once more: type the six digits shown on the
-   computer.
+   storage: paste the copied link there once.
 
-The top of the panel says where the phone will work: *Works on this Wi-Fi
-only*, or *Works anywhere (Tailscale)* once this computer has Tailscale. It
-notices Tailscale by itself while the panel is open; nothing to restart.
+The phone appears under *Paired devices*, which says how each device reaches
+this computer: *anywhere*, or *Wi-Fi link*. A *Wi-Fi link* is a phone paired
+on this computer's home-network address before access from anywhere was the
+one way; it works on that Wi-Fi only. Its row says so in one line and offers
+**Show the code**: scan it with that phone and it pairs once more, through the
+relay. The phone says the same on its own screen while it is on that link:
+*This link works only on your home Wi-Fi. To use Caprock anywhere: in the
+Caprock app on your computer, Settings → Use on your phone → Show a code, and
+scan it.*
 
-Phone access switches off when Caprock restarts (an update, a reboot) unless
-you tick **Keep on after Caprock restarts**, beside **Turn on** or under the
-panel. Only phones you paired get in either way; **Turn off** also clears it.
+**Advanced: no internet.** The Wi-Fi listener is still in Caprock for a
+machine that cannot reach the relay, from a terminal only: `caprock up --lan`
+listens on the private Wi-Fi address (and Tailscale's, when it is up), and
+`caprock pair`, with access from anywhere off, draws a QR for it. While that
+listener is on, Settings shows its address with a **Turn off**. See
+[Without internet](../README.md#without-internet-on-the-same-network-advanced).
 
-The phone appears under *Paired devices*. It can look but not change
+A paired phone can look but not change
 anything until you press **Let it control sessions** beside it; **Take
 control away** undoes that at once. The rest of what pairing allows, and
 why, is in [Open it on your phone](../README.md#open-it-on-your-phone).

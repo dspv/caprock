@@ -73,14 +73,32 @@ function Circles({ s, onPick }: { s: ChecksSummary; onPick?: (n: PipeNode) => vo
   )
 }
 
-/** focusable: false inside a control of its own (the cockpit block is one button), so focus lands once. */
-export function CheckSummary({ s, label, onPick, focusable = true, className = '', view = 'summary' }: { s: ChecksSummary; label: string; onPick?: (n: PipeNode) => void; focusable?: boolean; className?: string; view?: ChecksView }) {
+/** How long the pointer rests on a summary in the cockpit before its list opens. */
+export const BESIDE_DELAY_MS = 600
+
+/**
+ * focusable: false inside a control of its own (the cockpit block is one button), so focus lands once.
+ * beside: the cockpit's way (owner, 2026-10-14, translated: "you can't move the mouse here — on hover
+ * a modal opens and you can't see anything"): the list opens only once the pointer has rested on the
+ * summary for BESIDE_DELAY_MS, never while it passes over; it stands outside the panel, left of the
+ * element marked `data-checks-edge`, so it never covers the rows; and it closes the moment the
+ * pointer leaves, taking no pointer itself.
+ */
+export function CheckSummary({ s, label, onPick, focusable = true, className = '', view = 'summary', beside = false }: { s: ChecksSummary; label: string; onPick?: (n: PipeNode) => void; focusable?: boolean; className?: string; view?: ChecksView; beside?: boolean }) {
   const c = s.counts
   const anchor = useRef<HTMLSpanElement>(null)
   const [open, setOpen] = useState(false)
   const shut = useRef<number | undefined>(undefined)
-  const show = () => { window.clearTimeout(shut.current); setOpen(true) }
-  const hide = () => { window.clearTimeout(shut.current); shut.current = window.setTimeout(() => setOpen(false), 120) }
+  const show = () => {
+    window.clearTimeout(shut.current)
+    if (beside) shut.current = window.setTimeout(() => setOpen(true), BESIDE_DELAY_MS)
+    else setOpen(true)
+  }
+  const hide = () => {
+    window.clearTimeout(shut.current)
+    if (beside) setOpen(false)
+    else shut.current = window.setTimeout(() => setOpen(false), 120)
+  }
   useEffect(() => () => window.clearTimeout(shut.current), [])
   const sentence = checksSentence(s)
   const time = shortRun(s.ms)
@@ -110,7 +128,7 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
       onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}
       className={`inline-flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-[4px] text-[11.5px] outline-none focus-visible:ring-1 focus-visible:ring-accent ${className}`}>
       {body}
-      {open && <CheckList s={s} label={label} anchor={anchor} onEnter={show} onLeave={hide} onPick={onPick} />}
+      {open && <CheckList s={s} label={label} anchor={anchor} onEnter={beside ? undefined : show} onLeave={beside ? undefined : hide} onPick={onPick} beside={beside} />}
     </span>
   )
 }
@@ -119,22 +137,30 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
 const LIST_MAX = 30
 
 /** Every check of the PR, in a card beside the summary, drawn in the page's body so a scrolling list never clips it. */
-function CheckList({ s, label, anchor, onEnter, onLeave, onPick }: { s: ChecksSummary; label: string; anchor: RefObject<HTMLSpanElement | null>; onEnter: () => void; onLeave: () => void; onPick?: (n: PipeNode) => void }) {
+function CheckList({ s, label, anchor, onEnter, onLeave, onPick, beside }: { s: ChecksSummary; label: string; anchor: RefObject<HTMLSpanElement | null>; onEnter?: () => void; onLeave?: () => void; onPick?: (n: PipeNode) => void; beside?: boolean }) {
   const [pos, setPos] = useState<CSSProperties>({ visibility: 'hidden' })
   useLayoutEffect(() => {
     const r = anchor.current?.getBoundingClientRect()
     if (!r) return
     const vw = window.innerWidth, vh = window.innerHeight
+    if (beside) {
+      // Outside the panel, level with the row, kept on screen.
+      const edge = anchor.current?.closest('[data-checks-edge]')?.getBoundingClientRect()
+      const left = edge ? edge.left : r.left
+      const top = Math.max(8, Math.min(r.top - 8, vh - 240))
+      setPos({ right: Math.max(8, vw - left + 10), top, maxHeight: vh - top - 8 })
+      return
+    }
     const right = Math.max(8, vw - r.right - 8)
     const above = r.top > vh - r.bottom
     setPos(above ? { right, bottom: vh - r.top + 6, maxHeight: r.top - 14 } : { right, top: r.bottom + 6, maxHeight: vh - r.bottom - 14 })
-  }, [anchor])
+  }, [anchor, beside])
   const shown = s.nodes.slice(0, LIST_MAX)
   const more = s.nodes.length - shown.length
   const timeLine = s.ms ? (s.done ? `took ${fmtRun(s.ms)}` : `running for ${fmtRun(s.ms)}`) : ''
   return createPortal(
-    <div role="tooltip" data-check-list onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={(e) => e.stopPropagation()}
-      style={{ position: 'fixed', zIndex: 60, ...pos }}
+    <div role="tooltip" data-check-list data-beside={beside || undefined} onMouseEnter={onEnter} onMouseLeave={onLeave} onClick={(e) => e.stopPropagation()}
+      style={{ position: 'fixed', zIndex: 60, pointerEvents: beside ? 'none' : undefined, ...pos }}
       className="w-[min(380px,calc(100vw-16px))] overflow-y-auto rounded-lg border border-border-strong bg-panel px-2.5 py-2 text-[11.5px] shadow-lg">
       <div className="text-[12px] font-medium text-fg">{label}</div>
       <div className="mb-1.5 text-fg-muted">{checksSentence(s)}{timeLine ? ` · ${timeLine}` : ''}</div>

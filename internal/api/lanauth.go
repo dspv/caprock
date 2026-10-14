@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/dspv/caprock/internal/lan"
 	"github.com/dspv/caprock/internal/pairing"
 )
 
@@ -120,6 +121,39 @@ func forwarded(r *http.Request) bool {
 	return false
 }
 
+// remoteVia is the mark internal/remote puts on every request the relay
+// channel replays onto loopback (ADR-058); see remote.viaHeader.
+const remoteVia = "caprock-remote"
+
+// transportOf is how a request from a device reached the machine:
+// pairing.ViaRelay for the relay channel, pairing.ViaTailscale or
+// pairing.ViaLAN for the network listener by the peer's address, and "" for
+// anything that cannot be told apart (a tunnel of the owner's own on
+// loopback). A label for the owner's list, never a reason to let anything in:
+// the gate decides that from the token alone.
+func transportOf(r *http.Request) string {
+	if fromLoopback(r) {
+		for _, v := range r.Header.Values("Via") {
+			if strings.Contains(v, remoteVia) {
+				return pairing.ViaRelay
+			}
+		}
+		return ""
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return ""
+	}
+	if lan.Tunnelled(ip) {
+		return pairing.ViaTailscale
+	}
+	return pairing.ViaLAN
+}
+
 // openToUnpairedDevices reports whether a path may be served to a device that
 // has not paired yet — the pairing endpoint, and the files of the page that
 // calls it.
@@ -191,7 +225,14 @@ func (s *Server) gateDevice(r *http.Request) (status int, reason string, dev *pa
 	if tok == "" || ps == nil {
 		return http.StatusUnauthorized, "this device is not paired with Caprock", nil
 	}
-	dev, err := ps.Check(tok)
+	dev, moved, err := ps.CheckVia(tok, transportOf(r))
+	if moved {
+		// A device that reached the machine a new way: the owner's list says
+		// "Wi-Fi only" or "Anywhere" from this, so it is kept across restarts.
+		// Rare (a pairing, a phone that re-paired through the relay), unlike
+		// LastSeen, which is not saved per request.
+		s.saveDevices()
+	}
 	if err != nil {
 		// One message for an unknown token and a revoked one. Telling them
 		// apart tells a stranger which of their guesses was once real.
@@ -485,10 +526,10 @@ func (s *Server) pairingGate(w http.ResponseWriter, r *http.Request) (*http.Requ
 		}
 		return r, true
 	}
-	detail := "Open Caprock on the machine it runs on, turn on network access, and pair this device with the code it shows."
+	detail := "Open the Caprock app on your computer: Settings \u2192 Use on your phone \u2192 Show a code, and scan it with this device."
 	if status == http.StatusForbidden {
 		if reason == viewerRefusal {
-			detail = "To start, type into or stop sessions from here, open Settings on the machine Caprock runs on and choose \u201cLet it control sessions\u201d beside this device."
+			detail = "To start, type into or stop sessions from here, open the Caprock app on your computer: Settings \u2192 Use on your phone, then press \u201cLet it control sessions\u201d next to this device."
 		} else {
 			detail = "Settings, pairing, the task runner and opening a terminal window happen on the machine Caprock runs on."
 		}
