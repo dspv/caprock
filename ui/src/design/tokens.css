@@ -583,6 +583,25 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   border: 1px solid color-mix(in srgb, var(--color-fg) 22%, transparent);
   background: color-mix(in srgb, var(--color-fg) 7%, transparent);
 }
+/* A tab's project name when even a whole tab cannot hold it
+ * (components/TerminalTabs.tsx TabProject): cut with an ellipsis at rest; under
+ * the pointer the cut part slides into view inside the same box and back, so
+ * the tab never changes size (owner, 2026-10-14, translated: "at least scroll
+ * inside on hover"). The text turns inline-block only then, because a
+ * transform needs a box and an ellipsis hides a whole inline-block. */
+@keyframes tab-project-scroll {
+  0%, 12% { transform: translateX(0); }
+  88%, 100% { transform: translateX(calc(-1 * var(--tab-project-shift, 0px))); }
+}
+[data-app] [role="tab"]:hover [data-tab-project][data-overflow] { text-overflow: clip; }
+[data-app] [role="tab"]:hover [data-tab-project][data-overflow] > span {
+  display: inline-block;
+  animation: tab-project-scroll var(--tab-project-time, 2s) linear 0.3s infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-app] [role="tab"]:hover [data-tab-project][data-overflow] { text-overflow: ellipsis; }
+  [data-app] [role="tab"]:hover [data-tab-project][data-overflow] > span { display: inline; animation: none; }
+}
 [data-app] .app-primary .app-kbd {
   color: var(--color-accent);
   border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);

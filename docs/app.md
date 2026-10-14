@@ -228,7 +228,11 @@ others. Installing it: [install-app.md](install-app.md).
   and its cost is priced at DeepSeek's list price. Free. *Remove key* turns
   it off.
 - **The tab strip.** The tab in front has an amber top edge; the others are
-  shaded tabs of their own. The amber + opens a menu: New agent, Quick
+  shaded tabs of their own. A tab reads the session's name, then its
+  project's name in the project's colour; when room runs short the
+  session's name is shortened first, and a project name that still does
+  not fit scrolls into view while you point at the tab. The tooltip has
+  both in full. The amber + opens a menu: New agent, Quick
   chat, New shell, Run saved…, Open file, Add project, each with its key.
 - **Several attempts at once.** In *New agent*, choose *New copy from a
   branch* and set *Attempts* to 2, 3 or 4, then write the first message. The

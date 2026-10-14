@@ -7,6 +7,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **app:** a tab's project name fits. It was cut at nine characters
+  (*uncensor…*, *creatos_f…*) even on a wide window; now it takes its whole
+  width first and the session's name is shortened before it, and tabs grow
+  to 340px when the strip has room. When many tabs leave too little even
+  for that, the name ends in an ellipsis and scrolls into view inside its
+  own space while you point at the tab, so nothing in the strip moves
+  (with reduced motion it stays cut; the tooltip names it in full).
+
 ## [0.116.1] - 2026-10-14
 
 ### Changed
