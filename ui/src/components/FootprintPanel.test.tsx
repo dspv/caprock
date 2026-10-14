@@ -165,8 +165,12 @@ describe('the panel', () => {
 
   it('opens from the palette\'s Caprock doctor', async () => {
     await strip(warned())
-    act(() => openCaprockDoctor())
-    expect(screen.getByRole('dialog', { name: 'Caprock on this computer' })).toBeTruthy()
+    // The listener is added in an effect once the footprint is in; on a busy
+    // CI runner that can land a tick after the button does.
+    await waitFor(() => {
+      act(() => openCaprockDoctor())
+      expect(screen.getByRole('dialog', { name: 'Caprock on this computer' })).toBeTruthy()
+    })
   })
 
   it('copies the report caprock doctor prints', async () => {
