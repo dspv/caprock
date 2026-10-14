@@ -88,4 +88,34 @@ describe('machines on this phone', () => {
     expect(machines().map((m) => m.name)).toEqual(['Laptop'])
     expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-b')
   })
+
+  it('a pairing link opened again (its code already spent) does not cost the pairing that worked', () => {
+    const a = fakeLocation(link())
+    prepare(a.loc, a.hist)
+    localStorage.setItem(DEVICE_TOKEN_KEY, 'tok-1')
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    // The same QR, opened a second time: the dashboard sends no token while
+    // it redeems the code…
+    const again = fakeLocation(link())
+    prepare(again.loc, again.hist)
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBeNull()
+    // …the code is refused and the page is opened again: the old token is back.
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-1')
+    expect(currentMachine()?.token).toBe('tok-1')
+  })
+
+  it('pairing again that succeeds replaces the token', () => {
+    const a = fakeLocation(link())
+    prepare(a.loc, a.hist)
+    localStorage.setItem(DEVICE_TOKEN_KEY, 'tok-1')
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    const again = fakeLocation(link())
+    prepare(again.loc, again.hist)
+    localStorage.setItem(DEVICE_TOKEN_KEY, 'tok-2')
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    expect(currentMachine()?.token).toBe('tok-2')
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-2')
+  })
 })

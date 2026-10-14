@@ -185,8 +185,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   named. `GET /v1/settings` omits `license_key` for a paired device. Loopback is
   unaffected. `GET /v1/pair/me` is on the list too: it answers `{role}` —
   `"owner"` on loopback, else `{role: "viewer"|"controller", id, name, via,
-  anywhere?}`, where `via` is how this request arrived (below) and
-  `anywhere` is true while access from anywhere is on.
+  anywhere?, app?}`, where `via` is how this request arrived (below),
+  `anywhere` is true while access from anywhere is on, and `app` (sent with
+  it) is the phone's page, so a Wi-Fi link's notice names where the app is.
 - **How a device last arrived** (`via`, 2026-10-14): the gate records it on
   every request a device makes, and at pairing — `relay` for a request on
   loopback carrying `Via: …caprock-remote…`, `tailscale` for a peer in
@@ -296,7 +297,10 @@ after the `#`. `enabled` at the top of the state is the network listener
 alone; the guest list is live whenever either is on. Requests from the relay
 arrive on loopback with `Via: 1.1 caprock-remote` and are gated as a paired
 device. The relay's wire is `internal/remote/wire.go`, the channel's frames
-`internal/remote/proto.go`.
+`internal/remote/proto.go`. A relay treats a machine it has not heard from
+(the daemon pings every 25 s) for 75 s as gone: a phone arriving for it, or
+sending to it, is closed with 4404 and the stale connection dropped (4408
+on the hosted relay), never spliced to a machine that went to sleep.
 
 - `DELETE /v1/pair/code` withdraws the outstanding code and answers
   `{cleared: true}` whether or not there was one — the dashboard's **Cancel**,

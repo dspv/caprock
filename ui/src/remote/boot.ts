@@ -100,8 +100,14 @@ export function prepare(loc: Location = window.location, hist: History = history
     const old = ms.find((m) => m.id === link.machine.id)
     const next = ms.filter((m) => m.id !== link.machine.id)
     // A fresh link for a machine already here keeps its name if the link
-    // has none, and drops its token: pairing again is the point.
-    next.push({ ...link.machine, name: link.machine.name === 'Caprock' && old ? old.name : link.machine.name })
+    // has none. Its token stays on the record as a fallback while the
+    // dashboard sends none: opening a QR whose code was already spent (the
+    // camera, then the app) must not cost a pairing that worked.
+    next.push({
+      ...link.machine,
+      name: link.machine.name === 'Caprock' && old ? old.name : link.machine.name,
+      token: old?.token ?? '',
+    })
     saveMachines(next)
     write(CURRENT_KEY, link.machine.id)
     write(PAIRING_KEY, link.machine.id)
@@ -120,6 +126,11 @@ export function prepare(loc: Location = window.location, hist: History = history
       // The pairing screen stored this machine's new token and reloaded.
       cur.token = token
       saveMachines(ms.map((m) => (m.id === cur.id ? cur : m)))
+      write(PAIRING_KEY, null)
+    } else if (cur.token) {
+      // Pairing again did not finish (a spent or expired code, or the page
+      // closed first): back to the token that worked before.
+      write(DEVICE_TOKEN_KEY, cur.token)
       write(PAIRING_KEY, null)
     }
   } else {
@@ -186,5 +197,15 @@ export function install(m: Machine, w: Window & typeof globalThis = window) {
   } as unknown as typeof WebSocket
   Object.assign(Shim, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 })
   w.WebSocket = Shim
-  void ch.connect().catch(() => { /* the bar shows the state; the dashboard retries */ })
+  void ch.connect().catch(() => { /* the bar shows the state; the channel retries */ })
+  // Back from the background (a phone freezes the page there), or back on
+  // the network: check the channel now rather than at the next retry.
+  const wake = () => ch.wake()
+  w.document.addEventListener('visibilitychange', () => {
+    if (w.document.visibilityState === 'visible') wake()
+  })
+  w.addEventListener('online', wake)
+  w.addEventListener('pageshow', (e) => {
+    if ((e as PageTransitionEvent).persisted) wake()
+  })
 }

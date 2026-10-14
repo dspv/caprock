@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-10-14
+
 ### Added
 
 - **app:** Second Brain comes to Premium on 18 October 2026: a knowledge
@@ -22,6 +24,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   nothing else; *Not interested* and × send nothing, and an answered strip
   never returns.
 
+- **app:** closing the tab of an agent Caprock started now asks: **Close
+  tab** (in focus, so ⌘W then Enter works as before and the agent keeps
+  running) or **Close and end the agent**, which stops it (asking once
+  more if it is still answering; the conversation is kept). Tick *Don't
+  ask again* to keep your answer; Settings → *Closing a tab* changes it
+  back. An agent you started in your own terminal is never ended from
+  Caprock: its tab just closes.
+- **app:** in the Tabs list, sessions running with no tab sit under a
+  quiet *Running, no tab* line, so an agent whose tab you closed no
+  longer looks like an open chat.
 - **app:** a Mail button with its own key. *Mail ⇧⌘M* in the sidebar's
   bottom block (Ctrl+Shift+M on Windows and Linux) opens Mail in a tab of its
   own beside the Dashboard tab; pressed again it brings it to the front. With
@@ -68,6 +80,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **now:** an opened Live pulse row is calmer and says more. Terminal,
+  Open repo and Open session are quiet links at the end of the project's
+  line instead of a row of bright buttons, and the empty space beside each
+  live session now shows its cost, its last hour, how long it has run, its
+  context, its branch with lines added and removed, and its pull request
+  with CI. The legend can be hidden; the **?** in the panel's header brings
+  it back.
 - **app:** the PRs & CI view has one button, at the foot of the sidebar
   beside *Dashboard*: its picture shows the mode — Hidden, Bar (the session
   deck under the agent's terminal) or Full page (the PRs & CI tab) — and a
@@ -98,6 +117,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **agents:** a permission prompt you answered from a button no longer
+  comes back if the daemon crashes a moment later. The answer cleared the
+  stored prompt in the background, so a crash before that write landed
+  restored buttons for a dialog already answered; the answer now returns
+  only once the stored prompt is gone.
 - **app:** the PRs & CI bar's header no longer runs past its right edge
   when the sidebar and the cockpit are both open on a laptop screen: the
   least useful words drop first and the rest wraps to a second line.
@@ -105,6 +129,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   caprock.dev stand beside the mark, a line says the page is the other half
   of the Caprock app on your computer (with where to get it), and the first
   step shows a small picture of Settings → Use on your phone → Show a code.
+- **phone:** the phone no longer sits on *Connecting…* with nothing after
+  it. A computer that went to sleep kept its relay connection open on
+  paper, and the relay handed the phone to it; the phone waited forever for
+  an answer. The relay now treats a computer it has not heard from in 75
+  seconds as offline (`caprock remote relay` and the hosted relay, which
+  needs a redeploy), and the phone gives every attempt 10 seconds, checks
+  the computer itself, not only the relay, while connected, and after 5
+  seconds says what is wrong — *Your computer is offline or Caprock isn't
+  running*, *Your computer isn't answering*, *Can't reach the relay*, *This
+  phone was removed: pair again* — with **Retry** and **Pair again**. It
+  retries by itself, and at once when you come back to it.
+- **phone:** Caprock installs on an Android phone once, when you press
+  **Install the Caprock app** on m.caprock.dev. Chrome's own install prompt
+  no longer pops up in a browser tab of an already-installed app, a browser
+  tab says *Caprock is on your home screen* instead, and the old Wi-Fi link
+  no longer offers a second home-screen icon: it says to use the app from
+  m.caprock.dev. Opening the same pairing QR twice keeps the pairing that
+  worked, and a page left open across a new version of m.caprock.dev
+  reloads instead of failing.
 - **mail:** Mail opens instead of failing with "null is not an object
   (evaluating 't.accounts.length')". A mail client found on the machine with
   no accounts it could read — Apple Mail before Full Disk Access — came back

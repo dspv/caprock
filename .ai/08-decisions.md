@@ -3419,6 +3419,26 @@ working only inside your own Wi-Fi; everyone wants to work online."
   `anywhere`, and a phone on the Wi-Fi link shows a strip naming the app and
   the path to the code.
 
+*Amended 2026-10-14 — a phone that never waits silently.* The same evening
+the owner's phone sat on *Connecting…* with nothing after it (translated:
+"On the phone I now have 'Connecting' and nothing … apparently some
+duplication with installing Caprock"). A computer that went to sleep left its
+relay connection open on paper; the relay spliced the phone to it and the
+handshake went nowhere, and the phone had no deadline. Separately, Chrome
+reinstalled the app from its own prompt in a browser tab.
+
+- **The relay drops a machine unheard for 75 s** (three missed pings): a
+  phone arriving or sending is told 4404 at once. No new state on the relay;
+  the hosted one reads the runtime's ping timestamp.
+- **The phone gives up an attempt after 10 s and says why**, checks the
+  machine itself, not only the relay, while connected, retries on its own
+  with backoff, and names the problem after 5 s with **Retry** and **Pair
+  again** (`.ai/04-ui.md` § From anywhere).
+- **Installing is the page's button, once.** Chrome's automatic prompt is
+  held for an **Install the Caprock app** button that exists only while
+  Chrome says the app is not installed. The manifest `id` stays `/`, so a
+  new build is the same app. Existing pairings are untouched.
+
 
 ## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
 
