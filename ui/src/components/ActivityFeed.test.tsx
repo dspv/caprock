@@ -9,7 +9,7 @@
  * and why won't it scroll", because every row is equally stale. The session
  * timeline had the identical defect.
  */
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ActivityFeed } from './ActivityFeed'
 import type { Event, SessionSummary } from '@/lib/api'
@@ -24,11 +24,11 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       recentEvents: async (_id: string, limit: number) => {
         calls.recent.push(limit)
-        return [ev(9_000, 'newest')]
+        return [ev(9_000, 'git commit -m "newest"'), ev(9_001, 'sed -n 150,260p internal/github/branchpulls.go')]
       },
       events: async (_id: string, after: number) => {
         calls.forward.push(after)
-        return [ev(1, 'ancient')]
+        return [ev(1, 'git commit -m "ancient"')]
       },
     },
   }
@@ -69,5 +69,35 @@ describe('ActivityFeed', () => {
     render(<ActivityFeed sessions={[session()]} now={NOW} />)
     await waitFor(() => expect(screen.getByText(/newest/)).toBeInTheDocument())
     expect(screen.queryByText(/ancient/)).toBeNull()
+  })
+
+  // The owner, 2026-10-14 (translated): "This block is completely
+  // uninformative" — of a feed of `sed -n …` and `cat …` lines.
+  it('shows what happened, not every command, until asked for all of them', async () => {
+    try { localStorage.removeItem('caprock.activity.mode') } catch { /* none */ }
+    render(<ActivityFeed sessions={[session()]} now={NOW} />)
+    await waitFor(() => expect(screen.getByText('newest')).toBeInTheDocument())
+    expect(screen.getByText('What happened')).toBeInTheDocument()
+    expect(screen.queryByText(/sed -n/)).toBeNull()
+    // The read is counted on the moment, not dropped silently.
+    fireEvent.click(screen.getByRole('button', { name: 'All commands' }))
+    await waitFor(() => expect(screen.getByText(/sed -n/)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'All commands' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'All commands' }))
+  })
+
+  it('folds like the other panels', async () => {
+    render(<ActivityFeed sessions={[session()]} now={NOW} />)
+    await waitFor(() => expect(screen.getByText('newest')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /What happened/ }))
+    expect(screen.queryByText('newest')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /What happened/ }))
+    await waitFor(() => expect(screen.getByText('newest')).toBeInTheDocument())
+  })
+
+  it('gives every row the same height', async () => {
+    render(<ActivityFeed sessions={[session()]} now={NOW} />)
+    await waitFor(() => expect(screen.getByText('newest')).toBeInTheDocument())
+    for (const row of screen.getAllByTestId('activity-row')) expect(row.className).toMatch(/\bh-7\b/)
   })
 })

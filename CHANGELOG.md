@@ -7,7 +7,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.117.1] - 2026-10-14
+
 ### Added
+
+- **now:** the tokens beside each pull request's cost in the CI/CD
+  section (*9.4M tok · $2.12*); the hover splits input, output, cache read
+  and cache write.
 
 - **brain:** Second Brain. Keep the answers worth keeping as memories — an
   idea, a decision, a finding, an open question — each linked to its
@@ -28,6 +34,70 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   program each time. The first update to this release asks one last time;
   later updates keep your answers. Opening the app the first time is
   unchanged: it is still not signed with an Apple Developer ID.
+### Changed
+
+- **now:** *Live activity* is now **What happened**: the moments of your
+  sessions instead of every command. Files edited (grouped by folder), tests
+  and checks with their result (*passed*, *failed (exit 2)*, or *no result
+  recorded* when there is none), builds, commits with their message, pushes,
+  pull requests opened or merged, subagents by their task, a turn ending with
+  the first line of the reply, a session waiting for approval, and a command
+  that failed. Reads, searches and the like are a quiet `+N` on the moment
+  they led up to. On one day of real use that is 1,974 rows where the old
+  feed had 11,493. *All commands* brings the old feed back; the panel folds
+  like the others and remembers it; every row is the same height.
+- **app:** the sidebar's bottom block reads more clearly. *Dashboard ⌘0*
+  has a row of its own again; under it, one row in two halves: **PRs &
+  CI** named with its mode (*CI Off*, *CI Bar*, *CI Page*; ⇧⌘B in its
+  tooltip) and the **theme** with its name. On Windows and Linux the two
+  take a row each, and PRs & CI shows its key, Ctrl+Alt+Shift+B.
+- **app:** folded, the bottom block's icons are a size bigger, and on a
+  Mac each one has its key drawn small above it (⇧⌘F, ⇧⌘M, ⌘0, ⌘,
+  ⇧⌘B). On Windows and Linux the keys are too long for that and show
+  above the icon you point at.
+
+### Fixed
+
+- **now:** the activity feed no longer says "session ended" at the end of
+  every turn and every subagent's stop; it says *finished its turn* or
+  *subagent stopped*, and "session ended" only when one did.
+
+- **phone:** a phone can type the moment it pairs. A newly paired phone
+  could only look until a second click on the computer — impossible once
+  you have left the house. Settings → Use on your phone now has **This
+  phone can type and start agents** beside **Show a code**, ticked by
+  default and remembered on the computer; the code carries it, so the phone
+  pairs ready to work. Untick it for a phone that should only look. The
+  panel lists the steps one line each and, while the code is up and after,
+  ticks off what is done and what is left: access from anywhere, the phone
+  paired (by name), whether it can type (with **Let it control sessions**
+  right there if not) and whether the app is installed on it. The phone
+  opens on a short **Ready** card — connected to which computer, whether it
+  can type and, if not, exactly where on the computer to fix it, the
+  install button, and **Open sessions**. m.caprock.dev needs a redeploy
+  for the phone's half.
+
+- **now:** the CI/CD section lists only repositories with a session in the
+  last 14 days, most recent first. Older ones, and any you hide from a
+  block's new ⋯ menu (*Hide from CI/CD*), fold into one quiet line —
+  *3 older repositories · 1 hidden — show* — and are not read from GitHub
+  until you show them; hidden ones come back with *Show again*.
+- **now:** GitHub no longer runs out of time on the CI/CD section: the
+  repositories are read three at a time, each with its own 12 seconds,
+  instead of one after another under a single deadline that left every
+  later one *context deadline exceeded*. A slow GitHub is one grey line —
+  *GitHub didn't answer in time — retrying* — once for the section when
+  every repository says the same, and the names show at once while the
+  figures load.
+- **now:** a session that drove many pull requests is no longer charged
+  whole to the one whose branch it ended on. It is split between the pull
+  requests it worked on, and such a row says *shared*; the release pull
+  request #601 read as $1,884.29, the whole orchestrating session, and now
+  reads $2.12 (measured on the owner's database). This also corrects the
+  PRs & CI Board's agent cost.
+- **app:** on Windows and Linux the *Settings* row's words no longer run
+  under *phone, Telegram*, and *Send feedback*'s key is no longer cut
+  off at the sidebar's edge.
 
 ## [0.117.0] - 2026-10-14
 

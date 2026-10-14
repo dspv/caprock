@@ -128,8 +128,11 @@ others. Installing it: [install-app.md](install-app.md).
   away, and the tab brings back the screen you left it on until you close it.
   The Dashboard tab is its icon and its key, ⌘0 (⌘, while it shows
   Settings); its × shows while it is in front.
-  Beside *Dashboard* sit two small square buttons: the **PRs & CI** mode
-  and the theme. The PRs & CI button's picture is what is on screen —
+  Under *Dashboard*, one row in two halves: the **PRs & CI** mode, named
+  *CI Off*, *CI Bar* or *CI Page* (its key, ⇧⌘B, is in its tooltip), and
+  the theme, named too. On Windows and Linux each takes a row, and there
+  the PRs & CI row shows its key, Ctrl+Alt+Shift+B. The PRs & CI button's
+  picture is what is on screen —
   an empty window (Hidden), a band along its bottom (Bar: the session
   deck), a filled window (Full page: the *PRs & CI* tab) — and a click
   moves to the next, Hidden → Bar → Full page → Hidden; ⌘B and ⇧⌘B do
@@ -144,7 +147,9 @@ others. Installing it: [install-app.md](install-app.md).
   or Thunderbird. Adding your account leaves the sample; *Exit sample* goes
   to the ways to start.
   The arrow beside *Send feedback* folds that bottom block to one row of
-  icons and back; the app remembers which way you left it.
+  icons and back; the app remembers which way you left it. Folded, on a
+  Mac each icon has its key drawn small above it; on Windows and Linux,
+  where the keys are longer, an icon's key shows when you point at it.
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
   how new agents start, appearance, terminal and editor first. The × beside
   the *Settings* heading, or Esc, closes it as the tab's × does. *Send
@@ -161,7 +166,7 @@ others. Installing it: [install-app.md](install-app.md).
   palette, Share and the rest — closes with the × in its corner, a click
   outside it, or Esc. In the app,
   Now keeps its figures — today, plan limits, the pulse, the repos, all
-  time, at a glance, the activity feed — and leaves the session cards and the
+  time, at a glance, *What happened* — and leaves the session cards and the
   projects panel to the sidebar, which lists the same sessions; the browser
   dashboard shows both. **Repos**, under the pulse, has a row for each
   repository a session runs in: commits a day over two weeks, today's and the
@@ -174,8 +179,14 @@ others. Installing it: [install-app.md](install-app.md).
   Plan (read) permission, or Administration (read) for an organization), the median CI time and its trend, the share of
   red runs, runs stuck far past their usual time or waiting for a runner,
   the newest release, the five pull requests the agents spent most on this
-  week, and who opened them, face and name. Costs are at API list price.
-  Fold it and it reads nothing.
+  week with their tokens beside the cost, and who opened them, face and
+  name. Costs are at API list price; a session that worked on several pull
+  requests is split between them and marked *shared*. Only repositories
+  with a session in the last 14 days are read; older ones, and any you hide
+  from a block's ⋯ menu, fold into one line (*3 older repositories · 1
+  hidden — show*) and are not read from GitHub until you show them. When
+  GitHub is slow it says so in one grey line and tries again. Fold it and
+  it reads nothing.
 - **Live pulse.** One row per running session, led by the session's name,
   with the project, branch and short id under it. Rows keep their places:
   the order sessions started in (tabs follow the tab strip among
@@ -625,7 +636,7 @@ others. Installing it: [install-app.md](install-app.md).
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
-- **Themes.** Eight, picked from the sun/moon button beside *Dashboard* at
+- **Themes.** Eight, picked from the sun/moon button under *Dashboard* at
   the foot of the sidebar or Settings → *Appearance*: Dark Pastel (a neutral graphite with
   soft, muted colours, the default dark one), Dark Warm, Dark Cold and Dark
   Side; Light, Light Cold, Book (the default light one) and Light Side. Until
@@ -1100,15 +1111,28 @@ install from an app store. It reaches this computer through an encrypted
 relay that passes bytes it cannot read
 ([how it works](../README.md#from-anywhere-through-an-encrypted-relay)).
 
-1. **Show a code.** In the app, click **phone** beside *Settings* in the
-   sidebar (or open Settings → *Use on your phone*) and press **Show a
-   code**. The line under the button says what that press does: it turns on
-   access from anywhere for this computer, and keeps it on until you press
-   **Turn off** beside it.
-2. **Scan it.** Point the phone's camera at the code and tap the link:
-   Caprock opens and pairs by itself. **Copy link** under the code is for a
-   phone that cannot scan.
-3. **Install the app, once.** On Android, in Chrome, press **Install the
+1. **Choose what the phone may do.** In the app, click **phone** beside
+   *Settings* in the sidebar (or open Settings → *Use on your phone*).
+   **This phone can type and start agents** is ticked by default, and
+   remembered on this computer: the phone can then start agents, type into
+   sessions, approve and stop them as soon as it pairs, with nothing more to
+   click here. Untick it for a phone that should only look.
+2. **Show a code and scan it.** Press **Show a code**. The line under the
+   button says what that press does: it turns on access from anywhere for
+   this computer, and keeps it on until you press **Turn off** beside it.
+   Point the phone's camera at the code and tap the link: Caprock opens and
+   pairs by itself. **Copy link** under the code is for a phone that cannot
+   scan.
+3. **Check the list.** While the code is up, and after, the panel shows
+   what is done and what is left, live: *Access from anywhere* — on;
+   *Phone paired* — waiting, then the phone's name; *Can type from the
+   phone* — yes, or *view only* with **Let it control sessions** beside it;
+   *App installed on the phone* — yes, or optional. The phone opens on a
+   short **Ready** card: connected to this computer, whether it can type
+   (and, if not, where on the computer to fix it — the card notices by
+   itself), the install button, and **Open sessions**. The card comes back
+   only while the phone cannot type, until you close it.
+4. **Optional: install the app, once.** On Android, in Chrome, press **Install the
    Caprock app** on the page (or **Install** on the line under the
    machine's name); the button is there only while Chrome says Caprock is
    not installed, so it never adds a second copy. Opened in a browser tab
@@ -1155,9 +1179,9 @@ listens on the private Wi-Fi address (and Tailscale's, when it is up), and
 listener is on, Settings shows its address with a **Turn off**. See
 [Without internet](../README.md#without-internet-on-the-same-network-advanced).
 
-A paired phone can look but not change
-anything until you press **Let it control sessions** beside it; **Take
-control away** undoes that at once. The rest of what pairing allows, and
+A phone paired with the box unticked can look but not change anything
+until you press **Let it control sessions** beside it; **Take control
+away** undoes either at once, and holds on the phone's next keystroke. The rest of what pairing allows, and
 why, is in [Open it on your phone](../README.md#open-it-on-your-phone).
 
 ### The phone home
