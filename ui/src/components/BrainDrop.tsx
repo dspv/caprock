@@ -1,5 +1,5 @@
 /**
- * "Drop into brain" on an answer Claude wrote (ADR-063): the Memory screen's
+ * "Drop into Second Brain" on an answer Claude wrote (ADR-063): the Memory screen's
  * rows, a session's Notes tab and the chat view. The daemon reads the note's
  * text, session, time and project from the record itself by its event id, so
  * the button carries nothing but the id.
@@ -22,7 +22,7 @@ export function BrainDropButton({ eventId, className = '' }: { eventId: number; 
     if (r.ok) setSt({ at: 'done' })
     else setSt({ at: 'error', message: r.message })
   }
-  const label = st.at === 'done' ? 'In your brain' : st.at === 'busy' ? 'Dropping…' : 'Drop into brain'
+  const label = st.at === 'done' ? 'In Second Brain' : st.at === 'busy' ? 'Dropping…' : 'Drop into Second Brain'
   return (
     <>
       <button
@@ -43,7 +43,9 @@ export function BrainDropButton({ eventId, className = '' }: { eventId: number; 
   )
 }
 
-/** Second Brain's mark: a drop falling into a shallow bowl, the Pensieve. */
+/** Second Brain's mark: a drop falling into a shallow bowl, the Pensieve.
+ *  Beside its name wherever the name is shown — the sidebar block, the
+ *  screen row, the screen's title, ⌘K — and on every way in. */
 export function BrainGlyph({ size = 14, className = '' }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden className={className}>

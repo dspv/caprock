@@ -1,5 +1,5 @@
 /**
- * The sidebar's Brain block (ADR-063), below the projects: the owner's
+ * The sidebar's Second Brain block (ADR-063), below the projects: the owner's
  * "collapsible block on the left where my second brain is constantly being
  * built" (translated). A small graph of the newest thirty memories, where a
  * new one drops in as it is kept (components/BrainGraphCanvas), the three
@@ -7,13 +7,14 @@
  *
  * Folds like the footer and remembers it; unfolded by default, for everyone
  * — Second Brain is free (owner decision, 2026-10-14). *How it works* opens
- * a short explainer with a way into the Brain screen.
+ * a short explainer with a way into the Second Brain screen.
  */
 import { useState } from 'react'
-import { isEntity, useBrainGraph, useBrainStatus } from '@/lib/brain'
+import { BRAIN_TAGLINE, isEntity, useBrainGraph, useBrainStatus } from '@/lib/brain'
 import { keys } from '@/lib/appkeys'
 import { BrainGraphCanvas } from './BrainGraphCanvas'
 import { ChevronIcon } from './AppIcons'
+import { BrainGlyph } from './BrainDrop'
 import { SecondBrainModal } from './SecondBrainModal'
 
 const FOLD_KEY = 'caprock.app.brain-fold'
@@ -46,8 +47,11 @@ export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
     <section className="mt-3 border-t border-[var(--app-hairline)] pt-1" aria-label="Second Brain" data-brain-sidebar>
       <div className="flex h-[28px] items-center gap-1.5 px-2 pt-1.5">
         <button type="button" onClick={toggle} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-faint">Brain</h2>
-          {auto && <span className="text-[10.5px] text-fg-faint" title="Built from your finished sessions">· building</span>}
+          <h2 className="flex min-w-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-faint">
+            <BrainGlyph size={12} className="shrink-0" />
+            <span className="truncate">Second Brain</span>
+          </h2>
+          {auto && <span className="shrink-0 text-[10.5px] text-fg-faint" title="Built from your finished sessions">· building</span>}
         </button>
         <button
           type="button"
@@ -60,7 +64,7 @@ export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
         <button
           type="button"
           onClick={toggle}
-          aria-label={open ? 'Fold Brain' : 'Unfold Brain'}
+          aria-label={open ? 'Fold Second Brain' : 'Unfold Second Brain'}
           className="flex h-[20px] w-[20px] items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg"
         >
           <span className={`flex transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} aria-hidden>
@@ -70,6 +74,7 @@ export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
       </div>
       {open && (
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 px-1 pt-1">
+          <p className="px-1.5 text-[11.5px] leading-snug text-fg-faint" data-brain-tagline>{BRAIN_TAGLINE}</p>
           {graph && graph.total > 0 ? (
             <>
               <BrainGraphCanvas

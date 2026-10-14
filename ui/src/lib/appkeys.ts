@@ -391,7 +391,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],
   ['⌘J', 'Next session waiting on you'],
-  ['⇧⌘H', 'Add to brain: keep a line in Second Brain'],
+  ['⇧⌘H', 'Add to Second Brain: keep a line of your own'],
   ['⌘1–8, ⌘9', 'The Nth tab, in the order opened, as its badge says; ⌘9 the last'],
   ['⌥⌘↓, ⌥⌘↑', 'Next and previous session of the project in front'],
   ['⌥⌘→, ⌥⌘←', 'Next and previous project'],

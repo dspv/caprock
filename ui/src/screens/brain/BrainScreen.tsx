@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { isPairedDevice, type BrainNode } from '@/lib/api'
 import { BrainConsent } from '@/components/BrainAutoSetting'
-import { isEntity, KIND_COLOR, KIND_LABEL, openBrainCapture, useBrainGraph, useBrainStatus } from '@/lib/brain'
+import { BRAIN_TAGLINE, isEntity, KIND_COLOR, KIND_LABEL, openBrainCapture, useBrainGraph, useBrainStatus } from '@/lib/brain'
 import { fmtAgo } from '@/lib/format'
 import { keys } from '@/lib/appkeys'
 import { isAppMode } from '@/lib/appmode'
@@ -88,6 +88,12 @@ export function BrainScreen({ node }: { node?: number }) {
 
   return (
     <div className="grid gap-3" data-brain-screen>
+      <header className="grid min-w-0 gap-0.5">
+        <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-[-0.01em] text-fg">
+          <BrainGlyph size={20} className="shrink-0 text-accent" /> Second Brain
+        </h1>
+        <p className="text-[13px] text-fg-faint" data-brain-tagline>{BRAIN_TAGLINE}</p>
+      </header>
       <p className="max-w-[760px] text-[13px] leading-relaxed text-fg-muted">
         <span className="text-fg">What your sessions decided, found and left open, kept as memories.</span>{' '}
         Drop any answer in from Memory or a chat, or add a line of your own
@@ -129,7 +135,7 @@ export function BrainScreen({ node }: { node?: number }) {
         {owner && (
           <button type="button" onClick={() => openBrainCapture()}
             className="ml-auto inline-flex h-[30px] items-center gap-1.5 rounded-[7px] border border-accent/50 bg-accent/10 px-2.5 text-[12.5px] text-accent hover:bg-accent/20">
-            <BrainGlyph size={13} /> Add to brain
+            <BrainGlyph size={13} /> Add to Second Brain
           </button>
         )}
       </div>
@@ -155,10 +161,10 @@ export function BrainScreen({ node }: { node?: number }) {
                 <Legend />
               </div>
             ) : memories.length === 0 ? (
-              <Empty title={filtered ? 'Nothing matches' : 'Nothing in your brain yet'}>
+              <Empty title={filtered ? 'Nothing matches' : 'Nothing in Second Brain yet'}>
                 {filtered
                   ? 'Try a shorter phrase, another project or a longer span.'
-                  : 'Open Memory or a chat and press “Drop into brain” under an answer worth keeping, or add a line of your own.'}
+                  : 'Open Memory or a chat and press “Drop into Second Brain” under an answer worth keeping, or add a line of your own.'}
               </Empty>
             ) : (
               <ul className="grid gap-1" aria-label="Memories">

@@ -714,7 +714,7 @@ On macOS:
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                         |
 | ⌘[ ]        | Previous and next pane                                                   |
 | ⌘J          | Next session waiting on you                                              |
-| ⇧⌘H         | Add to brain: keep a line in Second Brain                                |
+| ⇧⌘H         | Add to Second Brain: keep a line of your own                             |
 | ⌘F          | Find in the terminal or the file                                         |
 | ⌘K          | Command palette                                                          |
 | ⌘,          | Settings                                                                 |
@@ -731,7 +731,7 @@ On macOS:
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 (Quick chat is Ctrl+Alt+Shift+N, the Pipeline Ctrl+Alt+Shift+B,
 Send feedback Ctrl+Alt+Shift+F, since Ctrl+Shift+F is Find; tabs are
-Ctrl+Shift+1–9; Add to brain is Ctrl+Shift+H). The arrow
+Ctrl+Shift+1–9; Add to Second Brain is Ctrl+Shift+H). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
@@ -828,26 +828,27 @@ it: nothing that updates behind the sheet takes it from the field you are in.
 
 The few answers worth keeping, kept as a graph: ideas, decisions, findings
 and open questions, each linked to its project and topics and to the moment
-in the session it came from. Open it from *Brain* in the dashboard's screen
-row.
+in the session it came from — all your agents build your personal Jarvis
+over time. Open it from *Second Brain* in the dashboard's screen row, or from
+the Second Brain block in the app's sidebar.
 
 - **Drop an answer in.** Under any answer on the Memory screen, in a
   session's Answers tab, or under a reply in the chat view, press **Drop into
-  brain**. Caprock reads the answer from its own record, so the memory knows
+  Second Brain**. Caprock reads the answer from its own record, so the memory knows
   its session, project and time; its first line becomes the title.
 - **Add a line of your own.** ⇧⌘H (Ctrl+Shift+H on Windows and Linux), or ⌘K
-  → *Add to brain…*: type it, pick Idea, Decision, Finding or Question, name
+  → *Add to Second Brain…*: type it, pick Idea, Decision, Finding or Question, name
   topics if you like, and ⌘↩.
-- **See it as a graph.** The Brain screen opens on the graph: your memories
+- **See it as a graph.** The Second Brain screen opens on the graph: your memories
   and the topics and projects they hang off. Drag to move, scroll to zoom,
   double-click to fit, click a dot to open it; *List* shows the same as
-  rows. In the app's sidebar, the Brain block below your projects shows the
+  rows. In the app's sidebar, the Second Brain block below your projects shows the
   newest thirty as a small graph — a new memory drops in as it is kept —
   and the three newest titles.
 - **Find and tidy.** Search, pick a project or a span; open a memory to edit
   its title and summary, pin it, link it to a topic, jump to the session it
   came from, or delete it.
-- **Let it build itself.** The Brain screen asks
+- **Let it build itself.** The Second Brain screen asks
   once whether to build it automatically; Settings → Second Brain switches it
   later. When a session has been quiet for ten minutes, Caprock asks your own
   `claude` (a small model, Haiku) to pick out what it decided and found, and

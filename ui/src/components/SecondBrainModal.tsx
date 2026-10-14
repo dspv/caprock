@@ -1,5 +1,5 @@
 /**
- * "How it works" for Second Brain (ADR-063), opened from the sidebar's Brain
+ * "How it works" for Second Brain (ADR-063), opened from the sidebar's Second Brain
  * block: what it is in four short lines and a calm picture of a graph.
  *
  * Second Brain is free: every memory, and the automatic build for anyone

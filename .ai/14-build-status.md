@@ -152,8 +152,8 @@ pull requests and subagents as moments rather than every command.
 
 Memories kept as a graph ([ADR-063](08-decisions.md)): migration 0055
 (`brain_nodes`, `brain_edges`, `brain_runs`), `/v1/brain*`, the `brain`
-live frame, *Drop into brain* on Memory, a session's Answers and the chat
-view, the quick capture (⇧⌘H, ⌘K *Add to brain…*) and the `#/brain` screen
+live frame, *Drop into Second Brain* on Memory, a session's Answers and the chat
+view, the quick capture (⇧⌘H, ⌘K *Add to Second Brain…*) and the `#/brain` screen
 (search, project, span, a memory's detail with edit, pin, link and delete).
 Twenty memories by hand are free; the twenty-first is `402` from the
 daemon. The graph read measured 45–50 ms for 5,000 memories and 15,000 edges

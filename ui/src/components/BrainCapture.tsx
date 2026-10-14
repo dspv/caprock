@@ -1,6 +1,6 @@
 /**
  * The quick capture (ADR-063): one line, or a paragraph, dropped into Second
- * Brain from anywhere — ⇧⌘H, or ⌘K "Add to brain…". The first line becomes
+ * Brain from anywhere — ⇧⌘H, or ⌘K "Add to Second Brain…". The first line becomes
  * the memory's title, the rest its summary; the kind and topics are optional.
  *
  * `BrainCaptureHost` is mounted once per page (App, AppShell) and opens the
@@ -49,8 +49,8 @@ export function BrainCapture({ initial = '', onClose }: { initial?: string; onCl
   return (
     <>
       <Sheet
-        label="Add to brain"
-        title="Add to brain"
+        label="Add to Second Brain"
+        title="Add to Second Brain"
         onClose={onClose}
         width={560}
         footer={

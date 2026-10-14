@@ -72,7 +72,7 @@ describe('Second Brain', () => {
   it('says a failed drop plainly, with nothing to buy', async () => {
     m.drop.mockRejectedValue(new ApiError(500, '500', { error: 'disk full' }))
     render(<BrainDropButton eventId={7} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Drop into brain' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Drop into Second Brain' }))
     await screen.findByText('Could not drop')
     expect(screen.queryByRole('dialog')).toBeNull()
   })
@@ -80,8 +80,8 @@ describe('Second Brain', () => {
   it('drops an answer by its event id and says it is kept', async () => {
     m.drop.mockResolvedValue({ node: node({}), created: true })
     render(<BrainDropButton eventId={42} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Drop into brain' }))
-    await screen.findByRole('button', { name: 'In your brain' })
+    fireEvent.click(screen.getByRole('button', { name: 'Drop into Second Brain' }))
+    await screen.findByRole('button', { name: 'In Second Brain' })
     expect(m.drop).toHaveBeenCalledWith({ event_id: 42 })
   })
 
@@ -94,6 +94,10 @@ describe('Second Brain', () => {
     })
     m.node.mockResolvedValue({ node: node({ id: 1, summary: 'WAL is enough for one machine.', source: { session_id: 's1', ts: 5, project: 'caprock' } }), links: [] })
     render(<BrainScreen />)
+    // Its name in full, with its mark and the one line on what it is.
+    const title = screen.getByRole('heading', { level: 1, name: 'Second Brain' })
+    expect(title.querySelector('svg')).not.toBeNull()
+    expect(screen.getByText('All your agents build your personal Jarvis over time.')).toBeTruthy()
     // The graph first; the list a click away, and remembered.
     await waitFor(() => expect(document.querySelector('[data-brain-graph="full"]')).not.toBeNull())
     expect(screen.getByRole('img', { name: /Second Brain graph: 3 nodes/ })).toBeTruthy()
@@ -137,7 +141,7 @@ describe('Second Brain', () => {
     await screen.findByText(/Started/)
   })
 
-  it('keeps a Brain block in the sidebar: the newest titles, the count, and a way in', async () => {
+  it('keeps a Second Brain block in the sidebar: its name, mark and line, the newest titles, the count, and a way in', async () => {
     m.status.mockResolvedValue(status({ memories: 4 }))
     m.brain.mockResolvedValue({
       nodes: [1, 2, 3, 4].map((id) => node({ id, title: `Memory ${id}`, created_at: id })).concat(node({ id: 9, kind: 'topic', title: 'storage' })),
@@ -148,11 +152,15 @@ describe('Second Brain', () => {
     render(<BrainSidebar onOpen={onOpen} />)
     await screen.findByRole('button', { name: 'Memory 4' })
     expect(m.brain).toHaveBeenCalledWith({ limit: 30 })
+    // Named in full, with its mark and the one line on what it is.
+    const heading = screen.getByRole('heading', { name: 'Second Brain' })
+    expect(heading.querySelector('svg')).not.toBeNull()
+    expect(screen.getByText('All your agents build your personal Jarvis over time.')).toBeTruthy()
     // The three newest, newest first; topics are not titles here.
     expect(screen.getAllByRole('button').map((b) => b.textContent).filter((t) => t?.startsWith('Memory'))).toEqual(['Memory 4', 'Memory 3', 'Memory 2'])
     fireEvent.click(screen.getByRole('button', { name: 'Memory 3' }))
     expect(onOpen).toHaveBeenCalledWith('#/brain?node=3')
-    fireEvent.click(screen.getByRole('button', { name: 'Fold Brain' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Fold Second Brain' }))
     expect(screen.queryByRole('button', { name: 'Memory 4' })).toBeNull()
     expect(localStorage.getItem('caprock.app.brain-fold')).toBe('closed')
   })
@@ -163,7 +171,7 @@ describe('Second Brain', () => {
     const onOpen = vi.fn()
     render(<BrainSidebar onOpen={onOpen} />)
     await screen.findByRole('button', { name: 'Memory 1' })
-    expect(screen.getByRole('button', { name: 'Fold Brain' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Fold Second Brain' })).toBeTruthy()
     expect(document.querySelector('[data-brain-sidebar] svg.text-premium-strong')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'How it works' }))
     const dialog = await screen.findByRole('dialog')

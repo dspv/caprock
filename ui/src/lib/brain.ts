@@ -11,7 +11,11 @@ import { live } from './live'
 /** Said on window to open the quick capture; `detail.text` prefills it. */
 export const BRAIN_CAPTURE_EVENT = 'caprock:brain-capture'
 
-/** Opens the quick capture (⇧⌘H, ⌘K "Add to brain…"), optionally with text in it. */
+/** The one line on what Second Brain is, under its name in the sidebar and
+ *  on its screen — the owner's words, kept as he wrote them (2026-10-14). */
+export const BRAIN_TAGLINE = 'All your agents build your personal Jarvis over time.'
+
+/** Opens the quick capture (⇧⌘H, ⌘K "Add to Second Brain…"), optionally with text in it. */
 export function openBrainCapture(text?: string) {
   window.dispatchEvent(new CustomEvent(BRAIN_CAPTURE_EVENT, { detail: { text } }))
 }
