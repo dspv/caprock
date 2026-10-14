@@ -161,7 +161,7 @@ others. Installing it: [install-app.md](install-app.md).
   palette, Share and the rest — closes with the × in its corner, a click
   outside it, or Esc. In the app,
   Now keeps its figures — today, plan limits, the pulse, the repos, all
-  time, at a glance, the activity feed — and leaves the session cards and the
+  time, at a glance, *What happened* — and leaves the session cards and the
   projects panel to the sidebar, which lists the same sessions; the browser
   dashboard shows both. **Repos**, under the pulse, has a row for each
   repository a session runs in: commits a day over two weeks, today's and the
