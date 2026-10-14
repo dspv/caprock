@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** Second Brain comes to Premium on 18 October 2026: a knowledge
+  graph of everything your agents do, kept on your computer. After two days
+  of use a short strip offers it, and *How it works* explains it and leads
+  to Premium; if it doesn't arrive on that date, write to us for a full
+  refund ([ADR-062](.ai/08-decisions.md)).
+- **app:** Caprock may also ask about a feature it is considering — running
+  Hugging Face models on your computer, and one of watching short ads to
+  earn money or YouTube while agents work. At most one strip a day; each
+  question is two clicks and an optional email. Nothing leaves the computer
+  until you press **Send**, which sends those answers to caprock.dev and
+  nothing else; *Not interested* and × send nothing, and an answered strip
+  never returns.
+
+## [0.117.1] - 2026-10-14
+
+### Added
+
 - **now:** the tokens beside each pull request's cost in the CI/CD
   section (*9.4M tok · $2.12*); the hover splits input, output, cache read
   and cache write.
@@ -23,7 +40,24 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   link to a topic or delete. Twenty memories are free; Premium keeps every
   one. Kept in Caprock's database on this machine.
 
+### Changed
+
+- **now:** *Live activity* is now **What happened**: the moments of your
+  sessions instead of every command. Files edited (grouped by folder), tests
+  and checks with their result (*passed*, *failed (exit 2)*, or *no result
+  recorded* when there is none), builds, commits with their message, pushes,
+  pull requests opened or merged, subagents by their task, a turn ending with
+  the first line of the reply, a session waiting for approval, and a command
+  that failed. Reads, searches and the like are a quiet `+N` on the moment
+  they led up to. On one day of real use that is 1,974 rows where the old
+  feed had 11,493. *All commands* brings the old feed back; the panel folds
+  like the others and remembers it; every row is the same height.
+
 ### Fixed
+
+- **now:** the activity feed no longer says "session ended" at the end of
+  every turn and every subagent's stop; it says *finished its turn* or
+  *subagent stopped*, and "session ended" only when one did.
 
 - **phone:** a phone can type the moment it pairs. A newly paired phone
   could only look until a second click on the computer — impossible once
@@ -62,19 +96,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 ## [0.117.0] - 2026-10-14
 
 ### Added
-
-- **app:** Second Brain comes to Premium on 18 October 2026: a knowledge
-  graph of everything your agents do, kept on your computer. After two days
-  of use a short strip offers it, and *How it works* explains it and leads
-  to Premium; if it doesn't arrive on that date, write to us for a full
-  refund ([ADR-062](.ai/08-decisions.md)).
-- **app:** Caprock may also ask about a feature it is considering — running
-  Hugging Face models on your computer, and one of watching short ads to
-  earn money or YouTube while agents work. At most one strip a day; each
-  question is two clicks and an optional email. Nothing leaves the computer
-  until you press **Send**, which sends those answers to caprock.dev and
-  nothing else; *Not interested* and × send nothing, and an answered strip
-  never returns.
 
 - **app:** closing the tab of an agent Caprock started now asks: **Close
   tab** (in focus, so ⌘W then Enter works as before and the agent keeps
