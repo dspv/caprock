@@ -3477,6 +3477,40 @@ reinstalled the app from its own prompt in a browser tab.
   Chrome says the app is not installed. The manifest `id` stays `/`, so a
   new build is the same app. Existing pairings are untouched.
 
+*Amended 2026-10-14, later — a paired phone stays paired.* Right after the
+page and the relay were redeployed, the owner's phone told him to pair again
+(translated: "my connection to Caprock dropped and it asks me to go to
+Caprock settings again. It has to never drop — hold firm and for a long
+time"); his computer still listed it as a controller. Three faults,
+reproduced on a stand with a v0.117.0 daemon, the local relay and the page:
+
+- **A phone hanging up mid-answer took the machine off the relay.** The
+  daemon wrote each frame with the phone's context, and the WebSocket
+  library closes the whole connection when a write's context ends part-way:
+  every other phone dropped with it. Writes are now bounded by the relay
+  connection's own context; a phone that has gone sends nothing more
+  (`internal/remote/host.go`, the same in `relaysrv`).
+- **The hosted relay reused a phone's number at once.** It gave a new phone
+  the lowest free number, while frames for the phone that had just left
+  were still on their way from the machine; the newcomer read one as its
+  handshake reply. It now draws a random unused 32-bit number — no storage,
+  survives hibernation. `relaysrv` already counted up.
+- **The page believed one bad answer.** A message that did not finish the
+  handshake was `wrong-machine`, and one 401 anywhere was `removed`, both
+  for good. Now a stray message is skipped while the real reply comes;
+  `wrong-machine` is three refused handshakes in a row; `removed` is
+  `GET /v1/pair/me` saying 401 on two separate connections. Behind either
+  screen the page checks once a minute and recovers by itself.
+
+**No new daemon answer for "revoked".** Telling a revoked token from an
+unknown one would need the daemon to keep revoked tokens (or their hashes),
+new state in `devices.json`, and would still not help a phone talking to
+v0.117.0. The confirmation above reads only what every daemon already says,
+and lanauth's one 401 for both stays. The page needs nothing new from the
+daemon at all: an older daemon answers a newer page's new routes 403 or
+404, never 401 (`TestAPhonesTokenIsOnlyDisownedByA401`, which v0.117.0
+passes too).
+
 
 ## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
 

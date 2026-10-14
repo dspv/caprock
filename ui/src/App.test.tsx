@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import App from './App'
+import App, { PAIRED_401_TRIES, accessAfter } from './App'
+import { ApiError } from '@/lib/api'
 
 const summary = {
   range: 'today', sessions: 0, active_sessions: 0, turns: 0, tool_calls: 0,
@@ -59,5 +60,21 @@ describe('App', () => {
     render(<App />)
     expect(await screen.findByText('caprock')).toBeInTheDocument()
     expect(screen.queryByText('Pair this device')).not.toBeInTheDocument()
+  })
+
+  // A paired phone told once "not paired" by a daemon that was restarting, or
+  // by a request that crossed a reconnect, went to the pairing form and its
+  // "Settings → Use on your phone" (owner, 2026-10-14).
+  it('a device holding a token is not sent to the pairing form by one 401', () => {
+    const e401 = new ApiError(401, 'this device is not paired with Caprock')
+    expect(accessAfter(e401, { paired: false, remote: false, tries: 1 })).toBe('needs-pairing')
+    expect(accessAfter(e401, { paired: false, remote: true, tries: 1 })).toBe('needs-pairing')
+    // The phone's page: the channel confirms a removal itself.
+    expect(accessAfter(e401, { paired: true, remote: true, tries: 1 })).toBe('ok')
+    // A tablet on the Wi-Fi asks again before it believes it.
+    expect(accessAfter(e401, { paired: true, remote: false, tries: 1 })).toBe('retry')
+    expect(accessAfter(e401, { paired: true, remote: false, tries: PAIRED_401_TRIES })).toBe('needs-pairing')
+    expect(accessAfter(new ApiError(503, 'down'), { paired: true, remote: false, tries: 1 })).toBe('ok')
+    expect(accessAfter(new TypeError('offline'), { paired: false, remote: false, tries: 1 })).toBe('ok')
   })
 })

@@ -1150,9 +1150,17 @@ once when the phone comes back to the page or onto a network):
 - **This phone was removed: pair again**: it was removed in *Paired
   devices*. Show a new code and scan it.
 
+A paired phone stays paired. A dropped connection, a restarting computer or
+relay, the phone asleep or offline, or a computer on an older Caprock never
+send it back to pairing: the page says *Pair again* only once the computer
+has turned the phone away on two separate connections (removed), or refused
+its handshake three times in a row (new keys after `caprock remote reset`).
+Even then it keeps checking once a minute and comes back by itself if that
+was wrong.
+
 **Retry** tries at once; **Pair again** shows the three steps and a box for
 a copied link. Opening a pairing link whose code was already used (the
-camera, then the app) keeps the pairing that worked.
+camera, then the app) goes straight back to the pairing that worked.
 
 The phone appears under *Paired devices*, which says how each device reaches
 this computer: *anywhere*, or *Wi-Fi link*. A *Wi-Fi link* is a phone paired

@@ -110,6 +110,14 @@ export function prepare(loc: Location = window.location, hist: History = history
     })
     saveMachines(next)
     write(CURRENT_KEY, link.machine.id)
+    if (!link.code && old?.token) {
+      // A link with no code to redeem (Copy link without a code, an old
+      // QR): nothing to pair with, so the phone stays paired as it was.
+      write(PAIRING_KEY, null)
+      write(DEVICE_TOKEN_KEY, old.token)
+      hist.replaceState(null, '', loc.pathname + '#/')
+      return next.find((m) => m.id === link.machine.id)
+    }
     write(PAIRING_KEY, link.machine.id)
     write(DEVICE_TOKEN_KEY, null)
     // Onto the dashboard's own pairing screen, which redeems the code over
@@ -133,11 +141,32 @@ export function prepare(loc: Location = window.location, hist: History = history
       write(DEVICE_TOKEN_KEY, cur.token)
       write(PAIRING_KEY, null)
     }
+  } else if (!cur.token && token) {
+    // The token only where the dashboard reads it, and not on the record (a
+    // record from an older page, or one a write did not reach): the record
+    // takes it, since the record is what survives the next switch or link.
+    cur.token = token
+    saveMachines(ms.map((m) => (m.id === cur.id ? cur : m)))
   } else {
+    // The record is the source of truth: it is never cleared here, and a
+    // token is only ever replaced by a pairing that completed (above).
     write(DEVICE_TOKEN_KEY, cur.token || null)
   }
   write(CURRENT_KEY, cur.id)
   return cur
+}
+
+/**
+ * The code a pairing link carried did not work (spent, expired, mistyped):
+ * back to the token that worked before, when this machine had one. True when
+ * there was one to go back to; the caller reloads.
+ */
+export function abandonPairing(): boolean {
+  const cur = currentMachine()
+  if (!cur?.token || raw(PAIRING_KEY) !== cur.id) return false
+  write(DEVICE_TOKEN_KEY, cur.token)
+  write(PAIRING_KEY, null)
+  return true
 }
 
 /** Makes another machine current; the caller reloads. */

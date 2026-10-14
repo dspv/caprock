@@ -115,13 +115,24 @@ export class Machine implements DurableObject {
     return new Response(null, { status: 101, webSocket: client })
   }
 
+  /**
+   * A number for a new phone that no phone has had lately. The lowest free
+   * one was handed straight to the next phone, while the machine was still
+   * sending to the phone that just hung up under it: the newcomer's first
+   * message was the old channel's ciphertext, its handshake failed, and the
+   * page told the owner to pair again (2026-10-14). A random 32-bit number
+   * is not reused in practice, and needs no storage: the object may be
+   * evicted between phones, and a counter in memory would start over.
+   * internal/remote/relaysrv counts up instead, as it never sleeps.
+   */
   private nextConn(): number {
-    // Unique among the open phones; numbers are reused only after their
-    // socket is gone.
     const used = new Set(this.state.getWebSockets('phone').map((ws) => (ws.deserializeAttachment() as Tag & { conn: number }).conn))
-    let n = 1
-    while (used.has(n)) n++
-    return n
+    const r = new Uint32Array(1)
+    for (;;) {
+      crypto.getRandomValues(r)
+      const n = r[0]!
+      if (n !== 0 && !used.has(n)) return n
+    }
   }
 
   /**

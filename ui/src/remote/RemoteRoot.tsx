@@ -9,7 +9,8 @@
  * own, and the camera opens links in Safari).
  */
 import { Suspense, lazy, useEffect, useState } from 'react'
-import { currentChannel, currentMachine, forgetMachine, install, machines, parsePairLink, prepare, selectMachine } from './boot'
+import { abandonPairing, currentChannel, currentMachine, forgetMachine, install, machines, parsePairLink, prepare, selectMachine } from './boot'
+import { PAIR_FAILED_EVENT } from '@/screens/Pair'
 import { needsPairing, type ChannelState, type Problem } from './transport'
 import { promptInstall, useInstallOffer, type InstallOffer } from './install'
 import { ReadyGate } from './ReadyCard'
@@ -25,6 +26,14 @@ if (machine) install(machine)
 // which loads nothing; start over so prepare() reads it.
 window.addEventListener('hashchange', () => {
   if (parsePairLink(window.location.hash)) window.location.reload()
+})
+
+// A scanned code that did not work (spent by the camera's tab, expired)
+// must not cost a pairing that did: back to it, rather than a code form.
+window.addEventListener(PAIR_FAILED_EVENT, () => {
+  if (!abandonPairing()) return
+  window.location.replace(window.location.pathname + '#/')
+  window.location.reload()
 })
 
 /** How long the channel may be down before the page says why, in full. */
@@ -167,12 +176,12 @@ export function explain(problem: Problem, name: string, relay: string): { title:
     case 'wrong-machine':
       return {
         title: 'This isn’t the computer this phone paired with',
-        body: `The computer answering as ${name} has different keys, so nothing it sends is trusted. If its keys were reset, pair again: on the computer, Settings → Use on your phone → Show a code.`,
+        body: `The computer answering as ${name} turned this phone away three times in a row: its keys are not the ones this phone paired with. If its keys were reset, pair again: on the computer, Settings → Use on your phone → Show a code. This page keeps checking, and reconnects by itself if it can.`,
       }
     case 'removed':
       return {
         title: 'This phone was removed: pair again',
-        body: `${name} no longer lets this phone in. On the computer, open Caprock: Settings → Use on your phone → Show a code, and scan it.`,
+        body: `${name} no longer lets this phone in. On the computer, open Caprock: Settings → Use on your phone → Show a code, and scan it. This page keeps checking, and comes back by itself if it was a mistake.`,
       }
     case 'lost':
       return { title: 'Connection lost', body: `Reconnecting to ${name}.` }
