@@ -170,7 +170,7 @@ func LiveSubagents(ctx context.Context, q Querier, sessionID string, since int64
 		         MAX(ts) AS last,
 		         MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END) AS stopped
 		  FROM events
-		  WHERE session_id = ? AND ts >= ? AND COALESCE(agent_id,'') <> ''
+		  WHERE session_id = ? AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
 		  GROUP BY agent_id
 		) WHERE stopped < last`, sessionID, since).Scan(&n)
 	return n, err

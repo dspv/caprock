@@ -53,7 +53,7 @@ func SubagentsNow(ctx context.Context, q Querier, sessionID string, since int64)
 		       MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END),
 		       SUM(kind = 'tool.pre')
 		  FROM events
-		 WHERE session_id = ? AND ts >= ? AND COALESCE(agent_id, '') <> ''
+		 WHERE session_id = ? AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
 		 GROUP BY agent_id
 		 ORDER BY MAX(ts) DESC`, sessionID, since)
 	if err != nil {
@@ -107,6 +107,12 @@ func SubagentsNow(ctx context.Context, q Querier, sessionID string, since int64)
 // (idx_events_session_ts) instead of every tool.pre in the database
 // (idx_events_kind_*): on the owner's database that was 1.1 s against 13 ms
 // for a 16,000-event session.
+//
+// The per-agent groupings spell `agent_id IS NOT NULL AND agent_id <> ''`
+// rather than COALESCE(agent_id, '') <> '': only the spelled-out form lets
+// SQLite see that the partial idx_events_agent_ts (migration 0054: session,
+// ts, agent, kind) holds every row they need, and read it alone instead of
+// the session's rows from the table.
 
 // countSubagentCalls fills ToolCalls for all of them in one pass. A call
 // heard on both planes is one row (they share its key); one only the
@@ -140,13 +146,33 @@ func countSubagentCalls(ctx context.Context, q Querier, sessionID string, workin
 	return rows.Err()
 }
 
+// agentTaskID and agentTaskDesc are the agent id and the description a
+// parent's Agent/Task result names, exactly as idx_events_agent_task
+// (migration 0054) indexes them: SQLite matches an indexed expression by its
+// text, so a query that spells either differently opens every payload again.
+const (
+	agentTaskID   = `(CASE WHEN json_valid(payload) THEN json_extract(payload, '$.tool_response.agentId') END)`
+	agentTaskDesc = `(CASE WHEN json_valid(payload) THEN json_extract(payload, '$.tool_response.description') END)`
+)
+
 // describeSubagents fills Description from the parent's Agent calls whose
-// result names the agent.
+// result names the agent. Only the listed agents are looked up, each by its
+// id in idx_events_agent_task, so no result payload is read: they hold the
+// subagent's whole answer, and reading all of a busy session's on every
+// refresh was 0.6 s (§ Subagent reads DDL).
 func describeSubagents(ctx context.Context, q Querier, sessionID string, working []SubagentActivity) error {
+	if len(working) == 0 {
+		return nil
+	}
+	args := []any{sessionID}
+	for _, a := range working {
+		args = append(args, a.AgentID)
+	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT COALESCE(json_extract(payload, '$.tool_response.agentId'), ''),
-		       COALESCE(json_extract(payload, '$.tool_response.description'), '')
-		  FROM events WHERE session_id = ? AND +kind = 'tool.post' AND tool IN ('Agent', 'Task')`, sessionID)
+		SELECT COALESCE(`+agentTaskID+`, ''), COALESCE(`+agentTaskDesc+`, '')
+		  FROM events INDEXED BY idx_events_agent_task
+		 WHERE session_id = ? AND kind = 'tool.post' AND tool IN ('Agent', 'Task')
+		   AND `+agentTaskID+` IN (?`+strings.Repeat(`, ?`, len(working)-1)+`)`, args...)
 	if err != nil {
 		return err
 	}
@@ -225,7 +251,7 @@ func SubagentsDone(ctx context.Context, q Querier, sessionID string, since int64
 		       MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END) AS stopped,
 		       SUM(kind = 'tool.pre') AS calls
 		  FROM events
-		 WHERE session_id = ? AND ts >= ? AND COALESCE(agent_id, '') <> ''
+		 WHERE session_id = ? AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
 		 GROUP BY agent_id
 		HAVING stopped >= MAX(ts) AND calls > 0
 		 ORDER BY stopped DESC
@@ -265,34 +291,27 @@ func SubagentsDone(ctx context.Context, q Querier, sessionID string, since int64
 	return done, nil
 }
 
-// typeSubagents fills AgentType for all of them in one pass over the window:
-// the newest type any of their events named (a SubagentStop often names none).
+// typeSubagents fills AgentType for each of them: the newest type any of its
+// events in the window named (a SubagentStop often names none). One lookup
+// per agent, newest first through idx_events_agent, that stops at the first
+// event naming a type — nearly always the newest. Reading the type off every
+// event of every listed agent in the window, as one pass did, opened all
+// their payloads: 0.28 s for thirty finished agents of a busy session
+// (2026-10-14), on every refresh of an opened "+N finished".
 func typeSubagents(ctx context.Context, q Querier, sessionID string, since int64, list []SubagentActivity) error {
-	args := []any{sessionID, since}
-	for _, a := range list {
-		args = append(args, a.AgentID)
-	}
-	rows, err := q.QueryContext(ctx, `
-		SELECT agent_id, json_extract(payload, '$.agent_type') FROM events
-		 WHERE session_id = ? AND ts >= ? AND agent_id IN (?`+strings.Repeat(`, ?`, len(list)-1)+`)
-		   AND json_extract(payload, '$.agent_type') <> ''
-		 ORDER BY ts, id`, args...)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = rows.Close() }()
-	typ := map[string]string{}
-	for rows.Next() {
-		var id, t string
-		if err := rows.Scan(&id, &t); err != nil {
+	for i := range list {
+		var t string
+		err := q.QueryRowContext(ctx, `
+			SELECT json_extract(payload, '$.agent_type') FROM events
+			 WHERE session_id = ? AND agent_id = ? AND ts >= ?
+			   AND json_extract(payload, '$.agent_type') <> ''
+			 ORDER BY ts DESC, id DESC LIMIT 1`, sessionID, list[i].AgentID, since).Scan(&t)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		typ[id] = t
+		list[i].AgentType = t
 	}
-	for i := range list {
-		list[i].AgentType = typ[list[i].AgentID]
-	}
-	return rows.Err()
+	return nil
 }
 
 // SubagentSpend is what a subagent's own model calls cost, from its
@@ -313,12 +332,14 @@ type SubagentSpend struct {
 // Internal model calls are left out, as every total leaves them out.
 func SubagentsSpend(ctx context.Context, q Querier, sessionID string) (map[string]SubagentSpend, SubagentSpend, error) {
 	// One MAX() in the select: SQLite takes the bare `model` from its row,
-	// the agent's newest turn.
+	// the agent's newest turn. Pinned to its covering index (migration 0054):
+	// the session's own index walked the parent's rows too and read each
+	// from the table, 75 ms warm on a 96,000-event session.
 	rows, err := q.QueryContext(ctx, `
 		SELECT agent_id, MAX(ts), COALESCE(model, ''), COUNT(*),
 		       SUM(cost_usd IS NULL AND tokens_in IS NOT NULL), COALESCE(SUM(cost_usd), 0)
-		  FROM events
-		 WHERE session_id = ? AND +kind = 'turn.assistant' AND COALESCE(agent_id, '') <> '' AND internal = 0
+		  FROM events INDEXED BY idx_events_subagent_turn
+		 WHERE session_id = ? AND kind = 'turn.assistant' AND agent_id IS NOT NULL AND agent_id <> '' AND internal = 0
 		 GROUP BY agent_id`, sessionID)
 	if err != nil {
 		return nil, SubagentSpend{}, err

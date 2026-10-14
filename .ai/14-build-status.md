@@ -73,6 +73,49 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-14 — unreleased: the subagent rows and the summary read less
+
+With nine live sessions, several running five to nine background subagents,
+the installed daemon sat at 20–60% CPU, and its slow-query log (over 300 ms)
+named in under two hours `describeSubagents` 441 times, `SubagentsSpend` 312,
+`turnSpendBySession` 217 and `SummarizeSparkFor` 126. The first two are the
+cockpit's subagent rows (`GET /v1/sessions/{id}/subagents`, read again every
+two seconds per open cockpit while subagents work); they walked every row of
+the parent session and read each from the table, payload overflow pages
+included. Migration 0054 adds three partial indexes those reads use alone —
+the Agent results' agent id and description as indexed expressions, the
+subagents' priced turns, and the subagent rows by time — and
+`typeSubagents` stops at each agent's newest typed event
+([03-contracts.md § Subagent reads DDL](03-contracts.md#subagent-reads-ddl-migration-0054)).
+The summary's per-turn attribution (`turnSpendBySession`) scanned its whole
+index for every range, because the index leads on the session: ranges within
+48 hours now find the sessions with rows in range first and seek each. The
+burn tile beside today's cost computed a whole summary of the last ten
+minutes on every request; it reads one covering aggregate
+(`store.RecentSpend`).
+
+On a copy of the owner's 2.4 GB database (517,000 events; the busiest
+session 95,706, 75,855 of them its subagents'), warm, Go driver, medians of
+five over interleaved runs:
+
+| Read                                  | Before     | After    |
+| ------------------------------------- | ---------- | -------- |
+| Subagent rows, one refresh (s0)       | 224–303 ms | 25–37 ms |
+| Subagent descriptions                 | 61–82 ms   | 0.1 ms   |
+| `SubagentsSpend`                      | 75–97 ms   | 10–14 ms |
+| Agent types of 30 finished            | 276 ms     | 1.5 ms   |
+| `turnSpendBySession`, today           | 69–79 ms   | 42–59 ms |
+| `turnSpendBySession`, last 10 minutes | 41–46 ms   | 14–20 ms |
+| Burn tile (10-minute summary)         | 67–79 ms   | 10–15 ms |
+
+A refresh of the subagent rows is `SubagentsNow`, `SubagentsDone` and
+`SubagentsSpend` together. 7- and 30-day ranges keep the full scan: seeking
+session by session was slower there (7 days 114 ms scanned against 139 ms
+sought, 30 days 225 against 325). The indexes are about 30 MB on that copy
+and took 8.7 s to build, once. Not done: `SessionCalls` (read once when a
+cockpit opens, 110–160 ms for that session) and `countSubagentCalls`, which
+still read call payloads for their `tool_use_id`.
+
 ### 2026-10-13 — 0.115.1: mail connects first time, terminal glyphs survive a sleep
 
 Two fixes on 0.115.0. iCloud and Gmail sign in the first time and one

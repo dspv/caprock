@@ -290,6 +290,11 @@ func Ordinal(n int) string {
 	return fmt.Sprintf("%d%s", n, suffix)
 }
 
+// futureSkew is how far ahead of the daemon's clock an event may be stamped
+// and still count as fresh. The transcript and the daemon share one clock, so
+// anything past rounding and a slow write is not a live session.
+const futureSkew = 2 * time.Minute
+
 // Options tune Summarize.
 type Options struct {
 	Now          time.Time
@@ -448,7 +453,11 @@ func Summarize(events []event.Event, opt Options) Activity {
 		}
 	}
 	// Staleness overrides: no events for a while ⇒ idle (unless waiting on the user).
-	if act.Health == HealthWorking && now.Sub(last.Ts) > idleAfter {
+	// A stamp from the future is not a fresh event either: ingest accepts one
+	// up to a day ahead (a clock problem, not a fact), and "now minus a future
+	// time" is negative, so a hand-written transcript stamped hours ahead would
+	// read "working" for those hours with nothing behind it (2026-10-14).
+	if age := now.Sub(last.Ts); act.Health == HealthWorking && (age > idleAfter || age < -futureSkew) {
 		act.Health = HealthIdle
 		act.Phrase = "was " + act.Phrase
 	}

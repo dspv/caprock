@@ -21,6 +21,7 @@ import { useNow } from '@/lib/useNow'
 import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
 import { PlanChip } from './PlanPicker'
+import { setLook, useLooks } from '@/lib/cockpitlooks'
 import { useSessionPlan, windowsOf, type SessionPlan } from './AccountPlan'
 import { WINDOW_MS, pace } from '@/lib/pace'
 import { SessionChart, SpendBars, SpendChart, useSessionBars } from './SpendScrub'
@@ -29,7 +30,8 @@ import { everyWhileVisible } from '@/lib/visible'
 import { CHART_METRICS, HEADLINES, METRICS, SPEND_PERIODS, chartTotal, chartValueText, foldedFigures, metricTitle, metricValue, periodFigures, periodScope, pickHero, pickSlot, setSpendPrefs, shownSlots, spendFigures, useSpendPrefs, type ChartMetric, type Metric, type PeriodFigures, type SpendBar, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
-import { AgentCharacter, agentName, characterFor } from './Characters'
+import { agentName } from './Characters'
+import { PickableFace, SessionCharacter } from './SessionFace'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
 import { PermissionModeChip } from './PermissionModeChip'
@@ -37,7 +39,7 @@ import { KindIcon } from './KindIcon'
 import { orderSubagents, presetOf, setSubagentFields, useSubagentFields, SUBAGENT_FIELDS, SUBAGENT_PRESETS, type SubagentFields } from '@/lib/subagentview'
 import { SubagentDetail } from './SubagentDetail'
 import {
-  askLine, backgroundAgents, chipGroups, chipGroupsThatFit, subagentChips, subagentDoing, subagentInitial, subagentTone, CHIP_GROUP, MAX_SUBAGENT_CHIPS, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns,
+  askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runningTool, runShare, runVerb, subagentWaiting, toolKind, toolRuns,
   type CockpitState, type SubagentChip, type ToolRun,
 } from '@/lib/cockpit'
 
@@ -138,22 +140,25 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const calls = useMemo(() => callsFromEvents(main), [main])
   const figures = spendFigures(s, calls)
   // The order is what the people using it look at (owner, 2026-10-12): the
-  // agent and its headline figure, what it is doing now, then the spend
+  // agent and its headline figure, what it is doing now, then the context
+  // and the plan limits, compact by default (owner, 2026-10-14: "you moved
+  // the context window size too far down — it's needed info; make it
+  // compact or like now, plan and limits too", translated), then the spend
   // chart (owner, 2026-10-13: "I like looking at it", picked from three
-  // places), its subagents, its task list, the context, the plan limits.
+  // places), its subagents, its task list.
   return (
     <>
       <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} />
       <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
       {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
+      <ContextMeter s={s} />
+      {plan && <PlanWindows limits={plan} agent={s.agent} now={now} acct={acct} />}
       <Spend s={s} sessionId={sessionId} events={main} now={now} figures={figures} summary={summary} />
       {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && (
         <Subagents subs={subs} permission={permission} now={now} sessionId={sessionId} open={openSub} onOpen={setOpenSub}
           allFinished={allFinished} onAllFinished={setAllFinished} reveal={reveal} />
       )}
       <TodoBlock sessionId={sessionId} />
-      <ContextMeter s={s} />
-      {plan && <PlanWindows limits={plan} agent={s.agent} now={now} acct={acct} />}
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
       {changes}
     </>
@@ -170,56 +175,58 @@ export function SectionLabel({ children, right }: { children: ReactNode; right?:
 }
 
 /**
- * How many chips the hero's one row of subagents holds: as many whole
- * groups of four as its width fits (three in a 324px inspector, five in a
- * 480px one), "+N" after them for the working left out. Measured from the
- * row's width only, never from what it shows, so a subagent starting or
- * finishing never changes the layout; until laid out, three groups.
+ * How the hero's subagent chips sit in the width beside "N working": full
+ * size or compact, and how many to draw (lib/cockpit chipLayout). Measured
+ * from that width and the working count only, never from which chips show;
+ * until laid out, a 324px inspector's width.
  */
-function useChipRoom(row: RefObject<HTMLDivElement | null>, total: number): number {
+function useChipLayout(box: RefObject<HTMLDivElement | null>, working: number): { compact: boolean; room: number } {
   const [width, setWidth] = useState(0)
   useLayoutEffect(() => {
-    const el = row.current
+    const el = box.current
     if (!el || typeof ResizeObserver !== 'function') return
     const read = () => { if (el.clientWidth > 0) setWidth(el.clientWidth) }
     read()
     const ro = new ResizeObserver(read)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [row])
-  if (!(width > 0)) return 3 * CHIP_GROUP
-  const all = chipGroupsThatFit(width, false) * CHIP_GROUP
-  return Math.min(MAX_SUBAGENT_CHIPS, total <= all ? all : chipGroupsThatFit(width, true) * CHIP_GROUP)
+  }, [box])
+  return chipLayout(width > 0 ? width : 230, working)
 }
 
 /**
  * The agent, its figures and its subagents, in one grid that never changes
- * shape (owner, 2026-10-13: "restore the awesome look — both when work is
- * going on and when it waits"). Three fixed rows:
+ * shape when the state does (owner, 2026-10-13: "restore the awesome look —
+ * both when work is going on and when it waits"). Three rows:
  *
  * - **The agent's row**, as tall as the avatar: the character, whose ring
  *   carries the state's colour; the agent, its model on a line of its own
- *   (never cut to make room for the figure), the state line in the same
- *   colour. At its right, in a place of its own, the
- *   headline figure and what it is (owner, 2026-10-12: "put it to the right
- *   of the agent").
- * - **The detail row**: the permission mode and when it started under the
- *   agent's lines, the two smaller figures under the headline, quieter.
- * - **The subagents' row**, one line high: a chip per subagent in groups of
- *   four, or *no subagents running*.
+ *   (never cut to make room for the figure), and when it started. At its
+ *   right, in a place of its own, the headline figure and what it is
+ *   (owner, 2026-10-12: "put it to the right of the agent").
+ * - **The detail row**: under the portrait, centred, the state line (dot and
+ *   word, in the state's colour) and the permission mode under it (owner,
+ *   2026-10-14: "status and mode can both go under the portrait — then the
+ *   figures get better visibility", translated); the two smaller figures at
+ *   the right, with the rest of the row to themselves.
+ * - **The subagents' row**: a chip per subagent in groups of five, in the
+ *   order they started, wrapping onto a second line; compact chips when two
+ *   lines of full ones would not hold them (lib/cockpit chipLayout); or *no
+ *   subagents running*.
  *
  * A state change recolours the ring, the dot and the state line and changes
  * the chips; nothing moves. A longer figure takes room from the agent's
  * lines, which are left-aligned and cut rather than wrapped; a narrower
- * inspector steps the headline down (.cockpit-hero, a container query).
+ * inspector steps the headline down (.cockpit-hero, a container query). A
+ * click on Claude's portrait picks this session's face (SessionFace).
  */
 function Hero({ s, sessionId, state, now, background, subs, permission, figures, usual, onChip }: { s: SessionSummary; sessionId: string; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null; figures: SpendFigures; usual?: Usual; onChip: (id: string) => void }) {
   const since = s.worked_at || s.last_event_at
   const saysBackground = background > 0 && state === 'working'
   const working = subs?.working.length ?? 0
-  const chipRow = useRef<HTMLDivElement>(null)
-  const room = useChipRoom(chipRow, working + (subs?.recent?.length ?? 0))
-  const strip = subagentChips(subs, permission, room)
+  const chipBox = useRef<HTMLDivElement>(null)
+  const layout = useChipLayout(chipBox, working)
+  const strip = subagentChips(subs, permission, layout.room)
   const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? background : 0)
   const model = s.model_display || s.model
   const label = saysBackground ? 'Background agents' : STATE_LABEL[state]
@@ -227,12 +234,12 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
   return (
     <div className="@container min-w-0">
       <div className="cockpit-hero" data-state={state}>
-        <div className="cockpit-avatar relative grid place-items-center rounded-[15px] [grid-area:av]" data-state={state}>
-          <AgentCharacter who={characterFor(s.agent ?? 'claude')} size={46} className="cockpit-character" />
-        </div>
-        {/* Name, model, state: three lines, so the model is never cut to
-          * make room for the figure at the right (owner, 2026-10-13, picked
-          * from three variants). */}
+        <PickableFace agent={s.agent} sessionId={sessionId}
+          className="cockpit-avatar relative grid place-items-center justify-self-center rounded-[15px] [grid-area:av]" data-state={state}>
+          <SessionCharacter agent={s.agent} sessionId={sessionId} size={46} className="cockpit-character" />
+        </PickableFace>
+        {/* Name, model, since when: the state moved under the portrait, so
+          * the name and the model have the column to themselves. */}
         <div className="grid min-w-0 content-start [grid-area:info]">
           <p className="truncate whitespace-nowrap text-[13px] font-semibold leading-[19px] text-fg">{agentName(s.agent ?? 'claude')}</p>
           {model ? (
@@ -241,32 +248,37 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
               <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} className="min-w-0 shrink truncate text-[12px] text-fg-muted" />
             </p>
           ) : null}
-          <p className={`flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[12.5px] font-medium leading-[19px] ${STATE_TEXT[state]}`} role="status"
-            title={saysBackground ? backgroundLabel(background) : undefined}>
-            <span className="cockpit-dot inline-block h-[7px] w-[7px] shrink-0 rounded-full" data-state={state} />
-            <span className="truncate">{label}{ago ? <span className="font-normal text-fg-faint"> · {ago}</span> : null}</span>
-          </p>
+          {s.started_at > 0 && state !== 'ended' && (
+            <p data-hero-started className="truncate text-[11px] leading-[16px] text-fg-faint">started {fmtAgo(s.started_at, now)}</p>
+          )}
         </div>
         {s.stats && <div data-hero-fig className="min-w-0 justify-self-end [grid-area:fig]"><HeadlineFigure figures={figures} usual={usual} /></div>}
-        {/* The permission mode, and for a session Caprock started, the way
-          * to change it while it runs (ADR-054); then since when it runs. */}
-        <div data-hero-meta className="grid min-w-0 content-start gap-[3px] [grid-area:meta]">
-          {state !== 'ended' && <p className="flex min-w-0"><PermissionModeChip sessionId={sessionId} agent={s.agent} /></p>}
-          {s.started_at > 0 && state !== 'ended' && (
-            <p className="truncate text-[11px] leading-[15px] text-fg-faint">started {fmtAgo(s.started_at, now)}</p>
-          )}
+        {/* Under the portrait: the state, then the permission mode and, for
+          * a session Caprock started, the way to change it while it runs
+          * (ADR-054). */}
+        <div data-hero-lead className="grid min-w-0 content-start justify-items-center gap-[4px] text-center [grid-area:lead]">
+          {/* The dot inline with the word, so a label that wraps ("Waiting /
+            * on you" in a narrow inspector) keeps it beside its first line. */}
+          <p data-hero-state className={`max-w-full text-[11.5px] font-medium leading-[14px] [text-wrap:balance] ${STATE_TEXT[state]}`} role="status"
+            title={saysBackground ? backgroundLabel(background) : undefined}>
+            <span className="cockpit-dot mr-1.5 inline-block h-[7px] w-[7px] rounded-full align-[1px]" data-state={state} />
+            {label}{ago ? <span className="block font-normal text-fg-faint">{ago}</span> : null}
+          </p>
+          {state !== 'ended' && <p data-hero-mode className="flex max-w-full justify-center"><PermissionModeChip sessionId={sessionId} agent={s.agent} /></p>}
         </div>
         {s.stats && <div data-hero-sec className="min-w-0 justify-self-end [grid-area:sec]"><HeroSecondaries figures={figures} /></div>}
-        {/* Always there, one line high, so nothing above or below it moves
+        {/* Always there, at least one line high, so nothing above it moves
           * when subagents start or finish (owner, 2026-10-13: "fix its
           * position and mark the subagents' place when nothing runs"). */}
-        <div ref={chipRow} data-hero-chips className="flex min-w-0 items-center overflow-hidden [grid-area:chips]">
+        <div data-hero-chips className="flex min-w-0 items-start [grid-area:chips]">
           {count > 0 && state !== 'ended' && (
-            <span data-hero-count className="mr-2.5 shrink-0 text-[11px] text-fg-muted" title={`${count} ${count === 1 ? 'subagent' : 'subagents'} working`}>{count} working</span>
+            <span data-hero-count className="mr-2.5 shrink-0 text-[11px] leading-[22px] text-fg-muted" title={`${count} ${count === 1 ? 'subagent' : 'subagents'} working`}>{count} working</span>
           )}
-          {strip.chips.length > 0
-            ? <SubagentStrip chips={strip.chips} more={strip.more} onChip={onChip} />
-            : state !== 'ended' && <span data-hero-nosubs className="text-[11px] text-fg-faint">no subagents running</span>}
+          <div ref={chipBox} className="flex min-w-0 flex-1 items-center">
+            {strip.chips.length > 0
+              ? <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} onChip={onChip} />
+              : state !== 'ended' && <span data-hero-nosubs className="text-[11px] leading-[22px] text-fg-faint">no subagents running</span>}
+          </div>
         </div>
       </div>
     </div>
@@ -276,26 +288,30 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
 /**
  * One mini-avatar per subagent on the hero's last row: its type's initial
  * in a tint fixed per type, pulsing while it works, accent while it waits
- * on you, muted once finished. In groups of four on one line, as many
- * groups as fit, then "+N" (owner, 2026-10-12: "why doesn't it show more
- * agents?"). A chip opens its subagent's row in the Subagents section below.
+ * on you, muted once finished. In groups of five, a wider gap between
+ * groups, wrapping between groups onto a second line, so the count reads by
+ * fives (owner, 2026-10-14). Compact, when there are more than two full
+ * lines' worth: a smaller square with no letter, its tint and state kept.
+ * Then "+N" for the working left out. A chip opens its subagent's row in
+ * the Subagents section below.
  */
-function SubagentStrip({ chips, more, onChip }: { chips: SubagentChip[]; more: number; onChip: (id: string) => void }) {
+function SubagentStrip({ chips, more, compact, onChip }: { chips: SubagentChip[]; more: number; compact: boolean; onChip: (id: string) => void }) {
   const groups = chipGroups(chips)
+  const box = compact ? 'h-[10px] w-[10px] rounded-[3px]' : 'h-[18px] w-[18px] rounded-[5px] text-[10px] font-semibold'
   return (
-    <div role="group" aria-label={`Subagents${more > 0 ? `, and ${more} more working` : ''}`}
-      className="flex flex-nowrap items-center gap-x-2 p-[2px]" data-chips={chips.length}>
+    <div role="group" aria-label={`Subagents${more > 0 ? `, and ${more} more working` : ''}`} data-compact={compact || undefined}
+      className={`flex min-w-0 flex-wrap items-center p-[2px] ${compact ? 'gap-x-[6px] gap-y-[6px]' : 'gap-x-2 gap-y-[4px]'}`} data-chips={chips.length}>
       {groups.map((g, i) => (
-        <span key={i} className="flex shrink-0 gap-[3px]">
+        <span key={i} data-chip-group className={`flex shrink-0 ${compact ? 'gap-[2px]' : 'gap-[3px]'}`}>
           {g.map((c) => (
             <button key={c.id} type="button" title={c.label} aria-label={`${c.label}. Open`} data-state={c.state} data-tone={c.tone}
               onClick={() => onChip(c.id)}
-              className="cockpit-subchip num relative grid h-[18px] w-[18px] place-items-center rounded-[5px] text-[10px] font-semibold outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
-              {c.initial}
+              className={`cockpit-subchip num relative grid place-items-center outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${box}`}>
+              {compact ? null : c.initial}
             </button>
           ))}
           {i === groups.length - 1 && more > 0 && (
-            <span title={`${more} more working`} className="cockpit-subchip num relative grid h-[18px] min-w-[18px] place-items-center rounded-[5px] px-1 text-[10px] font-medium" data-state="more">+{more}</span>
+            <span title={`${more} more working`} className={`cockpit-subchip num relative ml-1 grid min-w-[18px] place-items-center rounded-[5px] px-1 text-[10px] font-medium ${compact ? 'h-[14px] leading-[14px]' : 'h-[18px]'}`} data-state="more">+{more}</span>
           )}
         </span>
       ))}
@@ -712,7 +728,30 @@ function usePeriodSummary(period: SpendPeriod, given: Summary | undefined): Summ
   return own ?? (got?.period === period ? got.s : undefined)
 }
 
+/**
+ * A section label that switches its section between its two looks:
+ * compact (one line) and full; the chevron points down when full.
+ */
+function LookLabel({ name, full, onToggle, children }: { name: string; full: boolean; onToggle: () => void; children?: ReactNode }) {
+  return (
+    <button type="button" aria-expanded={full} onClick={onToggle}
+      title={full ? `Compact ${name.toLowerCase()}: one line` : `Show the full ${name.toLowerCase()}`}
+      className="-mx-1 flex shrink-0 items-center gap-1 rounded-[6px] px-1 py-0.5 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+      <Chevron open={full} />
+      <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">{children ?? name}</h4>
+    </button>
+  )
+}
+
+/**
+ * How full the context is. Compact: one line, the label, a thin bar and
+ * *14% · 140k / 1M*. Full: the meter with quarter marks and what every call
+ * now pays to re-read it. Switched on the label, remembered per viewer.
+ */
 function ContextMeter({ s }: { s: SessionSummary }) {
+  const { context: look } = useLooks()
+  const full = look === 'full'
+  const toggle = () => setLook('context', full ? 'compact' : 'full')
   const ctx = s.context
   if (!ctx) {
     return (
@@ -723,15 +762,34 @@ function ContextMeter({ s }: { s: SessionSummary }) {
   }
   const pct = Math.max(0, Math.min(100, ctx.pct))
   const tone = pct >= 85 ? 'danger' : pct >= 60 ? 'warn' : 'ok'
+  const ink = tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-fg'
+  const meter = (h: string) => (
+    <div className={`cockpit-track relative ${h} overflow-hidden rounded-full`} role="meter" aria-label="Context used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+      <div className="cockpit-fill h-full rounded-full" data-tone={tone} style={{ width: `${Math.max(pct, 1.5)}%` }} />
+      {[25, 50, 75].map((m) => <span key={m} aria-hidden className="absolute top-0 h-full w-px bg-[var(--app-chrome-bg)] opacity-70" style={{ left: `${m}%` }} />)}
+    </div>
+  )
+  if (!full) {
+    return (
+      <section aria-label="Context" data-look="compact" className="flex min-w-0 items-center gap-2"
+        title={ctx.next_call_usd > 0 ? `Every call now re-reads it for ${fmtUSD(ctx.next_call_usd)}` : undefined}>
+        <LookLabel name="Context" full={false} onToggle={toggle} />
+        <div className="min-w-[24px] flex-1">{meter('h-[5px]')}</div>
+        <span className="num shrink-0 whitespace-nowrap text-[11.5px] text-fg-muted">
+          <span className={`font-medium ${ink}`}>{fmtPct(pct)}</span> · <span className="text-fg">{fmtTokens(ctx.tokens)}</span> / {fmtTokens(ctx.window)}
+        </span>
+      </section>
+    )
+  }
   return (
-    <section aria-label="Context" className="grid gap-2">
-      <SectionLabel right={<span className="num text-fg-muted"><span className="text-fg">{fmtTokens(ctx.tokens)}</span> / {fmtTokens(ctx.window)}</span>}>Context</SectionLabel>
-      <div className="cockpit-track relative h-[9px] overflow-hidden rounded-full" role="meter" aria-label="Context used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
-        <div className="cockpit-fill h-full rounded-full" data-tone={tone} style={{ width: `${Math.max(pct, 1.5)}%` }} />
-        {[25, 50, 75].map((m) => <span key={m} aria-hidden className="absolute top-0 h-full w-px bg-[var(--app-chrome-bg)] opacity-70" style={{ left: `${m}%` }} />)}
+    <section aria-label="Context" data-look="full" className="grid gap-2">
+      <div className="flex items-center gap-2">
+        <LookLabel name="Context" full onToggle={toggle} />
+        <span className="num ml-auto text-[11.5px] text-fg-muted"><span className="text-fg">{fmtTokens(ctx.tokens)}</span> / {fmtTokens(ctx.window)}</span>
       </div>
+      {meter('h-[9px]')}
       <p className="text-[11.5px] text-fg-muted">
-        <span className={`num font-medium ${tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-fg'}`}>{fmtPct(pct)}</span> full
+        <span className={`num font-medium ${ink}`}>{fmtPct(pct)}</span> full
         {ctx.next_call_usd > 0 && <> · every call now re-reads it for <span className="num text-fg">{fmtUSD(ctx.next_call_usd)}</span></>}
       </p>
     </section>
@@ -1080,17 +1138,80 @@ function LoopWarning({ s, now }: { s: SessionSummary; now: number }) {
   )
 }
 
+/**
+ * The plan's 5-hour and weekly windows. Compact: one line, *5h ▮ 12% ·
+ * 05:40  Week ▮ 24% · Mon 13:00*, each with a tiny bar, the reset times
+ * cut first when the line is narrow, never wrapped. Full: the plan chip and
+ * a WindowBar per window. Switched on the label, remembered per viewer.
+ */
 function PlanWindows({ limits, agent, now, acct }: { limits: NonNullable<Summary['rate_limits']>; agent?: string; now: number; acct: SessionPlan }) {
   const source = acct.account && !acct.account.default ? `${agent === 'codex' ? 'Codex' : 'Claude Code'} (${acct.account.label})` : agent === 'codex' ? 'Codex' : 'Claude Code'
   const { plan, save: savePlan } = acct
+  const { limits: look } = useLooks()
+  const full = look === 'full'
+  const toggle = () => setLook('limits', full ? 'compact' : 'full')
+  const forecasts = agent !== 'codex'
+  if (!full) {
+    return (
+      <section aria-label="Plan limits" data-look="compact" className="@container flex min-w-0 items-center gap-2">
+        <LookLabel name="Plan limits" full={false} onToggle={toggle}>Plan</LookLabel>
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2.5">
+          {limits.five_hour && <WindowInline label="5h" name="5 hours" w={limits.five_hour} lenMs={WINDOW_MS.five_hour} now={now} source={source} forecasts={forecasts} />}
+          {limits.seven_day && <WindowInline label="Week" name="Week" w={limits.seven_day} lenMs={WINDOW_MS.seven_day} now={now} source={source} forecasts={forecasts} />}
+        </div>
+      </section>
+    )
+  }
   return (
-    <section aria-label="Plan limits" className="grid gap-2.5">
+    <section aria-label="Plan limits" data-look="full" className="grid gap-2.5">
       {/* Which plan these are — and a click to correct it (owner, 2026-10-11:
         * "and you can confirm the plan there: is it really this one?"). */}
-      <SectionLabel right={agent === 'codex' ? <span className="text-fg-faint">{acct.account && !acct.account.default ? acct.account.label : 'all Codex sessions'}</span> : <PlanChip plan={plan} onSave={savePlan} account={acct.account} />}>Plan</SectionLabel>
-      {limits.five_hour && <WindowBar label="5 hours" w={limits.five_hour} lenMs={WINDOW_MS.five_hour} now={now} source={source} forecasts={agent !== 'codex'} />}
-      {limits.seven_day && <WindowBar label="Week" w={limits.seven_day} lenMs={WINDOW_MS.seven_day} now={now} source={source} forecasts={agent !== 'codex'} />}
+      <div className="flex items-center gap-2">
+        <LookLabel name="Plan limits" full onToggle={toggle}>Plan</LookLabel>
+        <div className="ml-auto flex items-baseline gap-2 text-[11.5px]">
+          {agent === 'codex' ? <span className="text-fg-faint">{acct.account && !acct.account.default ? acct.account.label : 'all Codex sessions'}</span> : <PlanChip plan={plan} onSave={savePlan} account={acct.account} />}
+        </div>
+      </div>
+      {limits.five_hour && <WindowBar label="5 hours" w={limits.five_hour} lenMs={WINDOW_MS.five_hour} now={now} source={source} forecasts={forecasts} />}
+      {limits.seven_day && <WindowBar label="Week" w={limits.seven_day} lenMs={WINDOW_MS.seven_day} now={now} source={source} forecasts={forecasts} />}
     </section>
+  )
+}
+
+/**
+ * One window in the compact line: its short name, a tiny bar, the
+ * percentage in its tone (amber or red when it runs out before the reset,
+ * as the full bar), and when it resets — the part that gives way when
+ * narrow: a weekly reset reads as its weekday alone under 22rem, then cuts.
+ */
+function weekday(ms: number): string {
+  return new Date(ms).toLocaleDateString([], { weekday: 'short' })
+}
+
+function WindowInline({ label, name, w, lenMs, now, source, forecasts }: { label: string; name: string; w: RateWindow; lenMs: number; now: number; source: string; forecasts: boolean }) {
+  const { stale } = readWindow(w, now)
+  const p = pace(w, lenMs, now, { forecasts, stale })
+  const clock = resetClock(p.resetMs, now)
+  const long = p.resetMs - now > 24 * 3600 * 1000
+  const tone = p.verdict === 'out' ? (p.urgent ? 'danger' : 'warn') : p.pct > 85 ? 'danger' : 'ok'
+  const ink = stale ? 'text-fg-faint' : tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-fg'
+  const title = stale
+    ? `${name}: ${p.pct}% · ${source} has not refreshed this window recently`
+    : `${name}: ${p.pct}% used · resets ${resetClock(p.resetMs, now)}${p.verdict === 'out' ? ` · out ${p.outAt ? `at ${resetClock(p.outAt, now)}` : 'now'}` : ''}`
+  return (
+    <span data-window={name} title={title} className="flex min-w-0 items-center gap-1 text-[11.5px]">
+      <span className="shrink-0 text-fg-muted">{label}</span>
+      <span aria-hidden className="cockpit-track relative h-[5px] w-[20px] shrink-0 overflow-hidden rounded-full">
+        <span className="cockpit-fill block h-full rounded-full" data-tone={tone === 'ok' ? 'accent' : tone} style={{ width: `${Math.max(4, Math.min(100, p.pct))}%` }} />
+      </span>
+      <span className={`num shrink-0 font-medium ${ink}`}>{p.pct}%</span>
+      {/* The reset clock gives way first: a weekday alone in a narrow panel, cut after that. */}
+      {!stale && (
+        <span className="num min-w-0 truncate text-fg-faint">
+          {long ? <><span className="@[22rem]:hidden">{weekday(p.resetMs)}</span><span className="hidden @[22rem]:inline">{clock}</span></> : clock}
+        </span>
+      )}
+    </span>
   )
 }
 

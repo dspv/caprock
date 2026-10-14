@@ -49,12 +49,14 @@ vi.mock('@/lib/live', async (orig) => {
 
 import { Inspector } from './Inspector'
 import { resetSpendPrefsForTest } from '@/lib/spendview'
+import { LOOKS_KEY, getLooks, resetLooksForTest, setLook } from '@/lib/cockpitlooks'
 import { getSubagentFields, resetSubagentFieldsForTest, setSubagentFields } from '@/lib/subagentview'
 
 beforeEach(() => {
   localStorage.clear()
   resetSpendPrefsForTest()
   resetSubagentFieldsForTest()
+  resetLooksForTest()
   h.summaries = {}
   h.summaryAsked = []
 })
@@ -92,6 +94,8 @@ function show(s: SessionSummary, sum: Summary | undefined = summary) {
 
 describe('the agent cockpit', () => {
   it('reads the session’s cost, context, the call running now and the recent calls', async () => {
+    setLook('context', 'full')
+    setLook('limits', 'full')
     show(agent())
     expect(screen.getByRole('heading', { name: 'Agent' })).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('Working')
@@ -112,6 +116,64 @@ describe('the agent cockpit', () => {
     expect(document.querySelector('[data-window="5 hours"]')?.textContent).toMatch(/resets in/)
     expect(await screen.findByText('1 file')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  // "You moved the context window size too far down — it's needed info.
+  // Make it compact or like now; plan and limits too" (owner, 2026-10-14,
+  // translated).
+  it('puts the context and the plan right under Now, above the spend, compact by default', () => {
+    show(agent())
+    const order = ['Now', 'Context', 'Plan limits', 'Spend', 'Recent tool calls'].map((name) => screen.getByRole('region', { name }))
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
+    const ctx = screen.getByRole('region', { name: 'Context' })
+    expect(ctx).toHaveAttribute('data-look', 'compact')
+    expect(within(ctx).getByRole('meter', { name: 'Context used' })).toHaveAttribute('aria-valuenow', '62')
+    expect(ctx).toHaveTextContent('62% · 124.0k / 200.0k')
+    expect(ctx).not.toHaveTextContent('re-reads')
+    const plan = screen.getByRole('region', { name: 'Plan limits' })
+    expect(plan).toHaveAttribute('data-look', 'compact')
+    expect(plan.querySelector('[data-window="5 hours"]')).toHaveTextContent(/^5h41%\d/)
+    expect(plan).not.toHaveTextContent('resets in')
+    expect(within(plan).queryByRole('meter')).toBeNull()
+  })
+
+  it('switches each section between compact and full on its label, and remembers it', () => {
+    const { unmount } = show(agent())
+    const ctx = () => screen.getByRole('region', { name: 'Context' })
+    const plan = () => screen.getByRole('region', { name: 'Plan limits' })
+    const ctxLabel = within(ctx()).getByRole('button', { name: 'Context' })
+    expect(ctxLabel).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(ctxLabel)
+    expect(ctx()).toHaveAttribute('data-look', 'full')
+    expect(ctx()).toHaveTextContent('re-reads it for $0.03')
+    expect(plan()).toHaveAttribute('data-look', 'compact')
+    fireEvent.click(within(plan()).getByRole('button', { name: 'Plan' }))
+    expect(plan()).toHaveAttribute('data-look', 'full')
+    expect(within(plan()).getByRole('meter', { name: '5 hours window used' })).toHaveAttribute('aria-valuenow', '41')
+    expect(plan().querySelector('[data-window="5 hours"]')?.textContent).toMatch(/resets in/)
+    expect(JSON.parse(localStorage.getItem(LOOKS_KEY)!)).toEqual({ context: 'full', limits: 'full' })
+    // A fresh page reads the choice back.
+    unmount()
+    resetLooksForTest()
+    show(agent())
+    expect(ctx()).toHaveAttribute('data-look', 'full')
+    fireEvent.click(within(ctx()).getByRole('button', { name: 'Context' }))
+    expect(ctx()).toHaveAttribute('data-look', 'compact')
+    expect(plan()).toHaveAttribute('data-look', 'full')
+  })
+
+  it('falls back to compact when the stored looks are broken', () => {
+    localStorage.setItem(LOOKS_KEY, '{not json')
+    resetLooksForTest()
+    expect(getLooks()).toEqual({ context: 'compact', limits: 'compact' })
+    localStorage.setItem(LOOKS_KEY, JSON.stringify({ context: 'huge', limits: 'full' }))
+    resetLooksForTest()
+    expect(getLooks()).toEqual({ context: 'compact', limits: 'full' })
+    show(agent())
+    expect(screen.getByRole('region', { name: 'Context' })).toHaveAttribute('data-look', 'compact')
+    expect(screen.getByRole('region', { name: 'Plan limits' })).toHaveAttribute('data-look', 'full')
   })
 
   it('warns of a loop only when there is one', () => {
@@ -316,6 +378,26 @@ describe('the agent cockpit', () => {
     expect(within(nowCard).queryByText(/Waiting|Thinking/)).toBeNull()
   })
 
+  // "Move the status under the agent's portrait", and the mode with it
+  // (owner, 2026-10-14, translated); the chips in fives, compact past two
+  // full lines.
+  it('puts the state under the portrait and draws many subagents compact, in fives', async () => {
+    h.subagents = { working: Array.from({ length: 23 }, (_, i) => ({ agent_id: `a${i}`, agent_type: 'general-purpose', tool_calls: 1, started_at: i, last_at: i, running: true, asking: false })), finished: 0 } as SubagentsNow
+    try {
+      show(agent({ live_subagents: 23, started_at: now - 3_600_000 }))
+      const lead = document.querySelector('[data-hero-lead]')!
+      expect(within(lead as HTMLElement).getByRole('status')).toHaveTextContent('Working')
+      expect(document.querySelector('[data-hero-started]')).toBeInTheDocument()
+      const strip = await screen.findByRole('group', { name: 'Subagents' })
+      expect(strip).toHaveAttribute('data-compact', 'true')
+      expect(Array.from(strip.querySelectorAll('[data-chip-group]')).map((g) => g.querySelectorAll('button').length)).toEqual([5, 5, 5, 5, 3])
+      expect(strip.querySelector('button')).toHaveTextContent('')
+      expect(document.querySelector('[data-hero-count]')).toHaveTextContent('23 working')
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
   it('still waits on a permission prompt while background agents work', async () => {
     h.permission = { id: 'p1', tool: 'Bash', detail: 'rm -rf out', since: iso(2_000), agent_id: 'a1', agent_type: 'general-purpose' }
     try {
@@ -445,10 +527,10 @@ describe('the spend details', () => {
 
   it('switches what the bars measure from the ▾, and puts that figure first when folded', async () => {
     await act(async () => show(agent()))
-    // Under Now, above the context and the plan.
+    // Under Now and under the context and the plan.
     const after = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
     expect(after(screen.getByRole('region', { name: 'Now' }), spend())).toBe(true)
-    expect(after(spend(), screen.getByRole('region', { name: 'Context' }))).toBe(true)
+    expect(after(screen.getByRole('region', { name: 'Context' }), spend())).toBe(true)
     fireEvent.click(within(spend()).getByRole('button', { name: /^The bars show cost/ }))
     const menu = within(spend()).getByRole('menu', { name: 'What the bars show' })
     expect(within(menu).getAllByRole('menuitemradio').map((b) => b.textContent?.split(/[$\d—]/)[0])).toEqual(['Cost', 'Burn rate', 'Tokens', 'Turns'])

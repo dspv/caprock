@@ -624,29 +624,34 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
  * rows, the same in every state, so a state change recolours and never moves
  * anything (owner, 2026-10-13: "restore the awesome look — both when work is
  * going on and when it waits"). The agent's row is as tall as the avatar:
- * its lines, and at the right the headline figure. The detail row: the mode
- * and start under the agent's lines, the two smaller figures under the
- * headline. Then one line of subagent chips. The second, collapsing column
- * lets the smaller figures be wider than the headline without pushing the
- * headline off the agent's lines. A narrow inspector steps the avatar and
- * the headline down; a long figure (8 characters or more, $1,197.22) one
- * step further, so the agent's lines keep their room. */
+ * its name, model and start, and at the right the headline figure. The
+ * detail row: under the portrait, centred in a column a little wider than
+ * it, the state line and the permission mode (owner, 2026-10-14: "status and
+ * mode can both go under the portrait — then the figures get better
+ * visibility", translated); the two smaller figures at the right, with the
+ * rest of the row. Its height holds a two-line state ("Waiting / on you" in
+ * a narrow inspector, or "Idle" and how long ago) and the mode chip, so a
+ * state change never moves the chips. Then the subagent chips, one line or
+ * two. A narrow inspector steps the avatar and the headline down; a long
+ * figure (8 characters or more, $1,197.22) one step further, so the agent's
+ * lines keep their room. */
 .cockpit-hero {
   --hero-av: 52px;
+  --hero-lead: 76px;
   display: grid;
   min-width: 0;
-  grid-template-columns: var(--hero-av) minmax(0, 1fr) auto auto;
-  grid-template-rows: max(var(--hero-av), 58px) 38px 22px;
+  grid-template-columns: var(--hero-lead) minmax(0, 1fr) auto auto;
+  grid-template-rows: max(var(--hero-av), 58px) 56px auto;
   grid-template-areas:
     "av info info fig"
-    ". meta sec sec"
+    "lead sec sec sec"
     "chips chips chips chips";
-  column-gap: 12px;
-  row-gap: 7px;
+  column-gap: 10px;
+  row-gap: 6px;
 }
 .cockpit-hero .cockpit-avatar { width: var(--hero-av); height: var(--hero-av); }
 .cockpit-hero .cockpit-avatar .cockpit-character { width: calc(var(--hero-av) - 12px); height: calc(var(--hero-av) - 12px); }
-.cockpit-hero [data-hero-chips] { margin-top: 3px; }
+.cockpit-hero [data-hero-chips] { min-height: 22px; }
 .cockpit-hero-num { font-size: 24px; }
 .cockpit-hero-num[data-long] { font-size: 19px; }
 /* The headline's name: its short word only beside a comparison in a narrow
@@ -655,14 +660,14 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 .cockpit-hero [data-usual-on] [data-label-long] { display: none; }
 .cockpit-hero [data-usual-on] [data-label-short] { display: inline; }
 @container (min-width: 340px) {
-  .cockpit-hero { --hero-av: 56px; column-gap: 14px; }
+  .cockpit-hero { --hero-av: 56px; --hero-lead: 84px; column-gap: 12px; }
   .cockpit-hero-num { font-size: 28px; }
   .cockpit-hero-num[data-long] { font-size: 22px; }
   .cockpit-hero [data-usual-on] [data-label-long] { display: inline; }
   .cockpit-hero [data-usual-on] [data-label-short] { display: none; }
 }
 @container (min-width: 420px) {
-  .cockpit-hero { --hero-av: 58px; }
+  .cockpit-hero { --hero-av: 58px; --hero-lead: 96px; }
   .cockpit-hero-num { font-size: 32px; }
   .cockpit-hero-num[data-long] { font-size: 26px; }
 }
@@ -674,6 +679,8 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cockpit-tint) 30%, var(--app-hairline));
   transition: box-shadow 300ms var(--app-ease), background 300ms var(--app-ease);
 }
+/* A pale hat (the cream hard hat, the pompom) keeps an edge on a light ground. */
+[data-theme="light"] .cockpit-avatar, [data-theme="light"] [data-face-picker] { --character-outline: var(--color-border-strong); }
 [data-app] .cockpit-avatar[data-state="working"] { --cockpit-tint: var(--color-ok); }
 [data-app] .cockpit-avatar[data-state="waiting"] { --cockpit-tint: var(--color-accent); }
 [data-app] .cockpit-avatar[data-state="waiting"]::after {

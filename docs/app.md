@@ -385,24 +385,31 @@ others. Installing it: [install-app.md](install-app.md).
   `~/.claude`), or `@` for a file in the session's folder: ↑ ↓ and Enter
   pick, Esc closes. Picking only fills the field.
 - **Agent cockpit** (⌘I). Open beside an agent's terminal unless you close
-  it: the agent and its state, three figures beside it that you pick —
+  it: the agent's portrait with its state and permission mode under it,
+  three figures beside it that you pick —
   its burn rate in large type, its tokens and what it has cost on two
   short lines under it, or any of cache hit rate, turns, time working, the
   last call and tool calls (click a figure's ▾), and under the big one how
   it compares with your own last 30 days (*▲ 38%*, *≈ usual*, *▼ 55%*;
   amber only in your top fifth; hover for the whole sentence) — what it
-  is doing this second and for how long, right under that its spend for the session,
+  is doing this second and for how long, right under that how full its
+  context is and your plan's 5-hour and weekly windows — one line each,
+  *62% · 124.0k / 200.0k* and *5h 41% · 05:40  Week 24% · Mon 13:00*; click
+  *Context* or *Plan* for the full meter, what every call now pays to
+  re-read the context and each window's bar and forecast, remembered —
+  then its spend for the session,
   today, 7 or 30 days as a chart or as three more figures you choose
   (*Chart | Numbers*; the chart's ▾ switches its bars between cost, burn
   rate — dollars per hour you actually worked in each stretch — tokens and
   turns, and a faint dashed line marks your pace: your usual burn rate, or
   the period's average stretch, so hovering a bar says *38% above your
   usual*; fold it to a strip of the same bars and three figures if you
-  like), how full its context is and what every call now pays to re-read
-  it, the task list the agent keeps for itself (each task with a spinner, a
+  like), the task list the agent keeps for itself (each task with a spinner, a
   check or an empty circle, and *3 of 7 done* above them; not there when
   the agent kept none), its subagents (a chip per subagent under the
-  agent, and a row each below that leads with its type's letter and what
+  agent, in groups of five so you can count them at a glance, on up to
+  two lines and smaller squares when there are many, and a row each below
+  that leads with its type's letter and what
   it is doing now in words, up to two lines, from the description Claude
   gave its latest command, else its tool and file, else its task; the rows
   keep the order the subagents started in, a finished one dimmed with a ✓
@@ -410,12 +417,19 @@ others. Installing it: [install-app.md](install-app.md).
   and time each row carries, cost and time until you choose: click one to open it in place and read the
   task it was given, every call it makes as it makes them, what it
   answered and what it cost), its last tool calls with how long each took, the uncommitted changes in
-  its checkout, your plan's 5-hour and weekly windows, and a warning when
+  its checkout, and a warning when
   it is repeating the same call. The permission prompt and its buttons sit
   at the top while one waits. Click a changed file to read it in a tab
   (in a folder that is not a git repository, it opens in your editor at
   its first change). Beside a shell tab it shows the folder and its
   changes.
+- **Claude's faces.** Claude's little character comes in eight looks — the
+  hard hat, a beanie, headphones, a crown, a wizard's hat, a tuft of hair,
+  a bandana and a propeller cap. Each session gets one at random and keeps
+  it everywhere it shows, on your phone too; click the portrait in the
+  cockpit to give a session another. Settings → Appearance → *Claude's
+  face* picks the default: a face per session, or the same one for all.
+  Remembered in this browser only. Other agents keep their own marks.
 - **Session deck** (⌘B). A band under the terminal of the agent in front,
   so the prompt sits above the window's edge, nearer the middle of the
   screen, with what is useful while you work in the room it makes: the CI
@@ -963,6 +977,14 @@ server of ours, and there is nothing to install from an app store.
    opens Caprock full screen. On an iPhone the home-screen app keeps its own
    storage, so it asks to pair once more: type the six digits shown on the
    computer.
+
+The top of the panel says where the phone will work: *Works on this Wi-Fi
+only*, or *Works anywhere (Tailscale)* once this computer has Tailscale. It
+notices Tailscale by itself while the panel is open; nothing to restart.
+
+Phone access switches off when Caprock restarts (an update, a reboot) unless
+you tick **Keep on after Caprock restarts**, beside **Turn on** or under the
+panel. Only phones you paired get in either way; **Turn off** also clears it.
 
 The phone appears under *Paired devices*. It can look but not change
 anything until you press **Let it control sessions** beside it; **Take

@@ -9,6 +9,30 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **mail:** Mail no longer opens on a bare form. The first screen offers three
+  ways in: *Try it with sample mail* (two made-up inboxes on servers inside
+  Caprock, with a slim *Sample mail — nothing here is real* line to leave or
+  to add your own account; your real mail and keychain are never touched),
+  *Import my accounts* from Apple Mail or Thunderbird, ticked one by one, with
+  a password field where none was saved and the Full Disk Access steps when
+  macOS hides one, and *Add an account* as provider tiles — Google, iCloud,
+  Outlook, Yahoo, Fastmail, Other. Google and Outlook sign in through the
+  browser when this build offers it; otherwise, and always for iCloud, the
+  form carries that provider's app-password steps and link. Settings' *Add
+  account* uses the same tiles, and opening the Mail screen no longer creates
+  an empty mail database.
+- **app:** Claude's little character comes in eight faces — the hard hat,
+  a beanie, headphones, a crown, a wizard's hat, a tuft of hair, a bandana
+  and a propeller cap, each in its own pastel and expression. Each session
+  gets one at random from its id and keeps it everywhere it shows; click
+  the portrait in the cockpit to give a session another, and pick the
+  default — a face per session or one for all — in Settings → Appearance.
+  Kept in this browser only.
+- **app:** the cockpit's state line and permission mode sit under the
+  agent's portrait, so the figures at the right get the row; *started*
+  moves under the model. The subagent chips come in groups of five and wrap
+  onto a second line instead of being cut; past two lines they shrink to
+  small squares, and past that a *+N* says how many more.
 - **mail:** when you first open Mail it offers the accounts you already have in
   another client, so you add them with a click instead of retyping servers and
   passwords. Thunderbird comes over whole — servers and, when there is no
@@ -74,6 +98,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   it is still the one listed — same pid, same start time. Caprock never stops
   a process it did not start on its own (ADR-059).
 
+- **phone:** *Keep on after Caprock restarts* in Settings → *Use on your
+  phone*: phone access comes back on by itself after an update or a reboot.
+  Off by default; Turn off clears it; only paired phones get in either way
+  (ADR-060).
+
 ### Changed
 
 - **app:** the two dots at the start of every tab are gone. A tab shows
@@ -81,6 +110,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   session waits on you, a red one when it failed; working and idle show
   nothing. The project is its short name after the title, in its colour,
   and the Flat sidebar's rows follow the same rule.
+- **cockpit:** the context and the plan limits are back near the top, right
+  under *Now* and above the spend, and each has two looks. Compact, the
+  default, is one line: *62% · 124.0k / 200.0k* with a thin bar, and *5h 41% ·
+  05:40  Week 24% · Mon 13:00* with a tiny bar per window, the reset times
+  cut first in a narrow panel. Click *Context* or *Plan* for the full view
+  as it was — the meter, what each call re-reads, the plan and each window's
+  bar and forecast. The choice is remembered on this device.
+- **perf(store):** the cockpit's subagent rows and the Cost screen's
+  summary read far less of the database. A refresh of a busy session's
+  subagent rows took 25–37 ms instead of 224–303 ms on a copy of a 2.4 GB
+  database, and today's per-turn attribution 42–59 ms instead of 69–79 ms;
+  the burn tile no longer counts a whole summary of the last ten minutes on
+  every request. A new migration builds three small indexes once, a few
+  seconds on a large database.
+- **phone:** the phone panel says first where it works — *Works on this
+  Wi-Fi only* or *Works anywhere (Tailscale)* — instead of folding it under
+  *Then: …*. Without Tailscale it names the one step (Tailscale on this
+  computer and the phone, same account) with the downloads; it notices
+  Tailscale by itself while open, listens on its address without turning
+  access off and on, and a new code opens the Tailscale address. A paired
+  computer is no longer counted as a phone: *No phone paired yet* says so.
 - **remote:** the phone's first screen says what to do in three large steps,
   keeps the pasted link for a home-screen app behind one tap (shown at once
   when opened from the home screen), and answers the questions a careful
@@ -142,6 +192,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** switching tabs no longer redraws the terminal's font for a moment. A tab hidden for 30 s had let its WebGL renderer go, so it came back drawn by the DOM renderer, in other glyphs and another cell height, until WebGL was swapped in 1.5 s later; a tab hidden for less had its glyph atlas rebuilt on every switch. The three tabs hidden last now keep their renderer, a tab past that gets it back before it is first painted, and the atlas is rebuilt only after a wake, a pixel-ratio change or a hide of more than five minutes, so the squashed letters of #541 stay fixed.
 - **app:** the version panel in the status bar has a close button; Esc
   and a click outside still close it.
 - **app:** a button's tooltip no longer covers the panel it opened: the
@@ -167,6 +218,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   holds the replay and sends no size until it is shown and fitted.
 
 - **mail:** on macOS, account passwords go to the login keychain through the call that names the keychain file, so saving one can never bring up a "Keychain Not Found" dialog. Passwords saved before are read where they are; Windows and Linux are unchanged.
+- **daemon:** a session with no process behind it ends as soon as its transcript file or its folder is deleted, instead of staying in the sidebar for 24 hours. Nine synthetic transcripts a test script wrote and removed left nine such sessions listed as "working". A session is also no longer shown as working because of an event stamped ahead of the clock.
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.
 
 ### Security

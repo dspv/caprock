@@ -316,46 +316,76 @@ export function subagentDoing(a: Pick<Subagent, 'doing' | 'doing_from' | 'descri
 }
 
 /**
- * The header's strip: the working subagents first (as the daemon orders them,
- * newest activity first), then the recently finished, muted, up to `max`;
- * `more` counts the working ones left out — finished ones past the strip are
- * the Subagents section's business, not a count to chase.
+ * The header's strip, in the order the subagents started, so a chip keeps
+ * its place while others start and finish (owner, 2026-10-14: "lay them out
+ * in fives so you can see by fives how many there are", translated). The
+ * working come first in the count: up to `max` of them, the earliest
+ * started; the recently finished fill the places left, muted, in the same
+ * start order. `more` counts the working left out — finished ones past the
+ * strip are the Subagents section's business, not a count to chase.
  */
 export function subagentChips(subs: SubagentsNow | undefined, permission?: Permission | null, max = MAX_SUBAGENT_CHIPS): { chips: SubagentChip[]; more: number } {
   if (!subs) return { chips: [], more: 0 }
-  const chip = (a: { agent_id: string; agent_type?: string; description?: string; model_display?: string }, state: SubagentChip['state']): SubagentChip => ({
-    id: a.agent_id,
-    initial: subagentInitial(a.agent_type),
-    state,
-    tone: subagentTone(a.agent_type),
-    label: [a.agent_type || 'subagent', a.description, a.model_display, state === 'waiting' ? 'waiting on you' : state === 'working' ? 'working' : 'finished'].filter(Boolean).join(' · '),
+  const chip = (a: { agent_id: string; agent_type?: string; description?: string; model_display?: string; started_at?: number }, state: SubagentChip['state']) => ({
+    at: a.started_at ?? 0,
+    chip: {
+      id: a.agent_id,
+      initial: subagentInitial(a.agent_type),
+      state,
+      tone: subagentTone(a.agent_type),
+      label: [a.agent_type || 'subagent', a.description, a.model_display, state === 'waiting' ? 'waiting on you' : state === 'working' ? 'working' : 'finished'].filter(Boolean).join(' · '),
+    } satisfies SubagentChip,
   })
-  const working = subs.working.map((a) => chip(a, subagentWaiting(a, permission) ? 'waiting' : 'working'))
+  // A stable sort: the same start keeps the daemon's order.
+  const byStart = <T extends { at: number }>(xs: T[]) => xs.map((x, i) => [x, i] as const).sort((p, q) => p[0].at - q[0].at || p[1] - q[1]).map(([x]) => x)
+  const working = byStart(subs.working.map((a) => chip(a, subagentWaiting(a, permission) ? 'waiting' : 'working')))
   const shown = working.slice(0, max)
   const done = (subs.recent ?? []).slice(0, Math.max(0, max - shown.length)).map((a) => chip(a, 'done'))
-  return { chips: [...shown, ...done], more: working.length - shown.length }
+  return { chips: byStart([...shown, ...done]).map((x) => x.chip), more: working.length - shown.length }
 }
 
-/** Chips the cockpit's hero draws at most: its one row in the widest inspector, then "+N". */
-export const MAX_SUBAGENT_CHIPS = 24
-/** Chips sit in groups of this many, a wider gap between groups. */
-export const CHIP_GROUP = 4
+/** Chips the cockpit's hero draws at most, compact, in the widest inspector. */
+export const MAX_SUBAGENT_CHIPS = 80
+/** Chips sit in groups of this many, a wider gap between groups: counted by fives at a glance. */
+export const CHIP_GROUP = 5
+/** Lines of chips the hero gives its subagents at most. */
+export const CHIP_LINES = 2
 
-/** A chip, the gap inside a group of four, and the wider gap between groups (px), as the hero draws them. */
-const CHIP_PX = 18
-const CHIP_GAP_PX = 3
-const GROUP_GAP_PX = 8
+/** A chip, the gap inside a group and between groups (px), as the hero draws them, at full size and compact. */
+const CHIP_SIZES = {
+  normal: { chip: 18, gap: 3, group: 8 },
+  compact: { chip: 10, gap: 2, group: 6 },
+} as const
 /** The "+N" chip after the last group, with its gap. */
-const MORE_PX = 30
-const GROUP_PX = CHIP_GROUP * CHIP_PX + (CHIP_GROUP - 1) * CHIP_GAP_PX
+const MORE_PX = 34
 
-/** How many whole groups of four fit the hero's one row of chips this wide, with room for "+N" or without; at least one. */
-export function chipGroupsThatFit(width: number, withMore: boolean): number {
-  const room = width - (withMore ? MORE_PX : 0) + GROUP_GAP_PX
-  return Math.max(1, Math.floor(room / (GROUP_PX + GROUP_GAP_PX)))
+/** How many whole groups fit one line of chips this wide, with room for "+N" or without; at least one. */
+export function chipGroupsThatFit(width: number, withMore: boolean, size: keyof typeof CHIP_SIZES = 'normal'): number {
+  const s = CHIP_SIZES[size]
+  const groupPx = CHIP_GROUP * s.chip + (CHIP_GROUP - 1) * s.gap
+  const room = width - (withMore ? MORE_PX : 0) + s.group
+  return Math.max(1, Math.floor(room / (groupPx + s.group)))
 }
 
-/** The chips in groups of four, in order: the hero wraps a row between groups, never inside one. */
+/**
+ * How the hero lays out its subagent chips in a row this wide: full-size,
+ * in groups of five, wrapping onto a second line between groups; when the
+ * working need more than two lines, compact chips — a smaller square, no
+ * letter, the tint and state kept — so they fit in two; when even those
+ * do not, as many as two compact lines hold with "+N" after them. `room` is
+ * how many chips to draw. Decided from the width and the working count only.
+ */
+export function chipLayout(width: number, working: number): { compact: boolean; room: number } {
+  const lines = (size: keyof typeof CHIP_SIZES) => chipGroupsThatFit(width, false, size) * CHIP_GROUP * CHIP_LINES
+  const full = lines('normal')
+  if (working <= full) return { compact: false, room: Math.min(MAX_SUBAGENT_CHIPS, full) }
+  const compact = lines('compact')
+  if (working <= compact) return { compact: true, room: Math.min(MAX_SUBAGENT_CHIPS, compact) }
+  const capped = chipGroupsThatFit(width, false, 'compact') * CHIP_GROUP * (CHIP_LINES - 1) + chipGroupsThatFit(width, true, 'compact') * CHIP_GROUP
+  return { compact: true, room: Math.min(MAX_SUBAGENT_CHIPS, capped) }
+}
+
+/** The chips in groups of five, in order: the hero wraps a line between groups, never inside one. */
 export function chipGroups<T>(chips: readonly T[], size = CHIP_GROUP): T[][] {
   const out: T[][] = []
   for (let i = 0; i < chips.length; i += size) out.push(chips.slice(i, i + size))
