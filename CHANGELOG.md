@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.117.1] - 2026-10-14
+
 ### Added
 
 - **now:** the tokens beside each pull request's cost in the CI/CD
@@ -23,6 +25,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   link to a topic or delete. Twenty memories are free; Premium keeps every
   one. Kept in Caprock's database on this machine.
 
+### Fixed
+
+- **app (macOS):** macOS no longer asks for the microphone (and for
+  Desktop, Documents or Downloads) again after every Caprock update. The app
+  and its daemon are now signed with one Caprock certificate that stays the
+  same across releases, instead of an ad-hoc signature macOS saw as a new
+  program each time. The first update to this release asks one last time;
+  later updates keep your answers. Opening the app the first time is
+  unchanged: it is still not signed with an Apple Developer ID.
 ### Changed
 
 - **phone:** a session's header is one 44px bar: back, the title, a dot for
@@ -51,6 +62,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   they led up to. On one day of real use that is 1,974 rows where the old
   feed had 11,493. *All commands* brings the old feed back; the panel folds
   like the others and remembers it; every row is the same height.
+- **app:** the sidebar's bottom block reads more clearly. *Dashboard ⌘0*
+  has a row of its own again; under it, one row in two halves: **PRs &
+  CI** named with its mode (*CI Off*, *CI Bar*, *CI Page*; ⇧⌘B in its
+  tooltip) and the **theme** with its name. On Windows and Linux the two
+  take a row each, and PRs & CI shows its key, Ctrl+Alt+Shift+B.
+- **app:** folded, the bottom block's icons are a size bigger, and on a
+  Mac each one has its key drawn small above it (⇧⌘F, ⇧⌘M, ⌘0, ⌘,
+  ⇧⌘B). On Windows and Linux the keys are too long for that and show
+  above the icon you point at.
 
 ### Fixed
 
@@ -99,6 +119,9 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   request #601 read as $1,884.29, the whole orchestrating session, and now
   reads $2.12 (measured on the owner's database). This also corrects the
   PRs & CI Board's agent cost.
+- **app:** on Windows and Linux the *Settings* row's words no longer run
+  under *phone, Telegram*, and *Send feedback*'s key is no longer cut
+  off at the sidebar's edge.
 
 ## [0.117.0] - 2026-10-14
 

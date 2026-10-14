@@ -121,8 +121,10 @@ ls "$MNT/.background/"*.png >/dev/null 2>&1 || die "no background picture in the
 plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$APP/Contents/Info.plist"; }
 [[ "$(plist CFBundleIdentifier)" == dev.caprock.app ]] || die "bundle id is $(plist CFBundleIdentifier)"
 [[ "$(plist CFBundleShortVersionString)" == "$VERSION" ]] || die "app version is $(plist CFBundleShortVersionString)"
-codesign --verify --deep --strict "$APP" || die "the signature does not verify"
-codesign -dv "$APP" 2>&1 | grep -q '^Signature=adhoc' || die "the app is not ad-hoc signed"
+# Ad-hoc, or, with APPLE_SIGNING_IDENTITY (release.yml's stable self-signed
+# identity, scripts/macos-selfsign-keychain.sh), signed with it so macOS
+# keeps the microphone and folder answers across updates.
+bash scripts/check-app-signature.sh "$APP"
 for bin in caprock-app caprock caprock-pty-host; do
   archs="$(lipo -archs "$APP/Contents/MacOS/$bin")"
   [[ "$archs" == *x86_64* && "$archs" == *arm64* ]] || die "$bin is $archs, not universal"
@@ -152,7 +154,7 @@ fi
 
 SHA="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@SHA256@/$SHA/" app/packaging/caprock-app.rb.tmpl > "$OUT/caprock-app.rb"
-echo "  ok: ad-hoc signed, universal, dev.caprock.app $VERSION, bundles $daemon"
+echo "  ok: universal, dev.caprock.app $VERSION, bundles $daemon, signed ${APPLE_SIGNING_IDENTITY:-ad-hoc}"
 echo "  $(du -h "$DMG" | cut -f1)  sha256 $SHA"
 
 if [[ "$UPLOAD" == 1 ]]; then

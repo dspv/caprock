@@ -66,7 +66,7 @@ function Swatch({ m, big }: { m: ThemeMode; big: boolean }) {
 
 /** The theme button's popover: the picker, opening up or down from the button. */
 /** `align`: which edge of the button the picker lines up with — `right` (it opens leftwards) by default, `left` where the button sits near the window's left edge. */
-export function ThemeMenu({ children, label, placement = 'up', align = 'right', className = '' }: { children: React.ReactNode; label: string; placement?: 'up' | 'down'; align?: 'left' | 'right'; className?: string }) {
+export function ThemeMenu({ children, label, placement = 'up', align = 'right', className = '', boxClassName = '' }: { children: React.ReactNode; label: string; placement?: 'up' | 'down'; align?: 'left' | 'right'; className?: string; /** The wrapper's classes, e.g. to let the button fill a grid cell. */ boxClassName?: string }) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLSpanElement>(null)
   useEffect(() => {
@@ -78,7 +78,7 @@ export function ThemeMenu({ children, label, placement = 'up', align = 'right', 
     return () => { window.removeEventListener('mousedown', onDown, true); window.removeEventListener('keydown', onKey, true) }
   }, [open])
   return (
-    <span ref={box} className="relative inline-flex">
+    <span ref={box} className={`relative inline-flex ${boxClassName}`}>
       <button type="button" aria-label={label} title={open ? undefined : label} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={className}>
         {children}
       </button>

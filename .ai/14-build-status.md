@@ -73,6 +73,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-14 — 0.117.1: Second Brain, a phone that pairs ready to type and never hangs on Connecting
+
+Second Brain arrives: keep answers worth keeping as memories linked to their
+project, topics and session moment, searchable on the Brain screen
+([ADR-063](08-decisions.md)). A phone now pairs with its role chosen on the
+computer, ticked to type by default, and both sides show a checklist of what
+is done and what is left. A sleeping computer no longer leaves the phone on
+Connecting forever: the relay drops a silent host and the phone retries with
+backoff and says what is wrong. CI/CD lists recent repositories only, splits a
+shared session's cost across its pull requests, and shows tokens beside cost.
+
+The live feed on the dashboard is now What happened: edits, tests, commits,
+pull requests and subagents as moments rather than every command.
+
 ### 2026-10-14 — unreleased: Second Brain, by hand
 
 Memories kept as a graph ([ADR-063](08-decisions.md)): migration 0055
