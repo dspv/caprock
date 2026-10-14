@@ -73,7 +73,7 @@ import { Composer } from './Composer'
 import { TerminalFind, type TermSearch } from './TerminalFind'
 import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPrefs } from '@/lib/termprefs'
 import { searchColors, terminalTheme } from '@/lib/termthemes'
-import { clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
+import { checkTerminalCell, clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 import { blinkWhileVisible, pageHidden } from '@/lib/visible'
 
 export { APP_TERMINAL_THEME } from '@/lib/termthemes'
@@ -635,6 +635,9 @@ export function TerminalPane({
         // the box hidden reads 0 wide and refit leaves lastGeom alone then.
         refit()
         if (el.clientWidth > 0) paintNow(term)
+        // A cell measured while hidden or before the face settled is checked
+        // once the pane is on screen (lib/termfont implausibleCell).
+        checkTerminalCell(term)
         if (focusedRef.current) term.focus()
         claim()
       },

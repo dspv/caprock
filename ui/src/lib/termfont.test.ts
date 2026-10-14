@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { clearGlyphAtlas, loadTerminalFont, terminalFontSamples, watchTerminalFont, TERMINAL_FONT_FAMILY } from './termfont'
+import { MAX_CELL_RETRIES, cellRatio, checkTerminalCell, clearGlyphAtlas, implausibleCell, loadTerminalFont, terminalFontSamples, watchTerminalFont, TERMINAL_FONT_FAMILY } from './termfont'
 import type { Terminal as Xterm } from '@xterm/xterm'
 
 function fakeTerm() {
@@ -10,8 +10,10 @@ function fakeTerm() {
     get: () => family,
     set: (v: string) => { family = v; steps.push(`family:${v}`) },
   })
-  const term = { options, rows: 24, clearTextureAtlas: () => steps.push('atlas'), refresh: () => steps.push('refresh') }
-  return { term: term as unknown as Xterm, steps }
+  options.fontSize = 13
+  const cell = { width: 7.8 }
+  const term = { options, rows: 24, clearTextureAtlas: () => steps.push('atlas'), refresh: () => steps.push('refresh'), _core: { _renderService: { dimensions: { css: { cell } } } } }
+  return { term: term as unknown as Xterm, steps, cell }
 }
 
 function fakeFonts(loaded: boolean) {
@@ -86,5 +88,58 @@ describe('termfont', () => {
     expect(b.steps).toHaveLength(4)
     expect(a.steps).toHaveLength(6)
     stopA()
+  })
+
+  it('judges a cell by its width over the font size', () => {
+    const { term, cell } = fakeTerm()
+    expect(cellRatio(term)).toBeCloseTo(0.6, 1)
+    expect(implausibleCell(cellRatio(term))).toBe(false)
+    cell.width = 23.4 // three times too wide, as the owner saw it
+    expect(implausibleCell(cellRatio(term))).toBe(true)
+    cell.width = 4
+    expect(implausibleCell(cellRatio(term))).toBe(true)
+    // Nothing measured yet (a pane never laid out): no verdict.
+    cell.width = 0
+    expect(cellRatio(term)).toBeUndefined()
+    expect(implausibleCell(undefined)).toBe(false)
+  })
+
+  // The owner, 2026-10-14, after an update restarted the app: every glyph
+  // in a cell about three times too wide until font size + then − made
+  // xterm measure again.
+  it('measures again while the cell is implausible, until it is right, a few times at most', async () => {
+    const fonts = fakeFonts(true)
+    const { term, steps, cell } = fakeTerm()
+    cell.width = 23.4
+    // The second measurement comes out right.
+    const after = vi.fn(() => { cell.width = 7.8 })
+    const stop = watchTerminalFont(term, after, fonts as unknown as FontFaceSet)
+    await vi.waitFor(() => expect(after).toHaveBeenCalledTimes(1))
+    expect(steps.slice(0, 2)).toEqual(['family:monospace', 'family:"JetBrains Mono Variable", Menlo, monospace'])
+    for (let i = 0; i < 6; i++) await new Promise((r) => requestAnimationFrame(r))
+    expect(after).toHaveBeenCalledTimes(1)
+    // Shown later and wrong again: checked on request, fixed again.
+    cell.width = 23.4
+    checkTerminalCell(term)
+    await vi.waitFor(() => expect(after).toHaveBeenCalledTimes(2))
+    stop()
+
+    // One that never comes right stops after MAX_CELL_RETRIES.
+    const stuck = fakeTerm()
+    stuck.cell.width = 23.4
+    const tries = vi.fn()
+    const stop2 = watchTerminalFont(stuck.term, tries, fonts as unknown as FontFaceSet)
+    for (let i = 0; i < 4 * (MAX_CELL_RETRIES + 3); i++) await new Promise((r) => requestAnimationFrame(r))
+    expect(tries).toHaveBeenCalledTimes(MAX_CELL_RETRIES)
+    stop2()
+  })
+
+  it('a plausible cell is left alone', async () => {
+    const fonts = fakeFonts(true)
+    const { term, steps } = fakeTerm()
+    const stop = watchTerminalFont(term, () => {}, fonts as unknown as FontFaceSet)
+    for (let i = 0; i < 6; i++) await new Promise((r) => requestAnimationFrame(r))
+    expect(steps).toEqual([])
+    stop()
   })
 })

@@ -28,6 +28,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   again. Under the chat (and under Changes or a comparison) the terminal is
   put away as a tab behind another is: what the agent prints meanwhile is
   drawn at once when you come back.
+- **app:** a terminal no longer opens with its letters spread far apart
+  after the app restarts (an update): a letter cell measured before the
+  terminal's font settled was kept until you changed the font size. A cell
+  no monospace font could have is now measured again on its own, when the
+  fonts are in, when the window comes back and when the tab is shown.
 
 ## [0.117.0] - 2026-10-14
 
