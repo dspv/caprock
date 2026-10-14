@@ -53,8 +53,8 @@ make app-local   # macOS: this checkout's app (host arch) over /Applications/Cap
 
 ## CI (GitHub Actions)
 
-- **`docs.yml`** — on push to `master` and on PRs: `make docs-check docs-links lang-check` (tables aligned, links and anchors resolve, no Cyrillic). The only workflow that runs before code exists.
-- **`ci.yml`** — on push to `master` and on PRs. Jobs, all started at once:
+- **`docs.yml`** — on push to `master` and on PRs that are not drafts: `make docs-check docs-links lang-check` (tables aligned, links and anchors resolve, no Cyrillic). The only workflow that runs before code exists.
+- **`ci.yml`** — on push to `master` and on PRs that are not drafts (a draft runs nothing; marking it ready runs everything once, [ADR-061](08-decisions.md)). Jobs, all started at once:
   - **`changes`** lists a PR's files (`gh api …/pulls/N/files`) and says whether the app jobs run: only when the PR touches `app/`, `Makefile`, `scripts/check-app-mic.sh` or `ci.yml` itself. A push to `master`, or a PR whose file list cannot be read, runs everything. The app bundles `app/` plus a daemon the `go` jobs already compile on every OS; the dashboard is not in it (the window loads it from the daemon). A skipped app job shows as skipped, not failed. No branch protection or required check exists on `master` today; if one is added, require the jobs that always run, or add an always-run summary job, because a required check on a skipped matrix job is reported under the unexpanded name and would wait forever.
   - **`ui`** (ubuntu; `npm ci`, typecheck, vitest, the release-script tests, build, and a failure when the committed `internal/api/dist` differs from the fresh build).
   - **`go`** matrix (`ubuntu-latest`, `macos-latest`, `windows-latest`): `go vet`, `golangci-lint`, `go test`, `go build` for the OS, the smoke test, upload the binary. It builds against the committed `internal/api/dist` instead of waiting for `ui`; `ui` fails when that copy is stale, so a green run tested the same bytes.

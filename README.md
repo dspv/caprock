@@ -2,41 +2,114 @@
 
 ### Run Claude Code, Codex and OpenCode side by side — and know what every agent is doing, what it costs, and when it needs you.
 
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/hero-light.png">
-  <img alt="The Caprock app: a Claude Code session retrying a webhook sender with two background subagents, the current project's tabs on the left with their state, cost, context and subagents on the right" src="docs/hero.png">
-</picture>
+A desktop app for macOS, Windows and Linux. Local, open source, no account.
 
-*The desktop app and a paired phone, with demo projects and a demo session.*
+```bash
+brew install --cask dspv/tap/caprock-app
+```
 
 [![release](https://img.shields.io/github/v/release/dspv/caprock?color=6ea8fe)](https://github.com/dspv/caprock/releases)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/dspv/caprock/actions/workflows/ci.yml/badge.svg)](https://github.com/dspv/caprock/actions/workflows/ci.yml)
 ![platform](https://img.shields.io/badge/macOS%20·%20Linux%20·%20Windows-informational)
 
-- **Every agent in a real terminal tab.** Claude Code, Codex, OpenCode and
-  Gemini CLI in tabs and split panes, per project and per git worktree. The
-  sessions you start in your own terminal show up beside them.
-- **More than one sign-in.** Keep a work and a personal Claude Code or Codex
-  account side by side and pick which one each new session runs on, with
-  every account's plan windows in view. Three per agent are free.
-- **Nothing waits on you unseen.** Sessions stuck on a permission prompt come
-  first; for the ones Caprock started, answer *Yes* or *No* from the card, a
-  notification, the menu bar or your phone.
-- **What each repository costs.** Every turn priced at API list prices, per
-  repository and per service in a monorepo, with your Claude and Codex plan
-  windows live and a warning before you hit the limit.
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/readme/hero-light.webp">
+  <img alt="The Caprock app: six Claude Code sessions in tabs, one running six background agents; on the right its cost per hour, spend chart, subagents and context; below, the repository's pull requests with their CI checks" src="docs/readme/hero.webp">
+</picture>
+
+<sub>A real Caprock work session in this repository. Example figures.</sub>
+
+> **🤖 Contribute with your AI →** hand your coding agent one prompt and it
+> picks an issue, runs every check locally and opens a pull request.
+> [How it works](docs/contributing-with-ai.md).
+
+Other downloads: [macOS .dmg](https://github.com/dspv/caprock/releases/latest/download/Caprock-macOS.dmg) ·
+[Windows](https://github.com/dspv/caprock/releases/latest/download/Caprock-Windows-setup.exe) ·
+[.AppImage](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.AppImage) ·
+[.deb](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.deb) ·
+[.rpm](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.rpm) ·
+[the daemon on its own](#install)
+
+## Every agent in a real terminal tab
+
+Claude Code, Codex, OpenCode and Gemini CLI in tabs and split panes, per
+project and per git worktree, with a shell beside them. The sessions you start
+in your own terminal show up too. Keep a work and a personal Claude Code or
+Codex account side by side and pick which one each new session runs on; three
+per agent are free.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/readme/tabs-light.webp">
+  <img alt="An agent's terminal above a shell open in a git worktree of the same project, with the agent panel on the right" src="docs/readme/tabs.webp">
+</picture>
+
+## Nothing waits on you unseen
+
+Sessions stuck on a permission prompt come first. For the ones Caprock
+started, answer *Yes* or *No* from the card, a notification, the menu bar or
+your phone. A notification carries **Approve** only when it shows the whole
+request, so you never answer a command you have not read.
+
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/readme/menubar-light.webp">
+    <img alt="The menu bar popover: one session needs you to approve a git push, five are running, with today's spend and the Claude 5-hour and weekly bars" src="docs/readme/menubar.webp" width="380">
+  </picture>
+  &nbsp;
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/readme/phone-light.webp">
+    <img alt="Caprock on a phone: a session waiting on you with Yes and No for the command it wants to run, and the sessions to continue" src="docs/readme/phone.webp" width="300">
+  </picture>
+</p>
+
+## What each repository costs, and how close the limit is
+
+Every turn priced at API list prices, per repository and per service in a
+monorepo — an estimate of what the same work would cost through the API, not a
+bill. Your Claude and Codex plan windows sit beside it, with a warning before
+you hit the limit.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/readme/limits-light.webp">
+  <img alt="Plan limits: Claude's 5-hour window at 85% with the time it will run out, the weekly window at 72%, Codex's weekly window at 8%, and a note suggesting Codex until Claude resets" src="docs/readme/limits.webp" width="760">
+</picture>
+
+## Pull requests and CI next to the agent
+
+The deck shows the repository's pull requests with every check per job and OS,
+how long they took and what the agents spent on them. A red run, a conflict or
+a branch behind master gets *Fix CI with agent*, *Fix conflict with agent* or
+*Update branch* from the row; the Changes view stages, commits and pushes
+without leaving the window.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/readme/deck-light.webp">
+  <img alt="The Pull requests and CI tab: merges in 14 days, time to merge, CI time, red runs and Actions minutes above; the PR list on the left; one PR's checks as a job-by-runner grid on the right, with Fix CI with agent and Re-run checks" src="docs/readme/deck.webp">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/readme/changes-light.webp">
+  <img alt="The Changes view on a feature branch: the pull request's checks with two failed Go jobs and Fix with agent, the changed files, a diff, and Commit and Commit and Push" src="docs/readme/changes.webp">
+</picture>
+
+## And the rest
+
 - **Your history, kept.** Every session stays searchable after Claude Code's
   30-day cleanup deletes the transcript — including what the agent wrote.
-- **Runaway agents caught.** Loop alerts on repeated tool calls, and an
-  opt-in task runner for Claude Code that calls a task done only when your
-  own test commands pass.
-- **Local.** One SQLite file on your disk, loopback only. No account, no
-  cloud, no telemetry.
+- **Runaway agents caught.** Loop alerts on repeated tool calls, and an opt-in
+  task runner for Claude Code that calls a task done only when your own test
+  commands pass.
+- **On your phone, from anywhere.** Pair once with a QR code; an encrypted
+  relay carries only ciphertext ([details](#open-it-on-your-phone)).
+- **Local.** One SQLite file on your disk, loopback only. No account, no cloud,
+  no telemetry.
 
 In August the author ran [$5,898 of Claude Code on a $200 Max plan — 29× at
 API list prices](https://caprock.dev/blog/claude-code-cost-per-month/), and
 found out only because Caprock counted it.
+
+## Install
 
 Caprock is a desktop app; under it runs a local daemon that also serves a
 browser dashboard, and the app bundles it.
@@ -163,26 +236,6 @@ write OpenTelemetry, and Caprock asks it to write that to a file it then reads;
 what you ask it is kept there too, so the Memory screen can find a Gemini
 session by your question. Starting and watching Gemini sessions is free, like
 every other agent.
-
-![The live pulse: one bar per minute, coloured by what the minute cost](docs/pulse.gif)
-
-*Real capture, 46 seconds. One session working; the bars advance as the minutes roll over
-and the cost ticks with them.*
-
-![Live activity and cost, right now](docs/shot-now.png)
-
-*Top: the live pulse — one bar per minute of the last hour, per session, so the
-shape of a track is the shape of the work. Below: what every session is doing as
-it happens, and what each repo costs you. Real numbers from a real machine.*
-
-<details>
-<summary>Light theme</summary>
-
-![The same screen in the light theme](docs/shot-now-light.png)
-
-*It follows your system by default, and the toggle in the header overrides it.*
-
-</details>
 
 ## The desktop app
 
@@ -433,13 +486,8 @@ claude.ai sign-in is not used and its plan limits do not apply.
   your own Telegram bot are each off by default.
 
 What your usage is actually worth — the same work priced at the API rate,
-against what your plan costs. Nobody else tells you this number:
-
-![Plan value and cost breakdown](docs/shot-cost.png)
-
-And everything you have ever run through it — measured, not estimated:
-
-![Lifetime history](docs/shot-history.png)
+against what your plan costs — is on the Cost screen, and everything you have
+ever run through it on Lifetime: measured, not estimated.
 
 ## How it works
 
@@ -853,7 +901,7 @@ restart it only when it *crashes*, never when you shut it down on purpose.
 
 - ⭐ **Star** it if it's useful — it helps others find it.
 - 🐛 **Hit a bug?** [Open an issue](https://github.com/dspv/caprock/issues).
-- 🤝 **Contribute** — see [CONTRIBUTING.md](CONTRIBUTING.md).
+- 🤖 **Contribute with your AI** — [one prompt for your agent](docs/contributing-with-ai.md); the rules are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 *Running agents across a team? [Caprock for Teams](https://caprock.dev/teams/) puts every laptop on one screen, in your own VPC.*
 

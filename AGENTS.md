@@ -3,7 +3,9 @@
 > **CRITICAL — read this first.**
 > `CLAUDE.md` (repo root) and `.ai/00-index.md` are the authoritative instructions for this project. They define the non-negotiable rules. Everything in this file is supplementary. **If there is any conflict, `CLAUDE.md` wins.**
 
-Caprock is a local, open-source mission control for Claude Code — a single Go binary that watches every `claude` session on the machine (hooks + transcripts), shows live activity/cost/loop alerts in a browser dashboard, and spawns, controls, and orchestrates sessions with verification-before-done. Currently **all three phases (Observe, Control, Orchestrate) are complete, green on the 3-OS CI matrix, and published** — `git describe`, the releases page and `CHANGELOG.md` say which version.
+Caprock is a local, open-source desktop app for running coding agents — Claude Code, Codex, OpenCode and Gemini CLI in real terminal tabs — with what each one is doing, what it costs and when it needs you. Under the app runs a single Go daemon that watches every `claude` session on the machine (hooks + transcripts), serves the same dashboard in a browser, and spawns, controls and orchestrates sessions with verification-before-done. **All three phases (Observe, Control, Orchestrate) are complete, green on the 3-OS CI matrix, and published** — `git describe`, the releases page and `CHANGELOG.md` say which version.
+
+Contributing with your own agent? [`docs/contributing-with-ai.md`](docs/contributing-with-ai.md) is the prompt and the flow: checks run locally, and the PR stays a draft (CI skips drafts) until `make check` is green.
 
 ## Start here
 
