@@ -171,7 +171,13 @@ others. Installing it: [install-app.md](install-app.md).
   turns amber, *N files touched by both*, the files on hover. *Move to a
   worktree…* opens New session on a new copy of the folder, named after the
   newer session; the running one keeps going until you stop it. The
-  cockpit beside that session shows the same chip.
+  cockpit beside that session shows the same chip. Click a row to open it:
+  today's figures for the project with Terminal, Open repo and Open session
+  as quiet links at the end of the line, then each live session in it with
+  what it is doing on the left and, on the right, what it has cost, its
+  last hour, how long it has run, its context, its branch with lines added
+  and removed, and its pull request with CI. The legend under the rows
+  hides with *Hide*; the **?** in the panel's header brings it back.
 - **Quick chat.** Ask something without picking a folder: a session in
   Caprock's data directory opens in a tab, under *Outside projects* in the
   sidebar, and its tab is called *Quick chat* with its model. ⌥⌘N, *Quick
@@ -446,9 +452,24 @@ others. Installing it: [install-app.md](install-app.md).
   where it stood, and *Show* above them picks which of calls, cost, model
   and time each row carries, cost and time until you choose: click one to open it in place and read the
   task it was given, every call it makes as it makes them, what it
-  answered and what it cost), its last tool calls with how long each took, the uncommitted changes in
-  its checkout, and a warning when
-  it is repeating the same call. The permission prompt and its buttons sit
+  answered and what it cost), its last tool calls — each with the file it
+  touched (relative to the project) or the program a command ran, how it
+  ended (a quiet ✓, *exit 1* or *error* in red, the time it took when it
+  was slow, the clock running for the one running now) and how long ago,
+  the same call repeated in a row shown once with *×3* — the uncommitted
+  changes in its checkout, and a warning when
+  it is repeating the same call. Every section — Now, Subagents, Tasks,
+  Recent tools, Changes, CI, Processes — folds to one line on its label,
+  like Context and Plan, and stays as you left it. In CI, hover a pull
+  request's checks for a moment to list them all beside the panel;
+  *PRs*, *Ring* and *By OS* switch what it shows (*By OS*: the newest pull
+  request's checks on Linux, macOS and Windows, each with its state and
+  time).
+  To put the sections in another order, click *Arrange sections* under
+  the last one: each section gets ↑ and ↓, *Reset to default order* puts
+  them back, and *Done* (or Esc) returns. Nothing moves by dragging a
+  heading, so it never happens by accident, and the order is kept for
+  you on this computer. The permission prompt and its buttons sit
   at the top while one waits. Click a changed file to read it in a tab
   (in a folder that is not a git repository, it opens in your editor at
   its first change). Beside a shell tab it shows the folder and its

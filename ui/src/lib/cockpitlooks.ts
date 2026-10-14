@@ -4,6 +4,13 @@
  * the window bars with their lines. Compact until a viewer opens one
  * (owner, 2026-10-14, translated: "make it compact or like now; plan and
  * limits too, two versions").
+ *
+ * Every other section folds the same way, on the same chevron: *compact*
+ * is its heading alone with the one line of figures it carries at its
+ * right, *full* the whole section. Full until a viewer folds one (owner,
+ * 2026-10-14, translated: "Subagents and Recent tools should be collapsible
+ * like Context, Plan, Spend", then "every section, the CI and Processes
+ * too").
  */
 import { useSyncExternalStore } from 'react'
 
@@ -12,9 +19,19 @@ export type Look = 'compact' | 'full'
 export interface CockpitLooks {
   context: Look
   limits: Look
+  subagents: Look
+  tools: Look
+  now: Look
+  tasks: Look
+  changes: Look
+  ci: Look
+  processes: Look
 }
 
-export const DEFAULT_LOOKS: CockpitLooks = { context: 'compact', limits: 'compact' }
+export const DEFAULT_LOOKS: CockpitLooks = {
+  context: 'compact', limits: 'compact', subagents: 'full', tools: 'full',
+  now: 'full', tasks: 'full', changes: 'full', ci: 'full', processes: 'full',
+}
 
 export const LOOKS_KEY = 'caprock.app.cockpit-looks'
 
@@ -22,7 +39,9 @@ export const LOOKS_KEY = 'caprock.app.cockpit-looks'
 export function normalizeLooks(raw: unknown): CockpitLooks {
   const v = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
   const look = (x: unknown, d: Look): Look => (x === 'compact' || x === 'full' ? x : d)
-  return { context: look(v.context, DEFAULT_LOOKS.context), limits: look(v.limits, DEFAULT_LOOKS.limits) }
+  const out = { ...DEFAULT_LOOKS }
+  for (const k of Object.keys(DEFAULT_LOOKS) as (keyof CockpitLooks)[]) out[k] = look(v[k], DEFAULT_LOOKS[k])
+  return out
 }
 
 let current: CockpitLooks | undefined
