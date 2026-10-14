@@ -692,9 +692,15 @@ func MarkIdleSessions(ctx context.Context, q Querier, before int64) ([]string, e
 // sessions with no pid: rows written by an older shim, or read from a
 // transcript with no live process behind them, where there is nothing to ask
 // and a backstop is all there is.
+//
+// One fact is still available for those: the disk. A watched session with no
+// pid whose transcript file is gone, or whose directory is gone, ends now
+// rather than a day from now (see goneFromDisk). Imported history (OpenCode,
+// Codex, DeepSeek) stays on the clock alone.
 func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, error) {
 	rows, err := q.QueryContext(ctx,
-		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude'), COALESCE(owned, 0)
+		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude'), COALESCE(owned, 0),
+		        COALESCE(cwd, ''), COALESCE(transcript_path, ''), COALESCE(has_transcript, 0)
 		 FROM sessions WHERE status != 'ended'`)
 	if err != nil {
 		return nil, err
@@ -705,10 +711,10 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 	}
 	var ids []string
 	for rows.Next() {
-		var id, agent string
-		var pid, owned int
+		var id, agent, cwd, transcript string
+		var pid, owned, hasTranscript int
 		var lastEvent int64
-		if err := rows.Scan(&id, &pid, &lastEvent, &agent, &owned); err != nil {
+		if err := rows.Scan(&id, &pid, &lastEvent, &agent, &owned, &cwd, &transcript, &hasTranscript); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -726,6 +732,10 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 			if lastEvent < before {
 				ids = append(ids, id)
 			}
+		case pid <= 1 && goneFromDisk(cwd, transcript, hasTranscript != 0):
+			// No process to ask, and what the row was read from, or where it
+			// ran, has been deleted: nothing can ever add to it again.
+			ids = append(ids, id)
 		case pid > 1 && booted > 0 && lastEvent > 0 && lastEvent < booted:
 			// Last heard from before the machine started: that process is gone
 			// whatever its pid now answers, because after a reboot the pid is
