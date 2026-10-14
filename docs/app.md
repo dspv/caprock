@@ -174,8 +174,14 @@ others. Installing it: [install-app.md](install-app.md).
   Plan (read) permission, or Administration (read) for an organization), the median CI time and its trend, the share of
   red runs, runs stuck far past their usual time or waiting for a runner,
   the newest release, the five pull requests the agents spent most on this
-  week, and who opened them, face and name. Costs are at API list price.
-  Fold it and it reads nothing.
+  week with their tokens beside the cost, and who opened them, face and
+  name. Costs are at API list price; a session that worked on several pull
+  requests is split between them and marked *shared*. Only repositories
+  with a session in the last 14 days are read; older ones, and any you hide
+  from a block's ⋯ menu, fold into one line (*3 older repositories · 1
+  hidden — show*) and are not read from GitHub until you show them. When
+  GitHub is slow it says so in one grey line and tries again. Fold it and
+  it reads nothing.
 - **Live pulse.** One row per running session, led by the session's name,
   with the project, branch and short id under it. Rows keep their places:
   the order sessions started in (tabs follow the tab strip among

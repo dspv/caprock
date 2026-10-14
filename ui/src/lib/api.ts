@@ -1667,7 +1667,13 @@ export const api = {
   /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */
   reposActivity: () => get<ReposActivity>('/v1/repos/activity'),
   /** The Now screen's CI/CD section (.ai/04-ui.md § CI/CD on Now). */
-  reposCI: () => get<ReposCI>('/v1/repos/ci'),
+  reposCI: (q: { older?: boolean; hide?: readonly string[] } = {}) => {
+    const p = new URLSearchParams()
+    if (q.older) p.set('older', '1')
+    if (q.hide && q.hide.length > 0) p.set('hide', q.hide.join(','))
+    const qs = p.toString()
+    return get<ReposCI>(`/v1/repos/ci${qs ? `?${qs}` : ''}`)
+  },
   sessionBranches: (id: string) => get<SessionBranches>(`/v1/sessions/${encodeURIComponent(id)}/branches`),
   /** What GitHub billed for Actions this month (its billing report); ?owner= an organization. */
   actionsUsage: (owner?: string) => get<ActionsUsage>(`/v1/github/actions-usage${owner ? `?owner=${encodeURIComponent(owner)}` : ''}`),

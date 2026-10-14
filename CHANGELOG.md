@@ -7,6 +7,33 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **now:** the CI/CD section lists only repositories with a session in the
+  last 14 days, most recent first. Older ones, and any you hide from a
+  block's new ⋯ menu (*Hide from CI/CD*), fold into one quiet line —
+  *3 older repositories · 1 hidden — show* — and are not read from GitHub
+  until you show them; hidden ones come back with *Show again*.
+- **now:** GitHub no longer runs out of time on the CI/CD section: the
+  repositories are read three at a time, each with its own 12 seconds,
+  instead of one after another under a single deadline that left every
+  later one *context deadline exceeded*. A slow GitHub is one grey line —
+  *GitHub didn't answer in time — retrying* — once for the section when
+  every repository says the same, and the names show at once while the
+  figures load.
+- **now:** a session that drove many pull requests is no longer charged
+  whole to the one whose branch it ended on. It is split between the pull
+  requests it worked on, and such a row says *shared*; the release pull
+  request #601 read as $1,884.29, the whole orchestrating session, and now
+  reads $2.12 (measured on the owner's database). This also corrects the
+  PRs & CI Board's agent cost.
+
+### Added
+
+- **now:** the tokens beside each pull request's cost in the CI/CD
+  section (*9.4M tok · $2.12*); the hover splits input, output, cache read
+  and cache write.
+
 ## [0.117.0] - 2026-10-14
 
 ### Added
