@@ -167,8 +167,17 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
-      # Builds the universal daemon and app, checks the .dmg (ad-hoc
-      # signature, both architectures, bundle id, the daemon's version) and
+      # The stable self-signed identity, when its secrets are set: signed with
+      # one certificate, the app and daemon keep their designated requirement
+      # across releases, so macOS keeps the microphone and folder answers
+      # after an update. Without the secrets the build stays ad-hoc.
+      - name: stable signing identity
+        run: scripts/macos-selfsign-keychain.sh
+        env:
+          MACOS_SELFSIGN_P12_BASE64: ${{ secrets.MACOS_SELFSIGN_P12_BASE64 || '' }}
+          MACOS_SELFSIGN_P12_PASSWORD: ${{ secrets.MACOS_SELFSIGN_P12_PASSWORD || '' }}
+      # Builds the universal daemon and app, checks the .dmg (the signature,
+      # both architectures, bundle id, the daemon's version) and
       # renders the cask; --no-upload leaves the release to app-macos below.
       # With the updater key, also the signed Caprock_<v>_universal.app.tar.gz
       # and its .sig (F20, ADR-042). The `|| ''` keeps a missing secret a

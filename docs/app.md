@@ -1047,9 +1047,14 @@ or Photos library, cloud storage or a volume in the background.
   just cannot read that folder.
 - **Sessions started before this change** still ask as "caprock" until they
   end.
-- **Why it asks again after an update.** Caprock is not yet signed with an
-  Apple Developer ID, so to macOS each release is a new program. For a folder
-  you open in Caprock, or one a session runs in, it asks once per release.
+- **Asking again after an update.** Caprock is not yet signed with an
+  Apple Developer ID. Older releases were signed in a way that made each
+  release a new program to macOS, so the microphone and folder questions
+  came back after every update. The app is now signed with one Caprock
+  certificate that stays the same from release to release: the first update
+  to such a release asks one last time, and later updates keep your answers.
+  The `caprock` Homebrew formula's daemon, when it is the one running, still
+  asks once per release.
 - **Why there are several "caprock" entries without an icon.** Each entry
   is a `caprock` binary at a different place: older Homebrew releases
   (Homebrew keeps each version at its own path), the app's daemon, and
@@ -1080,9 +1085,10 @@ appeared:
 - **Start a new session** for voice. A session that was already running
   keeps the program that started it; a new one asks for itself.
 - **Check System Settings → Privacy & Security → Microphone.** If `claude`,
-  `caprock` or Caprock is listed and switched off, switch it on. After each
-  Caprock release macOS may ask again, since an ad-hoc signed release is a
-  new program to it.
+  `caprock` or Caprock is listed and switched off, switch it on. The first
+  update to a release signed with Caprock's certificate asks once more;
+  after that your answer stays across updates
+  ([why](#macos-privacy-prompts)).
 - **Homebrew without the app.** The formula's `caprock` is not signed with
   the hardened runtime, so nothing stops the prompt; it names "caprock".
 
