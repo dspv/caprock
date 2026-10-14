@@ -183,7 +183,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, pro
   }
   return (
     <>
-      <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} />
+      <Hero s={s} sessionId={sessionId} state={state} asking={hasPermission || !!permission} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} />
       {arranging
         ? <ArrangeSections order={order} onDone={() => setArranging(false)} />
         : order.map((id) => <Fragment key={id}>{sections[id]}</Fragment>)}
@@ -364,8 +364,10 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, working: number): 
  * lines, which are left-aligned and cut rather than wrapped; a narrower
  * inspector steps the headline down (.cockpit-hero, a container query). A
  * click on Claude's portrait picks this session's face (SessionFace).
+ * Now and then, idle or waiting with no prompt up, a small "try a duck?"
+ * line beside the portrait points at the rubber ducks (SessionFace).
  */
-function Hero({ s, sessionId, state, now, background, subs, permission, figures, usual, onChip }: { s: SessionSummary; sessionId: string; state: CockpitState; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null; figures: SpendFigures; usual?: Usual; onChip: (id: string) => void }) {
+function Hero({ s, sessionId, state, asking, now, background, subs, permission, figures, usual, onChip }: { s: SessionSummary; sessionId: string; state: CockpitState; asking: boolean; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null; figures: SpendFigures; usual?: Usual; onChip: (id: string) => void }) {
   const since = s.worked_at || s.last_event_at
   const saysBackground = background > 0 && state === 'working'
   const working = subs?.working.length ?? 0
@@ -379,7 +381,7 @@ function Hero({ s, sessionId, state, now, background, subs, permission, figures,
   return (
     <div className="@container min-w-0">
       <div className="cockpit-hero" data-state={state}>
-        <PickableFace agent={s.agent} sessionId={sessionId}
+        <PickableFace agent={s.agent} sessionId={sessionId} hint={!asking && (state === 'idle' || state === 'waiting')}
           className="cockpit-avatar relative grid place-items-center justify-self-center rounded-[15px] [grid-area:av]" data-state={state}>
           <SessionCharacter agent={s.agent} sessionId={sessionId} size={46} className="cockpit-character" />
         </PickableFace>

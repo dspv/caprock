@@ -17,6 +17,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   and Plan — Now, Subagents, Tasks, Recent tools, Changes, CI and
   Processes — and stays folded or open as you left it. CI and Processes
   can be arranged with the rest.
+- **cockpit:** rubber ducks. Eight of them sit beside Claude's faces —
+  classic, debugger, on call, party, pirate, hacker, sleepy and rainbow —
+  on a new *Ducks* tab in the menu a click on the portrait opens. Settings
+  → Appearance → *Claude's face* can make every session a duck (*A duck
+  per session*) or mix them in (*Faces and ducks*); the default stays the
+  eight faces, and every session keeps the face it already had. Now and
+  then an idle Claude asks "try a duck?" beside its portrait: at most once
+  a day, never while you type or a prompt waits, and never again once
+  you have seen the ducks or closed it twice.
 
 ### Changed
 

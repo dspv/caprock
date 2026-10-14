@@ -480,6 +480,12 @@ others. Installing it: [install-app.md](install-app.md).
   it everywhere it shows, on your phone too; click the portrait in the
   cockpit to give a session another. Settings → Appearance → *Claude's
   face* picks the default: a face per session, or the same one for all.
+  There are rubber ducks too, for rubber-duck debugging: eight of them —
+  classic, debugger, on call, party, pirate, hacker, sleepy and rainbow —
+  on the *Ducks* tab of the same menu. Sessions only get a random duck if
+  you ask for it in Settings (*A duck per session*, or *Faces and ducks*);
+  now and then an idle Claude asks "try a duck?" beside its portrait —
+  click it to see them, or × it, and after two ×s it stops asking.
   Remembered in this browser only. Other agents keep their own marks.
 - **Session deck** (⌘B). A band under the terminal of the agent in front,
   so the prompt sits above the window's edge, nearer the middle of the

@@ -700,6 +700,18 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 }
 /* A pale hat (the cream hard hat, the pompom) keeps an edge on a light ground. */
 [data-theme="light"] .cockpit-avatar, [data-theme="light"] [data-face-picker] { --character-outline: var(--color-border-strong); }
+/* "try a duck?" (SessionFace DuckHint): a speech line out of the portrait,
+ * its tail pointing back at it. Calm: panel ground, muted text, a fade. */
+.duck-hint { animation: duckHintIn 260ms var(--app-ease, ease-out) both; }
+.duck-hint::before {
+  content: ""; position: absolute; left: -4.5px; bottom: 6px; width: 8px; height: 8px;
+  background: var(--color-panel); border-left: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border);
+  transform: rotate(45deg);
+}
+@keyframes duckHintIn { from { opacity: 0; transform: translateX(-3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .duck-hint { animation: none; } }
+/* The line sits where "started …" is; that line steps aside while it is up. */
+.cockpit-hero:has([data-duck-hint]) [data-hero-started] { visibility: hidden; }
 [data-app] .cockpit-avatar[data-state="working"] { --cockpit-tint: var(--color-ok); }
 [data-app] .cockpit-avatar[data-state="waiting"] { --cockpit-tint: var(--color-accent); }
 [data-app] .cockpit-avatar[data-state="waiting"]::after {

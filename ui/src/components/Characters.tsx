@@ -12,7 +12,8 @@
  * vanishes into a cream ground.
  */
 
-import type { Face } from '@/lib/faces'
+import { useId } from 'react'
+import { isDuck, type ClaudeFace, type Duck, type Face } from '@/lib/faces'
 
 export type Character = 'lead' | 'crowd' | 'codex' | 'opencode' | 'gemini' | 'deepseek'
 
@@ -45,7 +46,7 @@ const PEBBLE = 'M14 46c0-17 11-28 26-28s26 11 26 28c0 14-11 24-26 24S14 60 14 46
  * amber, since a character is an illustration; what follows the theme is the
  * outline round a pale hat.
  */
-function FaceBody({ face, outline }: { face: Exclude<Face, 'cap'>; outline: { stroke: string; strokeWidth: number } }) {
+function FaceBody({ face, outline }: { face: Exclude<ClaudeFace, 'cap'>; outline: { stroke: string; strokeWidth: number } }) {
   const eyes = (r = 4) => (<><circle cx="31" cy="46" r={r} fill={INK} /><circle cx="49" cy="46" r={r} fill={INK} /><circle cx="32.3" cy="44.6" r="1.3" fill="#fff" /><circle cx="50.3" cy="44.6" r="1.3" fill="#fff" /></>)
   const cheeks = (c: string) => (<><circle cx="23" cy="53" r="3.2" fill={c} opacity=".75" /><circle cx="57" cy="53" r="3.2" fill={c} opacity=".75" /></>)
   switch (face) {
@@ -168,10 +169,127 @@ function FaceBody({ face, outline }: { face: Exclude<Face, 'cap'>; outline: { st
   }
 }
 
+/*
+ * The rubber ducks (lib/faces.ts): one bath-toy duck, facing right, in the
+ * same 80x80 box and on the same shadow as the pebble, so a duck sits where
+ * a face sits at 30 and at 48 pixels. Every duck is the same body, head,
+ * beak and eye; what each one wears is drawn over it.
+ */
+const DUCK_YELLOW = '#f6cf4a'
+const DUCK_SHADE = '#e2b030'
+const BEAK = '#f39a3d'
+const BEAK_DEEP = '#d8772a'
+const DUCK_BODY = 'M8 36c5 5 11 6 17 5.5 5-1.6 11-2.5 18-2.5 15 0 25 7 25 17.5 0 9.5-10 15.5-27 15.5H29C16 72 8 65 8 54.5c0-6.5-1-12 0-18.5z'
+const DUCK_WING = 'M23 51c6-5.5 16-6 22-.5-2.5 7.5-11 10.5-18 8-3-1.2-5-4.2-4-7.5z'
+
+function DuckBody({ duck, outline }: { duck: Duck; outline: { stroke: string; strokeWidth: number } }) {
+  const id = useId()
+  const head = (fill = DUCK_YELLOW) => <circle cx="46" cy="29" r="15" fill={fill} {...outline} />
+  const beak = () => (<><path d="M57.5 27.5c6.5-3 13.5-2 16.5 2 1 1.4.2 2.8-1.4 3.3-4 1.6-10 2.6-15 2.2z" fill={BEAK} {...outline} /><path d="M59.5 33h12" stroke={BEAK_DEEP} strokeWidth="1.6" strokeLinecap="round" /></>)
+  const eye = (<><circle cx="51" cy="24.5" r="3.4" fill={INK} /><circle cx="52.3" cy="23.2" r="1.15" fill="#fff" /></>)
+  const shut = <path d="M47.6 25q3.4 2.8 6.8 0" stroke={INK} strokeWidth="2.4" fill="none" strokeLinecap="round" />
+  const cheek = <ellipse cx="53.5" cy="32.5" rx="2.6" ry="2" fill="#f08a6a" opacity=".55" />
+  const body = (fill = DUCK_YELLOW, wing = DUCK_SHADE) => (<><path d={DUCK_BODY} fill={fill} {...outline} /><path d={DUCK_WING} fill={wing} /></>)
+  switch (duck) {
+    case 'duck':
+      // The classic: yellow, orange beak, bright-eyed.
+      return (<><Shadow rx={25} />{body()}{head()}{beak()}{eye}{cheek}</>)
+    case 'duck-glasses':
+      // The debugger: round glasses, looking hard at the problem.
+      return (
+        <>
+          <Shadow rx={25} />{body()}{head()}{beak()}{eye}{cheek}
+          <circle cx="51" cy="24.5" r="6.4" fill="#fff" fillOpacity=".22" stroke={INK} strokeWidth="2.2" />
+          <path d="M44.7 23.6L33 21" stroke={INK} strokeWidth="2.2" strokeLinecap="round" />
+          <path d="M57.3 23.4l3-1.2" stroke={INK} strokeWidth="2.2" strokeLinecap="round" />
+        </>
+      )
+    case 'duck-headset':
+      // On call: a headset with a mic at the beak.
+      return (
+        <>
+          <Shadow rx={25} />{body('#9fd0e6', '#7bb4cf')}{head('#9fd0e6')}{beak()}{eye}{cheek}
+          <path d="M39 26c-3-9 2-15.5 10-16.5 4-.4 7.5.6 10 2.5" stroke="#3a3733" strokeWidth="3.6" fill="none" strokeLinecap="round" />
+          <rect x="34" y="22" width="10" height="13" rx="4.5" fill="#3a3733" />
+          <rect x="36.5" y="24.5" width="5" height="8" rx="2.5" fill={CREAM} />
+          <path d="M40 35c2 5 8 6.5 13 5" stroke="#3a3733" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+          <circle cx="54.5" cy="39.8" r="2.4" fill="#3a3733" />
+        </>
+      )
+    case 'duck-party':
+      // Party: a striped cone hat, confetti, eyes shut with glee.
+      return (
+        <>
+          <Shadow rx={25} />{body()}{head()}{beak()}{shut}{cheek}
+          <path d="M37 18.5L47.5 1.5 56 16.5c-6.5-1.6-12.5-1-19 2z" fill="#b8a8d6" strokeLinejoin="round" {...outline} />
+          <path d="M42.5 9.6l7.7 2.2M39.6 14.4l13.2 2" stroke="#e3807f" strokeWidth="2.4" strokeLinecap="round" />
+          <circle cx="47.5" cy="2.5" r="2.8" fill="#f2c94c" />
+          <rect x="11" y="12" width="4" height="4" rx="1" fill="#e3807f" transform="rotate(20 13 14)" />
+          <rect x="68" y="10" width="4" height="4" rx="1" fill="#86a9dc" transform="rotate(-25 70 12)" />
+          <circle cx="24" cy="24" r="2" fill="#8fbc98" />
+          <circle cx="70" cy="46" r="1.8" fill="#f3a553" />
+        </>
+      )
+    case 'duck-pirate':
+      // The pirate: a black hat with a skull, a patch over the eye.
+      return (
+        <>
+          <Shadow rx={25} />{body()}{head()}{beak()}{cheek}
+          <path d="M37 23.5l20 7" stroke={INK} strokeWidth="1.6" strokeLinecap="round" />
+          <ellipse cx="51" cy="25" rx="4.6" ry="4.2" fill={INK} />
+          <path d="M29 19.5c3-10 11-14.5 17.5-14.5S60 9 64 18c-6-3.2-12-4.2-17.5-4.2S35 15.5 29 19.5z" fill="#2f2b26" {...outline} />
+          <path d="M31 18.5c5-3 10.5-4.3 15.5-4.3 6.5 0 12.5 1.5 17 3.6" stroke="#d9a92e" strokeWidth="1.4" fill="none" />
+          <circle cx="46.5" cy="10" r="2.4" fill={CREAM} />
+          <path d="M44.5 13.2l4 0" stroke={CREAM} strokeWidth="1.2" strokeLinecap="round" />
+        </>
+      )
+    case 'duck-hoodie':
+      // The hacker: a graphite hoodie, a green glint, code on the chest.
+      return (
+        <>
+          <Shadow rx={25} />
+          <path d={DUCK_BODY} fill="#615b52" {...outline} />
+          <path d="M27 63.5h7M37 63.5h10M27 58.5h4M34 58.5h9" stroke="#8fd18f" strokeWidth="2" strokeLinecap="round" />
+          <path d="M28 33c0-14 8.5-22 19-22s19 8 19 21c0 5-1.5 9-4 12H31c-2-3-3-6.5-3-11z" fill="#615b52" {...outline} />
+          <circle cx="48" cy="29" r="12" fill={DUCK_YELLOW} />
+          {beak()}
+          <circle cx="51" cy="25.5" r="3.2" fill={INK} /><circle cx="52.2" cy="24.3" r="1.1" fill="#8fd18f" />
+          <path d="M40 43v8M45 43v7" stroke={CREAM} strokeWidth="1.6" strokeLinecap="round" />
+        </>
+      )
+    case 'duck-sleepy':
+      // Sleepy: a nightcap, eyes shut, a z or two.
+      return (
+        <>
+          <Shadow rx={25} />{body()}{head()}{beak()}{shut}{cheek}
+          <path d="M32.5 22c1-9 8-14.5 16-14.5 9 0 15 7 18.5 17-3.5-3.5-8-5-12.5-5-8 0-15 .5-22 2.5z" fill="#86a9dc" {...outline} />
+          <path d="M31.5 20.5c7-3 16-4 24-3" stroke="#e9f0f6" strokeWidth="3.2" strokeLinecap="round" />
+          <circle cx="67.5" cy="26" r="3.6" fill="#e9f0f6" {...outline} />
+          <path d="M13 17h6l-6 6.5h6M21 7.5h4.4L21 12.3h4.4" stroke="#86a9dc" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      )
+    case 'duck-rainbow':
+      // Rainbow: the body in six bands, the head in the classic yellow.
+      return (
+        <>
+          <Shadow rx={25} />
+          <clipPath id={`${id}-rb`}><path d={DUCK_BODY} /></clipPath>
+          <g clipPath={`url(#${id}-rb)`}>
+            {['#e3807f', '#f3a553', '#f2d15c', '#8fbc98', '#86a9dc', '#b8a8d6'].map((c, i) => <rect key={c} x="0" y={35 + i * 6.4} width="80" height="6.6" fill={c} />)}
+          </g>
+          <path d={DUCK_BODY} fill="none" {...outline} />
+          <path d={DUCK_WING} fill="#000" opacity=".1" />
+          {head()}{beak()}{eye}{cheek}
+        </>
+      )
+  }
+}
+
 /** A character's drawing in its 80x80 box, for composing several into one scene (BannerArt). */
 export function Body({ who, face = 'cap' }: { who: Character; face?: Face }) {
   const outline = { stroke: 'var(--character-outline, transparent)', strokeWidth: 1.5 }
-  if (who === 'lead' && face !== 'cap') return <FaceBody face={face} outline={outline} />
+  if (who === 'lead' && isDuck(face)) return <DuckBody duck={face} outline={outline} />
+  if (who === 'lead' && !isDuck(face) && face !== 'cap') return <FaceBody face={face} outline={outline} />
   switch (who) {
     case 'lead':
       // Claude Code: an amber pebble in a hard hat.
