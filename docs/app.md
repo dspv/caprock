@@ -132,6 +132,10 @@ others. Installing it: [install-app.md](install-app.md).
   its top; on Home's top it goes back to your terminals.
   The Dashboard tab is its icon and its key, ⌘0 (⌘, while it shows
   Settings); its × shows while it is in front.
+  On the Dashboard's *Today*, each figure has a faint line of your last 14
+  days under it and one word: *usual*, *above usual +38%*, *below usual
+  −20%*, or *not enough history* in your first days. It compares with your
+  own median by the same time of day; hover it for the figures behind it.
   Under *Dashboard*, one row in two halves: the **PRs & CI** mode, named
   *CI Off*, *CI Bar* or *CI Page* (its key, ⇧⌘B, is in its tooltip), and
   the theme, named too. On Windows and Linux each takes a row, and there

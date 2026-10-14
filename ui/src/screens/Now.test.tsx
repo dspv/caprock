@@ -18,11 +18,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { NowScreen } from './Now'
-import type { SessionSummary, Status, Summary } from '@/lib/api'
+import type { SessionSummary, Status, Summary, Trends } from '@/lib/api'
 
 const state = vi.hoisted(() => ({
   status: {} as Partial<Status>,
   summary: undefined as Partial<Summary> | undefined,
+  trends: undefined as Trends | undefined,
+  /** Every agent the trends were asked for. */
+  trendCalls: [] as unknown[],
   sessions: [] as SessionSummary[],
   /** What the server holds, when it is more than it sent. */
   sessionTotal: undefined as number | undefined,
@@ -39,6 +42,11 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       status: async () => state.status as Status,
       summary: async () => state.summary as Summary,
+      trends: async (agent?: string) => {
+        state.trendCalls.push(agent)
+        if (!state.trends) throw new Error('no trends')
+        return state.trends
+      },
       sessions: async () => state.sessions,
       // The screen asks for the list with its total, so the cap can be stated
       // rather than hidden; the mock answers in the same shape.
@@ -71,6 +79,8 @@ function emptySummary(over: Partial<Summary> = {}): Partial<Summary> {
 afterEach(() => {
   state.status = {}
   state.summary = undefined
+  state.trends = undefined
+  state.trendCalls = []
   state.sessions = []
   vi.restoreAllMocks()
 })
@@ -393,4 +403,44 @@ it('names the sessions a restart cut off, each with continue, until dismissed', 
   render(<NowScreen />)
   await screen.findByText(/Spanner queries/, undefined, { timeout: 200 }).catch(() => null)
   expect(screen.queryByText(/still running when Caprock last stopped/)).toBeNull()
+})
+
+/** Fourteen working days at $100 and 40 turns by this hour, and today. */
+function steadyTrends(): Trends {
+  const series = Array.from({ length: 14 }, (_, i) => ({
+    day: `2026-10-${String(i + 1).padStart(2, '0')}`, cost_usd: 100, sessions: 4, turns: 40, tool_calls: 50,
+    hit_rate: 0.98, burn_usd_per_hour: 12, active: true,
+  }))
+  series.push({ day: '2026-10-15', cost_usd: 0, sessions: 0, turns: 0, tool_calls: 0, hit_rate: 0.97, burn_usd_per_hour: 30, active: true })
+  return { days: 14, cut_min: 600, series, burn: { median_usd_per_hour: 12, windows: 400, days: 14 } }
+}
+
+it('sets each Today figure against the viewer\'s own 14 days, by the same time of day', async () => {
+  state.summary = emptySummary({
+    turns: 40, sessions: 4, cost_usd: 138, active_sessions: 1, tool_calls: 9,
+    burn: { window_min: 10, usd_per_hour: 24, tokens_per_min: 1000, turns: 3 },
+    savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0.98, cut_pct: 80 },
+  })
+  state.trends = steadyTrends()
+  render(<NowScreen />)
+  await waitFor(() => expect(document.querySelector('[data-trend="cost"] [data-compare]')?.textContent).toBe('above usual +38%'))
+  expect(document.querySelector('[data-trend="turns"] [data-compare]')?.textContent).toBe('usual')
+  expect(document.querySelector('[data-trend="sessions"] [data-compare]')?.textContent).toBe('usual')
+  // Burn now against the usual active window: $24/h against $12/h.
+  expect(document.querySelector('[data-trend="burn"] [data-compare]')?.textContent).toBe('above usual 2.0×')
+  // The hover names the basis.
+  expect(document.querySelector('[data-trend="cost"] [data-compare]')?.getAttribute('title')).toContain('vs your 14-day median: $100.00 by 10:00')
+  // Cache: the line, no word.
+  expect(document.querySelector('[data-trend="cache"] svg')).not.toBeNull()
+  expect(document.querySelector('[data-trend="cache"] [data-compare]')).toBeNull()
+})
+
+it('keeps the trend rows in place before the trends arrive, and asks through the agent filter', async () => {
+  state.summary = emptySummary({ turns: 4, cost_usd: 3 })
+  render(<NowScreen />)
+  await waitFor(() => expect(state.trendCalls.length).toBeGreaterThan(0))
+  expect(state.trendCalls[0]).toBe('all')
+  // The word row exists, empty, so nothing moves when the answer lands.
+  await waitFor(() => expect(document.querySelector('[data-trend="cost"] [data-compare]')).not.toBeNull())
+  expect(document.querySelector('[data-trend="cost"] [data-compare]')?.textContent).toBe('')
 })

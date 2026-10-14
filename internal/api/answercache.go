@@ -76,6 +76,11 @@ const (
 	// refresh runs: thirty days of history do not move in an afternoon.
 	usualTTL      = 10 * time.Minute
 	usualMaxStale = 24 * time.Hour
+	// trendsTTL is how long the Today trends are served as they are, and
+	// trendsMaxStale how long past that while one refresh runs. The key
+	// carries the local day, so midnight starts a new one.
+	trendsTTL      = 5 * time.Minute
+	trendsMaxStale = 30 * time.Minute
 )
 
 // answerEntry is one key's cached answer, or the in-flight computation of it.
