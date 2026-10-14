@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { CIJob, CIRun, CIState, ReleaseCI, SessionPRLive } from './api'
-import { checksSentence, nameOS, nodeBaseName, prChecks, shortRun, jobVsMedian, runningVsMedian, runVsMedian, slowestVsMedian, vsMedian, ago, byOSLine, orderPRs, prAge, prDotState, prMergeText, prReviewText, prVerdict, ciElapsed, ciTone, fmtRun, investigateMessage, keyStep, readCIView, releaseChip, releaseDoneText, releaseEstimateText, runnerTime, saveCIView } from './ci'
+import { checksSentence, nameOS, osRollup, nodeBaseName, prChecks, shortRun, jobVsMedian, runningVsMedian, runVsMedian, slowestVsMedian, vsMedian, ago, byOSLine, orderPRs, prAge, prDotState, prMergeText, prReviewText, prVerdict, ciElapsed, ciTone, fmtRun, investigateMessage, keyStep, readCIView, releaseChip, releaseDoneText, releaseEstimateText, runnerTime, saveCIView } from './ci'
 
 describe('the Investigate message', () => {
   it('names the PR, workflow, job and step, links the job, carries the log’s last 40 lines and says what to do', () => {
@@ -256,5 +256,14 @@ describe('a PR’s checks in one short group', () => {
 
   it('words a row’s time to the minute', () => {
     expect([shortRun(42_000), shortRun(6 * 60_000 + 9_000), shortRun(62 * 60_000), shortRun(undefined)]).toEqual(['42s', '6m', '1h 02m', ''])
+  })
+})
+
+describe('checks by runner OS', () => {
+  it('takes each OS’s worst state, its count and its longest time, Linux first', () => {
+    const n = (key: string, os: string | undefined, tone: 'pass' | 'fail' | 'running' | 'queued' | 'skipped', ms?: number) => ({ key, name: key, os, tone, ms })
+    const r = osRollup([n('a', 'windows', 'running', 90_000), n('b', 'linux', 'pass', 108_000), n('c', 'linux', 'pass', 30_000), n('d', 'macos', 'fail', 200_000), n('e', 'macos', 'pass'), n('f', undefined, 'pass'), n('g', 'windows', 'skipped')])
+    expect(r.map((x) => [x.os, x.tone, x.counts.total, x.ms])).toEqual([['linux', 'pass', 2, 108_000], ['macos', 'fail', 2, 200_000], ['windows', 'running', 2, 90_000]])
+    expect(osRollup([n('f', undefined, 'pass')])).toEqual([])
   })
 })

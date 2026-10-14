@@ -452,8 +452,13 @@ others. Installing it: [install-app.md](install-app.md).
   was slow, the clock running for the one running now) and how long ago,
   the same call repeated in a row shown once with *×3* — the uncommitted
   changes in its checkout, and a warning when
-  it is repeating the same call. Subagents and Recent tools fold to one
-  line on their label, like Context and Plan, and stay as you left them.
+  it is repeating the same call. Every section — Now, Subagents, Tasks,
+  Recent tools, Changes, CI, Processes — folds to one line on its label,
+  like Context and Plan, and stays as you left it. In CI, hover a pull
+  request's checks for a moment to list them all beside the panel;
+  *PRs*, *Ring* and *By OS* switch what it shows (*By OS*: the newest pull
+  request's checks on Linux, macOS and Windows, each with its state and
+  time).
   To put the sections in another order, click *Arrange sections* under
   the last one: each section gets ↑ and ↓, *Reset to default order* puts
   them back, and *Done* (or Esc) returns. Nothing moves by dragging a

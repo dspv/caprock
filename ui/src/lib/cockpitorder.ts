@@ -8,10 +8,10 @@
  */
 import { useSyncExternalStore } from 'react'
 
-export type CockpitSection = 'now' | 'context' | 'limits' | 'spend' | 'subagents' | 'tasks' | 'tools' | 'changes'
+export type CockpitSection = 'now' | 'context' | 'limits' | 'spend' | 'subagents' | 'tasks' | 'tools' | 'changes' | 'ci' | 'processes'
 
 /** The order the cockpit opens in, and what *Reset to default order* restores. */
-export const DEFAULT_ORDER: readonly CockpitSection[] = ['now', 'context', 'limits', 'spend', 'subagents', 'tasks', 'tools', 'changes']
+export const DEFAULT_ORDER: readonly CockpitSection[] = ['now', 'context', 'limits', 'spend', 'subagents', 'tasks', 'tools', 'changes', 'ci', 'processes']
 
 /** Each section's name, as its heading and the Arrange list say it. */
 export const SECTION_NAMES: Record<CockpitSection, string> = {
@@ -23,6 +23,8 @@ export const SECTION_NAMES: Record<CockpitSection, string> = {
   tasks: 'Tasks',
   tools: 'Recent tools',
   changes: 'Changes',
+  ci: 'CI',
+  processes: 'Processes',
 }
 
 export const ORDER_KEY = 'caprock.app.cockpit-order'

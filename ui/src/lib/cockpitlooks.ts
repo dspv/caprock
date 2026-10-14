@@ -5,11 +5,12 @@
  * (owner, 2026-10-14, translated: "make it compact or like now; plan and
  * limits too, two versions").
  *
- * Subagents and Recent tools fold the same way, on the same chevron:
- * *compact* is their heading alone with one line of what is in them, *full*
- * the rows. Full until a viewer folds one (owner, 2026-10-14, translated:
- * "Subagents and Recent tools should be collapsible like Context, Plan,
- * Spend").
+ * Every other section folds the same way, on the same chevron: *compact*
+ * is its heading alone with the one line of figures it carries at its
+ * right, *full* the whole section. Full until a viewer folds one (owner,
+ * 2026-10-14, translated: "Subagents and Recent tools should be collapsible
+ * like Context, Plan, Spend", then "every section, the CI and Processes
+ * too").
  */
 import { useSyncExternalStore } from 'react'
 
@@ -20,9 +21,17 @@ export interface CockpitLooks {
   limits: Look
   subagents: Look
   tools: Look
+  now: Look
+  tasks: Look
+  changes: Look
+  ci: Look
+  processes: Look
 }
 
-export const DEFAULT_LOOKS: CockpitLooks = { context: 'compact', limits: 'compact', subagents: 'full', tools: 'full' }
+export const DEFAULT_LOOKS: CockpitLooks = {
+  context: 'compact', limits: 'compact', subagents: 'full', tools: 'full',
+  now: 'full', tasks: 'full', changes: 'full', ci: 'full', processes: 'full',
+}
 
 export const LOOKS_KEY = 'caprock.app.cockpit-looks'
 
@@ -30,12 +39,9 @@ export const LOOKS_KEY = 'caprock.app.cockpit-looks'
 export function normalizeLooks(raw: unknown): CockpitLooks {
   const v = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
   const look = (x: unknown, d: Look): Look => (x === 'compact' || x === 'full' ? x : d)
-  return {
-    context: look(v.context, DEFAULT_LOOKS.context),
-    limits: look(v.limits, DEFAULT_LOOKS.limits),
-    subagents: look(v.subagents, DEFAULT_LOOKS.subagents),
-    tools: look(v.tools, DEFAULT_LOOKS.tools),
-  }
+  const out = { ...DEFAULT_LOOKS }
+  for (const k of Object.keys(DEFAULT_LOOKS) as (keyof CockpitLooks)[]) out[k] = look(v[k], DEFAULT_LOOKS[k])
+  return out
 }
 
 let current: CockpitLooks | undefined

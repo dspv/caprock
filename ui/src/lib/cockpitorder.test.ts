@@ -11,14 +11,14 @@ describe('the cockpit’s section order', () => {
     expect(normalizeOrder(undefined)).toEqual(DEFAULT_ORDER)
     expect(normalizeOrder('spend')).toEqual(DEFAULT_ORDER)
     // Unknown and repeated names dropped; a missing section after the one before it by default.
-    expect(normalizeOrder(['now', 'tools', 'bogus', 'now', 'spend'])).toEqual(['now', 'context', 'limits', 'tools', 'changes', 'spend', 'subagents', 'tasks'])
-    expect(normalizeOrder(['changes', 'context'])).toEqual(['now', 'changes', 'context', 'limits', 'spend', 'subagents', 'tasks', 'tools'])
+    expect(normalizeOrder(['now', 'tools', 'bogus', 'now', 'spend'])).toEqual(['now', 'context', 'limits', 'tools', 'changes', 'ci', 'processes', 'spend', 'subagents', 'tasks'])
+    expect(normalizeOrder(['changes', 'context'])).toEqual(['now', 'changes', 'ci', 'processes', 'context', 'limits', 'spend', 'subagents', 'tasks', 'tools'])
   })
 
   it('moves a section one place, never past an edge', () => {
     expect(moveSection(DEFAULT_ORDER, 'context', -1).slice(0, 2)).toEqual(['context', 'now'])
     expect(moveSection(DEFAULT_ORDER, 'now', -1)).toEqual(DEFAULT_ORDER)
-    expect(moveSection(DEFAULT_ORDER, 'changes', 1)).toEqual(DEFAULT_ORDER)
+    expect(moveSection(DEFAULT_ORDER, 'processes', 1)).toEqual(DEFAULT_ORDER)
     expect(isDefaultOrder(moveSection(DEFAULT_ORDER, 'spend', 1))).toBe(false)
   })
 

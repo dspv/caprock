@@ -579,3 +579,36 @@ export function slowestVsMedian(runs: CIRun[], now: number): VsMedian | undefine
   }
   return best ? runVsMedian(best, now) : undefined
 }
+
+/** One runner OS's share of a PR's checks: how it stands, how many, and its longest check. */
+export interface OSStatus {
+  os: string
+  tone: CITone
+  counts: CheckCounts
+  /** The longest of its checks: finished, how long it took; running, how long so far. */
+  ms?: number
+}
+
+/** The order the cockpit lists the runners in. */
+const OS_ORDER: Record<string, number> = { linux: 0, macos: 1, windows: 2 }
+
+/**
+ * A PR's checks by runner OS, for the cockpit's *By OS* view (owner,
+ * 2026-10-14, translated: "OS mode is unclear"): per OS the worst state among
+ * its checks — failed, then running, queued, passed — their counts and the
+ * longest one's time. Read from the checks' own names and jobs (PipeNode.os);
+ * checks that name no OS are left out, and none naming one gives [].
+ */
+export function osRollup(nodes: readonly PipeNode[]): OSStatus[] {
+  const by = new Map<string, PipeNode[]>()
+  for (const n of nodes) if (n.os) by.set(n.os, [...(by.get(n.os) ?? []), n])
+  const out: OSStatus[] = []
+  for (const [os, list] of by) {
+    const counts = countNodes(list)
+    const live = list.filter((n) => n.tone !== 'skipped')
+    const tone = (live.length ? live : list).reduce<CITone>((t, n) => (TONE_ORDER[n.tone] < TONE_ORDER[t] ? n.tone : t), 'skipped')
+    const times = list.map((n) => n.ms).filter((m): m is number => typeof m === 'number')
+    out.push({ os, tone, counts, ms: times.length ? Math.max(...times) : undefined })
+  }
+  return out.sort((a, b) => (OS_ORDER[a.os] ?? 9) - (OS_ORDER[b.os] ?? 9) || a.os.localeCompare(b.os))
+}

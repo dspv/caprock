@@ -11,7 +11,7 @@
  * and the day's summary for the plan windows. Nothing here is estimated, and a
  * figure an agent does not report is left out rather than drawn as a zero.
  */
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { Fragment, createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { api, type Event, type Permission, type RateWindow, type SessionSummary, type Subagent, type SubagentDone, type SubagentsNow, type Summary } from '@/lib/api'
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
@@ -111,13 +111,17 @@ const STATE_TEXT: Record<CockpitState, string> = {
 }
 
 /** The cockpit's sections below the permission card, in reading order. */
-export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
+export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, processes }: {
   s: SessionSummary
   sessionId: string
   hasPermission: boolean
   summary?: Summary
   /** The working tree's changes, drawn by the inspector (it owns the diff fetch). */
   changes?: ReactNode
+  /** The session's pull requests and their checks (CockpitCI), placed and folded with the rest. */
+  ci?: ReactNode
+  /** The session's busiest processes (ResourceMeter's Processes), likewise. */
+  processes?: ReactNode
 }) {
   // Held once per session and shared with the session deck (lib/sessionEvents.ts).
   const main = useSessionEvents(sessionId)
@@ -159,7 +163,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const sections: Record<CockpitSection, ReactNode> = {
     now: (
       <>
-        <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
+        <Foldable id="now"><NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} /></Foldable>
         {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
         <CheckoutShared s={s} live={state !== 'ended'} />
       </>
@@ -171,9 +175,11 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
       <Subagents subs={subs} permission={permission} now={now} sessionId={sessionId} open={openSub} onOpen={setOpenSub}
         allFinished={allFinished} onAllFinished={setAllFinished} reveal={reveal} />
     ) : null,
-    tasks: <TodoBlock sessionId={sessionId} />,
+    tasks: <Foldable id="tasks"><TodoBlock sessionId={sessionId} /></Foldable>,
     tools: <Timeline runs={runs} total={s.stats?.tool_calls} now={now} cwd={s.cwd} />,
-    changes: changes ?? null,
+    changes: changes ? <Foldable id="changes">{changes}</Foldable> : null,
+    ci: ci ? <Foldable id="ci">{ci}</Foldable> : null,
+    processes: processes ? <Foldable id="processes">{processes}</Foldable> : null,
   }
   return (
     <>
@@ -263,7 +269,48 @@ function ArrangeSections({ order, onDone }: { order: readonly CockpitSection[]; 
   )
 }
 
+/** A section the cockpit folds for it: its SectionLabel becomes the chevron that folds it. */
+const FoldCtx = createContext<{ full: boolean; toggle: () => void } | null>(null)
+
+/**
+ * Folds a section that has no fold of its own (Now, Tasks, Changes, CI,
+ * Processes) the way Context and Plan fold: its label turns into the same
+ * chevron button, and folded, everything under the label row is hidden by
+ * `[data-folded]` in tokens.css, so the figures the label carries at its
+ * right (*3 of 7 done*, *4 min ago*, *12% · 210 MB*) are its one line.
+ * Kept per viewer with the other looks (lib/cockpitlooks).
+ */
+function Foldable({ id, children }: { id: 'now' | 'tasks' | 'changes' | 'ci' | 'processes'; children: ReactNode }) {
+  const looks = useLooks()
+  const full = looks[id] === 'full'
+  const ctx = useMemo(() => ({ full, toggle: () => setLook(id, full ? 'compact' : 'full') }), [id, full])
+  return (
+    <FoldCtx.Provider value={ctx}>
+      <div data-fold={id} data-folded={full ? undefined : ''} className="grid min-w-0 grid-cols-[minmax(0,1fr)]">{children}</div>
+    </FoldCtx.Provider>
+  )
+}
+
+/** Whether the section this is drawn in is folded by the cockpit: what its label carries then. */
+export function useFolded(): boolean {
+  const fold = useContext(FoldCtx)
+  return !!fold && !fold.full
+}
+
 export function SectionLabel({ children, right }: { children: ReactNode; right?: ReactNode }) {
+  const fold = useContext(FoldCtx)
+  if (fold) {
+    return (
+      <div data-section-head className="flex min-w-0 items-center gap-2">
+        <button type="button" aria-expanded={fold.full} onClick={fold.toggle} title={fold.full ? 'Fold this section to one line' : 'Show the whole section'}
+          className="-mx-1 flex min-w-0 shrink-0 items-center gap-1 rounded-[6px] px-1 py-0.5 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+          <Chevron open={fold.full} />
+          <h4 className="truncate text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">{children}</h4>
+        </button>
+        {right && <div className="ml-auto flex min-w-0 items-baseline gap-2 text-[11.5px]">{right}</div>}
+      </div>
+    )
+  }
   return (
     <div className="flex items-baseline gap-2">
       <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">{children}</h4>
@@ -960,9 +1007,16 @@ function NowDoing({ s, state, running, last, permission, background, now }: {
     verb = s.activity?.phrase ? capital(s.activity.phrase) : 'Nothing running'
   }
   const plan = s.activity?.plan
+  const folded = useFolded()
   return (
     <section aria-label="Now" className="grid gap-2">
-      <SectionLabel right={plan && plan.total > 0 ? <span className="num text-fg-muted" title={plan.next ? `Next: ${plan.next}` : undefined}>plan {plan.done}/{plan.total}</span> : undefined}>Now</SectionLabel>
+      <SectionLabel right={(
+        <>
+          {/* Folded, the section's one line: what it is doing. */}
+          {folded && <span data-fold-only className="min-w-0 truncate text-fg-muted" title={detail || verb}>{verb}</span>}
+          {plan && plan.total > 0 ? <span className="num shrink-0 text-fg-muted" title={plan.next ? `Next: ${plan.next}` : undefined}>plan {plan.done}/{plan.total}</span> : null}
+        </>
+      )}>Now</SectionLabel>
       <div className="cockpit-now flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2" data-state={state} data-running={running ? 'true' : undefined}>
         <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[7px] bg-[var(--app-row-active)]">{icon}</span>
         <span className="grid min-w-0 flex-1 leading-tight">

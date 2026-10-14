@@ -5,8 +5,10 @@
  * requests and their checks, in one of three views kept per viewer —
  * each PR's checks in one short group (the default, as the deck's rows
  * say them: "✗ 1 failed ✓ 11", every check on hover), one ring with "10/11 · 4m" and the time
- * against the median, or the open PR's jobs by runner OS. A click opens the
- * PRs & CI tab.
+ * against the median, or the newest PR's checks by runner OS (ByOS). A click
+ * opens the PRs & CI tab. Each tab names what it shows on hover. Hovering a
+ * PR's checks lists them only after the pointer rests there, beside the
+ * panel rather than over it (CheckSummary `beside`).
  *
  * It asks nothing: it draws what the session deck was last told
  * (lib/deckCache, `prs:<session>` and `ci:<session>:<pr>`) and redraws when
@@ -16,11 +18,10 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { SessionCI, SessionPRs } from '@/lib/api'
 import type { PRCheck } from '@/lib/github'
-import { orderPRs, prChecks, prDotState, prVerdict, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, ciTone, type CITone, type CockpitCIView, type PRWordTone } from '@/lib/ci'
+import { orderPRs, osName, osRollup, prChecks, prDotState, prVerdict, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView, type PRWordTone } from '@/lib/ci'
 import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
-import { GRID_OS_LABEL, jobGrid } from '@/lib/prstats'
-import { CheckSummary } from './CheckSummary'
-import { SectionLabel } from './Cockpit'
+import { CheckSummary, StateMark } from './CheckSummary'
+import { SectionLabel, useFolded } from './Cockpit'
 
 /** The most pull requests listed in the circles view. */
 const SHOWN = 3
@@ -29,10 +30,12 @@ const WORD: Record<PRWordTone, string> = {
   ok: 'text-ok', fail: 'text-danger', pending: 'text-warn', muted: 'text-fg-muted', faint: 'text-fg-faint',
 }
 
+// Each tab says what it shows, on hover and to a screen reader (owner,
+// 2026-10-14, translated: "OS mode is unclear").
 const VIEWS: { v: CockpitCIView; label: string; title: string }[] = [
-  { v: 'dots', label: 'PRs', title: 'Each pull request’s checks: how many failed, run and passed; hover one for every check' },
-  { v: 'ring', label: 'Ring', title: 'One ring: checks done, the time, and against the median' },
-  { v: 'grid', label: 'OS', title: 'The open pull request’s jobs by runner OS' },
+  { v: 'dots', label: 'PRs', title: 'PRs: each open pull request of this session with its checks — how many failed, run and passed' },
+  { v: 'ring', label: 'Ring', title: 'Ring: the newest pull request’s checks as one ring — done of all, the time, and against your usual run' },
+  { v: 'grid', label: 'By OS', title: 'By OS: the newest pull request’s checks by runner — Linux, macOS, Windows — each with its state and longest time' },
 ]
 
 /** The deck's last answer under key, redrawn when the deck is told a new one. */
@@ -78,9 +81,11 @@ export function CockpitCI({ sessionId, onOpen }: { sessionId: string; onOpen?: (
     const t = window.setInterval(() => { if (!document.hidden) setNow(Date.now()) }, 1000)
     return () => window.clearInterval(t)
   }, [running, prs.at, ci.at])
+  const folded = useFolded()
   if (!prs.d || !prs.d.connected || rows.length === 0) return null
+  const leadSum = folded ? prChecks(lead!, now) : undefined
 
-  const body = view === 'ring' ? <Ring p={lead!} ci={ci.d} now={now} /> : view === 'grid' ? <Grid ci={ci.d} lead={lead!.number} /> : (
+  const body = view === 'ring' ? <Ring p={lead!} ci={ci.d} now={now} /> : view === 'grid' ? <ByOS p={lead!} ci={ci.d} now={now} /> : (
     <ul className="grid gap-1">
       {rows.slice(0, SHOWN).map((p) => {
         const sum = prChecks(p, now)
@@ -92,7 +97,7 @@ export function CockpitCI({ sessionId, onOpen }: { sessionId: string; onOpen?: (
             <span className="num shrink-0 text-fg-muted">#{p.number}</span>
             <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg-faint" title={title}>{title}</span>
             {sum
-              ? <CheckSummary s={sum} label={`#${p.number}: its checks`} focusable={false} className="shrink-0" />
+              ? <CheckSummary s={sum} label={`#${p.number}: its checks`} focusable={false} beside className="shrink-0" />
               : <span title={v.title ?? v.text} className={`shrink-0 truncate text-[11px] ${WORD[v.tone]}`}>{v.text}</span>}
           </li>
         )
@@ -102,16 +107,25 @@ export function CockpitCI({ sessionId, onOpen }: { sessionId: string; onOpen?: (
   )
 
   return (
-    <section aria-label="CI" data-cockpit-ci={view} className="grid gap-2">
+    <section aria-label="CI" data-cockpit-ci={view} data-checks-edge className="grid gap-2">
       <SectionLabel right={(
         <span className="flex items-center gap-2">
           <span className="text-[10.5px] text-fg-faint" title="What the session deck last read; the cockpit asks nothing itself">{prs.at ? freshText(now - prs.at).replace('updated ', '') : ''}</span>
-          <span role="tablist" aria-label="CI view" className="flex items-center gap-px rounded-[5px] border border-[var(--app-hairline)] p-px">
-            {VIEWS.map((x) => (
-              <button key={x.v} type="button" role="tab" aria-selected={view === x.v} data-cockpit-ci-view={x.v} title={x.title} onClick={() => setView(x.v)}
-                className={`rounded-[4px] px-1.5 text-[10.5px] leading-[15px] ${view === x.v ? 'bg-[var(--app-row-hover)] text-fg' : 'text-fg-faint hover:text-fg-muted'}`}>{x.label}</button>
-            ))}
-          </span>
+          {/* Folded, the newest PR's checks are its one line, in place of the view tabs. */}
+          {leadSum && (
+            <span data-fold-only className="flex min-w-0 items-center gap-1.5">
+              <span className="num shrink-0 text-[11.5px] text-fg-muted">#{lead!.number}</span>
+              <CheckSummary s={leadSum} label={`#${lead!.number}: its checks`} focusable={false} beside className="shrink-0" />
+            </span>
+          )}
+          {!folded && (
+            <span role="tablist" aria-label="CI view" className="flex items-center gap-px rounded-[5px] border border-[var(--app-hairline)] p-px">
+              {VIEWS.map((x) => (
+                <button key={x.v} type="button" role="tab" aria-selected={view === x.v} data-cockpit-ci-view={x.v} title={x.title} aria-label={x.title} onClick={() => setView(x.v)}
+                  className={`rounded-[4px] px-1.5 text-[10.5px] leading-[15px] ${view === x.v ? 'bg-[var(--app-row-hover)] text-fg' : 'text-fg-faint hover:text-fg-muted'}`}>{x.label}</button>
+              ))}
+            </span>
+          )}
         </span>
       )}>CI</SectionLabel>
       <button type="button" data-cockpit-ci-open onClick={onOpen} disabled={!onOpen} title="Open the PRs & CI tab"
@@ -157,24 +171,30 @@ function Ring({ p, ci, now }: { p: NonNullable<ReturnType<typeof orderPRs>[numbe
   )
 }
 
-const CELL: Record<CITone, string> = { pass: 'pass', fail: 'fail', running: 'running', queued: 'queued', skipped: 'skipped' }
+const OS_WORD = { pass: 'passed', fail: 'failed', running: 'running', queued: 'queued', skipped: 'skipped' } as const
+const OS_TEXT = { pass: 'text-ok', fail: 'text-danger', running: 'text-warn', queued: 'text-fg-muted', skipped: 'text-fg-faint' } as const
 
-/** The lead PR's jobs as a small job × OS matrix of circles, from its CI as the deck last read it. */
-function Grid({ ci, lead }: { ci?: SessionCI; lead: number }) {
-  const runs = ci?.pr?.number === lead ? ci.ci?.runs ?? [] : []
-  if (runs.length === 0) return <span className="text-[11.5px] text-fg-faint">#{lead}’s jobs show once its row is opened in the deck.</span>
-  const g = jobGrid(runs)
+/**
+ * The newest PR's checks by runner OS, one line each: *Linux ✓ passed 1m 48s
+ * · 4 checks*, *Windows ● running 2m 10s*. It used to be a job × OS matrix
+ * that showed only once the PR's row had been opened in the deck, and said
+ * so in place of anything else; this reads the checks the PR row already
+ * carries (with their jobs when the deck read them), so it always has
+ * something to show unless no check names an OS.
+ */
+function ByOS({ p, ci, now }: { p: NonNullable<ReturnType<typeof orderPRs>[number]>; ci?: SessionCI; now: number }) {
+  const runs = ci?.pr?.number === p.number ? ci.ci?.runs : undefined
+  const sum = prChecks(p, now, runs)
+  const rows = sum ? osRollup(sum.nodes) : []
+  if (rows.length === 0) return <span className="text-[11.5px] text-fg-faint">#{p.number}’s checks name no runner OS.</span>
   return (
-    <span data-cockpit-ci-grid className="grid gap-x-2 gap-y-1 text-[11px]" style={{ gridTemplateColumns: `minmax(0,1fr) repeat(${g.oses.length}, auto)` }}>
-      <span />
-      {g.oses.map((o) => <span key={o} className="text-center text-[10px] text-fg-faint">{GRID_OS_LABEL[o]}</span>)}
-      {g.families.slice(0, 6).map((f) => (
-        <span key={f} className="contents">
-          <span className="truncate text-fg-muted" title={f}>{f}</span>
-          {g.oses.map((o) => {
-            const j = g.cell(f, o)
-            return <span key={o} className="flex justify-center" title={j ? `${j.name}: ${ciTone(j)}` : undefined}>{j ? <span className="pipe-node" data-size="sm" data-tone={CELL[ciTone(j)]} /> : <span className="text-fg-faint">·</span>}</span>
-          })}
+    <span data-cockpit-ci-os className="grid grid-cols-[auto_10px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-[11.5px]">
+      {rows.map((r) => (
+        <span key={r.os} data-os={r.os} data-tone={r.tone} className="contents">
+          <span className="text-fg">{osName(r.os)}</span>
+          <StateMark tone={r.tone} />
+          <span className={`truncate ${OS_TEXT[r.tone]}`}>{OS_WORD[r.tone]}{r.ms ? <span className="num text-fg-muted"> {fmtRun(r.ms)}</span> : null}</span>
+          <span className="num text-right text-fg-faint">{r.counts.total} {r.counts.total === 1 ? 'check' : 'checks'}</span>
         </span>
       ))}
     </span>

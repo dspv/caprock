@@ -159,7 +159,7 @@ describe('the agent cockpit', () => {
     expect(plan()).toHaveAttribute('data-look', 'full')
     expect(within(plan()).getByRole('meter', { name: '5 hours window used' })).toHaveAttribute('aria-valuenow', '41')
     expect(plan().querySelector('[data-window="5 hours"]')?.textContent).toMatch(/resets in/)
-    expect(JSON.parse(localStorage.getItem(LOOKS_KEY)!)).toEqual({ context: 'full', limits: 'full', subagents: 'full', tools: 'full' })
+    expect(JSON.parse(localStorage.getItem(LOOKS_KEY)!)).toMatchObject({ context: 'full', limits: 'full', subagents: 'full', tools: 'full' })
     // A fresh page reads the choice back.
     unmount()
     resetLooksForTest()
@@ -173,10 +173,10 @@ describe('the agent cockpit', () => {
   it('falls back to compact when the stored looks are broken', () => {
     localStorage.setItem(LOOKS_KEY, '{not json')
     resetLooksForTest()
-    expect(getLooks()).toEqual({ context: 'compact', limits: 'compact', subagents: 'full', tools: 'full' })
+    expect(getLooks()).toEqual({ context: 'compact', limits: 'compact', subagents: 'full', tools: 'full', now: 'full', tasks: 'full', changes: 'full', ci: 'full', processes: 'full' })
     localStorage.setItem(LOOKS_KEY, JSON.stringify({ context: 'huge', limits: 'full', tools: 7 }))
     resetLooksForTest()
-    expect(getLooks()).toEqual({ context: 'compact', limits: 'full', subagents: 'full', tools: 'full' })
+    expect(getLooks()).toMatchObject({ context: 'compact', limits: 'full', subagents: 'full', tools: 'full' })
     show(agent())
     expect(screen.getByRole('region', { name: 'Context' })).toHaveAttribute('data-look', 'compact')
     expect(screen.getByRole('region', { name: 'Plan limits' })).toHaveAttribute('data-look', 'full')
@@ -849,6 +849,32 @@ describe('folding Subagents and Recent tools', () => {
   })
 })
 
+// "Every section — the CI and Processes too" (owner, 2026-10-14, translated).
+describe('folding every other section', () => {
+  it('folds Now and Changes on their label to the line the label carries, and remembers it', async () => {
+    const { unmount } = show(agent())
+    const changes = () => document.querySelector('[data-fold="changes"]')!
+    await within(screen.getByRole('region', { name: 'Changes' })).findByText('1 file')
+    const label = within(screen.getByRole('region', { name: 'Changes' })).getByRole('button', { name: 'Changes' })
+    expect(label).toHaveAttribute('aria-expanded', 'true')
+    expect(changes()).not.toHaveAttribute('data-folded')
+    fireEvent.click(label)
+    expect(changes()).toHaveAttribute('data-folded')
+    expect(changes().querySelector('[data-fold-only]')).toHaveTextContent('1 file +12 −3')
+    const nowLabel = within(screen.getByRole('region', { name: 'Now' })).getByRole('button', { name: 'Now' })
+    fireEvent.click(nowLabel)
+    expect(document.querySelector('[data-fold="now"]')).toHaveAttribute('data-folded')
+    expect(document.querySelector('[data-fold="now"] [data-fold-only]')).toHaveTextContent('Editing')
+    expect(JSON.parse(localStorage.getItem(LOOKS_KEY)!)).toMatchObject({ now: 'compact', changes: 'compact', ci: 'full', processes: 'full' })
+    unmount()
+    resetLooksForTest()
+    show(agent())
+    expect(changes()).toHaveAttribute('data-folded')
+    fireEvent.click(within(screen.getByRole('region', { name: 'Changes' })).getByRole('button', { name: 'Changes' }))
+    expect(changes()).not.toHaveAttribute('data-folded')
+  })
+})
+
 // "I want to be able to reorder the sections, but so it doesn't trigger by
 // accident — so everyone sets up what interests them" (owner, 2026-10-14,
 // translated).
@@ -874,8 +900,8 @@ describe('arranging the cockpit', () => {
     expect(document.activeElement).toHaveAccessibleName('Move Recent tools up')
     fireEvent.click(within(arrange).getByRole('button', { name: 'Move Spend up' }))
     expect(within(arrange).getAllByRole('listitem').map((li) => li.textContent?.replace(/[↑↓\d]/g, ''))).toEqual(
-      ['Now', 'Recent tools', 'Context', 'Spend', 'Plan limits', 'Subagents', 'Tasks', 'Changes'])
-    expect(JSON.parse(localStorage.getItem(ORDER_KEY)!)).toEqual(['now', 'tools', 'context', 'spend', 'limits', 'subagents', 'tasks', 'changes'])
+      ['Now', 'Recent tools', 'Context', 'Spend', 'Plan limits', 'Subagents', 'Tasks', 'Changes', 'CI', 'Processes'])
+    expect(JSON.parse(localStorage.getItem(ORDER_KEY)!)).toEqual(['now', 'tools', 'context', 'spend', 'limits', 'subagents', 'tasks', 'changes', 'ci', 'processes'])
     fireEvent.click(within(arrange).getByRole('button', { name: 'Done' }))
     expect(regions()).toEqual(['Now', 'Recent tool calls', 'Context', 'Spend', 'Plan limits'])
     // A fresh page reads the order back.

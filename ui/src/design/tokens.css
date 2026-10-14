@@ -814,6 +814,8 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 }
 /* The bar's left edge from -24% to 84% of the card, as the background-position sweep it replaces. */
 @keyframes cockpitScan { from { transform: translateX(-60%); } to { transform: translateX(210%); } }
+/* A folded cockpit section (Cockpit.tsx Foldable): its label row alone. */
+[data-fold][data-folded] > * > :not([data-section-head]) { display: none; }
 [data-app] .cockpit-row + .cockpit-row { border-top: 1px solid color-mix(in srgb, var(--color-fg) 5%, transparent); }
 [data-app] .cockpit-row[data-live="true"] { animation: appFadeIn 220ms var(--app-ease); }
 @keyframes cockpitBreath { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
