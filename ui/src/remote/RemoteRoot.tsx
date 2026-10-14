@@ -13,6 +13,9 @@ import { abandonPairing, currentChannel, currentMachine, forgetMachine, install,
 import { PAIR_FAILED_EVENT } from '@/screens/Pair'
 import { needsPairing, type ChannelState, type Problem } from './transport'
 import { promptInstall, useInstallOffer, type InstallOffer } from './install'
+import { useRoute } from '@/lib/router'
+import { useNarrowScreen } from '@/lib/phone'
+import { provideMachineSwitch } from '@/lib/machineswitch'
 import { ReadyGate } from './ReadyCard'
 
 const App = lazy(() => import('../App'))
@@ -39,14 +42,52 @@ window.addEventListener(PAIR_FAILED_EVENT, () => {
 /** How long the channel may be down before the page says why, in full. */
 export const EXPLAIN_AFTER_MS = 5_000
 
+/** How long a dropped channel may be back to connecting before the bar shows:
+ *  a reconnect that takes a second is not news, and the bar would push the
+ *  page down and back. */
+export const BAR_GRACE_MS = 2_000
+
+/**
+ * Whether the machine bar is drawn (owner, 2026-10-14, translated: "the
+ * 'DimaS-MBP' info isn't really needed either — I don't see the point of it
+ * for now"). Connected with one machine it says nothing worth a row, so it
+ * is not drawn. It shows while something is wrong — never connected yet,
+ * down past the grace, removed — and with several machines paired, except
+ * on a phone's session screen, whose title sheet lists them instead
+ * (components/PhoneSessionBar).
+ */
+export function machineBarShown(link: Pick<Link, 'state' | 'problem' | 'everOpen' | 'downFor'>, several: boolean, inSession: boolean): boolean {
+  if (link.problem === 'removed' || needsPairing(link.problem)) return true
+  if (link.state !== 'open' && (!link.everOpen || link.downFor >= BAR_GRACE_MS)) return true
+  return several && !inSession
+}
+
 export default function RemoteRoot() {
   const link = useChannel()
   const [pairing, setPairing] = useState(false)
+  const route = useRoute()
+  const narrow = useNarrowScreen()
+  const several = machines().length > 1
+  useEffect(() => {
+    if (!several) return
+    provideMachineSwitch({
+      list: () => {
+        const cur = currentMachine()
+        return machines().map((m) => ({ id: m.id, name: m.name, current: m.id === cur?.id, paired: !!m.token }))
+      },
+      select: (id) => {
+        selectMachine(id)
+        window.location.replace(window.location.pathname + '#/')
+        window.location.reload()
+      },
+    })
+    return () => provideMachineSwitch(null)
+  }, [several])
   if (!machine) return <AddMachine first />
   const blocked = needsPairing(link.problem)
   return (
     <div className="flex min-h-dvh flex-col">
-      <MachineBar link={link} />
+      {machineBarShown(link, several, narrow && route.name === 'session') && <MachineBar link={link} />}
       {!blocked && !link.everOpen && <InstallStrip />}
       <div className="min-h-0 flex-1">
         {pairing ? (
@@ -287,7 +328,7 @@ function MachineBar({ link }: { link: Link }) {
   const cur = currentMachine()
   const label = barLabel(state, link.problem)
   return (
-    <div className="sticky top-0 z-50 border-b border-border bg-panel pt-[env(safe-area-inset-top)]">
+    <div data-machine-bar className="sticky top-0 z-50 border-b border-border bg-panel pt-[env(safe-area-inset-top)]">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
