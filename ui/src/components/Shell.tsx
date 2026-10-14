@@ -150,7 +150,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           </a>
         </div>
       </header>
-      <main className={`flex-1 p-3 max-w-[1600px] w-full mx-auto ${immersive ? 'pt-[max(0.75rem,env(safe-area-inset-top))]' : ''}`}>{children}</main>
+      <main className={`flex-1 p-3 max-w-[1600px] w-full mx-auto ${immersive ? 'pt-[env(safe-area-inset-top)]' : ''}`}>{children}</main>
       {/* The star strip sits above the footer, never over content; one offer
         * at a time (lib/nudges.ts). The share toast floats bottom-right. */}
       {!immersive && !phoneHome && <SetupStrip app={app} />}

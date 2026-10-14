@@ -7,6 +7,35 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **phone:** a session's header is one 44px bar: back, the title, a dot for
+  its state, and **Chat | Terminal** with **···** for the other views. The
+  project, permission mode, model, controls and details are a tap on the
+  title away. In the chat the bar is drawn over the conversation and slides
+  away while you scroll down, back on scroll up or a tap at the top, so the
+  text never jumps. On the relay page at 390×844 the conversation began
+  178px down the screen (the computer bar and three header rows); now 44px,
+  and 0 while the bar is away (owner, 2026-10-14, translated: "I want the
+  header to take minimum space because I need to read this chat").
+- **phone:** the relay page's computer bar ("DimaS-MBP ▾") is gone while the
+  connection is fine and one computer is paired. It comes back while
+  connecting or offline, and with several computers paired it shows outside
+  a session; inside one, the switch is in the title's sheet.
+- **chat:** the message field glows softly in the accent while it has the
+  focus, a little more once there is text in it; on the phone and the
+  desktop alike.
+
+### Fixed
+
+- **phone:** dictation listened only for the browser's language, so Russian
+  speech came out as English words. A chip beside the microphone (**EN**,
+  **RU**…) says the language and changes it: a tap moves through the
+  browser's languages, then opens a list of common ones (English, Russian,
+  Ukrainian, German, French, Spanish, Portuguese, Italian, Polish, Turkish,
+  Japanese, Chinese, Korean, Arabic, Hebrew). Remembered per viewer; shown
+  prominently once when the browser names more than one language.
+
 ## [0.117.0] - 2026-10-14
 
 ### Added

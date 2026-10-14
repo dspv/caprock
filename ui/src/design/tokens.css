@@ -460,6 +460,28 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
 }
 .input:focus { outline: 1px solid var(--color-accent); border-color: var(--color-accent); }
 
+/* The chat composer's field (TerminalKeys): a calm glow while it has the
+ * focus, so it is plain where typing goes (owner, 2026-10-14, translated: "a
+ * light highlight on the chat input line so I understand I'm actively
+ * focused in it"). The accent at 60% and a faint 3px ring; a little stronger
+ * once there is text in it. Border and shadow only, so its size never
+ * changes; no animation beyond a short fade, none with reduced motion. */
+.input.composer-field { transition: border-color 150ms ease, box-shadow 150ms ease; }
+.input.composer-field:focus,
+[data-glow] .input.composer-field:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+.input.composer-field[data-filled]:focus,
+[data-glow] .input.composer-field[data-filled]:focus {
+  border-color: color-mix(in srgb, var(--color-accent) 85%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 26%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .input.composer-field { transition: none; }
+}
+
 /* Loading placeholders: a slow, low-contrast pulse. Deliberately subtle — it
  * should read as "not ready yet", never compete with real data for attention. */
 .skeleton-pulse { animation: skeletonPulse 1.4s ease-in-out infinite; }
