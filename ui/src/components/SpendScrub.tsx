@@ -34,6 +34,13 @@ import { barPace, paceLabel, paceOf, paceSentence, paceTitle, type Pace, type Us
 /** The bars' height: with the top line and the axis, the chart stays under 96px. */
 const BARS_H = 56
 
+/**
+ * The top line, at rest and under the pointer alike: a fixed 18px with an
+ * 18px line box for whatever inherits, so swapping the total for a bar's
+ * figure never moves the bars by a pixel.
+ */
+const TOP_LINE = 'relative flex h-[18px] min-w-0 items-baseline gap-1.5 text-[11px] leading-[18px]'
+
 /** One stretch, and what its calls did when the source says. */
 export interface ChartBar extends SpendBar {
   detail?: string
@@ -129,7 +136,7 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
     <>
       {total !== undefined && <span data-spend-total className={big}>{totalText}</span>}
       {chooser}
-      <span className="ml-auto min-w-0 truncate text-right text-[11px] text-fg-faint" title={scope}>{scope}</span>
+      <span className="ml-auto min-w-0 truncate text-right text-[11px] leading-[18px] text-fg-faint" title={scope}>{scope}</span>
     </>
   )
   if (bars.length === 0 || !known || max <= 0) {
@@ -139,7 +146,7 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
         : metric !== 'cost' ? `Nothing to draw, ${scope}.` : total !== undefined && total > 0 ? 'No spend by time to draw for this period.' : `Nothing spent, ${scope}.`
     return (
       <div id={id} data-spend-time data-spend-empty data-metric={metric} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
-        <div className="relative flex min-w-0 items-baseline gap-1.5">{rest}</div>
+        <div data-spend-top className={TOP_LINE}>{rest}</div>
         <p className="text-[12px] text-fg-muted">{why}</p>
       </div>
     )
@@ -163,14 +170,18 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
       onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setCursor(undefined) }}
       className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 rounded-[6px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
       {/* One line, one height, either way: the figure never shares its room
-        * with anything that can push it out. */}
-      <div className="relative flex min-h-[18px] min-w-0 items-baseline gap-1.5">
+        * with anything that can push it out. The line is exactly 18px and
+        * everything on it has an 18px line box in an 11px font unless it sets
+        * its own: the ▾'s wrapper used to inherit the panel's 16px font and
+        * stand the line 23px tall at rest against 19px under the pointer, so
+        * the bars and all below them jumped 4px on hover (owner, 2026-10-14). */}
+      <div data-spend-top className={TOP_LINE}>
         {bar ? (
           <>
             <span data-spend-readout className={big} title={said} aria-label={said}>{chartValueText(metric, value)}</span>
-            <span className="num shrink-0 whitespace-nowrap text-[11.5px] text-fg-muted">{barLabelShort(bar, step, now)}</span>
+            <span className="num shrink-0 whitespace-nowrap text-[11.5px] leading-[18px] text-fg-muted">{barLabelShort(bar, step, now)}</span>
             {right && (
-              <span data-spend-pace={vs ? barPace(value, pace) : undefined} title={vs} className={`num ml-auto min-w-0 truncate text-right text-[11px] ${vs && barPace(value, pace) === 'high' ? 'text-warn' : 'text-fg-faint'}`}>{right}</span>
+              <span data-spend-pace={vs ? barPace(value, pace) : undefined} title={vs} className={`num ml-auto min-w-0 truncate text-right text-[11px] leading-[18px] ${vs && barPace(value, pace) === 'high' ? 'text-warn' : 'text-fg-faint'}`}>{right}</span>
             )}
           </>
         ) : rest}
