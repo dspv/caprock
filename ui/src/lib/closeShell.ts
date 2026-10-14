@@ -1,8 +1,9 @@
 /**
  * Closing a tab or a pane that holds a shell (.ai/21-app.md § Shell tabs).
  * Close means close, as in iTerm, Terminal and VS Code: an idle shell ends
- * with its tab, and one running a program asks first. An agent's tab never
- * stops its agent. Pure, so the decision is tested without a daemon.
+ * with its tab, and one running a program asks first. An agent's tab stops
+ * its agent only when you say so, and only one Caprock started
+ * (planAgentClose). Pure, so the decision is tested without a daemon.
  */
 import type { SessionSummary } from './api'
 import { leaves, namingLeaf, type PaneLeaf, type Tab } from './tabs'
@@ -112,11 +113,13 @@ export function liveShells(list: readonly { id: string; program?: string }[]): M
   return new Map(list.map((sh) => [sh.id, sh.program]))
 }
 
-/** What a tab's close button says: a shell closes for real, a quick chat ends, an agent runs on. */
-export function closeTitle(isFile: boolean, isShell: boolean, isChat = false): string {
+/** What a tab's close button says: a shell closes for real, a quick chat ends, an agent runs on unless Caprock started it and you end it. */
+export function closeTitle(isFile: boolean, isShell: boolean, isChat = false, owned = false): string {
   if (isFile) return `Close tab (${keys('⌘W')})`
   if (isShell) return `Close shell (${keys('⌘W')})`
-  return isChat ? `Close tab (${keys('⌘W')}) — the chat ends` : `Close tab (${keys('⌘W')}) — the agent keeps running`
+  if (isChat) return `Close tab (${keys('⌘W')}) — the chat ends`
+  // An agent Caprock started: closing asks whether to end it too (lib/agentClose.ts).
+  return owned ? `Close tab (${keys('⌘W')}) — keep the agent running or end it` : `Close tab (${keys('⌘W')}) — the agent keeps running`
 }
 
 /** The quick chats a close ends: `stop` at once, `busy` (still answering) after one question. */
@@ -166,6 +169,41 @@ export function planChatClose(
 
 /** The one question before ending a chat that is still answering. */
 export const CHAT_CLOSE_QUESTION = 'Stop the chat? It is still answering.'
+
+/** The agents a closing tab or pane shows that Caprock started: `all` of them, `busy` the ones still answering. */
+export interface AgentClosePlan {
+  all: string[]
+  busy: string[]
+}
+
+/**
+ * The agents a close may offer to end (owner, 2026-10-14): only sessions
+ * Caprock started (`owned`), still running, not shells and not quick chats
+ * (`isChat`: those end with their tab already, planChatClose). A session
+ * another terminal started is never here, so it is never signalled (rule 7);
+ * its tab just closes. One not on the session list yet is left alone too.
+ */
+export function planAgentClose(
+  tab: Tab,
+  paneId: string | undefined,
+  sessions: ReadonlyMap<string, SessionSummary>,
+  isChat: (s: SessionSummary) => boolean,
+): AgentClosePlan {
+  const closing = paneId ? leaves(tab.root).filter((l) => l.id === paneId) : leaves(tab.root)
+  const plan: AgentClosePlan = { all: [], busy: [] }
+  for (const leaf of closing) {
+    if (leaf.target.kind !== 'session') continue
+    const s = sessions.get(leaf.target.sessionId)
+    if (!s || !s.owned || s.status === 'ended' || s.kind === 'shell' || isChat(s) || plan.all.includes(s.session_id)) continue
+    plan.all.push(s.session_id)
+    const health = s.activity?.health
+    if (health === 'working' || health === 'looping') plan.busy.push(s.session_id)
+  }
+  return plan
+}
+
+/** The one question before ending an agent that is still answering. */
+export const AGENT_END_QUESTION = 'End the agent? It is still answering.'
 
 /** The close action's name: "Close shell" for a shell's tab, else "Close tab". */
 export function closeWord(isFile: boolean, isShell: boolean): string {

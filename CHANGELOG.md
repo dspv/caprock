@@ -9,6 +9,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** closing the tab of an agent Caprock started now asks: **Close
+  tab** (in focus, so ⌘W then Enter works as before and the agent keeps
+  running) or **Close and end the agent**, which stops it (asking once
+  more if it is still answering; the conversation is kept). Tick *Don't
+  ask again* to keep your answer; Settings → *Closing a tab* changes it
+  back. An agent you started in your own terminal is never ended from
+  Caprock: its tab just closes.
+- **app:** in the Tabs list, sessions running with no tab sit under a
+  quiet *Running, no tab* line, so an agent whose tab you closed no
+  longer looks like an open chat.
 - **app:** the sidebar's heading has a worded switch, **Projects | Tabs**,
   in place of the small folder icon: Projects lists the sessions under
   their projects, Tabs in one list in the tabs' order. Settings →

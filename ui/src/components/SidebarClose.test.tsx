@@ -82,7 +82,7 @@ describe('closing in the sidebar', () => {
   it('gives every agent row a × that closes its tab as the strip does, shown always on the tab in front; shells and files have no row', () => {
     const { props } = setup([live({ session_id: 'a1', title: 'Fix the login' }), live({ session_id: 'sh1', kind: 'shell' })], [agentTab, shellTab, fileTab])
     const agentX = screen.getByRole('button', { name: 'Close tab Fix the login' })
-    expect(agentX).toHaveAttribute('title', 'Close tab (⌘W) — the agent keeps running')
+    expect(agentX).toHaveAttribute('title', 'Close tab (⌘W) — keep the agent running or end it')
     // On the tab in front always; on the others, on hover or focus.
     expect(agentX.parentElement!.className).toMatch(/^absolute .* flex$/)
     // Shells and files live in the tab strip (owner, 2026-10-13).

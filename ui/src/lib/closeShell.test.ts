@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionSummary } from './api'
-import { CHAT_CLOSE_QUESTION, closeQuestion, closeTitle, closeWord, liveShells, planChatClose, planClose, planProjectClose, projectCloseQuestion, shellNames } from './closeShell'
+import { AGENT_END_QUESTION, CHAT_CLOSE_QUESTION, closeQuestion, closeTitle, closeWord, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, projectCloseQuestion, shellNames } from './closeShell'
 import type { PaneLeaf, Tab } from './tabs'
 
 // These read the labels in their macOS spelling; lib/appkeys.test.ts covers
@@ -62,6 +62,7 @@ describe('closing a shell', () => {
     expect(closeTitle(false, false)).toBe('Close tab (⌘W) — the agent keeps running')
     expect(closeTitle(true, false)).toBe('Close tab (⌘W)')
     expect(closeTitle(false, false, true)).toBe('Close tab (⌘W) — the chat ends')
+    expect(closeTitle(false, false, false, true)).toBe('Close tab (⌘W) — keep the agent running or end it')
     expect(closeWord(false, true)).toBe('Close shell')
     expect(closeWord(true, false)).toBe('Close tab')
   })
@@ -118,5 +119,40 @@ describe('closing a quick chat', () => {
     const t = tab(pane('a', 'session', 'a1'), pane('b', 'session', 'c1'))
     expect(planChatClose(t, 'a', sessions, isChat)).toEqual({ stop: [], busy: [] })
     expect(planChatClose(t, 'b', sessions, isChat)).toEqual({ stop: ['c1'], busy: [] })
+  })
+})
+
+// Owner, 2026-10-14: closing an agent's tab may end it, when asked to — but
+// only an agent Caprock started (rule 7).
+describe('closing an agent Caprock started', () => {
+  const s = (id: string, p: Partial<SessionSummary> = {}) => ({
+    session_id: id, cwd: '/w/app', owned: true, status: 'active', activity: { phrase: '', at: '', health: 'idle' }, ...p,
+  }) as SessionSummary
+  const isChat = (x: SessionSummary) => x.cwd.includes('/chats/')
+
+  it('offers an idle agent, and marks one still answering', () => {
+    const sessions = new Map([['a1', s('a1')], ['a2', s('a2', { activity: { phrase: '', at: '', health: 'working' } })]])
+    expect(planAgentClose(tab(pane('a', 'session', 'a1')), undefined, sessions, isChat)).toEqual({ all: ['a1'], busy: [] })
+    expect(planAgentClose(tab(pane('a', 'session', 'a2')), undefined, sessions, isChat)).toEqual({ all: ['a2'], busy: ['a2'] })
+    expect(AGENT_END_QUESTION).toBe('End the agent? It is still answering.')
+  })
+
+  it('never offers one another terminal started, a shell, a quick chat, an ended one, or one not listed yet', () => {
+    const sessions = new Map([
+      ['o1', s('o1', { owned: false })],
+      ['sh', s('sh', { kind: 'shell' } as Partial<SessionSummary>)],
+      ['c1', s('c1', { cwd: '/data/chats/x' })],
+      ['e1', s('e1', { status: 'ended' })],
+    ])
+    for (const id of ['o1', 'sh', 'c1', 'e1', 'unknown']) {
+      expect(planAgentClose(tab(pane('a', 'session', id)), undefined, sessions, isChat)).toEqual({ all: [], busy: [] })
+    }
+  })
+
+  it('closes one pane of a split: only that pane\'s agent', () => {
+    const sessions = new Map([['a1', s('a1')], ['a2', s('a2')]])
+    const t = tab(pane('a', 'session', 'a1'), pane('b', 'session', 'a2'))
+    expect(planAgentClose(t, 'b', sessions, isChat)).toEqual({ all: ['a2'], busy: [] })
+    expect(planAgentClose(t, undefined, sessions, isChat)).toEqual({ all: ['a1', 'a2'], busy: [] })
   })
 })
