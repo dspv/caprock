@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **cockpit:** the spend chart no longer jumps when you hover it. At rest
+  the line above the bars stood 23px tall (the ▾ that picks the metric took
+  the panel's larger font) and under the pointer 19px, so the bars and
+  everything below them moved 4px on every hover; the line is now a fixed
+  18px either way.
+
 ## [0.116.0] - 2026-10-14
 
 ### Added

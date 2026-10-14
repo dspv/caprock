@@ -65,6 +65,49 @@ describe('the spend by time', () => {
     expect(box.querySelector('rect[data-active]')).toBeNull()
   })
 
+  it('keeps every row of the chart the same box with and without hover, so nothing above or below the bars moves', () => {
+    // jsdom lays nothing out, so the heights are held by the classes: the top
+    // line is a fixed 18px (not a minimum) in an 11px font with an 18px line
+    // box, and every text on it sets that 18px line box itself or inherits it.
+    // A ▾ wrapper that inherited the panel's 16px font stood the line 23px
+    // tall at rest against 19px under the pointer: a 4px jump (2026-10-14).
+    const step = 6 * 3_600_000
+    const from = new Date(2026, 9, 7, 6).getTime()
+    const bars = [4.76, 52.03, 0, 28.65, 1.91].map((cost, i) => ({ start: from + i * step, end: from + (i + 1) * step, cost }))
+    const chooser = <span className="shrink-0"><button type="button" className="text-[12px] leading-[16px]">cost ▾</button></span>
+    render(<SpendChart id="j" bars={bars} step={step} now={from + 7 * 86_400_000} total={1709.12} scope="this session" chooser={chooser} />)
+    const box = screen.getByRole('group', { name: /^Spend by 6 h/ })
+    const plot = box.querySelector('[data-spend-plot]')!
+    plot.getBoundingClientRect = () => ({ left: 0, top: 0, width: 500, height: 56, right: 500, bottom: 56, x: 0, y: 0, toJSON: () => ({}) })
+    const rows = () => [...box.children].map((c) => `${c.tagName}.${c.className}|${(c as HTMLElement).style.height}`)
+    const top = () => box.querySelector('[data-spend-top]')!
+    const steady = (el: Element) => {
+      expect(el.className).toMatch(/(^| )h-\[18px\]( |$)/)
+      expect(el.className).not.toMatch(/min-h-/)
+      expect(el.className).toMatch(/(^| )leading-\[18px\]( |$)/)
+      expect(el.className).toMatch(/(^| )items-baseline( |$)/)
+      // Each text on the line has an 18px line box, its own or the line's.
+      for (const c of el.children) {
+        if (/\btext-\[/.test(c.className)) expect(c.className).toMatch(/leading-\[18px\]/)
+        else expect(c.className).not.toMatch(/\b(leading|text)-/)
+      }
+    }
+    const atRest = rows()
+    expect(atRest).toHaveLength(3)
+    steady(top())
+    const label = box.querySelector('[data-pace-label]')!.getAttribute('style')
+    // The first bar, the second, an empty one and the last.
+    for (const x of [10, 150, 250, 490]) {
+      fireEvent.pointerMove(plot, { clientX: x, pointerType: 'mouse', buttons: 0 })
+      expect(box.querySelector('[data-spend-readout]')).not.toBeNull()
+      expect(rows()).toEqual(atRest)
+      steady(top())
+      expect(box.querySelector('[data-pace-label]')!.getAttribute('style')).toBe(label)
+    }
+    fireEvent.pointerLeave(plot, { pointerType: 'mouse' })
+    expect(rows()).toEqual(atRest)
+  })
+
   it('draws a range’s bars with its total, steps to the newest stretch with spend, and says so when nothing was spent', () => {
     const day = 86_400_000
     const from = new Date(2026, 9, 6).getTime()
