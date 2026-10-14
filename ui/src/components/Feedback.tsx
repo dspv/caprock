@@ -61,8 +61,9 @@ import { CloseButton, DialogBackdrop } from './Dialog'
 import { KeyChip } from './Sheet'
 
 const TIP = 'Report a bug, suggest an idea, or ask a question'
-/** The form's key from anywhere in the app (AppShell, lib/appkeys). */
-const KEY = '⇧⌘F'
+/** The form's key from anywhere in the app (AppShell, lib/appkeys), in macOS spelling. */
+export const FEEDBACK_KEY = '⇧⌘F'
+const KEY = FEEDBACK_KEY
 
 /** Each kind's card glyph and its colour, from the theme's tokens: the bug is
  *  the warning hue (graphite's amber, Slate's cool yellow), the idea the green
@@ -87,11 +88,12 @@ function isWriting(el: EventTarget | null, title: HTMLInputElement | null): bool
 
 /**
  * `header`: the labelled button in the dashboard's header. `row`: the
- * labelled row in the app sidebar's bottom block. `icon`: a 26px icon button
- * for that block when it is collapsed. `screen` names where the
+ * labelled row in the app sidebar's bottom block. `icon`: an icon button
+ * for that block when it is collapsed, sized by `className` and `iconSize`
+ * (26px and 15 without them). `screen` names where the
  * report comes from; without it, the screen in front when the dialog opens.
  */
-export function FeedbackButton({ screen, variant = 'header' }: { screen?: string; variant?: 'header' | 'row' | 'icon' }) {
+export function FeedbackButton({ screen, variant = 'header', className, iconSize = 15 }: { screen?: string; variant?: 'header' | 'row' | 'icon'; className?: string; iconSize?: number }) {
   const [open, setOpen] = useState<string | null>(null)
   const show = () => setOpen(screen ?? currentScreen(location.hash, isAppMode()))
   return (
@@ -103,9 +105,9 @@ export function FeedbackButton({ screen, variant = 'header' }: { screen?: string
           title={`${TIP} (${keys(KEY)})`}
           aria-label="Send feedback"
           aria-keyshortcuts={ariaKeys()}
-          className="flex h-[26px] w-[26px] items-center justify-center rounded-[6px] text-fg-muted transition-colors hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none"
+          className={className ?? 'flex h-[26px] w-[26px] items-center justify-center rounded-[6px] text-fg-muted transition-colors hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none'}
         >
-          <BugIcon size={15} className="text-accent" />
+          <BugIcon size={iconSize} className="text-accent" />
         </button>
       ) : variant === 'row' ? (
         <button
@@ -117,8 +119,11 @@ export function FeedbackButton({ screen, variant = 'header' }: { screen?: string
           className="app-row flex h-[28px] w-full items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-fg-muted hover:text-fg"
         >
           <BugIcon size={15} className="text-accent" />
-          <span className="flex-1 whitespace-nowrap">Send feedback</span>
-          <span className="min-w-0 truncate text-[11px] text-fg-faint">bug, idea, question</span>
+          {/* Off macOS the key, Ctrl+Alt+Shift+F, takes the room: the hint goes
+            * first, then the words shorten. On a Mac they never need to, and a
+            * shrinkable label lost a subpixel to the hint and drew "…". */}
+          <span className={`flex-auto whitespace-nowrap ${isMacPlatform() ? 'shrink-0' : 'min-w-0 truncate'}`}>Send feedback</span>
+          <span className="min-w-0 shrink-[100] truncate text-[11px] text-fg-faint">bug, idea, question</span>
           <kbd aria-hidden className="app-kbd-key shrink-0">{keys(KEY)}</kbd>
         </button>
       ) : (

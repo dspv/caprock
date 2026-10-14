@@ -8,7 +8,9 @@
 // feature, because it is the part that decides who gets in.
 //
 // A token makes a device a reader, not the owner — unless the owner, at the
-// machine, gives that one device the controller role (ADR-034). What each role
+// machine, gives that one device the controller role (ADR-034): afterwards,
+// or when showing the code, by leaving *This phone can type and start agents*
+// ticked (the code then carries the role, NewCodeAs). What each role
 // may do is decided in internal/api (pairedDeviceRoutes, controllerRoutes), not
 // here: this package answers "which device is this, and which role did the
 // owner give it", never "what may it do".
@@ -130,12 +132,16 @@ type Device struct {
 	PairedAt int64 `json:"paired_at"`
 	LastSeen int64 `json:"last_seen"`
 	// Role is RoleViewer or RoleController; empty reads as a viewer. Set only
-	// by the owner on loopback (SetRole), never by the device: pairing always
-	// makes a viewer.
+	// by the owner on loopback, never by the device: by SetRole, or by the
+	// code the owner issued (NewCodeAs), which carries the role it pairs as.
 	Role string `json:"role,omitempty"`
 	// Via is how the device last reached the machine: ViaLAN, ViaTailscale,
 	// ViaRelay, or empty when not seen since it was first recorded.
 	Via string `json:"via,omitempty"`
+	// App says the device last reported running as the installed app
+	// (display-mode standalone, or Chrome's record that it is installed).
+	// A label for the owner's checklist, never an authorisation.
+	App bool `json:"app,omitempty"`
 }
 
 // Public is a Device without its token, for listing in the dashboard.
@@ -148,6 +154,8 @@ type Public struct {
 	Role string `json:"role"`
 	// Via is how it last reached the machine; see Device.Via.
 	Via string `json:"via,omitempty"`
+	// App is Device.App.
+	App bool `json:"app,omitempty"`
 }
 
 // Store holds the pairing state. The zero value is not usable; call New.
@@ -157,6 +165,7 @@ type Store struct {
 
 	mu       sync.Mutex
 	code     string
+	codeRole string // the role a device pairing with code gets
 	codeAt   time.Time
 	attempts int
 	devices  map[string]*Device // by token
@@ -173,14 +182,40 @@ func New() *Store {
 // shown will press the button again, and the sensible reading of that is "the
 // old one no longer counts", not "you already have one somewhere".
 func (s *Store) NewCode() (string, error) {
+	return s.NewCodeAs(RoleViewer)
+}
+
+// NewCodeAs issues a code that pairs a device with role: the owner's choice
+// at the machine, made before the phone exists (ADR-034, amended
+// 2026-10-14). The person showing the code is the person at the machine, so
+// the decision is still theirs and still made there; the phone only carries
+// it out by redeeming. An invalid role is a viewer.
+func (s *Store) NewCodeAs(role string) (string, error) {
+	if !ValidRole(role) {
+		role = RoleViewer
+	}
 	code, err := randomDigits(6)
 	if err != nil {
 		return "", err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.code, s.codeAt, s.attempts = code, s.Now(), 0
+	s.code, s.codeRole, s.codeAt, s.attempts = code, role, s.Now(), 0
 	return code, nil
+}
+
+// CodeRole is the role the outstanding code pairs as, or "" when there is no
+// live code.
+func (s *Store) CodeRole() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.code == "" || s.Now().Sub(s.codeAt) > CodeTTL {
+		return ""
+	}
+	if s.codeRole == RoleController {
+		return RoleController
+	}
+	return RoleViewer
 }
 
 // ClearCode withdraws the outstanding code, if any.
@@ -257,9 +292,15 @@ func (s *Store) Redeem(code, name string) (*Device, error) {
 		return nil, err
 	}
 	now := s.Now().UnixMilli()
-	// Always a viewer. Control is granted on the machine, afterwards, by a
-	// separate decision — never by knowing a code (ADR-034).
-	d := &Device{ID: id, Name: cleanName(name), Token: tok, PairedAt: now, LastSeen: now, Role: RoleViewer}
+	// The role the owner chose when issuing this code, on the machine; a
+	// viewer unless they left *This phone can type and start agents* ticked.
+	// The device never names its own role: knowing a code proves presence,
+	// and the owner's tick is the intent (ADR-034, amended 2026-10-14).
+	role := RoleViewer
+	if s.codeRole == RoleController {
+		role = RoleController
+	}
+	d := &Device{ID: id, Name: cleanName(name), Token: tok, PairedAt: now, LastSeen: now, Role: role}
 	s.devices[tok] = d
 	// Single use: the code is spent whether or not another device is waiting.
 	s.code, s.attempts = "", 0
@@ -317,6 +358,22 @@ func (s *Store) RoleOf(token string) string {
 	return roleOf(d)
 }
 
+// SetApp records whether the device holding token runs as the installed app.
+// changed reports a new value, so the caller can save the guest list.
+func (s *Store) SetApp(token string, on bool) (changed bool) {
+	if token == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, ok := s.devices[token]
+	if !ok || d.App == on {
+		return false
+	}
+	d.App = on
+	return true
+}
+
 // SetRole gives one device, by id, a role. It reports false when there is no
 // such device or the role is not one ValidRole accepts. Takes effect on that
 // device's next request, and on its next keystroke into an open terminal.
@@ -341,7 +398,7 @@ func (s *Store) Devices() []Public {
 	defer s.mu.Unlock()
 	out := make([]Public, 0, len(s.devices))
 	for _, d := range s.devices {
-		out = append(out, Public{ID: d.ID, Name: d.Name, PairedAt: d.PairedAt, LastSeen: d.LastSeen, Role: roleOf(d), Via: d.Via})
+		out = append(out, Public{ID: d.ID, Name: d.Name, PairedAt: d.PairedAt, LastSeen: d.LastSeen, Role: roleOf(d), Via: d.Via, App: d.App})
 	}
 	// Stable order so the list does not shuffle between polls.
 	for i := 1; i < len(out); i++ {

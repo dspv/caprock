@@ -10,21 +10,24 @@ describe('LanOnlyNotice — a phone on the Wi-Fi link (owner, 2026-10-14)', () =
     clearDeviceToken()
   })
 
-  it('tells a phone on the Wi-Fi link how to get the link that works anywhere, naming the app and the path', async () => {
+  it('with access from anywhere on, calls this the old Wi-Fi link and names the app to use instead', async () => {
     setDeviceToken('t')
-    vi.spyOn(api, 'pairMe').mockResolvedValue({ role: 'viewer', via: 'lan', anywhere: true })
+    vi.spyOn(api, 'pairMe').mockResolvedValue({ role: 'viewer', via: 'lan', anywhere: true, app: 'https://m.caprock.dev' })
     render(<LanOnlyNotice />)
     const note = await screen.findByTestId('lan-only-notice')
-    expect(note.textContent).toMatch(/^This link works only on your home Wi-Fi\. To use Caprock anywhere: in the Caprock app on your computer, Settings → Use on your phone → Show a code, and scan it\./)
+    expect(note.textContent).toMatch(
+      /^This is the old Wi-Fi link: it works only on your home Wi-Fi\. Use the Caprock app from m\.caprock\.dev instead: in the Caprock app on your computer, Settings → Use on your phone → Show a code, and scan it\. Then remove this one from your home screen\./,
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
     expect(screen.queryByTestId('lan-only-notice')).toBeNull()
   })
 
-  it('says it whether or not access from anywhere is on yet: the code turns it on', async () => {
+  it('with access from anywhere still off, says the code turns it on', async () => {
     setDeviceToken('t')
     vi.spyOn(api, 'pairMe').mockResolvedValue({ role: 'viewer', via: 'lan' })
     render(<LanOnlyNotice />)
-    expect(await screen.findByTestId('lan-only-notice')).toBeTruthy()
+    const note = await screen.findByTestId('lan-only-notice')
+    expect(note.textContent).toMatch(/^This link works only on your home Wi-Fi\. To use Caprock anywhere: in the Caprock app on your computer, Settings → Use on your phone → Show a code, and scan it\./)
   })
 
   it('is silent through the relay, over Tailscale, and on the machine itself', async () => {

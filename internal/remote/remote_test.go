@@ -40,6 +40,19 @@ func fakeDaemon(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/v1/big", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(strings.Repeat("x", 300<<10)))
 	})
+	mux.HandleFunc("/v1/slow", func(w http.ResponseWriter, r *http.Request) {
+		// An answer still streaming when the phone hangs up.
+		chunk := []byte(strings.Repeat("y", 32<<10))
+		for i := 0; i < 64; i++ {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	})
 	mux.HandleFunc("/v1/ws", func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"caprock.device.tok"}})
 		if err != nil {
@@ -347,6 +360,69 @@ func TestOnlyTheKeyHolderMayRegisterAMachine(t *testing.T) {
 	}
 }
 
+// A machine that went to sleep keeps its relay connection open on paper and
+// sends nothing. A phone arriving then used to be spliced to it, sent its
+// handshake into the void and sat on "Connecting…" (owner, 2026-10-14); it
+// is told at once that the machine is offline, and the stale connection is
+// dropped.
+func TestASilentMachineIsOfflineToAPhone(t *testing.T) {
+	srv := relaysrv.New(nil)
+	srv.HostSilence = 200 * time.Millisecond
+	relay := httptest.NewServer(srv)
+	defer relay.Close()
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	id := remote.HostID(pub)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	base := "ws" + strings.TrimPrefix(relay.URL, "http")
+	host, _, err := websocket.Dial(ctx, base+"/v1/host/"+id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = host.CloseNow() }()
+	_, msg, _ := host.Read(ctx)
+	_, _, nonce, _ := remote.ParseFrame(msg)
+	_ = host.Write(ctx, websocket.MessageBinary, remote.Frame(remote.FrameProof, 0, ed25519.Sign(priv, remote.ProofMessage(id, nonce))))
+	if _, msg, err = host.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if k, _, _, _ := remote.ParseFrame(msg); k != remote.FrameReady {
+		t.Fatalf("frame %d, want ready", k)
+	}
+
+	// Within the silence a phone is spliced: the machine hears it open.
+	ph, _, err := websocket.Dial(ctx, base+"/v1/c/"+id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, msg, err = host.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if k, _, _, _ := remote.ParseFrame(msg); k != remote.FrameOpen {
+		t.Fatalf("frame %d, want open", k)
+	}
+	defer func() { _ = ph.CloseNow() }()
+
+	// Then the machine says nothing for longer than the silence allows. The
+	// phone already on it is told when it next sends…
+	time.Sleep(300 * time.Millisecond)
+	if err := ph.Write(ctx, websocket.MessageBinary, []byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = ph.Read(ctx); websocket.CloseStatus(err) != remote.CloseOffline {
+		t.Fatalf("spliced phone close = %v, want %d", err, remote.CloseOffline)
+	}
+	// …and a phone arriving is told at once.
+	ph2, _, err := websocket.Dial(ctx, base+"/v1/c/"+id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = ph2.Read(ctx)
+	if websocket.CloseStatus(err) != remote.CloseOffline {
+		t.Fatalf("phone close = %v, want %d", err, remote.CloseOffline)
+	}
+}
+
 func TestKeysSurviveAndResetMakesNewOnes(t *testing.T) {
 	dir := t.TempDir()
 	a, _ := remote.Load(dir)
@@ -379,6 +455,55 @@ func TestRelayAndAppAddressesMustBeEncryptedOffThisMachine(t *testing.T) {
 	} {
 		if (remote.CheckAppURL(raw) == nil) != ok {
 			t.Errorf("app %q accepted=%v", raw, !ok)
+		}
+	}
+}
+
+// A phone that hangs up while the machine is still answering it must cost
+// only that phone. A write carrying the phone's context, cancelled by the
+// hang-up, made the WebSocket library close the machine's one connection to
+// the relay, and every other phone with it (2026-10-14: the owner's phone
+// dropped, came back and was told to pair again).
+func TestAPhoneHangingUpMidAnswerLeavesTheOthersConnected(t *testing.T) {
+	r := newRig(t)
+	other := r.dial(t)
+	for round := 0; round < 5; round++ {
+		gone := r.dial(t)
+		for i := uint32(0); i < 16; i++ {
+			head, _ := json.Marshal(map[string]any{"m": "GET", "p": "/v1/slow"})
+			gone.send(remote.KindReq, 1+2*i, head)
+			gone.send(remote.KindReqEnd, 1+2*i, nil)
+		}
+		// Some of the answer is on its way, the rest still being written.
+		_, _, _ = gone.recv()
+		_ = gone.c.CloseNow()
+		time.Sleep(50 * time.Millisecond)
+		if status, _, _ := other.request(uint32(101+2*round), "GET", "/v1/echo", nil, ""); status != 200 {
+			t.Fatalf("round %d: the other phone got %d", round, status)
+		}
+	}
+	if s := r.host.State(); s.Status != "online" {
+		t.Fatalf("machine is %+v after phones hung up", s)
+	}
+}
+
+// The same at the relay: a phone hanging up while the relay still writes what
+// it sent to the machine costs only that phone.
+func TestAPhoneHangingUpMidSendLeavesTheOthersConnected(t *testing.T) {
+	r := newRig(t)
+	other := r.dial(t)
+	big := []byte(strings.Repeat("z", 60<<10))
+	for round := 0; round < 5; round++ {
+		gone := r.dial(t)
+		head, _ := json.Marshal(map[string]any{"m": "POST", "p": "/v1/echo"})
+		gone.send(remote.KindReq, 1, head)
+		for i := 0; i < 24; i++ {
+			gone.send(remote.KindReqBody, 1, big)
+		}
+		_ = gone.c.CloseNow()
+		time.Sleep(50 * time.Millisecond)
+		if status, _, _ := other.request(uint32(101+2*round), "GET", "/v1/echo", nil, ""); status != 200 {
+			t.Fatalf("round %d: the other phone got %d", round, status)
 		}
 	}
 }

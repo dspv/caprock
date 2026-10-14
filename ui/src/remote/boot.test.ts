@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { DEVICE_TOKEN_KEY, currentMachine, forDaemon, forgetMachine, machines, parsePairLink, prepare, relayAllowed, selectMachine } from './boot'
+import { DEVICE_TOKEN_KEY, abandonPairing, currentMachine, forDaemon, forgetMachine, machines, parsePairLink, prepare, relayAllowed, selectMachine } from './boot'
 
 const id = 'a'.repeat(43)
 const key = 'b'.repeat(43)
@@ -87,5 +87,91 @@ describe('machines on this phone', () => {
     forgetMachine(id)
     expect(machines().map((m) => m.name)).toEqual(['Laptop'])
     expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-b')
+  })
+
+  it('a pairing link opened again (its code already spent) does not cost the pairing that worked', () => {
+    const a = fakeLocation(link())
+    prepare(a.loc, a.hist)
+    localStorage.setItem(DEVICE_TOKEN_KEY, 'tok-1')
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    // The same QR, opened a second time: the dashboard sends no token while
+    // it redeems the code…
+    const again = fakeLocation(link())
+    prepare(again.loc, again.hist)
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBeNull()
+    // …the code is refused and the page is opened again: the old token is back.
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-1')
+    expect(currentMachine()?.token).toBe('tok-1')
+  })
+
+  it('pairing again that succeeds replaces the token', () => {
+    const a = fakeLocation(link())
+    prepare(a.loc, a.hist)
+    localStorage.setItem(DEVICE_TOKEN_KEY, 'tok-1')
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    const again = fakeLocation(link())
+    prepare(again.loc, again.hist)
+    localStorage.setItem(DEVICE_TOKEN_KEY, 'tok-2')
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    expect(currentMachine()?.token).toBe('tok-2')
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-2')
+  })
+
+  /** The page as it is after a pairing that worked: a record with the token, the token where the dashboard reads it. */
+  function paired(token = 'tok-1') {
+    const a = fakeLocation(link())
+    prepare(a.loc, a.hist)
+    localStorage.setItem(DEVICE_TOKEN_KEY, token)
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+  }
+
+  it('reloads, a page opened with no hash, and a home-screen start keep the pairing', () => {
+    paired()
+    for (const hash of ['#/', '', '#/?open=chat', '#/pair?code=123456']) {
+      const l = fakeLocation(hash)
+      prepare(l.loc, l.hist)
+      expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-1')
+      expect(currentMachine()?.token).toBe('tok-1')
+    }
+  })
+
+  it('a record from an older page, with the token only where the dashboard reads it, takes the token', () => {
+    localStorage.setItem('caprock.remote.machines', JSON.stringify([{ id, key, relay: 'wss://relay.example', name: 'Mac mini' }]))
+    localStorage.setItem('caprock.remote.current', id)
+    localStorage.setItem(DEVICE_TOKEN_KEY, 'tok-old')
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    expect(currentMachine()?.token).toBe('tok-old')
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-old')
+    // …and keeps it once the dashboard's copy is gone.
+    localStorage.removeItem(DEVICE_TOKEN_KEY)
+    prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-old')
+  })
+
+  it('a link with no code to redeem leaves a paired phone paired', () => {
+    paired()
+    const l = fakeLocation(link().replace('&c=123456', ''))
+    prepare(l.loc, l.hist)
+    expect(l.loc.hash).toBe('#/')
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-1')
+    expect(localStorage.getItem('caprock.remote.pairing')).toBeNull()
+  })
+
+  it('a code the machine refuses goes back to the pairing that worked, at once', () => {
+    paired()
+    const again = fakeLocation(link())
+    prepare(again.loc, again.hist)
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBeNull()
+    expect(abandonPairing()).toBe(true)
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-1')
+    expect(abandonPairing()).toBe(false)
+  })
+
+  it('a first pairing whose code is refused has nothing to go back to', () => {
+    const a = fakeLocation(link())
+    prepare(a.loc, a.hist)
+    expect(abandonPairing()).toBe(false)
   })
 })

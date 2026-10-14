@@ -1,0 +1,41 @@
+/*
+ * The offer survey's questions (OfferStrip.tsx), inside a banner's line.
+ * Theme tokens only, so every palette holds without a rule per theme.
+ */
+.of-lede { display: block; }
+.of-form { display: grid; gap: 6px; margin-top: 8px; }
+.of-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.of-q { width: 24em; max-width: 100%; color: var(--color-fg-muted); }
+.of-opts { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.of-opt {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg);
+  background: var(--color-panel);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.of-opt:hover { border-color: color-mix(in srgb, var(--bn-tone) 60%, var(--color-border)); }
+.of-opt[aria-pressed="true"] {
+  border-color: var(--bn-tone);
+  background: color-mix(in srgb, var(--bn-tone) 18%, var(--color-panel));
+  font-weight: 600;
+}
+.of-email {
+  width: min(260px, 100%);
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--color-fg);
+  background: var(--color-panel);
+}
+.of-email:focus { outline: none; border-color: var(--bn-tone); }
+.of-email[aria-invalid] { border-color: var(--color-warn); }
+.of-disclose { font-size: 11px; color: var(--color-fg-faint); }
+.of-error { font-size: 11.5px; color: var(--color-warn); }
+@media (prefers-reduced-motion: reduce) { .of-opt { transition: none; } }

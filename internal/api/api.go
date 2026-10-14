@@ -534,6 +534,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/editors", s.handleEditors)
 	m.HandleFunc("POST /v1/editors/open", s.handleOpenEditor)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
+	// The offer survey: forwards one answer to caprock.dev on a click (offer.go, ADR-062).
+	m.HandleFunc("POST /v1/offer", s.handleOffer)
 	m.HandleFunc("GET /v1/update", s.handleUpdate)
 	// Pairing. Only the redeem endpoint is reachable from the network; the
 	// rest are refused off-loopback inside the handlers, so a paired tablet
@@ -830,6 +832,13 @@ type SessionSummary struct {
 // outlive the daemon. Optional so test doubles need not grow a method.
 type survivor interface{ Survives(sessionID string) bool }
 
+// nudger is the optional half of AgentController that knows the newest input
+// typed into a session it holds (narrate.Nudge), which the status reads
+// until the session writes an event after it.
+type nudger interface {
+	Nudge(sessionID string) (narrate.Nudge, bool)
+}
+
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
 type ContextFill struct {
 	Tokens int64   `json:"tokens"`
@@ -894,8 +903,15 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 			}
 		}
 	}
+	if sess.Owned && sess.Status != store.StatusEnded {
+		if nd, ok := s.d.Agents.(nudger); ok {
+			if n, ok := nd.Nudge(sess.SessionID); ok {
+				opt.Nudge = &n
+			}
+		}
+	}
 	act := narrate.Summarize(last, opt)
-	if act.Health == narrate.HealthWorking && act.Background == 0 && sess.Status == store.StatusIdle {
+	if act.Health == narrate.HealthWorking && act.Background == 0 && !act.FromInput && sess.Status == store.StatusIdle {
 		act.Health = narrate.HealthIdle
 		act.Phrase = "was " + act.Phrase
 	}
@@ -1583,7 +1599,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 
 // maxPrompts bounds the prompts map: the dashboard has a handful of offers,
 // and a config file that any page can grow without limit is a bug.
-const maxPrompts = 32
+const maxPrompts = 64
 
 // mergePrompts applies a prompts patch: each named id takes the later of its
 // stored time and the new one, 0 removes it. Ids are short lower-case words with dashes; anything else is

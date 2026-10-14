@@ -48,6 +48,16 @@ describe('Noise NK, against the Go side', () => {
     expect(() => session.decrypt(bad)).toThrow()
   })
 
+  it('still reads the reply after a stray message', () => {
+    // A frame meant for the phone before this one, then the machine's reply.
+    const { init } = Initiator.start(hex(v.responder_public), hex(v.payload1), hex(v.initiator_ephemeral))
+    expect(() => init.finish(hex(v.responder_ciphertexts[0]!.repeat(4)))).toThrow()
+    expect(() => init.finish(new Uint8Array(64).fill(7))).toThrow()
+    const { payload, session } = init.finish(hex(v.message2))
+    expect(toHex(payload)).toBe(v.payload2)
+    expect(toHex(session.decrypt(hex(v.responder_ciphertexts[0]!)))).toBe(v.responder_sends[0]!)
+  })
+
   it('cannot finish against a different machine', () => {
     const other = hex('ab'.repeat(32))
     const { init } = Initiator.start(other, hex(v.payload1))

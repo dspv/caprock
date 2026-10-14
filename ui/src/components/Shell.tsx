@@ -28,6 +28,7 @@ import { PremiumChip } from '@/components/PremiumChip'
 import { SiteFooter } from '@/components/SiteFooter'
 import { StarStrip } from '@/components/StarStrip'
 import { MailStrip } from '@/components/MailStrip'
+import { OfferStrip } from '@/components/OfferStrip'
 import { SetupStrip } from '@/components/SetupStrip'
 import { ShareMoment } from '@/components/Nudges'
 import { openExternal, usePromptSync } from '@/lib/nudges'
@@ -153,11 +154,12 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           </a>
         </div>
       </header>
-      <main className={`flex-1 p-3 max-w-[1600px] w-full mx-auto ${immersive ? 'pt-[max(0.75rem,env(safe-area-inset-top))]' : ''}`}>{children}</main>
+      <main className={`flex-1 p-3 max-w-[1600px] w-full mx-auto ${immersive ? 'pt-[env(safe-area-inset-top)]' : ''}`}>{children}</main>
       {/* The star strip sits above the footer, never over content; one offer
         * at a time (lib/nudges.ts). The share toast floats bottom-right. */}
       {!immersive && !phoneHome && <SetupStrip app={app} />}
       {!immersive && !phoneHome && <MailStrip />}
+      {!immersive && !phoneHome && <OfferStrip />}
       {!immersive && !phoneHome && <StarStrip app={app} />}
       {!phoneHome && <ShareMoment />}
       {!app && !immersive && !phoneHome && <SiteFooter />}
