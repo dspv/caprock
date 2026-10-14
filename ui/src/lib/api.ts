@@ -1298,10 +1298,54 @@ export interface BrainStatus {
   auto?: BrainAutoStatus
 }
 
-/** The automatic extraction's state; absent from a daemon without it. */
+/** The automatic extraction's state; absent from a daemon without it (03-contracts.md § Second Brain). */
 export interface BrainAutoStatus {
-  [key: string]: unknown
+  /** The user has answered the question; until then it never runs. */
+  chosen: boolean
+  /** Turned on. */
+  on: boolean
+  /** On, and a licence is active: it reads. */
+  enabled: boolean
+  claude_found: boolean
+  model: string
+  daily_tokens: number
+  /** Tokens the reads used in the last 24 hours. */
+  spent: number
+  running: boolean
+  /** Sessions waiting to be read. */
+  pending: number
+  since?: number
+  backfill_since?: number
+  last_wake?: number
+  last_error?: string
+  recent: BrainRun[]
 }
+
+/** One read of one session. */
+export interface BrainRun {
+  id: number
+  session_id: string
+  status: 'ok' | 'failed' | 'skipped'
+  model?: string
+  tokens_in: number
+  tokens_out: number
+  cost_usd: number
+  nodes: number
+  error?: string
+  finished_at: number
+  project?: string
+}
+
+/** What a backfill would read: an estimate, from the transcript's length. */
+export interface BrainEstimate {
+  sessions: number
+  tokens_estimate: number
+  days_estimate: number
+  daily_tokens: number
+  truncated?: boolean
+}
+
+export interface BrainSettings { auto?: boolean; daily_tokens?: number; model?: string }
 
 /** What POST /v1/brain/nodes takes: text (or a title), or an assistant note by its event id. */
 export interface BrainDrop {
@@ -1877,6 +1921,10 @@ export const api = {
   removeBrain: (id: number) => post<void>(`/v1/brain/nodes/${id}`, {}, 'DELETE'),
   linkBrain: (from: number, to: number, kind: BrainEdgeKind = 'relates') => post<void>('/v1/brain/links', { from, to, kind }),
   unlinkBrain: (from: number, to: number) => post<void>('/v1/brain/links', { from, to }, 'DELETE'),
+  /** The automatic extraction: on or off and its limits (machine only; on needs Premium). */
+  brainSettings: (b: BrainSettings) => post<BrainAutoStatus>('/v1/brain/settings', b, 'PUT'),
+  /** What reading the last `days` would take; with run, starts it (Premium). */
+  brainBackfill: (days: number, run = false) => post<BrainEstimate>('/v1/brain/backfill', { days, dry_run: !run }),
   /** The Inbox (03-contracts.md § Inbox). Saving and deleting: the machine and a controller. */
   inbox: () => get<{ items: InboxItem[]; max: number }>('/v1/inbox'),
   addInbox: (d: InboxDraft) => post<{ item: InboxItem }>('/v1/inbox', d),

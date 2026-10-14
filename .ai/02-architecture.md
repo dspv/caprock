@@ -357,6 +357,7 @@ internal/wtsetup/     # a new worktree made ready: .worktreeinclude copies, the 
 internal/relay/       # the brief that carries a session on in a new one, any agent (ADR-032) — Control
 internal/slashcmd/    # the slash commands an agent offers in a folder, for the chat field's / picker (ADR-053)
 internal/alerts/      # when the phone hears about a session, and the message it reads (ADR-036)
+internal/brain/       # Second Brain's automatic extraction: finished sessions read by the user's own `claude -p`, memories kept with provenance (ADR-063)
 internal/telegram/    # the owner's own bot: Bot API client, long-poll reader, paced outbox, the two-way bridge (ADR-047) — Control
 internal/ptyhost/     # `caprock pty-host`: one process per owned session holding its PTY, so it outlives the daemon (ADR-033); orphan verdicts — Control
 internal/keepawake/   # keeps the computer from idle-sleeping while agents work: modes, keeper, per-OS holders (ADR-049)

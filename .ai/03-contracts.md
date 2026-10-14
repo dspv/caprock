@@ -343,6 +343,11 @@ nothing. [ADR-030](08-decisions.md). A session opening in the filesystem root,
 the home directory or the temp directory (`store.NotAProject`) gets nothing and
 runs no lookup.
 
+A served handoff also carries up to five of the repository's Second Brain
+memories (§ Second Brain), pinned first then newest, each `- kind: title —
+summary` with the summary clipped to 160 runes, in a budget of 700 runes of
+their own after the passage; none when the repository has none.
+
 **Measuring it.** Whenever there is a passage to hand over, the session records
 whether it got it: `sessions.handoff` is `1` (served) or `2` (held back);
 `0` means nothing was there, and those sessions are in neither group
@@ -1458,6 +1463,8 @@ GET    /v1/brain/nodes/{id}          → {node, links}
 PATCH  /v1/brain/nodes/{id}          {kind?, title?, summary?, pinned?} → {node}
 DELETE /v1/brain/nodes/{id}          → 204; its edges go with it
 POST   /v1/brain/links               {from, to, kind?} → 204; DELETE with {from, to} → 204
+PUT    /v1/brain/settings            {auto?, daily_tokens?, model?} → BrainAutoStatus; 402 to turn on without a licence
+POST   /v1/brain/backfill            {days?, dry_run?} → BrainEstimate; 402 without a licence, 409 while off (dry run: neither)
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
 POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, name}}; this machine only
@@ -2721,6 +2728,8 @@ PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
 DELETE /v1/brain/nodes/{id}     → 204
 POST   /v1/brain/links          {from, to, kind?} → 204
 DELETE /v1/brain/links          {from, to} → 204
+PUT    /v1/brain/settings       {auto?, daily_tokens?, model?} → BrainAutoStatus
+POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 ```
 
 - **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
@@ -2763,11 +2772,47 @@ DELETE /v1/brain/links          {from, to} → 204
 - **Errors.** `404` for an unknown node; `409` when a rename would give an
   entity the normalised title of another of its kind; `400` for an unknown
   kind, an empty title, a self-link.
-- **Who.** The three `GET`s are open to every paired device; every write is
-  the machine's (a device gets `403`).
+- **Who.** The three `GET`s are open to every paired device; every write,
+  settings and backfill included, is the machine's (a device gets `403`).
 - **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
   "added" | "changed" | "deleted", kind?, title?, auto?}` (`kind` and `title`
   absent on a delete).
+- **The automatic extraction** (`internal/brain`, Premium). `auto` in the
+  status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
+  daily_tokens, spent, running, pending, since?, backfill_since?,
+  last_wake?, last_error?, recent: [BrainRun]}`: `chosen` once the user has
+  answered, `enabled` when on and licensed (only then does it read), `spent`
+  the tokens of the reads in the last 24 hours, `pending` the sessions
+  waiting, `recent` the last reads that were not skipped. `BrainRun` is
+  `{id, session_id, from_event_id, through_event_id, status: ok | failed |
+  skipped, model?, tokens_in, tokens_out, cost_usd, nodes, error?,
+  started_at, finished_at, project?}`.
+- **Settings.** `auto: true` needs an active licence (`402` otherwise) and
+  starts reading from that moment; `false` never needs one. `daily_tokens`
+  is 20,000–5,000,000 (the screen offers 100k, 300k and 1M; the default is
+  300,000) and `model` is `""`, `haiku` (the default) or `sonnet`; anything
+  else is `400`. Kept in `config.json` as `brain: {auto?, since?,
+  backfill_since?, daily_tokens?, model?}`; `auto` absent means the user has
+  not answered, and nothing runs.
+- **Backfill.** `BrainEstimate` is `{sessions, tokens_estimate,
+  days_estimate, daily_tokens, truncated?}`: the sessions since `days` ago
+  with unread prose worth a read, and an estimate of their tokens (a
+  quarter of the characters sent, plus the call's measured fixed cost,
+  4,300, plus 400 for the answer), labelled an estimate on screen. Without
+  `dry_run` it also sets `backfill_since`, which needs a licence (`402`)
+  and the extraction on (`409`), and wakes the reader.
+- **A read.** A session is a candidate when its last event is after
+  `since` (or `backfill_since`), it has ended or been quiet ten minutes, and
+  it has main-thread prompts or answers after the last read that did not
+  fail. Its passages are numbered and sent, with the project and up to 60
+  existing topic titles, on stdin to the user's `claude` (flags in
+  ADR-063). The answer is `{memories: [{kind, title, summary, topics?,
+  passage?, related?, contradicts?}]}`, at most eight kept: each a node with
+  `run_id`, `manual: false` and the cited passage's event as its source,
+  `part_of` the project and its topics, `relates`/`contradicts` to the
+  others named. Fewer than 300 runes of agent prose: recorded `skipped`,
+  never sent. A failure is recorded with its error and retried after 15
+  minutes, doubling; after four the session waits for new prose.
 
 ### Queued messages
 

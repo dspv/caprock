@@ -18,6 +18,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   searches them by words, project and time, and opens one to edit, pin,
   link to a topic or delete. Twenty memories are free; Premium keeps every
   one. Kept in Caprock's database on this machine.
+- **brain:** Second Brain builds itself (Premium), once you say yes. When a
+  session has been quiet for ten minutes, your own `claude` (Haiku, no
+  tools, no transcript, none of your hooks) picks out what it decided and
+  found, and each memory links back to the passage it came from. A daily
+  token limit (100k, 300k or 1M), short sessions skipped, failures retried
+  later; *Build from my last 30 days* shows an estimate first. Settings →
+  Second Brain shows what it used and read. A new session's handoff now
+  carries up to five of the repository's memories.
 
 ## [0.117.0] - 2026-10-14
 

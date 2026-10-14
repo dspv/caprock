@@ -7,12 +7,14 @@ const m = vi.hoisted(() => ({
   brain: vi.fn(),
   node: vi.fn(),
   premium: vi.fn(),
+  settings: vi.fn(),
+  backfill: vi.fn(),
 }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
     ...actual,
-    api: { ...actual.api, dropBrain: m.drop, brainStatus: m.status, brain: m.brain, brainNode: m.node, premium: m.premium },
+    api: { ...actual.api, dropBrain: m.drop, brainStatus: m.status, brain: m.brain, brainNode: m.node, premium: m.premium, brainSettings: m.settings, brainBackfill: m.backfill },
   }
 })
 
@@ -21,9 +23,13 @@ import { BrainCaptureHost } from './BrainCapture'
 import { BrainDropButton } from './BrainDrop'
 import { openBrainCapture } from '@/lib/brain'
 import { BrainScreen } from '@/screens/brain/BrainScreen'
+import { BrainAutoSetting } from './BrainAutoSetting'
 
 const node = (over: Partial<BrainNode>): BrainNode => ({
   id: 1, kind: 'decision', title: 'Keep SQLite', summary: '', source: {}, manual: true, pinned: false, created_at: Date.now(), updated_at: Date.now(), ...over,
+})
+const auto = (over = {}) => ({
+  chosen: true, on: true, enabled: true, claude_found: true, model: 'haiku', daily_tokens: 300_000, spent: 12_000, running: false, pending: 2, recent: [], ...over,
 })
 const status = (over = {}) => ({ licensed: true, memories: 1, manual: 1, free_max: 20, free_left: -1, projects: [], ...over })
 
@@ -85,5 +91,33 @@ describe('Second Brain', () => {
     fireEvent.click(row)
     await screen.findByText('WAL is enough for one machine.')
     expect(screen.getByRole('link', { name: /the session/ }).getAttribute('href')).toBe('#/session/s1?at=5')
+  })
+
+  it('asks once, on the Brain screen, whether to build it automatically', async () => {
+    m.status.mockResolvedValue(status({ auto: auto({ chosen: false, on: false, enabled: false }) }))
+    m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
+    m.settings.mockResolvedValue(auto())
+    render(<BrainScreen />)
+    await screen.findByText(/Build it from your sessions automatically/)
+    expect(screen.getByText(/Nothing is sent to Caprock/)).toBeTruthy()
+    m.status.mockResolvedValue(status({ auto: auto() }))
+    fireEvent.click(screen.getByRole('button', { name: 'Turn it on' }))
+    await waitFor(() => expect(m.settings).toHaveBeenCalledWith({ auto: true }))
+    await waitFor(() => expect(screen.queryByText(/Build it from your sessions automatically/)).toBeNull())
+  })
+
+  it('shows its figures and estimates a backfill before starting it', async () => {
+    m.status.mockResolvedValue(status({ auto: auto() }))
+    m.backfill.mockResolvedValueOnce({ sessions: 12, tokens_estimate: 90_000, days_estimate: 1, daily_tokens: 300_000 })
+    m.backfill.mockResolvedValueOnce({ sessions: 12, tokens_estimate: 90_000, days_estimate: 1, daily_tokens: 300_000 })
+    render(<BrainAutoSetting />)
+    await screen.findByText(/2 sessions waiting to be read/)
+    fireEvent.click(screen.getByRole('button', { name: 'Build from my last 30 days' }))
+    await screen.findByText(/12 sessions to read/)
+    expect(m.backfill).toHaveBeenLastCalledWith(30)
+    expect(screen.getByText(/An estimate/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    await waitFor(() => expect(m.backfill).toHaveBeenLastCalledWith(30, true))
+    await screen.findByText(/Started/)
   })
 })

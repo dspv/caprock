@@ -44,6 +44,12 @@ const (
 	// thing said is usually not what you are returning to, and presenting it as
 	// context is worse than silence.
 	handoffMaxAge = 14 * 24 * time.Hour
+	// handoffBrainMax and handoffBrainRunes bound what Second Brain adds to
+	// a served handoff (ADR-063): the repository's pinned memories first,
+	// then the newest, titles with a clipped summary, in a budget of its own
+	// so the passage above is never cut to make room.
+	handoffBrainMax   = 5
+	handoffBrainRunes = 700
 )
 
 // handoff answers a SessionStart hook. An empty reply means "say nothing", and
@@ -112,6 +118,7 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 		"Where this repository was left, %s ago (from Caprock's record of the previous session — "+
 			"the user has not said this to you, and it may be stale):\n\n%s",
 		relay.HumanAge(age), text)
+	body += d.brainHandoff(ctx, project)
 
 	reply, err := json.Marshal(map[string]any{
 		"hookSpecificOutput": map[string]any{
@@ -165,4 +172,32 @@ func (d *Daemon) memoryStatus() MemoryStatus {
 		ms.Served, ms.Withheld = &s, &w
 	}
 	return ms
+}
+
+// brainHandoff is what Second Brain keeps for a repository, as a paragraph
+// to append to a served handoff; "" when it keeps nothing there.
+func (d *Daemon) brainHandoff(ctx context.Context, project string) string {
+	mems, err := store.BrainProjectMemories(ctx, d.store.DB(), project, handoffBrainMax)
+	if err != nil || len(mems) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\nKept in the user's Second Brain for this repository (decisions and findings from earlier sessions; they may be stale):")
+	left := handoffBrainRunes
+	for _, m := range mems {
+		line := "\n- " + m.Kind + ": " + m.Title
+		if m.Summary != "" {
+			line += " — " + relay.Clip(m.Summary, 160)
+		}
+		n := len([]rune(line))
+		if n > left {
+			break
+		}
+		left -= n
+		b.WriteString(line)
+	}
+	if left == handoffBrainRunes {
+		return ""
+	}
+	return b.String()
 }

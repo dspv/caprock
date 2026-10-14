@@ -9,6 +9,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { isPairedDevice, type BrainNode } from '@/lib/api'
+import { BrainConsent } from '@/components/BrainAutoSetting'
 import { isEntity, KIND_COLOR, KIND_LABEL, openBrainCapture, useBrainGraph, useBrainStatus } from '@/lib/brain'
 import { fmtAgo } from '@/lib/format'
 import { keys } from '@/lib/appkeys'
@@ -42,7 +43,7 @@ export function BrainScreen({ node }: { node?: number }) {
   const [opened] = useState(() => Date.now())
   const since = span ? opened - span * 86_400_000 : 0
   const { graph, error } = useBrainGraph({ q: query, project, since })
-  const { status } = useBrainStatus()
+  const { status, reload: reloadStatus } = useBrainStatus()
   const owner = !isPairedDevice()
   const memories = useMemo(() => (graph?.nodes ?? []).filter((n) => !isEntity(n.kind)), [graph])
   const topicsOf = useMemo(() => {
@@ -67,6 +68,8 @@ export function BrainScreen({ node }: { node?: number }) {
         {isAppMode() ? <> with <kbd className="app-kbd">{keys('⇧⌘H')}</kbd></> : ''}; each one links back to the moment it came
         from. Kept on this machine.
       </p>
+
+      {owner && status?.licensed && status.auto && <BrainConsent auto={status.auto} onAnswer={reloadStatus} />}
 
       {status && !status.licensed && (
         <Banner

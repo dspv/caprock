@@ -126,11 +126,12 @@ const FEATURES: Record<
   // ADR-063: twenty memories dropped in by hand are free; the rest is Premium.
   brain: {
     title: 'Second Brain: what your sessions decided, as a graph',
-    body: 'Drop any answer Claude wrote into a graph of ideas, decisions and findings, linked by project and topic. Search it, open the session it came from.',
+    body: 'Built from your finished sessions as you work, or dropped in by hand: ideas, decisions and findings, linked by project and topic. Search it, open the session it came from.',
     points: [
+      { icon: 'moon', text: 'Built automatically by your own claude, within a daily limit you set' },
       { icon: 'stack', text: 'Every memory you keep, not just the first twenty' },
       { icon: 'arrow', text: 'Each one links back to the moment in the session it came from' },
-      { icon: 'shield', text: 'Kept in Caprock’s database on this machine, nowhere else' },
+      { icon: 'shield', text: 'Kept in Caprock’s database on this machine; nothing is sent to Caprock' },
     ],
   },
   report: {

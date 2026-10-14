@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -337,5 +338,44 @@ func TestNoHandoffOutsideAnyProject(t *testing.T) {
 		}); len(reply) > 0 {
 			t.Errorf("a session opening in %q was handed %.40s", dir, reply)
 		}
+	}
+}
+
+// Second Brain's memories for the repository ride along with a served
+// handoff, pinned first, in a budget of their own (ADR-063).
+func TestAHandoffCarriesTheRepositorysSecondBrain(t *testing.T) {
+	now := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	d := handoffDaemon(t, now)
+	ctx := context.Background()
+	said(t, d, "caprock", strings.Repeat("We settled on process liveness rather than a timeout. ", 12), now.Add(-2*time.Hour))
+	start := hookd.Payload{HookEventName: "SessionStart", Source: "startup", Cwd: "/home/u/caprock"}
+	if got := contextOf(t, d.handoff(ctx, start)); strings.Contains(got, "Second Brain") {
+		t.Fatalf("an empty brain adds nothing: %q", got)
+	}
+	keep := func(kind, title, project string, pinned bool, at int64) {
+		t.Helper()
+		if _, _, err := store.InsertBrainNode(ctx, d.store.DB(), store.BrainNode{Kind: kind, Title: title, Summary: strings.Repeat("why ", 100),
+			Source: store.BrainSource{Project: project}, Manual: true, Pinned: pinned}, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keep("decision", "Keep SQLite in WAL mode", "caprock", true, 1)
+	for i := range 8 {
+		keep("finding", fmt.Sprintf("Finding %d", i), "caprock", false, int64(10+i))
+	}
+	keep("idea", "Somebody else's idea", "other", false, 100)
+	got := contextOf(t, d.handoff(ctx, start))
+	if !strings.Contains(got, "process liveness") || !strings.Contains(got, "Second Brain") {
+		t.Fatalf("handoff: %q", got)
+	}
+	_, tail, _ := strings.Cut(got, "Second Brain")
+	if !strings.Contains(tail, "- decision: Keep SQLite in WAL mode") || strings.Index(tail, "Keep SQLite") > strings.Index(tail, "Finding 7") {
+		t.Errorf("the pinned memory comes first: %q", tail)
+	}
+	if strings.Contains(tail, "Somebody else") || strings.Contains(tail, "Finding 0") {
+		t.Errorf("another repository's, or past the budget: %q", tail)
+	}
+	if n := utf8.RuneCountInString(tail); n > handoffBrainRunes+120 {
+		t.Errorf("%d runes", n)
 	}
 }

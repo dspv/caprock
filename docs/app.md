@@ -803,12 +803,28 @@ row.
 - **Find and tidy.** Search, pick a project or a span; open a memory to edit
   its title and summary, pin it, link it to a topic, jump to the session it
   came from, or delete it.
+- **Let it build itself (Premium).** With a licence, the Brain screen asks
+  once whether to build it automatically; Settings → Second Brain switches it
+  later. When a session has been quiet for ten minutes, Caprock asks your own
+  `claude` (a small model, Haiku) to pick out what it decided and found, and
+  keeps those as memories linked back to the moment they were said. Short
+  sessions are skipped, reads stop at a daily token limit you choose (100k,
+  300k or 1M), and *Build from my last 30 days* shows an estimate of how many
+  sessions and tokens that is before it starts. These reads use your Claude
+  plan like any other `claude -p` call; they do not show up as sessions and
+  do not run your hooks.
+- **New sessions draw on it.** When Claude starts in a folder and is handed
+  where the last session left off, it also gets up to five of that
+  repository's memories, pinned ones first.
 - **Free and Premium.** Twenty memories dropped in by hand are free; Premium
-  keeps every one. Whatever you kept stays readable and editable if a licence
-  lapses.
+  keeps every one and builds the rest for you. Whatever you kept stays
+  readable and editable if a licence lapses.
 
-**Privacy.** Second Brain lives in Caprock's database on this computer.
-Nothing in it is sent anywhere.
+**Privacy.** Second Brain lives in Caprock's database on this computer, and
+nothing in it is sent to Caprock. Dropping memories in by hand sends nothing
+anywhere. Building it automatically is off until you say yes: then a finished
+session's prompts and answers go to your own `claude`, which sends them to
+Anthropic under your login, the place the session itself already went.
 
 ## Notifications
 

@@ -703,6 +703,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("DELETE /v1/brain/nodes/{id}", s.handleDeleteBrainNode)
 	m.HandleFunc("POST /v1/brain/links", s.handleBrainLink)
 	m.HandleFunc("DELETE /v1/brain/links", s.handleBrainLink)
+	m.HandleFunc("PUT /v1/brain/settings", s.handleBrainSettings)
+	m.HandleFunc("POST /v1/brain/backfill", s.handleBrainBackfill)
 	m.HandleFunc("POST /v1/shells", s.handleStartShell)
 	m.HandleFunc("GET /v1/shells", s.handleShells)
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)
