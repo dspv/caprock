@@ -47,6 +47,10 @@ const (
 	// FrameInbox says the Inbox changed (03-contracts.md § Inbox): {id,
 	// deleted}, so a screen showing it reads it again.
 	FrameInbox FrameType = "inbox"
+	// FrameBrain says Second Brain changed (03-contracts.md § Second Brain):
+	// {id, op: "added"|"changed"|"deleted", kind?, title?, auto?}, so the
+	// sidebar's graph can drop a new memory in as it arrives.
+	FrameBrain FrameType = "brain"
 )
 
 // Frame is what goes over /v1/live. Seq is set by Publish: one more than the

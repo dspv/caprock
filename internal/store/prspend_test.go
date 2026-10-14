@@ -84,3 +84,46 @@ func TestSpendByPR(t *testing.T) {
 		t.Fatalf("no pull requests: %+v %v", none, err)
 	}
 }
+
+// A session that drives several pull requests and ends on the last one's
+// branch is not charged whole to it (owner, 2026-10-14: the release's pull
+// request read as the orchestrator's entire spend): it is cut between the
+// pull requests it opened, each slice marked shared, with its tokens.
+func TestSpendByPRDriverEndsOnABranch(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	q := st.DB()
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := q.ExecContext(ctx, sql, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const feat, rel = "https://github.com/o/r/pull/5", "https://github.com/o/r/pull/6"
+	exec(`INSERT INTO sessions(session_id, cwd, status, git_branch, repo_root) VALUES('drv','/r','active','release/1','/r')`)
+	exec(`INSERT INTO session_stats(session_id, cost_usd, tokens_in, tokens_out, cache_read, cache_write) VALUES('drv', 10, 1000, 100, 9000, 500)`)
+	exec(`INSERT INTO events(ts, session_id, source, kind, payload, cost_usd, tokens_in, tokens_out, cache_read, cache_write) VALUES(50,'drv','transcript','turn.assistant','{}',7,700,70,6000,300)`)
+	exec(`INSERT INTO events(ts, session_id, source, kind, payload, cost_usd, tokens_in, tokens_out, cache_read, cache_write) VALUES(150,'drv','transcript','turn.assistant','{}',3,300,30,3000,200)`)
+	exec(`INSERT INTO session_prs(session_id, url, number, opened_at, merged_at, last_at) VALUES('drv',?,5,100,120,120)`, feat)
+	exec(`INSERT INTO session_prs(session_id, url, number, opened_at, last_at) VALUES('drv',?,6,200,200)`, rel)
+	// A worker on the release branch that opened only its pull request: whole.
+	exec(`INSERT INTO sessions(session_id, cwd, status, git_branch, repo_root) VALUES('wrk','/r','ended','release/1','/r')`)
+	exec(`INSERT INTO session_stats(session_id, cost_usd, tokens_in, tokens_out, cache_read, cache_write) VALUES('wrk', 2, 20, 2, 200, 10)`)
+	exec(`INSERT INTO session_prs(session_id, url, number, opened_at, last_at) VALUES('wrk',?,6,190,190)`, rel)
+
+	got, err := SpendByPR(ctx, q, "/r", []PRRef{{URL: feat, Branch: "feat/x"}, {URL: rel, Branch: "release/1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if x := got[feat]; x.CostUSD != 7 || x.Shared != 1 || x.TokensIn != 700 || x.CacheRead != 6000 {
+		t.Fatalf("#5 = %+v", x)
+	}
+	if x := got[rel]; x.CostUSD != 5 || x.Sessions != 2 || x.Shared != 1 || x.ByBranch != 2 || x.BySlice != 3 ||
+		x.TokensIn != 320 || x.TokensOut != 32 || x.CacheRead != 3200 || x.CacheWrite != 210 {
+		t.Fatalf("#6 = %+v (want the worker whole, the driver's slice after #5)", x)
+	}
+}

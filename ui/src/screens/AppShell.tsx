@@ -54,6 +54,9 @@ import { openCaprockDoctor } from '@/components/FootprintPanel'
 import { StarStrip } from '@/components/StarStrip'
 import { MailStrip } from '@/components/MailStrip'
 import { OfferStrip } from '@/components/OfferStrip'
+import { BrainCaptureHost } from '@/components/BrainCapture'
+import { BrainGlyph } from '@/components/BrainDrop'
+import { openBrainCapture } from '@/lib/brain'
 import { SetupStrip } from '@/components/SetupStrip'
 import { ShareMoment } from '@/components/Nudges'
 import { ShareDialog } from '@/components/Share'
@@ -190,6 +193,7 @@ const SCREENS: [string, string, string][] = [
   ['history', 'Lifetime', 'every session, every day, in totals'],
   ['week', 'Week', 'one week, as a card'],
   ['notes', 'Memory', 'what the agents said, searchable'],
+  ['brain', 'Brain', 'Second Brain: what your sessions decided and found'],
   ['tasks', 'Tasks', 'the board'],
   ['queue', 'Queue', 'what each agent is doing, what waits, roughly when it is done'],
   ['mail', 'Mail', 'every inbox in one place, on this machine'],
@@ -954,6 +958,7 @@ export function AppShell() {
       case 'new-shell': if (workspaceShown && current) onNewShell(current.projectId, focusedSession?.cwd || undefined); else onNewShell(); break
       case 'new-agent': onNewAgent(); break
       case 'quick-chat': onQuickChatChooser(); break
+      case 'brain-capture': openBrainCapture(); break
       case 'add-project': onAddProject(); break
       case 'detach-tab': if (workspaceShown) detach(); break
       case 'palette': onPalette(); break
@@ -1127,6 +1132,7 @@ export function AppShell() {
       { id: 'a-shell', group: 'Actions', label: 'New shell', hint: keys('⌘T'), icon: <TerminalIcon size={14} />, run: () => onNewShell() },
       { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat…', detail: 'pick the agent and model; Enter starts the last one used', hint: keys('⌥⌘N'), icon: <ChatIcon size={14} />, run: onQuickChatChooser },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: keys('⌘O'), icon: <FolderPlusIcon size={14} />, run: onAddProject },
+      { id: 'a-brain', group: 'Actions', label: 'Add to brain…', detail: 'keep a line in Second Brain', hint: keys('⇧⌘H'), icon: <BrainGlyph size={14} />, run: () => openBrainCapture() },
       { id: 'a-deck', group: 'Actions', label: deck.open ? 'Hide the session deck' : 'Show the session deck', detail: 'The agent’s live figures under its terminal', hint: keys('⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck' }) },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
@@ -1709,6 +1715,7 @@ export function AppShell() {
       {/* A survey question, never while a session waits on a permission prompt (ADR-062). */}
       <OfferStrip busy={data.permissions.size > 0} />
       <StarStrip app />
+      <BrainCaptureHost />
       <ShareMoment />
       <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} session={focused?.kind === 'session' && workspaceShown ? focusedSession : undefined} version={version} figures={!prefs.sidebar} />
       <AppUpdateToast />

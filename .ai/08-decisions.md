@@ -967,7 +967,9 @@ it is a `GET`, because every frame it receives is typed into the session.
 
 *Amended 2026-10-04 by [ADR-034](#adr-034--a-phone-the-owner-chooses-can-work-on-sessions-and-nothing-else):*
 reading stays the default, and the owner can make one paired device a
-controller, on the machine, revocably.
+controller, on the machine, revocably. *ADR-034 amended 2026-10-14:* the
+owner may make that choice when showing the code, and the dashboard's box
+for it starts ticked; a code issued without a role still pairs a reader.
 
 *Amended 2026-10-05 by [ADR-011](#adr-011--one-server-one-port-default-22776-per-run-bearer-token-loopback-only):*
 "loopback is unaffected" means this machine's own clients; a request a proxy
@@ -1385,7 +1387,9 @@ agent manager only types into or signals processes Caprock started.
   already says which kind of address it shows.
 
 **Rules out:** control granted by pairing (a code read off a screen is proof of
-presence, not of intent to hand over a keyboard); a global "phones may control"
+presence, not of intent to hand over a keyboard) — *narrowed 2026-10-14
+(below): the intent is now stated by the owner on the machine, with the
+code, and the code only carries it*; a global "phones may control"
 switch (control is a property of one device, so losing one phone costs one
 button); typing into sessions Caprock did not start.
 
@@ -1448,6 +1452,44 @@ picker. A controller may also open a pull request from a worktree
 push) and ask for a re-read (`…/github/refresh`). Connecting, the device
 flow, disconnecting, the notification switch and creating a repository stay
 the machine's: they change where Caprock talks to and what it holds.
+
+*Amended 2026-10-14 — control chosen with the code.* The owner (translated):
+"The phone integration instructions are crap. I see the QR code, scan it
+with the phone, install the app, go in — and I can't do anything, and say
+I've already left the house. So the steps must be spelled out clearly + add
+integration statuses and what's left, e.g. allow typing from there." Pairing
+made a viewer, and control was a second click on the machine that nobody
+remembers to make before walking out — and once out, there is no machine to
+click on.
+
+- **The owner states the role when showing the code.** Beside **Show a
+  code**, **This phone can type and start agents**, ticked by default (the
+  person pressing the button is the owner, at the machine) and remembered on
+  that computer. `POST /v1/pair/code` takes `{role}`, loopback-only like
+  every pairing route; the code carries it and the device that redeems it
+  gets it. Unticked, the phone pairs as a viewer, as before.
+- **Still a decision on the machine, never from the phone.** The phone's
+  redeem names no role and anything it sends is ignored; a code issued with
+  no role (`caprock pair`, `caprock remote`, an older dashboard) pairs a
+  viewer. The code stays single-use, five minutes, five guesses: what it
+  proves is presence, and the tick is the intent this ADR asked for.
+- **Nothing else moves.** **Let it control sessions** and **Take control
+  away** stay beside each device; taking control away still holds on the
+  next keystroke; a controller's allowlist and the machine-only actions are
+  unchanged.
+- **The panel says what is done and what is left**, live: access from
+  anywhere, the phone paired (by name), whether it can type — with the one
+  button that fixes it — and whether it runs as the installed app (the
+  phone reports it, `GET /v1/pair/me?app=1|0`, stored as a label in
+  `devices.json`, never an authorisation). The phone opens on a short
+  **Ready** card saying the same, and where on the computer to fix a
+  view-only pairing.
+
+The risk taken: a code shown with the box ticked and scanned by someone
+else's camera hands over a keyboard, not only a screen. It was already the
+case that a code admitted whoever scanned it in five minutes; the owner
+judged a phone that cannot type once he has left the house the worse
+failure, and one click removes either.
 
 
 ---
@@ -3675,3 +3717,68 @@ reusing this route for anything but a card the user answers.
 and an optional email, or anyone proposes sending something the user did
 not see on the card. Adding an offer of the same shape is a row in the
 three schemas, not a new decision.
+
+## ADR-063 — Second Brain: the sessions' decisions and findings, kept as a graph on this machine; twenty by hand are free
+
+**Date:** 2026-10-14 · **Status:** accepted (owner, 2026-10-14)
+
+*Builds the product ADR-062's in-app offer pre-sells.*
+
+**Context.** The owner sells "Second Brain" in Premium with a date on it, 18
+October 2026, and described it (translated): "On the left a collapsible block
+where my second brain is constantly being built — a knowledge graph. Like in
+Hogwarts they pulled memories out with a wand and put them in the Pensieve —
+here ideas get put into the graph: everything done, researched, etc." Caprock
+already keeps every answer Claude wrote (`/v1/notes`, about 30,000 notes on
+the owner's machine); what it lacks is a place where the few worth keeping
+are kept as conclusions, linked to each other, rather than found again by
+searching prose.
+
+**Decision.**
+
+- **Memories and the entities they hang off.** A node is a memory — an
+  *idea*, *decision*, *finding* or *question* — or an entity: a *topic*,
+  *person* or *project*. A title is a line (80 characters), a summary a
+  paragraph (400). Every memory records where it came from: the session, the
+  event (an assistant note), the moment and the project, so it links back to
+  the place in the record. An entity exists once per normalised title (lower
+  case, spaces collapsed, punctuation at the ends dropped), so "SQLite" and
+  "sqlite." are one topic. Edges are *relates*, *follows*, *contradicts* and
+  *part_of*, one per pair and kind, weighted (dropping the same link again
+  adds to it, capped at 10). Three tables in the daemon's own database
+  (migration 0055): `brain_nodes`, `brain_edges`, and `brain_runs`, which
+  the automatic extraction records each read in.
+- **Dropped in by hand.** *Drop into brain* under any answer on the Memory
+  screen, in a session's Notes and in the chat view sends only the answer's
+  event id; the daemon reads its text, session, time and project from the
+  record. The quick capture (⇧⌘H, Ctrl+Shift+H off macOS, or ⌘K *Add to
+  brain…*) takes a line or a paragraph, a kind and topics. The first line
+  that says something, without its Markdown, is the title; the passage,
+  flattened, is the summary. A memory hangs off its project and its topics
+  from the first drop, so the graph clusters without any model.
+- **Free and Premium.** Without a licence twenty memories dropped in by hand
+  are kept — enough to see what the graph does with one's own work — and the
+  twenty-first is refused **by the daemon** (`402`), as custom agents and Ask
+  Gemini are, so the lock is not a decoration. Reading, editing, linking and
+  deleting are never locked: it is the user's data. A licence that lapses
+  leaves every memory readable.
+- **On this machine.** Everything above is local: the graph is the daemon's
+  SQLite file, served on loopback, readable by a paired device and written
+  only on the machine.
+- **Reads that stay fast.** The graph read takes the newest memories that
+  pass the filter (pinned first), the entities linked to them and every edge
+  between what it returns, without summaries unless asked; a large selection
+  scans the edge table once instead of walking it per node. On a test graph
+  of 5,000 memories, 200 topics and 15,000 edges the whole-graph read took
+  45–50 ms on the development Mac under load and a project's 20 ms
+  (`TestBrainGraphReadsFiveThousandNodesQuickly`, 2026-10-14).
+
+**Rules out:** an embedding index or a vector store (a dependency and a model
+for what titles, topics and links do); a server of ours; storing the graph
+anywhere but the daemon's database; locking a user out of memories already
+kept.
+
+**Revisit if:** people keep far more than a few thousand memories (the graph
+read returns at most 5,000 and the screen would need clustering on the
+daemon); or the free twenty turn out to be too few to see the point — a
+number to change in one constant (`brainFreeManual`).

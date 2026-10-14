@@ -17,9 +17,12 @@ import { NewProjectScreen } from '@/components/NewProject'
 import { PhoneHome } from '@/components/PhoneHome'
 import { LanOnlyNotice } from '@/components/LanOnlyNotice'
 import { useNarrowScreen } from '@/lib/phone'
+import { BrainCaptureHost } from '@/components/BrainCapture'
 
 // Mail is its own world (internal/mail); its code loads only when opened.
 const MailScreen = lazy(() => import('@/screens/mail/MailScreen').then((m) => ({ default: m.MailScreen })))
+// Second Brain's screen draws a graph; its code loads only when opened too.
+const BrainScreen = lazy(() => import('@/screens/brain/BrainScreen').then((m) => ({ default: m.BrainScreen })))
 
 /**
  * Whether this browser may see the figures at all.
@@ -60,7 +63,13 @@ export default function App() {
   if (access === 'checking') return null
   if (access === 'needs-pairing') return <PairScreen />
 
-  return <Dashboard route={route} />
+  return (
+    <>
+      <Dashboard route={route} />
+      {/* The quick capture, opened from anywhere on the page (lib/brain.ts). */}
+      <BrainCaptureHost />
+    </>
+  )
 }
 
 /** The dashboard's screens in their shell: the browser's whole page, and a view inside the app. */
@@ -84,6 +93,7 @@ export function Dashboard({ route, inApp = false }: { route: Route; inApp?: bool
         {route.name === 'notes' && <NotesScreen />}
         {route.name === 'start' && <NewProjectScreen mode={route.mode} />}
         {route.name === 'mail' && <Suspense fallback={null}><MailScreen /></Suspense>}
+        {route.name === 'brain' && <Suspense fallback={null}><BrainScreen node={route.node} /></Suspense>}
       </ErrorBoundary>
     </Shell>
   )
