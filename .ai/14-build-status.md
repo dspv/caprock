@@ -83,7 +83,8 @@ three newest titles, the count, folded with a lock without a licence.
 Measured on a preview stand with 3,011 memories in headless Chromium: a
 median 9.2 ms a frame while settling, 8.4 ms while zooming. A graph read
 with a limit no longer returns every entity, and a filtered read no longer
-pulls in memories that a selected one relates to.
+pulls in memories that a selected one relates to. `SECOND_BRAIN_BUILT` is
+set, so the pre-order strip (ADR-062) no longer offers Second Brain.
 
 ### 2026-10-14 — unreleased: Second Brain builds itself
 

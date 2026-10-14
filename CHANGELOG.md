@@ -33,7 +33,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   memories and their topics and projects — drag, zoom, click a dot to open
   it, *List* for rows — smooth with thousands of memories. The app's
   sidebar has a Brain block below the projects: the newest thirty as a small
-  graph where each new memory drops in, and the three newest titles.
+  graph where each new memory drops in, and the three newest titles. The
+  strip that offered Second Brain ahead of its arrival no longer shows.
 
 ### Fixed
 
