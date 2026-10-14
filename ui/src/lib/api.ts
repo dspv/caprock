@@ -1321,12 +1321,8 @@ export interface BrainGraph { nodes: BrainNode[]; edges: BrainEdge[]; total: num
 export interface BrainLink { node: BrainNode; kind: BrainEdgeKind; out: boolean; weight: number }
 
 export interface BrainStatus {
-  licensed: boolean
   memories: number
   manual: number
-  /** How many an install without a licence may drop in by hand, and how many remain (-1 with a licence). */
-  free_max: number
-  free_left: number
   projects: { project: string; count: number }[]
   auto?: BrainAutoStatus
 }

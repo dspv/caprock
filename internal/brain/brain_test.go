@@ -26,7 +26,6 @@ type env struct {
 	eng   *Engine
 	now   time.Time
 	cfg   config.BrainConfig
-	lic   bool
 	calls int
 	reqs  []Request
 	seq   int
@@ -41,10 +40,10 @@ func newEnv(t *testing.T, run func(r Request) (Result, error)) *env {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	e := &env{st: st, now: t0, lic: true, cfg: config.BrainConfig{Auto: on(), Since: t0.Add(-48 * time.Hour).UnixMilli()}}
+	e := &env{st: st, now: t0, cfg: config.BrainConfig{Auto: on(), Since: t0.Add(-48 * time.Hour).UnixMilli()}}
 	e.eng = &Engine{
 		Store: st, Bus: bus.New(), Now: func() time.Time { return e.now },
-		Config: func() config.BrainConfig { return e.cfg }, Licensed: func() bool { return e.lic },
+		Config: func() config.BrainConfig { return e.cfg },
 		Runner: RunnerFunc(func(_ context.Context, r Request) (Result, error) {
 			e.calls++
 			e.reqs = append(e.reqs, r)
@@ -162,7 +161,7 @@ func TestAReadKeepsMemoriesLinkedToTheirProjectAndTopics(t *testing.T) {
 	}
 }
 
-func TestOnlyWhenChosenLicensedQuietAndWorthIt(t *testing.T) {
+func TestOnlyWhenChosenQuietAndWorthIt(t *testing.T) {
 	e := newEnv(t, twoMemories)
 	e.session(t, "busy", "p", 2*time.Minute, [2]string{"q", long})
 	e.session(t, "tiny", "p", time.Hour, [2]string{"q", "Done."})
@@ -173,11 +172,8 @@ func TestOnlyWhenChosenLicensedQuietAndWorthIt(t *testing.T) {
 	if n, _ := e.eng.Wake(ctx); n != 0 || e.calls != 0 {
 		t.Fatal("never before the user says yes")
 	}
-	e.cfg.Auto, e.lic = on(), false
-	if n, _ := e.eng.Wake(ctx); n != 0 || e.calls != 0 {
-		t.Fatal("never without a licence")
-	}
-	e.lic = true
+	// A yes is all it takes: no licence (owner decision, 2026-10-14).
+	e.cfg.Auto = on()
 	if n, _ := e.eng.Wake(ctx); n != 0 || e.calls != 0 {
 		t.Fatalf("read %d: a working session, a one-line answer and one from before it was on are not read", n)
 	}

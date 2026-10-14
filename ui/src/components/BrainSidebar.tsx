@@ -5,17 +5,16 @@
  * new one drops in as it is kept (components/BrainGraphCanvas), the three
  * newest titles and the count. A title or a dot opens it on `#/brain`.
  *
- * Folds like the footer and remembers it. Without a licence it starts
- * folded, with a lock on its heading; unfolded it shows what one has and a
- * *How it works* that opens the Premium dialog — a free user's twenty
- * memories are still theirs to see here.
+ * Folds like the footer and remembers it; unfolded by default, for everyone
+ * — Second Brain is free (owner decision, 2026-10-14). *How it works* opens
+ * a short explainer with a way into the Brain screen.
  */
 import { useState } from 'react'
 import { isEntity, useBrainGraph, useBrainStatus } from '@/lib/brain'
 import { keys } from '@/lib/appkeys'
 import { BrainGraphCanvas } from './BrainGraphCanvas'
 import { ChevronIcon } from './AppIcons'
-import { PremiumModal } from './PremiumModal'
+import { SecondBrainModal } from './SecondBrainModal'
 
 const FOLD_KEY = 'caprock.app.brain-fold'
 const NEWEST = 30
@@ -29,21 +28,11 @@ function readFold(): 'open' | 'closed' | null {
   }
 }
 
-function LockGlyph() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden className="text-premium-strong">
-      <rect x="3" y="7" width="10" height="7.5" rx="1.5" fill="currentColor" />
-      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  )
-}
-
 export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
   const { status } = useBrainStatus()
   const [fold, setFold] = useState(readFold)
-  const [premium, setPremium] = useState(false)
-  const licensed = !!status?.licensed
-  const open = fold ? fold === 'open' : licensed
+  const [how, setHow] = useState(false)
+  const open = fold ? fold === 'open' : true
   const { graph } = useBrainGraph(open ? { limit: NEWEST } : { limit: 1 }, 600)
   const toggle = () => {
     const next = open ? 'closed' : 'open'
@@ -58,7 +47,6 @@ export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
       <div className="flex h-[28px] items-center gap-1.5 px-2 pt-1.5">
         <button type="button" onClick={toggle} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
           <h2 className="text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-faint">Brain</h2>
-          {!licensed && <LockGlyph />}
           {auto && <span className="text-[10.5px] text-fg-faint" title="Built from your finished sessions">· building</span>}
         </button>
         <button
@@ -111,14 +99,12 @@ export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
               Nothing kept yet. Drop an answer in from Memory or a chat, or {keys('⇧⌘H')}.
             </p>
           )}
-          {!licensed && (
-            <button type="button" onClick={() => setPremium(true)} className="justify-self-start px-1.5 text-[11.5px] text-premium-strong hover:underline">
-              How it works
-            </button>
-          )}
+          <button type="button" onClick={() => setHow(true)} className="justify-self-start px-1.5 text-[11.5px] text-fg-faint hover:text-fg hover:underline">
+            How it works
+          </button>
         </div>
       )}
-      {premium && <PremiumModal feature="brain" onClose={() => setPremium(false)} />}
+      {how && <SecondBrainModal onOpen={() => onOpen('#/brain')} onClose={() => setHow(false)} />}
     </section>
   )
 }

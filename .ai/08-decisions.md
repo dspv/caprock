@@ -3744,7 +3744,11 @@ on. A survey answer is neither: it is one message the user writes to us.
   through the existing Stripe flow, tagged `app-second-brain`), it is tried
   first, at most twice on different days, and it stops on 18 October 2026 or
   as soon as the build sets `SECOND_BRAIN_BUILT`. If the date slips, the
-  wording is changed before it, never left standing.
+  wording is changed before it, never left standing. *Superseded
+  2026-10-14:* Second Brain shipped and was made free (ADR-063, § Free), so
+  the sale, its dialog and its pre-order line are gone from the product;
+  the `second-brain` id stays only so the answers installs already keep
+  stay valid.
 - **Dismissing sends nothing.** *Not interested* and × record locally that
   the question was answered, and that card never returns. Nobody who says
   no is counted; the test measures who answers and what they say.
@@ -3763,7 +3767,7 @@ and an optional email, or anyone proposes sending something the user did
 not see on the card. Adding an offer of the same shape is a row in the
 three schemas, not a new decision.
 
-## ADR-063 — Second Brain: the sessions' decisions and findings, kept as a graph on this machine; twenty by hand are free
+## ADR-063 — Second Brain: the sessions' decisions and findings, kept as a graph on this machine; free
 
 **Date:** 2026-10-14 · **Status:** accepted (owner, 2026-10-14)
 
@@ -3801,12 +3805,21 @@ searching prose.
   that says something, without its Markdown, is the title; the passage,
   flattened, is the summary. A memory hangs off its project and its topics
   from the first drop, so the graph clusters without any model.
-- **Free and Premium.** Without a licence twenty memories dropped in by hand
-  are kept — enough to see what the graph does with one's own work — and the
-  twenty-first is refused **by the daemon** (`402`), as custom agents and Ask
-  Gemini are, so the lock is not a decoration. Reading, editing, linking and
-  deleting are never locked: it is the user's data. A licence that lapses
-  leaves every memory readable.
+- **Free, all of it** (owner decision, 2026-10-14, amending the first
+  version of this ADR). As built first, twenty memories dropped in by hand
+  were free, the twenty-first was refused by the daemon (`402`) and the
+  automatic build needed a licence. The owner then said (translated): "I'm
+  not Premium myself. Either we try to convert users to Premium, or give it
+  free — we offer it, the user uses it, and later we offer to host this
+  Second Brain in the cloud for a subscription. Maybe something cooler goes
+  into Premium." So Second Brain is free: no cap on the memories kept by
+  hand, and the automatic build for everyone who says yes — it runs on the
+  user's own `claude`, which costs Caprock nothing. No route in it answers
+  `402`, and a licence, present or lapsed, changes nothing in it. The yes
+  first (below) is unchanged. Anyone who bought Premium on the pre-order
+  (ADR-062) keeps that licence exactly as it is; Premium keeps every other
+  feature it had. A paid add-on around the brain, if one is ever built, is
+  its own decision; nothing public names one (rule 11).
 - **On this machine.** Everything above is local: the graph is the daemon's
   SQLite file, served on loopback, readable by a paired device and written
   only on the machine.
@@ -3818,8 +3831,8 @@ searching prose.
   45–50 ms on the development Mac under load and a project's 20 ms
   (`TestBrainGraphReadsFiveThousandNodesQuickly`, 2026-10-14).
 
-- **Built automatically (Premium), only after a yes.** With a licence the
-  Brain screen asks once — *Build it from your sessions automatically?* —
+- **Built automatically, only after a yes.** The
+  Brain screen asks everyone once — *Build it from your sessions automatically?* —
   and Settings → Second Brain holds the switch afterwards. Until the user
   answers, nothing runs (`brain.auto` in `config.json` is absent, not
   false). The brief asked for it to be on by default; rule 4 lets an
@@ -3856,7 +3869,7 @@ searching prose.
   rolling 24 hours, counted from what `claude` reports) stops reads until
   the day rolls over. A failed read is recorded and retried after 15
   minutes, doubling, and given up after four failures until the session has
-  new prose. A licence that lapses stops the reads and keeps what was read.
+  new prose.
 - **New sessions draw on it.** A served handoff (SessionStart, the memory
   between sessions) adds up to five of the repository's memories, pinned
   first, in a budget of 700 characters of its own — so sessions started
@@ -3875,8 +3888,9 @@ searching prose.
   edge every frame took 225 ms. The app's sidebar has a Brain block below
   the projects: a small graph of the newest thirty memories, where one that
   is kept drops in from above with a ring where it lands (none with
-  prefers-reduced-motion), the three newest titles and the count. Folded
-  by default without a licence, with a lock and *How it works*.
+  prefers-reduced-motion), the three newest titles and the count. Unfolded
+  by default for everyone, with *How it works*, a short explainer that
+  opens the Brain screen.
 
 **Rules out:** an embedding index or a vector store (a dependency and a model
 for what titles, topics and links do); a graph library in the dashboard
@@ -3888,5 +3902,5 @@ kept.
 
 **Revisit if:** people keep far more than a few thousand memories (the graph
 read returns at most 5,000 and the screen would need clustering on the
-daemon); or the free twenty turn out to be too few to see the point — a
-number to change in one constant (`brainFreeManual`).
+daemon); or the brain's cost to the machine — the database, the reads —
+turns out to need a limit of its own.

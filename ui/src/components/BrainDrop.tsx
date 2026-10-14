@@ -9,23 +9,18 @@
 import { useState } from 'react'
 import { isPairedDevice } from '@/lib/api'
 import { dropIntoBrain } from '@/lib/brain'
-import { PremiumModal } from './PremiumModal'
 
-type State = { at: 'idle' } | { at: 'busy' } | { at: 'done' } | { at: 'error'; message: string; locked: boolean }
+type State = { at: 'idle' } | { at: 'busy' } | { at: 'done' } | { at: 'error'; message: string }
 
 export function BrainDropButton({ eventId, className = '' }: { eventId: number; className?: string }) {
   const [st, setSt] = useState<State>({ at: 'idle' })
-  const [premium, setPremium] = useState(false)
   if (isPairedDevice()) return null
   const drop = async () => {
     if (st.at === 'busy' || st.at === 'done') return
     setSt({ at: 'busy' })
     const r = await dropIntoBrain({ event_id: eventId })
     if (r.ok) setSt({ at: 'done' })
-    else {
-      setSt({ at: 'error', message: r.message, locked: r.locked })
-      if (r.locked) setPremium(true)
-    }
+    else setSt({ at: 'error', message: r.message })
   }
   const label = st.at === 'done' ? 'In your brain' : st.at === 'busy' ? 'Dropping…' : 'Drop into brain'
   return (
@@ -42,9 +37,8 @@ export function BrainDropButton({ eventId, className = '' }: { eventId: number; 
         } ${className}`}
       >
         <BrainGlyph size={12} />
-        <span>{st.at === 'error' && !st.locked ? 'Could not drop' : label}</span>
+        <span>{st.at === 'error' ? 'Could not drop' : label}</span>
       </button>
-      {premium && <PremiumModal feature="brain" onClose={() => setPremium(false)} />}
     </>
   )
 }

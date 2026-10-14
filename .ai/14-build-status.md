@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-14 — Second Brain is free
+
+Owner decision ([ADR-063](08-decisions.md), § Free): no cap on memories
+dropped in by hand and no licence for the automatic build. The daemon drops
+`brainFreeManual`, the `402`s and the engine's licence check; the status
+loses `licensed`, `free_max` and `free_left`. The yes-first consent, the
+daily limit and the 30-day backfill with its estimate are unchanged. The
+dashboard drops the lock, the free-allowance banner and every Premium
+dialog around Brain; the sidebar block starts unfolded and *How it works*
+is a free explainer. The retired pre-order sale (ADR-062) is removed from
+the offer strip, not just hidden.
+
 ### 2026-10-14 — 0.117.2: Second Brain complete, a phone that stays paired, updates that keep the microphone
 
 Second Brain is whole: it builds itself from finished sessions once you say

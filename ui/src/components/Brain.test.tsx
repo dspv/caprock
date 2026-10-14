@@ -32,7 +32,7 @@ const node = (over: Partial<BrainNode>): BrainNode => ({
 const auto = (over = {}) => ({
   chosen: true, on: true, enabled: true, claude_found: true, model: 'haiku', daily_tokens: 300_000, spent: 12_000, running: false, pending: 2, recent: [], ...over,
 })
-const status = (over = {}) => ({ licensed: true, memories: 1, manual: 1, free_max: 20, free_left: -1, projects: [], ...over })
+const status = (over = {}) => ({ memories: 1, manual: 1, projects: [], ...over })
 
 describe('Second Brain', () => {
   afterEach(() => {
@@ -56,17 +56,25 @@ describe('Second Brain', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   })
 
-  it('says when the free memories are used, and offers Premium', async () => {
-    m.status.mockResolvedValue(status({ licensed: false, manual: 20, free_left: 0 }))
-    m.premium.mockResolvedValue({ yearly: { url: '', charged_usd: 30 }, lifetime: { url: '', charged_usd: 100 }, info_url: '' })
-    m.drop.mockRejectedValue(new ApiError(402, '402', { error: 'premium required' }))
+  it('has no allowance and no upsell: the capture is the same at any count', async () => {
+    m.status.mockResolvedValue(status({ memories: 250, manual: 250 }))
+    m.drop.mockResolvedValue({ node: node({}), created: true })
     render(<BrainCaptureHost />)
-    act(() => openBrainCapture('one more'))
-    await screen.findByText(/0 of 20 free memories left/)
+    act(() => openBrainCapture('the 251st'))
+    await screen.findByRole('textbox', { name: /What to keep/ })
+    expect(screen.getByText('Kept on this machine.')).toBeTruthy()
+    expect(screen.queryByText(/free memories|Premium/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /Drop it in/ }))
-    await screen.findByRole('alert')
-    expect(screen.getByRole('alert').textContent).toMatch(/free 20 are used/)
-    expect(screen.getByRole('button', { name: 'Unlock with Premium' })).toBeTruthy()
+    await waitFor(() => expect(m.drop).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('says a failed drop plainly, with nothing to buy', async () => {
+    m.drop.mockRejectedValue(new ApiError(500, '500', { error: 'disk full' }))
+    render(<BrainDropButton eventId={7} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Drop into brain' }))
+    await screen.findByText('Could not drop')
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('drops an answer by its event id and says it is kept', async () => {
@@ -100,13 +108,14 @@ describe('Second Brain', () => {
     expect(screen.getByRole('link', { name: /the session/ }).getAttribute('href')).toBe('#/session/s1?at=5')
   })
 
-  it('asks once, on the Brain screen, whether to build it automatically', async () => {
+  it('asks everyone once, on the Brain screen, whether to build it automatically; no Premium anywhere', async () => {
     m.status.mockResolvedValue(status({ auto: auto({ chosen: false, on: false, enabled: false }) }))
     m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
     m.settings.mockResolvedValue(auto())
     render(<BrainScreen />)
     await screen.findByText(/Build it from your sessions automatically/)
     expect(screen.getByText(/Nothing is sent to Caprock/)).toBeTruthy()
+    expect(screen.queryByText(/Premium|free memories/)).toBeNull()
     m.status.mockResolvedValue(status({ auto: auto() }))
     fireEvent.click(screen.getByRole('button', { name: 'Turn it on' }))
     await waitFor(() => expect(m.settings).toHaveBeenCalledWith({ auto: true }))
@@ -148,15 +157,20 @@ describe('Second Brain', () => {
     expect(localStorage.getItem('caprock.app.brain-fold')).toBe('closed')
   })
 
-  it('starts folded with a lock without a licence, and says how it works', async () => {
-    m.status.mockResolvedValue(status({ licensed: false, memories: 2, manual: 2, free_left: 18 }))
-    m.brain.mockResolvedValue({ nodes: [node({ id: 1 })], edges: [], total: 1 })
-    m.premium.mockResolvedValue({ yearly: { url: '', charged_usd: 30 }, lifetime: { url: '', charged_usd: 100 }, info_url: '' })
-    render(<BrainSidebar onOpen={vi.fn()} />)
-    const unfold = await screen.findByRole('button', { name: 'Unfold Brain' })
-    expect(screen.queryByText('How it works')).toBeNull()
-    fireEvent.click(unfold)
-    fireEvent.click(await screen.findByRole('button', { name: 'How it works' }))
-    await screen.findByRole('dialog')
+  it('starts unfolded for everyone, with no lock, and says how it works', async () => {
+    m.status.mockResolvedValue(status({ memories: 2, manual: 2 }))
+    m.brain.mockResolvedValue({ nodes: [node({ id: 1, title: 'Memory 1' })], edges: [], total: 1 })
+    const onOpen = vi.fn()
+    render(<BrainSidebar onOpen={onOpen} />)
+    await screen.findByRole('button', { name: 'Memory 1' })
+    expect(screen.getByRole('button', { name: 'Fold Brain' })).toBeTruthy()
+    expect(document.querySelector('[data-brain-sidebar] svg.text-premium-strong')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'How it works' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).not.toMatch(/Premium|\$/)
+    expect(m.premium).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Open Second Brain' }))
+    expect(onOpen).toHaveBeenCalledWith('#/brain')
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })

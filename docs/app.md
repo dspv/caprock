@@ -847,7 +847,7 @@ row.
 - **Find and tidy.** Search, pick a project or a span; open a memory to edit
   its title and summary, pin it, link it to a topic, jump to the session it
   came from, or delete it.
-- **Let it build itself (Premium).** With a licence, the Brain screen asks
+- **Let it build itself.** The Brain screen asks
   once whether to build it automatically; Settings → Second Brain switches it
   later. When a session has been quiet for ten minutes, Caprock asks your own
   `claude` (a small model, Haiku) to pick out what it decided and found, and
@@ -860,9 +860,8 @@ row.
 - **New sessions draw on it.** When Claude starts in a folder and is handed
   where the last session left off, it also gets up to five of that
   repository's memories, pinned ones first.
-- **Free and Premium.** Twenty memories dropped in by hand are free; Premium
-  keeps every one and builds the rest for you. Whatever you kept stays
-  readable and editable if a licence lapses.
+- **Free.** All of it: every memory you keep, and the automatic build once
+  you say yes. No licence is needed for any of it.
 
 **Privacy.** Second Brain lives in Caprock's database on this computer, and
 nothing in it is sent to Caprock. Dropping memories in by hand sends nothing
@@ -1099,8 +1098,8 @@ day; it waits until you stop typing, never appears while a session is
 waiting for a permission answer, and never covers a terminal.
 
 - **Second Brain.** The strip used to offer it ahead of its arrival; it
-  has arrived (see [Second Brain](#second-brain)), so the strip no longer
-  shows it.
+  has arrived, free for everyone (see [Second Brain](#second-brain)), so
+  the strip no longer shows it.
 - **Answering a question.** Two one-click questions and an optional email,
   if you want to hear when it is ready.
 - **What is sent, and when.** Nothing, until you press **Send**. Then
@@ -1108,8 +1107,8 @@ waiting for a permission answer, and never covers a terminal.
   if you added one, to caprock.dev. Nothing else: no identifier, nothing
   about your sessions, projects or usage, not even Caprock's version.
 - **Saying no.** *Not interested* or × sends nothing.
-- **How often.** An answered strip never comes back. Second Brain and the
-  Hugging Face question are shown at most twice each, the others once.
+- **How often.** An answered strip never comes back. The Hugging Face
+  question is shown at most twice, the others once.
 
 ## macOS privacy prompts
 

@@ -5,7 +5,7 @@
  * current from the live socket (a `brain` frame on every change).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, ApiError, errText, type BrainDrop, type BrainFilterQuery, type BrainGraph, type BrainKind, type BrainNode, type BrainStatus } from './api'
+import { api, errText, type BrainDrop, type BrainFilterQuery, type BrainGraph, type BrainKind, type BrainNode, type BrainStatus } from './api'
 import { live } from './live'
 
 /** Said on window to open the quick capture; `detail.text` prefills it. */
@@ -46,18 +46,15 @@ export const KIND_COLOR: Record<BrainKind, string> = {
 }
 
 /** The outcome of a drop, in words for a button or a line. */
-export type DropResult = { ok: true; node: BrainNode } | { ok: false; locked: boolean; message: string }
+export type DropResult = { ok: true; node: BrainNode } | { ok: false; message: string }
 
-/** Drops something into the brain; a 402 is the free allowance used up, said as such. */
+/** Drops something into the brain. Second Brain has no cap (owner decision, 2026-10-14). */
 export async function dropIntoBrain(d: BrainDrop): Promise<DropResult> {
   try {
     const r = await api.dropBrain(d)
     return { ok: true, node: r.node }
   } catch (e) {
-    if (e instanceof ApiError && e.status === 402) {
-      return { ok: false, locked: true, message: 'The free 20 are used — Premium keeps every memory' }
-    }
-    return { ok: false, locked: false, message: errText(e) }
+    return { ok: false, message: errText(e) }
   }
 }
 

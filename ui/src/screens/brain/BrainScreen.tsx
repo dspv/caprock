@@ -18,8 +18,6 @@ import { keys } from '@/lib/appkeys'
 import { isAppMode } from '@/lib/appmode'
 import { useNow } from '@/lib/useNow'
 import { Empty, Skeleton } from '@/components/ui'
-import { Banner, BannerButton } from '@/components/Banner'
-import { PremiumModal } from '@/components/PremiumModal'
 import { BrainGlyph } from '@/components/BrainDrop'
 import { BrainGraphCanvas } from '@/components/BrainGraphCanvas'
 import { BrainDetail } from './BrainDetail'
@@ -58,7 +56,6 @@ export function BrainScreen({ node }: { node?: number }) {
   const [project, setProject] = useState('')
   const [span, setSpan] = useState(0)
   const [selected, setSelected] = useState<number | undefined>(node)
-  const [premium, setPremium] = useState(false)
   const [view, setView] = useView()
   useEffect(() => { if (node) setSelected(node) }, [node])
   // A pause in typing, then the search: each one reads the graph.
@@ -98,19 +95,8 @@ export function BrainScreen({ node }: { node?: number }) {
         from. Kept on this machine.
       </p>
 
-      {owner && status?.licensed && status.auto && <BrainConsent auto={status.auto} onAnswer={reloadStatus} />}
-
-      {status && !status.licensed && (
-        <Banner
-          id="brain-free"
-          tone="premium"
-          art="lock"
-          edge
-          title={`${status.manual} of ${status.free_max} free memories`}
-          line="Premium keeps every memory you drop in."
-          actions={<BannerButton kind="premium" onClick={() => setPremium(true)}>Unlock with Premium</BannerButton>}
-        />
-      )}
+      {/* Asked of everyone, once: Second Brain is free (owner decision, 2026-10-14). */}
+      {owner && status?.auto && <BrainConsent auto={status.auto} onAnswer={reloadStatus} />}
 
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -208,7 +194,6 @@ export function BrainScreen({ node }: { node?: number }) {
           )}
         </div>
       )}
-      {premium && <PremiumModal feature="brain" onClose={() => setPremium(false)} />}
     </div>
   )
 }

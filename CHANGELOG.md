@@ -20,6 +20,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **brain:** Second Brain is free, all of it. There is no cap on the
+  memories you drop in by hand (it was twenty without a licence), and the
+  automatic build from finished sessions works for everyone who says yes —
+  it runs on your own `claude`. The Brain screen asks everyone once; the
+  sidebar's Brain block starts unfolded, with no lock, and *How it works*
+  explains it and opens the Brain screen. A Premium licence bought for
+  Second Brain stays exactly as it was, with every other Premium feature.
+  `GET /v1/brain/status` no longer carries `licensed`, `free_max` or
+  `free_left`, and no Second Brain route answers `402`.
 - **pipeline:** *PRs & CI* is now **Pipeline**, everywhere: the tab, the
   sidebar footer, the palette, the deck. Tabs you had open come back under
   the new name. The page is one list of pull requests instead of a board
