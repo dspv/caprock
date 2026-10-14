@@ -132,8 +132,11 @@ others. Installing it: [install-app.md](install-app.md).
   days under it and one word: *usual*, *above usual +38%*, *below usual
   −20%*, or *not enough history* in your first days. It compares with your
   own median by the same time of day; hover it for the figures behind it.
-  Beside *Dashboard* sit two small square buttons: the **PRs & CI** mode
-  and the theme. The PRs & CI button's picture is what is on screen —
+  Under *Dashboard*, one row in two halves: the **PRs & CI** mode, named
+  *CI Off*, *CI Bar* or *CI Page* (its key, ⇧⌘B, is in its tooltip), and
+  the theme, named too. On Windows and Linux each takes a row, and there
+  the PRs & CI row shows its key, Ctrl+Alt+Shift+B. The PRs & CI button's
+  picture is what is on screen —
   an empty window (Hidden), a band along its bottom (Bar: the session
   deck), a filled window (Full page: the *PRs & CI* tab) — and a click
   moves to the next, Hidden → Bar → Full page → Hidden; ⌘B and ⇧⌘B do
@@ -148,7 +151,9 @@ others. Installing it: [install-app.md](install-app.md).
   or Thunderbird. Adding your account leaves the sample; *Exit sample* goes
   to the ways to start.
   The arrow beside *Send feedback* folds that bottom block to one row of
-  icons and back; the app remembers which way you left it.
+  icons and back; the app remembers which way you left it. Folded, on a
+  Mac each icon has its key drawn small above it; on Windows and Linux,
+  where the keys are longer, an icon's key shows when you point at it.
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
   how new agents start, appearance, terminal and editor first. The × beside
   the *Settings* heading, or Esc, closes it as the tab's × does. *Send
@@ -635,7 +640,7 @@ others. Installing it: [install-app.md](install-app.md).
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
-- **Themes.** Eight, picked from the sun/moon button beside *Dashboard* at
+- **Themes.** Eight, picked from the sun/moon button under *Dashboard* at
   the foot of the sidebar or Settings → *Appearance*: Dark Pastel (a neutral graphite with
   soft, muted colours, the default dark one), Dark Warm, Dark Cold and Dark
   Side; Light, Light Cold, Book (the default light one) and Light Side. Until
@@ -1057,9 +1062,14 @@ or Photos library, cloud storage or a volume in the background.
   just cannot read that folder.
 - **Sessions started before this change** still ask as "caprock" until they
   end.
-- **Why it asks again after an update.** Caprock is not yet signed with an
-  Apple Developer ID, so to macOS each release is a new program. For a folder
-  you open in Caprock, or one a session runs in, it asks once per release.
+- **Asking again after an update.** Caprock is not yet signed with an
+  Apple Developer ID. Older releases were signed in a way that made each
+  release a new program to macOS, so the microphone and folder questions
+  came back after every update. The app is now signed with one Caprock
+  certificate that stays the same from release to release: the first update
+  to such a release asks one last time, and later updates keep your answers.
+  The `caprock` Homebrew formula's daemon, when it is the one running, still
+  asks once per release.
 - **Why there are several "caprock" entries without an icon.** Each entry
   is a `caprock` binary at a different place: older Homebrew releases
   (Homebrew keeps each version at its own path), the app's daemon, and
@@ -1090,9 +1100,10 @@ appeared:
 - **Start a new session** for voice. A session that was already running
   keeps the program that started it; a new one asks for itself.
 - **Check System Settings → Privacy & Security → Microphone.** If `claude`,
-  `caprock` or Caprock is listed and switched off, switch it on. After each
-  Caprock release macOS may ask again, since an ad-hoc signed release is a
-  new program to it.
+  `caprock` or Caprock is listed and switched off, switch it on. The first
+  update to a release signed with Caprock's certificate asks once more;
+  after that your answer stays across updates
+  ([why](#macos-privacy-prompts)).
 - **Homebrew without the app.** The formula's `caprock` is not signed with
   the hardened runtime, so nothing stops the prompt; it names "caprock".
 
