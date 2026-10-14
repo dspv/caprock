@@ -73,7 +73,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
-### 2026-10-14 — unreleased: Second Brain drawn, and in the sidebar
+### 2026-10-14 — 0.117.2: Second Brain complete, a phone that stays paired, updates that keep the microphone
+
+Second Brain is whole: it builds itself from finished sessions once you say
+yes, draws memories as a graph and has a Brain block in the sidebar
+([ADR-063](08-decisions.md)); the pre-order strip is retired. A paired phone
+stays paired through a relay restart, a daemon restart or a stray frame, and
+one phone hanging up no longer drops the others. The macOS app is signed with
+one stable identity, so the microphone answer survives updates after one last
+prompt. The status moves the moment you answer, Today shows a 14-day trend,
+Mail imports every account the mail apps on the computer can read, the phone
+session bar is one 44px line with a dictation language chip, and selected text
+stays readable in every theme.
+
+### 2026-10-14 — 0.117.2: Second Brain drawn, and in the sidebar
 
 The `#/brain` screen opens on a force-directed graph (`lib/forcegraph.ts`,
 Barnes–Hut; `components/BrainGraphCanvas.tsx`, a cached layer redrawn only
@@ -86,7 +99,7 @@ with a limit no longer returns every entity, and a filtered read no longer
 pulls in memories that a selected one relates to. `SECOND_BRAIN_BUILT` is
 set, so the pre-order strip (ADR-062) no longer offers Second Brain.
 
-### 2026-10-14 — unreleased: Second Brain builds itself
+### 2026-10-14 — 0.117.2: Second Brain builds itself
 
 The automatic extraction ([ADR-063](08-decisions.md)): `internal/brain`
 reads a session quiet for ten minutes through the user's own `claude -p`
@@ -114,7 +127,7 @@ shared session's cost across its pull requests, and shows tokens beside cost.
 The live feed on the dashboard is now What happened: edits, tests, commits,
 pull requests and subagents as moments rather than every command.
 
-### 2026-10-14 — unreleased: Second Brain, by hand
+### 2026-10-14 — 0.117.1: Second Brain, by hand
 
 Memories kept as a graph ([ADR-063](08-decisions.md)): migration 0055
 (`brain_nodes`, `brain_edges`, `brain_runs`), `/v1/brain*`, the `brain`

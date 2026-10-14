@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.117.2] - 2026-10-14
+
 ### Added
 
 - **mail:** **Import everything.** Mail lists the mail accounts it can
