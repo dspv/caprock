@@ -1,5 +1,5 @@
 {
- "about": "A real Caprock work session, sanitised: the orchestrating Claude Code session in the public dspv/caprock repository and the subagents it ran in that repository's worktrees, over 85 minutes on 2026-10-13. Times are seconds from the start of the window; turns are [t, model, input, output, cache_read, cache_write] tokens; calls are [t, tool, target, seconds_taken]. Paths are relative to the repository root; commands are first lines, cut at 72 characters. daily_cost is the caprock project's spend at API list prices per day, by day offset from the window. Pull requests are dspv/caprock's own, public. Built by scripts/demo-fixture.py; shown on caprock.dev as example figures.",
+ "about": "A real Caprock work session, sanitised: the orchestrating Claude Code session in the public dspv/caprock repository and the subagents it ran in that repository's worktrees, over 85 minutes on 2026-10-13. Times are seconds from the start of the window; turns are [t, model, input, output, cache_read, cache_write] tokens; calls are [t, tool, target, seconds_taken]. Paths are relative to the repository root; commands are first lines, cut at 72 characters. daily_cost is the caprock project's spend at API list prices per day, by day offset from the window. Pull requests are dspv/caprock's own, public; history is its recent merged pull requests and workflow runs, each run with its billed minutes per runner OS. Built by scripts/demo-fixture.py; shown on caprock.dev as example figures.",
  "repo": "caprock",
  "window_s": 5100,
  "orchestrator": {
@@ -3038,6 +3038,1414 @@
    [5000, 25.0, 473800],
    [5034, 25.0, 473766],
    [5077, 25.0, 473724]
+  ]
+ },
+ "history": {
+  "merged_prs": [
+   {
+    "number": 573,
+    "title": "chore(release): 0.116.0",
+    "branch": "release/0.116.0",
+    "created_s": 14326,
+    "merged_s": 14780
+   },
+   {
+    "number": 572,
+    "title": "test(app): the palette's doctor test waits for its listener",
+    "branch": "fix/doctor-test-flake",
+    "created_s": 11558,
+    "merged_s": 13740
+   },
+   {
+    "number": 571,
+    "title": "perf(store): subagent rows and the summary read indexes, not payloads",
+    "branch": "perf/store-subagent-reads",
+    "created_s": 7085,
+    "merged_s": 11721
+   },
+   {
+    "number": 570,
+    "title": "feat(app): eight faces for Claude, state and mode under the portrait, subagent chips in fives",
+    "branch": "feat/claude-faces",
+    "created_s": 6812,
+    "merged_s": 11292
+   },
+   {
+    "number": 569,
+    "title": "fix(daemon): end a pid-less session as soon as its transcript or folder is deleted",
+    "branch": "fix/sweep-ends-sessions-whose-files-are-gone",
+    "created_s": 6354,
+    "merged_s": 10619
+   },
+   {
+    "number": 567,
+    "title": "Pull request #567",
+    "branch": "pr-567",
+    "created_s": 6031,
+    "merged_s": 7178
+   },
+   {
+    "number": 566,
+    "title": "fix(app): switching tabs no longer re-draws the terminal's font",
+    "branch": "fix/tab-switch-font",
+    "created_s": 5949,
+    "merged_s": 9537
+   },
+   {
+    "number": 565,
+    "title": "fix(app): the version panel closes from a ×, and tooltips stay off open panels",
+    "branch": "fix/version-panel-close",
+    "created_s": 5853,
+    "merged_s": 8794
+   },
+   {
+    "number": 557,
+    "title": "Pull request #557",
+    "branch": "pr-557",
+    "created_s": 3638,
+    "merged_s": 11924
+   },
+   {
+    "number": 556,
+    "title": "Pull request #556",
+    "branch": "pr-556",
+    "created_s": 3611,
+    "merged_s": 7584
+   },
+   {
+    "number": 554,
+    "title": "Pull request #554",
+    "branch": "pr-554",
+    "created_s": 3364,
+    "merged_s": 5072
+   },
+   {
+    "number": 553,
+    "title": "feat(deck): an Expand you can see, Collapse in the same corner on ⇧⌘B, titles that use the row, the circles back",
+    "branch": "feat/deck-expand-toggle",
+    "created_s": 3217,
+    "merged_s": 4452
+   },
+   {
+    "number": 552,
+    "title": "Pull request #552",
+    "branch": "pr-552",
+    "created_s": 3200,
+    "merged_s": 3839
+   },
+   {
+    "number": 551,
+    "title": "feat(doctor): list processes that look abandoned, and stop one on a confirmed click (ADR-059)",
+    "branch": "feat/doctor-orphans",
+    "created_s": 2407,
+    "merged_s": 3277
+   },
+   {
+    "number": 550,
+    "title": "feat(app): tabs in the order opened are the navigation, ⌘1–⌘9 on every tab; sidebar Flat or Tree",
+    "branch": "feat/tab-digit-shortcuts",
+    "created_s": 2005,
+    "merged_s": 4900
+   },
+   {
+    "number": 549,
+    "title": "Pull request #549",
+    "branch": "pr-549",
+    "created_s": 1932,
+    "merged_s": 2330
+   },
+   {
+    "number": 548,
+    "title": "feat(deck): a PR's checks summed up in one readable group, every check on hover",
+    "branch": "feat/deck-ci-summary",
+    "created_s": 1729,
+    "merged_s": 1884
+   },
+   {
+    "number": 547,
+    "title": "Pull request #547",
+    "branch": "pr-547",
+    "created_s": 419,
+    "merged_s": 1802
+   },
+   {
+    "number": 546,
+    "title": "Pull request #546",
+    "branch": "pr-546",
+    "created_s": 252,
+    "merged_s": 777
+   },
+   {
+    "number": 545,
+    "title": "feat(app): a C with a green dot for the app icon",
+    "branch": "feat/app-icon-c-dot",
+    "created_s": 157,
+    "merged_s": 5798
+   },
+   {
+    "number": 544,
+    "title": "chore(release): 0.115.1",
+    "branch": "release/0.115.1",
+    "created_s": -2405,
+    "merged_s": -2021
+   },
+   {
+    "number": 543,
+    "title": "Pull request #543",
+    "branch": "pr-543",
+    "created_s": -3074,
+    "merged_s": 5871
+   },
+   {
+    "number": 542,
+    "title": "Pull request #542",
+    "branch": "pr-542",
+    "created_s": -3377,
+    "merged_s": -2432
+   },
+   {
+    "number": 541,
+    "title": "fix(terminal): glyphs drawn again after a sleep, a display change or a long hide",
+    "branch": "fix/terminal-atlas-wake",
+    "created_s": -4240,
+    "merged_s": -2883
+   },
+   {
+    "number": 540,
+    "title": "chore(release): 0.115.0",
+    "branch": "release/0.115.0",
+    "created_s": -4705,
+    "merged_s": -3870
+   },
+   {
+    "number": 539,
+    "title": "feat(app): rename a session from its tab or sidebar row; a short default name",
+    "branch": "feat/session-rename",
+    "created_s": -13871,
+    "merged_s": -5422
+   },
+   {
+    "number": 538,
+    "title": "feat(app): the deck opens on every PR with its circles, and the cockpit shows CI",
+    "branch": "feat/deck-overview",
+    "created_s": -14299,
+    "merged_s": -7976
+   },
+   {
+    "number": 537,
+    "title": "Pull request #537",
+    "branch": "feat/phone-home",
+    "created_s": -14548,
+    "merged_s": -4768
+   },
+   {
+    "number": 536,
+    "title": "Pull request #536",
+    "branch": "pr-536",
+    "created_s": -27674,
+    "merged_s": -8598
+   },
+   {
+    "number": 535,
+    "title": "feat(ui): Dark Pastel is the default dark palette",
+    "branch": "feat/dark-pastel-default",
+    "created_s": -27927,
+    "merged_s": -9421
+   },
+   {
+    "number": 534,
+    "title": "chore(release): 0.114.0",
+    "branch": "release/0.114.0",
+    "created_s": -28005,
+    "merged_s": -27613
+   },
+   {
+    "number": 533,
+    "title": "feat(app): spend chart shows burn rate per active hour, with a pace line against your usual",
+    "branch": "feat/chart-burn-pace",
+    "created_s": -28018,
+    "merged_s": -26974
+   },
+   {
+    "number": 532,
+    "title": "feat(app): every agent session in the sidebar, group by project or one list, one ⌘1–9 numbering, rows keep their places",
+    "branch": "feat/app-project-keys-fixed-rows",
+    "created_s": -28808,
+    "merged_s": -8980
+   },
+   {
+    "number": 531,
+    "title": "feat(app): a Repos table on Now, from git and what the deck already read",
+    "branch": "feat/now-repos",
+    "created_s": -29423,
+    "merged_s": -13849
+   },
+   {
+    "number": 530,
+    "title": "perf(app): the Now screen refreshes once, and the hot flame draws only on change",
+    "branch": "perf/now-batched-refresh",
+    "created_s": -29599,
+    "merged_s": -29023
+   },
+   {
+    "number": 529,
+    "title": "fix(app): the sidebar lists only active sessions under a project",
+    "branch": "fix/sidebar-only-active",
+    "created_s": -30700,
+    "merged_s": -29926
+   },
+   {
+    "number": 528,
+    "title": "feat(app): pull requests and CI, large, in a tab",
+    "branch": "feat/prs-ci-tab",
+    "created_s": -30732,
+    "merged_s": -28719
+   },
+   {
+    "number": 527,
+    "title": "fix(store): old payloads lose their base64 and the database gives space back, on its own",
+    "branch": "feat/compact-old-payloads",
+    "created_s": -30755,
+    "merged_s": -29496
+   },
+   {
+    "number": 526,
+    "title": "feat(app): a Hidden status line that keeps the plan limits coming",
+    "branch": "feat/statusline-hidden",
+    "created_s": -31251,
+    "merged_s": -30875
+   },
+   {
+    "number": 525,
+    "title": "feat(app): the cockpit's headline against your own usual",
+    "branch": "feat/cockpit-usual",
+    "created_s": -32521,
+    "merged_s": -31674
+   },
+   {
+    "number": 524,
+    "title": "Pull request #524",
+    "branch": "feat/spend-chart-metric",
+    "created_s": -32597,
+    "merged_s": -32069
+   },
+   {
+    "number": 523,
+    "title": "feat(app): subagent rows say what each one is doing now",
+    "branch": "feat/subagent-doing",
+    "created_s": -32763,
+    "merged_s": -32352
+   },
+   {
+    "number": 522,
+    "title": "Pull request #522",
+    "branch": "pr-522",
+    "created_s": -33260,
+    "merged_s": -32906
+   },
+   {
+    "number": 521,
+    "title": "fix(app): a tab restored behind another no longer garbles its scrollback",
+    "branch": "fix/term-scrollback-garble",
+    "created_s": -33820,
+    "merged_s": 5639
+   },
+   {
+    "number": 520,
+    "title": "chore(release): 0.113.0",
+    "branch": "release/0.113.0",
+    "created_s": -43430,
+    "merged_s": -43042
+   },
+   {
+    "number": 519,
+    "title": "fix(deck): the pull requests panel opens on what it last knew",
+    "branch": "fix/deck-prs-cache",
+    "created_s": -44801,
+    "merged_s": -43866
+   },
+   {
+    "number": 518,
+    "title": "feat(app): what Caprock costs this computer, one click from the status bar",
+    "branch": "feat/footprint-panel",
+    "created_s": -44844,
+    "merged_s": -43475
+   },
+   {
+    "number": 517,
+    "title": "perf(app): a hidden window does no work, an idle one almost none",
+    "branch": "perf/hidden-window-no-work",
+    "created_s": -44870,
+    "merged_s": -44256
+   },
+   {
+    "number": 516,
+    "title": "fix(store): store what the screens read, and read the database less",
+    "branch": "fix/store-less-read-less",
+    "created_s": -46727,
+    "merged_s": -44713
+   },
+   {
+    "number": 515,
+    "title": "Pull request #515",
+    "branch": "feat/hero-burn-default",
+    "created_s": -47053,
+    "merged_s": -46462
+   },
+   {
+    "number": 514,
+    "title": "feat(daemon): caprock doctor and what Caprock costs this machine",
+    "branch": "feat/footprint-doctor",
+    "created_s": -47076,
+    "merged_s": -45622
+   },
+   {
+    "number": 513,
+    "title": "fix(app): the spend chart's hovered bar shows its own figure in full",
+    "branch": "fix/spend-chart-hover-figure",
+    "created_s": -48653,
+    "merged_s": -47993
+   }
+  ],
+  "runs": [
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "in_progress",
+    "conclusion": "",
+    "attempt": 1,
+    "branch": "fix/project-activity-midnight",
+    "started_s": 35083,
+    "updated_s": 35093,
+    "minutes": {
+     "linux": 6,
+     "windows": 3,
+     "macos": 5
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "fix/project-activity-midnight",
+    "started_s": 35083,
+    "updated_s": 35092,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "release",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "v0.116.0",
+    "started_s": 14798,
+    "updated_s": 15496,
+    "minutes": {
+     "linux": 21,
+     "windows": 6,
+     "macos": 11
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 14783,
+    "updated_s": 14796,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 14783,
+    "updated_s": 15209,
+    "minutes": {
+     "linux": 13,
+     "windows": 17,
+     "macos": 12
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "release/0.116.0",
+    "started_s": 14329,
+    "updated_s": 14341,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "release/0.116.0",
+    "started_s": 14329,
+    "updated_s": 14751,
+    "minutes": {
+     "linux": 10,
+     "windows": 10,
+     "macos": 6
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 14287,
+    "updated_s": 14299,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 14287,
+    "updated_s": 14705,
+    "minutes": {
+     "windows": 17,
+     "linux": 11,
+     "macos": 10
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 13743,
+    "updated_s": 13756,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 13743,
+    "updated_s": 14108,
+    "minutes": {
+     "macos": 9,
+     "windows": 17,
+     "linux": 13
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "fix/doctor-test-flake",
+    "started_s": 13304,
+    "updated_s": 13727,
+    "minutes": {
+     "linux": 8,
+     "macos": 4,
+     "windows": 10
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "fix/doctor-test-flake",
+    "started_s": 13304,
+    "updated_s": 13313,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 13274,
+    "updated_s": 13287,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 13274,
+    "updated_s": 13681,
+    "minutes": {
+     "linux": 13,
+     "windows": 16,
+     "macos": 11
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 12824,
+    "updated_s": 12836,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 12824,
+    "updated_s": 13215,
+    "minutes": {
+     "macos": 9,
+     "linux": 13,
+     "windows": 16
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 12352,
+    "updated_s": 12363,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 12352,
+    "updated_s": 12729,
+    "minutes": {
+     "linux": 13,
+     "windows": 17,
+     "macos": 11
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 11927,
+    "updated_s": 11936,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 11927,
+    "updated_s": 12332,
+    "minutes": {
+     "windows": 17,
+     "linux": 13,
+     "macos": 11
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 11723,
+    "updated_s": 12090,
+    "minutes": {
+     "linux": 12,
+     "macos": 10,
+     "windows": 14
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 11723,
+    "updated_s": 11732,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "fix/doctor-test-flake",
+    "started_s": 11561,
+    "updated_s": 11581,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "fix/doctor-test-flake",
+    "started_s": 11561,
+    "updated_s": 11957,
+    "minutes": {
+     "windows": 11,
+     "macos": 5,
+     "linux": 10
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "run-26",
+    "started_s": 11551,
+    "updated_s": 11561,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "run-27",
+    "started_s": 11551,
+    "updated_s": 11896,
+    "minutes": {
+     "windows": 9,
+     "macos": 6,
+     "linux": 10
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 11294,
+    "updated_s": 11305,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 11294,
+    "updated_s": 11765,
+    "minutes": {
+     "windows": 20,
+     "linux": 12,
+     "macos": 10
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "perf/store-subagent-reads",
+    "started_s": 11107,
+    "updated_s": 11118,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 2,
+    "branch": "perf/store-subagent-reads",
+    "started_s": 11560,
+    "updated_s": 11716,
+    "minutes": {
+     "linux": 9,
+     "macos": 6,
+     "windows": 10
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "feat/claude-faces",
+    "started_s": 10679,
+    "updated_s": 10688,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 2,
+    "branch": "feat/claude-faces",
+    "started_s": 11106,
+    "updated_s": 11263,
+    "minutes": {
+     "macos": 4,
+     "linux": 10,
+     "windows": 10
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "failure",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 10621,
+    "updated_s": 11002,
+    "minutes": {
+     "linux": 13,
+     "windows": 17,
+     "macos": 12
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 10621,
+    "updated_s": 10632,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "fix/sweep-ends-sessions-whose-files-are-gone",
+    "started_s": 10152,
+    "updated_s": 10614,
+    "minutes": {
+     "windows": 12,
+     "macos": 4,
+     "linux": 8
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "fix/sweep-ends-sessions-whose-files-are-gone",
+    "started_s": 10152,
+    "updated_s": 10161,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 10121,
+    "updated_s": 10502,
+    "minutes": {
+     "linux": 12,
+     "macos": 10,
+     "windows": 17
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 10121,
+    "updated_s": 10133,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 9540,
+    "updated_s": 9908,
+    "minutes": {
+     "linux": 14,
+     "windows": 15,
+     "macos": 12
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 9540,
+    "updated_s": 9553,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 2,
+    "branch": "fix/tab-switch-font",
+    "started_s": 9259,
+    "updated_s": 9530,
+    "minutes": {
+     "windows": 9,
+     "linux": 8,
+     "macos": 5
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "fix/tab-switch-font",
+    "started_s": 8809,
+    "updated_s": 8819,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 8796,
+    "updated_s": 8808,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 8796,
+    "updated_s": 9189,
+    "minutes": {
+     "linux": 11,
+     "windows": 18,
+     "macos": 11
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "run-46",
+    "started_s": 8310,
+    "updated_s": 8752,
+    "minutes": {
+     "linux": 10,
+     "windows": 11,
+     "macos": 5
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "run-47",
+    "started_s": 8310,
+    "updated_s": 8366,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "fix/version-panel-close",
+    "started_s": 8269,
+    "updated_s": 8762,
+    "minutes": {
+     "linux": 9,
+     "windows": 13,
+     "macos": 5
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "fix/version-panel-close",
+    "started_s": 8269,
+    "updated_s": 8279,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 8224,
+    "updated_s": 8629,
+    "minutes": {
+     "windows": 16,
+     "linux": 12,
+     "macos": 11
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 8224,
+    "updated_s": 8235,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 7586,
+    "updated_s": 7599,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 7586,
+    "updated_s": 7958,
+    "minutes": {
+     "linux": 11,
+     "macos": 12,
+     "windows": 16
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 7181,
+    "updated_s": 7733,
+    "minutes": {
+     "linux": 13,
+     "macos": 12,
+     "windows": 17
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 7181,
+    "updated_s": 7319,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "run-56",
+    "started_s": 7167,
+    "updated_s": 7305,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "run-57",
+    "started_s": 7167,
+    "updated_s": 7621,
+    "minutes": {
+     "windows": 10,
+     "linux": 8,
+     "macos": 5
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "run-58",
+    "started_s": 7150,
+    "updated_s": 7573,
+    "minutes": {
+     "windows": 11,
+     "linux": 9,
+     "macos": 5
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "run-59",
+    "started_s": 7149,
+    "updated_s": 7162,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 7134,
+    "updated_s": 7493,
+    "minutes": {
+     "macos": 10,
+     "linux": 14,
+     "windows": 15
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 7134,
+    "updated_s": 7147,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "perf/store-subagent-reads",
+    "started_s": 7088,
+    "updated_s": 7102,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "perf/store-subagent-reads",
+    "started_s": 7088,
+    "updated_s": 7396,
+    "minutes": {
+     "linux": 8,
+     "macos": 5,
+     "windows": 10
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "feat/claude-faces",
+    "started_s": 6815,
+    "updated_s": 6827,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "failure",
+    "attempt": 1,
+    "branch": "feat/claude-faces",
+    "started_s": 6815,
+    "updated_s": 7148,
+    "minutes": {
+     "windows": 9,
+     "macos": 5,
+     "linux": 9
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "docs/shots-busy-sessions",
+    "started_s": 6657,
+    "updated_s": 7150,
+    "minutes": {
+     "macos": 5,
+     "linux": 8,
+     "windows": 10
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "docs/shots-busy-sessions",
+    "started_s": 6657,
+    "updated_s": 6675,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "run-68",
+    "started_s": 6619,
+    "updated_s": 6676,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "run-69",
+    "started_s": 6619,
+    "updated_s": 7083,
+    "minutes": {
+     "windows": 12,
+     "linux": 9,
+     "macos": 5
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "cancelled",
+    "attempt": 1,
+    "branch": "run-70",
+    "started_s": 6610,
+    "updated_s": 6621,
+    "minutes": {
+     "linux": 5,
+     "macos": 2,
+     "windows": 3
+    }
+   },
+   {
+    "name": "docs",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "cancelled",
+    "attempt": 1,
+    "branch": "run-71",
+    "started_s": 6609,
+    "updated_s": 6627,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 6528,
+    "updated_s": 7167,
+    "minutes": {
+     "windows": 18,
+     "linux": 11,
+     "macos": 7
+    }
+   },
+   {
+    "name": "docs",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "success",
+    "attempt": 1,
+    "branch": "master",
+    "started_s": 6528,
+    "updated_s": 6557,
+    "minutes": {
+     "linux": 1
+    }
+   },
+   {
+    "name": "ci",
+    "event": "pull_request",
+    "status": "completed",
+    "conclusion": "failure",
+    "attempt": 1,
+    "branch": "fix/sweep-ends-sessions-whose-files-are-gone",
+    "started_s": 6357,
+    "updated_s": 6954,
+    "minutes": {
+     "linux": 9,
+     "windows": 11,
+     "macos": 6
+    }
+   }
   ]
  }
 }

@@ -198,6 +198,57 @@ for pr in prs:
 # request opened later (this fixture's own, for one) is not part of it.
 prs = [p for p in prs if p["created_s"] is not None and p["created_s"] <= round((hi - lo) / 1000) + 300][:8]
 
+# The repository's recent history for the deck's figures band (merged per
+# day, time to merge, CI time, red runs, Actions minutes): its merged pull
+# requests of the last 14 days and its 100 newest workflow runs, as GitHub
+# shows them to anyone. Times are seconds from the window's start; the stand
+# places the newest of them at its own now. A title or branch the allow-list
+# refuses is replaced by the pull request's number, not dropped, so the
+# counts stay true. Kept as first read unless DEMO_REFRESH_PRS=1.
+def _gh(*a):
+    return json.loads(subprocess.run(["gh", *a], capture_output=True, text=True, check=True).stdout)
+
+
+def _safe(text, fallback):
+    return fallback if not text or SKIP_PR.search(text) or BAD.search(text) else text
+
+
+history = None
+if os.path.exists(OUT) and os.environ.get("DEMO_REFRESH_PRS") != "1":
+    history = json.load(open(OUT)).get("history")
+if history is None:
+    shown = {p["number"] for p in prs}
+    merged = []
+    for g in _gh("pr", "list", "--repo", "dspv/caprock", "--state", "merged", "--limit", "60",
+                 "--json", "number,title,createdAt,mergedAt,headRefName"):
+        if g["number"] in shown:
+            continue
+        merged.append({"number": g["number"], "title": _safe(g["title"], "Pull request #%d" % g["number"]),
+                       "branch": _safe(g["headRefName"], "pr-%d" % g["number"]),
+                       "created_s": _s(g["createdAt"]), "merged_s": _s(g["mergedAt"])})
+    newest = max(m["merged_s"] for m in merged)
+    merged = [m for m in merged if m["merged_s"] >= newest - 14 * 86400]
+    branches = {p["branch"] for p in prs}
+    runs = []
+    for r in _gh("api", "repos/dspv/caprock/actions/runs?per_page=100")["workflow_runs"]:
+        if r["head_branch"] in branches:
+            continue
+        minutes = {}
+        for j in _gh("api", "repos/dspv/caprock/actions/runs/%d/jobs?per_page=100" % r["id"])["jobs"]:
+            if not j.get("started_at") or not j.get("completed_at"):
+                continue
+            label = " ".join(j.get("labels") or []).lower()
+            os_ = "macos" if "macos" in label else "windows" if "windows" in label else "linux"
+            secs = _s(j["completed_at"]) - _s(j["started_at"])
+            # GitHub bills each job rounded up to the whole minute.
+            minutes[os_] = minutes.get(os_, 0) + max(1, -(-secs // 60))
+        runs.append({"name": r["name"], "event": r["event"], "status": r["status"],
+                     "conclusion": r["conclusion"] or "", "attempt": r["run_attempt"],
+                     "branch": "master" if r["head_branch"] == "master" else
+                     _safe(r["head_branch"], "run-%d" % (len(runs) + 1)),
+                     "started_s": _s(r["run_started_at"]), "updated_s": _s(r["updated_at"]), "minutes": minutes})
+    history = {"merged_prs": merged, "runs": runs}
+
 # The plan windows as Claude Code's status line reported them through the
 # window: [t, used_percentage, seconds until that window resets].
 
@@ -215,7 +266,8 @@ out = {
               "cache_read, cache_write] tokens; calls are [t, tool, target, seconds_taken]. Paths are relative to "
               "the repository root; commands are first lines, cut at 72 characters. daily_cost is the caprock "
               "project's spend at API list prices per day, by day offset from the window. Pull requests are "
-              "dspv/caprock's own, public. Built by scripts/demo-fixture.py; shown on caprock.dev as example figures."),
+              "dspv/caprock's own, public; history is its recent merged pull requests and "
+              "workflow runs, each run with its billed minutes per runner OS. Built by scripts/demo-fixture.py; shown on caprock.dev as example figures."),
     "repo": "caprock",
     "window_s": round((hi - lo) / 1000),
     "orchestrator": {"title": "Land the deck, tabs and cockpit batch", "branch": "master",
@@ -224,6 +276,7 @@ out = {
     "daily_cost": daily,
     "prs": prs,
     "limits": limits,
+    "history": history,
 }
 with open(OUT, "w") as f:
     # One row per line: a turn or a call is a short array, and a line each
