@@ -62,8 +62,8 @@ others. Installing it: [install-app.md](install-app.md).
   quick chat.
 - **Flat or Tree.** The sidebar is **Flat** by default: one list headed
   *Sessions* of the sessions open in tabs, in the tabs' order, each with
-  its tab's key (⌘1, ⌘2 …) and its project's colour dot and short name,
-  dimmed; sessions running with no tab come after them, without a key.
+  its tab's key (⌘1, ⌘2 …) and its project's short name in the project's
+  colour; sessions running with no tab come after them, without a key.
   Dragging a row there (or ⌥⇧↑ ↓ on it) moves its tab in the strip.
   **Tree** lists the sessions under their projects, each row still with
   its tab's key, so the numbers do not run in order down the tree. Choose
@@ -304,8 +304,10 @@ others. Installing it: [install-app.md](install-app.md).
   what is running, so this is where yesterday's work is.
 - **Tabs.** One strip holds every open tab of every project, in the order
   you opened them — an agent session, a shell or a file each — and each tab
-  is named by its session, after a dot in its project's colour; hover it
-  for the project, the agent and the branch. The Dashboard tab is its icon
+  is named by its session, with its project's short name after it in the
+  project's colour; hover it for the agent and the branch. A tab has no
+  status dot: it is marked only when it needs you — an amber edge along
+  its top while the session waits on you, a red one when it failed. The Dashboard tab is its icon
   and ⌘0, and the inspector's button shows ⌘I beside it, as Deck shows ⌘B.
   Picking
   another project never takes a tab out of the strip: the project's own

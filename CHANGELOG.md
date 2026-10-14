@@ -115,6 +115,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** the two dots at the start of every tab are gone. A tab shows
+  state only when it needs you: an amber edge along its top while its
+  session waits on you, a red one when it failed; working and idle show
+  nothing. The project is its short name after the title, in its colour,
+  and the Flat sidebar's rows follow the same rule.
 - **cockpit:** the context and the plan limits are back near the top, right
   under *Now* and above the spend, and each has two looks. Compact, the
   default, is one line: *62% · 124.0k / 200.0k* with a thin bar, and *5h 41% ·
