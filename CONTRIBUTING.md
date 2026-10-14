@@ -2,6 +2,10 @@
 
 Thanks for helping. Small PRs, green CI, honest numbers.
 
+**Working with a coding agent?** [Contribute with your AI](docs/contributing-with-ai.md)
+has one prompt to hand it: it reads the rules below, runs every check locally
+and opens the pull request as a draft until they pass.
+
 ## English only
 
 Everything in the repository is in English: code, comments, docs, commit
@@ -47,6 +51,12 @@ otherwise they show as skipped. Every push to `master` builds them.
 5. `make check` must pass. **No red Windows CI — no exceptions.**
 6. Reference the issue in the PR body: `Closes #<n>`.
 7. Fill in the PR checklist.
+8. **Iterate as a draft; CI runs when it is ready.** Draft pull requests run no
+   CI at all: open it with `gh pr create --draft`, run `make check` locally
+   until it is green, then mark it ready (`gh pr ready`), which runs the full
+   3-OS matrix once. A pull request from a fork also waits for a maintainer to
+   approve the run. Don't push to a ready PR just to see what CI says —
+   that is what `make check` is for ([ADR-061](.ai/08-decisions.md)).
 
 ## Rules that matter
 
@@ -68,7 +78,11 @@ every doc to when you'd read it.
 
 ## Screenshots
 
-The README's screenshots are taken from a real database, which is what makes
+The images at the top of the README (`docs/readme/`, WebP, dark and light) are
+the site's captures of the real-session fixture (`testdata/demo/`), copied from
+`caprock-web/public/shots/`; the rest, below, come from `make shots`.
+
+The README's other screenshots are taken from a real database, which is what makes
 them worth showing — and also what makes them dangerous. `scripts/shots.py`
 scrubs the copy it captures from: project directories are renamed unless they
 are on a short allow-list, so a name it has never seen is anonymised by default

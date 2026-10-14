@@ -3529,3 +3529,47 @@ would then be keeping that open too.
 address choice left the panel with the listener itself. `lan_keep_on` is
 still read at start, and **Turn off** in the footer (shown while the
 listener is on) still clears it.
+
+## ADR-061 — Draft pull requests run no CI; contributors check locally, CI runs once when a PR is ready
+
+**Date:** 2026-10-14 · **Status:** accepted
+
+**Context.** The owner (2026-10-14, translated) asked for a way for anyone to
+contribute by handing their own coding agent one prompt, "with conditions that
+tests run locally, so contributors don't hammer our CI/CD — CI should only be
+hit by the final PR." Every push to a pull request ran the full three-OS matrix
+(ci.yml) and the docs gate (docs.yml), and an agent that pushes to see what CI
+says can push many times. `make check` already runs everything CI runs except
+the OS matrix.
+
+**Decision.**
+
+- **CI skips draft pull requests.** `ci.yml` and `docs.yml` listen to
+  `pull_request` types `opened, synchronize, reopened, ready_for_review`, and
+  every job carries `if: ${{ !github.event.pull_request.draft }}` (the app
+  builds already depend on `changes`, so they skip with it). Marking a PR
+  ready runs the full gate once; pushes after that run it again as before.
+  Pushes to `master` are unchanged.
+- **Contributors iterate as drafts, with `make check` locally.** The flow and
+  the prompt for an agent are in `docs/contributing-with-ai.md`, linked from
+  the README's top and from CONTRIBUTING.md: fork, read AGENTS.md, CLAUDE.md
+  and the `.ai/` index, `make check` (and `make app-test` for `app/`) until
+  green, `gh pr create --draft` with the summary pasted, `gh pr ready` last.
+- **A non-draft PR runs exactly as before.** The maintainer's own agents open
+  ready PRs and get every job on every push; nothing here needs a label or a
+  manual trigger. `master` has no required status checks, so a skipped run on
+  a draft blocks nothing.
+- **Fork runs still need a maintainer's approval.** The repository's setting
+  for workflows from forks was `first_time_contributors` on 2026-10-14; the
+  recommendation is `all_external_contributors`, so a ready PR from a fork
+  costs CI only after a person has looked at it. A repository setting, not
+  code: the owner changes it in Settings → Actions.
+
+**Rules out:** a CI run per push while a contributor iterates; a
+label-triggered or `workflow_dispatch`-only gate that the maintainer's own PRs
+would also have to pass through.
+
+**Revisit if:** drafts start landing un-run (a PR merged while still a draft
+would have no CI result — GitHub refuses to merge a draft, so this needs a
+manual mistake), or required status checks are turned on for `master`, which
+would need the skipped jobs reported as passing.
