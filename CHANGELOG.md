@@ -17,6 +17,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   account leaves the sample. Also in the palette as *Open Mail*.
 - **app:** Send feedback opens with ⇧⌘F (Ctrl+Alt+Shift+F on Windows and
   Linux) from anywhere in the app, and its row in the sidebar shows the key.
+- **cockpit:** put the sections in your own order. *Arrange sections*
+  under the last one lists them with ↑ and ↓ for each, *Reset to default
+  order* and *Done*; nothing moves by dragging a heading, so it never
+  happens by accident, and the order is kept for you.
+- **cockpit:** every section folds to one line on its label, like Context
+  and Plan — Now, Subagents, Tasks, Recent tools, Changes, CI and
+  Processes — and stays folded or open as you left it. CI and Processes
+  can be arranged with the rest.
 
 ### Changed
 
@@ -26,26 +34,112 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   click moves to the next. ⌘B and ⇧⌘B work as before and the button
   follows them. The deck's own *Expand* and *Hide* buttons are gone. The
   theme button moved beside it, out of the Settings row.
-- **app:** the sidebar's heading has a worded switch, **Projects | Tabs**,
-  in place of the small folder icon: Projects lists the sessions under
-  their projects, Tabs in one list in the tabs' order. Settings →
-  Appearance → *Sidebar* uses the same words.
-- **cockpit:** the spend chart no longer jumps when you hover it. At rest
-  the line above the bars stood 23px tall (the ▾ that picks the metric took
-  the panel's larger font) and under the pointer 19px, so the bars and
-  everything below them moved 4px on every hover; the line is now a fixed
-  18px either way.
+- **cockpit:** Recent tools says something. Each call shows what it acted
+  on — a file relative to the project, or a command's program and first
+  words instead of the variables set ahead of it — and how it ended: a
+  quiet ✓, *exit 1* or *error* in red, the time only when it was slow,
+  and how long ago. The same call repeated in a row is one row with ×N.
+  The bar beside each call is gone, and the count in the heading now says
+  what it counts (*31,713 this session*).
+- **cockpit:** CI's *OS* view is now *By OS* and shows the newest pull
+  request's checks per runner — *Linux ✓ passed 1m 48s*, *Windows ●
+  running* — without opening its row in the deck first; each of the three
+  tabs says what it shows on hover.
+
+- **phone:** one way to pair a phone: from anywhere. Settings → Use on your
+  phone → **Show a code** now turns on access from anywhere (the encrypted
+  relay) in the same press — a line under the button says so — and the QR
+  works on Wi-Fi and mobile data alike. The Wi-Fi / Tailscale address
+  choice, the *Same Wi-Fi* step and *Keep on after Caprock restarts* are gone
+  from the panel. A phone paired on a home-network address worked on that
+  Wi-Fi only, and nothing said so when it went dead on mobile data. For a
+  machine without internet, `caprock up --lan` and `caprock pair` still pair
+  over the Wi-Fi from a terminal.
 
 ### Fixed
 
 - **app:** the PRs & CI bar's header no longer runs past its right edge
   when the sidebar and the cockpit are both open on a laptop screen: the
   least useful words drop first and the rest wraps to a second line.
+- **mail:** Mail opens instead of failing with "null is not an object
+  (evaluating 't.accounts.length')". A mail client found on the machine with
+  no accounts it could read — Apple Mail before Full Disk Access — came back
+  with a null list, and the first-run screen crashed counting it.
+- **app:** the closing questions' buttons read on one line. "Keep it
+  running, close tab" broke over two lines and "Stop and close" spilled out
+  of its button; the sheets are wider, every sheet button keeps its label on
+  one line, and the row wraps as a whole on a narrow window.
+
+- **app:** a tab's project name fits. It was cut at nine characters
+  (*uncensor…*, *creatos_f…*) even on a wide window; now it takes its whole
+  width first and the session's name is shortened before it, and tabs grow
+  to 340px when the strip has room. When many tabs leave too little even
+  for that, the name ends in an ellipsis and scrolls into view inside its
+  own space while you point at the tab, so nothing in the strip moves
+  (with reduced motion it stays cut; the tooltip names it in full).
+- **cockpit:** moving the mouse over CI's pull requests no longer opens a
+  card over the panel. The list of checks opens only once the pointer
+  rests on a row, beside the panel, and closes as soon as it leaves.
+- **phone:** every hint on the phone now says where to go: the Caprock app
+  on your computer, Settings → Use on your phone, and the button by name.
+  "This phone can read but not type. On the computer: Settings…" left out
+  that the setting is in the Caprock app, and two hints still sent you to
+  "Settings → Phone", which does not exist.
+- **phone:** a phone still on a Wi-Fi link now hears about it. Settings →
+  Use on your phone → *Paired devices* says how each device reaches the
+  computer (*anywhere*, *anywhere with Tailscale*, *Wi-Fi link*), and a
+  Wi-Fi link gets one line with **Show the code** to pair it once more
+  through the relay. On the phone, a strip says: "This link works only on
+  your home Wi-Fi. To use Caprock anywhere: in the Caprock app on your
+  computer, Settings → Use on your phone → Show a code, and scan it."
+- **phone:** the pairing steps on the phone's own page no longer send you to
+  "Settings → Phone → From anywhere → Turn on", which does not exist; they
+  name the Caprock app on your computer and Settings → Use on your phone.
+  The refusals a phone gets (not paired, view only) say the same path.
+
+## [0.116.1] - 2026-10-14
+
+### Changed
+
+- **now:** an opened Live pulse row is calmer and says more. Terminal,
+  Open repo and Open session are quiet links at the end of the project's
+  line instead of a row of bright buttons, and the empty space beside each
+  live session now shows its cost, its last hour, how long it has run, its
+  context, its branch with lines added and removed, and its pull request
+  with CI. The legend can be hidden; the **?** in the panel's header brings
+  it back.
+- **app:** closing the tab of an agent Caprock started now asks: **Close
+  tab** (in focus, so ⌘W then Enter works as before and the agent keeps
+  running) or **Close and end the agent**, which stops it (asking once
+  more if it is still answering; the conversation is kept). Tick *Don't
+  ask again* to keep your answer; Settings → *Closing a tab* changes it
+  back. An agent you started in your own terminal is never ended from
+  Caprock: its tab just closes.
+- **app:** in the Tabs list, sessions running with no tab sit under a
+  quiet *Running, no tab* line, so an agent whose tab you closed no
+  longer looks like an open chat.
+- **app:** the sidebar's heading has a worded switch, **Projects | Tabs**,
+  in place of the small folder icon: Projects lists the sessions under
+  their projects, Tabs in one list in the tabs' order. Settings →
+  Appearance → *Sidebar* uses the same words.
+
+### Fixed
+
 - **app:** updating no longer moves you off the sidebar you had. 0.116.0
   switched everyone who had never touched the sidebar toggle to the flat
   list; if you used Caprock before and never chose, the sidebar lists the
   sessions under their projects again. A first visit still starts on the
   flat list.
+- **agents:** a permission prompt you answered from a button no longer
+  comes back if the daemon crashes a moment later. The answer cleared the
+  stored prompt in the background, so a crash before that write landed
+  restored buttons for a dialog already answered; the answer now returns
+  only once the stored prompt is gone.
+- **cockpit:** the spend chart no longer jumps when you hover it. At rest
+  the line above the bars stood 23px tall (the ▾ that picks the metric took
+  the panel's larger font) and under the pointer 19px, so the bars and
+  everything below them moved 4px on every hover; the line is now a fixed
+  18px either way.
 
 ## [0.116.0] - 2026-10-14
 

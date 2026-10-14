@@ -26,7 +26,7 @@ import { dotOf, sessionTitle } from '@/lib/sidebar'
 import { href } from '@/lib/router'
 import { CloseIcon, ExternalIcon, StopIcon } from './AppIcons'
 import { everyWhileVisible } from '@/lib/visible'
-import { Cockpit, SectionLabel } from './Cockpit'
+import { Cockpit, SectionLabel, useFolded } from './Cockpit'
 import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
 import { keys } from '@/lib/appkeys'
 import { Processes } from './ResourceMeter'
@@ -121,9 +121,9 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
           hasPermission={hasPermission}
           summary={summary}
           changes={<Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} onOpenFile={onOpenFile} />}
+          ci={<CockpitCI sessionId={sessionId} onOpen={onOpenPRs} />}
+          processes={<Processes sessionId={sessionId} />}
         />
-        <CockpitCI sessionId={sessionId} onOpen={onOpenPRs} />
-        <Processes sessionId={sessionId} />
         <Actions s={s} sessionId={sessionId} isShell={false} ended={ended} editor={editor} onDetach={onDetach} />
       </div>
     )
@@ -207,11 +207,16 @@ function Changes({ sessionId, editor, onReview, onOpenFile }: { sessionId: strin
   const files = diff?.files ?? []
   const add = files.reduce((n, f) => n + (f.additions ?? 0), 0)
   const del = files.reduce((n, f) => n + (f.deletions ?? 0), 0)
+  const folded = useFolded()
   return (
     <section aria-label="Changes" className="grid gap-2">
-      <SectionLabel right={onReview ? (
-        <button type="button" onClick={onReview} className="text-[11.5px] text-accent underline-offset-2 hover:underline">Review and commit</button>
-      ) : undefined}>Changes</SectionLabel>
+      <SectionLabel right={(
+        <>
+          {/* Folded, the section's one line: how much is uncommitted. */}
+          {folded && diff && <span data-fold-only className="num whitespace-nowrap text-fg-muted">{files.length === 0 ? 'none' : <>{files.length} {files.length === 1 ? 'file' : 'files'} <span className="text-ok">+{add}</span> <span className="text-danger">−{del}</span></>}</span>}
+          {onReview && <button type="button" onClick={onReview} className="whitespace-nowrap text-[11.5px] text-accent underline-offset-2 hover:underline">Review and commit</button>}
+        </>
+      )}>Changes</SectionLabel>
       {error ? (
         <p className="text-[11.5px] text-fg-faint">{error}</p>
       ) : !diff ? (

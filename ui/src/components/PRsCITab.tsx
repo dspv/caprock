@@ -132,7 +132,7 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
     live: ci?.pr?.live ?? row.mine?.live,
   } : undefined
 
-  const why = !canControl ? 'This device may only watch: queue it from the Mac, or make this device a controller in Settings.'
+  const why = !canControl ? 'This device can only watch. To act from it, open the Caprock app on your computer: Settings → Use on your phone, then press Let it control sessions next to this device.'
     : !s.owned ? 'Caprock did not start this session, so it never types into it.'
       : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
   const kit = usePRForce({

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { RepoLink, SessionPR } from '@/lib/api'
-import { PRIMARY, SECONDARY } from '@/components/ProjectTerminal'
+import { PRIMARY, QUIET, SECONDARY } from '@/components/ProjectTerminal'
 
 /**
  * The repository a session works in, and the pull requests it opened, one
@@ -38,7 +38,7 @@ const COMPACT = (cls: string) => cls.replace('py-2 min-h-[36px]', 'py-1 min-h-[3
  * they pushed the terminal down for nothing). On a narrow screen they wrap
  * under the title rather than squeeze it.
  */
-export function RepoButtons({ repo, prs = [], cwd, className = '' }: { repo?: RepoLink; prs?: SessionPR[]; cwd: string; className?: string }) {
+export function RepoButtons({ repo, prs = [], cwd, className = '', quiet = false }: { repo?: RepoLink; prs?: SessionPR[]; cwd: string; className?: string; quiet?: boolean }) {
   const [copied, setCopied] = useState('')
   const pr = latestUnmergedPR(prs)
   const path = repo?.root || cwd
@@ -56,13 +56,13 @@ export function RepoButtons({ repo, prs = [], cwd, className = '' }: { repo?: Re
 
   if (!href && !path && !pr) return null
   return (
-    <div className={`flex flex-wrap items-center gap-2 min-w-0 ${className}`} aria-label="Repository">
+    <div className={`flex flex-wrap items-center ${quiet ? 'gap-0.5' : 'gap-2'} min-w-0 ${className}`} aria-label="Repository">
       {href ? (
         <a
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className={COMPACT(PRIMARY)}
+          className={quiet ? QUIET : COMPACT(PRIMARY)}
           title={repo?.branch_url ? `${repo.url} — branch ${repo.branch}` : repo?.url}
         >
           Open repo ↗
@@ -74,7 +74,7 @@ export function RepoButtons({ repo, prs = [], cwd, className = '' }: { repo?: Re
             <button
               type="button"
               onClick={copy}
-              className="shrink-0 text-[12px] rounded-sm border border-border px-2 py-1 text-fg-muted hover:text-fg"
+              className={quiet ? QUIET : 'shrink-0 text-[12px] rounded-sm border border-border px-2 py-1 text-fg-muted hover:text-fg'}
               title="No git remote to link to: copy the local path"
             >
               {copied || 'Copy path'}
@@ -83,7 +83,7 @@ export function RepoButtons({ repo, prs = [], cwd, className = '' }: { repo?: Re
         )
       )}
       {pr && (
-        <a href={pr.url} target="_blank" rel="noopener noreferrer" className={COMPACT(SECONDARY)} title={prLabel(pr)}>
+        <a href={pr.url} target="_blank" rel="noopener noreferrer" className={quiet ? QUIET : COMPACT(SECONDARY)} title={prLabel(pr)}>
           Open PR #{pr.number} ↗
         </a>
       )}

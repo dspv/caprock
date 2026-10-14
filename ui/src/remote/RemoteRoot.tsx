@@ -178,13 +178,13 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
 
       <ol className={`${first ? 'mt-8' : ''} flex flex-col gap-5`}>
         <Step n={1}>
-          On your computer, open Caprock: <b className="font-semibold text-fg">Settings → Phone</b>
+          Open the Caprock app on your computer: <b className="font-semibold text-fg">Settings → Use on your phone</b>
         </Step>
         <Step n={2}>
-          Next to <b className="font-semibold text-fg">From anywhere</b>, press <b className="font-semibold text-fg">Turn on</b>
+          Press <b className="font-semibold text-fg">Show a code</b>. It turns on access from anywhere
         </Step>
         <Step n={3}>
-          Press <b className="font-semibold text-fg">Show a code</b> and scan it with this phone&apos;s camera
+          Scan the code with this phone&apos;s camera
         </Step>
       </ol>
 
@@ -250,7 +250,7 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
               full screen, like any other.
             </Question>
             <Question q="Lost your phone?">
-              On your computer, Settings → Phone: remove it from the list, and it can no longer get in.
+              Open the Caprock app on your computer: Settings → Use on your phone, and remove it from the list. It can no longer get in.
             </Question>
             <Question q="Can I run my own relay?">
               Yes. <span className="font-mono text-[14px]">caprock remote relay</span> is the same relay in one binary;

@@ -33,7 +33,7 @@ import {
   type TabTarget,
 } from '@/lib/tabs'
 import { tabLabels } from '@/lib/tablabels'
-import { isShellLeaf, liveShells, planChatClose, planClose, planProjectClose, shellNames, type ChatClosePlan, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
+import { isShellLeaf, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, shellNames, type AgentClosePlan, type ChatClosePlan, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
 import { baseName, fileKey } from '@/lib/files'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
 import { useShellTray } from '@/lib/tray'
@@ -90,9 +90,10 @@ import { fmtAgo } from '@/lib/format'
 import { RecentInProject } from '@/components/RecentInProject'
 import { ProjectRepos } from '@/components/ProjectRepos'
 import { isMultiRepo } from '@/lib/multirepo'
-import { CloseChatConfirm, CloseShellConfirm } from '@/components/CloseShellConfirm'
+import { CloseAgentChoice, CloseChatConfirm, CloseShellConfirm } from '@/components/CloseShellConfirm'
 import { ShortcutsSheet } from '@/components/ShortcutsSheet'
 import { KeysHint } from '@/components/KeysHint'
+import { loadAgentClose, saveAgentClose } from '@/lib/agentClose'
 import { useSidebarMode } from '@/lib/sidebarMode'
 import { CopiesSheet } from '@/components/CopiesSheet'
 import { CleanupLine } from '@/components/CleanupLine'
@@ -270,6 +271,8 @@ export function AppShell() {
   const [closing, setClosing] = useState<
     | { kind: 'tab'; tabId: string; paneId?: string; plan: ClosePlan; chats: readonly string[] }
     | { kind: 'chat'; tabId: string; paneId?: string; chat: ChatClosePlan }
+    | { kind: 'agent'; tabId: string; paneId?: string; chats: readonly string[]; agents: AgentClosePlan; title: string }
+    | { kind: 'agent-busy'; tabId: string; paneId?: string; chats: readonly string[]; agents: AgentClosePlan }
     | { kind: 'project'; name: string; plan: ClosePlan; resolve: (o: ProjectShellsOutcome) => void }
     | null
   >(null)
@@ -825,7 +828,7 @@ export function AppShell() {
   /** End quick chats whose tab closed: the cockpit's *Stop the session* (`kill`), never asked twice. */
   const stopChats = useCallback((ids: readonly string[]) => {
     if (ids.length === 0) return
-    void Promise.all(ids.map((id) => api.signal(id, 'kill').catch((e) => setToast(`Could not stop the chat: ${errText(e)}`))))
+    void Promise.all(ids.map((id) => api.signal(id, 'kill').catch((e) => setToast(`Could not stop the session: ${errText(e)}`))))
       .then(() => refresh())
   }, [refresh])
   const finishClose = useCallback((tabId: string, paneId: string | undefined, stop: readonly ClosingShell[], chats: readonly string[] = []) => {
@@ -856,10 +859,33 @@ export function AppShell() {
     if (plan.busy.length === 0) finishClose(tabId, paneId, plan.stop, chats)
     else setClosing({ kind: 'tab', tabId, paneId, plan, chats })
   }, [finishClose, liveNow])
+  /** Ends the chosen agents with their tab: one more question when any is still answering. */
+  const endAgents = useCallback((tabId: string, paneId: string | undefined, chats: readonly string[], agents: AgentClosePlan) => {
+    if (agents.busy.length > 0) setClosing({ kind: 'agent-busy', tabId, paneId, chats, agents })
+    else void closeShells(tabId, paneId, [...chats, ...agents.all])
+  }, [closeShells])
+  /**
+   * The agents' half of a close, once the quick chats' is decided
+   * (lib/agentClose.ts): an agent Caprock started is asked about — close the
+   * tab, or close and end it — unless the viewer said not to ask again.
+   * Nothing else is: an agent another terminal started only loses its tab.
+   */
+  const closeAgents = useCallback(async (tabId: string, paneId: string | undefined, chats: readonly string[]) => {
+    const { tabs, sessionsById, endedChats, labels } = closeCtx.current
+    const tab = tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    const agents = planAgentClose(tab, paneId, sessionsById, (s) => endedChats.has(s.session_id) || isQuickChat(s) || !!startedChat(s.session_id))
+    const how = agents.all.length > 0 ? loadAgentClose() : 'keep'
+    if (how === 'keep') { await closeShells(tabId, paneId, chats); return }
+    if (how === 'end') { endAgents(tabId, paneId, chats, agents); return }
+    setClosing({ kind: 'agent', tabId, paneId, chats, agents, title: labels.get(tabId)?.title ?? tab.title })
+  }, [closeShells, endAgents])
   /**
    * Close a tab, or one pane of it (.ai/21-app.md § Shell tabs, § Quick
-   * chat). An agent runs on: closing its tab never stops it — except a quick
-   * chat Caprock started, which has nothing to come back to and ends with its
+   * chat). An agent Caprock started is asked about (closeAgents): *Close
+   * tab*, the default, leaves it running; *Close and end the agent* stops it.
+   * One another terminal started runs on, never signalled. A quick
+   * chat Caprock started has nothing to come back to and ends with its
    * tab (idle at once; still answering, after one question). A shell is
    * closed for real, as in any terminal app: idle, it ends with its tab;
    * running a program, it asks first. The daemon's shell list is read at this
@@ -873,8 +899,8 @@ export function AppShell() {
     // A chat whose agent already exited (its tab says so) has nothing to stop.
     const chat = planChatClose(tab, paneId, sessionsById, (s) => !endedChats.has(s.session_id) && (isQuickChat(s) || !!startedChat(s.session_id)), (id) => !endedChats.has(id) && !!startedChat(id))
     if (chat.busy.length > 0) { setClosing({ kind: 'chat', tabId, paneId, chat }); return }
-    await closeShells(tabId, paneId, chat.stop)
-  }, [closeShells])
+    await closeAgents(tabId, paneId, chat.stop)
+  }, [closeAgents])
   /**
    * *Close project* ends the project's shells too, tab or no tab, the way a
    * shell's tab does: idle ones without asking, busy ones after one question
@@ -1739,8 +1765,31 @@ export function AppShell() {
       )}
       {closing?.kind === 'chat' && (
         <CloseChatConfirm
-          onStop={() => { setClosing(null); void closeShells(closing.tabId, closing.paneId, [...closing.chat.stop, ...closing.chat.busy]) }}
-          onKeep={() => { setClosing(null); void closeShells(closing.tabId, closing.paneId, closing.chat.stop) }}
+          onStop={() => { setClosing(null); void closeAgents(closing.tabId, closing.paneId, [...closing.chat.stop, ...closing.chat.busy]) }}
+          onKeep={() => { setClosing(null); void closeAgents(closing.tabId, closing.paneId, closing.chat.stop) }}
+          onCancel={() => setClosing(null)}
+        />
+      )}
+      {closing?.kind === 'agent' && (
+        <CloseAgentChoice
+          title={closing.title}
+          many={closing.agents.all.length > 1}
+          onKeep={(remember) => {
+            if (remember) saveAgentClose('keep')
+            setClosing(null); void closeShells(closing.tabId, closing.paneId, closing.chats)
+          }}
+          onEnd={(remember) => {
+            if (remember) saveAgentClose('end')
+            setClosing(null); endAgents(closing.tabId, closing.paneId, closing.chats, closing.agents)
+          }}
+          onCancel={() => setClosing(null)}
+        />
+      )}
+      {closing?.kind === 'agent-busy' && (
+        <CloseChatConfirm
+          agent
+          onStop={() => { setClosing(null); void closeShells(closing.tabId, closing.paneId, [...closing.chats, ...closing.agents.all]) }}
+          onKeep={() => { setClosing(null); void closeShells(closing.tabId, closing.paneId, closing.chats) }}
           onCancel={() => setClosing(null)}
         />
       )}

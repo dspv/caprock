@@ -433,7 +433,7 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
     >
       {!canControl ? (
         <p className="pb-1 text-[14px] leading-[1.4] text-fg-muted">
-          This phone can read Caprock. To start chats and save from it, on your Mac open <span className="text-fg">Settings → Use on your phone</span> and let it control.
+          This phone can read Caprock. To start chats and save from it, open the Caprock app on your computer: <span className="text-fg">Settings → Use on your phone</span>, then press <span className="text-fg">Let it control sessions</span> next to this phone.
         </p>
       ) : (
         <>
@@ -695,7 +695,7 @@ export function SaveSheet({ projects, text: initialText, photos: initialPhotos, 
         </>
       }
     >
-      {!canSave && <p className="mb-2 text-[14px] text-warn">This phone can read Caprock but not save to it. On your Mac, Settings → Use on your phone lets it control.</p>}
+      {!canSave && <p className="mb-2 text-[14px] text-warn">This phone can read Caprock but not save to it. Open the Caprock app on your computer: Settings → Use on your phone, then press Let it control sessions next to this phone.</p>}
       <FieldLabel>What</FieldLabel>
       <textarea
         value={text}

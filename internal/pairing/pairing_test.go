@@ -356,3 +356,41 @@ func TestADeviceSavedBeforeRolesIsAViewer(t *testing.T) {
 		t.Fatalf("role lost across Snapshot/Load: %q", got)
 	}
 }
+
+// How a device last reached the machine is recorded per request, reported as
+// changed only when it is new, kept by an empty route, and survives a
+// Snapshot/Load round trip.
+func TestCheckViaRecordsTheRoute(t *testing.T) {
+	s := New()
+	code, err := s.NewCode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.Redeem(code, "Android phone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, changed, err := s.CheckVia(d.Token, ViaLAN); err != nil || !changed {
+		t.Fatalf("first route: changed %v, err %v", changed, err)
+	}
+	if _, changed, _ := s.CheckVia(d.Token, ViaLAN); changed {
+		t.Fatal("the same route again was reported as changed")
+	}
+	if _, changed, _ := s.CheckVia(d.Token, ""); changed {
+		t.Fatal("an unknown route was reported as changed")
+	}
+	if got := s.Devices()[0].Via; got != ViaLAN {
+		t.Fatalf("an unknown route overwrote it: %q", got)
+	}
+	if dev, changed, _ := s.CheckVia(d.Token, ViaRelay); !changed || dev.Via != ViaRelay {
+		t.Fatalf("moving to the relay: changed %v, %+v", changed, dev)
+	}
+	again := New()
+	again.Load(s.Snapshot())
+	if got := again.Devices()[0].Via; got != ViaRelay {
+		t.Fatalf("after a restart: %q", got)
+	}
+	if _, _, err := s.CheckVia("nope", ViaLAN); !errors.Is(err, ErrUnknownDevice) {
+		t.Fatalf("unknown token: %v", err)
+	}
+}

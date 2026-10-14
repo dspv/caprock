@@ -70,7 +70,7 @@ export function Sheet({
           <CloseButton onClick={onClose} className="absolute right-2.5 top-2.5 z-10" />
         )}
         <div className="app-scroll min-h-0 flex-1 overflow-y-auto">{children}</div>
-        {footer && <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--app-hairline)] px-5 py-3">{footer}</div>}
+        {footer && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--app-hairline)] px-5 py-3">{footer}</div>}
       </div>
     </div>,
     document.body,
@@ -84,13 +84,14 @@ export const SHEET_CLOSE_ROOM = 'pr-12'
  * that presses it, shown on the button as a chip big enough to read (owner,
  * 2026-10-10: "the combos are too small, both need to be visible"). The
  * accessible name stays the label; pass aria-keyshortcuts for the key. */
-export function SheetButton({ primary, keyHint, children, ...rest }: { primary?: boolean; keyHint?: string; children: ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+export function SheetButton({ primary, danger, keyHint, children, ...rest }: { primary?: boolean; danger?: boolean; keyHint?: string; children: ReactNode } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
       {...rest}
-      className={`inline-flex h-[34px] items-center gap-2 rounded-[7px] px-4 text-[14px] font-medium disabled:opacity-50 ${
-        primary ? 'bg-accent text-panel hover:brightness-110' : 'border border-[var(--app-hairline-strong)] text-fg hover:bg-[var(--app-row-hover)]'
+      className={`inline-flex h-[34px] shrink-0 items-center gap-2 whitespace-nowrap rounded-[7px] px-4 text-[14px] font-medium disabled:opacity-50 ${
+        danger ? 'bg-danger text-white hover:brightness-110'
+          : primary ? 'bg-accent text-panel hover:brightness-110' : 'border border-[var(--app-hairline-strong)] text-fg hover:bg-[var(--app-row-hover)]'
       }`}
     >
       {children}

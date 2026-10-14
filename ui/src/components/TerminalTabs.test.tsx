@@ -5,7 +5,7 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { TabStrip, TerminalStack } from './TerminalTabs'
+import { TabProject, TabStrip, TerminalStack } from './TerminalTabs'
 import type { Tab } from '@/lib/tabs'
 import type { SessionSummary } from '@/lib/api'
 import { setComposerEnabled } from '@/lib/composer'
@@ -361,5 +361,61 @@ describe('TerminalStack composer', () => {
     expect(panes.composer.get('theirs')).toBeUndefined()
     expect(panes.composer.get('sh')).toBeUndefined()
     expect(panes.composer.get('gone')).toBeUndefined()
+  })
+})
+
+// Owner, 2026-10-14 (translated): "The repo name on the right doesn't fit — it
+// must fit, at least scroll inside on hover … it shouldn't be shortened; give
+// it more space. The session name is fine."
+describe("a tab's project name", () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('is never capped short: the title gives way first, and the tooltip names both in full', () => {
+    render(
+      <TabStrip
+        tabs={[tab('one')]}
+        activeTabId="one"
+        sessions={new Map()}
+        permissions={new Set()}
+        projectName={() => 'uncensored-chat-app'}
+        inspectorOpen={false}
+        sidebarOpen
+        onActivate={() => {}}
+        onDetach={() => {}}
+        onMove={() => {}}
+        onNewAgent={() => {}}
+        onNewShell={() => {}}
+        onToggleInspector={() => {}}
+      />,
+    )
+    const one = screen.getByRole('tab')
+    const project = one.querySelector('[data-tab-project]') as HTMLElement
+    expect(project.textContent).toBe('uncensored-chat-app')
+    // No cap of its own (it was max-w-[9ch]): it shrinks only once the title
+    // is down to its few letters.
+    expect(project.className).not.toMatch(/max-w/)
+    expect(project.className).toMatch(/\bshrink\b/)
+    const title = one.querySelector('[data-row-title]') as HTMLElement
+    expect(title.className).toMatch(/min-w-\[4ch\]/)
+    expect(title.className).toMatch(/flex-1/)
+    expect(one.getAttribute('title')).toContain('Shell 1')
+    expect(one.getAttribute('title')).toContain('uncensored-chat-app')
+  })
+
+  it('scrolls on hover only when its text is wider than its box, by exactly the hidden part', () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(150)
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(60)
+    const { unmount } = render(<TabProject name="payments-service-gateway" hue={120} />)
+    const cut = document.querySelector('[data-tab-project]') as HTMLElement
+    expect(cut.hasAttribute('data-overflow')).toBe(true)
+    expect(cut.style.getPropertyValue('--tab-project-shift')).toBe('90px')
+    expect(cut.textContent).toBe('payments-service-gateway')
+    unmount()
+
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(40)
+    render(<TabProject name="atlas" hue={120} />)
+    const whole = document.querySelector('[data-tab-project]') as HTMLElement
+    expect(whole.hasAttribute('data-overflow')).toBe(false)
+    expect(whole.style.getPropertyValue('--tab-project-shift')).toBe('0px')
   })
 })

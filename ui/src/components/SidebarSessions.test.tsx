@@ -4,7 +4,7 @@
  * anything, don't add extra elements … 'More projects' and 'Hidden' in one
  * button like 'More…'", and "a switch like 'group by projects' or not".
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/lib/projects'
 import type { SessionSummary } from '@/lib/api'
@@ -151,5 +151,19 @@ describe('group by project, off', () => {
     expect(digitOf('[data-tab-row="tw"]')).toBe('⌘1')
     expect(digitOf('[data-tab-row="tb"]')).toBe('⌘2')
     expect(digitOf('[data-live-row="w1"]')).toBeUndefined()
+  })
+
+  // A user, 2026-10-14 (translated): "chats don't disappear when I close
+  // them" — the closed tabs' agents ran on, and read as open chats.
+  it('heads the sessions with no tab "Running, no tab", once, where the tabbed rows end; Tree has no such line', () => {
+    const tabs: Tab[] = [{ id: 'tb', projectId: 'beta', root: pane('pb', 'session', 'b1'), focusedPaneId: 'pb', title: 'Beta work' }]
+    setup(mix(), tabs, { grouped: false, tabDigits: new Map([['tb', 1]]) })
+    const list = screen.getByRole('group', { name: 'Sessions' })
+    const order = [...list.children].map((li) => li.hasAttribute('data-untabbed-heading') ? 'HEAD' : li.querySelector('[data-tab-row]') ? 'tab' : 'live')
+    expect(order).toEqual(['tab', 'HEAD', 'live', 'live', 'live'])
+    expect(list.querySelector('[data-untabbed-heading]')!.textContent).toBe('Running, no tab')
+    cleanup()
+    setup(mix(), tabs, { grouped: true })
+    expect(document.querySelector('[data-untabbed-heading]')).toBeNull()
   })
 })

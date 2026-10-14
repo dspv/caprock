@@ -3,7 +3,10 @@ name: docs
 on:
   push:
     branches: [master]
+  # Draft pull requests run nothing: contributors iterate with `make check`
+  # locally and CI runs once, when the PR is marked ready (ADR-061).
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # As in ci.yml: a new push to a pull request cancels the run it supersedes.
 concurrency:
@@ -12,6 +15,7 @@ concurrency:
 
 jobs:
   check:
+    if: ${{ !github.event.pull_request.draft }}
     name: tables aligned, links resolve, no Cyrillic
     runs-on: ubuntu-latest
     steps:

@@ -497,6 +497,7 @@ export function Sidebar(props: SidebarProps) {
                 items={flat}
                 orderId={FLAT_ORDER}
                 ariaLabel="Sessions"
+                untabbedHeading="Running, no tab"
                 digits={props.tabDigits}
                 activeTabId={props.dashboardActive ? undefined : props.activeTabId}
                 onActivateTab={props.onActivateTab ?? noop}
