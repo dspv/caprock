@@ -41,6 +41,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **ui:** selected text stays readable in every theme. In a terminal,
+  Claude Code's own selection (fullscreen mode) painted its highlight in the
+  palette's blue, which in a dark palette is light, under light text — in
+  Dark Pastel 1.6:1, nearly invisible. Every terminal palette now keeps text
+  at 4.5:1 or more against whatever is behind it, as the light ones already
+  did. Selected text on the page sits on a lighter wash of the accent (20%,
+  was 35%), written out per palette: body text 8:1 or more, muted text
+  4.3:1 or more.
+
 - **phone:** a paired phone stays paired. A dropped connection, a computer
   or relay restarting, a phone asleep or offline, a computer still on an
   older Caprock, or a QR opened twice no longer send the phone back to

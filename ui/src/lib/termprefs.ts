@@ -5,7 +5,7 @@
  * `term.options`, it is never re-created.
  */
 import { useEffect, useState } from 'react'
-import { appLook, isTerminalChoice, terminalTheme, DEFAULT_TERMINAL_THEME, MATCH_APP_THEME, type TerminalTheme } from './termthemes'
+import { appLook, isTerminalChoice, terminalTheme, DEFAULT_TERMINAL_THEME, MATCH_APP_THEME, TERMINAL_MIN_CONTRAST, type TerminalTheme } from './termthemes'
 
 export type CursorStyle = 'bar' | 'block' | 'underline'
 
@@ -171,10 +171,14 @@ export function xtermOptions(p: TerminalPrefs, fallback: string) {
     fontWeightBold: 700 as const,
     letterSpacing: 0,
     cursorStyle: p.cursor,
-    // On a light ground, Claude Code's dim text and status line — drawn for a
-    // dark one — were grey on cream (Terminal.tsx, 2026-10-04). xterm lifts any
-    // colour below this contrast against the ground it is drawn on.
-    minimumContrastRatio: t.tone === 'light' ? 4.5 : 1,
+    // xterm lifts any colour below this contrast against the cell it is drawn
+    // on. On a light ground Claude Code's dim text and status line — drawn for
+    // a dark one — were grey on cream (Terminal.tsx, 2026-10-04). On a dark
+    // one it was 1 until Claude Code's own text selection (fullscreen mode)
+    // painted its highlight in ANSI blue, which a dark palette keeps light for
+    // text: Dark Pastel's #9db3cc under its #e3e1db ink is 1.6:1 (owner,
+    // 2026-10-14, translated: "can't read a thing"). The floor darkens the ink.
+    minimumContrastRatio: TERMINAL_MIN_CONTRAST,
   }
 }
 
