@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **phone:** every hint on the phone now says where to go: the Caprock app
+  on your computer, Settings → Use on your phone, and the button by name.
+  "This phone can read but not type. On the computer: Settings…" left out
+  that the setting is in the Caprock app, and two hints still sent you to
+  "Settings → Phone", which does not exist.
+
 ### Changed
 
 - **app:** the sidebar's heading has a worded switch, **Projects | Tabs**,

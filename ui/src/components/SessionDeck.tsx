@@ -673,7 +673,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   const rel = relData?.release
   const ci = view === 'pr' ? prCI?.ci : view === 'main' ? mainData?.ci : undefined
   const runs: CIRun[] = useMemo(() => (view === 'release' ? (rel?.run ? [rel.run] : []) : ci?.runs ?? []), [view, rel?.run, ci?.runs])
-  const why = !canControl ? 'This device may only watch: queue it from the Mac, or make this device a controller in Settings.'
+  const why = !canControl ? 'This device can only watch. To act from it, open the Caprock app on your computer: Settings → Use on your phone, then press Let it control sessions next to this device.'
     : !s.owned ? 'Caprock did not start this session, so it never types into it. Start the agent from Caprock to queue CI failures to it.'
       : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
   // The force actions (lib/usePRForce), shared with the PRs & CI tab.
