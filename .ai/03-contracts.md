@@ -669,7 +669,7 @@ The dashboard route `#/session/{id}?at=<unix-ms>` reveals a moment in the timeli
 
 **With `newest=1`, `main=1` and `kind=a,b,…` filter before the limit.** `main=1` keeps the main thread's events only (`agent_id` empty and `payload.sidechain` not true, the rule notes use); `kind` keeps the listed kinds. The agent cockpit asks for `main=1&kind=tool.pre,tool.post,turn.assistant&limit=400`: on the owner's 36-hour session (2026-10-09) the newest 400 events were all subagents' — 635 of their tool calls in the last hour — and its tool list read *No tool calls yet* over 4,933 calls. The filtered page walks `idx_events_session_ts` and took under 60 ms there. Without `newest=1` both are ignored.
 
-**Subagents now.** `GET /v1/sessions/{id}/subagents` → `{working, finished}`. `working` lists the subagents working in the session under the rule `live_subagents` counts by — an `agent_id` heard from in the last 30 minutes whose newest event is not its `SubagentStop` — newest activity first, at most 24 (the cockpit draws two rows of twelve chips), each `SubagentNow`: `agent_id`; `agent_type` (the hooks' own; omitted when none named one); `description` (what the parent asked, from the parent's `Agent`/`Task` call whose `tool_response.agentId` is this agent — a background launch says at once, a foreground one only once it returns; omitted otherwise); `tool_calls` (its distinct calls over the whole session: a call heard on both planes shares its key and is one row, and one only the transcript saw — a call Claude Code fired no `PostToolUse` for — counts too; it was the plane that saw more until 2026-10-12, one short of the opened subagent's feed); `started_at`, `last_at` (unix ms, within the window); `tool`, `detail` (its newest call and that call's short line: a file's base name, a command's first line, a pattern, a URL — as the cockpit's tool list writes it) and `tool_at`; `doing` and `doing_from` (roughly what it is doing now, at most 60 characters with an ellipsis, made from that same newest call without another read: the call's own `tool_input.description` — the phrase Claude writes on a Bash command or an `Agent`/`Task` launch — `doing_from: "call"`; else a phrase from a small table of tool and target, `"tool"`: *Reading x.go*, *Editing x.go*, *Writing x.go*, *Searching for 'p'*, *Finding \*\*/\*.ts*, *Fetching host*, *Searching the web for 'q'*, *Using skill s*, *Loading tools*, *Calling server* for an MCP tool, and for a command *Running tests* when it runs a known test suite, *Running git status*, else *Running* and its program, past `cd`, `set -e` and assignments; else the `description` it was spawned with, `"task"`; both omitted when none says anything. Claude Code's own activity line — "Rerunning AppShell and DiffFiles tests" in its terminal list — is not written anywhere Caprock can read, so this is the nearest thing that is recorded rather than guessed); `running` (that call has no `tool.post` with its `tool_use_id`); `asking` (its newest event is a `permission.prompt`: a subagent waiting on a dialog records nothing else); `model`, `model_display` (its newest turn's model and the pricing table's short name, "Haiku 4.5"; omitted before its first turn) and `cost_usd` (the sum of its own turns' costs over the session — subagent transcript lines carry their model and usage and are priced like any turn — omitted when it has no turn or any turn the table could not price: never a 0 standing in for unknown; internal model calls are left out). `recent` lists the newest three of the `finished` — `?recent=N` asks for up to 30, which the cockpit does while its *+N finished* is open — newest stop first, each `SubagentDone`: `agent_id`, `agent_type`, `description`, `tool_calls`, `started_at`, `stopped_at` (its `SubagentStop`) and the same `model`, `model_display`, `cost_usd`; `[]` when none. The response's own `cost_usd` is every subagent of the session together, omitted when any of them is unknown. `finished` counts those that stopped within the window after at least one tool call — Claude Code also fires `SubagentStop` for small internal agents that run none, dozens an hour, and they are left out. Every query pins the session's index (`+kind`), because SQLite otherwise chose `idx_events_kind_*` and walked every `tool.pre` in the database (1.1 s against 13 ms on the owner's). The cockpit reads it again at most every two seconds while subagent events arrive and every twenty seconds regardless. A paired viewer may read it, as it may read the events it is made from.
+**Subagents now.** `GET /v1/sessions/{id}/subagents` → `{working, finished}`. `working` lists the subagents working in the session under the rule `live_subagents` counts by — an `agent_id` heard from in the last 30 minutes whose newest event is not its `SubagentStop` — newest activity first, at most 24 (the cockpit draws two rows of twelve chips), each `SubagentNow`: `agent_id`; `agent_type` (the hooks' own; omitted when none named one); `description` (what the parent asked, from the parent's `Agent`/`Task` call whose `tool_response.agentId` is this agent — a background launch says at once, a foreground one only once it returns; omitted otherwise); `tool_calls` (its distinct calls over the whole session: a call heard on both planes shares its key and is one row, and one only the transcript saw — a call Claude Code fired no `PostToolUse` for — counts too; it was the plane that saw more until 2026-10-12, one short of the opened subagent's feed); `started_at`, `last_at` (unix ms, within the window); `tool`, `detail` (its newest call and that call's short line: a file's base name, a command's first line, a pattern, a URL — as the cockpit's tool list writes it) and `tool_at`; `doing` and `doing_from` (roughly what it is doing now, at most 60 characters with an ellipsis, made from that same newest call without another read: the call's own `tool_input.description` — the phrase Claude writes on a Bash command or an `Agent`/`Task` launch — `doing_from: "call"`; else a phrase from a small table of tool and target, `"tool"`: *Reading x.go*, *Editing x.go*, *Writing x.go*, *Searching for 'p'*, *Finding \*\*/\*.ts*, *Fetching host*, *Searching the web for 'q'*, *Using skill s*, *Loading tools*, *Calling server* for an MCP tool, and for a command *Running tests* when it runs a known test suite, *Running git status*, else *Running* and its program, past `cd`, `set -e` and assignments; else the `description` it was spawned with, `"task"`; both omitted when none says anything. Claude Code's own activity line — "Rerunning AppShell and DiffFiles tests" in its terminal list — is not written anywhere Caprock can read, so this is the nearest thing that is recorded rather than guessed); `running` (that call has no `tool.post` with its `tool_use_id`); `asking` (its newest event is a `permission.prompt`: a subagent waiting on a dialog records nothing else); `model`, `model_display` (its newest turn's model and the pricing table's short name, "Haiku 4.5"; omitted before its first turn) and `cost_usd` (the sum of its own turns' costs over the session — subagent transcript lines carry their model and usage and are priced like any turn — omitted when it has no turn or any turn the table could not price: never a 0 standing in for unknown; internal model calls are left out). `recent` lists the newest three of the `finished` — `?recent=N` asks for up to 30, which the cockpit does while its *+N finished* is open — newest stop first, each `SubagentDone`: `agent_id`, `agent_type`, `description`, `tool_calls`, `started_at`, `stopped_at` (its `SubagentStop`) and the same `model`, `model_display`, `cost_usd`; `[]` when none. The response's own `cost_usd` is every subagent of the session together, omitted when any of them is unknown. `finished` counts those that stopped within the window after at least one tool call — Claude Code also fires `SubagentStop` for small internal agents that run none, dozens an hour, and they are left out. Every query pins the session's index (`+kind`) or one of the subagent indexes of migration 0054, because SQLite otherwise chose `idx_events_kind_*` and walked every `tool.pre` in the database (1.1 s against 13 ms on the owner's); the counts, the spend and the descriptions read only those indexes, never a payload of the parent's (§ Subagent reads DDL). The cockpit reads it again at most every two seconds while subagent events arrive and every twenty seconds regardless. A paired viewer may read it, as it may read the events it is made from.
 
 **One subagent.** `GET /v1/sessions/{id}/subagents/{agent}?limit=30&before=<call id>` → `SubagentDetail`, 404 when the session holds no event of that agent. Read when the cockpit opens a subagent's row, and again when its `SubagentStop` arrives; the live socket carries its calls in between, so nothing polls it. Fields: `agent_id`, `agent_type`; `description`, `prompt`, `subagent_type`, `parent_tool_use_id`, `background` — the parent's `Agent`/`Task` call that launched it: the call whose `tool_response.agentId` names it (a background launch says at once, a foreground one when it returns), else, for a foreground call still running, the newest unanswered call of its `subagent_type` (no type = `general-purpose`) made before its first event; all omitted when no call is linked. The parent's calls are read only within ten minutes either side of the subagent's own events. `state` is `finished` when its newest event is its `SubagentStop`, `working` when it was heard from within the live window (30 minutes), else `quiet`; `asking` as in § Subagents now; `started_at`, `last_at`, `stopped_at` (unix ms). `result` is what it returned: its `SubagentStop`'s `last_assistant_message`, else the text of the parent call's result (a foreground call's `tool_response.content`); omitted while it works and when neither was recorded. `calls` are its newest `limit` calls (default 30, at most 500) before the call with id `before`, oldest first, each `{id, tool_use_id, tool, detail, started_at, ended_at?, error?}` — `id` its `tool.pre` event id, `detail` the short line as § Subagents now writes it, `ended_at` its result's time (absent while it has none), `error` when the result was an error (Claude Code fires no `PostToolUse` for a failed call; the transcript's `tool_result` says `is_error`); a call heard on both planes is one, by `tool_use_id`. `earlier` counts the calls before the first returned. `stats`: `tool_calls` (all of them), `turns`, `tokens` (`{in, out, cache_read, cache_write}` over its turns), `duration_ms` (first event to stop, or to now while it works), `model`, `model_display`, `cost_usd` (omitted when any turn could not be priced, never a zero), and `by_tool` — at most four tool kinds, costliest first, each `{tool, calls, cost_usd?}`: a turn's cost split evenly over the tools it called, `tool` empty for the turns that called none (they only wrote). Internal model calls are left out. Two reads: the agent's own rows by `idx_events_agent` (migration 0049) and the parent's `Agent`/`Task` calls in that time range by `idx_events_session_ts`. On a copy of the owner's database (2026-10-12; its busiest session 62,000 events, the subagent 253) it took 220 ms warm before the index and 10 ms after. A paired viewer may read it, as it may read the list.
 
@@ -1433,7 +1433,28 @@ POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, na
 POST   /v1/sessions/{id}/open-terminal {terminal?, mode?: resume|move|fork} → {terminal: {id, name}, mode, command}
 PUT    /v1/sessions/{id}/name        {name} → {session_id, name}; "" clears it; 400 without name, 404 for an unknown session (§ Session name DDL)
 POST   /v1/sessions/remove           {ids?: [id], cwd_prefix?, dry_run?} → {dry_run, sessions: [RemovalCandidate], skipped: [RemovalCandidate + reason], cost_usd, unmatched_usd}
+GET    /v1/overlap                   → {window_minutes, sessions: {id: {checkout, with: [OverlapPeer]}}}; live sessions sharing a checkout (§ Same-checkout overlap)
 GET    /v1/history?range=…           lifetime totals + tool distribution + model mix + daily
+```
+
+**Same-checkout overlap** (`GET /v1/overlap`, `internal/api/overlap.go`,
+`store.Overlaps`). The live sessions (status not `ended`) grouped by
+**checkout**: the folder of the nearest `.git` entry above the session's
+`cwd` — a clone's root, or a linked worktree's own folder, never folded into
+its main repository (`store.CheckoutOf`); a folder in no repository is its own
+checkout. Only a session with at least one neighbour is keyed, so the usual
+answer is `{"window_minutes": 30, "sessions": {}}`. An `OverlapPeer` is
+`{session_id, name, name_source?, started_at, files}`: the neighbour named as
+its card names it (`name_source` as `description_source`: `name`, `title` or
+`prompt`, a prompt clipped to its first line), and `files`, the absolute paths
+both sessions edited in the last 30 minutes (Edit, Write, MultiEdit,
+NotebookEdit — `session_files.last_ts` at or after now − 30 min), sorted, `[]`
+when they share only the folder. Peers are in start order. Read only: one
+query on `session_files` for the sessions in a shared checkout, none when
+nobody shares.
+
+```json
+{ "window_minutes": 30, "sessions": { "b": { "checkout": "/Users/me/dev/caprock", "with": [ { "session_id": "a", "name": "Login fix", "name_source": "name", "started_at": 1791730800000, "files": ["/Users/me/dev/caprock/ui/main.ts"] } ] } } }
 ```
 
 **Removing sessions** ([ADR-037](08-decisions.md)). `POST /v1/sessions/remove`
@@ -2928,9 +2949,11 @@ Caprock Mail ([ADR-057](08-decisions.md)). Code: `internal/mail` (HTTP in
 Microsoft; HTTP in `http_oauth.go`), `ui/src/screens/mail`. Every write is
 JSON, as the CSRF guard requires. Before the first account exists only `GET
 /v1/mail/state`, `GET /v1/mail/providers`, `GET /v1/mail/oauth/providers` and `GET
-/v1/mail/import` answer without opening Mail.
+/v1/mail/import`, `GET /v1/mail/settings` (the defaults) and `GET
+/v1/mail/messages` (`[]`) answer without opening Mail.
 
-- `GET /v1/mail/state` — `{accounts, folders, counts: {inbox, unread, flagged}, version}`; `version` moves on every local change and is what the screen polls.
+- `GET /v1/mail/state` — `{accounts, folders, counts: {inbox, unread, flagged}, version, sample}`; `version` moves on every local change and is what the screen polls; `sample` is true while sample mode is on.
+- `POST /v1/mail/sample` — `{on}` → `{sample}`. On: two sample accounts on in-process fake servers, a database in a temporary directory and passwords in memory; while it is on every `/v1/mail` route serves the sample, and the real `mail.db` and keychain are not touched (an unused Mail stays unopened). Off: the sample is dropped and the routes serve the real data again. `CAPROCK_MAIL_DEMO=1` turns it on for the whole run and `{on: false}` is then `409`. A mutating route, behind the CSRF guard and pairing like the rest.
 - `GET /v1/mail/providers?email=` — server settings for an address: `{provider, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, note, help_url, known, needs_username, username, source}`. Lookup order, first answer wins, `source` says which: `preset` — the domain is in the table in `internal/mail/providers/providers.go` (about 40 consumer services, each entry citing the provider's own settings page); `mx` — the domain's MX points at a host in that table (Google Workspace, Microsoft 365, iCloud+, Zoho, Fastmail, Yandex 360 and the hosts people put their own domain on: Rackspace, GoDaddy, Namecheap Private Email, Spacemail, IONOS, OVHcloud, Hostinger, Titan, Infomaniak, STRATO, Migadu and others; the longest matching hint wins); `srv` — RFC 6186 records `_imaps._tcp` / `_imap._tcp` and `_submissions._tcp` / `_submission._tcp` (implicit TLS preferred; an IMAP record is required); `autoconfig` — the domain's own Thunderbird-format file, `https://autoconfig.<domain>/mail/config-v1.1.xml?emailaddress=<addr>` then `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, SSL or STARTTLS servers only, `%EMAILADDRESS%` / `%EMAILLOCALPART%` / `%EMAILDOMAIN%` substituted, a redirect followed only within the domain; `guess` — `imap.<domain>` / `smtp.<domain>`, `known: false`. `needs_username` is set for an iCloud+ custom domain (sign-in is the @icloud.com address) and when autoconfig names a sign-in other than the address, given in `username`. Every network call goes to the user's own domain — its DNS and its web server, 3 s each; no third-party directory (Mozilla's ISPDB included) is asked. A preset domain makes no network call at all.
 - `POST /v1/mail/accounts` — `{name, email, username, imap_*, smtp_*, password}`; IMAP and SMTP are tried first and a refusal is `422` with nothing stored. A sign-in name the server refuses is retried with the address and, on iCloud, the part before the @ (SMTP: the @icloud.com form) — at most three names, only on a credentials refusal, never on `NO [UNAVAILABLE]`, which Dovecot (Spacemail and many hosts) sends for a wrong password on a real mailbox and while it locks sign-in after failures; the name that worked is stored. iCloud and Gmail refusals carry what to do (an app-specific password); an `UNAVAILABLE` refusal says the password was not accepted. `PUT /v1/mail/accounts/{id}` edits (a new password is optional; refused with `400` on an OAuth account, whose `auth` only a new sign-in changes), `DELETE` removes the account, its mail and its password or refresh token. Every account carries `auth`: `password` (the default), `oauth2:google` or `oauth2:microsoft`. An OAuth account signs in with SASL XOAUTH2 using an access token refreshed from the stored refresh token and cached in memory until a minute before it expires (a rotated refresh token is saved back); a refresh token the provider refuses (`invalid_grant`), or a token the server refuses, is a sync error that says to sign in again.
 - `GET /v1/mail/oauth/providers` — `{google: bool, microsoft: bool}`: which *Sign in with …* buttons work in this build (a provider without a client ID is `false`; see [docs/mail-oauth.md](../docs/mail-oauth.md)). Answers without opening Mail.
@@ -3793,6 +3816,67 @@ per-agent lookups of § Subagents now, which SQLite moves onto it by itself.
 Main-thread rows carry a NULL `agent_id` and stay out. On the owner's 2 GB
 database (2026-10-12) it is 16 MB over 229,000 subagent rows and took 4.5 s
 to build.
+
+### Subagent reads DDL (migration 0054)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_events_agent_task
+  ON events(session_id,
+            (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.tool_response.agentId') END),
+            (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.tool_response.description') END))
+  WHERE kind = 'tool.post' AND tool IN ('Agent', 'Task');
+CREATE INDEX IF NOT EXISTS idx_events_subagent_turn
+  ON events(session_id, agent_id, ts, model, cost_usd, tokens_in, kind, internal)
+  WHERE kind = 'turn.assistant' AND agent_id IS NOT NULL AND internal = 0;
+CREATE INDEX IF NOT EXISTS idx_events_agent_ts
+  ON events(session_id, ts, agent_id, kind)
+  WHERE agent_id IS NOT NULL;
+```
+
+What § Subagents now reads, every two seconds per open cockpit while
+subagents work, without the parent session's rows. Before, three of its
+reads walked every row of the session and read each from the table — and
+`agent_id`, `internal` and `cost_usd` sit after `payload`, so every row also
+walked its payload's overflow pages. The installed daemon's slow-query log
+named `describeSubagents` 441 times, `SubagentsSpend` 312 and
+`LiveSubagents` 48 in under two hours with nine live sessions (2026-10-14).
+
+- **`idx_events_agent_task`** holds the agent id and the description each
+  parent `Agent`/`Task` result names, as expressions, so
+  `store.describeSubagents` looks up the listed agents by id and opens no
+  payload. The query must spell the expressions exactly as the index does
+  (`store.agentTaskID`, `store.agentTaskDesc`); a test checks the plan seeks
+  on them. `json_valid` guards the extraction because `json_extract` raises
+  on malformed JSON, which in an index expression would fail the `INSERT`.
+- **`idx_events_subagent_turn`** covers `store.SubagentsSpend`. `kind` and
+  `internal` are columns as well as conditions: SQLite counts an index as
+  covering only when it holds every column the query names.
+- **`idx_events_agent_ts`** covers the live counts (`store.LiveSubagents`,
+  `SubagentsNow`, `SubagentsDone`), which seek the last 30 minutes of a
+  session. `idx_events_agent` (0049) leads on the agent and cannot seek on
+  the window. The queries spell `agent_id IS NOT NULL AND agent_id <> ''`;
+  `COALESCE(agent_id, '') <> ''` hides from SQLite that the partial index
+  holds every row they need.
+
+Measured on a copy of the owner's 2.4 GB database (2026-10-14; 517,000
+events, its busiest session 95,706 of them, 75,855 its subagents'), warm,
+through the Go driver, medians of five over interleaved runs:
+
+| Read                                      | Before    | After      |
+| ----------------------------------------- | --------- | ---------- |
+| Descriptions (every Agent result read)    | 61–82 ms  | 0.1 ms     |
+| `SubagentsNow`                            | 77–105 ms | 11–17 ms   |
+| `SubagentsDone` (three recent)            | 72–101 ms | 4–6 ms     |
+| `SubagentsSpend`                          | 75–97 ms  | 10–14 ms   |
+| `LiveSubagents`                           | 3.6–5 ms  | 1.7–2.8 ms |
+| Agent types of 30 finished (`?recent=30`) | 276 ms    | 1.5 ms     |
+
+The last row is `store.typeSubagents`, rewritten rather than indexed: one
+lookup per agent, newest first through `idx_events_agent`, stopping at the
+first event that names a type, where one pass had read the type off every
+event of every listed agent. The three indexes are 60 KB, 8.2 MB and 21.3 MB
+there over 597 Agent results, 75,244 subagent turns and 271,249 subagent
+rows, and took 8.7 s to build, once.
 
 ### First-prompt DDL (migration 0033)
 

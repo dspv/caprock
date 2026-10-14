@@ -526,6 +526,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions/{id}/diff", s.handleSessionDiff)
 	m.HandleFunc("POST /v1/sessions/{id}/open-terminal", s.handleOpenTerminal)
 	m.HandleFunc("POST /v1/sessions/remove", s.handleRemoveSessions)
+	m.HandleFunc("GET /v1/overlap", s.handleOverlap)
 	m.HandleFunc("GET /v1/terminals", s.handleTerminals)
 	m.HandleFunc("GET /v1/editors", s.handleEditors)
 	m.HandleFunc("POST /v1/editors/open", s.handleOpenEditor)
@@ -1677,7 +1678,9 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	// unfiltered burn under a heading that says "opencode" is the mistake the
 	// comment above rejects, made one tile to the right.
 	const win = 10 * time.Minute
-	recent, err := store.SummarizeSparkFor(ctx, s.d.Store.DB(), s.d.Now().Add(-win).UnixMilli(), store.SparkSpec{}, agent)
+	// Four figures, so one covering range scan (store.RecentSpend), not a
+	// whole summary: this runs on every request, uncached.
+	recent, err := store.RecentSpend(ctx, s.d.Store.DB(), s.d.Now().Add(-win).UnixMilli(), agent)
 	if err == nil {
 		// Divide by the time actually covered, not by the window's width.
 		//

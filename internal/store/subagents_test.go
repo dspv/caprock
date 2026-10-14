@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,5 +52,81 @@ func TestSubagentsSpend(t *testing.T) {
 	}
 	if _, total, _ := SubagentsSpend(ctx, f.s.DB(), "none"); total.Known {
 		t.Fatalf("a session with no subagent turn has no known total")
+	}
+}
+
+// queryPlan is EXPLAIN QUERY PLAN's details, one per line.
+func queryPlan(t *testing.T, q Querier, query string, args ...any) string {
+	t.Helper()
+	rows, err := q.QueryContext(context.Background(), `EXPLAIN QUERY PLAN `+query, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	plan := ""
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan += detail + "\n"
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return plan
+}
+
+// A subagent's description comes off idx_events_agent_task without opening a
+// payload: the query must name the index's expressions exactly, or SQLite
+// computes them from every Agent result again. A result whose payload is not
+// JSON is still stored — an index expression that raised on it would fail
+// the INSERT and lose the event.
+func TestDescribeSubagentsReadsTheIndex(t *testing.T) {
+	ctx := context.Background()
+	f := &weekFixture{t: t, s: openTest(t), loc: time.UTC}
+	at := time.Date(2026, 10, 14, 1, 0, 0, 0, time.UTC)
+	post := func(key, payload string) {
+		f.put(event.Event{SessionID: "s", Source: event.SourceHook, Kind: event.KindToolPost, Tool: "Agent",
+			Key: key, Ts: at, Payload: []byte(payload)})
+	}
+	post("post:1", `{"tool_response":{"agentId":"a","description":"Fix the cockpit"}}`)
+	post("post:2", `{"tool_response":{"agentId":"b","description":"Read the log"}}`)
+	post("post:3", `{"tool_response": not json`)
+	var n int
+	if err := f.s.DB().QueryRow(`SELECT COUNT(*) FROM events WHERE kind = 'tool.post'`).Scan(&n); err != nil || n != 3 {
+		t.Fatalf("stored %d Agent results (%v); a payload that is not JSON must still be stored", n, err)
+	}
+
+	list := []SubagentActivity{{AgentID: "a"}, {AgentID: "b"}, {AgentID: "c"}}
+	if err := describeSubagents(ctx, f.s.DB(), "s", list); err != nil {
+		t.Fatal(err)
+	}
+	if list[0].Description != "Fix the cockpit" || list[1].Description != "Read the log" || list[2].Description != "" {
+		t.Fatalf("descriptions = %q, %q, %q", list[0].Description, list[1].Description, list[2].Description)
+	}
+
+	plan := queryPlan(t, f.s.DB(), `SELECT `+agentTaskDesc+` FROM events INDEXED BY idx_events_agent_task
+		WHERE session_id = ? AND kind = 'tool.post' AND tool IN ('Agent', 'Task') AND `+agentTaskID+` = ?`, "s", "a")
+	if !strings.Contains(plan, "<expr>=?") {
+		t.Fatalf("the agent id is not sought on the index's expression; plan:\n%s", plan)
+	}
+}
+
+// The live-subagent counts and a subagent's spend read their covering
+// indexes (migration 0054), not the session's rows from the table.
+func TestSubagentCountsAreCovered(t *testing.T) {
+	db := openTest(t).DB()
+	for _, c := range []struct{ name, query string }{
+		{"live", `SELECT agent_id, MAX(ts), MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END) FROM events
+			WHERE session_id = 's' AND ts >= 0 AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id`},
+		{"spend", `SELECT agent_id, MAX(ts), COALESCE(model, ''), COUNT(*), SUM(cost_usd IS NULL AND tokens_in IS NOT NULL), COALESCE(SUM(cost_usd), 0)
+			FROM events INDEXED BY idx_events_subagent_turn
+			WHERE session_id = 's' AND kind = 'turn.assistant' AND agent_id IS NOT NULL AND agent_id <> '' AND internal = 0 GROUP BY agent_id`},
+	} {
+		if plan := queryPlan(t, db, c.query); !strings.Contains(plan, "COVERING INDEX") {
+			t.Errorf("%s reads the table; plan:\n%s", c.name, plan)
+		}
 	}
 }

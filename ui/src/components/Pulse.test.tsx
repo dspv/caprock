@@ -18,7 +18,7 @@ import { PulsePanel, TIER_TOKEN, IDLE_TOKEN } from './Pulse'
 import type { Event, SessionSummary } from '@/lib/api'
 
 /** Seeded events per session id, keyed the way the panel asks for them. */
-const seeded = vi.hoisted(() => ({ value: {} as Record<string, Event[]>, asked: [] as string[] }))
+const seeded = vi.hoisted(() => ({ value: {} as Record<string, Event[]>, asked: [] as string[], overlap: { window_minutes: 30, sessions: {} } as unknown, overlapAsked: 0 }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -29,6 +29,7 @@ vi.mock('@/lib/api', async (orig) => {
       recentEvents: async (id: string) => { seeded.asked.push(id); return seeded.value[id] ?? [] },
       session: async () => ({ repo: { url: 'https://github.com/o/caprock', root: '/r/caprock' } }),
       summary: async () => ({ projects: [{ project: 'caprock', dir: '/r/caprock', tokens: 1_200_000, cost_usd: 42.5, sessions: 3 }] }),
+      overlap: async () => { seeded.overlapAsked++; return seeded.overlap },
     },
   }
 })
@@ -219,26 +220,29 @@ describe('pulse track selection', () => {
     expect(screen.queryByText(/4,053/)).not.toBeInTheDocument()
   })
 
+  // Two rows read "dev/caprock master" and could not be told apart (owner,
+  // 2026-10-14): the session's own name leads, in bold; the project, the
+  // branch and the short id are the line under it.
   it('names which session a track is when more than one is running', async () => {
     seeded.value = { 'aaaaaaaa-1111': [turn('aaaaaaaa-1111', NOW - 60_000)], 'bbbbbbbb-2222': [turn('bbbbbbbb-2222', NOW - 60_000)] }
     render(
       <PulsePanel
         sessions={[
-          session({ session_id: 'aaaaaaaa-1111', project: 'caprock', git_branch: 'master' }),
-          session({ session_id: 'bbbbbbbb-2222', project: 'caprock', git_branch: 'fix/pulse' }),
+          session({ session_id: 'aaaaaaaa-1111', project: 'caprock', git_branch: 'master', name: 'Login fix' }),
+          session({ session_id: 'bbbbbbbb-2222', project: 'caprock', git_branch: 'master', title: 'Pulse order' }),
         ]}
         now={NOW}
       />,
     )
-    // Same project twice: the branch is what tells the two rows apart.
-    await waitFor(() => expect(screen.getByText('master')).toBeInTheDocument())
-    expect(screen.getByText('fix/pulse')).toBeInTheDocument()
+    const first = await waitFor(() => screen.getByText('Login fix'))
+    expect(first.className).toMatch(/font-semibold/)
+    expect(screen.getByText('Pulse order')).toBeInTheDocument()
+    const under = [...document.querySelectorAll('[data-pulse-key] .mono')].map((n) => n.textContent)
+    expect(under[0]).toMatch(/^caprock master · aaaaaaaa/)
+    expect(under[1]).toMatch(/^caprock master · bbbbbbbb/)
   })
 
-  // The first version of the label above had `shrink-0` on the branch, so a
-  // long branch squeezed the project name to nothing and the row read as a
-  // branch with no repository — the label erased the identity it was added to
-  // clarify. The project is what must survive.
+  // A long name or branch gives way; the row keeps its project.
   it('keeps the project name when the branch is long', async () => {
     seeded.value = { s: [turn('s', NOW - 60_000)] }
     render(
@@ -249,7 +253,133 @@ describe('pulse track selection', () => {
     )
     const name = await waitFor(() => screen.getByText('caprock'))
     expect(name.className).not.toMatch(/\btruncate\b/)
-    expect(screen.getByText('fix/session-end-and-pulse-tracks').className).toMatch(/\btruncate\b/)
+    expect(name.parentElement!.className).toMatch(/\btruncate\b/)
+    expect(name.parentElement!.textContent).toContain('fix/session-end-and-pulse-tracks')
+  })
+})
+
+/**
+ * Where a track sits (owner, 2026-10-14, translated: "the order jumps by
+ * activity — not allowed … fixed position, by who was added when … plus let
+ * me swap them").
+ */
+describe('pulse row order', () => {
+  const NOW = Date.parse('2026-08-21T12:00:00Z')
+  const names = () => [...document.querySelectorAll<HTMLElement>('[data-pulse-key]')].map((n) => n.dataset.pulseKey)
+  const three = () => {
+    seeded.value = { a: [turn('a', NOW - 60_000)], b: [turn('b', NOW - 60_000)], c: [turn('c', NOW - 60_000)] }
+    return [
+      session({ session_id: 'b', project: 'two', started_at: 200, last_event_at: NOW - 5000 }),
+      session({ session_id: 'a', project: 'one', started_at: 100, last_event_at: NOW - 9000 }),
+    ]
+  }
+
+  it('keeps the order sessions started in, whatever happens in them, and puts a new one last', async () => {
+    localStorage.clear()
+    const [b, a] = three()
+    const { rerender } = render(<PulsePanel sessions={[b!, a!]} now={NOW} />)
+    await waitFor(() => expect(names()).toEqual(['a', 'b']))
+    // The older session gets busy: it does not jump.
+    rerender(<PulsePanel sessions={[{ ...a!, last_event_at: NOW, activity: { phrase: 'running', health: 'working', at: '' } } as SessionSummary, b!]} now={NOW} />)
+    await act(async () => {})
+    expect(names()).toEqual(['a', 'b'])
+    const c = session({ session_id: 'c', project: 'three', started_at: 300, last_event_at: NOW })
+    rerender(<PulsePanel sessions={[c, a!, b!]} now={NOW} />)
+    await waitFor(() => expect(names()).toEqual(['a', 'b', 'c']))
+  })
+
+  for (const [os, platform, mods] of [
+    ['macOS', 'MacIntel', { altKey: true, shiftKey: true }],
+    ['Windows', 'Win32', { ctrlKey: true, shiftKey: true }],
+    ['Linux', 'Linux x86_64', { ctrlKey: true, shiftKey: true }],
+  ] as const) {
+    it(`moves a row by keyboard on ${os}, and remembers it`, async () => {
+      localStorage.clear()
+      const spy = vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform)
+      const [b, a] = three()
+      const { unmount } = render(<PulsePanel sessions={[b!, a!]} now={NOW} />)
+      await waitFor(() => expect(names()).toEqual(['a', 'b']))
+      const toggle = document.querySelector<HTMLElement>('[data-pulse-key="a"] [aria-expanded]')!
+      fireEvent.keyDown(toggle, { key: 'ArrowDown', ...mods })
+      await waitFor(() => expect(names()).toEqual(['b', 'a']))
+      unmount()
+      render(<PulsePanel sessions={[b!, a!]} now={NOW} />)
+      await waitFor(() => expect(names()).toEqual(['b', 'a']))
+      spy.mockRestore()
+    })
+  }
+
+  it('moves a row dragged onto another, and remembers it', async () => {
+    localStorage.clear()
+    const [b, a] = three()
+    const { unmount } = render(<PulsePanel sessions={[b!, a!]} now={NOW} />)
+    await waitFor(() => expect(names()).toEqual(['a', 'b']))
+    const rowA = document.querySelector<HTMLElement>('[data-pulse-key="a"]')!
+    const rowB = document.querySelector<HTMLElement>('[data-pulse-key="b"]')!
+    const from = document.elementFromPoint
+    document.elementFromPoint = () => rowB
+    fireEvent.pointerDown(rowA.firstElementChild!, { button: 0, clientY: 10 })
+    fireEvent.pointerMove(window, { clientY: 40 })
+    fireEvent.pointerUp(window, { clientX: 5, clientY: 40 })
+    document.elementFromPoint = from
+    await waitFor(() => expect(names()).toEqual(['b', 'a']))
+    unmount()
+    render(<PulsePanel sessions={[b!, a!]} now={NOW} />)
+    await waitFor(() => expect(names()).toEqual(['b', 'a']))
+  })
+})
+
+describe('two sessions in one checkout', () => {
+  const NOW = Date.parse('2026-08-21T12:00:00Z')
+  const pair = () => {
+    seeded.value = { a: [turn('a', NOW - 60_000)], b: [turn('b', NOW - 60_000)] }
+    return [
+      session({ session_id: 'a', project: 'caprock', cwd: '/r/caprock', repo_root: '/r/caprock', name: 'Login fix', started_at: 100 }),
+      session({ session_id: 'b', project: 'caprock', cwd: '/r/caprock', repo_root: '/r/caprock', name: 'Router', started_at: 200 }),
+    ]
+  }
+
+  it('warns on the files both edited, with the list on hover', async () => {
+    localStorage.clear()
+    seeded.overlap = {
+      window_minutes: 30,
+      sessions: {
+        a: { checkout: '/r/caprock', with: [{ session_id: 'b', name: 'Router', name_source: 'name', started_at: 200, files: ['/r/caprock/ui/main.ts'] }] },
+        b: { checkout: '/r/caprock', with: [{ session_id: 'a', name: 'Login fix', name_source: 'name', started_at: 100, files: ['/r/caprock/ui/main.ts'] }] },
+      },
+    }
+    render(<PulsePanel sessions={pair()} now={NOW} />)
+    const chips = await screen.findAllByText('1 file touched by both')
+    expect(chips).toHaveLength(2)
+    expect(chips[0]!.parentElement!.getAttribute('aria-label')).toMatch(/Router[\s\S]*ui\/main\.ts/)
+    // Hovering opens a card naming the neighbour and every file, relative to the checkout.
+    fireEvent.mouseEnter(chips[0]!.parentElement!)
+    const card = await screen.findByRole('tooltip')
+    expect(card).toHaveTextContent(/Edited by this session and Router/)
+    expect(card).toHaveTextContent('ui/main.ts')
+    fireEvent.mouseLeave(chips[0]!.parentElement!)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Move to a worktree…' })).toHaveLength(2)
+  })
+
+  it('names the neighbour quietly when they share only the folder', async () => {
+    localStorage.clear()
+    seeded.overlap = {
+      window_minutes: 30,
+      sessions: { a: { checkout: '/r/caprock', with: [{ session_id: 'b', name: 'Router', name_source: 'name', started_at: 200, files: [] }] } },
+    }
+    render(<PulsePanel sessions={pair()} now={NOW} />)
+    const chip = await screen.findByText('shares checkout with Router')
+    expect(chip.parentElement!.dataset.overlap).toBe('info')
+  })
+
+  it('asks nothing when no two sessions could share a folder', async () => {
+    localStorage.clear()
+    seeded.overlapAsked = 0
+    seeded.value = { a: [turn('a', NOW - 60_000)], b: [turn('b', NOW - 60_000)] }
+    render(<PulsePanel sessions={[session({ session_id: 'a', cwd: '/r/one' }), session({ session_id: 'b', cwd: '/r/two' })]} now={NOW} />)
+    await waitFor(() => expect(document.querySelectorAll('[data-pulse-key]')).toHaveLength(2))
+    expect(seeded.overlapAsked).toBe(0)
   })
 })
 
@@ -268,7 +398,7 @@ describe('a pulse row, opened', () => {
     // Who is working, at reading size: words, not a faint ×4.
     expect(screen.getByText('4 agents')).toBeInTheDocument()
     expect(screen.queryByText('Open session')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /what is running in caprock/i }))
+    fireEvent.click(screen.getAllByRole('button', { name: /what is running in/i })[0]!)
     expect(await screen.findByText(/\$42\.50 · 1\.20M tokens · 3 sessions/)).toBeInTheDocument()
     expect(screen.getByText('editing Pulse.tsx')).toBeInTheDocument()
     expect(screen.getByText('Open session')).toBeInTheDocument()

@@ -21,6 +21,7 @@ import { useNow } from '@/lib/useNow'
 import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
 import { PlanChip } from './PlanPicker'
+import { setLook, useLooks } from '@/lib/cockpitlooks'
 import { useSessionPlan, windowsOf, type SessionPlan } from './AccountPlan'
 import { WINDOW_MS, pace } from '@/lib/pace'
 import { SessionChart, SpendBars, SpendChart, useSessionBars } from './SpendScrub'
@@ -35,6 +36,9 @@ import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
 import { PermissionModeChip } from './PermissionModeChip'
 import { KindIcon } from './KindIcon'
+import { OverlapLine } from './OverlapLine'
+import { overlapChip, useOverlap } from '@/lib/overlap'
+import { sessionTitle } from '@/lib/sidebar'
 import { orderSubagents, presetOf, setSubagentFields, useSubagentFields, SUBAGENT_FIELDS, SUBAGENT_PRESETS, type SubagentFields } from '@/lib/subagentview'
 import { SubagentDetail } from './SubagentDetail'
 import {
@@ -139,22 +143,26 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes }: {
   const calls = useMemo(() => callsFromEvents(main), [main])
   const figures = spendFigures(s, calls)
   // The order is what the people using it look at (owner, 2026-10-12): the
-  // agent and its headline figure, what it is doing now, then the spend
+  // agent and its headline figure, what it is doing now, then the context
+  // and the plan limits, compact by default (owner, 2026-10-14: "you moved
+  // the context window size too far down — it's needed info; make it
+  // compact or like now, plan and limits too", translated), then the spend
   // chart (owner, 2026-10-13: "I like looking at it", picked from three
-  // places), its subagents, its task list, the context, the plan limits.
+  // places), its subagents, its task list.
   return (
     <>
       <Hero s={s} sessionId={sessionId} state={state} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} />
       <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} />
       {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
+      <CheckoutShared s={s} live={state !== 'ended'} />
+      <ContextMeter s={s} />
+      {plan && <PlanWindows limits={plan} agent={s.agent} now={now} acct={acct} />}
       <Spend s={s} sessionId={sessionId} events={main} now={now} figures={figures} summary={summary} />
       {subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) && (
         <Subagents subs={subs} permission={permission} now={now} sessionId={sessionId} open={openSub} onOpen={setOpenSub}
           allFinished={allFinished} onAllFinished={setAllFinished} reveal={reveal} />
       )}
       <TodoBlock sessionId={sessionId} />
-      <ContextMeter s={s} />
-      {plan && <PlanWindows limits={plan} agent={s.agent} now={now} acct={acct} />}
       <Timeline runs={runs} total={s.stats?.tool_calls} now={now} />
       {changes}
     </>
@@ -724,7 +732,30 @@ function usePeriodSummary(period: SpendPeriod, given: Summary | undefined): Summ
   return own ?? (got?.period === period ? got.s : undefined)
 }
 
+/**
+ * A section label that switches its section between its two looks:
+ * compact (one line) and full; the chevron points down when full.
+ */
+function LookLabel({ name, full, onToggle, children }: { name: string; full: boolean; onToggle: () => void; children?: ReactNode }) {
+  return (
+    <button type="button" aria-expanded={full} onClick={onToggle}
+      title={full ? `Compact ${name.toLowerCase()}: one line` : `Show the full ${name.toLowerCase()}`}
+      className="-mx-1 flex shrink-0 items-center gap-1 rounded-[6px] px-1 py-0.5 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+      <Chevron open={full} />
+      <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">{children ?? name}</h4>
+    </button>
+  )
+}
+
+/**
+ * How full the context is. Compact: one line, the label, a thin bar and
+ * *14% · 140k / 1M*. Full: the meter with quarter marks and what every call
+ * now pays to re-read it. Switched on the label, remembered per viewer.
+ */
 function ContextMeter({ s }: { s: SessionSummary }) {
+  const { context: look } = useLooks()
+  const full = look === 'full'
+  const toggle = () => setLook('context', full ? 'compact' : 'full')
   const ctx = s.context
   if (!ctx) {
     return (
@@ -735,15 +766,34 @@ function ContextMeter({ s }: { s: SessionSummary }) {
   }
   const pct = Math.max(0, Math.min(100, ctx.pct))
   const tone = pct >= 85 ? 'danger' : pct >= 60 ? 'warn' : 'ok'
+  const ink = tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-fg'
+  const meter = (h: string) => (
+    <div className={`cockpit-track relative ${h} overflow-hidden rounded-full`} role="meter" aria-label="Context used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+      <div className="cockpit-fill h-full rounded-full" data-tone={tone} style={{ width: `${Math.max(pct, 1.5)}%` }} />
+      {[25, 50, 75].map((m) => <span key={m} aria-hidden className="absolute top-0 h-full w-px bg-[var(--app-chrome-bg)] opacity-70" style={{ left: `${m}%` }} />)}
+    </div>
+  )
+  if (!full) {
+    return (
+      <section aria-label="Context" data-look="compact" className="flex min-w-0 items-center gap-2"
+        title={ctx.next_call_usd > 0 ? `Every call now re-reads it for ${fmtUSD(ctx.next_call_usd)}` : undefined}>
+        <LookLabel name="Context" full={false} onToggle={toggle} />
+        <div className="min-w-[24px] flex-1">{meter('h-[5px]')}</div>
+        <span className="num shrink-0 whitespace-nowrap text-[11.5px] text-fg-muted">
+          <span className={`font-medium ${ink}`}>{fmtPct(pct)}</span> · <span className="text-fg">{fmtTokens(ctx.tokens)}</span> / {fmtTokens(ctx.window)}
+        </span>
+      </section>
+    )
+  }
   return (
-    <section aria-label="Context" className="grid gap-2">
-      <SectionLabel right={<span className="num text-fg-muted"><span className="text-fg">{fmtTokens(ctx.tokens)}</span> / {fmtTokens(ctx.window)}</span>}>Context</SectionLabel>
-      <div className="cockpit-track relative h-[9px] overflow-hidden rounded-full" role="meter" aria-label="Context used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
-        <div className="cockpit-fill h-full rounded-full" data-tone={tone} style={{ width: `${Math.max(pct, 1.5)}%` }} />
-        {[25, 50, 75].map((m) => <span key={m} aria-hidden className="absolute top-0 h-full w-px bg-[var(--app-chrome-bg)] opacity-70" style={{ left: `${m}%` }} />)}
+    <section aria-label="Context" data-look="full" className="grid gap-2">
+      <div className="flex items-center gap-2">
+        <LookLabel name="Context" full onToggle={toggle} />
+        <span className="num ml-auto text-[11.5px] text-fg-muted"><span className="text-fg">{fmtTokens(ctx.tokens)}</span> / {fmtTokens(ctx.window)}</span>
       </div>
+      {meter('h-[9px]')}
       <p className="text-[11.5px] text-fg-muted">
-        <span className={`num font-medium ${tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-fg'}`}>{fmtPct(pct)}</span> full
+        <span className={`num font-medium ${ink}`}>{fmtPct(pct)}</span> full
         {ctx.next_call_usd > 0 && <> · every call now re-reads it for <span className="num text-fg">{fmtUSD(ctx.next_call_usd)}</span></>}
       </p>
     </section>
@@ -1076,6 +1126,16 @@ function capital(t: string): string {
   return t ? t[0]!.toUpperCase() + t.slice(1) : t
 }
 
+/**
+ * One line when another live session works in this one's checkout — a
+ * warning when both edited the same files in the last half hour — the same
+ * chip as the Live pulse row (lib/overlap.ts), where the work is watched.
+ */
+function CheckoutShared({ s, live: running }: { s: SessionSummary; live: boolean }) {
+  const chip = overlapChip(useOverlap(running), s, sessionTitle(s))
+  return chip ? <OverlapLine chip={chip} /> : null
+}
+
 function LoopWarning({ s, now }: { s: SessionSummary; now: number }) {
   const l = s.loop!
   return (
@@ -1092,17 +1152,80 @@ function LoopWarning({ s, now }: { s: SessionSummary; now: number }) {
   )
 }
 
+/**
+ * The plan's 5-hour and weekly windows. Compact: one line, *5h ▮ 12% ·
+ * 05:40  Week ▮ 24% · Mon 13:00*, each with a tiny bar, the reset times
+ * cut first when the line is narrow, never wrapped. Full: the plan chip and
+ * a WindowBar per window. Switched on the label, remembered per viewer.
+ */
 function PlanWindows({ limits, agent, now, acct }: { limits: NonNullable<Summary['rate_limits']>; agent?: string; now: number; acct: SessionPlan }) {
   const source = acct.account && !acct.account.default ? `${agent === 'codex' ? 'Codex' : 'Claude Code'} (${acct.account.label})` : agent === 'codex' ? 'Codex' : 'Claude Code'
   const { plan, save: savePlan } = acct
+  const { limits: look } = useLooks()
+  const full = look === 'full'
+  const toggle = () => setLook('limits', full ? 'compact' : 'full')
+  const forecasts = agent !== 'codex'
+  if (!full) {
+    return (
+      <section aria-label="Plan limits" data-look="compact" className="@container flex min-w-0 items-center gap-2">
+        <LookLabel name="Plan limits" full={false} onToggle={toggle}>Plan</LookLabel>
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2.5">
+          {limits.five_hour && <WindowInline label="5h" name="5 hours" w={limits.five_hour} lenMs={WINDOW_MS.five_hour} now={now} source={source} forecasts={forecasts} />}
+          {limits.seven_day && <WindowInline label="Week" name="Week" w={limits.seven_day} lenMs={WINDOW_MS.seven_day} now={now} source={source} forecasts={forecasts} />}
+        </div>
+      </section>
+    )
+  }
   return (
-    <section aria-label="Plan limits" className="grid gap-2.5">
+    <section aria-label="Plan limits" data-look="full" className="grid gap-2.5">
       {/* Which plan these are — and a click to correct it (owner, 2026-10-11:
         * "and you can confirm the plan there: is it really this one?"). */}
-      <SectionLabel right={agent === 'codex' ? <span className="text-fg-faint">{acct.account && !acct.account.default ? acct.account.label : 'all Codex sessions'}</span> : <PlanChip plan={plan} onSave={savePlan} account={acct.account} />}>Plan</SectionLabel>
-      {limits.five_hour && <WindowBar label="5 hours" w={limits.five_hour} lenMs={WINDOW_MS.five_hour} now={now} source={source} forecasts={agent !== 'codex'} />}
-      {limits.seven_day && <WindowBar label="Week" w={limits.seven_day} lenMs={WINDOW_MS.seven_day} now={now} source={source} forecasts={agent !== 'codex'} />}
+      <div className="flex items-center gap-2">
+        <LookLabel name="Plan limits" full onToggle={toggle}>Plan</LookLabel>
+        <div className="ml-auto flex items-baseline gap-2 text-[11.5px]">
+          {agent === 'codex' ? <span className="text-fg-faint">{acct.account && !acct.account.default ? acct.account.label : 'all Codex sessions'}</span> : <PlanChip plan={plan} onSave={savePlan} account={acct.account} />}
+        </div>
+      </div>
+      {limits.five_hour && <WindowBar label="5 hours" w={limits.five_hour} lenMs={WINDOW_MS.five_hour} now={now} source={source} forecasts={forecasts} />}
+      {limits.seven_day && <WindowBar label="Week" w={limits.seven_day} lenMs={WINDOW_MS.seven_day} now={now} source={source} forecasts={forecasts} />}
     </section>
+  )
+}
+
+/**
+ * One window in the compact line: its short name, a tiny bar, the
+ * percentage in its tone (amber or red when it runs out before the reset,
+ * as the full bar), and when it resets — the part that gives way when
+ * narrow: a weekly reset reads as its weekday alone under 22rem, then cuts.
+ */
+function weekday(ms: number): string {
+  return new Date(ms).toLocaleDateString([], { weekday: 'short' })
+}
+
+function WindowInline({ label, name, w, lenMs, now, source, forecasts }: { label: string; name: string; w: RateWindow; lenMs: number; now: number; source: string; forecasts: boolean }) {
+  const { stale } = readWindow(w, now)
+  const p = pace(w, lenMs, now, { forecasts, stale })
+  const clock = resetClock(p.resetMs, now)
+  const long = p.resetMs - now > 24 * 3600 * 1000
+  const tone = p.verdict === 'out' ? (p.urgent ? 'danger' : 'warn') : p.pct > 85 ? 'danger' : 'ok'
+  const ink = stale ? 'text-fg-faint' : tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-fg'
+  const title = stale
+    ? `${name}: ${p.pct}% · ${source} has not refreshed this window recently`
+    : `${name}: ${p.pct}% used · resets ${resetClock(p.resetMs, now)}${p.verdict === 'out' ? ` · out ${p.outAt ? `at ${resetClock(p.outAt, now)}` : 'now'}` : ''}`
+  return (
+    <span data-window={name} title={title} className="flex min-w-0 items-center gap-1 text-[11.5px]">
+      <span className="shrink-0 text-fg-muted">{label}</span>
+      <span aria-hidden className="cockpit-track relative h-[5px] w-[20px] shrink-0 overflow-hidden rounded-full">
+        <span className="cockpit-fill block h-full rounded-full" data-tone={tone === 'ok' ? 'accent' : tone} style={{ width: `${Math.max(4, Math.min(100, p.pct))}%` }} />
+      </span>
+      <span className={`num shrink-0 font-medium ${ink}`}>{p.pct}%</span>
+      {/* The reset clock gives way first: a weekday alone in a narrow panel, cut after that. */}
+      {!stale && (
+        <span className="num min-w-0 truncate text-fg-faint">
+          {long ? <><span className="@[22rem]:hidden">{weekday(p.resetMs)}</span><span className="hidden @[22rem]:inline">{clock}</span></> : clock}
+        </span>
+      )}
+    </span>
   )
 }
 
