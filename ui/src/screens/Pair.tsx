@@ -30,6 +30,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, errText, setDeviceToken } from '@/lib/api'
 
+/** Set just before the reload that follows pairing: the phone's page shows
+ *  its Ready card once (remote/ReadyCard). */
+export const JUST_PAIRED_KEY = 'caprock.pair.justPaired'
+
 /** The six digits a scanned link carries, or '' — `#/pair?code=123456`. */
 export function codeFromHash(hash: string): string {
   const [path, query] = hash.replace(/^#\/?/, '').split('?')
@@ -60,6 +64,9 @@ export function PairScreen() {
     try {
       const r = await api.pairRedeem(digits, label)
       setDeviceToken(r.token)
+      try {
+        localStorage.setItem(JUST_PAIRED_KEY, '1')
+      } catch { /* no Ready card: the dashboard still says what it cannot do */ }
       // A full reload rather than a route change: every screen fetched and
       // failed while this device had no token, and the simplest way to have
       // them all ask again is to start the page over. Onto the dashboard,

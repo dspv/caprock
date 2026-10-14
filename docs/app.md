@@ -174,8 +174,14 @@ others. Installing it: [install-app.md](install-app.md).
   Plan (read) permission, or Administration (read) for an organization), the median CI time and its trend, the share of
   red runs, runs stuck far past their usual time or waiting for a runner,
   the newest release, the five pull requests the agents spent most on this
-  week, and who opened them, face and name. Costs are at API list price.
-  Fold it and it reads nothing.
+  week with their tokens beside the cost, and who opened them, face and
+  name. Costs are at API list price; a session that worked on several pull
+  requests is split between them and marked *shared*. Only repositories
+  with a session in the last 14 days are read; older ones, and any you hide
+  from a block's ⋯ menu, fold into one line (*3 older repositories · 1
+  hidden — show*) and are not read from GitHub until you show them. When
+  GitHub is slow it says so in one grey line and tries again. Fold it and
+  it reads nothing.
 - **Live pulse.** One row per running session, led by the session's name,
   with the project, branch and short id under it. Rows keep their places:
   the order sessions started in (tabs follow the tab strip among
@@ -1110,19 +1116,54 @@ install from an app store. It reaches this computer through an encrypted
 relay that passes bytes it cannot read
 ([how it works](../README.md#from-anywhere-through-an-encrypted-relay)).
 
-1. **Show a code.** In the app, click **phone** beside *Settings* in the
-   sidebar (or open Settings → *Use on your phone*) and press **Show a
-   code**. The line under the button says what that press does: it turns on
-   access from anywhere for this computer, and keeps it on until you press
-   **Turn off** beside it.
-2. **Scan it.** Point the phone's camera at the code and tap the link:
-   Caprock opens and pairs by itself. **Copy link** under the code is for a
-   phone that cannot scan.
-3. **Add it to the Home Screen.** On an iPhone, in Safari: **Share** →
-   **Add to Home Screen**. On Android, in Chrome: **⋮** → **Add to Home
-   screen**. Caprock offers this once, at the top of the page. The icon
-   opens Caprock full screen. On an iPhone the home-screen app keeps its own
-   storage: paste the copied link there once.
+1. **Choose what the phone may do.** In the app, click **phone** beside
+   *Settings* in the sidebar (or open Settings → *Use on your phone*).
+   **This phone can type and start agents** is ticked by default, and
+   remembered on this computer: the phone can then start agents, type into
+   sessions, approve and stop them as soon as it pairs, with nothing more to
+   click here. Untick it for a phone that should only look.
+2. **Show a code and scan it.** Press **Show a code**. The line under the
+   button says what that press does: it turns on access from anywhere for
+   this computer, and keeps it on until you press **Turn off** beside it.
+   Point the phone's camera at the code and tap the link: Caprock opens and
+   pairs by itself. **Copy link** under the code is for a phone that cannot
+   scan.
+3. **Check the list.** While the code is up, and after, the panel shows
+   what is done and what is left, live: *Access from anywhere* — on;
+   *Phone paired* — waiting, then the phone's name; *Can type from the
+   phone* — yes, or *view only* with **Let it control sessions** beside it;
+   *App installed on the phone* — yes, or optional. The phone opens on a
+   short **Ready** card: connected to this computer, whether it can type
+   (and, if not, where on the computer to fix it — the card notices by
+   itself), the install button, and **Open sessions**. The card comes back
+   only while the phone cannot type, until you close it.
+4. **Optional: install the app, once.** On Android, in Chrome, press **Install the
+   Caprock app** on the page (or **Install** on the line under the
+   machine's name); the button is there only while Chrome says Caprock is
+   not installed, so it never adds a second copy. Opened in a browser tab
+   later, the page says *Caprock is on your home screen* instead. A new
+   version of the page updates the installed app in place. On an iPhone, in
+   Safari: **Share** → **Add to Home Screen**; the home-screen app keeps
+   its own storage there, so paste the copied link into it once. On
+   Android the app and Chrome share the pairing.
+
+**When the phone cannot reach the computer**, it never just says
+*Connecting…*: after five seconds the page says why and what to do, and
+keeps trying by itself (after 1, 2, 4, 8, 15, then every 30 seconds, and at
+once when the phone comes back to the page or onto a network):
+
+- **Your computer is offline or Caprock isn't running**: the relay has no
+  connection from it. Wake it, check it is online, open Caprock.
+- **Your computer isn't answering**: the relay reached it but it did not
+  reply, the usual sign of a computer that went to sleep.
+- **Can't reach the relay: check the internet** and **This phone is
+  offline**: the phone's own connection.
+- **This phone was removed: pair again**: it was removed in *Paired
+  devices*. Show a new code and scan it.
+
+**Retry** tries at once; **Pair again** shows the three steps and a box for
+a copied link. Opening a pairing link whose code was already used (the
+camera, then the app) keeps the pairing that worked.
 
 The phone appears under *Paired devices*, which says how each device reaches
 this computer: *anywhere*, or *Wi-Fi link*. A *Wi-Fi link* is a phone paired
@@ -1130,9 +1171,11 @@ on this computer's home-network address before access from anywhere was the
 one way; it works on that Wi-Fi only. Its row says so in one line and offers
 **Show the code**: scan it with that phone and it pairs once more, through the
 relay. The phone says the same on its own screen while it is on that link:
-*This link works only on your home Wi-Fi. To use Caprock anywhere: in the
-Caprock app on your computer, Settings → Use on your phone → Show a code, and
-scan it.*
+*This is the old Wi-Fi link: it works only on your home Wi-Fi. Use the
+Caprock app from m.caprock.dev instead: in the Caprock app on your computer,
+Settings → Use on your phone → Show a code, and scan it. Then remove this one
+from your home screen.* It no longer offers to put the Wi-Fi link on the home
+screen, so a phone does not end up with two icons named Caprock.
 
 **Advanced: no internet.** The Wi-Fi listener is still in Caprock for a
 machine that cannot reach the relay, from a terminal only: `caprock up --lan`
@@ -1141,9 +1184,9 @@ listens on the private Wi-Fi address (and Tailscale's, when it is up), and
 listener is on, Settings shows its address with a **Turn off**. See
 [Without internet](../README.md#without-internet-on-the-same-network-advanced).
 
-A paired phone can look but not change
-anything until you press **Let it control sessions** beside it; **Take
-control away** undoes that at once. The rest of what pairing allows, and
+A phone paired with the box unticked can look but not change anything
+until you press **Let it control sessions** beside it; **Take control
+away** undoes either at once, and holds on the phone's next keystroke. The rest of what pairing allows, and
 why, is in [Open it on your phone](../README.md#open-it-on-your-phone).
 
 ### The phone home

@@ -11,6 +11,7 @@ import { loadTerminalFont } from '@/lib/termfont'
 import { watchUiVersion } from '@/lib/staleui'
 import { applyUiScale } from '@/lib/uiscale'
 import { markPageVisibility } from '@/lib/visible'
+import { listenForInstall } from '@/remote/install'
 
 // The app opens on terminals: start fetching every subset of their face now,
 // while the workspace chunk is still loading (lib/termfont).
@@ -26,6 +27,24 @@ const remote = import.meta.env.VITE_CAPROCK_REMOTE === '1'
 // A daemon updated under this page: reload onto its UI (lib/staleui). Not on
 // the remote page, which no daemon served.
 if (!remote) watchUiVersion()
+
+if (remote) {
+  // Chrome's install prompt can fire before RemoteRoot's chunk has loaded;
+  // keep it for the page's own button (remote/install).
+  listenForInstall()
+  // A new build of the remote page replaces its hashed files, and a page
+  // opened before that asks for chunks that are gone: load the new build,
+  // once a minute at most, rather than show an error.
+  window.addEventListener('vite:preloadError', (e) => {
+    try {
+      const last = Number(sessionStorage.getItem('caprock.remote.reloadedAt') ?? 0)
+      if (Date.now() - last < 60_000) return
+      sessionStorage.setItem('caprock.remote.reloadedAt', String(Date.now()))
+    } catch { /* storage refused: reload anyway */ }
+    e.preventDefault()
+    window.location.reload()
+  })
+}
 
 // Out of sight, every CSS animation pauses (lib/visible, design/tokens.css).
 markPageVisibility()

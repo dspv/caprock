@@ -9,6 +9,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **now:** the tokens beside each pull request's cost in the CI/CD
+  section (*9.4M tok · $2.12*); the hover splits input, output, cache read
+  and cache write.
+
 - **brain:** Second Brain. Keep the answers worth keeping as memories — an
   idea, a decision, a finding, an open question — each linked to its
   project, its topics and the moment in the session it came from. **Drop
@@ -26,6 +30,42 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   later; *Build from my last 30 days* shows an estimate first. Settings →
   Second Brain shows what it used and read. A new session's handoff now
   carries up to five of the repository's memories.
+
+### Fixed
+
+- **phone:** a phone can type the moment it pairs. A newly paired phone
+  could only look until a second click on the computer — impossible once
+  you have left the house. Settings → Use on your phone now has **This
+  phone can type and start agents** beside **Show a code**, ticked by
+  default and remembered on the computer; the code carries it, so the phone
+  pairs ready to work. Untick it for a phone that should only look. The
+  panel lists the steps one line each and, while the code is up and after,
+  ticks off what is done and what is left: access from anywhere, the phone
+  paired (by name), whether it can type (with **Let it control sessions**
+  right there if not) and whether the app is installed on it. The phone
+  opens on a short **Ready** card — connected to which computer, whether it
+  can type and, if not, exactly where on the computer to fix it, the
+  install button, and **Open sessions**. m.caprock.dev needs a redeploy
+  for the phone's half.
+
+- **now:** the CI/CD section lists only repositories with a session in the
+  last 14 days, most recent first. Older ones, and any you hide from a
+  block's new ⋯ menu (*Hide from CI/CD*), fold into one quiet line —
+  *3 older repositories · 1 hidden — show* — and are not read from GitHub
+  until you show them; hidden ones come back with *Show again*.
+- **now:** GitHub no longer runs out of time on the CI/CD section: the
+  repositories are read three at a time, each with its own 12 seconds,
+  instead of one after another under a single deadline that left every
+  later one *context deadline exceeded*. A slow GitHub is one grey line —
+  *GitHub didn't answer in time — retrying* — once for the section when
+  every repository says the same, and the names show at once while the
+  figures load.
+- **now:** a session that drove many pull requests is no longer charged
+  whole to the one whose branch it ended on. It is split between the pull
+  requests it worked on, and such a row says *shared*; the release pull
+  request #601 read as $1,884.29, the whole orchestrating session, and now
+  reads $2.12 (measured on the owner's database). This also corrects the
+  PRs & CI Board's agent cost.
 
 ## [0.117.0] - 2026-10-14
 
@@ -136,6 +176,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   caprock.dev stand beside the mark, a line says the page is the other half
   of the Caprock app on your computer (with where to get it), and the first
   step shows a small picture of Settings → Use on your phone → Show a code.
+- **phone:** the phone no longer sits on *Connecting…* with nothing after
+  it. A computer that went to sleep kept its relay connection open on
+  paper, and the relay handed the phone to it; the phone waited forever for
+  an answer. The relay now treats a computer it has not heard from in 75
+  seconds as offline (`caprock remote relay` and the hosted relay, which
+  needs a redeploy), and the phone gives every attempt 10 seconds, checks
+  the computer itself, not only the relay, while connected, and after 5
+  seconds says what is wrong — *Your computer is offline or Caprock isn't
+  running*, *Your computer isn't answering*, *Can't reach the relay*, *This
+  phone was removed: pair again* — with **Retry** and **Pair again**. It
+  retries by itself, and at once when you come back to it.
+- **phone:** Caprock installs on an Android phone once, when you press
+  **Install the Caprock app** on m.caprock.dev. Chrome's own install prompt
+  no longer pops up in a browser tab of an already-installed app, a browser
+  tab says *Caprock is on your home screen* instead, and the old Wi-Fi link
+  no longer offers a second home-screen icon: it says to use the app from
+  m.caprock.dev. Opening the same pairing QR twice keeps the pairing that
+  worked, and a page left open across a new version of m.caprock.dev
+  reloads instead of failing.
 - **mail:** Mail opens instead of failing with "null is not an object
   (evaluating 't.accounts.length')". A mail client found on the machine with
   no accounts it could read — Apple Mail before Full Disk Access — came back

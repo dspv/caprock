@@ -1646,13 +1646,16 @@ export interface PairedDevice {
   paired_at: number
   last_seen: number
   /** A viewer reads; a controller may also start, type into and stop
-   *  sessions (ADR-034). Granted on the machine, never by pairing. */
+   *  sessions (ADR-034). Decided on the machine: by the tick beside Show a
+   *  code, which the code carries, or by Let it control sessions afterwards. */
   role: 'viewer' | 'controller'
   /** How it last reached the machine: `relay` (anywhere, ADR-058),
    *  `tailscale` (the network listener over Tailscale), `lan` (the network
    *  listener on the home Wi-Fi: that link works nowhere else). Absent when
    *  it has not been seen since this was recorded. */
   via?: PairedVia
+  /** The phone last said it runs as the installed app. A label only. */
+  app?: boolean
 }
 
 export type PairedVia = 'lan' | 'tailscale' | 'relay'
@@ -1666,6 +1669,10 @@ export interface PairMe {
   via?: PairedVia
   /** Access from anywhere is on, so a Wi-Fi link has a better one to move to. */
   anywhere?: boolean
+  /** The phone's page for access from anywhere, sent with anywhere. */
+  app?: string
+  /** The machine has this device down as running the installed app. */
+  installed?: boolean
 }
 
 /** What the owner sees on the pairing panel. */
@@ -1676,6 +1683,8 @@ export interface PairState {
   url?: string
   /** The outstanding code, shown only on the machine itself. */
   code?: string
+  /** The role a phone pairing with `code` gets. */
+  code_role?: PairedDevice['role']
   expires_in_sec?: number
   /** The address reaches other networks (a tunnel), not just this one. */
   tunnelled?: boolean
@@ -1771,7 +1780,13 @@ export const api = {
   /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */
   reposActivity: () => get<ReposActivity>('/v1/repos/activity'),
   /** The Now screen's CI/CD section (.ai/04-ui.md § CI/CD on Now). */
-  reposCI: () => get<ReposCI>('/v1/repos/ci'),
+  reposCI: (q: { older?: boolean; hide?: readonly string[] } = {}) => {
+    const p = new URLSearchParams()
+    if (q.older) p.set('older', '1')
+    if (q.hide && q.hide.length > 0) p.set('hide', q.hide.join(','))
+    const qs = p.toString()
+    return get<ReposCI>(`/v1/repos/ci${qs ? `?${qs}` : ''}`)
+  },
   sessionBranches: (id: string) => get<SessionBranches>(`/v1/sessions/${encodeURIComponent(id)}/branches`),
   /** What GitHub billed for Actions this month (its billing report); ?owner= an organization. */
   actionsUsage: (owner?: string) => get<ActionsUsage>(`/v1/github/actions-usage${owner ? `?owner=${encodeURIComponent(owner)}` : ''}`),
@@ -1801,7 +1816,9 @@ export const api = {
   /** Exchange a code for a token. The one call a device makes before it is trusted. */
   pairRedeem: (code: string, name: string) =>
     post<{ token: string; id: string; name: string }>('/v1/pair', { code, name }),
-  pairCode: () => post<{ code: string; expires_in_sec: number; url: string }>('/v1/pair/code', {}),
+  /** A code that pairs a phone as `role` — the owner's tick, on the machine. */
+  pairCode: (role: PairedDevice['role'] = 'viewer') =>
+    post<{ code: string; role?: PairedDevice['role']; expires_in_sec: number; url: string }>('/v1/pair/code', { role }),
   /** Withdraw the outstanding code, so it stops working before it expires. */
   pairCancelCode: () => post<{ cleared: boolean }>('/v1/pair/code', {}, 'DELETE'),
   /** Turn network access on or off without restarting the daemon. */
@@ -1815,7 +1832,9 @@ export const api = {
   pairSetRole: (id: string, role: PairedDevice['role']) =>
     post<{ id: string; role: string }>(`/v1/pair/devices/${encodeURIComponent(id)}/role`, { role }, 'PUT'),
   /** Which role this dashboard's device holds: "owner" on the machine itself. */
-  pairMe: () => get<PairMe>('/v1/pair/me'),
+  /** `app` reports whether this phone runs as the installed app, for the
+   *  owner's checklist on the machine; omitted, nothing is reported. */
+  pairMe: (app?: boolean) => get<PairMe>(app === undefined ? '/v1/pair/me' : `/v1/pair/me?app=${app ? 1 : 0}`),
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),
