@@ -73,7 +73,7 @@ export function RepoPicker({ onPick, picked, compact = false }: { onPick: (url: 
   if (!connected) {
     return (
       <p className="text-[12px] leading-relaxed text-fg-faint">
-        {isPairedDevice() ? 'Connect GitHub in Settings on the computer to pick from your repositories.' : 'Connect GitHub in Settings → GitHub to pick from your repositories.'}
+        {isPairedDevice() ? 'To pick from your repositories, connect GitHub in the Caprock app on your computer: Settings → GitHub.' : 'Connect GitHub in Settings → GitHub to pick from your repositories.'}
       </p>
     )
   }

@@ -283,7 +283,7 @@ export function TabStrip(props: TabStripProps) {
                 <button
                   type="button"
                   aria-label={`${closeWord(file !== undefined, isShell)} ${title}`}
-                  title={closeTitle(file !== undefined, isShell, !!label?.chat)}
+                  title={closeTitle(file !== undefined, isShell, !!label?.chat, !!label?.session?.owned && label.session.status !== 'ended')}
                   onClick={(e) => { e.stopPropagation(); props.onDetach(t.id) }}
                   className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'absolute right-0 top-0 invisible group-hover:visible group-focus-within:visible'}`}
                 >
@@ -501,8 +501,8 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
           <span className="min-w-0 flex-1 truncate">{title}</span>
           <button
             type="button"
-            aria-label={isShell ? `Close shell ${title}` : `Close pane ${title} — the agent keeps running`}
-            title={isShell ? `Close shell (${keys('⌘W')})` : `Close pane (${keys('⌘W')}) — the agent keeps running`}
+            aria-label={isShell ? `Close shell ${title}` : `Close pane ${title} — ${s?.owned && s.status !== 'ended' ? 'keep the agent running or end it' : 'the agent keeps running'}`}
+            title={isShell ? `Close shell (${keys('⌘W')})` : `Close pane (${keys('⌘W')}) — ${s?.owned && s.status !== 'ended' ? 'keep the agent running or end it' : 'the agent keeps running'}`}
             onClick={(e) => { e.stopPropagation(); ctx.onClosePane?.(node.id) }}
             className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg"
           >

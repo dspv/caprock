@@ -284,9 +284,13 @@ One window, three regions:
   still running is stopped (`owned`, not ended; rule 7): known by its
   folder, or one this window spawned a moment ago that the session list
   does not have yet (`planChatClose`, `lib/closeShell.ts`). One whose agent
-  already exited is not signalled. Every other agent's tab still leaves its
-  agent running when it closes; the tab's × says *the chat ends* on a chat
-  and *the agent keeps running* on the rest.
+  already exited is not signalled. Closing the tab of any other agent
+  Caprock started asks *Close tab* (focused; the agent runs on) or *Close
+  and end the agent*, with *Don't ask again* (since 2026-10-14;
+  `lib/agentClose.ts`, .ai/04-ui.md); an agent another terminal started
+  only loses its tab. The tab's × says *the chat ends* on a chat, *keep
+  the agent running or end it* on an agent Caprock started and *the agent
+  keeps running* on the rest.
 - **Tab strip** (owner, 2026-10-09: "tabs are barely noticeable", and "the
   + amber, or better a dropdown", translated). The tab in front has a 2px
   amber top edge over its hairline frame and a medium-weight label

@@ -383,7 +383,7 @@ export function PullRequestCard({ target, canControl, sessionId }: { target: Wor
           <PRStatus pr={info.pr} compact onRefresh={canControl && info.connected ? refresh : undefined} />
         </>
       ) : !info.connected ? (
-        <p className="text-[12px] text-fg-muted">GitHub is not connected; connect it in Settings on the computer to open a pull request.</p>
+        <p className="text-[12px] text-fg-muted">GitHub is not connected. To open a pull request, connect it in the Caprock app on your computer: Settings → GitHub.</p>
       ) : creating ? (
         <CreatePRForm target={target} info={info} sessionId={sessionId} compact onCancel={() => setCreating(false)} onCreated={(pr) => { setOpened(pr); setCreating(false); reload() }} />
       ) : canControl ? (
