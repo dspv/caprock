@@ -31,6 +31,11 @@ const FRAME_READY = 0x12
 
 const CLOSE_OFFLINE = 4404
 const CLOSE_REPLACED = 4409
+const CLOSE_SILENT = 4408
+// A daemon pings every 25 s, answered here by the runtime; a machine unheard
+// for longer than this is asleep or behind a NAT that forgot it, with its
+// socket open only on paper (relaysrv.DefaultHostSilence).
+const HOST_SILENCE_MS = 75_000
 const MAX_MESSAGE = 65535 + 5
 const MAX_PHONES = 32
 const PROOF_CONTEXT = 'caprock-relay-host-v1\0'
@@ -69,7 +74,7 @@ export default {
   },
 }
 
-type Tag = { role: 'host'; id: string; nonce?: string; ready: boolean } | { role: 'phone'; conn: number }
+type Tag = { role: 'host'; id: string; nonce?: string; ready: boolean; readyAt?: number } | { role: 'phone'; conn: number }
 
 export class Machine implements DurableObject {
   constructor(
@@ -119,9 +124,25 @@ export class Machine implements DurableObject {
     return n
   }
 
-  /** The machine's connection that has proved its key; one at most. */
+  /**
+   * The machine's connection that has proved its key and is still heard; one
+   * at most. A sleeping laptop sends nothing and closes nothing: spliced to
+   * it, a phone's handshake went into the void and the phone sat on
+   * "Connecting…" (owner, 2026-10-14). Its last ping is the runtime's
+   * auto-response timestamp, which hibernation keeps.
+   */
   private readyHost(): WebSocket | undefined {
-    return this.state.getWebSockets('host').find((ws) => (ws.deserializeAttachment() as Tag & { ready?: boolean }).ready)
+    const now = Date.now()
+    for (const ws of this.state.getWebSockets('host')) {
+      const tag = ws.deserializeAttachment() as Tag & { ready?: boolean; readyAt?: number }
+      if (!tag.ready) continue
+      const pinged = this.state.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? 0
+      if (now - Math.max(tag.readyAt ?? now, pinged) <= HOST_SILENCE_MS) return ws
+      try {
+        ws.close(CLOSE_SILENT, 'the machine stopped answering')
+      } catch { /* already closed */ }
+    }
+    return undefined
   }
 
   async webSocketMessage(ws: WebSocket, msg: string | ArrayBuffer) {
@@ -178,7 +199,7 @@ export class Machine implements DurableObject {
     for (const p of this.state.getWebSockets('phone')) p.close(CLOSE_OFFLINE, 'the machine reconnected')
     // Tags are fixed when a socket is accepted, so "proved" lives in the
     // attachment and readyHost reads it there.
-    ws.serializeAttachment({ role: 'host', id: tag.id, ready: true } satisfies Tag)
+    ws.serializeAttachment({ role: 'host', id: tag.id, ready: true, readyAt: Date.now() } satisfies Tag)
     ws.send(frame(FRAME_READY, 0))
   }
 
@@ -186,6 +207,10 @@ export class Machine implements DurableObject {
     const tag = ws.deserializeAttachment() as Tag
     if (tag.role === 'host') {
       if (!tag.ready) return
+      // The close of a connection the machine replaced can arrive after a
+      // phone joined the new one; that phone is not the old one's to drop.
+      const others = this.state.getWebSockets('host').filter((h) => h !== ws && (h.deserializeAttachment() as Tag & { ready?: boolean }).ready)
+      if (others.length > 0) return
       for (const p of this.state.getWebSockets('phone')) p.close(CLOSE_OFFLINE, 'the machine disconnected')
       return
     }

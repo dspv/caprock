@@ -10,7 +10,8 @@
  */
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { currentChannel, currentMachine, forgetMachine, install, machines, parsePairLink, prepare, selectMachine } from './boot'
-import type { ChannelState } from './transport'
+import { needsPairing, type ChannelState, type Problem } from './transport'
+import { promptInstall, useInstallOffer, type InstallOffer } from './install'
 
 const App = lazy(() => import('../App'))
 
@@ -25,15 +26,33 @@ window.addEventListener('hashchange', () => {
   if (parsePairLink(window.location.hash)) window.location.reload()
 })
 
+/** How long the channel may be down before the page says why, in full. */
+export const EXPLAIN_AFTER_MS = 5_000
+
 export default function RemoteRoot() {
+  const link = useChannel()
+  const [pairing, setPairing] = useState(false)
   if (!machine) return <AddMachine first />
+  const blocked = needsPairing(link.problem)
   return (
     <div className="flex min-h-dvh flex-col">
-      <MachineBar />
+      <MachineBar link={link} />
+      {!blocked && <InstallStrip />}
       <div className="min-h-0 flex-1">
-        <Suspense fallback={null}>
-          <App />
-        </Suspense>
+        {pairing ? (
+          <AddMachine onCancel={() => setPairing(false)} />
+        ) : blocked || (link.state !== 'open' && link.downFor >= EXPLAIN_AFTER_MS) ? (
+          <ConnectionProblem link={link} onPair={() => setPairing(true)} />
+        ) : !link.everOpen ? (
+          // The dashboard decides once, at start, whether this phone is
+          // paired; it asks over an open channel, never a half-made one.
+          <p className="px-6 pt-10 text-center text-[15px] text-fg-muted">Reaching {currentMachine()?.name ?? 'your computer'}…</p>
+        ) : null}
+        {link.everOpen && !blocked && !pairing && (
+          <Suspense fallback={null}>
+            <App />
+          </Suspense>
+        )}
       </div>
     </div>
   )
@@ -46,33 +65,212 @@ const DOT: Record<ChannelState, string> = {
   closed: 'bg-danger',
 }
 
-function useChannelState(): [ChannelState, string] {
-  const ch = currentChannel()
-  const [s, setS] = useState<ChannelState>(ch?.state ?? 'closed')
-  const [why, setWhy] = useState(ch?.reason ?? '')
-  useEffect(() => {
-    if (!ch) return
-    setS(ch.state)
-    return ch.onState((next) => {
-      setS(next)
-      setWhy(ch.reason)
-    })
-  }, [ch])
-  return [s, why]
+export interface Link {
+  state: ChannelState
+  problem: Problem
+  /** When the next automatic try runs, or null. */
+  nextAt: number | null
+  /** Whether the channel has been open since the page loaded. */
+  everOpen: boolean
+  /** How long the channel has not been open, in ms; 0 while open. */
+  downFor: number
 }
 
-function MachineBar() {
-  const [state, why] = useChannelState()
+/** The channel's state, re-read every second while it is down. */
+function useChannel(): Link {
+  const ch = currentChannel()
+  const read = (since: number): Link => ({
+    state: ch?.state ?? 'closed',
+    problem: ch?.problem ?? '',
+    nextAt: ch?.nextAt ?? null,
+    everOpen: ch?.everOpen ?? false,
+    downFor: ch?.state === 'open' ? 0 : Date.now() - since,
+  })
+  const [downSince, setDownSince] = useState(() => Date.now())
+  const [link, setLink] = useState<Link>(() => read(downSince))
+  useEffect(() => {
+    if (!ch) return
+    let since = ch.state === 'open' ? 0 : downSince
+    const update = () => {
+      if (ch.state === 'open') since = 0
+      else if (!since) {
+        since = Date.now()
+        setDownSince(since)
+      }
+      setLink(read(since))
+    }
+    const off = ch.onState(update)
+    const tick = setInterval(() => {
+      if (ch.state !== 'open') update()
+    }, 1000)
+    update()
+    return () => {
+      off()
+      clearInterval(tick)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one channel per page
+  }, [ch])
+  return link
+}
+
+/** A few words for the bar; the full story is ConnectionProblem's. */
+export function barLabel(state: ChannelState, problem: Problem): string {
+  if (problem === 'removed') return 'Removed: pair again'
+  if (state === 'open') return ''
+  if (state === 'connecting') return 'Connecting…'
+  switch (problem) {
+    case 'machine-offline':
+      return 'Computer offline'
+    case 'no-answer':
+      return 'Computer not answering'
+    case 'relay-unreachable':
+      return 'Relay unreachable'
+    case 'no-internet':
+      return 'No internet'
+    case 'wrong-machine':
+      return 'Pair again'
+    default:
+      return 'Reconnecting…'
+  }
+}
+
+/** What went wrong and what to do, for each problem. */
+export function explain(problem: Problem, name: string, relay: string): { title: string; body: string } {
+  let host = relay
+  try {
+    host = new URL(relay).host
+  } catch { /* the address as given */ }
+  switch (problem) {
+    case 'machine-offline':
+      return {
+        title: 'Your computer is offline or Caprock isn’t running',
+        body: `${name} is not connected to the relay. Wake it up, check it is on the internet, and open Caprock on it. This page keeps trying by itself.`,
+      }
+    case 'no-answer':
+      return {
+        title: 'Your computer isn’t answering',
+        body: `The relay reached ${name}, but it did not reply. It may be asleep, or Caprock on it is restarting. This page keeps trying by itself.`,
+      }
+    case 'relay-unreachable':
+      return {
+        title: 'Can’t reach the relay: check the internet',
+        body: `This phone cannot reach ${host}. Check Wi-Fi or mobile data. This page keeps trying by itself.`,
+      }
+    case 'no-internet':
+      return { title: 'This phone is offline', body: 'Check Wi-Fi or mobile data. This page reconnects as soon as the network is back.' }
+    case 'wrong-machine':
+      return {
+        title: 'This isn’t the computer this phone paired with',
+        body: `The computer answering as ${name} has different keys, so nothing it sends is trusted. If its keys were reset, pair again: on the computer, Settings → Use on your phone → Show a code.`,
+      }
+    case 'removed':
+      return {
+        title: 'This phone was removed: pair again',
+        body: `${name} no longer lets this phone in. On the computer, open Caprock: Settings → Use on your phone → Show a code, and scan it.`,
+      }
+    case 'lost':
+      return { title: 'Connection lost', body: `Reconnecting to ${name}.` }
+    default:
+      return { title: 'Still connecting…', body: `Reaching ${name} through the relay at ${host}.` }
+  }
+}
+
+/**
+ * Shown when the channel has been down for EXPLAIN_AFTER_MS, or at once when
+ * only pairing again can help: never a "Connecting…" with nothing after it.
+ */
+function ConnectionProblem({ link, onPair }: { link: Link; onPair: () => void }) {
+  const cur = currentMachine()
+  const { title, body } = explain(link.problem, cur?.name ?? 'Your computer', cur?.relay ?? '')
+  const pairOnly = needsPairing(link.problem)
+  const wait = link.nextAt ? Math.max(1, Math.ceil((link.nextAt - Date.now()) / 1000)) : 0
+  return (
+    <div role="alert" data-testid="connection-problem" className="mx-auto max-w-md px-6 pb-10 pt-8">
+      <h1 className="text-[22px] font-semibold leading-tight text-fg">{title}</h1>
+      <p className="mt-2 text-[16px] leading-snug text-fg-muted">{body}</p>
+      {!pairOnly && (
+        <p className="mt-3 text-[14px] text-fg-faint">{link.state === 'connecting' ? 'Trying now…' : wait ? `Next try in ${wait} s` : ''}</p>
+      )}
+      <div className="mt-6 flex gap-3">
+        {!pairOnly && (
+          <button
+            type="button"
+            onClick={() => void currentChannel()?.retryNow().catch(() => { /* the card says why */ })}
+            disabled={link.state === 'connecting'}
+            className="min-h-12 flex-1 rounded-xl bg-accent text-[17px] font-semibold text-bg disabled:opacity-50"
+          >
+            Retry
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onPair}
+          className={`min-h-12 flex-1 rounded-xl text-[17px] ${pairOnly ? 'bg-accent font-semibold text-bg' : 'border border-border-strong text-fg'}`}
+        >
+          Pair again
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const STRIP_KEY = 'caprock.remote.installStrip'
+
+/**
+ * One line under the bar in a phone's browser tab: install the app (Android,
+ * when Chrome says it can), it is already on the home screen, or how to add
+ * it (iPhone). Gone once dismissed, per offer; never in the app itself.
+ */
+function InstallStrip() {
+  const offer = useInstallOffer()
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return localStorage.getItem(STRIP_KEY) ?? ''
+    } catch {
+      return ''
+    }
+  })
+  if (!offer || hidden === offer) return null
+  const hide = () => {
+    try {
+      localStorage.setItem(STRIP_KEY, offer)
+    } catch { /* it comes back next time */ }
+    setHidden(offer)
+  }
+  return (
+    <div className="flex items-center gap-3 border-b border-border bg-panel-2 px-4 py-2 text-[14px] text-fg-muted" data-testid="install-strip">
+      <span className="min-w-0 flex-1">{INSTALL_WORDS[offer]}</span>
+      {offer === 'button' && <InstallButton small />}
+      <button type="button" onClick={hide} aria-label="Hide" className="min-h-9 shrink-0 px-1 text-fg-faint">
+        ×
+      </button>
+    </div>
+  )
+}
+
+const INSTALL_WORDS: Record<Exclude<InstallOffer, null>, string> = {
+  button: 'Caprock as an app: full screen, from your home screen.',
+  installed: 'Caprock is on your home screen. Open it from there; it is paired too.',
+  ios: 'To keep Caprock on your Home Screen: Share, then Add to Home Screen.',
+}
+
+function InstallButton({ small }: { small?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={() => void promptInstall()}
+      className={small ? 'min-h-9 shrink-0 rounded-lg bg-accent px-3 text-[14px] font-semibold text-bg' : 'min-h-14 w-full rounded-xl border border-border-strong text-[17px] font-semibold text-fg'}
+    >
+      {small ? 'Install' : 'Install the Caprock app'}
+    </button>
+  )
+}
+
+function MachineBar({ link }: { link: Link }) {
+  const { state } = link
   const [open, setOpen] = useState(false)
   const cur = currentMachine()
-  const label =
-    state === 'open'
-      ? ''
-      : state === 'connecting'
-        ? 'Connecting…'
-        : why === 'offline'
-          ? 'Not reachable: is it on and online?'
-          : why || 'Disconnected'
+  const label = barLabel(state, link.problem)
   return (
     <div className="sticky top-0 z-50 border-b border-border bg-panel pt-[env(safe-area-inset-top)]">
       <button
@@ -81,7 +279,7 @@ function MachineBar() {
         className="flex min-h-11 w-full items-center gap-2 px-4 text-left"
         aria-expanded={open}
       >
-        <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[state]}`} aria-hidden />
+        <span className={`h-2 w-2 shrink-0 rounded-full ${link.problem === 'removed' ? 'bg-danger' : DOT[state]}`} aria-hidden />
         <span className="truncate font-medium text-fg">{cur?.name ?? 'Caprock'}</span>
         {label && <span className="truncate text-sm text-fg-muted">{label}</span>}
         <span className="ml-auto text-fg-faint" aria-hidden>
@@ -181,6 +379,7 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
   const [link, setLink] = useState('')
   const [error, setError] = useState('')
   const [pasting, setPasting] = useState(() => !first || standalone())
+  const offer = useInstallOffer()
   function applyLink(raw: string) {
     const hash = raw.includes('#') ? raw.slice(raw.indexOf('#')) : ''
     if (!parsePairLink(hash)) {
@@ -205,12 +404,20 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
             </div>
           </div>
           <h1 className="mt-8 text-[32px] font-semibold leading-tight text-fg">Your computer, on your phone</h1>
-          <p className="mt-2 text-[17px] text-fg-muted">Every session of the Caprock app on your computer, from anywhere. Nothing to install on the phone.</p>
+          <p className="mt-2 text-[17px] text-fg-muted">Every session of the Caprock app on your computer, from anywhere. No app store needed.</p>
           <div className="mt-6 rounded-xl border border-border bg-panel-2 px-4 py-3.5 text-[15px] leading-snug text-fg-muted">
             <b className="font-semibold text-fg">First, the Caprock app on your computer.</b> It is free, for Mac, Windows and Linux, and this page connects to it.
             {' '}No app yet? Get it at{' '}
             <a href="https://caprock.dev" className="text-accent underline underline-offset-4">caprock.dev</a>, on the computer.
           </div>
+          {offer === 'button' && (
+            <div className="mt-6">
+              <InstallButton />
+            </div>
+          )}
+          {offer === 'installed' && (
+            <p className="mt-4 text-[15px] text-fg-muted">Caprock is already on your home screen. Pair here or there: they share it.</p>
+          )}
         </>
       )}
 
@@ -285,8 +492,10 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
               no sessions, no code, no tokens. It stores nothing.
             </Question>
             <Question q="Why not an app?">
-              This page is the app. Share → <b className="font-semibold text-fg">Add to Home Screen</b> and it opens
-              full screen, like any other.
+              This page is the app. Install it once and it opens full screen, like any other: on Android,{' '}
+              <b className="font-semibold text-fg">Install the Caprock app</b> on this page; on an iPhone, Share →{' '}
+              <b className="font-semibold text-fg">Add to Home Screen</b>. A new version of the page updates it in
+              place; it never installs a second one.
             </Question>
             <Question q="Lost your phone?">
               Open the Caprock app on your computer: Settings → Use on your phone, and remove it from the list. It can no longer get in.

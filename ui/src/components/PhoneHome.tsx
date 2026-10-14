@@ -746,9 +746,22 @@ export function SaveSheet({ projects, text: initialText, photos: initialPhotos, 
 function InstallHint() {
   const [way, setWay] = useState<InstallWay>(null)
   useEffect(() => {
+    // The phone's page from anywhere has its own install offer (remote/install).
+    if (import.meta.env.VITE_CAPROCK_REMOTE === '1') return
     let seen = false
     try { seen = localStorage.getItem(INSTALL_HINT_KEY) === '1' } catch { /* show it */ }
-    if (!seen) setWay(installWay(navigator.userAgent, isStandalone(), navigator.maxTouchPoints ?? 0))
+    if (seen) return
+    const w = installWay(navigator.userAgent, isStandalone(), navigator.maxTouchPoints ?? 0)
+    if (!w) return
+    let live = true
+    // A phone on the Wi-Fi link while access from anywhere is on is told to
+    // move to the app (LanOnlyNotice); putting this link on the home screen
+    // too would leave two icons named Caprock, one of them dead off Wi-Fi.
+    api.pairMe().then(
+      (me) => { if (live && !(me.via === 'lan' && me.anywhere)) setWay(w) },
+      () => { if (live) setWay(w) },
+    )
+    return () => { live = false }
   }, [])
   if (!way) return null
   const done = () => {
