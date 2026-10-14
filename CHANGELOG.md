@@ -9,6 +9,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **mail:** **Import everything.** Mail lists the mail accounts it can
+  read on the computer — Thunderbird, and Apple Mail including the Google,
+  iCloud and Exchange accounts in System Settings › Internet Accounts —
+  each address once, under the app it came from and when that profile was
+  last used (accounts from a profile unused for 90 days start unticked). An
+  app it cannot read is not shown. Tick them and press *Import*: accounts with a saved
+  Thunderbird password connect by themselves, then each other account asks
+  for its one sign-in in turn (Google or Microsoft in the browser, an
+  app-specific password for iCloud, otherwise the password), with a
+  progress list of connected, waiting and failed accounts, *Retry*, *Skip
+  for now* and *Come back*. A build without Google or Microsoft sign-in says so and asks for
+  an app password instead of showing a button that cannot work.
+- **release:** Mail's Google and Microsoft client IDs are compiled into
+  releases from the `CAPROCK_MAIL_GOOGLE_CLIENT_ID`,
+  `CAPROCK_MAIL_GOOGLE_CLIENT_SECRET` and `CAPROCK_MAIL_MICROSOFT_CLIENT_ID`
+  GitHub secrets, the desktop app's daemon included; unset, a release still
+  builds.
 - **now:** each figure in *Today* has a small line of your last 14 days and
   one word against your own median: *usual*, *above usual +38%*, *below
   usual −20%*. Running totals (cost, sessions, turns) are compared by the

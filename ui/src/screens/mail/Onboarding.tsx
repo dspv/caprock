@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ImportResult, ImportSource, OAuthProviders } from './mailApi'
+import type { ImportSource, OAuthProviders } from './mailApi'
 import { api, missingRoute } from './mailApi'
 import { AddAccount } from './Setup'
+import { ImportAll } from './ImportAll'
 import { Icon } from './icons'
 import { openExternal } from '@/lib/nudges'
 
@@ -72,11 +73,13 @@ export type Step = 'choose' | 'import' | 'add'
 
 /** The first screen while no account exists. `provider` opens the add step
  *  on that provider's sign-in or form (the sample banner's *Add account*). */
-export function FirstRun({ initial = 'choose', provider, onDone, onSample }: {
+export function FirstRun({ initial = 'choose', provider, onDone, onSample, onBusy }: {
   initial?: Step
   provider?: ProviderId
   onDone: () => void
   onSample: () => Promise<void>
+  /** Import everything is walking its sign-ins: keep this screen up as accounts land. */
+  onBusy?: (busy: boolean) => void
 }) {
   const [step, setStep] = useState<Step>(initial)
   const [busy, setBusy] = useState(false)
@@ -92,14 +95,13 @@ export function FirstRun({ initial = 'choose', provider, onDone, onSample }: {
   }, [])
 
   if (step === 'add' && provider) return <Card><AddFlow initial={provider} onDone={onDone} onCancel={() => setStep('choose')} /></Card>
-  if (step === 'import' && sources === null) return <Card><p className="muted"><span className="pulse" /> Looking for other mail apps…</p></Card>
-  if (step === 'import' && Array.isArray(sources)) {
-    return <Card><ImportPanel initial={sources} onDone={onDone} onBack={() => setStep('choose')} /></Card>
-  }
+  if (step === 'import') return <Card><ImportAll onDone={onDone} onBack={() => setStep('choose')} onBusy={onBusy} /></Card>
   if (step === 'add') return <Card><AddFlow onDone={onDone} onCancel={() => setStep('choose')} /></Card>
 
-  const found = Array.isArray(sources) ? sources.reduce((n, s) => n + (s.accounts?.length ?? 0), 0) : 0
-  const from = Array.isArray(sources) ? sources.map((s) => s.label).join(', ') : ''
+  // Only sources with accounts it could read are named.
+  const readable = Array.isArray(sources) ? sources.filter((s) => (s.accounts?.length ?? 0) > 0) : []
+  const found = readable.reduce((n, s) => n + s.accounts.length, 0)
+  const from = readable.map((s) => s.label).join(', ')
   return (
     <Card>
       <h2>Caprock Mail</h2>
@@ -118,10 +120,10 @@ export function FirstRun({ initial = 'choose', provider, onDone, onSample }: {
           <button className="choice" role="listitem" disabled={sources === null} onClick={() => setStep('import')}>
             <span className="cicon"><Icon name="download" /></span>
             <span className="ctext">
-              <b>Import my accounts</b>
+              <b>Import everything</b>
               <span>{sources === null ? 'Looking for other mail apps…'
-                : found > 0 ? `${found} account${found === 1 ? '' : 's'} found in ${from}. Pick which to bring over.`
-                  : 'From Apple Mail or Thunderbird on this computer.'}</span>
+                : found > 0 ? `${found} account${found === 1 ? '' : 's'} found in ${from}. Tick them; each needs at most one sign-in.`
+                  : 'Every account in Apple Mail or Thunderbird on this computer.'}</span>
             </span>
             <Icon name="chevron" className="muted" />
           </button>
@@ -145,6 +147,7 @@ function Card({ children }: { children: React.ReactNode }) {
 /** Provider tiles, then that provider's sign-in or password form. */
 export function AddFlow({ initial, onDone, onCancel }: { initial?: ProviderId; onDone: () => void; onCancel?: () => void }) {
   const [p, setP] = useState<Provider | null>(() => PROVIDERS.find((x) => x.id === initial) ?? null)
+  const [importing, setImporting] = useState(false)
   const [oauth, setOauth] = useState<OAuthProviders>({})
   useEffect(() => {
     let live = true
@@ -152,6 +155,7 @@ export function AddFlow({ initial, onDone, onCancel }: { initial?: ProviderId; o
     return () => { live = false }
   }, [])
 
+  if (importing) return <ImportAll onDone={onDone} onBack={() => setImporting(false)} />
   if (p) {
     const back = () => setP(null)
     if (p.oauth && oauth[p.oauth]) return <OAuthSignIn p={p} onDone={onDone} onBack={back} />
@@ -168,6 +172,9 @@ export function AddFlow({ initial, onDone, onCancel }: { initial?: ProviderId; o
           </button>
         ))}
       </div>
+      <button type="button" className="link small fromhere" onClick={() => setImporting(true)}>
+        <Icon name="download" size={13} /> Import every account from Apple Mail or Thunderbird on this computer
+      </button>
       {onCancel && <div className="actions"><button type="button" className="btn" onClick={onCancel}>Back</button></div>}
     </>
   )
@@ -222,98 +229,6 @@ function OAuthSignIn({ p, onDone, onBack }: { p: Provider; onDone: () => void; o
           ? <button type="button" className="btn" onClick={() => { stop(); setUrl('') }}>Cancel</button>
           : <button type="button" className="btn" onClick={onBack}>Back</button>}
         {!url && <button type="button" className="btn primary" onClick={start}>Sign in with {p.name === 'Outlook' ? 'Microsoft' : p.name}</button>}
-      </div>
-    </>
-  )
-}
-
-/** Accounts other mail apps on this computer know, ticked to bring over. */
-export function ImportPanel({ initial, onDone, onBack }: { initial: ImportSource[]; onDone: () => void; onBack: () => void }) {
-  const [sources, setSources] = useState(initial)
-  const [picked, setPicked] = useState<Record<string, boolean>>({})
-  const [pw, setPw] = useState<Record<string, string>>({})
-  const [busy, setBusy] = useState(false)
-  const [results, setResults] = useState<Record<string, ImportResult>>({})
-  const [err, setErr] = useState('')
-  const key = (s: ImportSource, email: string) => s.kind + ':' + email
-  const on = (s: ImportSource, email: string) => picked[key(s, email)] ?? !results[email]?.ok
-
-  const retry = async () => {
-    setErr('')
-    try { setSources((await api.importSources()).sources ?? []) } catch (e) { setErr((e as Error).message) }
-  }
-
-  const chosen = sources.flatMap((s) => s.accounts.filter((a) => on(s, a.email) && !results[a.email]?.ok).map((a) => ({ s, a })))
-  const missingPw = chosen.some(({ a }) => !a.has_password && !pw[a.email])
-  const anyOk = Object.values(results).some((r) => r.ok)
-
-  const run = async () => {
-    setBusy(true)
-    setErr('')
-    try {
-      const out: Record<string, ImportResult> = { ...results }
-      for (const s of sources) {
-        const emails = chosen.filter((c) => c.s === s).map((c) => c.a.email)
-        if (emails.length === 0) continue
-        const passwords: Record<string, string> = {}
-        for (const e of emails) if (pw[e]) passwords[e] = pw[e]
-        const r = await api.importAccounts(s.kind, emails, Object.keys(passwords).length ? passwords : undefined)
-        for (const x of r.results ?? []) out[x.email] = x
-      }
-      setResults(out)
-      if (Object.values(out).every((r) => r.ok)) onDone()
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <h2>Import accounts</h2>
-      <p className="muted">Servers, names and saved passwords come from the mail apps on this computer. Each account is checked before it is added.</p>
-      {sources.length === 0 && <div className="hint">No other mail app with accounts was found. Add one by hand instead.</div>}
-      {sources.map((s) => (
-        <div key={s.kind} className="source">
-          <div className="srchead"><b>{s.label}</b> <span className="muted small">{(s.accounts ?? []).length} account{(s.accounts ?? []).length === 1 ? '' : 's'}</span></div>
-          {s.needs_permission === 'full_disk_access' && (
-            <div className="hint">
-              macOS keeps {s.label}'s settings behind Full Disk Access. Open <b>System Settings → Privacy &amp; Security → Full Disk Access</b>, turn on Caprock (or the terminal that runs <code>caprock</code>), then retry.
-              <div className="actions left"><button type="button" className="btn" onClick={retry}>Retry</button></div>
-            </div>
-          )}
-          {s.error && <div className="error">{s.error}</div>}
-          {s.accounts.map((a) => {
-            const r = results[a.email]
-            const p = providerForHost(a.imap_host)
-            return (
-              <div key={a.email} className="improw">
-                <label className="check">
-                  <input type="checkbox" checked={on(s, a.email)} disabled={busy || r?.ok}
-                    onChange={(e) => setPicked({ ...picked, [key(s, a.email)]: e.target.checked })} />
-                  <span><b>{a.email}</b> <span className="muted small">{a.imap_host}</span></span>
-                  <span className="grow" />
-                  {r && (r.ok ? <span className="ok small">Added</span> : <span className="err small">Failed</span>)}
-                </label>
-                {!a.has_password && on(s, a.email) && !r?.ok && (
-                  <label className="field indent">
-                    <span>Password {p?.help && <>— {p.id === 'icloud' ? 'an app-specific password' : 'an app password'}, made at <a href={p.help} target="_blank" rel="noreferrer">{p.helpLabel}</a></>}</span>
-                    <input type="password" aria-label={`Password for ${a.email}`} value={pw[a.email] ?? ''} onChange={(e) => setPw({ ...pw, [a.email]: e.target.value })} />
-                  </label>
-                )}
-                {r && !r.ok && r.error && <div className="error indent">{r.error}</div>}
-              </div>
-            )
-          })}
-        </div>
-      ))}
-      {err && <div className="error">{err}</div>}
-      <div className="actions">
-        <button type="button" className="btn" onClick={anyOk ? onDone : onBack}>{anyOk ? 'Open Mail' : 'Back'}</button>
-        <button type="button" className="btn primary" disabled={busy || chosen.length === 0 || missingPw} onClick={run}>
-          {busy ? 'Checking…' : chosen.length === 1 ? 'Import 1 account' : `Import ${chosen.length || ''} accounts`.replace('  ', ' ')}
-        </button>
       </div>
     </>
   )
