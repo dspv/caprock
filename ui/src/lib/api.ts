@@ -1544,6 +1544,24 @@ export interface PairedDevice {
   /** A viewer reads; a controller may also start, type into and stop
    *  sessions (ADR-034). Granted on the machine, never by pairing. */
   role: 'viewer' | 'controller'
+  /** How it last reached the machine: `relay` (anywhere, ADR-058),
+   *  `tailscale` (the network listener over Tailscale), `lan` (the network
+   *  listener on the home Wi-Fi: that link works nowhere else). Absent when
+   *  it has not been seen since this was recorded. */
+  via?: PairedVia
+}
+
+export type PairedVia = 'lan' | 'tailscale' | 'relay'
+
+/** What `GET /v1/pair/me` says about the device a dashboard runs on. */
+export interface PairMe {
+  role: 'owner' | PairedDevice['role']
+  id?: string
+  name?: string
+  /** How this request reached the machine; absent on the machine itself. */
+  via?: PairedVia
+  /** Access from anywhere is on, so a Wi-Fi link has a better one to move to. */
+  anywhere?: boolean
 }
 
 /** What the owner sees on the pairing panel. */
@@ -1693,7 +1711,7 @@ export const api = {
   pairSetRole: (id: string, role: PairedDevice['role']) =>
     post<{ id: string; role: string }>(`/v1/pair/devices/${encodeURIComponent(id)}/role`, { role }, 'PUT'),
   /** Which role this dashboard's device holds: "owner" on the machine itself. */
-  pairMe: () => get<{ role: 'owner' | PairedDevice['role']; id?: string; name?: string }>('/v1/pair/me'),
+  pairMe: () => get<PairMe>('/v1/pair/me'),
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),

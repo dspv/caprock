@@ -7,6 +7,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **phone:** one way to pair a phone: from anywhere. Settings → Use on your
+  phone → **Show a code** now turns on access from anywhere (the encrypted
+  relay) in the same press — a line under the button says so — and the QR
+  works on Wi-Fi and mobile data alike. The Wi-Fi / Tailscale address
+  choice, the *Same Wi-Fi* step and *Keep on after Caprock restarts* are gone
+  from the panel. A phone paired on a home-network address worked on that
+  Wi-Fi only, and nothing said so when it went dead on mobile data. For a
+  machine without internet, `caprock up --lan` and `caprock pair` still pair
+  over the Wi-Fi from a terminal.
+
 ### Fixed
 
 - **phone:** every hint on the phone now says where to go: the Caprock app
@@ -14,6 +26,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   "This phone can read but not type. On the computer: Settings…" left out
   that the setting is in the Caprock app, and two hints still sent you to
   "Settings → Phone", which does not exist.
+- **phone:** a phone still on a Wi-Fi link now hears about it. Settings →
+  Use on your phone → *Paired devices* says how each device reaches the
+  computer (*anywhere*, *anywhere with Tailscale*, *Wi-Fi link*), and a
+  Wi-Fi link gets one line with **Show the code** to pair it once more
+  through the relay. On the phone, a strip says: "This link works only on
+  your home Wi-Fi. To use Caprock anywhere: in the Caprock app on your
+  computer, Settings → Use on your phone → Show a code, and scan it."
+- **phone:** the pairing steps on the phone's own page no longer send you to
+  "Settings → Phone → From anywhere → Turn on", which does not exist; they
+  name the Caprock app on your computer and Settings → Use on your phone.
+  The refusals a phone gets (not paired, view only) say the same path.
 
 ## [0.116.1] - 2026-10-14
 

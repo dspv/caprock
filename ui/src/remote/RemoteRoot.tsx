@@ -181,10 +181,10 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
           Open the Caprock app on your computer: <b className="font-semibold text-fg">Settings → Use on your phone</b>
         </Step>
         <Step n={2}>
-          Next to <b className="font-semibold text-fg">From anywhere</b>, press <b className="font-semibold text-fg">Turn on</b>
+          Press <b className="font-semibold text-fg">Show a code</b>. It turns on access from anywhere
         </Step>
         <Step n={3}>
-          Press <b className="font-semibold text-fg">Show a code</b> and scan it with this phone&apos;s camera
+          Scan the code with this phone&apos;s camera
         </Step>
       </ol>
 
