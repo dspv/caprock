@@ -113,7 +113,7 @@ func TestPairingRecordsTheRouteItCameBy(t *testing.T) {
 type fakeRemote struct{ on bool }
 
 func (f *fakeRemote) RemoteState(string) RemoteState {
-	return RemoteState{Enabled: f.on, Status: "online"}
+	return RemoteState{Enabled: f.on, Status: "online", App: "https://m.caprock.dev"}
 }
 func (f *fakeRemote) SetRemote(on bool, _, _ string) error {
 	f.on = on
@@ -140,14 +140,14 @@ func TestPairMeSaysTheRouteAndWhetherAnywhereIsOn(t *testing.T) {
 		r.Host = "192.168.1.10:4173"
 		return r
 	}
-	if me := ask(onWiFi()); me.Via != pairing.ViaLAN || !me.Anywhere {
+	if me := ask(onWiFi()); me.Via != pairing.ViaLAN || !me.Anywhere || me.App != "https://m.caprock.dev" {
 		t.Errorf("over the Wi-Fi with anywhere on: %+v", me)
 	}
 	if me := ask(relayedRequest("GET /v1/pair/me", viewer.Token, "Via", "1.1 caprock-remote")); me.Via != pairing.ViaRelay {
 		t.Errorf("through the relay: %+v", me)
 	}
 	rem.on = false
-	if me := ask(onWiFi()); me.Via != pairing.ViaLAN || me.Anywhere {
+	if me := ask(onWiFi()); me.Via != pairing.ViaLAN || me.Anywhere || me.App != "" {
 		t.Errorf("over the Wi-Fi with anywhere off: %+v", me)
 	}
 	local := httptest.NewRequest(http.MethodGet, "/v1/pair/me", nil)

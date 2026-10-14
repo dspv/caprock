@@ -682,6 +682,7 @@ On macOS:
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                         |
 | ⌘[ ]        | Previous and next pane                                                   |
 | ⌘J          | Next session waiting on you                                              |
+| ⇧⌘H         | Add to brain: keep a line in Second Brain                                |
 | ⌘F          | Find in the terminal or the file                                         |
 | ⌘K          | Command palette                                                          |
 | ⌘,          | Settings                                                                 |
@@ -698,7 +699,7 @@ On macOS:
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 (Quick chat is Ctrl+Alt+Shift+N, the PRs & CI full page Ctrl+Alt+Shift+B,
 Send feedback Ctrl+Alt+Shift+F, since Ctrl+Shift+F is Find; tabs are
-Ctrl+Shift+1–9). The arrow
+Ctrl+Shift+1–9; Add to brain is Ctrl+Shift+H). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
@@ -790,6 +791,30 @@ it: nothing that updates behind the sheet takes it from the field you are in.
 - **Closing the window.** On macOS Caprock stays in the menu bar; ⌘Q quits.
   On Windows and Linux closing quits. Quitting never stops the daemon or a
   session.
+
+## Second Brain
+
+The few answers worth keeping, kept as a graph: ideas, decisions, findings
+and open questions, each linked to its project and topics and to the moment
+in the session it came from. Open it from *Brain* in the dashboard's screen
+row.
+
+- **Drop an answer in.** Under any answer on the Memory screen, in a
+  session's Answers tab, or under a reply in the chat view, press **Drop into
+  brain**. Caprock reads the answer from its own record, so the memory knows
+  its session, project and time; its first line becomes the title.
+- **Add a line of your own.** ⇧⌘H (Ctrl+Shift+H on Windows and Linux), or ⌘K
+  → *Add to brain…*: type it, pick Idea, Decision, Finding or Question, name
+  topics if you like, and ⌘↩.
+- **Find and tidy.** Search, pick a project or a span; open a memory to edit
+  its title and summary, pin it, link it to a topic, jump to the session it
+  came from, or delete it.
+- **Free and Premium.** Twenty memories dropped in by hand are free; Premium
+  keeps every one. Whatever you kept stays readable and editable if a licence
+  lapses.
+
+**Privacy.** Second Brain lives in Caprock's database on this computer.
+Nothing in it is sent anywhere.
 
 ## Notifications
 
@@ -1083,11 +1108,33 @@ relay that passes bytes it cannot read
 2. **Scan it.** Point the phone's camera at the code and tap the link:
    Caprock opens and pairs by itself. **Copy link** under the code is for a
    phone that cannot scan.
-3. **Add it to the Home Screen.** On an iPhone, in Safari: **Share** →
-   **Add to Home Screen**. On Android, in Chrome: **⋮** → **Add to Home
-   screen**. Caprock offers this once, at the top of the page. The icon
-   opens Caprock full screen. On an iPhone the home-screen app keeps its own
-   storage: paste the copied link there once.
+3. **Install the app, once.** On Android, in Chrome, press **Install the
+   Caprock app** on the page (or **Install** on the line under the
+   machine's name); the button is there only while Chrome says Caprock is
+   not installed, so it never adds a second copy. Opened in a browser tab
+   later, the page says *Caprock is on your home screen* instead. A new
+   version of the page updates the installed app in place. On an iPhone, in
+   Safari: **Share** → **Add to Home Screen**; the home-screen app keeps
+   its own storage there, so paste the copied link into it once. On
+   Android the app and Chrome share the pairing.
+
+**When the phone cannot reach the computer**, it never just says
+*Connecting…*: after five seconds the page says why and what to do, and
+keeps trying by itself (after 1, 2, 4, 8, 15, then every 30 seconds, and at
+once when the phone comes back to the page or onto a network):
+
+- **Your computer is offline or Caprock isn't running**: the relay has no
+  connection from it. Wake it, check it is online, open Caprock.
+- **Your computer isn't answering**: the relay reached it but it did not
+  reply, the usual sign of a computer that went to sleep.
+- **Can't reach the relay: check the internet** and **This phone is
+  offline**: the phone's own connection.
+- **This phone was removed: pair again**: it was removed in *Paired
+  devices*. Show a new code and scan it.
+
+**Retry** tries at once; **Pair again** shows the three steps and a box for
+a copied link. Opening a pairing link whose code was already used (the
+camera, then the app) keeps the pairing that worked.
 
 The phone appears under *Paired devices*, which says how each device reaches
 this computer: *anywhere*, or *Wi-Fi link*. A *Wi-Fi link* is a phone paired
@@ -1095,9 +1142,11 @@ on this computer's home-network address before access from anywhere was the
 one way; it works on that Wi-Fi only. Its row says so in one line and offers
 **Show the code**: scan it with that phone and it pairs once more, through the
 relay. The phone says the same on its own screen while it is on that link:
-*This link works only on your home Wi-Fi. To use Caprock anywhere: in the
-Caprock app on your computer, Settings → Use on your phone → Show a code, and
-scan it.*
+*This is the old Wi-Fi link: it works only on your home Wi-Fi. Use the
+Caprock app from m.caprock.dev instead: in the Caprock app on your computer,
+Settings → Use on your phone → Show a code, and scan it. Then remove this one
+from your home screen.* It no longer offers to put the Wi-Fi link on the home
+screen, so a phone does not end up with two icons named Caprock.
 
 **Advanced: no internet.** The Wi-Fi listener is still in Caprock for a
 machine that cannot reach the relay, from a terminal only: `caprock up --lan`

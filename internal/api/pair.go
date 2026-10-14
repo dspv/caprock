@@ -387,6 +387,10 @@ type pairMe struct {
 	// phone is on a link that dies off this Wi-Fi while one that does not
 	// exists, and its page says how to get it (owner, 2026-10-14).
 	Anywhere bool `json:"anywhere,omitempty"`
+	// App is the phone's page for access from anywhere (m.caprock.dev unless
+	// the owner chose another), sent with Anywhere so a Wi-Fi link's notice
+	// can name where the app it should use lives.
+	App string `json:"app,omitempty"`
 }
 
 // handlePairMe tells a dashboard which controls to draw (ADR-034). The daemon
@@ -400,7 +404,9 @@ func (s *Server) handlePairMe(w http.ResponseWriter, r *http.Request) {
 	}
 	me := pairMe{Role: dev.Role, ID: dev.ID, Name: dev.Name, Via: transportOf(r)}
 	if s.d.Remote != nil {
-		me.Anywhere = s.d.Remote.RemoteState("").Enabled
+		if st := s.d.Remote.RemoteState(""); st.Enabled {
+			me.Anywhere, me.App = true, st.App
+		}
 	}
 	writeJSON(w, http.StatusOK, me)
 }

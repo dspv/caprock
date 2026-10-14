@@ -347,6 +347,69 @@ func TestOnlyTheKeyHolderMayRegisterAMachine(t *testing.T) {
 	}
 }
 
+// A machine that went to sleep keeps its relay connection open on paper and
+// sends nothing. A phone arriving then used to be spliced to it, sent its
+// handshake into the void and sat on "Connecting…" (owner, 2026-10-14); it
+// is told at once that the machine is offline, and the stale connection is
+// dropped.
+func TestASilentMachineIsOfflineToAPhone(t *testing.T) {
+	srv := relaysrv.New(nil)
+	srv.HostSilence = 200 * time.Millisecond
+	relay := httptest.NewServer(srv)
+	defer relay.Close()
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	id := remote.HostID(pub)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	base := "ws" + strings.TrimPrefix(relay.URL, "http")
+	host, _, err := websocket.Dial(ctx, base+"/v1/host/"+id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = host.CloseNow() }()
+	_, msg, _ := host.Read(ctx)
+	_, _, nonce, _ := remote.ParseFrame(msg)
+	_ = host.Write(ctx, websocket.MessageBinary, remote.Frame(remote.FrameProof, 0, ed25519.Sign(priv, remote.ProofMessage(id, nonce))))
+	if _, msg, err = host.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if k, _, _, _ := remote.ParseFrame(msg); k != remote.FrameReady {
+		t.Fatalf("frame %d, want ready", k)
+	}
+
+	// Within the silence a phone is spliced: the machine hears it open.
+	ph, _, err := websocket.Dial(ctx, base+"/v1/c/"+id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, msg, err = host.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if k, _, _, _ := remote.ParseFrame(msg); k != remote.FrameOpen {
+		t.Fatalf("frame %d, want open", k)
+	}
+	defer func() { _ = ph.CloseNow() }()
+
+	// Then the machine says nothing for longer than the silence allows. The
+	// phone already on it is told when it next sends…
+	time.Sleep(300 * time.Millisecond)
+	if err := ph.Write(ctx, websocket.MessageBinary, []byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = ph.Read(ctx); websocket.CloseStatus(err) != remote.CloseOffline {
+		t.Fatalf("spliced phone close = %v, want %d", err, remote.CloseOffline)
+	}
+	// …and a phone arriving is told at once.
+	ph2, _, err := websocket.Dial(ctx, base+"/v1/c/"+id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = ph2.Read(ctx)
+	if websocket.CloseStatus(err) != remote.CloseOffline {
+		t.Fatalf("phone close = %v, want %d", err, remote.CloseOffline)
+	}
+}
+
 func TestKeysSurviveAndResetMakesNewOnes(t *testing.T) {
 	dir := t.TempDir()
 	a, _ := remote.Load(dir)

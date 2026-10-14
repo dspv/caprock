@@ -20,6 +20,7 @@ import { fmtAgo, shortId } from '@/lib/format'
 import { Empty, Skeleton } from '@/components/ui'
 import { href } from '@/lib/router'
 import { Prose } from './Prose'
+import { BrainDropButton } from './BrainDrop'
 
 export function SessionNotes({ id, now }: { id: string; now: number }) {
   const q = useApi(() => api.notes(id), [id], { intervalMs: 10000 })
@@ -102,6 +103,8 @@ export function NoteCard({ note, now, showSession = false }: {
         <span className="mono">{note.model || 'assistant'}</span>
         {note.fragment && <span className="text-fg-faint">· mid-thought</span>}
         <span className="num ml-auto">{fmtAgo(note.ts, now)}</span>
+        {/* Keep it: the answer goes into Second Brain (ADR-063). */}
+        <BrainDropButton eventId={note.event_id} />
       </div>
       {/* Rendered, not preserved. The comment here used to say the structure
         * of a summary is most of its readability — true, and the code then
