@@ -13,7 +13,7 @@
  * exactly the judgement that produced the bug.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { PulsePanel, TIER_TOKEN, IDLE_TOKEN } from './Pulse'
 import type { Event, SessionSummary } from '@/lib/api'
 
@@ -30,6 +30,12 @@ vi.mock('@/lib/api', async (orig) => {
       session: async () => ({ repo: { url: 'https://github.com/o/caprock', root: '/r/caprock' } }),
       summary: async () => ({ projects: [{ project: 'caprock', dir: '/r/caprock', tokens: 1_200_000, cost_usd: 42.5, sessions: 3 }] }),
       overlap: async () => { seeded.overlapAsked++; return seeded.overlap },
+      diff: async (id: string) => id === 'a'
+        ? { root: '/r/caprock', branch: 'feat/retry', base: 'since master', files: [{ path: 'a.go', status: 'M', additions: 120, deletions: 40 }, { path: 'b.go', status: 'A', additions: 3, deletions: 0 }], stat: '' }
+        : { root: '/r/caprock', branch: 'master', files: [], stat: '' },
+      sessionCI: async (id: string) => id === 'a'
+        ? { connected: true, pr: { number: 571, url: 'https://github.com/o/caprock/pull/571', repo: 'o/caprock' }, ci: { state: 'fail', runs: [] } }
+        : { connected: true },
     },
   }
 })
@@ -406,6 +412,64 @@ describe('a pulse row, opened', () => {
     unmount()
     render(<PulsePanel sessions={sessions} now={NOW} />)
     await waitFor(() => expect(screen.getByText('Open session')).toBeInTheDocument())
+  })
+
+  // Owner, 2026-10-14: "lots of bright buttons here; it destroys attention",
+  // and the space right of each session was empty.
+  it('keeps the ways in quiet and puts each session\'s figures in the space on the right', async () => {
+    localStorage.clear()
+    seeded.value = { a: [turn('a', NOW - 60_000, 0.4), turn('a', NOW - 120_000, 0.35)] }
+    const sessions = [
+      session({
+        session_id: 'a', project: 'caprock', cwd: '/r/caprock', started_at: NOW - 42 * 60_000, git_branch: 'feat/retry',
+        stats: { cost_usd: 3.1 } as SessionSummary['stats'], context: { tokens: 126_000, window: 200_000, pct: 63, next_call_usd: 0 },
+        activity: { phrase: 'editing Pulse.tsx', health: 'working', at: '', plan: { done: 3, total: 7 } },
+      }),
+      session({ session_id: 'b', project: 'caprock', cwd: '/r/caprock', started_at: NOW - 3 * 3600_000 - 5 * 60_000, stats: { cost_usd: 1 } as SessionSummary['stats'], activity: { phrase: 'idle', health: 'idle', at: '' } }),
+    ]
+    render(<PulsePanel sessions={sessions} now={NOW} />)
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /what is running in/i }).length).toBeGreaterThan(0))
+    fireEvent.click(screen.getAllByRole('button', { name: /what is running in/i })[0]!)
+    const facts = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-pulse-facts="a"]')
+      expect(el?.textContent).toContain('PR #571')
+      return el!
+    })
+    const text = facts.textContent ?? ''
+    expect(text).toContain('$3.10')
+    expect(text).toContain('$0.75/h')
+    expect(text).toContain('42m')
+    expect(text).toContain('ctx 63%')
+    expect(text).toContain('feat/retry')
+    expect(text).toContain('+123')
+    expect(text).toContain('−40')
+    expect(text).toContain('CI failing')
+    expect(screen.getByText('plan 3/7')).toBeInTheDocument()
+    // The other session: no track, so no $/h; three hours, no branch changes.
+    const other = document.querySelector<HTMLElement>('[data-pulse-facts="b"]')!.textContent ?? ''
+    expect(other).toContain('3h 5m')
+    expect(other).not.toContain('/h')
+    // Nothing filled or outlined in the accent: every way in is a quiet word.
+    const ways = screen.getByLabelText('Ways in')
+    expect(await within(ways).findByRole('link', { name: 'Open repo ↗' })).toBeInTheDocument()
+    for (const el of ways.querySelectorAll('a, button')) {
+      expect(el.className, el.textContent ?? '').not.toMatch(/bg-accent|border-accent/)
+    }
+  })
+})
+
+describe('the pulse legend, folded away', () => {
+  it('hides on Hide, comes back from the header ?, and remembers', () => {
+    localStorage.clear()
+    const { unmount } = render(<PulsePanel sessions={[session()]} now={Date.now()} />)
+    expect(screen.getByText(/well above it/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
+    expect(screen.queryByText(/well above it/)).not.toBeInTheDocument()
+    unmount()
+    render(<PulsePanel sessions={[session()]} now={Date.now()} />)
+    expect(screen.queryByText(/well above it/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'How to read the pulse' }))
+    expect(screen.getByText(/well above it/)).toBeInTheDocument()
   })
 })
 

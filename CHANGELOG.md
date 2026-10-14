@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **now:** an opened Live pulse row is calmer and says more. Terminal,
+  Open repo and Open session are quiet links at the end of the project's
+  line instead of a row of bright buttons, and the empty space beside each
+  live session now shows its cost, its last hour, how long it has run, its
+  context, its branch with lines added and removed, and its pull request
+  with CI. The legend can be hidden; the **?** in the panel's header brings
+  it back.
 - **app:** the sidebar's heading has a worded switch, **Projects | Tabs**,
   in place of the small folder icon: Projects lists the sessions under
   their projects, Tabs in one list in the tabs' order. Settings →

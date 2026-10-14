@@ -16,14 +16,14 @@
  */
 import { branchLabel, projectLabels, sessionHealth } from '@/lib/sessionLabels'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { api, type Event, type SessionSummary } from '@/lib/api'
+import { api, type DiffResult, type Event, type SessionCI, type SessionSummary } from '@/lib/api'
 import { live } from '@/lib/live'
 import { useFrameBatch } from '@/lib/framebatch'
 import { buildPulse, costTier, medianCost, trackState, windowCost, windowEvents, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
-import { fmtAgo, fmtModel, fmtTokens, fmtUSD, shortId } from '@/lib/format'
+import { fmtAgo, fmtModel, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
 import { AgentCharacter, agentName } from '@/components/Characters'
 import { SessionCharacter } from '@/components/SessionFace'
-import { ProjectTerminal } from '@/components/ProjectTerminal'
+import { ProjectTerminal, QUIET } from '@/components/ProjectTerminal'
 import { RepoButtons } from '@/components/RepoLinks'
 import { useApi } from '@/lib/useApi'
 import { Panel } from '@/components/ui'
@@ -48,6 +48,16 @@ const MAX_TRACKS = 6
 const SEED_LIMIT = 2000
 
 const OPEN_KEY = 'caprock-pulse-open'
+/** "hidden" once this viewer closed the legend; the header's ? brings it back. */
+const LEGEND_KEY = 'caprock-pulse-legend'
+
+function readLegend(): boolean {
+  try {
+    return localStorage.getItem(LEGEND_KEY) !== 'hidden'
+  } catch {
+    return true
+  }
+}
 
 function readOpen(): Set<string> {
   try {
@@ -155,13 +165,32 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
       return next
     })
 
+  // The legend is read once and then only in the way: shown until this
+  // viewer closes it, then behind the header's ? (owner, 2026-10-14: the
+  // opened rows should be "as neat as possible").
+  const [legend, setLegend] = useState(readLegend)
+  const showLegend = (on: boolean) => {
+    setLegend(on)
+    try { localStorage.setItem(LEGEND_KEY, on ? 'shown' : 'hidden') } catch { /* a convenience */ }
+  }
+
   if (tracked.length === 0) return null
 
   return (
     <Panel
       fold="now.pulse"
       title="Live pulse"
-      right={<span className="text-[11px] text-fg-faint">last {PULSE_MINUTES} minutes · one bar per minute</span>}
+      right={
+        <span className="inline-flex items-center gap-2 text-[11px] text-fg-faint">
+          last {PULSE_MINUTES} minutes · one bar per minute
+          <button type="button" onClick={() => showLegend(!legend)} aria-expanded={legend}
+            aria-label={legend ? 'Hide how to read the pulse' : 'How to read the pulse'}
+            title={legend ? 'Hide the legend' : 'How to read the pulse'}
+            className={`inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border text-[10px] leading-none hover:text-fg hover:border-border-strong ${legend ? 'border-border-strong text-fg-muted' : 'border-border text-fg-faint'}`}>
+            ?
+          </button>
+        </span>
+      }
     >
       <div>
         {rows.length === 0 ? (
@@ -180,7 +209,7 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
         * short bar is not a contradiction, it is a quiet minute that spent a
         * lot of context — so they name the comparison rather than implying an
         * absolute scale. */}
-      <div className="px-3 py-2 flex items-center gap-4 flex-wrap text-[11px] text-fg-faint border-t border-border">
+      {legend && <div className="px-3 py-2 flex items-center gap-x-4 gap-y-1 flex-wrap text-[11px] text-fg-faint border-t border-border">
         <span className="text-fg-muted" title="Height and colour are independent.">bar height = turns and tools · colour = what the minute cost</span>
         <span className="flex items-center gap-1.5">
           <Swatch tier={IDLE_TOKEN} className="h-[2px]" />idle
@@ -194,10 +223,14 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
         <span className="flex items-center gap-1.5">
           <Swatch tier={TIER_TOKEN.high} />well above it
         </span>
-        <span className="ml-auto">
+        <span>
           <span className="text-warn">×N same call</span> = most-repeated identical tool call in six minutes
         </span>
-      </div>
+        <button type="button" onClick={() => showLegend(false)} className="ml-auto text-fg-faint hover:text-fg"
+          title="The ? beside the panel's title brings it back">
+          Hide
+        </button>
+      </div>}
     </Panel>
   )
 }
@@ -271,10 +304,12 @@ function PulseRows({ rows, minute, labels, all, open, onToggle, manual, onReorde
     if (at < 0 || !to) return
     reorder(key, to, e.key === 'ArrowUp' ? 'before' : 'after')
   }
+  // What each track's hour cost, for the opened row's $/h beside each session.
+  const hour = new Map(rows.map((r) => [r.s.session_id, windowCost(r.pulse)]))
   return (
     <div onKeyDown={onKey} onClickCapture={onClickCapture}>
       {rows.map(({ s, pulse }) => (
-        <Track key={s.session_id} s={s} pulse={pulse} minute={minute} showId={rows.length > 1} label={labels.get(s.session_id)}
+        <Track key={s.session_id} s={s} pulse={pulse} minute={minute} showId={rows.length > 1} label={labels.get(s.session_id)} hour={hour}
           all={all} open={open.has(s.session_id)} onToggle={() => onToggle(s.session_id)}
           chip={overlapChip(overlap, s, sessionTitle(s))} onMove={setMoving}
           dragging={dragKey === s.session_id} onPress={press(s.session_id)} />
@@ -329,6 +364,7 @@ function Track({
   onMove,
   dragging = false,
   onPress,
+  hour,
 }: {
   s: SessionSummary
   pulse: PulseModel
@@ -346,6 +382,8 @@ function Track({
   onMove?: (chip: OverlapChip) => void
   dragging?: boolean
   onPress?: (e: ReactPointerEvent<HTMLElement>) => void
+  /** What each tracked session's last hour cost, by session id. */
+  hour?: Map<string, number>
 }) {
   // Health comes from the daemon's narrator, which knows "your turn" from the
   // agent.stop event. The bars cannot: they describe the hour, not this moment.
@@ -416,7 +454,7 @@ function Track({
         <WorkingNow s={s} state={state} repeatSample={pulse.repeatSample} />
       </div>
       {chip && <OverlapLine chip={chip} onMove={onMove} className="px-3 pb-2 pl-[26px] -mt-1" />}
-      {open && <ProjectNow s={s} all={all} now={minute * 60_000} />}
+      {open && <ProjectNow s={s} all={all} now={minute * 60_000} hour={hour} />}
     </div>
   )
 }
@@ -439,14 +477,22 @@ function StatePill({ state, title }: { state: { kind: string; label: string }; t
 }
 
 /**
- * A project's row, opened: every live session in it with who, which model,
- * what state and what it is doing; what the project has cost today; and the
- * two ways in — a terminal in the folder, or the session's own page.
+ * A project's row, opened: what the project has cost today and the ways in
+ * on one line, then every live session in it — who, which model, what state
+ * and what it is doing on the left; on the right what it has cost, how fast
+ * it spends, how long it has run, how full its context is, and its branch,
+ * its changes and its pull request.
+ *
+ * Calm on purpose (owner, 2026-10-14, translated: "lots of bright buttons
+ * here; it destroys attention … as neat as possible"). The ways in are quiet
+ * words, not two filled and two outlined buttons, and they share the summary
+ * line instead of taking a row of their own. The space to the right of each
+ * session, which used to be empty, carries that session's figures.
  */
-function ProjectNow({ s, all, now }: { s: SessionSummary; all: SessionSummary[]; now: number }) {
+function ProjectNow({ s, all, now, hour }: { s: SessionSummary; all: SessionSummary[]; now: number; hour?: Map<string, number> }) {
   const today = useApi(() => api.summary('today'), [], { intervalMs: 30000, share: 'summary:today:all' })
-  // The repository link and the session's PRs live on the session's detail,
-  // read once when the row opens (the same buttons as the session page).
+  // The repository link lives on the session's detail, read once when the
+  // row opens (the same button as the session page).
   const detail = useApi(() => api.session(s.session_id), [s.session_id], { live: false })
   const live = all
     .filter((x) => x.project === s.project && x.status !== 'ended')
@@ -456,45 +502,132 @@ function ProjectNow({ s, all, now }: { s: SessionSummary; all: SessionSummary[];
   const proj = today.data?.projects?.find((p) => (p.dir ? s.cwd === p.dir || s.cwd.startsWith(p.dir + '/') || s.cwd.startsWith(p.dir + '\\') : p.project === s.project))
   const dir = proj?.dir || s.cwd
   return (
-    <div className="bg-panel-2/40 border-t border-border px-3 py-2.5 pl-7 text-[12px]">
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-fg-muted">
-        <span>
+    <div className="bg-panel-2/40 border-t border-border px-3 py-2 pl-7 text-[12px]">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-fg-muted">
+        <span className="min-w-0">
           <span className="text-fg-faint">Today in {s.project || 'this project'}:</span>{' '}
           {proj ? (
             <span className="num text-fg">{fmtUSD(proj.cost_usd)} · {fmtTokens(proj.tokens)} tokens · {proj.sessions} session{proj.sessions === 1 ? '' : 's'}</span>
           ) : today.data ? <span>nothing yet</span> : <span className="text-fg-faint">…</span>}
+          <span className="text-fg-faint"> · {live.length} live</span>
         </span>
-        <span className="text-fg-faint">{live.length} live session{live.length === 1 ? '' : 's'}</span>
+        {/* The ways in, as quiet words at the line's end. On a phone they
+          * wrap under the figures, still left to right. */}
+        <div className="flex flex-wrap items-center gap-0.5 sm:ml-auto -mx-2 sm:mx-0 sm:-mr-2" aria-label="Ways in">
+          {dir ? <ProjectTerminal dir={dir} label={s.project || dir} sessions={live} quiet /> : null}
+          <RepoButtons repo={detail.data?.repo} cwd={s.cwd} quiet />
+          <a href={href({ name: 'session', id: s.session_id })} className={QUIET}>Open session</a>
+        </div>
       </div>
-      <ul className="mt-2 grid gap-1.5">
-        {live.map((x) => {
-          const st = trackState({ bars: [], repeats: 0 } as unknown as PulseModel, sessionHealth(x))
-          const model = x.model_display || (x.model ? fmtModel(x.model) : '')
-          const doing = x.activity?.phrase || x.description || x.title || ''
-          return (
-            <li key={x.session_id} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 min-w-0">
-              <SessionCharacter agent={x.agent} sessionId={x.session_id} size={22} />
-              <span className="font-medium text-fg">{agentName(x.agent ?? 'claude')}</span>
-              {model && <span className="mono text-[11.5px] text-fg">{model}</span>}
-              <StatePill state={st} />
-              {(x.live_subagents ?? 0) > 0 && <span className="text-fg-muted">+{x.live_subagents} subagent{x.live_subagents === 1 ? '' : 's'}</span>}
-              {/* Its own line on a phone, where it was squeezed to "s…". */}
-              <span className="order-last basis-full pl-[32px] sm:order-none sm:basis-auto sm:pl-0 min-w-0 sm:flex-1 truncate text-fg-muted" title={doing}>{doing}</span>
-              <span className="text-[11px] text-fg-faint whitespace-nowrap">{fmtAgo(x.last_event_at, now)}</span>
-              <a href={href({ name: 'session', id: x.session_id })} className="link text-[11.5px] whitespace-nowrap">open</a>
-            </li>
-          )
-        })}
+      <ul className="mt-1.5 grid">
+        {live.map((x) => (
+          <LiveSession key={x.session_id} x={x} now={now} hourCost={hour?.get(x.session_id)} />
+        ))}
       </ul>
-      <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        {dir ? <ProjectTerminal dir={dir} label={s.project || dir} sessions={live} /> : null}
-        <RepoButtons repo={detail.data?.repo} prs={detail.data?.prs} cwd={s.cwd} />
-        <a href={href({ name: 'session', id: s.session_id })}
-          className="inline-flex items-center rounded-sm border border-border px-3 py-1.5 text-[12.5px] text-fg-muted no-underline hover:text-fg hover:border-border-strong">
-          Open session
-        </a>
-      </div>
     </div>
+  )
+}
+
+/** "42m", "2h 5m": how long a session has been running, to the minute. */
+export function fmtRunning(ms: number): string {
+  const m = Math.max(0, Math.floor(ms / 60_000))
+  if (m < 60) return `${m}m`
+  return `${Math.floor(m / 60)}h ${m % 60}m`
+}
+
+/** A branch's changes as one figure: lines added and removed, files touched. */
+export function diffTotals(d: DiffResult | undefined): { add: number; del: number; files: number } | null {
+  if (!d || !d.files?.length) return null
+  let add = 0
+  let del = 0
+  for (const f of d.files) {
+    add += f.additions || 0
+    del += f.deletions || 0
+  }
+  return { add, del, files: d.files.length }
+}
+
+/** The CI of the session's pull request in a word; null when there is none to say. */
+export function ciWord(ci: SessionCI | undefined): { word: string; tone: string } | null {
+  switch (ci?.ci?.state) {
+    case 'fail': return { word: 'CI failing', tone: 'text-danger' }
+    case 'running': return { word: 'CI running', tone: 'text-fg-muted' }
+    case 'pass': return { word: 'CI passing', tone: 'text-fg-muted' }
+    default: return null
+  }
+}
+
+/**
+ * One live session in an opened row. Two lines, two columns: who and what it
+ * is doing on the left, its figures on the right, right-aligned. On a phone
+ * the figures go under it.
+ *
+ * Every figure is one the dashboard already had: cost, context and running
+ * time from the session list; the last hour from the track's own bars (only
+ * for a session with a track); the branch's changes from the Changes diff
+ * (`GET /v1/sessions/{id}/diff`, since the trunk); the pull request and its
+ * CI from the deck's answer (`GET /v1/sessions/{id}/ci` — the session's own
+ * record when GitHub is not connected, so CI then says nothing). Both are
+ * asked while the row is open, once a minute.
+ */
+function LiveSession({ x, now, hourCost }: { x: SessionSummary; now: number; hourCost?: number }) {
+  const diff = useApi(() => api.diff(x.session_id), [x.session_id], { live: false, intervalMs: 60_000, share: `diff:${x.session_id}` })
+  const ci = useApi(() => api.sessionCI(x.session_id), [x.session_id], { live: false, intervalMs: 60_000, share: `pulse-ci:${x.session_id}` })
+  const st = trackState({ bars: [], repeats: 0 } as unknown as PulseModel, sessionHealth(x))
+  const model = x.model_display || (x.model ? fmtModel(x.model) : '')
+  const doing = x.activity?.phrase || x.description || x.title || ''
+  const plan = x.activity?.plan
+  const changes = diffTotals(diff.data)
+  const branch = branchLabel(diff.data?.branch || x.git_branch)
+  const pr = ci.data?.pr
+  const ciw = ciWord(ci.data)
+  const ctx = x.context
+  return (
+    <li className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-0.5 py-1.5 border-t border-border/60 first:border-t-0 min-w-0">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+          <SessionCharacter agent={x.agent} sessionId={x.session_id} size={22} />
+          <span className="font-medium text-fg">{agentName(x.agent ?? 'claude')}</span>
+          {model && <span className="mono text-[11.5px] text-fg-muted">{model}</span>}
+          <StatePill state={st} />
+          {(x.live_subagents ?? 0) > 0 && <span className="text-fg-muted">+{x.live_subagents} subagent{x.live_subagents === 1 ? '' : 's'}</span>}
+        </div>
+        <div className="flex items-baseline gap-2 pl-[30px] min-w-0 text-fg-muted">
+          <span className="min-w-0 truncate" title={doing}>{doing || <span className="text-fg-faint">nothing yet</span>}</span>
+          {plan && plan.total > 0 && (
+            <span className="num shrink-0 text-[11px] text-fg-faint" title={plan.next ? `Next: ${plan.next}` : undefined}>plan {plan.done}/{plan.total}</span>
+          )}
+          <span className="shrink-0 text-[11px] text-fg-faint whitespace-nowrap">{fmtAgo(x.last_event_at, now)}</span>
+          <a href={href({ name: 'session', id: x.session_id })} className="shrink-0 text-[11px] text-fg-faint hover:text-fg whitespace-nowrap">open</a>
+        </div>
+      </div>
+      <div className="min-w-0 pl-[30px] sm:pl-0 sm:text-right text-[11.5px] text-fg-muted" data-pulse-facts={x.session_id}>
+        <div className="num whitespace-nowrap">
+          <span className="text-fg" title="What this session has cost so far">{fmtUSD(x.stats?.cost_usd)}</span>
+          {hourCost !== undefined && <span title="What it cost in the last hour"> · {fmtUSD(hourCost)}/h</span>}
+          <span title={`Started ${fmtAgo(x.started_at, now)}`}> · {fmtRunning(now - x.started_at)}</span>
+          {ctx && (
+            <span className={ctx.pct >= 85 ? 'text-warn' : ''} title={`${fmtTokens(ctx.tokens)} of ${fmtTokens(ctx.window)} context`}> · ctx {fmtPct(ctx.pct)}</span>
+          )}
+        </div>
+        {(branch || changes || pr) && (
+          <div className="flex items-baseline sm:justify-end gap-1.5 min-w-0 whitespace-nowrap">
+            {branch && <span className="mono min-w-0 truncate max-w-[16rem] text-fg-faint" title={branch}>{branch}</span>}
+            {changes && (
+              <span className="num shrink-0" title={`${changes.files} file${changes.files === 1 ? '' : 's'} changed${diff.data?.base ? ` ${diff.data.base}` : ''}, committed or not`}>
+                <span className="text-ok">+{changes.add}</span> <span className="text-danger">−{changes.del}</span>
+              </span>
+            )}
+            {pr && (
+              <a href={pr.url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-fg-muted hover:text-fg" title={pr.title ? `#${pr.number} ${pr.title}` : `#${pr.number}`}>
+                · PR #{pr.number}{pr.state === 'merged' ? ' merged' : ''}
+              </a>
+            )}
+            {ciw && <span className={`shrink-0 ${ciw.tone}`}>· {ciw.word}</span>}
+          </div>
+        )}
+      </div>
+    </li>
   )
 }
 

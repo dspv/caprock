@@ -164,7 +164,13 @@ others. Installing it: [install-app.md](install-app.md).
   turns amber, *N files touched by both*, the files on hover. *Move to a
   worktree…* opens New session on a new copy of the folder, named after the
   newer session; the running one keeps going until you stop it. The
-  cockpit beside that session shows the same chip.
+  cockpit beside that session shows the same chip. Click a row to open it:
+  today's figures for the project with Terminal, Open repo and Open session
+  as quiet links at the end of the line, then each live session in it with
+  what it is doing on the left and, on the right, what it has cost, its
+  last hour, how long it has run, its context, its branch with lines added
+  and removed, and its pull request with CI. The legend under the rows
+  hides with *Hide*; the **?** in the panel's header brings it back.
 - **Quick chat.** Ask something without picking a folder: a session in
   Caprock's data directory opens in a tab, under *Outside projects* in the
   sidebar, and its tab is called *Quick chat* with its model. ⌥⌘N, *Quick
