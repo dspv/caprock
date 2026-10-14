@@ -3,7 +3,7 @@
  * Send is pressed, and exactly what was chosen when it is.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OfferStrip, OFFER_DISCLOSURE, OFFER_THANKS } from './OfferStrip'
 import { INCLUDED_LINE, PREORDER_LINE } from './SecondBrainModal'
 import { api } from '@/lib/api'
@@ -11,7 +11,7 @@ import { isDue, markAnswered, resetPrompts } from '@/lib/prompts'
 import { resetNudgeSlots } from '@/lib/nudges'
 import {
   currentDraw, drawnVariant, forcedOffer, markOfferAnswered, markShown, offerById,
-  offerForToday, resetPendingDraw, SECOND_BRAIN_DATE,
+  offerForToday, resetPendingDraw, SECOND_BRAIN_BUILT, SECOND_BRAIN_DATE,
 } from '@/lib/offer'
 
 const NOW = new Date(2026, 9, 14, 12, 0, 0).getTime()
@@ -28,6 +28,28 @@ function given(days: number, licensed = false) {
   } as unknown as Awaited<ReturnType<typeof api.premium>>)
   return vi.spyOn(api, 'sendOffer').mockResolvedValue({ status: 'sent' })
 }
+
+// Second Brain is built, so the shipped sale never shows (SECOND_BRAIN_BUILT
+// sets its until to 0; the first describe checks that). The rest of this file
+// tests the strip as it ran before: the sale back on its dated until.
+const sale = offerById('second-brain')
+const shipped = sale.until
+beforeAll(() => { sale.until = SECOND_BRAIN_DATE })
+afterAll(() => { sale.until = shipped })
+
+describe('once Second Brain is built', () => {
+  it('the pre-order sale is retired, whatever the date', () => {
+    expect(SECOND_BRAIN_BUILT).toBe(true)
+    expect(shipped).toBe(0)
+    sale.until = shipped
+    try {
+      expect(offerForToday(USED, NOW)?.id).toBe('local-models')
+      expect(offerForToday(USED, SECOND_BRAIN_DATE - DAY)?.id).not.toBe('second-brain')
+    } finally {
+      sale.until = SECOND_BRAIN_DATE
+    }
+  })
+})
 
 beforeEach(() => {
   resetPrompts(); resetNudgeSlots(); resetPendingDraw(); vi.restoreAllMocks()

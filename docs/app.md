@@ -150,6 +150,19 @@ others. Installing it: [install-app.md](install-app.md).
   *Add account*: Google, Microsoft, iCloud, Other, or import from Apple Mail
   or Thunderbird. Adding your account leaves the sample; *Exit sample* goes
   to the ways to start.
+  **Import everything** lists the mail accounts Caprock can read on the
+  computer — Thunderbird, and Apple Mail (including the Google, iCloud and
+  Exchange accounts in System Settings › Internet Accounts) when macOS lets
+  Caprock read it — each address once, under the app it came from and when
+  that profile was last used. Accounts from a profile unused for 90 days
+  start unticked. Tick the ones to bring over and press *Import*: accounts whose password Thunderbird
+  saved connect by themselves, then Caprock asks for each other account's
+  one sign-in in turn — *Sign in with Google* or *Microsoft* in your browser,
+  an app-specific password for iCloud (made at appleid.apple.com), or the
+  account's password. A list below shows each account connected, waiting or
+  failed with the reason and *Retry*; *Skip for now* moves on and *Come
+  back* returns to it. Outlook for Mac's accounts are not read — add them with
+  *Sign in with Microsoft*.
   The arrow beside *Send feedback* folds that bottom block to one row of
   icons and back; the app remembers which way you left it. Folded, on a
   Mac each icon has its key drawn small above it; on Windows and Linux,
@@ -820,6 +833,12 @@ row.
 - **Add a line of your own.** ⇧⌘H (Ctrl+Shift+H on Windows and Linux), or ⌘K
   → *Add to brain…*: type it, pick Idea, Decision, Finding or Question, name
   topics if you like, and ⌘↩.
+- **See it as a graph.** The Brain screen opens on the graph: your memories
+  and the topics and projects they hang off. Drag to move, scroll to zoom,
+  double-click to fit, click a dot to open it; *List* shows the same as
+  rows. In the app's sidebar, the Brain block below your projects shows the
+  newest thirty as a small graph — a new memory drops in as it is kept —
+  and the three newest titles.
 - **Find and tidy.** Search, pick a project or a span; open a memory to edit
   its title and summary, pin it, link it to a topic, jump to the session it
   came from, or delete it.
@@ -1068,15 +1087,15 @@ shows what is new, or **Not now** to hide that version.
 ## A question from Caprock
 
 Caprock cannot see who uses it, so after you have used it on two different
-days it may show one short strip at the bottom of the window: Second Brain,
-which comes to Premium, or a question about a feature it is considering
-(running Hugging Face models on your computer, or one other). At most one a
+days it may show one short strip at the bottom of the window: a question
+about a feature it is considering (running Hugging Face models on your
+computer, or one other). At most one a
 day; it waits until you stop typing, never appears while a session is
 waiting for a permission answer, and never covers a terminal.
 
-- **Second Brain.** *How it works* explains it and offers Premium. It
-  arrives on 18 October 2026; if it doesn't, write to us for a full refund.
-  Nothing is sent from this strip.
+- **Second Brain.** The strip used to offer it ahead of its arrival; it
+  has arrived (see [Second Brain](#second-brain)), so the strip no longer
+  shows it.
 - **Answering a question.** Two one-click questions and an optional email,
   if you want to hear when it is ready.
 - **What is sent, and when.** Nothing, until you press **Send**. Then

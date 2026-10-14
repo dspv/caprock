@@ -80,9 +80,10 @@ export const SECOND_BRAIN_DATE_TEXT = '18 October 2026'
 
 /**
  * Set by the Second Brain build when the feature exists: the sale stops
- * then, whatever the date.
+ * then, whatever the date. Second Brain is built (ADR-063): the strip no
+ * longer offers it.
  */
-export const SECOND_BRAIN_BUILT = false
+export const SECOND_BRAIN_BUILT = true
 
 /** In the order they are tried: the first eligible one is the day's offer. */
 export const OFFERS: readonly Offer[] = [

@@ -88,10 +88,25 @@ The daemon reads, in order, the environment, then values compiled in:
 | `CAPROCK_MAIL_MICROSOFT_CLIENT_ID`  | `github.com/dspv/caprock/internal/mail/oauth.MicrosoftClientID`  |
 
 To try it before a release, set the variables in the daemon's environment and
-restart it. For releases, add the three `-X` flags to the `ldflags` in
-`.goreleaser.yaml` (and `LDFLAGS` in the `Makefile`). With neither, `GET
-/v1/mail/oauth/providers` answers `false` for that provider and the screen
-does not offer the button; nothing else changes.
+restart it.
+
+Releases compile them in. Set three **GitHub Actions secrets** on
+`dspv/caprock` (Settings → Secrets and variables → Actions), named exactly
+like the environment variables:
+
+- `CAPROCK_MAIL_GOOGLE_CLIENT_ID`
+- `CAPROCK_MAIL_GOOGLE_CLIENT_SECRET`
+- `CAPROCK_MAIL_MICROSOFT_CLIENT_ID`
+
+`release.yml` passes them as environment to goreleaser (whose `caprock`
+build adds the three `-X` flags through `envOrDefault`) and to the desktop
+app builds (`scripts/app-release.sh` on macOS, the `Makefile`'s `LDFLAGS`
+for `make app-bundle` on Windows and Linux), so the daemon the app bundles
+carries them too. `make build` and `scripts/app-local.sh` read the same
+variables from your shell. An unset secret is an empty value, never a failed
+build: `GET /v1/mail/oauth/providers` then answers `false` for that provider,
+and Mail offers an app password instead — the import screen says *Sign-in
+with Google isn't set up in this build — use an app password*.
 
 ## What the user can revoke
 
