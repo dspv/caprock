@@ -40,8 +40,33 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   link to a topic or delete. Twenty memories are free; Premium keeps every
   one. Kept in Caprock's database on this machine.
 
+### Fixed
+
+- **app (macOS):** macOS no longer asks for the microphone (and for
+  Desktop, Documents or Downloads) again after every Caprock update. The app
+  and its daemon are now signed with one Caprock certificate that stays the
+  same across releases, instead of an ad-hoc signature macOS saw as a new
+  program each time. The first update to this release asks one last time;
+  later updates keep your answers. Opening the app the first time is
+  unchanged: it is still not signed with an Apple Developer ID.
 ### Changed
 
+- **phone:** a session's header is one 44px bar: back, the title, a dot for
+  its state, and **Chat | Terminal** with **···** for the other views. The
+  project, permission mode, model, controls and details are a tap on the
+  title away. In the chat the bar is drawn over the conversation and slides
+  away while you scroll down, back on scroll up or a tap at the top, so the
+  text never jumps. On the relay page at 390×844 the conversation began
+  178px down the screen (the computer bar and three header rows); now 44px,
+  and 0 while the bar is away (owner, 2026-10-14, translated: "I want the
+  header to take minimum space because I need to read this chat").
+- **phone:** the relay page's computer bar ("DimaS-MBP ▾") is gone while the
+  connection is fine and one computer is paired. It comes back while
+  connecting or offline, and with several computers paired it shows outside
+  a session; inside one, the switch is in the title's sheet.
+- **chat:** the message field glows softly in the accent while it has the
+  focus, a little more once there is text in it; on the phone and the
+  desktop alike.
 - **now:** *Live activity* is now **What happened**: the moments of your
   sessions instead of every command. Files edited (grouped by folder), tests
   and checks with their result (*passed*, *failed (exit 2)*, or *no result
@@ -52,8 +77,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   they led up to. On one day of real use that is 1,974 rows where the old
   feed had 11,493. *All commands* brings the old feed back; the panel folds
   like the others and remembers it; every row is the same height.
+- **app:** the sidebar's bottom block reads more clearly. *Dashboard ⌘0*
+  has a row of its own again; under it, one row in two halves: **PRs &
+  CI** named with its mode (*CI Off*, *CI Bar*, *CI Page*; ⇧⌘B in its
+  tooltip) and the **theme** with its name. On Windows and Linux the two
+  take a row each, and PRs & CI shows its key, Ctrl+Alt+Shift+B.
+- **app:** folded, the bottom block's icons are a size bigger, and on a
+  Mac each one has its key drawn small above it (⇧⌘F, ⇧⌘M, ⌘0, ⌘,
+  ⇧⌘B). On Windows and Linux the keys are too long for that and show
+  above the icon you point at.
 
 ### Fixed
+
+- **phone:** dictation listened only for the browser's language, so Russian
+  speech came out as English words. A chip beside the microphone (**EN**,
+  **RU**…) says the language and changes it: a tap moves through the
+  browser's languages, then opens a list of common ones (English, Russian,
+  Ukrainian, German, French, Spanish, Portuguese, Italian, Polish, Turkish,
+  Japanese, Chinese, Korean, Arabic, Hebrew). Remembered per viewer; shown
+  prominently once when the browser names more than one language.
 
 - **now:** the activity feed no longer says "session ended" at the end of
   every turn and every subagent's stop; it says *finished its turn* or
@@ -92,6 +134,9 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   request #601 read as $1,884.29, the whole orchestrating session, and now
   reads $2.12 (measured on the owner's database). This also corrects the
   PRs & CI Board's agent cost.
+- **app:** on Windows and Linux the *Settings* row's words no longer run
+  under *phone, Telegram*, and *Send feedback*'s key is no longer cut
+  off at the sidebar's edge.
 
 ## [0.117.0] - 2026-10-14
 

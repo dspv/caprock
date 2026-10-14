@@ -81,3 +81,52 @@ export function useFillViewport<T extends HTMLElement>(on: boolean, gap = 8): (e
   }, [on, el, gap])
   return setEl
 }
+
+/** How far a finger must move the chat before the bar reacts, in px. */
+export const HIDE_SLACK_PX = 6
+
+/** A scroll within this long of a touch or a wheel is the reader's own. */
+const INTENT_MS = 500
+
+/**
+ * Hide-on-scroll, as a phone's browser does with its address bar: scrolling
+ * the chat down (reading on) hides the bar above it, scrolling up or reaching
+ * the top brings it back. Only the reader's own scrolling counts — the chat
+ * following a streaming answer to the bottom is not a reason to hide
+ * anything. The bar is drawn over the chat, not above it, so hiding it moves
+ * nothing in the conversation (components/PhoneSessionBar).
+ */
+export function useHideOnScroll(el: HTMLElement | null, on: boolean, top = 44): [hidden: boolean, show: () => void] {
+  const [hidden, setHidden] = useState(false)
+  useEffect(() => {
+    if (!on || !el) {
+      setHidden(false)
+      return
+    }
+    let last = el.scrollTop
+    let intentAt = 0
+    const intent = () => { intentAt = Date.now() }
+    const onScroll = () => {
+      const st = el.scrollTop
+      const dy = st - last
+      if (Math.abs(dy) < HIDE_SLACK_PX) return
+      last = st
+      if (st <= top) return setHidden(false)
+      if (Date.now() - intentAt > INTENT_MS) return
+      setHidden(dy > 0)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    el.addEventListener('touchstart', intent, { passive: true })
+    el.addEventListener('touchmove', intent, { passive: true })
+    el.addEventListener('wheel', intent, { passive: true })
+    el.addEventListener('keydown', intent)
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('touchstart', intent)
+      el.removeEventListener('touchmove', intent)
+      el.removeEventListener('wheel', intent)
+      el.removeEventListener('keydown', intent)
+    }
+  }, [el, on, top])
+  return [hidden, () => setHidden(false)]
+}
