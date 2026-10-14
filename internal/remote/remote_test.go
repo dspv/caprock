@@ -40,6 +40,19 @@ func fakeDaemon(t *testing.T) *httptest.Server {
 	mux.HandleFunc("/v1/big", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(strings.Repeat("x", 300<<10)))
 	})
+	mux.HandleFunc("/v1/slow", func(w http.ResponseWriter, r *http.Request) {
+		// An answer still streaming when the phone hangs up.
+		chunk := []byte(strings.Repeat("y", 32<<10))
+		for i := 0; i < 64; i++ {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	})
 	mux.HandleFunc("/v1/ws", func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"caprock.device.tok"}})
 		if err != nil {
@@ -442,6 +455,55 @@ func TestRelayAndAppAddressesMustBeEncryptedOffThisMachine(t *testing.T) {
 	} {
 		if (remote.CheckAppURL(raw) == nil) != ok {
 			t.Errorf("app %q accepted=%v", raw, !ok)
+		}
+	}
+}
+
+// A phone that hangs up while the machine is still answering it must cost
+// only that phone. A write carrying the phone's context, cancelled by the
+// hang-up, made the WebSocket library close the machine's one connection to
+// the relay, and every other phone with it (2026-10-14: the owner's phone
+// dropped, came back and was told to pair again).
+func TestAPhoneHangingUpMidAnswerLeavesTheOthersConnected(t *testing.T) {
+	r := newRig(t)
+	other := r.dial(t)
+	for round := 0; round < 5; round++ {
+		gone := r.dial(t)
+		for i := uint32(0); i < 16; i++ {
+			head, _ := json.Marshal(map[string]any{"m": "GET", "p": "/v1/slow"})
+			gone.send(remote.KindReq, 1+2*i, head)
+			gone.send(remote.KindReqEnd, 1+2*i, nil)
+		}
+		// Some of the answer is on its way, the rest still being written.
+		_, _, _ = gone.recv()
+		_ = gone.c.CloseNow()
+		time.Sleep(50 * time.Millisecond)
+		if status, _, _ := other.request(uint32(101+2*round), "GET", "/v1/echo", nil, ""); status != 200 {
+			t.Fatalf("round %d: the other phone got %d", round, status)
+		}
+	}
+	if s := r.host.State(); s.Status != "online" {
+		t.Fatalf("machine is %+v after phones hung up", s)
+	}
+}
+
+// The same at the relay: a phone hanging up while the relay still writes what
+// it sent to the machine costs only that phone.
+func TestAPhoneHangingUpMidSendLeavesTheOthersConnected(t *testing.T) {
+	r := newRig(t)
+	other := r.dial(t)
+	big := []byte(strings.Repeat("z", 60<<10))
+	for round := 0; round < 5; round++ {
+		gone := r.dial(t)
+		head, _ := json.Marshal(map[string]any{"m": "POST", "p": "/v1/echo"})
+		gone.send(remote.KindReq, 1, head)
+		for i := 0; i < 24; i++ {
+			gone.send(remote.KindReqBody, 1, big)
+		}
+		_ = gone.c.CloseNow()
+		time.Sleep(50 * time.Millisecond)
+		if status, _, _ := other.request(uint32(101+2*round), "GET", "/v1/echo", nil, ""); status != 200 {
+			t.Fatalf("round %d: the other phone got %d", round, status)
 		}
 	}
 }

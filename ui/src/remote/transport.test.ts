@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { respondForTest, type Session } from './noise'
-import { ATTEMPT_MS, BACKOFF_MS, Channel, KIND, PING_MS, PROBE_MS, SILENT_MS, WAKE_MS, frame, parseFrame, type Machine } from './transport'
+import { ATTEMPT_MS, BACKOFF_MS, Channel, KIND, PING_MS, PROBE_MS, RECHECK_MS, REFUSALS_FOR_WRONG_MACHINE, SILENT_MS, WAKE_MS, frame, parseFrame, type Machine } from './transport'
 
 const v = JSON.parse(readFileSync(resolve(__dirname, '../../../testdata/remote/noise-vector.json'), 'utf8')) as {
   responder_static: string
@@ -38,6 +38,11 @@ class FakeSocket {
   relayAlive = true
   machineAlive = true
   private sess: Session | null = null
+  private paths = new Map<number, string>()
+  /** Every request this machine was asked, by path. */
+  static asked: string[] = []
+  /** The status the machine answers a path with; 200 unless a test says otherwise. */
+  static statusFor: (path: string) => number = () => 200
   send(d: unknown) {
     this.sent.push(d)
     if (d === 'ping') {
@@ -45,11 +50,18 @@ class FakeSocket {
       return
     }
     if (!this.sess || !this.machineAlive) return
-    const { kind, id } = parseFrame(this.sess.decrypt(d as Uint8Array))
+    const { kind, id, body } = parseFrame(this.sess.decrypt(d as Uint8Array))
+    if (kind === KIND.req) this.paths.set(id, (JSON.parse(new TextDecoder().decode(body)) as { p: string }).p)
     if (kind !== KIND.reqEnd) return
-    const reply = (k: number, body?: Uint8Array) => this.onmessage?.({ data: this.sess!.encrypt(frame(k, id, body)).slice().buffer })
-    reply(KIND.res, new TextEncoder().encode('{"s":200}'))
+    const path = this.paths.get(id) ?? ''
+    FakeSocket.asked.push(path)
+    const reply = (k: number, b?: Uint8Array) => this.onmessage?.({ data: this.sess!.encrypt(frame(k, id, b)).slice().buffer })
+    reply(KIND.res, new TextEncoder().encode(JSON.stringify({ s: FakeSocket.statusFor(path) })))
     reply(KIND.resEnd)
+  }
+  /** A frame meant for someone else: what a relay reusing a number delivered. */
+  stray() {
+    this.onmessage?.({ data: new Uint8Array(96).fill(7).buffer })
   }
   close() {
     this.readyState = 3
@@ -80,6 +92,8 @@ function channel(online = true) {
 beforeEach(() => {
   vi.useFakeTimers()
   FakeSocket.all = []
+  FakeSocket.asked = []
+  FakeSocket.statusFor = () => 200
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -204,35 +218,150 @@ describe('an open channel that goes quiet is replaced', () => {
   })
 })
 
-describe('only pairing again helps', () => {
-  it('a reply from another key closes the channel for good', async () => {
+/** Opens the channel's next attempt and lets the machine answer it. */
+async function answerNext(ch: Channel) {
+  await vi.advanceTimersByTimeAsync(0)
+  last().open()
+  last().answer()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(ch.state).toBe('open')
+}
+
+/**
+ * Pairing again is asked for only on a confirmed answer, never one hiccup
+ * (owner, 2026-10-14, translated: "my connection to Caprock dropped and it
+ * asks me to go to Caprock settings again. It has to never drop").
+ */
+describe('pair again only when it is so', () => {
+  it('a stray frame before the machine’s reply is skipped, not "wrong machine"', async () => {
     const ch = channel()
     const p = ch.connect()
     last().open()
-    last().onmessage?.({ data: new Uint8Array(64).fill(7).buffer })
-    await expect(p).rejects.toThrow()
-    expect(ch.state).toBe('closed')
-    expect(ch.problem).toBe('wrong-machine')
-    expect(ch.nextAt).toBeNull()
-    vi.advanceTimersByTime(120_000)
-    expect(FakeSocket.all).toHaveLength(1)
-    await expect(ch.retryNow()).rejects.toThrow()
+    last().stray()
+    expect(ch.problem).toBe('')
+    expect(ch.state).toBe('connecting')
+    last().answer()
+    await p
+    expect(ch.state).toBe('open')
   })
 
-  it('a 401 to a request that carried the token means this phone was removed; one without a token does not', async () => {
+  it('only stray frames until the deadline is "no answer", and tried again', async () => {
+    const ch = channel()
+    const p = ch.connect()
+    last().open()
+    last().stray()
+    vi.advanceTimersByTime(ATTEMPT_MS)
+    await expect(p).rejects.toThrow()
+    expect(ch.problem).toBe('no-answer')
+    expect(ch.nextAt).not.toBeNull()
+  })
+
+  it('a machine refusing the handshake is "wrong machine" only after three in a row, and is still tried', async () => {
+    const ch = channel()
+    void ch.connect().catch(() => {})
+    for (let i = 1; i <= REFUSALS_FOR_WRONG_MACHINE; i++) {
+      last().open()
+      last().serverClose(1000)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(ch.problem).toBe(i < REFUSALS_FOR_WRONG_MACHINE ? 'no-answer' : 'wrong-machine')
+      if (i < REFUSALS_FOR_WRONG_MACHINE) await vi.advanceTimersByTimeAsync(BACKOFF_MS[i - 1]!)
+    }
+    expect(ch.state).toBe('closed')
+    // Behind the pair-again screen it keeps trying, once a minute…
+    const n = FakeSocket.all.length
+    await vi.advanceTimersByTimeAsync(RECHECK_MS)
+    expect(FakeSocket.all.length).toBe(n + 1)
+    // …and comes back by itself when the machine answers after all.
+    last().open()
+    last().answer()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(ch.state).toBe('open')
+    expect(ch.problem).toBe('')
+  })
+
+  it('a refusal between good connections never adds up', async () => {
+    const ch = channel()
+    void ch.connect().catch(() => {})
+    for (let round = 0; round < 4; round++) {
+      last().open()
+      last().serverClose(1000)
+      await vi.advanceTimersByTimeAsync(ch.nextAt! - Date.now())
+      await answerNext(ch)
+      last().serverClose(1006)
+      await vi.advanceTimersByTimeAsync(ch.nextAt! - Date.now())
+    }
+    expect(ch.problem).not.toBe('wrong-machine')
+  })
+
+  it('a 401 is checked with /v1/pair/me, and a machine that still knows the token changes nothing', async () => {
     const ch = channel()
     const p = ch.connect()
     last().open()
     last().answer()
     await p
-    ch.noteStatus('/v1/status', 401, false)
+    ch.noteStatus('/v1/status', 401, '')
+    ch.noteStatus('/v1/pair', 401, 'tok')
+    expect(FakeSocket.asked).toEqual([])
+    ch.noteStatus('/v1/brain', 401, 'tok')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(FakeSocket.asked).toEqual(['/v1/pair/me'])
     expect(ch.problem).toBe('')
-    ch.noteStatus('/v1/pair', 401, true)
+    expect(ch.state).toBe('open')
+    expect(FakeSocket.all).toHaveLength(1)
+  })
+
+  it('"removed" needs the machine to disown the token on two connections; until then it reconnects and asks', async () => {
+    FakeSocket.statusFor = (path) => (path === '/v1/pair/me' ? 401 : 200)
+    const ch = channel()
+    const p = ch.connect()
+    last().open()
+    last().answer()
+    await p
+    ch.noteStatus('/v1/status', 401, 'tok')
+    await vi.advanceTimersByTimeAsync(0)
+    // Once: not believed. A fresh connection asks again.
+    expect(ch.problem).not.toBe('removed')
+    expect(ch.state).not.toBe('open')
+    await vi.advanceTimersByTimeAsync(BACKOFF_MS[0]!)
+    last().open()
+    last().answer()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(FakeSocket.asked).toEqual(['/v1/pair/me', '/v1/pair/me'])
+    expect(ch.problem).toBe('removed')
+    // Removed, it still asks once a minute, and is back when the machine knows it again.
+    FakeSocket.statusFor = () => 200
+    await vi.advanceTimersByTimeAsync(RECHECK_MS)
     expect(ch.problem).toBe('')
-    ch.noteStatus('/v1/status', 401, true)
-    expect(ch.problem).toBe('removed')
-    last().serverClose(1006)
-    expect(ch.problem).toBe('removed')
-    expect(ch.nextAt).toBeNull()
+  })
+
+  it('a removal that does not hold on the second connection is forgotten', async () => {
+    let n = 0
+    FakeSocket.statusFor = (path) => (path === '/v1/pair/me' && n++ === 0 ? 401 : 200)
+    const ch = channel()
+    const p = ch.connect()
+    last().open()
+    last().answer()
+    await p
+    ch.noteStatus('/v1/live', 401, 'tok')
+    await vi.advanceTimersByTimeAsync(BACKOFF_MS[0]!)
+    await answerNext(ch)
+    expect(ch.problem).toBe('')
+    // And a later lone 401 starts from nothing again.
+    FakeSocket.statusFor = (path) => (path === '/v1/pair/me' ? 401 : 200)
+    ch.noteStatus('/v1/status', 401, 'tok')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(ch.problem).not.toBe('removed')
+  })
+
+  it('statuses an older machine gives a newer page (403, 404, 5xx) are never a removal', async () => {
+    const ch = channel()
+    const p = ch.connect()
+    last().open()
+    last().answer()
+    await p
+    for (const s of [403, 404, 405, 500, 502, 503]) ch.noteStatus('/v1/brain', s, 'tok')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(FakeSocket.asked).toEqual([])
+    expect(ch.problem).toBe('')
   })
 })

@@ -1,7 +1,7 @@
 import { isSilent, type LinkStatus } from '@/lib/reconnect'
 import { useNow } from '@/lib/useNow'
 
-type Tone = 'ok' | 'warn' | 'danger' | 'muted'
+export type Tone = 'ok' | 'warn' | 'danger' | 'muted'
 
 interface Reading {
   tone: Tone
@@ -34,7 +34,7 @@ function isBrowserOffline(): boolean {
  * facts: "Live" only with a round trip inside DEAD_MS, whatever the socket's
  * own state says — a socket the network silently dropped still reads as open.
  */
-function readLink(link: LinkStatus, heardAt: number, now: number): Reading {
+export function readLink(link: LinkStatus, heardAt: number, now: number): Reading {
   switch (link.phase) {
     case 'revoked':
       return { tone: 'danger', label: `Control revoked — ${link.reason ?? 'this device can no longer control sessions'}`, title: 'Reconnecting would be refused, so it is not tried.' }

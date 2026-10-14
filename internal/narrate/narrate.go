@@ -47,6 +47,43 @@ type Activity struct {
 	// they finish, so nothing is wanted from the user and Health is working.
 	// Zero otherwise.
 	Background int `json:"background,omitempty"`
+	// Provisional marks a status read from input Caprock typed into the
+	// session rather than from an event the session wrote: Enter at a
+	// waiting prompt reads working for NudgeWindow, and goes back to what
+	// the events say when nothing follows it.
+	Provisional bool `json:"provisional,omitempty"`
+	// FromInput is set when a Nudge decided the status. A caller that would
+	// otherwise judge the session by how long its events have been quiet
+	// (the session row's idle status) leaves it alone.
+	FromInput bool `json:"-"`
+}
+
+// Kinds of Nudge.
+const (
+	// NudgeSubmit is Enter typed, or sent, at a session not showing a
+	// permission menu: a message was submitted, or nothing was.
+	NudgeSubmit = "submit"
+	// NudgeApproved is a permission menu answered with an option that lets
+	// the call run (a key in the terminal, or a button anywhere).
+	NudgeApproved = "approved"
+	// NudgeRejected is a permission menu answered No, or Esc / Ctrl+C at
+	// it: Claude Code drops the call and returns to its prompt.
+	NudgeRejected = "rejected"
+)
+
+// NudgeWindow is how long a NudgeSubmit reads working with no event behind
+// it. A prompt Claude Code accepted fires UserPromptSubmit within
+// milliseconds; Enter that submitted nothing (an empty prompt, a slash
+// command's menu) is not work, and the status goes back.
+const NudgeWindow = 5 * time.Second
+
+// Nudge is input to a session Caprock holds, seen as it was typed: what the
+// user did that the session has not yet written an event for. Only a session
+// Caprock started has one — every key and button reaches it through the
+// daemon — and only the newest is kept.
+type Nudge struct {
+	At   time.Time
+	Kind string
 }
 
 // toolInput extracts common tool_input fields from a tool.* payload.
@@ -309,6 +346,10 @@ type Options struct {
 	// look it up because events holds none (a parent whose subagents logged
 	// more than the window). Nil means "find it in events".
 	MainLast *event.Event
+	// Nudge is the newest input Caprock typed into the session (owned
+	// sessions only). It decides the status only when it came after the
+	// newest event, so the next event always wins.
+	Nudge *Nudge
 }
 
 // BackgroundPhrase is what a session whose turn ended says while n of its
@@ -461,6 +502,7 @@ func Summarize(events []event.Event, opt Options) Activity {
 		act.Health = HealthIdle
 		act.Phrase = "was " + act.Phrase
 	}
+	applyNudge(&act, last, lastTool, opt.Nudge, now, idleAfter)
 	// The turn ended but subagents it started in the background still work.
 	// Claude Code resumes the parent by itself when they finish, so the
 	// session wants nothing from anyone: it read "waiting on you" beside "1
@@ -483,6 +525,58 @@ func Summarize(events []event.Event, opt Options) Activity {
 		act.Health = HealthEnded
 	}
 	return act
+}
+
+// applyNudge lets input the session has not answered with an event yet
+// decide the status (owner, 2026-10-14: "waiting for you" for 10-20 s after
+// he had set the agent going). A permission dialog writes nothing when it is
+// answered — the call's PostToolUse comes when the call finishes, which for a
+// build is minutes — so the answer read where it was typed is the only timely
+// signal there is. Each case needs the newest event to be the one the input
+// answers; any later event is the session speaking for itself.
+func applyNudge(act *Activity, last event.Event, lastTool *event.Event, n *Nudge, now time.Time, idleAfter time.Duration) {
+	if n == nil || !n.At.After(last.Ts) {
+		return
+	}
+	switch act.Health {
+	case HealthLooping, HealthError, HealthEnded:
+		return
+	}
+	switch n.Kind {
+	case NudgeApproved:
+		if last.Kind != event.KindPermissionPrompt || last.Tool == "AskUserQuestion" {
+			return
+		}
+		phrase := "approved"
+		if last.Tool != "" && parseInput(last.Payload).Raw != nil {
+			phrase += " — " + Phrase(last.Tool, last.Payload)
+			act.Tool = last.Tool
+		} else if lastTool != nil {
+			phrase += " — " + Phrase(lastTool.Tool, lastTool.Payload)
+			act.Tool = lastTool.Tool
+		}
+		act.Phrase, act.Health = phrase, HealthWorking
+		if now.Sub(n.At) > idleAfter {
+			act.Health, act.Phrase = HealthIdle, "was "+phrase
+		}
+	case NudgeRejected:
+		if last.Kind != event.KindPermissionPrompt || last.Tool == "AskUserQuestion" {
+			return
+		}
+		// Claude Code drops the call and returns to its prompt.
+		act.Phrase, act.Health, act.Tool = "waiting for you", HealthWaiting, ""
+	case NudgeSubmit:
+		if now.Sub(n.At) >= NudgeWindow || last.Kind == event.KindPermissionPrompt {
+			return
+		}
+		if act.Health != HealthWaiting && act.Health != HealthIdle {
+			return
+		}
+		act.Phrase, act.Health, act.Tool, act.Provisional = "starting on your message", HealthWorking, "", true
+	default:
+		return
+	}
+	act.At, act.Repeats, act.FromInput = n.At, 0, true
 }
 
 // subagentLabel is "subagent (general-purpose)" for an event a subagent

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { api } from '@/lib/api'
 import { JUST_PAIRED_KEY } from '@/screens/Pair'
@@ -53,6 +53,20 @@ describe('ReadyCard', () => {
 })
 
 describe('ReadyGate', () => {
+  beforeEach(() => localStorage.setItem('caprock.device.token', 'tok'))
+
+  it('is never in the way: not while a code is being redeemed, and not when the machine does not answer', async () => {
+    localStorage.setItem(JUST_PAIRED_KEY, '1')
+    localStorage.removeItem('caprock.device.token')
+    vi.spyOn(api, 'pairMe').mockRejectedValue(new Error('401'))
+    render(<ReadyGate machineId="m" machineName="Mac mini"><p>dashboard</p></ReadyGate>)
+    expect(screen.getByText('dashboard')).toBeTruthy()
+    cleanup()
+    localStorage.setItem('caprock.device.token', 'tok')
+    render(<ReadyGate machineId="m" machineName="Mac mini"><p>dashboard</p></ReadyGate>)
+    expect(await screen.findByText('dashboard')).toBeTruthy()
+  })
+
   it('after pairing, shows the card before the dashboard, and Open sessions lets it through', async () => {
     localStorage.setItem(JUST_PAIRED_KEY, '1')
     vi.spyOn(api, 'pairMe').mockResolvedValue({ role: 'controller' })
