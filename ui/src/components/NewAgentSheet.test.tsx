@@ -125,7 +125,7 @@ describe('the New agent sheet on the keyboard', () => {
       // A button's name without its key badge, which is aria-hidden.
       .map((el) => el.getAttribute('aria-label') || (el.closest('label')?.querySelector('span')?.firstChild?.textContent ?? el.firstChild?.textContent ?? '').trim())
     // The sheet's × comes first, in its header; the project search has the caret.
-    expect(order).toEqual(['Close', 'Project', 'Where', 'Model', 'Permissions', 'Add', 'First message', 'Cancel', 'Start'])
+    expect(order).toEqual(['Close', 'Project', 'Where', 'Model', 'Permissions', 'Add project instructions', 'First message', 'Cancel', 'Start'])
   })
 })
 
@@ -547,5 +547,24 @@ describe('attempts', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
     await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
     expect(spawn.mock.calls[0]![0]).not.toHaveProperty('attempts')
+  })
+})
+
+describe('where it starts and what it is told', () => {
+  it('names a multi-repo project’s repositories under Project, and shows the instructions state', async () => {
+    const multi = [{ id: '3', root: '/w', name: 'work', kind: 'folder', defaults: { system_prompt: 'a\nb' }, instruction_files: ['api/CLAUDE.md'],
+      repos: [{ path: '/w/api', name: 'api' }, { path: '/w/web', name: 'web' }, { path: '/w/infra', name: 'infra' }] }] as unknown as Project[]
+    render(<NewAgentSheet projects={multi} projectId="3" onClose={vi.fn()} onStarted={vi.fn()} />)
+    expect(await screen.findByLabelText('Repositories in this project')).toHaveTextContent('3 repos: api, web, infra')
+    expect(screen.getByLabelText('Project instructions state')).toHaveTextContent('Set · 2 lines')
+    expect(screen.getByLabelText('Repository instruction files')).toHaveTextContent('CLAUDE.md in api')
+  })
+
+  it('New project… hands over the first message typed so far', async () => {
+    const onNewProject = vi.fn()
+    render(<NewAgentSheet projects={projects} projectId="1" onClose={vi.fn()} onStarted={vi.fn()} onNewProject={onNewProject} />)
+    fireEvent.change(await screen.findByPlaceholderText('What should it do?'), { target: { value: 'Read it' } })
+    fireEvent.click(screen.getByRole('button', { name: 'New project…' }))
+    expect(onNewProject).toHaveBeenCalledWith('Read it')
   })
 })

@@ -6,6 +6,7 @@
 use crate::supervisor::{State, Supervisor};
 use std::sync::Arc;
 use tauri::{AppHandle, Runtime, Url, Webview};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 pub type Sup = Arc<Supervisor>;
@@ -59,6 +60,29 @@ pub fn open_external<R: Runtime>(url: String, app: AppHandle<R>) -> Result<(), S
     app.opener()
         .open_url(parsed.as_str(), None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+/// The system's folder chooser, for New project: the folder the person
+/// picked, or None when they cancelled. It opens where `start` points when
+/// that is a folder. Nothing is read or written: the page gets a path the
+/// person chose, and the daemon checks it as it checks a typed one.
+#[tauri::command]
+pub async fn pick_folder<R: Runtime>(
+    start: Option<String>,
+    app: AppHandle<R>,
+) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = app.dialog().file().set_title("Choose a project folder");
+        if let Some(dir) = start.map(std::path::PathBuf::from).filter(|p| p.is_dir()) {
+            dialog = dialog.set_directory(dir);
+        }
+        dialog
+            .blocking_pick_folder()
+            .and_then(|p| p.into_path().ok())
+            .map(|p| p.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// What the menu bar or tray shows (F08), computed by the page.

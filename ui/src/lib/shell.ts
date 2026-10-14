@@ -73,6 +73,8 @@ export const shell = {
   updateAsked: () => shellInvoke<void>('app_update_asked'),
   /** Open an http, https or mailto link in the default browser or mail app; rejects on any other scheme. */
   openExternal: (url: string) => shellInvoke<void>('open_external', { url }),
+  /** The system's folder chooser (New project): the folder picked, or null when cancelled. Opens at `start` when it is a folder. */
+  pickFolder: (start?: string) => shellInvoke<string | null>('pick_folder', { start: start ?? null }),
   /** A PNG onto the system clipboard, through the shell rather than the webview (app/src-tauri/src/capture.rs). */
   clipboardImage: (png: Uint8Array) => shellInvoke<void>('clipboard_image', png),
   /** The app's own page as PNG bytes: the webview's drawing, never the screen. */

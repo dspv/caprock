@@ -55,6 +55,9 @@ type FoundRepo struct {
 	ProjectID   int64  `json:"project_id,omitempty"`
 	ProjectName string `json:"project_name,omitempty"`
 	MemberOf    int64  `json:"member_of,omitempty"`
+	// InstructionFiles are the repository's own instruction files at its
+	// top (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md), names only.
+	InstructionFiles []string `json:"instruction_files,omitempty"`
 }
 
 // ScanResult is GET /v1/projects/scan.
@@ -65,6 +68,10 @@ type ScanResult struct {
 	RepoRoot string      `json:"repo_root,omitempty"`
 	Repos    []FoundRepo `json:"repos"`
 	Capped   bool        `json:"capped,omitempty"`
+	// InstructionFiles are the instruction files at the top of the
+	// repository the folder is in (RepoRoot), else of the folder itself,
+	// with their text: the app shows them before the project is added.
+	InstructionFiles []InstructionFile `json:"instruction_files,omitempty"`
 }
 
 // RepoView is one member of a multi-repo project, with its own git state
@@ -160,8 +167,10 @@ func (s *Service) Scan(ctx context.Context, path string) (ScanResult, error) {
 	out := ScanResult{Root: dir, Repos: []FoundRepo{}}
 	if r := store.ResolveRepoRoot(dir); r != "" {
 		out.RepoRoot = filepath.FromSlash(r)
+		out.InstructionFiles = readInstructionFiles(out.RepoRoot)
 		return out, nil
 	}
+	out.InstructionFiles = readInstructionFiles(dir)
 	paths, capped := FindRepos(dir, ScanDepth)
 	out.Capped = capped
 	all, err := store.ListProjects(ctx, s.Store.DB(), false)
@@ -176,7 +185,7 @@ func (s *Service) Scan(ctx context.Context, path string) (ScanResult, error) {
 	owner := s.memberOwnerLocked()
 	s.mu.Unlock()
 	for _, p := range paths {
-		f := FoundRepo{Path: p, Name: relName(dir, p)}
+		f := FoundRepo{Path: p, Name: relName(dir, p), InstructionFiles: instructionFileNames(p)}
 		n := store.NormalizeDir(p)
 		if lp, ok := byRoot[n]; ok {
 			f.ProjectID, f.ProjectName = lp.ID, lp.Name

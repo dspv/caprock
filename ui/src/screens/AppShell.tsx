@@ -89,6 +89,8 @@ import { StatusDot, fmtCostShort, leadKey, projectRows, type SidebarRow } from '
 import { fmtAgo } from '@/lib/format'
 import { RecentInProject } from '@/components/RecentInProject'
 import { ProjectRepos } from '@/components/ProjectRepos'
+import { ProjectWizard } from '@/components/ProjectWizard'
+import { ProjectInstructions } from '@/components/ProjectInstructions'
 import { isMultiRepo } from '@/lib/multirepo'
 import { CloseAgentChoice, CloseChatConfirm, CloseShellConfirm } from '@/components/CloseShellConfirm'
 import { ShortcutsSheet } from '@/components/ShortcutsSheet'
@@ -163,6 +165,8 @@ type SheetState =
       onStarted?: () => void
     }
   | { kind: 'project' }
+  /** New project, tap-tap-tap (components/ProjectWizard.tsx); `prompt` is a first message typed in New agent before it, handed back. */
+  | { kind: 'new-project'; prompt?: string }
   | { kind: 'palette' }
   | { kind: 'keys' }
   /** ⌘K "Share my numbers": the share sheet. */
@@ -667,7 +671,8 @@ export function AppShell() {
 
   const onNewAgent = useCallback((projectId?: string, cwd?: string) => setSheet({ kind: 'agent', projectId: projectId ?? activeProjectId, cwd }), [activeProjectId])
   const onNewShell = useCallback((projectId?: string, cwd?: string) => { void newShell(projectId, cwd) }, [newShell])
-  const onAddProject = useCallback(() => setSheet({ kind: 'project' }), [])
+  // The wizard needs the projects API (scan); without it, the plain sheet.
+  const onAddProject = useCallback(() => setSheet(source === 'api' ? { kind: 'new-project' } : { kind: 'project' }), [source])
   const onPalette = useCallback(() => setSheet({ kind: 'palette' }), [])
   const onDashboard = useCallback(() => { location.hash = lastDashboard.current || '#/' }, [])
   /**
@@ -1579,6 +1584,9 @@ export function AppShell() {
                       onNewAgent={() => onNewAgent()}
                       onNewShell={() => onNewShell()}
                       onAddProject={onAddProject}
+                      instructions={source === 'api' && activeProject?.root ? (
+                        <ProjectInstructions key={activeProject.id} project={activeProject} />
+                      ) : undefined}
                       repos={source === 'api' && activeProject && isMultiRepo(activeProject) ? (
                         <ProjectRepos project={activeProject} projects={model.projects.map((n) => n.project)} />
                       ) : undefined}
@@ -1721,6 +1729,7 @@ export function AppShell() {
           onClose={() => setSheet(null)}
           onSetup={onSetupAgent}
           onProjectAdded={() => refresh()}
+          onNewProject={source === 'api' ? (prompt) => setSheet({ kind: 'new-project', prompt }) : undefined}
           onStarted={(id, projectId, title) => { sheet.onStarted?.(); openTab({ kind: 'session', sessionId: id }, projectId, title); data.refresh() }}
           onAttempts={onAttempts}
         />
@@ -1731,6 +1740,15 @@ export function AppShell() {
           onClose={closeSheet}
           onSetup={onSetupAgent}
           onStart={(c) => { setSheet(null); void startQuickChat(c) }}
+        />
+      )}
+      {sheet?.kind === 'new-project' && (
+        <ProjectWizard
+          projects={model.projects.map((n) => n.project)}
+          onClose={closeSheet}
+          onCreated={(id) => { refresh(); dispatch({ type: 'project', projectId: id }) }}
+          onStartAgent={(id) => setSheet({ kind: 'agent', projectId: id, prompt: sheet.prompt })}
+          onMoreWays={() => setSheet({ kind: 'project' })}
         />
       )}
       {sheet?.kind === 'project' && (
@@ -1823,6 +1841,7 @@ function EmptyWorkspace({
   onNewShell,
   onAddProject,
   repos,
+  instructions,
   recent,
   cleanup,
 }: {
@@ -1833,6 +1852,8 @@ function EmptyWorkspace({
   onAddProject: () => void
   /** A multi-repo project's repositories and their split (ADR-055). */
   repos?: React.ReactNode
+  /** What the project's agents are told: Caprock's instructions and the repository's own files. */
+  instructions?: React.ReactNode
   /** The project's recent sessions, to carry one on from here. */
   recent?: React.ReactNode
   /** Finished copies: "3 copies done · Clean up" (components/CleanupLine). */
@@ -1854,6 +1875,7 @@ function EmptyWorkspace({
           {project && <EmptyAction icon={<TerminalIcon size={15} />} label="New shell" hint={keys('⌘T')} onClick={onNewShell} />}
           <EmptyAction icon={<FolderPlusIcon size={15} />} label="Add a project" hint={keys('⌘O')} onClick={onAddProject} />
         </div>
+        {instructions}
         {repos}
         {cleanup}
         {recent}
