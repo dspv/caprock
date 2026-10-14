@@ -1556,6 +1556,7 @@ export function AppShell() {
                   <TerminalStack
                     tabs={ws.tabs}
                     visibleTabId={workspaceShown ? current?.id : undefined}
+                    covered={showChat || !!changesView || !!compare}
                     onPaneStatus={onPaneStatus}
                     onPaneExit={onPaneExit}
                     sessions={sessionsById}

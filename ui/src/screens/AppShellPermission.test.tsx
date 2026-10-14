@@ -87,9 +87,9 @@ describe('the permission card in the app', () => {
 
   it('stays, once, when the chat covers the terminal and when it is back', async () => {
     await openAgent()
-    fireEvent.click(screen.getByRole('button', { name: 'Show the chat' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Chat' }))
     expect(cards()).toHaveLength(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Show the terminal' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Chat' }))
     expect(cards()).toHaveLength(1)
   })
 

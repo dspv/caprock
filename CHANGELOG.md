@@ -16,6 +16,30 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   bowl, which did not read as a brain) beside the name, and one faint line under it in
   the sidebar and on the screen: *All your agents build your personal Jarvis
   over time.*
+- **app:** the chat button in the tab strip says what it is: a speech
+  bubble and the word **Chat**, as Deck has its word, lit while the chat is
+  shown. Its tooltip says what the chat is: this session as messages —
+  your prompts, the agent's replies, one line per tool call — and a field
+  that types into it, while the terminal keeps running.
+
+### Fixed
+
+- **app:** terminals no longer show rows of wrong letters ("ι ɤr ·r")
+  after another tab redraws its glyphs. All terminals share one set of
+  drawn glyphs; when one tab rebuilt it (back after five minutes, after the
+  Mac woke, on a display change) the others kept pointing at places in it
+  that now held other letters, until their rows were drawn again — for a
+  couple of seconds after closing a tab or leaving the chat, or for good in
+  a tab that printed nothing. Every terminal now redraws from the new set
+  at once, and a tab coming back into view sends its glyphs to the GPU
+  again. Under the chat (and under Changes or a comparison) the terminal is
+  put away as a tab behind another is: what the agent prints meanwhile is
+  drawn at once when you come back.
+- **app:** a terminal no longer opens with its letters spread far apart
+  after the app restarts (an update): a letter cell measured before the
+  terminal's font settled was kept until you changed the font size. A cell
+  no monospace font could have is now measured again on its own, when the
+  fonts are in, when the window comes back and when the tab is shown.
 
 ## [0.117.3] - 2026-10-14
 

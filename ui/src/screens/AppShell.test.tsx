@@ -241,11 +241,46 @@ describe('the app workspace', () => {
     await renderApp()
     await openFromPalette('Fix the login bug')
     await screen.findByRole('tab', { name: /Fix the login bug/ })
-    fireEvent.click(screen.getByRole('button', { name: 'Show the chat' }))
+    const chat = screen.getByRole('button', { name: 'Chat' })
+    expect(chat).toHaveAttribute('aria-pressed', 'false')
+    expect(chat).toHaveTextContent('Chat')
+    expect(chat.getAttribute('title')).toMatch(/as a chat.*terminal keeps running/)
+    fireEvent.click(chat)
     expect(await screen.findByText('Fix it, please')).toBeInTheDocument()
-    expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Show the terminal' }))
+    expect(chat).toHaveAttribute('aria-pressed', 'true')
+    // Still mounted, but out of view under the cover as on a tab switch, so
+    // it comes back the same way (owner, 2026-10-14).
+    const pane = screen.getByTestId('pane-agent-1')
+    expect(pane).toHaveAttribute('data-active', 'false')
+    expect(pane.closest('[data-tab-panel]')).toHaveAttribute('hidden')
+    fireEvent.click(chat)
     expect(screen.queryByRole('log')).not.toBeInTheDocument()
+    expect(pane).toHaveAttribute('data-active', 'true')
+    expect(pane.closest('[data-tab-panel]')).not.toHaveAttribute('hidden')
+  })
+
+  // Every way a terminal comes back into view is its pane going active
+  // false -> true, which re-sends its glyphs before the first frame
+  // (TerminalPane): the owner saw garbage after closing a tab and after the
+  // chat (2026-10-14). Closing the tab in front shows its neighbour; the
+  // dashboard hides every terminal, and coming back shows the one in front.
+  it('shows the neighbour when the tab in front closes, and every terminal goes out of view under the dashboard and back', async () => {
+    await renderApp()
+    await openFromPalette('Fix the login bug')
+    fireEvent.click(waitingRow('Waiting one'))
+    await screen.findByRole('tab', { name: /Waiting one/ })
+    const active = (id: string) => screen.getByTestId(`pane-${id}`).getAttribute('data-active')
+    expect([active('agent-1'), active('agent-2')]).toEqual(['false', 'true'])
+    await cmd('d', { shiftKey: true })
+    await screen.findByRole('tab', { name: /Dashboard/ })
+    expect([active('agent-1'), active('agent-2')]).toEqual(['false', 'false'])
+    fireEvent.click(screen.getByRole('tab', { name: /Waiting one/ }))
+    await waitFor(() => expect(active('agent-2')).toBe('true'))
+    expect(active('agent-1')).toBe('false')
+    await cmd('w')
+    fireEvent.click(within(await screen.findByRole('dialog', { name: "Close an agent's tab" })).getByRole('button', { name: 'Close tab' }))
+    await waitFor(() => expect(screen.queryByTestId('pane-agent-2')).not.toBeInTheDocument())
+    expect(active('agent-1')).toBe('true')
   })
 
   it('opens a session it does not own in a tab of its own, read-only, never as a terminal (rule 7; owner, 2026-10-13)', async () => {

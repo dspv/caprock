@@ -348,7 +348,19 @@ export function TabStrip(props: TabStripProps) {
       </div>
       <div className="mb-1 flex shrink-0 items-center gap-0.5">
         {props.paneTools !== false && props.onToggleChat && (
-          <StripButton label={props.chatOpen ? 'Show the terminal' : 'Show the chat'} pressed={props.chatOpen} onClick={props.onToggleChat}><ChatIcon size={15} /></StripButton>
+          // Worded, as Deck is: the bare bubble said nothing (owner,
+          // 2026-10-14, translated: "it opens who knows what"). The word
+          // stays *Chat* in both states; pressed is the way back.
+          <button type="button" data-chat-toggle aria-label="Chat" aria-pressed={!!props.chatOpen} onClick={props.onToggleChat}
+            title={props.chatOpen
+              ? 'Back to the terminal'
+              : 'Read this session as a chat: your prompts, the agent\'s replies, one line per tool call, and a field that types into it. The terminal keeps running.'}
+            className={`flex h-[28px] items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] transition-colors duration-100 motion-reduce:transition-none ${
+              props.chatOpen ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
+            }`}>
+            <ChatIcon size={15} />
+            <span>Chat</span>
+          </button>
         )}
         {props.paneTools !== false && props.onToggleDeck && (
           // Labelled, with its key, so the deck is found (owner, 2026-10-11:
@@ -392,6 +404,7 @@ function StripButton({ label, onClick, pressed, shortcut, children }: { label: s
 export const TerminalStack = memo(function TerminalStack({
   tabs,
   visibleTabId,
+  covered = false,
   onPaneStatus,
   onPaneExit,
   sessions,
@@ -410,6 +423,12 @@ export const TerminalStack = memo(function TerminalStack({
   tabs: Tab[]
   /** The tab shown, or undefined when the workspace itself is hidden. */
   visibleTabId?: string
+  /**
+   * A view covers the tab shown (the chat, Changes, a comparison): its panel
+   * is hidden as if another tab were in front — output held, no WebGL canvas
+   * drawn under the cover — and shown again the same way when it goes.
+   */
+  covered?: boolean
   /** What a file tab shows (components/FileView.tsx); stable, as the stack is memoised. */
   renderFile?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   /** What a watched session's tab shows (components/ObservePane.tsx): its conversation, read-only, no terminal. */
@@ -453,13 +472,15 @@ export const TerminalStack = memo(function TerminalStack({
     // The terminal slab is each terminal tab's own ground; a file tab reads
     // on the page's, in the app's theme.
     <div className="relative h-full w-full">
-      {tabs.map((t) => (
-        <div key={t.id} className={`absolute inset-0 ${t.root.type === 'pane' && ownTab(t.root.target) ? 'bg-bg' : 'app-slab'}`} hidden={t.id !== visibleTabId} data-tab-panel={t.id}>
-          {t.root.type === 'pane' && t.root.target.kind === 'file' ? renderFile?.(t, t.root, t.id === visibleTabId)
-            : t.root.type === 'pane' && t.root.target.kind === 'observe' ? renderObserve?.(t, t.root, t.id === visibleTabId)
-            : t.root.type === 'pane' && t.root.target.kind === 'prs' ? renderPRs?.(t, t.root, t.id === visibleTabId) : <PaneView
+      {tabs.map((t) => {
+        const shown = t.id === visibleTabId && !covered
+        return (
+        <div key={t.id} className={`absolute inset-0 ${t.root.type === 'pane' && ownTab(t.root.target) ? 'bg-bg' : 'app-slab'}`} hidden={!shown} data-tab-panel={t.id}>
+          {t.root.type === 'pane' && t.root.target.kind === 'file' ? renderFile?.(t, t.root, shown)
+            : t.root.type === 'pane' && t.root.target.kind === 'observe' ? renderObserve?.(t, t.root, shown)
+            : t.root.type === 'pane' && t.root.target.kind === 'prs' ? renderPRs?.(t, t.root, shown) : <PaneView
             node={t.root}
-            visible={t.id === visibleTabId}
+            visible={shown}
             ctx={{
               tab: t,
               split: t.root.type === 'split',
@@ -478,7 +499,8 @@ export const TerminalStack = memo(function TerminalStack({
             }}
           />}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 })
