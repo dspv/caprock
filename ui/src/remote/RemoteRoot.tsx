@@ -140,6 +140,30 @@ function MachineMenu({ onClose }: { onClose: () => void }) {
 const HOW_IT_WORKS = 'https://github.com/dspv/caprock#from-anywhere-through-an-encrypted-relay'
 const RELAY_SOURCE = 'https://github.com/dspv/caprock/tree/master/relay'
 
+/**
+ * What step 1 looks like on the computer, drawn small: the Settings section
+ * and its button, so the words have a picture to match.
+ */
+function SettingsSketch() {
+  return (
+    <div aria-hidden className="mt-3 overflow-hidden rounded-lg border border-border bg-bg text-[12px]">
+      <div className="flex items-center gap-1.5 border-b border-border px-3 py-1.5 text-fg-faint">
+        <span className="h-2 w-2 rounded-full bg-[#ff5f57]" /><span className="h-2 w-2 rounded-full bg-[#febc2e]" /><span className="h-2 w-2 rounded-full bg-[#28c840]" />
+        <span className="ml-2">Caprock · Settings</span>
+      </div>
+      <div className="flex items-center gap-3 px-3 py-3">
+        <div className="grid h-12 w-12 shrink-0 grid-cols-4 gap-[2px] rounded bg-white p-1.5" >
+          {Array.from({ length: 16 }, (_, i) => <span key={i} className={(i * 7) % 3 ? 'bg-black' : 'bg-white'} />)}
+        </div>
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-fg">Use on your phone</p>
+          <span className="mt-1 inline-block rounded-md bg-accent px-2.5 py-1 text-[12px] font-semibold text-bg">Show a code</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Opened from the home screen: an iPhone gives it storage apart from Safari's. */
 function standalone(): boolean {
   return (
@@ -170,15 +194,30 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
     <div className={first ? 'mx-auto flex min-h-dvh max-w-md flex-col px-6 pb-12 pt-[max(3rem,env(safe-area-inset-top))]' : 'px-4 py-4'}>
       {first && (
         <>
-          <img src="/favicon.svg" alt="" className="h-14 w-14" />
-          <h1 className="mt-6 text-[32px] font-semibold leading-tight text-fg">Your computer, on your phone</h1>
-          <p className="mt-2 text-[17px] text-fg-muted">Every session, from anywhere. Nothing to install.</p>
+          {/* Where you are (owner, 2026-10-14, translated: "on m.caprock.dev
+            * from the phone I don't understand where I am"): the name beside
+            * the mark, and what this page is the other half of. */}
+          <div className="flex items-center gap-3">
+            <img src="/favicon.svg" alt="" className="h-11 w-11" />
+            <div className="leading-tight">
+              <p className="text-[22px] font-semibold text-fg">Caprock</p>
+              <p className="text-[14px] text-fg-muted">caprock.dev · on your phone</p>
+            </div>
+          </div>
+          <h1 className="mt-8 text-[32px] font-semibold leading-tight text-fg">Your computer, on your phone</h1>
+          <p className="mt-2 text-[17px] text-fg-muted">Every session of the Caprock app on your computer, from anywhere. Nothing to install on the phone.</p>
+          <div className="mt-6 rounded-xl border border-border bg-panel-2 px-4 py-3.5 text-[15px] leading-snug text-fg-muted">
+            <b className="font-semibold text-fg">First, the Caprock app on your computer.</b> It is free, for Mac, Windows and Linux, and this page connects to it.
+            {' '}No app yet? Get it at{' '}
+            <a href="https://caprock.dev" className="text-accent underline underline-offset-4">caprock.dev</a>, on the computer.
+          </div>
         </>
       )}
 
       <ol className={`${first ? 'mt-8' : ''} flex flex-col gap-5`}>
         <Step n={1}>
           Open the Caprock app on your computer: <b className="font-semibold text-fg">Settings → Use on your phone</b>
+          {first && <SettingsSketch />}
         </Step>
         <Step n={2}>
           Press <b className="font-semibold text-fg">Show a code</b>. It turns on access from anywhere
@@ -277,7 +316,7 @@ function Step({ n, children }: { n: number; children: React.ReactNode }) {
       <span className="num flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-panel-2 text-[19px] font-semibold text-fg" aria-hidden>
         {n}
       </span>
-      <span className="pt-1.5 text-[19px] leading-snug text-fg-muted">{children}</span>
+      <div className="min-w-0 flex-1 pt-1.5 text-[19px] leading-snug text-fg-muted">{children}</div>
     </li>
   )
 }

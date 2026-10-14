@@ -2322,7 +2322,12 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
 - **`Project`** — `{id, name, root, kind: "repo"|"folder", source:
   "seed"|"session"|"folder"|"new"|"clone", pinned, sort, added_at, archived?,
   exists, defaults, git, sessions: {live, waiting, total}, cost_today,
-  last_activity, worktrees: [Worktree], repos?: [RepoView], removed?}`. `root` is in the OS's own
+  last_activity, worktrees: [Worktree], repos?: [RepoView], instruction_files?: [string],
+  removed?}`. `instruction_files` are the repository's own instruction files
+  for agents — `CLAUDE.md`, `.claude/CLAUDE.md`, `AGENTS.md` — that are
+  regular files at `root`, then each existing member's below it as
+  `<member>/<file>` (a stat each per view, nothing read; read one through
+  `GET …/file`); absent when there are none (2026-10-14). `root` is in the OS's own
   form (backslashes on Windows), so it can be sent back as a `cwd`. `git` is
   `null` for a folder and otherwise `{branch, detached?, dirty, changed,
   ahead, behind, upstream?, default_branch?, remote_url?, error?, at}`:
@@ -2339,7 +2344,12 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   project with member repositories (`project_repos`, migration 0050); `repos`
   is absent for an ordinary project.
   - **`ScanResult`** — `{root, repo_root?, repos: [{path, name, project_id?,
-    project_name?, member_of?}], capped?}`. `repo_root` is set when the folder
+    project_name?, member_of?, instruction_files?}], capped?,
+    instruction_files?: [{name, text, truncated?}]}`. The top-level
+    `instruction_files` are those at the top of `repo_root`, else of `root`,
+    with their text (64 KB each at most, cut on a rune boundary; one that is
+    not UTF-8 or holds a NUL is left out), so the app can show them before
+    the project is added; each found repository names its own (2026-10-14). `repo_root` is set when the folder
     is inside a repository (nothing to choose); otherwise `repos` are the
     folders with a `.git` at most two levels below, sorted by path, `name`
     the path below `root` with `/`. A repository is not descended into;

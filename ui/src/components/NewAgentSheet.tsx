@@ -31,6 +31,13 @@
  * text, trimmed); a pull request does the same and starts the copy at the
  * pull request's head, fetched from the remote (`worktree_pr`), a fork's
  * too. Everything stays editable before Start.
+ *
+ * Where it starts is in sight (owner, 2026-10-14): a multi-repo project's
+ * members are named under Project ("3 repos: api, web, infra"); *New
+ * project…* beside it opens the New project wizard and comes back here on
+ * it; and what the agent will be told — Caprock's instructions and the
+ * repository's own CLAUDE.md / AGENTS.md — is a block of its own, each
+ * "Set · 12 lines" or "None", a click from being read or edited.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText } from '@/lib/api'
@@ -46,6 +53,7 @@ import { BranchPicker } from './BranchPicker'
 import type { Candidate } from '@/lib/projectSearch'
 import { ProjectSetupCommand } from './ProjectSetupCommand'
 import { ProjectInstructions } from './ProjectInstructions'
+import { membersLine } from '@/lib/projectWizard'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 import { stepSelect } from '@/lib/selectKeys'
 import { BypassConsentNote, useBypassConsent } from './BypassConsent'
@@ -79,6 +87,7 @@ export function NewAgentSheet({
   onClose,
   onSetup,
   onProjectAdded,
+  onNewProject,
   onStarted,
   onAttempts,
 }: {
@@ -99,6 +108,8 @@ export function NewAgentSheet({
   onSetup?: (command: string, home?: string) => void
   /** A repository picked in the search was added as a project. */
   onProjectAdded?: (projectId: string) => void
+  /** New project…: the wizard, handed the first message typed so far; it comes back here on the new project. */
+  onNewProject?: (prompt: string) => void
   onStarted: (sessionId: string, projectId: string, title: string) => void
   /** Several attempts started (ADR-052): their sessions in order, and why any after the first did not start. */
   onAttempts?: (sessionIds: string[], projectId: string, title: string, error?: string) => void
@@ -261,6 +272,7 @@ export function NewAgentSheet({
       label="New agent"
       title="New agent"
       onClose={onClose}
+      width={600}
       footer={
         <>
           {error
@@ -295,8 +307,16 @@ export function NewAgentSheet({
         <div className="grid gap-4 px-5 py-4" onKeyDown={(e) => { stepSelect(e) }}>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid min-w-0 gap-1.5">
-              <span className="text-[12px] font-medium text-fg-muted">Project</span>
-              <ProjectCombobox projects={allProjects} value={pid} busy={adding} autoFocus onPick={(c) => void pickProject(c)} onSubmit={() => startRef.current()} />
+              <span className="flex items-baseline gap-2 text-[12px] font-medium text-fg-muted">
+                Project
+                {onNewProject && (
+                  <button type="button" onClick={() => onNewProject(prompt)} className="ml-auto text-[12px] font-normal text-accent hover:underline">New project…</button>
+                )}
+              </span>
+              <ProjectCombobox projects={allProjects} value={pid} busy={adding} autoFocus onPick={(c) => void pickProject(c)} onSubmit={() => startRef.current()} onNewProject={onNewProject && (() => onNewProject(prompt))} />
+              {project?.repos?.length ? (
+                <span aria-label="Repositories in this project" className="mono truncate text-[12px] text-fg-muted" title={project.repos.map((r) => r.path).join('\n')}>{membersLine(project.repos)}</span>
+              ) : null}
             </div>
             <SheetField label="Where">
               <select className="input" title={WHERE_TOOLTIP} value={where} onChange={(e) => setWhere(e.target.value)}>
@@ -395,7 +415,7 @@ export function NewAgentSheet({
             </select>
           </SheetField>}
           {consent.needed && <BypassConsentNote />}
-          {project && (agent === 'claude' || agent === 'codex' || agent === 'grok') && <ProjectInstructions key={project.id} project={project} />}
+          {project && <ProjectInstructions key={project.id} project={project} agent={agent} />}
           <SheetField label="First message" hint={entry && !entry.prompt ? "not sent: this agent's arguments have no {prompt}" : 'optional'}>
             <textarea
               className="input min-h-[84px] resize-y font-[family-name:var(--font-sans)] text-[13px] leading-relaxed"

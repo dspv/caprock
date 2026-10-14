@@ -70,6 +70,7 @@ import { isMacPlatform } from '@/lib/appmode'
 import { moveKey, orderRows, tabRowKey } from '@/lib/rowOrder'
 import { namingLeaf } from '@/lib/tabs'
 import { HotMark } from './ResourceMeter'
+import { instructionsSummary } from '@/lib/projectWizard'
 
 const DOT_CLASS: Record<Dot, string> = {
   working: 'bg-ok',
@@ -256,7 +257,7 @@ export const ProjectRow = memo(function ProjectRow({
           aria-haspopup={menu ? 'menu' : undefined}
           aria-keyshortcuts={menu ? 'Shift+F10' : undefined}
           className={`app-row flex h-[32px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-[22px] text-left ${isGroup ? 'pr-2 pointer-coarse:pr-[36px]' : 'pr-9 pointer-coarse:pr-[64px]'}`}
-          title={`${isGroup ? 'Sessions in folders you have not added as a project. Add one with Add project.' : p.repos?.length ? `${p.root} · ${p.repos.map((r) => r.name).join(', ')}` : p.root || p.name}`}
+          title={`${isGroup ? 'Sessions in folders you have not added as a project. Add one with Add project.' : `${p.repos?.length ? `${p.root} · ${p.repos.map((r) => r.name).join(', ')}` : p.root || p.name}${p.root ? `\n${instructionsSummary(p).text}` : ''}`}`}
         >
           <span className={`min-w-0 flex-1 truncate text-[13px] ${current ? 'font-semibold text-fg' : 'text-fg-muted'}`}>
             {p.name}

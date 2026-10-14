@@ -86,6 +86,10 @@ type View struct {
 	// each with its own git state and share of the activity; absent for an
 	// ordinary project.
 	Repos []RepoView `json:"repos,omitempty"`
+	// InstructionFiles are the repository's own instruction files
+	// (CLAUDE.md, .claude/CLAUDE.md, AGENTS.md) at the root, then each
+	// member's as "<member>/<file>"; absent when there are none.
+	InstructionFiles []string `json:"instruction_files,omitempty"`
 	// Removed is set on the frame sent when a project is taken off the list.
 	Removed bool `json:"removed,omitempty"`
 }
@@ -496,6 +500,9 @@ func (s *Service) view(p store.Project, act projectActivity) View {
 	}
 	if members := s.Repos(p.ID); len(members) > 0 {
 		v.Repos = s.repoViews(p, members, act.byMember)
+	}
+	if v.Exists {
+		v.InstructionFiles = projectInstructionFiles(root, v.Repos)
 	}
 	if p.Kind != store.ProjectKindRepo {
 		return v

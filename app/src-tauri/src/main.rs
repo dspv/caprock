@@ -46,6 +46,7 @@ macro_rules! handler {
             commands::update_daemon,
             commands::set_background,
             commands::open_external,
+            commands::pick_folder,
             commands::set_tray,
             commands::set_badge,
             commands::set_zoom,
@@ -333,6 +334,17 @@ mod tests {
                     "{url} {cmd}: {err}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn no_other_origin_may_open_the_folder_chooser() {
+        // Not called from the daemon's page here: it would open a real
+        // dialog. The capability grants it there (capabilities/daemon.json).
+        for url in ["https://example.com/", "http://localhost:4391/"] {
+            let err =
+                invoke(url, "pick_folder", serde_json::json!({"start": null})).expect_err(url);
+            assert!(err.to_string().contains("not allowed"), "{url}: {err}");
         }
     }
 
