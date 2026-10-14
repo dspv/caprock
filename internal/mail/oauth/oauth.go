@@ -213,6 +213,12 @@ func Challenge(verifier string) string {
 
 // AuthCodeURL is the page the user's browser opens.
 func (p Provider) AuthCodeURL(state, verifier, redirect string) string {
+	return p.AuthCodeURLHint(state, verifier, redirect, "")
+}
+
+// AuthCodeURLHint is AuthCodeURL starting on the account hint names, when it
+// names one: login_hint is honoured by both Google and Microsoft.
+func (p Provider) AuthCodeURLHint(state, verifier, redirect, hint string) string {
 	q := url.Values{}
 	q.Set("client_id", p.ClientID)
 	q.Set("response_type", "code")
@@ -223,6 +229,9 @@ func (p Provider) AuthCodeURL(state, verifier, redirect string) string {
 	q.Set("code_challenge_method", "S256")
 	for k, v := range p.Extra {
 		q.Set(k, v)
+	}
+	if hint != "" && strings.Contains(hint, "@") {
+		q.Set("login_hint", hint)
 	}
 	return p.AuthURL + "?" + q.Encode()
 }

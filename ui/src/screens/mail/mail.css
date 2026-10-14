@@ -228,6 +228,38 @@
 .cm .improw .check { margin-bottom: 8px; }
 .cm .improw .check > span:not(.grow) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cm .indent { margin-left: 24px; }
+/* import everything: the found list, the step on screen, the progress list */
+.cm .found { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 4px 0 6px; }
+.cm .foundrow { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.cm .foundrow:last-child { border-bottom: 0; }
+.cm .foundrow:hover { background: var(--panel); }
+.cm .foundrow .who, .cm .prow .who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cm .foundrow .who > *, .cm .prow .who > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm .need { flex: none; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.cm .need.ready, .cm .need.done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--line)); }
+.cm .need.oauth { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.cm .stepbox { border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius: 8px; padding: 12px 14px; margin: 4px 0 12px; background: color-mix(in srgb, var(--accent) 4%, var(--bg)); }
+.cm .stepbox p { margin: 6px 0 10px; }
+.cm .stepbox .actions { margin-top: 4px; align-items: center; }
+.cm .stephead { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.cm .stephead b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm .progress { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.cm .prow { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.cm .prow .mark { display: grid; place-items: center; width: 20px; height: 20px; flex: none; border-radius: 50%; }
+.cm .prow .mark .pulse { margin: 0; }
+.cm .prow .dot { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--muted); }
+.cm .prow.st-ok .mark { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.cm .prow.st-failed .mark { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.cm .prow.on .dot { border-color: var(--accent); background: var(--accent); }
+.cm .prow .state { flex: none; color: var(--muted); }
+.cm .prow.st-ok .state { color: var(--ok); }
+.cm .prow.st-failed .state { color: var(--danger); }
+.cm .prow.on .state { color: var(--accent); }
+.cm .prow .err { white-space: normal; }
+.cm .hint.fda ol { list-style: decimal; margin: 6px 0 2px; padding-left: 20px; }
+.cm .hint.fda li { margin: 2px 0; }
+.cm .hint.fda code { word-break: break-all; }
+.cm .fromhere { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; }
 /* sample mode */
 .cm.withbar { display: flex; flex-direction: column; }
 .cm.withbar .app { flex: 1; min-height: 0; height: auto; }

@@ -88,6 +88,9 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
   // Where the first-run card opens: its choices, or straight at the provider
   // tiles when the sample banner's "Add my account" brought the user here.
   const [firstStep, setFirstStep] = useState<{ step: Step; provider?: ProviderId }>({ step: 'choose' })
+  // Import everything stays on screen while it walks its sign-ins, though
+  // the first account it connects would otherwise swap in the inbox.
+  const [importing, setImporting] = useState(false)
   // The sample is being started because no account exists: say so, not a form.
   const [starting, setStarting] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -302,10 +305,10 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       </div>
     )
   }
-  if ((st.accounts ?? []).length === 0 && !st.sample) {
+  if (((st.accounts ?? []).length === 0 && !st.sample) || importing) {
     return (
       <div className={box} ref={rootRef} style={boxStyle}>
-        <div className="welcome"><FirstRun key={firstStep.step + (firstStep.provider ?? '')} initial={firstStep.step} provider={firstStep.provider} onDone={reload} onSample={() => sample(true)} /></div>
+        <div className="welcome"><FirstRun key={firstStep.step + (firstStep.provider ?? '')} initial={firstStep.step} provider={firstStep.provider} onDone={reload} onSample={() => sample(true)} onBusy={setImporting} /></div>
       </div>
     )
   }

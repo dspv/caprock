@@ -7,6 +7,13 @@
 // they are not placed in any value that is serialized to HTTP (see Source,
 // whose credentials map is unexported). The caller passes them straight to the
 // IMAP/SMTP servers the user chose, never anywhere else.
+//
+// Outlook for Mac is not read. Its profile lives in another app's group
+// container (~/Library/Group Containers/UBF8T346G9.Office/Outlook), which
+// macOS 14 and later guard with the "access data from other apps" prompt, an
+// OS dialog Caprock does not raise; the new Outlook keeps its accounts in
+// Microsoft's cloud sync rather than in a file; and what it holds is mostly
+// Exchange and Microsoft 365, which Sign in with Microsoft adds by address.
 package importer
 
 import (
@@ -27,6 +34,9 @@ type Account struct {
 	SMTPPort    int    `json:"smtp_port"`
 	SMTPTLS     string `json:"smtp_tls"`
 	HasPassword bool   `json:"has_password"`
+	// Provider is ProviderFor's answer: google | microsoft | icloud | yahoo |
+	// fastmail, or "" for any other server.
+	Provider string `json:"provider,omitempty"`
 }
 
 // Source is one other mail client found on the machine.
@@ -72,6 +82,12 @@ func Sources(home string) []Source {
 	for i := range out {
 		if out[i].Accounts == nil {
 			out[i].Accounts = []Account{}
+		}
+		for j := range out[i].Accounts {
+			a := &out[i].Accounts[j]
+			if a.Provider == "" {
+				a.Provider = ProviderFor(a.Email, a.IMAPHost)
+			}
 		}
 	}
 	return out

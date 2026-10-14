@@ -89,6 +89,8 @@ export type ImportAccount = {
   smtp_port: number
   smtp_tls: string
   has_password: boolean
+  /** google | microsoft | icloud | yahoo | fastmail, or absent for any other server. */
+  provider?: string
 }
 
 export type ImportSource = {
@@ -99,7 +101,23 @@ export type ImportSource = {
   error?: string
 }
 
-export type ImportResult = { email: string; ok: boolean; error?: string }
+export type ImportResult = { email: string; ok: boolean; error?: string; already?: boolean }
+
+/** What an imported account still needs: nothing, a browser sign-in, an app password, or its password. */
+export type Signin = 'ready' | 'oauth' | 'app_password' | 'password'
+
+/** One account of "Import everything": every mail app's copies of an address merged. */
+export type FoundAccount = ImportAccount & { source: string; from: string[]; signin: Signin }
+
+export type ImportScan = {
+  sources: ImportSource[]
+  accounts: FoundAccount[]
+  oauth: OAuthProviders
+  /** Set when Apple Mail needs Full Disk Access: what to add in System Settings. */
+  full_disk_access?: { name: string; path?: string; kind?: 'app' | 'binary' }
+}
+
+export type OAuthFlowStatus = { status: 'pending' | 'ok' | 'error' | 'expired'; email?: string; error?: string }
 
 export type OAuthProviders = { google?: boolean; microsoft?: boolean }
 
@@ -166,8 +184,17 @@ export const api = {
     .then((r) => ({ sources: (r.sources ?? []).map((x) => ({ ...x, accounts: x.accounts ?? [] })) })),
   importAccounts: (source: string, emails: string[], passwords?: Record<string, string>) =>
     req<{ results: ImportResult[] }>('POST', '/v1/mail/import', { source, emails, passwords }),
+  /** The same scan with every account merged across mail apps and the step each needs. */
+  importScan: () => req<Partial<ImportScan>>('GET', '/v1/mail/import').then((r): ImportScan => {
+    const sources = (r.sources ?? []).map((x) => ({ ...x, accounts: x.accounts ?? [] }))
+    return { sources, accounts: r.accounts ?? [], oauth: r.oauth ?? {}, full_disk_access: r.full_disk_access }
+  }),
+  /** Opens System Settings › Privacy & Security › Full Disk Access on this Mac. */
+  openPrivacy: () => req<{ ok: boolean }>('POST', '/v1/mail/import/privacy'),
   oauthProviders: () => req<OAuthProviders>('GET', '/v1/mail/oauth/providers'),
-  oauthStart: (provider: string) => req<{ auth_url: string }>('POST', '/v1/mail/oauth/start', { provider }),
+  oauthStart: (provider: string, loginHint?: string) =>
+    req<{ auth_url: string; flow?: string }>('POST', '/v1/mail/oauth/start', loginHint ? { provider, login_hint: loginHint } : { provider }),
+  oauthFlow: (id: string) => req<OAuthFlowStatus>('GET', '/v1/mail/oauth/flow?id=' + encodeURIComponent(id)),
   list: (p: Record<string, string | number | undefined>) => {
     const q = new URLSearchParams()
     for (const [k, v] of Object.entries(p)) if (v !== undefined && v !== '' && v !== 0) q.set(k, String(v))

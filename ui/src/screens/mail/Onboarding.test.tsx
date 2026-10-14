@@ -5,7 +5,7 @@
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { AddFlow, FirstRun, ImportPanel, providerForHost } from './Onboarding'
+import { AddFlow, FirstRun, providerForHost } from './Onboarding'
 import { MailScreen, resetSampleLeft } from './MailScreen'
 import { api, HttpError, type ImportSource, type State } from './mailApi'
 import { resetPrompts } from '@/lib/prompts'
@@ -43,7 +43,7 @@ describe('mail first run', () => {
     vi.spyOn(api, 'importSources').mockRejectedValue(new HttpError('not found', 404))
     render(<FirstRun onDone={() => {}} onSample={async () => {}} />)
     await waitFor(() => expect(screen.queryByText('Looking for other mail apps…')).toBeNull())
-    expect(screen.queryByText('Import my accounts')).toBeNull()
+    expect(screen.queryByText('Import everything')).toBeNull()
     expect(screen.getByText('Try it with sample mail')).toBeTruthy()
   })
 
@@ -86,25 +86,6 @@ describe('mail first run', () => {
     render(<MailScreen />)
     expect(await screen.findByText('Try it with sample mail')).toBeTruthy()
     expect(sample).not.toHaveBeenCalled()
-  })
-
-  it('lists accounts to import, asks for a missing password and says how to grant access', async () => {
-    const imp = vi.spyOn(api, 'importAccounts').mockResolvedValue({ results: [{ email: 'alex@gmail.com', ok: true }, { email: 'alex@work.io', ok: false, error: 'login refused' }] })
-    const done = vi.fn()
-    render(<ImportPanel initial={sources} onDone={done} onBack={() => {}} />)
-    expect(screen.getByText(/Privacy & Security → Full Disk Access/)).toBeTruthy()
-    expect(screen.getByText('Retry')).toBeTruthy()
-    expect(screen.getByText('alex@work.io')).toBeTruthy()
-    const go = screen.getByText('Import 2 accounts') as HTMLButtonElement
-    expect(go.disabled).toBe(true) // the Gmail account has no saved password yet
-    expect(screen.getByText('myaccount.google.com/apppasswords')).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('Password for alex@gmail.com'), { target: { value: 'app-pw' } })
-    expect(go.disabled).toBe(false)
-    await act(async () => { fireEvent.click(go) })
-    expect(imp).toHaveBeenCalledWith('thunderbird', ['alex@gmail.com', 'alex@work.io'], { 'alex@gmail.com': 'app-pw' })
-    expect(screen.getByText('Added')).toBeTruthy()
-    expect(screen.getByText('login refused')).toBeTruthy()
-    expect(done).not.toHaveBeenCalled()
   })
 
   it('shows sign-in only where the daemon offers it, and falls back to the password form', async () => {

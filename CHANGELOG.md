@@ -7,6 +7,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **mail:** **Import everything.** Mail finds every mail account on the
+  computer — Apple Mail, including the Google, iCloud and Exchange accounts
+  in System Settings › Internet Accounts, and Thunderbird — and lists each
+  address once. Tick them and press *Import*: accounts with a saved
+  Thunderbird password connect by themselves, then each other account asks
+  for its one sign-in in turn (Google or Microsoft in the browser, an
+  app-specific password for iCloud, otherwise the password), with a
+  progress list of connected, waiting and failed accounts, *Retry*, *Skip
+  for now* and *Come back*. When Apple Mail needs Full Disk Access the
+  screen says how, opens the System Settings pane and looks again when you
+  return. A build without Google or Microsoft sign-in says so and asks for
+  an app password instead of showing a button that cannot work.
+- **release:** Mail's Google and Microsoft client IDs are compiled into
+  releases from the `CAPROCK_MAIL_GOOGLE_CLIENT_ID`,
+  `CAPROCK_MAIL_GOOGLE_CLIENT_SECRET` and `CAPROCK_MAIL_MICROSOFT_CLIENT_ID`
+  GitHub secrets, the desktop app's daemon included; unset, a release still
+  builds.
+
 ## [0.117.0] - 2026-10-14
 
 ### Added

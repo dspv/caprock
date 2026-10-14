@@ -53,6 +53,11 @@ done
 [[ "$(uname -s)" == Darwin ]] || die "the macOS app builds on macOS only"
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || die "$TAG is not vX.Y.Z"
 VERSION="${TAG#v}"
+# Mail's sign-in client IDs (docs/mail-oauth.md), compiled in when the
+# environment has them (release.yml passes the GitHub secrets of the same
+# names); unset, the flags are empty and Mail offers app passwords.
+MAIL_OAUTH=github.com/dspv/caprock/internal/mail/oauth
+MAIL_LDFLAGS="-X $MAIL_OAUTH.GoogleClientID=${CAPROCK_MAIL_GOOGLE_CLIENT_ID:-} -X $MAIL_OAUTH.GoogleClientSecret=${CAPROCK_MAIL_GOOGLE_CLIENT_SECRET:-} -X $MAIL_OAUTH.MicrosoftClientID=${CAPROCK_MAIL_MICROSOFT_CLIENT_ID:-}"
 
 # The same tag: the daemon inside the app is built from this checkout.
 TAG_COMMIT="$(git rev-parse -q --verify "$TAG^{commit}")" || die "no tag $TAG here (git fetch --tags)"
@@ -74,7 +79,7 @@ echo "→ daemon $VERSION, universal"
 for bin in caprock caprock-pty-host; do
   for arch in arm64 amd64; do
     CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" go build -trimpath \
-      -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=$VERSION" \
+      -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=$VERSION $MAIL_LDFLAGS" \
       -o "$OUT/$bin-$arch" "./cmd/$bin"
   done
   # tauri-build checks for each architecture's sidecar while compiling it; the

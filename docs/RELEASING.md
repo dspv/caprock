@@ -57,6 +57,14 @@ that cannot run everywhere is a gate people learn to skip.
   only this public key, so a new key means everyone installs the next app by
   hand once.
 
+- **Mail's sign-in client IDs** (optional): secrets
+  **`CAPROCK_MAIL_GOOGLE_CLIENT_ID`**, **`CAPROCK_MAIL_GOOGLE_CLIENT_SECRET`**
+  and **`CAPROCK_MAIL_MICROSOFT_CLIENT_ID`** on `dspv/caprock`. `release.yml`
+  hands them to goreleaser and the app builds, which compile them into the
+  daemon; unset, the release still ships and Mail offers app passwords
+  instead of *Sign in with Google / Microsoft*. Making the app registrations:
+  [mail-oauth.md](mail-oauth.md).
+
 ## winget needs a fork and a token (2026-08-30)
 
 `winget install dspv.caprock` is the third packaging channel, after the

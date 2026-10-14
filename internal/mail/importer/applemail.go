@@ -62,7 +62,8 @@ func appleMail(home string) *Source {
 }
 
 // readAccounts4 reads IMAP accounts (and their paired SMTP settings) from
-// Accounts4.sqlite. The schema (ZACCOUNT / ZACCOUNTTYPE / ZACCOUNTPROPERTY,
+// Accounts4.sqlite, and the Google, iCloud and Exchange accounts added in
+// System Settings › Internet Accounts, on their providers' servers. The schema (ZACCOUNT / ZACCOUNTTYPE / ZACCOUNTPROPERTY,
 // keyed-archiver ZVALUE blobs) is the one accountd has used since macOS
 // Ventura.
 func readAccounts4(path string) ([]Account, error) {
@@ -88,20 +89,22 @@ func readAccounts4(path string) ([]Account, error) {
 		username   string
 		descr      string
 		typ        string
+		parent     int64
 	}
 	rows, err := db.Query(`
-		SELECT a.Z_PK, a.ZIDENTIFIER, COALESCE(a.ZUSERNAME,''), COALESCE(a.ZACCOUNTDESCRIPTION,''),
-		       t.ZIDENTIFIER
+		SELECT a.Z_PK, COALESCE(a.ZIDENTIFIER,''), COALESCE(a.ZUSERNAME,''), COALESCE(a.ZACCOUNTDESCRIPTION,''),
+		       t.ZIDENTIFIER, COALESCE(a.ZPARENTACCOUNT,0)
 		  FROM ZACCOUNT a
 		  JOIN ZACCOUNTTYPE t ON t.Z_PK = a.ZACCOUNTTYPE
-		 WHERE t.ZIDENTIFIER IN ('com.apple.account.IMAP','com.apple.account.SMTP')`)
+		 WHERE t.ZIDENTIFIER IN (?,?,?,?,?,?)`,
+		typeIMAP, typeSMTP, typeGoogle, typeAppleAccount, typeIMAPMail, typeExchange)
 	if err != nil {
 		return nil, fmt.Errorf("accounts4: %w", err)
 	}
 	var list []acctRow
 	for rows.Next() {
 		var r acctRow
-		if err := rows.Scan(&r.pk, &r.identifier, &r.username, &r.descr, &r.typ); err != nil {
+		if err := rows.Scan(&r.pk, &r.identifier, &r.username, &r.descr, &r.typ, &r.parent); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -119,14 +122,14 @@ func readAccounts4(path string) ([]Account, error) {
 
 	smtpByID := map[string]acctRow{}
 	for _, r := range list {
-		if r.typ == "com.apple.account.SMTP" {
+		if r.typ == typeSMTP {
 			smtpByID[r.identifier] = r
 		}
 	}
 
 	var out []Account
 	for _, r := range list {
-		if r.typ != "com.apple.account.IMAP" {
+		if r.typ != typeIMAP {
 			continue
 		}
 		in := props[r.pk]
@@ -152,7 +155,73 @@ func readAccounts4(path string) ([]Account, error) {
 		}
 		out = append(out, a)
 	}
+
+	// Accounts added in System Settings › Internet Accounts keep no IMAP
+	// settings of their own: a Google or Exchange account is its address, an
+	// iCloud account an Apple Account whose mail is a child (IMAPMail). They
+	// go on the provider's well-known servers; Merge drops a duplicate when
+	// the same address is also an IMAP account above.
+	mailChild := map[int64]acctRow{}
+	for _, r := range list {
+		if r.typ == typeIMAPMail && r.parent != 0 {
+			mailChild[r.parent] = r
+		}
+	}
+	for _, r := range list {
+		var a Account
+		switch r.typ {
+		case typeGoogle:
+			if !strings.Contains(r.username, "@") {
+				continue
+			}
+			a = withServers("google", r.descr, r.username)
+		case typeExchange:
+			if !strings.Contains(r.username, "@") {
+				continue
+			}
+			a = withServers("microsoft", r.descr, r.username)
+		case typeAppleAccount:
+			// The mail address is the IMAPMail child's when it names one,
+			// else the Apple Account's own when it is an iCloud address; an
+			// Apple Account on another address with no child is not mail.
+			email := ""
+			if c, ok := mailChild[r.pk]; ok {
+				in := props[c.pk]
+				email = firstNonEmpty(str(in["IdentityEmailAddress"]), emailOrEmpty(c.username))
+			}
+			if email == "" && ProviderFor(r.username, "") == "icloud" {
+				email = r.username
+			}
+			if email == "" {
+				continue
+			}
+			a = withServers("icloud", r.descr, email)
+		default:
+			continue
+		}
+		if a.Name == "" || strings.EqualFold(a.Name, a.Email) || strings.EqualFold(a.Name, "iCloud") || strings.EqualFold(a.Name, "Google") || strings.EqualFold(a.Name, "Exchange") {
+			a.Name = ""
+		}
+		out = append(out, a)
+	}
 	return out, nil
+}
+
+// Account types in Accounts4.sqlite (ZACCOUNTTYPE.ZIDENTIFIER).
+const (
+	typeIMAP         = "com.apple.account.IMAP"
+	typeSMTP         = "com.apple.account.SMTP"
+	typeGoogle       = "com.apple.account.Google"
+	typeAppleAccount = "com.apple.account.AppleAccount"
+	typeIMAPMail     = "com.apple.account.IMAPMail"
+	typeExchange     = "com.apple.account.Exchange"
+)
+
+func emailOrEmpty(s string) string {
+	if strings.Contains(s, "@") {
+		return strings.TrimSpace(s)
+	}
+	return ""
 }
 
 // readProps reads ZACCOUNTPROPERTY into owner → key → resolved value.
