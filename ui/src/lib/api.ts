@@ -1081,6 +1081,32 @@ export interface ToolDrill {
 /** Which Caprock hook events are registered in Claude Code's settings file. */
 export interface HooksStatus { settings_path: string; shim_path: string; installed: string[] | null; missing: string[] | null; shim_exists: boolean }
 
+/** One local day of /v1/stats/trends, up to the same time of day as now. */
+export interface TrendDay {
+  day: string
+  cost_usd: number
+  sessions: number
+  turns: number
+  tool_calls: number
+  /** 0..1; absent with no input at all. */
+  hit_rate?: number
+  /** Median of the day's active 10-minute windows, $/h (whole day). */
+  burn_usd_per_hour?: number
+  /** Any priced turn that day, at any hour. */
+  active: boolean
+}
+
+/** The Today cells' trends: the previous `days` days and today, cut at `cut_min`. */
+export interface Trends {
+  days: number
+  /** Minutes after local midnight at which every day is cut. */
+  cut_min: number
+  /** Oldest first; the last entry is today so far. */
+  series: TrendDay[]
+  /** The median active 10-minute window of the previous days, as $/h. */
+  burn?: { median_usd_per_hour: number; windows: number; days: number }
+}
+
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary; tax?: ContextTax }
 
 export interface Status {
@@ -1798,6 +1824,7 @@ export const api = {
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
+  trends: (agent?: string) => get<Trends>(`/v1/stats/trends${agent && agent !== 'all' ? `?agent=${agent}` : ''}`),
   premium: () => get<PremiumPricing>('/v1/premium'),
   /** How many people committed to the listed repositories in 30 days (counts only). */
   teamSignal: () => get<TeamSignal>('/v1/team-signal'),

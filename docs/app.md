@@ -128,6 +128,10 @@ others. Installing it: [install-app.md](install-app.md).
   away, and the tab brings back the screen you left it on until you close it.
   The Dashboard tab is its icon and its key, ⌘0 (⌘, while it shows
   Settings); its × shows while it is in front.
+  On the Dashboard's *Today*, each figure has a faint line of your last 14
+  days under it and one word: *usual*, *above usual +38%*, *below usual
+  −20%*, or *not enough history* in your first days. It compares with your
+  own median by the same time of day; hover it for the figures behind it.
   Beside *Dashboard* sit two small square buttons: the **PRs & CI** mode
   and the theme. The PRs & CI button's picture is what is on screen —
   an empty window (Hidden), a band along its bottom (Bar: the session

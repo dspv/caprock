@@ -23,6 +23,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   link to a topic or delete. Twenty memories are free; Premium keeps every
   one. Kept in Caprock's database on this machine.
 
+- **now:** each figure in *Today* has a small line of your last 14 days and
+  one word against your own median: *usual*, *above usual +38%*, *below
+  usual −20%*. Running totals (cost, sessions, turns) are compared by the
+  same time of day, so a morning no longer reads low against whole days;
+  *Burn now* is set against your typical 10-minute window while working.
+  Cache hit gets the line only. Hover says what it is compared with; under
+  five days of history it says *not enough history*. It follows the agent
+  filter. New endpoint `GET /v1/stats/trends`.
+
 ### Changed
 
 - **now:** *Live activity* is now **What happened**: the moments of your
