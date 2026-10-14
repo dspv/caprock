@@ -57,18 +57,52 @@ export function loadTerminalFont(fonts: FontFaceSet | undefined = typeof documen
   return Promise.all(asks).then(() => undefined)
 }
 
+/** Every terminal in the page, while its font watcher runs (watchTerminalFont). */
+const liveTerms = new Map<Xterm, () => void>()
+
+/**
+ * Throws the WebGL glyph atlas away and has EVERY terminal draw from the new
+ * one — never one terminal alone.
+ *
+ * xterm's WebGL addon shares one atlas among all terminals with the same face,
+ * size, colours and pixel ratio, and `clearTextureAtlas()` empties that shared
+ * atlas but forgets the cell model of the terminal it was called on only. The
+ * others kept, for every cell they had not redrawn since, the atlas position
+ * of a glyph that was no longer there: the next glyphs rasterised into those
+ * positions showed up in their place. Rows redrawn in full were right, rows
+ * partly redrawn read as garbage ("ι ɤr ·r ɤrrง") — for good, in a tab that
+ * did not print, or for the 2 s until Claude Code's status rows were drawn
+ * again (owner, 2026-10-14, after closing a tab and after the chat). Any one
+ * terminal clearing it — a tab back after five minutes, a wake, a pixel-ratio
+ * change, a face finishing its load — did it to all the rest.
+ *
+ * So each terminal clears its model in the same task, before any of them
+ * draws: the first call empties the atlas, the rest find it empty and only
+ * clear their models (the addon's `clearTexture` does nothing on an empty
+ * atlas). A hidden terminal repaints in full when it is next shown.
+ */
+export function clearGlyphAtlas(term?: Xterm): void {
+  const all = new Set(liveTerms.keys())
+  if (term) all.add(term)
+  for (const t of all) {
+    try {
+      t.clearTextureAtlas()
+      t.refresh(0, t.rows - 1)
+    } catch { /* disposed */ }
+  }
+}
+
 /**
  * Makes a terminal measure its cell again and redraw every glyph. xterm
  * measures only when fontFamily or fontSize changes, so the family is set to
- * a generic one and back; the WebGL atlas is cleared so no glyph rasterised
- * before now survives.
+ * a generic one and back; the WebGL atlas is cleared (for every terminal:
+ * clearGlyphAtlas) so no glyph rasterised before now survives.
  */
 export function remeasureTerminal(term: Xterm): void {
   const family = term.options.fontFamily
   term.options.fontFamily = 'monospace'
   term.options.fontFamily = family
-  term.clearTextureAtlas()
-  term.refresh(0, term.rows - 1)
+  clearGlyphAtlas(term)
 }
 
 /**
@@ -77,6 +111,43 @@ export function remeasureTerminal(term: Xterm): void {
  * when the faces asked for by `loadTerminalFont` are in. `after` runs after
  * each re-measure (a fit: a new cell is a new column count). Returns the stop.
  */
+/**
+ * The cell's width over the font size, as xterm measured it: about 0.6 for
+ * any monospace face. Undefined while there is no measurement (a pane never
+ * laid out, `display: none`, another xterm without these insides).
+ */
+export function cellRatio(term: Xterm): number | undefined {
+  const cell = (term as unknown as { _core?: { _renderService?: { dimensions?: { css?: { cell?: { width?: number } } } } } })._core?._renderService?.dimensions?.css?.cell
+  const size = Number(term.options.fontSize) || 0
+  if (!cell?.width || !size) return undefined
+  return cell.width / size
+}
+
+/**
+ * A cell no monospace face draws: wider than 0.9 of the font size or
+ * narrower than 0.4 (letterSpacing is always 0 here). The owner, after an
+ * update restarted the app (2026-10-14): every glyph in a cell about three
+ * times too wide, unreadable, until font size + then − made xterm measure
+ * again. xterm measures only when it opens and when the face or size option
+ * changes, so a measurement taken while the webview was still settling was
+ * kept for good.
+ */
+export function implausibleCell(ratio: number | undefined): boolean {
+  return ratio !== undefined && (ratio > 0.9 || ratio < 0.4)
+}
+
+/**
+ * Has a watched terminal check its cell a couple of frames from now (a pane
+ * just shown or refitted: hidden, it had nothing to measure). A no-op for a
+ * terminal not watched.
+ */
+export function checkTerminalCell(term: Xterm): void {
+  liveTerms.get(term)?.()
+}
+
+/** Re-measures in a row, at most, while the cell stays implausible. */
+export const MAX_CELL_RETRIES = 5
+
 export function watchTerminalFont(term: Xterm, after: () => void = () => {}, fonts: FontFaceSet | undefined = typeof document === 'undefined' ? undefined : document.fonts): () => void {
   let stopped = false
   let raf = 0
@@ -91,6 +162,27 @@ export function watchTerminalFont(term: Xterm, after: () => void = () => {}, fon
   const schedule = () => {
     if (!stopped && !raf) raf = requestAnimationFrame(redo)
   }
+  // The guard: a cell no monospace face draws is measured again on the next
+  // frame, a few times at most; a plausible one resets the count.
+  let retries = 0
+  let verifyRaf = 0
+  const verify = () => {
+    verifyRaf = 0
+    if (stopped) return
+    let ratio: number | undefined
+    try { ratio = cellRatio(term) } catch { return }
+    if (!implausibleCell(ratio)) { retries = 0; return }
+    if (retries >= MAX_CELL_RETRIES) return
+    retries++
+    schedule()
+    verifyLater()
+  }
+  const verifyLater = () => {
+    if (!stopped && !verifyRaf) verifyRaf = requestAnimationFrame(() => { verifyRaf = requestAnimationFrame(verify) })
+  }
+  // Back into view (the app restarted into an update, a wake): look again.
+  liveTerms.set(term, verifyLater)
+  const onVisible = () => { if (typeof document !== 'undefined' && document.visibilityState === 'visible') verifyLater() }
   // Only a face the terminal's stack names is a reason: the dashboard's own
   // sans loading is not.
   const onLoaded = (e: Event) => {
@@ -98,16 +190,24 @@ export function watchTerminalFont(term: Xterm, after: () => void = () => {}, fon
     const stack = String(term.options.fontFamily ?? '').toLowerCase()
     if (faces && faces.length > 0 && !faces.some((f) => stack.includes(f.family.replace(/["']/g, '').toLowerCase()))) return
     schedule()
+    verifyLater()
   }
   // Already in (the usual case after the first terminal): nothing to redo.
   const ready = terminalFontSamples().every((s) => {
     try { return fonts?.check?.(`13px ${TERMINAL_FONT_FAMILY}`, s) === true } catch { return false }
   })
   if (!ready) loadTerminalFont(fonts).then(schedule)
+  // Every face the page asked for is in (or failed): check what was measured.
+  void fonts?.ready?.then(verifyLater, () => {})
+  verifyLater()
   fonts?.addEventListener?.('loadingdone', onLoaded)
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible)
   return () => {
     stopped = true
+    liveTerms.delete(term)
     if (raf) cancelAnimationFrame(raf)
+    if (verifyRaf) cancelAnimationFrame(verifyRaf)
     fonts?.removeEventListener?.('loadingdone', onLoaded)
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible)
   }
 }

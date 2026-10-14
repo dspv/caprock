@@ -5,6 +5,8 @@
  * every open pane in place.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
@@ -20,6 +22,7 @@ const h = vi.hoisted(() => ({
   claimSizes: [] as unknown[][],
   blurs: 0,
   webgl: { made: 0, disposed: 0 },
+  noInsides: false,
   resizes: [] as number[][],
   wakes: 0,
   /** What the fit addon measures; null as for a pane never laid out. */
@@ -69,6 +72,8 @@ vi.mock('@xterm/addon-fit', () => ({
 vi.mock('@xterm/addon-webgl', () => ({
   WebglAddon: class {
     constructor() { h.webgl.made++; h.steps.push('webgl') }
+    // The addon's insides reuploadGlyphs reaches; null in a test of the fallback.
+    _renderer = h.noInsides ? undefined : { _charAtlas: {}, _glyphRenderer: { value: { setAtlas: () => { h.steps.push('upload') } } } }
     onContextLoss() {}
     dispose() { h.webgl.disposed++ }
   },
@@ -582,5 +587,80 @@ describe('switching tabs shows the terminal as it was', () => {
     // In front, a window back in view rebuilds it at once.
     act(() => { document.dispatchEvent(new Event('visibilitychange')) })
     expect(count('atlas')).toBe(3)
+  })
+
+  // The owner, 2026-10-14: garbled glyphs for about 2 s after closing a tab
+  // (its neighbour came to the front), and after the chat. Every way back
+  // into view is active false -> true here: a switch, the tab in front
+  // closed, back from the dashboard (⌘0), back from the chat.
+  it('every way back into view re-sends the atlas to the GPU before the frame it appears in, rasterising nothing', () => {
+    const { rerender } = working('a')
+    for (const away of [50, 2_000, HIDDEN_DISCONNECT_MS + 5_000]) {
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      act(() => { vi.advanceTimersByTime(away) })
+      h.steps.length = 0
+      rerender(<TerminalPane sessionId="a" active />)
+      expect(count('upload')).toBe(1)
+      expect(h.steps.indexOf('upload')).toBeLessThan(h.steps.lastIndexOf('paint'))
+      expect(h.steps).not.toContain('atlas')
+    }
+    expect(h.webgl).toEqual({ made: 1, disposed: 0 })
+  })
+
+  it('held output under a cover is written on the way back, in the same show', () => {
+    const { rerender } = working('a')
+    const client = h.clients.at(-1)!
+    rerender(<TerminalPane sessionId="a" active={false} />)
+    act(() => { vi.advanceTimersByTime(1_000) })
+    const writes = h.writes.length
+    act(() => client.callbacks.write(new TextEncoder().encode('covered'), () => {}))
+    expect(h.writes).toHaveLength(writes)
+    rerender(<TerminalPane sessionId="a" active />)
+    expect(h.writes).toHaveLength(writes + 1)
+  })
+
+  // The atlas is shared: one pane rebuilding it must make every other pane
+  // forget the glyph positions it cached (owner, 2026-10-14: rows of garbage
+  // in a tab after another tab came back from a long hide).
+  it('a pane that rebuilds the atlas has every other pane rebuild its cells too', () => {
+    const a = working('a')
+    const b = working('b')
+    b.rerender(<TerminalPane sessionId="b" active={false} />)
+    act(() => { vi.advanceTimersByTime(LONG_HIDDEN_MS + 1) })
+    h.steps.length = 0
+    b.rerender(<TerminalPane sessionId="b" active />)
+    // b's own and a's, a still on screen in the tab beside it.
+    expect(count('atlas')).toBe(2)
+    a.unmount()
+    b.rerender(<TerminalPane sessionId="b" active={false} />)
+    act(() => { vi.advanceTimersByTime(LONG_HIDDEN_MS + 1) })
+    h.steps.length = 0
+    b.rerender(<TerminalPane sessionId="b" active />)
+    expect(count('atlas')).toBe(1)
+  })
+
+  // The installed addon still has what reuploadGlyphs reaches for: an
+  // upgrade that renames it would quietly fall back to rasterising.
+  it('the installed WebGL addon has the insides the re-upload uses', () => {
+    const src = readFileSync(join(process.cwd(), 'node_modules/@xterm/addon-webgl/lib/addon-webgl.mjs'), 'utf8')
+    expect(src).toContain('_glyphRenderer.value?.setAtlas(')
+    expect(src).toMatch(/setAtlas\(\w\)\{this\._atlas=\w;for\(let \w of this\._atlasTextures\)\w\.version=-1\}/)
+    expect(src).toContain('this._charAtlas=')
+    expect(src).toContain('this._renderer=this._register(')
+  })
+
+  it('rebuilds the atlas instead when the addon\'s insides are not there (another version)', () => {
+    h.noInsides = true
+    try {
+      const { rerender } = working('a')
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      h.steps.length = 0
+      rerender(<TerminalPane sessionId="a" active />)
+      expect(count('upload')).toBe(0)
+      expect(count('atlas')).toBe(1)
+      expect(h.steps.indexOf('atlas')).toBeLessThan(h.steps.lastIndexOf('paint'))
+    } finally {
+      h.noInsides = false
+    }
   })
 })
