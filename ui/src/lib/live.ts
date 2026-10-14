@@ -72,7 +72,39 @@ export type Frame = (
   | { type: 'inbox'; data: { id: number; deleted: boolean } }
   // Second Brain changed: a memory added, changed or deleted (03-contracts.md § Second Brain).
   | { type: 'brain'; data: { id: number; op: 'added' | 'changed' | 'deleted'; kind?: string; title?: string; auto?: boolean } }
+  // An owned session's status moved on input it has not answered with an
+  // event yet — Enter at its prompt, a permission menu answered (§ Nudges).
+  | { type: 'status'; data: { session_id: string; kind: string; at: number } }
 ) & { seq?: number }
+
+/**
+ * Event kinds that change what a session is waiting on: its turn starting or
+ * ending, a dialog, the session itself starting or going. Screens ask for the
+ * session again at once on these instead of on the debounced tick — the
+ * badge they move is the one a person is watching after acting.
+ */
+const STATUS_KINDS: ReadonlySet<string> = new Set([
+  'turn.user', 'permission.prompt', 'agent.spawn', 'session.end', 'session.continue', 'context.clear',
+])
+
+/** What a session waits on after an event, as far as one event says: a dialog, its turn's end, or nothing. */
+export type Wait = 'prompt' | 'stop' | undefined
+
+/**
+ * Whether an event moves its session's status, and what the session waits on
+ * after it. `wait` is what it waited on before, as this client saw. A
+ * STATUS_KINDS event or the main thread's Stop moves it; so does the first
+ * event after a dialog (the call running — answered in a terminal Caprock
+ * does not hold, where no nudge says so) and the first main-thread event
+ * after a Stop. A subagent's events after a Stop are background work, the
+ * status they leave unchanged.
+ */
+export function statusStep(e: Pick<Event, 'kind' | 'agent_id'>, wait: Wait): { moves: boolean; wait: Wait } {
+  if (e.kind === 'permission.prompt') return { moves: true, wait: 'prompt' }
+  if (e.kind === 'agent.stop' && !e.agent_id) return { moves: true, wait: 'stop' }
+  if (wait === 'prompt' || (wait === 'stop' && !e.agent_id)) return { moves: true, wait: undefined }
+  return { moves: STATUS_KINDS.has(e.kind), wait: e.agent_id ? wait : undefined }
+}
 
 /** Control frames: liveness, never part of the stream a screen reads. */
 type ControlFrame = { type: 'ping' | 'pong'; seq?: number; data: number }
@@ -86,6 +118,12 @@ interface LiveState {
   lastFrameAt: number
   /** Monotonic counter bumped on every session/event frame — screens refetch on change. */
   tick: number
+  /**
+   * Bumped, with `tick`, on a frame that moves a session's status
+   * (movesStatus, a `status` frame): the debounced tick then fires at once
+   * rather than up to a debounce later.
+   */
+  statusTick: number
   alerts: LoopAlert[]
   /** Notifications received, newest first, one per id (a replay never doubles one). */
   notifications: NotifyFrame[]
@@ -98,8 +136,10 @@ class LiveStore {
   private state: LiveState = {
     conn: 'connecting',
     link: { phase: 'connecting', attempt: 0, nextAt: null, downSince: null },
-    lastFrameAt: 0, tick: 0, alerts: [], notifications: [],
+    lastFrameAt: 0, tick: 0, statusTick: 0, alerts: [], notifications: [],
   }
+  /** What each session waits on after its newest event, as this client saw (statusStep); only waiting ones are kept. */
+  private waits = new Map<string, Exclude<Wait, undefined>>()
   private listeners = new Set<Listener>()
   private readonly retry = new Reconnector({
     connect: () => this.connect(),
@@ -343,8 +383,20 @@ class LiveStore {
           tick: this.state.tick + 1,
         })
         break
-      case 'event':
-        this.set({ lastFrameAt: now, lastEvent: f.data, tick: this.state.tick + 1 })
+      case 'event': {
+        const e = f.data
+        const { moves, wait } = statusStep(e, this.waits.get(e.session_id))
+        if (wait) this.waits.set(e.session_id, wait)
+        else this.waits.delete(e.session_id)
+        this.set({
+          lastFrameAt: now, lastEvent: e, tick: this.state.tick + 1,
+          ...(moves ? { statusTick: this.state.statusTick + 1 } : {}),
+        })
+        break
+      }
+      case 'status':
+        this.waits.delete(f.data.session_id)
+        this.set({ lastFrameAt: now, tick: this.state.tick + 1, statusTick: this.state.statusTick + 1 })
         break
       case 'session':
         this.set({ lastFrameAt: now, tick: this.state.tick + 1 })
@@ -411,9 +463,14 @@ export function useLiveTick(ms = 400, opts: { hiddenMs?: number; paused?: boolea
 
 const noSubscribe = () => () => {}
 
+/** The slowest debounce a status frame cuts short (TickStore.schedule): the live screens' paces, not the all-time figures'. */
+export const STATUS_NOW_MAX_MS = 2_000
+
 /** The debounced tick for one (ms, hiddenMs): attached to the live store only while someone reads it. */
 class TickStore {
   private value = live.getState().tick
+  /** The statusTick last taken at once. */
+  private status = live.getState().statusTick
   private subs = new Set<() => void>()
   private timer: ReturnType<typeof setTimeout> | null = null
   private detach: (() => void) | null = null
@@ -441,6 +498,7 @@ class TickStore {
   private attach() {
     // Caught up at once: frames may have come while nobody was reading.
     this.value = live.getState().tick
+    this.status = live.getState().statusTick
     const offLive = live.subscribe(() => this.schedule())
     const offVis = onPageVisibility((hidden) => {
       if (hidden) {
@@ -458,10 +516,23 @@ class TickStore {
   }
 
   private schedule() {
+    const st = live.getState()
+    const hidden = pageHidden()
+    // A frame that moved a session's status is taken now, not a debounce
+    // later: the badge it moves is the one a person watches after acting —
+    // "waiting for you" a second or two after they had set the agent going
+    // (owner, 2026-10-14). A few per turn, so the debounce still holds the
+    // stream of tool events. A slow pace (all-time figures) shows no status
+    // and keeps its debounce.
+    if (st.statusTick !== this.status && !hidden && this.ms <= STATUS_NOW_MAX_MS) {
+      this.status = st.statusTick
+      this.clear()
+      this.take()
+      return
+    }
     // Only a new tick is worth a timer: most frames (resources, pings'
     // link updates, projects) leave it where it was.
-    if (this.timer !== null || live.getState().tick === this.value) return
-    const hidden = pageHidden()
+    if (this.timer !== null || st.tick === this.value) return
     if (hidden && this.hiddenMs === undefined) return
     // The timer outlives the readers unless it is cancelled (subscribe's
     // stop): a screen unmounted inside the window would otherwise be set on
@@ -472,6 +543,7 @@ class TickStore {
 
   private take() {
     const t = live.getState().tick
+    this.status = live.getState().statusTick
     if (t === this.value) return
     this.value = t
     for (const fn of [...this.subs]) fn()

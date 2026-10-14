@@ -509,6 +509,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.mgr.OnPermission = func(id string, p *agents.Permission) {
 		d.bus.Publish(bus.Frame{Type: bus.FramePermission, Data: map[string]any{"session_id": id, "permission": p}})
 	}
+	// Input an owned session has not answered with an event yet moves its
+	// status at once (narrate.Nudge): every screen is told to ask again.
+	d.mgr.OnNudge = d.nudged
 	// Sessions this daemon starts live in pty-hosts, and the ones the last
 	// daemon started are picked back up here: after OnExit, which each
 	// session captures, and before the first liveness sweep and the API.

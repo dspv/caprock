@@ -7,6 +7,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **status:** an agent you set going no longer reads *waiting for you*
+  for seconds after. Answering a permission prompt — a key in the
+  terminal, the card's buttons, the phone, Telegram — shows it working at
+  once (*approved — running …*), instead of when the allowed command
+  finished; answering No shows it waiting for you. Enter at its prompt
+  shows *starting on your message* straight away, and goes back if
+  nothing was sent. Every screen (sidebar, tabs, cockpit, tray, phone)
+  now updates a session's status as soon as it changes rather than up to
+  two seconds later, and a Codex or Gemini session you type into is read
+  at once instead of on its next poll. Measured with a test agent: a
+  prompt to *working* about 1 s → under 10 ms; an approved 15 s command
+  16 s → under 10 ms.
+
 ## [0.117.1] - 2026-10-14
 
 ### Added
@@ -25,8 +40,33 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   link to a topic or delete. Twenty memories are free; Premium keeps every
   one. Kept in Caprock's database on this machine.
 
+### Fixed
+
+- **app (macOS):** macOS no longer asks for the microphone (and for
+  Desktop, Documents or Downloads) again after every Caprock update. The app
+  and its daemon are now signed with one Caprock certificate that stays the
+  same across releases, instead of an ad-hoc signature macOS saw as a new
+  program each time. The first update to this release asks one last time;
+  later updates keep your answers. Opening the app the first time is
+  unchanged: it is still not signed with an Apple Developer ID.
 ### Changed
 
+- **phone:** a session's header is one 44px bar: back, the title, a dot for
+  its state, and **Chat | Terminal** with **···** for the other views. The
+  project, permission mode, model, controls and details are a tap on the
+  title away. In the chat the bar is drawn over the conversation and slides
+  away while you scroll down, back on scroll up or a tap at the top, so the
+  text never jumps. On the relay page at 390×844 the conversation began
+  178px down the screen (the computer bar and three header rows); now 44px,
+  and 0 while the bar is away (owner, 2026-10-14, translated: "I want the
+  header to take minimum space because I need to read this chat").
+- **phone:** the relay page's computer bar ("DimaS-MBP ▾") is gone while the
+  connection is fine and one computer is paired. It comes back while
+  connecting or offline, and with several computers paired it shows outside
+  a session; inside one, the switch is in the title's sheet.
+- **chat:** the message field glows softly in the accent while it has the
+  focus, a little more once there is text in it; on the phone and the
+  desktop alike.
 - **now:** *Live activity* is now **What happened**: the moments of your
   sessions instead of every command. Files edited (grouped by folder), tests
   and checks with their result (*passed*, *failed (exit 2)*, or *no result
@@ -48,6 +88,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   above the icon you point at.
 
 ### Fixed
+
+- **phone:** dictation listened only for the browser's language, so Russian
+  speech came out as English words. A chip beside the microphone (**EN**,
+  **RU**…) says the language and changes it: a tap moves through the
+  browser's languages, then opens a list of common ones (English, Russian,
+  Ukrainian, German, French, Spanish, Portuguese, Italian, Polish, Turkish,
+  Japanese, Chinese, Korean, Arabic, Hebrew). Remembered per viewer; shown
+  prominently once when the browser names more than one language.
 
 - **now:** the activity feed no longer says "session ended" at the end of
   every turn and every subagent's stop; it says *finished its turn* or
