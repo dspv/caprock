@@ -114,6 +114,8 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   // days do not move, so a slow poll; today's point is drawn from the live
   // summary above, not from this.
   const trends = useApi(() => api.trends(agent), [agent], { live: false, intervalMs: 5 * 60000, cache: `trends:${agent}` })
+  // An answer without a series (an older daemon, a stub) draws nothing rather than throwing.
+  const trendData = Array.isArray(trends.data?.series) ? trends.data : undefined
   const lifetime = useApi(() => api.history('all'), [], { intervalMs: 60000, cache: 'history:all', liveMs: SLOW_LIVE_MS })
   // The plan-window stop: what it has paused, and whether this install has
   // it — the free plan-limit row offers it only when it does not.
@@ -311,7 +313,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
             * viewer's own median (lib/trend.ts): a number alone did not say
             * whether it was a normal day (owner, 2026-10-14). */}
           <Stat label={`${costLabel(plan)} today`} value={measured ? fmtUSD(summary.data?.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : loading ? 'reading your figures…' : 'nothing measured yet'}</span>} tone="info" size="hero"
-            trend={<TodayTrend metric="cost" trends={trends.data} live={measured ? summary.data!.cost_usd : undefined} fmt={fmtUSD} label="Cost by this time of day" />} />
+            trend={<TodayTrend metric="cost" trends={trendData} live={measured ? summary.data!.cost_usd : undefined} fmt={fmtUSD} label="Cost by this time of day" />} />
           {/* While the daemon has been up for less than the window, the rate
             * is arithmetic on a handful of seconds — correct, and alarming:
             * twenty seconds of a busy minute extrapolates to hundreds of
@@ -328,12 +330,12 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
                   ? `measuring — needs ${summary.data!.burn.window_min} minutes of running`
                   : `${fmtTokens(Math.round(summary.data!.burn.tokens_per_min))} tok/min · last ${summary.data!.burn.window_min}m`
             }
-            trend={<TodayTrend metric="burn" trends={trends.data} now={measured && !summary.stale && !summary.data!.burn.filling ? summary.data!.burn.usd_per_hour : undefined} fmt={fmtUSD} label="Each day's typical burn" />}
+            trend={<TodayTrend metric="burn" trends={trendData} now={measured && !summary.stale && !summary.data!.burn.filling ? summary.data!.burn.usd_per_hour : undefined} fmt={fmtUSD} label="Each day's typical burn" />}
           />
           <Stat label="Sessions" value={measured ? summary.data!.sessions : '—'} sub={measured && !summary.stale ? `${summary.data!.active_sessions} active` : undefined} size="compact"
-            trend={<TodayTrend metric="sessions" trends={trends.data} live={measured ? summary.data!.sessions : undefined} fmt={fmtCount} label="Sessions by this time of day" />} />
+            trend={<TodayTrend metric="sessions" trends={trendData} live={measured ? summary.data!.sessions : undefined} fmt={fmtCount} label="Sessions by this time of day" />} />
           <Stat label="Turns" value={measured ? summary.data!.turns : '—'} sub={measured ? `${summary.data!.tool_calls} tool calls` : undefined} size="compact"
-            trend={<TodayTrend metric="turns" trends={trends.data} live={measured ? summary.data!.turns : undefined} fmt={fmtCount} label="Turns by this time of day" />} />
+            trend={<TodayTrend metric="turns" trends={trendData} live={measured ? summary.data!.turns : undefined} fmt={fmtCount} label="Turns by this time of day" />} />
           {/* Cache hit is ~99% forever on Claude Code, so it is reassurance
             * rather than news: it keeps its place but not a colour, and only
             * speaks up when it drops far enough to mean something broke. */}
@@ -344,7 +346,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
             * own above this row, which made two stale percentages look like a
             * headline. */}
           <CacheStat hitRate={summary.data?.savings.hit_rate} cutPct={summary.data?.savings.cut_pct} measured={measured}
-            trend={<TodayTrend metric="cache" trends={trends.data} live={measured && summary.data!.savings ? summary.data!.savings.hit_rate * 100 : undefined} fmt={(n) => `${n.toFixed(1)}%`} label="Cache hit rate by this time of day" />} />
+            trend={<TodayTrend metric="cache" trends={trendData} live={measured && summary.data!.savings ? summary.data!.savings.hit_rate * 100 : undefined} fmt={(n) => `${n.toFixed(1)}%`} label="Cache hit rate by this time of day" />} />
         </div>
         <UnpricedNote u={summary.data?.unpriced} background={summary.data?.background} className="mx-3 mb-2.5" />
       </Panel>
