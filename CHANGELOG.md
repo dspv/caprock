@@ -9,6 +9,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** Second Brain comes to Premium on 18 October 2026: a knowledge
+  graph of everything your agents do, kept on your computer. After two days
+  of use a short strip offers it, and *How it works* explains it and leads
+  to Premium; if it doesn't arrive on that date, write to us for a full
+  refund ([ADR-062](.ai/08-decisions.md)).
+- **app:** Caprock may also ask about a feature it is considering — running
+  Hugging Face models on your computer, and one of watching short ads to
+  earn money or YouTube while agents work. At most one strip a day; each
+  question is two clicks and an optional email. Nothing leaves the computer
+  until you press **Send**, which sends those answers to caprock.dev and
+  nothing else; *Not interested* and × send nothing, and an answered strip
+  never returns.
+
 - **app:** a Mail button with its own key. *Mail ⇧⌘M* in the sidebar's
   bottom block (Ctrl+Shift+M on Windows and Linux) opens Mail in a tab of its
   own beside the Dashboard tab; pressed again it brings it to the front. With

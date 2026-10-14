@@ -531,6 +531,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/editors", s.handleEditors)
 	m.HandleFunc("POST /v1/editors/open", s.handleOpenEditor)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
+	// The offer survey: forwards one answer to caprock.dev on a click (offer.go, ADR-062).
+	m.HandleFunc("POST /v1/offer", s.handleOffer)
 	m.HandleFunc("GET /v1/update", s.handleUpdate)
 	// Pairing. Only the redeem endpoint is reachable from the network; the
 	// rest are refused off-loopback inside the handlers, so a paired tablet
@@ -1569,7 +1571,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 
 // maxPrompts bounds the prompts map: the dashboard has a handful of offers,
 // and a config file that any page can grow without limit is a bug.
-const maxPrompts = 32
+const maxPrompts = 64
 
 // mergePrompts applies a prompts patch: each named id takes the later of its
 // stored time and the new one, 0 removes it. Ids are short lower-case words with dashes; anything else is

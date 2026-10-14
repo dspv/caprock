@@ -1004,6 +1004,28 @@ shows what is new, or **Not now** to hide that version.
   (`brew upgrade caprock`, `scoop update caprock`); the app never replaces a
   daemon it did not install.
 
+## A question from Caprock
+
+Caprock cannot see who uses it, so after you have used it on two different
+days it may show one short strip at the bottom of the window: Second Brain,
+which comes to Premium, or a question about a feature it is considering
+(running Hugging Face models on your computer, or one other). At most one a
+day; it waits until you stop typing, never appears while a session is
+waiting for a permission answer, and never covers a terminal.
+
+- **Second Brain.** *How it works* explains it and offers Premium. It
+  arrives on 18 October 2026; if it doesn't, write to us for a full refund.
+  Nothing is sent from this strip.
+- **Answering a question.** Two one-click questions and an optional email,
+  if you want to hear when it is ready.
+- **What is sent, and when.** Nothing, until you press **Send**. Then
+  Caprock sends your two answers, which question they answer, and your email
+  if you added one, to caprock.dev. Nothing else: no identifier, nothing
+  about your sessions, projects or usage, not even Caprock's version.
+- **Saying no.** *Not interested* or × sends nothing.
+- **How often.** An answered strip never comes back. Second Brain and the
+  Hugging Face question are shown at most twice each, the others once.
+
 ## macOS privacy prompts
 
 macOS asks before a program reads your Desktop, Documents or Downloads

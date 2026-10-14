@@ -1617,6 +1617,8 @@ export const api = {
   sessionsInDir: (dir: string) => get<SessionSummary[]>(`/v1/sessions?dir=${encodeURIComponent(dir)}`),
   session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
   /** The user's own name for a session; '' clears it. */
+  /** Send one offer-survey answer to caprock.dev, through the daemon (ADR-062). Only on the user's click. */
+  sendOffer: (a: { offer: string; answers: Record<string, string>; email?: string }) => post<{ status: string }>('/v1/offer', a),
   renameSession: (id: string, name: string) => post<{ session_id: string; name: string }>(`/v1/sessions/${encodeURIComponent(id)}/name`, { name }, 'PUT'),
   /** Live sessions sharing a checkout with another, and the files both edited lately (lib/overlap.ts). */
   overlap: () => get<Overlap>('/v1/overlap'),
