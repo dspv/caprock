@@ -15,6 +15,7 @@ import { NotesScreen } from '@/screens/Notes'
 import { PairScreen } from '@/screens/Pair'
 import { NewProjectScreen } from '@/components/NewProject'
 import { PhoneHome } from '@/components/PhoneHome'
+import { LanOnlyNotice } from '@/components/LanOnlyNotice'
 import { useNarrowScreen } from '@/lib/phone'
 
 // Mail is its own world (internal/mail); its code loads only when opened.
@@ -70,6 +71,7 @@ export function Dashboard({ route, inApp = false }: { route: Route; inApp?: bool
   const phoneHome = narrow && !inApp && route.name === 'now' && !route.full
   return (
     <Shell route={route}>
+      {!inApp && <LanOnlyNotice />}
       <ErrorBoundary label={route.name}>
         {route.name === 'now' && (phoneHome ? <PhoneHome /> : <NowScreen inApp={inApp} />)}
         {route.name === 'session' && <SessionScreen key={route.id} id={route.id} tab={route.tab} at={route.at} />}

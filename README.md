@@ -656,23 +656,30 @@ Downloaded the binary directly? Replace it with a fresh one from
 
 ## Open it on your phone
 
-Caprock answers only the machine it runs on. There are two ways to reach it
-from a phone: **from anywhere**, through an encrypted relay, or **on the same
-network** (Wi-Fi or Tailscale).
+Caprock answers only the machine it runs on. A phone reaches it **from
+anywhere**, through an encrypted relay — on the home Wi-Fi and on mobile data
+alike, with nothing to install on the phone.
 
 ### From anywhere, through an encrypted relay
 
 For a phone on mobile data, a laptop at home, a Mac mini in a cupboard
-running agents — nothing to install on the phone:
+running agents:
 
-1. On the computer: **Settings → Open Caprock on your phone → From anywhere →
-   Turn on**, or `caprock remote on` in a terminal (handy over SSH).
-2. Press *Show a code* (or run `caprock pair`, which draws the QR in the
-   terminal) and point the phone's camera at it. The phone opens Caprock's
-   page, pairs, and shows the dashboard.
+1. In the Caprock app on the computer: **Settings → Use on your phone → Show
+   a code**. That press is what turns access from anywhere on, and it stays on
+   until you turn it off. Over SSH, `caprock remote on` then `caprock pair`
+   (which draws the QR in the terminal) do the same.
+2. Point the phone's camera at the code. The phone opens Caprock's page,
+   pairs, and shows the dashboard.
 3. Add it to the home screen. An iPhone keeps a home-screen app's storage
    apart from Safari's, so paste the link there once: *Copy link* under the
    code, then *+ Add a machine* on the phone.
+
+Each paired device in Settings says how it reaches the computer: *anywhere*,
+or *Wi-Fi link* for a phone paired on a home-network address before this was
+the one way. A Wi-Fi link works on that Wi-Fi only; the row offers **Show the
+code** to pair it once more through the relay, and the phone itself says the
+same while it is on that link.
 
 The phone can hold several machines and switch between them from the strip
 along its top. It stays on across restarts until you turn it off.
@@ -694,22 +701,22 @@ wss://your.relay`. The phone's page can be yours too: build it with
 and add `--app https://your.page`. `relay/` holds the hosted relay, a
 Cloudflare Worker, and `relay/m/` the hosted page at m.caprock.dev.
 
-### On the same network
+### Without internet: on the same network (advanced)
 
-To read it from a phone or a tablet on your own network:
+The app no longer offers this — a link that works on one Wi-Fi only left a
+phone dead on mobile data with nothing saying why. It is still there from a
+terminal, for a machine with no way out to the internet:
 
-1. Your phone and the computer are on the same Wi-Fi — or both have
-   [Tailscale](https://tailscale.com/kb/1017/install) on, which works from
-   mobile data too.
-2. Open **settings** and press *Show a code*. When the computer is on
-   Tailscale, pick what the code carries — *Wi-Fi*, *Tailscale* or
-   *Tailscale name*. Point the phone's camera at the QR code; the phone opens
-   Caprock and pairs by itself. (No camera? The same screen shows the address
-   and a six-digit code to type.)
-3. The phone appears under *Paired devices*, with a *Remove* button.
+1. `caprock up --lan` listens on this machine's private Wi-Fi address too
+   (and its Tailscale one, when Tailscale is up). With access from anywhere
+   off, `caprock pair` then draws a QR for that address, with the six digits
+   to type on a phone without a camera.
+2. The phone, on the same Wi-Fi (or on Tailscale, which also works from
+   mobile data), opens the address and pairs. It appears in Settings under
+   *Paired devices* as a *Wi-Fi link*, with a *Remove* button; while that
+   listener is on, Settings shows it with a *Turn off*.
 
-The QR code is drawn by the dashboard itself; nothing is sent anywhere to make
-it.
+The QR code is drawn locally; nothing is sent anywhere to make it.
 
 **Put it on the home screen.** On an iPhone, Share → *Add to Home Screen*; on
 Android, Chrome's menu → *Add to Home screen*. It opens full-screen with the
@@ -732,14 +739,11 @@ nothing you need to work:
   home-screen app). Alerts that a session needs you go through your own
   Telegram bot instead (Settings → *Phone alerts*, ADR-036).
 
-There is a flag too — `caprock up --lan` — for a machine you administer over
-SSH. The button exists because the person who wants this is usually holding the
-tablet, and telling them to go and find a terminal is telling them not to
-bother. That is the whole setup — no account, no tunnel,
-nothing on anybody's server. The other device is talking to your machine.
+That is the whole setup — no account, no tunnel, nothing on anybody's server.
+The other device is talking to your machine.
 
-A few things worth knowing, because this is the one place Caprock stops being
-loopback-only:
+A few things worth knowing about the network listener, because it is the one
+place Caprock stops being loopback-only:
 
 - **Nothing gets in without pairing.** Every request from the network is
   refused until a device has traded a code for a token. Devices are listed in

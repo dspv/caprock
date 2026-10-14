@@ -221,6 +221,9 @@ func (s *Server) handlePairRedeem(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusUnauthorized, errors.New("that code does not work — ask for a new one on the machine Caprock runs on"))
 		return
 	}
+	// The route it paired by is the first thing known about how it reaches
+	// the machine; its next request would say the same.
+	_, _, _ = ps.CheckVia(dev.Token, transportOf(r))
 	s.saveDevices()
 	writeJSON(w, http.StatusOK, pairResponse{Token: dev.Token, ID: dev.ID, Name: dev.Name})
 }
@@ -377,6 +380,13 @@ type pairMe struct {
 	Role string `json:"role"`
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
+	// Via is how this request reached the machine (pairing.ViaLAN,
+	// ViaTailscale, ViaRelay); empty on the machine itself.
+	Via string `json:"via,omitempty"`
+	// Anywhere says access from anywhere (ADR-058) is on. With Via "lan" the
+	// phone is on a link that dies off this Wi-Fi while one that does not
+	// exists, and its page says how to get it (owner, 2026-10-14).
+	Anywhere bool `json:"anywhere,omitempty"`
 }
 
 // handlePairMe tells a dashboard which controls to draw (ADR-034). The daemon
@@ -388,7 +398,11 @@ func (s *Server) handlePairMe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, pairMe{Role: "owner"})
 		return
 	}
-	writeJSON(w, http.StatusOK, pairMe{Role: dev.Role, ID: dev.ID, Name: dev.Name})
+	me := pairMe{Role: dev.Role, ID: dev.ID, Name: dev.Name, Via: transportOf(r)}
+	if s.d.Remote != nil {
+		me.Anywhere = s.d.Remote.RemoteState("").Enabled
+	}
+	writeJSON(w, http.StatusOK, me)
 }
 
 // handlePairSetRole makes one paired device a controller, or a viewer again

@@ -32,7 +32,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   running* — without opening its row in the deck first; each of the three
   tabs says what it shows on hover.
 
+- **phone:** one way to pair a phone: from anywhere. Settings → Use on your
+  phone → **Show a code** now turns on access from anywhere (the encrypted
+  relay) in the same press — a line under the button says so — and the QR
+  works on Wi-Fi and mobile data alike. The Wi-Fi / Tailscale address
+  choice, the *Same Wi-Fi* step and *Keep on after Caprock restarts* are gone
+  from the panel. A phone paired on a home-network address worked on that
+  Wi-Fi only, and nothing said so when it went dead on mobile data. For a
+  machine without internet, `caprock up --lan` and `caprock pair` still pair
+  over the Wi-Fi from a terminal.
+
 ### Fixed
+
+- **app:** the closing questions' buttons read on one line. "Keep it
+  running, close tab" broke over two lines and "Stop and close" spilled out
+  of its button; the sheets are wider, every sheet button keeps its label on
+  one line, and the row wraps as a whole on a narrow window.
 
 - **app:** a tab's project name fits. It was cut at nine characters
   (*uncensor…*, *creatos_f…*) even on a wide window; now it takes its whole
@@ -49,6 +64,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   "This phone can read but not type. On the computer: Settings…" left out
   that the setting is in the Caprock app, and two hints still sent you to
   "Settings → Phone", which does not exist.
+- **phone:** a phone still on a Wi-Fi link now hears about it. Settings →
+  Use on your phone → *Paired devices* says how each device reaches the
+  computer (*anywhere*, *anywhere with Tailscale*, *Wi-Fi link*), and a
+  Wi-Fi link gets one line with **Show the code** to pair it once more
+  through the relay. On the phone, a strip says: "This link works only on
+  your home Wi-Fi. To use Caprock anywhere: in the Caprock app on your
+  computer, Settings → Use on your phone → Show a code, and scan it."
+- **phone:** the pairing steps on the phone's own page no longer send you to
+  "Settings → Phone → From anywhere → Turn on", which does not exist; they
+  name the Caprock app on your computer and Settings → Use on your phone.
+  The refusals a phone gets (not paired, view only) say the same path.
 
 ## [0.116.1] - 2026-10-14
 
@@ -76,6 +102,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   list; if you used Caprock before and never chose, the sidebar lists the
   sessions under their projects again. A first visit still starts on the
   flat list.
+- **agents:** a permission prompt you answered from a button no longer
+  comes back if the daemon crashes a moment later. The answer cleared the
+  stored prompt in the background, so a crash before that write landed
+  restored buttons for a dialog already answered; the answer now returns
+  only once the stored prompt is gone.
 - **cockpit:** the spend chart no longer jumps when you hover it. At rest
   the line above the bars stood 23px tall (the ▾ that picks the metric took
   the panel's larger font) and under the pointer 19px, so the bars and
