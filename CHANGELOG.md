@@ -44,6 +44,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **phone:** m.caprock.dev says where you are. The name Caprock and
+  caprock.dev stand beside the mark, a line says the page is the other half
+  of the Caprock app on your computer (with where to get it), and the first
+  step shows a small picture of Settings → Use on your phone → Show a code.
 - **mail:** Mail opens instead of failing with "null is not an object
   (evaluating 't.accounts.length')". A mail client found on the machine with
   no accounts it could read — Apple Mail before Full Disk Access — came back
