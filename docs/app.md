@@ -62,8 +62,8 @@ others. Installing it: [install-app.md](install-app.md).
   quick chat.
 - **Flat or Tree.** The sidebar is **Flat** by default: one list headed
   *Sessions* of the sessions open in tabs, in the tabs' order, each with
-  its tab's key (⌘1, ⌘2 …) and its project's colour dot and short name,
-  dimmed; sessions running with no tab come after them, without a key.
+  its tab's key (⌘1, ⌘2 …) and its project's short name in the project's
+  colour; sessions running with no tab come after them, without a key.
   Dragging a row there (or ⌥⇧↑ ↓ on it) moves its tab in the strip.
   **Tree** lists the sessions under their projects, each row still with
   its tab's key, so the numbers do not run in order down the tree. Choose
@@ -148,11 +148,22 @@ others. Installing it: [install-app.md](install-app.md).
   them. Fold it and it reads nothing. **CI/CD**, under Repos, needs GitHub
   connected: GitHub's own status (from githubstatus.com), and for each
   repository the Actions minutes GitHub billed this month (with the token's
-  Plan (read) permission), the median CI time and its trend, the share of
+  Plan (read) permission, or Administration (read) for an organization), the median CI time and its trend, the share of
   red runs, runs stuck far past their usual time or waiting for a runner,
   the newest release, the five pull requests the agents spent most on this
   week, and who opened them, face and name. Costs are at API list price.
   Fold it and it reads nothing.
+- **Live pulse.** One row per running session, led by the session's name,
+  with the project, branch and short id under it. Rows keep their places:
+  the order sessions started in (tabs follow the tab strip among
+  themselves), a new one last; drag a row, or press ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift on
+  Windows and Linux) on it, to move it. Two sessions working in the same
+  folder of a repository (not separate worktrees) each get a chip naming
+  the other; when both edited the same files in the last 30 minutes it
+  turns amber, *N files touched by both*, the files on hover. *Move to a
+  worktree…* opens New session on a new copy of the folder, named after the
+  newer session; the running one keeps going until you stop it. The
+  cockpit beside that session shows the same chip.
 - **Quick chat.** Ask something without picking a folder: a session in
   Caprock's data directory opens in a tab, under *Outside projects* in the
   sidebar, and its tab is called *Quick chat* with its model. ⌥⌘N, *Quick
@@ -300,8 +311,10 @@ others. Installing it: [install-app.md](install-app.md).
   what is running, so this is where yesterday's work is.
 - **Tabs.** One strip holds every open tab of every project, in the order
   you opened them — an agent session, a shell or a file each — and each tab
-  is named by its session, after a dot in its project's colour; hover it
-  for the project, the agent and the branch. The Dashboard tab is its icon
+  is named by its session, with its project's short name after it in the
+  project's colour; hover it for the agent and the branch. A tab has no
+  status dot: it is marked only when it needs you — an amber edge along
+  its top while the session waits on you, a red one when it failed. The Dashboard tab is its icon
   and ⌘0, and the inspector's button shows ⌘I beside it, as Deck shows ⌘B.
   Picking
   another project never takes a tab out of the strip: the project's own
@@ -390,24 +403,31 @@ others. Installing it: [install-app.md](install-app.md).
   `~/.claude`), or `@` for a file in the session's folder: ↑ ↓ and Enter
   pick, Esc closes. Picking only fills the field.
 - **Agent cockpit** (⌘I). Open beside an agent's terminal unless you close
-  it: the agent and its state, three figures beside it that you pick —
+  it: the agent's portrait with its state and permission mode under it,
+  three figures beside it that you pick —
   its burn rate in large type, its tokens and what it has cost on two
   short lines under it, or any of cache hit rate, turns, time working, the
   last call and tool calls (click a figure's ▾), and under the big one how
   it compares with your own last 30 days (*▲ 38%*, *≈ usual*, *▼ 55%*;
   amber only in your top fifth; hover for the whole sentence) — what it
-  is doing this second and for how long, right under that its spend for the session,
+  is doing this second and for how long, right under that how full its
+  context is and your plan's 5-hour and weekly windows — one line each,
+  *62% · 124.0k / 200.0k* and *5h 41% · 05:40  Week 24% · Mon 13:00*; click
+  *Context* or *Plan* for the full meter, what every call now pays to
+  re-read the context and each window's bar and forecast, remembered —
+  then its spend for the session,
   today, 7 or 30 days as a chart or as three more figures you choose
   (*Chart | Numbers*; the chart's ▾ switches its bars between cost, burn
   rate — dollars per hour you actually worked in each stretch — tokens and
   turns, and a faint dashed line marks your pace: your usual burn rate, or
   the period's average stretch, so hovering a bar says *38% above your
   usual*; fold it to a strip of the same bars and three figures if you
-  like), how full its context is and what every call now pays to re-read
-  it, the task list the agent keeps for itself (each task with a spinner, a
+  like), the task list the agent keeps for itself (each task with a spinner, a
   check or an empty circle, and *3 of 7 done* above them; not there when
   the agent kept none), its subagents (a chip per subagent under the
-  agent, and a row each below that leads with its type's letter and what
+  agent, in groups of five so you can count them at a glance, on up to
+  two lines and smaller squares when there are many, and a row each below
+  that leads with its type's letter and what
   it is doing now in words, up to two lines, from the description Claude
   gave its latest command, else its tool and file, else its task; the rows
   keep the order the subagents started in, a finished one dimmed with a ✓
@@ -415,12 +435,19 @@ others. Installing it: [install-app.md](install-app.md).
   and time each row carries, cost and time until you choose: click one to open it in place and read the
   task it was given, every call it makes as it makes them, what it
   answered and what it cost), its last tool calls with how long each took, the uncommitted changes in
-  its checkout, your plan's 5-hour and weekly windows, and a warning when
+  its checkout, and a warning when
   it is repeating the same call. The permission prompt and its buttons sit
   at the top while one waits. Click a changed file to read it in a tab
   (in a folder that is not a git repository, it opens in your editor at
   its first change). Beside a shell tab it shows the folder and its
   changes.
+- **Claude's faces.** Claude's little character comes in eight looks — the
+  hard hat, a beanie, headphones, a crown, a wizard's hat, a tuft of hair,
+  a bandana and a propeller cap. Each session gets one at random and keeps
+  it everywhere it shows, on your phone too; click the portrait in the
+  cockpit to give a session another. Settings → Appearance → *Claude's
+  face* picks the default: a face per session, or the same one for all.
+  Remembered in this browser only. Other agents keep their own marks.
 - **Session deck** (⌘B). A band under the terminal of the agent in front,
   so the prompt sits above the window's edge, nearer the middle of the
   screen, with what is useful while you work in the room it makes: the CI
@@ -560,31 +587,31 @@ others. Installing it: [install-app.md](install-app.md).
 
 On macOS:
 
-| Keys        | Does                                                   |
-| ----------- | ------------------------------------------------------ |
-| ⌘T          | New shell in the folder of the tab                     |
-| ⇧⌘N         | New agent session                                      |
-| ⌥⌘N         | Quick chat: pick, or Enter for the last                |
-| ⌘O          | Add a project (folder, new, clone)                     |
-| ⌘1–8, ⌘9    | The Nth tab, in the order opened; the last             |
-| ⌥⌘↓, ⌥⌘↑    | Next and previous session of the project in front      |
-| ⌥⌘→, ⌥⌘←    | Next and previous project                              |
-| ⌥⇧↑, ⌥⇧↓    | Move the focused session row up or down in the sidebar |
-| ⌃Tab, ⇧⌘[ ] | Next and previous tab                                  |
-| ⌘W          | Close the tab (the session keeps going)                |
-| ⌘E, ⇧⌘E     | Split: a new shell beside, below                       |
-| ⌘[ ]        | Previous and next pane                                 |
-| ⌘J          | Next session waiting on you                            |
-| ⌘F          | Find in the terminal or the file                       |
-| ⌘K          | Command palette                                        |
-| ⌘,          | Settings                                               |
-| ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default               |
-| ⌘I          | Agent cockpit (the inspector)                          |
-| ⌘B          | Session deck under the agent's terminal                |
-| ⇧⌘B         | Expand the deck into PRs & CI; Collapse back           |
-| ⌘\          | Hide or show the sidebar                               |
-| ⌘0, ⇧⌘D     | Dashboard tab, and back                                |
-| ⌘R          | Reload the window (View → Reload)                      |
+| Keys        | Does                                                                     |
+| ----------- | ------------------------------------------------------------------------ |
+| ⌘T          | New shell in the folder of the tab                                       |
+| ⇧⌘N         | New agent session                                                        |
+| ⌥⌘N         | Quick chat: pick, or Enter for the last                                  |
+| ⌘O          | Add a project (folder, new, clone)                                       |
+| ⌘1–8, ⌘9    | The Nth tab, in the order opened; the last                               |
+| ⌥⌘↓, ⌥⌘↑    | Next and previous session of the project in front                        |
+| ⌥⌘→, ⌥⌘←    | Next and previous project                                                |
+| ⌥⇧↑, ⌥⇧↓    | Move the focused session row up or down in the sidebar or the Live pulse |
+| ⌃Tab, ⇧⌘[ ] | Next and previous tab                                                    |
+| ⌘W          | Close the tab (the session keeps going)                                  |
+| ⌘E, ⇧⌘E     | Split: a new shell beside, below                                         |
+| ⌘[ ]        | Previous and next pane                                                   |
+| ⌘J          | Next session waiting on you                                              |
+| ⌘F          | Find in the terminal or the file                                         |
+| ⌘K          | Command palette                                                          |
+| ⌘,          | Settings                                                                 |
+| ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                 |
+| ⌘I          | Agent cockpit (the inspector)                                            |
+| ⌘B          | Session deck under the agent's terminal                                  |
+| ⇧⌘B         | Expand the deck into PRs & CI; Collapse back                             |
+| ⌘\          | Hide or show the sidebar                                                 |
+| ⌘0, ⇧⌘D     | Dashboard tab, and back                                                  |
+| ⌘R          | Reload the window (View → Reload)                                        |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 (Quick chat is Ctrl+Alt+Shift+N, Expand Ctrl+Alt+Shift+B; tabs are
