@@ -9,6 +9,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** a tab's project name fits. It was cut at nine characters
+  (*uncensor…*, *creatos_f…*) even on a wide window; now it takes its whole
+  width first and the session's name is shortened before it, and tabs grow
+  to 340px when the strip has room. When many tabs leave too little even
+  for that, the name ends in an ellipsis and scrolls into view inside its
+  own space while you point at the tab, so nothing in the strip moves
+  (with reduced motion it stays cut; the tooltip names it in full).
 - **phone:** every hint on the phone now says where to go: the Caprock app
   on your computer, Settings → Use on your phone, and the button by name.
   "This phone can read but not type. On the computer: Settings…" left out
@@ -48,6 +55,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   list; if you used Caprock before and never chose, the sidebar lists the
   sessions under their projects again. A first visit still starts on the
   flat list.
+- **agents:** a permission prompt you answered from a button no longer
+  comes back if the daemon crashes a moment later. The answer cleared the
+  stored prompt in the background, so a crash before that write landed
+  restored buttons for a dialog already answered; the answer now returns
+  only once the stored prompt is gone.
 - **cockpit:** the spend chart no longer jumps when you hover it. At rest
   the line above the bars stood 23px tall (the ▾ that picks the metric took
   the panel's larger font) and under the pointer 19px, so the bars and
