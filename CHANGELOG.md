@@ -15,17 +15,24 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   that the setting is in the Caprock app, and two hints still sent you to
   "Settings → Phone", which does not exist.
 
+## [0.116.1] - 2026-10-14
+
 ### Changed
 
+- **app:** closing the tab of an agent Caprock started now asks: **Close
+  tab** (in focus, so ⌘W then Enter works as before and the agent keeps
+  running) or **Close and end the agent**, which stops it (asking once
+  more if it is still answering; the conversation is kept). Tick *Don't
+  ask again* to keep your answer; Settings → *Closing a tab* changes it
+  back. An agent you started in your own terminal is never ended from
+  Caprock: its tab just closes.
+- **app:** in the Tabs list, sessions running with no tab sit under a
+  quiet *Running, no tab* line, so an agent whose tab you closed no
+  longer looks like an open chat.
 - **app:** the sidebar's heading has a worded switch, **Projects | Tabs**,
   in place of the small folder icon: Projects lists the sessions under
   their projects, Tabs in one list in the tabs' order. Settings →
   Appearance → *Sidebar* uses the same words.
-- **cockpit:** the spend chart no longer jumps when you hover it. At rest
-  the line above the bars stood 23px tall (the ▾ that picks the metric took
-  the panel's larger font) and under the pointer 19px, so the bars and
-  everything below them moved 4px on every hover; the line is now a fixed
-  18px either way.
 
 ### Fixed
 
@@ -34,6 +41,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   list; if you used Caprock before and never chose, the sidebar lists the
   sessions under their projects again. A first visit still starts on the
   flat list.
+- **cockpit:** the spend chart no longer jumps when you hover it. At rest
+  the line above the bars stood 23px tall (the ▾ that picks the metric took
+  the panel's larger font) and under the pointer 19px, so the bars and
+  everything below them moved 4px on every hover; the line is now a fixed
+  18px either way.
 
 ## [0.116.0] - 2026-10-14
 

@@ -368,8 +368,14 @@ export type SidebarRow = LeadItem & {
  * the desktop shell takes HTML5 drops) or with ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift off
  * macOS) on a focused row; the order is kept under `orderId`.
  */
-export function SessionList({ items, visible = items, orderId, ariaLabel, activeTabId, onActivateTab, onCloseTab, onOpenLive, onHideSession, onReorder, digits }: {
+export function SessionList({ items, visible = items, orderId, ariaLabel, activeTabId, onActivateTab, onCloseTab, onOpenLive, onHideSession, onReorder, digits, untabbedHeading }: {
   items: readonly SidebarRow[]
+  /**
+   * A quiet line above the rows with no tab, where the tabbed ones end: the
+   * flat list's "Running, no tab" (owner, 2026-10-14). There the tabbed rows
+   * come first; under a project the two are mixed in a kept order, so none.
+   */
+  untabbedHeading?: string
   /** The rows on screen; `items` when absent. Moving keeps the whole order. */
   visible?: readonly SidebarRow[]
   /** Where the order set by hand is kept: a project's id, or '*' for the flat list. */
@@ -535,7 +541,16 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
     <>
       <ul className="grid grid-cols-1 pb-1" role="group" aria-label={ariaLabel} onKeyDown={onMoveKey} onClickCapture={onClickCapture}>
         {/* Every agent session in its fixed place (lib/rowOrder.ts). */}
-        {visible.map((it) => <Fragment key={leadKey(it)}>{itemRow(it)}</Fragment>)}
+        {visible.map((it, i) => (
+          <Fragment key={leadKey(it)}>
+            {untabbedHeading && !it.tab && (i === 0 || !!visible[i - 1]!.tab) && (
+              <li data-untabbed-heading className="px-2 pb-0.5 pt-2.5 text-[10.5px] font-medium uppercase tracking-[0.06em] text-fg-faint">
+                {untabbedHeading}
+              </li>
+            )}
+            {itemRow(it)}
+          </Fragment>
+        ))}
       </ul>
       {rowMenuContent()}
     </>
@@ -621,7 +636,7 @@ function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, on
   const title = label?.title ?? tab.title
   const isFile = label?.file !== undefined
   const word = !isFile && !label?.isShell && label?.session ? label.dot : undefined
-  const closeTip = closeTitle(isFile, !!label?.isShell, !!label?.chat)
+  const closeTip = closeTitle(isFile, !!label?.isShell, !!label?.chat, !!label?.session?.owned && label.session.status !== 'ended')
   const n = onClose ? 1 : 0
   return (
     <li className={`group/row relative ${drag?.dragging ? 'opacity-60' : ''}`} {...dragProps(drag)}>

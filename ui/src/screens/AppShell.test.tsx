@@ -164,15 +164,70 @@ describe('the app workspace', () => {
     expect(document.documentElement.hasAttribute('data-caprock-chrome')).toBe(false)
   })
 
-  it('opens a session as a tab, and ⌘W closes the tab without stopping anything', async () => {
+  it('opens a session as a tab, and ⌘W then Enter closes the tab without stopping anything', async () => {
     await renderApp()
     await openFromPalette('Fix the login bug')
     const tab = await screen.findByRole('tab', { name: /Fix the login bug/ })
     expect(tab).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
     await cmd('w')
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    // An agent Caprock started: asked, with Close tab in focus.
+    const sheet = await screen.findByRole('dialog', { name: "Close an agent's tab" })
+    expect(within(sheet).getByText(/Close “Fix the login bug”\?/)).toBeInTheDocument()
+    const keep = within(sheet).getByRole('button', { name: 'Close tab' })
+    expect(keep).toHaveFocus()
+    fireEvent.click(keep)
+    await waitFor(() => expect(screen.queryByRole('tab')).not.toBeInTheDocument())
     // An agent's tab is not its process: closing it stops nothing.
+    await act(async () => { await Promise.resolve() })
+    expect(spawned.signals).toEqual([])
+    expect(localStorage.getItem('caprock.app.agent-close')).toBeNull()
+  })
+
+  // Owner, 2026-10-14 (a user, translated: "chats don't disappear when I
+  // close them"): closing can end an agent Caprock started, when asked to.
+  it('ends an agent Caprock started with its tab when you choose to, and remembers "Don\'t ask again"', async () => {
+    // Idle: no second question.
+    const was = sessions[0]!
+    sessions[0] = { ...was, activity: { phrase: '', at: '', health: 'idle' } }
+    try {
+      await renderApp()
+      await openFromPalette('Fix the login bug')
+      await screen.findByRole('tab', { name: /Fix the login bug/ })
+      await cmd('w')
+      const sheet = await screen.findByRole('dialog', { name: "Close an agent's tab" })
+      fireEvent.click(within(sheet).getByRole('checkbox', { name: /Don.t ask again/ }))
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Close and end the agent' }))
+      await waitFor(() => expect(spawned.signals).toEqual([['agent-1', 'kill']]))
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+      expect(localStorage.getItem('caprock.app.agent-close')).toBe('end')
+    } finally {
+      sessions[0] = was
+    }
+  })
+
+  it('asks once more before ending an agent that is still answering, and Keep leaves it running', async () => {
+    localStorage.setItem('caprock.app.agent-close', 'end')
+    await renderApp()
+    await openFromPalette('Fix the login bug')
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    await cmd('w')
+    const sheet = await screen.findByRole('dialog', { name: 'End an agent that is answering' })
+    expect(within(sheet).getByText('End the agent? It is still answering.')).toBeInTheDocument()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Keep it running, close tab' }))
+    await waitFor(() => expect(screen.queryByRole('tab')).not.toBeInTheDocument())
+    await act(async () => { await Promise.resolve() })
+    expect(spawned.signals).toEqual([])
+  })
+
+  it('never asks about, or signals, an agent another terminal started: its tab just closes (rule 7)', async () => {
+    localStorage.setItem('caprock.app.agent-close', 'end')
+    await renderApp()
+    await openFromPalette('Started elsewhere')
+    await screen.findByRole('tab', { name: /Started elsewhere/ })
+    await cmd('w')
+    await waitFor(() => expect(screen.queryByRole('tab')).not.toBeInTheDocument())
+    expect(screen.queryByRole('dialog')).toBeNull()
     await act(async () => { await Promise.resolve() })
     expect(spawned.signals).toEqual([])
   })
@@ -491,6 +546,8 @@ describe('the app workspace', () => {
 
   it('puts a tab opened from another project last, as ⌘3; a close renumbers; the order survives a restart', async () => {
     localStorage.setItem('caprock.app.sidebar-grouped', 'off')
+    // Closing an agent's tab without the question (lib/agentClose.ts).
+    localStorage.setItem('caprock.app.agent-close', 'keep')
     const first = render(<AppShell />)
     await openRowOf('agent-1', /Fix the login bug/)
     await openRowOf('agent-2', /Waiting one/)
@@ -660,6 +717,7 @@ describe('the app workspace', () => {
   })
 
   it('⇧Enter in the palette opens a session beside the one in front, and ⌘W closes just that pane', async () => {
+    localStorage.setItem('caprock.app.agent-close', 'keep')
     await renderApp()
     await openFromPalette('Fix the login bug')
     await screen.findByRole('tab')
