@@ -3673,9 +3673,25 @@ searching prose.
   first, in a budget of 700 characters of its own — so sessions started
   after this change in the handoff experiment's served group receive
   slightly more than before.
+- **Drawn, and in the sidebar.** The `#/brain` screen opens on the graph —
+  memories and the topics and projects they hang off, laid out by a
+  force simulation written for it (`ui/src/lib/forcegraph.ts`: Barnes–Hut
+  repulsion, springs, a pull to the centre), the list one click away. The
+  edges, nodes and labels are drawn into a cached layer only when they
+  change; panning and zooming scale that layer and redraw it when the
+  view rests. On a preview stand with 3,011 memories, in the headless
+  Chromium the screenshots use (software rendering, so slower than a
+  real window), a frame took a median 9.2 ms while the layout settled and
+  8.4 ms while zooming (2026-10-14); before the cached layer, stroking every
+  edge every frame took 225 ms. The app's sidebar has a Brain block below
+  the projects: a small graph of the newest thirty memories, where one that
+  is kept drops in from above with a ring where it lands (none with
+  prefers-reduced-motion), the three newest titles and the count. Folded
+  by default without a licence, with a lock and *How it works*.
 
 **Rules out:** an embedding index or a vector store (a dependency and a model
-for what titles, topics and links do); a server of ours; an API key of
+for what titles, topics and links do); a graph library in the dashboard
+(the layout is under 300 lines we can read); a server of ours; an API key of
 Caprock's or a model call made any way but the user's own `claude`; running
 the extraction before the user says yes; storing the graph
 anywhere but the daemon's database; locking a user out of memories already

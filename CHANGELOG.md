@@ -26,6 +26,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   later; *Build from my last 30 days* shows an estimate first. Settings →
   Second Brain shows what it used and read. A new session's handoff now
   carries up to five of the repository's memories.
+- **brain:** Second Brain drawn. The Brain screen opens on a graph of your
+  memories and their topics and projects — drag, zoom, click a dot to open
+  it, *List* for rows — smooth with thousands of memories. The app's
+  sidebar has a Brain block below the projects: the newest thirty as a small
+  graph where each new memory drops in, and the three newest titles.
 
 ## [0.117.0] - 2026-10-14
 

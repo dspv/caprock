@@ -2747,9 +2747,11 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 - **The graph read** returns the newest memories that pass the filter
   (pinned first, then by `created_at`), at most `limit` (default and ceiling
   5,000), the entities their edges reach, and every edge between returned
-  nodes; with no filter, every entity too, linked or not. `q` matches title
+  nodes; with no filter and no `limit`, every entity too, linked or not. `q` matches title
   or summary, anywhere, wildcards literal; `project` is exact; `since` and
-  `until` bound `created_at`. `total` counts the memories that pass the
+  `until` bound `created_at`. Only entities join a selection through its
+  edges; a memory a selected one relates to is not returned unless it
+  passes the filter itself. `total` counts the memories that pass the
   filter, whatever the limit. Summaries are `""` unless `summaries=1`; a
   node's own read carries its summary.
 - **A drop.** `kind` defaults to `idea`. With `event_id` the daemon reads

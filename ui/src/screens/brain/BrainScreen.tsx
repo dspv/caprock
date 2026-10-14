@@ -2,7 +2,9 @@
  * Second Brain (#/brain, ADR-063): what the sessions did, decided and found,
  * kept as memories linked to their projects and topics.
  *
- * Search, a project and a time span narrow it; a memory opens on the right
+ * Two views of the same read: the graph (memories and the topics and
+ * projects they hang off, drawn by components/BrainGraphCanvas) and the
+ * list. Search, a project and a time span narrow both; a memory opens on the right
  * with its summary, the session it came from (a link to the moment), what it
  * is linked to, and the means to edit, pin or delete it. Everything is read
  * from and written to this machine's database.
@@ -19,7 +21,33 @@ import { Empty, Skeleton } from '@/components/ui'
 import { Banner, BannerButton } from '@/components/Banner'
 import { PremiumModal } from '@/components/PremiumModal'
 import { BrainGlyph } from '@/components/BrainDrop'
+import { BrainGraphCanvas } from '@/components/BrainGraphCanvas'
 import { BrainDetail } from './BrainDetail'
+
+type View = 'graph' | 'list'
+const VIEW_KEY = 'caprock-brain-view'
+
+/** Graph or List, remembered in this browser; the graph first. */
+function useView(): [View, (v: View) => void] {
+  const [v, setV] = useState<View>(() => { try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'graph' } catch { return 'graph' } })
+  return [v, (next) => { setV(next); try { localStorage.setItem(VIEW_KEY, next) } catch { /* private window */ } }]
+}
+
+/** The kinds' colours, so the graph's dots can be read. */
+function Legend() {
+  const kinds = ['decision', 'finding', 'idea', 'question', 'topic', 'project', 'person'] as const
+  return (
+    <div className="flex flex-wrap gap-x-3 gap-y-1 px-0.5 pt-1.5 text-[11px] text-fg-faint" aria-hidden>
+      {kinds.map((k) => (
+        <span key={k} className="inline-flex items-center gap-1">
+          <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: KIND_COLOR[k] }} />
+          {KIND_LABEL[k]}
+        </span>
+      ))}
+      <span className="ml-auto hidden sm:inline">Drag to move · scroll to zoom · double-click to fit</span>
+    </div>
+  )
+}
 
 /** The spans the time filter offers, in days; 0 is all of it. */
 const SPANS: [number, string][] = [[0, 'All time'], [7, '7 days'], [30, '30 days'], [90, '90 days']]
@@ -31,6 +59,7 @@ export function BrainScreen({ node }: { node?: number }) {
   const [span, setSpan] = useState(0)
   const [selected, setSelected] = useState<number | undefined>(node)
   const [premium, setPremium] = useState(false)
+  const [view, setView] = useView()
   useEffect(() => { if (node) setSelected(node) }, [node])
   // A pause in typing, then the search: each one reads the graph.
   useEffect(() => {
@@ -103,6 +132,14 @@ export function BrainScreen({ node }: { node?: number }) {
             </button>
           ))}
         </div>
+        <div role="radiogroup" aria-label="View" className="inline-flex h-[30px] items-center rounded-[7px] border border-border p-[2px]">
+          {(['graph', 'list'] as const).map((v) => (
+            <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => setView(v)}
+              className={`h-full rounded-[5px] px-2 text-[12px] ${view === v ? 'bg-panel-2 font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}>
+              {v === 'graph' ? 'Graph' : 'List'}
+            </button>
+          ))}
+        </div>
         {owner && (
           <button type="button" onClick={() => openBrainCapture()}
             className="ml-auto inline-flex h-[30px] items-center gap-1.5 rounded-[7px] border border-accent/50 bg-accent/10 px-2.5 text-[12.5px] text-accent hover:bg-accent/20">
@@ -121,7 +158,17 @@ export function BrainScreen({ node }: { node?: number }) {
               {graph.total} {graph.total === 1 ? 'memory' : 'memories'}{filtered ? ' match' : ''}
               {graph.total > memories.length ? ` · the newest ${memories.length} shown` : ''}
             </p>
-            {memories.length === 0 ? (
+            {memories.length > 0 && view === 'graph' ? (
+              <div data-brain-graph-view>
+                <BrainGraphCanvas
+                  graph={graph}
+                  selected={selected}
+                  onSelect={setSelected}
+                  className="h-[max(420px,calc(100vh-280px))] rounded-[var(--radius-panel)] border border-border bg-panel"
+                />
+                <Legend />
+              </div>
+            ) : memories.length === 0 ? (
               <Empty title={filtered ? 'Nothing matches' : 'Nothing in your brain yet'}>
                 {filtered
                   ? 'Try a shorter phrase, another project or a longer span.'

@@ -800,6 +800,12 @@ row.
 - **Add a line of your own.** ⇧⌘H (Ctrl+Shift+H on Windows and Linux), or ⌘K
   → *Add to brain…*: type it, pick Idea, Decision, Finding or Question, name
   topics if you like, and ⌘↩.
+- **See it as a graph.** The Brain screen opens on the graph: your memories
+  and the topics and projects they hang off. Drag to move, scroll to zoom,
+  double-click to fit, click a dot to open it; *List* shows the same as
+  rows. In the app's sidebar, the Brain block below your projects shows the
+  newest thirty as a small graph — a new memory drops in as it is kept —
+  and the three newest titles.
 - **Find and tidy.** Search, pick a project or a span; open a memory to edit
   its title and summary, pin it, link it to a topic, jump to the session it
   came from, or delete it.

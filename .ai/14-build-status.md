@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-14 — unreleased: Second Brain drawn, and in the sidebar
+
+The `#/brain` screen opens on a force-directed graph (`lib/forcegraph.ts`,
+Barnes–Hut; `components/BrainGraphCanvas.tsx`, a cached layer redrawn only
+on change) with the list a click away, and the app's sidebar has a Brain
+block: the newest thirty as a small graph where new memories drop in, the
+three newest titles, the count, folded with a lock without a licence.
+Measured on a preview stand with 3,011 memories in headless Chromium: a
+median 9.2 ms a frame while settling, 8.4 ms while zooming. A graph read
+with a limit no longer returns every entity, and a filtered read no longer
+pulls in memories that a selected one relates to.
+
 ### 2026-10-14 — unreleased: Second Brain builds itself
 
 The automatic extraction ([ADR-063](08-decisions.md)): `internal/brain`
@@ -85,8 +97,7 @@ only with a licence. `PUT /v1/brain/settings`, `POST /v1/brain/backfill`
 (an estimate before *Build from my last 30 days*), and the handoff carries
 up to five of a repository's memories. Tested with the fake `claude`'s new
 print mode, which refuses a call without the flags that keep hooks and the
-transcript off; one real call checked the argv and the answer's shape. Not
-built yet: the sidebar block and the drawn graph.
+transcript off; one real call checked the argv and the answer's shape.
 
 ### 2026-10-14 — unreleased: Second Brain, by hand
 

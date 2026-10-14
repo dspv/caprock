@@ -24,6 +24,7 @@ import { BrainDropButton } from './BrainDrop'
 import { openBrainCapture } from '@/lib/brain'
 import { BrainScreen } from '@/screens/brain/BrainScreen'
 import { BrainAutoSetting } from './BrainAutoSetting'
+import { BrainSidebar } from './BrainSidebar'
 
 const node = (over: Partial<BrainNode>): BrainNode => ({
   id: 1, kind: 'decision', title: 'Keep SQLite', summary: '', source: {}, manual: true, pinned: false, created_at: Date.now(), updated_at: Date.now(), ...over,
@@ -37,6 +38,7 @@ describe('Second Brain', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+    localStorage.clear()
   })
 
   it('opens the quick capture from anywhere and drops the line in', async () => {
@@ -84,6 +86,11 @@ describe('Second Brain', () => {
     })
     m.node.mockResolvedValue({ node: node({ id: 1, summary: 'WAL is enough for one machine.', source: { session_id: 's1', ts: 5, project: 'caprock' } }), links: [] })
     render(<BrainScreen />)
+    // The graph first; the list a click away, and remembered.
+    await waitFor(() => expect(document.querySelector('[data-brain-graph="full"]')).not.toBeNull())
+    expect(screen.getByRole('img', { name: /Second Brain graph: 3 nodes/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: 'List' }))
+    expect(localStorage.getItem('caprock-brain-view')).toBe('list')
     const row = await screen.findByRole('button', { name: /Keep SQLite/ })
     expect(row.textContent).toContain('storage')
     // A project is the row's own column, not a topic.
@@ -119,5 +126,37 @@ describe('Second Brain', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
     await waitFor(() => expect(m.backfill).toHaveBeenLastCalledWith(30, true))
     await screen.findByText(/Started/)
+  })
+
+  it('keeps a Brain block in the sidebar: the newest titles, the count, and a way in', async () => {
+    m.status.mockResolvedValue(status({ memories: 4 }))
+    m.brain.mockResolvedValue({
+      nodes: [1, 2, 3, 4].map((id) => node({ id, title: `Memory ${id}`, created_at: id })).concat(node({ id: 9, kind: 'topic', title: 'storage' })),
+      edges: [],
+      total: 4,
+    })
+    const onOpen = vi.fn()
+    render(<BrainSidebar onOpen={onOpen} />)
+    await screen.findByRole('button', { name: 'Memory 4' })
+    expect(m.brain).toHaveBeenCalledWith({ limit: 30 })
+    // The three newest, newest first; topics are not titles here.
+    expect(screen.getAllByRole('button').map((b) => b.textContent).filter((t) => t?.startsWith('Memory'))).toEqual(['Memory 4', 'Memory 3', 'Memory 2'])
+    fireEvent.click(screen.getByRole('button', { name: 'Memory 3' }))
+    expect(onOpen).toHaveBeenCalledWith('#/brain?node=3')
+    fireEvent.click(screen.getByRole('button', { name: 'Fold Brain' }))
+    expect(screen.queryByRole('button', { name: 'Memory 4' })).toBeNull()
+    expect(localStorage.getItem('caprock.app.brain-fold')).toBe('closed')
+  })
+
+  it('starts folded with a lock without a licence, and says how it works', async () => {
+    m.status.mockResolvedValue(status({ licensed: false, memories: 2, manual: 2, free_left: 18 }))
+    m.brain.mockResolvedValue({ nodes: [node({ id: 1 })], edges: [], total: 1 })
+    m.premium.mockResolvedValue({ yearly: { url: '', charged_usd: 30 }, lifetime: { url: '', charged_usd: 100 }, info_url: '' })
+    render(<BrainSidebar onOpen={vi.fn()} />)
+    const unfold = await screen.findByRole('button', { name: 'Unfold Brain' })
+    expect(screen.queryByText('How it works')).toBeNull()
+    fireEvent.click(unfold)
+    fireEvent.click(await screen.findByRole('button', { name: 'How it works' }))
+    await screen.findByRole('dialog')
   })
 })
