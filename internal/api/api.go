@@ -828,6 +828,13 @@ type SessionSummary struct {
 // outlive the daemon. Optional so test doubles need not grow a method.
 type survivor interface{ Survives(sessionID string) bool }
 
+// nudger is the optional half of AgentController that knows the newest input
+// typed into a session it holds (narrate.Nudge), which the status reads
+// until the session writes an event after it.
+type nudger interface {
+	Nudge(sessionID string) (narrate.Nudge, bool)
+}
+
 // ContextFill is the "context fill %" badge input: last turn's prompt size vs the model window.
 type ContextFill struct {
 	Tokens int64   `json:"tokens"`
@@ -892,8 +899,15 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 			}
 		}
 	}
+	if sess.Owned && sess.Status != store.StatusEnded {
+		if nd, ok := s.d.Agents.(nudger); ok {
+			if n, ok := nd.Nudge(sess.SessionID); ok {
+				opt.Nudge = &n
+			}
+		}
+	}
 	act := narrate.Summarize(last, opt)
-	if act.Health == narrate.HealthWorking && act.Background == 0 && sess.Status == store.StatusIdle {
+	if act.Health == narrate.HealthWorking && act.Background == 0 && !act.FromInput && sess.Status == store.StatusIdle {
 		act.Health = narrate.HealthIdle
 		act.Phrase = "was " + act.Phrase
 	}
