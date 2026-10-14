@@ -394,3 +394,60 @@ func TestCheckViaRecordsTheRoute(t *testing.T) {
 		t.Fatalf("unknown token: %v", err)
 	}
 }
+
+// A code issued as a controller pairs a controller; any other code, and a
+// role the store does not know, pairs a viewer (ADR-034, amended 2026-10-14).
+func TestACodeCarriesItsRole(t *testing.T) {
+	for _, tc := range []struct{ issue, want string }{
+		{RoleController, RoleController},
+		{RoleViewer, RoleViewer},
+		{"owner", RoleViewer},
+		{"", RoleViewer},
+	} {
+		s := New()
+		code, err := s.NewCodeAs(tc.issue)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := s.CodeRole(); got != tc.want {
+			t.Errorf("issued %q: CodeRole %q, want %q", tc.issue, got, tc.want)
+		}
+		d, err := s.Redeem(code, "phone")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d.Role != tc.want || s.RoleOf(d.Token) != tc.want {
+			t.Errorf("issued %q: paired as %q, want %q", tc.issue, d.Role, tc.want)
+		}
+		if s.CodeRole() != "" {
+			t.Error("a spent code still names a role")
+		}
+	}
+	// The next code is its own decision: a controller code does not make the
+	// one after it a controller.
+	s := New()
+	_, _ = s.NewCodeAs(RoleController)
+	code, _ := s.NewCode()
+	d, _ := s.Redeem(code, "phone")
+	if d.Role != RoleViewer {
+		t.Errorf("a plain code after a controller one paired %q", d.Role)
+	}
+}
+
+func TestSetAppIsRecordedAndListed(t *testing.T) {
+	s := New()
+	code, _ := s.NewCode()
+	d, _ := s.Redeem(code, "phone")
+	if !s.SetApp(d.Token, true) {
+		t.Fatal("first report not a change")
+	}
+	if s.SetApp(d.Token, true) {
+		t.Error("the same report counted as a change")
+	}
+	if s.SetApp("nobody", true) {
+		t.Error("an unknown token was recorded")
+	}
+	if l := s.Devices(); len(l) != 1 || !l[0].App {
+		t.Errorf("not listed as installed: %+v", l)
+	}
+}

@@ -82,9 +82,15 @@ func deckKey(view, session string, connected bool, pr int) string {
 // context of its own when there is none to hand back (see the file comment).
 // fail writes an error compose returned; errors are not kept.
 func (s *Server) serveDeck(w http.ResponseWriter, r *http.Request, key string, compose func(ctx context.Context) (deckAnswer, error), fail func(http.ResponseWriter, error)) {
+	s.serveDeckWithin(w, r, key, deckComposeTimeout, compose, fail)
+}
+
+// serveDeckWithin is serveDeck with a composition bounded by within instead
+// of deckComposeTimeout.
+func (s *Server) serveDeckWithin(w http.ResponseWriter, r *http.Request, key string, within time.Duration, compose func(ctx context.Context) (deckAnswer, error), fail func(http.ResponseWriter, error)) {
 	base := context.WithoutCancel(r.Context())
 	v, at, refreshing, err := s.deck.getAt(r.Context(), key, func() (any, error) {
-		ctx, cancel := context.WithTimeout(base, deckComposeTimeout)
+		ctx, cancel := context.WithTimeout(base, within)
 		defer cancel()
 		return compose(ctx)
 	})
@@ -105,9 +111,15 @@ func (s *Server) serveDeck(w http.ResponseWriter, r *http.Request, key string, c
 // live state: the rows are drawn at once and their CI fills in (owner,
 // 2026-10-13, translated: "PRs take long to load").
 func (s *Server) serveDeckOrQuick(w http.ResponseWriter, r *http.Request, key string, compose func(ctx context.Context) (deckAnswer, error), quick func(ctx context.Context) (deckAnswer, error), fail func(http.ResponseWriter, error)) {
+	s.serveDeckOrQuickWithin(w, r, key, deckComposeTimeout, compose, quick, fail)
+}
+
+// serveDeckOrQuickWithin is serveDeckOrQuick with a composition bounded by
+// within instead of deckComposeTimeout.
+func (s *Server) serveDeckOrQuickWithin(w http.ResponseWriter, r *http.Request, key string, within time.Duration, compose func(ctx context.Context) (deckAnswer, error), quick func(ctx context.Context) (deckAnswer, error), fail func(http.ResponseWriter, error)) {
 	if s.deck.kept(key) {
 		// The last answer comes within the budget anyway, live state and all.
-		s.serveDeck(w, r, key, compose, fail)
+		s.serveDeckWithin(w, r, key, within, compose, fail)
 		return
 	}
 	base := context.WithoutCancel(r.Context())
@@ -120,7 +132,7 @@ func (s *Server) serveDeckOrQuick(w http.ResponseWriter, r *http.Request, key st
 	ch := make(chan result, 1)
 	go func() {
 		v, at, refreshing, err := s.deck.getAt(base, key, func() (any, error) {
-			ctx, cancel := context.WithTimeout(base, deckComposeTimeout)
+			ctx, cancel := context.WithTimeout(base, within)
 			defer cancel()
 			return compose(ctx)
 		})

@@ -14,13 +14,19 @@ import (
 // more (rule 6):
 //
 //   - Its head branch. A session recorded on the branch (sessions.git_branch)
-//     is charged to that branch's pull request whole.
+//     is charged to that branch's pull request whole — unless it opened or
+//     merged more than one pull request (session_prs). sessions.git_branch is
+//     the branch the session was on last, so a long session that drives
+//     many pull requests and ends on a release branch was charged whole to
+//     the release's pull request (owner, 2026-10-14: #601, the release, read
+//     as the session's entire spend). Such a session is cut as below.
 //   - The sessions that worked on it (session_prs: a session that opened,
 //     pushed to or merged it). A session not on such a branch is cut at the
 //     moments it opened its pull requests — each one, ordered by when it was
 //     opened (else last touched), is charged the session's spend since the
 //     one before, and the newest also everything after, its fix-ups. A
-//     session with one pull request is charged to it whole.
+//     session with one pull request is charged to it whole. A pull request
+//     charged a cut says so (PRSpend.Shared).
 //
 // All at API list price, as every cost in Caprock is (session_stats.cost_usd,
 // events.cost_usd).
@@ -43,11 +49,23 @@ type PRSpend struct {
 	// sessions on the head branch, and those cut at their pull requests.
 	ByBranch float64 `json:"by_branch"`
 	BySlice  float64 `json:"by_slice"`
+	// Shared counts the sessions charged to it only in part: each worked on
+	// other pull requests too and was cut between them.
+	Shared int `json:"shared,omitempty"`
+	// The tokens of the same work: input, output, cache reads and writes.
+	TokensIn   int64 `json:"tokens_in"`
+	TokensOut  int64 `json:"tokens_out"`
+	CacheRead  int64 `json:"cache_read"`
+	CacheWrite int64 `json:"cache_write"`
 }
+
+// prTokens is a piece of work's tokens.
+type prTokens struct{ in, out, read, write int64 }
 
 type prSession struct {
 	branch, status, agent string
 	cost                  float64
+	tok                   prTokens
 	rows                  []prRow
 }
 
@@ -77,13 +95,20 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 		}
 	}
 	agents := map[string]map[string]bool{}
-	add := func(url, agent string, cost float64, live, branch bool) {
+	add := func(url, agent string, cost float64, tok prTokens, live, branch, shared bool) {
 		s := out[url]
 		s.CostUSD += cost
+		s.TokensIn += tok.in
+		s.TokensOut += tok.out
+		s.CacheRead += tok.read
+		s.CacheWrite += tok.write
 		if branch {
 			s.ByBranch += cost
 		} else {
 			s.BySlice += cost
+		}
+		if shared {
+			s.Shared++
 		}
 		s.Sessions++
 		if live {
@@ -100,7 +125,9 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 	onBranch := map[string]bool{}
 	if repoRoot != "" && len(owner) > 0 {
 		rows, err := q.QueryContext(ctx, `
-			SELECT s.session_id, s.git_branch, s.status, COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(st.cost_usd,0)
+			SELECT s.session_id, s.git_branch, s.status, COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(st.cost_usd,0),
+			       COALESCE(st.tokens_in,0), COALESCE(st.tokens_out,0), COALESCE(st.cache_read,0), COALESCE(st.cache_write,0),
+			       (SELECT COUNT(*) FROM session_prs q WHERE q.session_id = s.session_id AND (q.opened_at > 0 OR q.merged_at > 0))
 			FROM sessions s
 			LEFT JOIN session_stats st ON st.session_id = s.session_id
 			WHERE s.repo_root = ? AND s.git_branch IS NOT NULL AND s.git_branch <> ''`, repoRoot)
@@ -110,13 +137,17 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 		for rows.Next() {
 			var id, branch, status, agent string
 			var cost float64
-			if err := rows.Scan(&id, &branch, &status, &agent, &cost); err != nil {
+			var tok prTokens
+			var driven int
+			if err := rows.Scan(&id, &branch, &status, &agent, &cost, &tok.in, &tok.out, &tok.read, &tok.write, &driven); err != nil {
 				rows.Close()
 				return nil, err
 			}
-			if u := owner[branch]; u != "" {
+			// A session that opened or merged several pull requests is cut
+			// between them below, whatever branch it ended on.
+			if u := owner[branch]; u != "" && driven <= 1 {
 				onBranch[id] = true
-				add(u, agent, cost, status != "ended", true)
+				add(u, agent, cost, tok, status != "ended", true, false)
 			}
 		}
 		if err := rows.Err(); err != nil {
@@ -136,7 +167,8 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 	}
 	rows, err := q.QueryContext(ctx, `
 		SELECT p.session_id, p.url, CASE WHEN p.opened_at > 0 THEN p.opened_at ELSE p.last_at END,
-		       COALESCE(s.git_branch,''), s.status, COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(st.cost_usd,0)
+		       COALESCE(s.git_branch,''), s.status, COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(st.cost_usd,0),
+		       COALESCE(st.tokens_in,0), COALESCE(st.tokens_out,0), COALESCE(st.cache_read,0), COALESCE(st.cache_write,0)
 		FROM session_prs p
 		JOIN sessions s ON s.session_id = p.session_id
 		LEFT JOIN session_stats st ON st.session_id = p.session_id
@@ -150,7 +182,7 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 		var id string
 		var r prRow
 		var x prSession
-		if err := rows.Scan(&id, &r.url, &r.anchor, &x.branch, &x.status, &x.agent, &x.cost); err != nil {
+		if err := rows.Scan(&id, &r.url, &r.anchor, &x.branch, &x.status, &x.agent, &x.cost, &x.tok.in, &x.tok.out, &x.tok.read, &x.tok.write); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -177,7 +209,7 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 		sort.SliceStable(s.rows, func(a, b int) bool { return s.rows[a].anchor < s.rows[b].anchor })
 		live := s.status != "ended"
 		if len(s.rows) == 1 {
-			add(s.rows[0].url, s.agent, s.cost, live, false)
+			add(s.rows[0].url, s.agent, s.cost, s.tok, live, false, false)
 			continue
 		}
 		for i, r := range s.rows {
@@ -193,13 +225,16 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 				hi = r.anchor
 			}
 			var cost float64
-			if err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(cost_usd),0) FROM events WHERE session_id = ? AND ts > ? AND ts <= ? AND internal = 0`, id, lo, hi).Scan(&cost); err != nil {
+			var tok prTokens
+			if err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(cost_usd),0), COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
+				COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0)
+				FROM events WHERE session_id = ? AND ts > ? AND ts <= ? AND internal = 0`, id, lo, hi).Scan(&cost, &tok.in, &tok.out, &tok.read, &tok.write); err != nil {
 				return nil, err
 			}
 			if cost == 0 && i < len(s.rows)-1 {
 				continue
 			}
-			add(r.url, s.agent, cost, live && i == len(s.rows)-1, false)
+			add(r.url, s.agent, cost, tok, live && i == len(s.rows)-1, false, true)
 		}
 	}
 	for u, s := range out {

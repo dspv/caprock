@@ -186,9 +186,14 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   named. `GET /v1/settings` omits `license_key` for a paired device. Loopback is
   unaffected. `GET /v1/pair/me` is on the list too: it answers `{role}` —
   `"owner"` on loopback, else `{role: "viewer"|"controller", id, name, via,
-  anywhere?, app?}`, where `via` is how this request arrived (below),
+  anywhere?, app?, installed?}`, where `via` is how this request arrived (below),
   `anywhere` is true while access from anywhere is on, and `app` (sent with
   it) is the phone's page, so a Wi-Fi link's notice names where the app is.
+  `?app=1` or `?app=0` reports whether the phone runs as the installed app
+  (2026-10-14); the machine stores it per device as `app` in `devices.json`
+  (saved when it changes), lists it in `GET /v1/pair/state`'s `devices`, and
+  answers it as `installed`. Any other value records nothing. A label for the
+  owner's checklist; it never decides access.
 - **How a device last arrived** (`via`, 2026-10-14): the gate records it on
   every request a device makes, and at pairing — `relay` for a request on
   loopback carrying `Via: …caprock-remote…`, `tailscale` for a peer in
@@ -199,7 +204,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   /v1/pair/state`'s `devices`. A label for the owner's list and the phone's
   notice; it never decides access.
 - **A controller may also work on sessions** ([ADR-034](08-decisions.md)). A
-  device is paired as a viewer; the owner makes it a controller with `PUT
+  device pairs with the role its code carries — `POST /v1/pair/code` with
+  `{role: "controller"}`, the owner's tick *This phone can type and start
+  agents*, else a viewer (amended 2026-10-14) — and the owner changes it with `PUT
   /v1/pair/devices/{id}/role` (`{role: "viewer"|"controller"}`, loopback-only,
   `400` for any other role, `404` for an unknown id, and while network access
   is off it edits `devices.json`). `role` is stored per device in
@@ -280,7 +287,13 @@ access is off too — and `keep_on`, the stored `lan_keep_on` (ADR-060).
 than by the gate: a paired tablet is somewhere to read figures, not a second
 control room, and it must not be able to admit a third device or revoke the
 laptop that let it in. `PUT /v1/pair/devices/{id}/role` is loopback-only the same
-way: a controller cannot promote another device, or itself. `POST /v1/pair`
+way: a controller cannot promote another device, or itself. `POST /v1/pair/code`
+takes an optional `{role: "viewer"|"controller"}` (no body, or no role, is a
+viewer, as `caprock pair` and `caprock remote` send; any other role, or a
+body that is not JSON, is `400`) and answers `{code, role, expires_in_sec,
+url, remote?}`; `GET /v1/pair/state` names the outstanding code's role as
+`code_role`. The device pairing with that code gets that role; nothing the
+device sends names one. `POST /v1/pair`
 takes `{code, name}` and returns `{token, id, name}` — the name prefixed
 `This computer · ` when the request came from the machine's own network
 address; it is the one call a device makes before it is trusted, and
@@ -1199,7 +1212,7 @@ GitHub token is (§ GitHub, "Where the token lives"):
 
 On a paired device's read list (counts only). `501` without the projects service.
 
-`GET /v1/repos/ci` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, those with a session running first, at most 6 (`reposCIMax`), each read through the kept GitHub reads the PRs & CI tab makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci`).
+`GET /v1/repos/ci[?older=1][&hide=owner/name,…]` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], quiet[], recent_days, fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, with activity in the last `recent_days` (14: a session's last event in the project's root, or the project's `added_at`), those with a session running first, then by `last_active`, at most 6 (`reposCIMax`); with `older=1` the older ones too, marked `older`, at most 12 in all (`reposCIOlderMax`). A repository named in `hide` (this viewer's hidden ones, case-insensitive, at most 200), one without recent activity while `older` is not asked, and one past the bound are listed in `quiet[]` `{project_id, name, repo, last_active?, why: older|hidden|more}` and nothing is sent to GitHub for them. Each row is read through the kept GitHub reads the PRs & CI tab makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. Rows are read at most 3 at once (`reposCIParallel`), each within 12 s (`reposCIRepoTimeout`), the status page beside them, the whole within 30 s; a row GitHub did not answer in time carries `slow: true` beside its `error`. A row also carries `last_active` (Unix ms) and, in the quick answer, `pending`. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci` with `older` and the sorted `hide`); a key never composed is answered at once with the rows unread (`pending`, `refreshing`) while the composition goes on. Each `top_prs[]` entry adds `shared` (sessions charged only in part) and `tokens_in`, `tokens_out`, `cache_read`, `cache_write` (`store.PRSpend`, below).
 
 - **Row** — `RepoCIRow` `{project_id, name, repo, live, ci?, days?, stuck[], open, merged_7d, top_prs[], authors[], release?, error?}`. `live` counts the sessions not ended under the project's root; `ci` is `github.RunStats` over the runs, 14 days (the `CIStats` of `…/ci/stats`), `days` its local calendar days; `open` and `merged_7d` count the listed pull requests; `release` is the newest published release (`RepoRelease`); a failed list is `error` with the rest absent.
 - **Stuck** — `github.StuckRuns`: `{id, name, branch?, status, url?, since, median_ms?}` for a run `in_progress` longer than twice its workflow's median successful run over the 14 days and at least 10 minutes over it (no median, never), or waiting for a runner (`queued`, `waiting`, `pending`, `requested`) longer than 15 minutes; `since` is `run_started_at`, else `created_at`. The runs list is kept 2 minutes instead of 30 while any run in it is unfinished (`repoRunsActiveKept`), so a stuck run is seen within minutes; a conditional read costs a 304 when nothing changed.
@@ -1208,7 +1221,7 @@ On a paired device's read list (counts only). `501` without the projects service
 
 On a paired device's read list. `501` without the projects service.
 
-**Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole; where two pull requests share a head branch the open one owns it, else the most recently updated. A session not on such a branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice}`: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and one sum per slice over a session's events (`(session_id, ts)` index). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them.
+**Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole, unless it opened or merged more than one pull request (`session_prs` rows with `opened_at` or `merged_at`): `git_branch` is the branch a session was on last, and a long session that drove hundreds of pull requests and ended on a release branch was charged whole to the release's pull request (#601 read as $1,884.29, the session's entire spend; cut as below it is $2.12, measured on the owner's database 2026-10-14). Where two pull requests share a head branch the open one owns it, else the most recently updated. A session not charged by its branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice, shared?, tokens_in, tokens_out, cache_read, cache_write}`: the tokens are the same work's (`session_stats` for a whole session, the slice's `events` sums for a cut one), `shared` counts the cut sessions: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and one sum per slice over a session's events (`(session_id, ts)` index). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them.
 
 **Phone alerts** ([ADR-036](08-decisions.md)) go through the same bot and are
 free: no licence is checked. `PUT /v1/settings` accepts `alert_approval` and
