@@ -29,12 +29,12 @@ import { setDraft } from '@/lib/draft'
 import { RemoveSession } from '@/components/RemoveSession'
 import { ChatView } from '@/components/ChatView'
 import { toolLine } from '@/lib/chat'
-import { ChevronIcon } from '@/components/AppIcons'
 import { isAppMode } from '@/lib/appmode'
 import { MoreMenu } from '@/components/MoreMenu'
 import { SubscriptionTag } from '@/components/SubscriptionPicker'
-import { ConnectionState } from '@/components/ConnectionState'
-import { narrowScreen, useFillViewport, useNarrowScreen } from '@/lib/phone'
+import { ConnectionState, readLink } from '@/components/ConnectionState'
+import { narrowScreen, useFillViewport, useHideOnScroll, useNarrowScreen } from '@/lib/phone'
+import { PHONE_BAR_PX, PhoneSessionBar } from '@/components/PhoneSessionBar'
 
 type Tab = 'chat' | 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -92,12 +92,15 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   const now = useNowFor(detail.data?.last_event_at)
   // The plan this session is set against: its account's own, else the main one.
   const { plan } = useSessionPlan(detail.data?.agent, detail.data?.subscription)
-  // The phone's Chat tab: a compact header, its details behind a toggle.
-  const [details, setDetails] = useState(false)
   // On a phone the chat is the screen, its field at the bottom as in a
   // messenger, above the keyboard when that is up (lib/phone).
   const phone = useNarrowScreen()
   const fillChat = useFillViewport<HTMLDivElement>(phone && active === 'chat')
+  // Over the chat the phone's bar is drawn on top of the conversation and
+  // slides away while the reader scrolls down (components/PhoneSessionBar).
+  const overlay = phone && active === 'chat'
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
+  const [barHidden, showBar] = useHideOnScroll(scroller, overlay, PHONE_BAR_PX)
   const link = useLiveLink()
   const s = detail.data
   if (detail.error && !s) {
@@ -155,15 +158,14 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // A session with no events yet has no activity time; Go's zero time is
   // "two thousand years ago", which is what the line under the title said.
   const activityAt = s.activity.at && !String(s.activity.at).startsWith('0001-') ? s.activity.at : s.last_event_at
-  // On a phone the Chat tab is the page, and the header above it was a third
-  // of a 390px screen. There it is one line (back, project, title, state, the
-  // details toggle) and one row of the session's controls; ids, folder,
-  // links, activity and Remove are one tap away under Details. Re-read every
-  // render (the clock ticks each second), so turning the phone follows.
-  // The Terminal tab too (2026-10-11): under the full header the terminal
-  // started two thirds of the way down an iPhone's screen.
+  // On a phone the session has one 44px bar (components/PhoneSessionBar):
+  // back, the title, a dot for its state and the views. Project, permission
+  // mode, model, the controls, ids, folder, links, activity and Remove are a
+  // tap on the title away, in its sheet. It was three rows, 133px of a
+  // 390×844 screen (owner, 2026-10-14). Re-read every render (the clock ticks
+  // each second), so turning the phone follows.
   const talking = active === 'chat' || active === 'terminal'
-  const compact = talking && phone
+  const compact = phone
   const controls = (
     <>
       {/* The permission mode: changeable here for a session Caprock started,
@@ -199,36 +201,9 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       )}
     </>
   )
-  return (
-    <div className="grid grid-cols-1 gap-2">
-      <>
-      {compact && (
-        <div data-compact-header className="grid gap-1.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <a href={href({ name: 'now' })} aria-label="Back to Now" className="link shrink-0 text-fg-muted text-[13px] py-1">←</a>
-            <h1 className="max-w-[45%] shrink-0 truncate text-[15px] font-medium">{s.project || 'unknown project'}</h1>
-            <span className={`min-w-0 flex-1 truncate text-[12px] ${s.description_source !== 'prompt' ? 'text-fg' : 'text-fg-muted'}`}>{s.description}</span>
-            {!detail.stale && <Badge health={s.activity.health} />}
-            <button
-              type="button"
-              aria-expanded={details}
-              aria-label="Session details"
-              onClick={() => setDetails((v) => !v)}
-              className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-fg-muted hover:bg-panel-2 hover:text-fg"
-            >
-              <ChevronIcon size={16} className={`transition-transform motion-reduce:transition-none ${details ? '-rotate-90' : 'rotate-90'}`} />
-            </button>
-          </div>
-          {/* One row, scrolled sideways if it must: never a second. The
-            * connection's state rides at its end: the page header that says
-            * it elsewhere is not drawn on a phone's session (Shell). */}
-          <div className="flex items-center gap-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none]">
-            {controls}
-            <ConnectionState link={link} heardAt={live.heardAt} className="ml-auto shrink-0 text-[11px] text-fg-muted" />
-          </div>
-        </div>
-      )}
-      {(!compact || details) && <>
+  const linkReading = readLink(link, live.heardAt(), now)
+  const details = (
+    <>
       <div className="flex items-center gap-3 flex-wrap">
         {!compact && <a href={href({ name: 'now' })} className="link text-fg-muted text-[12px]">← Now</a>}
         {!compact && <h1 className="text-[15px] font-medium">{s.project || 'unknown project'}</h1>}
@@ -278,7 +253,40 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {/* The same card as on Now and in the cockpit — "Open session" lands
         * here, so this is where "Tell the agent" has to be too. */}
       {!detail.stale && s.loop && s.status !== 'ended' && <SessionLoop s={s} now={now} />}
-      </>}
+    </>
+  )
+  return (
+    <div className={`grid grid-cols-1 gap-2 ${phone ? 'relative' : ''}`}>
+      <>
+      {phone && (
+        <PhoneSessionBar
+          backHref={href({ name: 'now' })}
+          title={s.description || s.project || 'unknown project'}
+          health={detail.stale ? undefined : s.activity.health}
+          alert={linkReading.tone === 'ok' ? undefined : { tone: linkReading.tone, label: linkReading.label }}
+          views={tabs}
+          active={active}
+          onPick={setTab}
+          overlay={overlay}
+          hidden={barHidden}
+          onReveal={showBar}
+        >
+          <div className="grid grid-cols-1 gap-2.5">
+            <div className="min-w-0">
+              <h1 className="text-[17px] font-medium leading-snug">{s.project || 'unknown project'}</h1>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-fg-muted">
+              {!detail.stale && <Badge health={s.activity.health} />}
+              <span className="num">{s.model || 'unknown model'}</span>
+              <span className="num">{fmtUSD(s.stats.cost_usd)}</span>
+              <ConnectionState link={link} heardAt={live.heardAt} className="text-[12px]" />
+            </div>
+            <div className="flex flex-wrap items-center gap-3">{controls}</div>
+            <div className="grid min-w-0 grid-cols-1 gap-2 border-t border-border pt-2.5 [&_*]:max-w-full [&_*]:[overflow-wrap:anywhere]">{details}</div>
+          </div>
+        </PhoneSessionBar>
+      )}
+      {!compact && details}
       {/* A session Caprock starts but cannot read — Gemini today — produced six
         * columns of zeros with the reason in 11px grey underneath. Zeros are
         * how this bar shows "nothing happened yet", so it read as broken
@@ -332,10 +340,13 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       )}
       {/* A waiting permission prompt on every tab, not only beside the
         * terminal: a phone opens on Timeline. The Terminal tab draws its own. */}
-      {active !== 'terminal' && s.owned && s.status !== 'ended' && <PermissionPrompt sessionId={id} keys={false} />}
-      {phone ? (
-        <PhoneTabs tabs={tabs} active={active} onPick={setTab} />
-      ) : (
+      {/* Under the bar when it is drawn over the chat; nothing when no prompt waits. */}
+      {active !== 'terminal' && s.owned && s.status !== 'ended' && (
+        overlay
+          ? <div className="pt-11 empty:hidden"><PermissionPrompt sessionId={id} keys={false} /></div>
+          : <PermissionPrompt sessionId={id} keys={false} />
+      )}
+      {!phone && (
       <div className="flex items-center gap-1 border-b border-border">
         {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-2 sm:px-3 py-1.5 text-[12px] border-b-2 -mb-px ${active === t ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}>
@@ -356,6 +367,8 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
             className={phone ? 'h-[70dvh]' : 'h-[70dvh] min-h-[360px]'}
             phone={phone}
             boxRef={fillChat}
+            scrollRef={overlay ? setScroller : undefined}
+            topInset={overlay ? PHONE_BAR_PX : 0}
             footer={chatFooter(s, reader)}
           />
         </Panel>
@@ -369,45 +382,6 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
 }
 
 const TAB_LABEL: Record<Tab, string> = { chat: 'Chat', timeline: 'Timeline', notes: 'Answers', changes: 'Changes', terminal: 'Terminal' }
-
-/**
- * A phone's tabs: Chat and Terminal as one two-part switch, first and
- * thumb-sized, because those are the two ways to talk to the session; the
- * other three after them. The owner's partner, on an iPhone, did not find the
- * chat at all behind a row of five 12px words (2026-10-11).
- */
-function PhoneTabs({ tabs, active, onPick }: { tabs: Tab[]; active: Tab; onPick: (t: Tab) => void }) {
-  const talk = (['chat', 'terminal'] as Tab[]).filter((t) => tabs.includes(t))
-  const rest = (['changes', 'timeline', 'notes'] as Tab[]).filter((t) => tabs.includes(t))
-  return (
-    <div role="tablist" aria-label="Session views" className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-      <span className="inline-flex shrink-0 rounded-[10px] bg-panel-2 p-0.5">
-        {talk.map((t) => (
-          <button
-            key={t}
-            role="tab"
-            aria-selected={active === t}
-            onClick={() => onPick(t)}
-            className={`min-h-11 rounded-[8px] px-3.5 text-[15px] ${active === t ? 'bg-accent font-medium text-panel' : 'text-fg'}`}
-          >
-            {TAB_LABEL[t]}
-          </button>
-        ))}
-      </span>
-      {rest.map((t) => (
-        <button
-          key={t}
-          role="tab"
-          aria-selected={active === t}
-          onClick={() => onPick(t)}
-          className={`min-h-11 shrink-0 px-2 text-[13px] ${active === t ? 'font-medium text-fg underline decoration-accent decoration-2 underline-offset-[6px]' : 'text-fg-muted'}`}
-        >
-          {TAB_LABEL[t]}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 /**
  * What the chat says where its field would be. A session with no field is

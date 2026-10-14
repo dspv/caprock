@@ -100,10 +100,24 @@ export function prepare(loc: Location = window.location, hist: History = history
     const old = ms.find((m) => m.id === link.machine.id)
     const next = ms.filter((m) => m.id !== link.machine.id)
     // A fresh link for a machine already here keeps its name if the link
-    // has none, and drops its token: pairing again is the point.
-    next.push({ ...link.machine, name: link.machine.name === 'Caprock' && old ? old.name : link.machine.name })
+    // has none. Its token stays on the record as a fallback while the
+    // dashboard sends none: opening a QR whose code was already spent (the
+    // camera, then the app) must not cost a pairing that worked.
+    next.push({
+      ...link.machine,
+      name: link.machine.name === 'Caprock' && old ? old.name : link.machine.name,
+      token: old?.token ?? '',
+    })
     saveMachines(next)
     write(CURRENT_KEY, link.machine.id)
+    if (!link.code && old?.token) {
+      // A link with no code to redeem (Copy link without a code, an old
+      // QR): nothing to pair with, so the phone stays paired as it was.
+      write(PAIRING_KEY, null)
+      write(DEVICE_TOKEN_KEY, old.token)
+      hist.replaceState(null, '', loc.pathname + '#/')
+      return next.find((m) => m.id === link.machine.id)
+    }
     write(PAIRING_KEY, link.machine.id)
     write(DEVICE_TOKEN_KEY, null)
     // Onto the dashboard's own pairing screen, which redeems the code over
@@ -121,12 +135,38 @@ export function prepare(loc: Location = window.location, hist: History = history
       cur.token = token
       saveMachines(ms.map((m) => (m.id === cur.id ? cur : m)))
       write(PAIRING_KEY, null)
+    } else if (cur.token) {
+      // Pairing again did not finish (a spent or expired code, or the page
+      // closed first): back to the token that worked before.
+      write(DEVICE_TOKEN_KEY, cur.token)
+      write(PAIRING_KEY, null)
     }
+  } else if (!cur.token && token) {
+    // The token only where the dashboard reads it, and not on the record (a
+    // record from an older page, or one a write did not reach): the record
+    // takes it, since the record is what survives the next switch or link.
+    cur.token = token
+    saveMachines(ms.map((m) => (m.id === cur.id ? cur : m)))
   } else {
+    // The record is the source of truth: it is never cleared here, and a
+    // token is only ever replaced by a pairing that completed (above).
     write(DEVICE_TOKEN_KEY, cur.token || null)
   }
   write(CURRENT_KEY, cur.id)
   return cur
+}
+
+/**
+ * The code a pairing link carried did not work (spent, expired, mistyped):
+ * back to the token that worked before, when this machine had one. True when
+ * there was one to go back to; the caller reloads.
+ */
+export function abandonPairing(): boolean {
+  const cur = currentMachine()
+  if (!cur?.token || raw(PAIRING_KEY) !== cur.id) return false
+  write(DEVICE_TOKEN_KEY, cur.token)
+  write(PAIRING_KEY, null)
+  return true
 }
 
 /** Makes another machine current; the caller reloads. */
@@ -186,5 +226,15 @@ export function install(m: Machine, w: Window & typeof globalThis = window) {
   } as unknown as typeof WebSocket
   Object.assign(Shim, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 })
   w.WebSocket = Shim
-  void ch.connect().catch(() => { /* the bar shows the state; the dashboard retries */ })
+  void ch.connect().catch(() => { /* the bar shows the state; the channel retries */ })
+  // Back from the background (a phone freezes the page there), or back on
+  // the network: check the channel now rather than at the next retry.
+  const wake = () => ch.wake()
+  w.document.addEventListener('visibilitychange', () => {
+    if (w.document.visibilityState === 'visible') wake()
+  })
+  w.addEventListener('online', wake)
+  w.addEventListener('pageshow', (e) => {
+    if ((e as PageTransitionEvent).persisted) wake()
+  })
 }

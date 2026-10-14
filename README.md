@@ -460,6 +460,11 @@ claude.ai sign-in is not used and its plan limits do not apply.
 - **Find what Claude said** — the reasoning and the "here's what changed, here's
   what I still need from you" that otherwise lives only in terminal scrollback,
   searchable across every session.
+- **Keep what matters** — Second Brain: drop an answer, or a line of your own,
+  into a graph of ideas, decisions and findings, each linked to its project,
+  its topics and the moment in the session it came from — or let your own
+  `claude` build it from finished sessions, once you say yes. Free.
+  Kept on this machine.
 - **Pick up where you left off** — a new session in a folder you have worked in
   is handed the last thing the previous one said there (on by default, off in
   settings). You can measure whether that helps: an opt-in setting holds it back
@@ -483,7 +488,9 @@ claude.ai sign-in is not used and its plan limits do not apply.
 - **Local-first** — loopback only, no servers, no telemetry, no account. Nothing
   reaches the network unless you switch it on: the release check, the Gemini
   chat on your own key, GitHub, and the weekly report, alerts and chat through
-  your own Telegram bot are each off by default.
+  your own Telegram bot are each off by default. Caprock may ask you about
+  a feature it is considering; your answer reaches caprock.dev only if you
+  press Send, and the card says exactly what it sends.
 
 What your usage is actually worth — the same work priced at the API rate,
 against what your plan costs — is on the Cost screen, and everything you have
@@ -713,13 +720,18 @@ alike, with nothing to install on the phone.
 For a phone on mobile data, a laptop at home, a Mac mini in a cupboard
 running agents:
 
-1. In the Caprock app on the computer: **Settings → Use on your phone → Show
-   a code**. That press is what turns access from anywhere on, and it stays on
-   until you turn it off. Over SSH, `caprock remote on` then `caprock pair`
-   (which draws the QR in the terminal) do the same.
-2. Point the phone's camera at the code. The phone opens Caprock's page,
-   pairs, and shows the dashboard.
-3. Add it to the home screen. An iPhone keeps a home-screen app's storage
+1. In the Caprock app on the computer: **Settings → Use on your phone**.
+   Leave **This phone can type and start agents** ticked (the default) for a
+   phone that should work on sessions; untick it for one that should only
+   look.
+2. Press **Show a code**. That press is what turns access from anywhere on,
+   and it stays on until you turn it off. Over SSH, `caprock remote on` then
+   `caprock pair` (which draws the QR in the terminal) do the same, for a
+   phone that only looks.
+3. Point the phone's camera at the code and open the link. The phone pairs
+   and says it is ready: connected, and whether it can type. The panel on the
+   computer ticks off the same list as it happens.
+4. Optional: install the app. An iPhone keeps a home-screen app's storage
    apart from Safari's, so paste the link there once: *Copy link* under the
    code, then *+ Add a machine* on the phone.
 
@@ -798,8 +810,9 @@ place Caprock stops being loopback-only:
   settings and can be removed one by one, which takes effect on the next
   request.
 - **A paired device reads, unless you let it control sessions.** It sees
-  sessions, costs, answers, changes and the task board. Beside each device in
-  settings, *Let it control sessions* lets that phone also start a session in
+  sessions, costs, answers, changes and the task board. *This phone can type
+  and start agents*, ticked beside *Show a code* (the default), or *Let it
+  control sessions* beside a device afterwards, lets that phone also start a session in
   any folder under your home directory with Claude Code, Codex or OpenCode, in
   any permission mode (Bypass asks once first, and the computer's one-time
   bypass consent has to have been given at the computer), type into it (a big input

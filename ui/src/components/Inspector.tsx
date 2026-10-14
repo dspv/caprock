@@ -71,7 +71,7 @@ export function Inspector({
   summary?: Summary
   /** Opens the comparison of the attempts this session is one of (ADR-052). */
   onCompare?: () => void
-  /** Opens the session's PRs & CI tab: the cockpit's CI block is its door. */
+  /** Opens the session's Pipeline page: the cockpit's CI block is its door. */
   onOpenPRs?: () => void
 }) {
   const isAgent = !!sessionId && !!session && session.kind !== 'shell'
@@ -121,7 +121,7 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
           hasPermission={hasPermission}
           summary={summary}
           changes={<Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} onOpenFile={onOpenFile} />}
-          ci={<CockpitCI sessionId={sessionId} onOpen={onOpenPRs} />}
+          ci={<CockpitCI sessionId={sessionId} repoScope={s?.repo_root || s?.cwd || undefined} onOpen={onOpenPRs} />}
           processes={<Processes sessionId={sessionId} />}
         />
         <Actions s={s} sessionId={sessionId} isShell={false} ended={ended} editor={editor} onDetach={onDetach} />

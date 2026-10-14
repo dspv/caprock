@@ -26,7 +26,8 @@ const itemsMax = 100
 // it further for the first message and links the rest.
 const itemBodyMax = 8000
 
-// Label is an issue's label.
+// Label is an issue's or a pull request's label: its name and colour (six
+// hex digits, no #).
 type Label struct {
 	Name  string `json:"name"`
 	Color string `json:"color,omitempty"`

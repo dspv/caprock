@@ -1,7 +1,7 @@
 // Package relaysrv is a relay a phone and a daemon meet at (ADR-058).
 //
 // It is the reference for the hosted one (relay/ at the repository root, a
-// Cloudflare Worker) and runs as `caprock relay serve` for anyone who would
+// Cloudflare Worker) and runs as `caprock remote relay` for anyone who would
 // rather the bytes crossed a machine of their own. It splices; it does not
 // read. What passes through is Noise ciphertext between a phone and a daemon
 // that share no secret with it, so the only trust it is given is to forward
@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -28,11 +29,20 @@ const (
 	MaxPhonesPerHost = 32
 	proofTimeout     = 10 * time.Second
 	writeTimeout     = 15 * time.Second
+	// DefaultHostSilence is how long a machine may go unheard before a phone
+	// arriving for it is told it is offline. A daemon pings every 25 s; a
+	// laptop that went to sleep, or a NAT that forgot the connection, sends
+	// nothing and closes nothing, and without this the relay kept it as the
+	// machine and forwarded a phone's handshake into the void: the phone sat
+	// on "Connecting…" (owner, 2026-10-14).
+	DefaultHostSilence = 75 * time.Second
 )
 
 // Server is an http.Handler serving /v1/host/<id>, /v1/c/<id> and /healthz.
 type Server struct {
 	Log *slog.Logger
+	// HostSilence is DefaultHostSilence unless a test shortens it.
+	HostSilence time.Duration
 
 	mu    sync.Mutex
 	hosts map[string]*host
@@ -43,25 +53,37 @@ func New(log *slog.Logger) *Server {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Server{Log: log, hosts: map[string]*host{}}
+	return &Server{Log: log, HostSilence: DefaultHostSilence, hosts: map[string]*host{}}
 }
 
 type host struct {
 	id   string
 	conn *websocket.Conn
-	wmu  sync.Mutex // one writer at a time on conn
+	ctx  context.Context // the machine's connection's: ends when it does
+	wmu  sync.Mutex      // one writer at a time on conn
+	// heard is when the machine last sent anything, in UnixNano.
+	heard atomic.Int64
 
 	mu     sync.Mutex
 	phones map[uint32]*websocket.Conn
 	next   uint32
 }
 
+// write sends b to the machine for a caller whose context is ctx (a phone's,
+// or the machine's own). A caller whose context has ended sends nothing, but
+// the write itself is bounded by the machine's connection alone: the
+// WebSocket library closes a connection whose write context ends part-way,
+// and a phone hanging up must not take the machine, and every other phone on
+// it, off the relay.
 func (h *host) write(ctx context.Context, b []byte) error {
 	h.wmu.Lock()
 	defer h.wmu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	wctx, cancel := context.WithTimeout(h.ctx, writeTimeout)
 	defer cancel()
-	return h.conn.Write(ctx, websocket.MessageBinary, b)
+	return h.conn.Write(wctx, websocket.MessageBinary, b)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +145,8 @@ func (s *Server) serveHost(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 
-	h := &host{id: id, conn: c, phones: map[uint32]*websocket.Conn{}}
+	h := &host{id: id, conn: c, ctx: ctx, phones: map[uint32]*websocket.Conn{}}
+	h.heard.Store(time.Now().UnixNano())
 	s.mu.Lock()
 	old := s.hosts[id]
 	s.hosts[id] = h
@@ -143,6 +166,7 @@ func (s *Server) serveHost(w http.ResponseWriter, r *http.Request, id string) {
 		if err != nil {
 			return
 		}
+		h.heard.Store(time.Now().UnixNano())
 		if typ == websocket.MessageText {
 			if string(msg) == "ping" {
 				h.wmu.Lock()
@@ -210,6 +234,14 @@ func (s *Server) servePhone(w http.ResponseWriter, r *http.Request, id string) {
 	s.mu.Lock()
 	h := s.hosts[id]
 	s.mu.Unlock()
+	if h != nil && s.silent(h) {
+		// Its connection is open only on paper: the machine stopped pinging.
+		s.Log.Info("machine stopped answering", "component", "relay", "host", short(id))
+		// A close handshake with a machine that answers nothing waits out its
+		// timeout; the phone is not made to wait with it.
+		go s.dropHost(h)
+		h = nil
+	}
 	if h == nil {
 		c.Close(remote.CloseOffline, "the machine is not connected")
 		return
@@ -250,11 +282,23 @@ func (s *Server) servePhone(w http.ResponseWriter, r *http.Request, id string) {
 			}
 			continue
 		}
+		if s.silent(h) {
+			// The machine went quiet while this phone was on it: say so
+			// rather than forward into a connection nobody reads.
+			go s.dropHost(h)
+			c.Close(remote.CloseOffline, "the machine stopped answering")
+			return
+		}
 		if err := h.write(ctx, remote.Frame(remote.FrameData, conn, msg)); err != nil {
 			c.Close(remote.CloseOffline, "the machine is not connected")
 			return
 		}
 	}
+}
+
+// silent reports a machine unheard for longer than HostSilence.
+func (s *Server) silent(h *host) bool {
+	return s.HostSilence > 0 && time.Since(time.Unix(0, h.heard.Load())) > s.HostSilence
 }
 
 // short is enough of a host id to tell machines apart in a log without

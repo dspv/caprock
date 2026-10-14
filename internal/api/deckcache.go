@@ -23,6 +23,13 @@
 //     finds the new one.
 //   - Every answer says when it was composed (`fetched_at`, Unix ms), so the
 //     deck can say how fresh what it shows is.
+//   - A background composition that fails leaves the last answer in place
+//     and says so: `refresh_error` and `refresh_failed_at` ride on that
+//     answer, and the next composition waits deckFailBackoff. Before, a
+//     composition that failed every time (GitHub slower than its deadline)
+//     restarted on every poll and the reader saw the old answer marked
+//     `refreshing` for as long as it was kept — a bare "updating…" over a
+//     board frozen for hours (owner, 2026-10-14).
 //
 // GitHub is asked no more than before: a composition calls the same kept
 // reads as the request used to, each still deciding by its own freshness
@@ -33,6 +40,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -53,19 +61,53 @@ const (
 	// deckComposeTimeout bounds one composition, as the request's own
 	// timeout used to.
 	deckComposeTimeout = 15 * time.Second
+	// deckFailBackoff is how long after a failed background composition the
+	// kept answer is handed back, its failure said, before another starts.
+	deckFailBackoff = 20 * time.Second
 )
 
 func newDeckCache(now func() time.Time) *answerCache {
 	c := newAnswerCache(deckTTL, deckMaxStale, now)
 	c.budget = deckBudget
 	c.maxKeys = deckMaxKeys
+	c.failBackoff = deckFailBackoff
 	return c
 }
 
-// deckAnswer is a composed answer that can say when it was composed and
-// whether a newer one is being composed.
+// deckFresh is how fresh a deck answer is; every view's answer carries it
+// inline.
+type deckFresh struct {
+	// FetchedAt is when the answer was composed (Unix ms).
+	FetchedAt int64 `json:"fetched_at"`
+	// Refreshing says a newer answer is being composed: ask again soon.
+	Refreshing bool `json:"refreshing,omitempty"`
+	// RefreshError is why the newest composition failed, at
+	// RefreshFailedAt (Unix ms): the answer is the one before it.
+	RefreshError    string `json:"refresh_error,omitempty"`
+	RefreshFailedAt int64  `json:"refresh_failed_at,omitempty"`
+}
+
+// deckAnswer is a composed answer that can say how fresh it is.
 type deckAnswer interface {
-	stamped(fetchedAt int64, refreshing bool) any
+	stamped(f deckFresh) any
+}
+
+// freshOf is the freshness of the answer composed at at for key: with the
+// failure of a newer composition, if one failed since.
+func (s *Server) freshOf(key string, at time.Time, refreshing bool) deckFresh {
+	f := deckFresh{FetchedAt: at.UnixMilli(), Refreshing: refreshing}
+	if failAt, err := s.deck.failure(key); err != nil && failAt.After(at) {
+		f.RefreshError, f.RefreshFailedAt = refreshWords(err), failAt.UnixMilli()
+	}
+	return f
+}
+
+// refreshWords is a failed composition's error as the header says it.
+func refreshWords(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "GitHub or the database did not answer in time"
+	}
+	return err.Error()
 }
 
 // deckKey is a deck answer's key: the view, the session, whether GitHub is
@@ -82,9 +124,15 @@ func deckKey(view, session string, connected bool, pr int) string {
 // context of its own when there is none to hand back (see the file comment).
 // fail writes an error compose returned; errors are not kept.
 func (s *Server) serveDeck(w http.ResponseWriter, r *http.Request, key string, compose func(ctx context.Context) (deckAnswer, error), fail func(http.ResponseWriter, error)) {
+	s.serveDeckWithin(w, r, key, deckComposeTimeout, compose, fail)
+}
+
+// serveDeckWithin is serveDeck with a composition bounded by within instead
+// of deckComposeTimeout.
+func (s *Server) serveDeckWithin(w http.ResponseWriter, r *http.Request, key string, within time.Duration, compose func(ctx context.Context) (deckAnswer, error), fail func(http.ResponseWriter, error)) {
 	base := context.WithoutCancel(r.Context())
 	v, at, refreshing, err := s.deck.getAt(r.Context(), key, func() (any, error) {
-		ctx, cancel := context.WithTimeout(base, deckComposeTimeout)
+		ctx, cancel := context.WithTimeout(base, within)
 		defer cancel()
 		return compose(ctx)
 	})
@@ -92,7 +140,7 @@ func (s *Server) serveDeck(w http.ResponseWriter, r *http.Request, key string, c
 		fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, v.(deckAnswer).stamped(at.UnixMilli(), refreshing))
+	writeJSON(w, http.StatusOK, v.(deckAnswer).stamped(s.freshOf(key, at, refreshing)))
 }
 
 // serveDeckOrQuick is serveDeck for a view that has a quick answer of its
@@ -105,9 +153,15 @@ func (s *Server) serveDeck(w http.ResponseWriter, r *http.Request, key string, c
 // live state: the rows are drawn at once and their CI fills in (owner,
 // 2026-10-13, translated: "PRs take long to load").
 func (s *Server) serveDeckOrQuick(w http.ResponseWriter, r *http.Request, key string, compose func(ctx context.Context) (deckAnswer, error), quick func(ctx context.Context) (deckAnswer, error), fail func(http.ResponseWriter, error)) {
+	s.serveDeckOrQuickWithin(w, r, key, deckComposeTimeout, compose, quick, fail)
+}
+
+// serveDeckOrQuickWithin is serveDeckOrQuick with a composition bounded by
+// within instead of deckComposeTimeout.
+func (s *Server) serveDeckOrQuickWithin(w http.ResponseWriter, r *http.Request, key string, within time.Duration, compose func(ctx context.Context) (deckAnswer, error), quick func(ctx context.Context) (deckAnswer, error), fail func(http.ResponseWriter, error)) {
 	if s.deck.kept(key) {
 		// The last answer comes within the budget anyway, live state and all.
-		s.serveDeck(w, r, key, compose, fail)
+		s.serveDeckWithin(w, r, key, within, compose, fail)
 		return
 	}
 	base := context.WithoutCancel(r.Context())
@@ -120,7 +174,7 @@ func (s *Server) serveDeckOrQuick(w http.ResponseWriter, r *http.Request, key st
 	ch := make(chan result, 1)
 	go func() {
 		v, at, refreshing, err := s.deck.getAt(base, key, func() (any, error) {
-			ctx, cancel := context.WithTimeout(base, deckComposeTimeout)
+			ctx, cancel := context.WithTimeout(base, within)
 			defer cancel()
 			return compose(ctx)
 		})
@@ -134,14 +188,14 @@ func (s *Server) serveDeckOrQuick(w http.ResponseWriter, r *http.Request, key st
 			fail(w, x.err)
 			return
 		}
-		writeJSON(w, http.StatusOK, x.v.(deckAnswer).stamped(x.at.UnixMilli(), x.refreshing))
+		writeJSON(w, http.StatusOK, x.v.(deckAnswer).stamped(s.freshOf(key, x.at, x.refreshing)))
 	case <-t.C:
 		q, err := quick(r.Context())
 		if err != nil {
 			fail(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, q.stamped(s.deck.now().UnixMilli(), true))
+		writeJSON(w, http.StatusOK, q.stamped(deckFresh{FetchedAt: s.deck.now().UnixMilli(), Refreshing: true}))
 	case <-r.Context().Done():
 	}
 }

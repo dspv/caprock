@@ -29,7 +29,8 @@
  */
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { api, errText, listedJobs, type CIJob, type CILog, type CIRun, type CIStep, type DeckFresh, type SessionCI, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
-import { freshText, readDeck, writeDeck } from '@/lib/deckCache'
+import { readDeck, writeDeck } from '@/lib/deckCache'
+import { Freshness } from './Freshness'
 import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
 import { MiniPipeline } from './MiniPipeline'
 import { CheckSummary } from './CheckSummary'
@@ -73,6 +74,10 @@ export interface SessionDeckProps {
   onStartAgent?: (req: SpawnRequest, title: string) => Promise<void>
   /** The project's finished copies, over the Branches view (components/CleanupLine). */
   cleanup?: ReactNode
+  /** The Pipeline page in a tab (⇧⌘B): the header's *Pipeline*. */
+  onOpenPipeline?: () => void
+  /** Hides the bar (⌘B): the header's ×. */
+  onHide?: () => void
 }
 
 export function SessionDeck(props: SessionDeckProps) {
@@ -168,7 +173,18 @@ export function SessionDeck(props: SessionDeckProps) {
 }
 
 
-function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onToast, worktrees, onOpenSession, onStartAgent, cleanup }: SessionDeckProps) {
+function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onToast, worktrees, onOpenSession, onStartAgent, cleanup, onOpenPipeline, onHide }: SessionDeckProps) {
+  // The bar's own two controls (owner, 2026-10-14): the Pipeline page, and
+  // hiding the bar. The sidebar footer's button opens the page only.
+  const controls = (onOpenPipeline || onHide) ? (
+    <span className="flex shrink-0 items-center gap-0.5">
+      {onOpenPipeline && <ExpandToggle compact onClick={onOpenPipeline} />}
+      {onHide && (
+        <button type="button" data-deck-hide onClick={onHide} title={`Hide the Pipeline bar (${keys('⌘B')})`} aria-label={`Hide the Pipeline bar (${keys('⌘B')})`}
+          className="flex h-[18px] w-[18px] items-center justify-center rounded-[4px] text-[13px] leading-none text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg">×</button>
+      )}
+    </span>
+  ) : undefined
   return (
     // A container, so the row's quieter columns give way as the terminal
     // narrows (the sidebar and the inspector both open). No clock and no
@@ -176,18 +192,16 @@ function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onToa
     // sidebar's and the inspector's (owner, 2026-10-11: "Spent doesn't
     // help", "Working now is debatable").
     <div className="@container flex min-h-0 flex-1 items-stretch overflow-hidden">
-      {/* No Expand or Hide here: the sidebar footer's PRs & CI button cycles
-        * Hidden, Bar and Full page, beside ⌘B and ⇧⌘B (owner, 2026-10-14,
-        * translated: "Expand/Hide inside the bar is not noticeable"). */}
-      <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} worktrees={worktrees} onOpenSession={onOpenSession} onStartAgent={onStartAgent} cleanup={cleanup} />
+      <PullsCI sessionId={sessionId} s={s} onToast={onToast} branch={branch || s.git_branch} changed={changed} ahead={ahead} onReview={onReviewChanges} worktrees={worktrees} onOpenSession={onOpenSession} onStartAgent={onStartAgent} cleanup={cleanup} controls={controls} />
     </div>
   )
 }
 
-/** Back from the large view: Collapse in the PRs & CI tab's top-right
- *  corner (⇧⌘B; Ctrl+Alt+Shift+B off macOS, where ⌘B is Ctrl+Shift+B).
- *  The deck itself has no Expand: the sidebar footer's button and ⇧⌘B. */
-export function ExpandToggle({ collapse, onClick }: { collapse?: boolean; onClick: () => void }) {
+/** The Pipeline page's way back (`collapse`: *Back*, to the tab before it),
+ *  or the deck's way there (*Pipeline*), both ⇧⌘B (Ctrl+Alt+Shift+B off
+ *  macOS, where ⌘B is Ctrl+Shift+B). `compact`: the deck's header, the key
+ *  in the tooltip only. */
+export function ExpandToggle({ collapse, onClick, compact }: { collapse?: boolean; onClick: () => void; compact?: boolean }) {
   const k = keys('⇧⌘B')
   return (
     <button
@@ -195,13 +209,15 @@ export function ExpandToggle({ collapse, onClick }: { collapse?: boolean; onClic
       data-deck-expand={collapse ? undefined : ''}
       data-prs-back={collapse ? '' : undefined}
       onClick={onClick}
-      aria-label={collapse ? `Collapse: back to the agent and its deck (${k})` : `Expand: pull requests and CI in a tab (${k})`}
+      aria-label={collapse ? `Back to the tab you were on (${k})` : `Open the Pipeline: every pull request on its way to a release, in a tab (${k})`}
       title={collapse
-        ? 'Close this tab and show the agent’s terminal with its deck; the same key expands it again'
-        : 'Pull requests and CI, large: the repository’s pull requests, each one’s jobs by runner, and the figures over two weeks, in a tab'}
-      className="flex h-[26px] shrink-0 items-center gap-1.5 rounded-[6px] border border-accent/60 px-2 text-[12px] font-medium text-accent hover:bg-accent/10"
+        ? `Back to the tab you were on; ${k} opens the Pipeline again`
+        : `The Pipeline: every pull request of the repository on its way — open, CI, merged, released — in a tab (${k})`}
+      className={compact
+        ? 'flex h-[18px] shrink-0 items-center gap-1 rounded-[4px] px-1 text-[10.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-accent'
+        : 'flex h-[26px] shrink-0 items-center gap-1.5 rounded-[6px] border border-accent/60 px-2 text-[12px] font-medium text-accent hover:bg-accent/10'}
     >
-      <ExpandIcon back={collapse} /> {collapse ? 'Collapse' : 'Expand'} <kbd aria-hidden className="app-kbd-key">{k}</kbd>
+      <ExpandIcon back={collapse} /> {collapse ? 'Back' : 'Pipeline'} {!compact && <kbd aria-hidden className="app-kbd-key">{k}</kbd>}
     </button>
   )
 }
@@ -288,11 +304,23 @@ const LogView = createContext<{ view: LogViewName; pr?: number; onShown?: (d: 1 
  *  kept while it composes a newer one: a local read, nothing asked of GitHub. */
 const REFRESHING_MS = 1_500
 
-/** A poll's state beside its answer: a read under way, the last one failed. */
+/** A poll's state beside its answer: a read under way, the last one failed
+ *  (and why), whether the shown answer came from the daemon since the view
+ *  was opened, and a way to ask again now. */
 export interface PollMeta {
   loading: boolean
   failed: boolean
+  /** Why the last read failed, or why the daemon could not compose a newer
+   *  answer (`refresh_error`): the shown one is older. */
+  reason?: string
+  /** The shown answer was read from the daemon since the view was opened —
+   *  not only the copy kept from before (lib/deckCache). */
+  confirmed: boolean
+  /** Asks again now. */
+  retry: () => void
 }
+
+const noRetry = () => {}
 
 interface PollSnap<T> {
   k?: string
@@ -318,7 +346,8 @@ function fromCache<T>(k: string | undefined): PollSnap<T> {
  */
 export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: T) => boolean, fast = CI_RUNNING_MS, cacheKey?: string, keep?: (prev: T, next: T) => boolean): [T | undefined, number, PollMeta] {
   const [snap, setSnap] = useState<PollSnap<T>>(() => fromCache<T>(cacheKey))
-  const [meta, setMeta] = useState<PollMeta>({ loading: false, failed: false })
+  const [meta, setMeta] = useState<Omit<PollMeta, 'retry'>>({ loading: false, failed: false, confirmed: false })
+  const retryRef = useRef<() => void>(noRetry)
   const shown = !cacheKey || snap.k === cacheKey ? snap : fromCache<T>(cacheKey)
   const fn = useRef({ read, busy, keep, shown })
   useEffect(() => { fn.current = { read, busy, keep, shown } })
@@ -329,7 +358,10 @@ export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, bus
     // "updating…" stands for the first read of what is shown and while the
     // daemon says a newer answer is being composed, not for every poll.
     let revalidating = true
+    let busyTick = false
     const tick = async () => {
+      if (busyTick) return
+      busyTick = true
       let next = CI_IDLE_MS
       if (!document.hidden) {
         if (revalidating) setMeta((m) => (m.loading ? m : { ...m, loading: true }))
@@ -342,24 +374,31 @@ export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, bus
             setSnap({ k: cacheKey, d, at: Date.now() })
             if (cacheKey) writeDeck(cacheKey, d)
           }
-          revalidating = !!(d as DeckFresh | undefined)?.refreshing
-          // An answer kept back while a newer one is composed is not a failure: it is on its way.
-          setMeta({ loading: revalidating, failed: worse && !revalidating })
+          const fresh = d as DeckFresh | undefined
+          revalidating = !!fresh?.refreshing
+          // An answer kept back while a newer one is composed is not a
+          // failure: it is on its way. One the daemon could not replace is:
+          // it says why (refresh_error), and the header says it.
+          const reason = fresh?.refresh_error || (worse ? (d as { error?: { message?: string } } | undefined)?.error?.message : undefined) || undefined
+          setMeta({ loading: revalidating, failed: (worse || !!reason) && !revalidating, reason, confirmed: !worse })
           if (fn.current.busy(d)) next = fast
           if (revalidating) next = Math.min(next, REFRESHING_MS)
-        } catch {
-          // The last answer stays, said to be not refreshed.
-          if (alive) setMeta({ loading: false, failed: true })
+        } catch (e) {
+          // The last answer stays, said to be not refreshed, and why.
+          if (alive) setMeta((m) => ({ loading: false, failed: true, reason: errText(e), confirmed: m.confirmed }))
         }
       }
+      busyTick = false
       if (alive && !document.hidden) timer = window.setTimeout(() => void tick(), next)
     }
+    retryRef.current = () => { if (alive && !busyTick) { window.clearTimeout(timer); revalidating = true; void tick() } }
     void tick()
     const onVisible = () => { if (!document.hidden) { window.clearTimeout(timer); void tick() } }
     document.addEventListener('visibilitychange', onVisible)
-    return () => { alive = false; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
+    return () => { alive = false; retryRef.current = noRetry; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
   }, [on, key, fast, cacheKey])
-  return [shown.d, shown.at, meta]
+  const retry = useCallback(() => retryRef.current(), [])
+  return [shown.d, shown.at, { ...meta, retry }]
 }
 
 /** A failed read of a repository view kept over the answer it would replace. */
@@ -369,25 +408,7 @@ const keepPRCI = (prev: SessionCI, next: SessionCI) => !!next.error && !!prev.ci
 const keepPRs = (prev: SessionPRs, next: SessionPRs) => !!next.refreshing && next.prs.every((p) => !p.live) && prev.prs.some((p) => !!p.live)
 const keepBranches = (prev: SessionBranches, next: SessionBranches) => !!next.error && !prev.error && prev.branches.length > 0
 
-/**
- * The header's quiet word on what the cell shows: "updating…" while a read of
- * a kept answer runs, "couldn't refresh" when the last one failed, else how
- * long ago the daemon composed it. Its own clock, every 5 s while visible.
- */
-export function Freshness({ at, loading, failed }: { at?: number; loading: boolean; failed: boolean }) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!at) return
-    setNow(Date.now())
-    const t = window.setInterval(() => { if (!document.hidden) setNow(Date.now()) }, 5_000)
-    return () => window.clearInterval(t)
-  }, [at])
-  if (!at) return null
-  const when = new Date(at).toLocaleTimeString()
-  if (loading) return <span data-deck-fresh="updating" className="shrink-0 text-fg-faint" title={`Showing the answer from ${when} while it is read again`}>updating…</span>
-  if (failed) return <span data-deck-fresh="failed" className="shrink-0 text-warn" title={`The last read failed; this is the answer from ${when}`}>couldn’t refresh</span>
-  return <span data-deck-fresh="ok" className="num shrink-0 text-fg-faint" title={`Composed at ${when}`}>{freshText(Math.max(0, now - at))}</span>
-}
+export { Freshness } from './Freshness'
 
 /** Three grey rows in the shape of the list: the first read ever of a view. */
 export function DeckSkeleton({ label }: { label: string }) {
@@ -656,7 +677,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
   const why = !canControl ? 'This device can only watch. To act from it, open the Caprock app on your computer: Settings → Use on your phone, then press Let it control sessions next to this device.'
     : !s.owned ? 'Caprock did not start this session, so it never types into it. Start the agent from Caprock to queue CI failures to it.'
       : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
-  // The force actions (lib/usePRForce), shared with the PRs & CI tab.
+  // The force actions (lib/usePRForce), shared with the Pipeline page.
   const { confirm, setConfirm, forcing, standing, active: forcingActive, forceWhy, confirmText, force } = usePRForce({
     sessionId, s, worktrees, onStartAgent, onToast, canControl, connected: prsData?.connected, why,
     runsOf: (p) => (prCI?.pr?.number === p.number ? prCI.ci?.runs : undefined),
@@ -1062,7 +1083,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
         * "Checks" under 560px, the branch chip under 480px — and what is
         * still too wide wraps to a second line rather than overflowing. */}
       <div data-deck-head className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <h4 className="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Pull requests &amp; CI</h4>
+        <h4 className="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint" title="Pull requests and CI on their way to a release">Pipeline</h4>
         {branch && <BranchChip branch={branch} base={base} changed={changed} ahead={ahead} onReview={onReview} />}
         {/* A release under way, said from the other views, in the header. */}
         {chip && (
@@ -1072,7 +1093,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
           </button>
         )}
         <span className="ml-auto flex min-w-0 items-baseline justify-end gap-2 text-[11px] text-fg-faint">
-          <span data-deck-fresh-slot className="hidden @min-[640px]:contents"><Freshness at={viewAt} loading={viewMeta.loading} failed={viewMeta.failed} /></span>
+          <span data-deck-fresh-slot className="hidden @min-[640px]:contents"><Freshness compact at={viewAt} loading={viewMeta.loading} failed={viewMeta.failed} reason={viewMeta.reason} confirmed={viewMeta.confirmed} onRetry={viewMeta.retry} /></span>
           {view === 'pr' && prsData && !prsData.connected && rows.length > 0 && (
             <button type="button" disabled={connecting} onClick={() => void connect()} title="Reads CI and reviews through your GitHub CLI login; turn it off in Settings → GitHub" className="text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'connect GitHub for CI'}</button>
           )}

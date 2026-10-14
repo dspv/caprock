@@ -280,8 +280,8 @@ describe('every listed shortcut, on every OS', () => {
   // does changed with it.
   // Owner, 2026-10-14: Expand needs a key. ⌘B is the deck, so off macOS
   // Ctrl+Shift+B is taken by it and Expand takes Alt as well.
-  it('makes ⇧⌘B the deck’s Expand and Collapse, Ctrl+Alt+Shift+B off macOS, beside ⌘B', () => {
-    expect(SHORTCUTS.find(([k]) => k === '⇧⌘B')?.[1]).toMatch(/PRs & CI as a full page in a tab; there, back to the bar/)
+  it('makes ⇧⌘B the Pipeline in a tab and back, Ctrl+Alt+Shift+B off macOS, beside ⌘B', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⇧⌘B')?.[1]).toMatch(/^Pipeline in a tab; there, back to the tab before/)
     expect(keys('⇧⌘B', false)).toBe('Ctrl+Alt+Shift+B')
     expect(keys('⌘B', false)).toBe('Ctrl+Shift+B')
     expect(matchAppShortcut(event('KeyB', 'B', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'deck-expand' })

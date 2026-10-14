@@ -1,5 +1,5 @@
 /**
- * The PRs & CI tab's Board (components/PRBoard.tsx, .ai/21-app.md § PRs & CI
+ * The Pipeline page's Board (components/PRBoard.tsx, .ai/21-app.md § Pipeline
  * tab): the pull requests by the stage they are in, the releases they shipped
  * in, and the flow between. The daemon decides each card's stage
  * (internal/api/prboard.go); this file names the stages, reads the answer
@@ -34,6 +34,8 @@ export interface BoardCard {
   review?: string
   release?: string
   spend: PRSpend
+  /** Its checks are from an earlier read: not re-confirmed this time. */
+  stale?: boolean
 }
 
 export interface BoardRelease {
@@ -145,7 +147,7 @@ export function costText(s: PRSpend): string {
   return `$${s.cost_usd.toFixed(2)}`
 }
 
-export const AGENT_COST_NOTE = 'Agent cost: what Caprock recorded agents spending on it, at API list price, not a bill. The sessions on its branch count whole; a session that opened several pull requests is cut at each one’s opening, its fix-ups going to the newest.'
+export const AGENT_COST_NOTE = 'Agent cost: what Caprock recorded agents spending on it, at API list price, not a bill. The sessions on its branch count whole; a session that worked on several pull requests is cut at each one’s opening (else its last touch), its fix-ups going to the newest.'
 
 /** The tooltip under a card's cost: how many sessions, which agents, and how the cost is counted. */
 export function costTitle(s: PRSpend): string {

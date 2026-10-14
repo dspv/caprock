@@ -79,19 +79,27 @@ const maxBelowMenu = 6
 // happens to start with "1.", a question's answers, an empty screen — is not
 // a permission menu.
 func readMenu(screen []string) ([]menuOption, bool) {
+	opts, _, ok := readMenuMarked(screen)
+	return opts, ok
+}
+
+// readMenuMarked is readMenu, also saying the number of the option the
+// selection marker is on — the one Enter picks.
+func readMenuMarked(screen []string) ([]menuOption, int, bool) {
 	rows := make([]string, len(screen))
 	for i, l := range screen {
 		rows[i] = trimFrame(l)
 	}
-	marked := -1
+	marked, markedN := -1, 0
 	for i := len(rows) - 1; i >= 0; i-- {
 		if m := optionLine.FindStringSubmatch(rows[i]); m != nil && m[2] != "" {
 			marked = i
+			markedN, _ = strconv.Atoi(m[3])
 			break
 		}
 	}
 	if marked < 0 {
-		return nil, false
+		return nil, 0, false
 	}
 	// The block is the run of non-blank rows around the marked option.
 	first, last := marked, marked
@@ -131,7 +139,7 @@ func readMenu(screen []string) ([]menuOption, bool) {
 		break
 	}
 	if len(opts) < 2 || end < marked {
-		return nil, false
+		return nil, 0, false
 	}
 	// A dialog is the last thing drawn: below it there is a footer ("Esc to
 	// cancel") and little else. A menu with output under it is one that was
@@ -143,12 +151,12 @@ func readMenu(screen []string) ([]menuOption, bool) {
 		}
 	}
 	if below > maxBelowMenu {
-		return nil, false
+		return nil, 0, false
 	}
 	hasNo := false
 	for i, o := range opts {
 		if o.n != i+1 {
-			return nil, false
+			return nil, 0, false
 		}
 		o.text = strings.Join(strings.Fields(o.text), " ")
 		opts[i] = o
@@ -157,9 +165,9 @@ func readMenu(screen []string) ([]menuOption, bool) {
 		}
 	}
 	if !hasNo {
-		return nil, false
+		return nil, 0, false
 	}
-	return opts, true
+	return opts, markedN, true
 }
 
 // startsWithWord reports whether text begins with word as a whole word.

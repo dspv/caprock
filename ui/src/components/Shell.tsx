@@ -22,12 +22,14 @@ import { useApi } from '@/lib/useApi'
 import { PlanChip, usePlan } from '@/components/PlanPicker'
 import { FeedbackButton } from '@/components/Feedback'
 import { SettingsIcon } from '@/components/AppIcons'
+import { BrainGlyph } from '@/components/BrainDrop'
 import { screenName } from '@/lib/feedback'
 import { ShareButton } from '@/components/Share'
 import { PremiumChip } from '@/components/PremiumChip'
 import { SiteFooter } from '@/components/SiteFooter'
 import { StarStrip } from '@/components/StarStrip'
 import { MailStrip } from '@/components/MailStrip'
+import { OfferStrip } from '@/components/OfferStrip'
 import { SetupStrip } from '@/components/SetupStrip'
 import { ShareMoment } from '@/components/Nudges'
 import { openExternal, usePromptSync } from '@/lib/nudges'
@@ -38,7 +40,7 @@ import { StaleUiPill } from './StaleUiPill'
 import { isAppMode } from '@/lib/appmode'
 import { useNarrowScreen } from '@/lib/phone'
 
-const NAV: { route: Route; label: string; phase?: string }[] = [
+const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] = [
   { route: { name: 'now' }, label: 'Now' },
   { route: { name: 'cost' }, label: 'Cost' },
   // 'History' read as a log of past sessions. The screen is the opposite: one
@@ -53,6 +55,9 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
   // gets are the same thing — everything the agents said on this machine —
   // and nobody looking for the second would think to open the first.
   { route: { name: 'notes' }, label: 'Memory' },
+  // Second Brain (ADR-063): what Memory holds, kept as a graph. Beside it,
+  // because it is built from the same words.
+  { route: { name: 'brain' }, label: 'Second Brain', phase: 'new', icon: <BrainGlyph size={12} className="-mt-px" /> },
   { route: { name: 'tasks' }, label: 'Tasks' },
   // Caprock Mail: a separate kind of work, so it sits last. Marked new until
   // people have found it; the offer on Now points here once (lib/nudges.ts).
@@ -104,12 +109,12 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           {NAV.map((n) => (
             <a key={n.label} href={href(n.route)}
               aria-current={active(n.route) ? 'page' : undefined}
-              className={`px-2.5 py-1 rounded-[5px] text-[12px] no-underline hover:no-underline transition-colors ${
+              className={`whitespace-nowrap px-2.5 py-1 rounded-[5px] text-[12px] no-underline hover:no-underline transition-colors ${
                 active(n.route)
                   ? 'bg-accent text-panel font-medium'
                   : 'text-fg hover:text-accent'
               }`}>
-              {n.label}
+              {n.icon ? <span className="inline-flex items-center gap-1 align-middle">{n.icon}{n.label}</span> : n.label}
               {n.phase && <span className={`ml-1 text-[9px] uppercase tracking-wider ${n.phase === 'new' && !active(n.route) ? 'text-accent font-semibold' : 'text-fg-faint'}`}>{n.phase}</span>}
             </a>
           ))}
@@ -150,11 +155,12 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           </a>
         </div>
       </header>
-      <main className={`flex-1 p-3 max-w-[1600px] w-full mx-auto ${immersive ? 'pt-[max(0.75rem,env(safe-area-inset-top))]' : ''}`}>{children}</main>
+      <main className={`flex-1 p-3 max-w-[1600px] w-full mx-auto ${immersive ? 'pt-[env(safe-area-inset-top)]' : ''}`}>{children}</main>
       {/* The star strip sits above the footer, never over content; one offer
         * at a time (lib/nudges.ts). The share toast floats bottom-right. */}
       {!immersive && !phoneHome && <SetupStrip app={app} />}
       {!immersive && !phoneHome && <MailStrip />}
+      {!immersive && !phoneHome && <OfferStrip />}
       {!immersive && !phoneHome && <StarStrip app={app} />}
       {!phoneHome && <ShareMoment />}
       {!app && !immersive && !phoneHome && <SiteFooter />}

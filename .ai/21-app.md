@@ -598,10 +598,10 @@ One window, three regions:
   2026-10-12, translated: "Remove the Branch cell — put it somewhere else …
   CI/CD and Pull requests should simply be merged properly into one, with
   all the statuses and so on, plus at least a couple of previous PRs"; it
-  was three cells — CI, Branch, Pull requests — until then). Its *Hide ⌘B*
-  and *Expand ⇧⌘B* went on 2026-10-14 to the sidebar footer's one PRs & CI
-  button, which cycles Hidden → Bar → Full page ([04-ui.md](04-ui.md) §
-  The sidebar footer).
+  was three cells — CI, Branch, Pull requests — until then). Its header ends
+  in *Pipeline* (the page in a tab, ⇧⌘B) and a × that hides the deck (⌘B,
+  or *Pipeline bar: On/Off* in the palette) ([04-ui.md](04-ui.md) § The
+  sidebar footer).
   - **Header.** The title; the session's branch as a mono chip, *feat/x →
     main* when the current PR is from it, its tooltip saying what is not
     committed or pushed and, beside it in amber, *3 not committed · 2 not
@@ -785,58 +785,55 @@ One window, three regions:
     tooltip says it is an estimate at list rate, before a private
     repository's included minutes, and names the table's version and source
     page. Nothing while no job has finished.
-  - **PRs & CI tab** (owner, 2026-10-13, translated: "I also want to expand
+  - **Pipeline** (owner, 2026-10-13, translated: "I also want to expand
     the panel bigger, to see the statuses large and in detail, plus
-    statistics … sometimes it's interesting to look"). ⇧⌘B, or the sidebar
-    footer's PRs & CI button from *Bar*, opens the cell
-    large as a tab of its own (`kind: 'prs'`, one per agent session, never
-    split; `components/PRsCITab.tsx`, words in `lib/prstats.ts`); in the tab
-    *Collapse ⇧⌘B* in its corner closes it
-    and brings the agent's tab to the front with its deck open (owner,
-    2026-10-14, translated: "it should simply be a toggle"). Off macOS the
-    key is Ctrl+Alt+Shift+B: ⌘B's Ctrl+Shift+B is the deck's (rule 12). It
-    shows:
-    - **The Board** (owner, 2026-10-14, translated: "something like a
-      KANBAN: how tasks come in, what stage they're in, maybe how many
-      agents are working, even some costs … essentially accounting of
-      releases and commits-PRs") — the default of two views, *Board | List*:
-      the pull requests in six stage columns with author, age in stage, CI,
-      agents running and agent cost; the flow strip; the releases with what
-      each shipped and its agent cost ([04-ui.md](04-ui.md) § Session deck,
-      `board` in [03-contracts.md](03-contracts.md) § `…/ci/stats`). A card
-      opens the List below on that pull request.
-    - **The figures** (List) — over the 14 local days ending today, from `GET
-      /v1/sessions/{id}/ci/stats`: *Merged* (the total, the last 7, today,
-      bars per day), *Time to merge* (the median from opened to merged of
-      those merged, nothing with fewer than two), *CI time* (the median
-      successful run of the workflow taking the most time, a line per day),
-      *Red runs* (failed of the runs that passed or failed, with re-runs;
-      runs per day with the red part), and *Actions this month* when
-      GitHub's billing report is readable. Every figure is counted from
-      GitHub's stamps; the tooltips say which pull requests and how many
-      runs (the newest 100) they rest on.
-    - **The list** — *This session* (its own, the open one first),
+    statistics … sometimes it's interesting to look"; renamed from *PRs &
+    CI* and made one list on 2026-10-14, translated: "PR rows with their
+    statuses, so I understand how things travel, what gets released").
+    ⇧⌘B, the sidebar footer's *Pipeline*, the deck header's *Pipeline*, the
+    palette's *Open Pipeline* or the cockpit's *Pipeline ↗* opens the
+    repository's pull requests as a tab of its own, *Pipeline · repo*
+    (`kind: 'prs'`, one per agent session, never split;
+    `components/PRsCITab.tsx`, words in `lib/prstats.ts`, steps in
+    `lib/journey.ts`); a tab stored as *PRs & CI · repo* is restored under
+    the new name (`parseWorkspace`). From it, *Back ⇧⌘B* in its corner, ⇧⌘B
+    or the footer's button bring back the tab that was in front before; the
+    Pipeline tab stays open. Off macOS the key is Ctrl+Alt+Shift+B: ⌘B's
+    Ctrl+Shift+B is the deck's (rule 12). It shows:
+    - **The flow strip** — in flight, throughput a day over 14 days, opened →
+      merged, merged → released marked *estimate*, the CI median, agent cost
+      (`board.flow` in [03-contracts.md](03-contracts.md) § `…/ci/stats`).
+    - **One list** of pull requests in three scopes — *This session*,
       *Repository* (the repository's 50 most recently updated, the default,
-      kept per viewer) or *Open*; a row says its state, number, title, age,
-      its CI in words where read (the session's own) or *merged in 8m*, and
-      *this session*.
-    - **The chosen one** — the session's open PR first: its state, CI,
+      kept per viewer) or *Open*. A row: its number, its whole title (two
+      lines at most), its labels (GitHub's colour as a dot, at most six),
+      the four steps *Open → CI → Merged → Released* as pills — the step it
+      is on highlighted in its tone (*CI red*, *CI running*, *CI green*,
+      *Conflict*, *Changes requested*, the release's tag), the ones behind
+      it muted, the ones ahead faint — how long it has been on that step,
+      and its agent cost. In flight first (needing a fix, CI running, ready,
+      draft; longest-waiting first), then merged and not released, then
+      released (newest first; ten, then *Show N more released*), then closed.
+      The step is the board's (`board.cards[].stage`), else the pull
+      request's own state (`journey` in `lib/journey.ts`, which the
+      cockpit's bars use too). Below the list the releases, each with the
+      pull requests it shipped and their agent cost.
+    - **The chosen one** — a click on a row opens it over the right of the
+      page (`data-prs-detail`, up to 640px, × or Esc closes): its state, CI,
       merge state and review as large pills, branch → base, the diff's size
       (*+181 −59 · 13 files · 2 commits*, from GitHub's answer for the pull
       request), when it was opened and how long it took to merge; the
-      deck's actions (lib/usePRForce, shared with the deck's rows; on a
-      pull request of the repository that is not the session's too, once
-      the tab has listed it); its jobs as a grid of job × runner OS (a
-      matrix job's OS taken out of its name), each cell its state, time,
-      time against its median and the step it failed at or is on; the jobs
-      on the run's clock, each with its median as a tick; and a job's steps
-      — the first failed job by itself — with the end of its log and
-      *Investigate*.
+      deck's actions (lib/usePRForce, shared with the deck's rows); its jobs
+      as a grid of job × runner OS (a matrix job's OS taken out of its
+      name), each cell its state, time, time against its median and the
+      step it failed at or is on; the jobs on the run's clock, each with
+      its median as a tick; and a job's steps — the first failed job by
+      itself — with the end of its log and *Investigate*. Its CI is read
+      only while it is open.
     It asks only while it is the tab in front and the window is visible,
     through the deck's routes and kept answers (it opens on what the deck
-    last knew), and one more read of GitHub: the repository's newest 100
-    runs, kept 30 minutes by the daemon. Below 760px the list and the
-    chosen one stack.
+    last knew). The Board's six columns and the List's figures strip (red
+    runs, Actions minutes) went with the one list.
   - **Branches view** (owner, 2026-10-12, translated: "seeing branches with
     statistics would also be interesting"; `GET
     /v1/sessions/{id}/branches`, `lib/branches.ts`): the session's
@@ -2095,8 +2092,11 @@ guide [docs/app.md § GitHub](../docs/app.md#github).
 
 - **macOS.** Universal `.dmg` and a Homebrew cask in `dspv/homebrew-tap`.
   Signed with a Developer ID and notarized once the owner has an Apple
-  Developer account ($99 a year); until then, ad-hoc signed, and the install
-  page says how to open an app from an unidentified developer.
+  Developer account ($99 a year); until then, release builds are signed
+  with a stable self-signed certificate so macOS keeps privacy answers
+  across updates ([§ Privacy prompts](#privacy-prompts-on-macos)), other
+  builds ad-hoc, and the install page says how to open an app from an
+  unidentified developer.
 - **Windows.** NSIS or MSI installer from Tauri's bundler, Scoop
   (`dspv/scoop-bucket`) and winget. Without a code-signing certificate,
   SmartScreen warns on first run; which certificate or signing service to buy
@@ -2116,7 +2116,7 @@ guide [docs/app.md § GitHub](../docs/app.md#github).
 
 macOS asks before a program reads Desktop, Documents, Downloads and a few
 other places, and remembers the answer per program and per code signature
-(ADR-040). What follows from Caprock being ad-hoc signed:
+(ADR-040). What follows from Caprock having no Developer ID yet:
 
 - **A session asks in its own name** (ADR-044). Until then the daemon was
   the program that asked for every session it ran: a pty-host and the agent
@@ -2132,8 +2132,48 @@ other places, and remembers the answer per program and per code signature
   the daemon still asks for is what the user opened, and Desktop, Documents
   or Downloads when a session runs there (finding its repository reads up
   that folder, `tcc.GuardedBeyondWork`).
-- **Every release asks again.** An ad-hoc signature's designated
-  requirement is its cdhash, so each build is new code to TCC.
+- **One certificate, one answer** (2026-10-14). TCC stores an answer with
+  the program's designated requirement and asks again when the next build
+  does not satisfy it. An ad-hoc signature's requirement is its cdhash
+  (`cdhash H"…"`), new with every build, so every release asked again for
+  the microphone and the folders: the owner was asked for the microphone
+  after each update. Release builds are now signed with one long-lived
+  **self-signed** code-signing certificate ("Caprock Self-Signed Code
+  Signing", RSA 2048, code-signing EKU, valid to 2036), whose requirement is
+  `identifier "dev.caprock.app" and certificate leaf = H"<the certificate's
+  SHA-1>"` for the app and `identifier caprock` / `"caprock-pty-host"` and
+  the same leaf for the daemon binaries (the bundler signs the sidecars
+  without an explicit identifier, so codesign takes the file name). Neither
+  half changes between builds, so an answer given once survives updates.
+  Measured locally: two daemon builds with different version stamps, signed
+  with the certificate, print the identical requirement and each satisfies
+  the other's (`codesign --verify -R=`); the same two signed ad-hoc print
+  different cdhashes and do not.
+  - **How.** The `.p12` and its password are the secrets
+    `MACOS_SELFSIGN_P12_BASE64` and `MACOS_SELFSIGN_P12_PASSWORD`;
+    `scripts/macos-selfsign-keychain.sh` imports them into a temporary
+    keychain on the macOS runner (release.yml's `app-macos-build`, ci.yml's
+    macOS `app` job) and exports the certificate's SHA-1 as
+    `APPLE_SIGNING_IDENTITY`, which `tauri build` uses in place of the
+    config's `"-"`, keeping the hardened runtime and
+    `Entitlements.plist`. `scripts/check-app-signature.sh` (in CI and
+    `app-release.sh`) prints each binary's requirement and fails unless all
+    three are `identifier … and certificate leaf = H"…"` with that
+    certificate. Without the secrets (a fork's pull request, `make
+    app-local`) the build stays ad-hoc exactly as before and the check
+    expects ad-hoc. The private key exists only in the secrets and with the
+    maintainer; a new certificate would ask every user once more, like the
+    switch itself.
+  - **The switch asks once more.** The first release signed this way
+    satisfies no stored cdhash, so it asks one last time for the
+    microphone and each folder; from the next update on it does not.
+  - **Gatekeeper is unchanged.** The certificate is not from Apple, so to
+    Gatekeeper the app is still from an unidentified developer (`spctl
+    --assess` rejects both, ad-hoc and self-signed, the same way): the
+    `.dmg`'s first open and the cask's quarantine step stay as they were.
+    Not notarized, and the TeamIdentifier stays unset.
+  - **The Homebrew formula's daemon** is goreleaser's, linker-signed ad-hoc,
+    and still asks per release whenever it is the daemon that runs.
 - **One path, one entry.** The app runs its daemon from
   `<data_dir>/bin/caprock` and moves a Homebrew daemon (a new Cellar path per
   release) onto it, so a new release replaces the entry instead of adding
@@ -2150,9 +2190,15 @@ other places, and remembers the answer per program and per code signature
   `NSMicrophoneUsageDescription` (`app/src-tauri/Info.plist`), and
   `scripts/check-app-mic.sh` checks both in CI and in `app-release.sh`. The formula's binary has no runtime
   flag and needs neither.
-- **With a Developer ID** (the Apple account): one entry that survives
-  updates, and, with the daemon as an `SMAppService` helper of the app, the
-  app's name and icon — to verify on the first signed build.
+- **With a Developer ID** (the Apple account): the Developer ID
+  certificate replaces the self-signed one (`APPLE_CERTIFICATE` and
+  notarization, docs/RELEASING.md), the requirement becomes `anchor apple
+  generic and … certificate leaf[subject.OU] = <team id>`, Gatekeeper opens
+  the app without "Open Anyway", and, with the daemon as an `SMAppService`
+  helper of the app, the prompts carry the app's name and icon — to verify
+  on the first signed build. The change of requirement asks every user once
+  more, as the switch to the self-signed certificate did; drop
+  `macos-selfsign-keychain.sh` and its secrets then.
 
 The user-facing note is in [docs/app.md](../docs/app.md#macos-privacy-prompts).
 

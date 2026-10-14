@@ -317,7 +317,7 @@ export function fromFeature(url: string, feature: PaidFeature, kind: 'buy' | 'in
  * The two ways to buy, as the site sells them: a year, or once. The lifetime
  * is the one the site marks "Best value", so it is the filled button.
  */
-function Price({ p, feature, onClose }: { p: PremiumPricing | undefined; feature: PaidFeature; onClose: () => void }) {
+export function Price({ p, feature, onClose }: { p: PremiumPricing | undefined; feature: PaidFeature; onClose: () => void }) {
   if (!p) return <div className="h-[92px] text-[13px] text-fg-faint">…</div>
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

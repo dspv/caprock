@@ -967,7 +967,9 @@ it is a `GET`, because every frame it receives is typed into the session.
 
 *Amended 2026-10-04 by [ADR-034](#adr-034--a-phone-the-owner-chooses-can-work-on-sessions-and-nothing-else):*
 reading stays the default, and the owner can make one paired device a
-controller, on the machine, revocably.
+controller, on the machine, revocably. *ADR-034 amended 2026-10-14:* the
+owner may make that choice when showing the code, and the dashboard's box
+for it starts ticked; a code issued without a role still pairs a reader.
 
 *Amended 2026-10-05 by [ADR-011](#adr-011--one-server-one-port-default-22776-per-run-bearer-token-loopback-only):*
 "loopback is unaffected" means this machine's own clients; a request a proxy
@@ -1385,7 +1387,9 @@ agent manager only types into or signals processes Caprock started.
   already says which kind of address it shows.
 
 **Rules out:** control granted by pairing (a code read off a screen is proof of
-presence, not of intent to hand over a keyboard); a global "phones may control"
+presence, not of intent to hand over a keyboard) — *narrowed 2026-10-14
+(below): the intent is now stated by the owner on the machine, with the
+code, and the code only carries it*; a global "phones may control"
 switch (control is a property of one device, so losing one phone costs one
 button); typing into sessions Caprock did not start.
 
@@ -1448,6 +1452,44 @@ picker. A controller may also open a pull request from a worktree
 push) and ask for a re-read (`…/github/refresh`). Connecting, the device
 flow, disconnecting, the notification switch and creating a repository stay
 the machine's: they change where Caprock talks to and what it holds.
+
+*Amended 2026-10-14 — control chosen with the code.* The owner (translated):
+"The phone integration instructions are crap. I see the QR code, scan it
+with the phone, install the app, go in — and I can't do anything, and say
+I've already left the house. So the steps must be spelled out clearly + add
+integration statuses and what's left, e.g. allow typing from there." Pairing
+made a viewer, and control was a second click on the machine that nobody
+remembers to make before walking out — and once out, there is no machine to
+click on.
+
+- **The owner states the role when showing the code.** Beside **Show a
+  code**, **This phone can type and start agents**, ticked by default (the
+  person pressing the button is the owner, at the machine) and remembered on
+  that computer. `POST /v1/pair/code` takes `{role}`, loopback-only like
+  every pairing route; the code carries it and the device that redeems it
+  gets it. Unticked, the phone pairs as a viewer, as before.
+- **Still a decision on the machine, never from the phone.** The phone's
+  redeem names no role and anything it sends is ignored; a code issued with
+  no role (`caprock pair`, `caprock remote`, an older dashboard) pairs a
+  viewer. The code stays single-use, five minutes, five guesses: what it
+  proves is presence, and the tick is the intent this ADR asked for.
+- **Nothing else moves.** **Let it control sessions** and **Take control
+  away** stay beside each device; taking control away still holds on the
+  next keystroke; a controller's allowlist and the machine-only actions are
+  unchanged.
+- **The panel says what is done and what is left**, live: access from
+  anywhere, the phone paired (by name), whether it can type — with the one
+  button that fixes it — and whether it runs as the installed app (the
+  phone reports it, `GET /v1/pair/me?app=1|0`, stored as a label in
+  `devices.json`, never an authorisation). The phone opens on a short
+  **Ready** card saying the same, and where on the computer to fix a
+  view-only pairing.
+
+The risk taken: a code shown with the box ticked and scanned by someone
+else's camera hands over a keyboard, not only a screen. It was already the
+case that a code admitted whoever scanned it in five minutes; the owner
+judged a phone that cannot type once he has left the house the worse
+failure, and one click removes either.
 
 
 ---
@@ -2605,6 +2647,10 @@ rules, which this one-chat design does not have); Telegram changes what a bot
 may read; or Codex and OpenCode report turns and prompts, which would make
 their replies flow here with no change to the bridge.
 
+*Amended 2026-10-14 by [ADR-062](#adr-062--caprock-may-ask-a-question-and-the-user-may-send-the-answer-to-caprockdev):*
+besides the integrations the user turns on, one survey answer may go to
+caprock.dev, only on the user's click, after the card names every field.
+
 ---
 
 ## ADR-048 — Several sign-ins per agent, each in a config directory of Caprock's; three per agent are free
@@ -3278,7 +3324,18 @@ dashboard and a desktop app on three OSes.
   for import ever leaves the machine and no password is ever put in an HTTP
   answer (rule 4): on `POST /v1/mail/import` the sources are re-read so the
   decrypted password goes straight to the user's own IMAP/SMTP server and
-  nowhere else.
+  nowhere else. *Import everything* (amended 2026-10-14, owner request)
+  lists every account found once, merged by address across the apps,
+  Apple's Internet Accounts (Google, iCloud, Exchange) included, and walks
+  the ticked ones one at a time through the single step each still needs:
+  nothing for a saved password, the browser sign-in for Google and
+  Microsoft (an app password when the build has no client ID), an
+  app-specific password for iCloud, the server's password otherwise. A
+  source it cannot read (Apple Mail without Full Disk Access) is not shown
+  at all, and each shown source says when its profile was last used.
+  Outlook for Mac is not read: its profile is
+  in another app's group container, behind an OS prompt Caprock does not
+  raise, and its accounts are mostly Microsoft 365, which sign-in covers.
 - **Headers are read whole.** The list is built from `BODY.PEEK[HEADER]`,
   parsed locally, never from ENVELOPE or `HEADER.FIELDS`: iCloud has sent
   ENVELOPEs with unescaped quotes in the Message-ID (one bad answer fails
@@ -3414,6 +3471,60 @@ working only inside your own Wi-Fi; everyone wants to work online."
   QR the phone pairs with once more. `GET /v1/pair/me` answers `via` and
   `anywhere`, and a phone on the Wi-Fi link shows a strip naming the app and
   the path to the code.
+
+*Amended 2026-10-14 — a phone that never waits silently.* The same evening
+the owner's phone sat on *Connecting…* with nothing after it (translated:
+"On the phone I now have 'Connecting' and nothing … apparently some
+duplication with installing Caprock"). A computer that went to sleep left its
+relay connection open on paper; the relay spliced the phone to it and the
+handshake went nowhere, and the phone had no deadline. Separately, Chrome
+reinstalled the app from its own prompt in a browser tab.
+
+- **The relay drops a machine unheard for 75 s** (three missed pings): a
+  phone arriving or sending is told 4404 at once. No new state on the relay;
+  the hosted one reads the runtime's ping timestamp.
+- **The phone gives up an attempt after 10 s and says why**, checks the
+  machine itself, not only the relay, while connected, retries on its own
+  with backoff, and names the problem after 5 s with **Retry** and **Pair
+  again** (`.ai/04-ui.md` § From anywhere).
+- **Installing is the page's button, once.** Chrome's automatic prompt is
+  held for an **Install the Caprock app** button that exists only while
+  Chrome says the app is not installed. The manifest `id` stays `/`, so a
+  new build is the same app. Existing pairings are untouched.
+
+*Amended 2026-10-14, later — a paired phone stays paired.* Right after the
+page and the relay were redeployed, the owner's phone told him to pair again
+(translated: "my connection to Caprock dropped and it asks me to go to
+Caprock settings again. It has to never drop — hold firm and for a long
+time"); his computer still listed it as a controller. Three faults,
+reproduced on a stand with a v0.117.0 daemon, the local relay and the page:
+
+- **A phone hanging up mid-answer took the machine off the relay.** The
+  daemon wrote each frame with the phone's context, and the WebSocket
+  library closes the whole connection when a write's context ends part-way:
+  every other phone dropped with it. Writes are now bounded by the relay
+  connection's own context; a phone that has gone sends nothing more
+  (`internal/remote/host.go`, the same in `relaysrv`).
+- **The hosted relay reused a phone's number at once.** It gave a new phone
+  the lowest free number, while frames for the phone that had just left
+  were still on their way from the machine; the newcomer read one as its
+  handshake reply. It now draws a random unused 32-bit number — no storage,
+  survives hibernation. `relaysrv` already counted up.
+- **The page believed one bad answer.** A message that did not finish the
+  handshake was `wrong-machine`, and one 401 anywhere was `removed`, both
+  for good. Now a stray message is skipped while the real reply comes;
+  `wrong-machine` is three refused handshakes in a row; `removed` is
+  `GET /v1/pair/me` saying 401 on two separate connections. Behind either
+  screen the page checks once a minute and recovers by itself.
+
+**No new daemon answer for "revoked".** Telling a revoked token from an
+unknown one would need the daemon to keep revoked tokens (or their hashes),
+new state in `devices.json`, and would still not help a phone talking to
+v0.117.0. The confirmation above reads only what every daemon already says,
+and lanauth's one 401 for both stays. The page needs nothing new from the
+daemon at all: an older daemon answers a newer page's new routes 403 or
+404, never 401 (`TestAPhonesTokenIsOnlyDisownedByA401`, which v0.117.0
+passes too).
 
 
 ## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
@@ -3573,3 +3684,223 @@ would also have to pass through.
 would have no CI result — GitHub refuses to merge a draft, so this needs a
 manual mistake), or required status checks are turned on for `master`, which
 would need the skipped jobs reported as passing.
+
+---
+
+## ADR-062 — Caprock may ask a question, and the user may send the answer to caprock.dev
+
+**Date:** 2026-10-14 · **Status:** accepted (owner, 2026-10-14)
+
+*Amends [ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine)
+and rule 4's wording.*
+
+**Context.** The owner (2026-10-14, translated): "Caprock is a local
+utility; we don't see our users and can't talk to them. So we talk through
+banners inside the app and extra pages. Right now I'd like to test an
+offer: 'Want to earn money watching ads?' — a short question: how many
+hours do you work a day, then roughly what share of that you spend in
+Caprock. Or even better — 'want to watch YouTube?', somewhere on the left.
+That's the second variant to test. We just collect sign-ups." And later
+the same day (translated): "I'd try to sell Second Brain first. Show a
+Second Brain banner a couple of times, and it sells just the subscription
+(the usual Premium step). It's local. Cloud backups are separate money —
+we'll study that too. For now we study demand with super-short forms going
+to my Telegram through our bot." Rule 4 said nothing is ever sent to
+Caprock, and every outbound call so far is an integration the user switches
+on. A survey answer is neither: it is one message the user writes to us.
+
+**Decision.**
+
+- **A user-initiated, disclosed submission to caprock.dev is allowed.** A
+  survey card (`OfferStrip.tsx`) sends one answer through `POST /v1/offer`
+  to `https://caprock.dev/api/offer`, and only when the user presses
+  **Send**. Under the button the card says, word for word, what goes and
+  where: *Sends these answers, and your email if you add one, to
+  caprock.dev. Nothing else.* The site stores it in KV and posts one line to
+  the owner's Telegram through the site's own bot — the answers and whether
+  an email came, never the address.
+- **What is sent is fixed by the daemon, not the page.** Which offer, the
+  one-click answers to its two questions, and the email only when typed —
+  not even the version, because the card does not say it. The body is
+  rebuilt from per-offer enums in `internal/api/offer.go`, so no identifier,
+  install id, path or usage figure can ride along. There is no install id at all: two answers from one
+  machine are indistinguishable from two machines.
+- **A small list of offers, each with its own copy and show rule**
+  (`ui/src/lib/offer.ts`; the copy is the owner's): two surveys —
+  *Hugging Face models on this computer* (what first; what machine) for
+  every install at most twice on different days, and a pair drawn once per
+  install at random, locally, *short ads to earn money* or *YouTube while
+  agents work*, asked once.
+- **Second Brain is sold, not surveyed** (owner, later the same day,
+  translated: "a short banner leading to a modal that explains how it works.
+  Then it's simply available in Premium: you buy Premium and you'll have it
+  in three days"). A strip and a dialog that says how it works, then the
+  usual Premium purchase step. It is a **dated pre-order with a refund
+  promise**, worded exactly: *Second Brain comes to Premium on 18 October
+  2026. If it doesn't, write to us for a full refund.* A licence holder is
+  told *It's included in your Premium — it arrives on 18 October 2026.*
+  This is not "coming soon" (rule 11): it names the date and what happens if
+  the date is missed. It sends nothing to us (a purchase already notifies
+  through the existing Stripe flow, tagged `app-second-brain`), it is tried
+  first, at most twice on different days, and it stops on 18 October 2026 or
+  as soon as the build sets `SECOND_BRAIN_BUILT`. If the date slips, the
+  wording is changed before it, never left standing. *Superseded
+  2026-10-14:* Second Brain shipped and was made free (ADR-063, § Free), so
+  the sale, its dialog and its pre-order line are gone from the product;
+  the `second-brain` id stays only so the answers installs already keep
+  stay valid.
+- **Dismissing sends nothing.** *Not interested* and × record locally that
+  the question was answered, and that card never returns. Nobody who says
+  no is counted; the test measures who answers and what they say.
+- **Calm, and never stacked**: after two days with sessions, one offer a day
+  at most, once the keyboard has been still for 20 s, never while a session
+  waits on a permission prompt, never on a paired phone, one banner at a
+  time (`lib/nudges.ts`). Wording is a question, not a promise — *We're
+  considering…*; never "coming soon" (rule 11's spirit).
+
+**Rules out:** anything automatic — an impression count, a "seen" ping, a
+"no" sent home, a retry in the background; a stored identifier of any kind;
+reusing this route for anything but a card the user answers.
+
+**Revisit if:** an offer is wanted that sends more than one-click answers
+and an optional email, or anyone proposes sending something the user did
+not see on the card. Adding an offer of the same shape is a row in the
+three schemas, not a new decision.
+
+## ADR-063 — Second Brain: the sessions' decisions and findings, kept as a graph on this machine; free
+
+**Date:** 2026-10-14 · **Status:** accepted (owner, 2026-10-14)
+
+*Builds the product ADR-062's in-app offer pre-sells.*
+
+**Context.** The owner sells "Second Brain" in Premium with a date on it, 18
+October 2026, and described it (translated): "On the left a collapsible block
+where my second brain is constantly being built — a knowledge graph. Like in
+Hogwarts they pulled memories out with a wand and put them in the Pensieve —
+here ideas get put into the graph: everything done, researched, etc." Caprock
+already keeps every answer Claude wrote (`/v1/notes`, about 30,000 notes on
+the owner's machine); what it lacks is a place where the few worth keeping
+are kept as conclusions, linked to each other, rather than found again by
+searching prose.
+
+**Decision.**
+
+- **Memories and the entities they hang off.** A node is a memory — an
+  *idea*, *decision*, *finding* or *question* — or an entity: a *topic*,
+  *person* or *project*. A title is a line (80 characters), a summary a
+  paragraph (400). Every memory records where it came from: the session, the
+  event (an assistant note), the moment and the project, so it links back to
+  the place in the record. An entity exists once per normalised title (lower
+  case, spaces collapsed, punctuation at the ends dropped), so "SQLite" and
+  "sqlite." are one topic. Edges are *relates*, *follows*, *contradicts* and
+  *part_of*, one per pair and kind, weighted (dropping the same link again
+  adds to it, capped at 10). Three tables in the daemon's own database
+  (migration 0055): `brain_nodes`, `brain_edges`, and `brain_runs`, which
+  the automatic extraction records each read in.
+- **Dropped in by hand.** *Drop into brain* under any answer on the Memory
+  screen, in a session's Notes and in the chat view sends only the answer's
+  event id; the daemon reads its text, session, time and project from the
+  record. The quick capture (⇧⌘H, Ctrl+Shift+H off macOS, or ⌘K *Add to
+  brain…*) takes a line or a paragraph, a kind and topics. The first line
+  that says something, without its Markdown, is the title; the passage,
+  flattened, is the summary. A memory hangs off its project and its topics
+  from the first drop, so the graph clusters without any model.
+- **Free, all of it** (owner decision, 2026-10-14, amending the first
+  version of this ADR). As built first, twenty memories dropped in by hand
+  were free, the twenty-first was refused by the daemon (`402`) and the
+  automatic build needed a licence. The owner then said (translated): "I'm
+  not Premium myself. Either we try to convert users to Premium, or give it
+  free — we offer it, the user uses it, and later we offer to host this
+  Second Brain in the cloud for a subscription. Maybe something cooler goes
+  into Premium." So Second Brain is free: no cap on the memories kept by
+  hand, and the automatic build for everyone who says yes — it runs on the
+  user's own `claude`, which costs Caprock nothing. No route in it answers
+  `402`, and a licence, present or lapsed, changes nothing in it. The yes
+  first (below) is unchanged. Anyone who bought Premium on the pre-order
+  (ADR-062) keeps that licence exactly as it is; Premium keeps every other
+  feature it had. A paid add-on around the brain, if one is ever built, is
+  its own decision; nothing public names one (rule 11).
+- **On this machine.** Everything above is local: the graph is the daemon's
+  SQLite file, served on loopback, readable by a paired device and written
+  only on the machine.
+- **Reads that stay fast.** The graph read takes the newest memories that
+  pass the filter (pinned first), the entities linked to them and every edge
+  between what it returns, without summaries unless asked; a large selection
+  scans the edge table once instead of walking it per node. On a test graph
+  of 5,000 memories, 200 topics and 15,000 edges the whole-graph read took
+  45–50 ms on the development Mac under load and a project's 20 ms
+  (`TestBrainGraphReadsFiveThousandNodesQuickly`, 2026-10-14).
+
+- **Built automatically, only after a yes.** The
+  Brain screen asks everyone once — *Build it from your sessions automatically?* —
+  and Settings → Second Brain holds the switch afterwards. Until the user
+  answers, nothing runs (`brain.auto` in `config.json` is absent, not
+  false). The brief asked for it to be on by default; rule 4 lets an
+  outbound call exist only when the user turned it on and the place it is
+  switched on says what it sends, and this one sends the user's transcripts.
+  So it is one click, asked in the place the feature lives, with the line
+  that says where the prose goes: to the user's own `claude`, which sends it
+  to Anthropic under the user's login — where the session already went —
+  and nothing to Caprock. Turning it on reads from that moment; *Build from
+  my last 30 days* reads the past month, after showing an estimate of how
+  many sessions and tokens that is.
+- **How a session is read** (`internal/brain`). A session is read once it
+  has ended or been quiet for ten minutes, and again only when it has new
+  prose; at most four per wake, a wake every five minutes, one at a time,
+  off the request path. A session whose agent wrote fewer than 300
+  characters is recorded as skipped and never sent. The read is the
+  session's prompts and answers (main thread only, the newest 24,000
+  characters when there are more), the project's name and the topics
+  already in the brain, sent on stdin to `claude -p --output-format json
+  --tools "" --no-session-persistence --setting-sources local --settings
+  <{"disableAllHooks": true}> --model haiku --system-prompt … --json-schema
+  …`: no tools, no transcript written, none of the user's hooks or plugins
+  loaded — so the read neither appears as a session in Caprock nor runs the
+  user's hooks. The flags were read off `claude --help` (2.1.299) and one
+  call made by hand on 2026-10-14; skipping the user's settings cut the
+  fixed cost of a call from 16,637 input tokens to 4,318. A Windows `.cmd`
+  shim cannot carry JSON on its command line, so there the instructions and
+  schema go on stdin too.
+- **What is kept, and its limits.** Each memory records the read it came
+  from (`brain_runs`: model, tokens, cost, status) and the passage it
+  cites, so its source link opens the moment it was said; it hangs off the
+  project and its topics, with *relates* and *contradicts* between memories
+  of one read. A daily token limit (100k, 300k by default, or 1M, in a
+  rolling 24 hours, counted from what `claude` reports) stops reads until
+  the day rolls over. A failed read is recorded and retried after 15
+  minutes, doubling, and given up after four failures until the session has
+  new prose.
+- **New sessions draw on it.** A served handoff (SessionStart, the memory
+  between sessions) adds up to five of the repository's memories, pinned
+  first, in a budget of 700 characters of its own — so sessions started
+  after this change in the handoff experiment's served group receive
+  slightly more than before.
+- **Drawn, and in the sidebar.** The `#/brain` screen opens on the graph —
+  memories and the topics and projects they hang off, laid out by a
+  force simulation written for it (`ui/src/lib/forcegraph.ts`: Barnes–Hut
+  repulsion, springs, a pull to the centre), the list one click away. The
+  edges, nodes and labels are drawn into a cached layer only when they
+  change; panning and zooming scale that layer and redraw it when the
+  view rests. On a preview stand with 3,011 memories, in the headless
+  Chromium the screenshots use (software rendering, so slower than a
+  real window), a frame took a median 9.2 ms while the layout settled and
+  8.4 ms while zooming (2026-10-14); before the cached layer, stroking every
+  edge every frame took 225 ms. The app's sidebar has a Brain block below
+  the projects: a small graph of the newest thirty memories, where one that
+  is kept drops in from above with a ring where it lands (none with
+  prefers-reduced-motion), the three newest titles and the count. Unfolded
+  by default for everyone, with *How it works*, a short explainer that
+  opens the Brain screen.
+
+**Rules out:** an embedding index or a vector store (a dependency and a model
+for what titles, topics and links do); a graph library in the dashboard
+(the layout is under 300 lines we can read); a server of ours; an API key of
+Caprock's or a model call made any way but the user's own `claude`; running
+the extraction before the user says yes; storing the graph
+anywhere but the daemon's database; locking a user out of memories already
+kept.
+
+**Revisit if:** people keep far more than a few thousand memories (the graph
+read returns at most 5,000 and the screen would need clustering on the
+daemon); or the brain's cost to the machine — the database, the reads —
+turns out to need a limit of its own.

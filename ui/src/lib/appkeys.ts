@@ -19,12 +19,14 @@ export type AppCommand =
   | { kind: 'new-shell' }
   | { kind: 'new-agent' }
   | { kind: 'quick-chat' }
+  /** ⇧⌘H: the quick capture into Second Brain (ADR-063). */
+  | { kind: 'brain-capture' }
   | { kind: 'add-project' }
   | { kind: 'detach-tab' }
   | { kind: 'palette' }
   | { kind: 'inspector' }
   | { kind: 'deck' }
-  /** ⇧⌘B: the deck's Expand, or Collapse in the PRs & CI tab. */
+  /** ⇧⌘B: the Pipeline page in a tab, or, from it, back to the tab before. */
   | { kind: 'deck-expand' }
   | { kind: 'changes' }
   | { kind: 'sidebar' }
@@ -227,6 +229,10 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         case 'e': return { kind: 'split', direction: 'column' }
         // G for git: the diff of the session in front.
         case 'g': return { kind: 'changes' }
+        // H for hold on to it: a line into Second Brain (ADR-063). ⌘H
+        // stays the app's Hide; macOS, its Services and the Mac terminals
+        // bind nothing to ⇧⌘H (⇧⌘M is Mail's, ⇧⌘Y and ⇧⌘L are Services').
+        case 'h': return { kind: 'brain-capture' }
         // The deck (⌘B) large and back: Expand, Collapse. In a browser
         // ⇧⌘B is the bookmarks bar, which the browser may keep for itself;
         // the deck's button is there either way.
@@ -260,6 +266,10 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
     case 'd': return { kind: 'dashboard' }
     case 'g': return { kind: 'changes' }
     case 'm': return { kind: 'mail' }
+    // Ctrl+Shift+H: no ⌘H twin among the app's keys, and bound by no
+    // shell, readline, zsh's emacs keymap, PSReadLine or GNOME default (Ctrl+
+    // Shift+U is GNOME's Unicode entry, so not U).
+    case 'h': return { kind: 'brain-capture' }
     case '[': return { kind: 'prev-tab' }
     case ']': return { kind: 'next-tab' }
     // Ctrl+Shift arrows are PowerShell's select-by-word: the terminal's.
@@ -381,6 +391,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],
   ['⌘J', 'Next session waiting on you'],
+  ['⇧⌘H', 'Add to Second Brain: keep a line of your own'],
   ['⌘1–8, ⌘9', 'The Nth tab, in the order opened, as its badge says; ⌘9 the last'],
   ['⌥⌘↓, ⌥⌘↑', 'Next and previous session of the project in front'],
   ['⌥⌘→, ⌥⌘←', 'Next and previous project'],
@@ -391,8 +402,8 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘[ ]', 'Previous and next pane'],
   ['⌘F', 'Find in the terminal'],
   ['⌘I', 'Inspector'],
-  ['⌘B', 'Session deck: the PRs & CI bar under the agent’s terminal, shown or hidden'],
-  ['⇧⌘B', 'PRs & CI as a full page in a tab; there, back to the bar'],
+  ['⌘B', 'Pipeline bar under the agent’s terminal, shown or hidden'],
+  ['⇧⌘B', 'Pipeline in a tab; there, back to the tab before'],
   ['⇧⌘G', 'Changes: the diff of the session in front'],
   ['⌘\\', 'Hide or show the sidebar'],
   ['⌘0, ⇧⌘D', 'Dashboard'],

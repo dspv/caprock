@@ -72,7 +72,7 @@ function show(p: Partial<Parameters<typeof SessionDeck>[0]> = {}) {
 afterEach(() => { vi.useRealTimers(); forgetFoldedPRs(); forgetPRProgress(); forgetDeckAnswers();h.queued = []; h.queuedTo = []; h.forced = []; h.rerunFail = undefined; h.asked = 0; h.prs = { connected: true, prs: [] }; h.ci = { connected: true }; h.rel = { connected: false }; h.main = { connected: false }; h.branches = { connected: true, branches: [] }; h.usage = undefined; h.usageAsked = 0; h.prsGate = undefined; h.prsFail = undefined; h.prsAsked = 0; h.branchesGate = undefined; localStorage.clear() })
 
 describe('the session deck', () => {
-  // Owner, 2026-10-14: the sidebar footer's PRs & CI button is the one place
+  // Owner, 2026-10-14: the sidebar footer's Pipeline button is the one place
   // for Hidden, Bar and Full page; the deck's own Expand and Hide went.
   it('draws no Expand or Hide of its own', () => {
     show()
@@ -206,7 +206,7 @@ describe('the session deck', () => {
     h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED, { branch: 'feat/deck', base: 'main' }))] }
     show({ branch: 'feat/deck', changed: 3, ahead: 2, onReviewChanges: onReview })
     expect(screen.queryByRole('heading', { name: 'Branch' })).toBeNull()
-    expect(screen.getByRole('heading', { name: 'Pull requests & CI' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Pipeline' })).toBeInTheDocument()
     const chip = document.querySelector('[data-deck-branch]')!
     expect(chip.textContent).toBe('feat/deck')
     // The current PR is from this branch: where it goes.
@@ -974,11 +974,13 @@ describe('the pull requests cell opens on what it last knew', () => {
     expect(rowButton(9)).toHaveTextContent('Kept title')
     expect(document.querySelector('[data-deck-skeleton]')).toBeNull()
     await waitFor(() => expect(document.querySelector('[data-deck-fresh]')).toHaveAttribute('data-deck-fresh', 'updating'))
-    expect(document.querySelector('[data-deck-fresh]')).toHaveTextContent('updating…')
+    // Never a bare "updating…": the copy kept from before says how old it is.
+    expect(document.querySelector('[data-deck-fresh]')!.textContent).toMatch(/^Saved 1 min ago · refreshing…$/)
+    expect(document.querySelector('[data-deck-fresh]')).toHaveAttribute('data-deck-fresh-confirmed', 'no')
     await act(async () => { g.open() })
     await waitFor(() => expect(rowButton(9)).toHaveTextContent('New title'))
     expect(document.querySelector('[data-deck-fresh]')).toHaveAttribute('data-deck-fresh', 'ok')
-    expect(document.querySelector('[data-deck-fresh]')!.textContent).toMatch(/^updated (just now|\d+ s ago)$/)
+    expect(document.querySelector('[data-deck-fresh]')!.textContent).toMatch(/^Updated (just now|\d+ s ago)$/)
   })
 
   it('keeps the last answer when a read fails, and says it could not refresh', async () => {
@@ -987,8 +989,22 @@ describe('the pull requests cell opens on what it last knew', () => {
     show()
     expect(rowButton(9)).toHaveTextContent('Kept title')
     await waitFor(() => expect(document.querySelector('[data-deck-fresh]')).toHaveAttribute('data-deck-fresh', 'failed'))
-    expect(document.querySelector('[data-deck-fresh]')).toHaveTextContent('couldn’t refresh')
+    expect(document.querySelector('[data-deck-fresh]')).toHaveTextContent('Couldn’t refresh')
+    expect(document.querySelector('[data-deck-fresh]')).toHaveTextContent('showing data from')
+    expect(document.querySelector('[data-deck-fresh]')!.getAttribute('title')).toContain('daemon away')
     expect(rowButton(9)).toHaveTextContent('Kept title')
+  })
+
+  it('says a composition the daemon could not refresh, with the time of what is shown, and asks again on Retry', async () => {
+    const kept = now - 5 * 3_600_000
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED, { title: 'Afternoon title' }))], fetched_at: kept, refresh_error: 'GitHub or the database did not answer in time', refresh_failed_at: now } as typeof h.prs
+    show()
+    await waitFor(() => expect(document.querySelector('[data-deck-fresh]')).toHaveAttribute('data-deck-fresh', 'failed'))
+    expect(document.querySelector('[data-deck-fresh]')!.getAttribute('title')).toContain('did not answer in time')
+    h.prs = { connected: true, prs: [prRow(9, livePR(9, PASSED, { title: 'Evening title' }))], fetched_at: Date.now() } as typeof h.prs
+    await act(async () => { (document.querySelector('[data-deck-fresh-retry]') as HTMLButtonElement).click() })
+    await waitFor(() => expect(rowButton(9)).toHaveTextContent('Evening title'))
+    expect(document.querySelector('[data-deck-fresh]')).toHaveAttribute('data-deck-fresh', 'ok')
   })
 
   it('reopens on the answer from before it was closed, and a view switch is instant from what was kept', async () => {

@@ -79,6 +79,63 @@ func TestPullsByBranchIsOneKeptList(t *testing.T) {
 	}
 }
 
+// A list GitHub refuses after a good one: the good one comes back, and
+// RepoPullsRead says when it was read and why the newer read failed, until
+// a read succeeds again (the board froze silently on 2026-10-14).
+func TestPullsByBranchSaysAFailedRead(t *testing.T) {
+	x := newFixture(t)
+	repo := Repo{Owner: "dspv", Name: "caprock"}
+	x.connect(t)
+	ok := func(w http.ResponseWriter, r *http.Request) {
+		answer(w, r, 200, []any{
+			map[string]any{"number": 3, "html_url": "https://github.com/dspv/caprock/pull/3", "title": "x", "state": "open",
+				"head": map[string]any{"ref": "feat/x", "sha": "abc"}, "base": map[string]any{"ref": "master"}},
+		})
+	}
+	x.f.failWith("GET /repos/dspv/caprock/pulls", ok)
+	if _, e := x.s.PullsByBranch(context.Background(), repo); e != nil {
+		t.Fatal(e)
+	}
+	readAt := x.s.Now().UnixMilli()
+	if at, failed := x.s.RepoPullsRead(repo); at != readAt || failed != nil {
+		t.Fatalf("read: %d %v", at, failed)
+	}
+	x.f.failWith("GET /repos/dspv/caprock/pulls", func(w http.ResponseWriter, r *http.Request) {
+		answer(w, r, 502, map[string]any{"message": "Server Error"})
+	})
+	x.advance(branchPullsKept + time.Second)
+	m, e := x.s.PullsByBranch(context.Background(), repo)
+	if e != nil || m["feat/x"].Number != 3 {
+		t.Fatalf("the last list should come back: %+v %v", m, e)
+	}
+	if at, failed := x.s.RepoPullsRead(repo); at != readAt || failed == nil {
+		t.Fatalf("after a refused read: %d %v", at, failed)
+	}
+	x.f.failWith("GET /repos/dspv/caprock/pulls", ok)
+	x.advance(time.Second)
+	if _, e := x.s.PullsByBranch(context.Background(), repo); e != nil {
+		t.Fatal(e)
+	}
+	if at, failed := x.s.RepoPullsRead(repo); at != x.s.Now().UnixMilli() || failed != nil {
+		t.Fatalf("read again: %d %v", at, failed)
+	}
+}
+
+// A pull request's labels come with it, in GitHub's order, at most maxLabels.
+func TestOwnPullsCarryLabels(t *testing.T) {
+	p := branchPull(4, "feat/x", "open", false, "")
+	for _, n := range []string{"bug", "ui", "", "a", "b", "c", "d", "e"} {
+		p.Labels = append(p.Labels, struct {
+			Name  string `json:"name"`
+			Color string `json:"color"`
+		}{Name: n, Color: "d73a4a"})
+	}
+	got := ownPulls(Repo{Owner: "dspv", Name: "caprock"}, []apiPull{p})[0].pr.Labels
+	if len(got) != maxLabels || got[0].Name != "bug" || got[0].Color != "d73a4a" || got[2].Name != "a" {
+		t.Fatalf("labels: %+v", got)
+	}
+}
+
 // A branch is newly merged once: on the first list that shows it merged.
 func TestNewlyMerged(t *testing.T) {
 	before := map[string]BranchPR{"a": {State: "open"}, "b": {State: "merged"}}

@@ -143,6 +143,10 @@ func readTBProfile(prof string, src *Source) {
 		return
 	}
 
+	var used int64
+	if st, err := os.Stat(filepath.Join(prof, "prefs.js")); err == nil {
+		used = st.ModTime().UnixMilli() // Thunderbird rewrites prefs.js as it runs and on quit
+	}
 	key, keyErr := loadNSSKey(filepath.Join(prof, "key4.db"), "")
 	logins := readLogins(filepath.Join(prof, "logins.json"))
 
@@ -195,6 +199,7 @@ func readTBProfile(prof string, src *Source) {
 				src.creds[a.Email] = pw
 			}
 		}
+		a.LastUsed = used
 		src.Accounts = append(src.Accounts, a)
 	}
 

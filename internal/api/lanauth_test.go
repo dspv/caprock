@@ -218,6 +218,38 @@ func TestAPairedDeviceIsRefusedWithA403(t *testing.T) {
 	}
 }
 
+// The contract a phone's page relies on across versions (ADR-058, 2026-10-14
+// amendment). A newer page asks an older daemon for routes it does not have,
+// and must hear "not here" (403 or 404), never 401: the page treats 401 as a
+// reason to check whether it was removed. And GET /v1/pair/me is what it
+// checks with — 200 for a token the daemon knows, 401 for one it does not.
+func TestAPhonesTokenIsOnlyDisownedByA401(t *testing.T) {
+	s, tok := pairedTablet(t, Deps{})
+	relayed := func(method, path, token string) int {
+		r := httptest.NewRequest(method, path, nil)
+		r.RemoteAddr = "127.0.0.1:51000"
+		r.Host = "127.0.0.1:22776"
+		r.Header.Set("Via", "1.1 "+remoteVia)
+		if token != "" {
+			r.Header.Set(deviceTokenHeader, token)
+		}
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		return w.Code
+	}
+	for _, path := range []string{"/v1/a-route-from-next-year", "/v1/brain-v9/nodes/1", "/v1/pair/something-new"} {
+		if got := relayed(http.MethodGet, path, tok); got == http.StatusUnauthorized {
+			t.Errorf("GET %s with a known token = 401; a route this daemon lacks must not read as a removal", path)
+		}
+	}
+	if got := relayed(http.MethodGet, "/v1/pair/me", tok); got != http.StatusOK {
+		t.Errorf("GET /v1/pair/me with a known token = %d, want 200", got)
+	}
+	if got := relayed(http.MethodGet, "/v1/pair/me", "not-a-token"); got != http.StatusUnauthorized {
+		t.Errorf("GET /v1/pair/me with an unknown token = %d, want 401", got)
+	}
+}
+
 // The licence key is what pays for the product; a device allowed to read the
 // figures does not get to copy it. The machine itself still sees it, or the
 // licence field could not show what is entered.

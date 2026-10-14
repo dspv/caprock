@@ -6,7 +6,7 @@ import { firstPick, jobFamily, jobGrid, pctText, spanText, statsWords, tabRows, 
 const job = (id: number, name: string, os: string, conclusion = 'success', status = 'completed'): CIJob =>
   ({ id, run_id: 1, name, status, conclusion, labels: [], os, steps: [] }) as CIJob
 
-describe('the PRs & CI tab', () => {
+describe('the Pipeline page', () => {
   it('lays the jobs out by name and runner OS, the OS taken out of a matrix name', () => {
     expect(jobFamily('go (windows-latest)')).toBe('go')
     expect(jobFamily('pty spike (ubuntu-latest)')).toBe('pty spike')

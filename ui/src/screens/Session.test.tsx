@@ -1,5 +1,5 @@
 import { describe as d, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, SessionScreen } from './Session'
 import { SessionCard } from './Now'
 import { writeCache } from '@/lib/swr'
@@ -110,6 +110,31 @@ d('a spawned Codex or OpenCode session', () => {
     expect(screen.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText(/Started in a terminal outside Caprock/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Branch here to type' })).toBeInTheDocument()
+    vi.unstubAllGlobals()
+  })
+
+  it('on a phone: one bar — title, state, views — and the rest behind the title (owner, 2026-10-14)', async () => {
+    spawned({ agent: 'claude', description: 'Fix the login test', description_source: 'title', model: 'claude-opus-5-5' })
+    const mq = (q: string) => ({ matches: q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList
+    vi.stubGlobal('matchMedia', mq)
+    const { container } = render(<SessionScreen id="cap-1" />)
+    expect(await screen.findByRole('log', { name: 'Conversation' })).toBeInTheDocument()
+    const bar = container.querySelector('[data-phone-bar]')!
+    expect(bar).toBeTruthy()
+    expect(bar.textContent).toContain('Fix the login test')
+    // The project, the ids and the model are not on screen until asked for.
+    expect(screen.queryByRole('heading', { name: 'p' })).not.toBeInTheDocument()
+    expect(screen.queryByText('cap-1')).not.toBeInTheDocument()
+    // Over the chat: the first message starts below the bar.
+    expect((screen.getByRole('log', { name: 'Conversation' }) as HTMLElement).style.paddingTop).toBe('80px')
+    fireEvent.click(screen.getByRole('button', { name: /session details/ }))
+    expect(screen.getByRole('heading', { name: 'p' })).toBeInTheDocument()
+    expect(screen.getByText('claude-opus-5-5')).toBeInTheDocument()
+    expect(screen.getByText('cap-1')).toBeInTheDocument()
+    // The other views are one menu.
+    fireEvent.click(screen.getByRole('tab', { name: 'Other views' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Timeline' }))
+    expect(location.hash).toContain('tab=timeline')
     vi.unstubAllGlobals()
   })
 
