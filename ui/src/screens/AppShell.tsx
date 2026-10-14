@@ -462,7 +462,7 @@ export function AppShell() {
   // Flat by default; Tree from the folder toggle or Settings → Appearance.
   const [sidebarMode, setSidebarMode] = useSidebarMode()
   const grouped = sidebarMode === 'tree'
-  const onToggleGrouped = useCallback(() => setSidebarMode(grouped ? 'flat' : 'tree'), [grouped, setSidebarMode])
+  const onGroupedChange = useCallback((g: boolean) => setSidebarMode(g ? 'tree' : 'flat'), [setSidebarMode])
   const tabbedProjects = useMemo(() => new Set(ws.tabs.map((t) => t.projectId)), [ws.tabs])
   // What the sidebar lists, as it lists it (components/Sidebar.tsx `listed`).
   const sidebarState = useMemo(() => {
@@ -1403,7 +1403,7 @@ export function AppShell() {
               onRemoveProject={onRemoveProject}
               onCleanCopies={source === 'api' ? onCleanCopies : undefined}
               grouped={grouped}
-              onToggleGrouped={onToggleGrouped}
+              onGroupedChange={onGroupedChange}
               tabDigits={stripDigits}
               onOrderTabs={onOrderTabs}
             />

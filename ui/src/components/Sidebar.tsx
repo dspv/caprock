@@ -196,11 +196,12 @@ export interface SidebarProps {
   /** Opens Clean up copies for a repository (components/CopiesSheet). */
   onCleanCopies?: (projectId: string) => void
   /**
-   * Sessions under their projects (the default), or every session in one
+   * Sessions under their projects (Tree, when absent), or every session in one
    * flat list; AppShell keeps it per viewer.
    */
   grouped?: boolean
-  onToggleGrouped?: () => void
+  /** The heading's Projects | Tabs switch: true lists by project (Tree), false in the tabs' order (Flat). */
+  onGroupedChange?: (grouped: boolean) => void
   /** Each tab's ⌘1–⌘9, by tab id, as the strip shows it: drawn on that tab's row too. */
   tabDigits?: ReadonlyMap<string, number>
   /** The flat list's tabbed rows, dragged into this order: the strip takes it (AppShell). */
@@ -256,7 +257,7 @@ export function Sidebar(props: SidebarProps) {
     hiddenProjects.length + hiddenRows.length ? `${hiddenProjects.length + hiddenRows.length} hidden` : '',
   ].filter(Boolean).join(' · ')
   const [moreAt, setMoreAt] = useState<MenuAt | null>(null)
-  // Flat (the default since 2026-10-14) or Tree (lib/sidebarMode.ts): Flat
+  // Flat or Tree (lib/sidebarMode.ts; Tree for a viewer from before 2026-10-14): Flat
   // is every listed project's sessions as one list in the tabs' order
   // (owner, 2026-10-13, translated: "make a switch like 'group by
   // projects' or not … that frees lots of room").
@@ -477,19 +478,7 @@ export function Sidebar(props: SidebarProps) {
             <span className="num text-[11.5px] text-fg-faint" title={`${projectCount} ${projectCount === 1 ? 'project' : 'projects'}, ${busyCount} with something running`}>
               {busyCount > 0 && <><span aria-hidden className="mr-1 inline-block h-[6px] w-[6px] rounded-full bg-ok align-middle" />{busyCount} of </>}{projectCount}
             </span>
-            {props.onToggleGrouped && (
-              <button
-                type="button"
-                data-group-toggle
-                aria-pressed={grouped}
-                aria-label="Group by project"
-                title={grouped ? 'Tree: sessions under their projects. Turn off for one list in the tabs’ order (also in Settings → Appearance).' : 'Flat: one list in the tabs’ order. Turn on to list sessions under their projects (also in Settings → Appearance).'}
-                onClick={props.onToggleGrouped}
-                className={`flex h-[20px] w-[20px] items-center justify-center rounded-[5px] hover:bg-[var(--app-row-hover)] ${grouped ? 'text-fg-muted' : 'text-fg-faint'}`}
-              >
-                <FolderIcon size={13} />
-              </button>
-            )}
+            {props.onGroupedChange && <ListSwitch grouped={grouped} onChange={props.onGroupedChange} />}
           </span>
         ) : undefined} />
         {model.projects.length === 0 ? (
@@ -653,6 +642,39 @@ export function Sidebar(props: SidebarProps) {
 }
 
 /** A folded group at the bottom of the projects: Quiet or Hidden, closed until opened. */
+/**
+ * The heading's switch between the two lists, in words (owner, 2026-10-14,
+ * translated: "make a switch with words, like this way or that way"): the
+ * bare folder icon before it said nothing, and a user moved to the flat
+ * list did not find the way back. Projects is Tree, Tabs is Flat; Settings
+ * → Appearance holds the same choice (lib/sidebarMode.ts).
+ */
+function ListSwitch({ grouped, onChange }: { grouped: boolean; onChange: (grouped: boolean) => void }) {
+  const options = [
+    { value: true, label: 'Projects', title: 'Sessions under their projects (also in Settings → Appearance)' },
+    { value: false, label: 'Tabs', title: 'One list in the tabs’ order, each row with its tab’s key (also in Settings → Appearance)' },
+  ]
+  return (
+    <span data-group-switch role="radiogroup" aria-label="List sessions by" className="ml-1 inline-flex h-[20px] items-center rounded-[6px] border border-[var(--app-hairline)] p-[1px]">
+      {options.map((o) => (
+        <button
+          key={o.label}
+          type="button"
+          role="radio"
+          aria-checked={grouped === o.value}
+          title={o.title}
+          onClick={() => { if (grouped !== o.value) onChange(o.value) }}
+          className={`h-[16px] rounded-[4px] px-1.5 text-[11px] leading-[16px] ${
+            grouped === o.value ? 'bg-[var(--app-row-active)] font-medium text-fg' : 'text-fg-faint hover:text-fg-muted'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </span>
+  )
+}
+
 function SectionHead({ label, action }: { label: string; action?: ReactNode }) {
   return (
     <div className="flex h-[28px] items-center gap-1.5 px-2 pt-1.5">

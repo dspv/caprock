@@ -7,6 +7,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **app:** updating no longer moves you off the sidebar you had. 0.116.0
+  switched everyone who had never touched the sidebar toggle to the flat
+  list; if you used Caprock before and never chose, the sidebar lists the
+  sessions under their projects again. A first visit still starts on the
+  flat list.
+
+### Changed
+
+- **app:** the sidebar's heading has a worded switch, **Projects | Tabs**,
+  in place of the small folder icon: Projects lists the sessions under
+  their projects, Tabs in one list in the tabs' order. Settings →
+  Appearance → *Sidebar* uses the same words.
+
 ## [0.116.0] - 2026-10-14
 
 ### Added

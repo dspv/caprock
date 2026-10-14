@@ -98,7 +98,7 @@ beforeEach(() => {
   spawned.signals = []
   sessions.splice(3)
   localStorage.clear()
-  // Most of these were written for the Tree sidebar; Flat, the default, has its own tests.
+  // Most of these were written for the Tree sidebar; Flat, a new viewer's default, has its own tests.
   localStorage.setItem('caprock.app.sidebar-grouped', 'on')
   sessionStorage.clear()
   vi.stubGlobal('fetch', fetchMock)
@@ -452,7 +452,7 @@ describe('the app workspace', () => {
   // the navigation: ⌘N is the Nth tab in the order the tabs were opened, a
   // new tab goes last with the next number, only a close or a drag changes
   // the numbers, every tab shows its N (the one in front too) and so does
-  // its sidebar row, in Flat (the default) and in Tree.
+  // its sidebar row, in Flat and in Tree.
   const strip = () => screen.getAllByRole('tab').filter((t) => t.hasAttribute('data-tab-index'))
   const stripNames = () => strip().map((t) => t.getAttribute('aria-label'))
   const stripKeys = () => strip().map((t) => t.querySelector('[data-tab-key]')?.textContent)
@@ -527,8 +527,8 @@ describe('the app workspace', () => {
     expect(rowKey('Waiting one')).toBe('⌘1')
   })
 
-  it('lists Flat by default, Tree once chosen (Settings → Appearance or the folder toggle), and a click on a project opens its page', async () => {
-    localStorage.removeItem('caprock.app.sidebar-grouped')
+  it('lists Flat for a new viewer, Tree once chosen (Settings → Appearance or the Projects | Tabs switch), and a click on a project opens its page', async () => {
+    localStorage.clear()
     render(<AppShell />)
     await screen.findByRole('group', { name: 'Sessions' })
     expect(document.querySelector('[data-project-row]')).toBeNull()
@@ -542,9 +542,21 @@ describe('the app workspace', () => {
     fireEvent.click(appRow)
     await waitFor(() => expect(frontPane()).toEqual([]))
     expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'false')
-    fireEvent.click(screen.getByRole('button', { name: 'Group by project' }))
+    expect(screen.getByRole('radio', { name: 'Projects' })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(screen.getByRole('radio', { name: 'Tabs' }))
     await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeNull())
     expect(localStorage.getItem('caprock.app.sidebar-grouped')).toBe('off')
+    expect(screen.getByRole('radio', { name: 'Tabs' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  // A user, 2026-10-14 (translated): "a project folder with its worktrees
+  // inside is more convenient". 0.116.0 had moved her to Flat unasked.
+  it('keeps Tree for a viewer who used the app before and never chose, and writes it down', async () => {
+    localStorage.clear()
+    localStorage.setItem('caprock.app.workspace.v1', JSON.stringify({ version: 1, tabs: [], activeByProject: {}, activeProject: '' }))
+    render(<AppShell />)
+    await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeTruthy())
+    expect(localStorage.getItem('caprock.app.sidebar-grouped')).toBe('on')
   })
 
   // Owner, 2026-10-13 (translated): "… and there I can Command+Up/Down to

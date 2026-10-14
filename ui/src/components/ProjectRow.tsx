@@ -875,8 +875,8 @@ export function projectRows(node: ProjectNode, tabs: readonly Tab[], labels: Rea
 export const FLAT_ORDER = '*'
 
 /**
- * Every listed project's session rows as one list (the Flat sidebar, the
- * default): the rows with a tab in the strip's order — the order the tabs
+ * Every listed project's session rows as one list (the Flat sidebar, "Tabs"
+ * on the switch): the rows with a tab in the strip's order — the order the tabs
  * were opened, so ⌘1, ⌘2 … run down the list — then the sessions running
  * with no tab, in the order set by hand in the flat list, then by when each
  * started (owner, 2026-10-14).

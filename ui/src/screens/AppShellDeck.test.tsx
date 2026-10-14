@@ -55,7 +55,7 @@ vi.mock('@/lib/api', async (orig) => {
 
 beforeEach(() => {
   localStorage.clear()
-  // Most of these were written for the Tree sidebar; Flat, the default, has its own tests.
+  // Most of these were written for the Tree sidebar; Flat, a new viewer's default, has its own tests.
   localStorage.setItem('caprock.app.sidebar-grouped', 'on')
   sessionStorage.clear()
   h.asked = 0

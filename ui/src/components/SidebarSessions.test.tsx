@@ -108,8 +108,8 @@ describe('the sessions under a project', () => {
 
 describe('group by project, off', () => {
   it('lists every session in one flat list, each with its project dimmed', () => {
-    const onToggleGrouped = vi.fn()
-    setup(mix(), [], { grouped: false, onToggleGrouped })
+    const onGroupedChange = vi.fn()
+    setup(mix(), [], { grouped: false, onGroupedChange })
     expect(document.querySelector('[data-project-row]')).toBeNull()
     expect(screen.getByRole('heading', { name: 'Sessions' })).toBeInTheDocument()
     const list = screen.getByRole('group', { name: 'Sessions' })
@@ -120,10 +120,14 @@ describe('group by project, off', () => {
     // As on the tabs: no status dot and no project dot, the project its coloured name.
     expect(list.querySelectorAll('[role="img"]')).toHaveLength(0)
     expect((list.querySelector('[data-live-row="b1"] [data-row-project-mark]') as HTMLElement).style.color).not.toBe('')
-    const toggle = screen.getByRole('button', { name: 'Group by project' })
-    expect(toggle).toHaveAttribute('aria-pressed', 'false')
-    fireEvent.click(toggle)
-    expect(onToggleGrouped).toHaveBeenCalled()
+    // The switch says both choices in words, the one shown checked.
+    const sw = screen.getByRole('radiogroup', { name: 'List sessions by' })
+    expect(sw.textContent).toBe('ProjectsTabs')
+    expect(screen.getByRole('radio', { name: 'Tabs' })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(screen.getByRole('radio', { name: 'Tabs' }))
+    expect(onGroupedChange).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('radio', { name: 'Projects' }))
+    expect(onGroupedChange).toHaveBeenCalledWith(true)
   })
 
   it('keeps its own order by hand, apart from each project\'s', () => {

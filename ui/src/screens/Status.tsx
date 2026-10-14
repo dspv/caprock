@@ -273,7 +273,7 @@ function AppearanceSection() {
   )
 }
 
-/** Flat (the tabs' order) or Tree (by project): lib/sidebarMode.ts. */
+/** Projects (Tree) or Tabs (Flat, the tabs' order): lib/sidebarMode.ts. */
 function SidebarModeSetting() {
   const [mode, setMode] = useSidebarMode()
   return (
@@ -281,11 +281,11 @@ function SidebarModeSetting() {
       <Choice<SidebarMode>
         label="Sidebar"
         value={mode}
-        options={[{ value: 'flat', label: 'Flat' }, { value: 'tree', label: 'Tree' }]}
+        options={[{ value: 'tree', label: 'Projects' }, { value: 'flat', label: 'Tabs' }]}
         onChange={setMode}
       />
       <p className="text-[12px] text-fg-muted">
-        Flat lists the open sessions in the tabs&rsquo; order, each with its tab&rsquo;s key; Tree lists them under their projects.
+        Projects lists the sessions under their projects; Tabs puts them in one list in the tabs&rsquo; order, each with its tab&rsquo;s key. The same switch sits beside the sidebar&rsquo;s heading.
       </p>
     </div>
   )

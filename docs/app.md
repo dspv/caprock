@@ -60,15 +60,16 @@ others. Installing it: [install-app.md](install-app.md).
   then the rest by name, and clicking a project never moves it. Hover a project for *New agent* and *New shell*. Sessions in a
   folder that is not a repository sit under *Outside projects*, and so does a
   quick chat.
-- **Flat or Tree.** The sidebar is **Flat** by default: one list headed
-  *Sessions* of the sessions open in tabs, in the tabs' order, each with
-  its tab's key (⌘1, ⌘2 …) and its project's short name in the project's
-  colour; sessions running with no tab come after them, without a key.
-  Dragging a row there (or ⌥⇧↑ ↓ on it) moves its tab in the strip.
-  **Tree** lists the sessions under their projects, each row still with
-  its tab's key, so the numbers do not run in order down the tree. Choose
-  in Settings → Appearance → *Sidebar*, or with the folder button beside
-  the heading; the app remembers it.
+- **Projects or Tabs.** A switch beside the sidebar's heading says both
+  ways in words. **Projects** lists the sessions under their projects,
+  each row with its tab's key (⌘1, ⌘2 …), so the numbers do not run in
+  order down the tree. **Tabs** is one list headed *Sessions* of the
+  sessions open in tabs, in the tabs' order, each with its tab's key and
+  its project's short name in the project's colour; sessions running with
+  no tab come after them, without a key. Dragging a row there (or ⌥⇧↑ ↓
+  on it) moves its tab in the strip. The same choice is in Settings →
+  Appearance → *Sidebar*; the app remembers it. If you used Caprock before
+  and never chose, you keep Projects; a first visit starts on Tabs.
 - **Closing things: ×.** Hover a tab under the project — or look at the
   one in front, where it always shows — for its **×**: it closes the tab
   exactly as ⌘W and the tab strip's × do. An agent in it keeps running (it

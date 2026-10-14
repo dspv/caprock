@@ -161,9 +161,9 @@ One window, three regions:
   row is moved by dragging it onto another or with ⌥⇧↑ ⌥⇧↓ on it; the
   order is kept per project and viewer (`caprock.app.row-order`; the flat
   list's under `*`). **Group by project or one list** (owner, same day,
-  translated: "top I see 1, 2, 3; on the left I see 4, 2"): a folder
-  toggle beside the heading (`caprock.app.sidebar-grouped`, on by
-  default) switches to one flat list of every agent session, each row
+  translated: "top I see 1, 2, 3; on the left I see 4, 2"): a switch
+  beside the heading (`caprock.app.sidebar-grouped`; *Projects* | *Tabs*
+  in words since 2026-10-14) switches to one flat list of every agent session, each row
   with its project's dot and short name. **Tabs are the navigation**
   (owner, 2026-10-14, translated: "I sometimes work with 5 projects at
   once, sometimes 2. I just want to switch between them with key combos"):
@@ -172,10 +172,12 @@ One window, three regions:
   with the next number; only a close or a drag changes the numbers; a
   restart keeps them. Every tab shows its digit, the one in front too,
   after its session's name and its project's dot and short name, and its
-  sidebar row shows the same digit. The sidebar is **Flat** by default —
+  sidebar row shows the same digit. The sidebar is **Flat** ("Tabs") —
   the tabbed sessions in the strip's order, then the ones running with no
-  tab, without a digit — or **Tree**, projects with their sessions under
-  them (Settings → Appearance, or the folder toggle; `lib/sidebarMode.ts`).
+  tab, without a digit — or **Tree** ("Projects"), projects with their
+  sessions under them (Settings → Appearance, or the heading's switch;
+  `lib/sidebarMode.ts`). A new viewer starts on Flat; one who used the app
+  before and never chose keeps Tree (.ai/04-ui.md).
   Projects have no digit; a click on one opens its page. For a day ⌘N had
   been the sidebar's Nth item, a project or a session by grouping, with N
   only on the tab it brought; projects on ⌃⌘1–⌃⌘9 were tried and turned
