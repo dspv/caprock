@@ -94,7 +94,7 @@ export function FirstRun({ initial = 'choose', onDone, onSample }: {
   }
   if (step === 'add') return <Card><AddFlow onDone={onDone} onCancel={() => setStep('choose')} /></Card>
 
-  const found = Array.isArray(sources) ? sources.reduce((n, s) => n + s.accounts.length, 0) : 0
+  const found = Array.isArray(sources) ? sources.reduce((n, s) => n + (s.accounts?.length ?? 0), 0) : 0
   const from = Array.isArray(sources) ? sources.map((s) => s.label).join(', ') : ''
   return (
     <Card>
@@ -272,7 +272,7 @@ export function ImportPanel({ initial, onDone, onBack }: { initial: ImportSource
       {sources.length === 0 && <div className="hint">No other mail app with accounts was found. Add one by hand instead.</div>}
       {sources.map((s) => (
         <div key={s.kind} className="source">
-          <div className="srchead"><b>{s.label}</b> <span className="muted small">{s.accounts.length} account{s.accounts.length === 1 ? '' : 's'}</span></div>
+          <div className="srchead"><b>{s.label}</b> <span className="muted small">{(s.accounts ?? []).length} account{(s.accounts ?? []).length === 1 ? '' : 's'}</span></div>
           {s.needs_permission === 'full_disk_access' && (
             <div className="hint">
               macOS keeps {s.label}'s settings behind Full Disk Access. Open <b>System Settings → Privacy &amp; Security → Full Disk Access</b>, turn on Caprock (or the terminal that runs <code>caprock</code>), then retry.

@@ -157,9 +157,13 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 }
 
 export const api = {
-  state: () => req<State>('GET', '/v1/mail/state'),
+  state: () => req<State>('GET', '/v1/mail/state')
+    .then((r) => ({ ...r, accounts: r.accounts ?? [], folders: r.folders ?? [] })),
   sample: (on: boolean) => req<{ sample: boolean }>('POST', '/v1/mail/sample', { on }),
-  importSources: () => req<{ sources: ImportSource[] }>('GET', '/v1/mail/import'),
+  // A source found with no accounts came back as null before 0.117 and the
+  // first-run screen crashed counting it: every source gets a list here.
+  importSources: () => req<{ sources: ImportSource[] | null }>('GET', '/v1/mail/import')
+    .then((r) => ({ sources: (r.sources ?? []).map((x) => ({ ...x, accounts: x.accounts ?? [] })) })),
   importAccounts: (source: string, emails: string[], passwords?: Record<string, string>) =>
     req<{ results: ImportResult[] }>('POST', '/v1/mail/import', { source, emails, passwords }),
   oauthProviders: () => req<OAuthProviders>('GET', '/v1/mail/oauth/providers'),

@@ -74,8 +74,13 @@ const BIG = 'inline-flex items-center gap-1.5 rounded-sm px-3.5 py-2 min-h-[36px
 export const PRIMARY = `${BIG} bg-accent text-bg hover:brightness-110`
 /** Big and obvious, but not a promise to type into anything that exists. */
 export const SECONDARY = `${BIG} border border-accent text-accent hover:bg-accent/10`
+/** A quiet action: words in the muted foreground, no fill and no border until
+ *  hovered. For a place that already has a lot to read — the Live pulse's
+ *  opened row, where two filled buttons and two outlined ones pulled the eye
+ *  off the sessions they belong to (owner, 2026-10-14). */
+export const QUIET = 'inline-flex items-center gap-1.5 rounded-sm px-2 py-1 min-h-[28px] text-[12px] whitespace-nowrap text-fg-muted no-underline hover:text-fg hover:bg-panel-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:opacity-50'
 
-export function ProjectTerminal({ dir, label, sessions = [] }: { dir: string; label: string; sessions?: SessionSummary[] }) {
+export function ProjectTerminal({ dir, label, sessions = [], quiet = false }: { dir: string; label: string; sessions?: SessionSummary[]; quiet?: boolean }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [menu, setMenu] = useState<SessionSummary[] | null>(null)
@@ -194,7 +199,7 @@ export function ProjectTerminal({ dir, label, sessions = [] }: { dir: string; la
         : `Start claude in ${dir}`
 
   return (
-    <div ref={ref} className="relative flex items-center gap-1.5">
+    <div ref={ref} className={`relative flex items-center ${quiet ? 'gap-0.5' : 'gap-1.5'}`}>
       {action.kind !== 'none' && (
         <button
           type="button"
@@ -202,7 +207,7 @@ export function ProjectTerminal({ dir, label, sessions = [] }: { dir: string; la
           disabled={busy}
           title={title}
           aria-label={`${label1} — ${label}`}
-          className={action.kind === 'open' ? PRIMARY : SECONDARY}
+          className={quiet ? QUIET : action.kind === 'open' ? PRIMARY : SECONDARY}
         >
           <span aria-hidden className="mono text-[12px]">{'>_'}</span>
           {busy ? 'Opening…' : label1}
@@ -216,7 +221,7 @@ export function ProjectTerminal({ dir, label, sessions = [] }: { dir: string; la
         aria-expanded={open}
         title={`Every way into ${label}`}
         aria-label={`Every way into ${label}`}
-        className="min-h-[36px] min-w-[32px] rounded-sm border border-border text-fg-muted hover:text-fg hover:border-border-strong focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
+        className={quiet ? `${QUIET} justify-center min-w-[28px] px-1` : 'min-h-[36px] min-w-[32px] rounded-sm border border-border text-fg-muted hover:text-fg hover:border-border-strong focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50'}
       >
         ⋯
       </button>

@@ -111,6 +111,18 @@ func newHarness(t *testing.T) *harness {
 	_ = os.MkdirAll(proj, 0o700)
 	h.transcript = filepath.Join(proj, sessionID+".jsonl")
 	h.url, h.cancel, h.done = startDaemon(t, h.dataDir, h.root)
+	// A failed step stops the test before it stops the daemon: without this
+	// it kept running into the next test, holding caprock.db open, which
+	// Windows then refused to delete with the temporary directory.
+	t.Cleanup(func() {
+		if t.Failed() {
+			h.cancel()
+			select {
+			case <-h.done:
+			case <-time.After(10 * time.Second):
+			}
+		}
+	})
 	return h
 }
 
@@ -210,6 +222,26 @@ func (h *harness) session() *sessionDTO {
 	return nil
 }
 
+// hasEvent reports whether the session's timeline holds an event of kind
+// for tool.
+func (h *harness) hasEvent(kind, tool string) bool {
+	var det struct {
+		Events []struct {
+			Kind string `json:"kind"`
+			Tool string `json:"tool"`
+		} `json:"events"`
+	}
+	if h.getJSON("/v1/sessions/"+sessionID, &det) != http.StatusOK {
+		return false
+	}
+	for _, e := range det.Events {
+		if e.Kind == kind && e.Tool == tool {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *harness) waitFor(timeout time.Duration, what string, cond func() bool) {
 	h.t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -264,11 +296,24 @@ func TestPhase0DefinitionOfDone(t *testing.T) {
 	h.hook("UserPromptSubmit", map[string]any{"prompt": "add healthz", "prompt_id": "p1"})
 	t0 := time.Now()
 	h.hook("PreToolUse", map[string]any{"tool_name": "Edit", "tool_input": map[string]any{"file_path": filepath.Join(h.repo, "main.go"), "old_string": "a", "new_string": "b"}, "tool_use_id": "toolu_1"})
-	h.waitFor(2*time.Second, "Now shows 'editing main.go'", func() bool {
-		s := h.session()
-		return s != nil && s.Activity.Phrase == "editing main.go" && s.Activity.Health == "working" && s.HasHooks
-	})
-	t.Logf("activity visible after %s", time.Since(t0))
+	// Two halves, waited on separately. The way in (the shim, a loopback
+	// POST, one insert) is the machine's: it takes ~20ms on every OS in CI,
+	// but a Windows runner once stalled the test process for seconds
+	// (2026-10-14, run 38567880472: the whole test took 12s against ~2.5s,
+	// and the SessionStart hook finished 7s after the daemon was ready), and
+	// a 2s wall clock across that failed a daemon that had done nothing wrong.
+	// 15s is twice that stall. The other half is the product's and gets no
+	// slack: Now is narrated from the stored events on every read, so the
+	// first read after the event is stored must already show it.
+	h.waitFor(15*time.Second, "the PreToolUse event stored", func() bool { return h.hasEvent("tool.pre", "Edit") })
+	stored := time.Since(t0)
+	if s := h.session(); s == nil || s.Activity.Phrase != "editing main.go" || s.Activity.Health != "working" || !s.HasHooks {
+		t.Fatalf("the event is stored but Now does not show it: %+v", s)
+	}
+	t.Logf("activity visible after %s", stored)
+	if stored > 2*time.Second {
+		t.Logf("over the 2s DoD budget: the hook took %s to reach the store on this machine", stored)
+	}
 	h.hook("PostToolUse", map[string]any{"tool_name": "Edit", "tool_input": map[string]any{"file_path": filepath.Join(h.repo, "main.go")}, "tool_use_id": "toolu_1", "tool_response": "ok"})
 
 	// DoD 4 — within 15s of an assistant turn, tokens + cost update.

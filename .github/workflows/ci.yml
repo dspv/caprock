@@ -3,7 +3,10 @@ name: ci
 on:
   push:
     branches: [master]
+  # Draft pull requests run nothing: contributors iterate with `make check`
+  # locally and CI runs once, when the PR is marked ready (ADR-061).
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # A new push to a pull request cancels the run it supersedes. A push to master
 # never cancels: every master commit gets its full run, and that run is what
@@ -23,6 +26,7 @@ jobs:
   # it from the daemon). A push to master always runs everything, and so does
   # a pull request whose file list cannot be read.
   changes:
+    if: ${{ !github.event.pull_request.draft }}
     name: changes
     runs-on: ubuntu-latest
     permissions:
@@ -45,6 +49,7 @@ jobs:
           echo "app=$app" | tee -a "$GITHUB_OUTPUT"
 
   ui:
+    if: ${{ !github.event.pull_request.draft }}
     name: ui (typecheck, test, build)
     runs-on: ubuntu-latest
     steps:
@@ -74,6 +79,7 @@ jobs:
   # waiting for the ui job's: the ui job fails when that copy is stale, so a
   # green run tested the same bytes either way, three minutes sooner.
   go:
+    if: ${{ !github.event.pull_request.draft }}
     name: go (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -139,6 +145,7 @@ jobs:
   # T0 — ConPTY spike. Informational: it must never redden the required jobs
   # (ADR-006 / .ai/09-execution-plan.md T0). Its result is the go/no-go for T11.
   pty-spike:
+    if: ${{ !github.event.pull_request.draft }}
     name: pty spike (${{ matrix.os }})
     continue-on-error: true
     strategy:
@@ -167,6 +174,7 @@ jobs:
   # repository, and the only way to keep this fixed is to run the thing a
   # contributor actually runs.
   make-windows:
+    if: ${{ !github.event.pull_request.draft }}
     name: make build (windows-latest)
     runs-on: windows-latest
     env:

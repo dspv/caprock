@@ -508,7 +508,7 @@ One window, three regions:
   every row opens in place, one at a time, to the task the parent gave it,
   its own calls live, what it answered and its numbers — owner, 2026-10-12:
   "can we expand the subagents to look inside?"; the hero's chips, groups
-  of four up to two rows of twelve, open a row too), its last seven tool calls with their durations, the
+  of four up to two rows of twelve, open a row too), its last seven tool calls with what each acted on, how it ended and how long ago (a repeat folded to ×N; the Inspector in [04-ui.md](04-ui.md)), the
   uncommitted changes, the plan windows of its agent (each a bar with a tick
   where an even pace would be by the clock, the percentage large, and one
   line — *resets in 4 h 56 min · ✓ enough* or *⚠ out at 23:50*, amber, red

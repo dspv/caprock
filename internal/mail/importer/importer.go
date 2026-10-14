@@ -57,13 +57,21 @@ func (s Source) Password(email string) (string, bool) {
 // client that is present but unreadable yields a Source carrying Error or
 // NeedsPermission so the dashboard can explain what to do.
 func Sources(home string) []Source {
-	var out []Source
+	out := []Source{}
 	if tb := thunderbird(home); tb != nil {
 		out = append(out, *tb)
 	}
 	if runtime.GOOS == "darwin" {
 		if am := appleMail(home); am != nil {
 			out = append(out, *am)
+		}
+	}
+	// A source read with no accounts (Apple Mail without Full Disk Access)
+	// says so with an empty list, never null: the first-run screen counts
+	// them and crashed on 0.116.0 ("t.accounts.length").
+	for i := range out {
+		if out[i].Accounts == nil {
+			out[i].Accounts = []Account{}
 		}
 	}
 	return out

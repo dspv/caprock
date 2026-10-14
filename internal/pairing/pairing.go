@@ -88,6 +88,23 @@ const (
 	RoleController = "controller"
 )
 
+// How a device last reached the machine. Recorded by internal/api's gate on
+// every request, so the owner's list can say which phones work off the home
+// Wi-Fi and which do not (owner, 2026-10-14: his phone was paired on the
+// Wi-Fi address minutes before he turned on access from anywhere, kept that
+// link, and nothing told him why it went dead on mobile data). Empty means
+// not seen since this was recorded.
+const (
+	// ViaLAN is the network listener, from an ordinary private address: the
+	// same Wi-Fi only.
+	ViaLAN = "lan"
+	// ViaTailscale is the network listener, from a Tailscale address: anywhere
+	// Tailscale is on.
+	ViaTailscale = "tailscale"
+	// ViaRelay is access from anywhere through the relay (ADR-058).
+	ViaRelay = "relay"
+)
+
 // ValidRole reports whether r names a role a device may be given.
 func ValidRole(r string) bool { return r == RoleViewer || r == RoleController }
 
@@ -116,6 +133,9 @@ type Device struct {
 	// by the owner on loopback (SetRole), never by the device: pairing always
 	// makes a viewer.
 	Role string `json:"role,omitempty"`
+	// Via is how the device last reached the machine: ViaLAN, ViaTailscale,
+	// ViaRelay, or empty when not seen since it was first recorded.
+	Via string `json:"via,omitempty"`
 }
 
 // Public is a Device without its token, for listing in the dashboard.
@@ -126,6 +146,8 @@ type Public struct {
 	LastSeen int64  `json:"last_seen"`
 	// Role is always set here: "viewer" or "controller".
 	Role string `json:"role"`
+	// Via is how it last reached the machine; see Device.Via.
+	Via string `json:"via,omitempty"`
 }
 
 // Store holds the pairing state. The zero value is not usable; call New.
@@ -251,19 +273,32 @@ func (s *Store) Redeem(code, name string) (*Device, error) {
 // would be read without the lock. A caller that needs the role *now* — a
 // terminal socket that stays open for an hour — asks again.
 func (s *Store) Check(token string) (*Device, error) {
+	d, _, err := s.CheckVia(token, "")
+	return d, err
+}
+
+// CheckVia is Check that also records how the device reached the machine
+// (ViaLAN, ViaTailscale, ViaRelay). An empty via records nothing: a request
+// whose route cannot be told apart keeps what was known. changed reports that
+// the recorded route is new, so the caller can save the guest list — which it
+// does not do for LastSeen, as that changes on every request.
+func (s *Store) CheckVia(token, via string) (dev *Device, changed bool, err error) {
 	if token == "" {
-		return nil, ErrUnknownDevice
+		return nil, false, ErrUnknownDevice
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	d, ok := s.devices[token]
 	if !ok {
-		return nil, ErrUnknownDevice
+		return nil, false, ErrUnknownDevice
 	}
 	d.LastSeen = s.Now().UnixMilli()
+	if via != "" && d.Via != via {
+		d.Via, changed = via, true
+	}
 	cp := *d
 	cp.Role = roleOf(d)
-	return &cp, nil
+	return &cp, changed, nil
 }
 
 // RoleOf is the current role of the device holding token, or "" when the
@@ -306,7 +341,7 @@ func (s *Store) Devices() []Public {
 	defer s.mu.Unlock()
 	out := make([]Public, 0, len(s.devices))
 	for _, d := range s.devices {
-		out = append(out, Public{ID: d.ID, Name: d.Name, PairedAt: d.PairedAt, LastSeen: d.LastSeen, Role: roleOf(d)})
+		out = append(out, Public{ID: d.ID, Name: d.Name, PairedAt: d.PairedAt, LastSeen: d.LastSeen, Role: roleOf(d), Via: d.Via})
 	}
 	// Stable order so the list does not shuffle between polls.
 	for i := 1; i < len(out); i++ {
