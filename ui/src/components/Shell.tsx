@@ -53,6 +53,9 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
   // gets are the same thing — everything the agents said on this machine —
   // and nobody looking for the second would think to open the first.
   { route: { name: 'notes' }, label: 'Memory' },
+  // Second Brain (ADR-063): what Memory holds, kept as a graph. Beside it,
+  // because it is built from the same words.
+  { route: { name: 'brain' }, label: 'Brain', phase: 'new' },
   { route: { name: 'tasks' }, label: 'Tasks' },
   // Caprock Mail: a separate kind of work, so it sits last. Marked new until
   // people have found it; the offer on Now points here once (lib/nudges.ts).

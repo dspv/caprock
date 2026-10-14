@@ -3635,3 +3635,68 @@ would also have to pass through.
 would have no CI result — GitHub refuses to merge a draft, so this needs a
 manual mistake), or required status checks are turned on for `master`, which
 would need the skipped jobs reported as passing.
+
+## ADR-063 — Second Brain: the sessions' decisions and findings, kept as a graph on this machine; twenty by hand are free
+
+**Date:** 2026-10-14 · **Status:** accepted (owner, 2026-10-14)
+
+*Builds the product the in-app Premium offer pre-sells.*
+
+**Context.** The owner sells "Second Brain" in Premium with a date on it, 18
+October 2026, and described it (translated): "On the left a collapsible block
+where my second brain is constantly being built — a knowledge graph. Like in
+Hogwarts they pulled memories out with a wand and put them in the Pensieve —
+here ideas get put into the graph: everything done, researched, etc." Caprock
+already keeps every answer Claude wrote (`/v1/notes`, about 30,000 notes on
+the owner's machine); what it lacks is a place where the few worth keeping
+are kept as conclusions, linked to each other, rather than found again by
+searching prose.
+
+**Decision.**
+
+- **Memories and the entities they hang off.** A node is a memory — an
+  *idea*, *decision*, *finding* or *question* — or an entity: a *topic*,
+  *person* or *project*. A title is a line (80 characters), a summary a
+  paragraph (400). Every memory records where it came from: the session, the
+  event (an assistant note), the moment and the project, so it links back to
+  the place in the record. An entity exists once per normalised title (lower
+  case, spaces collapsed, punctuation at the ends dropped), so "SQLite" and
+  "sqlite." are one topic. Edges are *relates*, *follows*, *contradicts* and
+  *part_of*, one per pair and kind, weighted (dropping the same link again
+  adds to it, capped at 10). Three tables in the daemon's own database
+  (migration 0055): `brain_nodes`, `brain_edges`, and `brain_runs`, which
+  the automatic extraction records each read in.
+- **Dropped in by hand.** *Drop into brain* under any answer on the Memory
+  screen, in a session's Notes and in the chat view sends only the answer's
+  event id; the daemon reads its text, session, time and project from the
+  record. The quick capture (⇧⌘H, Ctrl+Shift+H off macOS, or ⌘K *Add to
+  brain…*) takes a line or a paragraph, a kind and topics. The first line
+  that says something, without its Markdown, is the title; the passage,
+  flattened, is the summary. A memory hangs off its project and its topics
+  from the first drop, so the graph clusters without any model.
+- **Free and Premium.** Without a licence twenty memories dropped in by hand
+  are kept — enough to see what the graph does with one's own work — and the
+  twenty-first is refused **by the daemon** (`402`), as custom agents and Ask
+  Gemini are, so the lock is not a decoration. Reading, editing, linking and
+  deleting are never locked: it is the user's data. A licence that lapses
+  leaves every memory readable.
+- **On this machine.** Everything above is local: the graph is the daemon's
+  SQLite file, served on loopback, readable by a paired device and written
+  only on the machine.
+- **Reads that stay fast.** The graph read takes the newest memories that
+  pass the filter (pinned first), the entities linked to them and every edge
+  between what it returns, without summaries unless asked; a large selection
+  scans the edge table once instead of walking it per node. On a test graph
+  of 5,000 memories, 200 topics and 15,000 edges the whole-graph read took
+  45–50 ms on the development Mac under load and a project's 20 ms
+  (`TestBrainGraphReadsFiveThousandNodesQuickly`, 2026-10-14).
+
+**Rules out:** an embedding index or a vector store (a dependency and a model
+for what titles, topics and links do); a server of ours; storing the graph
+anywhere but the daemon's database; locking a user out of memories already
+kept.
+
+**Revisit if:** people keep far more than a few thousand memories (the graph
+read returns at most 5,000 and the screen would need clustering on the
+daemon); or the free twenty turn out to be too few to see the point — a
+number to change in one constant (`brainFreeManual`).

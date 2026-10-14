@@ -125,6 +125,9 @@ type Deps struct {
 	// Remote is access from anywhere, through a relay (ADR-058): its state for
 	// the pairing panel and the switch. Nil in builds or tests without it.
 	Remote RemoteControl
+	// BrainAuto is Second Brain's automatic extraction (ADR-063). Nil in
+	// builds or tests without it; the graph and manual drops work either way.
+	BrainAuto BrainAuto
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
 	ActiveLoops func(sessionID string) *loop.Alert
 	// LoopK and LoopWindow are the loop detector's settings, so the Week
@@ -691,6 +694,15 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/inbox", s.handleAddInbox)
 	m.HandleFunc("DELETE /v1/inbox/{id}", s.handleDeleteInbox)
 	m.HandleFunc("GET /v1/inbox/{id}/files/{n}", s.handleInboxFile)
+	// Second Brain (brain.go, ADR-063).
+	m.HandleFunc("GET /v1/brain", s.handleBrainGraph)
+	m.HandleFunc("GET /v1/brain/status", s.handleBrainStatus)
+	m.HandleFunc("POST /v1/brain/nodes", s.handleBrainDrop)
+	m.HandleFunc("GET /v1/brain/nodes/{id}", s.handleBrainNode)
+	m.HandleFunc("PATCH /v1/brain/nodes/{id}", s.handlePatchBrainNode)
+	m.HandleFunc("DELETE /v1/brain/nodes/{id}", s.handleDeleteBrainNode)
+	m.HandleFunc("POST /v1/brain/links", s.handleBrainLink)
+	m.HandleFunc("DELETE /v1/brain/links", s.handleBrainLink)
 	m.HandleFunc("POST /v1/shells", s.handleStartShell)
 	m.HandleFunc("GET /v1/shells", s.handleShells)
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)

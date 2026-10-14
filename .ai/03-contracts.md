@@ -175,8 +175,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/queue`,
   `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
-  `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file` and
-  `/v1/projects/{id}/files`. Everything else is `403` — every `POST`, `PUT` and
+  `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file`,
+  `/v1/projects/{id}/files`, `/v1/brain`, `/v1/brain/status` and
+  `/v1/brain/nodes/{id}`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
   orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
   not reads: `/v1/agents/{id}/term` (its socket types into the session), and
@@ -727,7 +728,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -1211,7 +1212,7 @@ GitHub token is (§ GitHub, "Where the token lives"):
 
 On a paired device's read list (counts only). `501` without the projects service.
 
-`GET /v1/repos/ci` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, those with a session running first, at most 6 (`reposCIMax`), each read through the kept GitHub reads the PRs & CI tab makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci`).
+`GET /v1/repos/ci[?older=1][&hide=owner/name,…]` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], quiet[], recent_days, fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, with activity in the last `recent_days` (14: a session's last event in the project's root, or the project's `added_at`), those with a session running first, then by `last_active`, at most 6 (`reposCIMax`); with `older=1` the older ones too, marked `older`, at most 12 in all (`reposCIOlderMax`). A repository named in `hide` (this viewer's hidden ones, case-insensitive, at most 200), one without recent activity while `older` is not asked, and one past the bound are listed in `quiet[]` `{project_id, name, repo, last_active?, why: older|hidden|more}` and nothing is sent to GitHub for them. Each row is read through the kept GitHub reads the PRs & CI tab makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. Rows are read at most 3 at once (`reposCIParallel`), each within 12 s (`reposCIRepoTimeout`), the status page beside them, the whole within 30 s; a row GitHub did not answer in time carries `slow: true` beside its `error`. A row also carries `last_active` (Unix ms) and, in the quick answer, `pending`. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci` with `older` and the sorted `hide`); a key never composed is answered at once with the rows unread (`pending`, `refreshing`) while the composition goes on. Each `top_prs[]` entry adds `shared` (sessions charged only in part) and `tokens_in`, `tokens_out`, `cache_read`, `cache_write` (`store.PRSpend`, below).
 
 - **Row** — `RepoCIRow` `{project_id, name, repo, live, ci?, days?, stuck[], open, merged_7d, top_prs[], authors[], release?, error?}`. `live` counts the sessions not ended under the project's root; `ci` is `github.RunStats` over the runs, 14 days (the `CIStats` of `…/ci/stats`), `days` its local calendar days; `open` and `merged_7d` count the listed pull requests; `release` is the newest published release (`RepoRelease`); a failed list is `error` with the rest absent.
 - **Stuck** — `github.StuckRuns`: `{id, name, branch?, status, url?, since, median_ms?}` for a run `in_progress` longer than twice its workflow's median successful run over the 14 days and at least 10 minutes over it (no median, never), or waiting for a runner (`queued`, `waiting`, `pending`, `requested`) longer than 15 minutes; `since` is `run_started_at`, else `created_at`. The runs list is kept 2 minutes instead of 30 while any run in it is unfinished (`repoRunsActiveKept`), so a stuck run is seen within minutes; a conditional read costs a 304 when nothing changed.
@@ -1220,7 +1221,7 @@ On a paired device's read list (counts only). `501` without the projects service
 
 On a paired device's read list. `501` without the projects service.
 
-**Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole; where two pull requests share a head branch the open one owns it, else the most recently updated. A session not on such a branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice}`: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and one sum per slice over a session's events (`(session_id, ts)` index). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them.
+**Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole, unless it opened or merged more than one pull request (`session_prs` rows with `opened_at` or `merged_at`): `git_branch` is the branch a session was on last, and a long session that drove hundreds of pull requests and ended on a release branch was charged whole to the release's pull request (#601 read as $1,884.29, the session's entire spend; cut as below it is $2.12, measured on the owner's database 2026-10-14). Where two pull requests share a head branch the open one owns it, else the most recently updated. A session not charged by its branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice, shared?, tokens_in, tokens_out, cache_read, cache_write}`: the tokens are the same work's (`session_stats` for a whole session, the slice's `events` sums for a cut one), `shared` counts the cut sessions: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and one sum per slice over a session's events (`(session_id, ts)` index). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them.
 
 **Phone alerts** ([ADR-036](08-decisions.md)) go through the same bot and are
 free: no licence is checked. `PUT /v1/settings` accepts `alert_approval` and
@@ -1467,6 +1468,13 @@ GET    /v1/inbox                     → {items, max}; what was saved for later 
 POST   /v1/inbox                     {text?, project_id?, files?} → {item}; save a note, a link or a photo (§ Inbox)
 DELETE /v1/inbox/{id}                → 204; with its files (§ Inbox)
 GET    /v1/inbox/{id}/files/{n}      → an item's image, for its thumbnail (§ Inbox)
+GET    /v1/brain                     ?q=&project=&since=&until=&limit=&summaries=1 → BrainGraph (§ Second Brain)
+GET    /v1/brain/status              → BrainStatus: counts, the free allowance, projects (§ Second Brain)
+POST   /v1/brain/nodes               {text | title, summary?, kind?, event_id?, session_id?, project?, topics?, pinned?} → {node, created}; 402 past the free allowance
+GET    /v1/brain/nodes/{id}          → {node, links}
+PATCH  /v1/brain/nodes/{id}          {kind?, title?, summary?, pinned?} → {node}
+DELETE /v1/brain/nodes/{id}          → 204; its edges go with it
+POST   /v1/brain/links               {from, to, kind?} → 204; DELETE with {from, to} → 204
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
 POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, name}}; this machine only
@@ -2715,6 +2723,69 @@ GET    /v1/inbox/{id}/files/{n}     → the n-th file's bytes, images only (thum
 - **Live.** Each save and delete publishes an `inbox` frame, `{id,
   deleted}`, on `/v1/live`.
 
+### Second Brain
+
+What the sessions decided, found and left open, kept as a graph
+([ADR-063](08-decisions.md)). Code: `internal/api/brain.go`,
+`internal/store/brain.go`; DDL in § Second Brain DDL (migration 0055).
+
+```
+GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total}
+GET    /v1/brain/status         → {licensed, memories, manual, free_max, free_left, projects: [{project, count}], auto?}
+POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
+GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
+PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
+DELETE /v1/brain/nodes/{id}     → 204
+POST   /v1/brain/links          {from, to, kind?} → 204
+DELETE /v1/brain/links          {from, to} → 204
+```
+
+- **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
+  event_id?, ts?, project?}, manual, pinned, run_id?, created_at, updated_at,
+  degree?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or
+  `question` (a memory) or `topic`, `person` or `project` (an entity).
+  `title` is at most 80 runes and `summary` 400, clipped with `…` on the way
+  in. `manual` is true for a node dropped in by hand; `run_id` names the
+  automatic extraction's read that made it. `degree` is the number of
+  returned edges touching the node, in a graph read only.
+- **`BrainEdge`** — `{from, to, kind, weight}`; `kind` is `relates`,
+  `follows`, `contradicts` or `part_of`. One edge per `(from, to, kind)`;
+  linking an existing pair again adds its weight, capped at 10. A memory
+  hangs off its project and topics with `part_of`.
+- **The graph read** returns the newest memories that pass the filter
+  (pinned first, then by `created_at`), at most `limit` (default and ceiling
+  5,000), the entities their edges reach, and every edge between returned
+  nodes; with no filter, every entity too, linked or not. `q` matches title
+  or summary, anywhere, wildcards literal; `project` is exact; `since` and
+  `until` bound `created_at`. `total` counts the memories that pass the
+  filter, whatever the limit. Summaries are `""` unless `summaries=1`; a
+  node's own read carries its summary.
+- **A drop.** `kind` defaults to `idea`. With `event_id` the daemon reads
+  the note's text, session, time and project from `events` itself — the event
+  must be main-thread assistant prose (§ Phase 0's notes rules), else `400`.
+  The same answer dropped again returns the memory already made from it
+  (`created: false`). With `session_id` alone the source is that session at the current time.
+  Without a `title`, the first line of `text` (or the note) that says
+  something, its Markdown stripped, is the title and the passage, flattened,
+  the summary — none when one short line is the whole of it. An entity whose
+  normalised title exists (lower case, spaces collapsed, punctuation at the
+  ends dropped) is returned with `created: false` rather than added again.
+  The memory is linked `part_of` its project (an entity made on demand) and
+  each topic (at most 8). `text` at most 64 KiB, valid UTF-8, no NUL.
+- **The free allowance.** Without an active licence (ADR-022) a `POST` of a
+  memory when twenty memories dropped in by hand exist is `402` `{error:
+  "premium required", detail}`. Entities, edits, links, deletes and reads
+  are never refused for want of a licence. `free_left` is the allowance
+  remaining, `-1` with a licence.
+- **Errors.** `404` for an unknown node; `409` when a rename would give an
+  entity the normalised title of another of its kind; `400` for an unknown
+  kind, an empty title, a self-link.
+- **Who.** The three `GET`s are open to every paired device; every write is
+  the machine's (a device gets `403`).
+- **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
+  "added" | "changed" | "deleted", kind?, title?, auto?}` (`kind` and `title`
+  absent on a delete).
+
 ### Queued messages
 
 What the chat field sends to a session Caprock started ([ADR-053](08-decisions.md)).
@@ -3726,6 +3797,73 @@ CREATE INDEX IF NOT EXISTS idx_inbox_created ON inbox(created_at);
 What was saved for later (§ Inbox). `files` is a JSON array of paths the
 daemon wrote under `<data_dir>/inbox`. No foreign key: unlisting a project
 keeps its items, as it keeps its saved prompts.
+
+### Second Brain DDL (migration 0055)
+
+Second Brain's graph and the automatic extraction's reads (§ Second Brain,
+[ADR-063](08-decisions.md)). Every write goes through `internal/store/brain.go`.
+
+```sql
+CREATE TABLE IF NOT EXISTS brain_nodes (
+  id          INTEGER PRIMARY KEY,
+  kind        TEXT    NOT NULL CHECK (kind IN ('idea','decision','finding','question','topic','person','project')),
+  title       TEXT    NOT NULL,
+  norm        TEXT    NOT NULL DEFAULT '',
+  summary     TEXT    NOT NULL DEFAULT '',
+  session_id  TEXT    NOT NULL DEFAULT '',
+  event_id    INTEGER,
+  source_ts   INTEGER NOT NULL DEFAULT 0,  -- unix ms of the source moment
+  project     TEXT    NOT NULL DEFAULT '',
+  manual      INTEGER NOT NULL DEFAULT 0 CHECK (manual IN (0,1)),
+  pinned      INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0,1)),
+  run_id      INTEGER,                     -- brain_runs.id; NULL when manual
+  created_at  INTEGER NOT NULL,            -- unix ms
+  updated_at  INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_brain_nodes_entity ON brain_nodes(kind, norm)
+  WHERE kind IN ('topic','person','project');
+CREATE INDEX IF NOT EXISTS idx_brain_nodes_created ON brain_nodes(created_at);
+CREATE INDEX IF NOT EXISTS idx_brain_nodes_session ON brain_nodes(session_id);
+CREATE INDEX IF NOT EXISTS idx_brain_nodes_event ON brain_nodes(event_id) WHERE event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_brain_nodes_project ON brain_nodes(project, created_at);
+
+CREATE TABLE IF NOT EXISTS brain_edges (
+  src         INTEGER NOT NULL REFERENCES brain_nodes(id) ON DELETE CASCADE,
+  dst         INTEGER NOT NULL REFERENCES brain_nodes(id) ON DELETE CASCADE,
+  kind        TEXT    NOT NULL CHECK (kind IN ('relates','follows','contradicts','part_of')),
+  weight      REAL    NOT NULL DEFAULT 1,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (src, dst, kind),
+  CHECK (src != dst)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_brain_edges_dst ON brain_edges(dst);
+
+CREATE TABLE IF NOT EXISTS brain_runs (
+  id               INTEGER PRIMARY KEY,
+  session_id       TEXT    NOT NULL,
+  from_event_id    INTEGER NOT NULL DEFAULT 0,
+  through_event_id INTEGER NOT NULL DEFAULT 0,
+  status           TEXT    NOT NULL CHECK (status IN ('ok','failed','skipped')),
+  model            TEXT    NOT NULL DEFAULT '',
+  tokens_in        INTEGER NOT NULL DEFAULT 0,
+  tokens_out       INTEGER NOT NULL DEFAULT 0,
+  cost_usd         REAL    NOT NULL DEFAULT 0,
+  nodes            INTEGER NOT NULL DEFAULT 0,
+  error            TEXT    NOT NULL DEFAULT '',
+  started_at       INTEGER NOT NULL,
+  finished_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_brain_runs_session ON brain_runs(session_id, id);
+CREATE INDEX IF NOT EXISTS idx_brain_runs_finished ON brain_runs(finished_at);
+```
+
+`norm` is the title folded for comparison (`store.NormTitle`); the partial
+unique index makes an entity one per normalised title while memories may
+share one. Deleting a node deletes its edges (foreign keys are on), and the
+topics and people the delete leaves unlinked go too unless dropped in by hand
+or pinned. A session's newest `brain_runs` row says how far the extraction has
+read it (`through_event_id`); `tokens_in` is input, cache read and cache write
+as `claude` reported them, `cost_usd` its own `total_cost_usd`.
 
 ### Turn bounds DDL (migration 0048)
 
