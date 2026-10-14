@@ -81,7 +81,13 @@ func (s *Service) dbPath() string { return filepath.Join(s.dir, "mail.db") }
 
 // homeDir is the user's home directory, read once and cached. The account
 // importer reads another mail client's local files under it.
+// CAPROCK_MAIL_IMPORT_HOME replaces it, for a preview daemon that must read
+// fake Thunderbird and Apple Mail profiles, never the real ones (the
+// directory service answers the real home whatever $HOME says).
 func (s *Service) homeDir() string {
+	if s.home == "" {
+		s.home = os.Getenv("CAPROCK_MAIL_IMPORT_HOME")
+	}
 	if s.home == "" {
 		s.home = secret.UserHome(context.Background())
 	}

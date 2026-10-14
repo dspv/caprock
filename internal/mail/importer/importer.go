@@ -7,6 +7,13 @@
 // they are not placed in any value that is serialized to HTTP (see Source,
 // whose credentials map is unexported). The caller passes them straight to the
 // IMAP/SMTP servers the user chose, never anywhere else.
+//
+// Outlook for Mac is not read. Its profile lives in another app's group
+// container (~/Library/Group Containers/UBF8T346G9.Office/Outlook), which
+// macOS 14 and later guard with the "access data from other apps" prompt, an
+// OS dialog Caprock does not raise; the new Outlook keeps its accounts in
+// Microsoft's cloud sync rather than in a file; and what it holds is mostly
+// Exchange and Microsoft 365, which Sign in with Microsoft adds by address.
 package importer
 
 import (
@@ -27,6 +34,13 @@ type Account struct {
 	SMTPPort    int    `json:"smtp_port"`
 	SMTPTLS     string `json:"smtp_tls"`
 	HasPassword bool   `json:"has_password"`
+	// Provider is ProviderFor's answer: google | microsoft | icloud | yahoo |
+	// fastmail, or "" for any other server.
+	Provider string `json:"provider,omitempty"`
+	// LastUsed is when the mail app last wrote the profile this account came
+	// from (unix ms; Thunderbird's prefs.js, Apple's account store), so the
+	// screen can say where it was found and leave stale ones unticked.
+	LastUsed int64 `json:"last_used,omitempty"`
 }
 
 // Source is one other mail client found on the machine.
@@ -39,6 +53,8 @@ type Source struct {
 	NeedsPermission string `json:"needs_permission,omitempty"`
 	// Error is a human-readable reason this source could not be fully read.
 	Error string `json:"error,omitempty"`
+	// LastUsed is the newest LastUsed of its accounts (unix ms).
+	LastUsed int64 `json:"last_used,omitempty"`
 
 	// creds maps an account email to its decrypted password. Unexported, so it
 	// is never part of the JSON sent to the dashboard (rule 4).
@@ -72,6 +88,15 @@ func Sources(home string) []Source {
 	for i := range out {
 		if out[i].Accounts == nil {
 			out[i].Accounts = []Account{}
+		}
+		for j := range out[i].Accounts {
+			a := &out[i].Accounts[j]
+			if a.Provider == "" {
+				a.Provider = ProviderFor(a.Email, a.IMAPHost)
+			}
+			if a.LastUsed > out[i].LastUsed {
+				out[i].LastUsed = a.LastUsed
+			}
 		}
 	}
 	return out
