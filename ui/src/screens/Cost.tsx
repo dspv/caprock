@@ -43,9 +43,11 @@ export function CostScreen({ section }: { section?: string } = {}) {
   const projectColors = sliceColors(projectSegs)
   // Arriving from the plan-limit alert: bring its explanation into view once
   // there is something to show, rather than leaving the reader at the top.
+  // The loop alert's "Set a spending cap…" lands on the cap the same way.
   useEffect(() => {
-    if (section !== 'limits' || !s) return
-    document.getElementById('plan-limits')?.scrollIntoView?.({ block: 'start' })
+    if (!s) return
+    const id = section === 'limits' ? 'plan-limits' : section === 'cap' ? 'spend-cap' : ''
+    if (id) document.getElementById(id)?.scrollIntoView?.({ block: 'start' })
   }, [section, !!s])
   // Before anything has been captured the API returns Go zero values, so this
   // screen rendered a board of $0.00 / 0 with a warn-toned "0% hit rate" — a
@@ -114,9 +116,11 @@ export function CostScreen({ section }: { section?: string } = {}) {
       {/* Both panels are controls — one stops sessions, one spends on a key —
         * and a paired device reads (ADR-029). */}
       {!isPairedDevice() && (
-        <Locked feature="cap" title="Stop the day at a number you choose">
-          <SpendCap suggestion={capSuggestion} />
-        </Locked>
+        <div id="spend-cap">
+          <Locked feature="cap" title="Stop the day at a number you choose">
+            <SpendCap suggestion={capSuggestion} />
+          </Locked>
+        </div>
       )}
 
       <PlanValue summary={s} plan={plan} days={rangeDays(range, s?.from_ms)} />

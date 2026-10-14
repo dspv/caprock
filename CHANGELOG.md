@@ -7,6 +7,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **alerts:** a loop alert is now one sentence and three actions. It
+  says what happened — *caprock ran the same command 5 times in 3
+  minutes (python3 …/p2e.py)*, the whole command on hover — with the
+  costs quiet underneath. **Tell the agent** shows a message marked
+  *[Caprock]* and signed as sent by Caprock's loop alert, which you can
+  edit, then puts it in that session's queue so the agent reads it when
+  its turn ends; it is offered only on sessions Caprock started, and a
+  session you started yourself gets **Open session** instead. **Dismiss**
+  has a menu with *Don't warn about this command again in this session*
+  and the one remaining cap link, *Set a spending cap…*. The same card is
+  on Now, in the agent cockpit and on the session page.
+
 ## [0.117.0] - 2026-10-14
 
 ### Added

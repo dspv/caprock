@@ -62,6 +62,9 @@ export interface AttentionItem {
    * long list: the banner named a problem and then handed over a haystack.
    */
   at?: number
+  /** The loop alert itself, on a loop item: the card builds its sentence and
+   *  the message "Tell the agent" queues from it (components/LoopAlertCard). */
+  loop?: LoopAlert
 }
 
 export interface AttentionInput {
@@ -153,6 +156,7 @@ export function findAttention({ sessions, alerts, now, limits, windowStop, waiti
       // first call is the one that explains what the session was trying to do;
       // the fifth is just the fifth.
       at: ms(a.first_ts) || ms(a.ts) || undefined,
+      loop: a,
     })
   }
 
