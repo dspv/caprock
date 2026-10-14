@@ -286,7 +286,7 @@ jobs:
       - name: stable signing identity
         if: runner.os == 'macOS'
         shell: bash
-        run: scripts/macos-selfsign-keychain.sh
+        run: bash scripts/macos-selfsign-keychain.sh
         env:
           MACOS_SELFSIGN_P12_BASE64: ${{ secrets.MACOS_SELFSIGN_P12_BASE64 || '' }}
           MACOS_SELFSIGN_P12_PASSWORD: ${{ secrets.MACOS_SELFSIGN_P12_PASSWORD || '' }}
