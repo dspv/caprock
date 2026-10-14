@@ -119,6 +119,10 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 				add(u, agent, cost, status != "ended", true)
 			}
 		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
 		if err := rows.Close(); err != nil {
 			return nil, err
 		}
@@ -160,6 +164,10 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 			order = append(order, id)
 		}
 		s.rows = append(s.rows, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

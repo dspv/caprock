@@ -176,8 +176,9 @@ func (s *Server) repoCIRow(ctx context.Context, row RepoCIRow, repo github.Repo,
 	row.Stuck, row.TopPRs, row.Authors = []github.StuckRun{}, []RepoCIPR{}, []RepoCIAuthor{}
 	prs, e := s.d.GitHub.RepoPulls(ctx, repo)
 	if e != nil {
+		// GitHub's refusal is the row's content, not a failure of the call.
 		row.Error = e
-		return row, nil
+		return row, nil //nolint:nilerr // the error travels in row.Error
 	}
 	if runs, e := s.d.GitHub.RepoRuns(ctx, repo); e == nil {
 		st := github.RunStats(runs, now, github.StatsDays)
