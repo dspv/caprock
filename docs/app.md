@@ -170,7 +170,7 @@ others. Installing it: [install-app.md](install-app.md).
   palette, Share and the rest — closes with the × in its corner, a click
   outside it, or Esc. In the app,
   Now keeps its figures — today, plan limits, the pulse, the repos, all
-  time, at a glance, *What happened* — and leaves the session cards and the
+  time, at a glance, the activity feed — and leaves the session cards and the
   projects panel to the sidebar, which lists the same sessions; the browser
   dashboard shows both. **Repos**, under the pulse, has a row for each
   repository a session runs in: commits a day over two weeks, today's and the
@@ -818,12 +818,28 @@ row.
 - **Find and tidy.** Search, pick a project or a span; open a memory to edit
   its title and summary, pin it, link it to a topic, jump to the session it
   came from, or delete it.
+- **Let it build itself (Premium).** With a licence, the Brain screen asks
+  once whether to build it automatically; Settings → Second Brain switches it
+  later. When a session has been quiet for ten minutes, Caprock asks your own
+  `claude` (a small model, Haiku) to pick out what it decided and found, and
+  keeps those as memories linked back to the moment they were said. Short
+  sessions are skipped, reads stop at a daily token limit you choose (100k,
+  300k or 1M), and *Build from my last 30 days* shows an estimate of how many
+  sessions and tokens that is before it starts. These reads use your Claude
+  plan like any other `claude -p` call; they do not show up as sessions and
+  do not run your hooks.
+- **New sessions draw on it.** When Claude starts in a folder and is handed
+  where the last session left off, it also gets up to five of that
+  repository's memories, pinned ones first.
 - **Free and Premium.** Twenty memories dropped in by hand are free; Premium
-  keeps every one. Whatever you kept stays readable and editable if a licence
-  lapses.
+  keeps every one and builds the rest for you. Whatever you kept stays
+  readable and editable if a licence lapses.
 
-**Privacy.** Second Brain lives in Caprock's database on this computer.
-Nothing in it is sent anywhere.
+**Privacy.** Second Brain lives in Caprock's database on this computer, and
+nothing in it is sent to Caprock. Dropping memories in by hand sends nothing
+anywhere. Building it automatically is off until you say yes: then a finished
+session's prompts and answers go to your own `claude`, which sends them to
+Anthropic under your login, the place the session itself already went.
 
 ## Notifications
 
@@ -1044,6 +1060,28 @@ shows what is new, or **Not now** to hide that version.
   (`brew upgrade caprock`, `scoop update caprock`); the app never replaces a
   daemon it did not install.
 
+## A question from Caprock
+
+Caprock cannot see who uses it, so after you have used it on two different
+days it may show one short strip at the bottom of the window: Second Brain,
+which comes to Premium, or a question about a feature it is considering
+(running Hugging Face models on your computer, or one other). At most one a
+day; it waits until you stop typing, never appears while a session is
+waiting for a permission answer, and never covers a terminal.
+
+- **Second Brain.** *How it works* explains it and offers Premium. It
+  arrives on 18 October 2026; if it doesn't, write to us for a full refund.
+  Nothing is sent from this strip.
+- **Answering a question.** Two one-click questions and an optional email,
+  if you want to hear when it is ready.
+- **What is sent, and when.** Nothing, until you press **Send**. Then
+  Caprock sends your two answers, which question they answer, and your email
+  if you added one, to caprock.dev. Nothing else: no identifier, nothing
+  about your sessions, projects or usage, not even Caprock's version.
+- **Saying no.** *Not interested* or × sends nothing.
+- **How often.** An answered strip never comes back. Second Brain and the
+  Hugging Face question are shown at most twice each, the others once.
+
 ## macOS privacy prompts
 
 macOS asks before a program reads your Desktop, Documents or Downloads
@@ -1160,9 +1198,17 @@ once when the phone comes back to the page or onto a network):
 - **This phone was removed: pair again**: it was removed in *Paired
   devices*. Show a new code and scan it.
 
+A paired phone stays paired. A dropped connection, a restarting computer or
+relay, the phone asleep or offline, or a computer on an older Caprock never
+send it back to pairing: the page says *Pair again* only once the computer
+has turned the phone away on two separate connections (removed), or refused
+its handshake three times in a row (new keys after `caprock remote reset`).
+Even then it keeps checking once a minute and comes back by itself if that
+was wrong.
+
 **Retry** tries at once; **Pair again** shows the three steps and a box for
 a copied link. Opening a pairing link whose code was already used (the
-camera, then the app) keeps the pairing that worked.
+camera, then the app) goes straight back to the pairing that worked.
 
 The phone appears under *Paired devices*, which says how each device reaches
 this computer: *anywhere*, or *Wi-Fi link*. A *Wi-Fi link* is a phone paired

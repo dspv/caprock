@@ -127,14 +127,25 @@ func (h *Host) Run(ctx context.Context) {
 
 // relayConn is one connection to the relay, shared by every phone on it.
 type relayConn struct {
-	c   *websocket.Conn
+	c *websocket.Conn
+	// ctx is the connection's own: it ends when the connection does.
+	ctx context.Context
 	wmu sync.Mutex
 }
 
+// send writes one frame for a phone. ctx is that phone's: once it has ended
+// the frame is not sent, but it never bounds the write itself. The WebSocket
+// library closes the whole connection when a write's context ends part-way,
+// and the connection is every phone's: a phone hanging up mid-answer (a
+// reload, a page put away) took the machine off the relay for all of them,
+// and the next phone to arrive was handed the old one's bytes (2026-10-14).
 func (r *relayConn) send(ctx context.Context, kind byte, conn uint32, data []byte) error {
 	r.wmu.Lock()
 	defer r.wmu.Unlock()
-	wctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	wctx, cancel := context.WithTimeout(r.ctx, 30*time.Second)
 	defer cancel()
 	return r.c.Write(wctx, websocket.MessageBinary, Frame(kind, conn, data))
 }
@@ -177,7 +188,7 @@ func (h *Host) session(ctx context.Context) error {
 
 	sctx, stop := context.WithCancel(ctx)
 	defer stop()
-	rc := &relayConn{c: c}
+	rc := &relayConn{c: c, ctx: sctx}
 	var heard atomic.Int64
 	heard.Store(time.Now().UnixNano())
 	go h.keepalive(sctx, rc, &heard, stop)

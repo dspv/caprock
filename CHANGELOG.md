@@ -18,6 +18,54 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   five days of history it says *not enough history*. It follows the agent
   filter. New endpoint `GET /v1/stats/trends`.
 
+- **brain:** Second Brain builds itself (Premium), once you say yes. When a
+  session has been quiet for ten minutes, your own `claude` (Haiku, no
+  tools, no transcript, none of your hooks) picks out what it decided and
+  found, and each memory links back to the passage it came from. A daily
+  token limit (100k, 300k or 1M), short sessions skipped, failures retried
+  later; *Build from my last 30 days* shows an estimate first. Settings →
+  Second Brain shows what it used and read. A new session's handoff now
+  carries up to five of the repository's memories.
+- **app:** Second Brain comes to Premium on 18 October 2026: a knowledge
+  graph of everything your agents do, kept on your computer. After two days
+  of use a short strip offers it, and *How it works* explains it and leads
+  to Premium; if it doesn't arrive on that date, write to us for a full
+  refund ([ADR-062](.ai/08-decisions.md)).
+- **app:** Caprock may also ask about a feature it is considering — running
+  Hugging Face models on your computer, and one of watching short ads to
+  earn money or YouTube while agents work. At most one strip a day; each
+  question is two clicks and an optional email. Nothing leaves the computer
+  until you press **Send**, which sends those answers to caprock.dev and
+  nothing else; *Not interested* and × send nothing, and an answered strip
+  never returns.
+
+### Fixed
+
+- **phone:** a paired phone stays paired. A dropped connection, a computer
+  or relay restarting, a phone asleep or offline, a computer still on an
+  older Caprock, or a QR opened twice no longer send the phone back to
+  *Settings → Use on your phone*. Three causes: a phone hanging up in the
+  middle of an answer took the computer off the relay for every phone; the
+  relay could hand the next phone a stray message meant for the one before,
+  which the page read as "not your computer"; and the page believed a
+  single bad answer. Now the page asks to pair again only when the computer
+  has turned the phone away on two separate connections, or refused it
+  three times in a row, and it still checks once a minute and comes back by
+  itself if that was wrong. Needs the new page at m.caprock.dev and the
+  relay redeployed; the computer's half comes with the next release.
+- **status:** an agent you set going no longer reads *waiting for you*
+  for seconds after. Answering a permission prompt — a key in the
+  terminal, the card's buttons, the phone, Telegram — shows it working at
+  once (*approved — running …*), instead of when the allowed command
+  finished; answering No shows it waiting for you. Enter at its prompt
+  shows *starting on your message* straight away, and goes back if
+  nothing was sent. Every screen (sidebar, tabs, cockpit, tray, phone)
+  now updates a session's status as soon as it changes rather than up to
+  two seconds later, and a Codex or Gemini session you type into is read
+  at once instead of on its next poll. Measured with a test agent: a
+  prompt to *working* about 1 s → under 10 ms; an approved 15 s command
+  16 s → under 10 ms.
+
 ## [0.117.1] - 2026-10-14
 
 ### Added

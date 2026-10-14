@@ -462,7 +462,9 @@ claude.ai sign-in is not used and its plan limits do not apply.
   searchable across every session.
 - **Keep what matters** — Second Brain: drop an answer, or a line of your own,
   into a graph of ideas, decisions and findings, each linked to its project,
-  its topics and the moment in the session it came from. On this machine only.
+  its topics and the moment in the session it came from — or, with Premium,
+  let your own `claude` build it from finished sessions, once you say yes.
+  Kept on this machine.
 - **Pick up where you left off** — a new session in a folder you have worked in
   is handed the last thing the previous one said there (on by default, off in
   settings). You can measure whether that helps: an opt-in setting holds it back
@@ -486,7 +488,9 @@ claude.ai sign-in is not used and its plan limits do not apply.
 - **Local-first** — loopback only, no servers, no telemetry, no account. Nothing
   reaches the network unless you switch it on: the release check, the Gemini
   chat on your own key, GitHub, and the weekly report, alerts and chat through
-  your own Telegram bot are each off by default.
+  your own Telegram bot are each off by default. Caprock may ask you about
+  a feature it is considering; your answer reaches caprock.dev only if you
+  press Send, and the card says exactly what it sends.
 
 What your usage is actually worth — the same work priced at the API rate,
 against what your plan costs — is on the Cost screen, and everything you have
@@ -644,8 +648,9 @@ per group are Premium; without a licence the daemon leaves those figures out.
 **More subscriptions.** Three Claude Code and three Codex sign-ins are free,
 your own included; Premium adds as many more as you use.
 
-**Second Brain, without a limit.** Twenty memories dropped in by hand are
-free; Premium keeps every one.
+**Second Brain, built for you.** Twenty memories dropped in by hand are
+free; Premium keeps every one, and builds the rest from your finished
+sessions through your own `claude`, within a daily limit you set.
 
 $30/year or $100 once — [caprock.dev/premium](https://caprock.dev/premium/).
 

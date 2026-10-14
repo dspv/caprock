@@ -26,7 +26,7 @@ import { shell } from '@/lib/shell'
 
 export type NudgeId =
   | 'premium-limit' | 'premium-hint' | 'premium-cap' | 'premium-banner'
-  | 'teams-nudge' | 'share-moment' | 'setup' | 'mail' | 'star'
+  | 'teams-nudge' | 'share-moment' | 'setup' | 'mail' | 'offer' | 'star'
 
 /**
  * Who wins when several are eligible. The offer tied to something happening
@@ -44,6 +44,9 @@ export const NUDGE_PRIORITY: Record<NudgeId, number> = {
   // A new part of the product, offered once: below the offers tied to what is
   // happening now, above the general Premium banner and the star.
   mail: 22,
+  // A question about a feature that may be built (ADR-062): below every
+  // offer about something that exists, above the general Premium banner.
+  offer: 21,
   'premium-banner': 20,
   star: 10,
 }

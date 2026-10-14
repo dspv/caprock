@@ -39,6 +39,12 @@ import { useApi } from '@/lib/useApi'
 import { AgentCharacter } from './Characters'
 import { Benefit, Icon, MiniCard, UpsellDialog } from './UpsellDialog'
 
+/**
+ * A Premium feature sold before it ships, with a dated pre-order line
+ * (Second Brain, ADR-062). Not a PaidFeature: nothing is locked behind it yet.
+ */
+export type SoldAhead = 'second-brain'
+
 export type PaidFeature = 'cap' | 'window' | 'report' | 'gemini' | 'drill' | 'agents' | 'telegram' | 'subscriptions' | 'brain'
 
 /**
@@ -126,11 +132,12 @@ const FEATURES: Record<
   // ADR-063: twenty memories dropped in by hand are free; the rest is Premium.
   brain: {
     title: 'Second Brain: what your sessions decided, as a graph',
-    body: 'Drop any answer Claude wrote into a graph of ideas, decisions and findings, linked by project and topic. Search it, open the session it came from.',
+    body: 'Built from your finished sessions as you work, or dropped in by hand: ideas, decisions and findings, linked by project and topic. Search it, open the session it came from.',
     points: [
+      { icon: 'moon', text: 'Built automatically by your own claude, within a daily limit you set' },
       { icon: 'stack', text: 'Every memory you keep, not just the first twenty' },
       { icon: 'arrow', text: 'Each one links back to the moment in the session it came from' },
-      { icon: 'shield', text: 'Kept in Caprock’s database on this machine, nowhere else' },
+      { icon: 'shield', text: 'Kept in Caprock’s database on this machine; nothing is sent to Caprock' },
     ],
   },
   report: {
@@ -337,7 +344,7 @@ function Picture({ feature }: { feature: PaidFeature }) {
  * site page lands on that feature's own entry. Nothing about the user is in
  * it — only the name of the feature they were reading about.
  */
-export function fromFeature(url: string, feature: PaidFeature, kind: 'buy' | 'info'): string {
+export function fromFeature(url: string, feature: PaidFeature | SoldAhead, kind: 'buy' | 'info'): string {
   if (!url) return url
   if (kind === 'info') return `${url.split('#')[0]}#${feature}`
   return `${url}${url.includes('?') ? '&' : '?'}client_reference_id=app-${feature}`
@@ -347,7 +354,7 @@ export function fromFeature(url: string, feature: PaidFeature, kind: 'buy' | 'in
  * The two ways to buy, as the site sells them: a year, or once. The lifetime
  * is the one the site marks "Best value", so it is the filled button.
  */
-function Price({ p, feature, onClose }: { p: PremiumPricing | undefined; feature: PaidFeature; onClose: () => void }) {
+export function Price({ p, feature, onClose }: { p: PremiumPricing | undefined; feature: PaidFeature | SoldAhead; onClose: () => void }) {
   if (!p) return <div className="h-[92px] text-[13px] text-fg-faint">…</div>
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
