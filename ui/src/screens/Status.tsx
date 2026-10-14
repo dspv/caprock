@@ -254,14 +254,10 @@ function TelegramChatSection() {
   )
 }
 
-/** Second Brain built automatically (Premium, ADR-063): live with a
- *  licence, behind glass without one. */
+/** Second Brain built automatically (ADR-063): free for everyone, off
+ *  until the user says yes (owner decision, 2026-10-14). */
 function BrainSection() {
-  return (
-    <Locked feature="brain" title="Build Second Brain automatically">
-      <BrainAutoSetting />
-    </Locked>
-  )
+  return <BrainAutoSetting />
 }
 
 /** Custom agents (Premium, ADR-046): live with a licence, behind glass

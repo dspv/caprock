@@ -121,6 +121,21 @@ func TestPullsByBranchSaysAFailedRead(t *testing.T) {
 	}
 }
 
+// A pull request's labels come with it, in GitHub's order, at most maxLabels.
+func TestOwnPullsCarryLabels(t *testing.T) {
+	p := branchPull(4, "feat/x", "open", false, "")
+	for _, n := range []string{"bug", "ui", "", "a", "b", "c", "d", "e"} {
+		p.Labels = append(p.Labels, struct {
+			Name  string `json:"name"`
+			Color string `json:"color"`
+		}{Name: n, Color: "d73a4a"})
+	}
+	got := ownPulls(Repo{Owner: "dspv", Name: "caprock"}, []apiPull{p})[0].pr.Labels
+	if len(got) != maxLabels || got[0].Name != "bug" || got[0].Color != "d73a4a" || got[2].Name != "a" {
+		t.Fatalf("labels: %+v", got)
+	}
+}
+
 // A branch is newly merged once: on the first list that shows it merged.
 func TestNewlyMerged(t *testing.T) {
 	before := map[string]BranchPR{"a": {State: "open"}, "b": {State: "merged"}}

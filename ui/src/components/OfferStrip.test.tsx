@@ -3,15 +3,14 @@
  * Send is pressed, and exactly what was chosen when it is.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { OfferStrip, OFFER_DISCLOSURE, OFFER_THANKS } from './OfferStrip'
-import { INCLUDED_LINE, PREORDER_LINE } from './SecondBrainModal'
 import { api } from '@/lib/api'
 import { isDue, markAnswered, resetPrompts } from '@/lib/prompts'
 import { resetNudgeSlots } from '@/lib/nudges'
 import {
   currentDraw, drawnVariant, forcedOffer, markOfferAnswered, markShown, offerById,
-  offerForToday, resetPendingDraw, SECOND_BRAIN_BUILT, SECOND_BRAIN_DATE,
+  offerForToday, OFFERS, resetPendingDraw,
 } from '@/lib/offer'
 
 const NOW = new Date(2026, 9, 14, 12, 0, 0).getTime()
@@ -29,25 +28,12 @@ function given(days: number, licensed = false) {
   return vi.spyOn(api, 'sendOffer').mockResolvedValue({ status: 'sent' })
 }
 
-// Second Brain is built, so the shipped sale never shows (SECOND_BRAIN_BUILT
-// sets its until to 0; the first describe checks that). The rest of this file
-// tests the strip as it ran before: the sale back on its dated until.
-const sale = offerById('second-brain')
-const shipped = sale.until
-beforeAll(() => { sale.until = SECOND_BRAIN_DATE })
-afterAll(() => { sale.until = shipped })
-
-describe('once Second Brain is built', () => {
-  it('the pre-order sale is retired, whatever the date', () => {
-    expect(SECOND_BRAIN_BUILT).toBe(true)
-    expect(shipped).toBe(0)
-    sale.until = shipped
-    try {
-      expect(offerForToday(USED, NOW)?.id).toBe('local-models')
-      expect(offerForToday(USED, SECOND_BRAIN_DATE - DAY)?.id).not.toBe('second-brain')
-    } finally {
-      sale.until = SECOND_BRAIN_DATE
-    }
+// Second Brain is built and free (owner decision, 2026-10-14): its pre-order
+// sale is gone from the strip, and no address brings it back.
+describe('Second Brain', () => {
+  it('is no longer offered for sale', () => {
+    expect(OFFERS.map((o) => o.id)).not.toContain('second-brain')
+    expect(forcedOffer('?offer=second-brain')).toBe(null)
   })
 })
 
@@ -83,10 +69,10 @@ describe('show rules', () => {
   it('waits for two days of use', () => {
     expect(offerForToday(undefined, NOW)).toBe(null)
     expect(offerForToday({ days: 1 }, NOW)).toBe(null)
-    expect(offerForToday({ days: 2 }, NOW)?.id).toBe('second-brain')
+    expect(offerForToday({ days: 2 }, NOW)?.id).toBe('local-models')
   })
 
-  it('second brain and local models twice each on different days, the drawn one once, one offer a day', () => {
+  it('local models twice on different days, the drawn one once, one offer a day', () => {
     const order: string[] = []
     for (let d = 0; d < 8; d++) {
       const t = NOW + d * DAY
@@ -97,18 +83,16 @@ describe('show rules', () => {
       // A reload the same day keeps the same offer; another one never joins it.
       expect(offerForToday(USED, t + 60_000, () => 0.1)?.id).toBe(o.id)
     }
-    expect(order).toEqual(['second-brain', 'second-brain', 'local-models', 'local-models', 'ads', '-', '-', '-'])
+    expect(order).toEqual(['local-models', 'local-models', 'ads', '-', '-', '-', '-', '-'])
   })
 
   it('never shows the other half of the pair', () => {
-    markAnswered('offer-second-brain-no', NOW)
     markAnswered('offer-local-models-no', NOW)
     markShown(offerById('youtube'), NOW)
     expect(offerForToday(USED, NOW + DAY, () => 0.1)).toBe(null)
   })
 
   it('an answer is final', () => {
-    markOfferAnswered(offerById('second-brain'), 'sent', NOW)
     expect(offerForToday(USED, NOW + 10 * DAY, () => 0.1)?.id).toBe('local-models')
     markOfferAnswered(offerById('local-models'), 'no', NOW)
     expect(offerForToday(USED, NOW + 10 * DAY, () => 0.1)?.id).toBe('ads')
@@ -118,7 +102,6 @@ describe('show rules', () => {
 
   it('takes only known offers from the address', () => {
     expect(forcedOffer('?offer=ads')?.id).toBe('ads')
-    expect(forcedOffer('?offer=second-brain')?.id).toBe('second-brain')
     expect(forcedOffer('?offer=local-models')?.id).toBe('local-models')
     expect(forcedOffer('?offer=other')).toBe(null)
     expect(forcedOffer('')).toBe(null)
@@ -164,16 +147,16 @@ describe('OfferStrip', () => {
       fireEvent.click(btn)
       first.unmount()
       expect(send).not.toHaveBeenCalled()
-      expect(isDue('offer-second-brain-no', NOW + 1)).toBe(false)
+      expect(isDue('offer-local-models-no', NOW + 1)).toBe(false)
       resetNudgeSlots()
       const again = render(<OfferStrip now={NOW + 400 * DAY} quietMs={0} />)
       await settle()
-      expect(again.container.textContent).not.toMatch(/second brain/i)
+      expect(again.container.textContent).not.toMatch(/Hugging Face/)
     })
   }
 
   it('sends exactly the chosen answers, says what it sends, and is answered for good', async () => {
-    for (const k of ['offer-second-brain-no', 'offer-local-models-no', 'offer-variant-youtube'] as const) markAnswered(k, NOW)
+    for (const k of ['offer-local-models-no', 'offer-variant-youtube'] as const) markAnswered(k, NOW)
     const send = given(5)
     render(<OfferStrip now={NOW} quietMs={0} />)
     expect(await screen.findByText('Would you watch YouTube in Caprock while agents work?')).toBeTruthy()
@@ -191,37 +174,7 @@ describe('OfferStrip', () => {
     expect(isDue('offer-youtube-sent', NOW + 1)).toBe(false)
   })
 
-  it('second brain is a sale: how it works, the pre-order line, the usual purchase step, nothing sent', async () => {
-    const send = given(5)
-    render(<OfferStrip now={NOW} quietMs={0} />)
-    expect(await screen.findByText('Your second brain — a knowledge graph of everything your agents do.')).toBeTruthy()
-    expect(screen.queryByText('Send')).toBe(null)
-    fireEvent.click(screen.getByText('How it works'))
-    expect(await screen.findByText(PREORDER_LINE)).toBeTruthy()
-    expect(PREORDER_LINE).toBe("Second Brain comes to Premium on 18 October 2026. If it doesn't, write to us for a full refund.")
-    fireEvent.click(screen.getByText('Get Premium'))
-    // The existing purchase step: the yearly and the once price, from the daemon.
-    expect(await screen.findByText(/\/ year/)).toBeTruthy()
-    const buy = screen.getByText(/\/ year/).closest('a')!
-    expect(buy.getAttribute('href')).toContain('client_reference_id=app-second-brain')
-    expect(send).not.toHaveBeenCalled()
-  })
-
-  it('second brain to someone who has Premium: included, nothing to buy', async () => {
-    given(5, true)
-    render(<OfferStrip now={NOW} quietMs={0} />)
-    fireEvent.click(await screen.findByText('How it works'))
-    expect(await screen.findByText(INCLUDED_LINE)).toBeTruthy()
-    expect(screen.queryByText('Get Premium')).toBe(null)
-  })
-
-  it('second brain stops on its arrival date', () => {
-    expect(offerForToday(USED, SECOND_BRAIN_DATE - 1)?.id).toBe('second-brain')
-    expect(offerForToday(USED, SECOND_BRAIN_DATE)?.id).toBe('local-models')
-  })
-
   it('local models: sends the two picks', async () => {
-    markAnswered('offer-second-brain-no', NOW)
     const send = given(5)
     render(<OfferStrip now={NOW} quietMs={0} />)
     expect(await screen.findByText('Would you run Hugging Face models on this computer from Caprock?')).toBeTruthy()

@@ -18,14 +18,9 @@ import (
 
 // Second Brain (ADR-063; contract in 03-contracts.md § Second Brain): a graph
 // of what the user's sessions did, decided and found. Read by every screen
-// and every paired device; written on the machine. Dropping memories in by
-// hand is free up to brainFreeManual; past that, and the automatic
-// extraction, need an active licence — checked here, not only in the UI,
-// as custom agents and Ask Gemini are.
-
-// brainFreeManual is how many memories an install without a licence may drop
-// in by hand: enough to see what the graph does with your own work.
-const brainFreeManual = 20
+// and every paired device; written on the machine. All of it is free — no
+// cap on the memories, and the automatic extraction for anyone who says yes
+// (owner decision, 2026-10-14): it runs on the user's own claude.
 
 // brainTextBytes caps what one capture may carry; the node keeps a title and
 // a paragraph of it.
@@ -36,15 +31,10 @@ const brainTopicsMax = 8
 
 // BrainStatus is GET /v1/brain/status.
 type BrainStatus struct {
-	Licensed bool `json:"licensed"`
 	// Memories is how many memories there are; Manual how many were dropped
 	// in by hand.
-	Memories int `json:"memories"`
-	Manual   int `json:"manual"`
-	// FreeMax is how many an install without a licence may drop in by hand;
-	// FreeLeft how many of those remain, -1 with a licence.
-	FreeMax  int                       `json:"free_max"`
-	FreeLeft int                       `json:"free_left"`
+	Memories int                       `json:"memories"`
+	Manual   int                       `json:"manual"`
 	Projects []store.BrainProjectCount `json:"projects"`
 	// Auto is the automatic extraction's state, when it is wired.
 	Auto any `json:"auto,omitempty"`
@@ -80,15 +70,8 @@ const (
 
 var brainModels = map[string]bool{"": true, "haiku": true, "sonnet": true}
 
-func brainPremium(w http.ResponseWriter, what string) {
-	writeJSON(w, http.StatusPaymentRequired, map[string]string{
-		"error":  "premium required",
-		"detail": what + " is part of Premium",
-	})
-}
-
 // handleBrainSettings turns the automatic extraction on or off and sets its
-// limits. Turning it on needs a licence; off never does.
+// limits. Nothing reads a session until the user turns it on here.
 func (s *Server) handleBrainSettings(w http.ResponseWriter, r *http.Request) {
 	if s.d.BrainAuto == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "automatic extraction is not available in this build"})
@@ -105,10 +88,6 @@ func (s *Server) handleBrainSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.Model != nil && !brainModels[*b.Model] {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "model must be haiku or sonnet"})
-		return
-	}
-	if b.Auto != nil && *b.Auto && !s.licensed() {
-		brainPremium(w, "Building Second Brain automatically")
 		return
 	}
 	if err := s.d.BrainAuto.Configure(r.Context(), b); err != nil {
@@ -140,10 +119,6 @@ func (s *Server) handleBrainBackfill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !b.DryRun {
-		if !s.licensed() {
-			brainPremium(w, "Building Second Brain from past sessions")
-			return
-		}
 		if err := s.d.BrainAuto.Backfill(r.Context(), b.Days); err != nil {
 			if errors.Is(err, ErrBrainAutoOff) {
 				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
@@ -204,7 +179,7 @@ func (s *Server) handleBrainGraph(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBrainStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	db := s.d.Store.DB()
-	st := BrainStatus{Licensed: s.licensed(), FreeMax: brainFreeManual}
+	st := BrainStatus{}
 	var err error
 	if st.Memories, err = store.CountBrainMemories(ctx, db, false); err != nil {
 		s.fail(w, err)
@@ -213,10 +188,6 @@ func (s *Server) handleBrainStatus(w http.ResponseWriter, r *http.Request) {
 	if st.Manual, err = store.CountBrainMemories(ctx, db, true); err != nil {
 		s.fail(w, err)
 		return
-	}
-	st.FreeLeft = -1
-	if !st.Licensed {
-		st.FreeLeft = max(0, brainFreeManual-st.Manual)
 	}
 	if st.Projects, err = store.BrainProjects(ctx, db); err != nil {
 		s.fail(w, err)
@@ -366,20 +337,6 @@ func (s *Server) handleBrainDrop(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(n.Title) == "" {
 		bad("there is nothing to keep: give text or a title")
 		return
-	}
-	if !s.licensed() {
-		count, err := store.CountBrainMemories(ctx, db, true)
-		if err != nil {
-			s.fail(w, err)
-			return
-		}
-		if count >= brainFreeManual && !store.IsBrainEntity(n.Kind) {
-			writeJSON(w, http.StatusPaymentRequired, map[string]string{
-				"error":  "premium required",
-				"detail": fmt.Sprintf("without Premium Second Brain keeps %d memories dropped in by hand; delete one, or unlock it", brainFreeManual),
-			})
-			return
-		}
 	}
 	now := s.d.Now().UnixMilli()
 	var out store.BrainNode

@@ -10,7 +10,7 @@
  *
  * Keys name the view and its scope: `prs:<session>`, `ci:<session>:<pr>`,
  * `release:<repository>`, `main:<repository>`, `branches:<folder>`, and the
- * PRs & CI tab's `stats:<repository>`; Now's Repos section keeps `repos:now`.
+ * Pipeline page's `stats:<repository>`; Now's Repos section keeps `repos:now`.
  */
 import { readCache, writeCache } from './swr'
 

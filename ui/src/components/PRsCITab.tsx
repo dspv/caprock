@@ -1,41 +1,41 @@
 /**
- * The PRs & CI tab (.ai/21-app.md § PRs & CI tab): the session deck's Pull
- * requests & CI cell, large (owner, 2026-10-13, translated: "I want to
- * expand the panel bigger, to see the statuses large and in detail, plus
- * statistics … sometimes it's interesting to look"). Opened by Expand beside
- * the deck's Hide; Collapse, the same control in the same top-right corner,
- * closes it and brings the agent's tab back with its deck, and ⇧⌘B does
- * either (owner, 2026-10-14, translated: "it should simply be a toggle").
+ * The Pipeline page (.ai/04-ui.md § Pipeline; until 2026-10-14 "Pipeline"):
+ * the session deck's Pull requests & CI cell, large (owner, 2026-10-13,
+ * translated: "I want to expand the panel bigger, to see the statuses large
+ * and in detail, plus statistics"). ⇧⌘B opens it as a tab of its own and
+ * brings back the tab before it.
  *
- * Two views, Board first (owner, 2026-10-14): the Board — the pull requests
- * by stage, the agents on each and what they cost, the releases
- * (components/PRBoard.tsx) — and the List. The List has three parts: the repository's figures over two weeks on top (merged per
- * day, time to merge, CI time, red runs, Actions billed); the pull requests
- * on the left — this session's, the repository's newest, or the open ones;
- * the chosen one on the right — its state, review, merge state and diff,
- * the deck's actions, its jobs as a grid of job × runner OS against each
- * one's median, the jobs on the run's clock, and a job's steps and the end
- * of a failed one's log.
+ * One list (owner, 2026-10-14, translated: "PR titles are missing … I'd
+ * merge it all into one — PR rows with their statuses, so I understand how
+ * things travel, what gets released"): the flow strip on top, then every
+ * pull request as a row — its number, its whole title, its labels, its four
+ * steps Open → CI → Merged → Released (lib/journey, the cockpit draws the
+ * same), how long in the step, its agent cost — in flight first, then
+ * merged, then released (ten, then "Show more"), and the releases below. A
+ * row opens the pull request in detail over the list's right side: state,
+ * review, merge state and diff, the deck's actions, its jobs by runner OS
+ * against each one's median, the jobs on the run's clock, a job's steps and
+ * the end of a failed one's log.
  *
  * Asked only while the tab is in front and the window visible (usePoll), and
  * through the deck's own routes and kept answers (lib/deckCache), so opening
- * it shows what the deck last knew at once. The figures cost one more read of
- * GitHub: the repository's newest 100 runs, kept 30 minutes by the daemon.
+ * it shows what the deck last knew at once.
  */
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type CIJob, type CIRun, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary, type SpawnRequest } from '@/lib/api'
 import { ciActive, ciTone, fmtRun, investigateMessage, jobVsMedian, keyStep, prReviewText, prVerdict, type CITone } from '@/lib/ci'
 import { hasConflict, isBehind, topChip, type DeckWorktree } from '@/lib/prforce'
 import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
-import { GRID_OS_LABEL, SCOPE_LABEL, firstPick, jobGrid, spanText, statsWords, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
-import { usageLine } from '@/lib/runnercost'
-import { asBoard } from '@/lib/prboard'
+import { GRID_OS_LABEL, SCOPE_LABEL, jobGrid, spanText, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
+import { AGENT_COST_NOTE, asBoard, costText, costTitle } from '@/lib/prboard'
+import { journey, pipelineRows, stageOf, type PipelineRow } from '@/lib/journey'
 import { useCanControl } from '@/lib/useCanControl'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
-import { Bars, Trend } from './DayBars'
-import { PRBoardView } from './PRBoard'
+import { FlowStrip, Releases } from './PRBoard'
+import { JourneyPills } from './Journey'
+import { GitHubPerson } from './GitHubAvatar'
 import { CI_IDLE_MS, CI_RUNNING_MS, CIMark, DeckSkeleton, ExpandToggle, Freshness, PRS_PENDING_MS, connectGitHub, usePoll } from './SessionDeck'
 
 export interface PRsCITabProps {
@@ -57,13 +57,6 @@ function readScope(): TabScope {
     const v = localStorage.getItem(SCOPE_KEY)
     return v === 'session' || v === 'repo' || v === 'open' ? v : 'repo'
   } catch { return 'repo' }
-}
-
-/** Board (the pull requests by stage, the releases) or List (one pull request in detail); Board unless the user chose List. */
-type TabView = 'board' | 'list'
-const VIEW_KEY = 'caprock.prsTab.view'
-function readView(): TabView {
-  try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'board' } catch { return 'board' }
 }
 
 /** A refused read with nothing in it (a daemon just started, GitHub down)
@@ -92,9 +85,8 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
   const canControl = useCanControl()
   const [scope, setScopeState] = useState<TabScope>(readScope)
   const setScope = (v: TabScope) => { setScopeState(v); try { localStorage.setItem(SCOPE_KEY, v) } catch { /* this page only */ } }
-  const [view, setViewState] = useState<TabView>(readView)
-  const setView = (v: TabView) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v) } catch { /* this page only */ } }
   const [n, setN] = useState(0)
+  // The pull request opened over the list; none until a row is clicked.
   const [chosen, setChosen] = useState<number>()
   const [now, setNow] = useState(() => Date.now())
   const [connecting, setConnecting] = useState(false)
@@ -103,9 +95,12 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
   const [stats, statsAt, statsMeta] = usePoll<SessionCIStats>(visible, `${sessionId}:${n}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, `stats:${repoScope}`, keepStats)
   const [prs] = usePoll<SessionPRs>(visible, `${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`)
   const sessionPRs = useMemo(() => prs?.prs ?? [], [prs])
-  const rows = useMemo(() => tabRows(scope, sessionPRs, stats?.prs ?? []), [scope, sessionPRs, stats?.prs])
-  const pick = chosen ?? firstPick(rows, sessionPRs) ?? 0
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
+  const rows = useMemo(() => pipelineRows(tabRows(scope, sessionPRs, stats?.prs ?? []), board, stats?.prs ?? []), [scope, sessionPRs, stats?.prs, board])
+  const pick = chosen ?? 0
+  // The detail takes the focus as it opens, so Esc closes it whatever was clicked.
+  const detailRef = useRef<HTMLElement>(null)
+  useEffect(() => { if (chosen) detailRef.current?.focus({ preventScroll: true }) }, [chosen])
   // What the header says of it: the time GitHub was last read (an answer
   // composed from an older read says so), and why a read failed: a list
   // GitHub refused comes with the one read before, and what did not fit the
@@ -113,22 +108,13 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
   const statsShownAt = stats?.read_at || stats?.fetched_at || statsAt || undefined
   const statsFailed = statsMeta.failed || (!!stats?.error && !statsMeta.loading)
   const statsReason = statsMeta.reason ?? stats?.error?.message
-  // Cards not yet re-confirmed — the copy kept from before, an answer that
+  // Rows not yet re-confirmed — the copy kept from before, an answer that
   // could not be refreshed — are drawn faint until a fresh one lands.
   const unconfirmed = !statsMeta.confirmed || statsFailed
-  const boardOn = view === 'board' && !stats?.reason && stats?.connected !== false
-  // A card opens its pull request in the List view, in a scope that lists it.
-  const openFromBoard = (num: number) => {
-    if (!tabRows(scope, sessionPRs, stats?.prs ?? []).some((r) => r.number === num)) setScope('repo')
-    setChosen(num)
-    setView('list')
-  }
-  // The chosen pull request's CI is read only while the List view shows it.
-  const [ciData, ciAt] = usePoll<SessionCI>(visible && view === 'list' && pick > 0,`${sessionId}:${pick}:${n}`, () => api.sessionCI(sessionId, pick), (d) => ciActive(d.ci), CI_RUNNING_MS, pick > 0 ? `ci:${sessionId}:${pick}` : undefined)
+  // The chosen pull request's CI is read only while it is open over the list.
+  const [ciData, ciAt] = usePoll<SessionCI>(visible && pick > 0, `${sessionId}:${pick}:${n}`, () => api.sessionCI(sessionId, pick), (d) => ciActive(d.ci), CI_RUNNING_MS, pick > 0 ? `ci:${sessionId}:${pick}` : undefined)
   const ci = ciData?.pr?.number === pick ? ciData : undefined
   const connected = stats?.connected ?? prs?.connected
-  const owner = stats?.repo?.split('/')[0] ?? ''
-  const [usage] = usePoll(visible && !!connected && !!owner, `${sessionId}:${owner}`, () => api.actionsUsage(owner), () => false)
   useEffect(() => { setNow(Date.now()) }, [statsAt, ciAt, prs])
 
   // A clock only while a job runs, the tab in front and the window shown.
@@ -139,7 +125,7 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
     return () => window.clearInterval(t)
   }, [running, visible])
 
-  const row = rows.find((r) => r.number === pick)
+  const row = rows.find((r) => r.number === pick) ?? pipelineRows(tabRows('repo', sessionPRs, stats?.prs ?? []), board, stats?.prs ?? []).find((r) => r.number === pick)
   const runs: CIRun[] = useMemo(() => ci?.ci?.runs ?? [], [ci?.ci?.runs])
   // The chosen pull request as the deck's rows carry it, so the deck's words and actions apply.
   const p: SessionPRLive | undefined = row ? {
@@ -161,126 +147,76 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
     if (await connectGitHub()) setN((x) => x + 1)
     setConnecting(false)
   }
+  const ready = !stats?.reason && stats?.connected !== false
+  const counts = { session: sessionPRs.length, repo: tabRows('repo', sessionPRs, stats?.prs ?? []).length, open: tabRows('open', sessionPRs, stats?.prs ?? []).length }
 
   return (
-    <div data-prs-tab onKeyDown={(e) => { if (e.key === 'Escape' && kit.confirm) { kit.setConfirm(undefined); e.preventDefault() } }}
-      className="app-scroll @container/prs flex h-full min-h-0 flex-col gap-3 overflow-y-auto bg-bg p-4">
-      <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-        <h1 className="shrink-0 text-[15px] font-semibold">Pull requests &amp; CI</h1>
-        {stats?.repo && <span className="mono truncate text-[12px] text-fg-muted">{stats.repo}</span>}
-        <span className="ml-auto flex min-w-0 max-w-[50%] items-center justify-end gap-2 text-[11.5px]">
-          <Freshness at={statsShownAt} loading={statsMeta.loading} failed={statsFailed} reason={statsReason} confirmed={statsMeta.confirmed} onRetry={statsMeta.retry} />
-        </span>
-        <BackButton onBack={onBack} />
-      </header>
-      {stats?.reason ? (
-        <p className="text-[13px] text-fg-muted">{stats.reason === 'not_github' ? 'This session’s repository is not on GitHub.' : 'This session’s folder is not a git repository with a remote.'}</p>
-      ) : stats && !stats.connected ? (
-        <div className="flex items-center gap-3 rounded-[var(--radius-panel)] border border-border bg-panel px-4 py-3 text-[13px]">
-          <span className="text-fg-muted">The figures, the repository’s pull requests and their CI are read from GitHub.</span>
-          <button type="button" data-prs-connect disabled={connecting} onClick={() => void connect()} title="Reads GitHub through your GitHub CLI login; turn it off in Settings → GitHub"
-            className="text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'Connect GitHub'}</button>
-        </div>
-      ) : <ViewSwitch view={view} onView={setView} />}
-
-      {boardOn ? (
-        board ? <PRBoardView board={board} prs={stats?.prs ?? []} now={now} onOpen={openFromBoard} unconfirmed={unconfirmed} />
-          : !stats ? <DeckSkeleton label="Reading the pull requests" />
-            : stats.error ? <p className="truncate text-[12px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p>
-              : <p className="text-[12.5px] text-fg-muted">The board comes with a newer Caprock daemon: restart it after the update. The List view works meanwhile.</p>
-      ) : (
-        <>
-          {stats?.reason || stats?.connected === false ? null : stats?.stats ? <StatsStrip st={stats.stats} usage={usageLine(usage)} />
-            : !stats ? <DeckSkeleton label="Reading the figures" /> : stats.error ? <p className="truncate text-[12px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p> : null}
-          <div className="grid min-h-[420px] flex-1 grid-cols-[minmax(280px,0.8fr)_minmax(0,1.4fr)] gap-3 @max-[760px]/prs:grid-cols-1">
-            <PRList rows={rows} scope={scope} onScope={setScope} pick={pick} onPick={setChosen} now={now} counts={{ session: sessionPRs.length, repo: tabRows('repo', sessionPRs, stats?.prs ?? []).length, open: tabRows('open', sessionPRs, stats?.prs ?? []).length }} loaded={!!prs || !!stats} />
-            <section data-prs-detail aria-label="The chosen pull request" className="app-scroll min-h-0 min-w-0 overflow-y-auto rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
-              {p ? (
-                <Detail p={p} row={row!} ci={ci} runs={runs} now={now} sessionId={sessionId} kit={kit} connected={connected}
-                  why={why} onInvestigated={(t) => onToast?.(t)} sessionName={sessionTitle(s)} onConnect={() => void connect()} />
-              ) : (
-                <p className="p-4 text-[13px] text-fg-muted">{rows.length === 0 && (prs || stats) ? 'No pull requests here.' : 'Pick a pull request.'}</p>
-              )}
-            </section>
+    <div data-prs-tab onKeyDown={(e) => {
+      if (e.key !== 'Escape') return
+      if (kit.confirm) kit.setConfirm(undefined)
+      else if (pick) setChosen(undefined)
+      else return
+      e.preventDefault()
+    }}
+      className="relative @container/prs flex h-full min-h-0 flex-col bg-bg">
+      <div className="app-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+        <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="shrink-0 text-[15px] font-semibold" title="Each pull request on its way: opened, its CI, merged, released">Pipeline</h1>
+          {stats?.repo && <span className="mono truncate text-[12px] text-fg-muted">{stats.repo}</span>}
+          <span className="ml-auto flex min-w-0 max-w-[50%] items-center justify-end gap-2 text-[11.5px]">
+            <Freshness at={statsShownAt} loading={statsMeta.loading} failed={statsFailed} reason={statsReason} confirmed={statsMeta.confirmed} onRetry={statsMeta.retry} />
+          </span>
+          <BackButton onBack={onBack} />
+        </header>
+        {stats?.reason ? (
+          <p className="text-[13px] text-fg-muted">{stats.reason === 'not_github' ? 'This session’s repository is not on GitHub.' : 'This session’s folder is not a git repository with a remote.'}</p>
+        ) : stats && !stats.connected ? (
+          <div className="flex items-center gap-3 rounded-[var(--radius-panel)] border border-border bg-panel px-4 py-3 text-[13px]">
+            <span className="text-fg-muted">The figures, the repository’s pull requests and their CI are read from GitHub.</span>
+            <button type="button" data-prs-connect disabled={connecting} onClick={() => void connect()} title="Reads GitHub through your GitHub CLI login; turn it off in Settings → GitHub"
+              className="text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'Connect GitHub'}</button>
           </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------- the view switch
-
-const VIEW_LABEL: Record<TabView, string> = { board: 'Board', list: 'List' }
-const VIEW_TITLE: Record<TabView, string> = {
-  board: 'The pull requests by stage — draft, CI running, needing a fix, ready, merged, released — with the agents on each and what they cost, and the releases',
-  list: 'The figures over two weeks, and one pull request in detail: its checks, jobs and logs',
-}
-
-function ViewSwitch({ view, onView }: { view: TabView; onView: (v: TabView) => void }) {
-  return (
-    <div role="tablist" aria-label="View" data-prs-view={view} className="flex w-fit shrink-0 items-center gap-0.5 rounded-[7px] border border-[var(--app-hairline)] bg-panel-2/60 p-0.5 text-[12px]">
-      {(['board', 'list'] as TabView[]).map((v) => (
-        <button key={v} type="button" role="tab" aria-selected={view === v} data-prs-view-tab={v} onClick={() => onView(v)} title={VIEW_TITLE[v]}
-          className={`rounded-[5px] px-2.5 py-[3px] ${view === v ? 'bg-[var(--app-row-active)] font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}>
-          {VIEW_LABEL[v]}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------- the figures
-
-function Stat({ label, value, note, title, children }: { label: string; value: ReactNode; note: ReactNode; title?: string; children?: ReactNode }) {
-  return (
-    <div data-prs-stat={label} title={title} className="flex min-w-0 flex-col gap-1">
-      <div className="truncate text-[10.5px] uppercase tracking-[0.12em] text-fg-faint">{label}</div>
-      <div className="flex items-end justify-between gap-2">
-        <div className="num truncate text-[22px] font-semibold leading-none text-fg">{value}</div>
-        {children}
+        ) : null}
+        {ready && (board ? <FlowStrip board={board} />
+          : !stats ? <DeckSkeleton label="Reading the figures" />
+            : stats.error && (stats.prs?.length ?? 0) === 0 ? <p className="truncate text-[12px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p> : null)}
+        {ready && (
+          <PipelineList rows={rows} scope={scope} onScope={setScope} pick={pick} onPick={(num) => setChosen(num === pick ? undefined : num)} now={now}
+            counts={counts} loaded={!!prs || !!stats} dim={unconfirmed} />
+        )}
+        {ready && board && board.releases.length > 0 && <Releases releases={board.releases} prs={stats?.prs ?? []} now={now} onOpen={(num) => setChosen(num)} />}
       </div>
-      <div className="line-clamp-2 text-[11px] leading-[1.35] text-fg-muted">{note}</div>
-    </div>
-  )
-}
-
-function StatsStrip({ st, usage }: { st: NonNullable<SessionCIStats['stats']>; usage?: ReturnType<typeof usageLine> }) {
-  const w = statsWords(st)
-  const labels = st.days.map((d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))
-  const days = st.days.length
-  const wf = st.ci.workflows[0]
-  return (
-    <section data-prs-stats aria-label="The repository over two weeks" className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-x-6 gap-y-4 rounded-[var(--radius-panel)] border border-border bg-panel px-4 py-3 shadow-[var(--shadow-panel)]">
-      <Stat label={`Merged · ${days} days`} value={w.merged.total} note={`${w.merged.last7} in the last 7 · ${w.merged.today} today`}
-        title={`Pull requests merged each day, from GitHub's stamps, counted from the repository's ${st.prs_listed} most recently updated pull requests`}>
-        <Bars values={st.merged} labels={labels} unit="merged" />
-      </Stat>
-      <Stat label="Time to merge" value={w.ttm?.text ?? '–'} note={w.ttmNote} title={w.ttm?.title} />
-      {w.ci && wf ? (
-        <Stat label={`CI time · ${w.ci.name}`} value={w.ci.text} note={w.ci.note} title={`The median wall-clock time of the ${wf.name} workflow's successful runs, start to finish, from GitHub's run times; the line is the same median per day`}>
-          <Trend values={wf.daily_median_ms} labels={labels} />
-        </Stat>
-      ) : <Stat label="CI time" value="–" note="fewer than two successful runs" />}
-      {w.red ? (
-        <Stat label="Red runs" value={w.red.text} note={w.red.note} title={w.red.title}>
-          <Bars values={st.ci.per_day.map((d) => d.runs)} red={st.ci.per_day.map((d) => d.red)} labels={labels} unit="runs" />
-        </Stat>
-      ) : <Stat label="Red runs" value="–" note={`no finished runs in ${days} days`} />}
-      {usage && (
-        usage.kind === 'available'
-          ? <Stat label="Actions this month" value={usage.text.replace(/^Actions this month: /, '').split(' · ')[0]} note={`${usage.text.split(' · ')[1] ?? ''} billed, GitHub’s report`} title={usage.title} />
-          : <Stat label="Actions this month" value="–" note={usage.text} title={usage.title} />
+      {/* The chosen pull request over the list's right side, so the list
+        * keeps its width (owner, 2026-10-14: readable at 1512 with the agent
+        * panel open). Esc or × closes it. */}
+      {p && row && (
+        <section data-prs-detail role="dialog" aria-label={`#${row.number} in detail`} ref={detailRef} tabIndex={-1}
+          className="app-scroll outline-none absolute inset-y-0 right-0 z-20 w-[min(640px,94%)] overflow-y-auto border-l border-border bg-panel shadow-[var(--shadow-pop,0_8px_28px_rgba(0,0,0,0.28))]">
+          <div className="sticky top-0 z-10 flex items-center justify-end border-b border-border bg-panel/95 px-2 py-1 backdrop-blur">
+            <button type="button" data-prs-detail-close onClick={() => setChosen(undefined)} title="Close (Esc)" aria-label="Close the pull request’s detail"
+              className="rounded-[5px] px-2 text-[16px] leading-[22px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">×</button>
+          </div>
+          <Detail p={p} row={row} ci={ci} runs={runs} now={now} sessionId={sessionId} kit={kit} connected={connected}
+            why={why} onInvestigated={(t) => onToast?.(t)} sessionName={sessionTitle(s)} onConnect={() => void connect()} />
+        </section>
       )}
-    </section>
+    </div>
   )
 }
 
 // ---------------------------------------------------------------- the list
 
-function PRList({ rows, scope, onScope, pick, onPick, now, counts, loaded }: { rows: TabPR[]; scope: TabScope; onScope: (s: TabScope) => void; pick: number; onPick: (n: number) => void; now: number; counts: Record<TabScope, number>; loaded: boolean }) {
+/** How many released rows show before "Show more". */
+const RELEASED_SHOWN = 10
+
+function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded, dim }: { rows: PipelineRow[]; scope: TabScope; onScope: (s: TabScope) => void; pick: number; onPick: (n: number) => void; now: number; counts: Record<TabScope, number>; loaded: boolean; dim: boolean }) {
+  const [allReleased, setAllReleased] = useState(false)
+  const released = rows.filter((r) => stageOf(r) === 'released')
+  const hidden = allReleased ? 0 : Math.max(0, released.length - RELEASED_SHOWN)
+  const keep = new Set(released.slice(0, allReleased ? released.length : RELEASED_SHOWN).map((r) => r.number))
+  const shown = rows.filter((r) => stageOf(r) !== 'released' || keep.has(r.number))
   return (
-    <section data-prs-list aria-label="Pull requests" className="flex min-h-0 min-w-0 flex-col rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
+    <section data-prs-list aria-label="Pull requests" className="flex min-w-0 flex-col rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
       <div role="tablist" aria-label="Which pull requests" className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-panel-2/60 px-2 py-1.5 text-[11.5px]">
         {(['session', 'repo', 'open'] as TabScope[]).map((k) => (
           <button key={k} type="button" role="tab" aria-selected={scope === k} data-prs-scope={k} onClick={() => onScope(k)}
@@ -288,38 +224,66 @@ function PRList({ rows, scope, onScope, pick, onPick, now, counts, loaded }: { r
             {SCOPE_LABEL[k]} <span className="num text-fg-faint">{counts[k]}</span>
           </button>
         ))}
+        <span className="ml-auto hidden text-[11px] text-fg-faint @min-[640px]/prs:inline" title={AGENT_COST_NOTE}>Open → CI → Merged → Released · agent cost at list price</span>
       </div>
       {!loaded ? <div className="p-2"><DeckSkeleton label="Reading the pull requests" /></div> : rows.length === 0 ? (
         <p className="p-3 text-[12px] text-fg-faint">{scope === 'session' ? 'No PR from this session yet.' : scope === 'open' ? 'Nothing open.' : 'No pull requests read.'}</p>
       ) : (
-        <ul className="app-scroll min-h-0 flex-1 overflow-y-auto">
-          {rows.map((r) => <PRItem key={r.number} r={r} on={r.number === pick} onPick={() => onPick(r.number)} now={now} />)}
+        <ul>
+          {shown.map((r) => <PipelineItem key={r.number} r={r} on={r.number === pick} onPick={() => onPick(r.number)} now={now} dim={dim || !!r.card?.stale} />)}
+          {hidden > 0 && (
+            <li><button type="button" data-prs-more onClick={() => setAllReleased(true)} className="w-full px-3 py-2 text-left text-[12px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">Show {hidden} more released</button></li>
+          )}
         </ul>
       )}
     </section>
   )
 }
 
-function PRItem({ r, on, onPick, now }: { r: TabPR; on: boolean; onPick: () => void; now: number }) {
-  const at = r.merged_at ?? r.created_at
-  const v = r.mine?.live ? prVerdict(r.mine, now) : undefined
+/** One pull request: number, its whole title, labels, the four steps, agent cost. */
+function PipelineItem({ r, on, onPick, now, dim }: { r: PipelineRow; on: boolean; onPick: () => void; now: number; dim: boolean }) {
+  const steps = journey(r)
+  const at = r.card?.stage_at ?? r.merged_at ?? r.created_at
+  const cost = r.card ? costText(r.card.spend) : ''
   return (
-    <li data-prs-row={r.number}>
+    <li data-prs-row={r.number} data-stage={stageOf(r)} data-prs-unconfirmed={dim ? '' : undefined}>
       <button type="button" onClick={onPick} aria-current={on || undefined}
-        className={`block w-full border-b border-[var(--app-hairline)] px-3 py-2 text-left hover:bg-[var(--app-row-hover)] ${on ? 'bg-[var(--app-row-active)] shadow-[inset_2px_0_0_var(--color-accent)]' : ''}`}>
-        <span className="flex min-w-0 items-center gap-2">
-          <span aria-hidden className="pr-dot" data-state={r.draft && r.state === 'open' ? 'draft' : r.state} />
-          <span className="num shrink-0 text-[12px] text-fg-muted">#{r.number}</span>
-          <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg">{r.title}</span>
-          {at ? <span className="num shrink-0 text-[11px] text-fg-faint" title={new Date(at).toLocaleString()}>{spanText(Math.max(0, now - at))}</span> : null}
+        title={dim ? 'Not re-confirmed: from an earlier read of GitHub' : undefined}
+        className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-b border-[var(--app-hairline)] px-3 py-2 text-left hover:bg-[var(--app-row-hover)] @max-[720px]/prs:grid-cols-1 ${on ? 'bg-[var(--app-row-active)] shadow-[inset_2px_0_0_var(--color-accent)]' : ''} ${dim ? 'opacity-60' : ''}`}>
+        <span className="flex min-w-0 items-start gap-2">
+          <span className="num mt-[1px] shrink-0 text-[12px] text-fg-muted">#{r.number}</span>
+          <span className="min-w-0 flex-1">
+            <span className="line-clamp-2 text-[13px] leading-[1.35] text-fg">{r.title}</span>
+            {(r.labels?.length || r.author || r.mine) && (
+              <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-fg-faint">
+                {r.labels?.map((l) => <LabelChip key={l.name} name={l.name} color={l.color} />)}
+                {r.author && <GitHubPerson login={r.author} url={r.author_avatar} size={13} className="min-w-0" />}
+                {r.mine && <span className="text-accent">this session</span>}
+              </span>
+            )}
+          </span>
         </span>
-        <span className="mt-0.5 flex min-w-0 items-center gap-2 pl-[18px] text-[11.5px]">
-          {v ? <span className={`min-w-0 truncate ${v.tone === 'fail' ? 'text-danger' : v.tone === 'pending' ? 'text-warn' : v.tone === 'ok' ? 'text-ok' : 'text-fg-muted'}`} title={v.title}>{v.text}</span>
-            : <span className="min-w-0 truncate text-fg-faint">{r.state === 'merged' && r.merged_at && r.created_at ? `merged in ${spanText(r.merged_at - r.created_at)}` : r.state}</span>}
-          {r.mine && <span className="ml-auto shrink-0 text-[11px] text-accent">this session</span>}
+        <span className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 @max-[720px]/prs:justify-start">
+          <JourneyPills steps={steps} />
+          {at ? <span className="num w-[52px] shrink-0 text-right text-[11px] text-fg-faint" title={new Date(at).toLocaleString()}>{spanText(Math.max(0, now - at))}</span> : null}
+          <span className="num w-[56px] shrink-0 text-right text-[11.5px] text-fg-muted" title={r.card ? costTitle(r.card.spend) : undefined}>
+            {cost || <span className="text-fg-faint">–</span>}
+            {r.card && r.card.spend.live > 0 && <span className="ml-1 text-ok" title={`${r.card.spend.live} agent session${r.card.spend.live === 1 ? '' : 's'} running on it now`}>●</span>}
+          </span>
         </span>
       </button>
     </li>
+  )
+}
+
+/** A GitHub label: its colour as a dot, its name. */
+function LabelChip({ name, color }: { name: string; color?: string }) {
+  const c = color && /^[0-9a-f]{6}$/i.test(color) ? `#${color}` : 'var(--color-fg-faint)'
+  return (
+    <span data-prs-label={name} className="inline-flex h-[17px] max-w-[160px] items-center gap-1 rounded-full border border-[var(--app-hairline-strong)] px-1.5 text-[10.5px] text-fg-muted">
+      <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: c }} />
+      <span className="truncate">{name}</span>
+    </span>
   )
 }
 

@@ -73,6 +73,27 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-14 — 0.117.3: Pipeline, and Second Brain for everyone
+
+The PRs & CI page is now Pipeline: one list of pull requests with full
+titles, labels and the journey Open → CI → Merged → Released, the cockpit
+shows each as a four-step bar, and ⇧⌘B opens the page as a tab. The board no
+longer freezes on a slow GitHub read and always says how fresh it is. Second
+Brain is free: no cap on memories, and the automatic build for anyone who
+says yes ([ADR-063](08-decisions.md)).
+
+### 2026-10-14 — Second Brain is free
+
+Owner decision ([ADR-063](08-decisions.md), § Free): no cap on memories
+dropped in by hand and no licence for the automatic build. The daemon drops
+`brainFreeManual`, the `402`s and the engine's licence check; the status
+loses `licensed`, `free_max` and `free_left`. The yes-first consent, the
+daily limit and the 30-day backfill with its estimate are unchanged. The
+dashboard drops the lock, the free-allowance banner and every Premium
+dialog around Brain; the sidebar block starts unfolded and *How it works*
+is a free explainer. The retired pre-order sale (ADR-062) is removed from
+the offer strip, not just hidden.
+
 ### 2026-10-14 — 0.117.2: Second Brain complete, a phone that stays paired, updates that keep the microphone
 
 Second Brain is whole: it builds itself from finished sessions once you say
@@ -131,8 +152,8 @@ pull requests and subagents as moments rather than every command.
 
 Memories kept as a graph ([ADR-063](08-decisions.md)): migration 0055
 (`brain_nodes`, `brain_edges`, `brain_runs`), `/v1/brain*`, the `brain`
-live frame, *Drop into brain* on Memory, a session's Answers and the chat
-view, the quick capture (⇧⌘H, ⌘K *Add to brain…*) and the `#/brain` screen
+live frame, *Drop into Second Brain* on Memory, a session's Answers and the chat
+view, the quick capture (⇧⌘H, ⌘K *Add to Second Brain…*) and the `#/brain` screen
 (search, project, span, a memory's detail with edit, pin, link and delete).
 Twenty memories by hand are free; the twenty-first is `402` from the
 daemon. The graph read measured 45–50 ms for 5,000 memories and 15,000 edges

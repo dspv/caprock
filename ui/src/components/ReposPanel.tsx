@@ -4,7 +4,7 @@
  * days, today's and the week's, the lines added and removed, what is not
  * committed — from the repository's own git, and, while GitHub is connected,
  * the open pull requests, red runs, median CI time and the newest release
- * from what the session deck and the PRs & CI tab already read. The daemon
+ * from what the session deck and the Pipeline page already read. The daemon
  * asks GitHub nothing for this section, and git at most every 10 minutes a
  * repository.
  *
@@ -26,7 +26,7 @@ const CACHE_KEY = 'repos:now'
 
 export function ReposPanel() {
   return (
-    <Panel fold="now.repos" title="Repos" right={<span title="Local git, counted at most every 10 minutes; GitHub from what the deck and the PRs & CI tab already read">local git · GitHub as the deck read it</span>}>
+    <Panel fold="now.repos" title="Repos" right={<span title="Local git, counted at most every 10 minutes; GitHub from what the deck and the Pipeline page already read">local git · GitHub as the deck read it</span>}>
       <ReposBody />
     </Panel>
   )
@@ -143,7 +143,7 @@ function Row({ r, connected, now }: { r: RepoActivity; connected: boolean; now: 
   )
 }
 
-const NOT_READ = 'Not read yet: open the session deck’s PRs & CI tab for this repository'
+const NOT_READ = 'Not read yet: open the session deck’s Pipeline page for this repository'
 
 function GitHubCells({ r, connected, now }: { r: RepoActivity; connected: boolean; now: number }) {
   if (!connected) {

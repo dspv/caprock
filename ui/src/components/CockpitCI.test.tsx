@@ -1,7 +1,9 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CockpitCI, checkSummary } from './CockpitCI'
 import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
+import { prChecks } from '@/lib/ci'
+import { CheckSummary } from './CheckSummary'
 
 const now = Date.now()
 const live = (n: number, checks: object, p: object = {}) => ({ number: n, url: `https://github.com/a/b/pull/${n}`, title: `PR ${n}`, state: 'open', draft: false,
@@ -21,22 +23,64 @@ describe('the cockpit’s CI block', () => {
     expect(checkSummary(RUNNING.items as never, now)).toMatchObject({ total: 3, pass: 2, running: 1, ms: 240_000 })
   })
 
-  it('draws only what the deck was told, asks nothing, and redraws when the deck is told more', () => {
+  // Owner, 2026-10-14, translated: "showing PRs as progress bars toward
+  // release; scrollable; we see PR statuses and CI statuses".
+  it('draws the repository’s pull requests as progress bars toward a release, the CI colour on its step', async () => {
+    const stats = {
+      connected: true, repo: 'a/b', fetched_at: now, read_at: now,
+      prs: [
+        { number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fix the login', state: 'open', created_at: now - 3_600_000 },
+        { number: 8, url: 'https://github.com/a/b/pull/8', title: 'Release notes', state: 'merged', created_at: now - 7_200_000, merged_at: now - 5_000_000 },
+        { number: 7, url: 'https://github.com/a/b/pull/7', title: 'Old one', state: 'merged', created_at: now - 9_000_000, merged_at: now - 8_000_000 },
+      ],
+      board: {
+        cards: [
+          { number: 9, stage: 'fix', ci: 'fail', why: 'ci', stage_at: now - 600_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } },
+          { number: 8, stage: 'merged', stage_at: now - 5_000_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } },
+          { number: 7, stage: 'released', release: 'v1.2.0', stage_at: now - 4_000_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } },
+        ],
+        releases: [], flow: { counts: {}, days: 14, merged: 2, ttm_count: 0, release_lag_count: 0, cost_usd: 0 },
+      },
+    }
+    const fetch = vi.fn(async () => new Response(JSON.stringify(stats), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetch)
+    const onOpen = vi.fn()
+    render(<CockpitCI sessionId="s1" repoScope="/w" onOpen={onOpen} />)
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-pr="9"]')).not.toBeNull())
+    expect(fetch).toHaveBeenCalledWith('/v1/sessions/s1/ci/stats', expect.anything())
+    // In flight first, then merged, then released.
+    expect([...document.querySelectorAll('[data-cockpit-ci-pr]')].map((e) => e.getAttribute('data-cockpit-ci-pr'))).toEqual(['9', '8', '7'])
+    const ci = document.querySelector('[data-cockpit-ci-pr="9"] [data-journey-seg="ci"]')!
+    expect(ci).toHaveAttribute('data-step-state', 'current')
+    expect(ci).toHaveClass('bg-danger')
+    expect(document.querySelector('[data-cockpit-ci-pr="9"]')).toHaveTextContent('Fix the login')
+    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-journey-seg="merged"]')).toHaveAttribute('data-step-state', 'current')
+    expect(document.querySelector('[data-cockpit-ci-pr="7"] [data-journey-bar]')).toHaveAttribute('aria-label', expect.stringContaining('v1.2.0 (now)'))
+    // It scrolls inside the block; Expand only past a few rows; the page one click away.
+    expect(document.querySelector('[data-cockpit-journey]')).toHaveClass('overflow-y-auto', 'max-h-[176px]')
+    expect(document.querySelector('[data-cockpit-ci-tall]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Pipeline ↗' }))
+    expect(onOpen).toHaveBeenCalledTimes(1)
+  })
+
+  it('grows taller on Expand, remembered', async () => {
+    const prs = Array.from({ length: 6 }, (_, i) => ({ number: 20 + i, url: `https://github.com/a/b/pull/${20 + i}`, title: `PR ${20 + i}`, state: 'open', created_at: now - 1000 }))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ connected: true, prs, fetched_at: now }), { status: 200 })))
+    const first = render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-tall]')).not.toBeNull())
+    fireEvent.click(document.querySelector('[data-cockpit-ci-tall]')!)
+    expect(document.querySelector('[data-cockpit-journey]')).toHaveClass('max-h-[440px]')
+    first.unmount()
+    render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
+    await waitFor(() => expect(document.querySelector('[data-cockpit-journey]')).toHaveClass('max-h-[440px]'))
+  })
+
+  it('asks nothing with no page to open, and draws nothing with nothing to say', () => {
     const fetch = vi.fn()
     vi.stubGlobal('fetch', fetch)
     const { container } = render(<CockpitCI sessionId="s1" />)
     expect(container).toBeEmptyDOMElement()
-    act(() => { writeDeck('prs:s1', { connected: true, prs: [row(9, live(9, RUNNING)), row(8, live(8, PASSED, { state: 'merged' }))] }) })
-    expect(document.querySelector('[data-cockpit-ci="dots"]')).not.toBeNull()
-    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-tone="running"]')).not.toBeNull()
-    // The same short group as the deck's rows: no circle per check, no unexplained glyph.
-    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-check-summary]')).toHaveTextContent(/^1 running2· 4m$/)
-    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-check-summary]')).toHaveTextContent(/^all 1$/)
-    expect(document.querySelector('[data-cockpit-ci-pr="9"]')).toHaveTextContent('PR 9')
-    expect(document.querySelector('[data-cockpit-ci] [data-pipeline]')).toBeNull()
-    expect([...document.querySelectorAll('[data-cockpit-ci-view]')].map((b) => b.textContent)).toEqual(['PRs', 'Ring', 'By OS'])
-    // Each tab says what it shows.
-    expect(document.querySelector('[data-cockpit-ci-view="grid"]')).toHaveAttribute('title', expect.stringMatching(/^By OS: the newest pull request’s checks by runner/))
+    expect([...document.querySelectorAll('[data-cockpit-ci-view]')]).toHaveLength(0)
     expect(fetch).not.toHaveBeenCalled()
   })
 
@@ -78,13 +122,13 @@ describe('the cockpit’s CI block', () => {
   })
 
   // "You can't move the mouse here — on hover a modal opens and you can't
-  // see anything" (owner, 2026-10-14, translated).
+  // see anything" (owner, 2026-10-14, translated): the folded block's line.
   it('lists a PR’s checks only after the pointer rests, beside the panel, and closes on leaving', () => {
     vi.useFakeTimers()
     try {
-      writeDeck('prs:s1', { connected: true, prs: [row(9, live(9, RUNNING))] })
-      render(<CockpitCI sessionId="s1" />)
-      const sum = document.querySelector('[data-cockpit-ci-pr="9"] [data-check-summary]')!
+      const sumOf = prChecks(row(9, live(9, RUNNING)) as never, now)!
+      render(<CheckSummary s={sumOf} label="#9: its checks" focusable={false} beside />)
+      const sum = document.querySelector('[data-check-summary]')!
       fireEvent.mouseEnter(sum)
       act(() => { vi.advanceTimersByTime(300) })
       // Passing over opens nothing.

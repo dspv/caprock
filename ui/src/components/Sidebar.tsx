@@ -55,7 +55,6 @@ import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { MenuBox, MenuItem, MenuSeparator, type MenuAt } from './RowMenu'
 import { TodayStrip } from './TodayStrip'
 import { SidebarFooter } from './SidebarFooter'
-import type { BarMode } from '@/lib/deck'
 import { CaprockMark, ChatIcon, EyeIcon, FolderIcon, FolderPlusIcon, PlusIcon, SearchIcon } from './AppIcons'
 import { BrainSidebar } from './BrainSidebar'
 import { keys } from '@/lib/appkeys'
@@ -177,10 +176,10 @@ export interface SidebarProps {
   /** Settings on the phone or Telegram section: the row's "phone, Telegram"
    *  words, and the row itself (owner, 2026-10-13). Absent: plain Settings. */
   onSettingsSection?: (section: SettingsSection) => void
-  /** The PRs & CI view's mode on screen, and the footer button's click
-   *  that moves it on (components/SidebarFooter). */
-  barMode?: BarMode
-  onCycleBar?: () => void
+  /** The footer's Pipeline button (⇧⌘B), and whether the Pipeline tab is in
+   *  front (components/SidebarFooter). */
+  onPipeline?: () => void
+  pipelineActive?: boolean
   onPalette: () => void
   /** The day's summary, for the Today strip; absent until it answers. */
   summary?: Summary
@@ -549,8 +548,8 @@ export function Sidebar(props: SidebarProps) {
         onMail={props.onMail}
         onSettings={props.onSettings}
         onSettingsSection={props.onSettingsSection}
-        barMode={props.barMode}
-        onCycleBar={props.onCycleBar}
+        onPipeline={props.onPipeline}
+        pipelineActive={props.pipelineActive}
       />
       {moreAt && (
         <MenuBox at={moreAt} label="More projects and hidden rows" width={260} onClose={() => setMoreAt(null)}>

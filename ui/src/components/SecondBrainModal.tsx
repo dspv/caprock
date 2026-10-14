@@ -1,58 +1,34 @@
 /**
- * "How it works" for Second Brain (ADR-062): what it is in four short lines,
- * a calm picture of a graph, and the app's usual Premium purchase step.
+ * "How it works" for Second Brain (ADR-063), opened from the sidebar's Second Brain
+ * block: what it is in four short lines and a calm picture of a graph.
  *
- * Sold ahead of its arrival, so the line under the prices is a dated
- * pre-order with a refund promise, worded exactly as the owner set it
- * (2026-10-14) — never "coming soon" (rule 11). Someone who already has
- * Premium is told it is included and when it arrives, and offered nothing.
- * Nothing here sends anything; a purchase goes through the existing Stripe
- * checkout, in the browser.
+ * Second Brain is free: every memory, and the automatic build for anyone
+ * who says yes (owner decision, 2026-10-14). There is nothing to buy here;
+ * the one action opens the Brain screen. Nothing here sends anything.
  */
-import { useState } from 'react'
-import { api } from '@/lib/api'
-import { useApi } from '@/lib/useApi'
-import { useLicensed } from '@/lib/nudges'
-import { SECOND_BRAIN_DATE_TEXT } from '@/lib/offer'
 import { UpsellDialog } from './UpsellDialog'
-import { Price } from './PremiumModal'
-
-export const PREORDER_LINE = `Second Brain comes to Premium on ${SECOND_BRAIN_DATE_TEXT}. If it doesn't, write to us for a full refund.`
-export const INCLUDED_LINE = `It's included in your Premium — it arrives on ${SECOND_BRAIN_DATE_TEXT}.`
 
 const LINES: [string, string][] = [
   ['What goes in', 'the ideas, decisions and findings from your sessions, plus anything you drop in.'],
+  ['How', 'your own claude reads a finished session once you say yes, within a daily limit you set.'],
   ['Where', 'a block on the left, and a full-screen graph with search.'],
   ['Local', 'it stays on this computer.'],
-  ['Remembers', 'new sessions can draw on what you already know.'],
 ]
 
-export function SecondBrainModal({ onClose }: { onClose: () => void }) {
-  const licensed = useLicensed()
-  const pricing = useApi(() => api.premium(), [])
-  const [buying, setBuying] = useState(false)
+export function SecondBrainModal({ onClose, onOpen }: { onClose: () => void; onOpen?: () => void }) {
   return (
     <UpsellDialog
       label="Second Brain"
-      eyebrow="Caprock Premium"
+      eyebrow="Second Brain"
       title="Your second brain"
       onClose={onClose}
       picture={<Graph />}
-      actions={licensed
-        ? <p className="text-[13px] text-fg" data-sb-included>{INCLUDED_LINE}</p>
-        : (
-          <div>
-            {buying
-              ? <Price p={pricing.data} feature="second-brain" onClose={onClose} />
-              : (
-                <button type="button" onClick={() => setBuying(true)}
-                  className="w-full rounded-md bg-accent px-3 py-2 text-center text-[14px] font-semibold text-panel hover:bg-accent-strong">
-                  Get Premium
-                </button>
-              )}
-            <p className="mt-2 text-[11.5px] leading-snug text-fg-muted" data-sb-preorder>{PREORDER_LINE}</p>
-          </div>
-        )}
+      actions={onOpen && (
+        <button type="button" onClick={() => { onOpen(); onClose() }}
+          className="w-full rounded-md bg-accent px-3 py-2 text-center text-[14px] font-semibold text-panel hover:bg-accent-strong">
+          Open Second Brain
+        </button>
+      )}
       footer={
         <div className="flex items-center gap-3">
           <button type="button" onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">Close</button>

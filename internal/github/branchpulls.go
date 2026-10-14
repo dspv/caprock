@@ -44,7 +44,14 @@ type BranchPR struct {
 	Head         string `json:"head,omitempty"`
 	Author       string `json:"author,omitempty"`
 	AuthorAvatar string `json:"author_avatar,omitempty"`
+	// Labels are its GitHub labels, in GitHub's order, at most maxLabels:
+	// the Pipeline row's chips (owner, 2026-10-14, translated: "if PRs
+	// have labels, show them too").
+	Labels []Label `json:"labels,omitempty"`
 }
+
+// maxLabels bounds the labels a pull request carries in the list.
+const maxLabels = 6
 
 type branchPullsEntry struct {
 	m map[string]BranchPR
@@ -94,6 +101,11 @@ func ownPulls(repo Repo, list []apiPull) []ownPull {
 			Base: p.Base.Ref, HeadSHA: p.Head.SHA, CreatedAt: unixMS(p.CreatedAt), MergedAt: p.mergedMS(), Head: p.Head.Ref}
 		if p.User != nil {
 			pr.Author, pr.AuthorAvatar = p.User.Login, p.User.AvatarURL
+		}
+		for _, l := range p.Labels {
+			if l.Name != "" && len(pr.Labels) < maxLabels {
+				pr.Labels = append(pr.Labels, Label{Name: l.Name, Color: l.Color})
+			}
 		}
 		out = append(out, ownPull{branch: p.Head.Ref, pr: pr})
 	}

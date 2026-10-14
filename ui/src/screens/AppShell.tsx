@@ -46,7 +46,7 @@ import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { SessionDeck } from '@/components/SessionDeck'
-import { barModeOf, readDeck, saveDeck, type DeckPrefs } from '@/lib/deck'
+import { readDeck, saveDeck, type DeckPrefs } from '@/lib/deck'
 import { FeedbackDialog } from '@/components/Feedback'
 import { currentScreen } from '@/lib/feedback'
 import { StatusStrip } from '@/components/StatusStrip'
@@ -193,7 +193,7 @@ const SCREENS: [string, string, string][] = [
   ['history', 'Lifetime', 'every session, every day, in totals'],
   ['week', 'Week', 'one week, as a card'],
   ['notes', 'Memory', 'what the agents said, searchable'],
-  ['brain', 'Brain', 'Second Brain: what your sessions decided and found'],
+  ['brain', 'Second Brain', 'what your sessions decided and found, as a graph'],
   ['tasks', 'Tasks', 'the board'],
   ['queue', 'Queue', 'what each agent is doing, what waits, roughly when it is done'],
   ['mail', 'Mail', 'every inbox in one place, on this machine'],
@@ -350,7 +350,7 @@ export function AppShell() {
   const current = activeTab(shownWs)
   const focused = current ? focusedLeaf(current).target : undefined
   const focusedSession = focused ? sessionsById.get(focused.sessionId) : undefined
-  // The inspector beside a PRs & CI tab describes the agent it was opened from.
+  // The inspector beside a Pipeline page describes the agent it was opened from.
   const inspectedId = focused?.kind === 'prs' ? focused.of : focused?.sessionId
   const inspectedSession = focused?.kind === 'prs' && focused.of ? sessionsById.get(focused.of) : focusedSession
   // An agent's session is in front: what the session deck and the chat apply to.
@@ -949,8 +949,8 @@ export function AppShell() {
   // ⇧⌘G opens the diff of the session in front; what that is is known further
   // down (focusedWorktree), so it is reached through a ref set there.
   const openChangesRef = useRef<(() => void) | undefined>(undefined)
-  // ⇧⌘B: Expand from an agent's tab, Collapse from its PRs & CI tab — set
-  // further down, where both are known (onExpandDeck, backToDeck).
+  // ⇧⌘B: the Pipeline tab, and from it back — set further down, where both
+  // are known (openPipeline, pipelineBack).
   const expandRef = useRef<(() => void) | undefined>(undefined)
   const run = useCallback((c: AppCommand) => {
     switch (c.kind) {
@@ -966,13 +966,12 @@ export function AppShell() {
       case 'sidebar': setPrefs((p) => ({ ...p, sidebar: !p.sidebar })); break
       case 'deck':
         // A shell has no deck: say so rather than flip a setting that shows nothing.
-        if (workspaceShown && !frontIsAgent && !deck.open) { setToast('The session deck shows an agent’s figures: bring an agent’s tab to the front.'); break }
+        if (workspaceShown && !frontIsAgent && !deck.open) { setToast('The Pipeline bar shows under an agent’s terminal: bring an agent’s tab to the front.'); break }
         setDeck((d) => ({ ...d, open: !d.open }))
         showWorkspace()
         break
       case 'deck-expand':
-        if (expandRef.current) expandRef.current()
-        else setToast('Expand shows an agent’s pull requests and CI: bring an agent’s tab to the front.')
+        expandRef.current?.()
         break
       case 'changes':
         if (openChangesRef.current) openChangesRef.current()
@@ -1132,8 +1131,9 @@ export function AppShell() {
       { id: 'a-shell', group: 'Actions', label: 'New shell', hint: keys('⌘T'), icon: <TerminalIcon size={14} />, run: () => onNewShell() },
       { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat…', detail: 'pick the agent and model; Enter starts the last one used', hint: keys('⌥⌘N'), icon: <ChatIcon size={14} />, run: onQuickChatChooser },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: keys('⌘O'), icon: <FolderPlusIcon size={14} />, run: onAddProject },
-      { id: 'a-brain', group: 'Actions', label: 'Add to brain…', detail: 'keep a line in Second Brain', hint: keys('⇧⌘H'), icon: <BrainGlyph size={14} />, run: () => openBrainCapture() },
-      { id: 'a-deck', group: 'Actions', label: deck.open ? 'Hide the session deck' : 'Show the session deck', detail: 'The agent’s live figures under its terminal', hint: keys('⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck' }) },
+      { id: 'a-brain', group: 'Actions', label: 'Add to Second Brain…', detail: 'keep a line of your own', hint: keys('⇧⌘H'), icon: <BrainGlyph size={14} />, run: () => openBrainCapture() },
+      { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'every pull request on its way: open, CI, merged, released', hint: keys('⇧⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck-expand' }) },
+      { id: 'a-deck', group: 'Actions', label: deck.open ? 'Pipeline bar: Off' : 'Pipeline bar: On', detail: deck.open ? 'hide the bar under the agent’s terminal' : 'show the bar under the agent’s terminal', hint: keys('⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck' }) },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
       ...(source === 'api' && activeProject?.kind === 'repo'
@@ -1150,7 +1150,7 @@ export function AppShell() {
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
       ...(isTauri() ? [{ id: 'a-zoom-reset', group: 'Actions' as const, label: 'Interface size: back to the default', hint: isMacPlatform() ? keys('⇧⌘0') : undefined, icon: <SparkIcon size={14} />, run: () => stepUiScale(0) }] : []),
       { id: 'a-share', group: 'Actions', label: 'Share my numbers', detail: 'a card of your figures: copy, save or post to X', icon: <SparkIcon size={14} />, run: () => setSheet({ kind: 'share' }) },
-      ...SCREENS.map(([route, label, detail]) => ({ id: `a-screen-${route}`, group: 'Actions' as const, label, detail, icon: <DashboardIcon size={14} />, run: () => { location.hash = `#/${route}` } })),
+      ...SCREENS.map(([route, label, detail]) => ({ id: `a-screen-${route}`, group: 'Actions' as const, label, detail, icon: route === 'brain' ? <BrainGlyph size={14} /> : <DashboardIcon size={14} />, run: () => { location.hash = `#/${route}` } })),
       { id: 'a-waiting', group: 'Actions', label: 'Next session waiting on you', hint: keys('⌘J'), icon: <SparkIcon size={14} />, run: jumpToWaiting },
       { id: 'a-saved', group: 'Actions', label: 'Run saved…', detail: 'a saved prompt or command', icon: <SparkIcon size={14} />, run: () => setSheet({ kind: 'saved' }) },
       manageSaved,
@@ -1376,50 +1376,62 @@ export function AppShell() {
     )
   }, [sessionsById, data.permissions, openTab, refresh])
 
-  // The PRs & CI tab (components/PRsCITab.tsx): the deck's cell, large,
-  // opened by the deck's Expand; one per agent session.
+  // The Pipeline tab (components/PRsCITab.tsx; "Pipeline" until
+  // 2026-10-14): the deck's cell, large; one per agent session.
   const projectOfSession = useCallback((id: string) => model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((y) => y.session.session_id === id))), [model.projects])
   const openPRsTab = useCallback((s: SessionSummary, projectId: string) => {
-    openTab({ kind: 'prs', sessionId: prsTabKey(s.session_id), of: s.session_id }, projectId, `PRs & CI · ${s.project || sessionTitle(s)}`)
+    openTab({ kind: 'prs', sessionId: prsTabKey(s.session_id), of: s.session_id }, projectId, `Pipeline · ${s.project || sessionTitle(s)}`)
   }, [openTab])
-  const onExpandDeck = useCallback(() => {
-    if (focusedSession) openPRsTab(focusedSession, projectOfSession(focusedSession.session_id)?.project.id ?? activeProjectId)
-  }, [focusedSession, openPRsTab, projectOfSession, activeProjectId])
-  // Back to the deck: this tab closes, the agent's comes to the front with its deck open.
   const wsRef = useRef(ws)
   wsRef.current = ws
-  const backToDeck = useCallback((tabId: string, of: string) => {
+  // ⇧⌘B is the Pipeline one keystroke away (owner, 2026-10-14, translated:
+  // "it feels like quick access to the CI/CD page is missing"): it opens the
+  // page as a tab — for the agent in front, else the Pipeline tab open last,
+  // else the newest running agent — or brings it to the front; from the
+  // page, it goes back to the tab before it. The page stays open.
+  const pipelineBackRef = useRef<string | undefined>(undefined)
+  const openPipeline = useCallback((of?: SessionSummary) => {
+    const from = current?.id
+    const onPipeline = workspaceShown && focused?.kind === 'prs'
+    let target = of ?? (workspaceShown && frontIsAgent ? focusedSession : undefined)
+    if (!target) {
+      const open = wsRef.current.tabs.filter((t) => leaves(t.root).some((l) => l.target.kind === 'prs'))
+      const last = open[open.length - 1]
+      if (last) {
+        if (from && from !== last.id && !onPipeline) pipelineBackRef.current = from
+        dispatch({ type: 'activate', tabId: last.id })
+        showWorkspace()
+        return
+      }
+      target = [...data.sessions].filter((x) => x.kind !== 'shell' && x.status !== 'ended').sort((x, y) => (y.last_event_at ?? 0) - (x.last_event_at ?? 0))[0]
+    }
+    if (!target) { setToast('The Pipeline reads an agent’s repository: start or open an agent first.'); return }
+    if (from && !onPipeline) pipelineBackRef.current = from
+    openPRsTab(target, projectOfSession(target.session_id)?.project.id ?? activeProjectId)
+  }, [current?.id, workspaceShown, focused?.kind, frontIsAgent, focusedSession, data.sessions, openPRsTab, projectOfSession, activeProjectId, showWorkspace])
+  // Back from the Pipeline: the tab before it, else the agent's own tab.
+  const pipelineBack = useCallback((of: string) => {
+    const back = pipelineBackRef.current
+    pipelineBackRef.current = undefined
+    if (back && wsRef.current.tabs.some((t) => t.id === back)) {
+      dispatch({ type: 'activate', tabId: back })
+      showWorkspace()
+      return
+    }
     const agentTab = wsRef.current.tabs.find((t) => leaves(t.root).some((l) => l.target.sessionId === of && l.target.kind !== 'prs'))
-    dispatch({ type: 'close', tabId })
     const s = sessionsById.get(of)
     if (agentTab) dispatch({ type: 'activate', tabId: agentTab.id })
     else if (s) openSession(s, projectOfSession(of)?.project.id ?? activeProjectId)
-    setDeck((d) => ({ ...d, open: true }))
     showWorkspace()
   }, [sessionsById, openSession, projectOfSession, activeProjectId, showWorkspace])
   // In a layout effect, so a key pressed right after a tab switch acts on the tab now in front.
-  const frontTabId = current?.id
   useLayoutEffect(() => {
-    expandRef.current = workspaceShown && frontTabId && focused?.kind === 'prs'
-      ? () => backToDeck(frontTabId, focused.of ?? '')
-      : workspaceShown && focusedIsAgent && focusedSession ? onExpandDeck : undefined
-  }, [workspaceShown, frontTabId, focused, backToDeck, focusedIsAgent, focusedSession, onExpandDeck])
-  // The sidebar footer's one button for the PRs & CI view (owner,
-  // 2026-10-14): its mode is read from the deck's switch and the tab in
-  // front, and a click moves Hidden → Bar → Full page → Hidden through the
-  // same actions as ⌘B and ⇧⌘B. Expand and Hide left the deck's header.
+    expandRef.current = workspaceShown && focused?.kind === 'prs'
+      ? () => pipelineBack(focused.of ?? '')
+      : () => openPipeline()
+  }, [workspaceShown, focused, pipelineBack, openPipeline])
   const prsInFront = workspaceShown && focused?.kind === 'prs'
-  const barMode = barModeOf(deck.open, prsInFront)
-  const onCycleBar = useCallback(() => {
-    if (prsInFront && frontTabId) {
-      // Full page → Hidden: the tab closes, the agent comes back without its deck.
-      backToDeck(frontTabId, focused?.of ?? '')
-      setDeck((d) => ({ ...d, open: false }))
-    } else if (deck.open && expandRef.current) expandRef.current()
-    // Open with no agent in front there is no full page to go to: hide it.
-    else if (deck.open) setDeck((d) => ({ ...d, open: false }))
-    else run({ kind: 'deck' })
-  }, [prsInFront, frontTabId, backToDeck, focused?.of, deck.open, run])
+  const onPipelineButton = useCallback(() => run({ kind: 'deck-expand' }), [run])
   const renderPRs = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
     const of = leaf.target.of ?? ''
     const n = projectOfSession(of)
@@ -1429,7 +1441,7 @@ export function AppShell() {
         sessionId={of}
         session={sessionsById.get(of)}
         visible={visible}
-        onBack={() => backToDeck(tab.id, of)}
+        onBack={() => pipelineBack(of)}
         onToast={setToast}
         worktrees={worktrees}
         onStartAgent={async (req, title) => {
@@ -1439,7 +1451,7 @@ export function AppShell() {
         }}
       />
     )
-  }, [projectOfSession, sessionsById, backToDeck, openTab, data])
+  }, [projectOfSession, sessionsById, pipelineBack, openTab, data])
 
   return (
     <div className="flex h-dvh flex-col text-fg">
@@ -1484,8 +1496,8 @@ export function AppShell() {
               onGroupedChange={onGroupedChange}
               tabDigits={stripDigits}
               onOrderTabs={onOrderTabs}
-              barMode={barMode}
-              onCycleBar={onCycleBar}
+              onPipeline={onPipelineButton}
+              pipelineActive={prsInFront}
             />
           </div>
         )}
@@ -1637,6 +1649,8 @@ export function AppShell() {
                     height={deck.height}
                     onResize={onResizeDeck}
                     onToast={setToast}
+                    onOpenPipeline={() => openPipeline(focusedSession)}
+                    onHide={() => setDeck((d) => ({ ...d, open: false }))}
                     worktrees={deckWorktrees}
                     onOpenSession={onDeckOpenSession}
                     onStartAgent={onDeckStartAgent}
@@ -1698,7 +1712,7 @@ export function AppShell() {
                   onOpenFile={focusedWorktree?.repo ? (p) => openFile(focusedWorktree.projectId, focusedWorktree.w.isMain ? '' : focusedWorktree.w.key, p) : undefined}
                   summary={data.summary}
                   onCompare={inspectedSession?.attempt_group ? () => onCompare(inspectedSession) : undefined}
-                  onOpenPRs={inspectedSession && inspectedSession.kind !== 'shell' ? () => openPRsTab(inspectedSession, projectOfSession(inspectedSession.session_id)?.project.id ?? activeProjectId) : undefined}
+                  onOpenPRs={inspectedSession && inspectedSession.kind !== 'shell' ? () => openPipeline(inspectedSession) : undefined}
                 />
               </div>
             )}
