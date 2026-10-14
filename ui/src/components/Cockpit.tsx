@@ -38,6 +38,8 @@ import { TodoBlock } from './SessionTodos'
 import { PermissionModeChip } from './PermissionModeChip'
 import { KindIcon } from './KindIcon'
 import { OverlapLine } from './OverlapLine'
+import { LoopAlertCard } from './LoopAlertCard'
+import { useLoopHidden } from '@/lib/loopalert'
 import { overlapChip, useOverlap } from '@/lib/overlap'
 import { sessionTitle } from '@/lib/sidebar'
 import { orderSubagents, presetOf, setSubagentFields, useSubagentFields, SUBAGENT_FIELDS, SUBAGENT_PRESETS, type SubagentFields } from '@/lib/subagentview'
@@ -1299,20 +1301,15 @@ function CheckoutShared({ s, live: running }: { s: SessionSummary; live: boolean
   return chip ? <OverlapLine chip={chip} /> : null
 }
 
+/**
+ * The loop alert, as on Now (components/LoopAlertCard.tsx) minus "Open
+ * session": this is the session. Dismissed or muted here, it is gone on Now
+ * too, and the other way round.
+ */
 function LoopWarning({ s, now }: { s: SessionSummary; now: number }) {
-  const l = s.loop!
-  return (
-    <section aria-label="Loop alert" role="alert" className="grid gap-1 rounded-[10px] border border-danger/40 bg-danger/[0.07] px-3 py-2.5">
-      <p className="flex items-baseline gap-2 text-[12.5px] font-medium text-danger">
-        <span>Same {l.tool} call ×{l.count}</span>
-        <span className="ml-auto text-[11px] font-normal text-fg-faint">{fmtAgo(l.last_ts || l.ts, now)}</span>
-      </p>
-      {l.sample && <p className="mono truncate text-[11.5px] text-fg-muted" title={l.sample}>{l.sample}</p>}
-      <p className="text-[11.5px] text-fg-muted">
-        within {l.window_min} min{typeof l.tax_usd === 'number' && l.tax_usd > 0 ? <> · re-reading the context for them cost <span className="num text-fg">{fmtUSD(l.tax_usd)}</span></> : null}
-      </p>
-    </section>
-  )
+  const hidden = useLoopHidden()
+  if (!s.loop || hidden(s.loop)) return null
+  return <LoopAlertCard alert={s.loop} project="" owned={s.owned} now={now} onDismiss={() => live.dismissAlert(s.session_id)} />
 }
 
 /**

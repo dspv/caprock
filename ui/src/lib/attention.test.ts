@@ -270,6 +270,14 @@ describe('whether a cap could have acted', () => {
     })
     expect(theirs.find((i) => i.id.startsWith('loop-'))?.owned).toBe(false)
   })
+
+  // Ownership now decides "Tell the agent" (rule 7), and the card builds its
+  // sentence and the message from the alert itself.
+  it('carries the alert onto the loop item, and onto no other', () => {
+    const items = findAttention({ sessions: [session({ session_id: 's-loop' })], alerts: [alert()], now: NOW })
+    expect(items.find((i) => i.id.startsWith('loop-'))?.loop?.session_id).toBe('s-loop')
+    expect(items.filter((i) => !i.id.startsWith('loop-')).every((i) => i.loop === undefined)).toBe(true)
+  })
 })
 
 // The waiting row says it once. It read "Waiting on you · caprock · waiting for

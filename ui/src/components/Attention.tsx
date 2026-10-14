@@ -13,6 +13,8 @@ import { LastWord } from '@/components/LastWord'
 import type { SessionSummary } from '@/lib/api'
 import { href } from '@/lib/router'
 import { PremiumHint } from './PremiumHint'
+import { LoopAlertCard } from './LoopAlertCard'
+import { useLoopHidden } from '@/lib/loopalert'
 
 export function Attention({ items, now, onDismiss, sessions }: {
   items: AttentionItem[]
@@ -21,15 +23,29 @@ export function Attention({ items, now, onDismiss, sessions }: {
   /** Used to answer "what did it ask?" without leaving the screen. */
   sessions?: SessionSummary[]
 }) {
-  if (items.length === 0) return null
+  // A loop dismissed or muted from its card stays away here and in the
+  // session's cockpit alike (lib/loopalert.ts).
+  const hidden = useLoopHidden()
+  const shown = items.filter((it) => !it.loop || !hidden(it.loop))
+  if (shown.length === 0) return null
   return (
     <div className="grid grid-cols-1 gap-1.5">
-      {items.map((it) => (
+      {shown.map((it) => it.loop ? (
+        <LoopAlertCard
+          key={it.id}
+          alert={it.loop}
+          project={it.project}
+          owned={it.owned}
+          sessionCostUSD={it.costUSD}
+          now={now}
+          openHref={href({ name: 'session', id: it.sessionId, tab: 'timeline', at: it.at })}
+          onDismiss={onDismiss ? () => onDismiss(it.sessionId) : undefined}
+        />
+      ) : (
         <Row
           key={it.id}
           it={it}
           now={now}
-          onDismiss={onDismiss}
           session={sessions?.find((s) => s.session_id === it.sessionId)}
         />
       ))}
@@ -37,10 +53,9 @@ export function Attention({ items, now, onDismiss, sessions }: {
   )
 }
 
-function Row({ it, now, onDismiss, session }: {
+function Row({ it, now, session }: {
   it: AttentionItem
   now: number
-  onDismiss?: (sessionId: string) => void
   session?: SessionSummary
 }) {
   const [asking, setAsking] = useState(false)
@@ -110,29 +125,11 @@ function Row({ it, now, onDismiss, session }: {
         >
           {it.sessionId ? 'open' : 'details'}
         </a>
-        {/* Only on the item a spend cap would actually have acted on: a loop
-          * burning money. The cap is deliberately NOT on the plan-window item —
-          * a plan limit is Anthropic's, and no amount of money we take moves
-          * it, so selling a cap beside it would be selling the wrong thing;
-          * that row offers the plan-window stop instead (below). (It was
-          * also on the "spent a lot for nothing" item, which is gone — see
-          * attention.ts for why.) */}
-        {it.id.startsWith('loop-') && (
-          <PremiumHint reason="this is what a cap stops" now={now} canAct={it.owned === true} />
-        )}
         {/* The plan-window stop is the thing that does act here: it pauses
           * Caprock's own sessions before the limit and resumes them after the
           * reset. Offered only on an install known to be without it. */}
         {it.id.startsWith('limit-') && it.offerWindowStop && (
           <PremiumHint feature="window" reason="Premium pauses Caprock's sessions here" now={now} />
-        )}
-        {onDismiss && it.id.startsWith('loop-') && (
-          <button
-            className="text-[11px] text-fg-faint hover:text-fg border border-border px-1.5 py-0.5 rounded-sm"
-            onClick={() => onDismiss(it.sessionId)}
-          >
-            dismiss
-          </button>
         )}
       </span>
     </div>

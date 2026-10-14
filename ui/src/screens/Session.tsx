@@ -1,8 +1,10 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { api, ApiError, isPairedDevice, type DiffResult, type Event, type SessionDetail } from '@/lib/api'
+import { api, ApiError, isPairedDevice, type DiffResult, type Event, type SessionDetail, type SessionSummary } from '@/lib/api'
 import { useCanControl } from '@/lib/useCanControl'
 import { useApi } from '@/lib/useApi'
 import { live, useLiveLink } from '@/lib/live'
+import { LoopAlertCard } from '@/components/LoopAlertCard'
+import { useLoopHidden } from '@/lib/loopalert'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
 import { Badge, Empty, Panel, Skeleton, Sparkline, StaleNote, Stat } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
@@ -245,10 +247,12 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         {!detail.stale && <span className="min-w-0 wrap-anywhere">
           <span className="text-fg">{s.activity.phrase}</span>
           <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(activityAt, now)}</span>
-          {s.loop && <span className="ml-3 text-danger text-[12px]">loop: {s.loop.sample} ×{s.loop.count} in {s.loop.window_min}m</span>}
         </span>}
         <RecentPRs prs={s.prs} className="ml-auto" />
       </div>}
+      {/* The same card as on Now and in the cockpit — "Open session" lands
+        * here, so this is where "Tell the agent" has to be too. */}
+      {!detail.stale && s.loop && s.status !== 'ended' && <SessionLoop s={s} now={now} />}
     </>
   )
   return (
@@ -817,4 +821,11 @@ function OwnedControls({ id }: { id: string }) {
       <button disabled={!!busy} onClick={() => act('kill')} className="text-[11px] border border-danger/40 text-danger px-1.5 rounded-sm hover:bg-danger/10">kill</button>
     </span>
   )
+}
+
+/** The session's live loop alert, unless it was dismissed or muted. */
+function SessionLoop({ s, now }: { s: SessionSummary; now: number }) {
+  const hidden = useLoopHidden()
+  if (!s.loop || hidden(s.loop)) return null
+  return <LoopAlertCard alert={s.loop} project="" owned={s.owned} now={now} onDismiss={() => live.dismissAlert(s.session_id)} />
 }

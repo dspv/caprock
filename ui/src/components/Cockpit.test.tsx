@@ -185,8 +185,8 @@ describe('the agent cockpit', () => {
   it('warns of a loop only when there is one', () => {
     show(agent({ loop: { kind: 'loop', session_id: 's1', tool: 'Bash', count: 7, window_min: 3, sample: 'npm test', first_ts: iso(90_000), last_ts: iso(5_000), ts: iso(5_000), tax_usd: 0.42 } }))
     const alert = screen.getByRole('alert')
-    expect(alert).toHaveTextContent('Same Bash call ×7')
-    expect(alert).toHaveTextContent('$0.42')
+    expect(alert).toHaveTextContent('This session ran the same command 7 times in 2 minutes')
+    expect(alert).toHaveTextContent('$0.42 re-reading context')
   })
 
   it('shows only what an agent reports: no context bar, no plan for OpenCode', () => {

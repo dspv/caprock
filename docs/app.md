@@ -537,6 +537,18 @@ others. Installing it: [install-app.md](install-app.md).
   (in a folder that is not a git repository, it opens in your editor at
   its first change). Beside a shell tab it shows the folder and its
   changes.
+- **A loop alert.** When an agent runs the same thing over and over, a red
+  card says so in one sentence — *caprock ran the same command 5 times in
+  3 minutes (python3 …/p2e.py)*, the whole command on hover — on Now, in
+  the cockpit and on the session's page. **Tell the agent** shows a short
+  message first, marked *[Caprock]* and signed as sent by Caprock's loop
+  alert, not by you; edit it or click **Send to the agent** and it goes
+  into that session's queue, typed in when the turn ends like any queued
+  message. It is offered only on sessions Caprock started: one you started
+  in your own terminal gets **Open session** instead, because Caprock never
+  types into it. **Dismiss** puts the card away until the loop starts
+  again; its ▾ menu has *Don't warn about this command again in this
+  session* and *Set a spending cap…*.
 - **Claude's faces.** Claude's little character comes in eight looks — the
   hard hat, a beanie, headphones, a crown, a wizard's hat, a tuft of hair,
   a bandana and a propeller cap. Each session gets one at random and keeps
