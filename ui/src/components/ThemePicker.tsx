@@ -65,7 +65,8 @@ function Swatch({ m, big }: { m: ThemeMode; big: boolean }) {
 }
 
 /** The theme button's popover: the picker, opening up or down from the button. */
-export function ThemeMenu({ children, label, placement = 'up', className = '' }: { children: React.ReactNode; label: string; placement?: 'up' | 'down'; className?: string }) {
+/** `align`: which edge of the button the picker lines up with — `right` (it opens leftwards) by default, `left` where the button sits near the window's left edge. */
+export function ThemeMenu({ children, label, placement = 'up', align = 'right', className = '' }: { children: React.ReactNode; label: string; placement?: 'up' | 'down'; align?: 'left' | 'right'; className?: string }) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLSpanElement>(null)
   useEffect(() => {
@@ -83,7 +84,7 @@ export function ThemeMenu({ children, label, placement = 'up', className = '' }:
       </button>
       {open && (
         <div role="dialog" aria-label="Theme" data-theme-menu
-          className={`app-fade-in absolute z-50 w-[248px] rounded-[12px] border border-[var(--app-hairline-strong,var(--color-border-strong))] bg-panel p-2.5 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)] ${placement === 'up' ? 'bottom-[calc(100%+6px)] right-0' : 'top-[calc(100%+6px)] right-0'}`}>
+          className={`app-fade-in absolute z-50 w-[248px] rounded-[12px] border border-[var(--app-hairline-strong,var(--color-border-strong))] bg-panel p-2.5 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)] ${placement === 'up' ? 'bottom-[calc(100%+6px)]' : 'top-[calc(100%+6px)]'} ${align === 'left' ? 'left-0' : 'right-0'}`}>
           <div className="mb-2 px-0.5 text-[11px] uppercase tracking-[0.1em] text-fg-faint">Theme · hover to try</div>
           <ThemePicker onPicked={() => setOpen(false)} />
         </div>

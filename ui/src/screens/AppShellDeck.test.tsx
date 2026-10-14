@@ -76,6 +76,7 @@ async function openAgent() {
 }
 
 const deck = () => screen.queryByRole('region', { name: 'Session deck' })
+const barButton = () => document.querySelector<HTMLButtonElement>('[data-bar-mode]')!
 const cmdB = () => act(() => { fireEvent.keyDown(window, { key: 'b', code: 'KeyB', metaKey: true }) })
 
 describe('the session deck in the app', () => {
@@ -90,11 +91,12 @@ describe('the session deck in the app', () => {
     expect(JSON.parse(localStorage.getItem(DECK_KEY) ?? '{}')).toMatchObject({ open: false })
   })
 
-  it('opens from the tab strip’s button and closes from its own', async () => {
+  it('opens and closes from the tab strip’s button, and draws no Hide of its own', async () => {
     await openAgent()
     fireEvent.click(screen.getByRole('button', { name: 'Session deck (⌘B)' }))
     expect(deck()).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Close the session deck (⌘B)' }))
+    expect(screen.queryByRole('button', { name: /Close the session deck/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Session deck (⌘B)' }))
     expect(deck()).toBeNull()
   })
 
@@ -120,7 +122,7 @@ describe('the session deck in the app', () => {
   it('expands into a PRs & CI tab, and Back to the deck returns to the agent with its deck open', async () => {
     await openAgent()
     cmdB()
-    fireEvent.click(screen.getByRole('button', { name: /^Expand/ }))
+    act(() => { fireEvent.keyDown(window, { key: 'B', code: 'KeyB', metaKey: true, shiftKey: true }) })
     expect(await screen.findByRole('tab', { name: /PRs & CI · app/ })).toBeInTheDocument()
     expect(document.querySelector('[data-prs-tab]')).toBeInTheDocument()
     // Not an agent's tab: no deck under it; the inspector describes the agent it came from.
@@ -139,16 +141,55 @@ describe('the session deck in the app', () => {
     shiftCmdB()
     expect(await screen.findByRole('tab', { name: /PRs & CI · app/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Collapse: back/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Expand/ })).toBeNull()
+    expect(barButton()).toHaveAttribute('data-bar-mode', 'full')
     shiftCmdB()
     await waitFor(() => expect(screen.queryByRole('tab', { name: /PRs & CI/ })).toBeNull())
     expect(deck()).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Expand/ })).toBeInTheDocument()
+    expect(barButton()).toHaveAttribute('data-bar-mode', 'bar')
     // With the deck hidden, the agent in front still expands.
     cmdB()
     expect(deck()).toBeNull()
     shiftCmdB()
     expect(await screen.findByRole('tab', { name: /PRs & CI · app/ })).toBeInTheDocument()
+  })
+
+  // Owner, 2026-10-14, translated: "hide it behind one button with the bar's
+  // modes … bottom-left in the sidebar is where it's handy".
+  it('cycles Hidden → Bar → Full page → Hidden from the sidebar footer’s one button, its glyph the mode', async () => {
+    await openAgent()
+    const b = barButton()
+    expect(b).toHaveAttribute('data-bar-mode', 'hidden')
+    expect(b).toHaveAccessibleName('PRs & CI: Hidden — click for Bar (⌘B shows or hides the bar, ⇧⌘B the full page)')
+    const glyph = () => barButton().querySelector('svg')!.innerHTML
+    const hidden = glyph()
+
+    fireEvent.click(barButton())
+    expect(deck()).toBeInTheDocument()
+    expect(barButton()).toHaveAttribute('data-bar-mode', 'bar')
+    expect(barButton()).toHaveAccessibleName(/^PRs & CI: Bar — click for Full page/)
+    const bar = glyph()
+
+    fireEvent.click(barButton())
+    expect(await screen.findByRole('tab', { name: /PRs & CI · app/ })).toBeInTheDocument()
+    expect(barButton()).toHaveAttribute('data-bar-mode', 'full')
+    const full = glyph()
+    expect(new Set([hidden, bar, full]).size).toBe(3)
+
+    fireEvent.click(barButton())
+    await waitFor(() => expect(screen.queryByRole('tab', { name: /PRs & CI/ })).toBeNull())
+    expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true')
+    expect(deck()).toBeNull()
+    expect(barButton()).toHaveAttribute('data-bar-mode', 'hidden')
+    expect(JSON.parse(localStorage.getItem(DECK_KEY) ?? '{}')).toMatchObject({ open: false })
+  })
+
+  it('follows ⌘B and ⇧⌘B: the keys and the button are one state', async () => {
+    await openAgent()
+    cmdB()
+    expect(barButton()).toHaveAttribute('data-bar-mode', 'bar')
+    act(() => { fireEvent.keyDown(window, { key: 'B', code: 'KeyB', metaKey: true, shiftKey: true }) })
+    await screen.findByRole('tab', { name: /PRs & CI · app/ })
+    expect(barButton()).toHaveAttribute('data-bar-mode', 'full')
   })
 
   it('is listed in the palette', async () => {

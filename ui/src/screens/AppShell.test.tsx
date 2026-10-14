@@ -69,7 +69,7 @@ vi.mock('@/lib/api', async (orig) => {
     ...actual,
     api: {
       ...actual.api,
-      status: async () => ({ version: 'v0.0.0', claude_available: true }),
+      status: async () => ({ version: 'v0.0.0', claude_available: true, events: 0 }),
       sessions: async () => sessions,
       spawn: async (req: Record<string, unknown>) => {
         spawned.reqs.push(req)
@@ -625,6 +625,17 @@ describe('the app workspace', () => {
     await renderApp()
     await screen.findByRole('tab', { name: /Fix the login bug/ })
     expect(screen.queryByRole('status', { name: 'Keys to move around' })).toBeNull()
+  })
+
+  // Owner, 2026-10-14, translated: "Send feedback should also open with a key combo".
+  it('opens Send feedback on ⇧⌘F from anywhere, and lists the key among all keys', async () => {
+    await renderApp()
+    act(() => { fireEvent.keyDown(window, { key: 'F', code: 'KeyF', metaKey: true, shiftKey: true }) })
+    const dialog = await screen.findByRole('dialog', { name: 'Feedback' })
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Feedback' })).toBeNull())
+    await openFromPalette('Keyboard shortcuts')
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toHaveTextContent('⇧⌘FSend feedback')
   })
 
   it('restores its tabs after a reload', async () => {

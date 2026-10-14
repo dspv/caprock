@@ -84,3 +84,28 @@ export function deckKeyStep(key: string, height: number, pane?: number): number 
     default: return undefined
   }
 }
+
+/**
+ * The PRs & CI view's three modes, as the sidebar footer's one button shows
+ * and cycles them (owner, 2026-10-14, translated: "hide it behind one button
+ * with the bar's modes … Expand/Hide inside the bar is not noticeable"):
+ * `hidden`, no deck; `bar`, the deck under the agent's terminal (⌘B);
+ * `full`, the PRs & CI tab in front (⇧⌘B). Read from what already decides
+ * it — the deck's kept `open` and the tab in front — never kept twice.
+ */
+export type BarMode = 'hidden' | 'bar' | 'full'
+
+export const BAR_MODES: readonly BarMode[] = ['hidden', 'bar', 'full']
+
+export const BAR_MODE_NAME: Record<BarMode, string> = { hidden: 'Hidden', bar: 'Bar', full: 'Full page' }
+
+/** The mode on screen: the PRs & CI tab in front is the full page, else the deck's own switch. */
+export function barModeOf(deckOpen: boolean, prsInFront: boolean): BarMode {
+  if (prsInFront) return 'full'
+  return deckOpen ? 'bar' : 'hidden'
+}
+
+/** What a click moves to: Hidden → Bar → Full page → Hidden. */
+export function nextBarMode(m: BarMode): BarMode {
+  return BAR_MODES[(BAR_MODES.indexOf(m) + 1) % BAR_MODES.length]!
+}

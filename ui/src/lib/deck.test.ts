@@ -1,5 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DECK_DEFAULT, DECK_KEY, DECK_MIN, DECK_STEP, clampDeck, deckKeyStep, pulseMinutes, readDeck, saveDeck } from './deck'
+import { DECK_DEFAULT, DECK_KEY, DECK_MIN, DECK_STEP, barModeOf, clampDeck, deckKeyStep, nextBarMode, pulseMinutes, readDeck, saveDeck } from './deck'
+
+describe('the PRs & CI modes', () => {
+  it('reads the mode from the deck’s switch and the tab in front', () => {
+    expect(barModeOf(false, false)).toBe('hidden')
+    expect(barModeOf(true, false)).toBe('bar')
+    // The PRs & CI tab in front is the full page, whatever the deck's switch says.
+    expect(barModeOf(false, true)).toBe('full')
+    expect(barModeOf(true, true)).toBe('full')
+  })
+
+  it('cycles Hidden → Bar → Full page → Hidden', () => {
+    expect(nextBarMode('hidden')).toBe('bar')
+    expect(nextBarMode('bar')).toBe('full')
+    expect(nextBarMode('full')).toBe('hidden')
+  })
+})
 
 afterEach(() => {
   localStorage.clear()

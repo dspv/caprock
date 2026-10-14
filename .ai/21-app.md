@@ -556,8 +556,10 @@ One window, three regions:
   2026-10-12, translated: "Remove the Branch cell — put it somewhere else …
   CI/CD and Pull requests should simply be merged properly into one, with
   all the statuses and so on, plus at least a couple of previous PRs"; it
-  was three cells — CI, Branch, Pull requests — until then), and *Hide ⌘B*
-  at its right.
+  was three cells — CI, Branch, Pull requests — until then). Its *Hide ⌘B*
+  and *Expand ⇧⌘B* went on 2026-10-14 to the sidebar footer's one PRs & CI
+  button, which cycles Hidden → Bar → Full page ([04-ui.md](04-ui.md) §
+  The sidebar footer).
   - **Header.** The title; the session's branch as a mono chip, *feat/x →
     main* when the current PR is from it, its tooltip saying what is not
     committed or pushed and, beside it in amber, *3 not committed · 2 not
@@ -743,11 +745,11 @@ One window, three regions:
     page. Nothing while no job has finished.
   - **PRs & CI tab** (owner, 2026-10-13, translated: "I also want to expand
     the panel bigger, to see the statuses large and in detail, plus
-    statistics … sometimes it's interesting to look"). *Expand ⇧⌘B* beside
-    *Hide ⌘B* — outlined in the accent, no sidebar item — opens the cell
+    statistics … sometimes it's interesting to look"). ⇧⌘B, or the sidebar
+    footer's PRs & CI button from *Bar*, opens the cell
     large as a tab of its own (`kind: 'prs'`, one per agent session, never
     split; `components/PRsCITab.tsx`, words in `lib/prstats.ts`); in the tab
-    the same control in the same corner is *Collapse ⇧⌘B*, which closes it
+    *Collapse ⇧⌘B* in its corner closes it
     and brings the agent's tab to the front with its deck open (owner,
     2026-10-14, translated: "it should simply be a toggle"). Off macOS the
     key is Ctrl+Alt+Shift+B: ⌘B's Ctrl+Shift+B is the deck's (rule 12). It
@@ -842,8 +844,7 @@ One window, three regions:
   sidebar and the inspector carry them, and the deck holds no session
   events and no clock. Its top edge is a faint accent rule with a low glow
   upward (the first, brighter one distracted; a grey hairline lost the
-  division), framing the line above it where the prompt sits, and *Hide ⌘B*
-  sits at its right. A figure the agent does not report is
+  division), framing the line above it where the prompt sits. A figure the agent does not report is
   left out, never drawn as zero. ⌘B (Ctrl+Shift+B off macOS), a strip
   button beside the inspector's — labelled *Deck* with its key, since an
   icon alone left the deck unfound — and the palette open and close it; the

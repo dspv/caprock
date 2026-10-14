@@ -65,27 +65,20 @@ function openLead() {
 
 function show(p: Partial<Parameters<typeof SessionDeck>[0]> = {}) {
   const onResize = vi.fn()
-  const r = render(<SessionDeck s={agent()} sessionId="s1" hasPermission={false} summary={summary} height={120} onResize={onResize} onClose={() => {}} {...p} />)
+  const r = render(<SessionDeck s={agent()} sessionId="s1" hasPermission={false} summary={summary} height={120} onResize={onResize} {...p} />)
   return { ...r, onResize }
 }
 
 afterEach(() => { vi.useRealTimers(); forgetFoldedPRs(); forgetPRProgress(); forgetDeckAnswers();h.queued = []; h.queuedTo = []; h.forced = []; h.rerunFail = undefined; h.asked = 0; h.prs = { connected: true, prs: [] }; h.ci = { connected: true }; h.rel = { connected: false }; h.main = { connected: false }; h.branches = { connected: true, branches: [] }; h.usage = undefined; h.usageAsked = 0; h.prsGate = undefined; h.prsFail = undefined; h.prsAsked = 0; h.branchesGate = undefined; localStorage.clear() })
 
 describe('the session deck', () => {
-  it('expands into the PRs & CI tab with one control beside Hide, and only where the shell offers it', () => {
-    const onExpand = vi.fn()
-    const { unmount } = show({ onExpand })
-    const b = screen.getByRole('button', { name: /^Expand/ })
-    expect(b).toHaveAttribute('data-deck-expand')
-    // Seen at once: outlined in the accent, its key beside the word (owner, 2026-10-14).
-    expect(b).toHaveClass('border-accent/60', 'text-accent')
-    expect(b).toHaveTextContent(/^Expand (⇧⌘B|Ctrl\+Alt\+Shift\+B)$/)
-    expect(b).toHaveAccessibleName(/^Expand: pull requests and CI in a tab \((⇧⌘B|Ctrl\+Alt\+Shift\+B)\)$/)
-    fireEvent.click(b)
-    expect(onExpand).toHaveBeenCalledTimes(1)
-    unmount()
+  // Owner, 2026-10-14: the sidebar footer's PRs & CI button is the one place
+  // for Hidden, Bar and Full page; the deck's own Expand and Hide went.
+  it('draws no Expand or Hide of its own', () => {
     show()
     expect(document.querySelector('[data-deck-expand]')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Expand/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Close the session deck/ })).toBeNull()
   })
 
   it('asks nothing of the session’s events, and leaves the context to the status bar', async () => {
@@ -443,15 +436,6 @@ describe('the session deck', () => {
     act(() => { vi.advanceTimersByTime(300) })
     expect(onResize).toHaveBeenCalledTimes(1)
     expect(onResize.mock.calls[0]![0]).toBeGreaterThanOrEqual(5 * DECK_STEP)
-  })
-
-  it('hides with a labelled button that names its key', () => {
-    const onClose = vi.fn()
-    show({ onClose })
-    const b = screen.getByRole('button', { name: /Close the session deck/ })
-    expect(b).toHaveTextContent('Hide')
-    fireEvent.click(b)
-    expect(onClose).toHaveBeenCalled()
   })
 
   it('switches the CI cell to the release build, with an estimate, and remembers the choice', async () => {

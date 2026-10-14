@@ -281,7 +281,7 @@ describe('every listed shortcut, on every OS', () => {
   // Owner, 2026-10-14: Expand needs a key. ⌘B is the deck, so off macOS
   // Ctrl+Shift+B is taken by it and Expand takes Alt as well.
   it('makes ⇧⌘B the deck’s Expand and Collapse, Ctrl+Alt+Shift+B off macOS, beside ⌘B', () => {
-    expect(SHORTCUTS.find(([k]) => k === '⇧⌘B')?.[1]).toMatch(/Expand the deck into the PRs & CI tab; in that tab, Collapse back/)
+    expect(SHORTCUTS.find(([k]) => k === '⇧⌘B')?.[1]).toMatch(/PRs & CI as a full page in a tab; there, back to the bar/)
     expect(keys('⇧⌘B', false)).toBe('Ctrl+Alt+Shift+B')
     expect(keys('⌘B', false)).toBe('Ctrl+Shift+B')
     expect(matchAppShortcut(event('KeyB', 'B', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'deck-expand' })
@@ -290,6 +290,19 @@ describe('every listed shortcut, on every OS', () => {
     expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'deck' })
     // Ctrl+B alone stays the terminal's (tmux's prefix, readline's back-char).
     expect(matchAppShortcut(event('KeyB', 'b', { ctrlKey: true }), false)).toBeNull()
+  })
+
+  // Owner, 2026-10-14: Send feedback opens from the keyboard. ⌘F is Find,
+  // so off macOS Ctrl+Shift+F stays Find and feedback takes Alt as well.
+  it('makes ⇧⌘F Send feedback, Ctrl+Alt+Shift+F off macOS, beside Find', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⇧⌘F')?.[1]).toMatch(/^Send feedback/)
+    expect(keys('⇧⌘F', false)).toBe('Ctrl+Alt+Shift+F')
+    expect(matchAppShortcut(event('KeyF', 'F', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'feedback' })
+    expect(matchAppShortcut(event('KeyF', 'f', { metaKey: true }), true)).toEqual({ kind: 'find' })
+    expect(matchAppShortcut(event('KeyF', 'F', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'feedback' })
+    expect(matchAppShortcut(event('KeyF', 'F', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'find' })
+    // Ctrl+F alone stays the terminal's (readline's forward-char).
+    expect(matchAppShortcut(event('KeyF', 'f', { ctrlKey: true }), false)).toBeNull()
   })
 
   it('lists ⌥⌘N as asking, Ctrl+Alt+Shift+N off macOS', () => {

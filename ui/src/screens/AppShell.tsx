@@ -46,7 +46,9 @@ import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { SessionDeck } from '@/components/SessionDeck'
-import { readDeck, saveDeck, type DeckPrefs } from '@/lib/deck'
+import { barModeOf, readDeck, saveDeck, type DeckPrefs } from '@/lib/deck'
+import { FeedbackDialog } from '@/components/Feedback'
+import { currentScreen } from '@/lib/feedback'
 import { StatusStrip } from '@/components/StatusStrip'
 import { openCaprockDoctor } from '@/components/FootprintPanel'
 import { StarStrip } from '@/components/StarStrip'
@@ -257,6 +259,8 @@ export function AppShell() {
   // Offer answers live on the daemon so the app and a browser tab agree.
   usePromptSync()
   const [toast, setToast] = useState('')
+  // Send feedback opened by its key (⇧⌘F): the screen it was asked from, or null.
+  const [feedbackAt, setFeedbackAt] = useState<string | null>(null)
   /** A close that waits on the question about a busy shell. */
   const [closing, setClosing] = useState<
     | { kind: 'tab'; tabId: string; paneId?: string; plan: ClosePlan; chats: readonly string[] }
@@ -934,6 +938,7 @@ export function AppShell() {
       case 'next-waiting': jumpToWaiting(); break
       case 'find': if (workspaceShown) window.dispatchEvent(new Event(FIND_EVENT)); break
       case 'settings': onSettings(); break
+      case 'feedback': setFeedbackAt(currentScreen(location.hash, true)); break
       case 'zoom': stepUiScale(c.step); break
     }
   }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession])
@@ -1247,7 +1252,6 @@ export function AppShell() {
   // through their badge, the Inbox, the menu bar and the notification.
   const promptCard = focusedIsAgent && !!focused
   const toggleDeck = useCallback(() => setDeck((d) => ({ ...d, open: !d.open })), [])
-  const closeDeck = useCallback(() => setDeck((d) => ({ ...d, open: false })), [])
   const onResizeDeck = useCallback((height: number) => setDeck((d) => ({ ...d, height })), [])
   const toggleChat = useCallback(() => {
     if (!focused) return
@@ -1344,6 +1348,22 @@ export function AppShell() {
       ? () => backToDeck(frontTabId, focused.of ?? '')
       : workspaceShown && focusedIsAgent && focusedSession ? onExpandDeck : undefined
   }, [workspaceShown, frontTabId, focused, backToDeck, focusedIsAgent, focusedSession, onExpandDeck])
+  // The sidebar footer's one button for the PRs & CI view (owner,
+  // 2026-10-14): its mode is read from the deck's switch and the tab in
+  // front, and a click moves Hidden → Bar → Full page → Hidden through the
+  // same actions as ⌘B and ⇧⌘B. Expand and Hide left the deck's header.
+  const prsInFront = workspaceShown && focused?.kind === 'prs'
+  const barMode = barModeOf(deck.open, prsInFront)
+  const onCycleBar = useCallback(() => {
+    if (prsInFront && frontTabId) {
+      // Full page → Hidden: the tab closes, the agent comes back without its deck.
+      backToDeck(frontTabId, focused?.of ?? '')
+      setDeck((d) => ({ ...d, open: false }))
+    } else if (deck.open && expandRef.current) expandRef.current()
+    // Open with no agent in front there is no full page to go to: hide it.
+    else if (deck.open) setDeck((d) => ({ ...d, open: false }))
+    else run({ kind: 'deck' })
+  }, [prsInFront, frontTabId, backToDeck, focused?.of, deck.open, run])
   const renderPRs = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
     const of = leaf.target.of ?? ''
     const n = projectOfSession(of)
@@ -1406,6 +1426,8 @@ export function AppShell() {
               onGroupedChange={onGroupedChange}
               tabDigits={stripDigits}
               onOrderTabs={onOrderTabs}
+              barMode={barMode}
+              onCycleBar={onCycleBar}
             />
           </div>
         )}
@@ -1551,12 +1573,10 @@ export function AppShell() {
                     onReviewChanges={focusedWorktree?.repo ? () => onOpenChanges(focusedWorktree.projectId, focusedWorktree.w) : undefined}
                     height={deck.height}
                     onResize={onResizeDeck}
-                    onClose={closeDeck}
                     onToast={setToast}
                     worktrees={deckWorktrees}
                     onOpenSession={onDeckOpenSession}
                     onStartAgent={onDeckStartAgent}
-                    onExpand={onExpandDeck}
                     cleanup={focusedWorktree?.repo && projectsById.get(focusedWorktree.projectId) ? (
                       <CleanupLine
                         projectId={focusedWorktree.projectId}
@@ -1626,6 +1646,7 @@ export function AppShell() {
       <AppUpdateToast />
       {isTauri() && <AppUpdateAsk />}
 
+      {feedbackAt !== null && <FeedbackDialog screen={feedbackAt} onClose={() => setFeedbackAt(null)} />}
       {toast && (
         <div role="status" className="app-fade-in pointer-events-none fixed inset-x-0 bottom-10 z-50 flex justify-center px-4">
           <p className="pointer-events-auto max-w-[560px] rounded-[10px] border border-[var(--app-hairline-strong)] bg-panel px-4 py-2.5 text-[12.5px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]">{toast}</p>

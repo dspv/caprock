@@ -7,7 +7,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **app:** Send feedback opens with ⇧⌘F (Ctrl+Alt+Shift+F on Windows and
+  Linux) from anywhere in the app, and its row in the sidebar shows the key.
+
 ### Changed
+
+- **app:** the PRs & CI view has one button, at the foot of the sidebar
+  beside *Dashboard*: its picture shows the mode — Hidden, Bar (the session
+  deck under the agent's terminal) or Full page (the PRs & CI tab) — and a
+  click moves to the next. ⌘B and ⇧⌘B work as before and the button
+  follows them. The deck's own *Expand* and *Hide* buttons are gone. The
+  theme button moved beside it, out of the Settings row.
 
 - **app:** the sidebar's heading has a worded switch, **Projects | Tabs**,
   in place of the small folder icon: Projects lists the sessions under

@@ -30,7 +30,9 @@
  * header, and in the desktop app also an icon beside Settings in the
  * sidebar's bottom bar, which is on screen whatever tab is in front. It was
  * an 11px grey word among the header's chips, and the owner never noticed
- * it (2026-10-10).
+ * it (2026-10-10). ⇧⌘F (Ctrl+Alt+Shift+F off macOS) opens the form from
+ * anywhere in the app, AppShell holding that dialog; the sidebar row draws
+ * the key (owner, 2026-10-14).
  *
  * **How the issue opens.** Through `openExternal` (lib/nudges.ts): the desktop
  * app's `open_external` command, which hands the URL to the default browser,
@@ -59,6 +61,8 @@ import { CloseButton, DialogBackdrop } from './Dialog'
 import { KeyChip } from './Sheet'
 
 const TIP = 'Report a bug, suggest an idea, or ask a question'
+/** The form's key from anywhere in the app (AppShell, lib/appkeys). */
+const KEY = '⇧⌘F'
 
 /** Each kind's card glyph and its colour, from the theme's tokens: the bug is
  *  the warning hue (graphite's amber, Slate's cool yellow), the idea the green
@@ -96,8 +100,9 @@ export function FeedbackButton({ screen, variant = 'header' }: { screen?: string
         <button
           type="button"
           onClick={show}
-          title={TIP}
+          title={`${TIP} (${keys(KEY)})`}
           aria-label="Send feedback"
+          aria-keyshortcuts={ariaKeys()}
           className="flex h-[26px] w-[26px] items-center justify-center rounded-[6px] text-fg-muted transition-colors hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none"
         >
           <BugIcon size={15} className="text-accent" />
@@ -106,13 +111,15 @@ export function FeedbackButton({ screen, variant = 'header' }: { screen?: string
         <button
           type="button"
           onClick={show}
-          title={TIP}
+          title={`${TIP} (${keys(KEY)})`}
           aria-label="Send feedback"
+          aria-keyshortcuts={ariaKeys()}
           className="app-row flex h-[28px] w-full items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-fg-muted hover:text-fg"
         >
           <BugIcon size={15} className="text-accent" />
           <span className="flex-1 whitespace-nowrap">Send feedback</span>
           <span className="min-w-0 truncate text-[11px] text-fg-faint">bug, idea, question</span>
+          <kbd aria-hidden className="app-kbd-key shrink-0">{keys(KEY)}</kbd>
         </button>
       ) : (
         <button
@@ -128,6 +135,11 @@ export function FeedbackButton({ screen, variant = 'header' }: { screen?: string
       {open !== null && <FeedbackDialog screen={open} onClose={() => setOpen(null)} />}
     </>
   )
+}
+
+/** The key as `aria-keyshortcuts` writes it, on this platform. */
+function ariaKeys(): string {
+  return isMacPlatform() ? 'Meta+Shift+F' : 'Control+Alt+Shift+F'
 }
 
 let shotSeq = 0

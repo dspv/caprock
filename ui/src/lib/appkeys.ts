@@ -43,6 +43,8 @@ export type AppCommand =
   | { kind: 'next-waiting' }
   | { kind: 'find' }
   | { kind: 'settings' }
+  /** ⇧⌘F: the Send feedback form, from anywhere. */
+  | { kind: 'feedback' }
   | { kind: 'zoom'; step: 1 | -1 | 0 }
 
 /** The subset of a KeyboardEvent the map reads. */
@@ -200,6 +202,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         case 'e': return { kind: 'split', direction: 'column' }
         case '0': return { kind: 'zoom', step: 0 }
         case 'b': return { kind: 'deck-expand' }
+        case 'f': return { kind: 'feedback' }
       }
     }
     return null
@@ -226,6 +229,12 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         // ⇧⌘B is the bookmarks bar, which the browser may keep for itself;
         // the deck's button is there either way.
         case 'b': return { kind: 'deck-expand' }
+        // F for feedback (owner, 2026-10-14, translated: "Send feedback
+        // should also open with a key combo … maybe people will file more
+        // issues"). ⇧⌘F is bound by no Mac terminal or browser default that
+        // reaches a page; off macOS Ctrl+Shift+F is ⌘F, Find, so it takes
+        // Alt as well (OFF_MAC_ALT).
+        case 'f': return { kind: 'feedback' }
         default: return null
       }
     }
@@ -300,9 +309,10 @@ export function keys(mac: string, isMac = isMacPlatform()): string {
 
 /** ⇧⌘ chords whose ⌘ twin is also a shortcut: off macOS both would read
  *  Ctrl+Shift+key, so these take Alt as well (split below, default size,
- *  the deck's Expand beside the deck's own Ctrl+Shift+B). Ctrl+Alt+Shift+B
- *  is bound by no shell, PSReadLine, Windows Terminal or GNOME default. */
-const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0', '⇧⌘B'])
+ *  the deck's Expand beside the deck's own Ctrl+Shift+B, feedback beside
+ *  Find's Ctrl+Shift+F). Ctrl+Alt+Shift+B and Ctrl+Alt+Shift+F are bound by
+ *  no shell, PSReadLine, Windows Terminal or GNOME default. */
+const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0', '⇧⌘B', '⇧⌘F'])
 
 function offMac(k: string): string {
   if (/[↩↵]/.test(k)) return `${k.includes('⌘') ? 'Ctrl+' : ''}${k.includes('⇧') ? 'Shift+' : ''}Enter`
@@ -371,12 +381,13 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘[ ]', 'Previous and next pane'],
   ['⌘F', 'Find in the terminal'],
   ['⌘I', 'Inspector'],
-  ['⌘B', 'Session deck: the agent’s live figures under its terminal'],
-  ['⇧⌘B', 'Expand the deck into the PRs & CI tab; in that tab, Collapse back'],
+  ['⌘B', 'Session deck: the PRs & CI bar under the agent’s terminal, shown or hidden'],
+  ['⇧⌘B', 'PRs & CI as a full page in a tab; there, back to the bar'],
   ['⇧⌘G', 'Changes: the diff of the session in front'],
   ['⌘\\', 'Hide or show the sidebar'],
   ['⌘0, ⇧⌘D', 'Dashboard'],
   ['⌘,', 'Settings'],
+  ['⇧⌘F', 'Send feedback: a bug, an idea or a question'],
   ['⌘+, ⌘−, ⇧⌘0', 'Interface size: bigger, smaller, back to the default'],
   ['⌘R', 'Reload the window'],
 ]

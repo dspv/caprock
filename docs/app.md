@@ -121,12 +121,19 @@ others. Installing it: [install-app.md](install-app.md).
   away, and the tab brings back the screen you left it on until you close it.
   The Dashboard tab is its icon and its key, ⌘0 (⌘, while it shows
   Settings); its × shows while it is in front.
+  Beside *Dashboard* sit two small square buttons: the **PRs & CI** mode
+  and the theme. The PRs & CI button's picture is what is on screen —
+  an empty window (Hidden), a band along its bottom (Bar: the session
+  deck), a filled window (Full page: the *PRs & CI* tab) — and a click
+  moves to the next, Hidden → Bar → Full page → Hidden; ⌘B and ⇧⌘B do
+  the same from the keyboard, and the button follows them. Its tooltip
+  says the mode and the keys.
   The arrow beside *Send feedback* folds that bottom block to one row of
   icons and back; the app remembers which way you left it.
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
   how new agents start, appearance, terminal and editor first. The × beside
   the *Settings* heading, or Esc, closes it as the tab's × does. *Send
-  feedback*, the row above *Dashboard*, opens the feedback form: pick Bug, Idea or
+  feedback*, the row above *Dashboard*, or ⇧⌘F from anywhere, opens the feedback form: pick Bug, Idea or
   Question — click a card or press 1, 2 or 3, and the title is ready for
   typing — write a title (Enter moves on) and a few words, and paste (⌘V) or choose up to
   four screenshots — drop image files on the window, or on macOS and Windows
@@ -461,7 +468,8 @@ others. Installing it: [install-app.md](install-app.md).
   log, with a link to the job on GitHub. CI needs GitHub connected (one
   click, through `gh`). Drag its top edge to resize it (up to 60% of the pane), or
   focus the edge and use ↑ ↓; double-click it for the default height. The
-  deck button beside the inspector's, ⌘B and the palette open and close it;
+  PRs & CI button at the foot of the sidebar, the deck button beside the
+  inspector's, ⌘B and the palette open and close it;
   the app remembers its height and whether it was open. A shell tab has no
   deck. It opens on all of the session's pull requests, each title as long
   as the row allows, with its checks as a circle per check (coloured by
@@ -473,7 +481,7 @@ others. Installing it: [install-app.md](install-app.md).
   at. The cockpit on the right has a **CI**
   block with the same summary, or one ring with *10/11 · 5m*, or the jobs by OS, switched in its
   label; it shows what the deck last read and a click opens *PRs & CI*.
-  **Expand** (⇧⌘B), beside *Hide*, opens it large in a tab of its own,
+  ⇧⌘B, or the sidebar's PRs & CI button from *Bar*, opens it large in a tab of its own,
   *PRs & CI*. It opens on the **Board**: the repository's pull requests as
   cards in six columns — Draft, CI running, Needs a fix, Ready, Merged,
   Released — each card with its title, the author's face and name, how long
@@ -490,8 +498,9 @@ others. Installing it: [install-app.md](install-app.md).
   you pick on the right with its state, review, merge state and diff size,
   the deck's actions, its jobs by runner OS against each one's usual time,
   the jobs on a timeline, and a failed job's steps and log with
-  *Investigate*. **Collapse**, the same button in the same corner, and ⇧⌘B
-  again close the tab and show the agent with its deck. It reads GitHub
+  *Investigate*. **Collapse** in its top-right corner, and ⇧⌘B
+  again, close the tab and show the agent with its deck; the sidebar's
+  button closes it and hides the deck too. It reads GitHub
   only while it is in front.
 - **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
   same button), *Review and commit* in the inspector, or "Review changes" in
@@ -552,8 +561,8 @@ others. Installing it: [install-app.md](install-app.md).
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
-- **Themes.** Eight, picked from the sun/moon button at the foot of the
-  sidebar or Settings → *Appearance*: Dark Pastel (a neutral graphite with
+- **Themes.** Eight, picked from the sun/moon button beside *Dashboard* at
+  the foot of the sidebar or Settings → *Appearance*: Dark Pastel (a neutral graphite with
   soft, muted colours, the default dark one), Dark Warm, Dark Cold and Dark
   Side; Light, Light Cold, Book (the default light one) and Light Side. Until
   you pick one, the app follows your system's light or dark setting. Point at one to try it on the
@@ -606,16 +615,18 @@ On macOS:
 | ⌘F          | Find in the terminal or the file                                         |
 | ⌘K          | Command palette                                                          |
 | ⌘,          | Settings                                                                 |
+| ⇧⌘F         | Send feedback                                                            |
 | ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                 |
 | ⌘I          | Agent cockpit (the inspector)                                            |
-| ⌘B          | Session deck under the agent's terminal                                  |
-| ⇧⌘B         | Expand the deck into PRs & CI; Collapse back                             |
+| ⌘B          | Session deck (the PRs & CI bar) under the agent's terminal               |
+| ⇧⌘B         | PRs & CI as a full page in a tab; back to the bar                        |
 | ⌘\          | Hide or show the sidebar                                                 |
 | ⌘0, ⇧⌘D     | Dashboard tab, and back                                                  |
 | ⌘R          | Reload the window (View → Reload)                                        |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
-(Quick chat is Ctrl+Alt+Shift+N, Expand Ctrl+Alt+Shift+B; tabs are
+(Quick chat is Ctrl+Alt+Shift+N, the PRs & CI full page Ctrl+Alt+Shift+B,
+Send feedback Ctrl+Alt+Shift+F, since Ctrl+Shift+F is Find; tabs are
 Ctrl+Shift+1–9). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
