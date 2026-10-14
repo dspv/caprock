@@ -1081,6 +1081,30 @@ waiting for a permission answer, and never covers a terminal.
 - **Saying no.** *Not interested* or × sends nothing.
 - **How often.** An answered strip never comes back. Second Brain and the
   Hugging Face question are shown at most twice each, the others once.
+- **Trying it.** The YouTube question has **Try it now**, which opens the
+  Watch tab (below). It answers nothing and sends nothing.
+
+## Watch YouTube while agents work
+
+An experiment. Press ⌘K and pick *Watch YouTube…* (or *Try it now* on the
+YouTube question): a **Watch** tab opens beside your other tabs. Paste a
+YouTube link — a video, a Short, a live stream or a playlist — and press
+**Play**.
+
+- **Where the video comes from.** YouTube's privacy-enhanced player
+  (youtube-nocookie.com), and only after you press Play; before that the tab
+  loads nothing from YouTube. There is no search, because it would need a
+  YouTube API key: paste a link. Your last five links are kept in this
+  window, for one click.
+- **When an agent needs you.** If a session finishes its turn or asks for
+  permission while you watch, a strip appears over the video — *api is
+  waiting for you* — with **Go**, which takes you to that session. The video
+  pauses at the same moment; untick *Pause when an agent needs me* to keep it
+  playing.
+- **Behind other tabs.** The video keeps playing when you switch to a
+  terminal; close the Watch tab (its ×) to stop it.
+- **In a browser.** The same screen is at `#/watch` on the dashboard; **Go**
+  opens the session's page there.
 
 ## macOS privacy prompts
 

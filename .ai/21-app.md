@@ -1407,6 +1407,15 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   fallback page, on the app's own origin, alone gets `start_daemon`,
   `update_daemon` and `set_background` (built in WP-02; the others arrive
   with their work packages).
+- **The window stays on the daemon.** Its navigation guard
+  (`app/src-tauri/src/shell.rs`) lets the main window load only the
+  daemon's origin, the bundled fallback page and `about:`; anything else
+  opens in the default browser. WKWebView and WebKitGTK also ask it about
+  frames, so one more address passes: YouTube's privacy-enhanced embed,
+  `https://www.youtube-nocookie.com/embed/…` (`is_player_frame`), which the
+  Watch tab plays a pasted link in (04-ui.md § Watch). The page frames it
+  sandboxed with no top navigation, and the daemon's CSP allows no other
+  frame source.
 - **The daemon supervisor** reads `runtime.json`, starts the bundled binary
   when no daemon answers, and never stops a daemon it did not start — save
   one case on macOS: a Homebrew formula's daemon, moved onto the app's own

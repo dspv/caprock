@@ -47,6 +47,11 @@ export type Offer = {
   maxShows: 1 | 2
   /** One of a pair drawn per install, or seen by every install. */
   drawn: boolean
+  /**
+   * Where *Try it now* goes, for an offer that can already be tried (the
+   * YouTube survey's Watch tab). It answers nothing and sends nothing.
+   */
+  tryHref?: string
 }
 
 const WORK_QUESTIONS: readonly OfferQuestion[] = [
@@ -144,6 +149,8 @@ export const OFFERS: readonly Offer[] = [
     questions: WORK_QUESTIONS,
     maxShows: 1,
     drawn: true,
+    // An experiment beside the question (lib/watch.ts): try it, then answer.
+    tryHref: '#/watch',
   },
 ]
 

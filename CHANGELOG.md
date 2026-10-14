@@ -9,6 +9,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** Watch YouTube in a tab while agents work (an experiment). ⌘K
+  *Watch YouTube…*, or *Try it now* on the YouTube question, opens a Watch
+  tab: paste a YouTube link (video, Short, live, playlist) and press Play.
+  When an agent finishes its turn or asks for permission, a strip over the
+  video names it with **Go**, and the video pauses (*Pause when an agent
+  needs me*, on by default). It plays in YouTube's privacy-enhanced player
+  and loads nothing from YouTube before you press Play; no search, since
+  that would need an API key. The same screen is at `#/watch` in the
+  browser. The dashboard now allows frames only from itself and that player.
 - **now:** each figure in *Today* has a small line of your last 14 days and
   one word against your own median: *usual*, *above usual +38%*, *below
   usual −20%*. Running totals (cost, sessions, turns) are compared by the

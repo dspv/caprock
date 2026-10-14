@@ -111,6 +111,20 @@ pub fn is_daemon(url: &Url, port: Option<u16>) -> bool {
         && port.is_none_or(|p| url.port() == Some(p))
 }
 
+/// Whether `url` is the Watch tab's player: YouTube's privacy-enhanced embed,
+/// the one outside frame the daemon's page allows (internal/api/ui.go's CSP).
+/// WKWebView and WebKitGTK ask the navigation handler about a frame's loads
+/// as well as the window's, and wry does not say which, so without this the
+/// player frame was cancelled and its address opened in the browser. The page
+/// gives the frame no top navigation (its sandbox), so allowing the address
+/// cannot move the window off the dashboard. WebView2 asks only about the
+/// window and never gets here for a frame.
+pub fn is_player_frame(url: &Url) -> bool {
+    url.scheme() == "https"
+        && url.host_str() == Some("www.youtube-nocookie.com")
+        && url.path().starts_with("/embed/")
+}
+
 /// Whether `url` is the shell's own bundled page.
 fn is_local(url: &Url) -> bool {
     matches!(url.scheme(), "tauri") || url.host_str() == Some("tauri.localhost")
@@ -140,7 +154,10 @@ pub fn build(
             // anything else, another local port included, is a link the user
             // meant for the browser.
             let port = sup.runtime().map(|rt| rt.port);
-            if (port.is_some() && is_daemon(url, port)) || is_local(url) || url.scheme() == "about"
+            if (port.is_some() && is_daemon(url, port))
+                || is_local(url)
+                || url.scheme() == "about"
+                || is_player_frame(url)
             {
                 return true;
             }
@@ -536,6 +553,21 @@ pub fn fallback_url() -> Url {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_privacy_enhanced_player_loads_in_a_frame() {
+        let ok = |u: &str| is_player_frame(&u.parse().unwrap());
+        assert!(ok(
+            "https://www.youtube-nocookie.com/embed/aqz-KE-bpKQ?enablejsapi=1"
+        ));
+        assert!(ok(
+            "https://www.youtube-nocookie.com/embed/videoseries?list=PL1"
+        ));
+        assert!(!ok("http://www.youtube-nocookie.com/embed/aqz-KE-bpKQ"));
+        assert!(!ok("https://www.youtube.com/embed/aqz-KE-bpKQ"));
+        assert!(!ok("https://www.youtube-nocookie.com/watch?v=aqz-KE-bpKQ"));
+        assert!(!ok("https://www.youtube-nocookie.com.evil.example/embed/x"));
+    }
 
     fn detail(js: &str) -> serde_json::Value {
         let start = js.find("detail: ").expect("detail") + "detail: ".len();

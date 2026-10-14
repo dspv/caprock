@@ -83,7 +83,7 @@ import type { ChatPane } from '@/components/QuickChatPane'
 import { useSpawnableAgents } from '@/components/AgentPicker'
 import { AddProjectSheet } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
-import { BranchIcon, ChatIcon, DashboardIcon, DeckIcon, MailIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
+import { BranchIcon, ChatIcon, DashboardIcon, DeckIcon, MailIcon, WatchIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
 import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { joinPath, preferredName, useEditors } from '@/lib/editors'
@@ -107,11 +107,13 @@ import { worktreeSlug } from '@/lib/slug'
 import { openPhoneSettings, openSettingsAt, openSettingsSection } from '@/components/Pairing'
 import { reloadSaved, savedFor, sendPrompt, useSavedPrompts, type SavedPrompt } from '@/lib/saved'
 import { SAVED_SECTION_ID } from '@/components/SavedPromptsSetting'
+import type { WaitItem } from '@/lib/watch'
 
 export { worktreeSlug }
 
 const Dashboard = lazy(() => import('@/App').then((m) => ({ default: m.Dashboard })))
 const MailScreen = lazy(() => import('@/screens/mail/MailScreen').then((m) => ({ default: m.MailScreen })))
+const WatchScreen = lazy(() => import('@/screens/watch/WatchScreen').then((m) => ({ default: m.WatchScreen })))
 const PairScreen = lazy(() => import('@/screens/Pair').then((m) => ({ default: m.PairScreen })))
 
 const UI_KEY = 'caprock.app.ui'
@@ -263,7 +265,9 @@ export function AppShell() {
   // Mail is a tab of its own, not the Dashboard tab's (owner, 2026-10-14):
   // #/mail brings the Mail tab to the front.
   const mailShown = !workspaceShown && parseHash(hash).name === 'mail'
-  const dashboardShown = !workspaceShown && !mailShown
+  // Watch is a tab of its own too (an experiment, lib/watch.ts): #/watch.
+  const watchShown = !workspaceShown && parseHash(hash).name === 'watch'
+  const dashboardShown = !workspaceShown && !mailShown && !watchShown
   const data = useWorkspaceData()
   const [ws, dispatch] = useReducer(workspaceReducer, undefined, loadWorkspace)
   const [prefs, setPrefs] = useState<UiPrefs>(loadPrefs)
@@ -384,7 +388,7 @@ export function AppShell() {
     dispatch({ type: 'dashboard', open: false })
     lastDashboard.current = '#/'
     // In the same render as the dispatch: on the old hash the tab reopened.
-    if (!isWorkspaceHash(location.hash) && parseHash(location.hash).name !== 'mail') goHash(APP_ROUTE)
+    if (!isWorkspaceHash(location.hash) && !['mail', 'watch'].includes(parseHash(location.hash).name)) goHash(APP_ROUTE)
   }, [goHash])
   // The Mail tab: in the strip from the first time Mail is opened (the
   // sidebar's Mail row, ⇧⌘M, the dashboard's Mail, the palette) until its ×.
@@ -395,6 +399,18 @@ export function AppShell() {
   const closeMail = useCallback(() => {
     dispatch({ type: 'mail', open: false })
     if (parseHash(location.hash).name === 'mail') goHash(APP_ROUTE)
+  }, [goHash])
+  // The Watch tab: in the strip from the first time it is opened (the
+  // palette's Watch YouTube…, the YouTube survey's Try it now) until its ×.
+  // It stays mounted while in the strip, so a video keeps playing behind a
+  // terminal; its × is what stops it.
+  useEffect(() => {
+    if (watchShown && !ws.watch) dispatch({ type: 'watch', open: true })
+  }, [watchShown, ws.watch])
+  const onWatch = useCallback(() => { if (parseHash(location.hash).name !== 'watch') goHash('#/watch') }, [goHash])
+  const closeWatch = useCallback(() => {
+    dispatch({ type: 'watch', open: false })
+    if (parseHash(location.hash).name === 'watch') goHash(APP_ROUTE)
   }, [goHash])
   const projectName = useCallback((id: string) => projectsById.get(id)?.name, [projectsById])
   /** A tab picked in the strip or in the sidebar's list. */
@@ -439,6 +455,15 @@ export function AppShell() {
   }, [openTab])
 
   const onOpenInbox = useCallback((i: InboxItem) => openSession(i.session, i.projectId), [openSession])
+  // The Watch tab's nudge reads the same waiting list as the sidebar and ⌘J.
+  const watchWaits = useMemo<WaitItem[]>(
+    () => model.inbox.filter((i) => !i.stale).map((i) => ({ sessionId: i.session.session_id, title: i.title, reason: i.reason, since: i.since })),
+    [model.inbox],
+  )
+  const onWatchGo = useCallback((id: string) => {
+    const item = model.inbox.find((i) => i.session.session_id === id)
+    if (item) onOpenInbox(item)
+  }, [model.inbox, onOpenInbox])
   const jumpToWaiting = useCallback(() => {
     const item = nextWaiting(model.inbox, focused?.sessionId)
     if (item) onOpenInbox(item)
@@ -1140,6 +1165,7 @@ export function AppShell() {
         ? [{ id: 'a-copies', group: 'Actions' as const, label: 'Clean up copies…', detail: `${activeProject.name}: worktrees, sizes, merged`, icon: <BranchIcon size={14} />, run: () => onCleanCopies(activeProject.id) }]
         : []),
       { id: 'a-dashboard', group: 'Actions', label: 'Open the dashboard', hint: keys('⌘0'), icon: <DashboardIcon size={14} />, run: onDashboard },
+      { id: 'a-watch', group: 'Actions', label: 'Watch YouTube…', detail: 'paste a link; a nudge when an agent needs you', icon: <WatchIcon size={14} />, run: onWatch },
       { id: 'a-mail', group: 'Actions', label: 'Open Mail', detail: 'every inbox in one place, in its own tab', hint: keys('⇧⌘M'), icon: <MailIcon size={14} />, run: onMail },
       { id: 'a-settings', group: 'Actions', label: 'Settings', detail: 'permission mode, theme, terminal, notifications, phone', hint: keys('⌘,'), icon: <SettingsIcon size={14} />, run: onSettings },
       { id: 'a-phone', group: 'Actions', label: 'Open Caprock on your phone', detail: 'pair with a QR code, then add it to the home screen', icon: <SettingsIcon size={14} />, run: openPhoneSettings },
@@ -1222,7 +1248,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, deck.open, current, onNewAgent, onNewShell, onQuickChatChooser, onAddProject, onDashboard, onMail, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies])
+  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, deck.open, current, onNewAgent, onNewShell, onQuickChatChooser, onAddProject, onDashboard, onMail, onWatch, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies])
 
   // Every session the daemon knows, by what it was about; one that is open or
   // live is already in the list above under its own id.
@@ -1450,7 +1476,7 @@ export function AppShell() {
               model={model}
               source={data.source}
               activeProjectId={activeProjectId}
-              dashboardActive={!workspaceShown}
+              dashboardActive={!workspaceShown && !watchShown}
               mailActive={mailShown}
               onMail={onMail}
               tabs={ws.tabs}
@@ -1502,6 +1528,7 @@ export function AppShell() {
                 onClose: closeDashboard,
               } : undefined}
               mail={ws.mail || mailShown ? { active: mailShown, onActivate: onMail, onClose: closeMail } : undefined}
+              watch={ws.watch || watchShown ? { active: watchShown, onActivate: onWatch, onClose: closeWatch } : undefined}
               paneTools={workspaceShown}
               sessions={sessionsById}
               permissions={data.permissions}
@@ -1663,6 +1690,16 @@ export function AppShell() {
                   <ErrorBoundary label="Mail">
                     <Suspense fallback={null}>
                       <MailScreen fill />
+                    </Suspense>
+                  </ErrorBoundary>
+                </div>
+              )}
+              {(ws.watch || watchShown) && (
+                /* Watch fills its tab; hidden, not unmounted, behind another tab. */
+                <div data-watch-pane className="absolute inset-0 bg-bg" hidden={!watchShown}>
+                  <ErrorBoundary label="Watch">
+                    <Suspense fallback={null}>
+                      <WatchScreen waiting={watchWaits} onGo={onWatchGo} />
                     </Suspense>
                   </ErrorBoundary>
                 </div>

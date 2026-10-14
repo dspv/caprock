@@ -82,6 +82,12 @@ export interface Workspace {
    * the first time Mail is opened until it is closed. Absent reads as false.
    */
   mail?: boolean
+  /**
+   * The Watch tab (a YouTube link played while agents work) is in the strip,
+   * after Mail: there from the first time it is opened until it is closed.
+   * Absent reads as false.
+   */
+  watch?: boolean
 }
 
 export type WorkspaceAction =
@@ -101,6 +107,8 @@ export type WorkspaceAction =
   | { type: 'dashboard'; open: boolean }
   /** Puts the pinned Mail tab in the strip, or takes it out. */
   | { type: 'mail'; open: boolean }
+  /** Puts the pinned Watch tab in the strip, or takes it out. */
+  | { type: 'watch'; open: boolean }
   | { type: 'retitle'; sessionId: string; title: string }
   | { type: 'drop-session'; sessionId: string }
   /**
@@ -317,6 +325,13 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       delete rest.mail
       return rest
     }
+    case 'watch': {
+      if (!!ws.watch === a.open) return ws
+      if (a.open) return { ...ws, watch: true }
+      const rest = { ...ws }
+      delete rest.watch
+      return rest
+    }
     case 'retitle': {
       let changed = false
       const tabs = ws.tabs.map((t) => {
@@ -444,6 +459,7 @@ export function parseWorkspace(raw: string | null): Workspace {
     const ws: Workspace = { version: 1, tabs, activeByProject, activeProject: typeof v.activeProject === 'string' ? v.activeProject : '' }
     if (v.dashboard === true) ws.dashboard = true
     if (v.mail === true) ws.mail = true
+    if (v.watch === true) ws.watch = true
     return ws
   } catch {
     return EMPTY_WORKSPACE

@@ -42,6 +42,11 @@ vi.mock('@/screens/mail/MailScreen', () => ({
   MailScreen: ({ fill }: { fill?: boolean }) => <div data-testid="mail-screen" data-fill={String(!!fill)} />,
 }))
 
+// Watch's own test renders it (screens/watch); here only where it opens and what it is handed.
+vi.mock('@/screens/watch/WatchScreen', () => ({
+  WatchScreen: ({ waiting }: { waiting?: readonly { sessionId: string }[] }) => <div data-testid="watch-screen" data-waiting={(waiting ?? []).map((w) => w.sessionId).join(',')} />,
+}))
+
 function sess(p: Partial<SessionSummary>): SessionSummary {
   return {
     session_id: 's', cwd: '/w/app', repo_root: '/w/app', project: 'app', model: 'claude-opus-5', started_at: 0, last_event_at: 1, status: 'active',
@@ -372,6 +377,31 @@ describe('the app workspace', () => {
     await waitFor(() => expect(location.hash).toBe('#/app'))
     expect(screen.queryByRole('tab', { name: 'Mail' })).not.toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Dashboard/ })).toBeInTheDocument()
+  })
+
+  // Owner, 2026-10-14 (translated): "Let's try adding YouTube watching
+  // somewhere." Opened on purpose from ⌘K; no sidebar row.
+  it('opens Watch in a tab of its own from the palette, keeps it behind a terminal, and closes it', async () => {
+    await renderApp()
+    expect(screen.queryByRole('tab', { name: 'Watch' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Watch/ })).not.toBeInTheDocument()
+    await openFromPalette('Watch YouTube')
+    const tab = await screen.findByRole('tab', { name: 'Watch' })
+    expect(tab).toHaveAttribute('aria-selected', 'true')
+    expect(location.hash).toBe('#/watch')
+    expect(await screen.findByTestId('watch-screen')).toBeInTheDocument()
+    // Not the Dashboard tab's, and the sidebar's Dashboard is not lit.
+    expect(screen.queryByRole('tab', { name: /Dashboard/ })).not.toBeInTheDocument()
+    // Behind the workspace it stays mounted (a video keeps playing), hidden.
+    act(() => { location.hash = '#/app' })
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Watch' })).toHaveAttribute('aria-selected', 'false'))
+    expect(screen.getByTestId('watch-screen').closest('[data-watch-pane]')).toHaveAttribute('hidden')
+    fireEvent.click(screen.getByRole('tab', { name: 'Watch' }))
+    await waitFor(() => expect(location.hash).toBe('#/watch'))
+    fireEvent.click(within(screen.getByRole('tab', { name: 'Watch' })).getByRole('button', { name: 'Close tab Watch' }))
+    await waitFor(() => expect(location.hash).toBe('#/app'))
+    expect(screen.queryByRole('tab', { name: 'Watch' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('watch-screen')).not.toBeInTheDocument()
   })
 
   // Owner, 2026-10-10: Settings had no way out on the page. Its × closes the

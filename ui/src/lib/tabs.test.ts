@@ -123,6 +123,17 @@ describe('workspace tabs', () => {
     expect(ws.tabs).toHaveLength(1)
   })
 
+  it('holds a pinned Watch tab, kept across a reload and closed on its own', () => {
+    let ws = run(open('a'), { type: 'mail', open: true }, { type: 'watch', open: true })
+    expect(ws.watch).toBe(true)
+    expect(workspaceReducer(ws, { type: 'watch', open: true })).toBe(ws)
+    expect(parseWorkspace(JSON.stringify(ws))).toEqual(ws)
+    ws = workspaceReducer(ws, { type: 'watch', open: false })
+    expect(ws.watch).toBeUndefined()
+    expect(ws.mail).toBe(true)
+    expect(ws.tabs).toHaveLength(1)
+  })
+
   it('loads a workspace stored by the per-project strips as it was', () => {
     const pane = (id: string, sessionId: string) => ({ type: 'pane', id, target: { kind: 'session', sessionId } })
     const stored = {

@@ -52,6 +52,8 @@ export const SidebarIcon =(p: P) => <Icon {...p}><rect x="3" y="4" width="18" he
 export const SearchIcon = (p: P) => <Icon {...p}><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></Icon>
 /** An envelope: Caprock Mail (the sidebar footer, its tab). */
 export const MailIcon = (p: P) => <Icon {...p}><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="m4 7 8 6 8-6" /></Icon>
+/** A screen with a play mark: the Watch tab (a YouTube link while agents work). */
+export const WatchIcon = (p: P) => <Icon {...p}><rect x="3" y="5" width="18" height="13" rx="2.5" /><path d="M10.5 9.25v4.5l3.75-2.25z" /><path d="M8 21h8" /></Icon>
 export const DashboardIcon = (p: P) => <Icon {...p}><rect x="3" y="3" width="7.5" height="9" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="5" rx="1.5" /><rect x="13.5" y="11" width="7.5" height="10" rx="1.5" /><rect x="3" y="15" width="7.5" height="6" rx="1.5" /></Icon>
 export const InboxIcon = (p: P) => <Icon {...p}><path d="M3 13h5l1.5 2.5h5L16 13h5" /><path d="M5.5 5h13L21 13v5.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5V13z" /></Icon>
 export const SunIcon = (p: P) => <Icon {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" /></Icon>

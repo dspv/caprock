@@ -51,6 +51,14 @@ func UIBuilt() bool {
 	return true
 }
 
+// pageFrameCSP is the page's one Content-Security-Policy directive: frames
+// may come from the daemon itself (Mail's message body is a srcdoc frame) and
+// from YouTube's privacy-enhanced player, which the Watch tab plays a pasted
+// link in (ui/src/lib/watch.ts). Nothing else may be framed, so no other site
+// can be put inside the dashboard. The player frame loads only after the user
+// presses Play (rule 4, ADR-062's note).
+const pageFrameCSP = "frame-src 'self' https://www.youtube-nocookie.com"
+
 // uiHandler serves the SPA: static assets by path, index.html for everything
 // else (client-side routing).
 func (s *Server) uiHandler() http.Handler {
@@ -87,6 +95,7 @@ func (s *Server) uiHandler() http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Security-Policy", pageFrameCSP)
 		// Never kept: the page names the daemon that served it.
 		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(withVersion(b, s.d.Version))

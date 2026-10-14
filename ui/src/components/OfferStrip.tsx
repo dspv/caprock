@@ -93,8 +93,13 @@ export function OfferStrip({ now = Date.now(), busy = false, quietMs = OFFER_QUI
     )
   }
 
+  // An offer that can be tried already opens it: no answer, nothing sent.
+  const tryIt = offer.tryHref
+    ? <BannerButton kind="ghost" data-offer-try onClick={() => { location.hash = offer.tryHref! }}>Try it now</BannerButton>
+    : null
+
   if (sent) {
-    return <Banner id="offer" edge art="done" role="region" label="Question from Caprock" title={<span role="status">{OFFER_THANKS}</span>} />
+    return <Banner id="offer" edge art="done" role="region" label="Question from Caprock" title={<span role="status">{OFFER_THANKS}</span>} actions={tryIt} />
   }
 
   const send = async () => {
@@ -149,6 +154,7 @@ export function OfferStrip({ now = Date.now(), busy = false, quietMs = OFFER_QUI
       foot={<span className="of-disclose">{OFFER_DISCLOSURE}</span>}
       actions={<>
         <BannerButton disabled={!ready} onClick={() => void send()}>{sending ? 'Sending…' : 'Send'}</BannerButton>
+        {tryIt}
         <BannerDismiss onClick={close}>Not interested</BannerDismiss>
         <BannerDismiss icon onClick={close} aria-label="Close, not interested" title="Not interested" />
       </>}

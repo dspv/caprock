@@ -31,6 +31,11 @@ func TestThePageNamesTheDaemonThatServedIt(t *testing.T) {
 		if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
 			t.Fatalf("%s: Cache-Control %q, want no-cache", p, got)
 		}
+		// Frames from the daemon and YouTube's privacy-enhanced player only
+		// (the Watch tab); youtube.com itself is not on the list.
+		if got := rec.Header().Get("Content-Security-Policy"); got != "frame-src 'self' https://www.youtube-nocookie.com" {
+			t.Fatalf("%s: Content-Security-Policy %q", p, got)
+		}
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/assets/app.js", nil))

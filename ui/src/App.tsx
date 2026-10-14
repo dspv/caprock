@@ -21,6 +21,8 @@ import { BrainCaptureHost } from '@/components/BrainCapture'
 
 // Mail is its own world (internal/mail); its code loads only when opened.
 const MailScreen = lazy(() => import('@/screens/mail/MailScreen').then((m) => ({ default: m.MailScreen })))
+// Watch (a YouTube link while agents work) loads only when opened.
+const WatchScreen = lazy(() => import('@/screens/watch/WatchScreen').then((m) => ({ default: m.WatchScreen })))
 // Second Brain's screen draws a graph; its code loads only when opened too.
 const BrainScreen = lazy(() => import('@/screens/brain/BrainScreen').then((m) => ({ default: m.BrainScreen })))
 
@@ -120,6 +122,7 @@ export function Dashboard({ route, inApp = false }: { route: Route; inApp?: bool
         {route.name === 'notes' && <NotesScreen />}
         {route.name === 'start' && <NewProjectScreen mode={route.mode} />}
         {route.name === 'mail' && <Suspense fallback={null}><MailScreen /></Suspense>}
+        {route.name === 'watch' && <Suspense fallback={null}><WatchScreen /></Suspense>}
         {route.name === 'brain' && <Suspense fallback={null}><BrainScreen node={route.node} /></Suspense>}
       </ErrorBoundary>
     </Shell>

@@ -210,6 +210,28 @@ describe('OfferStrip', () => {
     expect(send.mock.calls[0]![0]).toEqual({ offer: 'local-models', answers: { q1: 'search', q2: 'pc-nvidia' } })
   })
 
+  it('youtube: Try it now opens the Watch tab, answers nothing and sends nothing', async () => {
+    for (const k of ['offer-second-brain-no', 'offer-local-models-no', 'offer-variant-youtube'] as const) markAnswered(k, NOW)
+    const send = given(5)
+    render(<OfferStrip now={NOW} quietMs={0} />)
+    fireEvent.click(await screen.findByText('Try it now'))
+    expect(location.hash).toBe('#/watch')
+    expect(send).not.toHaveBeenCalled()
+    expect(isDue('offer-youtube-no', NOW + 1)).toBe(true)
+    expect(isDue('offer-youtube-sent', NOW + 1)).toBe(true)
+    // The question is still there to answer.
+    expect(screen.getByText('Would you watch YouTube in Caprock while agents work?')).toBeTruthy()
+    history.replaceState(null, '', '/')
+  })
+
+  it('only an offer that can be tried has Try it now', async () => {
+    markAnswered('offer-second-brain-no', NOW)
+    given(5)
+    render(<OfferStrip now={NOW} quietMs={0} />)
+    expect(await screen.findByText('Would you run Hugging Face models on this computer from Caprock?')).toBeTruthy()
+    expect(screen.queryByText('Try it now')).toBe(null)
+  })
+
   it('shows on demand from the address, and records nothing', async () => {
     history.replaceState(null, '', '/?offer=youtube')
     given(0)

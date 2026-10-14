@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=]
+// Routes: #/ (Now) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/watch · #/brain[?node=]
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -20,6 +20,8 @@ export type Route =
   | { name: 'settings'; section?: SettingsSection }
   // Caprock Mail (internal/mail): every inbox the user added.
   | { name: 'mail' }
+  // Watch: a YouTube link played while agents work (lib/watch.ts).
+  | { name: 'watch' }
   // Second Brain (ADR-063); `node` opens one memory's detail.
   | { name: 'brain'; node?: number }
   // Start work from the phone (WP-15): clone, a new project, a worktree.
@@ -68,6 +70,8 @@ export function parseHash(hash: string): Route {
       return parts[1] === 'phone' || parts[1] === 'telegram' ? { name: 'settings', section: parts[1] } : { name: 'settings' }
     case 'mail':
       return { name: 'mail' }
+    case 'watch':
+      return { name: 'watch' }
     case 'brain': {
       const node = Number(params.get('node'))
       return Number.isInteger(node) && node > 0 ? { name: 'brain', node } : { name: 'brain' }
@@ -99,6 +103,7 @@ export function href(r: Route): string {
     case 'notes': return '#/notes'
     case 'settings': return r.section ? `#/settings/${r.section}` : '#/settings'
     case 'mail': return '#/mail'
+    case 'watch': return '#/watch'
     case 'brain': return r.node ? `#/brain?node=${r.node}` : '#/brain'
     case 'start': return r.mode ? `#/start?mode=${r.mode}` : '#/start'
   }

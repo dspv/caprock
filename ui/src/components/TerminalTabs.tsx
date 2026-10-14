@@ -19,7 +19,7 @@ import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane'
 import { composerFits, useComposerEnabled } from '@/lib/composer'
 import { AgentGlyph, agentGlyphLabel } from './AgentMarks'
-import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, MailIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, MailIcon, WatchIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { sessionHealth } from '@/lib/sessionLabels'
 import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
@@ -74,6 +74,8 @@ export interface TabStripProps {
   dashboard?: DashboardTab
   /** The Mail tab, when it is open: after the Dashboard tab, before the terminals. */
   mail?: SystemTab
+  /** The Watch tab, when it is open: after Mail. It has no key. */
+  watch?: SystemTab
   /** The terminals are in front, so the chat and inspector buttons apply. */
   paneTools?: boolean
   sessions: ReadonlyMap<string, SessionSummary>
@@ -253,6 +255,37 @@ export function TabStrip(props: TabStripProps) {
               title="Close the Mail tab"
               onClick={(e) => { e.stopPropagation(); props.mail!.onClose() }}
               className={`h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${props.mail.active ? 'flex' : 'hidden'}`}
+            >
+              <CloseIcon size={12} />
+            </button>
+          </div>
+        )}
+        {props.watch && (
+          /* Watch's own tab (an experiment, lib/watch.ts): opened from the
+           * palette or the YouTube survey's Try it now, kept until its ×.
+           * No key of its own, so no kbd. */
+          <div
+            role="tab"
+            tabIndex={props.watch.active ? 0 : -1}
+            aria-selected={props.watch.active}
+            data-watch-tab
+            onClick={props.watch.onActivate}
+            onAuxClick={(e) => { if (e.button === 1) props.watch!.onClose() }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.watch!.onActivate() }}
+            title="Watch — a YouTube link while agents work"
+            aria-label="Watch"
+            className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-1 rounded-t-[9px] px-2 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
+              props.watch.active ? 'app-tab-front app-tab-dash bg-bg font-medium text-fg' : 'app-tab-dash text-fg hover:text-fg'
+            }`}
+          >
+            <WatchIcon size={15} className="text-accent" />
+            <span>Watch</span>
+            <button
+              type="button"
+              aria-label="Close tab Watch"
+              title="Close the Watch tab"
+              onClick={(e) => { e.stopPropagation(); props.watch!.onClose() }}
+              className={`h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${props.watch.active ? 'flex' : 'hidden'}`}
             >
               <CloseIcon size={12} />
             </button>

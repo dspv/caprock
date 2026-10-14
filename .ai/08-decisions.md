@@ -2651,6 +2651,17 @@ their replies flow here with no change to the bridge.
 besides the integrations the user turns on, one survey answer may go to
 caprock.dev, only on the user's click, after the card names every field.
 
+*Noted 2026-10-14 with ADR-062's Watch experiment:* the Watch tab plays a
+YouTube link the user pastes, in YouTube's privacy-enhanced player
+(`www.youtube-nocookie.com`). That is a frame the user's own Play loads, not
+a call Caprock makes: nothing about the machine, its sessions or the user is
+sent, the daemon makes no request, and nothing loads before Play. What the
+player itself fetches (video, thumbnails, its scripts, from Google's hosts)
+is YouTube's, as in any browser tab; the tab says so in one line. The page's
+`Content-Security-Policy: frame-src 'self' https://www.youtube-nocookie.com`
+(internal/api/ui.go) and the desktop shell's navigation guard (`is_player_frame`)
+let that one player in and no other site.
+
 ---
 
 ## ADR-048 — Several sign-ins per agent, each in a config directory of Caprock's; three per agent are free
@@ -3751,6 +3762,23 @@ reusing this route for anything but a card the user answers.
 and an optional email, or anyone proposes sending something the user did
 not see on the card. Adding an offer of the same shape is a row in the
 three schemas, not a new decision.
+
+**Note, 2026-10-14 — Watch, an experiment beside the YouTube survey.** The
+owner (translated): "Let's try adding YouTube watching somewhere." So the
+survey's card gets **Try it now**, which opens the **Watch** tab
+(`#/watch`; also ⌘K *Watch YouTube…*) and answers nothing and sends
+nothing. The tab plays a pasted YouTube link (watch, youtu.be, Shorts,
+live, playlist) in the privacy-enhanced embed, and when an agent turns to
+waiting on the user it shows a strip over the video with **Go** and pauses
+the video (the IFrame Player API's `pauseVideo`, by postMessage; *Pause
+when an agent needs me*, on by default). Rule 4 holds as ADR-047's note
+says: nothing loads from YouTube before Play, the tab says where the video
+comes from in one line, and the only frame source allowed is
+`https://www.youtube-nocookie.com`. No search: it would need a YouTube API
+key and a request to Google per query. No sidebar row (the owner keeps the
+sidebar simple) and no mini player. It measures nothing and reports nothing;
+the survey stays the measure. Remove it, or give it a place, once the
+answers are in.
 
 ## ADR-063 — Second Brain: the sessions' decisions and findings, kept as a graph on this machine; twenty by hand are free
 
