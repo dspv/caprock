@@ -3324,7 +3324,18 @@ dashboard and a desktop app on three OSes.
   for import ever leaves the machine and no password is ever put in an HTTP
   answer (rule 4): on `POST /v1/mail/import` the sources are re-read so the
   decrypted password goes straight to the user's own IMAP/SMTP server and
-  nowhere else.
+  nowhere else. *Import everything* (amended 2026-10-14, owner request)
+  lists every account found once, merged by address across the apps,
+  Apple's Internet Accounts (Google, iCloud, Exchange) included, and walks
+  the ticked ones one at a time through the single step each still needs:
+  nothing for a saved password, the browser sign-in for Google and
+  Microsoft (an app password when the build has no client ID), an
+  app-specific password for iCloud, the server's password otherwise. A
+  source it cannot read (Apple Mail without Full Disk Access) is not shown
+  at all, and each shown source says when its profile was last used.
+  Outlook for Mac is not read: its profile is
+  in another app's group container, behind an OS prompt Caprock does not
+  raise, and its accounts are mostly Microsoft 365, which sign-in covers.
 - **Headers are read whole.** The list is built from `BODY.PEEK[HEADER]`,
   parsed locally, never from ENVELOPE or `HEADER.FIELDS`: iCloud has sent
   ENVELOPEs with unescaped quotes in the Message-ID (one bad answer fails
