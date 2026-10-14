@@ -54,7 +54,9 @@ func TestProjectActivity(t *testing.T) {
 	ctx := context.Background()
 	db := s.DB()
 	now := time.Now()
-	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	// The day's start is half an hour back, not the calendar midnight: a run
+	// at 00:00:02 put the event a minute before now into yesterday.
+	dayStart := now.Add(-30 * time.Minute)
 	for _, id := range []string{"waits", "asks", "works", "subagent", "background", "ended"} {
 		if err := UpsertSession(ctx, db, id, SessionPatch{Cwd: "/nowhere/proj"}); err != nil {
 			t.Fatal(err)
@@ -71,7 +73,7 @@ func TestProjectActivity(t *testing.T) {
 		{SessionID: "background", Kind: event.KindToolPre, Tool: "Bash", AgentID: "a2", Ts: now.Add(-2 * time.Second)},
 		{SessionID: "background", Kind: event.KindAgentStop, Ts: now.Add(-time.Second)},
 		{SessionID: "works", Kind: event.KindTurnAssistant, Model: "codex-auto-review", CostUSD: usd(9), Ts: now},
-		{SessionID: "ended", Kind: event.KindTurnAssistant, Model: "claude-opus-4-1", CostUSD: usd(0.25), Ts: midnight.Add(-time.Hour)},
+		{SessionID: "ended", Kind: event.KindTurnAssistant, Model: "claude-opus-4-1", CostUSD: usd(0.25), Ts: dayStart.Add(-time.Hour)},
 	}
 	for i := range evs {
 		if _, err := InsertEvent(ctx, db, &evs[i]); err != nil {
@@ -81,7 +83,7 @@ func TestProjectActivity(t *testing.T) {
 	if err := SetExit(ctx, db, "ended", 0); err != nil {
 		t.Fatal(err)
 	}
-	act, err := ProjectActivityByDir(ctx, db, midnight.UnixMilli())
+	act, err := ProjectActivityByDir(ctx, db, dayStart.UnixMilli())
 	if err != nil {
 		t.Fatal(err)
 	}
