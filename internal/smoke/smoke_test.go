@@ -131,7 +131,7 @@ func (h *harness) hook(event string, extra map[string]any) {
 	}
 	body, _ := json.Marshal(p)
 	cmd := exec.Command(h.shim)
-	cmd.Env = append(os.Environ(), config.EnvDataDir+"="+h.dataDir)
+	cmd.Env = append(os.Environ(), config.EnvDataDir+"="+h.dataDir, "CAPROCK_HOOK_DEBUG=1")
 	cmd.Stdin = bytes.NewReader(body)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -265,7 +265,15 @@ func TestPhase0DefinitionOfDone(t *testing.T) {
 	h.hook("UserPromptSubmit", map[string]any{"prompt": "add healthz", "prompt_id": "p1"})
 	t0 := time.Now()
 	h.hook("PreToolUse", map[string]any{"tool_name": "Edit", "tool_input": map[string]any{"file_path": filepath.Join(h.repo, "main.go"), "old_string": "a", "new_string": "b"}, "tool_use_id": "toolu_1"})
+	dumped := false
 	h.waitFor(20*time.Second, "Now shows 'editing main.go'", func() bool {
+		if !dumped && time.Since(t0) > 2*time.Second {
+			dumped = true
+			buf := make([]byte, 8<<20)
+			n := runtime.Stack(buf, true)
+			dbg, _ := os.ReadFile(config.HookDebugLogPath(h.dataDir))
+			h.t.Logf("DIAG SLOW: over 2s. hook-debug.log:\n%s\nDIAG GOROUTINES:\n%s", dbg, buf[:n])
+		}
 		s := h.session()
 		if s == nil {
 			h.t.Logf("DIAG %s no session", time.Now().Format("15:04:05.000"))
