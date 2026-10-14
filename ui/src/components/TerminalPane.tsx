@@ -32,8 +32,11 @@
  *   with output and no WebGL gets it in show() itself, before the first
  *   paint, and is drawn in that same frame (`paintNow`): the quiet wait is
  *   for first output and typing, not for coming back into view. The glyph
- *   atlas is not thrown away on a plain switch (`repaintGlyphs`), and a pane
- *   whose box did not change is not refitted.
+ *   atlas is not rasterised again on a plain switch (`repaintGlyphs`), but
+ *   it is sent to the GPU again (`reuploadGlyphs`): WebKit can drop a hidden
+ *   canvas's texture, and the tab came back garbled until a new glyph made
+ *   the addon upload a page (owner, 2026-10-14). A pane whose box did not
+ *   change is not refitted.
  * - **The scrolling rule.** xterm.js already keeps the viewport still while
  *   the reader is scrolled up; this adds the "↓ N new lines" pill.
  * - **Find** (F16): ⌘F in the focused pane of the tab in front opens the bar
@@ -70,7 +73,7 @@ import { Composer } from './Composer'
 import { TerminalFind, type TermSearch } from './TerminalFind'
 import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPrefs } from '@/lib/termprefs'
 import { searchColors, terminalTheme } from '@/lib/termthemes'
-import { loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
+import { clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 import { blinkWhileVisible, pageHidden } from '@/lib/visible'
 
 export { APP_TERMINAL_THEME } from '@/lib/termthemes'
@@ -139,6 +142,21 @@ export function keptWebglCount(): number {
  * it cannot throw here, and the pane falls back to waiting for the observer
  * (one blank frame, nothing worse).
  */
+/**
+ * Sends the WebGL renderer's glyph atlas to the GPU again, from the canvas it
+ * was rasterised into, without rasterising anything: the next frame re-uploads
+ * every page (the addon's own `setAtlas`, which marks each page's texture
+ * stale). False when the addon's insides are not what this expects (another
+ * version); the caller then rebuilds the atlas instead.
+ */
+export function reuploadGlyphs(addon: unknown): boolean {
+  const r = (addon as { _renderer?: { _charAtlas?: unknown; _glyphRenderer?: { value?: { setAtlas?: (a: unknown) => void } } } })._renderer
+  const glyphs = r?._glyphRenderer?.value
+  if (!r?._charAtlas || typeof glyphs?.setAtlas !== 'function') return false
+  try { glyphs.setAtlas(r._charAtlas) } catch { return false }
+  return true
+}
+
 function paintNow(term: Xterm) {
   const rs = (term as unknown as { _core?: { _renderService?: { _handleIntersectionChange?: (e: { isIntersecting: boolean; intersectionRatio: number }) => void } } })._core?._renderService
   try { rs?._handleIntersectionChange?.({ isIntersecting: true, intersectionRatio: 1 }) } catch { /* another xterm */ }
@@ -506,8 +524,8 @@ export function TerminalPane({
     const repaintGlyphs = () => {
       glyphsStale = false
       if (!webgl) return
-      term.clearTextureAtlas()
-      term.refresh(0, term.rows - 1)
+      // Every terminal's, not this one's: the atlas is shared (clearGlyphAtlas).
+      clearGlyphAtlas(term)
     }
     let dprQuery: MediaQueryList | undefined
     const onDpr = () => {
@@ -601,6 +619,16 @@ export function TerminalPane({
         if (!webgl) {
           if (!gotOutput || !loadWebgl(true)) scheduleWebgl()
         } else if (glyphsStale || (hiddenAt > 0 && Date.now() - hiddenAt > LONG_HIDDEN_MS)) {
+          repaintGlyphs()
+        } else if (!reuploadGlyphs(webgl)) {
+          // Every other way back into view — a switch, the tab in front
+          // closed, back from the dashboard or the chat — re-sends the atlas
+          // to the GPU, rasterising nothing (owner, 2026-10-14: garbled
+          // glyphs for about 2 s after closing a tab, and after the chat).
+          // WebKit can let the texture of a hidden WebGL canvas go without
+          // a contextlost; the atlas canvas it was uploaded from is intact
+          // — the screen came right by itself as soon as a new glyph made
+          // the addon upload a page again. A re-upload is that, at once.
           repaintGlyphs()
         }
         // A no-op unless the box, the cell or the renderer changed meanwhile:

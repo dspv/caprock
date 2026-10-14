@@ -442,9 +442,11 @@ others. Installing it: [install-app.md](install-app.md).
   your file manager and its path is typed at the prompt, quoted, as in any
   terminal; the agent works on that file, not a copy. Drag a tab along the
   strip to reorder it.
-- **Chat.** An agent tab switches between its terminal and its chat with the
-  chat button in the tab strip: your prompts, what the agent wrote, and each
-  tool call on one line that opens. The field under it types into the
+- **Chat.** An agent tab switches between its terminal and its chat with
+  **Chat** in the tab strip (lit while the chat is shown; press it again for
+  the terminal): your prompts, what the agent wrote, and each tool call on
+  one line that opens. The agent keeps running meanwhile; what it prints in
+  the terminal is there, drawn at once, when you go back. The field under it types into the
   session. Send while the agent is still working and the message waits as
   a dashed *Queued* bubble; Caprock types it in when the turn ends, one
   message per turn, and never into a permission prompt. **Edit**,

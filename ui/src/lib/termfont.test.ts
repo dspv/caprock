@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { loadTerminalFont, terminalFontSamples, watchTerminalFont, TERMINAL_FONT_FAMILY } from './termfont'
+import { clearGlyphAtlas, loadTerminalFont, terminalFontSamples, watchTerminalFont, TERMINAL_FONT_FAMILY } from './termfont'
 import type { Terminal as Xterm } from '@xterm/xterm'
 
 function fakeTerm() {
@@ -63,5 +63,28 @@ describe('termfont', () => {
     await vi.waitFor(() => expect(after).toHaveBeenCalledTimes(1))
     expect(steps).toContain('atlas')
     stop()
+  })
+
+  // The owner, 2026-10-14: rows of garbage glyphs in one tab after another
+  // tab rebuilt the atlas — xterm shares it among terminals of one face, and
+  // clearTextureAtlas() forgets only the caller's cell model.
+  it('clears the shared atlas for every live terminal, never one alone, and stops counting a terminal once it is gone', () => {
+    const fonts = fakeFonts(true)
+    const a = fakeTerm()
+    const b = fakeTerm()
+    const c = fakeTerm()
+    const stopA = watchTerminalFont(a.term, () => {}, fonts as unknown as FontFaceSet)
+    const stopB = watchTerminalFont(b.term, () => {}, fonts as unknown as FontFaceSet)
+    clearGlyphAtlas(a.term)
+    for (const t of [a, b]) expect(t.steps).toEqual(['atlas', 'refresh'])
+    // One not watched still gets it when it asks.
+    clearGlyphAtlas(c.term)
+    expect(c.steps).toEqual(['atlas', 'refresh'])
+    expect(b.steps).toEqual(['atlas', 'refresh', 'atlas', 'refresh'])
+    stopB()
+    clearGlyphAtlas(a.term)
+    expect(b.steps).toHaveLength(4)
+    expect(a.steps).toHaveLength(6)
+    stopA()
   })
 })

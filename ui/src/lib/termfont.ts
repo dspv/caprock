@@ -57,18 +57,52 @@ export function loadTerminalFont(fonts: FontFaceSet | undefined = typeof documen
   return Promise.all(asks).then(() => undefined)
 }
 
+/** Every terminal in the page, while its font watcher runs (watchTerminalFont). */
+const liveTerms = new Set<Xterm>()
+
+/**
+ * Throws the WebGL glyph atlas away and has EVERY terminal draw from the new
+ * one — never one terminal alone.
+ *
+ * xterm's WebGL addon shares one atlas among all terminals with the same face,
+ * size, colours and pixel ratio, and `clearTextureAtlas()` empties that shared
+ * atlas but forgets the cell model of the terminal it was called on only. The
+ * others kept, for every cell they had not redrawn since, the atlas position
+ * of a glyph that was no longer there: the next glyphs rasterised into those
+ * positions showed up in their place. Rows redrawn in full were right, rows
+ * partly redrawn read as garbage ("ι ɤr ·r ɤrrง") — for good, in a tab that
+ * did not print, or for the 2 s until Claude Code's status rows were drawn
+ * again (owner, 2026-10-14, after closing a tab and after the chat). Any one
+ * terminal clearing it — a tab back after five minutes, a wake, a pixel-ratio
+ * change, a face finishing its load — did it to all the rest.
+ *
+ * So each terminal clears its model in the same task, before any of them
+ * draws: the first call empties the atlas, the rest find it empty and only
+ * clear their models (the addon's `clearTexture` does nothing on an empty
+ * atlas). A hidden terminal repaints in full when it is next shown.
+ */
+export function clearGlyphAtlas(term?: Xterm): void {
+  const all = new Set(liveTerms)
+  if (term) all.add(term)
+  for (const t of all) {
+    try {
+      t.clearTextureAtlas()
+      t.refresh(0, t.rows - 1)
+    } catch { /* disposed */ }
+  }
+}
+
 /**
  * Makes a terminal measure its cell again and redraw every glyph. xterm
  * measures only when fontFamily or fontSize changes, so the family is set to
- * a generic one and back; the WebGL atlas is cleared so no glyph rasterised
- * before now survives.
+ * a generic one and back; the WebGL atlas is cleared (for every terminal:
+ * clearGlyphAtlas) so no glyph rasterised before now survives.
  */
 export function remeasureTerminal(term: Xterm): void {
   const family = term.options.fontFamily
   term.options.fontFamily = 'monospace'
   term.options.fontFamily = family
-  term.clearTextureAtlas()
-  term.refresh(0, term.rows - 1)
+  clearGlyphAtlas(term)
 }
 
 /**
@@ -80,6 +114,7 @@ export function remeasureTerminal(term: Xterm): void {
 export function watchTerminalFont(term: Xterm, after: () => void = () => {}, fonts: FontFaceSet | undefined = typeof document === 'undefined' ? undefined : document.fonts): () => void {
   let stopped = false
   let raf = 0
+  liveTerms.add(term)
   const redo = () => {
     raf = 0
     if (stopped) return
@@ -107,6 +142,7 @@ export function watchTerminalFont(term: Xterm, after: () => void = () => {}, fon
   fonts?.addEventListener?.('loadingdone', onLoaded)
   return () => {
     stopped = true
+    liveTerms.delete(term)
     if (raf) cancelAnimationFrame(raf)
     fonts?.removeEventListener?.('loadingdone', onLoaded)
   }

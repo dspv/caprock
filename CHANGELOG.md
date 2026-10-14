@@ -7,6 +7,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **app:** the chat button in the tab strip says what it is: a speech
+  bubble and the word **Chat**, as Deck has its word, lit while the chat is
+  shown. Its tooltip says what the chat is: this session as messages —
+  your prompts, the agent's replies, one line per tool call — and a field
+  that types into it, while the terminal keeps running.
+
+### Fixed
+
+- **app:** terminals no longer show rows of wrong letters ("ι ɤr ·r")
+  after another tab redraws its glyphs. All terminals share one set of
+  drawn glyphs; when one tab rebuilt it (back after five minutes, after the
+  Mac woke, on a display change) the others kept pointing at places in it
+  that now held other letters, until their rows were drawn again — for a
+  couple of seconds after closing a tab or leaving the chat, or for good in
+  a tab that printed nothing. Every terminal now redraws from the new set
+  at once, and a tab coming back into view sends its glyphs to the GPU
+  again. Under the chat (and under Changes or a comparison) the terminal is
+  put away as a tab behind another is: what the agent prints meanwhile is
+  drawn at once when you come back.
+
 ## [0.117.0] - 2026-10-14
 
 ### Added
