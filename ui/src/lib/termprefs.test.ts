@@ -69,12 +69,14 @@ describe('terminal preferences', () => {
     expect(again.getTerminalPrefs()).toMatchObject({ theme: 'caprock', fontSize: 15 })
   })
 
-  it('build xterm options with a resolved font stack and a contrast floor on light grounds', async () => {
+  it('build xterm options with a resolved font stack and a contrast floor on every ground', async () => {
     const m = await load()
     const stack = '"JetBrains Mono Variable", ui-monospace, monospace'
     const dark = m.xtermOptions(m.DEFAULT_PREFS, stack)
     expect(dark.fontFamily).toBe(stack)
-    expect(dark.minimumContrastRatio).toBe(1)
+    // Dark too: Claude Code paints its own selection in ANSI blue, which a dark
+    // palette keeps light, under light ink (owner, 2026-10-14).
+    expect(dark.minimumContrastRatio).toBe(4.5)
     expect(dark.cursorStyle).toBe('bar')
     const light = m.xtermOptions({ ...m.DEFAULT_PREFS, theme: 'paper', font: 'fira-code' }, stack)
     expect(light.fontFamily).toBe(`"Fira Code", ${stack}`)

@@ -3324,7 +3324,18 @@ dashboard and a desktop app on three OSes.
   for import ever leaves the machine and no password is ever put in an HTTP
   answer (rule 4): on `POST /v1/mail/import` the sources are re-read so the
   decrypted password goes straight to the user's own IMAP/SMTP server and
-  nowhere else.
+  nowhere else. *Import everything* (amended 2026-10-14, owner request)
+  lists every account found once, merged by address across the apps,
+  Apple's Internet Accounts (Google, iCloud, Exchange) included, and walks
+  the ticked ones one at a time through the single step each still needs:
+  nothing for a saved password, the browser sign-in for Google and
+  Microsoft (an app password when the build has no client ID), an
+  app-specific password for iCloud, the server's password otherwise. A
+  source it cannot read (Apple Mail without Full Disk Access) is not shown
+  at all, and each shown source says when its profile was last used.
+  Outlook for Mac is not read: its profile is
+  in another app's group container, behind an OS prompt Caprock does not
+  raise, and its accounts are mostly Microsoft 365, which sign-in covers.
 - **Headers are read whole.** The list is built from `BODY.PEEK[HEADER]`,
   parsed locally, never from ENVELOPE or `HEADER.FIELDS`: iCloud has sent
   ENVELOPEs with unescaped quotes in the Message-ID (one bad answer fails
@@ -3851,9 +3862,25 @@ searching prose.
   first, in a budget of 700 characters of its own — so sessions started
   after this change in the handoff experiment's served group receive
   slightly more than before.
+- **Drawn, and in the sidebar.** The `#/brain` screen opens on the graph —
+  memories and the topics and projects they hang off, laid out by a
+  force simulation written for it (`ui/src/lib/forcegraph.ts`: Barnes–Hut
+  repulsion, springs, a pull to the centre), the list one click away. The
+  edges, nodes and labels are drawn into a cached layer only when they
+  change; panning and zooming scale that layer and redraw it when the
+  view rests. On a preview stand with 3,011 memories, in the headless
+  Chromium the screenshots use (software rendering, so slower than a
+  real window), a frame took a median 9.2 ms while the layout settled and
+  8.4 ms while zooming (2026-10-14); before the cached layer, stroking every
+  edge every frame took 225 ms. The app's sidebar has a Brain block below
+  the projects: a small graph of the newest thirty memories, where one that
+  is kept drops in from above with a ring where it lands (none with
+  prefers-reduced-motion), the three newest titles and the count. Folded
+  by default without a licence, with a lock and *How it works*.
 
 **Rules out:** an embedding index or a vector store (a dependency and a model
-for what titles, topics and links do); a server of ours; an API key of
+for what titles, topics and links do); a graph library in the dashboard
+(the layout is under 300 lines we can read); a server of ours; an API key of
 Caprock's or a model call made any way but the user's own `claude`; running
 the extraction before the user says yes; storing the graph
 anywhere but the daemon's database; locking a user out of memories already

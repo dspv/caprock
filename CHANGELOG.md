@@ -9,6 +9,51 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **pipeline:** ⇧⌘B (Ctrl+Alt+Shift+B on Windows and Linux) opens the
+  Pipeline in a tab, or brings it to the front; pressed again there, it goes
+  back to the tab you were on. *Open Pipeline* is in ⌘K too.
+- **cockpit:** the CI block's *PRs* view shows the repository's pull
+  requests as thin progress bars toward a release — Open → CI → Merged →
+  Released, CI in its check colour — with each one's number, title and time
+  on its step. It scrolls; *Expand* makes it taller and is remembered;
+  *Pipeline ↗* opens the page.
+
+### Changed
+
+- **pipeline:** *PRs & CI* is now **Pipeline**, everywhere: the tab, the
+  sidebar footer, the palette, the deck. Tabs you had open come back under
+  the new name. The page is one list of pull requests instead of a board
+  and a list: each row its number, its whole title, its labels, and the
+  steps Open → CI → Merged → Released as pills, the one it is on
+  highlighted, then its agent cost. In flight first, then merged, then
+  released (ten, then *Show more*). Click a row for its detail over the
+  page; × or Esc closes it. The red-runs and Actions-minutes figures went
+  with the old list.
+- **app:** the sidebar footer's button is *Pipeline*: a click opens the page
+  or goes back from it. Showing or hiding the bar under the agent is now on
+  the bar itself (*Pipeline* and ×), ⌘B, and *Pipeline bar: On/Off* in ⌘K.
+
+## [0.117.2] - 2026-10-14
+
+### Added
+
+- **mail:** **Import everything.** Mail lists the mail accounts it can
+  read on the computer — Thunderbird, and Apple Mail including the Google,
+  iCloud and Exchange accounts in System Settings › Internet Accounts —
+  each address once, under the app it came from and when that profile was
+  last used (accounts from a profile unused for 90 days start unticked). An
+  app it cannot read is not shown. Tick them and press *Import*: accounts with a saved
+  Thunderbird password connect by themselves, then each other account asks
+  for its one sign-in in turn (Google or Microsoft in the browser, an
+  app-specific password for iCloud, otherwise the password), with a
+  progress list of connected, waiting and failed accounts, *Retry*, *Skip
+  for now* and *Come back*. A build without Google or Microsoft sign-in says so and asks for
+  an app password instead of showing a button that cannot work.
+- **release:** Mail's Google and Microsoft client IDs are compiled into
+  releases from the `CAPROCK_MAIL_GOOGLE_CLIENT_ID`,
+  `CAPROCK_MAIL_GOOGLE_CLIENT_SECRET` and `CAPROCK_MAIL_MICROSOFT_CLIENT_ID`
+  GitHub secrets, the desktop app's daemon included; unset, a release still
+  builds.
 - **now:** each figure in *Today* has a small line of your last 14 days and
   one word against your own median: *usual*, *above usual +38%*, *below
   usual −20%*. Running totals (cost, sessions, turns) are compared by the
@@ -38,14 +83,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   until you press **Send**, which sends those answers to caprock.dev and
   nothing else; *Not interested* and × send nothing, and an answered strip
   never returns.
-- **pipeline:** ⇧⌘B (Ctrl+Alt+Shift+B on Windows and Linux) opens the
-  Pipeline in a tab, or brings it to the front; pressed again there, it goes
-  back to the tab you were on. *Open Pipeline* is in ⌘K too.
-- **cockpit:** the CI block's *PRs* view shows the repository's pull
-  requests as thin progress bars toward a release — Open → CI → Merged →
-  Released, CI in its check colour — with each one's number, title and time
-  on its step. It scrolls; *Expand* makes it taller and is remembered;
-  *Pipeline ↗* opens the page.
+- **brain:** Second Brain drawn. The Brain screen opens on a graph of your
+  memories and their topics and projects — drag, zoom, click a dot to open
+  it, *List* for rows — smooth with thousands of memories. The app's
+  sidebar has a Brain block below the projects: the newest thirty as a small
+  graph where each new memory drops in, and the three newest titles. The
+  strip that offered Second Brain ahead of its arrival no longer shows.
 
 ### Fixed
 
@@ -62,6 +105,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   kept copy is read again, or *Couldn't refresh: <why> · showing data from
   15:02 · Retry*; the CI/CD section on Now says the same. A refresh that
   keeps failing is no longer retried on every poll.
+- **ui:** selected text stays readable in every theme. In a terminal,
+  Claude Code's own selection (fullscreen mode) painted its highlight in the
+  palette's blue, which in a dark palette is light, under light text — in
+  Dark Pastel 1.6:1, nearly invisible. Every terminal palette now keeps text
+  at 4.5:1 or more against whatever is behind it, as the light ones already
+  did. Selected text on the page sits on a lighter wash of the accent (20%,
+  was 35%), written out per palette: body text 8:1 or more, muted text
+  4.3:1 or more.
+
 - **phone:** a paired phone stays paired. A dropped connection, a computer
   or relay restarting, a phone asleep or offline, a computer still on an
   older Caprock, or a QR opened twice no longer send the phone back to
@@ -87,21 +139,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   prompt to *working* about 1 s → under 10 ms; an approved 15 s command
   16 s → under 10 ms.
 
-
-### Changed
-
-- **pipeline:** *PRs & CI* is now **Pipeline**, everywhere: the tab, the
-  sidebar footer, the palette, the deck. Tabs you had open come back under
-  the new name. The page is one list of pull requests instead of a board
-  and a list: each row its number, its whole title, its labels, and the
-  steps Open → CI → Merged → Released as pills, the one it is on
-  highlighted, then its agent cost. In flight first, then merged, then
-  released (ten, then *Show more*). Click a row for its detail over the
-  page; × or Esc closes it. The red-runs and Actions-minutes figures went
-  with the old list.
-- **app:** the sidebar footer's button is *Pipeline*: a click opens the page
-  or goes back from it. Showing or hiding the bar under the agent is now on
-  the bar itself (*Pipeline* and ×), ⌘B, and *Pipeline bar: On/Off* in ⌘K.
 
 ## [0.117.1] - 2026-10-14
 
