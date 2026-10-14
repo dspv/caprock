@@ -74,7 +74,46 @@ export type State = {
   accounts: Account[]
   folders: Folder[]
   counts: { inbox: number; unread: number; flagged: number }
+  /** Sample mode: every route serves made-up accounts; nothing is real. */
+  sample?: boolean
 }
+
+export type ImportAccount = {
+  name: string
+  email: string
+  username: string
+  imap_host: string
+  imap_port: number
+  imap_tls: string
+  smtp_host: string
+  smtp_port: number
+  smtp_tls: string
+  has_password: boolean
+}
+
+export type ImportSource = {
+  kind: string
+  label: string
+  accounts: ImportAccount[]
+  needs_permission?: string
+  error?: string
+}
+
+export type ImportResult = { email: string; ok: boolean; error?: string }
+
+export type OAuthProviders = { google?: boolean; microsoft?: boolean }
+
+/** An HTTP failure that keeps its status, so a missing route can be told apart. */
+export class HttpError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
+/** A route this daemon does not have yet (an older build, or not merged). */
+export const missingRoute = (e: unknown) => e instanceof HttpError && (e.status === 404 || e.status === 405 || e.status === 501)
 
 export type ProviderGuess = {
   provider: string
@@ -88,6 +127,10 @@ export type ProviderGuess = {
   help_url?: string
   known: boolean
   needs_username?: boolean
+  /** How the servers were found: preset, mx, srv, autoconfig or guess (newer daemons). */
+  source?: string
+  /** The sign-in name, when the domain's autoconfig names one other than the address. */
+  username?: string
 }
 
 export type Settings = Record<string, string>
@@ -109,12 +152,18 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   if (t) headers['X-Caprock-Device'] = t
   const res = await fetch(path, { method, headers, body: body === undefined ? (method === 'GET' ? undefined : '{}') : JSON.stringify(body) })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error((data as { error?: string }).error || res.statusText)
+  if (!res.ok) throw new HttpError((data as { error?: string }).error || res.statusText || String(res.status), res.status)
   return data as T
 }
 
 export const api = {
   state: () => req<State>('GET', '/v1/mail/state'),
+  sample: (on: boolean) => req<{ sample: boolean }>('POST', '/v1/mail/sample', { on }),
+  importSources: () => req<{ sources: ImportSource[] }>('GET', '/v1/mail/import'),
+  importAccounts: (source: string, emails: string[], passwords?: Record<string, string>) =>
+    req<{ results: ImportResult[] }>('POST', '/v1/mail/import', { source, emails, passwords }),
+  oauthProviders: () => req<OAuthProviders>('GET', '/v1/mail/oauth/providers'),
+  oauthStart: (provider: string) => req<{ auth_url: string }>('POST', '/v1/mail/oauth/start', { provider }),
   list: (p: Record<string, string | number | undefined>) => {
     const q = new URLSearchParams()
     for (const [k, v] of Object.entries(p)) if (v !== undefined && v !== '' && v !== 0) q.set(k, String(v))

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Event, SessionSummary, Subagent, Summary } from './api'
 import {
-  askLine, chipGroups, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runShare, runningTool, subagentChips, subagentDoing, subagentInitial, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
+  askLine, chipGroups, chipLayout, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runShare, runningTool, subagentChips, subagentDoing, subagentInitial, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
   MAX_SUBAGENT_CHIPS, RUNNING_STALE_MS,
 } from './cockpit'
 
@@ -234,14 +234,39 @@ describe('subagentChips', () => {
   it('has nothing to draw without the list', () => {
     expect(subagentChips(undefined)).toEqual({ chips: [], more: 0 })
   })
-  // "Why doesn't it show more agents?" (owner, 2026-10-12): two rows of
-  // twelve before a "+N", in groups of four.
-  it('draws up to 24 by default, in groups of four', () => {
-    const working = Array.from({ length: 26 }, (_, i) => a(String(i), 'Explore'))
+  // "Lay them out in fives so you can see by fives how many there are"
+  // (owner, 2026-10-14, translated).
+  it('groups the chips in fives', () => {
+    const working = Array.from({ length: 12 }, (_, i) => a(String(i), 'Explore'))
     const { chips, more } = subagentChips({ working, finished: 0 })
-    expect(chips).toHaveLength(MAX_SUBAGENT_CHIPS)
-    expect(more).toBe(2)
-    expect(chipGroups(chips).map((g) => g.length)).toEqual([4, 4, 4, 4, 4, 4])
-    expect(chipGroups([1, 2, 3, 4, 5, 6]).map((g) => g.length)).toEqual([4, 2])
+    expect(chips).toHaveLength(12)
+    expect(more).toBe(0)
+    expect(chipGroups(chips).map((g) => g.length)).toEqual([5, 5, 2])
+    const many = subagentChips({ working: Array.from({ length: MAX_SUBAGENT_CHIPS + 3 }, (_, i) => a(String(i))), finished: 0 })
+    expect(many.chips).toHaveLength(MAX_SUBAGENT_CHIPS)
+    expect(many.more).toBe(3)
+  })
+  it('keeps the chips in the order the subagents started, whatever order the daemon sends', () => {
+    const subs = {
+      working: [a('c', 'Plan', { started_at: 30 }), a('a', 'Explore', { started_at: 10 })],
+      finished: 1, recent: [{ agent_id: 'b', agent_type: 'general-purpose', tool_calls: 3, started_at: 20, stopped_at: 25 }],
+    }
+    expect(subagentChips(subs).chips.map((c) => [c.id, c.state])).toEqual([['a', 'working'], ['b', 'done'], ['c', 'working']])
+    // One finishing changes its state, not its place.
+    const later = { working: [a('c', 'Plan', { started_at: 30 })], finished: 2, recent: [{ agent_id: 'a', agent_type: 'Explore', tool_calls: 4, started_at: 10, stopped_at: 40 }, subs.recent[0]!] }
+    expect(subagentChips(later).chips.map((c) => [c.id, c.state])).toEqual([['a', 'done'], ['b', 'done'], ['c', 'working']])
+  })
+  it('wraps onto two lines at full size, then goes compact, then caps with +N — from the width', () => {
+    // 230px beside "N working" in a 324px inspector: two groups of five a line.
+    expect(chipLayout(230, 0)).toEqual({ compact: false, room: 20 })
+    expect(chipLayout(230, 20)).toEqual({ compact: false, room: 20 })
+    expect(chipLayout(230, 21)).toEqual({ compact: true, room: 30 })
+    expect(chipLayout(230, 30)).toEqual({ compact: true, room: 30 })
+    // More than two compact lines: the second line leaves room for "+N".
+    expect(chipLayout(200, 40)).toEqual({ compact: true, room: 25 })
+    // A wider inspector holds more before it shrinks them.
+    expect(chipLayout(340, 25)).toEqual({ compact: false, room: 30 })
+    // Never less than one group a line.
+    expect(chipLayout(40, 3)).toEqual({ compact: false, room: 10 })
   })
 })
