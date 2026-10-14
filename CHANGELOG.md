@@ -26,6 +26,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   "This phone can read but not type. On the computer: Settings…" left out
   that the setting is in the Caprock app, and two hints still sent you to
   "Settings → Phone", which does not exist.
+- **doctor:** stopping several orphans at once reports every one of them.
+  A process that was no longer on the list and one that could not be
+  stopped were recorded at the same moment, and one of the two could drop
+  out of the result, so a process left running was not reported as failed.
 
 ## [0.116.1] - 2026-10-14
 
