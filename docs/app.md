@@ -1225,8 +1225,14 @@ A phone you let control sessions can:
   **Worktree**. Then **Start an agent here** starts a session and opens its
   chat. A clone runs on the computer: lock the phone or lose the signal
   halfway and the page catches up when it is back, without cloning twice.
+- **Read a session.** A session on the phone has one thin bar on top: back,
+  its title, a dot for its state, and **Chat | Terminal** with **···** for
+  Changes, Timeline and Answers. Tap the title for the rest — the project,
+  the permission mode, the model, pause and stop, the folder and links.
+  Scroll down in the chat and the bar slides away so the conversation has
+  the screen; scroll up, or tap the top edge, and it is back.
 - **Chat with a session.** On a phone a session opens on its chat. Type into
-  the field and send; **Photo** attaches a picture by putting its path in the
+  the field and send (the field glows softly while it has the focus); **Photo** attaches a picture by putting its path in the
   message. The keys bar has Esc, Tab, the arrows, Enter and Ctrl+C for the
   agent's menus. Your saved prompts — the ones for every project and for
   this session's project — are chips above the field: tap one to put it in
@@ -1238,6 +1244,11 @@ A phone you let control sessions can:
   locking the phone loses nothing. Tap **Edit** to change one, **Cancel** to
   drop it, or **Send now** to send it without waiting. While a permission
   prompt is on the screen nothing is typed in; answer the prompt first.
+- **Dictate.** The microphone beside **Send** turns speech into text in the
+  field; nothing is sent until you press **Send**. The chip beside it says
+  the language it listens for (**EN**, **RU**…): your browser cannot guess
+  it, so tap the chip to move through your phone's languages and then to a
+  list of common ones. The choice is remembered on that phone.
 - **Pick a command or a file.** Type `/` at the start of the field for the
   agent's commands and skills, or `@` for a file in the session's folder,
   and tap one: it goes into the field, ready to send.
@@ -1249,7 +1260,10 @@ A phone you let control sessions can:
   them. Only in a project under your home folder. A phone that can only
   look sees the list and no buttons.
 
-It reconnects by itself. The header says where it stands — *Live*,
+It reconnects by itself. Through the relay, the name of your computer shows
+along the top only while something is wrong (*Connecting…*, *Computer
+offline*) or, with several computers paired, outside a session; inside one,
+switching computers is in the title's sheet. The header says where it stands — *Live*,
 *Catching up…*, *Reconnecting*, *Offline since* — and says *Live* only when
 the computer answered in the last 25 seconds. A message sent while offline
 waits as *Will send when connected* and goes when the connection is back

@@ -91,7 +91,7 @@ async function base64Of(file: File): Promise<string> {
 const nextFrame: (fn: () => void) => void =
   typeof requestAnimationFrame === 'function' ? (fn) => { requestAnimationFrame(fn) } : (fn) => { setTimeout(fn, 16) }
 
-export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, footer, boxRef }: {
+export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, footer, boxRef, scrollRef, topInset = 0 }: {
   sessionId: string
   /** The session takes input from here: owned, live, and this device may control. */
   canType: boolean
@@ -104,6 +104,12 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   footer?: ReactNode
   /** The outer element, for a caller that sizes it (useFillViewport). */
   boxRef?: (el: HTMLDivElement | null) => void
+  /** The scrolling log, for a caller that watches it (the phone's bar hides
+   *  on scroll, lib/phone useHideOnScroll). */
+  scrollRef?: (el: HTMLDivElement | null) => void
+  /** Space kept at the top of the log, in px, for a bar drawn over it: the
+   *  first message starts below the bar and scrolls under it. */
+  topInset?: number
 }) {
   const [events, setEvents] = useState<readonly Event[]>([])
   const eventsRef = useRef<readonly Event[]>([])
@@ -330,7 +336,8 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   const attach = useCallback((el: HTMLDivElement | null) => {
     box.current = el
     stickRef(el)
-  }, [stickRef])
+    scrollRef?.(el)
+  }, [stickRef, scrollRef])
 
   return (
     <div ref={boxRef} className={`flex min-h-0 flex-col ${className}`} data-chat-view>
@@ -341,6 +348,7 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
           role="log"
           aria-label="Conversation"
           className="absolute inset-0 flex flex-col overflow-y-auto [&>*]:shrink-0 overscroll-contain px-3 pt-9 pb-2"
+          style={topInset ? { paddingTop: 36 + topInset } : undefined}
         >
           {/* No height of its own, drawn in the padding above the first
             * message: the scrolling rule anchors on the first visible row with
