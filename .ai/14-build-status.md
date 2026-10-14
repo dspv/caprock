@@ -73,6 +73,29 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-14 — 0.116.0: tabs by the order you open them, the PR board, Mail's full set, and a lighter daemon
+
+The night batch. Tabs: ⌘1–⌘9 follow the order tabs were opened, every tab
+shows its key, Dashboard shows ⌘0, the tab dots are gone and a tab is marked
+only when it waits on you or failed; Flat or Tree sidebar (#550, #561). The
+deck expands to a PRs & CI tab with a Board by stage, releases and agent cost
+per pull request, and Now gains a CI/CD section (#553, #560). The cockpit:
+subagent rows keep their places and pick their figures, context and plan
+limits sit high in a compact look, eight faces for Claude with state and mode
+under the portrait, chips in fives (#555, #563, #570). Live pulse rows keep
+fixed places and point out two sessions in one checkout (#559). Mail: Google
+and Microsoft sign-in, settings for about forty services, import from
+Thunderbird and Apple Mail, a first-run screen (#552, #554, #556, #557).
+Phone: reach from anywhere through the relay (#543) and a panel that says
+where the phone works and can stay on across restarts (#562). Fixes: no font
+blink on a tab switch (#566), no black window when a screen fails (#558), an
+app chord's arrow never reaches the terminal (#564), a no-pid session whose
+files are gone ends at once (#569), scrollback no longer garbles (#521), the
+version panel has a × and tooltips stay off open panels (#565). The doctor
+lists abandoned processes (#551). Store: migration 0054's partial indexes
+take the subagent reads from 224–303 ms to 25–37 ms on a copy of a real
+database (#571).
+
 ### 2026-10-14 — unreleased: the subagent rows and the summary read less
 
 With nine live sessions, several running five to nine background subagents,

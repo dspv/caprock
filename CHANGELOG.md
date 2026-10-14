@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.116.0] - 2026-10-14
+
 ### Added
 
 - **deck:** the PRs & CI tab opens on a **Board**: the repository's pull
