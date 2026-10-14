@@ -608,3 +608,33 @@ func TestAPromptIsStoredBeforeTheHookReturns(t *testing.T) {
 		t.Fatalf("after a crash: %+v, %v; want prompt %s", after, ok, before.ID)
 	}
 }
+
+// A crash the moment a button's answer returned: the prompt is already gone
+// from the store, with no wait on the manager's background writes. The
+// session need write no event that says it moved on — a fake one in the smoke
+// test writes none — so the store is all a restart has to go on.
+func TestAButtonsAnswerIsStoredBeforeItReturns(t *testing.T) {
+	for _, choice := range []PermissionChoice{PermissionAllow, PermissionDismiss} {
+		t.Run(string(choice), func(t *testing.T) {
+			m1, st, _ := newMgr(t)
+			t.Cleanup(m1.Shutdown)
+			if _, err := m1.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
+				t.Fatal(err)
+			}
+			m1.ObserveHook(signalFrom(t, "fixed-session-id", bashRule))
+			show(t, m1, bashRuleMenu)
+			p, _ := m1.PendingPermission("fixed-session-id")
+			if err := m1.AnswerPermission("fixed-session-id", p.ID, choice); err != nil {
+				t.Fatal(err)
+			}
+			if ps, err := store.ListPendingPermissions(context.Background(), st.DB(), "fixed-session-id"); err != nil || len(ps) != 0 {
+				t.Fatalf("stored when the answer returned: %+v, %v; want none", ps, err)
+			}
+			m2, _ := restartedMgr(t, st)
+			m2.restorePermission(context.Background(), "fixed-session-id")
+			if after, ok := m2.PendingPermission("fixed-session-id"); ok {
+				t.Fatalf("an answered prompt came back after a crash: %+v", after)
+			}
+		})
+	}
+}

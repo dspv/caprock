@@ -26,6 +26,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   list; if you used Caprock before and never chose, the sidebar lists the
   sessions under their projects again. A first visit still starts on the
   flat list.
+- **agents:** a permission prompt you answered from a button no longer
+  comes back if the daemon crashes a moment later. The answer cleared the
+  stored prompt in the background, so a crash before that write landed
+  restored buttons for a dialog already answered; the answer now returns
+  only once the stored prompt is gone.
 
 ## [0.116.0] - 2026-10-14
 
