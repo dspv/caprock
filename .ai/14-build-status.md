@@ -73,6 +73,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-14 — 0.117.3: Pipeline, and Second Brain for everyone
+
+The PRs & CI page is now Pipeline: one list of pull requests with full
+titles, labels and the journey Open → CI → Merged → Released, the cockpit
+shows each as a four-step bar, and ⇧⌘B opens the page as a tab. The board no
+longer freezes on a slow GitHub read and always says how fresh it is. Second
+Brain is free: no cap on memories, and the automatic build for anyone who
+says yes ([ADR-063](08-decisions.md)).
+
 ### 2026-10-14 — Second Brain is free
 
 Owner decision ([ADR-063](08-decisions.md), § Free): no cap on memories

@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.117.3] - 2026-10-14
+
 ### Added
 
 - **pipeline:** ⇧⌘B (Ctrl+Alt+Shift+B on Windows and Linux) opens the
