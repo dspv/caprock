@@ -7,8 +7,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-10-14
+
 ### Added
 
+- **app:** closing the tab of an agent Caprock started now asks: **Close
+  tab** (in focus, so ⌘W then Enter works as before and the agent keeps
+  running) or **Close and end the agent**, which stops it (asking once
+  more if it is still answering; the conversation is kept). Tick *Don't
+  ask again* to keep your answer; Settings → *Closing a tab* changes it
+  back. An agent you started in your own terminal is never ended from
+  Caprock: its tab just closes.
+- **app:** in the Tabs list, sessions running with no tab sit under a
+  quiet *Running, no tab* line, so an agent whose tab you closed no
+  longer looks like an open chat.
 - **app:** a Mail button with its own key. *Mail ⇧⌘M* in the sidebar's
   bottom block (Ctrl+Shift+M on Windows and Linux) opens Mail in a tab of its
   own beside the Dashboard tab; pressed again it brings it to the front. With
@@ -55,6 +67,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **now:** an opened Live pulse row is calmer and says more. Terminal,
+  Open repo and Open session are quiet links at the end of the project's
+  line instead of a row of bright buttons, and the empty space beside each
+  live session now shows its cost, its last hour, how long it has run, its
+  context, its branch with lines added and removed, and its pull request
+  with CI. The legend can be hidden; the **?** in the panel's header brings
+  it back.
 - **app:** the PRs & CI view has one button, at the foot of the sidebar
   beside *Dashboard*: its picture shows the mode — Hidden, Bar (the session
   deck under the agent's terminal) or Full page (the PRs & CI tab) — and a
@@ -85,6 +104,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **agents:** a permission prompt you answered from a button no longer
+  comes back if the daemon crashes a moment later. The answer cleared the
+  stored prompt in the background, so a crash before that write landed
+  restored buttons for a dialog already answered; the answer now returns
+  only once the stored prompt is gone.
 - **app:** the PRs & CI bar's header no longer runs past its right edge
   when the sidebar and the cockpit are both open on a laptop screen: the
   least useful words drop first and the rest wraps to a second line.

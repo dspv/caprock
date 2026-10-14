@@ -73,6 +73,17 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-14 — 0.117.0: Mail one key away, a cockpit you arrange, new projects in three steps, the phone from anywhere only
+
+Mail has its own button and tab (⇧⌘M) and opens on a sample inbox until an
+account is added; the crash on a mail client with no accounts is fixed. Every
+cockpit section folds and can be put in your own order; Recent tools and CI
+say more. New project is a three-step wizard that finds one or many
+repositories, and New agent shows what a project's agents are told. A phone
+pairs one way, from anywhere, and m.caprock.dev says where you are. Closing
+an agent's tab asks whether to end it; rubber ducks join the faces; tab
+names fit; three Windows flakes were real or test bugs and are fixed.
+
 ### 2026-10-14 — 0.116.1: the sidebar keeps the view you had, and the spend chart holds still
 
 A patch on the night batch. 0.116.0 had moved everyone who never touched
