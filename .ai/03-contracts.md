@@ -361,6 +361,11 @@ nothing. [ADR-030](08-decisions.md). A session opening in the filesystem root,
 the home directory or the temp directory (`store.NotAProject`) gets nothing and
 runs no lookup.
 
+A served handoff also carries up to five of the repository's Second Brain
+memories (§ Second Brain), pinned first then newest, each `- kind: title —
+summary` with the summary clipped to 160 runes, in a budget of 700 runes of
+their own after the passage; none when the repository has none.
+
 **Measuring it.** Whenever there is a passage to hand over, the session records
 whether it got it: `sessions.handoff` is `1` (served) or `2` (held back);
 `0` means nothing was there, and those sessions are in neither group
@@ -536,6 +541,7 @@ GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
 GET  /v1/settings                      → user-stated settings (plan, update checks)
 PUT  /v1/settings                      → store them
+POST /v1/offer                         → {status: "sent"} — forward one offer-survey answer to caprock.dev on the user's click (§ Offer survey, ADR-062)
 GET  /v1/update                        → cached release status (no network I/O)
 POST /v1/update/check                  → check now (403 unless enabled)
 POST /v1/hooks/install                 → {hooks: HooksStatus, backup?} — `caprock hooks install`, from the dashboard
@@ -1245,7 +1251,7 @@ GitHub token is (§ GitHub, "Where the token lives"):
 
 `PUT /v1/settings` accepts `default_folder` (2026-10-09): where the app's Add project sheet starts — its folder field, a new project's parent, a clone's destination and the folder browser. Empty is the home folder; otherwise an absolute path or one led by `~`, one line, at most 1024 bytes (`400` otherwise). Stored as `default_folder` in `config.json` and returned by `GET`. It changes no boundary: `/v1/browse` and `/v1/browse/stat` stay rooted at `browse_root`.
 
-`GET`/`PUT /v1/settings` carry `prompts` (2026-10-09): when each of the dashboard's own offers was last answered, a map of prompt id → Unix ms, stored in `config.json` so an answer given in the desktop app holds in a browser tab too ([04-ui.md § Product-led surfaces](04-ui.md#product-led-surfaces)). Ids in use: `star-done`, `star-dismissed`, `premium-limit`, `premium-cap`, `premium-hint`, `premium-banner`, `teams-nudge`, `share-week`, `share-month`. `PUT` **merges**: each named id keeps the later of its stored time and the new one, `0` removes it, ids not named are untouched. An id must be `a-z`, `0-9` and `-`, at most 40 bytes; a negative time or more than 32 ids is a `400`. Absent from `GET` when empty. A paired device does not write it; its answers stay in its own browser.
+`GET`/`PUT /v1/settings` carry `prompts` (2026-10-09): when each of the dashboard's own offers was last answered, a map of prompt id → Unix ms, stored in `config.json` so an answer given in the desktop app holds in a browser tab too ([04-ui.md § Product-led surfaces](04-ui.md#product-led-surfaces)). Ids in use: `star-done`, `star-dismissed`, `premium-limit`, `premium-cap`, `premium-hint`, `premium-banner`, `teams-nudge`, `share-week`, `share-month`, and the offer survey's (`offer-variant-ads`, `offer-variant-youtube`, `offer-last`, and `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2` per offer; ADR-062). `PUT` **merges**: each named id keeps the later of its stored time and the new one, `0` removes it, ids not named are untouched. An id must be `a-z`, `0-9` and `-`, at most 40 bytes; a negative time or more than 64 ids is a `400`. Absent from `GET` when empty. A paired device does not write it; its answers stay in its own browser.
 
 `GET /v1/team-signal` (2026-10-09) → `{authors, repos, window_days, checked_ms}`: how many distinct people committed to the listed repositories in the last 30 days, for the Caprock for Teams card (shown at `authors ≥ 2`). Read with `git log --all --no-merges --since=30.days.ago --format=%an%x09%ae` in at most 25 repositories, 2000 commits each, under the projects' git timeout; people are counted by lower-cased author name (one person, two addresses is one), bot authors left out; a repository whose git fails is skipped. Cached for six hours in the projects service. Counts only — no name or address leaves `internal/projects/authors.go` — and nothing leaves the machine. Not on a paired device's read list. `501` without the projects service.
 
@@ -1390,6 +1396,8 @@ token stays in `config.json`.
 
 `POST /v1/hooks/install` runs the same install as `caprock hooks install` (`hooks.InstallFor`: copy the shim into the data dir, merge Caprock's entries into the settings file this daemon reports in `/v1/status.hooks.settings_path`, backing it up first) and answers with what is registered afterwards (`{hooks: {settings_path, shim_path, installed, missing, shim_exists}, backup?}`); an error is an error status, never a quiet 200, and a daemon without an installer answers 501. It is a mutating route, so the CSRF guard refuses a cross-site request and a paired device cannot make it. Nothing else in settings.json is touched. `/v1/status.hooks`, `caprock status` and this answer all check against the command an install writes (`hooks.StatusFor`): the shim in the data dir, or the fallback `"<exe>" hook` when none sits beside the binary. Checking against the shim path alone recognised that fallback only for an executable named `caprock`, so on a renamed or preview build the button said installed and the next status said all nine were missing.
 
+**Offer survey** ([ADR-062](08-decisions.md)). `POST /v1/offer {offer, answers, email?}` is the one route that sends what the user chose to Caprock, and the dashboard calls it only from the survey card's **Send** button. `offer` is one of the dashboard's surveys (the Second Brain offer is a sale and sends nothing), and `answers` is exactly `{q1, q2}`, each one allowed value: `ads` and `youtube` — `q1` `under-4`, `4-8`, `8-12`, `12+`; `q2` `under-30`, `30-70`, `over-70`. `local-models` — `q1` `coding`, `chat`, `search`, `trying`; `q2` `mac-16`, `mac-24-64`, `mac-96`, `pc-nvidia`, `other`. `email`, when present, is one plain address of at most 254 characters. Anything else is `400` and nothing is sent. The daemon rebuilds the body from those fields alone and POSTs `{offer, answers, email?}` — no version, no identifier — to `https://caprock.dev/api/offer` with a 10 s limit; `CAPROCK_OFFER_URL` replaces the address for a preview stand or a test, which must never reach the real site. `200 {status: "sent"}` when the site took it, `502 {error}` when it did not — the error never carries the email or the address. Machine-only: a paired device gets `403` like every write. The enums live in `internal/api/offer.go`, `ui/src/lib/offer.ts` and the site's `functions/api/offer.ts`, and change together. What keeps a card away is ordinary `settings.prompts` entries: the draw (`offer-variant-ads` or `offer-variant-youtube`), the day any offer last showed (`offer-last`), and per offer `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2`.
+
 `GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once every 6 hours unless forced — at startup, when the switch is turned on, and on an hourly tick that asks whether one is due (so a daemon that runs for weeks still hears of a release) — and each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
 
 **`PUT /v1/settings` is a patch, not a replace.** Fields are decoded as pointers, so a body changes only the keys it names and leaves the rest as they were; `PUT {}` is a no-op. An explicit `false` is still honoured, so nothing here is write-only. This is not a convenience: decoding into a plain struct made an absent field indistinguishable from a cleared one, so a short body — or a retry that dropped fields — answered 200 while resetting the stated plan *and* switching the release-check opt-in off. The plan decides what every cost figure on the dashboard claims to be, and `update_checks` gates rule 4's single outbound call; neither may be toggled by omission.
@@ -1519,6 +1527,8 @@ GET    /v1/brain/nodes/{id}          → {node, links}
 PATCH  /v1/brain/nodes/{id}          {kind?, title?, summary?, pinned?} → {node}
 DELETE /v1/brain/nodes/{id}          → 204; its edges go with it
 POST   /v1/brain/links               {from, to, kind?} → 204; DELETE with {from, to} → 204
+PUT    /v1/brain/settings            {auto?, daily_tokens?, model?} → BrainAutoStatus; 402 to turn on without a licence
+POST   /v1/brain/backfill            {days?, dry_run?} → BrainEstimate; 402 without a licence, 409 while off (dry run: neither)
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
 POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, name}}; this machine only
@@ -2782,6 +2792,8 @@ PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
 DELETE /v1/brain/nodes/{id}     → 204
 POST   /v1/brain/links          {from, to, kind?} → 204
 DELETE /v1/brain/links          {from, to} → 204
+PUT    /v1/brain/settings       {auto?, daily_tokens?, model?} → BrainAutoStatus
+POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 ```
 
 - **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
@@ -2824,11 +2836,47 @@ DELETE /v1/brain/links          {from, to} → 204
 - **Errors.** `404` for an unknown node; `409` when a rename would give an
   entity the normalised title of another of its kind; `400` for an unknown
   kind, an empty title, a self-link.
-- **Who.** The three `GET`s are open to every paired device; every write is
-  the machine's (a device gets `403`).
+- **Who.** The three `GET`s are open to every paired device; every write,
+  settings and backfill included, is the machine's (a device gets `403`).
 - **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
   "added" | "changed" | "deleted", kind?, title?, auto?}` (`kind` and `title`
   absent on a delete).
+- **The automatic extraction** (`internal/brain`, Premium). `auto` in the
+  status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
+  daily_tokens, spent, running, pending, since?, backfill_since?,
+  last_wake?, last_error?, recent: [BrainRun]}`: `chosen` once the user has
+  answered, `enabled` when on and licensed (only then does it read), `spent`
+  the tokens of the reads in the last 24 hours, `pending` the sessions
+  waiting, `recent` the last reads that were not skipped. `BrainRun` is
+  `{id, session_id, from_event_id, through_event_id, status: ok | failed |
+  skipped, model?, tokens_in, tokens_out, cost_usd, nodes, error?,
+  started_at, finished_at, project?}`.
+- **Settings.** `auto: true` needs an active licence (`402` otherwise) and
+  starts reading from that moment; `false` never needs one. `daily_tokens`
+  is 20,000–5,000,000 (the screen offers 100k, 300k and 1M; the default is
+  300,000) and `model` is `""`, `haiku` (the default) or `sonnet`; anything
+  else is `400`. Kept in `config.json` as `brain: {auto?, since?,
+  backfill_since?, daily_tokens?, model?}`; `auto` absent means the user has
+  not answered, and nothing runs.
+- **Backfill.** `BrainEstimate` is `{sessions, tokens_estimate,
+  days_estimate, daily_tokens, truncated?}`: the sessions since `days` ago
+  with unread prose worth a read, and an estimate of their tokens (a
+  quarter of the characters sent, plus the call's measured fixed cost,
+  4,300, plus 400 for the answer), labelled an estimate on screen. Without
+  `dry_run` it also sets `backfill_since`, which needs a licence (`402`)
+  and the extraction on (`409`), and wakes the reader.
+- **A read.** A session is a candidate when its last event is after
+  `since` (or `backfill_since`), it has ended or been quiet ten minutes, and
+  it has main-thread prompts or answers after the last read that did not
+  fail. Its passages are numbered and sent, with the project and up to 60
+  existing topic titles, on stdin to the user's `claude` (flags in
+  ADR-063). The answer is `{memories: [{kind, title, summary, topics?,
+  passage?, related?, contradicts?}]}`, at most eight kept: each a node with
+  `run_id`, `manual: false` and the cited passage's event as its source,
+  `part_of` the project and its topics, `relates`/`contradicts` to the
+  others named. Fewer than 300 runes of agent prose: recorded `skipped`,
+  never sent. A failure is recorded with its error and retried after 15
+  minutes, doubling; after four the session waits for new prose.
 
 ### Queued messages
 

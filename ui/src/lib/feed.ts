@@ -153,14 +153,7 @@ export function toFeedItem(e: Event, project?: string): FeedItem | null {
         : null
     case 'agent.spawn':
       return { ...base, icon: '▸', text: 'session started', tone: 'ok' }
-    // agent.stop is Claude Code's Stop hook — the end of a turn, not of the
-    // session — and its SubagentStop. It read "session ended" on every one,
-    // so a feed showed a session ending a dozen times an hour while it ran.
     case 'agent.stop':
-      return e.agent_id
-        ? { ...base, icon: '⚐', text: 'subagent stopped', tone: 'normal' }
-        : { ...base, icon: '⏎', text: 'finished its turn', tone: 'normal' }
-    case 'session.end':
       return { ...base, icon: '■', text: 'session ended', tone: 'normal' }
     case 'context.compact':
       return { ...base, icon: '⇱', text: 'compacted its context', tone: 'warn' }

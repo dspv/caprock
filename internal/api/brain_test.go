@@ -196,3 +196,77 @@ func TestBrainTitleSummary(t *testing.T) {
 		}
 	}
 }
+
+type fakeBrainAuto struct {
+	set      []BrainSettings
+	on       bool
+	backfill int
+}
+
+func (f *fakeBrainAuto) Status(context.Context) any { return map[string]bool{"on": f.on} }
+func (f *fakeBrainAuto) Configure(_ context.Context, set BrainSettings) error {
+	f.set = append(f.set, set)
+	if set.Auto != nil {
+		f.on = *set.Auto
+	}
+	return nil
+}
+func (f *fakeBrainAuto) Estimate(_ context.Context, days int) (any, error) {
+	return map[string]int{"sessions": days}, nil
+}
+func (f *fakeBrainAuto) Backfill(_ context.Context, days int) error {
+	if !f.on {
+		return ErrBrainAutoOff
+	}
+	f.backfill = days
+	return nil
+}
+
+func TestBrainAutomaticNeedsALicenceAndAYes(t *testing.T) {
+	e := newEnv(t)
+	if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", map[string]any{"auto": true}); code != http.StatusServiceUnavailable {
+		t.Errorf("without the engine: %d", code)
+	}
+	f := &fakeBrainAuto{}
+	e.api.d.BrainAuto = f
+
+	if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", map[string]any{"auto": true}); code != http.StatusPaymentRequired {
+		t.Fatalf("on without a licence: %d", code)
+	}
+	if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", map[string]any{"auto": false}); code != 200 {
+		t.Errorf("off never needs a licence: %d", code)
+	}
+	// The estimate is free to ask for; the read is not.
+	if code, out := brainDo(t, e, "POST", "/v1/brain/backfill", map[string]any{"dry_run": true}); code != 200 || out["sessions"].(float64) != 30 {
+		t.Errorf("dry run: %d %v; 30 days by default", code, out)
+	}
+	if code, _ := brainDo(t, e, "POST", "/v1/brain/backfill", map[string]any{"days": 30}); code != http.StatusPaymentRequired {
+		t.Errorf("backfill without a licence: %d", code)
+	}
+
+	licenseEnv(t, e)
+	for _, bad := range []map[string]any{{"daily_tokens": 5}, {"daily_tokens": 900_000_000}, {"model": "opus"}} {
+		if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", bad); code != http.StatusBadRequest {
+			t.Errorf("%v: %d", bad, code)
+		}
+	}
+	if code, _ := brainDo(t, e, "POST", "/v1/brain/backfill", map[string]any{"days": 30}); code != http.StatusConflict {
+		t.Errorf("backfill before the yes: %d", code)
+	}
+	if code, out := brainDo(t, e, "PUT", "/v1/brain/settings", map[string]any{"auto": true, "daily_tokens": 100_000, "model": "haiku"}); code != 200 || out["on"] != true {
+		t.Fatalf("on: %d %v", code, out)
+	}
+	if last := f.set[len(f.set)-1]; *last.DailyTokens != 100_000 || *last.Model != "haiku" {
+		t.Errorf("settings passed: %+v", last)
+	}
+	if code, _ := brainDo(t, e, "POST", "/v1/brain/backfill", map[string]any{"days": 91}); code != http.StatusBadRequest {
+		t.Errorf("91 days: %d", code)
+	}
+	if code, _ := brainDo(t, e, "POST", "/v1/brain/backfill", map[string]any{"days": 14}); code != 200 || f.backfill != 14 {
+		t.Errorf("backfill: %d, %d days", code, f.backfill)
+	}
+	var st BrainStatus
+	if code := e.get(t, "/v1/brain/status", &st); code != 200 || st.Auto.(map[string]any)["on"] != true {
+		t.Errorf("status: %d %+v", code, st)
+	}
+}

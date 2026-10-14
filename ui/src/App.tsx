@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'rea
 import { Shell } from '@/components/Shell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useRoute, type Route } from '@/lib/router'
-import { api, ApiError } from '@/lib/api'
+import { api, ApiError, isPairedDevice } from '@/lib/api'
 import { NowScreen } from '@/screens/Now'
 import { SessionScreen } from '@/screens/Session'
 import { CostScreen } from '@/screens/Cost'
@@ -40,25 +40,52 @@ const BrainScreen = lazy(() => import('@/screens/brain/BrainScreen').then((m) =>
  */
 type Access = 'checking' | 'ok' | 'needs-pairing'
 
+/** Asks for a device that holds a token before a 401 is believed. */
+export const PAIRED_401_TRIES = 3
+
+/**
+ * What one failed startup check means: the pairing form, the dashboard, or
+ * ask again. A device holding a token was paired, and one 401 does not undo
+ * that (owner, 2026-10-14, translated: "my connection to Caprock dropped and
+ * it asks me to go to Caprock settings again"). On the phone's page the
+ * channel confirms a removal itself (remote/transport) and says so, so the
+ * dashboard carries on; a tablet on the Wi-Fi asks PAIRED_401_TRIES times.
+ */
+export function accessAfter(err: unknown, o: { paired: boolean; remote: boolean; tries: number }): Access | 'retry' {
+  // 401 is the daemon saying "prove which device you are". Anything else —
+  // the daemon is down, the network dropped — is a problem the normal
+  // screens already explain, and hiding them behind a pairing form would
+  // send someone hunting for a code that would not have helped.
+  if (!(err instanceof ApiError && err.status === 401)) return 'ok'
+  if (!o.paired) return 'needs-pairing'
+  if (o.remote) return 'ok'
+  return o.tries >= PAIRED_401_TRIES ? 'needs-pairing' : 'retry'
+}
+
 export default function App() {
   const route = useRoute()
   const [access, setAccess] = useState<Access>('checking')
 
   useEffect(() => {
     let live = true
-    api
-      .status()
-      .then(() => live && setAccess('ok'))
-      .catch((e) => {
-        if (!live) return
-        // 401 is the daemon saying "prove which device you are". Anything else
-        // — the daemon is down, the network dropped — is a problem the normal
-        // screens already explain, and hiding them behind a pairing form would
-        // send someone hunting for a code that would not have helped.
-        setAccess(e instanceof ApiError && e.status === 401 ? 'needs-pairing' : 'ok')
-      })
+    let timer = 0
+    let tries = 0
+    const ask = () => {
+      api
+        .status()
+        .then(() => live && setAccess('ok'))
+        .catch((e) => {
+          if (!live) return
+          tries++
+          const next = accessAfter(e, { paired: isPairedDevice(), remote: import.meta.env.VITE_CAPROCK_REMOTE === '1', tries })
+          if (next === 'retry') timer = window.setTimeout(ask, 1500 * tries)
+          else setAccess(next)
+        })
+    }
+    ask()
     return () => {
       live = false
+      window.clearTimeout(timer)
     }
   }, [])
 

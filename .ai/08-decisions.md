@@ -2647,6 +2647,10 @@ rules, which this one-chat design does not have); Telegram changes what a bot
 may read; or Codex and OpenCode report turns and prompts, which would make
 their replies flow here with no change to the bridge.
 
+*Amended 2026-10-14 by [ADR-062](#adr-062--caprock-may-ask-a-question-and-the-user-may-send-the-answer-to-caprockdev):*
+besides the integrations the user turns on, one survey answer may go to
+caprock.dev, only on the user's click, after the card names every field.
+
 ---
 
 ## ADR-048 — Several sign-ins per agent, each in a config directory of Caprock's; three per agent are free
@@ -3477,6 +3481,40 @@ reinstalled the app from its own prompt in a browser tab.
   Chrome says the app is not installed. The manifest `id` stays `/`, so a
   new build is the same app. Existing pairings are untouched.
 
+*Amended 2026-10-14, later — a paired phone stays paired.* Right after the
+page and the relay were redeployed, the owner's phone told him to pair again
+(translated: "my connection to Caprock dropped and it asks me to go to
+Caprock settings again. It has to never drop — hold firm and for a long
+time"); his computer still listed it as a controller. Three faults,
+reproduced on a stand with a v0.117.0 daemon, the local relay and the page:
+
+- **A phone hanging up mid-answer took the machine off the relay.** The
+  daemon wrote each frame with the phone's context, and the WebSocket
+  library closes the whole connection when a write's context ends part-way:
+  every other phone dropped with it. Writes are now bounded by the relay
+  connection's own context; a phone that has gone sends nothing more
+  (`internal/remote/host.go`, the same in `relaysrv`).
+- **The hosted relay reused a phone's number at once.** It gave a new phone
+  the lowest free number, while frames for the phone that had just left
+  were still on their way from the machine; the newcomer read one as its
+  handshake reply. It now draws a random unused 32-bit number — no storage,
+  survives hibernation. `relaysrv` already counted up.
+- **The page believed one bad answer.** A message that did not finish the
+  handshake was `wrong-machine`, and one 401 anywhere was `removed`, both
+  for good. Now a stray message is skipped while the real reply comes;
+  `wrong-machine` is three refused handshakes in a row; `removed` is
+  `GET /v1/pair/me` saying 401 on two separate connections. Behind either
+  screen the page checks once a minute and recovers by itself.
+
+**No new daemon answer for "revoked".** Telling a revoked token from an
+unknown one would need the daemon to keep revoked tokens (or their hashes),
+new state in `devices.json`, and would still not help a phone talking to
+v0.117.0. The confirmation above reads only what every daemon already says,
+and lanauth's one 401 for both stays. The page needs nothing new from the
+daemon at all: an older daemon answers a newer page's new routes 403 or
+404, never 401 (`TestAPhonesTokenIsOnlyDisownedByA401`, which v0.117.0
+passes too).
+
 
 ## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
 
@@ -3636,11 +3674,89 @@ would have no CI result — GitHub refuses to merge a draft, so this needs a
 manual mistake), or required status checks are turned on for `master`, which
 would need the skipped jobs reported as passing.
 
+---
+
+## ADR-062 — Caprock may ask a question, and the user may send the answer to caprock.dev
+
+**Date:** 2026-10-14 · **Status:** accepted (owner, 2026-10-14)
+
+*Amends [ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine)
+and rule 4's wording.*
+
+**Context.** The owner (2026-10-14, translated): "Caprock is a local
+utility; we don't see our users and can't talk to them. So we talk through
+banners inside the app and extra pages. Right now I'd like to test an
+offer: 'Want to earn money watching ads?' — a short question: how many
+hours do you work a day, then roughly what share of that you spend in
+Caprock. Or even better — 'want to watch YouTube?', somewhere on the left.
+That's the second variant to test. We just collect sign-ups." And later
+the same day (translated): "I'd try to sell Second Brain first. Show a
+Second Brain banner a couple of times, and it sells just the subscription
+(the usual Premium step). It's local. Cloud backups are separate money —
+we'll study that too. For now we study demand with super-short forms going
+to my Telegram through our bot." Rule 4 said nothing is ever sent to
+Caprock, and every outbound call so far is an integration the user switches
+on. A survey answer is neither: it is one message the user writes to us.
+
+**Decision.**
+
+- **A user-initiated, disclosed submission to caprock.dev is allowed.** A
+  survey card (`OfferStrip.tsx`) sends one answer through `POST /v1/offer`
+  to `https://caprock.dev/api/offer`, and only when the user presses
+  **Send**. Under the button the card says, word for word, what goes and
+  where: *Sends these answers, and your email if you add one, to
+  caprock.dev. Nothing else.* The site stores it in KV and posts one line to
+  the owner's Telegram through the site's own bot — the answers and whether
+  an email came, never the address.
+- **What is sent is fixed by the daemon, not the page.** Which offer, the
+  one-click answers to its two questions, and the email only when typed —
+  not even the version, because the card does not say it. The body is
+  rebuilt from per-offer enums in `internal/api/offer.go`, so no identifier,
+  install id, path or usage figure can ride along. There is no install id at all: two answers from one
+  machine are indistinguishable from two machines.
+- **A small list of offers, each with its own copy and show rule**
+  (`ui/src/lib/offer.ts`; the copy is the owner's): two surveys —
+  *Hugging Face models on this computer* (what first; what machine) for
+  every install at most twice on different days, and a pair drawn once per
+  install at random, locally, *short ads to earn money* or *YouTube while
+  agents work*, asked once.
+- **Second Brain is sold, not surveyed** (owner, later the same day,
+  translated: "a short banner leading to a modal that explains how it works.
+  Then it's simply available in Premium: you buy Premium and you'll have it
+  in three days"). A strip and a dialog that says how it works, then the
+  usual Premium purchase step. It is a **dated pre-order with a refund
+  promise**, worded exactly: *Second Brain comes to Premium on 18 October
+  2026. If it doesn't, write to us for a full refund.* A licence holder is
+  told *It's included in your Premium — it arrives on 18 October 2026.*
+  This is not "coming soon" (rule 11): it names the date and what happens if
+  the date is missed. It sends nothing to us (a purchase already notifies
+  through the existing Stripe flow, tagged `app-second-brain`), it is tried
+  first, at most twice on different days, and it stops on 18 October 2026 or
+  as soon as the build sets `SECOND_BRAIN_BUILT`. If the date slips, the
+  wording is changed before it, never left standing.
+- **Dismissing sends nothing.** *Not interested* and × record locally that
+  the question was answered, and that card never returns. Nobody who says
+  no is counted; the test measures who answers and what they say.
+- **Calm, and never stacked**: after two days with sessions, one offer a day
+  at most, once the keyboard has been still for 20 s, never while a session
+  waits on a permission prompt, never on a paired phone, one banner at a
+  time (`lib/nudges.ts`). Wording is a question, not a promise — *We're
+  considering…*; never "coming soon" (rule 11's spirit).
+
+**Rules out:** anything automatic — an impression count, a "seen" ping, a
+"no" sent home, a retry in the background; a stored identifier of any kind;
+reusing this route for anything but a card the user answers.
+
+**Revisit if:** an offer is wanted that sends more than one-click answers
+and an optional email, or anyone proposes sending something the user did
+not see on the card. Adding an offer of the same shape is a row in the
+three schemas, not a new decision.
+
 ## ADR-063 — Second Brain: the sessions' decisions and findings, kept as a graph on this machine; twenty by hand are free
 
 **Date:** 2026-10-14 · **Status:** accepted (owner, 2026-10-14)
 
-*Builds the product the in-app Premium offer pre-sells.*
+*Builds the product ADR-062's in-app offer pre-sells.*
 
 **Context.** The owner sells "Second Brain" in Premium with a date on it, 18
 October 2026, and described it (translated): "On the left a collapsible block
@@ -3691,8 +3807,55 @@ searching prose.
   45–50 ms on the development Mac under load and a project's 20 ms
   (`TestBrainGraphReadsFiveThousandNodesQuickly`, 2026-10-14).
 
+- **Built automatically (Premium), only after a yes.** With a licence the
+  Brain screen asks once — *Build it from your sessions automatically?* —
+  and Settings → Second Brain holds the switch afterwards. Until the user
+  answers, nothing runs (`brain.auto` in `config.json` is absent, not
+  false). The brief asked for it to be on by default; rule 4 lets an
+  outbound call exist only when the user turned it on and the place it is
+  switched on says what it sends, and this one sends the user's transcripts.
+  So it is one click, asked in the place the feature lives, with the line
+  that says where the prose goes: to the user's own `claude`, which sends it
+  to Anthropic under the user's login — where the session already went —
+  and nothing to Caprock. Turning it on reads from that moment; *Build from
+  my last 30 days* reads the past month, after showing an estimate of how
+  many sessions and tokens that is.
+- **How a session is read** (`internal/brain`). A session is read once it
+  has ended or been quiet for ten minutes, and again only when it has new
+  prose; at most four per wake, a wake every five minutes, one at a time,
+  off the request path. A session whose agent wrote fewer than 300
+  characters is recorded as skipped and never sent. The read is the
+  session's prompts and answers (main thread only, the newest 24,000
+  characters when there are more), the project's name and the topics
+  already in the brain, sent on stdin to `claude -p --output-format json
+  --tools "" --no-session-persistence --setting-sources local --settings
+  <{"disableAllHooks": true}> --model haiku --system-prompt … --json-schema
+  …`: no tools, no transcript written, none of the user's hooks or plugins
+  loaded — so the read neither appears as a session in Caprock nor runs the
+  user's hooks. The flags were read off `claude --help` (2.1.299) and one
+  call made by hand on 2026-10-14; skipping the user's settings cut the
+  fixed cost of a call from 16,637 input tokens to 4,318. A Windows `.cmd`
+  shim cannot carry JSON on its command line, so there the instructions and
+  schema go on stdin too.
+- **What is kept, and its limits.** Each memory records the read it came
+  from (`brain_runs`: model, tokens, cost, status) and the passage it
+  cites, so its source link opens the moment it was said; it hangs off the
+  project and its topics, with *relates* and *contradicts* between memories
+  of one read. A daily token limit (100k, 300k by default, or 1M, in a
+  rolling 24 hours, counted from what `claude` reports) stops reads until
+  the day rolls over. A failed read is recorded and retried after 15
+  minutes, doubling, and given up after four failures until the session has
+  new prose. A licence that lapses stops the reads and keeps what was read.
+- **New sessions draw on it.** A served handoff (SessionStart, the memory
+  between sessions) adds up to five of the repository's memories, pinned
+  first, in a budget of 700 characters of its own — so sessions started
+  after this change in the handoff experiment's served group receive
+  slightly more than before.
+
 **Rules out:** an embedding index or a vector store (a dependency and a model
-for what titles, topics and links do); a server of ours; storing the graph
+for what titles, topics and links do); a server of ours; an API key of
+Caprock's or a model call made any way but the user's own `claude`; running
+the extraction before the user says yes; storing the graph
 anywhere but the daemon's database; locking a user out of memories already
 kept.
 

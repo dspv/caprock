@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,8 +54,116 @@ type BrainStatus struct {
 // daemon. Nil in builds and tests without it.
 type BrainAuto interface {
 	// Status is its state for GET /v1/brain/status.
-	Status() any
+	Status(ctx context.Context) any
+	// Configure applies PUT /v1/brain/settings and saves it.
+	Configure(ctx context.Context, set BrainSettings) error
+	// Estimate is what a backfill of the last days would read.
+	Estimate(ctx context.Context, days int) (any, error)
+	// Backfill asks for the last days to be read.
+	Backfill(ctx context.Context, days int) error
 }
+
+// BrainSettings is PUT /v1/brain/settings; a nil field is left as it is.
+type BrainSettings struct {
+	Auto        *bool   `json:"auto,omitempty"`
+	DailyTokens *int    `json:"daily_tokens,omitempty"`
+	Model       *string `json:"model,omitempty"`
+}
+
+// Limits on the settings: the daily cap a user may choose, the models the
+// extraction may ask for (the cheap end; "" is the default), the backfill.
+const (
+	brainDailyMin    = 20_000
+	brainDailyMax    = 5_000_000
+	brainBackfillMax = 90
+)
+
+var brainModels = map[string]bool{"": true, "haiku": true, "sonnet": true}
+
+func brainPremium(w http.ResponseWriter, what string) {
+	writeJSON(w, http.StatusPaymentRequired, map[string]string{
+		"error":  "premium required",
+		"detail": what + " is part of Premium",
+	})
+}
+
+// handleBrainSettings turns the automatic extraction on or off and sets its
+// limits. Turning it on needs a licence; off never does.
+func (s *Server) handleBrainSettings(w http.ResponseWriter, r *http.Request) {
+	if s.d.BrainAuto == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "automatic extraction is not available in this build"})
+		return
+	}
+	var b BrainSettings
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&b); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad JSON"})
+		return
+	}
+	if b.DailyTokens != nil && (*b.DailyTokens < brainDailyMin || *b.DailyTokens > brainDailyMax) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("daily_tokens must be between %d and %d", brainDailyMin, brainDailyMax)})
+		return
+	}
+	if b.Model != nil && !brainModels[*b.Model] {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "model must be haiku or sonnet"})
+		return
+	}
+	if b.Auto != nil && *b.Auto && !s.licensed() {
+		brainPremium(w, "Building Second Brain automatically")
+		return
+	}
+	if err := s.d.BrainAuto.Configure(r.Context(), b); err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.BrainAuto.Status(r.Context()))
+}
+
+// handleBrainBackfill estimates, or starts, a read of the last days.
+func (s *Server) handleBrainBackfill(w http.ResponseWriter, r *http.Request) {
+	if s.d.BrainAuto == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "automatic extraction is not available in this build"})
+		return
+	}
+	var b struct {
+		Days   int  `json:"days"`
+		DryRun bool `json:"dry_run"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&b); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad JSON"})
+		return
+	}
+	if b.Days == 0 {
+		b.Days = 30
+	}
+	if b.Days < 1 || b.Days > brainBackfillMax {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("days must be between 1 and %d", brainBackfillMax)})
+		return
+	}
+	if !b.DryRun {
+		if !s.licensed() {
+			brainPremium(w, "Building Second Brain from past sessions")
+			return
+		}
+		if err := s.d.BrainAuto.Backfill(r.Context(), b.Days); err != nil {
+			if errors.Is(err, ErrBrainAutoOff) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
+			s.fail(w, err)
+			return
+		}
+	}
+	est, err := s.d.BrainAuto.Estimate(r.Context(), b.Days)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, est)
+}
+
+// ErrBrainAutoOff is a backfill asked for while the automatic extraction is
+// off: it reads nothing until the user has said yes to it.
+var ErrBrainAutoOff = errors.New("turn on building Second Brain automatically first")
 
 func (s *Server) handleBrainGraph(w http.ResponseWriter, r *http.Request) {
 	qv := r.URL.Query()
@@ -114,7 +223,7 @@ func (s *Server) handleBrainStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.d.BrainAuto != nil {
-		st.Auto = s.d.BrainAuto.Status()
+		st.Auto = s.d.BrainAuto.Status(ctx)
 	}
 	writeJSON(w, http.StatusOK, st)
 }

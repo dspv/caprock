@@ -337,6 +337,15 @@ func (m *Manager) ClaudeAvailable() bool {
 	return err == nil
 }
 
+// ClaudeBinary is the claude executable the manager starts, "" when this
+// machine has none. Second Brain's extraction calls the same one (ADR-063).
+func (m *Manager) ClaudeBinary() string {
+	if !m.ClaudeAvailable() {
+		return ""
+	}
+	return m.claude
+}
+
 // resolveClaude finds the claude binary: PATH first, then the well-known install
 // locations, because the daemon's PATH (especially when launched from a GUI or a
 // service manager) often omits ~/.local/bin where the CLI installs itself.

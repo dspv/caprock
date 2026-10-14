@@ -29,6 +29,7 @@ import { PremiumChip } from '@/components/PremiumChip'
 import { SiteFooter } from '@/components/SiteFooter'
 import { StarStrip } from '@/components/StarStrip'
 import { MailStrip } from '@/components/MailStrip'
+import { OfferStrip } from '@/components/OfferStrip'
 import { SetupStrip } from '@/components/SetupStrip'
 import { ShareMoment } from '@/components/Nudges'
 import { openExternal, usePromptSync } from '@/lib/nudges'
@@ -165,6 +166,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         * at a time (lib/nudges.ts). The share toast floats bottom-right. */}
       {!immersive && !phoneHome && <SetupStrip app={app} />}
       {!immersive && !phoneHome && <MailStrip />}
+      {!immersive && !phoneHome && <OfferStrip />}
       {!immersive && !phoneHome && <StarStrip app={app} />}
       {!phoneHome && <ShareMoment />}
       {!app && !immersive && !phoneHome && <SiteFooter />}

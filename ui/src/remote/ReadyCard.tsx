@@ -16,7 +16,7 @@
  * (`GET /v1/pair/me?app=`), so the checklist there can tick it.
  */
 import { useEffect, useState } from 'react'
-import { api, type PairMe } from '@/lib/api'
+import { api, isPairedDevice, type PairMe } from '@/lib/api'
 import { JUST_PAIRED_KEY } from '@/screens/Pair'
 import { promptInstall, useInstallOffer, type InstallOffer } from './install'
 /** "<machine id>:<role>" the card was last closed for. */
@@ -67,6 +67,7 @@ const RECHECK_MS = 4000
 export function ReadyGate({ machineId, machineName, children }: { machineId: string; machineName: string; children: React.ReactNode }) {
   const offer = useInstallOffer()
   const [justPaired] = useState(() => get(JUST_PAIRED_KEY) === '1')
+  const [unanswered, setUnanswered] = useState(false)
   const [me, setMe] = useState<PairMe | null>(null)
   const [closed, setClosed] = useState(false)
   const report = appReport(offer, isStandalone())
@@ -81,7 +82,11 @@ export function ReadyGate({ machineId, machineName, children }: { machineId: str
           setMe(m)
           if (m.role === 'viewer') timer = window.setTimeout(ask, RECHECK_MS)
         },
-        () => { if (live) timer = window.setTimeout(ask, RECHECK_MS) },
+        () => {
+          if (!live) return
+          setUnanswered(true)
+          timer = window.setTimeout(ask, RECHECK_MS)
+        },
       )
     }
     ask()
@@ -92,7 +97,12 @@ export function ReadyGate({ machineId, machineName, children }: { machineId: str
   }, [report])
 
   const due = !closed && readyCardDue({ justPaired, role: me?.role ?? '', dismissed: get(DISMISSED_KEY), machine: machineId })
-  if (!due) return <>{children}</>
+  // Never in the way: not while this phone is redeeming a code (it holds no
+  // token, and the dashboard beneath is the pairing screen), and not when the
+  // machine does not answer — an older Caprock, or a moment's hiccup. The
+  // card is a welcome, not a gate (2026-10-14: a spent code left the phone
+  // on "Checking what this phone can do…" for good).
+  if (!due || !isPairedDevice() || (!me && unanswered)) return <>{children}</>
   if (!me) {
     // Just paired, the answer on its way: a moment, not a dashboard that
     // then gives way to the card.

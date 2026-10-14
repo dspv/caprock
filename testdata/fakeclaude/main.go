@@ -17,6 +17,8 @@
 // types one) stays in the prompt as ↵. That needs the terminal raw, so only
 // then is it switched to raw mode; without the flags it stays the line REPL
 // the smoke tests drive.
+//
+// With -p it is the headless call Second Brain makes (print.go).
 package main
 
 import (
@@ -27,6 +29,11 @@ import (
 )
 
 func main() {
+	for _, a := range os.Args[1:] {
+		if a == "-p" || a == "--print" {
+			printMode(os.Args[1:])
+		}
+	}
 	mode, bypass, tui := launchMode(os.Args[1:])
 	fmt.Printf("fake-claude ready pid=%d\r\n", os.Getpid())
 	if tui {
