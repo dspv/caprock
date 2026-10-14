@@ -102,6 +102,12 @@ type answerEntry struct {
 	// a caller with a budget (answerCache.budget) can wait on it briefly.
 	// Guarded by the cache's mutex.
 	next chan struct{}
+	// failErr and failAt are the newest background refresh's failure, kept
+	// on the answer it could not replace: a reader is told the answer is an
+	// old one and why (deck answers' refresh_error), and the next refresh
+	// waits failBackoff. Guarded by the cache's mutex.
+	failErr error
+	failAt  time.Time
 }
 
 // answerCache memoises computed responses by key, makes concurrent callers for
@@ -129,6 +135,11 @@ type answerCache struct {
 	// maxKeys, when set, bounds how many keys are kept: past it, answers
 	// older than maxStale go first, then the oldest settled ones.
 	maxKeys int
+	// failBackoff, when set, is how long after a failed background refresh
+	// the stale answer is handed back without starting another: a
+	// composition that fails every time (GitHub not answering in time) is
+	// not restarted on every poll.
+	failBackoff time.Duration
 	// bg tracks background refreshes so tests can wait for them.
 	bg sync.WaitGroup
 }
@@ -184,6 +195,12 @@ func (c *answerCache) getAt(ctx context.Context, key string, fn func() (any, err
 			if age < c.maxStale {
 				// Stale but presentable: hand it back now and let one
 				// background refresh replace it.
+				if !e.refreshing && !e.failAt.IsZero() && c.now().Sub(e.failAt) < c.failBackoff {
+					// Its last refresh failed a moment ago: the stale answer,
+					// not refreshing, its failure said (failure).
+					c.mu.Unlock()
+					return e.val, e.at, false, e.err
+				}
 				if !e.refreshing {
 					e.refreshing = true
 					e.next = make(chan struct{})
@@ -321,6 +338,7 @@ func (c *answerCache) refresh(key string, old *answerEntry, fn func() (any, erro
 	defer close(next)
 	if err != nil {
 		old.refreshing = false
+		old.failErr, old.failAt = err, c.now()
 		return
 	}
 	if c.m[key] != old {
@@ -397,6 +415,19 @@ func (c *answerCache) kept(key string) bool {
 	default:
 		return false
 	}
+}
+
+// failure is why the newest background refresh of key failed and when,
+// while the answer kept is the one it could not replace; nil when it did not
+// fail.
+func (c *answerCache) failure(key string) (time.Time, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.m[key]
+	if !ok {
+		return time.Time{}, nil
+	}
+	return e.failAt, e.failErr
 }
 
 // wait blocks until every background refresh started so far has finished.

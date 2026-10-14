@@ -34,6 +34,8 @@ export interface BoardCard {
   review?: string
   release?: string
   spend: PRSpend
+  /** Its checks are from an earlier read: not re-confirmed this time. */
+  stale?: boolean
 }
 
 export interface BoardRelease {

@@ -29,13 +29,11 @@ type SessionCI struct {
 	PR        *SessionCIPR  `json:"pr,omitempty"`
 	CI        *github.CI    `json:"ci,omitempty"`
 	Error     *github.Error `json:"error,omitempty"`
-	// FetchedAt and Refreshing: as SessionPRs says them.
-	FetchedAt  int64 `json:"fetched_at"`
-	Refreshing bool  `json:"refreshing,omitempty"`
+	deckFresh
 }
 
-func (a SessionCI) stamped(at int64, refreshing bool) any {
-	a.FetchedAt, a.Refreshing = at, refreshing
+func (a SessionCI) stamped(f deckFresh) any {
+	a.deckFresh = f
 	return a
 }
 
@@ -159,13 +157,11 @@ type SessionRepoCI struct {
 	Release *github.ReleaseCI `json:"release,omitempty"`
 	CI      *github.CI        `json:"ci,omitempty"`
 	Error   *github.Error     `json:"error,omitempty"`
-	// FetchedAt and Refreshing: as SessionPRs says them.
-	FetchedAt  int64 `json:"fetched_at"`
-	Refreshing bool  `json:"refreshing,omitempty"`
+	deckFresh
 }
 
-func (a SessionRepoCI) stamped(at int64, refreshing bool) any {
-	a.FetchedAt, a.Refreshing = at, refreshing
+func (a SessionRepoCI) stamped(f deckFresh) any {
+	a.deckFresh = f
 	return a
 }
 

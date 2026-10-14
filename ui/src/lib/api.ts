@@ -449,6 +449,10 @@ export interface SessionPRLive extends SessionPR {
 export interface DeckFresh {
   fetched_at?: number
   refreshing?: boolean
+  /** Why the daemon's newest composition failed (at refresh_failed_at, unix
+   *  ms): the answer is the one before it. */
+  refresh_error?: string
+  refresh_failed_at?: number
 }
 /** `GET /v1/sessions/{id}/prs`. */
 export interface SessionPRs extends DeckFresh {
@@ -618,7 +622,10 @@ export interface SessionCIStats extends DeckFresh {
   stats?: RepoStats
   /** The Board view: the pull requests by stage, the releases, the flow strip. */
   board?: PRBoard
+  /** GitHub's refusal of the newest read: with prs, those are the ones read at read_at, not refreshed. */
   error?: { message: string; kind?: string }
+  /** When GitHub last answered what the board draws on (unix ms). */
+  read_at?: number
 }
 export interface SessionRepoCI extends DeckFresh {
   connected: boolean

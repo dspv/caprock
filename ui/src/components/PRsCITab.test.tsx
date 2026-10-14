@@ -5,11 +5,11 @@ import type { SessionSummary } from '@/lib/api'
 const now = Date.now()
 const day = (i: number) => new Date(now - (13 - i) * 86_400_000).toISOString().slice(0, 10)
 
-const h = vi.hoisted(() => ({ stats: undefined as unknown, prs: { connected: true, prs: [] as unknown[] } as unknown, ci: {} as Record<number, unknown>, asked: [] as string[], queued: [] as string[], logs: 0 }))
+const h = vi.hoisted(() => ({ statsGate: undefined as Promise<void> | undefined, stats: undefined as unknown, prs: { connected: true, prs: [] as unknown[] } as unknown, ci: {} as Record<number, unknown>, asked: [] as string[], queued: [] as string[], logs: 0 }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return { ...actual, api: { ...actual.api,
-    sessionCIStats: async () => { h.asked.push('stats'); return h.stats },
+    sessionCIStats: async () => { h.asked.push('stats'); if (h.statsGate) await h.statsGate; return h.stats },
     sessionPRs: async () => { h.asked.push('prs'); return h.prs },
     sessionCI: async (_id: string, pr?: number) => { h.asked.push(`ci ${pr}`); return h.ci[pr ?? 0] ?? { connected: true } },
     actionsUsage: async () => { h.asked.push('usage'); throw new Error('no billing') },
@@ -19,7 +19,7 @@ vi.mock('@/lib/api', async (orig) => {
 })
 
 import { PRsCITab } from './PRsCITab'
-import { forgetDeckAnswers } from '@/lib/deckCache'
+import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 
 const session = { session_id: 's1', cwd: '/w', repo_root: '/w', project: 'w', status: 'active', owned: true, agent: 'claude', git_branch: 'fix/x', started_at: 0, last_event_at: now } as unknown as SessionSummary
 
@@ -48,7 +48,7 @@ function connected() {
   ] }] } }
 }
 
-afterEach(() => { h.stats = undefined; h.prs = { connected: true, prs: [] }; h.ci = {}; h.asked = []; h.queued = []; h.logs = 0; forgetDeckAnswers(); localStorage.clear() })
+afterEach(() => { h.statsGate = undefined; h.stats = undefined; h.prs = { connected: true, prs: [] }; h.ci = {}; h.asked = []; h.queued = []; h.logs = 0; forgetDeckAnswers(); localStorage.clear() })
 
 describe('the PRs & CI tab', () => {
   it('shows the figures, the repository’s pull requests and the session’s open one in detail', async () => {
@@ -159,6 +159,52 @@ describe('the PRs & CI tab', () => {
     await waitFor(() => expect(h.asked).toContain('ci 22'))
     expect(document.querySelector('[data-prs-row="22"] button')).toHaveAttribute('aria-current', 'true')
     expect(localStorage.getItem('caprock.prsTab.view')).toBe('list')
+  })
+
+  // Owner, 2026-10-14: the board showed an afternoon answer at night behind a
+  // bare "updating…" — merged pull requests in CI running, releases missing.
+  it('says how old a kept board is while it is read again, draws its cards faint, and says a refused read with its time', async () => {
+    const board = (stage: string) => ({
+      default_branch: 'main', releases: [],
+      cards: [{ number: 22, stage, ci: stage === 'open' ? 'running' : undefined, stage_at: now - 5 * 3_600_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } }],
+      flow: { counts: { draft: 0, open: 1, fix: 0, ready: 0, merged: 0, released: 0 }, days: 14, merged: 0, ttm_count: 0, release_lag_count: 0, cost_usd: 0 },
+    })
+    connected()
+    const fresh = h.stats as Record<string, unknown>
+    const kept = now - 5 * 3_600_000
+    writeDeck('stats:/w', { ...fresh, fetched_at: kept, read_at: kept, board: board('open') }, kept)
+    let open = () => {}
+    h.statsGate = new Promise<void>((r) => { open = r })
+    h.stats = { ...fresh, fetched_at: Date.now(), read_at: Date.now(), board: board('merged') }
+    const view = render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    // Cold start on the kept copy: its age, refreshing, the cards faint.
+    const fresh0 = await waitFor(() => {
+      const f = document.querySelector('[data-deck-fresh="updating"]')
+      if (!f) throw new Error('no marker')
+      return f
+    })
+    expect(fresh0.textContent).toBe('Saved 5 h ago · refreshing…')
+    expect(document.querySelector('[data-board-card="22"]')).toHaveAttribute('data-board-unconfirmed')
+    expect(document.querySelector('[data-board-card="22"]')!.closest('[data-board-column]')).toHaveAttribute('data-board-column', 'open')
+    // The fresh answer: the merge moves the card, the marker says it, the faint goes.
+    open()
+    await waitFor(() => expect(document.querySelector('[data-board-card="22"]')!.closest('[data-board-column]')).toHaveAttribute('data-board-column', 'merged'))
+    expect(document.querySelector('[data-deck-fresh]')).toHaveAttribute('data-deck-fresh', 'ok')
+    expect(document.querySelector('[data-deck-fresh]')!.textContent).toMatch(/^Updated (just now|\d+ s ago)$/)
+    expect(document.querySelector('[data-board-card="22"]')).not.toHaveAttribute('data-board-unconfirmed')
+    // GitHub refuses the list: the reason and the time of what is shown, and Retry.
+    h.stats = { ...fresh, fetched_at: Date.now(), read_at: kept, board: board('merged'), error: { message: 'GitHub answered 502', kind: 'github' } }
+    view.unmount()
+    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    const failed = await waitFor(() => {
+      const f = document.querySelector('[data-deck-fresh="failed"]')
+      if (!f) throw new Error('not failed')
+      return f
+    })
+    expect(failed).toHaveTextContent('Couldn’t refresh: GitHub answered 502')
+    expect(failed).toHaveTextContent('showing data from')
+    expect(failed.querySelector('[data-deck-fresh-retry]')).toBeInTheDocument()
+    expect(document.querySelector('[data-board-card="22"]')).toHaveAttribute('data-board-unconfirmed')
   })
 
   it('tells an older daemon’s answer (no board) from a failure', async () => {

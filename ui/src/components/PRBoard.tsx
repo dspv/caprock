@@ -31,7 +31,7 @@ const CHIP: Record<ChipTone, string> = {
   muted: 'border-[var(--app-hairline)] text-fg-muted', faint: 'border-[var(--app-hairline)] text-fg-faint', merged: 'border-merged/45 text-merged',
 }
 
-export function PRBoardView({ board, prs, now, onOpen }: { board: PRBoard; prs: BranchPR[]; now: number; onOpen: (n: number) => void }) {
+export function PRBoardView({ board, prs, now, onOpen, unconfirmed }: { board: PRBoard; prs: BranchPR[]; now: number; onOpen: (n: number) => void; unconfirmed?: boolean }) {
   const cols = boardColumns(board, prs)
   return (
     <div data-prs-board className="flex min-w-0 flex-col gap-3">
@@ -39,7 +39,7 @@ export function PRBoardView({ board, prs, now, onOpen }: { board: PRBoard; prs: 
       {/* Every column in view, never behind a sideways scroll: six across,
         * three across in a narrow tab, two on a phone. */}
       <div data-board-columns className="grid grid-cols-6 gap-2 @max-[1000px]/prs:grid-cols-3 @max-[520px]/prs:grid-cols-2 @max-[380px]/prs:grid-cols-1">
-        {cols.map((c) => <Column key={c.stage.key} stage={c.stage.key} label={c.stage.label} note={c.stage.note} cards={c.cards} now={now} onOpen={onOpen} />)}
+        {cols.map((c) => <Column key={c.stage.key} stage={c.stage.key} label={c.stage.label} note={c.stage.note} cards={c.cards} now={now} onOpen={onOpen} unconfirmed={unconfirmed} />)}
       </div>
       <Releases releases={board.releases} prs={prs} now={now} onOpen={onOpen} />
     </div>
@@ -77,7 +77,7 @@ function FlowStrip({ board }: { board: PRBoard }) {
 
 // ---------------------------------------------------------------- the columns
 
-function Column({ stage, label, note, cards, now, onOpen }: { stage: Stage; label: string; note: string; cards: BoardItem[]; now: number; onOpen: (n: number) => void }) {
+function Column({ stage, label, note, cards, now, onOpen, unconfirmed }: { stage: Stage; label: string; note: string; cards: BoardItem[]; now: number; onOpen: (n: number) => void; unconfirmed?: boolean }) {
   const [all, setAll] = useState(false)
   const shown = all ? cards : cards.slice(0, COLUMN_SHOWN)
   const cost = cards.reduce((t, c) => t + c.spend.cost_usd, 0)
@@ -90,7 +90,7 @@ function Column({ stage, label, note, cards, now, onOpen }: { stage: Stage; labe
       </header>
       <ul className="flex min-h-[64px] flex-col gap-1.5 p-1.5">
         {cards.length === 0 && <li className="px-1 py-2 text-[11.5px] text-fg-faint">Nothing here</li>}
-        {shown.map((c) => <Card key={c.number} c={c} now={now} onOpen={() => onOpen(c.number)} />)}
+        {shown.map((c) => <Card key={c.number} c={c} now={now} onOpen={() => onOpen(c.number)} dim={unconfirmed || !!c.stale} />)}
         {cards.length > shown.length && (
           <li><button type="button" onClick={() => setAll(true)} className="w-full rounded-[6px] px-2 py-1 text-left text-[11.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">+{cards.length - shown.length} more</button></li>
         )}
@@ -99,15 +99,18 @@ function Column({ stage, label, note, cards, now, onOpen }: { stage: Stage; labe
   )
 }
 
-function Card({ c, now, onOpen }: { c: BoardItem; now: number; onOpen: () => void }) {
+/** A card drawn faint (`dim`) is not re-confirmed: the copy kept from
+ *  before, or its checks from an earlier read (`stale`). */
+function Card({ c, now, onOpen, dim }: { c: BoardItem; now: number; onOpen: () => void; dim?: boolean }) {
   const chip = ciChip(c)
   const cost = costText(c.spend)
   const title = c.pr?.title ?? `#${c.number}`
   const since = c.stage_at ? spanText(Math.max(0, now - c.stage_at)) : ''
   return (
     <li>
-      <button type="button" data-board-card={c.number} onClick={onOpen} title={`${title}\nOpen #${c.number} in the list`}
-        className="flex w-full min-w-0 flex-col gap-1.5 rounded-[6px] border border-[var(--app-hairline)] bg-panel px-2 py-1.5 text-left shadow-[var(--shadow-panel)] hover:border-[var(--app-hairline-strong)] hover:bg-[var(--app-row-hover)]">
+      <button type="button" data-board-card={c.number} data-board-unconfirmed={dim ? '' : undefined} onClick={onOpen}
+        title={`${title}${dim ? '\nNot re-confirmed: from an earlier read of GitHub' : ''}\nOpen #${c.number} in the list`}
+        className={`${dim ? 'opacity-55 ' : ''}flex w-full min-w-0 flex-col gap-1.5 rounded-[6px] border border-[var(--app-hairline)] bg-panel px-2 py-1.5 text-left shadow-[var(--shadow-panel)] hover:border-[var(--app-hairline-strong)] hover:bg-[var(--app-row-hover)]`}>
         <span className="line-clamp-2 text-[12.5px] leading-[1.35] text-fg">{title}</span>
         <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-fg-muted">
           <span className="num shrink-0">#{c.number}</span>

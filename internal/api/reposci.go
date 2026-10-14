@@ -30,13 +30,11 @@ type ReposCI struct {
 	Quiet []RepoCIQuiet `json:"quiet"`
 	// RecentDays is the window of activity that lists a repository.
 	RecentDays int `json:"recent_days"`
-	// FetchedAt and Refreshing: as SessionPRs says them.
-	FetchedAt  int64 `json:"fetched_at"`
-	Refreshing bool  `json:"refreshing,omitempty"`
+	deckFresh
 }
 
-func (a ReposCI) stamped(at int64, refreshing bool) any {
-	a.FetchedAt, a.Refreshing = at, refreshing
+func (a ReposCI) stamped(f deckFresh) any {
+	a.deckFresh = f
 	return a
 }
 
@@ -75,6 +73,9 @@ type RepoCIRow struct {
 	// Release is its newest published release.
 	Release *github.RepoRelease `json:"release,omitempty"`
 	Error   *github.Error       `json:"error,omitempty"`
+	// ReadAt is when GitHub last answered its pull request list (unix ms):
+	// with Error, the row draws on that older read, not refreshed.
+	ReadAt int64 `json:"read_at,omitempty"`
 }
 
 // RepoCIQuiet is a listed GitHub repository the section does not read.
@@ -373,6 +374,12 @@ func (s *Server) repoCIRow(ctx, gh context.Context, row RepoCIRow, repo github.R
 	}
 	if rels, e := s.d.GitHub.RepoReleases(gh, repo); e == nil && len(rels) > 0 {
 		row.Release = &rels[0]
+	}
+	// A list handed back from an earlier read says so.
+	at, failed := s.d.GitHub.RepoPullsRead(repo)
+	row.ReadAt = at
+	if failed != nil && row.Error == nil {
+		row.Error = failed
 	}
 	week := now.AddDate(0, 0, -7).UnixMilli()
 	var cands []github.BranchPR

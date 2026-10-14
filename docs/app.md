@@ -577,7 +577,12 @@ others. Installing it: [install-app.md](install-app.md).
   you pick on the right with its state, review, merge state and diff size,
   the deck's actions, its jobs by runner OS against each one's usual time,
   the jobs on a timeline, and a failed job's steps and log with
-  *Investigate*. **Collapse** in its top-right corner, and ⇧⌘B
+  *Investigate*. Its header always says how current what you see is:
+  *Updated just now*; *Saved 5 h ago · refreshing…* with a faint pulse while
+  a copy kept from before is read again (its cards drawn faint until the
+  fresh answer lands); and *Couldn't refresh: <why> · showing data from
+  15:02 · Retry* when GitHub or the daemon could not be read. The CI/CD
+  section on Now says the same in its header. **Collapse** in its top-right corner, and ⇧⌘B
   again, close the tab and show the agent with its deck; the sidebar's
   button closes it and hides the deck too. It reads GitHub
   only while it is in front.

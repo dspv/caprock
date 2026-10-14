@@ -41,6 +41,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **prs:** the PRs & CI board follows merges and releases instead of
+  freezing. With a dozen open pull requests whose checks were running, the
+  daemon read each one's state one after another, ran past its deadline on
+  every refresh, and the board kept showing its afternoon answer for hours —
+  merged pull requests still under *CI running*, new releases missing —
+  behind a bare *updating…*. The open pull requests are now read four at a
+  time within a budget, the board's answer always comes back (a card whose
+  checks could not be read again in time is drawn faint), and releases are
+  read every 2 minutes instead of 10. The header always says how current
+  the data is: *Updated just now*, *Saved 5 h ago · refreshing…* while a
+  kept copy is read again, or *Couldn't refresh: <why> · showing data from
+  15:02 · Retry*; the CI/CD section on Now says the same. A refresh that
+  keeps failing is no longer retried on every poll.
 - **phone:** a paired phone stays paired. A dropped connection, a computer
   or relay restarting, a phone asleep or offline, a computer still on an
   older Caprock, or a QR opened twice no longer send the phone back to
