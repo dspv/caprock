@@ -51,6 +51,10 @@ const (
 	// {id, op: "added"|"changed"|"deleted", kind?, title?, auto?}, so the
 	// sidebar's graph can drop a new memory in as it arrives.
 	FrameBrain FrameType = "brain"
+	// FrameStatus says an owned session's status moved without an event —
+	// input typed into it that it has not answered yet (narrate.Nudge):
+	// {session_id, kind, at}. A screen asks for the session again at once.
+	FrameStatus FrameType = "status"
 )
 
 // Frame is what goes over /v1/live. Seq is set by Publish: one more than the

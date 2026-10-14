@@ -7,6 +7,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **status:** an agent you set going no longer reads *waiting for you*
+  for seconds after. Answering a permission prompt — a key in the
+  terminal, the card's buttons, the phone, Telegram — shows it working at
+  once (*approved — running …*), instead of when the allowed command
+  finished; answering No shows it waiting for you. Enter at its prompt
+  shows *starting on your message* straight away, and goes back if
+  nothing was sent. Every screen (sidebar, tabs, cockpit, tray, phone)
+  now updates a session's status as soon as it changes rather than up to
+  two seconds later, and a Codex or Gemini session you type into is read
+  at once instead of on its next poll. Measured with a test agent: a
+  prompt to *working* about 1 s → under 10 ms; an approved 15 s command
+  16 s → under 10 ms.
+
 ## [0.117.1] - 2026-10-14
 
 ### Added
