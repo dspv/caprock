@@ -29,7 +29,8 @@
  */
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { api, errText, listedJobs, type CIJob, type CILog, type CIRun, type CIStep, type DeckFresh, type SessionCI, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest, type Summary } from '@/lib/api'
-import { freshText, readDeck, writeDeck } from '@/lib/deckCache'
+import { readDeck, writeDeck } from '@/lib/deckCache'
+import { Freshness } from './Freshness'
 import { DECK_DEFAULT, DECK_MAX_SHARE, clampDeck, deckKeyStep } from '@/lib/deck'
 import { MiniPipeline } from './MiniPipeline'
 import { CheckSummary } from './CheckSummary'
@@ -288,11 +289,23 @@ const LogView = createContext<{ view: LogViewName; pr?: number; onShown?: (d: 1 
  *  kept while it composes a newer one: a local read, nothing asked of GitHub. */
 const REFRESHING_MS = 1_500
 
-/** A poll's state beside its answer: a read under way, the last one failed. */
+/** A poll's state beside its answer: a read under way, the last one failed
+ *  (and why), whether the shown answer came from the daemon since the view
+ *  was opened, and a way to ask again now. */
 export interface PollMeta {
   loading: boolean
   failed: boolean
+  /** Why the last read failed, or why the daemon could not compose a newer
+   *  answer (`refresh_error`): the shown one is older. */
+  reason?: string
+  /** The shown answer was read from the daemon since the view was opened —
+   *  not only the copy kept from before (lib/deckCache). */
+  confirmed: boolean
+  /** Asks again now. */
+  retry: () => void
 }
+
+const noRetry = () => {}
 
 interface PollSnap<T> {
   k?: string
@@ -318,7 +331,8 @@ function fromCache<T>(k: string | undefined): PollSnap<T> {
  */
 export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: T) => boolean, fast = CI_RUNNING_MS, cacheKey?: string, keep?: (prev: T, next: T) => boolean): [T | undefined, number, PollMeta] {
   const [snap, setSnap] = useState<PollSnap<T>>(() => fromCache<T>(cacheKey))
-  const [meta, setMeta] = useState<PollMeta>({ loading: false, failed: false })
+  const [meta, setMeta] = useState<Omit<PollMeta, 'retry'>>({ loading: false, failed: false, confirmed: false })
+  const retryRef = useRef<() => void>(noRetry)
   const shown = !cacheKey || snap.k === cacheKey ? snap : fromCache<T>(cacheKey)
   const fn = useRef({ read, busy, keep, shown })
   useEffect(() => { fn.current = { read, busy, keep, shown } })
@@ -329,7 +343,10 @@ export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, bus
     // "updating…" stands for the first read of what is shown and while the
     // daemon says a newer answer is being composed, not for every poll.
     let revalidating = true
+    let busyTick = false
     const tick = async () => {
+      if (busyTick) return
+      busyTick = true
       let next = CI_IDLE_MS
       if (!document.hidden) {
         if (revalidating) setMeta((m) => (m.loading ? m : { ...m, loading: true }))
@@ -342,24 +359,31 @@ export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, bus
             setSnap({ k: cacheKey, d, at: Date.now() })
             if (cacheKey) writeDeck(cacheKey, d)
           }
-          revalidating = !!(d as DeckFresh | undefined)?.refreshing
-          // An answer kept back while a newer one is composed is not a failure: it is on its way.
-          setMeta({ loading: revalidating, failed: worse && !revalidating })
+          const fresh = d as DeckFresh | undefined
+          revalidating = !!fresh?.refreshing
+          // An answer kept back while a newer one is composed is not a
+          // failure: it is on its way. One the daemon could not replace is:
+          // it says why (refresh_error), and the header says it.
+          const reason = fresh?.refresh_error || (worse ? (d as { error?: { message?: string } } | undefined)?.error?.message : undefined) || undefined
+          setMeta({ loading: revalidating, failed: (worse || !!reason) && !revalidating, reason, confirmed: !worse })
           if (fn.current.busy(d)) next = fast
           if (revalidating) next = Math.min(next, REFRESHING_MS)
-        } catch {
-          // The last answer stays, said to be not refreshed.
-          if (alive) setMeta({ loading: false, failed: true })
+        } catch (e) {
+          // The last answer stays, said to be not refreshed, and why.
+          if (alive) setMeta((m) => ({ loading: false, failed: true, reason: errText(e), confirmed: m.confirmed }))
         }
       }
+      busyTick = false
       if (alive && !document.hidden) timer = window.setTimeout(() => void tick(), next)
     }
+    retryRef.current = () => { if (alive && !busyTick) { window.clearTimeout(timer); revalidating = true; void tick() } }
     void tick()
     const onVisible = () => { if (!document.hidden) { window.clearTimeout(timer); void tick() } }
     document.addEventListener('visibilitychange', onVisible)
-    return () => { alive = false; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
+    return () => { alive = false; retryRef.current = noRetry; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
   }, [on, key, fast, cacheKey])
-  return [shown.d, shown.at, meta]
+  const retry = useCallback(() => retryRef.current(), [])
+  return [shown.d, shown.at, { ...meta, retry }]
 }
 
 /** A failed read of a repository view kept over the answer it would replace. */
@@ -369,25 +393,7 @@ const keepPRCI = (prev: SessionCI, next: SessionCI) => !!next.error && !!prev.ci
 const keepPRs = (prev: SessionPRs, next: SessionPRs) => !!next.refreshing && next.prs.every((p) => !p.live) && prev.prs.some((p) => !!p.live)
 const keepBranches = (prev: SessionBranches, next: SessionBranches) => !!next.error && !prev.error && prev.branches.length > 0
 
-/**
- * The header's quiet word on what the cell shows: "updating…" while a read of
- * a kept answer runs, "couldn't refresh" when the last one failed, else how
- * long ago the daemon composed it. Its own clock, every 5 s while visible.
- */
-export function Freshness({ at, loading, failed }: { at?: number; loading: boolean; failed: boolean }) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!at) return
-    setNow(Date.now())
-    const t = window.setInterval(() => { if (!document.hidden) setNow(Date.now()) }, 5_000)
-    return () => window.clearInterval(t)
-  }, [at])
-  if (!at) return null
-  const when = new Date(at).toLocaleTimeString()
-  if (loading) return <span data-deck-fresh="updating" className="shrink-0 text-fg-faint" title={`Showing the answer from ${when} while it is read again`}>updating…</span>
-  if (failed) return <span data-deck-fresh="failed" className="shrink-0 text-warn" title={`The last read failed; this is the answer from ${when}`}>couldn’t refresh</span>
-  return <span data-deck-fresh="ok" className="num shrink-0 text-fg-faint" title={`Composed at ${when}`}>{freshText(Math.max(0, now - at))}</span>
-}
+export { Freshness } from './Freshness'
 
 /** Three grey rows in the shape of the list: the first read ever of a view. */
 export function DeckSkeleton({ label }: { label: string }) {
@@ -1072,7 +1078,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
           </button>
         )}
         <span className="ml-auto flex min-w-0 items-baseline justify-end gap-2 text-[11px] text-fg-faint">
-          <span data-deck-fresh-slot className="hidden @min-[640px]:contents"><Freshness at={viewAt} loading={viewMeta.loading} failed={viewMeta.failed} /></span>
+          <span data-deck-fresh-slot className="hidden @min-[640px]:contents"><Freshness compact at={viewAt} loading={viewMeta.loading} failed={viewMeta.failed} reason={viewMeta.reason} confirmed={viewMeta.confirmed} onRetry={viewMeta.retry} /></span>
           {view === 'pr' && prsData && !prsData.connected && rows.length > 0 && (
             <button type="button" disabled={connecting} onClick={() => void connect()} title="Reads CI and reviews through your GitHub CLI login; turn it off in Settings → GitHub" className="text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'connect GitHub for CI'}</button>
           )}

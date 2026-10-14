@@ -34,6 +34,228 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   no monospace font could have is now measured again on its own, when the
   fonts are in, when the window comes back and when the tab is shown.
 
+## [0.117.2] - 2026-10-14
+
+### Added
+
+- **mail:** **Import everything.** Mail lists the mail accounts it can
+  read on the computer — Thunderbird, and Apple Mail including the Google,
+  iCloud and Exchange accounts in System Settings › Internet Accounts —
+  each address once, under the app it came from and when that profile was
+  last used (accounts from a profile unused for 90 days start unticked). An
+  app it cannot read is not shown. Tick them and press *Import*: accounts with a saved
+  Thunderbird password connect by themselves, then each other account asks
+  for its one sign-in in turn (Google or Microsoft in the browser, an
+  app-specific password for iCloud, otherwise the password), with a
+  progress list of connected, waiting and failed accounts, *Retry*, *Skip
+  for now* and *Come back*. A build without Google or Microsoft sign-in says so and asks for
+  an app password instead of showing a button that cannot work.
+- **release:** Mail's Google and Microsoft client IDs are compiled into
+  releases from the `CAPROCK_MAIL_GOOGLE_CLIENT_ID`,
+  `CAPROCK_MAIL_GOOGLE_CLIENT_SECRET` and `CAPROCK_MAIL_MICROSOFT_CLIENT_ID`
+  GitHub secrets, the desktop app's daemon included; unset, a release still
+  builds.
+- **now:** each figure in *Today* has a small line of your last 14 days and
+  one word against your own median: *usual*, *above usual +38%*, *below
+  usual −20%*. Running totals (cost, sessions, turns) are compared by the
+  same time of day, so a morning no longer reads low against whole days;
+  *Burn now* is set against your typical 10-minute window while working.
+  Cache hit gets the line only. Hover says what it is compared with; under
+  five days of history it says *not enough history*. It follows the agent
+  filter. New endpoint `GET /v1/stats/trends`.
+
+- **brain:** Second Brain builds itself (Premium), once you say yes. When a
+  session has been quiet for ten minutes, your own `claude` (Haiku, no
+  tools, no transcript, none of your hooks) picks out what it decided and
+  found, and each memory links back to the passage it came from. A daily
+  token limit (100k, 300k or 1M), short sessions skipped, failures retried
+  later; *Build from my last 30 days* shows an estimate first. Settings →
+  Second Brain shows what it used and read. A new session's handoff now
+  carries up to five of the repository's memories.
+- **app:** Second Brain comes to Premium on 18 October 2026: a knowledge
+  graph of everything your agents do, kept on your computer. After two days
+  of use a short strip offers it, and *How it works* explains it and leads
+  to Premium; if it doesn't arrive on that date, write to us for a full
+  refund ([ADR-062](.ai/08-decisions.md)).
+- **app:** Caprock may also ask about a feature it is considering — running
+  Hugging Face models on your computer, and one of watching short ads to
+  earn money or YouTube while agents work. At most one strip a day; each
+  question is two clicks and an optional email. Nothing leaves the computer
+  until you press **Send**, which sends those answers to caprock.dev and
+  nothing else; *Not interested* and × send nothing, and an answered strip
+  never returns.
+- **brain:** Second Brain drawn. The Brain screen opens on a graph of your
+  memories and their topics and projects — drag, zoom, click a dot to open
+  it, *List* for rows — smooth with thousands of memories. The app's
+  sidebar has a Brain block below the projects: the newest thirty as a small
+  graph where each new memory drops in, and the three newest titles. The
+  strip that offered Second Brain ahead of its arrival no longer shows.
+
+### Fixed
+
+- **prs:** the PRs & CI board follows merges and releases instead of
+  freezing. With a dozen open pull requests whose checks were running, the
+  daemon read each one's state one after another, ran past its deadline on
+  every refresh, and the board kept showing its afternoon answer for hours —
+  merged pull requests still under *CI running*, new releases missing —
+  behind a bare *updating…*. The open pull requests are now read four at a
+  time within a budget, the board's answer always comes back (a card whose
+  checks could not be read again in time is drawn faint), and releases are
+  read every 2 minutes instead of 10. The header always says how current
+  the data is: *Updated just now*, *Saved 5 h ago · refreshing…* while a
+  kept copy is read again, or *Couldn't refresh: <why> · showing data from
+  15:02 · Retry*; the CI/CD section on Now says the same. A refresh that
+  keeps failing is no longer retried on every poll.
+- **ui:** selected text stays readable in every theme. In a terminal,
+  Claude Code's own selection (fullscreen mode) painted its highlight in the
+  palette's blue, which in a dark palette is light, under light text — in
+  Dark Pastel 1.6:1, nearly invisible. Every terminal palette now keeps text
+  at 4.5:1 or more against whatever is behind it, as the light ones already
+  did. Selected text on the page sits on a lighter wash of the accent (20%,
+  was 35%), written out per palette: body text 8:1 or more, muted text
+  4.3:1 or more.
+
+- **phone:** a paired phone stays paired. A dropped connection, a computer
+  or relay restarting, a phone asleep or offline, a computer still on an
+  older Caprock, or a QR opened twice no longer send the phone back to
+  *Settings → Use on your phone*. Three causes: a phone hanging up in the
+  middle of an answer took the computer off the relay for every phone; the
+  relay could hand the next phone a stray message meant for the one before,
+  which the page read as "not your computer"; and the page believed a
+  single bad answer. Now the page asks to pair again only when the computer
+  has turned the phone away on two separate connections, or refused it
+  three times in a row, and it still checks once a minute and comes back by
+  itself if that was wrong. Needs the new page at m.caprock.dev and the
+  relay redeployed; the computer's half comes with the next release.
+- **status:** an agent you set going no longer reads *waiting for you*
+  for seconds after. Answering a permission prompt — a key in the
+  terminal, the card's buttons, the phone, Telegram — shows it working at
+  once (*approved — running …*), instead of when the allowed command
+  finished; answering No shows it waiting for you. Enter at its prompt
+  shows *starting on your message* straight away, and goes back if
+  nothing was sent. Every screen (sidebar, tabs, cockpit, tray, phone)
+  now updates a session's status as soon as it changes rather than up to
+  two seconds later, and a Codex or Gemini session you type into is read
+  at once instead of on its next poll. Measured with a test agent: a
+  prompt to *working* about 1 s → under 10 ms; an approved 15 s command
+  16 s → under 10 ms.
+
+## [0.117.1] - 2026-10-14
+
+### Added
+
+- **now:** the tokens beside each pull request's cost in the CI/CD
+  section (*9.4M tok · $2.12*); the hover splits input, output, cache read
+  and cache write.
+
+- **brain:** Second Brain. Keep the answers worth keeping as memories — an
+  idea, a decision, a finding, an open question — each linked to its
+  project, its topics and the moment in the session it came from. **Drop
+  into brain** sits under every answer on Memory, in a session's Answers
+  and in the chat view; ⇧⌘H (Ctrl+Shift+H on Windows and Linux) or ⌘K →
+  *Add to brain…* takes a line of your own. *Brain* in the screen row
+  searches them by words, project and time, and opens one to edit, pin,
+  link to a topic or delete. Twenty memories are free; Premium keeps every
+  one. Kept in Caprock's database on this machine.
+
+### Fixed
+
+- **app (macOS):** macOS no longer asks for the microphone (and for
+  Desktop, Documents or Downloads) again after every Caprock update. The app
+  and its daemon are now signed with one Caprock certificate that stays the
+  same across releases, instead of an ad-hoc signature macOS saw as a new
+  program each time. The first update to this release asks one last time;
+  later updates keep your answers. Opening the app the first time is
+  unchanged: it is still not signed with an Apple Developer ID.
+### Changed
+
+- **phone:** a session's header is one 44px bar: back, the title, a dot for
+  its state, and **Chat | Terminal** with **···** for the other views. The
+  project, permission mode, model, controls and details are a tap on the
+  title away. In the chat the bar is drawn over the conversation and slides
+  away while you scroll down, back on scroll up or a tap at the top, so the
+  text never jumps. On the relay page at 390×844 the conversation began
+  178px down the screen (the computer bar and three header rows); now 44px,
+  and 0 while the bar is away (owner, 2026-10-14, translated: "I want the
+  header to take minimum space because I need to read this chat").
+- **phone:** the relay page's computer bar ("DimaS-MBP ▾") is gone while the
+  connection is fine and one computer is paired. It comes back while
+  connecting or offline, and with several computers paired it shows outside
+  a session; inside one, the switch is in the title's sheet.
+- **chat:** the message field glows softly in the accent while it has the
+  focus, a little more once there is text in it; on the phone and the
+  desktop alike.
+- **now:** *Live activity* is now **What happened**: the moments of your
+  sessions instead of every command. Files edited (grouped by folder), tests
+  and checks with their result (*passed*, *failed (exit 2)*, or *no result
+  recorded* when there is none), builds, commits with their message, pushes,
+  pull requests opened or merged, subagents by their task, a turn ending with
+  the first line of the reply, a session waiting for approval, and a command
+  that failed. Reads, searches and the like are a quiet `+N` on the moment
+  they led up to. On one day of real use that is 1,974 rows where the old
+  feed had 11,493. *All commands* brings the old feed back; the panel folds
+  like the others and remembers it; every row is the same height.
+- **app:** the sidebar's bottom block reads more clearly. *Dashboard ⌘0*
+  has a row of its own again; under it, one row in two halves: **PRs &
+  CI** named with its mode (*CI Off*, *CI Bar*, *CI Page*; ⇧⌘B in its
+  tooltip) and the **theme** with its name. On Windows and Linux the two
+  take a row each, and PRs & CI shows its key, Ctrl+Alt+Shift+B.
+- **app:** folded, the bottom block's icons are a size bigger, and on a
+  Mac each one has its key drawn small above it (⇧⌘F, ⇧⌘M, ⌘0, ⌘,
+  ⇧⌘B). On Windows and Linux the keys are too long for that and show
+  above the icon you point at.
+
+### Fixed
+
+- **phone:** dictation listened only for the browser's language, so Russian
+  speech came out as English words. A chip beside the microphone (**EN**,
+  **RU**…) says the language and changes it: a tap moves through the
+  browser's languages, then opens a list of common ones (English, Russian,
+  Ukrainian, German, French, Spanish, Portuguese, Italian, Polish, Turkish,
+  Japanese, Chinese, Korean, Arabic, Hebrew). Remembered per viewer; shown
+  prominently once when the browser names more than one language.
+
+- **now:** the activity feed no longer says "session ended" at the end of
+  every turn and every subagent's stop; it says *finished its turn* or
+  *subagent stopped*, and "session ended" only when one did.
+
+- **phone:** a phone can type the moment it pairs. A newly paired phone
+  could only look until a second click on the computer — impossible once
+  you have left the house. Settings → Use on your phone now has **This
+  phone can type and start agents** beside **Show a code**, ticked by
+  default and remembered on the computer; the code carries it, so the phone
+  pairs ready to work. Untick it for a phone that should only look. The
+  panel lists the steps one line each and, while the code is up and after,
+  ticks off what is done and what is left: access from anywhere, the phone
+  paired (by name), whether it can type (with **Let it control sessions**
+  right there if not) and whether the app is installed on it. The phone
+  opens on a short **Ready** card — connected to which computer, whether it
+  can type and, if not, exactly where on the computer to fix it, the
+  install button, and **Open sessions**. m.caprock.dev needs a redeploy
+  for the phone's half.
+
+- **now:** the CI/CD section lists only repositories with a session in the
+  last 14 days, most recent first. Older ones, and any you hide from a
+  block's new ⋯ menu (*Hide from CI/CD*), fold into one quiet line —
+  *3 older repositories · 1 hidden — show* — and are not read from GitHub
+  until you show them; hidden ones come back with *Show again*.
+- **now:** GitHub no longer runs out of time on the CI/CD section: the
+  repositories are read three at a time, each with its own 12 seconds,
+  instead of one after another under a single deadline that left every
+  later one *context deadline exceeded*. A slow GitHub is one grey line —
+  *GitHub didn't answer in time — retrying* — once for the section when
+  every repository says the same, and the names show at once while the
+  figures load.
+- **now:** a session that drove many pull requests is no longer charged
+  whole to the one whose branch it ended on. It is split between the pull
+  requests it worked on, and such a row says *shared*; the release pull
+  request #601 read as $1,884.29, the whole orchestrating session, and now
+  reads $2.12 (measured on the owner's database). This also corrects the
+  PRs & CI Board's agent cost.
+- **app:** on Windows and Linux the *Settings* row's words no longer run
+  under *phone, Telegram*, and *Send feedback*'s key is no longer cut
+  off at the sidebar's edge.
+
 ## [0.117.0] - 2026-10-14
 
 ### Added

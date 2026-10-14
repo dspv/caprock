@@ -142,15 +142,27 @@ export class Initiator {
     return { init: new Initiator(s, e), message: concat(ePub, ct) }
   }
 
-  /** Reads the daemon's reply: its payload and the session. */
+  /**
+   * Reads the daemon's reply: its payload and the session. A message that is
+   * not the reply throws and leaves the initiator as it was, so the real
+   * reply can still be read after it: a relay can hand a new phone a stray
+   * frame meant for the phone before it (transport.ts).
+   */
   finish(msg2: Uint8Array): { payload: Uint8Array; session: Session } {
     if (msg2.length < 32 + TAG) throw new Error('noise: message too short')
-    const re = msg2.slice(0, 32)
-    this.s.mixHash(re)
-    this.s.mixKey(dh(this.e, re))
-    const payload = this.s.decryptAndHash(msg2.slice(32))
-    const [send, recv] = this.s.split()
-    return { payload, session: new Session(send, recv) }
+    // mixHash and mixKey replace these rather than change them in place.
+    const { ck, h, k } = this.s
+    try {
+      const re = msg2.slice(0, 32)
+      this.s.mixHash(re)
+      this.s.mixKey(dh(this.e, re))
+      const payload = this.s.decryptAndHash(msg2.slice(32))
+      const [send, recv] = this.s.split()
+      return { payload, session: new Session(send, recv) }
+    } catch (e) {
+      Object.assign(this.s, { ck, h, k })
+      throw e
+    }
   }
 }
 

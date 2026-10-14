@@ -128,8 +128,15 @@ others. Installing it: [install-app.md](install-app.md).
   away, and the tab brings back the screen you left it on until you close it.
   The Dashboard tab is its icon and its key, ⌘0 (⌘, while it shows
   Settings); its × shows while it is in front.
-  Beside *Dashboard* sit two small square buttons: the **PRs & CI** mode
-  and the theme. The PRs & CI button's picture is what is on screen —
+  On the Dashboard's *Today*, each figure has a faint line of your last 14
+  days under it and one word: *usual*, *above usual +38%*, *below usual
+  −20%*, or *not enough history* in your first days. It compares with your
+  own median by the same time of day; hover it for the figures behind it.
+  Under *Dashboard*, one row in two halves: the **PRs & CI** mode, named
+  *CI Off*, *CI Bar* or *CI Page* (its key, ⇧⌘B, is in its tooltip), and
+  the theme, named too. On Windows and Linux each takes a row, and there
+  the PRs & CI row shows its key, Ctrl+Alt+Shift+B. The PRs & CI button's
+  picture is what is on screen —
   an empty window (Hidden), a band along its bottom (Bar: the session
   deck), a filled window (Full page: the *PRs & CI* tab) — and a click
   moves to the next, Hidden → Bar → Full page → Hidden; ⌘B and ⇧⌘B do
@@ -143,8 +150,23 @@ others. Installing it: [install-app.md](install-app.md).
   *Add account*: Google, Microsoft, iCloud, Other, or import from Apple Mail
   or Thunderbird. Adding your account leaves the sample; *Exit sample* goes
   to the ways to start.
+  **Import everything** lists the mail accounts Caprock can read on the
+  computer — Thunderbird, and Apple Mail (including the Google, iCloud and
+  Exchange accounts in System Settings › Internet Accounts) when macOS lets
+  Caprock read it — each address once, under the app it came from and when
+  that profile was last used. Accounts from a profile unused for 90 days
+  start unticked. Tick the ones to bring over and press *Import*: accounts whose password Thunderbird
+  saved connect by themselves, then Caprock asks for each other account's
+  one sign-in in turn — *Sign in with Google* or *Microsoft* in your browser,
+  an app-specific password for iCloud (made at appleid.apple.com), or the
+  account's password. A list below shows each account connected, waiting or
+  failed with the reason and *Retry*; *Skip for now* moves on and *Come
+  back* returns to it. Outlook for Mac's accounts are not read — add them with
+  *Sign in with Microsoft*.
   The arrow beside *Send feedback* folds that bottom block to one row of
-  icons and back; the app remembers which way you left it.
+  icons and back; the app remembers which way you left it. Folded, on a
+  Mac each icon has its key drawn small above it; on Windows and Linux,
+  where the keys are longer, an icon's key shows when you point at it.
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
   how new agents start, appearance, terminal and editor first. The × beside
   the *Settings* heading, or Esc, closes it as the tab's × does. *Send
@@ -174,8 +196,14 @@ others. Installing it: [install-app.md](install-app.md).
   Plan (read) permission, or Administration (read) for an organization), the median CI time and its trend, the share of
   red runs, runs stuck far past their usual time or waiting for a runner,
   the newest release, the five pull requests the agents spent most on this
-  week, and who opened them, face and name. Costs are at API list price.
-  Fold it and it reads nothing.
+  week with their tokens beside the cost, and who opened them, face and
+  name. Costs are at API list price; a session that worked on several pull
+  requests is split between them and marked *shared*. Only repositories
+  with a session in the last 14 days are read; older ones, and any you hide
+  from a block's ⋯ menu, fold into one line (*3 older repositories · 1
+  hidden — show*) and are not read from GitHub until you show them. When
+  GitHub is slow it says so in one grey line and tries again. Fold it and
+  it reads nothing.
 - **Live pulse.** One row per running session, led by the session's name,
   with the project, branch and short id under it. Rows keep their places:
   the order sessions started in (tabs follow the tab strip among
@@ -564,7 +592,12 @@ others. Installing it: [install-app.md](install-app.md).
   you pick on the right with its state, review, merge state and diff size,
   the deck's actions, its jobs by runner OS against each one's usual time,
   the jobs on a timeline, and a failed job's steps and log with
-  *Investigate*. **Collapse** in its top-right corner, and ⇧⌘B
+  *Investigate*. Its header always says how current what you see is:
+  *Updated just now*; *Saved 5 h ago · refreshing…* with a faint pulse while
+  a copy kept from before is read again (its cards drawn faint until the
+  fresh answer lands); and *Couldn't refresh: <why> · showing data from
+  15:02 · Retry* when GitHub or the daemon could not be read. The CI/CD
+  section on Now says the same in its header. **Collapse** in its top-right corner, and ⇧⌘B
   again, close the tab and show the agent with its deck; the sidebar's
   button closes it and hides the deck too. It reads GitHub
   only while it is in front.
@@ -627,7 +660,7 @@ others. Installing it: [install-app.md](install-app.md).
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
-- **Themes.** Eight, picked from the sun/moon button beside *Dashboard* at
+- **Themes.** Eight, picked from the sun/moon button under *Dashboard* at
   the foot of the sidebar or Settings → *Appearance*: Dark Pastel (a neutral graphite with
   soft, muted colours, the default dark one), Dark Warm, Dark Cold and Dark
   Side; Light, Light Cold, Book (the default light one) and Light Side. Until
@@ -678,6 +711,7 @@ On macOS:
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                         |
 | ⌘[ ]        | Previous and next pane                                                   |
 | ⌘J          | Next session waiting on you                                              |
+| ⇧⌘H         | Add to brain: keep a line in Second Brain                                |
 | ⌘F          | Find in the terminal or the file                                         |
 | ⌘K          | Command palette                                                          |
 | ⌘,          | Settings                                                                 |
@@ -694,7 +728,7 @@ On macOS:
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 (Quick chat is Ctrl+Alt+Shift+N, the PRs & CI full page Ctrl+Alt+Shift+B,
 Send feedback Ctrl+Alt+Shift+F, since Ctrl+Shift+F is Find; tabs are
-Ctrl+Shift+1–9). The arrow
+Ctrl+Shift+1–9; Add to brain is Ctrl+Shift+H). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
@@ -786,6 +820,52 @@ it: nothing that updates behind the sheet takes it from the field you are in.
 - **Closing the window.** On macOS Caprock stays in the menu bar; ⌘Q quits.
   On Windows and Linux closing quits. Quitting never stops the daemon or a
   session.
+
+## Second Brain
+
+The few answers worth keeping, kept as a graph: ideas, decisions, findings
+and open questions, each linked to its project and topics and to the moment
+in the session it came from. Open it from *Brain* in the dashboard's screen
+row.
+
+- **Drop an answer in.** Under any answer on the Memory screen, in a
+  session's Answers tab, or under a reply in the chat view, press **Drop into
+  brain**. Caprock reads the answer from its own record, so the memory knows
+  its session, project and time; its first line becomes the title.
+- **Add a line of your own.** ⇧⌘H (Ctrl+Shift+H on Windows and Linux), or ⌘K
+  → *Add to brain…*: type it, pick Idea, Decision, Finding or Question, name
+  topics if you like, and ⌘↩.
+- **See it as a graph.** The Brain screen opens on the graph: your memories
+  and the topics and projects they hang off. Drag to move, scroll to zoom,
+  double-click to fit, click a dot to open it; *List* shows the same as
+  rows. In the app's sidebar, the Brain block below your projects shows the
+  newest thirty as a small graph — a new memory drops in as it is kept —
+  and the three newest titles.
+- **Find and tidy.** Search, pick a project or a span; open a memory to edit
+  its title and summary, pin it, link it to a topic, jump to the session it
+  came from, or delete it.
+- **Let it build itself (Premium).** With a licence, the Brain screen asks
+  once whether to build it automatically; Settings → Second Brain switches it
+  later. When a session has been quiet for ten minutes, Caprock asks your own
+  `claude` (a small model, Haiku) to pick out what it decided and found, and
+  keeps those as memories linked back to the moment they were said. Short
+  sessions are skipped, reads stop at a daily token limit you choose (100k,
+  300k or 1M), and *Build from my last 30 days* shows an estimate of how many
+  sessions and tokens that is before it starts. These reads use your Claude
+  plan like any other `claude -p` call; they do not show up as sessions and
+  do not run your hooks.
+- **New sessions draw on it.** When Claude starts in a folder and is handed
+  where the last session left off, it also gets up to five of that
+  repository's memories, pinned ones first.
+- **Free and Premium.** Twenty memories dropped in by hand are free; Premium
+  keeps every one and builds the rest for you. Whatever you kept stays
+  readable and editable if a licence lapses.
+
+**Privacy.** Second Brain lives in Caprock's database on this computer, and
+nothing in it is sent to Caprock. Dropping memories in by hand sends nothing
+anywhere. Building it automatically is off until you say yes: then a finished
+session's prompts and answers go to your own `claude`, which sends them to
+Anthropic under your login, the place the session itself already went.
 
 ## Notifications
 
@@ -1006,6 +1086,28 @@ shows what is new, or **Not now** to hide that version.
   (`brew upgrade caprock`, `scoop update caprock`); the app never replaces a
   daemon it did not install.
 
+## A question from Caprock
+
+Caprock cannot see who uses it, so after you have used it on two different
+days it may show one short strip at the bottom of the window: a question
+about a feature it is considering (running Hugging Face models on your
+computer, or one other). At most one a
+day; it waits until you stop typing, never appears while a session is
+waiting for a permission answer, and never covers a terminal.
+
+- **Second Brain.** The strip used to offer it ahead of its arrival; it
+  has arrived (see [Second Brain](#second-brain)), so the strip no longer
+  shows it.
+- **Answering a question.** Two one-click questions and an optional email,
+  if you want to hear when it is ready.
+- **What is sent, and when.** Nothing, until you press **Send**. Then
+  Caprock sends your two answers, which question they answer, and your email
+  if you added one, to caprock.dev. Nothing else: no identifier, nothing
+  about your sessions, projects or usage, not even Caprock's version.
+- **Saying no.** *Not interested* or × sends nothing.
+- **How often.** An answered strip never comes back. Second Brain and the
+  Hugging Face question are shown at most twice each, the others once.
+
 ## macOS privacy prompts
 
 macOS asks before a program reads your Desktop, Documents or Downloads
@@ -1024,9 +1126,14 @@ or Photos library, cloud storage or a volume in the background.
   just cannot read that folder.
 - **Sessions started before this change** still ask as "caprock" until they
   end.
-- **Why it asks again after an update.** Caprock is not yet signed with an
-  Apple Developer ID, so to macOS each release is a new program. For a folder
-  you open in Caprock, or one a session runs in, it asks once per release.
+- **Asking again after an update.** Caprock is not yet signed with an
+  Apple Developer ID. Older releases were signed in a way that made each
+  release a new program to macOS, so the microphone and folder questions
+  came back after every update. The app is now signed with one Caprock
+  certificate that stays the same from release to release: the first update
+  to such a release asks one last time, and later updates keep your answers.
+  The `caprock` Homebrew formula's daemon, when it is the one running, still
+  asks once per release.
 - **Why there are several "caprock" entries without an icon.** Each entry
   is a `caprock` binary at a different place: older Homebrew releases
   (Homebrew keeps each version at its own path), the app's daemon, and
@@ -1057,9 +1164,10 @@ appeared:
 - **Start a new session** for voice. A session that was already running
   keeps the program that started it; a new one asks for itself.
 - **Check System Settings → Privacy & Security → Microphone.** If `claude`,
-  `caprock` or Caprock is listed and switched off, switch it on. After each
-  Caprock release macOS may ask again, since an ad-hoc signed release is a
-  new program to it.
+  `caprock` or Caprock is listed and switched off, switch it on. The first
+  update to a release signed with Caprock's certificate asks once more;
+  after that your answer stays across updates
+  ([why](#macos-privacy-prompts)).
 - **Homebrew without the app.** The formula's `caprock` is not signed with
   the hardened runtime, so nothing stops the prompt; it names "caprock".
 
@@ -1071,15 +1179,28 @@ install from an app store. It reaches this computer through an encrypted
 relay that passes bytes it cannot read
 ([how it works](../README.md#from-anywhere-through-an-encrypted-relay)).
 
-1. **Show a code.** In the app, click **phone** beside *Settings* in the
-   sidebar (or open Settings → *Use on your phone*) and press **Show a
-   code**. The line under the button says what that press does: it turns on
-   access from anywhere for this computer, and keeps it on until you press
-   **Turn off** beside it.
-2. **Scan it.** Point the phone's camera at the code and tap the link:
-   Caprock opens and pairs by itself. **Copy link** under the code is for a
-   phone that cannot scan.
-3. **Install the app, once.** On Android, in Chrome, press **Install the
+1. **Choose what the phone may do.** In the app, click **phone** beside
+   *Settings* in the sidebar (or open Settings → *Use on your phone*).
+   **This phone can type and start agents** is ticked by default, and
+   remembered on this computer: the phone can then start agents, type into
+   sessions, approve and stop them as soon as it pairs, with nothing more to
+   click here. Untick it for a phone that should only look.
+2. **Show a code and scan it.** Press **Show a code**. The line under the
+   button says what that press does: it turns on access from anywhere for
+   this computer, and keeps it on until you press **Turn off** beside it.
+   Point the phone's camera at the code and tap the link: Caprock opens and
+   pairs by itself. **Copy link** under the code is for a phone that cannot
+   scan.
+3. **Check the list.** While the code is up, and after, the panel shows
+   what is done and what is left, live: *Access from anywhere* — on;
+   *Phone paired* — waiting, then the phone's name; *Can type from the
+   phone* — yes, or *view only* with **Let it control sessions** beside it;
+   *App installed on the phone* — yes, or optional. The phone opens on a
+   short **Ready** card: connected to this computer, whether it can type
+   (and, if not, where on the computer to fix it — the card notices by
+   itself), the install button, and **Open sessions**. The card comes back
+   only while the phone cannot type, until you close it.
+4. **Optional: install the app, once.** On Android, in Chrome, press **Install the
    Caprock app** on the page (or **Install** on the line under the
    machine's name); the button is there only while Chrome says Caprock is
    not installed, so it never adds a second copy. Opened in a browser tab
@@ -1103,9 +1224,17 @@ once when the phone comes back to the page or onto a network):
 - **This phone was removed: pair again**: it was removed in *Paired
   devices*. Show a new code and scan it.
 
+A paired phone stays paired. A dropped connection, a restarting computer or
+relay, the phone asleep or offline, or a computer on an older Caprock never
+send it back to pairing: the page says *Pair again* only once the computer
+has turned the phone away on two separate connections (removed), or refused
+its handshake three times in a row (new keys after `caprock remote reset`).
+Even then it keeps checking once a minute and comes back by itself if that
+was wrong.
+
 **Retry** tries at once; **Pair again** shows the three steps and a box for
 a copied link. Opening a pairing link whose code was already used (the
-camera, then the app) keeps the pairing that worked.
+camera, then the app) goes straight back to the pairing that worked.
 
 The phone appears under *Paired devices*, which says how each device reaches
 this computer: *anywhere*, or *Wi-Fi link*. A *Wi-Fi link* is a phone paired
@@ -1126,9 +1255,9 @@ listens on the private Wi-Fi address (and Tailscale's, when it is up), and
 listener is on, Settings shows its address with a **Turn off**. See
 [Without internet](../README.md#without-internet-on-the-same-network-advanced).
 
-A paired phone can look but not change
-anything until you press **Let it control sessions** beside it; **Take
-control away** undoes that at once. The rest of what pairing allows, and
+A phone paired with the box unticked can look but not change anything
+until you press **Let it control sessions** beside it; **Take control
+away** undoes either at once, and holds on the phone's next keystroke. The rest of what pairing allows, and
 why, is in [Open it on your phone](../README.md#open-it-on-your-phone).
 
 ### The phone home
@@ -1168,8 +1297,14 @@ A phone you let control sessions can:
   **Worktree**. Then **Start an agent here** starts a session and opens its
   chat. A clone runs on the computer: lock the phone or lose the signal
   halfway and the page catches up when it is back, without cloning twice.
+- **Read a session.** A session on the phone has one thin bar on top: back,
+  its title, a dot for its state, and **Chat | Terminal** with **···** for
+  Changes, Timeline and Answers. Tap the title for the rest — the project,
+  the permission mode, the model, pause and stop, the folder and links.
+  Scroll down in the chat and the bar slides away so the conversation has
+  the screen; scroll up, or tap the top edge, and it is back.
 - **Chat with a session.** On a phone a session opens on its chat. Type into
-  the field and send; **Photo** attaches a picture by putting its path in the
+  the field and send (the field glows softly while it has the focus); **Photo** attaches a picture by putting its path in the
   message. The keys bar has Esc, Tab, the arrows, Enter and Ctrl+C for the
   agent's menus. Your saved prompts — the ones for every project and for
   this session's project — are chips above the field: tap one to put it in
@@ -1181,6 +1316,11 @@ A phone you let control sessions can:
   locking the phone loses nothing. Tap **Edit** to change one, **Cancel** to
   drop it, or **Send now** to send it without waiting. While a permission
   prompt is on the screen nothing is typed in; answer the prompt first.
+- **Dictate.** The microphone beside **Send** turns speech into text in the
+  field; nothing is sent until you press **Send**. The chip beside it says
+  the language it listens for (**EN**, **RU**…): your browser cannot guess
+  it, so tap the chip to move through your phone's languages and then to a
+  list of common ones. The choice is remembered on that phone.
 - **Pick a command or a file.** Type `/` at the start of the field for the
   agent's commands and skills, or `@` for a file in the session's folder,
   and tap one: it goes into the field, ready to send.
@@ -1192,7 +1332,10 @@ A phone you let control sessions can:
   them. Only in a project under your home folder. A phone that can only
   look sees the list and no buttons.
 
-It reconnects by itself. The header says where it stands — *Live*,
+It reconnects by itself. Through the relay, the name of your computer shows
+along the top only while something is wrong (*Connecting…*, *Computer
+offline*) or, with several computers paired, outside a session; inside one,
+switching computers is in the title's sheet. The header says where it stands — *Live*,
 *Catching up…*, *Reconnecting*, *Offline since* — and says *Live* only when
 the computer answered in the last 25 seconds. A message sent while offline
 waits as *Will send when connected* and goes when the connection is back

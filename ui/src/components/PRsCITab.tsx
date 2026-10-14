@@ -66,6 +66,11 @@ function readView(): TabView {
   try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'board' } catch { return 'board' }
 }
 
+/** A refused read with nothing in it (a daemon just started, GitHub down)
+ *  never replaces a list that had pull requests: it stays, said to be not
+ *  refreshed. */
+const keepStats = (prev: SessionCIStats, next: SessionCIStats) => !!next.error && (next.prs?.length ?? 0) === 0 && (prev.prs?.length ?? 0) > 0
+
 export function PRsCITab(props: PRsCITabProps) {
   const { session, onBack } = props
   if (!session) {
@@ -95,12 +100,22 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
   const [connecting, setConnecting] = useState(false)
   const repoScope = s.repo_root || s.cwd || sessionId
 
-  const [stats, statsAt, statsMeta] = usePoll<SessionCIStats>(visible, `${sessionId}:${n}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, `stats:${repoScope}`)
+  const [stats, statsAt, statsMeta] = usePoll<SessionCIStats>(visible, `${sessionId}:${n}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, `stats:${repoScope}`, keepStats)
   const [prs] = usePoll<SessionPRs>(visible, `${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`)
   const sessionPRs = useMemo(() => prs?.prs ?? [], [prs])
   const rows = useMemo(() => tabRows(scope, sessionPRs, stats?.prs ?? []), [scope, sessionPRs, stats?.prs])
   const pick = chosen ?? firstPick(rows, sessionPRs) ?? 0
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
+  // What the header says of it: the time GitHub was last read (an answer
+  // composed from an older read says so), and why a read failed: a list
+  // GitHub refused comes with the one read before, and what did not fit the
+  // daemon's GitHub budget is said in `error` too.
+  const statsShownAt = stats?.read_at || stats?.fetched_at || statsAt || undefined
+  const statsFailed = statsMeta.failed || (!!stats?.error && !statsMeta.loading)
+  const statsReason = statsMeta.reason ?? stats?.error?.message
+  // Cards not yet re-confirmed — the copy kept from before, an answer that
+  // could not be refreshed — are drawn faint until a fresh one lands.
+  const unconfirmed = !statsMeta.confirmed || statsFailed
   const boardOn = view === 'board' && !stats?.reason && stats?.connected !== false
   // A card opens its pull request in the List view, in a scope that lists it.
   const openFromBoard = (num: number) => {
@@ -153,8 +168,8 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
       <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
         <h1 className="shrink-0 text-[15px] font-semibold">Pull requests &amp; CI</h1>
         {stats?.repo && <span className="mono truncate text-[12px] text-fg-muted">{stats.repo}</span>}
-        <span className="ml-auto flex shrink-0 items-center gap-2 text-[11.5px]">
-          <Freshness at={stats?.fetched_at || statsAt || undefined} loading={statsMeta.loading} failed={statsMeta.failed} />
+        <span className="ml-auto flex min-w-0 max-w-[50%] items-center justify-end gap-2 text-[11.5px]">
+          <Freshness at={statsShownAt} loading={statsMeta.loading} failed={statsFailed} reason={statsReason} confirmed={statsMeta.confirmed} onRetry={statsMeta.retry} />
         </span>
         <BackButton onBack={onBack} />
       </header>
@@ -169,7 +184,7 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
       ) : <ViewSwitch view={view} onView={setView} />}
 
       {boardOn ? (
-        board ? <PRBoardView board={board} prs={stats?.prs ?? []} now={now} onOpen={openFromBoard} />
+        board ? <PRBoardView board={board} prs={stats?.prs ?? []} now={now} onOpen={openFromBoard} unconfirmed={unconfirmed} />
           : !stats ? <DeckSkeleton label="Reading the pull requests" />
             : stats.error ? <p className="truncate text-[12px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p>
               : <p className="text-[12.5px] text-fg-muted">The board comes with a newer Caprock daemon: restart it after the update. The List view works meanwhile.</p>

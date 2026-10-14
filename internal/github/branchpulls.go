@@ -52,6 +52,9 @@ type branchPullsEntry struct {
 	// most recently updated first (a fork's left out, as in m).
 	list []BranchPR
 	at   time.Time
+	// err is the last read's refusal when it failed after at: the list is
+	// then the one read at at, handed back as it was (RepoPullsRead).
+	err *Error
 }
 
 type branchPullsCache struct {
@@ -119,19 +122,29 @@ func (s *Service) PullsByBranch(ctx context.Context, repo Repo) (map[string]Bran
 	doing := "Listing the pull requests of " + key
 	v := url.Values{"state": {"all"}, "sort": {"updated"}, "direction": {"desc"}, "per_page": {strconv.Itoa(branchPullsRead)}}
 	res, ce := s.call(ctx, request{method: http.MethodGet, path: repoPath(repo) + "/pulls?" + v.Encode(), doing: doing})
-	if ce != nil {
-		if have {
-			return e.m, nil
+	if ce == nil {
+		var list []apiPull
+		if ce = decode(res, doing, &list); ce == nil {
+			return s.keepBranchPulls(repo, e.m, list, now), nil
 		}
+	}
+	if !have {
 		return nil, ce
 	}
-	var list []apiPull
-	if de := decode(res, doing, &list); de != nil {
-		if have {
-			return e.m, nil
-		}
-		return nil, de
+	// The last list stays, said to be not refreshed: a board that froze on
+	// an old list without saying so read as live (owner, 2026-10-14).
+	s.branchPulls.mu.Lock()
+	if cur, ok := s.branchPulls.m[key]; ok && cur.at.Equal(e.at) {
+		cur.err = ce
+		s.branchPulls.m[key] = cur
 	}
+	s.branchPulls.mu.Unlock()
+	return e.m, nil
+}
+
+// keepBranchPulls keeps a list just read and says the newly merged branches.
+func (s *Service) keepBranchPulls(repo Repo, before map[string]BranchPR, list []apiPull, now time.Time) map[string]BranchPR {
+	key := repo.FullName()
 	m := pickBranchPRs(repo, list)
 	own := ownPulls(repo, list)
 	all := make([]BranchPR, len(own))
@@ -143,11 +156,24 @@ func (s *Service) PullsByBranch(ctx context.Context, repo Repo) (map[string]Bran
 	s.branchPulls.m[key] = branchPullsEntry{m: m, list: all, at: now}
 	s.branchPulls.mu.Unlock()
 	if s.OnMerged != nil {
-		if merged := newlyMerged(e.m, m); len(merged) > 0 {
+		if merged := newlyMerged(before, m); len(merged) > 0 {
 			s.OnMerged(repo, merged)
 		}
 	}
-	return m, nil
+	return m
+}
+
+// RepoPullsRead says when the pull request list of repo was last read from
+// GitHub (0 when never) and, when the read after it failed, why: the list
+// handed back is then that older one. Nothing is sent.
+func (s *Service) RepoPullsRead(repo Repo) (readAt int64, failed *Error) {
+	s.branchPulls.mu.Lock()
+	defer s.branchPulls.mu.Unlock()
+	e, ok := s.branchPulls.m[repo.FullName()]
+	if !ok {
+		return 0, nil
+	}
+	return e.at.UnixMilli(), e.err
 }
 
 // newlyMerged lists the branches merged in now and not in before, sorted.

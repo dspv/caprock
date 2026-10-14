@@ -28,18 +28,69 @@ import (
 var flowTTL = 10 * time.Minute
 
 type oauthFlow struct {
+	id       string // what the screen polls, never the state
 	provider string
 	verifier string
 	redirect string
 	expires  time.Time
 }
 
+// oauthOutcome is how a sign-in ended, kept for the screen to read.
+type oauthOutcome struct {
+	Status string `json:"status"` // pending | ok | error | expired
+	Email  string `json:"email,omitempty"`
+	Error  string `json:"error,omitempty"`
+	at     time.Time
+}
+
 // oauthFlows holds started sign-ins by state, in memory only. A state is
 // used once: taken out on the first callback that names it, whatever happens
-// next.
+// next. How each ended is kept by flow id for flowTTL, so the import screen
+// can say connected or why not.
 type oauthFlows struct {
 	mu    sync.Mutex
 	flows map[string]oauthFlow
+	done  map[string]oauthOutcome
+}
+
+// finish records how the flow id ended.
+func (f *oauthFlows) finish(id string, o oauthOutcome) {
+	if id == "" {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.done == nil {
+		f.done = map[string]oauthOutcome{}
+	}
+	now := time.Now()
+	for k, v := range f.done {
+		if now.Sub(v.at) > flowTTL {
+			delete(f.done, k)
+		}
+	}
+	o.at = now
+	f.done[id] = o
+}
+
+// status is the flow id's outcome: pending while its browser has not come
+// back, expired when it never did (or the id is unknown).
+func (f *oauthFlows) status(id string) oauthOutcome {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if o, ok := f.done[id]; ok {
+		return o
+	}
+	now := time.Now()
+	for _, fl := range f.flows {
+		if fl.id == id && id != "" {
+			if now.After(fl.expires) {
+				break
+			}
+			return oauthOutcome{Status: "pending"}
+		}
+	}
+	return oauthOutcome{Status: "expired", Error: "The sign-in was not finished in time. Start it again."}
 }
 
 func (f *oauthFlows) put(state string, fl oauthFlow) {
@@ -72,6 +123,12 @@ func (s *Service) oauthRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /v1/mail/oauth/providers", s.oauthProviders)
 	m.HandleFunc("POST /v1/mail/oauth/start", s.oauthStart)
 	m.HandleFunc("GET /v1/mail/oauth/callback", s.oauthCallback)
+	m.HandleFunc("GET /v1/mail/oauth/flow", s.oauthFlowStatus)
+}
+
+// oauthFlowStatus answers how the sign-in started as ?id= is going.
+func (s *Service) oauthFlowStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, s.oauth.status(r.URL.Query().Get("id")))
 }
 
 // oauthProviders says which sign-in buttons work in this build.
@@ -101,6 +158,9 @@ func loopbackPort(r *http.Request) string {
 func (s *Service) oauthStart(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Provider string `json:"provider"`
+		// LoginHint is the address the import screen is connecting, so the
+		// provider's page starts on that account.
+		LoginHint string `json:"login_hint"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		fail(w, 400, err)
@@ -123,8 +183,9 @@ func (s *Service) oauthStart(w http.ResponseWriter, r *http.Request) {
 	state := oauth.RandomString(24)
 	verifier := oauth.RandomString(48) // 64 characters; RFC 7636 wants 43–128
 	redirect := p.RedirectURI(port)
-	s.oauth.put(state, oauthFlow{provider: p.Name, verifier: verifier, redirect: redirect, expires: time.Now().Add(flowTTL)})
-	writeJSON(w, map[string]string{"auth_url": p.AuthCodeURL(state, verifier, redirect)})
+	id := oauth.RandomString(12)
+	s.oauth.put(state, oauthFlow{id: id, provider: p.Name, verifier: verifier, redirect: redirect, expires: time.Now().Add(flowTTL)})
+	writeJSON(w, map[string]string{"auth_url": p.AuthCodeURLHint(state, verifier, redirect, strings.TrimSpace(req.LoginHint)), "flow": id})
 }
 
 func (s *Service) oauthCallback(w http.ResponseWriter, r *http.Request) {
@@ -139,26 +200,31 @@ func (s *Service) oauthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ := oauth.Lookup(fl.provider)
+	failed := func(code int, msg string) {
+		s.oauth.finish(fl.id, oauthOutcome{Status: "error", Error: msg})
+		oauthPage(w, code, false, msg)
+	}
 	if e := q.Get("error"); e != "" {
 		msg := q.Get("error_description")
 		if msg == "" {
 			msg = e
 		}
-		oauthPage(w, 400, false, p.Label+" did not sign you in: "+msg)
+		failed(400, p.Label+" did not sign you in: "+msg)
 		return
 	}
 	code := q.Get("code")
 	if code == "" {
-		oauthPage(w, 400, false, "The answer from "+p.Label+" carried no code. Start again from Mail in Caprock.")
+		failed(400, "The answer from "+p.Label+" carried no code. Start again from Mail in Caprock.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	a, err := s.connectOAuth(ctx, p, code, fl)
 	if err != nil {
-		oauthPage(w, 502, false, err.Error())
+		failed(502, err.Error())
 		return
 	}
+	s.oauth.finish(fl.id, oauthOutcome{Status: "ok", Email: a.Email})
 	oauthPage(w, 200, true, a.Email+" is connected. You can close this tab and go back to Caprock.")
 }
 

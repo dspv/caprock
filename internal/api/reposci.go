@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/github"
@@ -22,13 +24,17 @@ type ReposCI struct {
 	// GitHub is connected.
 	Status *github.GitHubStatus `json:"status,omitempty"`
 	Repos  []RepoCIRow          `json:"repos"`
-	// FetchedAt and Refreshing: as SessionPRs says them.
-	FetchedAt  int64 `json:"fetched_at"`
-	Refreshing bool  `json:"refreshing,omitempty"`
+	// Quiet are the listed GitHub repositories not read: no session in them
+	// for RecentDays (unless `older` was asked), hidden by this viewer
+	// (`hide`), or past the rows' bound. Nothing is sent to GitHub for them.
+	Quiet []RepoCIQuiet `json:"quiet"`
+	// RecentDays is the window of activity that lists a repository.
+	RecentDays int `json:"recent_days"`
+	deckFresh
 }
 
-func (a ReposCI) stamped(at int64, refreshing bool) any {
-	a.FetchedAt, a.Refreshing = at, refreshing
+func (a ReposCI) stamped(f deckFresh) any {
+	a.deckFresh = f
 	return a
 }
 
@@ -40,6 +46,17 @@ type RepoCIRow struct {
 	Repo string `json:"repo"`
 	// Live counts the sessions running in it.
 	Live int `json:"live"`
+	// LastActive is its newest session's last event, or when it was added
+	// to the list if later (Unix ms; 0 when neither is known).
+	LastActive int64 `json:"last_active,omitempty"`
+	// Older says it is listed only because older repositories were asked.
+	Older bool `json:"older,omitempty"`
+	// Pending says GitHub's figures are being read: the quick answer, while
+	// the first composition waits on GitHub.
+	Pending bool `json:"pending,omitempty"`
+	// Slow says GitHub did not answer within reposCIRepoTimeout; Error has
+	// its words, and the next composition asks again.
+	Slow bool `json:"slow,omitempty"`
 	// CI is github.RunStats over its newest runs, 14 days.
 	CI *github.CIStats `json:"ci,omitempty"`
 	// Days are the local calendar days CI's series cover, oldest first.
@@ -56,6 +73,20 @@ type RepoCIRow struct {
 	// Release is its newest published release.
 	Release *github.RepoRelease `json:"release,omitempty"`
 	Error   *github.Error       `json:"error,omitempty"`
+	// ReadAt is when GitHub last answered its pull request list (unix ms):
+	// with Error, the row draws on that older read, not refreshed.
+	ReadAt int64 `json:"read_at,omitempty"`
+}
+
+// RepoCIQuiet is a listed GitHub repository the section does not read.
+type RepoCIQuiet struct {
+	ProjectID  int64  `json:"project_id"`
+	Name       string `json:"name"`
+	Repo       string `json:"repo"`
+	LastActive int64  `json:"last_active,omitempty"`
+	// Why: "older" (no activity in RecentDays), "hidden" (this viewer hid
+	// it), "more" (past the bound on rows read).
+	Why string `json:"why"`
 }
 
 // RepoCIPR is one pull request with its agent cost.
@@ -70,6 +101,13 @@ type RepoCIPR struct {
 	CostUSD      float64 `json:"cost_usd"`
 	Sessions     int     `json:"sessions"`
 	Live         int     `json:"live"`
+	// Shared counts its sessions charged only in part (store.PRSpend).
+	Shared int `json:"shared,omitempty"`
+	// The tokens of the same work.
+	TokensIn   int64 `json:"tokens_in"`
+	TokensOut  int64 `json:"tokens_out"`
+	CacheRead  int64 `json:"cache_read"`
+	CacheWrite int64 `json:"cache_write"`
 }
 
 // RepoCIAuthor is one person who opened pull requests in the window.
@@ -81,52 +119,131 @@ type RepoCIAuthor struct {
 	CostUSD float64 `json:"cost_usd"`
 }
 
-// reposCIMax bounds the repositories read (each three kept GitHub lists).
-const reposCIMax = 6
+// reposCIMax bounds the recent repositories read (each three kept GitHub
+// lists); reposCIOlderMax all of them once older ones are asked.
+const (
+	reposCIMax      = 6
+	reposCIOlderMax = 12
+)
+
+// reposCIRecentDays is the activity that lists a repository: a session in
+// it, or its being added, within this many days (owner, 2026-10-14,
+// translated: "why do I see projects from a hundred years ago?").
+const reposCIRecentDays = 14
+
+// reposCIParallel bounds the repositories read from GitHub at once, and
+// reposCIRepoTimeout each one's reads. Read one after another under the
+// composition's one deadline, a slow repository used to leave every one
+// after it "could not reach GitHub: context deadline exceeded".
+var reposCIRepoTimeout = 12 * time.Second // a variable for the tests
+
+const (
+	reposCIParallel = 3
+	// reposCIComposeTimeout bounds a composition: two rounds of
+	// reposCIParallel at reposCIRepoTimeout for reposCIMax repositories,
+	// and some.
+	reposCIComposeTimeout = 30 * time.Second
+	// reposCIHideMax bounds the hidden repositories a request names.
+	reposCIHideMax = 200
+)
 
 // reposCITop is how many pull requests the cost list keeps.
 const reposCITop = 5
 
+// reposCIAsk is what a request asks beyond the defaults: older repositories
+// read too, and the repositories this viewer hid (owner/name, lower case).
+type reposCIAsk struct {
+	older bool
+	hide  map[string]bool
+}
+
+func (a reposCIAsk) key() string {
+	h := make([]string, 0, len(a.hide))
+	for r := range a.hide {
+		h = append(h, r)
+	}
+	sort.Strings(h)
+	o := "0"
+	if a.older {
+		o = "1"
+	}
+	return o + ":" + strings.Join(h, ",")
+}
+
+func parseReposCIAsk(r *http.Request) reposCIAsk {
+	q := r.URL.Query()
+	a := reposCIAsk{older: q.Get("older") == "1", hide: map[string]bool{}}
+	for _, h := range strings.Split(q.Get("hide"), ",") {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h != "" && strings.Count(h, "/") == 1 && len(a.hide) < reposCIHideMax {
+			a.hide[h] = true
+		}
+	}
+	return a
+}
+
 // handleReposCI answers the CI/CD section, which asks only while it is
-// unfolded and the window visible. Each repository costs the kept reads the
-// PRs & CI tab makes (its pull request list, its runs, its releases); the
-// composed answer is kept as the deck's are (deckcache.go).
+// unfolded and the window visible. Each repository read costs the kept reads
+// the PRs & CI tab makes (its pull request list, its runs, its releases);
+// the composed answer is kept as the deck's are (deckcache.go). The first
+// composition of a key, which waits on GitHub, is answered at once with the
+// repositories and no figures (`pending`, `refreshing`).
 func (s *Server) handleReposCI(w http.ResponseWriter, r *http.Request) {
 	if !s.requireProjects(w) {
 		return
 	}
 	connected := s.githubConnected()
-	s.serveDeck(w, r, deckKey("reposci", "", connected, 0), func(ctx context.Context) (deckAnswer, error) {
-		return s.composeReposCI(ctx, connected)
+	ask := parseReposCIAsk(r)
+	s.serveDeckOrQuickWithin(w, r, deckKey("reposci", ask.key(), connected, 0), reposCIComposeTimeout, func(ctx context.Context) (deckAnswer, error) {
+		return s.composeReposCI(ctx, connected, ask)
+	}, func(ctx context.Context) (deckAnswer, error) {
+		out, _, err := s.planReposCI(ctx, connected, ask)
+		for i := range out.Repos {
+			out.Repos[i].Pending = true
+			out.Repos[i].Stuck, out.Repos[i].TopPRs, out.Repos[i].Authors = []github.StuckRun{}, []RepoCIPR{}, []RepoCIAuthor{}
+		}
+		return out, err
 	}, s.fail)
 }
 
-func (s *Server) composeReposCI(ctx context.Context, connected bool) (deckAnswer, error) {
-	out := ReposCI{GitHubConnected: connected, Repos: []RepoCIRow{}}
+// reposCIRead is a row to read from GitHub.
+type reposCIRead struct {
+	repo github.Repo
+	root string
+}
+
+// planReposCI lists the rows and the quiet repositories without asking
+// GitHub: the listed projects of kind repo on GitHub, one per repository,
+// those with a session running first, then by last activity.
+func (s *Server) planReposCI(ctx context.Context, connected bool, ask reposCIAsk) (ReposCI, []reposCIRead, error) {
+	out := ReposCI{GitHubConnected: connected, Repos: []RepoCIRow{}, Quiet: []RepoCIQuiet{}, RecentDays: reposCIRecentDays}
 	if !connected {
-		return out, nil
-	}
-	if st, ok := s.d.GitHub.StatusPage(ctx); ok {
-		out.Status = &st
+		return out, nil, nil
 	}
 	ps, err := store.ListProjects(ctx, s.d.Store.DB(), false)
 	if err != nil {
-		return nil, err
+		return out, nil, err
 	}
 	sess, err := store.ListSessions(ctx, s.d.Store.DB(), true, store.MaxSessionsPage)
 	if err != nil {
-		return nil, err
+		return out, nil, err
+	}
+	// Every directory sessions ran in, with its newest event: grouped by
+	// SQLite, a few hundred rows.
+	dirs, err := store.RecentDirs(ctx, s.d.Store.DB(), 1<<20)
+	if err != nil {
+		return out, nil, err
 	}
 	now := time.Now()
 	if s.d.GitHub.Now != nil {
 		now = s.d.GitHub.Now()
 	}
+	since := now.AddDate(0, 0, -reposCIRecentDays).UnixMilli()
 	type cand struct {
 		row  RepoCIRow
-		repo github.Repo
-		root string
+		read reposCIRead
 	}
-	var withLive, idle []cand
+	var cands []cand
 	seen := map[string]bool{}
 	for _, p := range ps {
 		if p.Kind != store.ProjectKindRepo {
@@ -141,7 +258,7 @@ func (s *Server) composeReposCI(ctx context.Context, connected bool) (deckAnswer
 			continue
 		}
 		seen[repo.FullName()] = true
-		c := cand{row: RepoCIRow{ProjectID: p.ID, Name: p.Name, Repo: repo.FullName()}, repo: repo, root: p.Root}
+		c := cand{row: RepoCIRow{ProjectID: p.ID, Name: p.Name, Repo: repo.FullName(), LastActive: p.AddedAt}, read: reposCIRead{repo: repo, root: p.Root}}
 		for _, x := range sess {
 			dir := x.RepoRoot
 			if dir == "" {
@@ -151,45 +268,118 @@ func (s *Server) composeReposCI(ctx context.Context, connected bool) (deckAnswer
 				c.row.Live++
 			}
 		}
-		if c.row.Live > 0 {
-			withLive = append(withLive, c)
-		} else {
-			idle = append(idle, c)
+		for _, d := range dirs {
+			if d.LastEventAt > c.row.LastActive && store.DirWithin(d.Dir, p.Root) {
+				c.row.LastActive = d.LastEventAt
+			}
+		}
+		cands = append(cands, c)
+	}
+	sort.SliceStable(cands, func(a, b int) bool {
+		x, y := cands[a].row, cands[b].row
+		if (x.Live > 0) != (y.Live > 0) {
+			return x.Live > 0
+		}
+		return x.LastActive > y.LastActive
+	})
+	var reads []reposCIRead
+	quiet := func(r RepoCIRow, why string) {
+		out.Quiet = append(out.Quiet, RepoCIQuiet{ProjectID: r.ProjectID, Name: r.Name, Repo: r.Repo, LastActive: r.LastActive, Why: why})
+	}
+	for _, c := range cands {
+		recent := c.row.Live > 0 || c.row.LastActive >= since
+		switch {
+		case ask.hide[strings.ToLower(c.row.Repo)]:
+			quiet(c.row, "hidden")
+		case !recent && !ask.older:
+			quiet(c.row, "older")
+		case recent && len(reads) >= reposCIMax, len(reads) >= reposCIOlderMax:
+			quiet(c.row, "more")
+		default:
+			c.row.Older = !recent
+			out.Repos = append(out.Repos, c.row)
+			reads = append(reads, c.read)
 		}
 	}
-	for _, c := range append(withLive, idle...) {
-		if len(out.Repos) >= reposCIMax {
-			break
+	return out, reads, nil
+}
+
+func (s *Server) composeReposCI(ctx context.Context, connected bool, ask reposCIAsk) (deckAnswer, error) {
+	out, reads, err := s.planReposCI(ctx, connected, ask)
+	if err != nil || !connected {
+		return out, err
+	}
+	now := time.Now()
+	if s.d.GitHub.Now != nil {
+		now = s.d.GitHub.Now()
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if st, ok := s.d.GitHub.StatusPage(ctx); ok {
+			out.Status = &st
 		}
-		row, err := s.repoCIRow(ctx, c.row, c.repo, c.root, now)
-		if err != nil {
-			return nil, err
+	}()
+	errs := make([]error, len(reads))
+	sem := make(chan struct{}, reposCIParallel)
+	for i := range reads {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			gh, cancel := context.WithTimeout(ctx, reposCIRepoTimeout)
+			defer cancel()
+			out.Repos[i], errs[i] = s.repoCIRow(ctx, gh, out.Repos[i], reads[i].repo, reads[i].root, now)
+		}(i)
+	}
+	wg.Wait()
+	for _, e := range errs {
+		if e != nil {
+			return nil, e
 		}
-		out.Repos = append(out.Repos, row)
 	}
 	return out, nil
 }
 
-// repoCIRow fills one repository's row from the kept GitHub reads and the
-// recorded agent work. GitHub's refusal is part of the row.
-func (s *Server) repoCIRow(ctx context.Context, row RepoCIRow, repo github.Repo, root string, now time.Time) (RepoCIRow, error) {
+// slowGitHub says whether a GitHub refusal was its not answering in time:
+// the row's own deadline, or the client's.
+func slowGitHub(gh context.Context, e *github.Error) bool {
+	if e == nil || e.Kind != github.KindNetwork {
+		return false
+	}
+	m := strings.ToLower(e.Message)
+	return gh.Err() != nil || strings.Contains(m, "deadline exceeded") || strings.Contains(m, "timeout")
+}
+
+// repoCIRow fills one repository's row from the kept GitHub reads, asked
+// under gh, and the recorded agent work, read under ctx. GitHub's refusal is
+// part of the row.
+func (s *Server) repoCIRow(ctx, gh context.Context, row RepoCIRow, repo github.Repo, root string, now time.Time) (RepoCIRow, error) {
 	row.Stuck, row.TopPRs, row.Authors = []github.StuckRun{}, []RepoCIPR{}, []RepoCIAuthor{}
-	prs, e := s.d.GitHub.RepoPulls(ctx, repo)
+	prs, e := s.d.GitHub.RepoPulls(gh, repo)
 	if e != nil {
 		// GitHub's refusal is the row's content, not a failure of the call.
-		row.Error = e
+		row.Error, row.Slow = e, slowGitHub(gh, e)
 		return row, nil //nolint:nilerr // the error travels in row.Error
 	}
-	if runs, e := s.d.GitHub.RepoRuns(ctx, repo); e == nil {
+	if runs, e := s.d.GitHub.RepoRuns(gh, repo); e == nil {
 		st := github.RunStats(runs, now, github.StatsDays)
 		row.CI = &st
 		row.Days = github.Stats(nil, nil, now, github.StatsDays).Days
 		row.Stuck = github.StuckRuns(runs, now, github.StatsDays)
 	} else {
-		row.Error = e
+		row.Error, row.Slow = e, slowGitHub(gh, e)
 	}
-	if rels, e := s.d.GitHub.RepoReleases(ctx, repo); e == nil && len(rels) > 0 {
+	if rels, e := s.d.GitHub.RepoReleases(gh, repo); e == nil && len(rels) > 0 {
 		row.Release = &rels[0]
+	}
+	// A list handed back from an earlier read says so.
+	at, failed := s.d.GitHub.RepoPullsRead(repo)
+	row.ReadAt = at
+	if failed != nil && row.Error == nil {
+		row.Error = failed
 	}
 	week := now.AddDate(0, 0, -7).UnixMilli()
 	var cands []github.BranchPR
@@ -212,7 +402,8 @@ func (s *Server) repoCIRow(ctx context.Context, row RepoCIRow, repo github.Repo,
 	for _, p := range cands {
 		sp := spend[p.URL]
 		row.TopPRs = append(row.TopPRs, RepoCIPR{Number: p.Number, Title: p.Title, URL: p.URL, State: p.State, Draft: p.Draft,
-			Author: p.Author, AuthorAvatar: p.AuthorAvatar, CostUSD: sp.CostUSD, Sessions: sp.Sessions, Live: sp.Live})
+			Author: p.Author, AuthorAvatar: p.AuthorAvatar, CostUSD: sp.CostUSD, Sessions: sp.Sessions, Live: sp.Live,
+			Shared: sp.Shared, TokensIn: sp.TokensIn, TokensOut: sp.TokensOut, CacheRead: sp.CacheRead, CacheWrite: sp.CacheWrite})
 		if p.Author == "" {
 			continue
 		}

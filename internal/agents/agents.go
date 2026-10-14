@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/ptyhost"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/store"
@@ -220,6 +221,15 @@ type Manager struct {
 	// restarting marks a session being stopped to be resumed in another
 	// mode, so its terminals are told to reconnect rather than that it ended.
 	restarting map[string]bool
+	// nudgeMu guards nudges (nudge.go).
+	nudgeMu sync.Mutex
+	// nudges is each owned session's newest input that its status reads
+	// before the session writes an event for it.
+	nudges map[string]narrate.Nudge
+	// OnNudge is told when one is noted, with the session's agent kind, so
+	// every screen asks for the session's status again at once. It must
+	// not block: a keystroke calls it.
+	OnNudge func(sessionID, kind string, n narrate.Nudge)
 	// NewSessionID generates a session id; overridable in tests.
 	NewSessionID func() string
 	// Now is the clock chat directory names are stamped from; overridable in
@@ -325,6 +335,15 @@ func (m *Manager) ClaudeAvailable() bool {
 	}
 	_, err := exec.LookPath(m.claude)
 	return err == nil
+}
+
+// ClaudeBinary is the claude executable the manager starts, "" when this
+// machine has none. Second Brain's extraction calls the same one (ADR-063).
+func (m *Manager) ClaudeBinary() string {
+	if !m.ClaudeAvailable() {
+		return ""
+	}
+	return m.claude
 }
 
 // resolveClaude finds the claude binary: PATH first, then the well-known install
@@ -811,7 +830,7 @@ func (m *Manager) Input(sessionID string, data []byte) error {
 		return errNotOwned(sessionID)
 	}
 	// Answered in the terminal: the buttons are out of date.
-	m.typedIntoMenu(sessionID, data)
+	m.typedInput(a, data)
 	_, err := a.sess.Write(data)
 	return err
 }
@@ -826,7 +845,7 @@ func (m *Manager) InputSeq(sessionID, client string, seq uint64, data []byte) (u
 		return 0, errNotOwned(sessionID)
 	}
 	if seq > 0 {
-		m.typedIntoMenu(sessionID, data)
+		m.typedInput(a, data)
 	}
 	if sw, ok := a.sess.(ptyman.SeqWriter); ok {
 		last, err := sw.WriteSeq(client, seq, data)
@@ -1007,6 +1026,7 @@ func (a *Agent) wait(m *Manager) {
 	m.mu.Unlock()
 	m.clearPermission(a.SessionID)
 	m.forgetMode(a.SessionID)
+	m.forgetNudge(a.SessionID)
 	if a.Kind != KindShell {
 		_ = m.store.WithTx(context.Background(), func(q store.Querier) error { return store.SetExit(context.Background(), q, a.SessionID, code) })
 	}

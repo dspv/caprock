@@ -36,6 +36,24 @@ import (
 type subIngest struct {
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
+	// codex is each Codex subscription's importer, to read at once after
+	// input was typed into a session (Daemon.nudged).
+	codex map[string]*codex.Ingester
+}
+
+// codexIngesters are every Codex importer running: the Default sign-in's
+// and each subscription's.
+func (d *Daemon) codexIngesters() []*codex.Ingester {
+	var out []*codex.Ingester
+	if in := d.codexIngester(); in != nil {
+		out = append(out, in)
+	}
+	d.subIn.mu.Lock()
+	for _, in := range d.subIn.codex {
+		out = append(out, in)
+	}
+	d.subIn.mu.Unlock()
+	return out
 }
 
 // startSubIngest begins reading sub's directory, once.
@@ -70,6 +88,10 @@ func (d *Daemon) startSubIngest(sub config.Subscription) {
 		in.Link = d.link
 		in.Subscription = sub.ID
 		in.LimitPrefix = subs.LimitPrefix(sub.ID)
+		if d.subIn.codex == nil {
+			d.subIn.codex = map[string]*codex.Ingester{}
+		}
+		d.subIn.codex[sub.ID] = in
 		go func() {
 			if err := in.Run(ctx); err != nil && ctx.Err() == nil {
 				d.log.Warn("subscription codex import stopped", "component", "subs", "subscription", sub.ID, "err", err)
@@ -85,6 +107,7 @@ func (d *Daemon) stopSubIngest(id string) {
 		cancel()
 		delete(d.subIn.running, id)
 	}
+	delete(d.subIn.codex, id)
 }
 
 // prepareSub (re)writes what a subscription's directory needs: for Claude

@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -396,6 +397,13 @@ func (m *Manager) AnswerPermission(sessionID, id string, choice PermissionChoice
 	m.permMu.Unlock()
 	m.notifyPermission(sessionID, head)
 	_, err = a.sess.Write([]byte(key))
+	if err == nil {
+		kind := narrate.NudgeApproved
+		if choice == PermissionDeny {
+			kind = narrate.NudgeRejected
+		}
+		m.noteNudge(a, kind, m.now())
+	}
 	m.persistPermission(sessionID)
 	return err
 }
@@ -433,22 +441,42 @@ func classifyMenuInput(data []byte) menuInput {
 	return menuNone
 }
 
+// menuTyped is what a key typed into the terminal did to the prompts.
+type menuTyped struct {
+	// had is whether any prompt was outstanding when the key came.
+	had bool
+	// answered is set when the key answered the one outstanding prompt;
+	// ringAt is that prompt's ringAt, where its dialog starts.
+	answered bool
+	ringAt   uint64
+	// interrupted is Esc or Ctrl+C with prompts outstanding: rejected.
+	interrupted bool
+}
+
 // typedIntoMenu updates the prompts after a key typed into the terminal.
-func (m *Manager) typedIntoMenu(sessionID string, data []byte) {
+func (m *Manager) typedIntoMenu(sessionID string, data []byte) menuTyped {
+	m.permMu.Lock()
+	q := m.perms[sessionID]
+	out := menuTyped{had: len(q) > 0}
+	var at uint64
+	if len(q) == 1 {
+		at = q[0].ringAt
+	}
+	m.permMu.Unlock()
 	switch classifyMenuInput(data) {
 	case menuAnswer:
 		// With one outstanding, the key answered it. With several it
 		// answered whichever the terminal showed, which Caprock cannot name:
 		// each then goes with its own call's PostToolUse.
-		m.permMu.Lock()
-		one := len(m.perms[sessionID]) == 1
-		m.permMu.Unlock()
-		if one {
+		if len(q) == 1 {
 			m.dropPermissions(sessionID, func(_ *Permission, done bool) bool { return !done })
+			out.answered, out.ringAt = true, at
 		}
 	case menuInterrupt:
 		m.clearPermission(sessionID)
+		out.interrupted = out.had
 	}
+	return out
 }
 
 // addPermission queues a new prompt and then shows it if it is the oldest, on

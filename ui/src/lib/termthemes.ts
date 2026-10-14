@@ -187,6 +187,13 @@ export const DARK_SIDE_TERMINAL_THEME: TerminalColors = {
   brightWhite: '#f5f2fb',
 }
 
+/**
+ * The contrast every terminal cell keeps against its own background, in every
+ * palette (WCAG AA for body text): the ground, a colour a program paints
+ * behind text, and the selection.
+ */
+export const TERMINAL_MIN_CONTRAST = 4.5
+
 /** The choice that follows the app's theme rather than naming a palette. */
 export const MATCH_APP_THEME = 'match'
 

@@ -53,6 +53,11 @@ done
 [[ "$(uname -s)" == Darwin ]] || die "the macOS app builds on macOS only"
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || die "$TAG is not vX.Y.Z"
 VERSION="${TAG#v}"
+# Mail's sign-in client IDs (docs/mail-oauth.md), compiled in when the
+# environment has them (release.yml passes the GitHub secrets of the same
+# names); unset, the flags are empty and Mail offers app passwords.
+MAIL_OAUTH=github.com/dspv/caprock/internal/mail/oauth
+MAIL_LDFLAGS="-X $MAIL_OAUTH.GoogleClientID=${CAPROCK_MAIL_GOOGLE_CLIENT_ID:-} -X $MAIL_OAUTH.GoogleClientSecret=${CAPROCK_MAIL_GOOGLE_CLIENT_SECRET:-} -X $MAIL_OAUTH.MicrosoftClientID=${CAPROCK_MAIL_MICROSOFT_CLIENT_ID:-}"
 
 # The same tag: the daemon inside the app is built from this checkout.
 TAG_COMMIT="$(git rev-parse -q --verify "$TAG^{commit}")" || die "no tag $TAG here (git fetch --tags)"
@@ -74,7 +79,7 @@ echo "→ daemon $VERSION, universal"
 for bin in caprock caprock-pty-host; do
   for arch in arm64 amd64; do
     CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" go build -trimpath \
-      -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=$VERSION" \
+      -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=$VERSION $MAIL_LDFLAGS" \
       -o "$OUT/$bin-$arch" "./cmd/$bin"
   done
   # tauri-build checks for each architecture's sidecar while compiling it; the
@@ -121,8 +126,10 @@ ls "$MNT/.background/"*.png >/dev/null 2>&1 || die "no background picture in the
 plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$APP/Contents/Info.plist"; }
 [[ "$(plist CFBundleIdentifier)" == dev.caprock.app ]] || die "bundle id is $(plist CFBundleIdentifier)"
 [[ "$(plist CFBundleShortVersionString)" == "$VERSION" ]] || die "app version is $(plist CFBundleShortVersionString)"
-codesign --verify --deep --strict "$APP" || die "the signature does not verify"
-codesign -dv "$APP" 2>&1 | grep -q '^Signature=adhoc' || die "the app is not ad-hoc signed"
+# Ad-hoc, or, with APPLE_SIGNING_IDENTITY (release.yml's stable self-signed
+# identity, scripts/macos-selfsign-keychain.sh), signed with it so macOS
+# keeps the microphone and folder answers across updates.
+bash scripts/check-app-signature.sh "$APP"
 for bin in caprock-app caprock caprock-pty-host; do
   archs="$(lipo -archs "$APP/Contents/MacOS/$bin")"
   [[ "$archs" == *x86_64* && "$archs" == *arm64* ]] || die "$bin is $archs, not universal"
@@ -152,7 +159,7 @@ fi
 
 SHA="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@SHA256@/$SHA/" app/packaging/caprock-app.rb.tmpl > "$OUT/caprock-app.rb"
-echo "  ok: ad-hoc signed, universal, dev.caprock.app $VERSION, bundles $daemon"
+echo "  ok: universal, dev.caprock.app $VERSION, bundles $daemon, signed ${APPLE_SIGNING_IDENTITY:-ad-hoc}"
 echo "  $(du -h "$DMG" | cut -f1)  sha256 $SHA"
 
 if [[ "$UPLOAD" == 1 ]]; then

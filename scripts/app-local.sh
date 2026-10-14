@@ -196,8 +196,10 @@ took "dashboard"
 
 # --- daemon -------------------------------------------------------------------
 step "daemon (sidecar)"
+# Mail's sign-in client IDs when the environment has them (docs/mail-oauth.md).
+MAIL_OAUTH=github.com/dspv/caprock/internal/mail/oauth
 CGO_ENABLED=0 go build -trimpath \
-  -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=$VERSION" \
+  -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=$VERSION -X $MAIL_OAUTH.GoogleClientID=${CAPROCK_MAIL_GOOGLE_CLIENT_ID:-} -X $MAIL_OAUTH.GoogleClientSecret=${CAPROCK_MAIL_GOOGLE_CLIENT_SECRET:-} -X $MAIL_OAUTH.MicrosoftClientID=${CAPROCK_MAIL_MICROSOFT_CLIENT_ID:-}" \
   -o "app/src-tauri/binaries/caprock-$TRIPLE" ./cmd/caprock
 CGO_ENABLED=0 go build -trimpath \
   -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=$VERSION" \

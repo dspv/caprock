@@ -26,6 +26,7 @@ import (
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/board"
+	"github.com/dspv/caprock/internal/brain"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/cap"
 	"github.com/dspv/caprock/internal/codex"
@@ -238,6 +239,8 @@ type Daemon struct {
 	awake *keepawake.Keeper
 	// cfgMu guards opt.Config, which the settings endpoint mutates at runtime.
 	cfgMu sync.RWMutex
+	// brain is Second Brain's automatic extraction.
+	brain *brain.Engine
 	// hiveMu guards board, orch and opt.HiveDir/opt.RepoCwd. The task runner can
 	// be turned on after startup (POST /v1/hive), so these are written from a
 	// request goroutine while the API, the hook receiver and /v1/status read them.
@@ -509,6 +512,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.mgr.OnPermission = func(id string, p *agents.Permission) {
 		d.bus.Publish(bus.Frame{Type: bus.FramePermission, Data: map[string]any{"session_id": id, "permission": p}})
 	}
+	// Input an owned session has not answered with an event yet moves its
+	// status at once (narrate.Nudge): every screen is told to ask again.
+	d.mgr.OnNudge = d.nudged
 	// Sessions this daemon starts live in pty-hosts, and the ones the last
 	// daemon started are picked back up here: after OnExit, which each
 	// session captures, and before the first liveness sweep and the API.
@@ -621,6 +627,10 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	d.mail = mail.New(d.opt.DataDir, d.log)
 	defer d.mail.Close()
+	// Second Brain's automatic extraction (ADR-063): started here, idle
+	// until the user turns it on.
+	d.brain = d.newBrain()
+	d.brain.Start(ctx)
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, WindowStop: d.windowStopStatus,
@@ -651,7 +661,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		},
 		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d,
 		Projects: d.projs, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
-		Mail: d.mail.Handler(),
+		Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 	})
 	srv := &http.Server{Handler: d.markWrites(d.api), ReadHeaderTimeout: 10 * time.Second}
 	// Held so LAN access can be switched on later without a restart. The

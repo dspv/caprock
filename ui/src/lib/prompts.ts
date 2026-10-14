@@ -28,6 +28,22 @@ export type PromptKind =
   | 'star-dismissed' | 'star-done'
   | 'setup-later' | 'setup-phone-skip' | 'setup-telegram-skip'
   | 'mail-later' | 'mail-done'
+  | OfferPromptKind
+
+/**
+ * The offer survey's answers (lib/offer.ts, ADR-062): which of the two
+ * draw-one questions this install drew, the day any offer last showed, and
+ * per offer a final answer (`no`, `sent`) and the days it was shown.
+ */
+export const OFFER_IDS = ['ads', 'youtube', 'second-brain', 'local-models'] as const
+export type OfferId = (typeof OFFER_IDS)[number]
+const OFFER_MARKS = ['no', 'sent', 'seen-1', 'seen-2'] as const
+type OfferPromptKind = 'offer-variant-ads' | 'offer-variant-youtube' | 'offer-last'
+  | `offer-${OfferId}-${(typeof OFFER_MARKS)[number]}`
+const OFFER_PERIODS = Object.fromEntries([
+  'offer-variant-ads', 'offer-variant-youtube', 'offer-last',
+  ...OFFER_IDS.flatMap((id) => OFFER_MARKS.map((m) => `offer-${id}-${m}`)),
+].map((k) => [k, Number.POSITIVE_INFINITY])) as Record<OfferPromptKind, number>
 
 const KEY = 'caprock-prompts'
 const DAY = 24 * 60 * 60 * 1000
@@ -58,6 +74,9 @@ const PERIOD_MS: Record<PromptKind, number> = {
   // The Mail offer: × is "not now" for a month; opening Mail answers it for good.
   'mail-later': 30 * DAY,
   'mail-done': Number.POSITIVE_INFINITY,
+  // The offer survey (lib/offer.ts, ADR-062): every mark is a fact kept for
+  // good — a draw, a final answer, a day it was shown.
+  ...OFFER_PERIODS,
 }
 
 type Store = Partial<Record<PromptKind, number>>
@@ -113,6 +132,16 @@ export function hydratePrompts(remote: Record<string, number> | undefined) {
  */
 export function syncPromptsWith(save: (patch: Store) => void) {
   persist = save
+}
+
+/** When this prompt was last answered, in Unix ms; undefined if never. */
+export function promptAt(kind: PromptKind): number | undefined {
+  return read()[kind]
+}
+
+/** Re-renders on any answer; returns the raw store so it can be compared. */
+export function usePromptStore(): string {
+  return useSyncExternalStore(subscribe, () => { try { return localStorage.getItem(KEY) ?? '' } catch { return '' } })
 }
 
 /** Whether this prompt is due: never answered, or answered a period ago. */

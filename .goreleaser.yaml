@@ -11,7 +11,15 @@ builds:
     binary: caprock
     env: [CGO_ENABLED=0]
     flags: [-trimpath]
-    ldflags: ["-s -w -X github.com/dspv/caprock/internal/version.Version={{.Version}}"]
+    # The Mail sign-in client IDs (docs/mail-oauth.md), from the GitHub
+    # secrets of the same names that release.yml passes in. envOrDefault keeps
+    # a build without them working: the value is then empty and Mail offers
+    # app passwords instead of the sign-in buttons.
+    ldflags:
+      - -s -w -X github.com/dspv/caprock/internal/version.Version={{.Version}}
+      - -X github.com/dspv/caprock/internal/mail/oauth.GoogleClientID={{ envOrDefault "CAPROCK_MAIL_GOOGLE_CLIENT_ID" "" }}
+      - -X github.com/dspv/caprock/internal/mail/oauth.GoogleClientSecret={{ envOrDefault "CAPROCK_MAIL_GOOGLE_CLIENT_SECRET" "" }}
+      - -X github.com/dspv/caprock/internal/mail/oauth.MicrosoftClientID={{ envOrDefault "CAPROCK_MAIL_MICROSOFT_CLIENT_ID" "" }}
     goos: [darwin, linux, windows]
     goarch: [amd64, arm64]
   - id: caprock-hook

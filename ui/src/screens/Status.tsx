@@ -53,6 +53,7 @@ import { WorktreeCleanupSetting } from '@/components/WorktreeCleanupSetting'
 import { GitHubSettings } from '@/components/GitHubSettings'
 import { WindowStopSetting } from '@/components/WindowStopSetting'
 import { Locked } from '@/components/Locked'
+import { BrainAutoSetting } from '@/components/BrainAutoSetting'
 import { CloseButton, dialogOpen } from '@/components/Dialog'
 import { escapeLeavesPage, useCloseSettings } from '@/lib/settingsClose'
 import { CaprockItself } from '@/components/ResourceMeter'
@@ -189,6 +190,7 @@ export function StatusScreen() {
       )}
       {owner && <PrivacySection />}
       {owner && <MemorySection />}
+      {owner && <BrainSection />}
       <StoragePanel />
       <AboutSection s={s} />
     </div>
@@ -248,6 +250,16 @@ function TelegramChatSection() {
   return (
     <Locked feature="telegram" title="Talk to your agents from Telegram">
       <TelegramChat />
+    </Locked>
+  )
+}
+
+/** Second Brain built automatically (Premium, ADR-063): live with a
+ *  licence, behind glass without one. */
+function BrainSection() {
+  return (
+    <Locked feature="brain" title="Build Second Brain automatically">
+      <BrainAutoSetting />
     </Locked>
   )
 }
