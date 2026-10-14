@@ -128,8 +128,11 @@ others. Installing it: [install-app.md](install-app.md).
   away, and the tab brings back the screen you left it on until you close it.
   The Dashboard tab is its icon and its key, ⌘0 (⌘, while it shows
   Settings); its × shows while it is in front.
-  Beside *Dashboard* sit two small square buttons: the **PRs & CI** mode
-  and the theme. The PRs & CI button's picture is what is on screen —
+  Under *Dashboard*, one row in two halves: the **PRs & CI** mode, named
+  *CI Off*, *CI Bar* or *CI Page* (its key, ⇧⌘B, is in its tooltip), and
+  the theme, named too. On Windows and Linux each takes a row, and there
+  the PRs & CI row shows its key, Ctrl+Alt+Shift+B. The PRs & CI button's
+  picture is what is on screen —
   an empty window (Hidden), a band along its bottom (Bar: the session
   deck), a filled window (Full page: the *PRs & CI* tab) — and a click
   moves to the next, Hidden → Bar → Full page → Hidden; ⌘B and ⇧⌘B do
@@ -144,7 +147,9 @@ others. Installing it: [install-app.md](install-app.md).
   or Thunderbird. Adding your account leaves the sample; *Exit sample* goes
   to the ways to start.
   The arrow beside *Send feedback* folds that bottom block to one row of
-  icons and back; the app remembers which way you left it.
+  icons and back; the app remembers which way you left it. Folded, on a
+  Mac each icon has its key drawn small above it; on Windows and Linux,
+  where the keys are longer, an icon's key shows when you point at it.
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
   how new agents start, appearance, terminal and editor first. The × beside
   the *Settings* heading, or Esc, closes it as the tab's × does. *Send
@@ -631,7 +636,7 @@ others. Installing it: [install-app.md](install-app.md).
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
-- **Themes.** Eight, picked from the sun/moon button beside *Dashboard* at
+- **Themes.** Eight, picked from the sun/moon button under *Dashboard* at
   the foot of the sidebar or Settings → *Appearance*: Dark Pastel (a neutral graphite with
   soft, muted colours, the default dark one), Dark Warm, Dark Cold and Dark
   Side; Light, Light Cold, Book (the default light one) and Light Side. Until
