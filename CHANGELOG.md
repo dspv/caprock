@@ -21,6 +21,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **mail:** Mail opens instead of failing with "null is not an object
+  (evaluating 't.accounts.length')". A mail client found on the machine with
+  no accounts it could read — Apple Mail before Full Disk Access — came back
+  with a null list, and the first-run screen crashed counting it.
 - **app:** the closing questions' buttons read on one line. "Keep it
   running, close tab" broke over two lines and "Stop and close" spilled out
   of its button; the sheets are wider, every sheet button keeps its label on
