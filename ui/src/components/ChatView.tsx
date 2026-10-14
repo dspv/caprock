@@ -21,6 +21,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { api, errText, type Event, type QueueView } from '@/lib/api'
 import { downscalePhoto } from '@/lib/downscale'
 import { compareEvents, isMessageEvent, mergeEvents, toMessages, toolInputText, type ChatMessage } from '@/lib/chat'
+import { BrainDropButton } from './BrainDrop'
 import { live, useLiveConn, useLiveLink } from '@/lib/live'
 import type { TermState } from '@/lib/termv2'
 import { useStickToBottom } from '@/lib/useStickToBottom'
@@ -397,8 +398,12 @@ const Message = memo(function Message({ m }: { m: ChatMessage }) {
   }
   if (m.kind === 'assistant') {
     return (
-      <div data-msg-id={m.id} className="py-1.5 [&_div]:text-fg [&>div]:text-[14px]">
+      <div data-msg-id={m.id} className="group py-1.5 [&_div]:text-fg [&>div]:text-[14px]">
         <Prose text={m.text} />
+        {/* Keep it in Second Brain (ADR-063): quiet until the reply is hovered or focused. */}
+        <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
+          <BrainDropButton eventId={m.id} className="-ml-1 mt-0.5" />
+        </span>
       </div>
     )
   }

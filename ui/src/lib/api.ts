@@ -1258,6 +1258,66 @@ export interface SavedPrompt {
 /** What a saved prompt is made or changed from; project_id 0 is every project. */
 export interface SavedDraft { kind: 'prompt' | 'command'; name: string; text: string; project_id: number }
 
+/** Second Brain's node kinds (03-contracts.md § Second Brain): four memories, then three entities. */
+export type BrainKind = 'idea' | 'decision' | 'finding' | 'question' | 'topic' | 'person' | 'project'
+export type BrainEdgeKind = 'relates' | 'follows' | 'contradicts' | 'part_of'
+
+/** One node of Second Brain: a memory, or a topic, person or project it hangs off. */
+export interface BrainNode {
+  id: number
+  kind: BrainKind
+  title: string
+  /** Empty in a graph read unless asked for; the node's own read carries it. */
+  summary: string
+  /** Where it was taken from; empty for a line typed into the quick capture. */
+  source: { session_id?: string; event_id?: number; ts?: number; project?: string }
+  manual: boolean
+  pinned: boolean
+  run_id?: number
+  created_at: number
+  updated_at: number
+  /** Edges in the graph read that touch it. */
+  degree?: number
+}
+
+export interface BrainEdge { from: number; to: number; kind: BrainEdgeKind; weight: number }
+
+export interface BrainGraph { nodes: BrainNode[]; edges: BrainEdge[]; total: number }
+
+/** A node's neighbour and the edge between them; `out` when the edge leaves the node asked about. */
+export interface BrainLink { node: BrainNode; kind: BrainEdgeKind; out: boolean; weight: number }
+
+export interface BrainStatus {
+  licensed: boolean
+  memories: number
+  manual: number
+  /** How many an install without a licence may drop in by hand, and how many remain (-1 with a licence). */
+  free_max: number
+  free_left: number
+  projects: { project: string; count: number }[]
+  auto?: BrainAutoStatus
+}
+
+/** The automatic extraction's state; absent from a daemon without it. */
+export interface BrainAutoStatus {
+  [key: string]: unknown
+}
+
+/** What POST /v1/brain/nodes takes: text (or a title), or an assistant note by its event id. */
+export interface BrainDrop {
+  text?: string
+  title?: string
+  summary?: string
+  kind?: BrainKind
+  event_id?: number
+  session_id?: string
+  project?: string
+  topics?: string[]
+  pinned?: boolean
+}
+
+export interface BrainFilterQuery { q?: string; project?: string; since?: number; until?: number; limit?: number; summaries?: boolean }
+
 /** One thing saved for later from the phone or the machine (03-contracts.md § Inbox). */
 export interface InboxItem {
   id: number
@@ -1797,6 +1857,26 @@ export const api = {
   addSavedPrompt: (d: SavedDraft) => post<{ item: SavedPrompt }>('/v1/saved-prompts', d),
   updateSavedPrompt: (id: number, d: Partial<SavedDraft>) => post<{ item: SavedPrompt }>(`/v1/saved-prompts/${id}`, d, 'PATCH'),
   removeSavedPrompt: (id: number) => post<void>(`/v1/saved-prompts/${id}`, {}, 'DELETE'),
+  /** Second Brain (03-contracts.md § Second Brain). Writing it is the machine's. */
+  brain: (f: BrainFilterQuery = {}) => {
+    const qs = new URLSearchParams()
+    if (f.q) qs.set('q', f.q)
+    if (f.project) qs.set('project', f.project)
+    if (f.since) qs.set('since', String(f.since))
+    if (f.until) qs.set('until', String(f.until))
+    if (f.limit) qs.set('limit', String(f.limit))
+    if (f.summaries) qs.set('summaries', '1')
+    const tail = qs.toString()
+    return get<BrainGraph>(`/v1/brain${tail ? `?${tail}` : ''}`)
+  },
+  brainStatus: () => get<BrainStatus>('/v1/brain/status'),
+  brainNode: (id: number) => get<{ node: BrainNode; links: BrainLink[] }>(`/v1/brain/nodes/${id}`),
+  dropBrain: (d: BrainDrop) => post<{ node: BrainNode; created: boolean }>('/v1/brain/nodes', d),
+  patchBrain: (id: number, p: Partial<Pick<BrainNode, 'kind' | 'title' | 'summary' | 'pinned'>>) =>
+    post<{ node: BrainNode }>(`/v1/brain/nodes/${id}`, p, 'PATCH'),
+  removeBrain: (id: number) => post<void>(`/v1/brain/nodes/${id}`, {}, 'DELETE'),
+  linkBrain: (from: number, to: number, kind: BrainEdgeKind = 'relates') => post<void>('/v1/brain/links', { from, to, kind }),
+  unlinkBrain: (from: number, to: number) => post<void>('/v1/brain/links', { from, to }, 'DELETE'),
   /** The Inbox (03-contracts.md § Inbox). Saving and deleting: the machine and a controller. */
   inbox: () => get<{ items: InboxItem[]; max: number }>('/v1/inbox'),
   addInbox: (d: InboxDraft) => post<{ item: InboxItem }>('/v1/inbox', d),

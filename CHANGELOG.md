@@ -7,6 +7,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **brain:** Second Brain. Keep the answers worth keeping as memories — an
+  idea, a decision, a finding, an open question — each linked to its
+  project, its topics and the moment in the session it came from. **Drop
+  into brain** sits under every answer on Memory, in a session's Answers
+  and in the chat view; ⇧⌘H (Ctrl+Shift+H on Windows and Linux) or ⌘K →
+  *Add to brain…* takes a line of your own. *Brain* in the screen row
+  searches them by words, project and time, and opens one to edit, pin,
+  link to a topic or delete. Twenty memories are free; Premium keeps every
+  one. Kept in Caprock's database on this machine.
+
 ## [0.117.0] - 2026-10-14
 
 ### Added

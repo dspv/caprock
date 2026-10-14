@@ -315,6 +315,9 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/attempts/{group}":                true, // Compare attempts (ADR-052): what each changed and cost, a read
 	"GET /v1/inbox":                           true, // what was saved for later, from the phone or the machine
 	"GET /v1/inbox/{id}/files/{n}":            true, // an Inbox item's image, for its thumbnail
+	"GET /v1/brain":                           true, // Second Brain's graph (ADR-063); writing it is the machine's
+	"GET /v1/brain/status":                    true,
+	"GET /v1/brain/nodes/{id}":                true,
 
 	// The permission prompt an owned session waits on (ADR-035); the live
 	// socket already carries it to a viewer.

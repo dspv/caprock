@@ -70,6 +70,8 @@ export type Frame = (
   | { type: 'github'; data: GitHubFrame }
   // The Inbox changed: an item saved or deleted (03-contracts.md § Inbox).
   | { type: 'inbox'; data: { id: number; deleted: boolean } }
+  // Second Brain changed: a memory added, changed or deleted (03-contracts.md § Second Brain).
+  | { type: 'brain'; data: { id: number; op: 'added' | 'changed' | 'deleted'; kind?: string; title?: string; auto?: boolean } }
 ) & { seq?: number }
 
 /** Control frames: liveness, never part of the stream a screen reads. */

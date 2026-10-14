@@ -676,6 +676,7 @@ On macOS:
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                         |
 | ⌘[ ]        | Previous and next pane                                                   |
 | ⌘J          | Next session waiting on you                                              |
+| ⇧⌘H         | Add to brain: keep a line in Second Brain                                |
 | ⌘F          | Find in the terminal or the file                                         |
 | ⌘K          | Command palette                                                          |
 | ⌘,          | Settings                                                                 |
@@ -692,7 +693,7 @@ On macOS:
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 (Quick chat is Ctrl+Alt+Shift+N, the PRs & CI full page Ctrl+Alt+Shift+B,
 Send feedback Ctrl+Alt+Shift+F, since Ctrl+Shift+F is Find; tabs are
-Ctrl+Shift+1–9). The arrow
+Ctrl+Shift+1–9; Add to brain is Ctrl+Shift+H). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
@@ -784,6 +785,30 @@ it: nothing that updates behind the sheet takes it from the field you are in.
 - **Closing the window.** On macOS Caprock stays in the menu bar; ⌘Q quits.
   On Windows and Linux closing quits. Quitting never stops the daemon or a
   session.
+
+## Second Brain
+
+The few answers worth keeping, kept as a graph: ideas, decisions, findings
+and open questions, each linked to its project and topics and to the moment
+in the session it came from. Open it from *Brain* in the dashboard's screen
+row.
+
+- **Drop an answer in.** Under any answer on the Memory screen, in a
+  session's Answers tab, or under a reply in the chat view, press **Drop into
+  brain**. Caprock reads the answer from its own record, so the memory knows
+  its session, project and time; its first line becomes the title.
+- **Add a line of your own.** ⇧⌘H (Ctrl+Shift+H on Windows and Linux), or ⌘K
+  → *Add to brain…*: type it, pick Idea, Decision, Finding or Question, name
+  topics if you like, and ⌘↩.
+- **Find and tidy.** Search, pick a project or a span; open a memory to edit
+  its title and summary, pin it, link it to a topic, jump to the session it
+  came from, or delete it.
+- **Free and Premium.** Twenty memories dropped in by hand are free; Premium
+  keeps every one. Whatever you kept stays readable and editable if a licence
+  lapses.
+
+**Privacy.** Second Brain lives in Caprock's database on this computer.
+Nothing in it is sent anywhere.
 
 ## Notifications
 
