@@ -16,6 +16,10 @@
  * A folder that holds several git repositories (ADR-055) is asked about once,
  * on Add: one project of N repositories (the default) or N separate
  * projects, with the repositories found as checkboxes (RepoChoice).
+ *
+ * Since 2026-10-14 ⌘O and Add project open the New project wizard
+ * (ProjectWizard.tsx) when the projects API is there; this sheet is its
+ * footer's *Clone, or start an empty folder…*, and what opens without it.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { INSTRUCTIONS_HINT } from './ProjectInstructions'

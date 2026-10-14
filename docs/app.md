@@ -286,8 +286,21 @@ others. Installing it: [install-app.md](install-app.md).
   the menu: change it there with Shift+Tab.
 - **Tab names.** A tab is named after its agent, with *+N* for the panes
   split beside it.
-- **Projects.** Caprock lists the repositories your sessions ran in. ⌘O, or
-  *Add project* at the top of the sidebar, adds a folder, makes a new one
+- **New project.** ⌘O, *Add project* at the top of the sidebar, or *New
+  project…* beside the Project field in New agent opens three big steps.
+  Pick the folder: type it, click a place such as `~/dev` and then the
+  folder in the list, or press *Choose…* in the desktop app for the
+  system's folder picker. Caprock looks inside and says what it found: *One
+  repository* (a repository or a monorepo; a folder inside a repository is
+  that repository), *3 repositories* as cards, all ticked, to make one
+  project of them (or one project each), or *A plain folder*. It also says
+  whether the repository already has a `CLAUDE.md` or `AGENTS.md` for its
+  agents, with *Show* to read it, and offers a box for instructions every
+  agent here should get (optional). Then *Start an agent here*, or *Just
+  add*. Enter moves on at every step and Esc closes. Cloning and a new empty
+  folder are under *Clone, or start an empty folder…* in its footer.
+- **Projects.** Caprock lists the repositories your sessions ran in. The Add
+  project sheet adds a folder, makes a new one
   (`git init` optional) or clones a repository with git's progress shown.
   The folder starts at your default folder — your home folder until you set
   one in Settings → Projects (*Where you keep your code*: it limits nothing,
@@ -312,7 +325,12 @@ others. Installing it: [install-app.md](install-app.md).
   started in it gets them appended to its system prompt
   (`--append-system-prompt`), and every Codex session as its developer
   instructions (`-c developer_instructions=…`), a resumed one too. OpenCode
-  and Gemini do not get them yet.
+  and Gemini do not get them yet. New agent and the project's page show,
+  in their own block, whether they are set (*Set · 12 lines* or *None*) and
+  whether the repository has its own `CLAUDE.md` or `AGENTS.md` (a
+  multi-repo project's members' too); *Show* reads either, *Edit* changes
+  Caprock's. Under the Project field, a multi-repo project names its
+  repositories (*3 repos: api, web, infra*).
 - **New copies are ready to run.** When *New agent* makes a new copy of a
   branch (a git worktree), the ignored files your repository lists in
   `.worktreeinclude` — `.env`, local config — are copied into it from the
@@ -625,7 +643,7 @@ On macOS:
 | ⌘T          | New shell in the folder of the tab                                       |
 | ⇧⌘N         | New agent session                                                        |
 | ⌥⌘N         | Quick chat: pick, or Enter for the last                                  |
-| ⌘O          | Add a project (folder, new, clone)                                       |
+| ⌘O          | Add a project: one repository or several (clone, new: in its footer)     |
 | ⌘1–8, ⌘9    | The Nth tab, in the order opened; the last                               |
 | ⌥⌘↓, ⌥⌘↑    | Next and previous session of the project in front                        |
 | ⌥⌘→, ⌥⌘←    | Next and previous project                                                |

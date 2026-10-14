@@ -165,6 +165,7 @@ Commands are granted per origin (`src-tauri/capabilities/`):
 | ------------------------ | ----------- | ------------ | ------- |
 | `daemon_status`          | yes         | yes          | no      |
 | `open_external`          | yes         | yes          | no      |
+| `pick_folder`            | yes         | no           | no      |
 | `notify`                 | yes         | no           | no      |
 | `withdraw_notifications` | yes         | no           | no      |
 | `start_daemon`           | no          | yes          | no      |

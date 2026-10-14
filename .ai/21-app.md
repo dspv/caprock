@@ -351,6 +351,44 @@ One window, three regions:
   projects*, each repository a checkbox, ticked unless another project holds
   it; the button says *Add 1 project* / *Add N projects* (`RepoChoice.tsx`,
   `lib/multirepo.ts`). A folder inside one repository asks nothing.
+- **New project wizard** (owner, 2026-10-14, translated: "I still don't
+  understand how to make a multi-repo project, and it matters to me. I want
+  big: quickly click through and the project is created with everything. Or
+  a monorepo, even faster."; `ProjectWizard.tsx`, `lib/projectWizard.ts`).
+  ⌘O, *Add project*, the empty page's *Add a project* and New agent's *New
+  project…* (beside the Project label and as the search list's last row,
+  carrying the first message typed so far) open it when the projects API is
+  there; the Add project sheet below stays for clone and a new empty folder,
+  linked from the wizard's footer. Three steps, each one click or Enter:
+  - **Folder.** A 46px path field, chips for the places projects live (the
+    parents of listed projects, recent folders and repositories under the
+    default folder, most first; then the default folder; home last), and the
+    folders inside the field's folder as 44px rows (`GET /v1/browse`, 250 ms
+    after the last key): a click on a row picks it, › looks inside one that is
+    not a repository. In the desktop app *Choose…* opens the system's folder
+    chooser (`pick_folder`, app/README.md).
+  - **What is there** (`GET /v1/projects/scan`), in 26px type: *One
+    repository* (the folder is one, or is inside one — then it is that
+    repository, no question), *N repositories* as big checkable cards, all
+    ticked but one in another multi-repo project, each naming its own
+    CLAUDE.md / AGENTS.md (*Create project of N repos*, or *Or add them as N
+    separate projects*; a single pick adds that repository alone), or *A plain
+    folder*. One repository below the folder is scanned itself. A folder
+    already listed says so and *Open project* adds nothing. On the same
+    screen: *Already has CLAUDE.md — agents read it* with *Show* (the scan
+    returns the text), and an optional *Instructions for every agent here*
+    box (⌘↩ creates from it), saved as `defaults.system_prompt` on every
+    project made.
+  - **Done.** *Start an agent here* (focused; Enter) opens New agent on the
+    project with the first message handed back; *Just add* (Esc) closes.
+- **What the agents are told, at a glance** (owner, same day: "whether this
+  project has a prompt set up — that's important — and by a click see it").
+  `ProjectInstructions.tsx`, in New agent (bigger, for every agent; one
+  Caprock does not hand instructions to says so) and on the project's page:
+  *Project instructions* "Set · N lines" or "None" with Show and Edit (Add),
+  and *Repository's own* — `instruction_files` from the project, members'
+  as `api/CLAUDE.md` — with Show reading each through `GET …/file`. The
+  sidebar row's tooltip ends with the same in words.
 - **Add project sheet** (owner, 2026-10-09). The folder field starts on the
   default folder — `settings.default_folder` (Settings → Projects, labelled
   *Where you keep your code* since 2026-10-12: a tester read *Default folder*
