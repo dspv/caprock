@@ -454,6 +454,8 @@ type Server struct {
 	// thirty days that a few minutes cannot move, so it is served from the
 	// cache and refreshed in the background, never counted on a request.
 	usual *answerCache
+	// trends holds the Today cells' 14-day trends (trendsTTL).
+	trends *answerCache
 	// drill holds the tool drill-downs (drillTTL).
 	drill *answerCache
 	// deck holds the session deck's composed Pull requests & CI answers
@@ -484,7 +486,8 @@ func New(d Deps) *Server {
 		}
 	}
 	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
-		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
+		trends: newAnswerCache(trendsTTL, trendsMaxStale, time.Now),
+		week:   newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache()}
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
 		if s.d.Agents != nil {
@@ -534,6 +537,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/editors", s.handleEditors)
 	m.HandleFunc("POST /v1/editors/open", s.handleOpenEditor)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
+	m.HandleFunc("GET /v1/stats/trends", s.handleTrends)
 	// The offer survey: forwards one answer to caprock.dev on a click (offer.go, ADR-062).
 	m.HandleFunc("POST /v1/offer", s.handleOffer)
 	m.HandleFunc("GET /v1/update", s.handleUpdate)
@@ -1771,6 +1775,7 @@ func (s *Server) Warm(ctx context.Context) {
 		_, _ = s.rangeSummary(ctx, from, label, "")
 	}
 	_ = s.usualFor(ctx, "")
+	_, _ = s.trendsFor(ctx, "")
 }
 
 // usualFor is the 30-day baseline through the agent filter, from its own
@@ -1787,6 +1792,36 @@ func (s *Server) usualFor(ctx context.Context, agent store.AgentFilter) *store.U
 	}
 	u, _ := v.(*store.Usual)
 	return u
+}
+
+// handleTrends answers the Now screen's Today trends: each of the previous
+// 14 days cut at this time of day, today so far, and the typical burn
+// (store.TrendsAt), through ?agent=. Cached per agent and local day for
+// trendsTTL (0.28s a count on the owner's 1.6 GB copy): the past days cannot
+// move, a cut five minutes behind shifts them by one bucket of the scan's grain,
+// and the client draws today's point from the live summary.
+func (s *Server) handleTrends(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	agent, err := agentFilter(r.URL.Query().Get("agent"))
+	if err != nil {
+		s.failCode(w, http.StatusBadRequest, err)
+		return
+	}
+	v, err := s.trendsFor(ctx, agent)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// trendsFor is the Today trends through the agent filter, from their cache;
+// Warm counts the unfiltered one at start, so the first screen does not.
+func (s *Server) trendsFor(ctx context.Context, agent store.AgentFilter) (any, error) {
+	from, _ := s.rangeFrom("today")
+	return s.trends.get(ctx, "trends|"+strconv.FormatInt(from, 10)+"|"+string(agent), func() (any, error) {
+		return store.TrendsAt(context.WithoutCancel(ctx), s.d.Store.DB(), s.d.Now(), agent)
+	})
 }
 
 // rangeSummary is the aggregate behind /v1/stats/summary for one range.

@@ -9,6 +9,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **now:** each figure in *Today* has a small line of your last 14 days and
+  one word against your own median: *usual*, *above usual +38%*, *below
+  usual −20%*. Running totals (cost, sessions, turns) are compared by the
+  same time of day, so a morning no longer reads low against whole days;
+  *Burn now* is set against your typical 10-minute window while working.
+  Cache hit gets the line only. Hover says what it is compared with; under
+  five days of history it says *not enough history*. It follows the agent
+  filter. New endpoint `GET /v1/stats/trends`.
+
 - **brain:** Second Brain builds itself (Premium), once you say yes. When a
   session has been quiet for ten minutes, your own `claude` (Haiku, no
   tools, no transcript, none of your hooks) picks out what it decided and

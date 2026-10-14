@@ -97,10 +97,12 @@ export function Panel({ title, center, right, children, className = '', onMouseE
   )
 }
 
-export function Stat({ label, value, sub, tone, size = 'default' }: {
+export function Stat({ label, value, sub, tone, size = 'default', trend }: {
   label: string
   value: ReactNode
   sub?: ReactNode
+  /** A small picture under the figure — the Now screen's 14-day trend. */
+  trend?: ReactNode
   tone?: 'ok' | 'warn' | 'danger' | 'info'
   /** `compact` for reference figures in dense rows; `hero` for the one number
    *  a screen is about. Sized uniformly, a row of six is a list, not a
@@ -122,6 +124,7 @@ export function Stat({ label, value, sub, tone, size = 'default' }: {
        * neighbours without spending a pixel of density, which is what a dense
        * dashboard needs. The product had no semibold anywhere. */}
       <div className={`num font-semibold tracking-[-0.01em] whitespace-nowrap ${valueCls} ${toneCls}`} style={statFit(value, size)}>{value}</div>
+      {trend}
       {/* Wraps rather than ending in an ellipsis: a cut
        * "at API list price · not a…" dropped the half that mattered. */}
       {sub && <div className="mt-auto pt-1 text-[11px] leading-snug text-fg-muted num [overflow-wrap:anywhere]">{sub}</div>}
