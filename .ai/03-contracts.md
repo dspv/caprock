@@ -532,7 +532,7 @@ GET  /v1/sessions/{id}/ci              → SessionCI — the deck's CI cell: Act
 GET  /v1/sessions/{id}/ci/jobs/{job}/log → CILog — the lines around a failed job's error, on demand (?view=pr|release|main)
 GET  /v1/sessions/{id}/ci/release      → SessionRepoCI — the repository's newest release build, with an estimate
 GET  /v1/sessions/{id}/ci/main         → SessionRepoCI — the newest run of each workflow on the default branch
-GET  /v1/sessions/{id}/ci/stats        → SessionCIStats — the PRs & CI tab: the repository's PRs and its figures over 14 days
+GET  /v1/sessions/{id}/ci/stats        → SessionCIStats — the Pipeline: the repository's PRs and its figures over 14 days
 GET  /v1/sessions/{id}/branches        → SessionBranches — the repository's branches with PRs and Caprock spend (§ Session branches)
 GET  /v1/repos/activity                → ReposActivity — Now's Repos section: each listed repository with a live session, from git and kept GitHub answers
 GET  /v1/repos/ci                      → ReposCI — Now's CI/CD section: runs, stuck runs, releases, cost per PR and who, GitHub's status
@@ -1261,11 +1261,11 @@ GitHub token is (§ GitHub, "Where the token lives"):
 `GET /v1/repos/activity` (2026-10-13) → `ReposActivity` `{repos[], github_connected}`: the Now screen's Repos section ([04-ui.md § Repos on Now](04-ui.md#repos-on-now)), asked only while that section is unfolded and the window visible. A row per listed project of kind `repo` (at most 12, in the sidebar's order) with a session that has not ended in it — the session's `repo_root`, else its `cwd`, at or below the project's root, so an agent's worktree under it counts:
 
 - **Local** — `projects.RepoActivity` `{root, name, days[], commits[], added[], deleted[], last_commit_at?, dirty, checked_ms, error?}` and `project_id`, `sessions`. Over the 14 local calendar days ending today, per day: `git log --all --no-merges -n 5000 --since=<first midnight> --format=%x1e%ct --shortstat` (`projects.ParseShortstat`, CRLF read like LF), and `dirty` the lines of `git status --porcelain=v1`. Read under the projects' git timeout — finished even when the request that started it is cancelled — and kept 10 minutes per root (64 roots at most), a failure too (`error`, the arrays zero).
-- **GitHub** — `github?` `{repo, pulls?, ci?, release?}` only while GitHub is connected and the remote (read through the repository cache, else the project's `remote_url`) is on GitHub; each part only from an answer Caprock already keeps, however old — this route sends GitHub nothing. `pulls` `{open, merged_7d, ttm_median_ms?, listed}` from the last pull request list the Branches view or the PRs & CI tab read (`github.CachedRepoPulls`); `ci` `{runs, red, workflow?, median_ms?}` is `github.RunStats` over the last runs list the PRs & CI tab read (`github.CachedRepoRuns`, 14 days, the workflow taking the most time first); `release` `{tag?, state, at?}` from the deck's last Release answer (`github.CachedRelease`; absent with no release run). A part nobody read yet is absent.
+- **GitHub** — `github?` `{repo, pulls?, ci?, release?}` only while GitHub is connected and the remote (read through the repository cache, else the project's `remote_url`) is on GitHub; each part only from an answer Caprock already keeps, however old — this route sends GitHub nothing. `pulls` `{open, merged_7d, ttm_median_ms?, listed}` from the last pull request list the Branches view or the Pipeline read (`github.CachedRepoPulls`); `ci` `{runs, red, workflow?, median_ms?}` is `github.RunStats` over the last runs list the Pipeline read (`github.CachedRepoRuns`, 14 days, the workflow taking the most time first); `release` `{tag?, state, at?}` from the deck's last Release answer (`github.CachedRelease`; absent with no release run). A part nobody read yet is absent.
 
 On a paired device's read list (counts only). `501` without the projects service.
 
-`GET /v1/repos/ci[?older=1][&hide=owner/name,…]` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], quiet[], recent_days, fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, with activity in the last `recent_days` (14: a session's last event in the project's root, or the project's `added_at`), those with a session running first, then by `last_active`, at most 6 (`reposCIMax`); with `older=1` the older ones too, marked `older`, at most 12 in all (`reposCIOlderMax`). A repository named in `hide` (this viewer's hidden ones, case-insensitive, at most 200), one without recent activity while `older` is not asked, and one past the bound are listed in `quiet[]` `{project_id, name, repo, last_active?, why: older|hidden|more}` and nothing is sent to GitHub for them. Each row is read through the kept GitHub reads the PRs & CI tab makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. Rows are read at most 3 at once (`reposCIParallel`), each within 12 s (`reposCIRepoTimeout`), the status page beside them, the whole within 30 s; a row GitHub did not answer in time carries `slow: true` beside its `error`. A row also carries `last_active` (Unix ms) and, in the quick answer, `pending`. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci` with `older` and the sorted `hide`); a key never composed is answered at once with the rows unread (`pending`, `refreshing`) while the composition goes on. Each `top_prs[]` entry adds `shared` (sessions charged only in part) and `tokens_in`, `tokens_out`, `cache_read`, `cache_write` (`store.PRSpend`, below).
+`GET /v1/repos/ci[?older=1][&hide=owner/name,…]` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], quiet[], recent_days, fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, with activity in the last `recent_days` (14: a session's last event in the project's root, or the project's `added_at`), those with a session running first, then by `last_active`, at most 6 (`reposCIMax`); with `older=1` the older ones too, marked `older`, at most 12 in all (`reposCIOlderMax`). A repository named in `hide` (this viewer's hidden ones, case-insensitive, at most 200), one without recent activity while `older` is not asked, and one past the bound are listed in `quiet[]` `{project_id, name, repo, last_active?, why: older|hidden|more}` and nothing is sent to GitHub for them. Each row is read through the kept GitHub reads the Pipeline makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. Rows are read at most 3 at once (`reposCIParallel`), each within 12 s (`reposCIRepoTimeout`), the status page beside them, the whole within 30 s; a row GitHub did not answer in time carries `slow: true` beside its `error`. A row also carries `last_active` (Unix ms), `read_at` (Unix ms, when GitHub last answered its pull request list; with `error`, the row draws on that older read) and, in the quick answer, `pending`. The answer carries `refresh_error` and `refresh_failed_at` as the deck's do. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci` with `older` and the sorted `hide`); a key never composed is answered at once with the rows unread (`pending`, `refreshing`) while the composition goes on. Each `top_prs[]` entry adds `shared` (sessions charged only in part) and `tokens_in`, `tokens_out`, `cache_read`, `cache_write` (`store.PRSpend`, below).
 
 - **Row** — `RepoCIRow` `{project_id, name, repo, live, ci?, days?, stuck[], open, merged_7d, top_prs[], authors[], release?, error?}`. `live` counts the sessions not ended under the project's root; `ci` is `github.RunStats` over the runs, 14 days (the `CIStats` of `…/ci/stats`), `days` its local calendar days; `open` and `merged_7d` count the listed pull requests; `release` is the newest published release (`RepoRelease`); a failed list is `error` with the rest absent.
 - **Stuck** — `github.StuckRuns`: `{id, name, branch?, status, url?, since, median_ms?}` for a run `in_progress` longer than twice its workflow's median successful run over the 14 days and at least 10 minutes over it (no median, never), or waiting for a runner (`queued`, `waiting`, `pending`, `requested`) longer than 15 minutes; `since` is `run_started_at`, else `created_at`. The runs list is kept 2 minutes instead of 30 while any run in it is unfinished (`repoRunsActiveKept`), so a stuck run is seen within minutes; a conditional read costs a 304 when nothing changed.
@@ -1399,7 +1399,7 @@ token stays in `config.json`.
 
 `POST /v1/hooks/install` runs the same install as `caprock hooks install` (`hooks.InstallFor`: copy the shim into the data dir, merge Caprock's entries into the settings file this daemon reports in `/v1/status.hooks.settings_path`, backing it up first) and answers with what is registered afterwards (`{hooks: {settings_path, shim_path, installed, missing, shim_exists}, backup?}`); an error is an error status, never a quiet 200, and a daemon without an installer answers 501. It is a mutating route, so the CSRF guard refuses a cross-site request and a paired device cannot make it. Nothing else in settings.json is touched. `/v1/status.hooks`, `caprock status` and this answer all check against the command an install writes (`hooks.StatusFor`): the shim in the data dir, or the fallback `"<exe>" hook` when none sits beside the binary. Checking against the shim path alone recognised that fallback only for an executable named `caprock`, so on a renamed or preview build the button said installed and the next status said all nine were missing.
 
-**Offer survey** ([ADR-062](08-decisions.md)). `POST /v1/offer {offer, answers, email?}` is the one route that sends what the user chose to Caprock, and the dashboard calls it only from the survey card's **Send** button. `offer` is one of the dashboard's surveys (the Second Brain offer is a sale and sends nothing), and `answers` is exactly `{q1, q2}`, each one allowed value: `ads` and `youtube` — `q1` `under-4`, `4-8`, `8-12`, `12+`; `q2` `under-30`, `30-70`, `over-70`. `local-models` — `q1` `coding`, `chat`, `search`, `trying`; `q2` `mac-16`, `mac-24-64`, `mac-96`, `pc-nvidia`, `other`. `email`, when present, is one plain address of at most 254 characters. Anything else is `400` and nothing is sent. The daemon rebuilds the body from those fields alone and POSTs `{offer, answers, email?}` — no version, no identifier — to `https://caprock.dev/api/offer` with a 10 s limit; `CAPROCK_OFFER_URL` replaces the address for a preview stand or a test, which must never reach the real site. `200 {status: "sent"}` when the site took it, `502 {error}` when it did not — the error never carries the email or the address. Machine-only: a paired device gets `403` like every write. The enums live in `internal/api/offer.go`, `ui/src/lib/offer.ts` and the site's `functions/api/offer.ts`, and change together. What keeps a card away is ordinary `settings.prompts` entries: the draw (`offer-variant-ads` or `offer-variant-youtube`), the day any offer last showed (`offer-last`), and per offer `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2`.
+**Offer survey** ([ADR-062](08-decisions.md)). `POST /v1/offer {offer, answers, email?}` is the one route that sends what the user chose to Caprock, and the dashboard calls it only from the survey card's **Send** button. `offer` is one of the dashboard's surveys, and `answers` is exactly `{q1, q2}`, each one allowed value: `ads` and `youtube` — `q1` `under-4`, `4-8`, `8-12`, `12+`; `q2` `under-30`, `30-70`, `over-70`. `local-models` — `q1` `coding`, `chat`, `search`, `trying`; `q2` `mac-16`, `mac-24-64`, `mac-96`, `pc-nvidia`, `other`. `email`, when present, is one plain address of at most 254 characters. Anything else is `400` and nothing is sent. The daemon rebuilds the body from those fields alone and POSTs `{offer, answers, email?}` — no version, no identifier — to `https://caprock.dev/api/offer` with a 10 s limit; `CAPROCK_OFFER_URL` replaces the address for a preview stand or a test, which must never reach the real site. `200 {status: "sent"}` when the site took it, `502 {error}` when it did not — the error never carries the email or the address. Machine-only: a paired device gets `403` like every write. The enums live in `internal/api/offer.go`, `ui/src/lib/offer.ts` and the site's `functions/api/offer.ts`, and change together. What keeps a card away is ordinary `settings.prompts` entries: the draw (`offer-variant-ads` or `offer-variant-youtube`), the day any offer last showed (`offer-last`), and per offer `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2`.
 
 `GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once every 6 hours unless forced — at startup, when the switch is turned on, and on an hourly tick that asks whether one is due (so a daemon that runs for weeks still hears of a release) — and each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
 
@@ -1524,14 +1524,14 @@ POST   /v1/inbox                     {text?, project_id?, files?} → {item}; sa
 DELETE /v1/inbox/{id}                → 204; with its files (§ Inbox)
 GET    /v1/inbox/{id}/files/{n}      → an item's image, for its thumbnail (§ Inbox)
 GET    /v1/brain                     ?q=&project=&since=&until=&limit=&summaries=1 → BrainGraph (§ Second Brain)
-GET    /v1/brain/status              → BrainStatus: counts, the free allowance, projects (§ Second Brain)
-POST   /v1/brain/nodes               {text | title, summary?, kind?, event_id?, session_id?, project?, topics?, pinned?} → {node, created}; 402 past the free allowance
+GET    /v1/brain/status              → BrainStatus: counts, projects (§ Second Brain)
+POST   /v1/brain/nodes               {text | title, summary?, kind?, event_id?, session_id?, project?, topics?, pinned?} → {node, created}; no cap
 GET    /v1/brain/nodes/{id}          → {node, links}
 PATCH  /v1/brain/nodes/{id}          {kind?, title?, summary?, pinned?} → {node}
 DELETE /v1/brain/nodes/{id}          → 204; its edges go with it
 POST   /v1/brain/links               {from, to, kind?} → 204; DELETE with {from, to} → 204
-PUT    /v1/brain/settings            {auto?, daily_tokens?, model?} → BrainAutoStatus; 402 to turn on without a licence
-POST   /v1/brain/backfill            {days?, dry_run?} → BrainEstimate; 402 without a licence, 409 while off (dry run: neither)
+PUT    /v1/brain/settings            {auto?, daily_tokens?, model?} → BrainAutoStatus; no licence needed
+POST   /v1/brain/backfill            {days?, dry_run?} → BrainEstimate; 409 while off (dry run: never)
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
 POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, name}}; this machine only
@@ -1698,7 +1698,7 @@ chip.
 
 **The deck's answers are kept** (`internal/api/deckcache.go`). The five
 views of the *Pull requests & CI* cell — `…/prs`, `…/ci`, `…/ci/release`,
-`…/ci/main`, `…/branches` — and the PRs & CI tab's `…/ci/stats` are each composed from the kept GitHub reads
+`…/ci/main`, `…/branches` — and the Pipeline's `…/ci/stats` are each composed from the kept GitHub reads
 above, and the composed answer is kept per view, session, pull request
 asked for and whether GitHub is connected (at most 256 keys). A key never
 composed is composed while the request waits, and concurrent requests for
@@ -1713,16 +1713,21 @@ reads answer from what they keep it lands inside that and is handed back;
 when one has to ask GitHub, the request gets the last answer at once with
 `refreshing: true`, and the next poll finds the new one. A kept answer
 older than an hour is not shown; the request waits for a fresh one. A
-composition that fails (a database error, an unknown session) is not kept
-and the last answer stays. Every answer carries `fetched_at`, Unix ms, when
-the daemon composed it, and `refreshing` only when true. GitHub is asked no
+composition that fails (a database error, an unknown session, its deadline)
+is not kept and the last answer stays — said so: the answer handed back
+carries `refresh_error` (the failure in words; a deadline is "GitHub or the
+database did not answer in time") and `refresh_failed_at` (Unix ms), is not
+marked `refreshing`, and no new composition starts for 20 s
+(`deckFailBackoff`, 2026-10-14; before, one that failed every time restarted
+on every poll behind `refreshing: true`). Every answer carries `fetched_at`, Unix ms, when
+the daemon composed it, and `refreshing`, `refresh_error` and `refresh_failed_at` only when set. GitHub is asked no
 more often than before: a composition calls the same kept reads a request
 used to, each deciding by its own freshness whether to ask.
 
 **`POST /v1/sessions/{id}/prs/{number}/rerun`** (no body) → `{ok, mode,
 runs, jobs}`: the session deck's *Re-run checks*. Acts only on a pull
 request in the session's `session_prs`, or one of its repository's that
-the PRs & CI tab listed — in the last `…/ci/stats` list read
+the Pipeline listed — in the last `…/ci/stats` list read
 (`github.CachedRepoPull`), so no number a request merely names is acted on
 — 404 otherwise; read through
 `github.PullByURL` for its head commit. `github.RerunChecks` reads that
@@ -1755,7 +1760,7 @@ the paired-device lists.
 pr?, ci?, error?, fetched_at, refreshing?}`: the session deck's CI cell. `pr` `{number, url, title?,
 state?, repo, head_sha?, live?}` is pull request N when it is among the session's
 latest four (a click on its row or its mini pipeline) or one of its
-repository's that the PRs & CI tab listed (as the rerun route checks), else the
+repository's that the Pipeline listed (as the rerun route checks), else the
 session's open one among them, else the newest (each read through `github.PullByURL`, so it shares the PRs
 cell's reads; `live` is that `github.PR`, for the tab's review, merge state
 and diff size). `ci` is `github.CI` for that PR's head commit: `{repo,
@@ -1804,8 +1809,9 @@ sent while GitHub is not connected; a failed read is no baseline, not an
 error. The cached answers are never changed: the baselines are set on a copy.
 
 **`GET /v1/sessions/{id}/ci/stats`** → `SessionCIStats` `{connected, repo?,
-reason?, prs[], stats?, error?, fetched_at, refreshing?}`: the PRs & CI tab
-(.ai/21-app.md § PRs & CI tab), asked only while that tab is in front and
+reason?, prs[], stats?, board?, error?, read_at?, fetched_at, refreshing?,
+refresh_error?, refresh_failed_at?}`: the Pipeline
+(.ai/21-app.md § Pipeline), asked only while that tab is in front and
 the window visible. `repo` and `reason` as `SessionRepoCI` says them. `prs`
 is the repository's own pull requests — the `BranchPR` list the Branches
 view reads (`GET …/pulls?state=all&sort=updated&direction=desc&per_page=50`,
@@ -1833,15 +1839,18 @@ over the 14 local calendar days ending today:
 - **Board** (2026-10-14) — `board` `{cards[], releases[], flow,
   default_branch?}`, the tab's Board view (`internal/api/prboard.go`). Each
   `BoardCard` `{number, stage, stage_at?, ci?, why?, review?, release?,
-  spend}` is a pull request of `prs` (its title, `author`, `author_avatar`
+  spend, stale?}` is a pull request of `prs` (its title, `author`, `author_avatar`
   and link are that entry's); closed unmerged ones and merges before the 14
   days are left out. `stage` is `draft`, `open` (checks running, or not
   read), `fix` (`why`: `ci` a failed check, `conflict` GitHub's `mergeable`
   false or `mergeable_state` `dirty`, `changes_requested`), `ready` (checks
   passed, or none ran), `merged` or `released`. An open pull request's
   checks are the deck's kept read (`github.PullByURL`) for the newest 12
-  open ones, else the runs list by head commit (`ci` absent when it has none
-  of them); `stage_at` is when its checks started (open) or ended (fix,
+  open ones, read 4 at once (`boardLiveParallel`), else the runs list by
+  head commit (`ci` absent when it has none of them). One whose read did not
+  finish within the composition's GitHub budget, or that GitHub refused,
+  keeps its last read and is marked `stale: true`; one that read merged or
+  closed while the list still said open leaves the open stages at once; `stage_at` is when its checks started (open) or ended (fix,
   ready), else when it was opened. A merge into the default branch is
   `released` in the first release published after it — matched by time, an
   estimate — and `stage_at` is that release's publish time, else `merged`
@@ -1856,17 +1865,32 @@ over the 14 local calendar days ending today:
   released cards (absent with fewer than two), CI the busiest workflow's
   median. The releases are `GET …/releases?per_page=10`
   (`github.RepoReleases`): `{tag, name?, url?, published_at, prerelease?}`,
-  drafts and unpublished ones left out, kept 10 minutes; a failed list is no
-  releases, not an error.
+  drafts and unpublished ones left out, kept 2 minutes (10 before
+  2026-10-14: a new release missed the board that long); a failed list
+  keeps the last one, and with none is no releases, not an error.
 - **Who opened it** — each `BranchPR` (here and in the Branches view) also
   carries `head` (the head branch), `author` and `author_avatar` (GitHub's
   `user.login` and `user.avatar_url`, an address on
-  `avatars.githubusercontent.com`) from the same list.
+  `avatars.githubusercontent.com`) from the same list, and `labels?`
+  `[{name, color?}]` (2026-10-14; GitHub's label names and hex colours, at
+  most 6, absent with none) for the Pipeline's label chips.
 
 Nothing is sent while GitHub is not connected: `connected` is false, `prs`
-empty, `stats` and `board` absent. A failed list keeps the last one; a failed run list
-leaves `stats` counted from the pull requests alone with `error` set. The
-answer is kept with the deck's (key `stats`).
+empty, `stats` and `board` absent. A failed list keeps the last one, with
+`error` set to GitHub's refusal; a failed run list leaves `stats` counted
+from the pull requests alone with `error` set. `read_at` (Unix ms) is when
+GitHub last answered what the board draws on, the older of the pull request
+list's and the releases' reads (`github.RepoPullsRead`,
+`RepoReleasesRead`); with `error` it is the time of the data shown. What
+did not fit the GitHub budget is said in `error` too (kind `network`, "GitHub
+did not answer in time for …"): releases never read, or open pull requests
+whose checks are an earlier read. The
+GitHub reads of one composition share a 10 s budget (`statsGitHubBudget`)
+and the database reads after them run outside it, the composition within
+20 s: a slow GitHub gives an answer with stale cards, never a failed one
+(2026-10-14: a dozen open pull requests read one after another overran the
+15 s deadline on every refresh, and the board stayed on its afternoon
+answer for hours). The answer is kept with the deck's (key `stats`).
 
 **`GET /v1/sessions/{id}/ci/release`** and **`GET /v1/sessions/{id}/ci/main`**
 → `SessionRepoCI` `{connected, repo?, reason?, branch?, release?, ci?,
@@ -2788,7 +2812,7 @@ What the sessions decided, found and left open, kept as a graph
 
 ```
 GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total}
-GET    /v1/brain/status         → {licensed, memories, manual, free_max, free_left, projects: [{project, count}], auto?}
+GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?}
 POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
 GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
 PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
@@ -2814,9 +2838,11 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 - **The graph read** returns the newest memories that pass the filter
   (pinned first, then by `created_at`), at most `limit` (default and ceiling
   5,000), the entities their edges reach, and every edge between returned
-  nodes; with no filter, every entity too, linked or not. `q` matches title
+  nodes; with no filter and no `limit`, every entity too, linked or not. `q` matches title
   or summary, anywhere, wildcards literal; `project` is exact; `since` and
-  `until` bound `created_at`. `total` counts the memories that pass the
+  `until` bound `created_at`. Only entities join a selection through its
+  edges; a memory a selected one relates to is not returned unless it
+  passes the filter itself. `total` counts the memories that pass the
   filter, whatever the limit. Summaries are `""` unless `summaries=1`; a
   node's own read carries its summary.
 - **A drop.** `kind` defaults to `idea`. With `event_id` the daemon reads
@@ -2831,11 +2857,10 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   ends dropped) is returned with `created: false` rather than added again.
   The memory is linked `part_of` its project (an entity made on demand) and
   each topic (at most 8). `text` at most 64 KiB, valid UTF-8, no NUL.
-- **The free allowance.** Without an active licence (ADR-022) a `POST` of a
-  memory when twenty memories dropped in by hand exist is `402` `{error:
-  "premium required", detail}`. Entities, edits, links, deletes and reads
-  are never refused for want of a licence. `free_left` is the allowance
-  remaining, `-1` with a licence.
+- **Free, no cap** (owner decision, 2026-10-14). No route here answers
+  `402` or looks at the licence: a memory is kept however many there are,
+  and the automatic extraction runs for anyone who turned it on. The status
+  carries no `licensed`, `free_max` or `free_left` (dropped with the cap).
 - **Errors.** `404` for an unknown node; `409` when a rename would give an
   entity the normalised title of another of its kind; `400` for an unknown
   kind, an empty title, a self-link.
@@ -2844,18 +2869,18 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 - **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
   "added" | "changed" | "deleted", kind?, title?, auto?}` (`kind` and `title`
   absent on a delete).
-- **The automatic extraction** (`internal/brain`, Premium). `auto` in the
+- **The automatic extraction** (`internal/brain`, free). `auto` in the
   status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
   daily_tokens, spent, running, pending, since?, backfill_since?,
   last_wake?, last_error?, recent: [BrainRun]}`: `chosen` once the user has
-  answered, `enabled` when on and licensed (only then does it read), `spent`
+  answered, `enabled` when on (only then does it read), `spent`
   the tokens of the reads in the last 24 hours, `pending` the sessions
   waiting, `recent` the last reads that were not skipped. `BrainRun` is
   `{id, session_id, from_event_id, through_event_id, status: ok | failed |
   skipped, model?, tokens_in, tokens_out, cost_usd, nodes, error?,
   started_at, finished_at, project?}`.
-- **Settings.** `auto: true` needs an active licence (`402` otherwise) and
-  starts reading from that moment; `false` never needs one. `daily_tokens`
+- **Settings.** `auto: true` starts reading from that moment; `false`
+  stops it. Neither needs a licence. `daily_tokens`
   is 20,000–5,000,000 (the screen offers 100k, 300k and 1M; the default is
   300,000) and `model` is `""`, `haiku` (the default) or `sonnet`; anything
   else is `400`. Kept in `config.json` as `brain: {auto?, since?,
@@ -2866,8 +2891,8 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   with unread prose worth a read, and an estimate of their tokens (a
   quarter of the characters sent, plus the call's measured fixed cost,
   4,300, plus 400 for the answer), labelled an estimate on screen. Without
-  `dry_run` it also sets `backfill_since`, which needs a licence (`402`)
-  and the extraction on (`409`), and wakes the reader.
+  `dry_run` it also sets `backfill_since`, which needs the extraction on
+  (`409`), and wakes the reader.
 - **A read.** A session is a candidate when its last event is after
   `since` (or `backfill_since`), it has ended or been quiet ten minutes, and
   it has main-thread prompts or answers after the last read that did not
@@ -3198,8 +3223,8 @@ Caprock Mail ([ADR-057](08-decisions.md)). Code: `internal/mail` (HTTP in
 (DDL in `schema.sql`), `internal/mail/oauth` (sign-in with Google and
 Microsoft; HTTP in `http_oauth.go`), `ui/src/screens/mail`. Every write is
 JSON, as the CSRF guard requires. Before the first account exists only `GET
-/v1/mail/state`, `GET /v1/mail/providers`, `GET /v1/mail/oauth/providers` and `GET
-/v1/mail/import`, `GET /v1/mail/settings` (the defaults) and `GET
+/v1/mail/state`, `GET /v1/mail/providers`, `GET /v1/mail/oauth/providers`, `GET
+/v1/mail/oauth/flow`, `GET /v1/mail/import`, `GET /v1/mail/settings` (the defaults) and `GET
 /v1/mail/messages` (`[]`) answer without opening Mail.
 
 - `GET /v1/mail/state` — `{accounts, folders, counts: {inbox, unread, flagged}, version, sample}`; `version` moves on every local change and is what the screen polls; `sample` is true while sample mode is on.
@@ -3207,10 +3232,11 @@ JSON, as the CSRF guard requires. Before the first account exists only `GET
 - `GET /v1/mail/providers?email=` — server settings for an address: `{provider, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, note, help_url, known, needs_username, username, source}`. Lookup order, first answer wins, `source` says which: `preset` — the domain is in the table in `internal/mail/providers/providers.go` (about 40 consumer services, each entry citing the provider's own settings page); `mx` — the domain's MX points at a host in that table (Google Workspace, Microsoft 365, iCloud+, Zoho, Fastmail, Yandex 360 and the hosts people put their own domain on: Rackspace, GoDaddy, Namecheap Private Email, Spacemail, IONOS, OVHcloud, Hostinger, Titan, Infomaniak, STRATO, Migadu and others; the longest matching hint wins); `srv` — RFC 6186 records `_imaps._tcp` / `_imap._tcp` and `_submissions._tcp` / `_submission._tcp` (implicit TLS preferred; an IMAP record is required); `autoconfig` — the domain's own Thunderbird-format file, `https://autoconfig.<domain>/mail/config-v1.1.xml?emailaddress=<addr>` then `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, SSL or STARTTLS servers only, `%EMAILADDRESS%` / `%EMAILLOCALPART%` / `%EMAILDOMAIN%` substituted, a redirect followed only within the domain; `guess` — `imap.<domain>` / `smtp.<domain>`, `known: false`. `needs_username` is set for an iCloud+ custom domain (sign-in is the @icloud.com address) and when autoconfig names a sign-in other than the address, given in `username`. Every network call goes to the user's own domain — its DNS and its web server, 3 s each; no third-party directory (Mozilla's ISPDB included) is asked. A preset domain makes no network call at all.
 - `POST /v1/mail/accounts` — `{name, email, username, imap_*, smtp_*, password}`; IMAP and SMTP are tried first and a refusal is `422` with nothing stored. A sign-in name the server refuses is retried with the address and, on iCloud, the part before the @ (SMTP: the @icloud.com form) — at most three names, only on a credentials refusal, never on `NO [UNAVAILABLE]`, which Dovecot (Spacemail and many hosts) sends for a wrong password on a real mailbox and while it locks sign-in after failures; the name that worked is stored. iCloud and Gmail refusals carry what to do (an app-specific password); an `UNAVAILABLE` refusal says the password was not accepted. `PUT /v1/mail/accounts/{id}` edits (a new password is optional; refused with `400` on an OAuth account, whose `auth` only a new sign-in changes), `DELETE` removes the account, its mail and its password or refresh token. Every account carries `auth`: `password` (the default), `oauth2:google` or `oauth2:microsoft`. An OAuth account signs in with SASL XOAUTH2 using an access token refreshed from the stored refresh token and cached in memory until a minute before it expires (a rotated refresh token is saved back); a refresh token the provider refuses (`invalid_grant`), or a token the server refuses, is a sync error that says to sign in again.
 - `GET /v1/mail/oauth/providers` — `{google: bool, microsoft: bool}`: which *Sign in with …* buttons work in this build (a provider without a client ID is `false`; see [docs/mail-oauth.md](../docs/mail-oauth.md)). Answers without opening Mail.
-- `POST /v1/mail/oauth/start` — `{provider: "google" | "microsoft"}` → `{auth_url}`, the provider's page for the screen to open in the browser. The authorization code flow with PKCE (S256); `state` and the verifier stay in memory, single use, for 10 minutes. The redirect is this daemon's own port on loopback: `http://127.0.0.1:<port>/v1/mail/oauth/callback` for Google, `http://localhost:<port>/…` for Microsoft (which ignores the port only for `localhost`). `409` when the provider has no client ID, `403` when the request did not reach the daemon by a loopback name (a paired phone: the browser could not come back).
-- `GET /v1/mail/oauth/callback?code=&state=` — where the provider sends the browser. Exchanges the code (with the verifier), reads the address from the ID token, checks IMAP and SMTP with XOAUTH2, stores the refresh token in the secret store under the account's item, and creates the account — or switches an existing account with the same address to the sign-in, keeping its mail. Answers a small self-contained HTML page (*Connected — you can close this tab*, or the error); the screen sees the account through `GET /v1/mail/state`. It is the one `/v1` route admitted as a cross-site top-level GET (the browser arrives from the provider's page): only as `GET`, only on a loopback `Host`; the single-use `state` is its CSRF protection. Unknown, used or expired state is `400`.
-- `GET /v1/mail/import` — the accounts the user already has in another client, so Mail can offer to add them instead of retyping: `{sources: [{kind, label, accounts: [{name, email, username, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, has_password}], needs_permission?, error?}]}`. `kind` is `thunderbird` or `apple_mail`. It reads only that client's own local files and opens nothing else (no `mail.db`, no engine). Passwords are never in the answer: Thunderbird's are decrypted locally (pure-Go NSS: PBKDF2-SHA256 + AES-256-CBC key wrap, 3DES or AES login blobs) and `has_password` is set, but the password stays in the daemon; Apple Mail passwords are not recoverable, so `has_password` is always false there. `needs_permission: "full_disk_access"` is returned for Apple Mail when its account store (`~/Library/Accounts/Accounts4.sqlite`) cannot be read without Full Disk Access.
-- `POST /v1/mail/import` — `{source, emails: [...], passwords?: {email: password}}`; adds the chosen accounts one at a time, exactly like `POST /v1/mail/accounts` (IMAP and SMTP verified first, nothing stored on refusal, password in the keychain). Each password comes from the source (decrypted locally, re-read fresh — it never crossed HTTP) or from `passwords` for accounts without one. Answers `{results: [{email, ok, error?}]}`; one account failing never stops the rest.
+- `POST /v1/mail/oauth/start` — `{provider: "google" | "microsoft", login_hint?}` → `{auth_url, flow}`, the provider's page for the screen to open in the browser; `login_hint` (an address) is passed on so the provider's page starts on that account, and `flow` is an opaque id, not the state, for `GET /v1/mail/oauth/flow`. The authorization code flow with PKCE (S256); `state` and the verifier stay in memory, single use, for 10 minutes. The redirect is this daemon's own port on loopback: `http://127.0.0.1:<port>/v1/mail/oauth/callback` for Google, `http://localhost:<port>/…` for Microsoft (which ignores the port only for `localhost`). `409` when the provider has no client ID, `403` when the request did not reach the daemon by a loopback name (a paired phone: the browser could not come back).
+- `GET /v1/mail/oauth/callback?code=&state=` — where the provider sends the browser. Exchanges the code (with the verifier), reads the address from the ID token, checks IMAP and SMTP with XOAUTH2, stores the refresh token in the secret store under the account's item, and creates the account — or switches an existing account with the same address to the sign-in, keeping its mail. Answers a small self-contained HTML page (*Connected — you can close this tab*, or the error); the screen sees the account through `GET /v1/mail/state`. It is the one `/v1` route admitted as a cross-site top-level GET (the browser arrives from the provider's page): only as `GET`, only on a loopback `Host`; the single-use `state` is its CSRF protection. Unknown, used or expired state is `400`. How the sign-in ended is recorded under its flow id.
+- `GET /v1/mail/oauth/flow?id=` — `{status: "pending" | "ok" | "error" | "expired", email?, error?}`: how the sign-in started with that flow id is going. `pending` while the browser has not come back; `ok` with the address that was connected (the one the user signed in with, which may differ from the hint); `error` with the sentence the callback page showed; `expired` (with a sentence) for a flow that was never finished within 10 minutes, or an unknown id. Outcomes are kept in memory for 10 minutes. The import screen polls it every 1.5 s while a sign-in is out.
+- `GET /v1/mail/import` — the accounts the user already has in another client, so Mail can offer to add them instead of retyping: `{sources: [{kind, label, accounts: [Account], needs_permission?, error?, last_used?}], accounts: [Found], oauth: {google, microsoft}}`. `Account` is `{name, email, username, imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_tls, has_password, provider?, last_used?}`; `last_used` (unix ms) is when the mail app last wrote the profile the account came from — Thunderbird's `prefs.js`, Apple Mail's `Accounts4.sqlite` — and a source's is the newest of its accounts'; `kind` is `thunderbird` or `apple_mail`; `provider` is `google`, `microsoft`, `icloud`, `yahoo` or `fastmail` by the IMAP host or the address's domain, absent for any other server. `accounts` is every source's accounts merged by address (case-insensitive), in scan order: `Found` is the `Account` plus `source` (the kind to import it from — the one holding a saved password when any does), `from` (every kind that has it) and `signin`, the one step left: `ready` (its password came with it), `oauth` (Google or Microsoft with a client ID in this build), `app_password` (iCloud, Yahoo, Fastmail, and Google or Microsoft without one) or `password`. It reads only that client's own local files and opens nothing else (no `mail.db`, no engine). Passwords are never in the answer: Thunderbird's are decrypted locally (pure-Go NSS: PBKDF2-SHA256 + AES-256-CBC key wrap, 3DES or AES login blobs) and `has_password` is set, but the password stays in the daemon; Apple Mail passwords are not recoverable, so `has_password` is always false there. Apple Mail is read from `~/Library/Accounts/Accounts4.sqlite`: its IMAP accounts with their SMTP pair, and the Google, iCloud and Exchange accounts added in System Settings › Internet Accounts (`com.apple.account.Google`, `.AppleAccount` with its `.IMAPMail` child, `.Exchange`), which store no servers and get their provider's (Gmail; imap.mail.me.com; outlook.office365.com); an Apple Account whose address is not iCloud's and that has no mail child is skipped. `needs_permission: "full_disk_access"` is returned for Apple Mail when its account store cannot be read without Full Disk Access; the screen does not show such a source (nor one with an error and no accounts). Outlook for Mac is not read: its profile sits in another app's group container, which macOS 14 and later guard with an OS prompt Caprock does not raise. `CAPROCK_MAIL_IMPORT_HOME` replaces the home directory scanned, for preview daemons on fake profiles (the directory service answers the real home whatever `$HOME` says).
+- `POST /v1/mail/import` — `{source, emails: [...], passwords?: {email: password}}`; adds the chosen accounts one at a time, exactly like `POST /v1/mail/accounts` (IMAP and SMTP verified first, nothing stored on refusal, password in the keychain). Each password comes from `passwords` when given (the retry after a saved one was refused), else from the source (decrypted locally, re-read fresh — it never crossed HTTP). An address Mail already has is not added twice: `ok` with `already: true`. Answers `{results: [{email, ok, error?, already?}]}`; one account failing never stops the rest. The import screen sends one address per call.
 - `GET /v1/mail/messages?view=&account=&folder=&q=&before=&before_id=&limit=` — newest first, without bodies. `view`: `inbox unread flagged sent drafts archive junk trash folder all`; `q` is a full-text query (every word a prefix) over subject, people and body.
 - `GET /v1/mail/messages/{id}` — one message with `body_text` and `body_html` (cleaned), fetched from the server if the background pass has not yet. `GET .../thread` — the conversation, oldest first. `GET .../part/{path}` — one attachment or inline image by IMAP part path or `cid:<id>`; `?download=1` forces an attachment disposition; served with a sandboxing CSP.
 - `POST /v1/mail/actions` — `{ids, action, folder}`; `action`: `read unread flag unflag archive trash spam inbox move`. Archive goes to the Archive folder, else Gmail's All Mail, else a new `Archive`; trash on a message already in Trash deletes it.

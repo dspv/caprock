@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/dspv/caprock/internal/github"
@@ -23,17 +24,33 @@ type SessionCIStats struct {
 	Stats *github.RepoStats `json:"stats,omitempty"`
 	// Board is the Board view: the pull requests by stage, the releases and
 	// the flow strip (prboard.go).
-	Board *PRBoard      `json:"board,omitempty"`
+	Board *PRBoard `json:"board,omitempty"`
+	// Error is GitHub's refusal of the newest read: with PRs present, those
+	// are the ones read at ReadAt, not refreshed.
 	Error *github.Error `json:"error,omitempty"`
-	// FetchedAt and Refreshing: as SessionPRs says them.
-	FetchedAt  int64 `json:"fetched_at"`
-	Refreshing bool  `json:"refreshing,omitempty"`
+	// ReadAt is when GitHub last answered what the board draws on — the
+	// older of the pull request list's and the releases' reads (unix ms; 0
+	// when not read). FetchedAt says when the answer was put together,
+	// which can be later: a composition that could not reach GitHub draws on
+	// what it last read.
+	ReadAt int64 `json:"read_at,omitempty"`
+	deckFresh
 }
 
-func (a SessionCIStats) stamped(at int64, refreshing bool) any {
-	a.FetchedAt, a.Refreshing = at, refreshing
+func (a SessionCIStats) stamped(f deckFresh) any {
+	a.deckFresh = f
 	return a
 }
+
+// statsGitHubBudget bounds the GitHub reads of one PRs & CI composition;
+// statsComposeTimeout the composition, so the store's reads after them
+// always have time left. Past the budget the answer draws on what was last
+// read, its cards marked stale, instead of failing whole: a composition that
+// failed on every refresh froze the board on its last answer for hours
+// behind a bare "updating…" (owner, 2026-10-14).
+var statsGitHubBudget = 10 * time.Second // a variable for the tests
+
+const statsComposeTimeout = 20 * time.Second
 
 // handleSessionCIStats answers the PRs & CI tab, which asks only while it is
 // shown: the repository's pull request list (one read shared with the
@@ -43,7 +60,7 @@ func (a SessionCIStats) stamped(at int64, refreshing bool) any {
 func (s *Server) handleSessionCIStats(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	connected := s.githubConnected()
-	s.serveDeck(w, r, deckKey("stats", id, connected, 0), func(ctx context.Context) (deckAnswer, error) {
+	s.serveDeckWithin(w, r, deckKey("stats", id, connected, 0), statsComposeTimeout, func(ctx context.Context) (deckAnswer, error) {
 		return s.composeSessionCIStats(ctx, id, connected)
 	}, s.notFoundOrFail)
 }
@@ -58,13 +75,15 @@ func (s *Server) composeSessionCIStats(ctx context.Context, id string, connected
 	if !ok || !connected {
 		return out, nil
 	}
-	prs, e := s.d.GitHub.RepoPulls(ctx, repo)
+	gh, cancel := context.WithTimeout(ctx, statsGitHubBudget)
+	defer cancel()
+	prs, e := s.d.GitHub.RepoPulls(gh, repo)
 	if e != nil {
 		out.Error = e
 		return out, nil //nolint:nilerr // GitHub's refusal is part of the answer
 	}
 	out.PRs = prs
-	runs, e := s.d.GitHub.RepoRuns(ctx, repo)
+	runs, e := s.d.GitHub.RepoRuns(gh, repo)
 	if e != nil {
 		// The pull requests are still worth showing; the runs' figures wait.
 		out.Error = e
@@ -83,8 +102,45 @@ func (s *Server) composeSessionCIStats(ctx context.Context, id string, connected
 	if root == "" {
 		root = sess.Cwd
 	}
-	if out.Board, err = s.composeBoard(ctx, repo, root, localDefault, prs, runs, now); err != nil {
+	if out.Board, err = s.composeBoard(ctx, gh, repo, root, localDefault, prs, runs, now); err != nil {
 		return nil, err
+	}
+	// What the board draws on, and whether its newest read failed: the list
+	// and the releases each keep their last answer when GitHub refuses.
+	at, failed := s.d.GitHub.RepoPullsRead(repo)
+	if rAt, rFailed := s.d.GitHub.RepoReleasesRead(repo); rAt > 0 {
+		at = min(at, rAt)
+		if failed == nil {
+			failed = rFailed
+		}
+	}
+	out.ReadAt = at
+	if failed != nil {
+		out.Error = failed
+	}
+	// What did not fit the budget is said too, not drawn as if current: the
+	// releases never read, or open pull requests whose checks are an older
+	// read.
+	if out.Error == nil {
+		stale := 0
+		for _, c := range out.Board.Cards {
+			if c.Stale {
+				stale++
+			}
+		}
+		slow := func(doing, what string) *github.Error {
+			return &github.Error{Kind: github.KindNetwork, Doing: doing, At: now.UnixMilli(),
+				Message: "GitHub did not answer in time for " + what + "; asked again on the next refresh"}
+		}
+		if rAt, _ := s.d.GitHub.RepoReleasesRead(repo); rAt == 0 {
+			out.Error = slow("Listing the releases of "+repo.FullName(), "the releases")
+		} else if stale > 0 {
+			what := "1 open pull request’s checks"
+			if stale > 1 {
+				what = strconv.Itoa(stale) + " open pull requests’ checks"
+			}
+			out.Error = slow("Reading the open pull requests of "+repo.FullName(), what)
+		}
 	}
 	return out, nil
 }

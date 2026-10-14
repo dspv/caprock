@@ -1,6 +1,6 @@
 /**
- * The words and shapes of the PRs & CI tab (components/PRsCITab.tsx,
- * .ai/21-app.md § PRs & CI tab): the job × runner grid, the list's rows in
+ * The words and shapes of the Pipeline page (components/PRsCITab.tsx,
+ * .ai/21-app.md § Pipeline page): the job × runner grid, the list's rows in
  * each scope, and the figures said as text. Pure: the tab draws, this
  * decides. Every figure is GitHub's or counted from GitHub's stamps; one that
  * is not reported, or would rest on fewer than two values, is left out.

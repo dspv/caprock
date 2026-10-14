@@ -3,6 +3,10 @@
  * separate places at a glance (owner, 2026-10-11: "simple icons for the
  * sections"). Picked by the section's title; a title with none draws nothing.
  */
+
+/** A brain in outline: Settings → Second Brain, and Second Brain's own mark
+ *  (components/BrainDrop `BrainGlyph`), so the two never drift apart. */
+export const BRAIN_PATH = 'M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V5a2 2 0 0 0-3-1zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1'
 const P: Record<string, string> = {
   play: 'M6 4l14 8-14 8z',
   coffee: 'M4 8h13v5a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6zM17 9h1.5a2.5 2.5 0 0 1 0 5H17M8 2v3M12 2v3',
@@ -20,7 +24,7 @@ const P: Record<string, string> = {
   branch: 'M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9',
   card: 'M3 6h18v12H3zM3 10h18M7 15h3',
   shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
-  brain: 'M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V5a2 2 0 0 0-3-1zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1',
+  brain: BRAIN_PATH,
   graph: 'M4 7a2 2 0 1 0 4 0a2 2 0 1 0-4 0M16 6a2 2 0 1 0 4 0a2 2 0 1 0-4 0M10 18a2 2 0 1 0 4 0a2 2 0 1 0-4 0M8 6.8l8-.6M7 8.8l4 7.4M17 8l-4 8.2',
   info: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-5M12 8h.01',
   alert: 'M12 3l10 18H2zM12 10v4M12 18h.01',

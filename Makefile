@@ -38,6 +38,11 @@ endif
 BIN      := bin
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  := -s -w -X github.com/dspv/caprock/internal/version.Version=$(VERSION)
+# Mail's sign-in client IDs (docs/mail-oauth.md), from the environment when
+# set (release.yml passes the GitHub secrets of the same names); empty, Mail
+# offers app passwords instead of the sign-in buttons.
+MAIL_OAUTH := github.com/dspv/caprock/internal/mail/oauth
+LDFLAGS  += -X $(MAIL_OAUTH).GoogleClientID=$(CAPROCK_MAIL_GOOGLE_CLIENT_ID) -X $(MAIL_OAUTH).GoogleClientSecret=$(CAPROCK_MAIL_GOOGLE_CLIENT_SECRET) -X $(MAIL_OAUTH).MicrosoftClientID=$(CAPROCK_MAIL_MICROSOFT_CLIENT_ID)
 GOFLAGS  := -trimpath
 export CGO_ENABLED = 0
 

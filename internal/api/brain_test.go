@@ -11,7 +11,6 @@ import (
 
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/event"
-	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -21,15 +20,6 @@ func brainDo(t *testing.T, e *env, method, path string, body any) (int, map[stri
 	var out map[string]any
 	_ = json.Unmarshal(rr.Body.Bytes(), &out)
 	return rr.Code, out
-}
-
-func licenseEnv(t *testing.T, e *env) {
-	t.Helper()
-	cur := e.settings.Get()
-	cur.LicenseKey = license.Issue(time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC), license.RandomSuffix)
-	if err := e.settings.Set(cur); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestBrainDropFromANoteReadsTheRecord(t *testing.T) {
@@ -153,28 +143,24 @@ func TestBrainQuickCaptureEditAndDelete(t *testing.T) {
 	}
 }
 
-// Without a licence Second Brain keeps a taste: twenty memories dropped by
-// hand. The server refuses the twenty-first, so the lock is not a decoration.
-func TestBrainFreeAllowanceIsCheckedOnTheServer(t *testing.T) {
+// Second Brain is free (owner decision, 2026-10-14): without a licence the
+// twenty-first memory dropped by hand is kept like the first, and the status
+// carries no allowance.
+func TestBrainHasNoCapWithoutALicence(t *testing.T) {
 	e := newEnv(t)
-	for i := 0; i < brainFreeManual; i++ {
+	for i := 0; i < 25; i++ {
 		if code, out := brainDo(t, e, "POST", "/v1/brain/nodes", map[string]any{"text": fmt.Sprintf("idea %d", i)}); code != 200 {
 			t.Fatalf("drop %d: %d %v", i, code, out)
 		}
 	}
-	var st BrainStatus
-	if code := e.get(t, "/v1/brain/status", &st); code != 200 || st.Licensed || st.FreeLeft != 0 || st.Manual != brainFreeManual {
-		t.Fatalf("status at the allowance: %d %+v", code, st)
+	var st map[string]any
+	if code := e.get(t, "/v1/brain/status", &st); code != 200 || st["manual"] != float64(25) {
+		t.Fatalf("status: %d %+v", code, st)
 	}
-	if code, out := brainDo(t, e, "POST", "/v1/brain/nodes", map[string]any{"text": "one more"}); code != http.StatusPaymentRequired {
-		t.Fatalf("past the allowance: %d %v, want 402", code, out)
-	}
-	licenseEnv(t, e)
-	if code, out := brainDo(t, e, "POST", "/v1/brain/nodes", map[string]any{"text": "one more"}); code != 200 {
-		t.Fatalf("licensed: %d %v", code, out)
-	}
-	if code := e.get(t, "/v1/brain/status", &st); code != 200 || !st.Licensed || st.FreeLeft != -1 {
-		t.Fatalf("licensed status: %+v", st)
+	for _, gone := range []string{"licensed", "free_max", "free_left"} {
+		if _, ok := st[gone]; ok {
+			t.Errorf("status still carries %q: %+v", gone, st)
+		}
 	}
 }
 
@@ -222,7 +208,7 @@ func (f *fakeBrainAuto) Backfill(_ context.Context, days int) error {
 	return nil
 }
 
-func TestBrainAutomaticNeedsALicenceAndAYes(t *testing.T) {
+func TestBrainAutomaticNeedsOnlyAYes(t *testing.T) {
 	e := newEnv(t)
 	if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", map[string]any{"auto": true}); code != http.StatusServiceUnavailable {
 		t.Errorf("without the engine: %d", code)
@@ -230,21 +216,14 @@ func TestBrainAutomaticNeedsALicenceAndAYes(t *testing.T) {
 	f := &fakeBrainAuto{}
 	e.api.d.BrainAuto = f
 
-	if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", map[string]any{"auto": true}); code != http.StatusPaymentRequired {
-		t.Fatalf("on without a licence: %d", code)
-	}
-	if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", map[string]any{"auto": false}); code != 200 {
-		t.Errorf("off never needs a licence: %d", code)
-	}
-	// The estimate is free to ask for; the read is not.
+	// No licence anywhere in this test: the switch and the backfill are free.
+	// The estimate is there to ask for before anything is read.
 	if code, out := brainDo(t, e, "POST", "/v1/brain/backfill", map[string]any{"dry_run": true}); code != 200 || out["sessions"].(float64) != 30 {
 		t.Errorf("dry run: %d %v; 30 days by default", code, out)
 	}
-	if code, _ := brainDo(t, e, "POST", "/v1/brain/backfill", map[string]any{"days": 30}); code != http.StatusPaymentRequired {
-		t.Errorf("backfill without a licence: %d", code)
+	if f.on || len(f.set) != 0 {
+		t.Fatalf("an estimate turned nothing on: %+v", f)
 	}
-
-	licenseEnv(t, e)
 	for _, bad := range []map[string]any{{"daily_tokens": 5}, {"daily_tokens": 900_000_000}, {"model": "opus"}} {
 		if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", bad); code != http.StatusBadRequest {
 			t.Errorf("%v: %d", bad, code)

@@ -58,6 +58,8 @@ export interface RepoCIRow {
   name: string
   repo: string
   live: number
+  /** When GitHub last answered its pull request list (unix ms): with error, the row draws on that older read. */
+  read_at?: number
   /** Its newest session's last event, or when it was listed if later (Unix ms). */
   last_active?: number
   /** Listed only because older repositories were asked. */
@@ -94,6 +96,8 @@ export interface ReposCI {
   recent_days?: number
   fetched_at?: number
   refreshing?: boolean
+  /** Why the daemon's newest composition failed: the answer is the one before it. */
+  refresh_error?: string
 }
 
 const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
@@ -107,6 +111,7 @@ export function asReposCI(v: unknown): ReposCI {
     status: o.status && typeof o.status === 'object' ? { ...o.status, components: arr(o.status.components), incidents: arr(o.status.incidents) } : undefined,
     fetched_at: o.fetched_at,
     refreshing: o.refreshing === true,
+    refresh_error: typeof o.refresh_error === 'string' ? o.refresh_error : undefined,
     recent_days: num(o.recent_days) || 14,
     quiet: arr<RepoCIQuiet>(o.quiet).filter((q) => q && typeof q === 'object' && typeof q.repo === 'string'),
     repos: arr<RepoCIRow>(o.repos).filter((r) => r && typeof r === 'object' && typeof r.repo === 'string').map((r) => ({

@@ -37,17 +37,8 @@ export const BranchIcon = (p: P) => <Icon {...p}><circle cx="6" cy="5" r="2" /><
 export const PullRequestIcon = (p: P) => <Icon {...p}><circle cx="6" cy="6" r="2.25" /><circle cx="6" cy="18" r="2.25" /><circle cx="18" cy="18" r="2.25" /><path d="M6 8.25v7.5M18 15.75V9.5a3 3 0 0 0-3-3h-3.5M13.5 4l-2.5 2.5 2.5 2.5" /></Icon>
 export const InspectorIcon = (p: P) => <Icon {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16" /></Icon>
 export const DeckIcon = (p: P) => <Icon {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 13h18M7.5 17v-1M10.5 17v-2M13.5 17v-1M16.5 17v-1.5" /></Icon>
-/** The PRs & CI view's mode, as the sidebar footer's button shows it: a
- *  window with no band (a dotted edge where it would be), a band along its
- *  bottom, or the window filled. */
-export const BarModeIcon = ({ mode, ...p }: P & { mode: 'hidden' | 'bar' | 'full' }) => (
-  <Icon {...p}>
-    <rect x="3" y="4" width="18" height="16" rx="2" />
-    {mode === 'hidden' && <path d="M7 16.5h1M11.5 16.5h1M16 16.5h1" />}
-    {mode === 'bar' && <path d="M3 14h18M6.5 17h11" />}
-    {mode === 'full' && <><path d="M3 8h18" /><rect x="6" y="11" width="12" height="6" rx="1" fill="currentColor" stroke="none" /></>}
-  </Icon>
-)
+/** Four stops on a line, the last a ring: the Pipeline (open → CI → merged → released). */
+export const PipelineIcon = (p: P) => <Icon {...p}><path d="M5.5 12h3M11 12h2.5M16 12h1.5" /><circle cx="4" cy="12" r="1.6" fill="currentColor" stroke="none" /><circle cx="9.7" cy="12" r="1.6" fill="currentColor" stroke="none" /><circle cx="14.8" cy="12" r="1.6" fill="currentColor" stroke="none" /><circle cx="19.8" cy="12" r="2.3" /></Icon>
 export const SidebarIcon =(p: P) => <Icon {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></Icon>
 export const SearchIcon = (p: P) => <Icon {...p}><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></Icon>
 /** An envelope: Caprock Mail (the sidebar footer, its tab). */

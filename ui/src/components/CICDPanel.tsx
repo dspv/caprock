@@ -20,7 +20,7 @@
  * panel is open, and the poll pauses while the window is hidden.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
-import { api } from '@/lib/api'
+import { api, errText } from '@/lib/api'
 import { readDeck, writeDeck } from '@/lib/deckCache'
 import { fmtAgo } from '@/lib/format'
 import { fmtRun } from '@/lib/ci'
@@ -31,6 +31,7 @@ import { usageLine, type ActionsUsage } from '@/lib/runnercost'
 import { AGENT_COST_NOTE } from '@/lib/prboard'
 import { asReposCI, keepWhileReading, loadHiddenRepos, owners, prTokens, quietText, redPct, rowErrorText, saveHiddenRepos, sectionErrorText, sharedTitle, statusLine, stuckText, type ReposCI, type RepoCIQuiet, type RepoCIRow } from '@/lib/reposci'
 import { Panel } from './ui'
+import { Freshness } from './Freshness'
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 import { EyeOffIcon } from './AppIcons'
 import { Bars, Trend } from './DayBars'
@@ -45,20 +46,40 @@ const USAGE_EVERY_MS = 30 * 60_000
 const CACHE_KEY = 'cicd:now'
 const STATUS_PAGE = 'https://www.githubstatus.com'
 
+/** How fresh the section is, said in its header (Freshness): the body reads, the header says it. */
+interface CICDFresh {
+  at?: number
+  loading: boolean
+  failed: boolean
+  reason?: string
+  confirmed: boolean
+  retry: () => void
+}
+
 export function CICDPanel() {
+  const [fresh, setFresh] = useState<CICDFresh>()
   return (
-    <Panel fold="now.cicd" title="CI/CD" right={<span title="GitHub's runs, pull requests and releases as the PRs & CI tab reads them, and githubstatus.com; agent cost at API list price">GitHub · agent cost at list price</span>}>
-      <CICDBody />
+    <Panel fold="now.cicd" title="CI/CD" right={
+      <span className="flex min-w-0 items-center gap-2">
+        {fresh && <Freshness at={fresh.at} loading={fresh.loading} failed={fresh.failed} reason={fresh.reason} confirmed={fresh.confirmed} onRetry={fresh.retry} compact />}
+        <span className="truncate" title="GitHub's runs, pull requests and releases as the Pipeline page reads them, and githubstatus.com; agent cost at API list price">GitHub · agent cost at list price</span>
+      </span>
+    }>
+      <CICDBody onFresh={setFresh} />
     </Panel>
   )
 }
 
-function useReposCI(older: boolean, hide: readonly string[]): { data?: ReposCI; failed: boolean; usage: Record<string, ActionsUsage> } {
+function useReposCI(older: boolean, hide: readonly string[]): { data?: ReposCI; failed: boolean; usage: Record<string, ActionsUsage>; loading: boolean; reason?: string; confirmed: boolean; retry: () => void } {
   const [data, setData] = useState<ReposCI | undefined>(() => {
     const c = readDeck<unknown>(CACHE_KEY)?.d
     return c === undefined ? undefined : asReposCI(c)
   })
   const [failed, setFailed] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [reason, setReason] = useState<string>()
+  const [confirmed, setConfirmed] = useState(false)
+  const retryRef = useRef<() => void>(() => {})
   const [usage, setUsage] = useState<Record<string, ActionsUsage>>({})
   const asked = useRef<Record<string, number>>({})
   const alive = useRef(true)
@@ -68,14 +89,20 @@ function useReposCI(older: boolean, hide: readonly string[]): { data?: ReposCI; 
     alive.current = true
     let timer = 0
     let again = CICD_POLL_MS
+    let inFlight = false
     const tick = async () => {
-      if (document.hidden) return
+      if (document.hidden || inFlight) return
+      inFlight = true
+      setLoading(true)
       try {
         const d = keepWhileReading(last.current, asReposCI(await api.reposCI({ older, hide: hideKey ? hideKey.split(',') : [] })))
         if (!alive.current) return
         last.current = d
         setData(d)
-        setFailed(false)
+        setConfirmed(true)
+        setLoading(d.refreshing || d.repos.some((r) => !!r.pending))
+        setFailed(!!d.refresh_error && !d.refreshing)
+        setReason(d.refresh_error || undefined)
         if (!older) writeDeck(CACHE_KEY, d)
         again = d.refreshing || d.repos.some((r) => r.pending) ? CICD_REFRESH_MS : CICD_POLL_MS
         if (d.github_connected) {
@@ -85,24 +112,37 @@ function useReposCI(older: boolean, hide: readonly string[]): { data?: ReposCI; 
             api.actionsUsage(o).then((u) => { if (alive.current) setUsage((m) => ({ ...m, [o]: u })) }, () => { /* said as not read */ })
           }
         }
-      } catch {
-        if (alive.current) setFailed(true)
+      } catch (e) {
+        if (alive.current) { setFailed(true); setLoading(false); setReason(errText(e)) }
       }
+      inFlight = false
       if (alive.current && !document.hidden) timer = window.setTimeout(() => void tick(), again)
     }
+    retryRef.current = () => { if (!inFlight) { window.clearTimeout(timer); void tick() } }
     void tick()
     const onVisible = () => { if (!document.hidden) { window.clearTimeout(timer); void tick() } }
     document.addEventListener('visibilitychange', onVisible)
-    return () => { alive.current = false; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
+    return () => { alive.current = false; retryRef.current = () => {}; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
   }, [older, hideKey])
-  return { data, failed, usage }
+  const retry = useCallback(() => retryRef.current(), [])
+  return { data, failed, usage, loading, reason, confirmed, retry }
 }
 
-function CICDBody() {
+function CICDBody({ onFresh }: { onFresh: (f: CICDFresh | undefined) => void }) {
   const [older, setOlder] = useState(false)
   const [hidden, setHidden] = useState<Set<string>>(() => loadHiddenRepos())
   const hide = useMemo(() => [...hidden].sort(), [hidden])
-  const { data: answer, failed, usage } = useReposCI(older, hide)
+  const { data: answer, failed, usage, loading, reason, confirmed, retry } = useReposCI(older, hide)
+  // The header's freshness: the time GitHub was last read for the rows (the
+  // oldest row's read, else when the daemon composed it).
+  const readAt = answer?.repos.reduce((m, r) => (r.read_at && (!m || r.read_at < m) ? r.read_at : m), 0) || answer?.fetched_at
+  const rowRefused = answer?.repos.find((r) => r.error && r.read_at)
+  useEffect(() => {
+    onFresh(answer?.github_connected ? {
+      at: readAt, loading, failed: failed || (!!rowRefused && !loading), reason: reason ?? rowRefused?.error?.message, confirmed: confirmed && !failed, retry,
+    } : undefined)
+  }, [onFresh, answer?.github_connected, readAt, loading, failed, reason, rowRefused, confirmed, retry])
+  useEffect(() => () => onFresh(undefined), [onFresh])
   const setHide = useCallback((repo: string, on: boolean) => {
     setHidden((cur) => {
       const next = new Set(cur)

@@ -447,7 +447,7 @@ export const TerminalStack = memo(function TerminalStack({
   renderFile?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   /** What a watched session's tab shows (components/ObservePane.tsx): its conversation, read-only, no terminal. */
   renderObserve?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
-  /** What a PRs & CI tab shows (components/PRsCITab.tsx): the deck's cell, large. */
+  /** What a Pipeline page shows (components/PRsCITab.tsx): the deck's cell, large. */
   renderPRs?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
   /** The session's program exited; the workspace replaces it with a shell. */

@@ -11,9 +11,8 @@
  *
  * A survey card is the headline, one line, two one-click questions and an
  * optional email. Send is the only thing that sends anything, and the line
- * under it says what and where. A sale card (Second Brain) is one line and
- * "How it works", which opens SecondBrainModal; it sends nothing. "Not
- * interested" and × send nothing; every answer is final.
+ * under it says what and where. "Not interested" and × send nothing; every
+ * answer is final.
  */
 import { useEffect, useState } from 'react'
 import { api, errText, isPairedDevice } from '@/lib/api'
@@ -25,7 +24,6 @@ import {
   useKeyboardQuiet, type Offer, type OfferQuestion,
 } from '@/lib/offer'
 import { Banner, BannerButton, BannerDismiss } from './Banner'
-import { SecondBrainModal } from './SecondBrainModal'
 import './OfferStrip.css'
 
 /** What Send discloses, word for word (owner, 2026-10-14). */
@@ -51,7 +49,6 @@ export function OfferStrip({ now = Date.now(), busy = false, quietMs = OFFER_QUI
   const [email, setEmail] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
-  const [howItWorks, setHowItWorks] = useState(false)
 
   const today = !isPairedDevice() && quiet && !busy ? offerForToday(hist.data?.totals, now) : null
   const offer = forced ?? held ?? today
@@ -70,28 +67,8 @@ export function OfferStrip({ now = Date.now(), busy = false, quietMs = OFFER_QUI
     return () => clearTimeout(t)
   }, [sent])
 
-  if (howItWorks) return <SecondBrainModal onClose={() => setHowItWorks(false)} />
   if (!mine || !offer) return null
   const close = () => { if (!forced) markOfferAnswered(offer, 'no', now); setHeld(null); setAnswers({}) }
-
-  if (offer.kind === 'sale') {
-    return (
-      <Banner
-        id="offer"
-        edge
-        tone="premium"
-        art="graph"
-        role="region"
-        label={offer.title}
-        title={offer.title}
-        actions={<>
-          <BannerButton kind="premium" onClick={() => setHowItWorks(true)}>How it works</BannerButton>
-          <BannerDismiss onClick={close}>Not interested</BannerDismiss>
-          <BannerDismiss icon onClick={close} aria-label="Close, not interested" title="Not interested" />
-        </>}
-      />
-    )
-  }
 
   // An offer that can be tried already opens it: no answer, nothing sent.
   const tryIt = offer.tryHref

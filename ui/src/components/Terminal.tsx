@@ -14,7 +14,7 @@ import { registerBenchTerminal } from '@/lib/benchhook'
 import { coalescedWriter, writeSliced } from '@/lib/termwrite'
 import { touchScreen } from '@/lib/phone'
 import { attachTerminalLinks } from '@/lib/termlinks'
-import { DASH_GROUND, TERMINAL_THEMES } from '@/lib/termthemes'
+import { DASH_GROUND, TERMINAL_MIN_CONTRAST, TERMINAL_THEMES } from '@/lib/termthemes'
 import { modeOfRoot, themeRow } from '@/lib/themes'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -190,6 +190,8 @@ export function TerminalView({
       convertEol: false, cursorBlink: !light, fontFamily: v('--font-mono', 'monospace'), fontSize: 12,
       // A copy: xterm keeps the object it is given.
       theme: dashTerminalTheme(),
+      // Readable whatever a program paints behind its text (lib/termthemes).
+      minimumContrastRatio: TERMINAL_MIN_CONTRAST,
       // 10k lines: a build log or a long `claude` session scrolls past 5k
       // easily, and losing the start of what you are reading is the moment a
       // terminal stops being one you can work in.

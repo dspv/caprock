@@ -1,6 +1,6 @@
 /**
  * The quick capture (ADR-063): one line, or a paragraph, dropped into Second
- * Brain from anywhere — ⇧⌘H, or ⌘K "Add to brain…". The first line becomes
+ * Brain from anywhere — ⇧⌘H, or ⌘K "Add to Second Brain…". The first line becomes
  * the memory's title, the rest its summary; the kind and topics are optional.
  *
  * `BrainCaptureHost` is mounted once per page (App, AppShell) and opens the
@@ -9,10 +9,9 @@
  */
 import { useEffect, useState } from 'react'
 import { keys } from '@/lib/appkeys'
-import { BRAIN_CAPTURE_EVENT, dropIntoBrain, MEMORY_KINDS, useBrainStatus } from '@/lib/brain'
+import { BRAIN_CAPTURE_EVENT, dropIntoBrain, MEMORY_KINDS } from '@/lib/brain'
 import type { BrainKind } from '@/lib/api'
 import { Sheet, SheetButton, SheetField } from './Sheet'
-import { PremiumModal } from './PremiumModal'
 
 export function BrainCaptureHost() {
   const [open, setOpen] = useState<{ text: string; n: number } | null>(null)
@@ -34,9 +33,6 @@ export function BrainCapture({ initial = '', onClose }: { initial?: string; onCl
   const [topics, setTopics] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [locked, setLocked] = useState(false)
-  const [premium, setPremium] = useState(false)
-  const { status } = useBrainStatus()
   const send = async () => {
     if (!text.trim() || busy) return
     setBusy(true)
@@ -49,22 +45,19 @@ export function BrainCapture({ initial = '', onClose }: { initial?: string; onCl
     setBusy(false)
     if (r.ok) { onClose(); return }
     setError(r.message)
-    setLocked(r.locked)
   }
-  const left = status && !status.licensed ? status.free_left : -1
   return (
     <>
       <Sheet
-        label="Add to brain"
-        title="Add to brain"
+        label="Add to Second Brain"
+        title="Add to Second Brain"
         onClose={onClose}
         width={560}
         footer={
           <>
             <span className="mr-auto text-[12px] text-fg-faint">
-              {left >= 0 ? `${left} of ${status?.free_max ?? 20} free memories left · ` : ''}Kept on this machine.
+              Kept on this machine.
             </span>
-            {locked && <SheetButton onClick={() => setPremium(true)}>Unlock with Premium</SheetButton>}
             <SheetButton primary disabled={!text.trim() || busy} onClick={() => void send()} aria-keyshortcuts="Meta+Enter" keyHint={keys('⌘↩')}>
               Drop it in
             </SheetButton>
@@ -109,7 +102,6 @@ export function BrainCapture({ initial = '', onClose }: { initial?: string; onCl
           {error && <p role="alert" className="text-[12.5px] text-danger">{error}</p>}
         </div>
       </Sheet>
-      {premium && <PremiumModal feature="brain" onClose={() => setPremium(false)} />}
     </>
   )
 }

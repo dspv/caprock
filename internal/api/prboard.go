@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/github"
@@ -30,8 +31,15 @@ const (
 )
 
 // boardLivePRs is how many open pull requests' checks the board reads (the
-// newest updated first): each is the deck's own kept read.
-const boardLivePRs = 12
+// newest updated first): each is the deck's own kept read, four calls to
+// GitHub when it has expired. boardLiveParallel of them are read at once:
+// read one after another, a dozen open pull requests with running checks
+// took longer than the composition's deadline on every refresh, so the board
+// never got a new answer and froze on the last one (owner, 2026-10-14).
+const (
+	boardLivePRs      = 12
+	boardLiveParallel = 4
+)
 
 // boardReleasesShown is how many releases the Releases panel lists.
 const boardReleasesShown = 6
@@ -63,6 +71,10 @@ type BoardCard struct {
 	Release string `json:"release,omitempty"`
 	// Spend is the agent work Caprock recorded for it (store.SpendByPR).
 	Spend store.PRSpend `json:"spend"`
+	// Stale says its checks are from an earlier read: this composition could
+	// not read them again in time (or GitHub refused), so the card is drawn
+	// as not re-confirmed.
+	Stale bool `json:"stale,omitempty"`
 }
 
 // BoardRelease is one published release and the merges it shipped.
@@ -101,8 +113,10 @@ type BoardFlow struct {
 
 // boardInput is what a board is built from.
 type boardInput struct {
-	prs           []github.BranchPR
-	live          map[int]github.PR
+	prs  []github.BranchPR
+	live map[int]github.PR
+	// stale are the open pull requests whose live read is an earlier one.
+	stale         map[int]bool
 	runs          []github.CIRun
 	releases      []github.RepoRelease
 	defaultBranch string
@@ -141,6 +155,14 @@ func buildBoard(in boardInput) PRBoard {
 		if c.Spend.Agents == nil {
 			c.Spend.Agents = []string{}
 		}
+		// A pull request read on its own just now, merged or closed since the
+		// list was read, leaves the open stages at once.
+		if live, ok := in.live[p.Number]; ok && p.State == "open" && !in.stale[p.Number] && live.State != "" && live.State != "open" {
+			p.State = live.State
+			if p.MergedAt == 0 {
+				p.MergedAt = live.MergedAt
+			}
+		}
 		switch p.State {
 		case "merged":
 			rel := shippedIn(p)
@@ -164,6 +186,7 @@ func buildBoard(in boardInput) PRBoard {
 			}
 		case "open":
 			c.Stage, c.StageAt = openStage(p, in.live[p.Number], in.runs, &c)
+			c.Stale = in.stale[p.Number]
 		default:
 			continue
 		}
@@ -344,25 +367,62 @@ func prRefs(prs []github.BranchPR) []store.PRRef {
 
 // composeBoard reads what the board needs beyond the tab's own list and
 // runs: the newest releases, the open pull requests' checks and the
-// recorded agent work. A failed release list is no releases, not an error.
-func (s *Server) composeBoard(ctx context.Context, repo github.Repo, repoRoot, localDefault string, prs []github.BranchPR, runs []github.CIRun, now time.Time) (*PRBoard, error) {
-	in := boardInput{prs: prs, runs: runs, now: now, days: github.StatsDays, live: map[int]github.PR{}, listedAll: len(prs) < 50}
-	if rels, e := s.d.GitHub.RepoReleases(ctx, repo); e == nil {
+// recorded agent work. GitHub is asked under gh, the store under ctx, so a
+// slow GitHub leaves cards marked stale instead of failing the whole answer.
+// A failed release list is no releases, not an error.
+func (s *Server) composeBoard(ctx, gh context.Context, repo github.Repo, repoRoot, localDefault string, prs []github.BranchPR, runs []github.CIRun, now time.Time) (*PRBoard, error) {
+	in := boardInput{prs: prs, runs: runs, now: now, days: github.StatsDays, live: map[int]github.PR{}, stale: map[int]bool{}, listedAll: len(prs) < 50}
+	if rels, e := s.d.GitHub.RepoReleases(gh, repo); e == nil {
 		in.releases = rels
 	}
-	if def, e := s.defaultBranch(ctx, repo, localDefault); e == nil {
+	if def, e := s.defaultBranch(gh, repo, localDefault); e == nil {
 		in.defaultBranch = def
 	}
-	n := 0
+	var open []github.BranchPR
 	for _, p := range prs {
-		if p.State != "open" || n >= boardLivePRs {
-			continue
-		}
-		n++
-		if live, e := s.d.GitHub.PullByURL(ctx, p.URL); e == nil {
-			in.live[p.Number] = live
+		if p.State == "open" && len(open) < boardLivePRs {
+			open = append(open, p)
 		}
 	}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, boardLiveParallel)
+	for _, p := range open {
+		wg.Add(1)
+		go func(p github.BranchPR) {
+			defer wg.Done()
+			var live github.PR
+			var stale bool
+			select {
+			case sem <- struct{}{}:
+				var e *github.Error
+				live, e = s.d.GitHub.PullByURL(gh, p.URL)
+				<-sem
+				// PullByURL hands back its last good read with the refusal
+				// beside it when the read fails.
+				stale = e != nil || live.Error != nil
+				if e != nil {
+					live = github.PR{}
+				}
+			case <-gh.Done():
+				stale = true
+			}
+			if live.Number == 0 {
+				if c, _, ok := s.d.GitHub.CachedPull(p.URL); ok {
+					live = c
+				}
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if live.Number != 0 {
+				in.live[p.Number] = live
+			}
+			if stale {
+				in.stale[p.Number] = true
+			}
+		}(p)
+	}
+	wg.Wait()
 	spend, err := store.SpendByPR(ctx, s.d.Store.DB(), repoRoot, prRefs(prs))
 	if err != nil {
 		return nil, err

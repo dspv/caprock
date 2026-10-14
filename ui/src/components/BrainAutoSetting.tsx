@@ -1,6 +1,7 @@
 /**
- * Second Brain, built automatically (Premium, ADR-063): the switch, its
- * limit, what it has done, and the backfill.
+ * Second Brain, built automatically (ADR-063): the switch, its limit, what
+ * it has done, and the backfill. Free for everyone (owner decision,
+ * 2026-10-14): it runs on the user's own claude.
  *
  * Off until the user says yes. Rule 4 lets an outbound call exist only when
  * the user turned it on and the place it is switched on says what it sends,
@@ -40,7 +41,7 @@ export function BrainAutoSetting() {
     <Section
       title="Second Brain"
       aside={
-        <span className={`text-[12px] ${auto.enabled ? 'text-premium-strong' : 'text-fg-faint'}`}>
+        <span className={`text-[12px] ${auto.enabled ? 'text-accent' : 'text-fg-faint'}`}>
           {!auto.on ? 'off' : auto.enabled ? 'on' : 'not active'}
         </span>
       }
@@ -161,7 +162,7 @@ function Recent({ auto }: { auto: BrainAutoStatus }) {
 }
 
 /**
- * The question, asked once on the Brain screen with a licence: build it
+ * The question, asked once on the Brain screen, of everyone: build it
  * automatically, or not. Either answer is kept; Settings changes it later.
  */
 export function BrainConsent({ auto, onAnswer }: { auto: BrainAutoStatus; onAnswer: () => void }) {

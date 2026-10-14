@@ -25,6 +25,7 @@ const paths: Record<string, string> = {
   chevron: 'M9 6l6 6-6 6',
   cloud: 'M7 18h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.5 1.5A3.3 3.3 0 0 0 7 18z',
   download:'M12 4v11 M7 10l5 5 5-5 M5 20h14',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
 }
 
 export function Icon({ name, size = 16, className }: { name: keyof typeof paths | string; size?: number; className?: string }) {

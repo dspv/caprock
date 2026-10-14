@@ -49,8 +49,6 @@ type Engine struct {
 	Now   func() time.Time
 	// Config is the extraction's settings, read on every wake.
 	Config func() config.BrainConfig
-	// Licensed reports an active Premium licence (ADR-022).
-	Licensed func() bool
 	// ClaudeFound reports whether a claude binary is installed.
 	ClaudeFound func() bool
 	Runner      Runner
@@ -76,11 +74,11 @@ func (e *Engine) log() *slog.Logger {
 	return slog.Default()
 }
 
-// Enabled reports whether the extraction may run now: a yes from the user
-// and an active licence.
+// Enabled reports whether the extraction may run now: a yes from the user.
+// No licence is needed (owner decision, 2026-10-14).
 func (e *Engine) Enabled() bool {
 	c := e.Config()
-	return c.Auto != nil && *c.Auto && e.Licensed != nil && e.Licensed()
+	return c.Auto != nil && *c.Auto
 }
 
 // Start runs the extraction until ctx ends: a first wake a minute after
@@ -403,7 +401,7 @@ func (e *Engine) publish(n store.BrainNode) {
 // Status is the extraction's state for GET /v1/brain/status.
 type Status struct {
 	// Chosen is whether the user has answered the offer to turn it on;
-	// Enabled whether it is on (a yes and a licence).
+	// Enabled whether it is on (a yes).
 	Chosen      bool   `json:"chosen"`
 	On          bool   `json:"on"`
 	Enabled     bool   `json:"enabled"`
