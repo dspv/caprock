@@ -185,9 +185,14 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   named. `GET /v1/settings` omits `license_key` for a paired device. Loopback is
   unaffected. `GET /v1/pair/me` is on the list too: it answers `{role}` —
   `"owner"` on loopback, else `{role: "viewer"|"controller", id, name, via,
-  anywhere?, app?}`, where `via` is how this request arrived (below),
+  anywhere?, app?, installed?}`, where `via` is how this request arrived (below),
   `anywhere` is true while access from anywhere is on, and `app` (sent with
   it) is the phone's page, so a Wi-Fi link's notice names where the app is.
+  `?app=1` or `?app=0` reports whether the phone runs as the installed app
+  (2026-10-14); the machine stores it per device as `app` in `devices.json`
+  (saved when it changes), lists it in `GET /v1/pair/state`'s `devices`, and
+  answers it as `installed`. Any other value records nothing. A label for the
+  owner's checklist; it never decides access.
 - **How a device last arrived** (`via`, 2026-10-14): the gate records it on
   every request a device makes, and at pairing — `relay` for a request on
   loopback carrying `Via: …caprock-remote…`, `tailscale` for a peer in
@@ -198,7 +203,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   /v1/pair/state`'s `devices`. A label for the owner's list and the phone's
   notice; it never decides access.
 - **A controller may also work on sessions** ([ADR-034](08-decisions.md)). A
-  device is paired as a viewer; the owner makes it a controller with `PUT
+  device pairs with the role its code carries — `POST /v1/pair/code` with
+  `{role: "controller"}`, the owner's tick *This phone can type and start
+  agents*, else a viewer (amended 2026-10-14) — and the owner changes it with `PUT
   /v1/pair/devices/{id}/role` (`{role: "viewer"|"controller"}`, loopback-only,
   `400` for any other role, `404` for an unknown id, and while network access
   is off it edits `devices.json`). `role` is stored per device in
@@ -279,7 +286,13 @@ access is off too — and `keep_on`, the stored `lan_keep_on` (ADR-060).
 than by the gate: a paired tablet is somewhere to read figures, not a second
 control room, and it must not be able to admit a third device or revoke the
 laptop that let it in. `PUT /v1/pair/devices/{id}/role` is loopback-only the same
-way: a controller cannot promote another device, or itself. `POST /v1/pair`
+way: a controller cannot promote another device, or itself. `POST /v1/pair/code`
+takes an optional `{role: "viewer"|"controller"}` (no body, or no role, is a
+viewer, as `caprock pair` and `caprock remote` send; any other role, or a
+body that is not JSON, is `400`) and answers `{code, role, expires_in_sec,
+url, remote?}`; `GET /v1/pair/state` names the outstanding code's role as
+`code_role`. The device pairing with that code gets that role; nothing the
+device sends names one. `POST /v1/pair`
 takes `{code, name}` and returns `{token, id, name}` — the name prefixed
 `This computer · ` when the request came from the machine's own network
 address; it is the one call a device makes before it is trusted, and

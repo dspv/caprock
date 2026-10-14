@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
-import { Pairing, needsRepair, PHONE_SECTION, TELEGRAM_SECTION, openSettingsSection, pairLink, phoneStatus, takeCodeOnArrival } from './Pairing'
+import { ALLOW_TYPE_KEY, Pairing, pairChecklist, needsRepair, PHONE_SECTION, TELEGRAM_SECTION, openSettingsSection, pairLink, phoneStatus, takeCodeOnArrival } from './Pairing'
 import { Section } from './SettingsParts'
 import { PairScreen, codeFromHash, defaultDeviceName } from '@/screens/Pair'
 import { api, type PairState } from '@/lib/api'
@@ -316,11 +316,129 @@ describe('landing on the phone or Telegram (owner, 2026-10-13)', () => {
     expect(pairCode).not.toHaveBeenCalled()
   })
 
-  it('names the three steps: show, scan, home screen', async () => {
+  it('numbers the steps, one line each, the tick first', async () => {
     vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [] })
     render(<Pairing />)
     expect(await screen.findByText('Use on your phone')).toBeTruthy()
-    expect(screen.getByText('Scan the code')).toBeTruthy()
-    expect(screen.getByText('Add to Home Screen')).toBeTruthy()
+    const steps = [...screen.getByTestId('pair-steps').querySelectorAll('li')].map((li) => li.textContent)
+    expect(steps).toEqual([
+      "1.Tick This phone can type and start agents (on by default)",
+      "2.Press Show a code and scan it with the phone's camera",
+      '3.Open the link; the phone pairs',
+      '4.Optional: Install the app when the phone offers it',
+    ])
   })
+})
+
+// The owner, 2026-10-14 (translated): "I scan it with the phone, install the
+// app, go in — and I can't do anything, and say I've already left the house."
+describe('control is chosen with the code', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    localStorage.clear()
+  })
+
+  it('is ticked by default, and the code it shows pairs a controller', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [], remote: remoteOn })
+    const pairCode = vi.spyOn(api, 'pairCode').mockResolvedValue({ code: '482913', role: 'controller', expires_in_sec: 300, url: '' })
+    render(<Pairing />)
+    const box = (await screen.findByTestId('allow-type')) as HTMLInputElement
+    expect(box.checked).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Show a code' }))
+    await waitFor(() => expect(pairCode).toHaveBeenCalledWith('controller'))
+  })
+
+  it('unticked, pairs to view only, and remembers that on this computer', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [], remote: remoteOn })
+    const pairCode = vi.spyOn(api, 'pairCode').mockResolvedValue({ code: '482913', role: 'viewer', expires_in_sec: 300, url: '' })
+    render(<Pairing />)
+    fireEvent.click(await screen.findByTestId('allow-type'))
+    expect(screen.getByText(/Unticked, the phone can only look/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show a code' }))
+    await waitFor(() => expect(pairCode).toHaveBeenCalledWith('viewer'))
+    expect(localStorage.getItem(ALLOW_TYPE_KEY)).toBe('0')
+    cleanup()
+    render(<Pairing />)
+    expect(((await screen.findByTestId('allow-type')) as HTMLInputElement).checked).toBe(false)
+  })
+
+  it('shows the checklist while the code is out, then ticks the phone off as it pairs', async () => {
+    const joined = { id: 'p1', name: 'Android phone · Chrome', paired_at: 5, last_seen: 5, role: 'controller' as const }
+    const states: PairState[] = [
+      { enabled: false, devices: [], remote: remoteOn },
+      { enabled: false, code: '482913', code_role: 'controller', expires_in_sec: 300, devices: [], remote: remoteOn },
+      { enabled: false, devices: [joined], remote: remoteOn },
+      { enabled: false, devices: [{ ...joined, app: true }], remote: remoteOn },
+    ]
+    let i = 0
+    const stub = vi.spyOn(api, 'pairState').mockImplementation(async () => states[Math.min(i, states.length - 1)]!)
+    vi.spyOn(api, 'pairCode').mockImplementation(async () => {
+      i = 1
+      return { code: '482913', role: 'controller', expires_in_sec: 300, url: '' }
+    })
+    render(<Pairing />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Show a code' }))
+    await waitFor(() => expect(screen.getByTestId('check-paired').dataset.state).toBe('waiting'))
+    expect(screen.getByTestId('check-anywhere').dataset.state).toBe('done')
+    expect(screen.getByTestId('check-type').textContent).toMatch(/Yes, once it pairs/)
+    i = 2
+    await waitFor(() => expect(screen.getByTestId('check-paired').textContent).toMatch(/Android phone · Chrome/), { timeout: 4000 })
+    expect(screen.getByTestId('check-paired').dataset.state).toBe('done')
+    expect(screen.getByTestId('check-type').dataset.state).toBe('done')
+    expect(screen.getByTestId('check-app').dataset.state).toBe('optional')
+    i = 3
+    await waitFor(() => expect(screen.getByTestId('check-app').dataset.state).toBe('done'), { timeout: 7000 })
+    expect(stub).toHaveBeenCalled()
+  }, 15000)
+})
+
+describe('pairChecklist — what is done and what is left', () => {
+  const viewerPhone = { id: 'p', name: 'Android phone · Chrome', paired_at: 1, last_seen: 1, role: 'viewer' as const }
+  it('waits for the phone, and says what the code will give it', () => {
+    const rows = pairChecklist({ enabled: false, remote: remoteOn, code_role: 'viewer' }, null, true)
+    expect(rows.map((r) => r.state)).toEqual(['done', 'waiting', 'missing', 'optional'])
+    expect(rows[2]!.detail).toMatch(/view only/)
+  })
+  it('a view-only phone is the one thing missing', () => {
+    const rows = pairChecklist({ enabled: false, remote: remoteOn }, viewerPhone, true)
+    expect(rows.find((r) => r.key === 'type')).toMatchObject({ state: 'missing', detail: 'No: view only' })
+  })
+  it('the relay offline is missing, connecting is waiting', () => {
+    expect(pairChecklist({ enabled: false, remote: { ...remoteOn, status: 'offline' } }, null, true)[0]!.state).toBe('missing')
+    expect(pairChecklist({ enabled: false, remote: { ...remoteOn, status: 'connecting' } }, null, true)[0]!.state).toBe('waiting')
+  })
+})
+
+describe('the checklist button fixes a view-only phone', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    localStorage.clear()
+  })
+  it('offers Let it control sessions in the checklist once a view-only phone pairs', async () => {
+    const joined = { id: 'p1', name: 'Android phone · Chrome', paired_at: 5, last_seen: 5, role: 'viewer' as const }
+    let i = 0
+    const states: PairState[] = [
+      { enabled: false, devices: [], remote: remoteOn },
+      { enabled: false, code: '482913', code_role: 'viewer', expires_in_sec: 300, devices: [], remote: remoteOn },
+      { enabled: false, devices: [joined], remote: remoteOn },
+    ]
+    vi.spyOn(api, 'pairState').mockImplementation(async () => states[Math.min(i, 2)]!)
+    vi.spyOn(api, 'pairCode').mockImplementation(async () => {
+      i = 1
+      return { code: '482913', role: 'viewer', expires_in_sec: 300, url: '' }
+    })
+    const setRole = vi.spyOn(api, 'pairSetRole').mockResolvedValue({ id: 'p1', role: 'controller' })
+    localStorage.setItem(ALLOW_TYPE_KEY, '0')
+    render(<Pairing />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Show a code' }))
+    await waitFor(() => expect(screen.getByTestId('check-type').dataset.state).toBe('missing'))
+    i = 2
+    await waitFor(() => expect(screen.getByTestId('check-paired').dataset.state).toBe('done'), { timeout: 4000 })
+    const fix = screen.getByTestId('check-type').querySelector('button')!
+    expect(fix.textContent).toBe('Let it control sessions')
+    fireEvent.click(fix)
+    await waitFor(() => expect(setRole).toHaveBeenCalledWith('p1', 'controller'))
+  }, 10000)
 })
