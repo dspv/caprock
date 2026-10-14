@@ -1,7 +1,7 @@
 /**
  * The force actions on a pull request (owner, 2026-10-12, translated: "if
  * needed I want to FORCE a fix or a check"), shared by the session deck's PR
- * rows and the PRs & CI tab's detail: who a fix goes to, why an action is
+ * rows and the Pipeline page's detail: who a fix goes to, why an action is
  * not offered, the sentence each asks to confirm, and doing it. Each asks
  * once, and then the row says what it is doing until GitHub shows it done
  * (lib/prforce progressStands). .ai/21-app.md § Session deck, The actions.

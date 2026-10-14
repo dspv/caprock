@@ -23,13 +23,13 @@
  * conversation, read-only (`observe`, components/ObservePane.tsx; rule 7),
  * or the session deck's pull requests and CI, large (`prs`,
  * components/PRsCITab.tsx). A file's `sessionId` is its key (lib/files.ts
- * fileKey), and a PRs & CI tab's is prsTabKey(of), so each opens once, as a
+ * fileKey), and a Pipeline page's is prsTabKey(of), so each opens once, as a
  * session does.
  */
 export interface TabTarget {
   kind: 'session' | 'shell' | 'file' | 'observe' | 'prs'
   sessionId: string
-  /** A PRs & CI tab: the agent session it was opened from, whose repository it shows. */
+  /** A Pipeline page: the agent session it was opened from, whose repository it shows. */
   of?: string
   /** A file: its path relative to the worktree. */
   path?: string
@@ -390,7 +390,7 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
   }
 }
 
-/** The key of the PRs & CI tab opened from session `of`: one per session. */
+/** The key of the Pipeline page opened from session `of`: one per session. */
 export function prsTabKey(of: string): string {
   return `prs:${of}`
 }
@@ -403,7 +403,7 @@ function isTarget(v: unknown): v is TabTarget {
   return t.kind === 'session' || t.kind === 'shell' || t.kind === 'observe'
 }
 
-/** A pane that is a whole tab, never split: a file, a session watched read-only, or the PRs & CI tab. */
+/** A pane that is a whole tab, never split: a file, a session watched read-only, or the Pipeline page. */
 export function ownTab(t: TabTarget): boolean {
   return t.kind === 'file' || t.kind === 'observe' || t.kind === 'prs'
 }
@@ -432,7 +432,8 @@ export function parseWorkspace(raw: string | null): Workspace {
     if (v.version !== 1 || !Array.isArray(v.tabs)) return EMPTY_WORKSPACE
     const tabs = v.tabs.filter((t): t is Tab =>
       !!t && typeof t.id === 'string' && typeof t.projectId === 'string' && isPane(t.root) && typeof t.focusedPaneId === 'string',
-    ).map((t) => ({ ...t, title: typeof t.title === 'string' ? t.title : '' }))
+    // "PRs & CI · repo" was the Pipeline tab's title before 2026-10-14.
+    ).map((t) => ({ ...t, title: typeof t.title === 'string' ? t.title.replace(/^PRs & CI(?= · |$)/, 'Pipeline') : '' }))
     const ids = new Set(tabs.map((t) => t.id))
     const activeByProject: Record<string, string> = {}
     for (const [p, id] of Object.entries(v.activeByProject ?? {})) {

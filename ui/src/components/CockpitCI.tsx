@@ -1,12 +1,25 @@
 /**
- * The cockpit's CI block (owner, 2026-10-13, translated: "I'd like to move
+ * The cockpit's CI block. Its first view, *PRs*, is the repository's pull
+ * requests as progress bars toward a release (owner, 2026-10-14, translated:
+ * "roughly the current size, showing PRs as progress bars toward release;
+ * scrollable; we see PR statuses and CI statuses; from there you can expand
+ * to a bigger block, and open the separate page"): each row its number, its
+ * title, the four steps Open → CI → Merged → Released as a thin bar with the
+ * step it is on coloured — its CI's colour on the CI step — and how long it
+ * has been there; the same steps the Pipeline page's rows draw (lib/journey).
+ * The list scrolls inside the block; *Expand* makes it taller (remembered),
+ * *Pipeline ↗* opens the page. It reads the Pipeline's own answer
+ * (…/ci/stats, kept by the daemon), asked while the block is unfolded and
+ * the window shown, and draws the copy last kept at once.
+ *
+ * (owner, 2026-10-13, translated: "I'd like to move
  * some CI/CD indicators into the right part — try making the indicator switch
  * between views right away, we'll see what sticks"): the session's pull
  * requests and their checks, in one of three views kept per viewer —
  * each PR's checks in one short group (the default, as the deck's rows
  * say them: "✗ 1 failed ✓ 11", every check on hover), one ring with "10/11 · 4m" and the time
  * against the median, or the newest PR's checks by runner OS (ByOS). A click
- * opens the PRs & CI tab. Each tab names what it shows on hover. Hovering a
+ * opens the Pipeline page. Each tab names what it shows on hover. Hovering a
  * PR's checks lists them only after the pointer rests there, beside the
  * panel rather than over it (CheckSummary `beside`).
  *
@@ -15,25 +28,32 @@
  * the deck is told something new. With the deck closed it shows the last
  * answer and how old it is; with nothing kept it is not drawn.
  */
-import { useEffect, useState, useSyncExternalStore } from 'react'
-import type { SessionCI, SessionPRs } from '@/lib/api'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { api, type SessionCI, type SessionCIStats, type SessionPRs } from '@/lib/api'
 import type { PRCheck } from '@/lib/github'
-import { orderPRs, osName, osRollup, prChecks, prDotState, prVerdict, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView, type PRWordTone } from '@/lib/ci'
+import { orderPRs, osName, osRollup, prChecks, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
 import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
+import { asBoard } from '@/lib/prboard'
+import { tabRows, spanText } from '@/lib/prstats'
+import { journey, pipelineRows, stageOf } from '@/lib/journey'
 import { CheckSummary, StateMark } from './CheckSummary'
 import { SectionLabel, useFolded } from './Cockpit'
+import { JourneyBar } from './Journey'
+import { CI_IDLE_MS, usePoll } from './SessionDeck'
 
-/** The most pull requests listed in the circles view. */
-const SHOWN = 3
+/** The most pull requests the PRs view lists (it scrolls). */
+const LISTED = 40
 
-const WORD: Record<PRWordTone, string> = {
-  ok: 'text-ok', fail: 'text-danger', pending: 'text-warn', muted: 'text-fg-muted', faint: 'text-fg-faint',
+/** The PRs view's height, and taller once expanded (remembered per viewer). */
+const TALL_KEY = 'caprock.cockpit.pipeline.tall'
+function readTall(): boolean {
+  try { return localStorage.getItem(TALL_KEY) === '1' } catch { return false }
 }
 
 // Each tab says what it shows, on hover and to a screen reader (owner,
 // 2026-10-14, translated: "OS mode is unclear").
 const VIEWS: { v: CockpitCIView; label: string; title: string }[] = [
-  { v: 'dots', label: 'PRs', title: 'PRs: each open pull request of this session with its checks — how many failed, run and passed' },
+  { v: 'dots', label: 'PRs', title: 'PRs: the repository’s pull requests on their way to a release — open, CI, merged, released — as progress bars' },
   { v: 'ring', label: 'Ring', title: 'Ring: the newest pull request’s checks as one ring — done of all, the time, and against your usual run' },
   { v: 'grid', label: 'By OS', title: 'By OS: the newest pull request’s checks by runner — Linux, macOS, Windows — each with its state and longest time' },
 ]
@@ -65,9 +85,16 @@ export function checkSummary(items: PRCheck[], now: number): { total: number; pa
   return { total: items.length, pass, fail, running, queued, ms: ms || undefined }
 }
 
-export function CockpitCI({ sessionId, onOpen }: { sessionId: string; onOpen?: () => void }) {
+export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string; repoScope?: string; onOpen?: () => void }) {
   const [view, setViewState] = useState<CockpitCIView>(readCockpitCIView)
   const setView = (v: CockpitCIView) => { setViewState(v); saveCockpitCIView(v) }
+  const [tall, setTallState] = useState(readTall)
+  const setTall = (v: boolean) => { setTallState(v); try { localStorage.setItem(TALL_KEY, v ? '1' : '0') } catch { /* this page only */ } }
+  const folded = useFolded()
+  // The Pipeline's answer: asked only while this view is shown unfolded.
+  const [stats, statsAt] = usePoll<SessionCIStats>(view === 'dots' && !folded && !!onOpen, `cockpit:${sessionId}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, `stats:${repoScope || sessionId}`)
+  const board = useMemo(() => asBoard(stats?.board), [stats?.board])
+  const journeyRows = useMemo(() => pipelineRows(tabRows('repo', [], stats?.prs ?? []), board, stats?.prs ?? []).filter((r) => stageOf(r) !== 'closed').slice(0, LISTED), [stats?.prs, board])
   const prs = useDeckAnswer<SessionPRs>(`prs:${sessionId}`)
   const rows = orderPRs(prs.d?.prs ?? []).filter((p) => !!p.live)
   const lead = rows[0]
@@ -81,41 +108,43 @@ export function CockpitCI({ sessionId, onOpen }: { sessionId: string; onOpen?: (
     const t = window.setInterval(() => { if (!document.hidden) setNow(Date.now()) }, 1000)
     return () => window.clearInterval(t)
   }, [running, prs.at, ci.at])
-  const folded = useFolded()
-  if (!prs.d || !prs.d.connected || rows.length === 0) return null
-  const leadSum = folded ? prChecks(lead!, now) : undefined
+  const hasJourney = view === 'dots' && journeyRows.length > 0
+  if (!hasJourney && (!prs.d || !prs.d.connected || rows.length === 0)) return null
+  const leadSum = folded && lead ? prChecks(lead, now) : undefined
+  const at = view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : prs.at
 
-  const body = view === 'ring' ? <Ring p={lead!} ci={ci.d} now={now} /> : view === 'grid' ? <ByOS p={lead!} ci={ci.d} now={now} /> : (
-    <ul className="grid gap-1">
-      {rows.slice(0, SHOWN).map((p) => {
-        const sum = prChecks(p, now)
-        const v = prVerdict(p, now)
-        const title = p.live?.title || p.title || ''
-        return (
-          <li key={p.url} data-cockpit-ci-pr={p.number} className="flex min-w-0 items-center gap-1.5 text-[12px]">
-            <span aria-hidden className="pr-dot" data-state={prDotState(p)} />
-            <span className="num shrink-0 text-fg-muted">#{p.number}</span>
-            <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg-faint" title={title}>{title}</span>
-            {sum
-              ? <CheckSummary s={sum} label={`#${p.number}: its checks`} focusable={false} beside className="shrink-0" />
-              : <span title={v.title ?? v.text} className={`shrink-0 truncate text-[11px] ${WORD[v.tone]}`}>{v.text}</span>}
-          </li>
-        )
-      })}
-      {rows.length > SHOWN && <li className="text-[11px] text-fg-faint">+{rows.length - SHOWN} more</li>}
-    </ul>
-  )
+  const body = view === 'ring' && lead ? <Ring p={lead} ci={ci.d} now={now} /> : view === 'grid' && lead ? <ByOS p={lead} ci={ci.d} now={now} /> : view === 'dots' ? (
+    journeyRows.length === 0 ? <span className="text-[11.5px] text-fg-faint">Reading the repository’s pull requests…</span> : (
+      <ul data-cockpit-journey className={`app-scroll -mr-1.5 grid content-start gap-1.5 overflow-y-auto pr-1.5 ${tall ? 'max-h-[440px]' : 'max-h-[176px]'}`}>
+        {journeyRows.map((r) => {
+          const steps = journey(r)
+          const since = r.card?.stage_at ?? r.merged_at ?? r.created_at
+          return (
+            <li key={r.number} data-cockpit-ci-pr={r.number} data-stage={stageOf(r)} className="grid min-w-0 gap-1">
+              <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
+                <span className="num shrink-0 text-fg-muted">#{r.number}</span>
+                <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg" title={r.title}>{r.title}</span>
+                {since ? <span className="num shrink-0 text-[10.5px] text-fg-faint" title={new Date(since).toLocaleString()}>{spanText(Math.max(0, now - since))}</span> : null}
+              </span>
+              <JourneyBar steps={steps} />
+            </li>
+          )
+        })}
+      </ul>
+    )
+  ) : null
+  if (!body) return null
 
   return (
     <section aria-label="CI" data-cockpit-ci={view} data-checks-edge className="grid gap-2">
       <SectionLabel right={(
         <span className="flex items-center gap-2">
-          <span className="text-[10.5px] text-fg-faint" title="What the session deck last read; the cockpit asks nothing itself">{prs.at ? freshText(now - prs.at).replace('updated ', '') : ''}</span>
+          <span className="text-[10.5px] text-fg-faint" title={view === 'dots' ? 'When GitHub was last read for the Pipeline' : 'What the session deck last read; this view asks nothing itself'}>{at ? freshText(now - at).replace('updated ', '') : ''}</span>
           {/* Folded, the newest PR's checks are its one line, in place of the view tabs. */}
-          {leadSum && (
+          {leadSum && lead && (
             <span data-fold-only className="flex min-w-0 items-center gap-1.5">
-              <span className="num shrink-0 text-[11.5px] text-fg-muted">#{lead!.number}</span>
-              <CheckSummary s={leadSum} label={`#${lead!.number}: its checks`} focusable={false} beside className="shrink-0" />
+              <span className="num shrink-0 text-[11.5px] text-fg-muted">#{lead.number}</span>
+              <CheckSummary s={leadSum} label={`#${lead.number}: its checks`} focusable={false} beside className="shrink-0" />
             </span>
           )}
           {!folded && (
@@ -128,10 +157,22 @@ export function CockpitCI({ sessionId, onOpen }: { sessionId: string; onOpen?: (
           )}
         </span>
       )}>CI</SectionLabel>
-      <button type="button" data-cockpit-ci-open onClick={onOpen} disabled={!onOpen} title="Open the PRs & CI tab"
-        className="-mx-1.5 rounded-[6px] px-1.5 py-1 text-left hover:bg-[var(--app-row-hover)] disabled:cursor-default disabled:hover:bg-transparent">
-        {body}
-      </button>
+      {view === 'dots' ? (
+        <>
+          {body}
+          <span className="flex items-center justify-between gap-2 text-[11px]">
+            {journeyRows.length > 4 ? (
+              <button type="button" data-cockpit-ci-tall aria-expanded={tall} onClick={() => setTall(!tall)} className="text-fg-faint hover:text-fg-muted">{tall ? 'Less' : 'Expand'}</button>
+            ) : <span />}
+            {onOpen && <button type="button" data-cockpit-ci-open onClick={onOpen} title="Open the Pipeline page in a tab" className="text-accent hover:underline">Pipeline ↗</button>}
+          </span>
+        </>
+      ) : (
+        <button type="button" data-cockpit-ci-open onClick={onOpen} disabled={!onOpen} title="Open the Pipeline page in a tab"
+          className="-mx-1.5 rounded-[6px] px-1.5 py-1 text-left hover:bg-[var(--app-row-hover)] disabled:cursor-default disabled:hover:bg-transparent">
+          {body}
+        </button>
+      )}
     </section>
   )
 }

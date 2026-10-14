@@ -50,13 +50,11 @@ type SessionBranches struct {
 	Current  string          `json:"current,omitempty"`
 	Branches []SessionBranch `json:"branches"`
 	Error    *github.Error   `json:"error,omitempty"`
-	// FetchedAt and Refreshing: as SessionPRs says them.
-	FetchedAt  int64 `json:"fetched_at"`
-	Refreshing bool  `json:"refreshing,omitempty"`
+	deckFresh
 }
 
-func (a SessionBranches) stamped(at int64, refreshing bool) any {
-	a.FetchedAt, a.Refreshing = at, refreshing
+func (a SessionBranches) stamped(f deckFresh) any {
+	a.deckFresh = f
 	return a
 }
 

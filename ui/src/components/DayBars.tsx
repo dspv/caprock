@@ -3,7 +3,7 @@ import { fmtRun } from '@/lib/ci'
 /**
  * A day per bar, today's lighter (it is not over), each bar's hover saying
  * its day and figure; an optional red part drawn over it; and a day's median
- * as a line (Trend). Shared by the PRs & CI tab's figures and the Now
+ * as a line (Trend). Shared by the Pipeline page's figures and the Now
  * screen's Repos and CI/CD sections.
  */
 export function Bars({ values, labels, red, unit, w = 72, h = 30 }: { values: number[]; labels: string[]; red?: number[]; unit: string; w?: number; h?: number }) {

@@ -136,16 +136,12 @@ others. Installing it: [install-app.md](install-app.md).
   days under it and one word: *usual*, *above usual +38%*, *below usual
   −20%*, or *not enough history* in your first days. It compares with your
   own median by the same time of day; hover it for the figures behind it.
-  Under *Dashboard*, one row in two halves: the **PRs & CI** mode, named
-  *CI Off*, *CI Bar* or *CI Page* (its key, ⇧⌘B, is in its tooltip), and
-  the theme, named too. On Windows and Linux each takes a row, and there
-  the PRs & CI row shows its key, Ctrl+Alt+Shift+B. The PRs & CI button's
-  picture is what is on screen —
-  an empty window (Hidden), a band along its bottom (Bar: the session
-  deck), a filled window (Full page: the *PRs & CI* tab) — and a click
-  moves to the next, Hidden → Bar → Full page → Hidden; ⌘B and ⇧⌘B do
-  the same from the keyboard, and the button follows them. Its tooltip
-  says the mode and the keys.
+  Under *Dashboard*, one row in two halves: **Pipeline** (its key, ⇧⌘B,
+  is in its tooltip) and the theme, named too. On Windows and Linux each
+  takes a row, and there the Pipeline row shows its key, Ctrl+Alt+Shift+B.
+  A click on *Pipeline* opens the Pipeline page in a tab, or brings it to
+  the front; from it, a click goes back to the tab you were on. The button
+  is in the accent while the page is in front.
   **Mail** sits above *Dashboard*, with its key, ⇧⌘M. It opens Mail in a
   tab of its own beside the Dashboard tab (the envelope and ⇧⌘M); pressed
   again it brings that tab to the front, and its × closes it. With no mail
@@ -187,7 +183,7 @@ others. Installing it: [install-app.md](install-app.md).
   palette, Share and the rest — closes with the × in its corner, a click
   outside it, or Esc. In the app,
   Home keeps its figures — today, plan limits, the pulse, the repos, all
-  time, at a glance, *What happened* — and leaves the session cards and the
+  time, at a glance, the activity feed — and leaves the session cards and the
   projects panel to the sidebar, which lists the same sessions; the browser
   dashboard shows both. **Repos**, under the pulse, has a row for each
   repository a session runs in: commits a day over two weeks, today's and the
@@ -564,8 +560,8 @@ others. Installing it: [install-app.md](install-app.md).
   log, with a link to the job on GitHub. CI needs GitHub connected (one
   click, through `gh`). Drag its top edge to resize it (up to 60% of the pane), or
   focus the edge and use ↑ ↓; double-click it for the default height. The
-  PRs & CI button at the foot of the sidebar, the deck button beside the
-  inspector's, ⌘B and the palette open and close it;
+  deck button beside the inspector's, ⌘B and the palette (*Pipeline bar:
+  On/Off*) open and close it, and the × in its header hides it;
   the app remembers its height and whether it was open. A shell tab has no
   deck. It opens on all of the session's pull requests, each title as long
   as the row allows, with its checks as a circle per check (coloured by
@@ -575,29 +571,43 @@ others. Installing it: [install-app.md](install-app.md).
   when you click it; the next time it opens on that one. Hover the checks for
   every one: its name, OS, state, time and the step a failed one stopped
   at. The cockpit on the right has a **CI**
-  block with the same summary, or one ring with *10/11 · 5m*, or the jobs by OS, switched in its
-  label; it shows what the deck last read and a click opens *PRs & CI*.
-  ⇧⌘B, or the sidebar's PRs & CI button from *Bar*, opens it large in a tab of its own,
-  *PRs & CI*. It opens on the **Board**: the repository's pull requests as
-  cards in six columns — Draft, CI running, Needs a fix, Ready, Merged,
-  Released — each card with its title, the author's face and name, how long
-  it has been in that column, its CI, the agents working on it now and its
-  *agent cost* (what Caprock recorded agents spending on it, at API list
-  price — not a bill); above, how fast work flows (merges a day, opened →
-  merged, merged → released as an estimate, the CI median); below, each
-  recent release with the pull requests it shipped and what the agents spent
-  on them. Click a card to open it in the **List**:
-  the repository's last two weeks on top (pull requests merged
-  per day, the median time to merge, the median CI run, the share of red
-  runs, the Actions minutes GitHub billed this month), its pull requests on
-  the left (this session's, the repository's or the open ones), and the one
-  you pick on the right with its state, review, merge state and diff size,
-  the deck's actions, its jobs by runner OS against each one's usual time,
-  the jobs on a timeline, and a failed job's steps and log with
-  *Investigate*. **Collapse** in its top-right corner, and ⇧⌘B
-  again, close the tab and show the agent with its deck; the sidebar's
-  button closes it and hides the deck too. It reads GitHub
-  only while it is in front.
+  block. Its *PRs* view is the repository's pull requests as thin progress
+  bars toward a release — the four steps Open → CI → Merged → Released, the
+  step each one is on coloured (CI in its check colour: red, amber, green)
+  — each with its number, title and how long it has been on that step; in
+  flight first, then merged, then released. The list scrolls inside the
+  block; *Expand* makes the block taller (remembered), *Pipeline ↗* opens
+  the page. Its other views are one ring with *10/11 · 5m* or the jobs by
+  OS, switched in its label.
+  ⇧⌘B, *Pipeline* at the foot of the sidebar, *Pipeline* in the deck's
+  header, *Open Pipeline* in the palette or *Pipeline ↗* in the cockpit
+  opens the **Pipeline**: the repository's pull requests in a tab of its
+  own, *Pipeline · repo* (a tab saved as *PRs & CI* comes back under the new
+  name). Above, how fast work flows (merges a day, opened → merged, merged →
+  released as an estimate, the CI median, agent cost). Then one list, a row
+  per pull request: its number, its whole title (up to two lines), its
+  labels, and the four steps as pills — *Open → CI → Merged → Released* —
+  the step it is on highlighted, the ones behind it muted (*CI red*, *CI
+  running*, *Conflict*, *Changes requested*, or the release's tag on
+  *Released*), then how long ago and its *agent cost* (what Caprock recorded
+  agents spending on it, at API list price — not a bill). The rows in
+  flight come first — needing a fix, CI running, ready, draft — then merged
+  and not yet released, then released: ten of those, and *Show N more
+  released* for the rest. *This session*, *Repository* and *Open* choose
+  which pull requests are listed. Below, each recent release with the pull
+  requests it shipped and what the agents spent on them. Click a row for
+  its detail over the right of the page — state, review, merge state and
+  diff size, the deck's actions, its jobs by runner OS against each one's
+  usual time, the jobs on a timeline, and a failed job's steps and log with
+  *Investigate*; × or Esc closes it. Its header always says how current
+  what you see is: *Updated just now*; *Saved 5 h ago · refreshing…* with a
+  faint pulse while a copy kept from before is read again (its rows drawn
+  faint until the fresh answer lands); and *Couldn't refresh: <why> ·
+  showing data from 15:02 · Retry* when GitHub or the daemon could not be
+  read. The CI/CD section on Now says the same in its header. **Back** in
+  its top-right corner, ⇧⌘B again or *Pipeline* in the sidebar go back to
+  the tab you were on; the Pipeline tab stays open. It reads GitHub only
+  while it is in front.
 - **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
   same button), *Review and commit* in the inspector, or "Review changes" in
   the palette. The files are listed as *Staged*, *Changes* and *Conflicts*;
@@ -708,7 +718,7 @@ On macOS:
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                         |
 | ⌘[ ]        | Previous and next pane                                                   |
 | ⌘J          | Next session waiting on you                                              |
-| ⇧⌘H         | Add to brain: keep a line in Second Brain                                |
+| ⇧⌘H         | Add to Second Brain: keep a line of your own                             |
 | ⌘F          | Find in the terminal or the file                                         |
 | ⌘K          | Command palette                                                          |
 | ⌘,          | Settings                                                                 |
@@ -716,16 +726,16 @@ On macOS:
 | ⇧⌘M         | Mail, in a tab of its own                                                |
 | ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                 |
 | ⌘I          | Agent cockpit (the inspector)                                            |
-| ⌘B          | Session deck (the PRs & CI bar) under the agent's terminal               |
-| ⇧⌘B         | PRs & CI as a full page in a tab; back to the bar                        |
+| ⌘B          | Pipeline bar under the agent's terminal, shown or hidden                 |
+| ⇧⌘B         | Pipeline in a tab; there, back to the tab before                         |
 | ⌘\          | Hide or show the sidebar                                                 |
 | ⌘0, ⇧⌘D     | Dashboard tab, where you left it; again: Home, at its top                |
 | ⌘R          | Reload the window (View → Reload)                                        |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
-(Quick chat is Ctrl+Alt+Shift+N, the PRs & CI full page Ctrl+Alt+Shift+B,
+(Quick chat is Ctrl+Alt+Shift+N, the Pipeline Ctrl+Alt+Shift+B,
 Send feedback Ctrl+Alt+Shift+F, since Ctrl+Shift+F is Find; tabs are
-Ctrl+Shift+1–9; Add to brain is Ctrl+Shift+H). The arrow
+Ctrl+Shift+1–9; Add to Second Brain is Ctrl+Shift+H). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
@@ -822,25 +832,47 @@ it: nothing that updates behind the sheet takes it from the field you are in.
 
 The few answers worth keeping, kept as a graph: ideas, decisions, findings
 and open questions, each linked to its project and topics and to the moment
-in the session it came from. Open it from *Brain* in the dashboard's screen
-row.
+in the session it came from — all your agents build your personal Jarvis
+over time. Open it from *Second Brain* in the dashboard's screen row, or from
+the Second Brain block in the app's sidebar.
 
 - **Drop an answer in.** Under any answer on the Memory screen, in a
   session's Answers tab, or under a reply in the chat view, press **Drop into
-  brain**. Caprock reads the answer from its own record, so the memory knows
+  Second Brain**. Caprock reads the answer from its own record, so the memory knows
   its session, project and time; its first line becomes the title.
 - **Add a line of your own.** ⇧⌘H (Ctrl+Shift+H on Windows and Linux), or ⌘K
-  → *Add to brain…*: type it, pick Idea, Decision, Finding or Question, name
+  → *Add to Second Brain…*: type it, pick Idea, Decision, Finding or Question, name
   topics if you like, and ⌘↩.
+- **See it as a graph.** The Second Brain screen opens on the graph: your memories
+  and the topics and projects they hang off. Drag to move, scroll to zoom,
+  double-click to fit, click a dot to open it; *List* shows the same as
+  rows. In the app's sidebar, the Second Brain block below your projects shows the
+  newest thirty as a small graph — a new memory drops in as it is kept —
+  and the three newest titles.
 - **Find and tidy.** Search, pick a project or a span; open a memory to edit
   its title and summary, pin it, link it to a topic, jump to the session it
   came from, or delete it.
-- **Free and Premium.** Twenty memories dropped in by hand are free; Premium
-  keeps every one. Whatever you kept stays readable and editable if a licence
-  lapses.
+- **Let it build itself.** The Second Brain screen asks
+  once whether to build it automatically; Settings → Second Brain switches it
+  later. When a session has been quiet for ten minutes, Caprock asks your own
+  `claude` (a small model, Haiku) to pick out what it decided and found, and
+  keeps those as memories linked back to the moment they were said. Short
+  sessions are skipped, reads stop at a daily token limit you choose (100k,
+  300k or 1M), and *Build from my last 30 days* shows an estimate of how many
+  sessions and tokens that is before it starts. These reads use your Claude
+  plan like any other `claude -p` call; they do not show up as sessions and
+  do not run your hooks.
+- **New sessions draw on it.** When Claude starts in a folder and is handed
+  where the last session left off, it also gets up to five of that
+  repository's memories, pinned ones first.
+- **Free.** All of it: every memory you keep, and the automatic build once
+  you say yes. No licence is needed for any of it.
 
-**Privacy.** Second Brain lives in Caprock's database on this computer.
-Nothing in it is sent anywhere.
+**Privacy.** Second Brain lives in Caprock's database on this computer, and
+nothing in it is sent to Caprock. Dropping memories in by hand sends nothing
+anywhere. Building it automatically is off until you say yes: then a finished
+session's prompts and answers go to your own `claude`, which sends them to
+Anthropic under your login, the place the session itself already went.
 
 ## Notifications
 
@@ -900,7 +932,7 @@ phone. Nothing is sent to GitHub until you connect. Besides
 in the session deck, the job's log is downloaded from the signed address
 GitHub points to on its log storage; while Home's CI/CD section is open, the
 daemon reads `www.githubstatus.com`'s public status at most every five
-minutes; and the PRs & CI Board and the CI/CD section show pull request
+minutes; and the Pipeline and the CI/CD section show pull request
 authors' pictures from `avatars.githubusercontent.com`, loaded by the page
 with no referrer.
 
@@ -1061,6 +1093,28 @@ shows what is new, or **Not now** to hide that version.
   (`brew upgrade caprock`, `scoop update caprock`); the app never replaces a
   daemon it did not install.
 
+## A question from Caprock
+
+Caprock cannot see who uses it, so after you have used it on two different
+days it may show one short strip at the bottom of the window: a question
+about a feature it is considering (running Hugging Face models on your
+computer, or one other). At most one a
+day; it waits until you stop typing, never appears while a session is
+waiting for a permission answer, and never covers a terminal.
+
+- **Second Brain.** The strip used to offer it ahead of its arrival; it
+  has arrived, free for everyone (see [Second Brain](#second-brain)), so
+  the strip no longer shows it.
+- **Answering a question.** Two one-click questions and an optional email,
+  if you want to hear when it is ready.
+- **What is sent, and when.** Nothing, until you press **Send**. Then
+  Caprock sends your two answers, which question they answer, and your email
+  if you added one, to caprock.dev. Nothing else: no identifier, nothing
+  about your sessions, projects or usage, not even Caprock's version.
+- **Saying no.** *Not interested* or × sends nothing.
+- **How often.** An answered strip never comes back. The Hugging Face
+  question is shown at most twice, the others once.
+
 ## macOS privacy prompts
 
 macOS asks before a program reads your Desktop, Documents or Downloads
@@ -1177,9 +1231,17 @@ once when the phone comes back to the page or onto a network):
 - **This phone was removed: pair again**: it was removed in *Paired
   devices*. Show a new code and scan it.
 
+A paired phone stays paired. A dropped connection, a restarting computer or
+relay, the phone asleep or offline, or a computer on an older Caprock never
+send it back to pairing: the page says *Pair again* only once the computer
+has turned the phone away on two separate connections (removed), or refused
+its handshake three times in a row (new keys after `caprock remote reset`).
+Even then it keeps checking once a minute and comes back by itself if that
+was wrong.
+
 **Retry** tries at once; **Pair again** shows the three steps and a box for
 a copied link. Opening a pairing link whose code was already used (the
-camera, then the app) keeps the pairing that worked.
+camera, then the app) goes straight back to the pairing that worked.
 
 The phone appears under *Paired devices*, which says how each device reaches
 this computer: *anywhere*, or *Wi-Fi link*. A *Wi-Fi link* is a phone paired

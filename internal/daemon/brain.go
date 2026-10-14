@@ -8,19 +8,17 @@ import (
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/brain"
 	"github.com/dspv/caprock/internal/config"
-	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/userenv"
 )
 
 // newBrain builds Second Brain's automatic extraction (ADR-063). It calls
 // the user's own claude, with the user's login-shell environment, from a
 // folder of its own under the data directory; it runs only once the user
-// has turned it on and while a licence is active.
+// has turned it on; no licence is needed.
 func (d *Daemon) newBrain() *brain.Engine {
 	return &brain.Engine{
 		Store: d.store, Bus: d.bus, Log: d.log,
 		Config:      func() config.BrainConfig { return d.config().Brain },
-		Licensed:    func() bool { return license.Parse(d.config().LicenseKey, time.Now()).Active },
 		ClaudeFound: func() bool { return d.mgr.ClaudeBinary() != "" },
 		Runner: brain.ClaudeRunner{
 			Binary: d.mgr.ClaudeBinary,

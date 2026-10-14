@@ -1,5 +1,5 @@
 /**
- * "Drop into brain" on an answer Claude wrote (ADR-063): the Memory screen's
+ * "Drop into Second Brain" on an answer Claude wrote (ADR-063): the Memory screen's
  * rows, a session's Notes tab and the chat view. The daemon reads the note's
  * text, session, time and project from the record itself by its event id, so
  * the button carries nothing but the id.
@@ -9,25 +9,21 @@
 import { useState } from 'react'
 import { isPairedDevice } from '@/lib/api'
 import { dropIntoBrain } from '@/lib/brain'
-import { PremiumModal } from './PremiumModal'
+import { BRAIN_PATH } from './SettingsIcons'
 
-type State = { at: 'idle' } | { at: 'busy' } | { at: 'done' } | { at: 'error'; message: string; locked: boolean }
+type State = { at: 'idle' } | { at: 'busy' } | { at: 'done' } | { at: 'error'; message: string }
 
 export function BrainDropButton({ eventId, className = '' }: { eventId: number; className?: string }) {
   const [st, setSt] = useState<State>({ at: 'idle' })
-  const [premium, setPremium] = useState(false)
   if (isPairedDevice()) return null
   const drop = async () => {
     if (st.at === 'busy' || st.at === 'done') return
     setSt({ at: 'busy' })
     const r = await dropIntoBrain({ event_id: eventId })
     if (r.ok) setSt({ at: 'done' })
-    else {
-      setSt({ at: 'error', message: r.message, locked: r.locked })
-      if (r.locked) setPremium(true)
-    }
+    else setSt({ at: 'error', message: r.message })
   }
-  const label = st.at === 'done' ? 'In your brain' : st.at === 'busy' ? 'Dropping…' : 'Drop into brain'
+  const label = st.at === 'done' ? 'In Second Brain' : st.at === 'busy' ? 'Dropping…' : 'Drop into Second Brain'
   return (
     <>
       <button
@@ -42,19 +38,21 @@ export function BrainDropButton({ eventId, className = '' }: { eventId: number; 
         } ${className}`}
       >
         <BrainGlyph size={12} />
-        <span>{st.at === 'error' && !st.locked ? 'Could not drop' : label}</span>
+        <span>{st.at === 'error' ? 'Could not drop' : label}</span>
       </button>
-      {premium && <PremiumModal feature="brain" onClose={() => setPremium(false)} />}
     </>
   )
 }
 
-/** Second Brain's mark: a drop falling into a shallow bowl, the Pensieve. */
+/** Second Brain's mark: a brain in outline (the owner, 2026-10-14: the drop
+ *  falling into a bowl it replaced did not read as a brain). Beside its name
+ *  wherever the name is shown — the sidebar block, the screen row, the
+ *  screen's title, ⌘K — and on every way in. The path is Settings → Second
+ *  Brain's icon (components/SettingsIcons), so the two are one drawing. */
 export function BrainGlyph({ size = 14, className = '' }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden className={className}>
-      <path d="M8 1.8c1.3 1.7 2 2.8 2 3.7a2 2 0 0 1-4 0c0-.9.7-2 2-3.7z" fill="currentColor" />
-      <path d="M2.2 9.5h11.6c-.4 2.6-2.8 4.5-5.8 4.5s-5.4-1.9-5.8-4.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden className={className}>
+      <path d={BRAIN_PATH} />
     </svg>
   )
 }

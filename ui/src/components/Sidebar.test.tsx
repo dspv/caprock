@@ -11,7 +11,7 @@ import { buildSidebar } from '@/lib/sidebar'
 import { tabLabels } from '@/lib/tablabels'
 import type { Tab } from '@/lib/tabs'
 import { FOLDS_KEY, HIDDEN_KEY, Sidebar, type SidebarProps } from './Sidebar'
-import { barModeLabel, foldedKeys, splitModeRow } from './SidebarFooter'
+import { pipelineLabel, foldedKeys, splitModeRow } from './SidebarFooter'
 
 const day = 24 * 60 * 60 * 1000
 const proj = (id: string, lastDaysAgo: number, pinned = false): Project =>
@@ -444,39 +444,39 @@ describe('the sidebar', () => {
 
   // Owner, 2026-10-14, translated: "move them onto a separate row and split
   // it into two parts — two buttons in one row, neat, so it's clear what's there".
-  it('gives Dashboard its own row and puts PRs & CI and the theme under it as two named halves', () => {
+  it('gives Dashboard its own row and puts Pipeline and the theme under it as two named halves', () => {
     const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
     try {
       localStorage.removeItem(FOLDS_KEY)
-      const onCycleBar = vi.fn()
-      renderSidebar({ onSettings: vi.fn(), barMode: 'full', onCycleBar })
+      const onPipeline = vi.fn()
+      renderSidebar({ onSettings: vi.fn(), onPipeline })
       const dash = screen.getByRole('button', { name: /^Dashboard/ })
       expect(dash.textContent).toBe('Dashboard⌘0')
       expect(dash.parentElement!.hasAttribute('data-sidebar-footer')).toBe(true)
       const row = document.querySelector('[data-mode-row]') as HTMLElement
       expect(row).toHaveClass('grid-cols-2')
-      const bar = within(row).getByRole('button', { name: /^PRs & CI: Full page/ })
+      const bar = within(row).getByRole('button', { name: /^Pipeline: every pull request/ })
       const theme = within(row).getByRole('button', { name: /^Theme:/ })
-      // The words over the chip: the key is in the tooltip (barModeLabel).
-      expect(bar.textContent).toBe('CI Page')
+      // The words over the chip: the key is in the tooltip (pipelineLabel).
+      expect(bar.textContent).toBe('Pipeline')
       expect(bar.querySelector('kbd')).toBeNull()
       expect(theme.textContent).toMatch(/^(Dark|Light|Book)/)
       for (const b of [dash, bar, theme]) expect(b).toHaveClass('h-[32px]')
       // The theme on the right, so its picker stays inside the sidebar.
       expect(row.lastElementChild!.contains(theme)).toBe(true)
       fireEvent.click(bar)
-      expect(onCycleBar).toHaveBeenCalledTimes(1)
+      expect(onPipeline).toHaveBeenCalledTimes(1)
     } finally { platform.mockRestore() }
   })
 
-  it('stacks PRs & CI and the theme off macOS, where Ctrl+Alt+Shift+B fills a half', () => {
+  it('stacks Pipeline and the theme off macOS, where Ctrl+Alt+Shift+B fills a half', () => {
     const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
     try {
       localStorage.removeItem(FOLDS_KEY)
-      renderSidebar({ barMode: 'hidden', onCycleBar: vi.fn() })
+      renderSidebar({ onPipeline: vi.fn() })
       const row = document.querySelector('[data-mode-row]') as HTMLElement
       expect(row).not.toHaveClass('grid-cols-2')
-      expect(within(row).getByRole('button', { name: /^PRs & CI: Hidden/ }).textContent).toBe('CI OffCtrl+Alt+Shift+B')
+      expect(within(row).getByRole('button', { name: /^Pipeline: every pull request/ }).textContent).toBe('PipelineCtrl+Alt+Shift+B')
     } finally { platform.mockRestore() }
     expect(splitModeRow(true)).toBe(true)
     expect(splitModeRow(false)).toBe(false)
@@ -488,7 +488,7 @@ describe('the sidebar', () => {
     const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
     try {
       localStorage.setItem(FOLDS_KEY, JSON.stringify(['footer']))
-      renderSidebar({ onSettings: vi.fn(), onMail: vi.fn(), barMode: 'bar', onCycleBar: vi.fn() })
+      renderSidebar({ onSettings: vi.fn(), onMail: vi.fn(), onPipeline: vi.fn() })
       const footer = document.querySelector('[data-sidebar-footer]')!
       expect(footer.getAttribute('data-folded-keys')).toBe('shown')
       const chips = [...footer.querySelectorAll('[data-key-slot] > kbd')]
@@ -503,7 +503,7 @@ describe('the sidebar', () => {
     const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Linux x86_64')
     try {
       localStorage.setItem(FOLDS_KEY, JSON.stringify(['footer']))
-      renderSidebar({ onSettings: vi.fn(), onMail: vi.fn(), barMode: 'bar', onCycleBar: vi.fn() })
+      renderSidebar({ onSettings: vi.fn(), onMail: vi.fn(), onPipeline: vi.fn() })
       const footer = document.querySelector('[data-sidebar-footer]')!
       expect(footer.getAttribute('data-folded-keys')).toBe('hover')
       const chips = [...footer.querySelectorAll('[data-key-slot] > kbd')]
@@ -514,19 +514,19 @@ describe('the sidebar', () => {
     expect(foldedKeys(false)).toBe('hover')
   })
 
-  it('shows the mode button folded too, and none when the shell offers no PRs & CI', () => {
+  it('shows the Pipeline button folded too, marked while the page is in front, and none when the shell offers no Pipeline', () => {
     localStorage.setItem(FOLDS_KEY, JSON.stringify(['footer']))
-    const first = renderSidebar({ barMode: 'full', onCycleBar: vi.fn() })
-    expect(document.querySelector('[data-bar-mode="full"]')).toBeTruthy()
+    const first = renderSidebar({ onPipeline: vi.fn(), pipelineActive: true })
+    expect(document.querySelector('[data-pipeline-button]')).toHaveAttribute('aria-current', 'true')
     first.unmount()
     localStorage.removeItem(FOLDS_KEY)
     renderSidebar()
-    expect(document.querySelector('[data-bar-mode]')).toBeNull()
+    expect(document.querySelector('[data-pipeline-button]')).toBeNull()
   })
 
-  it('names the mode button’s keys as each OS spells them', () => {
-    expect(barModeLabel('hidden', true)).toBe('PRs & CI: Hidden — click for Bar (⌘B shows or hides the bar, ⇧⌘B the full page)')
-    expect(barModeLabel('full', false)).toBe('PRs & CI: Full page — click for Hidden (Ctrl+Shift+B shows or hides the bar, Ctrl+Alt+Shift+B the full page)')
+  it('names the Pipeline button’s key as each OS spells it', () => {
+    expect(pipelineLabel(false, true)).toBe('Pipeline: every pull request on its way — open, CI, merged, released — in a tab (⇧⌘B)')
+    expect(pipelineLabel(true, false)).toBe('Pipeline is in front — click to go back to the tab before it (Ctrl+Alt+Shift+B)')
   })
 
   // Owner, 2026-10-14 (translated): "put it on the main screen as a button —

@@ -18,6 +18,9 @@
  * no digit. ⌥⌘← ⌥⌘→ step to the project before or after, ⌥⌘↑ ⌥⌘↓ to the session
  * above or below in the project in front (lib/appkeys.ts, AppShell).
  *
+ * Below the projects, the Brain block: Second Brain's newest memories as
+ * a small graph, folded or not (components/BrainSidebar.tsx, ADR-063).
+ *
  * Rows keep their places (owner, 2026-10-13): projects by pin, the order set
  * by hand and name; the rows under a project by the order set by hand (drag,
  * or ⌥⇧↑ ⌥⇧↓) and then when each session started (lib/rowOrder.ts).
@@ -52,8 +55,8 @@ import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { MenuBox, MenuItem, MenuSeparator, type MenuAt } from './RowMenu'
 import { TodayStrip } from './TodayStrip'
 import { SidebarFooter } from './SidebarFooter'
-import type { BarMode } from '@/lib/deck'
 import { CaprockMark, ChatIcon, EyeIcon, FolderIcon, FolderPlusIcon, PlusIcon, SearchIcon } from './AppIcons'
+import { BrainSidebar } from './BrainSidebar'
 import { keys } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, saveRowOrder, type RowOrders } from '@/lib/rowOrder'
 
@@ -173,10 +176,10 @@ export interface SidebarProps {
   /** Settings on the phone or Telegram section: the row's "phone, Telegram"
    *  words, and the row itself (owner, 2026-10-13). Absent: plain Settings. */
   onSettingsSection?: (section: SettingsSection) => void
-  /** The PRs & CI view's mode on screen, and the footer button's click
-   *  that moves it on (components/SidebarFooter). */
-  barMode?: BarMode
-  onCycleBar?: () => void
+  /** The footer's Pipeline button (⇧⌘B), and whether the Pipeline tab is in
+   *  front (components/SidebarFooter). */
+  onPipeline?: () => void
+  pipelineActive?: boolean
   onPalette: () => void
   /** The day's summary, for the Today strip; absent until it answers. */
   summary?: Summary
@@ -532,6 +535,8 @@ export function Sidebar(props: SidebarProps) {
             Listed from where your sessions ran. Git state and clone arrive with the projects API.
           </p>
         )}
+        {/* Second Brain below the projects (ADR-063): folds, remembers it. */}
+        {props.onRoute && <BrainSidebar onOpen={props.onRoute} />}
       </div>
 
       <SidebarFooter
@@ -543,8 +548,8 @@ export function Sidebar(props: SidebarProps) {
         onMail={props.onMail}
         onSettings={props.onSettings}
         onSettingsSection={props.onSettingsSection}
-        barMode={props.barMode}
-        onCycleBar={props.onCycleBar}
+        onPipeline={props.onPipeline}
+        pipelineActive={props.pipelineActive}
       />
       {moreAt && (
         <MenuBox at={moreAt} label="More projects and hidden rows" width={260} onClose={() => setMoreAt(null)}>

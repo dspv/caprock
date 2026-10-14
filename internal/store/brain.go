@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -377,8 +378,11 @@ type BrainGraph struct {
 	Total int         `json:"total"`
 }
 
+// empty is a read of the whole graph: no words, project or span, and no
+// limit below the ceiling (the sidebar's thirty newest are a selection).
+// Called after the limit is normalised.
 func (f BrainFilter) empty() bool {
-	return strings.TrimSpace(f.Query) == "" && f.Project == "" && f.Since == 0 && f.Until == 0
+	return strings.TrimSpace(f.Query) == "" && f.Project == "" && f.Since == 0 && f.Until == 0 && f.Limit >= BrainGraphMax
 }
 
 // ReadBrainGraph reads the graph for a filter.
@@ -473,6 +477,9 @@ func ReadBrainGraph(ctx context.Context, q Querier, f BrainFilter) (BrainGraph, 
 		if ents, err = brainNodesByID(ctx, q, need); err != nil {
 			return g, err
 		}
+		// Only entities join a selection: a memory a selected one relates to
+		// did not pass the filter, and the limit counts memories.
+		ents = slices.DeleteFunc(ents, func(n BrainNode) bool { return !IsBrainEntity(n.Kind) })
 		// A narrow read found only the edges that touch a memory; an edge
 		// between two of its entities (a topic part_of a project) is read
 		// once the entity set is known.

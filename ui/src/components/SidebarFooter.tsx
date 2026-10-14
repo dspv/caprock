@@ -1,15 +1,13 @@
 /**
  * The app sidebar's bottom block (.ai/04-ui.md § App sidebar footer): Send
  * feedback, then one row of Dashboard with two square buttons beside it — the
- * PRs & CI view's mode and the theme — then Settings.
+ * Pipeline view's mode and the theme — then Settings.
  *
- * The PRs & CI button (owner, 2026-10-14, translated: "the CI/CD window — the
- * bottom bar, and its separate full page — could hide behind one button with
- * the bar's modes … Expand/Hide inside the bar is not noticeable; bottom-left
- * in the sidebar is where it's handy"): its glyph is the mode on screen,
- * Hidden, Bar or Full page, and a click moves to the next. It owns no state:
- * the mode is AppShell's, read from the deck's switch (⌘B) and the tab in
- * front (⇧⌘B), and the click runs the same actions those keys do.
+ * The Pipeline button (owner, 2026-10-14, translated: "it feels like quick
+ * access to the CI/CD page is missing"): a click opens the Pipeline page as a
+ * tab, or brings it to the front — and from it, back — as ⇧⌘B does. Until
+ * then the button cycled the bar's modes (Hidden, Bar, Full page); the bar
+ * now has its own × and ⌘B, and the page is just a tab.
  *
  * The theme button moved here from the Settings row, as its own square: the
  * Dashboard row gave up the width (same request).
@@ -27,10 +25,9 @@ import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { THEMES } from '@/lib/themes'
 import { keys } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
-import { BAR_MODE_NAME, nextBarMode, type BarMode } from '@/lib/deck'
 import { ThemeMenu } from './ThemePicker'
 import { FEEDBACK_KEY, FeedbackButton } from './Feedback'
-import { BarModeIcon, ChevronIcon, DashboardIcon, MailIcon, MoonIcon, SettingsIcon, SunIcon } from './AppIcons'
+import { ChevronIcon, PipelineIcon, DashboardIcon, MailIcon, MoonIcon, SettingsIcon, SunIcon } from './AppIcons'
 
 export interface SidebarFooterProps {
   /** Folded to one row of icons; remembered by the sidebar. */
@@ -45,20 +42,17 @@ export interface SidebarFooterProps {
   onSettings?: () => void
   /** Settings on the phone or Telegram section; absent: plain Settings. */
   onSettingsSection?: (section: SettingsSection) => void
-  /** The PRs & CI view's mode on screen; with `onCycleBar`, the button shows. */
-  barMode?: BarMode
-  onCycleBar?: () => void
+  /** Opens the Pipeline page (⇧⌘B); absent, no Pipeline button. */
+  onPipeline?: () => void
+  /** The Pipeline tab is in front. */
+  pipelineActive?: boolean
 }
 
 /** Mail's key, in macOS spelling; `keys()` writes it for this OS. */
 export const MAIL_KEY = '⇧⌘M'
 
-/**
- * The PRs & CI button's words: what it is and its mode. "Off ⇧⌘B" alone did
- * not say it was PRs & CI (review of #608); "Hidden" and "Full page"
- * (BAR_MODE_NAME, which the tooltip says) were cut to "Hid…" in a half.
- */
-export const BAR_MODE_SHORT: Record<BarMode, string> = { hidden: 'CI Off', bar: 'CI Bar', full: 'CI Page' }
+/** The Pipeline button's key, in macOS spelling. */
+export const PIPELINE_KEY = '⇧⌘B'
 
 /** Every button in the footer's icon rows: one size, one hover. */
 const SQUARE = 'flex shrink-0 items-center justify-center text-fg-muted transition-colors hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none'
@@ -83,7 +77,7 @@ export function foldedKeys(isMac = isMacPlatform()): 'shown' | 'hover' {
 }
 
 /**
- * Whether PRs & CI and the theme share a row as two halves. A half is
+ * Whether Pipeline and the theme share a row as two halves. A half is
  * 110–150px (sidebar 240–320): "CI Page" (~45px) and the ⇧⌘B chip (37px)
  * did not both fit at 240, so a half drops the chip and keeps the words; the
  * key stays in its tooltip. Off macOS the chip is Ctrl+Alt+Shift+B, which
@@ -96,7 +90,7 @@ export function splitModeRow(isMac = isMacPlatform()): boolean {
 
 export function SidebarFooter(props: SidebarFooterProps) {
   const toPhone = () => (props.onSettingsSection ? props.onSettingsSection('phone') : props.onSettings?.())
-  const hasBar = !!(props.barMode && props.onCycleBar)
+  const hasBar = !!props.onPipeline
   if (props.folded) {
     const chips = foldedKeys()
     return (
@@ -128,8 +122,8 @@ export function SidebarFooter(props: SidebarFooterProps) {
           </KeySlot>
         )}
         {hasBar && (
-          <KeySlot keyLabel={keys('⇧⌘B')} chips={chips} edge="right">
-            <BarModeButton mode={props.barMode!} onCycle={props.onCycleBar!} className={ICON} />
+          <KeySlot keyLabel={keys(PIPELINE_KEY)} chips={chips} edge="right">
+            <PipelineButton active={props.pipelineActive} onClick={props.onPipeline!} className={ICON} />
           </KeySlot>
         )}
         {/* No key of its own: an empty slot keeps the icons on one line.
@@ -180,14 +174,14 @@ export function SidebarFooter(props: SidebarFooterProps) {
         <span className="min-w-0 flex-1 truncate">Dashboard</span>
         <kbd className="app-kbd-key shrink-0">{keys('⌘0')}</kbd>
       </button>
-      {/* PRs & CI and the theme: two halves of one row, each with its name
+      {/* Pipeline and the theme: two halves of one row, each with its name
         * (owner, 2026-10-14, translated: "move them onto a separate row and
         * split it into two parts — two buttons in one row, neat, so it's
         * clear what's there"). The theme on the right: its picker opens up
         * and to the left, and from the left half it would leave the sidebar.
         * Off macOS each takes a row (splitModeRow). */}
       <div data-mode-row className={`grid gap-1 ${split ? 'grid-cols-2' : 'grid-cols-[minmax(0,1fr)]'}`}>
-        {hasBar && <BarModeButton mode={props.barMode!} onCycle={props.onCycleBar!} labelled chip={!split} />}
+        {hasBar && <PipelineButton active={props.pipelineActive} onClick={props.onPipeline!} labelled chip={!split} />}
         <ThemeButton className={`${ROW} w-full hover:bg-[var(--app-row-hover)]`} boxClassName="min-w-0" labelled />
       </div>
       {/* Settings as a row with its name, not a bare icon (owner, 2026-10-11,
@@ -243,34 +237,42 @@ function KeySlot({ keyLabel, chips, edge, children }: { keyLabel?: string; chips
   )
 }
 
-/** What the button's tooltip and name say: the mode, what a click does, the keys. */
-export function barModeLabel(mode: BarMode, isMac?: boolean): string {
-  const next = BAR_MODE_NAME[nextBarMode(mode)]
-  return `PRs & CI: ${BAR_MODE_NAME[mode]} — click for ${next} (${keys('⌘B', isMac)} shows or hides the bar, ${keys('⇧⌘B', isMac)} the full page)`
+/** What the Pipeline button's tooltip and name say. */
+export function pipelineLabel(active?: boolean, isMac?: boolean): string {
+  return active
+    ? `Pipeline is in front — click to go back to the tab before it (${keys(PIPELINE_KEY, isMac)})`
+    : `Pipeline: every pull request on its way — open, CI, merged, released — in a tab (${keys(PIPELINE_KEY, isMac)})`
 }
 
-function BarModeButton({ mode, onCycle, className, labelled, chip }: { mode: BarMode; onCycle: () => void; className?: string; labelled?: boolean; chip?: boolean }) {
-  const label = barModeLabel(mode)
-  const tone = mode === 'hidden' ? '' : 'text-accent'
+/**
+ * The Pipeline button. In a half of the split row (240–320px sidebar, a
+ * half 110–150px) "Pipeline" and the ⇧⌘B chip measured 50 + 37px beside the
+ * glyph, too tight at 240: there the key is in the tooltip; on a row of its
+ * own (off macOS) the chip shows (`chip`).
+ */
+function PipelineButton({ active, onClick, className, labelled, chip }: { active?: boolean; onClick: () => void; className?: string; labelled?: boolean; chip?: boolean }) {
+  const label = pipelineLabel(active)
+  const tone = active ? 'text-accent' : ''
   if (labelled) {
     return (
-      <button type="button" data-bar-mode={mode} title={label} aria-label={label} onClick={onCycle} className={`${ROW} hover:bg-[var(--app-row-hover)]`}>
-        <BarModeIcon mode={mode} size={15} className={`shrink-0 ${tone || 'text-fg-muted'}`} />
-        <span className="min-w-0 flex-1 truncate">{BAR_MODE_SHORT[mode]}</span>
-        {chip && <kbd className="app-kbd-key shrink-0">{keys('⇧⌘B')}</kbd>}
+      <button type="button" data-pipeline-button aria-current={active ? 'true' : undefined} title={label} aria-label={label} onClick={onClick} className={`${ROW} hover:bg-[var(--app-row-hover)]`}>
+        <PipelineIcon size={15} className={`shrink-0 ${tone || 'text-fg-muted'}`} />
+        <span className="min-w-0 flex-1 truncate">Pipeline</span>
+        {chip && <kbd className="app-kbd-key shrink-0">{keys(PIPELINE_KEY)}</kbd>}
       </button>
     )
   }
   return (
     <button
       type="button"
-      data-bar-mode={mode}
+      data-pipeline-button
+      aria-current={active ? 'true' : undefined}
       title={label}
       aria-label={label}
-      onClick={onCycle}
+      onClick={onClick}
       className={tone ? `${className!.replace('text-fg-muted', '').replace('hover:text-fg ', '')} ${tone}` : className}
     >
-      <BarModeIcon mode={mode} size={GLYPH} />
+      <PipelineIcon size={GLYPH} />
     </button>
   )
 }

@@ -449,6 +449,10 @@ export interface SessionPRLive extends SessionPR {
 export interface DeckFresh {
   fetched_at?: number
   refreshing?: boolean
+  /** Why the daemon's newest composition failed (at refresh_failed_at, unix
+   *  ms): the answer is the one before it. */
+  refresh_error?: string
+  refresh_failed_at?: number
 }
 /** `GET /v1/sessions/{id}/prs`. */
 export interface SessionPRs extends DeckFresh {
@@ -595,7 +599,7 @@ export interface RepoActivity {
   sessions: number
   checked_ms: number
   error?: string
-  /** Only while GitHub is connected and the remote is on GitHub; each part only once the deck or the PRs & CI tab read it. */
+  /** Only while GitHub is connected and the remote is on GitHub; each part only once the deck or the Pipeline page read it. */
   github?: {
     repo: string
     pulls?: { open: number; merged_7d: number; ttm_median_ms?: number; listed: number }
@@ -609,7 +613,7 @@ export interface ReposActivity {
   github_connected: boolean
 }
 
-/** `GET /v1/sessions/{id}/ci/stats`: the PRs & CI tab. */
+/** `GET /v1/sessions/{id}/ci/stats`: the Pipeline page. */
 export interface SessionCIStats extends DeckFresh {
   connected: boolean
   repo?: string
@@ -618,7 +622,10 @@ export interface SessionCIStats extends DeckFresh {
   stats?: RepoStats
   /** The Board view: the pull requests by stage, the releases, the flow strip. */
   board?: PRBoard
+  /** GitHub's refusal of the newest read: with prs, those are the ones read at read_at, not refreshed. */
   error?: { message: string; kind?: string }
+  /** When GitHub last answered what the board draws on (unix ms). */
+  read_at?: number
 }
 export interface SessionRepoCI extends DeckFresh {
   connected: boolean
@@ -1314,12 +1321,8 @@ export interface BrainGraph { nodes: BrainNode[]; edges: BrainEdge[]; total: num
 export interface BrainLink { node: BrainNode; kind: BrainEdgeKind; out: boolean; weight: number }
 
 export interface BrainStatus {
-  licensed: boolean
   memories: number
   manual: number
-  /** How many an install without a licence may drop in by hand, and how many remain (-1 with a licence). */
-  free_max: number
-  free_left: number
   projects: { project: string; count: number }[]
   auto?: BrainAutoStatus
 }
@@ -1802,7 +1805,7 @@ export const api = {
   sessionCIRelease: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/release`).then(listedJobs),
   /** The newest run of each workflow on the session's repository's default branch (the CI cell's Main view). */
   sessionCIMain: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/main`).then(listedJobs),
-  /** The PRs & CI tab: the repository's pull requests and its figures over 14 days. Asked only while the tab is shown. */
+  /** The Pipeline page: the repository's pull requests and its figures over 14 days. Asked only while the tab is shown. */
   sessionCIStats: (id: string) => get<SessionCIStats>(`/v1/sessions/${encodeURIComponent(id)}/ci/stats`),
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */
   /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */

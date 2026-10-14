@@ -89,7 +89,7 @@ func (s *Service) PullByURL(ctx context.Context, link string) (PR, *Error) {
 		return PR{}, de
 	}
 	pr := PR{Branch: p.Head.Ref, Repo: repo.FullName(), Number: p.Number, URL: p.HTMLURL, Title: p.Title, State: p.state(),
-		Draft: p.Draft, Base: p.Base.Ref, HeadSHA: p.Head.SHA, Mergeable: p.Mergeable, MergeableState: p.MergeableState,
+		Draft: p.Draft, Base: p.Base.Ref, HeadSHA: p.Head.SHA, CreatedAt: unixMS(p.CreatedAt), MergedAt: p.mergedMS(), Mergeable: p.Mergeable, MergeableState: p.MergeableState,
 		AutoMerge: p.AutoMerge != nil, Reviews: []Review{}, Checks: Checks{State: "none", Items: []Check{}}, At: now.UnixMilli()}
 	p.withSizes(&pr)
 	if checks, _, ce := s.readChecks(ctx, repo, pr.HeadSHA); ce == nil {
@@ -108,6 +108,15 @@ func (s *Service) PullByURL(ctx context.Context, link string) (PR, *Error) {
 	s.byURL.m[link] = byURLEntry{pr: pr, at: now}
 	s.byURL.mu.Unlock()
 	return pr, nil
+}
+
+// CachedPull is the pull request last read by its link, however old, and
+// when it was read; nothing is sent. ok is false when it was never read.
+func (s *Service) CachedPull(link string) (pr PR, at time.Time, ok bool) {
+	s.byURL.mu.Lock()
+	defer s.byURL.mu.Unlock()
+	e, ok := s.byURL.m[link]
+	return e.pr, e.at, ok
 }
 
 func keepFor(pr PR) time.Duration {

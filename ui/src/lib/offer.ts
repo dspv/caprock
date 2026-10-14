@@ -4,10 +4,6 @@
  * Caprock cannot see its users, so it talks to them inside the product.
  * Each offer has its own copy and show rule:
  *
- *  - `second-brain` is a sale, not a survey: a strip, then a dialog that says
- *    how it works and offers Premium, with a dated pre-order line. It sends
- *    nothing. Every install may see it at most twice, on different days, and
- *    never from its arrival date or once the feature is built.
  *  - `local-models` is a survey every install may see, at most twice.
  *  - `ads` and `youtube` are surveys; each install draws one of the two at
  *    random, locally, and is asked it once.
@@ -17,6 +13,10 @@
  * and then only the chosen answers and the email if typed
  * (internal/api/offer.go). "Not interested" and × send nothing. Every mark is
  * kept with the other prompt answers on the daemon (lib/prompts.ts).
+ *
+ * The `second-brain` pre-order sale is gone: Second Brain is built and free
+ * (owner decision, 2026-10-14). Its id stays in lib/prompts.ts so the marks
+ * installs already keep stay valid.
  *
  * The copy is the owner's, word for word (2026-10-14). The answer values are
  * the payload's enums and must match internal/api/offer.go and the site's
@@ -36,12 +36,10 @@ export type OfferQuestion = {
 
 export type Offer = {
   id: OfferId
-  /** A survey asks and may send; a sale opens a dialog and sends nothing. */
-  kind: 'survey' | 'sale'
   title: string
   line: string
   questions: readonly OfferQuestion[]
-  /** Unix ms from which it is never shown (a sale's arrival date). */
+  /** Unix ms from which it is never shown. */
   until?: number
   /** Times it may be shown, each on a different day. */
   maxShows: 1 | 2
@@ -71,34 +69,10 @@ const WORK_QUESTIONS: readonly OfferQuestion[] = [
   },
 ]
 
-/**
- * The day Second Brain arrives in Premium (owner, 2026-10-14): the pre-order
- * line promises it, and from that day the sale is not shown.
- */
-export const SECOND_BRAIN_DATE = new Date(2026, 9, 18).getTime()
-export const SECOND_BRAIN_DATE_TEXT = '18 October 2026'
-
-/**
- * Set by the Second Brain build when the feature exists: the sale stops
- * then, whatever the date.
- */
-export const SECOND_BRAIN_BUILT = false
-
 /** In the order they are tried: the first eligible one is the day's offer. */
 export const OFFERS: readonly Offer[] = [
   {
-    id: 'second-brain',
-    kind: 'sale',
-    title: 'Your second brain — a knowledge graph of everything your agents do.',
-    line: '',
-    questions: [],
-    maxShows: 2,
-    drawn: false,
-    until: SECOND_BRAIN_BUILT ? 0 : SECOND_BRAIN_DATE,
-  },
-  {
     id: 'local-models',
-    kind: 'survey',
     title: 'Would you run Hugging Face models on this computer from Caprock?',
     line: 'We\'re considering it: pick a model, Caprock checks it fits your machine, downloads it and runs it.',
     questions: [
@@ -129,7 +103,6 @@ export const OFFERS: readonly Offer[] = [
   },
   {
     id: 'ads',
-    kind: 'survey',
     title: 'Would you watch short ads in Caprock to earn money?',
     line: 'We\'re considering an opt-in: a short ad while agents work, and you get paid for it.',
     questions: WORK_QUESTIONS,
@@ -138,7 +111,6 @@ export const OFFERS: readonly Offer[] = [
   },
   {
     id: 'youtube',
-    kind: 'survey',
     title: 'Would you watch YouTube in Caprock while agents work?',
     line: 'We\'re considering a small player on the left, so you don\'t switch windows while you wait.',
     questions: WORK_QUESTIONS,

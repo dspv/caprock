@@ -28,15 +28,13 @@ type SessionPRLive struct {
 type SessionPRs struct {
 	Connected bool            `json:"connected"`
 	PRs       []SessionPRLive `json:"prs"`
-	// FetchedAt is when the daemon composed this answer (Unix ms);
-	// Refreshing is true when it is the last one kept while a newer one is
-	// composed (deckcache.go).
-	FetchedAt  int64 `json:"fetched_at"`
-	Refreshing bool  `json:"refreshing,omitempty"`
+	// How fresh it is: when the daemon composed it, whether a newer one is
+	// being composed, and a newer one's failure (deckcache.go).
+	deckFresh
 }
 
-func (a SessionPRs) stamped(at int64, refreshing bool) any {
-	a.FetchedAt, a.Refreshing = at, refreshing
+func (a SessionPRs) stamped(f deckFresh) any {
+	a.deckFresh = f
 	return a
 }
 

@@ -73,7 +73,54 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
-### 2026-10-14 — unreleased: Second Brain builds itself
+### 2026-10-14 — 0.117.3: Pipeline, and Second Brain for everyone
+
+The PRs & CI page is now Pipeline: one list of pull requests with full
+titles, labels and the journey Open → CI → Merged → Released, the cockpit
+shows each as a four-step bar, and ⇧⌘B opens the page as a tab. The board no
+longer freezes on a slow GitHub read and always says how fresh it is. Second
+Brain is free: no cap on memories, and the automatic build for anyone who
+says yes ([ADR-063](08-decisions.md)).
+
+### 2026-10-14 — Second Brain is free
+
+Owner decision ([ADR-063](08-decisions.md), § Free): no cap on memories
+dropped in by hand and no licence for the automatic build. The daemon drops
+`brainFreeManual`, the `402`s and the engine's licence check; the status
+loses `licensed`, `free_max` and `free_left`. The yes-first consent, the
+daily limit and the 30-day backfill with its estimate are unchanged. The
+dashboard drops the lock, the free-allowance banner and every Premium
+dialog around Brain; the sidebar block starts unfolded and *How it works*
+is a free explainer. The retired pre-order sale (ADR-062) is removed from
+the offer strip, not just hidden.
+
+### 2026-10-14 — 0.117.2: Second Brain complete, a phone that stays paired, updates that keep the microphone
+
+Second Brain is whole: it builds itself from finished sessions once you say
+yes, draws memories as a graph and has a Brain block in the sidebar
+([ADR-063](08-decisions.md)); the pre-order strip is retired. A paired phone
+stays paired through a relay restart, a daemon restart or a stray frame, and
+one phone hanging up no longer drops the others. The macOS app is signed with
+one stable identity, so the microphone answer survives updates after one last
+prompt. The status moves the moment you answer, Today shows a 14-day trend,
+Mail imports every account the mail apps on the computer can read, the phone
+session bar is one 44px line with a dictation language chip, and selected text
+stays readable in every theme.
+
+### 2026-10-14 — 0.117.2: Second Brain drawn, and in the sidebar
+
+The `#/brain` screen opens on a force-directed graph (`lib/forcegraph.ts`,
+Barnes–Hut; `components/BrainGraphCanvas.tsx`, a cached layer redrawn only
+on change) with the list a click away, and the app's sidebar has a Brain
+block: the newest thirty as a small graph where new memories drop in, the
+three newest titles, the count, folded with a lock without a licence.
+Measured on a preview stand with 3,011 memories in headless Chromium: a
+median 9.2 ms a frame while settling, 8.4 ms while zooming. A graph read
+with a limit no longer returns every entity, and a filtered read no longer
+pulls in memories that a selected one relates to. `SECOND_BRAIN_BUILT` is
+set, so the pre-order strip (ADR-062) no longer offers Second Brain.
+
+### 2026-10-14 — 0.117.2: Second Brain builds itself
 
 The automatic extraction ([ADR-063](08-decisions.md)): `internal/brain`
 reads a session quiet for ten minutes through the user's own `claude -p`
@@ -85,8 +132,7 @@ only with a licence. `PUT /v1/brain/settings`, `POST /v1/brain/backfill`
 (an estimate before *Build from my last 30 days*), and the handoff carries
 up to five of a repository's memories. Tested with the fake `claude`'s new
 print mode, which refuses a call without the flags that keep hooks and the
-transcript off; one real call checked the argv and the answer's shape. Not
-built yet: the sidebar block and the drawn graph.
+transcript off; one real call checked the argv and the answer's shape.
 
 ### 2026-10-14 — 0.117.1: Second Brain, a phone that pairs ready to type and never hangs on Connecting
 
@@ -102,12 +148,12 @@ shared session's cost across its pull requests, and shows tokens beside cost.
 The live feed on the dashboard is now What happened: edits, tests, commits,
 pull requests and subagents as moments rather than every command.
 
-### 2026-10-14 — unreleased: Second Brain, by hand
+### 2026-10-14 — 0.117.1: Second Brain, by hand
 
 Memories kept as a graph ([ADR-063](08-decisions.md)): migration 0055
 (`brain_nodes`, `brain_edges`, `brain_runs`), `/v1/brain*`, the `brain`
-live frame, *Drop into brain* on Memory, a session's Answers and the chat
-view, the quick capture (⇧⌘H, ⌘K *Add to brain…*) and the `#/brain` screen
+live frame, *Drop into Second Brain* on Memory, a session's Answers and the chat
+view, the quick capture (⇧⌘H, ⌘K *Add to Second Brain…*) and the `#/brain` screen
 (search, project, span, a memory's detail with edit, pin, link and delete).
 Twenty memories by hand are free; the twenty-first is `402` from the
 daemon. The graph read measured 45–50 ms for 5,000 memories and 15,000 edges

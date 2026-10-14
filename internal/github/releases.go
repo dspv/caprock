@@ -15,9 +15,11 @@ import (
 const (
 	// repoReleasesRead is how many of the newest releases one read lists.
 	repoReleasesRead = 10
-	// repoReleasesKept is how long that list is reused: releases are hours
-	// or days apart.
-	repoReleasesKept = 10 * time.Minute
+	// repoReleasesKept is how long that list is reused. As the pull request
+	// list's (branchPullsKept): a release just published reaches the board
+	// on its next refresh, not ten minutes later (owner, 2026-10-14), and a
+	// conditional read of an unchanged list costs GitHub a 304.
+	repoReleasesKept = 2 * time.Minute
 )
 
 // RepoRelease is one published release.
@@ -33,6 +35,8 @@ type RepoRelease struct {
 type releasesEntry struct {
 	list []RepoRelease
 	at   time.Time
+	// err is the last read's refusal when it failed after at.
+	err *Error
 }
 
 type releasesCache struct {
@@ -66,18 +70,22 @@ func (s *Service) RepoReleases(ctx context.Context, repo Repo) ([]RepoRelease, *
 		return nil, errorf(KindNotConnected, doing, "GitHub is not connected.")
 	}
 	res, ce := s.call(ctx, request{method: http.MethodGet, doing: doing, path: fmt.Sprintf("%s/releases?per_page=%d", repoPath(repo), repoReleasesRead)})
-	if ce != nil {
-		if have {
-			return e.list, nil
-		}
-		return nil, ce
-	}
 	var raw []apiRelease
-	if de := decode(res, doing, &raw); de != nil {
-		if have {
-			return e.list, nil
+	if ce == nil {
+		ce = decode(res, doing, &raw)
+	}
+	if ce != nil {
+		if !have {
+			return nil, ce
 		}
-		return nil, de
+		// The last list stays, said to be not refreshed (RepoReleasesRead).
+		s.releases.mu.Lock()
+		if cur, ok := s.releases.m[key]; ok && cur.at.Equal(e.at) {
+			cur.err = ce
+			s.releases.m[key] = cur
+		}
+		s.releases.mu.Unlock()
+		return e.list, nil
 	}
 	list := releasesFrom(raw)
 	s.releases.mu.Lock()
@@ -120,4 +128,17 @@ func (s *Service) CachedRepoReleases(repo Repo) ([]RepoRelease, bool) {
 	defer s.releases.mu.Unlock()
 	e, ok := s.releases.m[repo.FullName()]
 	return e.list, ok
+}
+
+// RepoReleasesRead says when the releases of repo were last read from
+// GitHub (0 when never) and, when the read after it failed, why. Nothing is
+// sent.
+func (s *Service) RepoReleasesRead(repo Repo) (readAt int64, failed *Error) {
+	s.releases.mu.Lock()
+	defer s.releases.mu.Unlock()
+	e, ok := s.releases.m[repo.FullName()]
+	if !ok {
+		return 0, nil
+	}
+	return e.at.UnixMilli(), e.err
 }

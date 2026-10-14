@@ -7,6 +7,55 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **brain:** it is called *Second Brain* everywhere it is named — the
+  sidebar block (*SECOND BRAIN*), the dashboard's screen row, the screen's
+  title, ⌘K (*Second Brain*, *Add to Second Brain…*) and *Drop into Second
+  Brain* — with a brain outline as its mark (it was a drop falling into a
+  bowl, which did not read as a brain) beside the name, and one faint line under it in
+  the sidebar and on the screen: *All your agents build your personal Jarvis
+  over time.*
+
+## [0.117.3] - 2026-10-14
+
+### Added
+
+- **pipeline:** ⇧⌘B (Ctrl+Alt+Shift+B on Windows and Linux) opens the
+  Pipeline in a tab, or brings it to the front; pressed again there, it goes
+  back to the tab you were on. *Open Pipeline* is in ⌘K too.
+- **cockpit:** the CI block's *PRs* view shows the repository's pull
+  requests as thin progress bars toward a release — Open → CI → Merged →
+  Released, CI in its check colour — with each one's number, title and time
+  on its step. It scrolls; *Expand* makes it taller and is remembered;
+  *Pipeline ↗* opens the page.
+
+### Changed
+
+- **brain:** Second Brain is free, all of it. There is no cap on the
+  memories you drop in by hand (it was twenty without a licence), and the
+  automatic build from finished sessions works for everyone who says yes —
+  it runs on your own `claude`. The Brain screen asks everyone once; the
+  sidebar's Brain block starts unfolded, with no lock, and *How it works*
+  explains it and opens the Brain screen. A Premium licence bought for
+  Second Brain stays exactly as it was, with every other Premium feature.
+  `GET /v1/brain/status` no longer carries `licensed`, `free_max` or
+  `free_left`, and no Second Brain route answers `402`.
+- **pipeline:** *PRs & CI* is now **Pipeline**, everywhere: the tab, the
+  sidebar footer, the palette, the deck. Tabs you had open come back under
+  the new name. The page is one list of pull requests instead of a board
+  and a list: each row its number, its whole title, its labels, and the
+  steps Open → CI → Merged → Released as pills, the one it is on
+  highlighted, then its agent cost. In flight first, then merged, then
+  released (ten, then *Show more*). Click a row for its detail over the
+  page; × or Esc closes it. The red-runs and Actions-minutes figures went
+  with the old list.
+- **app:** the sidebar footer's button is *Pipeline*: a click opens the page
+  or goes back from it. Showing or hiding the bar under the agent is now on
+  the bar itself (*Pipeline* and ×), ⌘B, and *Pipeline bar: On/Off* in ⌘K.
+
+## [0.117.2] - 2026-10-14
+
 ### Added
 
 - **mail:** **Import everything.** Mail lists the mail accounts it can
@@ -35,7 +84,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   five days of history it says *not enough history*. It follows the agent
   filter. New endpoint `GET /v1/stats/trends`.
 
-- **brain:** Second Brain builds itself (Premium), once you say yes. When a
+- **brain:** Second Brain builds itself, once you say yes. When a
   session has been quiet for ten minutes, your own `claude` (Haiku, no
   tools, no transcript, none of your hooks) picks out what it decided and
   found, and each memory links back to the passage it came from. A daily
@@ -43,11 +92,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   later; *Build from my last 30 days* shows an estimate first. Settings →
   Second Brain shows what it used and read. A new session's handoff now
   carries up to five of the repository's memories.
-- **app:** Second Brain comes to Premium on 18 October 2026: a knowledge
-  graph of everything your agents do, kept on your computer. After two days
-  of use a short strip offers it, and *How it works* explains it and leads
-  to Premium; if it doesn't arrive on that date, write to us for a full
-  refund ([ADR-062](.ai/08-decisions.md)).
 - **app:** Caprock may also ask about a feature it is considering — running
   Hugging Face models on your computer, and one of watching short ads to
   earn money or YouTube while agents work. At most one strip a day; each
@@ -55,8 +99,36 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   until you press **Send**, which sends those answers to caprock.dev and
   nothing else; *Not interested* and × send nothing, and an answered strip
   never returns.
+- **brain:** Second Brain drawn. The Brain screen opens on a graph of your
+  memories and their topics and projects — drag, zoom, click a dot to open
+  it, *List* for rows — smooth with thousands of memories. The app's
+  sidebar has a Brain block below the projects: the newest thirty as a small
+  graph where each new memory drops in, and the three newest titles. The
+  strip that offered Second Brain ahead of its arrival no longer shows.
 
 ### Fixed
+
+- **prs:** the PRs & CI board follows merges and releases instead of
+  freezing. With a dozen open pull requests whose checks were running, the
+  daemon read each one's state one after another, ran past its deadline on
+  every refresh, and the board kept showing its afternoon answer for hours —
+  merged pull requests still under *CI running*, new releases missing —
+  behind a bare *updating…*. The open pull requests are now read four at a
+  time within a budget, the board's answer always comes back (a card whose
+  checks could not be read again in time is drawn faint), and releases are
+  read every 2 minutes instead of 10. The header always says how current
+  the data is: *Updated just now*, *Saved 5 h ago · refreshing…* while a
+  kept copy is read again, or *Couldn't refresh: <why> · showing data from
+  15:02 · Retry*; the CI/CD section on Now says the same. A refresh that
+  keeps failing is no longer retried on every poll.
+- **ui:** selected text stays readable in every theme. In a terminal,
+  Claude Code's own selection (fullscreen mode) painted its highlight in the
+  palette's blue, which in a dark palette is light, under light text — in
+  Dark Pastel 1.6:1, nearly invisible. Every terminal palette now keeps text
+  at 4.5:1 or more against whatever is behind it, as the light ones already
+  did. Selected text on the page sits on a lighter wash of the accent (20%,
+  was 35%), written out per palette: body text 8:1 or more, muted text
+  4.3:1 or more.
 
 - **phone:** a paired phone stays paired. A dropped connection, a computer
   or relay restarting, a phone asleep or offline, a computer still on an
@@ -82,6 +154,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   at once instead of on its next poll. Measured with a test agent: a
   prompt to *working* about 1 s → under 10 ms; an approved 15 s command
   16 s → under 10 ms.
+
 
 ## [0.117.1] - 2026-10-14
 

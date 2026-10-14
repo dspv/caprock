@@ -23,6 +23,7 @@ import { useApi } from '@/lib/useApi'
 import { PlanChip, usePlan } from '@/components/PlanPicker'
 import { FeedbackButton } from '@/components/Feedback'
 import { SettingsIcon } from '@/components/AppIcons'
+import { BrainGlyph } from '@/components/BrainDrop'
 import { screenName } from '@/lib/feedback'
 import { ShareButton } from '@/components/Share'
 import { PremiumChip } from '@/components/PremiumChip'
@@ -40,7 +41,7 @@ import { StaleUiPill } from './StaleUiPill'
 import { isAppMode } from '@/lib/appmode'
 import { useNarrowScreen } from '@/lib/phone'
 
-const NAV: { route: Route; label: string; phase?: string }[] = [
+const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] = [
   // "Home", not "Now" (owner, 2026-10-14, translated: "'Now' as the name of
   // the main button is depressing — it's not clear that it's the main one,
   // and you're always trying to get back to the main one").
@@ -60,7 +61,7 @@ const NAV: { route: Route; label: string; phase?: string }[] = [
   { route: { name: 'notes' }, label: 'Memory' },
   // Second Brain (ADR-063): what Memory holds, kept as a graph. Beside it,
   // because it is built from the same words.
-  { route: { name: 'brain' }, label: 'Brain', phase: 'new' },
+  { route: { name: 'brain' }, label: 'Second Brain', phase: 'new', icon: <BrainGlyph size={12} className="-mt-px" /> },
   { route: { name: 'tasks' }, label: 'Tasks' },
   // Caprock Mail: a separate kind of work, so it sits last. Marked new until
   // people have found it; the offer on Now points here once (lib/nudges.ts).
@@ -115,12 +116,12 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
               // Home where it already is: its top. Elsewhere each screen opens where it was left (lib/screenPlace.ts).
               title={n.route.name === 'now' ? 'Home: every session, live. Again: back to its top' : undefined}
               onClick={n.route.name === 'now' && route.name === 'now' ? (e) => { e.preventDefault(); goHomeTop() } : undefined}
-              className={`px-2.5 py-1 rounded-[5px] text-[12px] no-underline hover:no-underline transition-colors ${
+              className={`whitespace-nowrap px-2.5 py-1 rounded-[5px] text-[12px] no-underline hover:no-underline transition-colors ${
                 active(n.route)
                   ? 'bg-accent text-panel font-medium'
                   : 'text-fg hover:text-accent'
               }`}>
-              {n.label}
+              {n.icon ? <span className="inline-flex items-center gap-1 align-middle">{n.icon}{n.label}</span> : n.label}
               {n.phase && <span className={`ml-1 text-[9px] uppercase tracking-wider ${n.phase === 'new' && !active(n.route) ? 'text-accent font-semibold' : 'text-fg-faint'}`}>{n.phase}</span>}
             </a>
           ))}
