@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Event, SessionSummary, Subagent, Summary } from './api'
 import {
-  askLine, chipGroups, chipLayout, cockpitState, commandGist, fmtRun, planWindowsFor, requester, runShare, runningTool, subagentChips, subagentDoing, subagentInitial, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
+  askLine, chipGroups, chipLayout, cockpitState, commandGist, commandTarget, fmtAge, fmtRun, resultOutcome, shortPath, toolGroups, toolTarget, planWindowsFor, requester, runningTool, subagentChips, subagentDoing, subagentInitial, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
   MAX_SUBAGENT_CHIPS, RUNNING_STALE_MS,
 } from './cockpit'
 
@@ -180,11 +180,6 @@ describe('formatting', () => {
     expect(fmtRun(38_000)).toBe('38s')
     expect(fmtRun(124_000)).toBe('2m 04s')
   })
-  it('scales a bar so short calls still show and the longest fills it', () => {
-    expect(runShare(40_000, 40_000)).toBe(1)
-    expect(runShare(300, 40_000)).toBeGreaterThan(0.04)
-    expect(runShare(0, 40_000)).toBe(0)
-  })
   it('classifies the agents’ tools and reads their arguments', () => {
     expect(toolKind('exec_command')).toBe('run')
     expect(toolKind('mcp__github__get_pr')).toBe('mcp')
@@ -268,5 +263,76 @@ describe('subagentChips', () => {
     expect(chipLayout(340, 25)).toEqual({ compact: false, room: 30 })
     // Never less than one group a line.
     expect(chipLayout(40, 3)).toEqual({ compact: false, room: 10 })
+  })
+})
+
+describe('the tool list', () => {
+  it('names a file relative to the session folder, its last parts outside it', () => {
+    expect(shortPath('/w/ui/src/lib/cockpit.ts', '/w')).toBe('ui/src/lib/cockpit.ts')
+    expect(shortPath('/w/ui/src/lib/cockpit.ts', '/w/')).toBe('ui/src/lib/cockpit.ts')
+    expect(shortPath('/w/internal/api/very/deeply/nested/folder/handler_test.go', '/w')).toBe('internal/…/folder/handler_test.go')
+    expect(shortPath('/etc/hosts', '/w')).toBe('etc/hosts')
+    expect(shortPath('/tmp/a/b/c/shots.py', '/w')).toBe('…/c/shots.py')
+    expect(shortPath('C:\\Users\\me\\proj\\main.go', 'c:\\users\\me\\proj')).toBe('main.go')
+    // A folder that merely starts with the same letters is outside.
+    expect(shortPath('/w2/x/y/z.go', '/w')).toBe('…/y/z.go')
+  })
+
+  it('names a command by its program and first words, past the setup', () => {
+    expect(commandTarget('S=/tmp/x python3 /tmp/x/shots.py --out a')).toBe('python3 …/x/shots.py')
+    expect(commandTarget('cd /w && go test ./internal/api -run TestX', '/w')).toBe('go test ./internal/api')
+    expect(commandTarget('set -e; export A=1; git -C /w commit -m "fix: x"')).toBe('git commit')
+    expect(commandTarget('GOOS=windows go vet ./...')).toBe('go vet ./...')
+    expect(commandTarget('python3 -m pytest tests')).toBe('python3 pytest tests')
+    expect(commandTarget('rg -n foo src | head -20')).toBe('rg foo src')
+    expect(commandTarget('cat > /w/a.txt <<EOF', '/w')).toBe('cat')
+    expect(commandTarget('/usr/local/bin/gh pr view 12')).toBe('gh pr view')
+    expect(commandTarget('cd /w')).toBe('')
+  })
+
+  it('takes a target from the call: file, command, pattern, page', () => {
+    expect(toolTarget({ tool: 'Edit', detail: 'x.go', input: { file_path: '/w/a/x.go' } }, '/w')).toBe('a/x.go')
+    expect(toolTarget({ tool: 'Bash', detail: '', input: { command: 'npm run build' } })).toBe('npm run build')
+    expect(toolTarget({ tool: 'Grep', detail: 'func New', input: { pattern: 'func New', path: '/w' } })).toBe("'func New'")
+    expect(toolTarget({ tool: 'WebFetch', detail: '', input: { url: 'https://www.example.com/docs/a' } })).toBe('example.com/docs/a')
+    expect(toolTarget({ tool: 'LS', detail: 'acme', input: { path: '/w/acme' } }, '/w')).toBe('acme')
+    expect(toolTarget({ tool: 'mcp__github__get_pr', detail: 'github·get_pr', input: {} })).toBe('github·get_pr')
+  })
+
+  it('reads how a call ended: an exit code, an interruption', () => {
+    expect(resultOutcome({ is_error: true, tool_response: 'Exit code 2\nboom' })).toEqual({ exit: 2 })
+    expect(resultOutcome({ is_error: true, tool_response: [{ type: 'text', text: 'Error: Exit code 1' }] })).toEqual({ exit: 1 })
+    expect(resultOutcome({ is_error: true, tool_response: 'File not found' })).toEqual({})
+    expect(resultOutcome({ is_error: true, exit_code: 127 })).toEqual({ exit: 127 })
+    expect(resultOutcome({ exit_code: 0 })).toEqual({})
+    expect(resultOutcome({ tool_response: { stdout: '', interrupted: true } })).toEqual({ interrupted: true })
+    // A successful result that happens to print the words is not a failure.
+    expect(resultOutcome({ tool_response: 'Exit code 1' })).toEqual({})
+  })
+
+  it('joins a call to its result’s outcome', () => {
+    const runs = toolRuns([
+      ev({ kind: 'tool.pre', ts: T(0), tool: 'Bash', payload: { tool_use_id: 'a', tool_input: { command: 'make test' } } }),
+      ev({ kind: 'tool.post', ts: T(4), tool: 'Bash', source: 'transcript', payload: { tool_use_id: 'a', is_error: true, tool_response: 'Exit code 2' } }),
+    ])
+    expect(runs[0]).toMatchObject({ failed: true, exit: 2 })
+  })
+
+  it('folds the same call repeated in a row, never a running one', () => {
+    const run = (id: number, tool: string, file: string, end?: number, failed = false) =>
+      ({ id, tool, kind: toolKind(tool), detail: file, startMs: id * 1000, endMs: end, failed, input: { file_path: `/w/${file}` } })
+    const runs = [run(1, 'Read', 'a.go', 1100), run(2, 'Read', 'a.go', 2200), run(3, 'Read', 'b.go', 3100), run(4, 'Read', 'b.go', 4100, true), run(5, 'Read', 'b.go', 5100, true), run(6, 'Read', 'b.go')]
+    const g = toolGroups(runs, 7, '/w')
+    expect(g.map((x) => [x.run.id, x.count, x.target])).toEqual([[6, 1, 'b.go'], [5, 2, 'b.go'], [3, 1, 'b.go'], [2, 2, 'a.go']])
+    expect(g[3]!.totalMs).toBe(300)
+    expect(toolGroups(runs, 2, '/w').map((x) => x.run.id)).toEqual([6, 5])
+  })
+
+  it('says how long ago in a column’s width', () => {
+    expect(fmtAge(2_000)).toBe('now')
+    expect(fmtAge(42_000)).toBe('42s')
+    expect(fmtAge(4 * 60_000)).toBe('4m')
+    expect(fmtAge(3 * 3_600_000)).toBe('3h')
+    expect(fmtAge(72 * 3_600_000)).toBe('3d')
   })
 })

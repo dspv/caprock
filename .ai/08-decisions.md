@@ -977,6 +977,12 @@ or tunnel relays onto loopback is a device here, token and role included.
 "not a stored setting" holds by default; the owner can tick *Keep on after
 Caprock restarts*, and turning access off clears it.
 
+*Amended 2026-10-14 by [ADR-058](#adr-058--a-phone-reaches-the-machine-from-anywhere-through-a-relay-that-carries-only-ciphertext)
+(the one way in):* the dashboard no longer offers this listener; it is
+started from a terminal (`caprock up --lan`, `caprock pair`) for a machine
+without internet, and Settings shows it, to turn off, only while it is on.
+The gate, the codes and the roles here are unchanged.
+
 **Rules out:** a relay of ours (sessions would pass through a machine we run,
 which contradicts rule 4 and three sentences on the site) — *superseded
 2026-10-13 by [ADR-058](#adr-058--a-phone-reaches-the-machine-from-anywhere-through-a-relay-that-carries-only-ciphertext):
@@ -3375,6 +3381,40 @@ figure.
 on the relay; turning remote access on from a phone; storing anything on the
 relay.
 
+*Amended 2026-10-14 — the one way in.* The owner's Android phone was paired
+at 15:11 while only the network listener was on
+(`http://10.100.102.7:4173`); *From anywhere* went on at 15:12. The phone
+kept the Wi-Fi link, reached nothing on mobile data, and nothing said why
+(translated): "the phone opens a link with IP 10.100 on the local network, no
+online, no internet… maybe I didn't finish setting it up — there are
+different settings for remote vs your own Wi-Fi." His decision (translated):
+"I'd remove every option except the normal online one — who cares about
+working only inside your own Wi-Fi; everyone wants to work online."
+
+- **The pairing panel offers the relay alone.** No Wi-Fi / Tailscale switch,
+  no Wi-Fi step, no *Keep on after Caprock restarts* box. **Show a code** on
+  the machine turns access from anywhere on when it is off, and a line under
+  the button says so: pressing it is the decision on the machine this ADR
+  requires, and it is remembered as before. A click that only arrives at the
+  section (the sidebar's *phone*, the palette) shows a code only when the
+  relay is already on — it never turns it on.
+- **The network listener stays, off the screen.** `caprock up --lan` and
+  `caprock pair` (which draws the listener's QR while the relay is off) keep
+  it for a machine without internet. Ripping it out would cost the
+  no-internet case, the Tailscale path and ADR-029/ADR-060's tested gate for
+  nothing the owner asked; hiding it costs one footer line — while it is on,
+  Settings shows its address with **Turn off**. A build without the relay
+  still pairs over it.
+- **Each device says how it reaches the machine.** The gate records `via`
+  per device — `relay` (a request on loopback carrying `Via: 1.1
+  caprock-remote`), `tailscale` (from 100.64/10) or `lan` — in
+  `devices.json`, saved when it changes. It is a label, never an
+  authorisation. Settings shows *anywhere*, *anywhere with Tailscale* or
+  *Wi-Fi link*; a Wi-Fi link gets one line with **Show the code**, the relay
+  QR the phone pairs with once more. `GET /v1/pair/me` answers `via` and
+  `anywhere`, and a phone on the Wi-Fi link shows a strip naming the app and
+  the path to the code.
+
 
 ## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
 
@@ -3483,3 +3523,9 @@ this decision (that is ADR-058's question, not this one's).
 **Revisit if:** a paired device is ever let in without a token, or the
 unauthenticated surface grows past `POST /v1/pair` and static files — keep-on
 would then be keeping that open too.
+
+*Amended 2026-10-14 by ADR-058 (the one way in):* the checkbox, the
+*Works on this Wi-Fi only* / *Works anywhere (Tailscale)* card and the
+address choice left the panel with the listener itself. `lan_keep_on` is
+still read at start, and **Turn off** in the footer (shown while the
+listener is on) still clears it.

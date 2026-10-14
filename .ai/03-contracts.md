@@ -184,7 +184,18 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   allowlist, so a route added later is closed to a paired device until it is
   named. `GET /v1/settings` omits `license_key` for a paired device. Loopback is
   unaffected. `GET /v1/pair/me` is on the list too: it answers `{role}` —
-  `"owner"` on loopback, else `{role: "viewer"|"controller", id, name}`.
+  `"owner"` on loopback, else `{role: "viewer"|"controller", id, name, via,
+  anywhere?}`, where `via` is how this request arrived (below) and
+  `anywhere` is true while access from anywhere is on.
+- **How a device last arrived** (`via`, 2026-10-14): the gate records it on
+  every request a device makes, and at pairing — `relay` for a request on
+  loopback carrying `Via: …caprock-remote…`, `tailscale` for a peer in
+  100.64.0.0/10, `lan` for any other network peer; a request it cannot tell
+  apart (another tunnel on loopback) records nothing. Stored per device in
+  `devices.json` (`via`, absent until first recorded), saved when it changes
+  (not per request, unlike `last_seen`), and listed in `GET
+  /v1/pair/state`'s `devices`. A label for the owner's list and the phone's
+  notice; it never decides access.
 - **A controller may also work on sessions** ([ADR-034](08-decisions.md)). A
   device is paired as a viewer; the owner makes it a controller with `PUT
   /v1/pair/devices/{id}/role` (`{role: "viewer"|"controller"}`, loopback-only,

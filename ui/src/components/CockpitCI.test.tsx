@@ -34,7 +34,9 @@ describe('the cockpit’s CI block', () => {
     expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-check-summary]')).toHaveTextContent(/^all 1$/)
     expect(document.querySelector('[data-cockpit-ci-pr="9"]')).toHaveTextContent('PR 9')
     expect(document.querySelector('[data-cockpit-ci] [data-pipeline]')).toBeNull()
-    expect([...document.querySelectorAll('[data-cockpit-ci-view]')].map((b) => b.textContent)).toEqual(['PRs', 'Ring', 'OS'])
+    expect([...document.querySelectorAll('[data-cockpit-ci-view]')].map((b) => b.textContent)).toEqual(['PRs', 'Ring', 'By OS'])
+    // Each tab says what it shows.
+    expect(document.querySelector('[data-cockpit-ci-view="grid"]')).toHaveAttribute('title', expect.stringMatching(/^By OS: the newest pull request’s checks by runner/))
     expect(fetch).not.toHaveBeenCalled()
   })
 
@@ -48,8 +50,11 @@ describe('the cockpit’s CI block', () => {
     fireEvent.click(document.querySelector('[data-cockpit-ci-open]')!)
     expect(onOpen).toHaveBeenCalledTimes(1)
     fireEvent.click(document.querySelector('[data-cockpit-ci-view="grid"]')!)
-    // No CI of #9 kept yet: it says where its jobs come from.
-    expect(screen.getByText(/#9’s jobs show once its row is opened in the deck/)).toBeInTheDocument()
+    // No CI of #9 kept yet: the checks' own names say the OS.
+    const byOS = document.querySelector('[data-cockpit-ci-os]')!
+    expect(byOS.querySelector('[data-os="linux"]')).toHaveAttribute('data-tone', 'pass')
+    expect(byOS.querySelector('[data-os="windows"]')).toHaveAttribute('data-tone', 'running')
+    expect(byOS).toHaveTextContent(/^Linuxpassed 3m 00s1 checkWindowsrunning 4m 00s1 check$/)
     first.unmount()
     act(() => {
       writeDeck('ci:s1:9', { connected: true, pr: { number: 9, url: '', repo: 'a/b' }, ci: { repo: 'a/b', head_sha: 's', state: 'running', runner_ms: 0, by_os: [], at: now, runs: [{ id: 1, name: 'ci', status: 'in_progress', jobs: [
@@ -59,9 +64,42 @@ describe('the cockpit’s CI block', () => {
     })
     render(<CockpitCI sessionId="s1" onOpen={onOpen} />)
     expect(document.querySelector('[data-cockpit-ci="grid"]')).not.toBeNull()
-    const grid = document.querySelector('[data-cockpit-ci-grid]')!
+    const grid = document.querySelector('[data-cockpit-ci-os]')!
     expect(grid).toHaveTextContent('Linux')
     expect(grid).toHaveTextContent('Windows')
     expect(grid.querySelector('[data-tone="running"]')).not.toBeNull()
+  })
+
+  it('names no OS it cannot read', () => {
+    writeDeck('prs:s1', { connected: true, prs: [row(9, live(9, PASSED))] })
+    localStorage.setItem('caprock.cockpit.ciView', 'grid')
+    render(<CockpitCI sessionId="s1" />)
+    expect(screen.getByText('#9’s checks name no runner OS.')).toBeInTheDocument()
+  })
+
+  // "You can't move the mouse here — on hover a modal opens and you can't
+  // see anything" (owner, 2026-10-14, translated).
+  it('lists a PR’s checks only after the pointer rests, beside the panel, and closes on leaving', () => {
+    vi.useFakeTimers()
+    try {
+      writeDeck('prs:s1', { connected: true, prs: [row(9, live(9, RUNNING))] })
+      render(<CockpitCI sessionId="s1" />)
+      const sum = document.querySelector('[data-cockpit-ci-pr="9"] [data-check-summary]')!
+      fireEvent.mouseEnter(sum)
+      act(() => { vi.advanceTimersByTime(300) })
+      // Passing over opens nothing.
+      fireEvent.mouseLeave(sum)
+      act(() => { vi.advanceTimersByTime(1000) })
+      expect(document.querySelector('[data-check-list]')).toBeNull()
+      fireEvent.mouseEnter(sum)
+      act(() => { vi.advanceTimersByTime(650) })
+      const list = document.querySelector('[data-check-list]') as HTMLElement
+      expect(list).toHaveAttribute('data-beside')
+      expect(list.style.pointerEvents).toBe('none')
+      fireEvent.mouseLeave(sum)
+      expect(document.querySelector('[data-check-list]')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
