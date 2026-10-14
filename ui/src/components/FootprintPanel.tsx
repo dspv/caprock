@@ -95,7 +95,7 @@ export function CaprockFootprint({ owner }: { owner: boolean }) {
   return (
     <span ref={box} className="relative inline-flex">
       <button type="button" data-caprock-load data-warn={warn || undefined} aria-expanded={open} aria-haspopup="dialog"
-        onClick={() => setOpen((o) => !o)} title={footprintTitle(f)}
+        onClick={() => setOpen((o) => !o)} title={open ? undefined : footprintTitle(f)}
         className={`inline-flex items-center gap-1.5 whitespace-nowrap ${warn ? 'text-warn' : 'text-fg-muted hover:text-fg'}`}>
         {warn && <span aria-hidden data-warn-dot className="h-[6px] w-[6px] rounded-full bg-warn" />}
         caprock <span className="num">{fmtMem(f.memory.total_mem_bytes)}</span>

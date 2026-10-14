@@ -692,9 +692,15 @@ func MarkIdleSessions(ctx context.Context, q Querier, before int64) ([]string, e
 // sessions with no pid: rows written by an older shim, or read from a
 // transcript with no live process behind them, where there is nothing to ask
 // and a backstop is all there is.
+//
+// One fact is still available for those: the disk. A watched session with no
+// pid whose transcript file is gone, or whose directory is gone, ends now
+// rather than a day from now (see goneFromDisk). Imported history (OpenCode,
+// Codex, DeepSeek) stays on the clock alone.
 func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, error) {
 	rows, err := q.QueryContext(ctx,
-		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude'), COALESCE(owned, 0)
+		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude'), COALESCE(owned, 0),
+		        COALESCE(cwd, ''), COALESCE(transcript_path, ''), COALESCE(has_transcript, 0)
 		 FROM sessions WHERE status != 'ended'`)
 	if err != nil {
 		return nil, err
@@ -705,10 +711,10 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 	}
 	var ids []string
 	for rows.Next() {
-		var id, agent string
-		var pid, owned int
+		var id, agent, cwd, transcript string
+		var pid, owned, hasTranscript int
 		var lastEvent int64
-		if err := rows.Scan(&id, &pid, &lastEvent, &agent, &owned); err != nil {
+		if err := rows.Scan(&id, &pid, &lastEvent, &agent, &owned, &cwd, &transcript, &hasTranscript); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -726,6 +732,10 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 			if lastEvent < before {
 				ids = append(ids, id)
 			}
+		case pid <= 1 && goneFromDisk(cwd, transcript, hasTranscript != 0):
+			// No process to ask, and what the row was read from, or where it
+			// ran, has been deleted: nothing can ever add to it again.
+			ids = append(ids, id)
 		case pid > 1 && booted > 0 && lastEvent > 0 && lastEvent < booted:
 			// Last heard from before the machine started: that process is gone
 			// whatever its pid now answers, because after a reboot the pid is
@@ -2022,6 +2032,62 @@ func (a AgentFilter) sessionScope(col string) (string, []any) {
 	return " AND " + col + " IN (SELECT session_id FROM sessions WHERE COALESCE(agent,'claude') = ?)", []any{string(a)}
 }
 
+// sumKinds adds the range's events, by kind, to s: tokens and cost over every
+// kind, and the turn and tool-call counts. One covering range scan.
+func sumKinds(ctx context.Context, q Querier, fromMs int64, ev string, evArgs []any, s *Summary) error {
+	rows, err := q.QueryContext(ctx, `
+		SELECT kind, COUNT(*),
+		       COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
+		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0),
+		       COALESCE(SUM(cost_usd),0)
+		FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY kind`, append([]any{fromMs}, evArgs...)...)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var kind string
+		var n, tin, tout, cr, cw int64
+		var cost float64
+		if err := rows.Scan(&kind, &n, &tin, &tout, &cr, &cw, &cost); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		// Tokens and cost accrue on assistant turns, but sum every kind so a
+		// future priced event type is not silently dropped from the totals.
+		s.TokensIn += tin
+		s.TokensOut += tout
+		s.CacheRead += cr
+		s.CacheWrite += cw
+		s.CostUSD += cost
+		switch kind {
+		case string(event.KindTurnAssistant):
+			s.Turns = n
+		case string(event.KindToolPre):
+			s.ToolCalls = n
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// RecentSpend is what was spent since fromMs — cost, tokens, turns and tool
+// calls, and nothing else of a Summary. The Cost screen's burn tile reads the
+// last ten minutes on every summary request; it called SummarizeSparkFor,
+// which also counts the model mix, the projects and every turn's directory,
+// for four figures (2026-10-14).
+func RecentSpend(ctx context.Context, q Querier, fromMs int64, agent AgentFilter) (Summary, error) {
+	s := Summary{FromMs: fromMs}
+	ev, evArgs := agent.sessionScope("session_id")
+	err := sumKinds(ctx, q, fromMs, ev, evArgs, &s)
+	return s, err
+}
+
 func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpec) (Summary, error) {
 	return SummarizeSparkFor(ctx, q, fromMs, spark, "")
 }
@@ -2053,42 +2119,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// event in the table — 0.9s for today's 772 events on the owner's
 	// 300k-event database, the query the main screen polls every few seconds.
 	// The covering range scan is 0.02-0.2s at every range.
-	rows, err := q.QueryContext(ctx, `
-		SELECT kind, COUNT(*),
-		       COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
-		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0),
-		       COALESCE(SUM(cost_usd),0)
-		FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY kind`, append([]any{fromMs}, evArgs...)...)
-	if err != nil {
-		return s, err
-	}
-	for rows.Next() {
-		var kind string
-		var n, tin, tout, cr, cw int64
-		var cost float64
-		if err := rows.Scan(&kind, &n, &tin, &tout, &cr, &cw, &cost); err != nil {
-			_ = rows.Close()
-			return s, err
-		}
-		// Tokens and cost accrue on assistant turns, but sum every kind so a
-		// future priced event type is not silently dropped from the totals.
-		s.TokensIn += tin
-		s.TokensOut += tout
-		s.CacheRead += cr
-		s.CacheWrite += cw
-		s.CostUSD += cost
-		switch kind {
-		case string(event.KindTurnAssistant):
-			s.Turns = n
-		case string(event.KindToolPre):
-			s.ToolCalls = n
-		}
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return s, err
-	}
-	if err := rows.Close(); err != nil {
+	if err := sumKinds(ctx, q, fromMs, ev, evArgs, &s); err != nil {
 		return s, err
 	}
 	// This was grouped off idx_events_session_ts as a covering index, which
@@ -2119,7 +2150,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		append([]any{nowMs() - int64(activeWindow/time.Millisecond)}, sessArgs...)...).Scan(&s.Active); err != nil {
 		return s, err
 	}
-	rows, err = q.QueryContext(ctx, `
+	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(model,''), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0), COALESCE(SUM(cost_usd),0), COUNT(*), COALESCE(SUM(COALESCE(tokens_out,0)),0), COALESCE(SUM(COALESCE(cache_read,0)),0)
 		FROM events WHERE kind = 'turn.assistant' AND ts >= ?`+nonInternalEvent+ev+` GROUP BY model ORDER BY 3 DESC`, append([]any{fromMs}, evArgs...)...)
 	if err != nil {

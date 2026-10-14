@@ -57,6 +57,14 @@ type pairState struct {
 	// pairing panel draws a QR for the one the owner picks; a code works on
 	// any of them. Empty when off.
 	Addresses []pairAddress `json:"addresses,omitempty"`
+	// Tailscale says this machine has a Tailscale address right now, whether
+	// or not phone access is on or listening on it. Off, Addresses is empty,
+	// and the panel still has to say "works anywhere" or "this Wi-Fi only"
+	// before the owner turns anything on; it polls this every few seconds
+	// while open, so installing Tailscale flips it without a restart.
+	Tailscale bool `json:"tailscale,omitempty"`
+	// KeepOn is *Keep on after Caprock restarts* (ADR-060).
+	KeepOn bool `json:"keep_on,omitempty"`
 	// Remote is access from anywhere through a relay (ADR-058); absent in a
 	// build without it. A code works over it and over the network alike.
 	Remote *RemoteState `json:"remote,omitempty"`
@@ -93,6 +101,9 @@ func pairAddresses(url string, alts []string) []pairAddress {
 	return out
 }
 
+// tailscaleUp is lan.TailscaleUp, replaceable in tests.
+var tailscaleUp = lan.TailscaleUp
+
 // handlePairState reports what the owner needs to see: whether the network
 // listener is up, at what address, any code still live, and every paired
 // device.
@@ -104,7 +115,10 @@ func (s *Server) handlePairState(w http.ResponseWriter, r *http.Request) {
 	ps, lanURL := s.lanState()
 	// Enabled is the network listener. The guest list can be live without it
 	// — access from anywhere uses the same devices — so it is not "ps != nil".
-	st := pairState{Enabled: ps != nil && lanURL != "", URL: lanURL, Devices: []pairing.Public{}}
+	st := pairState{Enabled: ps != nil && lanURL != "", URL: lanURL, Devices: []pairing.Public{}, Tailscale: tailscaleUp()}
+	if s.d.LAN != nil {
+		st.KeepOn = s.d.LAN.LANKeepOn()
+	}
 	if host := hostOf(lanURL); host != "" {
 		st.Tunnelled = lan.Tunnelled(net.ParseIP(host))
 		st.Addresses = pairAddresses(lanURL, s.lanAlternates())
@@ -323,6 +337,10 @@ func (s *Server) handleSetLAN(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		On bool `json:"on"`
+		// Keep, when present, stores *Keep on after Caprock restarts*
+		// (ADR-060). Only with on: true — turning access off always clears it,
+		// because "off" that comes back on at the next start is not off.
+		Keep *bool `json:"keep,omitempty"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req)
@@ -332,7 +350,11 @@ func (s *Server) handleSetLAN(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"enabled": false})
+		if err := s.d.LAN.SetLANKeepOn(false); err != nil {
+			s.fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"enabled": false, "keep_on": false})
 		return
 	}
 	url, err := s.d.LAN.EnableLAN()
@@ -340,7 +362,13 @@ func (s *Server) handleSetLAN(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusConflict, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"enabled": true, "url": url})
+	if req.Keep != nil {
+		if err := s.d.LAN.SetLANKeepOn(*req.Keep); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": true, "url": url, "keep_on": s.d.LAN.LANKeepOn()})
 }
 
 // pairMe is what a dashboard needs to know about the device it runs on.

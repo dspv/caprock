@@ -95,6 +95,22 @@ func TestSummarizeHealthAndRepeats(t *testing.T) {
 	}
 }
 
+// "Working" needs a fresh event. One stamped hours ahead of the clock is not
+// fresh — it is a clock problem — and must not hold a session at "working"
+// until the clock catches up (2026-10-14).
+func TestAFutureStampDoesNotKeepASessionWorking(t *testing.T) {
+	now := time.Date(2026, 10, 14, 1, 40, 0, 0, time.UTC)
+	future := []event.Event{{Kind: event.KindTurnAssistant, Ts: now.Add(3 * time.Hour)}}
+	if a := Summarize(future, Options{Now: now}); a.Health != HealthIdle {
+		t.Errorf("stamped 3h ahead: health %q, want idle", a.Health)
+	}
+	// A stamp a few seconds ahead is rounding, and still live.
+	near := []event.Event{{Kind: event.KindTurnAssistant, Ts: now.Add(5 * time.Second)}}
+	if a := Summarize(near, Options{Now: now}); a.Health != HealthWorking {
+		t.Errorf("stamped 5s ahead: health %q, want working", a.Health)
+	}
+}
+
 // These strings go straight into the API as a session's activity phrase.
 // Slicing UTF-8 by byte cut through characters, and encoding/json silently
 // substitutes U+FFFD rather than erroring — so the dashboard showed mojibake.

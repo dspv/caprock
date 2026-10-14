@@ -4,7 +4,8 @@ import { api } from './mailApi'
 import type { ComposeInit } from './Composer'
 import { Composer } from './Composer'
 import { Reader } from './Reader'
-import { AddAccount, SettingsPanel } from './Setup'
+import { SettingsPanel } from './Setup'
+import { FirstRun, SampleBanner } from './Onboarding'
 import { hue, initials, quote, replySubject, sender, shortDate } from './format'
 import { Icon } from './icons'
 import './mail.css'
@@ -70,6 +71,9 @@ export function MailScreen() {
   const [showSettings, setShowSettings] = useState(false)
   const [toast, setToast] = useState('')
   const [syncing, setSyncing] = useState(false)
+  // Where the first-run card opens: its choices, or straight at the provider
+  // tiles when the sample banner's "Add my account" brought the user here.
+  const [firstStep, setFirstStep] = useState<'choose' | 'add'>('choose')
   const searchRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const gPending = useRef(false)
@@ -233,9 +237,23 @@ export function MailScreen() {
     listRef.current?.querySelector('.row.on')?.scrollIntoView({ block: 'nearest' })
   }, [cur])
 
+  const reload = () => { loadState(); listRef2.current(false).catch(() => {}) }
+  const sample = async (on: boolean, then: 'choose' | 'add' = 'choose') => {
+    await api.sample(on)
+    setFirstStep(then)
+    setCur(null)
+    setSel({ view: 'inbox' })
+    setQ('')
+    reload()
+  }
+
   if (!st) return <div className="cm"><div className="boot">Loading mail…</div></div>
-  if (st.accounts.length === 0) {
-    return <div className="cm"><div className="welcome"><AddAccount first onDone={() => { loadState(); listRef2.current(false) }} /></div></div>
+  if (st.accounts.length === 0 && !st.sample) {
+    return (
+      <div className="cm" ref={rootRef} style={{ height }}>
+        <div className="welcome"><FirstRun key={firstStep} initial={firstStep} onDone={reload} onSample={() => sample(true)} /></div>
+      </div>
+    )
   }
 
   const foldersBy = (a: Account) => st.folders.filter((f) => f.account_id === a.id && !['noselect', 'all', 'flagged', 'important'].includes(f.role))
@@ -246,7 +264,8 @@ export function MailScreen() {
   const errAcct = accounts.find((a) => a.last_error)
 
   return (
-    <div className="cm" ref={rootRef} style={{ height }}>
+    <div className={'cm' + (st.sample ? ' withbar' : '')} ref={rootRef} style={{ height }}>
+    {st.sample && <SampleBanner onExit={() => sample(false).catch((e) => flash(e.message))} onAdd={() => sample(false, 'add').catch((e) => flash(e.message))} />}
     <div className="app">
       <aside className="side">
         <div className="sidetop">
@@ -365,7 +384,8 @@ export function MailScreen() {
       {showSettings && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setShowSettings(false)}>
           <SettingsPanel accounts={accounts} settings={settings} onSettings={setSettings}
-            onClose={() => setShowSettings(false)} onChanged={() => { loadState(); listRef2.current(false) }} />
+            onClose={() => setShowSettings(false)} onChanged={() => { loadState(); listRef2.current(false) }}
+            onAddAccount={st.sample ? () => { setShowSettings(false); sample(false, 'add').catch((e) => flash(e.message)) } : undefined} />
         </div>
       )}
       {toast && <div className="toast">{toast}</div>}

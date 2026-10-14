@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,6 +45,13 @@ func TestUnusedMailTouchesNothing(t *testing.T) {
 	w := do(t, s.Handler(), "GET", "/v1/mail/state", nil)
 	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte(`"accounts":[]`)) {
 		t.Fatalf("state: %d %s", w.Code, w.Body)
+	}
+	if w := do(t, s.Handler(), "GET", "/v1/mail/messages?view=inbox", nil); w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("list: %d %s", w.Code, w.Body)
+	}
+	// The screen reads its settings on open, before any account exists.
+	if w := do(t, s.Handler(), "GET", "/v1/mail/settings", nil); w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte(`"remote_images":"ask"`)) {
+		t.Fatalf("settings: %d %s", w.Code, w.Body)
 	}
 	if _, err := os.Stat(filepath.Join(s.dir, "mail.db")); !os.IsNotExist(err) {
 		t.Fatal("state created mail.db before Mail was used")
@@ -95,5 +103,101 @@ func TestAddAccountSyncsAndRefusesBadPassword(t *testing.T) {
 	}
 	if w := do(t, h, "POST", "/v1/mail/ai/summarize", map[string]any{"message_id": 1}); w.Code != 409 {
 		t.Fatalf("AI must be off until enabled: %d", w.Code)
+	}
+}
+
+func stateOf(t *testing.T, h http.Handler) (accounts []map[string]any, sample bool) {
+	t.Helper()
+	w := do(t, h, "GET", "/v1/mail/state", nil)
+	var st struct {
+		Accounts []map[string]any `json:"accounts"`
+		Sample   bool             `json:"sample"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &st) != nil {
+		t.Fatalf("state: %d %s", w.Code, w.Body)
+	}
+	return st.Accounts, st.Sample
+}
+
+// Sample mode on an unused Mail serves sample accounts and, turned off,
+// leaves nothing behind: no mail.db, nothing opened, no password stored.
+func TestSampleModeOnUnusedMailLeavesNothing(t *testing.T) {
+	s := newTestService(t)
+	real := s.sec.(*secrets.Memory)
+	h := s.Handler()
+	if w := do(t, h, "POST", "/v1/mail/sample", map[string]any{"on": true}); w.Code != 200 {
+		t.Fatalf("sample on: %d %s", w.Code, w.Body)
+	}
+	accts, sample := stateOf(t, h)
+	if !sample || len(accts) != 2 {
+		t.Fatalf("sample state: sample=%v accounts=%d", sample, len(accts))
+	}
+	if w := do(t, h, "GET", "/v1/mail/messages?view=all", nil); w.Code != 200 {
+		t.Fatalf("sample list: %d %s", w.Code, w.Body)
+	}
+	if _, err := real.Get(1); err == nil {
+		t.Fatal("sample mode stored a password in the real store")
+	}
+	if w := do(t, h, "POST", "/v1/mail/sample", map[string]any{"on": false}); w.Code != 200 {
+		t.Fatalf("sample off: %d %s", w.Code, w.Body)
+	}
+	accts, sample = stateOf(t, h)
+	if sample || len(accts) != 0 {
+		t.Fatalf("after sample: sample=%v accounts=%d", sample, len(accts))
+	}
+	if s.opened() {
+		t.Fatal("sample mode left Mail open")
+	}
+	if _, err := os.Stat(filepath.Join(s.dir, "mail.db")); !os.IsNotExist(err) {
+		t.Fatal("sample mode created the real mail.db")
+	}
+}
+
+// Sample mode hides real accounts while on and gives them back untouched.
+func TestSampleModeKeepsRealAccounts(t *testing.T) {
+	srv, err := fakemail.Start("me@fake.test", "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	s := newTestService(t)
+	h := s.Handler()
+	ih, ip, _ := net.SplitHostPort(srv.IMAPAddr)
+	sh, sp, _ := net.SplitHostPort(srv.SMTPAddr)
+	ipn, _ := strconv.Atoi(ip)
+	spn, _ := strconv.Atoi(sp)
+	if w := do(t, h, "POST", "/v1/mail/accounts", map[string]any{"email": "me@fake.test", "password": "pw",
+		"imap_host": ih, "imap_port": ipn, "imap_tls": "none", "smtp_host": sh, "smtp_port": spn, "smtp_tls": "none"}); w.Code != 200 {
+		t.Fatalf("add: %d %s", w.Code, w.Body)
+	}
+	do(t, h, "POST", "/v1/mail/sample", map[string]any{"on": true})
+	accts, sample := stateOf(t, h)
+	if !sample || len(accts) != 2 || accts[0]["email"] == "me@fake.test" || accts[1]["email"] == "me@fake.test" {
+		t.Fatalf("sample must hide the real account: %v", accts)
+	}
+	do(t, h, "POST", "/v1/mail/sample", map[string]any{"on": false})
+	accts, sample = stateOf(t, h)
+	if sample || len(accts) != 1 || accts[0]["email"] != "me@fake.test" {
+		t.Fatalf("real account not back: %v", accts)
+	}
+	if pw, err := s.sec.Get(int64(accts[0]["id"].(float64))); err != nil || pw != "pw" {
+		t.Fatalf("real password changed: %q %v", pw, err)
+	}
+}
+
+// CAPROCK_MAIL_DEMO=1 keeps sample mode on for the run.
+func TestDemoEnvForcesSample(t *testing.T) {
+	t.Setenv("CAPROCK_MAIL_DEMO", "1")
+	s := New(t.TempDir(), nil)
+	t.Cleanup(s.Close)
+	h := s.Handler()
+	if accts, sample := stateOf(t, h); !sample || len(accts) != 2 {
+		t.Fatalf("demo state: sample=%v accounts=%d", sample, len(accts))
+	}
+	if w := do(t, h, "POST", "/v1/mail/sample", map[string]any{"on": false}); w.Code != 409 {
+		t.Fatalf("demo off must be refused: %d", w.Code)
+	}
+	if _, err := os.Stat(filepath.Join(s.dir, "mail.db")); !os.IsNotExist(err) {
+		t.Fatal("demo created the real mail.db")
 	}
 }

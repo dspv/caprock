@@ -21,7 +21,8 @@ import { live } from '@/lib/live'
 import { useFrameBatch } from '@/lib/framebatch'
 import { buildPulse, costTier, medianCost, trackState, windowCost, windowEvents, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
 import { fmtAgo, fmtModel, fmtTokens, fmtUSD, shortId } from '@/lib/format'
-import { AgentCharacter, agentName, characterFor } from '@/components/Characters'
+import { AgentCharacter, agentName } from '@/components/Characters'
+import { SessionCharacter } from '@/components/SessionFace'
 import { ProjectTerminal } from '@/components/ProjectTerminal'
 import { RepoButtons } from '@/components/RepoLinks'
 import { useApi } from '@/lib/useApi'
@@ -472,7 +473,7 @@ function ProjectNow({ s, all, now }: { s: SessionSummary; all: SessionSummary[];
           const doing = x.activity?.phrase || x.description || x.title || ''
           return (
             <li key={x.session_id} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 min-w-0">
-              <AgentCharacter who={characterFor(x.agent ?? 'claude')} size={22} />
+              <SessionCharacter agent={x.agent} sessionId={x.session_id} size={22} />
               <span className="font-medium text-fg">{agentName(x.agent ?? 'claude')}</span>
               {model && <span className="mono text-[11.5px] text-fg">{model}</span>}
               <StatePill state={st} />
@@ -681,7 +682,6 @@ export function WorkingNow({ s, state, repeatSample }: { s: SessionSummary; stat
   const subs = s.live_subagents ?? 0
   const working = s.activity?.health === 'working' || s.activity?.health === 'looping'
   const model = s.model_display || (s.model ? fmtModel(s.model) : '')
-  const lead = characterFor(s.agent ?? 'claude')
   const agents = subs + 1
   const title = `${model ? `${model}${working ? '' : ' (last turn)'}` : 'model unknown'} · ${subs > 0 ? `main thread and ${subs} live subagent${subs === 1 ? '' : 's'}` : 'main thread only'}`
   return (
@@ -689,7 +689,7 @@ export function WorkingNow({ s, state, repeatSample }: { s: SessionSummary; stat
       <StatePill state={state} title={repeatSample} />
       <div className="flex items-center justify-end gap-1.5 text-[11.5px] leading-none" title={title}>
         <span className="inline-flex items-center -space-x-2" aria-hidden>
-          <AgentCharacter who={lead} size={26} />
+          <SessionCharacter agent={s.agent} sessionId={s.session_id} size={26} />
           {subs > 0 && <AgentCharacter who="crowd" size={26} />}
         </span>
         <span className="num text-fg whitespace-nowrap">{agents} agent{agents === 1 ? '' : 's'}</span>

@@ -117,6 +117,10 @@ type Deps struct {
 	LAN interface {
 		EnableLAN() (string, error)
 		DisableLAN() error
+		// LANKeepOn and SetLANKeepOn read and store *Keep on after Caprock
+		// restarts* (ADR-060).
+		LANKeepOn() bool
+		SetLANKeepOn(on bool) error
 	}
 	// Remote is access from anywhere, through a relay (ADR-058): its state for
 	// the pairing panel and the switch. Nil in builds or tests without it.
@@ -1674,7 +1678,9 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	// unfiltered burn under a heading that says "opencode" is the mistake the
 	// comment above rejects, made one tile to the right.
 	const win = 10 * time.Minute
-	recent, err := store.SummarizeSparkFor(ctx, s.d.Store.DB(), s.d.Now().Add(-win).UnixMilli(), store.SparkSpec{}, agent)
+	// Four figures, so one covering range scan (store.RecentSpend), not a
+	// whole summary: this runs on every request, uncached.
+	recent, err := store.RecentSpend(ctx, s.d.Store.DB(), s.d.Now().Add(-win).UnixMilli(), agent)
 	if err == nil {
 		// Divide by the time actually covered, not by the window's width.
 		//
