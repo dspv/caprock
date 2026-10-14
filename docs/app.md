@@ -1056,6 +1056,28 @@ shows what is new, or **Not now** to hide that version.
   (`brew upgrade caprock`, `scoop update caprock`); the app never replaces a
   daemon it did not install.
 
+## A question from Caprock
+
+Caprock cannot see who uses it, so after you have used it on two different
+days it may show one short strip at the bottom of the window: Second Brain,
+which comes to Premium, or a question about a feature it is considering
+(running Hugging Face models on your computer, or one other). At most one a
+day; it waits until you stop typing, never appears while a session is
+waiting for a permission answer, and never covers a terminal.
+
+- **Second Brain.** *How it works* explains it and offers Premium. It
+  arrives on 18 October 2026; if it doesn't, write to us for a full refund.
+  Nothing is sent from this strip.
+- **Answering a question.** Two one-click questions and an optional email,
+  if you want to hear when it is ready.
+- **What is sent, and when.** Nothing, until you press **Send**. Then
+  Caprock sends your two answers, which question they answer, and your email
+  if you added one, to caprock.dev. Nothing else: no identifier, nothing
+  about your sessions, projects or usage, not even Caprock's version.
+- **Saying no.** *Not interested* or × sends nothing.
+- **How often.** An answered strip never comes back. Second Brain and the
+  Hugging Face question are shown at most twice each, the others once.
+
 ## macOS privacy prompts
 
 macOS asks before a program reads your Desktop, Documents or Downloads
@@ -1074,9 +1096,14 @@ or Photos library, cloud storage or a volume in the background.
   just cannot read that folder.
 - **Sessions started before this change** still ask as "caprock" until they
   end.
-- **Why it asks again after an update.** Caprock is not yet signed with an
-  Apple Developer ID, so to macOS each release is a new program. For a folder
-  you open in Caprock, or one a session runs in, it asks once per release.
+- **Asking again after an update.** Caprock is not yet signed with an
+  Apple Developer ID. Older releases were signed in a way that made each
+  release a new program to macOS, so the microphone and folder questions
+  came back after every update. The app is now signed with one Caprock
+  certificate that stays the same from release to release: the first update
+  to such a release asks one last time, and later updates keep your answers.
+  The `caprock` Homebrew formula's daemon, when it is the one running, still
+  asks once per release.
 - **Why there are several "caprock" entries without an icon.** Each entry
   is a `caprock` binary at a different place: older Homebrew releases
   (Homebrew keeps each version at its own path), the app's daemon, and
@@ -1107,9 +1134,10 @@ appeared:
 - **Start a new session** for voice. A session that was already running
   keeps the program that started it; a new one asks for itself.
 - **Check System Settings → Privacy & Security → Microphone.** If `claude`,
-  `caprock` or Caprock is listed and switched off, switch it on. After each
-  Caprock release macOS may ask again, since an ad-hoc signed release is a
-  new program to it.
+  `caprock` or Caprock is listed and switched off, switch it on. The first
+  update to a release signed with Caprock's certificate asks once more;
+  after that your answer stays across updates
+  ([why](#macos-privacy-prompts)).
 - **Homebrew without the app.** The formula's `caprock` is not signed with
   the hardened runtime, so nothing stops the prompt; it names "caprock".
 
@@ -1166,9 +1194,17 @@ once when the phone comes back to the page or onto a network):
 - **This phone was removed: pair again**: it was removed in *Paired
   devices*. Show a new code and scan it.
 
+A paired phone stays paired. A dropped connection, a restarting computer or
+relay, the phone asleep or offline, or a computer on an older Caprock never
+send it back to pairing: the page says *Pair again* only once the computer
+has turned the phone away on two separate connections (removed), or refused
+its handshake three times in a row (new keys after `caprock remote reset`).
+Even then it keeps checking once a minute and comes back by itself if that
+was wrong.
+
 **Retry** tries at once; **Pair again** shows the three steps and a box for
 a copied link. Opening a pairing link whose code was already used (the
-camera, then the app) keeps the pairing that worked.
+camera, then the app) goes straight back to the pairing that worked.
 
 The phone appears under *Paired devices*, which says how each device reaches
 this computer: *anywhere*, or *Wi-Fi link*. A *Wi-Fi link* is a phone paired
@@ -1231,8 +1267,14 @@ A phone you let control sessions can:
   **Worktree**. Then **Start an agent here** starts a session and opens its
   chat. A clone runs on the computer: lock the phone or lose the signal
   halfway and the page catches up when it is back, without cloning twice.
+- **Read a session.** A session on the phone has one thin bar on top: back,
+  its title, a dot for its state, and **Chat | Terminal** with **···** for
+  Changes, Timeline and Answers. Tap the title for the rest — the project,
+  the permission mode, the model, pause and stop, the folder and links.
+  Scroll down in the chat and the bar slides away so the conversation has
+  the screen; scroll up, or tap the top edge, and it is back.
 - **Chat with a session.** On a phone a session opens on its chat. Type into
-  the field and send; **Photo** attaches a picture by putting its path in the
+  the field and send (the field glows softly while it has the focus); **Photo** attaches a picture by putting its path in the
   message. The keys bar has Esc, Tab, the arrows, Enter and Ctrl+C for the
   agent's menus. Your saved prompts — the ones for every project and for
   this session's project — are chips above the field: tap one to put it in
@@ -1244,6 +1286,11 @@ A phone you let control sessions can:
   locking the phone loses nothing. Tap **Edit** to change one, **Cancel** to
   drop it, or **Send now** to send it without waiting. While a permission
   prompt is on the screen nothing is typed in; answer the prompt first.
+- **Dictate.** The microphone beside **Send** turns speech into text in the
+  field; nothing is sent until you press **Send**. The chip beside it says
+  the language it listens for (**EN**, **RU**…): your browser cannot guess
+  it, so tap the chip to move through your phone's languages and then to a
+  list of common ones. The choice is remembered on that phone.
 - **Pick a command or a file.** Type `/` at the start of the field for the
   agent's commands and skills, or `@` for a file in the session's folder,
   and tap one: it goes into the field, ready to send.
@@ -1255,7 +1302,10 @@ A phone you let control sessions can:
   them. Only in a project under your home folder. A phone that can only
   look sees the list and no buttons.
 
-It reconnects by itself. The header says where it stands — *Live*,
+It reconnects by itself. Through the relay, the name of your computer shows
+along the top only while something is wrong (*Connecting…*, *Computer
+offline*) or, with several computers paired, outside a session; inside one,
+switching computers is in the title's sheet. The header says where it stands — *Live*,
 *Catching up…*, *Reconnecting*, *Offline since* — and says *Live* only when
 the computer answered in the last 25 seconds. A message sent while offline
 waits as *Will send when connected* and goes when the connection is back

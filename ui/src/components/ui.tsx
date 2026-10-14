@@ -167,6 +167,21 @@ function healthTone(h: Health): 'ok' | 'warn' | 'danger' | 'muted' {
   }
 }
 
+/** The session's state as a dot alone, its word for screen readers and on
+ *  hover: where a Badge does not fit (the phone's session bar). */
+export function HealthDot({ health, className = '' }: { health: Health; className?: string }) {
+  const tone = healthTone(health)
+  return (
+    <span
+      role="img"
+      aria-label={healthLabel[health]}
+      title={healthLabel[health]}
+      data-health={health}
+      className={`inline-block h-2 w-2 shrink-0 rounded-full ${tone === 'ok' ? 'bg-ok' : tone === 'warn' ? 'bg-warn' : tone === 'danger' ? 'bg-danger' : 'bg-fg-faint'} ${health === 'working' ? 'animate-pulse' : ''} ${className}`}
+    />
+  )
+}
+
 export function Badge({ health }: { health: Health }) {
   const tone = healthTone(health)
   const cls =

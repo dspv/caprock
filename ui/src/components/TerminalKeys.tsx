@@ -3,6 +3,7 @@ import type { TermState } from '@/lib/termv2'
 import { useSavedPromptsFor } from '@/lib/saved'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
 import { joinDictation, speechHint, speechSupport, startDictation, type Dictation } from '@/lib/speech'
+import { COMMON_SPEECH_LANGS, langChip, langIntroDue, langName, markLangIntroSeen, myLangs, nextSpeechLang, setSpeechLang, speechLang } from '@/lib/speechlang'
 
 /** A newline inside the prompt: ESC CR, what a terminal sends for Alt+Enter
  *  (see Terminal.tsx — a bare line feed submits once text is typed). */
@@ -103,6 +104,25 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
   const [listening, setListening] = useState(false)
   const [voiceNote, setVoiceNote] = useState('')
   const dictation = useRef<Dictation | null>(null)
+  // The language it listens for (lib/speechlang): the speech service cannot
+  // tell, so the chip beside the mic says it and a tap changes it.
+  const [lang, setLang] = useState(speechLang)
+  const [langMenu, setLangMenu] = useState(false)
+  const [langIntro, setLangIntro] = useState(() => voice && langIntroDue())
+  const pickLang = (tag: string) => {
+    setSpeechLang(tag)
+    setLang(speechLang())
+    setLangMenu(false)
+  }
+  const tapLang = () => {
+    if (langIntro) {
+      markLangIntroSeen()
+      setLangIntro(false)
+    }
+    const next = nextSpeechLang(lang, myLangs())
+    if (next === 'more') setLangMenu((v) => !v)
+    else pickLang(next)
+  }
   const beforeVoice = useRef('')
   useEffect(() => () => dictation.current?.stop(), [])
   const toggleVoice = () => {
@@ -116,7 +136,12 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
       return
     }
     beforeVoice.current = text
+    if (langIntro) {
+      markLangIntroSeen()
+      setLangIntro(false)
+    }
     const d = startDictation({
+      lang,
       onText: (heard) => setText(joinDictation(beforeVoice.current, heard)),
       onEnd: (err) => {
         dictation.current = null
@@ -356,9 +381,15 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
-          className="input w-full min-w-0 resize-none overflow-y-auto leading-snug"
+          data-filled={text.trim() ? '' : undefined}
+          className="input composer-field w-full min-w-0 resize-none overflow-y-auto leading-snug"
           style={{ fontSize: 16, lineHeight: '22px', paddingTop: 10, paddingBottom: 10, maxHeight: FIELD_MAX_PX }}
         />
+        {langIntro && !listening && !voiceNote && (
+          <div role="status" className="text-[13px] leading-snug text-fg-muted">
+            Dictation listens for <b className="font-medium text-fg">{langName(lang)}</b>. Tap <b className="font-medium text-accent">{langChip(lang)}</b> beside the mic to switch.
+          </div>
+        )}
         {(listening || voiceNote) && (
           <div role="status" aria-live="polite" className={`text-[13px] leading-snug ${listening ? 'text-fg' : 'text-fg-muted'}`}>
             {listening
@@ -407,6 +438,25 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
           </>
         )}
         {voice && (
+          <span className="relative shrink-0">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={tapLang}
+              disabled={listening}
+              aria-haspopup="menu"
+              aria-expanded={langMenu}
+              aria-label={`Dictation language: ${langName(lang)}. Tap to change`}
+              title={`Dictation language: ${langName(lang)}`}
+              data-testid="speech-lang"
+              className={`flex h-12 w-11 items-center justify-center rounded-sm border text-[13px] font-medium disabled:opacity-50 ${langIntro || langMenu ? 'border-accent text-accent' : 'border-border-strong bg-panel-2 text-fg-muted hover:border-accent'}`}
+            >
+              {langChip(lang)}
+            </button>
+            {langMenu && <LangMenu current={lang} onPick={pickLang} onClose={() => setLangMenu(false)} />}
+          </span>
+        )}
+        {voice && (
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
@@ -448,6 +498,39 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
         ))}
       </div>}
     </div>
+  )
+}
+
+/**
+ * The dictation languages: this viewer's first, then the common ones. Opens
+ * upwards from the chip, which sits at the bottom of the screen.
+ */
+function LangMenu({ current, onPick, onClose }: { current: string; onPick: (tag: string) => void; onClose: () => void }) {
+  const mine = myLangs()
+  const more = COMMON_SPEECH_LANGS.filter(([t]) => !mine.some((m) => m.split('-')[0] === t.split('-')[0]))
+  const row = (tag: string, name: string) => (
+    <button
+      key={tag}
+      type="button"
+      role="menuitemradio"
+      aria-checked={tag.toLowerCase() === current.toLowerCase()}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => onPick(tag)}
+      className={`flex min-h-11 w-full items-center gap-3 px-3 text-left text-[15px] hover:bg-panel-2 ${tag.toLowerCase() === current.toLowerCase() ? 'font-medium text-accent' : 'text-fg'}`}
+    >
+      <span className="w-7 shrink-0 text-[12px] text-fg-faint">{langChip(tag)}</span>
+      {name}
+    </button>
+  )
+  return (
+    <>
+      <div className="fixed inset-0 z-40" aria-hidden onClick={onClose} />
+      <div role="menu" aria-label="Dictation language" className="absolute bottom-full right-0 z-50 mb-2 max-h-[50dvh] w-56 overflow-y-auto rounded-md border border-border-strong bg-panel py-1 shadow-lg">
+        {mine.map((t) => row(t, langName(t)))}
+        {more.length > 0 && <div className="border-t border-border px-3 pb-1 pt-2 text-[11px] uppercase tracking-wide text-fg-faint">More</div>}
+        {more.map(([t, name]) => row(t, name))}
+      </div>
+    </>
   )
 }
 

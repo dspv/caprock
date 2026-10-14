@@ -35,6 +35,8 @@ type Ingester struct {
 	// spinning for; the terminal is already live, and this is the number
 	// underneath it.
 	every time.Duration
+	// kick asks Run for a sweep now (Kick).
+	kick chan struct{}
 
 	mu sync.Mutex
 	// at is how far into each file has been read. Keyed by path.
@@ -54,8 +56,20 @@ func NewIngester(dir string, rec *rollup.Recorder, log *slog.Logger) *Ingester {
 		return nil
 	}
 	return &Ingester{
-		dir: dir, rec: rec, log: log, every: 3 * time.Second,
+		dir: dir, rec: rec, log: log, every: 3 * time.Second, kick: make(chan struct{}, 1),
 		at: map[string]int64{}, cwd: map[string]string{},
+	}
+}
+
+// Kick asks for a sweep now instead of at the next tick: input was just
+// typed into a Gemini session Caprock holds. Never blocks.
+func (g *Ingester) Kick() {
+	if g == nil {
+		return
+	}
+	select {
+	case g.kick <- struct{}{}:
+	default:
 	}
 }
 
@@ -80,6 +94,10 @@ func (g *Ingester) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-g.kick:
+			if _, err := g.Sweep(ctx); err != nil {
+				g.log.Warn("gemini telemetry", "component", "gemini", "err", err)
+			}
 		case <-t.C:
 			if n, err := g.Sweep(ctx); err != nil {
 				// A telemetry read failing must never be louder than it is

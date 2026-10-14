@@ -77,6 +77,9 @@ type Ingester struct {
 	// LimitPrefix replaces store.CodexRateLimitPrefix when set.
 	LimitPrefix string
 
+	// kick asks Run for a pass now rather than at the next tick (Kick).
+	kick chan struct{}
+
 	namesAt time.Time
 	// namesFor is how many transcripts had been imported at that sync. A
 	// thread can be indexed before its transcript is imported, and then its
@@ -113,7 +116,17 @@ func NewIngester(dirs []string, rec *rollup.Recorder, log *slog.Logger, every ti
 	if every <= 0 {
 		every = 5 * time.Second
 	}
-	return &Ingester{dirs: dirs, rec: rec, log: log, every: every, seen: map[string]fileState{}}
+	return &Ingester{dirs: dirs, rec: rec, log: log, every: every, seen: map[string]fileState{}, kick: make(chan struct{}, 1)}
+}
+
+// Kick asks for a pass now instead of at the next tick: input was just typed
+// into a Codex session Caprock holds, and its transcript is about to say so.
+// A pass already asked for and not yet run is enough; this never blocks.
+func (in *Ingester) Kick() {
+	select {
+	case in.kick <- struct{}{}:
+	default:
+	}
 }
 
 // limitPrefix is where this importer's plan windows are stored.
@@ -153,6 +166,10 @@ func (in *Ingester) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-in.kick:
+			if err := in.once(ctx); err != nil && ctx.Err() == nil {
+				in.log.Warn("codex import failed", "component", "codex", "err", err)
+			}
 		case <-t.C:
 			if err := in.once(ctx); err != nil && ctx.Err() == nil {
 				in.log.Warn("codex import failed", "component", "codex", "err", err)

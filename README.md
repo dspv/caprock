@@ -488,7 +488,9 @@ claude.ai sign-in is not used and its plan limits do not apply.
 - **Local-first** — loopback only, no servers, no telemetry, no account. Nothing
   reaches the network unless you switch it on: the release check, the Gemini
   chat on your own key, GitHub, and the weekly report, alerts and chat through
-  your own Telegram bot are each off by default.
+  your own Telegram bot are each off by default. Caprock may ask you about
+  a feature it is considering; your answer reaches caprock.dev only if you
+  press Send, and the card says exactly what it sends.
 
 What your usage is actually worth — the same work priced at the API rate,
 against what your plan costs — is on the Cost screen, and everything you have

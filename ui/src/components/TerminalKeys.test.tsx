@@ -255,4 +255,41 @@ describe('TerminalKeys — the phone chat: voice and folded keys', () => {
     expect(field.value).toBe('Next: fix the test')
     expect(submitText).not.toHaveBeenCalled()
   })
+
+  it('dictates in the language on the chip, and a tap past the browser languages opens the list', () => {
+    localStorage.clear()
+    vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['en-US'])
+    let rec: { lang?: string } = {}
+    ;(window as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition = class {
+      lang = ''
+      constructor() { rec = this }
+      start() {}
+      stop() {}
+    }
+    vi.stubGlobal('isSecureContext', true)
+    render(<TerminalKeys send={vi.fn()} voice />)
+    const chip = screen.getByTestId('speech-lang')
+    expect(chip.textContent).toBe('EN')
+    // One browser language: the tap opens the list rather than doing nothing.
+    fireEvent.click(chip)
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Russian/ }))
+    expect(chip.textContent).toBe('RU')
+    expect(localStorage.getItem('caprock.speech.lang')).toBe('ru-RU')
+    fireEvent.click(screen.getByRole('button', { name: 'Dictate' }))
+    expect(rec.lang).toBe('ru-RU')
+    vi.restoreAllMocks()
+  })
+
+  it('introduces the chip once to a browser with two languages, and a tap switches', () => {
+    localStorage.clear()
+    vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['en-US', 'ru'])
+    ;(window as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition = class {}
+    render(<TerminalKeys send={vi.fn()} voice />)
+    expect(screen.getByRole('status').textContent).toMatch(/listens for English/)
+    fireEvent.click(screen.getByTestId('speech-lang'))
+    expect(screen.getByTestId('speech-lang').textContent).toBe('RU')
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(localStorage.getItem('caprock.speech.langSeen')).toBe('1')
+    vi.restoreAllMocks()
+  })
 })

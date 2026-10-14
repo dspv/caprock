@@ -53,6 +53,7 @@ import { StatusStrip } from '@/components/StatusStrip'
 import { openCaprockDoctor } from '@/components/FootprintPanel'
 import { StarStrip } from '@/components/StarStrip'
 import { MailStrip } from '@/components/MailStrip'
+import { OfferStrip } from '@/components/OfferStrip'
 import { BrainCaptureHost } from '@/components/BrainCapture'
 import { BrainGlyph } from '@/components/BrainDrop'
 import { openBrainCapture } from '@/lib/brain'
@@ -1711,6 +1712,8 @@ export function AppShell() {
       {workspaceShown && ws.tabs.length > 0 && <KeysHint isMac={isMac} onAllKeys={() => setSheet({ kind: 'keys' })} />}
       <SetupStrip app />
       <MailStrip />
+      {/* A survey question, never while a session waits on a permission prompt (ADR-062). */}
+      <OfferStrip busy={data.permissions.size > 0} />
       <StarStrip app />
       <BrainCaptureHost />
       <ShareMoment />
