@@ -101,8 +101,11 @@ export function ProjectCombobox({
   onSubmit,
   busy,
   autoFocus,
+  onNewProject,
 }: {
   projects: readonly Project[]
+  /** The list's last row, New project…: the wizard (components/ProjectWizard.tsx). */
+  onNewProject?: () => void
   /** The chosen project's id. */
   value: string
   onPick: (c: Candidate) => void
@@ -178,6 +181,17 @@ export function ProjectCombobox({
             <CandidateList id={`${id}-list`} label="Projects and repositories" items={items} active={active} home={home} onPick={pick} onHover={setActive} />
           ) : (
             <p className="px-2.5 py-2 text-[12.5px] text-fg-faint">Nothing called “{query.trim()}” here. Add a project with {keys('⌘O')} to look elsewhere.</p>
+          )}
+          {onNewProject && (
+            // mousedown, not click: the field's blur closes the list first.
+            <button
+              type="button"
+              tabIndex={-1}
+              onMouseDown={(e) => { e.preventDefault(); setOpen(false); onNewProject() }}
+              className="mt-1 flex h-[32px] w-full items-center gap-2 rounded-[6px] border-t border-[var(--app-hairline)] px-2.5 text-left text-[13px] text-accent hover:bg-[var(--app-row-hover)]"
+            >
+              New project… <span className="text-[12px] text-fg-muted">a repository, a monorepo or several repositories</span>
+            </button>
           )}
         </div>
       )}

@@ -8,6 +8,7 @@ fn main() {
             "update_daemon",
             "set_background",
             "open_external",
+            "pick_folder",
             "set_tray",
             "set_badge",
             "hotkey_status",

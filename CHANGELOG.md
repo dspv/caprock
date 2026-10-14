@@ -17,6 +17,24 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   and Plan — Now, Subagents, Tasks, Recent tools, Changes, CI and
   Processes — and stays folded or open as you left it. CI and Processes
   can be arranged with the rest.
+- **app:** New project in three big steps. ⌘O, *Add project* or *New
+  project…* in New agent: pick a folder (a place such as `~/dev`, then a
+  click on the folder; *Choose…* opens the system's folder picker in the
+  desktop app), see what is there — *One repository*, *3 repositories* as
+  cards all ticked for one multi-repo project (or one each), or a plain
+  folder — and *Start an agent here*. A folder inside a repository is that
+  repository, with no question. The same step says whether the repository
+  already has a `CLAUDE.md` or `AGENTS.md` (*Show* reads it) and takes
+  optional instructions for every agent there. Clone and a new empty folder
+  are in its footer.
+- **app:** what a project's agents are told is in sight. New agent shows a
+  bigger block, *Project instructions — Set · 12 lines* or *None*, and the
+  repository's own `CLAUDE.md` / `AGENTS.md` (members' too), each read on a
+  click and Caprock's edited in place; the project's page shows the same,
+  and its sidebar row's tooltip says it in words. A multi-repo project's
+  repositories are named under the Project field (*3 repos: api, web,
+  infra*). The daemon lists the files on each project and returns their
+  text from the folder scan (`instruction_files`).
 
 ### Changed
 
@@ -72,6 +90,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   "This phone can read but not type. On the computer: Settings…" left out
   that the setting is in the Caprock app, and two hints still sent you to
   "Settings → Phone", which does not exist.
+- **doctor:** stopping several orphans at once reports every one of them.
+  A process that was no longer on the list and one that could not be
+  stopped were recorded at the same moment, and one of the two could drop
+  out of the result, so a process left running was not reported as failed.
 - **phone:** a phone still on a Wi-Fi link now hears about it. Settings →
   Use on your phone → *Paired devices* says how each device reaches the
   computer (*anywhere*, *anywhere with Tailscale*, *Wi-Fi link*), and a

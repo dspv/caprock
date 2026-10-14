@@ -646,7 +646,14 @@ func stopListed(ctx context.Context, s signaller, list []Orphan, targets []Orpha
 		seen[t.PID] = true
 		o, ok := byPID[t.PID]
 		if !ok || o.StartedAt != t.StartedAt || t.StartedAt == 0 {
+			// Under mu: the stops started for earlier targets are already
+			// appending their own results. Unlocked, the two appends raced,
+			// and one result vanished from the reply (seen on Windows CI,
+			// 2026-10-14: a process that was never stopped was not reported
+			// as failed either).
+			mu.Lock()
 			res.Failed = append(res.Failed, ReapFailure{PID: t.PID, Error: errNotListed.Error()})
+			mu.Unlock()
 			continue
 		}
 		wg.Add(1)

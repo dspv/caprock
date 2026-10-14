@@ -78,6 +78,8 @@ export interface ApiProject {
   defaults?: ProjectDefaults
   /** A multi-repo project's member repositories (ADR-055); absent otherwise. */
   repos?: ApiRepo[]
+  /** The repository's own CLAUDE.md, .claude/CLAUDE.md, AGENTS.md: the root's, then each member's as `api/CLAUDE.md`. */
+  instruction_files?: string[]
 }
 
 /** One member of a multi-repo project on the wire (`RepoView`). */
@@ -147,6 +149,15 @@ export interface FoundRepo {
   project_name?: string
   /** A member of this multi-repo project. */
   member_of?: number
+  /** Its own CLAUDE.md, .claude/CLAUDE.md, AGENTS.md, names only. */
+  instruction_files?: string[]
+}
+
+/** An instruction file a scan read, with its text (at most 64 KB). */
+export interface InstructionFile {
+  name: string
+  text: string
+  truncated?: boolean
 }
 
 /** What adding a folder would add: the repository it is in, or the ones below it. */
@@ -155,6 +166,8 @@ export interface ScanResult {
   repo_root?: string
   repos: FoundRepo[]
   capped?: boolean
+  /** The instruction files at the top of `repo_root`, else of `root`, with their text. */
+  instruction_files?: InstructionFile[]
 }
 
 /**
@@ -208,6 +221,8 @@ export interface Project {
   defaults?: ProjectDefaults
   /** A multi-repo project's member repositories (ADR-055); absent for one repository or folder. */
   repos?: RepoInfo[]
+  /** The repository's own instruction files, which the agents read themselves (`CLAUDE.md`, `api/AGENTS.md`). */
+  instruction_files?: string[]
 }
 
 /** A `project` frame on /v1/live: the whole project, or `{id, removed: true}`. */
@@ -277,6 +292,7 @@ export function fromApiProject(p: ApiProject): Project {
     last_activity: p.last_activity,
     defaults: p.defaults,
     ...(Array.isArray(p.repos) && p.repos.length > 0 ? { repos: p.repos.map(fromApiRepo) } : {}),
+    ...(Array.isArray(p.instruction_files) && p.instruction_files.length > 0 ? { instruction_files: p.instruction_files.filter((f) => typeof f === 'string') } : {}),
     worktrees: (p.worktrees ?? [])
       .filter((w) => !w.missing)
       .map((w) => ({ name: w.name, path: w.path, branch: checkoutLabel(w.branch, w.head), changed: w.changed, caprock: w.caprock })),
@@ -396,7 +412,13 @@ export const projectsApi = {
   /** GET /v1/projects/scan: what adding a folder would add (ADR-055). */
   scan: async (path: string): Promise<ScanResult> => {
     const v = await call<ScanResult>('Finding repositories', `/v1/projects/scan?path=${encodeURIComponent(path)}`)
-    return { root: v?.root ?? path, repo_root: v?.repo_root || undefined, repos: Array.isArray(v?.repos) ? v.repos.filter((r) => r && typeof r.path === 'string') : [], capped: !!v?.capped }
+    return {
+      root: v?.root ?? path,
+      repo_root: v?.repo_root || undefined,
+      repos: Array.isArray(v?.repos) ? v.repos.filter((r) => r && typeof r.path === 'string') : [],
+      capped: !!v?.capped,
+      ...(Array.isArray(v?.instruction_files) ? { instruction_files: v.instruction_files.filter((f) => f && typeof f.name === 'string' && typeof f.text === 'string') } : {}),
+    }
   },
   /** GET /v1/projects/{id}/repos: the members with fresh git state and open pull requests. */
   repos: async (id: string): Promise<RepoInfo[]> => {
