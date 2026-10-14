@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.116.1] - 2026-10-14
+
 ### Changed
 
 - **app:** closing the tab of an agent Caprock started now asks: **Close
@@ -23,11 +25,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   in place of the small folder icon: Projects lists the sessions under
   their projects, Tabs in one list in the tabs' order. Settings →
   Appearance → *Sidebar* uses the same words.
-- **cockpit:** the spend chart no longer jumps when you hover it. At rest
-  the line above the bars stood 23px tall (the ▾ that picks the metric took
-  the panel's larger font) and under the pointer 19px, so the bars and
-  everything below them moved 4px on every hover; the line is now a fixed
-  18px either way.
 
 ### Fixed
 
@@ -36,6 +33,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   list; if you used Caprock before and never chose, the sidebar lists the
   sessions under their projects again. A first visit still starts on the
   flat list.
+- **cockpit:** the spend chart no longer jumps when you hover it. At rest
+  the line above the bars stood 23px tall (the ▾ that picks the metric took
+  the panel's larger font) and under the pointer 19px, so the bars and
+  everything below them moved 4px on every hover; the line is now a fixed
+  18px either way.
 
 ## [0.116.0] - 2026-10-14
 
