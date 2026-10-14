@@ -9,6 +9,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **brain:** Second Brain builds itself (Premium), once you say yes. When a
+  session has been quiet for ten minutes, your own `claude` (Haiku, no
+  tools, no transcript, none of your hooks) picks out what it decided and
+  found, and each memory links back to the passage it came from. A daily
+  token limit (100k, 300k or 1M), short sessions skipped, failures retried
+  later; *Build from my last 30 days* shows an estimate first. Settings →
+  Second Brain shows what it used and read. A new session's handoff now
+  carries up to five of the repository's memories.
+
+## [0.117.1] - 2026-10-14
+
+### Added
+
 - **now:** the tokens beside each pull request's cost in the CI/CD
   section (*9.4M tok · $2.12*); the hover splits input, output, cache read
   and cache write.
@@ -22,16 +35,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   searches them by words, project and time, and opens one to edit, pin,
   link to a topic or delete. Twenty memories are free; Premium keeps every
   one. Kept in Caprock's database on this machine.
-- **brain:** Second Brain builds itself (Premium), once you say yes. When a
-  session has been quiet for ten minutes, your own `claude` (Haiku, no
-  tools, no transcript, none of your hooks) picks out what it decided and
-  found, and each memory links back to the passage it came from. A daily
-  token limit (100k, 300k or 1M), short sessions skipped, failures retried
-  later; *Build from my last 30 days* shows an estimate first. Settings →
-  Second Brain shows what it used and read. A new session's handoff now
-  carries up to five of the repository's memories.
+
+### Changed
+
+- **now:** *Live activity* is now **What happened**: the moments of your
+  sessions instead of every command. Files edited (grouped by folder), tests
+  and checks with their result (*passed*, *failed (exit 2)*, or *no result
+  recorded* when there is none), builds, commits with their message, pushes,
+  pull requests opened or merged, subagents by their task, a turn ending with
+  the first line of the reply, a session waiting for approval, and a command
+  that failed. Reads, searches and the like are a quiet `+N` on the moment
+  they led up to. On one day of real use that is 1,974 rows where the old
+  feed had 11,493. *All commands* brings the old feed back; the panel folds
+  like the others and remembers it; every row is the same height.
 
 ### Fixed
+
+- **now:** the activity feed no longer says "session ended" at the end of
+  every turn and every subagent's stop; it says *finished its turn* or
+  *subagent stopped*, and "session ended" only when one did.
 
 - **phone:** a phone can type the moment it pairs. A newly paired phone
   could only look until a second click on the computer — impossible once
