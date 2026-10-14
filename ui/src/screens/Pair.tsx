@@ -96,14 +96,14 @@ export function PairScreen() {
       {homeScreen ? (
         <p className="mt-1.5 text-[13px] leading-relaxed text-fg-muted">
           Opened from the home screen, Caprock keeps its own sign-in, apart from the
-          browser&apos;s, so it pairs once more here. On the computer, open{' '}
-          <span className="text-fg">Settings</span>, press <span className="text-fg">Show a code</span>{' '}
+          browser&apos;s, so it pairs once more here. Open the Caprock app on your computer:{' '}
+          <span className="text-fg">Settings → Use on your phone</span>, press <span className="text-fg">Show a code</span>{' '}
           and type the six digits. Don&apos;t scan it: the camera opens the browser, not this app.
         </p>
       ) : (
         <p className="mt-1.5 text-[13px] leading-relaxed text-fg-muted">
-          On the computer running Caprock, open <span className="text-fg">Settings</span> and
-          press <span className="text-fg">Show a code</span>. Scan it with the camera, or type the
+          Open the Caprock app on your computer: <span className="text-fg">Settings → Use on your phone</span>,
+          then press <span className="text-fg">Show a code</span>. Scan it with the camera, or type the
           six digits here.
         </p>
       )}

@@ -9,7 +9,7 @@
  * through one recursive view: a split tab (F15) shows its panes side by side
  * or stacked, each with a header, behind dividers that drag or take arrows.
  */
-import { Fragment, memo, useCallback, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { SessionSummary } from '@/lib/api'
 import { ownTab, type PaneLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
 import { dotOf, sessionAbout, sessionTitle } from '@/lib/sidebar'
@@ -88,6 +88,48 @@ export interface TabStripProps {
 
 /** What a tab's edge says, in its tooltip: the only states a tab shows. */
 const ALERT_WORD = { waiting: 'waiting on you', error: 'failed' } as const
+
+/** How fast a cut project name scrolls on hover, in px per second. */
+const PROJECT_SCROLL_PX_S = 40
+
+/**
+ * A tab's project name, after its title. It takes its whole width first and
+ * the title gives way before it (owner, 2026-10-14, translated: "the repo
+ * name on the right doesn't fit — it must fit … give it more space"). Cut
+ * only when the tab is too narrow even for that, it ends in an ellipsis at
+ * rest and, under the pointer, slides the hidden part into view inside its
+ * own box (`data-overflow`, tokens.css) — never wider, so nothing in the
+ * strip moves; with reduced motion it stays cut and the tooltip names it.
+ */
+export function TabProject({ name, hue }: { name: string; hue: number }) {
+  const box = useRef<HTMLSpanElement>(null)
+  const text = useRef<HTMLSpanElement>(null)
+  const [hidden, setHidden] = useState(0)
+  useLayoutEffect(() => {
+    const el = box.current
+    if (!el) return
+    // The text's own width, which a transform never changes, against the
+    // box: measured at rest and on every resize, never because of a hover.
+    const measure = () => {
+      const over = Math.ceil((text.current?.offsetWidth ?? 0) - el.clientWidth)
+      setHidden(over > 1 ? over : 0)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [name])
+  const style = {
+    color: `hsl(${hue} 42% 50%)`,
+    '--tab-project-shift': `${hidden}px`,
+    '--tab-project-time': `${Math.max(1.2, hidden / PROJECT_SCROLL_PX_S).toFixed(2)}s`,
+  } as CSSProperties
+  return (
+    <span ref={box} data-tab-project data-overflow={hidden > 0 || undefined} aria-hidden className="min-w-0 shrink truncate text-[11px]" style={style}>
+      <span ref={text}>{name}</span>
+    </span>
+  )
+}
 
 export function TabStrip(props: TabStripProps) {
   const { tabs, activeTabId } = props
@@ -214,7 +256,7 @@ export function TabStrip(props: TabStripProps) {
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
               title={tip}
               data-project={t.projectId}
-              className={`group relative flex h-[32px] min-w-[112px] max-w-[260px] flex-1 basis-[200px] cursor-default select-none items-center gap-1 rounded-t-[9px] pl-2 pr-1 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
+              className={`group relative flex h-[32px] min-w-[112px] max-w-[340px] flex-1 basis-[220px] cursor-default select-none items-center gap-1 rounded-t-[9px] pl-2 pr-1 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
                 active ? (file !== undefined ? 'app-tab-front bg-bg font-medium text-fg' : 'app-tab-front app-slab font-medium text-fg') : 'app-tab-back text-fg-muted hover:text-fg'
               } ${dragging === t.id ? 'opacity-60' : ''}`}
             >
@@ -222,9 +264,12 @@ export function TabStrip(props: TabStripProps) {
               {alert && <span data-tab-alert={alert} aria-hidden className={`pointer-events-none absolute inset-x-2 top-0 h-[3px] rounded-b-full ${alert === 'waiting' ? 'bg-accent' : 'bg-danger'}`} />}
               {renaming === t.id && renamable(s, isShell)
                 ? <InlineRename sessionId={s.session_id} initial={s.name?.trim() || sessionAbout(s)} current={s.name ?? ''} onDone={() => setRenaming(null)} />
-                : <span data-row-title className="min-w-0 flex-1 truncate">{title}</span>}
-              {/* Its project, short and faint after the name: fixed, never edited (owner, 2026-10-14). */}
-              {named && <span data-tab-project aria-hidden className="max-w-[9ch] shrink truncate text-[11px]" style={{ color: `hsl(${projectHue(t.projectId)} 42% 50%)` }}>{project}</span>}
+                : <span data-row-title className="min-w-[4ch] flex-1 truncate">{title}</span>}
+              {/* Its project, faint after the name: fixed, never edited
+                * (owner, 2026-10-14). Whole while the tab has room — the
+                * title is cut first, down to a few letters — and it scrolls
+                * on hover when even that is not enough. */}
+              {named && <TabProject name={project} hue={projectHue(t.projectId)} />}
               {file === undefined && <HotMark sessionId={s?.session_id} />}
               {/* The jump key and the × share one slot at the right end, so
                 * nothing moves the title: the key at rest, the × on hover.
@@ -238,7 +283,7 @@ export function TabStrip(props: TabStripProps) {
                 <button
                   type="button"
                   aria-label={`${closeWord(file !== undefined, isShell)} ${title}`}
-                  title={closeTitle(file !== undefined, isShell, !!label?.chat)}
+                  title={closeTitle(file !== undefined, isShell, !!label?.chat, !!label?.session?.owned && label.session.status !== 'ended')}
                   onClick={(e) => { e.stopPropagation(); props.onDetach(t.id) }}
                   className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'absolute right-0 top-0 invisible group-hover:visible group-focus-within:visible'}`}
                 >
@@ -456,8 +501,8 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
           <span className="min-w-0 flex-1 truncate">{title}</span>
           <button
             type="button"
-            aria-label={isShell ? `Close shell ${title}` : `Close pane ${title} — the agent keeps running`}
-            title={isShell ? `Close shell (${keys('⌘W')})` : `Close pane (${keys('⌘W')}) — the agent keeps running`}
+            aria-label={isShell ? `Close shell ${title}` : `Close pane ${title} — ${s?.owned && s.status !== 'ended' ? 'keep the agent running or end it' : 'the agent keeps running'}`}
+            title={isShell ? `Close shell (${keys('⌘W')})` : `Close pane (${keys('⌘W')}) — ${s?.owned && s.status !== 'ended' ? 'keep the agent running or end it' : 'the agent keeps running'}`}
             onClick={(e) => { e.stopPropagation(); ctx.onClosePane?.(node.id) }}
             className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg"
           >

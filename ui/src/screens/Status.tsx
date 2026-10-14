@@ -48,6 +48,7 @@ import { SavedPromptsSetting } from '@/components/SavedPromptsSetting'
 import { SubscriptionsSetting } from '@/components/SubscriptionsSetting'
 import { SpawnModeSetting } from '@/components/SpawnModeSetting'
 import { KeepAwakeSetting } from '@/components/KeepAwake'
+import { AgentCloseSetting } from '@/components/AgentCloseSetting'
 import { WorktreeCleanupSetting } from '@/components/WorktreeCleanupSetting'
 import { GitHubSettings } from '@/components/GitHubSettings'
 import { WindowStopSetting } from '@/components/WindowStopSetting'
@@ -150,6 +151,7 @@ export function StatusScreen() {
         <>
           {owner && <SpawnModeSetting />}
           {owner && <KeepAwakeSetting />}
+          <AgentCloseSetting />
           {owner && <SavedPromptsSetting />}
           <AppearanceSection />
           <TerminalSettings />

@@ -73,6 +73,13 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-14 — 0.116.1: the sidebar keeps the view you had, and the spend chart holds still
+
+A patch on the night batch. 0.116.0 had moved everyone who never touched
+the sidebar toggle to the flat list; they get the project tree back, and the
+toggle is now a worded switch, Projects | Tabs. The spend chart's top line
+has a fixed height, so hovering it no longer moves the bars.
+
 ### 2026-10-14 — 0.116.0: tabs by the order you open them, the PR board, Mail's full set, and a lighter daemon
 
 The night batch. Tabs: ⌘1–⌘9 follow the order tabs were opened, every tab

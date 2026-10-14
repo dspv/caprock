@@ -66,14 +66,21 @@ others. Installing it: [install-app.md](install-app.md).
   order down the tree. **Tabs** is one list headed *Sessions* of the
   sessions open in tabs, in the tabs' order, each with its tab's key and
   its project's short name in the project's colour; sessions running with
-  no tab come after them, without a key. Dragging a row there (or ⌥⇧↑ ↓
+  no tab come after them under a quiet *Running, no tab* line, without a
+  key. Dragging a row there (or ⌥⇧↑ ↓
   on it) moves its tab in the strip. The same choice is in Settings →
   Appearance → *Sidebar*; the app remembers it. If you used Caprock before
   and never chose, you keep Projects; a first visit starts on Tabs.
 - **Closing things: ×.** Hover a tab under the project — or look at the
   one in front, where it always shows — for its **×**: it closes the tab
-  exactly as ⌘W and the tab strip's × do. An agent in it keeps running (it
-  moves to the muted rows below). A shell closes for real, as in any
+  exactly as ⌘W and the tab strip's × do. For an agent Caprock started it
+  asks: **Close tab** (in focus, so ⌘W then Enter) leaves the agent running
+  — it moves to the muted rows, under *Running, no tab* in the Tabs list —
+  and **Close and end the agent** stops it (asking once more if it is still
+  answering); its conversation is kept and can be continued. Tick **Don't
+  ask again** to keep the answer; Settings → *Closing a tab* changes it
+  back. An agent you started in your own terminal is never ended from
+  Caprock: its tab just closes. A shell closes for real, as in any
   terminal app: an idle one ends with its tab; one running a program asks
   first — *Shell 1 is running claude. Close and stop it?* — with **Stop and
   close**, **Keep running, close tab** and **Cancel**. A project's **×**
@@ -228,7 +235,11 @@ others. Installing it: [install-app.md](install-app.md).
   and its cost is priced at DeepSeek's list price. Free. *Remove key* turns
   it off.
 - **The tab strip.** The tab in front has an amber top edge; the others are
-  shaded tabs of their own. The amber + opens a menu: New agent, Quick
+  shaded tabs of their own. A tab reads the session's name, then its
+  project's name in the project's colour; when room runs short the
+  session's name is shortened first, and a project name that still does
+  not fit scrolls into view while you point at the tab. The tooltip has
+  both in full. The amber + opens a menu: New agent, Quick
   chat, New shell, Run saved…, Open file, Add project, each with its key.
 - **Several attempts at once.** In *New agent*, choose *New copy from a
   branch* and set *Attempts* to 2, 3 or 4, then write the first message. The
@@ -338,7 +349,7 @@ others. Installing it: [install-app.md](install-app.md).
   below it; ⇧Enter on a session in the palette opens it there. Up to four
   panes a tab. Click a pane or press ⌘[ ⌘] to move between them; drag the
   divider, or focus it and use the arrow keys. ⌘W closes the focused pane: an
-  agent in it keeps running, a shell closes as its tab would.
+  agent or a shell in it is treated as its tab would be.
 - **Command palette** (⌘K). Sessions waiting on you come first, then actions,
   tabs, sessions and projects, best match first; past sessions are searched
   as you type and listed under *History*. *Keyboard shortcuts* lists every
