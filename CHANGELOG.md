@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.117.1] - 2026-10-14
+
 ### Added
 
 - **now:** the tokens beside each pull request's cost in the CI/CD
