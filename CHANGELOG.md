@@ -7,6 +7,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **now:** the tokens beside each pull request's cost in the CI/CD
+  section (*9.4M tok · $2.12*); the hover splits input, output, cache read
+  and cache write.
+
+- **brain:** Second Brain. Keep the answers worth keeping as memories — an
+  idea, a decision, a finding, an open question — each linked to its
+  project, its topics and the moment in the session it came from. **Drop
+  into brain** sits under every answer on Memory, in a session's Answers
+  and in the chat view; ⇧⌘H (Ctrl+Shift+H on Windows and Linux) or ⌘K →
+  *Add to brain…* takes a line of your own. *Brain* in the screen row
+  searches them by words, project and time, and opens one to edit, pin,
+  link to a topic or delete. Twenty memories are free; Premium keeps every
+  one. Kept in Caprock's database on this machine.
+
 ### Changed
 
 - **phone:** a session's header is one 44px bar: back, the title, a dot for
@@ -35,6 +51,40 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   Ukrainian, German, French, Spanish, Portuguese, Italian, Polish, Turkish,
   Japanese, Chinese, Korean, Arabic, Hebrew). Remembered per viewer; shown
   prominently once when the browser names more than one language.
+
+- **phone:** a phone can type the moment it pairs. A newly paired phone
+  could only look until a second click on the computer — impossible once
+  you have left the house. Settings → Use on your phone now has **This
+  phone can type and start agents** beside **Show a code**, ticked by
+  default and remembered on the computer; the code carries it, so the phone
+  pairs ready to work. Untick it for a phone that should only look. The
+  panel lists the steps one line each and, while the code is up and after,
+  ticks off what is done and what is left: access from anywhere, the phone
+  paired (by name), whether it can type (with **Let it control sessions**
+  right there if not) and whether the app is installed on it. The phone
+  opens on a short **Ready** card — connected to which computer, whether it
+  can type and, if not, exactly where on the computer to fix it, the
+  install button, and **Open sessions**. m.caprock.dev needs a redeploy
+  for the phone's half.
+
+- **now:** the CI/CD section lists only repositories with a session in the
+  last 14 days, most recent first. Older ones, and any you hide from a
+  block's new ⋯ menu (*Hide from CI/CD*), fold into one quiet line —
+  *3 older repositories · 1 hidden — show* — and are not read from GitHub
+  until you show them; hidden ones come back with *Show again*.
+- **now:** GitHub no longer runs out of time on the CI/CD section: the
+  repositories are read three at a time, each with its own 12 seconds,
+  instead of one after another under a single deadline that left every
+  later one *context deadline exceeded*. A slow GitHub is one grey line —
+  *GitHub didn't answer in time — retrying* — once for the section when
+  every repository says the same, and the names show at once while the
+  figures load.
+- **now:** a session that drove many pull requests is no longer charged
+  whole to the one whose branch it ended on. It is split between the pull
+  requests it worked on, and such a row says *shared*; the release pull
+  request #601 read as $1,884.29, the whole orchestrating session, and now
+  reads $2.12 (measured on the owner's database). This also corrects the
+  PRs & CI Board's agent cost.
 
 ## [0.117.0] - 2026-10-14
 

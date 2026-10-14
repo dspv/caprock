@@ -335,6 +335,19 @@
   --agent-deepseek: color-mix(in srgb, #5786fe 70%, var(--color-fg-muted));
 }
 
+/* Second Brain's kinds (lib/brain.ts KIND_COLOR): the same 70/30-style mix
+ * with the muted ink, so each follows the theme. Memories take a hue each;
+ * the entities they hang off are ink: a topic muted, a project full. */
+:root {
+  --brain-idea: color-mix(in srgb, var(--color-accent) 85%, var(--color-fg-muted));
+  --brain-decision: color-mix(in srgb, var(--color-ok) 85%, var(--color-fg-muted));
+  --brain-finding: color-mix(in srgb, #4f9fe0 75%, var(--color-fg-muted));
+  --brain-question: color-mix(in srgb, var(--color-merged) 80%, var(--color-fg-muted));
+  --brain-topic: var(--color-fg-muted);
+  --brain-person: color-mix(in srgb, #d97757 65%, var(--color-fg-muted));
+  --brain-project: var(--color-fg);
+}
+
 /* Edge to edge on a phone (viewport-fit=cover in index.html): keep content
  * clear of the notch in landscape and of the home bar. The top inset is the
  * sticky header's own padding (Shell), so its colour runs up under the status

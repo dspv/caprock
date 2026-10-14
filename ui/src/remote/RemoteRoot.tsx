@@ -15,6 +15,7 @@ import { promptInstall, useInstallOffer, type InstallOffer } from './install'
 import { useRoute } from '@/lib/router'
 import { useNarrowScreen } from '@/lib/phone'
 import { provideMachineSwitch } from '@/lib/machineswitch'
+import { ReadyGate } from './ReadyCard'
 
 const App = lazy(() => import('../App'))
 
@@ -78,7 +79,7 @@ export default function RemoteRoot() {
   return (
     <div className="flex min-h-dvh flex-col">
       {machineBarShown(link, several, narrow && route.name === 'session') && <MachineBar link={link} />}
-      {!blocked && <InstallStrip />}
+      {!blocked && !link.everOpen && <InstallStrip />}
       <div className="min-h-0 flex-1">
         {pairing ? (
           <AddMachine onCancel={() => setPairing(false)} />
@@ -90,9 +91,14 @@ export default function RemoteRoot() {
           <p className="px-6 pt-10 text-center text-[15px] text-fg-muted">Reaching {currentMachine()?.name ?? 'your computer'}…</p>
         ) : null}
         {link.everOpen && !blocked && !pairing && (
-          <Suspense fallback={null}>
-            <App />
-          </Suspense>
+          // Once after pairing, and while this phone cannot type: what is
+          // done and what is left, before the dashboard (owner, 2026-10-14).
+          <ReadyGate machineId={machine.id} machineName={machine.name}>
+            <InstallStrip />
+            <Suspense fallback={null}>
+              <App />
+            </Suspense>
+          </ReadyGate>
         )}
       </div>
     </div>
@@ -468,10 +474,14 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
           {first && <SettingsSketch />}
         </Step>
         <Step n={2}>
-          Press <b className="font-semibold text-fg">Show a code</b>. It turns on access from anywhere
+          Leave <b className="font-semibold text-fg">This phone can type and start agents</b> ticked, and press{' '}
+          <b className="font-semibold text-fg">Show a code</b>
         </Step>
         <Step n={3}>
-          Scan the code with this phone&apos;s camera
+          Scan the code with this phone&apos;s camera and open the link; the phone pairs
+        </Step>
+        <Step n={4}>
+          Optional: install the app when this page offers it
         </Step>
       </ol>
 

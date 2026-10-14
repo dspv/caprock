@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-14 — unreleased: Second Brain, by hand
+
+Memories kept as a graph ([ADR-063](08-decisions.md)): migration 0055
+(`brain_nodes`, `brain_edges`, `brain_runs`), `/v1/brain*`, the `brain`
+live frame, *Drop into brain* on Memory, a session's Answers and the chat
+view, the quick capture (⇧⌘H, ⌘K *Add to brain…*) and the `#/brain` screen
+(search, project, span, a memory's detail with edit, pin, link and delete).
+Twenty memories by hand are free; the twenty-first is `402` from the
+daemon. The graph read measured 45–50 ms for 5,000 memories and 15,000 edges
+(`TestBrainGraphReadsFiveThousandNodesQuickly`). Not built yet: the
+automatic extraction, the sidebar block and the drawn graph.
+
 ### 2026-10-14 — 0.117.0: Mail one key away, a cockpit you arrange, new projects in three steps, the phone from anywhere only
 
 Mail has its own button and tab (⇧⌘M) and opens on a sample inbox until an

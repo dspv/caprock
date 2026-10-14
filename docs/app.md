@@ -174,8 +174,14 @@ others. Installing it: [install-app.md](install-app.md).
   Plan (read) permission, or Administration (read) for an organization), the median CI time and its trend, the share of
   red runs, runs stuck far past their usual time or waiting for a runner,
   the newest release, the five pull requests the agents spent most on this
-  week, and who opened them, face and name. Costs are at API list price.
-  Fold it and it reads nothing.
+  week with their tokens beside the cost, and who opened them, face and
+  name. Costs are at API list price; a session that worked on several pull
+  requests is split between them and marked *shared*. Only repositories
+  with a session in the last 14 days are read; older ones, and any you hide
+  from a block's ⋯ menu, fold into one line (*3 older repositories · 1
+  hidden — show*) and are not read from GitHub until you show them. When
+  GitHub is slow it says so in one grey line and tries again. Fold it and
+  it reads nothing.
 - **Live pulse.** One row per running session, led by the session's name,
   with the project, branch and short id under it. Rows keep their places:
   the order sessions started in (tabs follow the tab strip among
@@ -676,6 +682,7 @@ On macOS:
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                         |
 | ⌘[ ]        | Previous and next pane                                                   |
 | ⌘J          | Next session waiting on you                                              |
+| ⇧⌘H         | Add to brain: keep a line in Second Brain                                |
 | ⌘F          | Find in the terminal or the file                                         |
 | ⌘K          | Command palette                                                          |
 | ⌘,          | Settings                                                                 |
@@ -692,7 +699,7 @@ On macOS:
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 (Quick chat is Ctrl+Alt+Shift+N, the PRs & CI full page Ctrl+Alt+Shift+B,
 Send feedback Ctrl+Alt+Shift+F, since Ctrl+Shift+F is Find; tabs are
-Ctrl+Shift+1–9). The arrow
+Ctrl+Shift+1–9; Add to brain is Ctrl+Shift+H). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
@@ -784,6 +791,30 @@ it: nothing that updates behind the sheet takes it from the field you are in.
 - **Closing the window.** On macOS Caprock stays in the menu bar; ⌘Q quits.
   On Windows and Linux closing quits. Quitting never stops the daemon or a
   session.
+
+## Second Brain
+
+The few answers worth keeping, kept as a graph: ideas, decisions, findings
+and open questions, each linked to its project and topics and to the moment
+in the session it came from. Open it from *Brain* in the dashboard's screen
+row.
+
+- **Drop an answer in.** Under any answer on the Memory screen, in a
+  session's Answers tab, or under a reply in the chat view, press **Drop into
+  brain**. Caprock reads the answer from its own record, so the memory knows
+  its session, project and time; its first line becomes the title.
+- **Add a line of your own.** ⇧⌘H (Ctrl+Shift+H on Windows and Linux), or ⌘K
+  → *Add to brain…*: type it, pick Idea, Decision, Finding or Question, name
+  topics if you like, and ⌘↩.
+- **Find and tidy.** Search, pick a project or a span; open a memory to edit
+  its title and summary, pin it, link it to a topic, jump to the session it
+  came from, or delete it.
+- **Free and Premium.** Twenty memories dropped in by hand are free; Premium
+  keeps every one. Whatever you kept stays readable and editable if a licence
+  lapses.
+
+**Privacy.** Second Brain lives in Caprock's database on this computer.
+Nothing in it is sent anywhere.
 
 ## Notifications
 
@@ -1069,15 +1100,28 @@ install from an app store. It reaches this computer through an encrypted
 relay that passes bytes it cannot read
 ([how it works](../README.md#from-anywhere-through-an-encrypted-relay)).
 
-1. **Show a code.** In the app, click **phone** beside *Settings* in the
-   sidebar (or open Settings → *Use on your phone*) and press **Show a
-   code**. The line under the button says what that press does: it turns on
-   access from anywhere for this computer, and keeps it on until you press
-   **Turn off** beside it.
-2. **Scan it.** Point the phone's camera at the code and tap the link:
-   Caprock opens and pairs by itself. **Copy link** under the code is for a
-   phone that cannot scan.
-3. **Install the app, once.** On Android, in Chrome, press **Install the
+1. **Choose what the phone may do.** In the app, click **phone** beside
+   *Settings* in the sidebar (or open Settings → *Use on your phone*).
+   **This phone can type and start agents** is ticked by default, and
+   remembered on this computer: the phone can then start agents, type into
+   sessions, approve and stop them as soon as it pairs, with nothing more to
+   click here. Untick it for a phone that should only look.
+2. **Show a code and scan it.** Press **Show a code**. The line under the
+   button says what that press does: it turns on access from anywhere for
+   this computer, and keeps it on until you press **Turn off** beside it.
+   Point the phone's camera at the code and tap the link: Caprock opens and
+   pairs by itself. **Copy link** under the code is for a phone that cannot
+   scan.
+3. **Check the list.** While the code is up, and after, the panel shows
+   what is done and what is left, live: *Access from anywhere* — on;
+   *Phone paired* — waiting, then the phone's name; *Can type from the
+   phone* — yes, or *view only* with **Let it control sessions** beside it;
+   *App installed on the phone* — yes, or optional. The phone opens on a
+   short **Ready** card: connected to this computer, whether it can type
+   (and, if not, where on the computer to fix it — the card notices by
+   itself), the install button, and **Open sessions**. The card comes back
+   only while the phone cannot type, until you close it.
+4. **Optional: install the app, once.** On Android, in Chrome, press **Install the
    Caprock app** on the page (or **Install** on the line under the
    machine's name); the button is there only while Chrome says Caprock is
    not installed, so it never adds a second copy. Opened in a browser tab
@@ -1124,9 +1168,9 @@ listens on the private Wi-Fi address (and Tailscale's, when it is up), and
 listener is on, Settings shows its address with a **Turn off**. See
 [Without internet](../README.md#without-internet-on-the-same-network-advanced).
 
-A paired phone can look but not change
-anything until you press **Let it control sessions** beside it; **Take
-control away** undoes that at once. The rest of what pairing allows, and
+A phone paired with the box unticked can look but not change anything
+until you press **Let it control sessions** beside it; **Take control
+away** undoes either at once, and holds on the phone's next keystroke. The rest of what pairing allows, and
 why, is in [Open it on your phone](../README.md#open-it-on-your-phone).
 
 ### The phone home
