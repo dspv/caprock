@@ -72,7 +72,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   five days of history it says *not enough history*. It follows the agent
   filter. New endpoint `GET /v1/stats/trends`.
 
-- **brain:** Second Brain builds itself (Premium), once you say yes. When a
+- **brain:** Second Brain builds itself, once you say yes. When a
   session has been quiet for ten minutes, your own `claude` (Haiku, no
   tools, no transcript, none of your hooks) picks out what it decided and
   found, and each memory links back to the passage it came from. A daily
@@ -80,11 +80,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   later; *Build from my last 30 days* shows an estimate first. Settings →
   Second Brain shows what it used and read. A new session's handoff now
   carries up to five of the repository's memories.
-- **app:** Second Brain comes to Premium on 18 October 2026: a knowledge
-  graph of everything your agents do, kept on your computer. After two days
-  of use a short strip offers it, and *How it works* explains it and leads
-  to Premium; if it doesn't arrive on that date, write to us for a full
-  refund ([ADR-062](.ai/08-decisions.md)).
 - **app:** Caprock may also ask about a feature it is considering — running
   Hugging Face models on your computer, and one of watching short ads to
   earn money or YouTube while agents work. At most one strip a day; each
