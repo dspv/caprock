@@ -41,6 +41,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **chat:** the message field glows softly in the accent while it has the
   focus, a little more once there is text in it; on the phone and the
   desktop alike.
+- **now:** *Live activity* is now **What happened**: the moments of your
+  sessions instead of every command. Files edited (grouped by folder), tests
+  and checks with their result (*passed*, *failed (exit 2)*, or *no result
+  recorded* when there is none), builds, commits with their message, pushes,
+  pull requests opened or merged, subagents by their task, a turn ending with
+  the first line of the reply, a session waiting for approval, and a command
+  that failed. Reads, searches and the like are a quiet `+N` on the moment
+  they led up to. On one day of real use that is 1,974 rows where the old
+  feed had 11,493. *All commands* brings the old feed back; the panel folds
+  like the others and remembers it; every row is the same height.
 
 ### Fixed
 
@@ -51,6 +61,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   Ukrainian, German, French, Spanish, Portuguese, Italian, Polish, Turkish,
   Japanese, Chinese, Korean, Arabic, Hebrew). Remembered per viewer; shown
   prominently once when the browser names more than one language.
+
+- **now:** the activity feed no longer says "session ended" at the end of
+  every turn and every subagent's stop; it says *finished its turn* or
+  *subagent stopped*, and "session ended" only when one did.
 
 - **phone:** a phone can type the moment it pairs. A newly paired phone
   could only look until a second click on the computer — impossible once
