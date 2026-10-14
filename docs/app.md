@@ -128,6 +128,14 @@ others. Installing it: [install-app.md](install-app.md).
   moves to the next, Hidden → Bar → Full page → Hidden; ⌘B and ⇧⌘B do
   the same from the keyboard, and the button follows them. Its tooltip
   says the mode and the keys.
+  **Mail** sits above *Dashboard*, with its key, ⇧⌘M. It opens Mail in a
+  tab of its own beside the Dashboard tab (the envelope and ⇧⌘M); pressed
+  again it brings that tab to the front, and its × closes it. With no mail
+  account yet it opens straight on a sample inbox — two made-up accounts on a
+  server inside Caprock, nothing real read or sent — with a line on top and
+  *Add account*: Google, Microsoft, iCloud, Other, or import from Apple Mail
+  or Thunderbird. Adding your account leaves the sample; *Exit sample* goes
+  to the ways to start.
   The arrow beside *Send feedback* folds that bottom block to one row of
   icons and back; the app remembers which way you left it.
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
@@ -616,6 +624,7 @@ On macOS:
 | ⌘K          | Command palette                                                          |
 | ⌘,          | Settings                                                                 |
 | ⇧⌘F         | Send feedback                                                            |
+| ⇧⌘M         | Mail, in a tab of its own                                                |
 | ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                 |
 | ⌘I          | Agent cockpit (the inspector)                                            |
 | ⌘B          | Session deck (the PRs & CI bar) under the agent's terminal               |

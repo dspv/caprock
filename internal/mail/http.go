@@ -136,6 +136,7 @@ func (s *Service) addAccount(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, err)
 		return
 	}
+	s.leaveSample()
 	s.with(w, r, func(st *store.Store, eng *engine.Engine) {
 		id, err := st.AddAccount(r.Context(), a)
 		if err != nil {

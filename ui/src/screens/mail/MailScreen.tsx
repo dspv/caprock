@@ -5,7 +5,7 @@ import type { ComposeInit } from './Composer'
 import { Composer } from './Composer'
 import { Reader } from './Reader'
 import { SettingsPanel } from './Setup'
-import { FirstRun, SampleBanner } from './Onboarding'
+import { FirstRun, SampleBanner, type AddChoice, type ProviderId, type Step } from './Onboarding'
 import { hue, initials, quote, replySubject, sender, shortDate } from './format'
 import { Icon } from './icons'
 import './mail.css'
@@ -58,8 +58,22 @@ function folderLabel(f: Folder) {
   return parts[parts.length - 1] || f.name
 }
 
-/** Caprock Mail: every inbox the user added, in one place (#/mail). */
-export function MailScreen() {
+/**
+ * Left the sample in this window (*Exit sample*, *Add account*): Mail then
+ * opens on the first run, not on the sample again, until the page reloads.
+ */
+let sampleLeft = false
+/** For tests: forget that the sample was left. */
+export function resetSampleLeft() { sampleLeft = false }
+
+/**
+ * Caprock Mail: every inbox the user added, in one place (#/mail, and the
+ * app's Mail tab). With no account it opens straight on the sample inbox
+ * (owner, 2026-10-14, translated: "button → something opens at once"), with a
+ * line on top that says so and leads to adding an account. `fill`: the
+ * screen is its own tab and fills it, edge to edge.
+ */
+export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
   const [st, setSt] = useState<State | null>(null)
   const [settings, setSettings] = useState<Settings>({})
   const [sel, setSel] = useState<Sel>({ view: 'inbox' })
@@ -73,7 +87,9 @@ export function MailScreen() {
   const [syncing, setSyncing] = useState(false)
   // Where the first-run card opens: its choices, or straight at the provider
   // tiles when the sample banner's "Add my account" brought the user here.
-  const [firstStep, setFirstStep] = useState<'choose' | 'add'>('choose')
+  const [firstStep, setFirstStep] = useState<{ step: Step; provider?: ProviderId }>({ step: 'choose' })
+  // The sample is being started because no account exists: say so, not a form.
+  const [starting, setStarting] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const gPending = useRef(false)
@@ -81,6 +97,7 @@ export function MailScreen() {
   const rootRef = useRef<HTMLDivElement>(null)
   const [height, setHeight] = useState(600)
   useEffect(() => {
+    if (fill) return
     const fit = () => {
       const top = rootRef.current?.getBoundingClientRect().top ?? 60
       setHeight(Math.max(420, window.innerHeight - top - 12))
@@ -97,6 +114,21 @@ export function MailScreen() {
   }
 
   const loadState = useCallback(() => api.state().then(setSt).catch(() => {}), [])
+  /** The first state: with no account, the sample starts at once. */
+  const firstState = useCallback(async () => {
+    let s: State
+    try { s = await api.state() } catch { return }
+    if ((s.accounts ?? []).length === 0 && !s.sample && !sampleLeft) {
+      setStarting(true)
+      try {
+        await api.sample(true)
+        s = await api.state()
+      } catch { /* an older daemon, or the sample refused: the first run */ }
+      setStarting(false)
+    }
+    setSt(s)
+    listRef2.current(false).catch(() => {})
+  }, [])
 
   const query = useMemo(() => ({
     view: q ? (sel.view === 'folder' ? 'folder' : 'all') : sel.view,
@@ -126,8 +158,15 @@ export function MailScreen() {
   useEffect(() => {
     // Having opened Mail answers the offer on Now for good.
     markAnswered('mail-done', Date.now())
-    loadState()
+    void firstState()
     api.settings().then(setSettings).catch(() => {})
+  }, [firstState])
+  // Every 4 s; every 400 ms while the inbox is still filling (the sample's
+  // first sync, an account just added), so the mail shows as it lands.
+  const ready = !!st
+  const filling = !!st && (st.accounts ?? []).length > 0 && msgs.length === 0 && !q && sel.view === 'inbox'
+  useEffect(() => {
+    if (!ready) return
     const tick = () => {
       if (document.hidden) return
       api.state().then((s) => {
@@ -136,9 +175,15 @@ export function MailScreen() {
         version.current = s.version
       }).catch(() => {})
     }
-    const t = setInterval(tick, 4000)
+    let n = 0
+    const t = setInterval(() => {
+      // A filling inbox asks for its list too: the version moves while the
+      // first sync runs, and an empty first answer must not stick.
+      if (filling && n++ < 40) listRef2.current(false).catch(() => {})
+      tick()
+    }, filling ? 400 : 4000)
     return () => clearInterval(t)
-  }, [loadState])
+  }, [ready, filling])
 
   const rows = useMemo(() => groupThreads(msgs), [msgs])
   const curRow = rows.find((r) => r.m.id === cur) ?? null
@@ -238,7 +283,8 @@ export function MailScreen() {
   }, [cur])
 
   const reload = () => { loadState(); listRef2.current(false).catch(() => {}) }
-  const sample = async (on: boolean, then: 'choose' | 'add' = 'choose') => {
+  const sample = async (on: boolean, then: { step: Step; provider?: ProviderId } = { step: 'choose' }) => {
+    if (!on) sampleLeft = true
     await api.sample(on)
     setFirstStep(then)
     setCur(null)
@@ -247,14 +293,24 @@ export function MailScreen() {
     reload()
   }
 
-  if (!st) return <div className="cm"><div className="boot">Loading mail…</div></div>
-  if (st.accounts.length === 0 && !st.sample) {
+  const box = 'cm' + (fill ? ' fill' : '')
+  const boxStyle = fill ? undefined : { height }
+  if (!st || starting) {
     return (
-      <div className="cm" ref={rootRef} style={{ height }}>
-        <div className="welcome"><FirstRun key={firstStep} initial={firstStep} onDone={reload} onSample={() => sample(true)} /></div>
+      <div className={box} ref={rootRef} style={boxStyle}>
+        <div className="boot"><span><span className="pulse" /> {starting ? 'Opening a sample inbox…' : 'Loading mail…'}</span></div>
       </div>
     )
   }
+  if ((st.accounts ?? []).length === 0 && !st.sample) {
+    return (
+      <div className={box} ref={rootRef} style={boxStyle}>
+        <div className="welcome"><FirstRun key={firstStep.step + (firstStep.provider ?? '')} initial={firstStep.step} provider={firstStep.provider} onDone={reload} onSample={() => sample(true)} /></div>
+      </div>
+    )
+  }
+  /** The banner's *Add account*: leave the sample, open that way in. */
+  const addFrom = (c: AddChoice) => sample(false, c === 'import' ? { step: 'import' } : c === 'other' ? { step: 'add' } : { step: 'add', provider: c })
 
   const foldersBy = (a: Account) => st.folders.filter((f) => f.account_id === a.id && !['noselect', 'all', 'flagged', 'important'].includes(f.role))
   const roleFolder = (a: Account, role: string) => st.folders.find((f) => f.account_id === a.id && f.role === role)
@@ -264,8 +320,8 @@ export function MailScreen() {
   const errAcct = accounts.find((a) => a.last_error)
 
   return (
-    <div className={'cm' + (st.sample ? ' withbar' : '')} ref={rootRef} style={{ height }}>
-    {st.sample && <SampleBanner onExit={() => sample(false).catch((e) => flash(e.message))} onAdd={() => sample(false, 'add').catch((e) => flash(e.message))} />}
+    <div className={box + (st.sample ? ' withbar' : '')} ref={rootRef} style={boxStyle}>
+    {st.sample && <SampleBanner onExit={() => sample(false).catch((e) => flash(e.message))} onAdd={(c) => addFrom(c).catch((e) => flash(e.message))} />}
     <div className="app">
       <aside className="side">
         <div className="sidetop">
@@ -385,7 +441,7 @@ export function MailScreen() {
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setShowSettings(false)}>
           <SettingsPanel accounts={accounts} settings={settings} onSettings={setSettings}
             onClose={() => setShowSettings(false)} onChanged={() => { loadState(); listRef2.current(false) }}
-            onAddAccount={st.sample ? () => { setShowSettings(false); sample(false, 'add').catch((e) => flash(e.message)) } : undefined} />
+            onAddAccount={st.sample ? () => { setShowSettings(false); sample(false, { step: 'add' }).catch((e) => flash(e.message)) } : undefined} />
         </div>
       )}
       {toast && <div className="toast">{toast}</div>}

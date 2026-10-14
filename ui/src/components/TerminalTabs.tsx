@@ -19,7 +19,7 @@ import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane'
 import { composerFits, useComposerEnabled } from '@/lib/composer'
 import { AgentGlyph, agentGlyphLabel } from './AgentMarks'
-import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, MailIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { sessionHealth } from '@/lib/sessionLabels'
 import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
@@ -39,6 +39,18 @@ export interface DashboardTab {
   onClose: () => void
 }
 
+
+/** A pinned tab of the app's own (Mail): front or not, and how to bring or close it. */
+export interface SystemTab {
+  active: boolean
+  onActivate: () => void
+  onClose: () => void
+}
+
+/** The Mail tab's key as the strip draws it: ⇧⌘M, Ctrl⇧M off macOS. */
+export function mailStripKey(isMac = isMacPlatform()): string {
+  return isMac ? '⇧⌘M' : 'Ctrl⇧M'
+}
 
 /**
  * A project's mark on its tabs: a hue from its id, muted, so tabs of one
@@ -60,6 +72,8 @@ export interface TabStripProps {
   labels?: ReadonlyMap<string, TabLabel>
   /** The Dashboard tab, when it is open. */
   dashboard?: DashboardTab
+  /** The Mail tab, when it is open: after the Dashboard tab, before the terminals. */
+  mail?: SystemTab
   /** The terminals are in front, so the chat and inspector buttons apply. */
   paneTools?: boolean
   sessions: ReadonlyMap<string, SessionSummary>
@@ -165,6 +179,38 @@ export function TabStrip(props: TabStripProps) {
               title="Close the dashboard tab"
               onClick={(e) => { e.stopPropagation(); props.dashboard!.onClose() }}
               className={`h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${props.dashboard.active ? 'flex' : 'hidden'}`}
+            >
+              <CloseIcon size={12} />
+            </button>
+          </div>
+        )}
+        {props.mail && (
+          /* Mail's own tab (owner, 2026-10-14): in the strip from the first
+           * time Mail is opened until its × is clicked; its icon and its
+           * key, like the Dashboard tab. */
+          <div
+            role="tab"
+            tabIndex={props.mail.active ? 0 : -1}
+            aria-selected={props.mail.active}
+            data-mail-tab
+            onClick={props.mail.onActivate}
+            onAuxClick={(e) => { if (e.button === 1) props.mail!.onClose() }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.mail!.onActivate() }}
+            title={`Mail — ${keys('⇧⌘M')}`}
+            aria-label="Mail"
+            aria-keyshortcuts={isMacPlatform() ? 'Shift+Meta+M' : 'Control+Shift+M'}
+            className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-1 rounded-t-[9px] px-2 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
+              props.mail.active ? 'app-tab-front app-tab-dash bg-bg font-medium text-fg' : 'app-tab-dash text-fg hover:text-fg'
+            }`}
+          >
+            <MailIcon size={15} className="text-accent" />
+            <kbd data-tab-key aria-hidden className="app-kbd-sm">{mailStripKey()}</kbd>
+            <button
+              type="button"
+              aria-label="Close tab Mail"
+              title="Close the Mail tab"
+              onClick={(e) => { e.stopPropagation(); props.mail!.onClose() }}
+              className={`h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${props.mail.active ? 'flex' : 'hidden'}`}
             >
               <CloseIcon size={12} />
             </button>

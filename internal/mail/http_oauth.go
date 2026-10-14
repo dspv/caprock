@@ -185,6 +185,7 @@ func (s *Service) connectOAuth(ctx context.Context, p oauth.Provider, code strin
 		return a, err
 	}
 	a.Username = email
+	s.leaveSample()
 	st, eng, err := s.parts(ctx)
 	if err != nil {
 		return a, err

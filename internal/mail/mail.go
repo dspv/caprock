@@ -178,6 +178,20 @@ func (s *Service) SetSample(on bool) error {
 	return nil
 }
 
+// leaveSample ends sample mode before a real account is added, so the
+// account lands in the real mail.db and the user's own mail replaces the
+// sample (Mail opens on the sample while no account exists, and another
+// window may have turned it back on while this one showed the form).
+// Under CAPROCK_MAIL_DEMO=1 the sample stays: that run never opens the real
+// database.
+func (s *Service) leaveSample() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.demo {
+		s.stopSampleLocked()
+	}
+}
+
 // inSample reports whether the routes serve the sample instance.
 func (s *Service) inSample() bool {
 	s.mu.Lock()

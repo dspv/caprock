@@ -77,6 +77,11 @@ export interface Workspace {
    * workspace stored before it existed, which reads as false.
    */
   dashboard?: boolean
+  /**
+   * The Mail tab is in the strip, pinned after the Dashboard tab: there from
+   * the first time Mail is opened until it is closed. Absent reads as false.
+   */
+  mail?: boolean
 }
 
 export type WorkspaceAction =
@@ -94,6 +99,8 @@ export type WorkspaceAction =
   | { type: 'project'; projectId: string; view?: boolean }
   /** Puts the pinned Dashboard tab in the strip, or takes it out. */
   | { type: 'dashboard'; open: boolean }
+  /** Puts the pinned Mail tab in the strip, or takes it out. */
+  | { type: 'mail'; open: boolean }
   | { type: 'retitle'; sessionId: string; title: string }
   | { type: 'drop-session'; sessionId: string }
   /**
@@ -303,6 +310,13 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       delete rest.dashboard
       return rest
     }
+    case 'mail': {
+      if (!!ws.mail === a.open) return ws
+      if (a.open) return { ...ws, mail: true }
+      const rest = { ...ws }
+      delete rest.mail
+      return rest
+    }
     case 'retitle': {
       let changed = false
       const tabs = ws.tabs.map((t) => {
@@ -429,6 +443,7 @@ export function parseWorkspace(raw: string | null): Workspace {
     // order they were opened; only `dashboard` is new, and absent means shut.
     const ws: Workspace = { version: 1, tabs, activeByProject, activeProject: typeof v.activeProject === 'string' ? v.activeProject : '' }
     if (v.dashboard === true) ws.dashboard = true
+    if (v.mail === true) ws.mail = true
     return ws
   } catch {
     return EMPTY_WORKSPACE

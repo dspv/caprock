@@ -9,6 +9,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** a Mail button with its own key. *Mail ⇧⌘M* in the sidebar's
+  bottom block (Ctrl+Shift+M on Windows and Linux) opens Mail in a tab of its
+  own beside the Dashboard tab; pressed again it brings it to the front. With
+  no account yet it opens straight on a sample inbox, with a line on top and
+  *Add account* (Google, Microsoft, iCloud, Other, import); adding your
+  account leaves the sample. Also in the palette as *Open Mail*.
 - **app:** Send feedback opens with ⇧⌘F (Ctrl+Alt+Shift+F on Windows and
   Linux) from anywhere in the app, and its row in the sidebar shows the key.
 

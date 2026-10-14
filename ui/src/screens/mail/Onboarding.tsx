@@ -68,11 +68,13 @@ function Mark({ p, size = 30 }: { p: Provider; size?: number }) {
   )
 }
 
-type Step = 'choose' | 'import' | 'add'
+export type Step = 'choose' | 'import' | 'add'
 
-/** The first screen while no account exists. */
-export function FirstRun({ initial = 'choose', onDone, onSample }: {
+/** The first screen while no account exists. `provider` opens the add step
+ *  on that provider's sign-in or form (the sample banner's *Add account*). */
+export function FirstRun({ initial = 'choose', provider, onDone, onSample }: {
   initial?: Step
+  provider?: ProviderId
   onDone: () => void
   onSample: () => Promise<void>
 }) {
@@ -89,6 +91,8 @@ export function FirstRun({ initial = 'choose', onDone, onSample }: {
     return () => { live = false }
   }, [])
 
+  if (step === 'add' && provider) return <Card><AddFlow initial={provider} onDone={onDone} onCancel={() => setStep('choose')} /></Card>
+  if (step === 'import' && sources === null) return <Card><p className="muted"><span className="pulse" /> Looking for other mail apps…</p></Card>
   if (step === 'import' && Array.isArray(sources)) {
     return <Card><ImportPanel initial={sources} onDone={onDone} onBack={() => setStep('choose')} /></Card>
   }
@@ -139,8 +143,8 @@ function Card({ children }: { children: React.ReactNode }) {
 }
 
 /** Provider tiles, then that provider's sign-in or password form. */
-export function AddFlow({ onDone, onCancel }: { onDone: () => void; onCancel?: () => void }) {
-  const [p, setP] = useState<Provider | null>(null)
+export function AddFlow({ initial, onDone, onCancel }: { initial?: ProviderId; onDone: () => void; onCancel?: () => void }) {
+  const [p, setP] = useState<Provider | null>(() => PROVIDERS.find((x) => x.id === initial) ?? null)
   const [oauth, setOauth] = useState<OAuthProviders>({})
   useEffect(() => {
     let live = true
@@ -315,15 +319,56 @@ export function ImportPanel({ initial, onDone, onBack }: { initial: ImportSource
   )
 }
 
-/** The slim line shown while the screen serves sample mail. */
-export function SampleBanner({ onExit, onAdd }: { onExit: () => void; onAdd: () => void }) {
+/** Where the sample banner's *Add account* leads: a provider's sign-in or
+ *  form, every provider's tile (`other`: Yahoo and Fastmail keep their own
+ *  app-password steps there), or the import list. */
+export type AddChoice = 'google' | 'microsoft' | 'icloud' | 'other' | 'import'
+
+const ADD_CHOICES: { id: AddChoice; label: string; sub: string }[] = [
+  { id: 'google', label: 'Google', sub: 'Gmail, Workspace' },
+  { id: 'microsoft', label: 'Microsoft', sub: 'Outlook, Microsoft 365, Hotmail' },
+  { id: 'icloud', label: 'iCloud', sub: 'icloud.com, me.com' },
+  { id: 'other', label: 'Other', sub: 'Yahoo, Fastmail, any IMAP server' },
+  { id: 'import', label: 'Import from this computer', sub: 'Apple Mail, Thunderbird' },
+]
+
+/**
+ * The calm line on top of the sample inbox, which is what Mail opens on while
+ * no account exists (owner, 2026-10-14, translated: "I want to click the
+ * button and see how cool it is … button → something opens at once"). *Add
+ * account* names the ways in; *Exit sample* goes back to the first run.
+ */
+export function SampleBanner({ onExit, onAdd }: { onExit: () => void; onAdd: (choice: AddChoice) => void }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const away = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('mousedown', away)
+    window.addEventListener('keydown', esc)
+    return () => { window.removeEventListener('mousedown', away); window.removeEventListener('keydown', esc) }
+  }, [open])
   return (
     <div className="samplebar" role="status">
-      <Icon name="sparkle" size={14} />
-      <span><b>Sample mail</b> — nothing here is real.</span>
+      <span className="sampletag"><Icon name="sparkle" size={13} /> Sample</span>
+      <span className="sampletext">This is a sample inbox — add your account to see your own mail.</span>
       <span className="grow" />
-      <button className="link small" onClick={onExit}>Exit</button>
-      <button className="btn primary small" onClick={onAdd}>Add my account</button>
+      <button className="link small" onClick={onExit} title="Leave the sample: back to the ways to start">Exit sample</button>
+      <div className="addwrap" ref={box}>
+        <button className="btn primary small" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          <Icon name="plus" size={13} /> Add account
+        </button>
+        {open && (
+          <div className="addmenu" role="menu" aria-label="Add account">
+            {ADD_CHOICES.map((c) => (
+              <button key={c.id} role="menuitem" className={c.id === 'import' ? 'sep' : undefined} onClick={() => { setOpen(false); onAdd(c.id) }}>
+                <b>{c.label}</b><span>{c.sub}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -185,6 +185,37 @@ func TestSampleModeKeepsRealAccounts(t *testing.T) {
 	}
 }
 
+// Adding a real account while the sample is on ends the sample: the account
+// goes to the real store, and the screen shows it instead of made-up mail.
+func TestAddAccountLeavesSample(t *testing.T) {
+	srv, err := fakemail.Start("me@fake.test", "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	s := newTestService(t)
+	h := s.Handler()
+	do(t, h, "POST", "/v1/mail/sample", map[string]any{"on": true})
+	if _, sample := stateOf(t, h); !sample {
+		t.Fatal("sample did not start")
+	}
+	ih, ip, _ := net.SplitHostPort(srv.IMAPAddr)
+	sh, sp, _ := net.SplitHostPort(srv.SMTPAddr)
+	ipn, _ := strconv.Atoi(ip)
+	spn, _ := strconv.Atoi(sp)
+	if w := do(t, h, "POST", "/v1/mail/accounts", map[string]any{"email": "me@fake.test", "password": "pw",
+		"imap_host": ih, "imap_port": ipn, "imap_tls": "none", "smtp_host": sh, "smtp_port": spn, "smtp_tls": "none"}); w.Code != 200 {
+		t.Fatalf("add: %d %s", w.Code, w.Body)
+	}
+	accts, sample := stateOf(t, h)
+	if sample || len(accts) != 1 || accts[0]["email"] != "me@fake.test" {
+		t.Fatalf("after add: sample=%v accounts=%v", sample, accts)
+	}
+	if pw, err := s.sec.Get(int64(accts[0]["id"].(float64))); err != nil || pw != "pw" {
+		t.Fatalf("password not in the real store: %q %v", pw, err)
+	}
+}
+
 // CAPROCK_MAIL_DEMO=1 keeps sample mode on for the run.
 func TestDemoEnvForcesSample(t *testing.T) {
 	t.Setenv("CAPROCK_MAIL_DEMO", "1")

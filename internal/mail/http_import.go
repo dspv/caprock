@@ -67,6 +67,7 @@ func (s *Service) importAccounts(w http.ResponseWriter, r *http.Request) {
 		byEmail[a.Email] = a
 	}
 
+	s.leaveSample()
 	s.with(w, r, func(st *store.Store, eng *engine.Engine) {
 		results := make([]importResult, 0, len(req.Emails))
 		for _, email := range req.Emails {

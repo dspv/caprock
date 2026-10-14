@@ -112,6 +112,17 @@ describe('workspace tabs', () => {
     expect(ws.tabs).toHaveLength(1) // the terminals are untouched
   })
 
+  it('holds a pinned Mail tab beside the Dashboard tab, kept and closed on its own', () => {
+    let ws = run(open('a'), { type: 'dashboard', open: true }, { type: 'mail', open: true })
+    expect(ws.mail).toBe(true)
+    expect(workspaceReducer(ws, { type: 'mail', open: true })).toBe(ws)
+    expect(parseWorkspace(JSON.stringify(ws))).toEqual(ws)
+    ws = workspaceReducer(ws, { type: 'mail', open: false })
+    expect(ws.mail).toBeUndefined()
+    expect(ws.dashboard).toBe(true)
+    expect(ws.tabs).toHaveLength(1)
+  })
+
   it('loads a workspace stored by the per-project strips as it was', () => {
     const pane = (id: string, sessionId: string) => ({ type: 'pane', id, target: { kind: 'session', sessionId } })
     const stored = {

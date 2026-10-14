@@ -232,11 +232,34 @@
 .cm.withbar { display: flex; flex-direction: column; }
 .cm.withbar .app { flex: 1; min-height: 0; height: auto; }
 .cm .samplebar {
-  display: flex; align-items: center; gap: 10px; padding: 5px 10px 5px 14px; font-size: 12.5px;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
-  background: color-mix(in srgb, var(--accent) 8%, var(--bg)); color: var(--text);
+  display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 10px 6px 12px; font-size: 12.5px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg)); color: var(--text);
 }
-.cm .samplebar svg { color: var(--accent); }
+.cm .sampletag {
+  display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 1px 7px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.cm .sampletext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm .samplebar .link { flex: none; color: var(--muted); }
+.cm .samplebar .link:hover { color: var(--text); }
+.cm .addwrap { position: relative; flex: none; }
+.cm .addmenu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: 264px; padding: 4px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+}
+.cm .addmenu button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left;
+  border: 0; background: none; border-radius: 7px; padding: 7px 10px; cursor: pointer;
+}
+.cm .addmenu button:hover, .cm .addmenu button:focus-visible { background: var(--panel); outline: 0; }
+.cm .addmenu button span { font-size: 11.5px; color: var(--muted); }
+.cm .addmenu button.sep { margin-top: 4px; border-top: 1px solid var(--line); border-top-left-radius: 0; border-top-right-radius: 0; padding-top: 9px; }
+/* Mail in a tab of its own: edge to edge, the tab is its frame. */
+.cm.fill { height: 100%; border: 0; border-radius: 0; }
+.cm .boot .pulse { vertical-align: 1px; }
 .cm .btn.small { padding: 3px 9px; font-size: 12px; }
 @media (max-width: 640px) {
 .cm .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -305,6 +305,17 @@ describe('every listed shortcut, on every OS', () => {
     expect(matchAppShortcut(event('KeyF', 'f', { ctrlKey: true }), false)).toBeNull()
   })
 
+  // Owner, 2026-10-14: Mail on a button with its own key. Plain ⌘M stays
+  // the window's Minimize; Ctrl+M alone stays the terminal's Enter.
+  it('makes ⇧⌘M Mail, Ctrl+Shift+M off macOS, and leaves ⌘M and Ctrl+M alone', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⇧⌘M')?.[1]).toMatch(/^Mail/)
+    expect(keys('⇧⌘M', false)).toBe('Ctrl+Shift+M')
+    expect(matchAppShortcut(event('KeyM', 'M', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'mail' })
+    expect(matchAppShortcut(event('KeyM', 'm', { metaKey: true }), true)).toBeNull()
+    expect(matchAppShortcut(event('KeyM', 'M', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'mail' })
+    expect(matchAppShortcut(event('KeyM', 'm', { ctrlKey: true }), false)).toBeNull()
+  })
+
   it('lists ⌥⌘N as asking, Ctrl+Alt+Shift+N off macOS', () => {
     expect(SHORTCUTS.find(([k]) => k === '⌥⌘N')?.[1]).toMatch(/asks which agent and model, Enter takes the last one/)
     expect(keys('⌥⌘N', false)).toBe('Ctrl+Alt+Shift+N')

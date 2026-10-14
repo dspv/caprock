@@ -45,6 +45,8 @@ export type AppCommand =
   | { kind: 'settings' }
   /** ⇧⌘F: the Send feedback form, from anywhere. */
   | { kind: 'feedback' }
+  /** ⇧⌘M: Mail, in a tab of its own. */
+  | { kind: 'mail' }
   | { kind: 'zoom'; step: 1 | -1 | 0 }
 
 /** The subset of a KeyboardEvent the map reads. */
@@ -235,6 +237,13 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         // reaches a page; off macOS Ctrl+Shift+F is ⌘F, Find, so it takes
         // Alt as well (OFF_MAC_ALT).
         case 'f': return { kind: 'feedback' }
+        // M for Mail (owner, 2026-10-14, translated: "a button … and it
+        // opens another system tab with its own key combo"). Plain ⌘M is
+        // the window's Minimize and stays it; ⇧⌘M is bound by no Mac
+        // terminal, and off macOS Ctrl+Shift+M has no Ctrl+Shift twin of
+        // ours, reaches no shell (Ctrl+M is Enter, never typed with Shift
+        // to mean it) and no PSReadLine or GNOME default.
+        case 'm': return { kind: 'mail' }
         default: return null
       }
     }
@@ -250,6 +259,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
     case 'n': return { kind: 'new-agent' }
     case 'd': return { kind: 'dashboard' }
     case 'g': return { kind: 'changes' }
+    case 'm': return { kind: 'mail' }
     case '[': return { kind: 'prev-tab' }
     case ']': return { kind: 'next-tab' }
     // Ctrl+Shift arrows are PowerShell's select-by-word: the terminal's.
@@ -388,6 +398,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘0, ⇧⌘D', 'Dashboard'],
   ['⌘,', 'Settings'],
   ['⇧⌘F', 'Send feedback: a bug, an idea or a question'],
+  ['⇧⌘M', 'Mail, in a tab of its own'],
   ['⌘+, ⌘−, ⇧⌘0', 'Interface size: bigger, smaller, back to the default'],
   ['⌘R', 'Reload the window'],
 ]

@@ -14,6 +14,11 @@
  * The theme button moved here from the Settings row, as its own square: the
  * Dashboard row gave up the width (same request).
  *
+ * Mail has a row of its own above Dashboard (owner, 2026-10-14, translated:
+ * "put it on the main screen as a button — in the left bottom too — and it
+ * opens another system tab with its own key combo"): the envelope, *Mail*,
+ * ⇧⌘M. It opens the Mail tab, or brings it to the front.
+ *
  * Collapsed, the block is one row of icons, the same actions and the way back.
  */
 import type { ReactNode } from 'react'
@@ -21,10 +26,11 @@ import type { SettingsSection } from '@/lib/router'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { THEMES } from '@/lib/themes'
 import { keys } from '@/lib/appkeys'
+import { isMacPlatform } from '@/lib/appmode'
 import { BAR_MODE_NAME, nextBarMode, type BarMode } from '@/lib/deck'
 import { ThemeMenu } from './ThemePicker'
 import { FeedbackButton } from './Feedback'
-import { BarModeIcon, ChevronIcon, DashboardIcon, MoonIcon, SettingsIcon, SunIcon } from './AppIcons'
+import { BarModeIcon, ChevronIcon, DashboardIcon, MailIcon, MoonIcon, SettingsIcon, SunIcon } from './AppIcons'
 
 export interface SidebarFooterProps {
   /** Folded to one row of icons; remembered by the sidebar. */
@@ -32,6 +38,10 @@ export interface SidebarFooterProps {
   onToggleFold: () => void
   dashboardActive: boolean
   onDashboard: () => void
+  /** Mail in its own tab (⇧⌘M); absent, no Mail row. */
+  onMail?: () => void
+  /** The Mail tab is in front. */
+  mailActive?: boolean
   onSettings?: () => void
   /** Settings on the phone or Telegram section; absent: plain Settings. */
   onSettingsSection?: (section: SettingsSection) => void
@@ -39,6 +49,9 @@ export interface SidebarFooterProps {
   barMode?: BarMode
   onCycleBar?: () => void
 }
+
+/** Mail's key, in macOS spelling; `keys()` writes it for this OS. */
+export const MAIL_KEY = '⇧⌘M'
 
 /** Every button in the footer's icon rows: one size, one hover. */
 const SQUARE = 'flex shrink-0 items-center justify-center text-fg-muted transition-colors hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none'
@@ -58,6 +71,11 @@ export function SidebarFooter(props: SidebarFooterProps) {
        * unfold"): the same actions as icons, plus the way back. */
       <div data-sidebar-footer className="flex shrink-0 items-center gap-1 border-t border-[var(--app-hairline)] px-2 py-1.5">
         <FeedbackButton variant="icon" />
+        {props.onMail && (
+          <IconButton label={`Mail (${keys(MAIL_KEY)})`} onClick={props.onMail}>
+            <MailIcon size={15} className="text-accent" />
+          </IconButton>
+        )}
         <IconButton label={`Dashboard (${keys('⌘0')})`} onClick={props.onDashboard}>
           <DashboardIcon size={15} />
         </IconButton>
@@ -84,6 +102,22 @@ export function SidebarFooter(props: SidebarFooterProps) {
         <div className="min-w-0 flex-1"><FeedbackButton variant="row" /></div>
         <FooterToggle open onToggle={props.onToggleFold} />
       </div>
+      {props.onMail && (
+        <button
+          type="button"
+          data-nav-row
+          data-mail-button
+          aria-current={props.mailActive ? 'true' : undefined}
+          aria-keyshortcuts={isMacPlatform() ? 'Shift+Meta+M' : 'Control+Shift+M'}
+          title={`Mail: every inbox in one place (${keys(MAIL_KEY)})`}
+          onClick={props.onMail}
+          className="app-row flex h-[32px] min-w-0 items-center gap-2 rounded-[8px] border border-[var(--app-hairline-strong)] px-2 text-left text-[13px] text-fg"
+        >
+          <MailIcon size={15} className="text-accent" />
+          <span className="min-w-0 flex-1 truncate">Mail</span>
+          <kbd className="app-kbd-key shrink-0">{keys(MAIL_KEY)}</kbd>
+        </button>
+      )}
       <div className="flex items-center gap-1">
         <button
           type="button"

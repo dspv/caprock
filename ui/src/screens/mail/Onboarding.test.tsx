@@ -6,7 +6,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AddFlow, FirstRun, ImportPanel, providerForHost } from './Onboarding'
-import { MailScreen } from './MailScreen'
+import { MailScreen, resetSampleLeft } from './MailScreen'
 import { api, HttpError, type ImportSource, type State } from './mailApi'
 import { resetPrompts } from '@/lib/prompts'
 
@@ -25,6 +25,7 @@ const sources: ImportSource[] = [
 beforeEach(() => {
   vi.restoreAllMocks()
   resetPrompts()
+  resetSampleLeft()
   vi.spyOn(api, 'settings').mockResolvedValue({})
   vi.spyOn(api, 'list').mockResolvedValue([])
   vi.spyOn(api, 'oauthProviders').mockResolvedValue({})
@@ -46,23 +47,45 @@ describe('mail first run', () => {
     expect(screen.getByText('Try it with sample mail')).toBeTruthy()
   })
 
-  it('turns sample mode on from the first run and off from the banner', async () => {
+  // Owner, 2026-10-14 (translated): "button → something opens at once".
+  it('opens on the sample inbox when no account exists, and Add account leaves it for that provider', async () => {
     vi.spyOn(api, 'importSources').mockResolvedValue({ sources: [] })
-    const state = vi.spyOn(api, 'state').mockResolvedValue(empty)
+    const state = vi.spyOn(api, 'state').mockResolvedValueOnce(empty).mockResolvedValue(sampleState)
     const sample = vi.spyOn(api, 'sample').mockResolvedValue({ sample: true })
     render(<MailScreen />)
-    fireEvent.click(await screen.findByText('Try it with sample mail'))
-    state.mockResolvedValue(sampleState)
-    await waitFor(() => expect(sample).toHaveBeenCalledWith(true))
-    expect(await screen.findByText('Sample mail')).toBeTruthy()
+    expect(await screen.findByText(/This is a sample inbox — add your account to see your own mail/)).toBeTruthy()
+    expect(sample).toHaveBeenCalledWith(true)
+    expect(screen.queryByText('Try it with sample mail')).toBeNull()
 
     state.mockResolvedValue(empty)
     sample.mockResolvedValue({ sample: false })
-    await act(async () => { fireEvent.click(screen.getByText('Add my account')) })
+    fireEvent.click(screen.getByText('Add account'))
+    for (const name of ['Google', 'Microsoft', 'iCloud', 'Other', 'Import from this computer']) expect(screen.getByText(name)).toBeTruthy()
+    await act(async () => { fireEvent.click(screen.getByText('iCloud')) })
     expect(sample).toHaveBeenLastCalledWith(false)
-    // "Add my account" lands on the provider tiles.
-    expect(await screen.findByText('iCloud')).toBeTruthy()
-    expect(screen.getByText('Fastmail')).toBeTruthy()
+    // Straight to iCloud's form, not the tiles.
+    expect(await screen.findByText(/Apple has no sign-in for other mail apps/)).toBeTruthy()
+    // Cancel reaches the tiles, every provider on them.
+    fireEvent.click(screen.getByText('Cancel'))
+    expect(await screen.findByText('Fastmail')).toBeTruthy()
+  })
+
+  it('keeps the first run reachable: Exit sample goes there and the sample does not start again', async () => {
+    vi.spyOn(api, 'importSources').mockResolvedValue({ sources: [] })
+    const state = vi.spyOn(api, 'state').mockResolvedValue(sampleState)
+    const sample = vi.spyOn(api, 'sample').mockResolvedValue({ sample: false })
+    const r = render(<MailScreen />)
+    await screen.findByText(/This is a sample inbox/)
+    state.mockResolvedValue(empty)
+    await act(async () => { fireEvent.click(screen.getByText('Exit sample')) })
+    expect(sample).toHaveBeenLastCalledWith(false)
+    expect(await screen.findByText('Try it with sample mail')).toBeTruthy()
+    r.unmount()
+    // Opened again in this window: the first run, not the sample.
+    sample.mockClear()
+    render(<MailScreen />)
+    expect(await screen.findByText('Try it with sample mail')).toBeTruthy()
+    expect(sample).not.toHaveBeenCalled()
   })
 
   it('lists accounts to import, asks for a missing password and says how to grant access', async () => {

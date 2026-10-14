@@ -165,6 +165,10 @@ export interface SidebarProps {
   onFolderMenu?: (e: React.MouseEvent, path: string, label: string) => void
   onAddProject: () => void
   onDashboard: () => void
+  /** Opens Mail in its own tab (⇧⌘M); absent, the footer has no Mail row. */
+  onMail?: () => void
+  /** The Mail tab is in front (then `dashboardActive` is true too: no terminal is). */
+  mailActive?: boolean
   onSettings?: () => void
   /** Settings on the phone or Telegram section: the row's "phone, Telegram"
    *  words, and the row itself (owner, 2026-10-13). Absent: plain Settings. */
@@ -532,8 +536,10 @@ export function Sidebar(props: SidebarProps) {
       <SidebarFooter
         folded={folds.has('footer')}
         onToggleFold={() => toggleFold('footer')}
-        dashboardActive={props.dashboardActive}
+        dashboardActive={props.dashboardActive && !props.mailActive}
         onDashboard={props.onDashboard}
+        mailActive={props.mailActive}
+        onMail={props.onMail}
         onSettings={props.onSettings}
         onSettingsSection={props.onSettingsSection}
         barMode={props.barMode}

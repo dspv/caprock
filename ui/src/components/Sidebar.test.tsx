@@ -478,6 +478,32 @@ describe('the sidebar', () => {
     expect(barModeLabel('full', false)).toBe('PRs & CI: Full page — click for Hidden (Ctrl+Shift+B shows or hides the bar, Ctrl+Alt+Shift+B the full page)')
   })
 
+  // Owner, 2026-10-14 (translated): "put it on the main screen as a button —
+  // in the left bottom too — and it opens another system tab with its own key combo".
+  it('has a Mail row with its key that opens Mail, marked while Mail is in front, and an icon when folded', () => {
+    localStorage.removeItem(FOLDS_KEY)
+    const onMail = vi.fn()
+    const first = renderSidebar({ onMail, mailActive: true, dashboardActive: true })
+    const mail = screen.getByRole('button', { name: /^Mail/ })
+    expect(mail.textContent).toMatch(/(⇧⌘M|Ctrl\+Shift\+M)$/)
+    expect(mail.getAttribute('aria-current')).toBe('true')
+    // Mail in front is not the Dashboard in front.
+    expect(screen.getByRole('button', { name: /^Dashboard/ }).getAttribute('aria-current')).toBeNull()
+    fireEvent.click(mail)
+    expect(onMail).toHaveBeenCalledTimes(1)
+    first.unmount()
+
+    localStorage.setItem(FOLDS_KEY, JSON.stringify(['footer']))
+    const folded = renderSidebar({ onMail })
+    fireEvent.click(screen.getByRole('button', { name: /^Mail \((⇧⌘M|Ctrl\+Shift\+M)\)$/ }))
+    expect(onMail).toHaveBeenCalledTimes(2)
+    folded.unmount()
+
+    localStorage.removeItem(FOLDS_KEY)
+    renderSidebar()
+    expect(screen.queryByRole('button', { name: /^Mail/ })).toBeNull()
+  })
+
   it('shows Send feedback’s key on its row', () => {
     localStorage.removeItem(FOLDS_KEY)
     renderSidebar()
