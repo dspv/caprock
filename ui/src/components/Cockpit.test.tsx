@@ -316,6 +316,26 @@ describe('the agent cockpit', () => {
     expect(within(nowCard).queryByText(/Waiting|Thinking/)).toBeNull()
   })
 
+  // "Move the status under the agent's portrait", and the mode with it
+  // (owner, 2026-10-14, translated); the chips in fives, compact past two
+  // full lines.
+  it('puts the state under the portrait and draws many subagents compact, in fives', async () => {
+    h.subagents = { working: Array.from({ length: 23 }, (_, i) => ({ agent_id: `a${i}`, agent_type: 'general-purpose', tool_calls: 1, started_at: i, last_at: i, running: true, asking: false })), finished: 0 } as SubagentsNow
+    try {
+      show(agent({ live_subagents: 23, started_at: now - 3_600_000 }))
+      const lead = document.querySelector('[data-hero-lead]')!
+      expect(within(lead as HTMLElement).getByRole('status')).toHaveTextContent('Working')
+      expect(document.querySelector('[data-hero-started]')).toBeInTheDocument()
+      const strip = await screen.findByRole('group', { name: 'Subagents' })
+      expect(strip).toHaveAttribute('data-compact', 'true')
+      expect(Array.from(strip.querySelectorAll('[data-chip-group]')).map((g) => g.querySelectorAll('button').length)).toEqual([5, 5, 5, 5, 3])
+      expect(strip.querySelector('button')).toHaveTextContent('')
+      expect(document.querySelector('[data-hero-count]')).toHaveTextContent('23 working')
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
   it('still waits on a permission prompt while background agents work', async () => {
     h.permission = { id: 'p1', tool: 'Bash', detail: 'rm -rf out', since: iso(2_000), agent_id: 'a1', agent_type: 'general-purpose' }
     try {

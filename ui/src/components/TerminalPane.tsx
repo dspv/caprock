@@ -19,9 +19,21 @@
  *   box, so one background tab printing 20 lines a second cost 12% of the
  *   page's main thread while the person typed in another (bench, 2026-10-09).
  * - **WebGL, late and recoverable.** Swapped in after the first output once
- *   typing pauses (as in the dashboard), dropped while hidden so ten tabs
- *   never hold ten GPU contexts, and re-created after a context loss — a
- *   sleep and wake — when the tab is next shown.
+ *   typing pauses (as in the dashboard), and re-created after a context loss
+ *   — a sleep and wake — when the tab is next shown.
+ * - **Switching tabs shows the terminal as it was.** The owner saw the font
+ *   "redrawn from scratch" for a moment on a switch (2026-10-14): a tab
+ *   hidden for 30 s had dropped its WebGL renderer, so it came back drawn by
+ *   the DOM renderer — another rasterisation, another cell height — and 1.5 s
+ *   later (WEBGL_QUIET_MS) WebGL was swapped in and the grid refitted. Now
+ *   the KEEP_WEBGL_HIDDEN most recently hidden panes keep their context, so
+ *   going back and forth never swaps a renderer, and ten tabs still never
+ *   hold ten GPU contexts: the pane hidden longest ago lets its go. A pane
+ *   with output and no WebGL gets it in show() itself, before the first
+ *   paint, and is drawn in that same frame (`paintNow`): the quiet wait is
+ *   for first output and typing, not for coming back into view. The glyph
+ *   atlas is not thrown away on a plain switch (`repaintGlyphs`), and a pane
+ *   whose box did not change is not refitted.
  * - **The scrolling rule.** xterm.js already keeps the viewport still while
  *   the reader is scrolled up; this adds the "↓ N new lines" pill.
  * - **Find** (F16): ⌘F in the focused pane of the tab in front opens the bar
@@ -36,7 +48,7 @@
  *   pane. The tree has the same shape with it or without it, so switching it
  *   never remounts the terminal's host.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -77,6 +89,61 @@ export const HIDDEN_HOLD_BYTES = 256 * 1024
  * pane never yet laid out holds even that (see `fitted` below).
  */
 export const SETTLE_MS = 3000
+
+/**
+ * Hidden panes that keep their WebGL renderer, the most recently hidden
+ * first; the panes in front are not counted. A context per pane would run
+ * into the browser's cap (about 16 a page) and each holds a drawing buffer
+ * the size of its pane; three covers going back and forth between a few tabs.
+ */
+export const KEEP_WEBGL_HIDDEN = 3
+
+/**
+ * A pane hidden longer than this rasterises its glyphs again when shown.
+ * WebKit can drop a WebGL texture of a page left alone without a contextlost
+ * event (#541); a sleep and a pixel-ratio change are caught by their own
+ * events, this covers the rest. Five minutes keeps every quick back-and-forth
+ * free of the work; after a longer spell it costs a few milliseconds, once.
+ */
+export const LONG_HIDDEN_MS = 5 * 60_000
+
+type Kept = { drop: () => void }
+const keptWebgl: Kept[] = []
+function releaseWebgl(p: Kept) {
+  const i = keptWebgl.indexOf(p)
+  if (i >= 0) keptWebgl.splice(i, 1)
+}
+/** `p` was just hidden with WebGL: keep it, and let the one hidden longest ago go past the cap. */
+function keepWebgl(p: Kept) {
+  releaseWebgl(p)
+  keptWebgl.unshift(p)
+  while (keptWebgl.length > KEEP_WEBGL_HIDDEN) keptWebgl.pop()!.drop()
+}
+/** How many hidden panes hold a WebGL context now. */
+export function keptWebglCount(): number {
+  return keptWebgl.length
+}
+
+/**
+ * Draws a pane that has just come into view in the frame it appears in.
+ * xterm stops rendering while its element is out of sight and starts again
+ * from an IntersectionObserver callback, which arrives a frame after the
+ * element is shown: a WebGL canvas created on show would be blank for that
+ * frame. Told it is in view now (the callback it gets anyway, early), it draws
+ * on the next animation frame, before the paint. Measured in headless
+ * Chromium with xterm 6 (2026-10-14): without it, a pane given WebGL on show
+ * drew one blank frame first; with it, none.
+ *
+ * `_handleIntersectionChange` is xterm's private API, so every step is
+ * optional and the call is in a try: an xterm upgrade that renames or drops
+ * it cannot throw here, and the pane falls back to waiting for the observer
+ * (one blank frame, nothing worse).
+ */
+function paintNow(term: Xterm) {
+  const rs = (term as unknown as { _core?: { _renderService?: { _handleIntersectionChange?: (e: { isIntersecting: boolean; intersectionRatio: number }) => void } } })._core?._renderService
+  try { rs?._handleIntersectionChange?.({ isIntersecting: true, intersectionRatio: 1 }) } catch { /* another xterm */ }
+  term.refresh(0, term.rows - 1)
+}
 
 /** The composer under the terminal: absent, there is none (.ai/21-app.md § Composer). */
 export interface PaneComposer {
@@ -199,9 +266,16 @@ export function TerminalPane({
     let gotOutput = false
     let lastInput = 0
     let webgl: WebglAddon | undefined
-    let webglLost = false
     let webglTimer = 0
     let hideTimer = 0
+    // The box last fitted to (refit, below).
+    let lastGeom = ''
+    // When the pane was last hidden, and whether its atlas is to be
+    // rasterised again before it is next seen (a wake or a pixel-ratio change
+    // came while it was hidden).
+    let hiddenAt = 0
+    let glyphsStale = false
+    const kept: Kept = { drop: () => { if (!visible) dropWebgl() } }
     // Output that arrived while hidden, after the first burst (see the header),
     // and a reset among it, in the order they came.
     let held: ({ data: Uint8Array | string; done: () => void } | { reset: true })[] = []
@@ -307,12 +381,14 @@ export function TerminalPane({
       },
     })
 
-    const loadWebgl = () => {
+    // `now`: on show, with output already drawn — no quiet wait, so the DOM
+    // renderer is never what the person sees first (the header).
+    const loadWebgl = (now = false): boolean => {
       webglTimer = 0
-      if (disposed || webgl || !visible) return
-      if (!gotOutput || Date.now() - lastInput < WEBGL_QUIET_MS) {
+      if (disposed || webgl || !visible) return false
+      if (!now && (!gotOutput || Date.now() - lastInput < WEBGL_QUIET_MS)) {
         webglTimer = window.setTimeout(loadWebgl, WEBGL_QUIET_MS)
-        return
+        return false
       }
       try {
         const addon = new WebglAddon()
@@ -321,14 +397,18 @@ export function TerminalPane({
           // and a fresh context the next time this tab is shown.
           addon.dispose()
           if (webgl === addon) webgl = undefined
-          webglLost = true
+          releaseWebgl(kept)
           if (visible) scheduleWebgl()
         })
         term.loadAddon(addon)
         webgl = addon
-        webglLost = false
+        // Another renderer, another cell: fit to it now, not a frame later.
+        lastGeom = ''
+        refit()
+        return true
       } catch {
         // No WebGL here: the DOM renderer keeps drawing.
+        return false
       }
     }
     const scheduleWebgl = () => {
@@ -337,6 +417,8 @@ export function TerminalPane({
     const dropWebgl = () => {
       if (webglTimer) window.clearTimeout(webglTimer)
       webglTimer = 0
+      releaseWebgl(kept)
+      if (webgl) lastGeom = ''
       webgl?.dispose()
       webgl = undefined
     }
@@ -394,14 +476,14 @@ export function TerminalPane({
 
     // One fit per frame, only when the size really changed, never while hidden.
     let fitRaf = 0
-    let lastGeom = ''
     const refit = () => {
       fitRaf = 0
       if (!visible || el.clientWidth === 0) return
       const geom = `${el.clientWidth}x${el.clientHeight}:${grid?.clientHeight ?? 0}`
       if (geom === lastGeom) return
-      lastGeom = geom
-      fitNow()
+      // Kept only once a fit took: a pane not measurable yet tries again on
+      // its next show, which no longer forgets the last box (the header).
+      if (fitNow()) lastGeom = geom
     }
     const ro = new ResizeObserver(() => {
       if (!fitRaf) fitRaf = requestAnimationFrame(refit)
@@ -416,9 +498,13 @@ export function TerminalPane({
     // WebKit can drop the WebGL glyph atlas's texture on a sleep, a display
     // change or a long hidden spell without firing contextlost: the grid then
     // paints every glyph from a stale atlas — squashed, half-cut letters
-    // (owner, 2026-10-13). Rasterising again is cheap; do it whenever the
-    // terminal is seen again and whenever the pixel ratio changes.
+    // (owner, 2026-10-13, #541). Rasterising again is cheap but not free to
+    // the eye: run on every tab switch, it redrew each glyph of terminals
+    // that had nothing wrong with them. So it runs when the window comes back
+    // into view, when the pixel ratio changes, and on showing a pane that
+    // missed one of those while hidden or was hidden past LONG_HIDDEN_MS.
     const repaintGlyphs = () => {
+      glyphsStale = false
       if (!webgl) return
       term.clearTextureAtlas()
       term.refresh(0, term.rows - 1)
@@ -426,7 +512,8 @@ export function TerminalPane({
     let dprQuery: MediaQueryList | undefined
     const onDpr = () => {
       watchDpr()
-      repaintGlyphs()
+      if (visible) repaintGlyphs()
+      else if (webgl) glyphsStale = true
     }
     const watchDpr = () => {
       dprQuery?.removeEventListener('change', onDpr)
@@ -435,9 +522,14 @@ export function TerminalPane({
     }
     watchDpr()
 
-    const onWake = () => {
-      // A suspended background tab stays let go until it is shown.
-      if (document.visibilityState !== 'visible' || !visible) return
+    const onWake = (e: Event) => {
+      if (document.visibilityState !== 'visible') return
+      // A suspended background tab stays let go until it is shown; a window
+      // back in view rasterises its glyphs then.
+      if (!visible) {
+        if (webgl && e.type === 'visibilitychange') glyphsStale = true
+        return
+      }
       // What the window held while out of sight, before anything newer.
       flushHeld()
       conn.wake()
@@ -494,27 +586,39 @@ export function TerminalPane({
 
     api.current = {
       show: () => {
+        if (visible) return
         visible = true
+        releaseWebgl(kept)
         if (hideTimer) window.clearTimeout(hideTimer)
         hideTimer = 0
         // What was held goes to xterm before anything newer the socket brings.
         flushHeld()
         conn.wake()
-        lastGeom = ''
+        // The renderer first, so the fit below measures the cell it draws
+        // with. A pane with output never shows the DOM renderer on its way
+        // back (the header); one still waiting for its first output takes
+        // the quiet path.
+        if (!webgl) {
+          if (!gotOutput || !loadWebgl(true)) scheduleWebgl()
+        } else if (glyphsStale || (hiddenAt > 0 && Date.now() - hiddenAt > LONG_HIDDEN_MS)) {
+          repaintGlyphs()
+        }
+        // A no-op unless the box, the cell or the renderer changed meanwhile:
+        // the box hidden reads 0 wide and refit leaves lastGeom alone then.
         refit()
-        if (webglLost || !webgl) scheduleWebgl()
-        else repaintGlyphs()
+        if (el.clientWidth > 0) paintNow(term)
         if (focusedRef.current) term.focus()
         claim()
       },
       hide: () => {
         visible = false
+        hiddenAt = Date.now()
         conn.blur()
+        // The WebGL context stays while this is among the few panes hidden
+        // last (KEEP_WEBGL_HIDDEN); the socket goes after 30 s as before.
+        if (webgl) keepWebgl(kept)
         if (hideTimer) window.clearTimeout(hideTimer)
-        hideTimer = window.setTimeout(() => {
-          conn.suspend()
-          dropWebgl()
-        }, HIDDEN_DISCONNECT_MS)
+        hideTimer = window.setTimeout(() => conn.suspend(), HIDDEN_DISCONNECT_MS)
       },
       scrollToBottom: () => {
         term.scrollToBottom()
@@ -529,6 +633,9 @@ export function TerminalPane({
     }
     window.addEventListener(FIND_EVENT, onFind)
     conn.start()
+    // The layout effect below ran first, before there was a terminal to show.
+    if (activeRef.current) api.current.show()
+    else api.current.hide()
     return () => {
       disposed = true
       api.current = null
@@ -569,7 +676,10 @@ export function TerminalPane({
     }
   }, [sessionId])
 
-  useEffect(() => {
+  // A layout effect: the tab's panel is un-hidden in the same commit, and the
+  // terminal must have its renderer and its frame before the browser paints
+  // (the header). On mount the effect above shows it.
+  useLayoutEffect(() => {
     if (active) api.current?.show()
     else api.current?.hide()
   }, [active, sessionId])

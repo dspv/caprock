@@ -154,11 +154,17 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   browser cannot set one — the WebSocket subprotocol `caprock.device.<token>`,
   echoed back to complete the handshake. Never a query parameter: that writes a
   bearer token into every access log and browser history entry on the device.
-- **Never stored.** Paired devices survive a restart; the decision to listen
-  does not. Settable at startup with `--lan` or at runtime with `POST
-  /v1/pair/lan` (`{on: bool}`, loopback-only) — a restart-only switch is
-  reachable only from a terminal on the machine, which is the one place the
-  person who wants it is not.
+- **Not stored unless the owner asks.** Paired devices survive a restart; the
+  decision to listen does not, unless `lan_keep_on` is true in `config.json`
+  (ADR-060, off by default), when the daemon turns it on at start as `--lan`
+  would. Settable at startup with `--lan` or at runtime with `POST
+  /v1/pair/lan` (`{on: bool, keep?: bool}`, loopback-only; answers
+  `{enabled, url?, keep_on}`) — a restart-only switch is reachable only from a
+  terminal on the machine, which is the one place the person who wants it is
+  not. `keep` is stored only with `on: true`; `on: false` always clears
+  `lan_keep_on`. `on: true` while already listening also opens the Tailscale
+  listener when a Tailscale address has appeared since and none is listened
+  on, leaving the first listener alone.
 - **A token makes a device a reader, not the owner.** A paired device may make
   only the reads named in `pairedDeviceRoutes` (`internal/api/lanauth.go`),
   matched on method and route pattern: `GET`/`HEAD` of `/v1/sessions`,
@@ -248,9 +254,12 @@ or `magicdns` — the last the Tailscale address by its MagicDNS name, from
 `tailscale status --json` when the CLI answers within 2 s and the name is that
 address's. The Host and Origin checks admit exactly these names. A code works
 on any of them; a phone's token is kept per address (browser storage is per
-origin), so each address pairs once. An address appearing later (Tailscale
-installed while LAN access is on) is listened on after LAN access is turned
-off and on.
+origin), so each address pairs once. A Tailscale address appearing later
+(Tailscale installed while LAN access is on) is listened on at the next `POST
+/v1/pair/lan {on: true}`, which the pairing panel sends when it sees one.
+`GET /v1/pair/state` also carries `tailscale: true` when the machine has a
+Tailscale address now — from the interface list, listened on or not, while
+access is off too — and `keep_on`, the stored `lan_keep_on` (ADR-060).
 
 **Pairing endpoints.** `GET /v1/pair/state`, `POST /v1/pair/code`,
 `DELETE /v1/pair/code` and `DELETE /v1/pair/devices/{id|all}` are
@@ -3396,7 +3405,13 @@ Two exceptions, both deliberate:
 - **Sessions with no pid** — written by an older shim, or read from a transcript
   with no live process behind them — fall back to a 24-hour staleness sweep,
   because there is nothing to verify and the only cost of being slow is a stale
-  row.
+  row. One fact is checked first: when such a session's transcript file (only
+  when `has_transcript`, so the file was read and existed) or its `cwd` no
+  longer exists, the next sweep ends it (2026-10-14: a test script wrote nine
+  synthetic transcripts and deleted them, and the nine sessions read from them
+  would otherwise have stayed listed as working for 24 hours). Only "does not
+  exist" counts; a permission error ends nothing. There is no end-reason
+  column, so the row records the end as any other sweep's.
 
 **`sessions.status` is derived, and `ended` is sticky only against the past.**
 An explicit status from a caller (a `SessionEnd` hook, `SetExit`, the sweep)

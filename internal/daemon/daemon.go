@@ -85,7 +85,8 @@ type Options struct {
 	// what the product promises, and a promise that quietly survives a restart
 	// is one nobody re-consents to: a laptop opened in a coworking space would
 	// carry a decision made at home on a trusted network. Turning it on is an
-	// act, every time.
+	// act, every time — unless the owner ticked *Keep on after Caprock
+	// restarts* (Config.LANKeepOn, ADR-060).
 	LAN bool
 	// DisableIngest turns transcript tailing off (tests, or hooks-only mode).
 	DisableIngest bool
@@ -599,7 +600,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	// A failure is reported and survived: the dashboard on loopback is the
 	// product, a tablet is an extra, and refusing to start because the wifi is
 	// off would be the wrong trade.
-	if d.opt.LAN {
+	// Or the owner ticked *Keep on after Caprock restarts* (ADR-060): the
+	// stored choice does what the flag does.
+	if d.opt.LAN || d.opt.Config.LANKeepOn {
 		if ip, err := lan.Address(); err != nil {
 			d.log.Warn("LAN access requested but this machine has no private network address",
 				"component", "daemon", "err", err)
@@ -826,6 +829,10 @@ func (d *Daemon) run(ctx context.Context) error {
 			d.log.Info("also listening on the local network — devices must pair before they get in",
 				"component", "daemon", "url", d.lanURL)
 			d.mu.Lock()
+			// Held like EnableLAN holds it, so Turn off closes this listener
+			// too: without it, access turned on at startup could not be
+			// turned off, and turning it on again failed on a bound port.
+			d.lanLn = lanLn
 			d.listenAlternateLocked(ctx)
 			d.mu.Unlock()
 		}
@@ -2442,14 +2449,20 @@ func (d *Daemon) deepseekStats() *deepseek.Stats {
 // terminal", which on a machine you are reading from a tablet is advice to
 // give up. `caprock up --lan` still works and does the same thing at startup.
 //
-// Still not remembered across a restart. That was the point of making it a
-// flag: a laptop opened somewhere you do not trust should not be carrying a
-// decision you made at home. Switching it on is an act, every time.
+// Not remembered across a restart unless the owner ticks *Keep on after
+// Caprock restarts* (LANKeepOn, ADR-060): a laptop opened somewhere you do
+// not trust should not carry a decision made at home without being asked.
 func (d *Daemon) EnableLAN() (string, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.lanLn != nil {
-		return d.lanURL, nil // already listening; asking twice is not an error
+		// Already listening; asking twice is not an error. But Tailscale may
+		// have come up since (installed while access was on): listen on its
+		// address too, so the panel's next look offers it without the old
+		// "turn phone access off and on". The first listener is untouched,
+		// so a phone on the Wi-Fi does not notice.
+		d.adoptTailscaleLocked()
+		return d.lanURL, nil
 	}
 	if d.srv == nil {
 		return "", errors.New("the daemon is not serving yet")
@@ -2538,6 +2551,41 @@ func (d *Daemon) listenAlternateLocked(ctx context.Context) {
 		}
 		d.api.SetLANAlternates(append(urls, "http://"+net.JoinHostPort(name, strconv.Itoa(port))))
 	}()
+}
+
+// adoptTailscaleLocked listens on a Tailscale address that appeared after
+// network access was turned on, when nothing listens on one yet. Callers hold
+// d.mu.
+func (d *Daemon) adoptTailscaleLocked() {
+	if d.lanLn2 != nil || d.lanIP == nil || lan.Tunnelled(d.lanIP) {
+		return
+	}
+	ts := lan.Other(d.lanIP)
+	if ts == nil || !lan.Tunnelled(ts) {
+		return
+	}
+	d.lanIP2 = ts
+	ctx := d.baseCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	d.listenAlternateLocked(ctx)
+}
+
+// LANKeepOn reports whether phone access is turned back on at start (ADR-060).
+func (d *Daemon) LANKeepOn() bool { return d.config().LANKeepOn }
+
+// SetLANKeepOn stores whether phone access is turned back on at start.
+func (d *Daemon) SetLANKeepOn(on bool) error {
+	d.cfgMu.Lock()
+	if d.opt.Config.LANKeepOn == on {
+		d.cfgMu.Unlock()
+		return nil
+	}
+	d.opt.Config.LANKeepOn = on
+	cfg := d.opt.Config
+	d.cfgMu.Unlock()
+	return config.Save(d.opt.DataDir, cfg)
 }
 
 // DisableLAN closes the second listener. Paired devices are kept — they are the

@@ -21,6 +21,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   form carries that provider's app-password steps and link. Settings' *Add
   account* uses the same tiles, and opening the Mail screen no longer creates
   an empty mail database.
+- **app:** Claude's little character comes in eight faces — the hard hat,
+  a beanie, headphones, a crown, a wizard's hat, a tuft of hair, a bandana
+  and a propeller cap, each in its own pastel and expression. Each session
+  gets one at random from its id and keeps it everywhere it shows; click
+  the portrait in the cockpit to give a session another, and pick the
+  default — a face per session or one for all — in Settings → Appearance.
+  Kept in this browser only.
+- **app:** the cockpit's state line and permission mode sit under the
+  agent's portrait, so the figures at the right get the row; *started*
+  moves under the model. The subagent chips come in groups of five and wrap
+  onto a second line instead of being cut; past two lines they shrink to
+  small squares, and past that a *+N* says how many more.
 - **mail:** when you first open Mail it offers the accounts you already have in
   another client, so you add them with a click instead of retyping servers and
   passwords. Thunderbird comes over whole — servers and, when there is no
@@ -86,8 +98,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   it is still the one listed — same pid, same start time. Caprock never stops
   a process it did not start on its own (ADR-059).
 
+- **phone:** *Keep on after Caprock restarts* in Settings → *Use on your
+  phone*: phone access comes back on by itself after an update or a reboot.
+  Off by default; Turn off clears it; only paired phones get in either way
+  (ADR-060).
+
 ### Changed
 
+- **phone:** the phone panel says first where it works — *Works on this
+  Wi-Fi only* or *Works anywhere (Tailscale)* — instead of folding it under
+  *Then: …*. Without Tailscale it names the one step (Tailscale on this
+  computer and the phone, same account) with the downloads; it notices
+  Tailscale by itself while open, listens on its address without turning
+  access off and on, and a new code opens the Tailscale address. A paired
+  computer is no longer counted as a phone: *No phone paired yet* says so.
 - **remote:** the phone's first screen says what to do in three large steps,
   keeps the pasted link for a home-screen app behind one tap (shown at once
   when opened from the home screen), and answers the questions a careful
@@ -149,6 +173,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** switching tabs no longer redraws the terminal's font for a moment. A tab hidden for 30 s had let its WebGL renderer go, so it came back drawn by the DOM renderer, in other glyphs and another cell height, until WebGL was swapped in 1.5 s later; a tab hidden for less had its glyph atlas rebuilt on every switch. The three tabs hidden last now keep their renderer, a tab past that gets it back before it is first painted, and the atlas is rebuilt only after a wake, a pixel-ratio change or a hide of more than five minutes, so the squashed letters of #541 stay fixed.
+- **app:** the version panel in the status bar has a close button; Esc
+  and a click outside still close it.
+- **app:** a button's tooltip no longer covers the panel it opened: the
+  Caprock doctor, the version, the theme picker and the composer's menus
+  show their tooltip only while closed.
 - **app:** a session no longer jumps into Claude Code's background-agents list on its own. Holding ⌥⌘↓ (Alt+Shift+↓ off macOS) to step through sessions and letting go of the modifiers before the arrow left the arrow repeating into the session it had just opened, and Claude Code read that Down as "go to the agents below the prompt". An arrow pressed as an app chord now stays the app's until it is released, and the sidebar's ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift+↑ ↓ off macOS), which typed a Down too when pressed in a terminal, do nothing there. Plain arrows and ⌥← ⌥→ word jumps are unchanged.
 - **app:** the desktop app no longer opens to a black window when the deck's
   CI panel was left on Release and the newest release run lists no jobs. The
@@ -169,6 +199,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   holds the replay and sends no size until it is shown and fitted.
 
 - **mail:** on macOS, account passwords go to the login keychain through the call that names the keychain file, so saving one can never bring up a "Keychain Not Found" dialog. Passwords saved before are read where they are; Windows and Linux are unchanged.
+- **daemon:** a session with no process behind it ends as soon as its transcript file or its folder is deleted, instead of staying in the sidebar for 24 hours. Nine synthetic transcripts a test script wrote and removed left nine such sessions listed as "working". A session is also no longer shown as working because of an event stamped ahead of the clock.
 - **mail:** a wrong password on Spacemail and other Dovecot hosts says so. They answer it with "NO [UNAVAILABLE] Temporary authentication failure", which read like an outage; the error now says the password was not accepted, and the other sign-in names are not tried, since more failures only lock sign-in longer.
 
 ### Security
