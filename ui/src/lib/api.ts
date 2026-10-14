@@ -1562,6 +1562,8 @@ export interface PairMe {
   via?: PairedVia
   /** Access from anywhere is on, so a Wi-Fi link has a better one to move to. */
   anywhere?: boolean
+  /** The phone's page for access from anywhere, sent with anywhere. */
+  app?: string
 }
 
 /** What the owner sees on the pairing panel. */

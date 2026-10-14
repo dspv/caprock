@@ -92,6 +92,25 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   caprock.dev stand beside the mark, a line says the page is the other half
   of the Caprock app on your computer (with where to get it), and the first
   step shows a small picture of Settings → Use on your phone → Show a code.
+- **phone:** the phone no longer sits on *Connecting…* with nothing after
+  it. A computer that went to sleep kept its relay connection open on
+  paper, and the relay handed the phone to it; the phone waited forever for
+  an answer. The relay now treats a computer it has not heard from in 75
+  seconds as offline (`caprock remote relay` and the hosted relay, which
+  needs a redeploy), and the phone gives every attempt 10 seconds, checks
+  the computer itself, not only the relay, while connected, and after 5
+  seconds says what is wrong — *Your computer is offline or Caprock isn't
+  running*, *Your computer isn't answering*, *Can't reach the relay*, *This
+  phone was removed: pair again* — with **Retry** and **Pair again**. It
+  retries by itself, and at once when you come back to it.
+- **phone:** Caprock installs on an Android phone once, when you press
+  **Install the Caprock app** on m.caprock.dev. Chrome's own install prompt
+  no longer pops up in a browser tab of an already-installed app, a browser
+  tab says *Caprock is on your home screen* instead, and the old Wi-Fi link
+  no longer offers a second home-screen icon: it says to use the app from
+  m.caprock.dev. Opening the same pairing QR twice keeps the pairing that
+  worked, and a page left open across a new version of m.caprock.dev
+  reloads instead of failing.
 - **mail:** Mail opens instead of failing with "null is not an object
   (evaluating 't.accounts.length')". A mail client found on the machine with
   no accounts it could read — Apple Mail before Full Disk Access — came back
