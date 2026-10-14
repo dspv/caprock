@@ -9,6 +9,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** the closing questions' buttons read on one line. "Keep it
+  running, close tab" broke over two lines and "Stop and close" spilled out
+  of its button; the sheets are wider, every sheet button keeps its label on
+  one line, and the row wraps as a whole on a narrow window.
+
 - **app:** a tab's project name fits. It was cut at nine characters
   (*uncensor…*, *creatos_f…*) even on a wide window; now it takes its whole
   width first and the session's name is shortened before it, and tabs grow

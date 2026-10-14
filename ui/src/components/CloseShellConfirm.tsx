@@ -24,16 +24,13 @@ export function CloseChatConfirm({ onStop, onKeep, onCancel, agent = false }: {
   return (
     <Sheet
       label={agent ? 'End an agent that is answering' : 'Close a chat that is answering'}
-      width={420}
+      width={560}
       onClose={onCancel}
       footer={
         <>
           <SheetButton onClick={onCancel}>Cancel</SheetButton>
           <SheetButton onClick={onKeep}>Keep it running, close tab</SheetButton>
-          <button type="button" autoFocus onClick={onStop}
-            className="h-[30px] rounded-[7px] bg-danger px-3.5 text-[13px] font-medium text-white hover:brightness-110">
-            Stop and close
-          </button>
+          <SheetButton danger autoFocus onClick={onStop}>Stop and close</SheetButton>
         </>
       }
     >
@@ -108,20 +105,13 @@ export function CloseShellConfirm({ busy, project, onStop, onKeep, onCancel }: {
   return (
     <Sheet
       label="Close a running shell"
-      width={440}
+      width={560}
       onClose={onCancel}
       footer={
         <>
           <SheetButton onClick={onCancel}>Cancel</SheetButton>
           <SheetButton onClick={onKeep}>{project ? `Keep ${many ? 'them' : 'it'} running, close tabs` : 'Keep running, close tab'}</SheetButton>
-          <button
-            type="button"
-            autoFocus
-            onClick={onStop}
-            className="h-[30px] rounded-[7px] bg-danger px-3.5 text-[13px] font-medium text-white hover:brightness-110"
-          >
-            Stop and close
-          </button>
+          <SheetButton danger autoFocus onClick={onStop}>Stop and close</SheetButton>
         </>
       }
     >
