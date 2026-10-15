@@ -119,37 +119,45 @@ describe('the session deck in the app', () => {
   })
 
   // Owner, 2026-10-14, translated: "it feels like quick access to the CI/CD
-  // page is missing". ⇧⌘B opens the Pipeline as a tab and, from it, goes
-  // back to the tab before; the page stays open.
-  it('opens the Pipeline as a tab on ⇧⌘B and goes back to the tab before on ⇧⌘B or Back', async () => {
+  // page is missing". Since 2026-10-15 the Pipeline is a page of the
+  // dashboard ("Pipeline is part of the Dashboard, just a separate page"):
+  // ⇧⌘B opens the Dashboard tab at #/pipeline and, from there, goes back.
+  const dashboardTab = () => screen.getByRole('tab', { name: /^Dashboard/ })
+  const pipelinePage = () => waitFor(() => {
+    const v = document.querySelector('[data-dashboard-view]:not([hidden]) [data-prs-tab]')
+    if (!v) throw new Error('no Pipeline page')
+    return v
+  }, { timeout: 5000 })
+  it('opens the Pipeline in the Dashboard tab on ⇧⌘B and goes back to the tab before on ⇧⌘B or Back', async () => {
     await openAgent()
     const shiftCmdB = () => act(() => { fireEvent.keyDown(window, { key: 'B', code: 'KeyB', metaKey: true, shiftKey: true }) })
     cmdB()
     shiftCmdB()
-    const tab = await screen.findByRole('tab', { name: /Pipeline · app/ })
-    expect(tab).toHaveAttribute('aria-selected', 'true')
-    expect(document.querySelector('[data-prs-tab]')).toBeInTheDocument()
-    // Not an agent's tab: no deck under it; the footer's button says it is in front.
+    expect(location.hash).toBe('#/pipeline?of=agent-1')
+    await pipelinePage()
+    expect(dashboardTab()).toHaveAttribute('aria-selected', 'true')
+    // No tab of its own, no deck: the footer's button says it is in front.
+    expect(screen.queryAllByRole('tab', { name: /Pipeline/ })).toHaveLength(0)
     expect(deck()).toBeNull()
     expect(pipelineButton()).toHaveAttribute('aria-current', 'true')
-    expect(screen.queryByText('Loading…')).toBeNull()
+    // In the dashboard's nav, marked as the page shown.
+    expect(screen.getByRole('link', { name: 'Pipeline' })).toHaveAttribute('aria-current', 'page')
     shiftCmdB()
     await waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true'))
-    expect(screen.getByRole('tab', { name: /Pipeline · app/ })).toBeInTheDocument()
     expect(deck()).toBeInTheDocument()
-    // Again: the same tab, brought to the front; Back returns.
+    // Again, then Back returns.
     shiftCmdB()
-    await waitFor(() => expect(screen.getByRole('tab', { name: /Pipeline · app/ })).toHaveAttribute('aria-selected', 'true'))
-    expect(screen.getAllByRole('tab', { name: /Pipeline/ })).toHaveLength(1)
-    fireEvent.click(document.querySelector('[data-prs-back]')!)
+    await pipelinePage()
+    fireEvent.click(document.querySelector('[data-dashboard-view]:not([hidden]) [data-prs-back]')!)
     await waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true'))
   })
 
   it('opens the Pipeline from the sidebar footer’s button and from the bar’s own control, and hides the bar with its ×', async () => {
     await openAgent()
-    expect(pipelineButton()).toHaveAccessibleName('Pipeline: every pull request on its way — open, CI, merged, released — in a tab (⇧⌘B)')
+    expect(pipelineButton()).toHaveAccessibleName('Pipeline: every pull request on its way — open, CI, merged, released — on the dashboard (⇧⌘B)')
     fireEvent.click(pipelineButton())
-    expect(await screen.findByRole('tab', { name: /Pipeline · app/ })).toHaveAttribute('aria-selected', 'true')
+    await pipelinePage()
+    expect(dashboardTab()).toHaveAttribute('aria-selected', 'true')
     fireEvent.click(pipelineButton())
     await waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true'))
     cmdB()
@@ -159,7 +167,20 @@ describe('the session deck in the app', () => {
     expect(JSON.parse(localStorage.getItem(DECK_KEY) ?? '{}')).toMatchObject({ open: false })
     cmdB()
     fireEvent.click(deck()!.querySelector('[data-deck-expand]')!)
-    expect(await screen.findByRole('tab', { name: /Pipeline · app/ })).toHaveAttribute('aria-selected', 'true')
+    await pipelinePage()
+    expect(location.hash).toBe('#/pipeline?of=agent-1')
+  })
+
+  it('restores a Pipeline tab stored before it became a page as the Dashboard tab’s Pipeline', async () => {
+    localStorage.setItem('caprock.app.workspace.v1', JSON.stringify({ version: 1, activeProject: '', activeByProject: {}, tabs: [
+      { id: 'tab-p', projectId: 'p', root: { type: 'pane', id: 'pane-p', target: { kind: 'prs', sessionId: 'prs:agent-1', of: 'agent-1' } }, focusedPaneId: 'pane-p', title: 'Pipeline · app' },
+    ] }))
+    render(<AppShell />)
+    await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeTruthy())
+    expect(screen.queryAllByRole('tab', { name: /Pipeline/ })).toHaveLength(0)
+    fireEvent.click(dashboardTab())
+    expect(location.hash).toBe('#/pipeline?of=agent-1')
+    await pipelinePage()
   })
 
   it('is listed in the palette: Open Pipeline, and the bar on or off', async () => {

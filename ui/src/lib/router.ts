@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=]
+// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=]
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -26,6 +26,11 @@ export type Route =
   | { name: 'brain'; node?: number }
   // Start work from the phone (WP-15): clone, a new project, a worktree.
   | { name: 'start'; mode?: StartMode }
+  // The Pipeline (.ai/04-ui.md § Pipeline): one repository's pull requests
+  // on their way to a release. `repo` is the repository's folder on this
+  // machine; `of` the agent session it was opened from (its This session
+  // view, and its repository when `repo` is absent).
+  | { name: 'pipeline'; repo?: string; of?: string }
 
 export type StartMode = 'clone' | 'new' | 'worktree'
 
@@ -75,6 +80,11 @@ export function parseHash(hash: string): Route {
       const node = Number(params.get('node'))
       return Number.isInteger(node) && node > 0 ? { name: 'brain', node } : { name: 'brain' }
     }
+    case 'pipeline': {
+      const repo = params.get('repo') || undefined
+      const of = params.get('of') || undefined
+      return { name: 'pipeline', ...(repo ? { repo } : {}), ...(of ? { of } : {}) }
+    }
     case 'start': {
       const mode = params.get('mode')
       return mode === 'clone' || mode === 'new' || mode === 'worktree' ? { name: 'start', mode } : { name: 'start' }
@@ -104,6 +114,13 @@ export function href(r: Route): string {
     case 'mail': return '#/mail'
     case 'brain': return r.node ? `#/brain?node=${r.node}` : '#/brain'
     case 'start': return r.mode ? `#/start?mode=${r.mode}` : '#/start'
+    case 'pipeline': {
+      const q = new URLSearchParams()
+      if (r.repo) q.set('repo', r.repo)
+      if (r.of) q.set('of', r.of)
+      const s = q.toString()
+      return `#/pipeline${s ? `?${s}` : ''}`
+    }
   }
 }
 

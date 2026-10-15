@@ -16,7 +16,7 @@ import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
 import { FIND_EVENT, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
-import { parseHash, type SettingsSection } from '@/lib/router'
+import { href, parseHash, type SettingsSection } from '@/lib/router'
 import { goHomeTop, isHomeHash } from '@/lib/screenPlace'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
 import { buildSidebar, dotOf, groupProjects, numberedProjects, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type WorktreeNode } from '@/lib/sidebar'
@@ -25,8 +25,9 @@ import {
   focusedLeaf,
   leaves,
   loadWorkspace,
-  prsTabKey,
+  pipelineInStore,
   saveWorkspace,
+  WORKSPACE_KEY,
   tabsOf,
   workspaceReducer,
   type PaneLeaf,
@@ -71,7 +72,7 @@ import { ChangesView } from '@/components/ChangesView'
 import { AttemptsCompare } from '@/components/AttemptsCompare'
 import { FileView } from '@/components/FileView'
 import { attachable, ObservePane } from '@/components/ObservePane'
-import { PRsCITab } from '@/components/PRsCITab'
+import { PipelineHostContext, type PipelineHost } from '@/lib/pipelineHost'
 import { FilePicker } from '@/components/FilePicker'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import type { HandoffTarget } from '@/components/AgentHandoff'
@@ -351,9 +352,8 @@ export function AppShell() {
   const current = activeTab(shownWs)
   const focused = current ? focusedLeaf(current).target : undefined
   const focusedSession = focused ? sessionsById.get(focused.sessionId) : undefined
-  // The inspector beside a Pipeline page describes the agent it was opened from.
-  const inspectedId = focused?.kind === 'prs' ? focused.of : focused?.sessionId
-  const inspectedSession = focused?.kind === 'prs' && focused.of ? sessionsById.get(focused.of) : focusedSession
+  const inspectedId = focused?.sessionId
+  const inspectedSession = focusedSession
   // An agent's session is in front: what the session deck and the chat apply to.
   const frontIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const activeProject = projectsById.get(activeProjectId)
@@ -375,12 +375,19 @@ export function AppShell() {
 
   // The Dashboard tab: in the strip from the moment a dashboard screen is
   // shown until it is closed, and it brings back the screen last shown in it.
-  const lastDashboard = useRef('#/')
+  // A Pipeline tab stored before 2026-10-15 comes back as this tab's
+  // Pipeline page (lib/tabs pipelineInStore).
+  const lastDashboard = useRef<string | null>(null)
+  if (lastDashboard.current === null) {
+    let stored: string | null = null
+    try { stored = localStorage.getItem(WORKSPACE_KEY) } catch { /* nothing stored */ }
+    lastDashboard.current = pipelineInStore(stored) ?? '#/'
+  }
   if (dashboardShown) lastDashboard.current = hash
   useEffect(() => {
     if (dashboardShown && !ws.dashboard) dispatch({ type: 'dashboard', open: true })
   }, [dashboardShown, ws.dashboard])
-  const dashboardRoute = parseHash(dashboardShown ? hash : lastDashboard.current)
+  const dashboardRoute = parseHash(dashboardShown ? hash : lastDashboard.current ?? '#/')
   const closeDashboard = useCallback(() => {
     dispatch({ type: 'dashboard', open: false })
     lastDashboard.current = '#/'
@@ -961,7 +968,7 @@ export function AppShell() {
   // ⇧⌘G opens the diff of the session in front; what that is is known further
   // down (focusedWorktree), so it is reached through a ref set there.
   const openChangesRef = useRef<(() => void) | undefined>(undefined)
-  // ⇧⌘B: the Pipeline tab, and from it back — set further down, where both
+  // ⇧⌘B: the Pipeline page, and from it back — set further down, where both
   // are known (openPipeline, pipelineBack).
   const expandRef = useRef<(() => void) | undefined>(undefined)
   const run = useCallback((c: AppCommand) => {
@@ -1148,7 +1155,7 @@ export function AppShell() {
       { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat…', detail: 'pick the agent and model; Enter starts the last one used', hint: keys('⌥⌘N'), icon: <ChatIcon size={14} />, run: onQuickChatChooser },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: keys('⌘O'), icon: <FolderPlusIcon size={14} />, run: onAddProject },
       { id: 'a-brain', group: 'Actions', label: 'Add to Second Brain…', detail: 'keep a line of your own', hint: keys('⇧⌘H'), icon: <BrainGlyph size={14} />, run: () => openBrainCapture() },
-      { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'every pull request on its way: open, CI, merged, released', hint: keys('⇧⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck-expand' }) },
+      { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'on the dashboard: every pull request on its way — open, CI, merged, released', hint: keys('⇧⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck-expand' }) },
       { id: 'a-deck', group: 'Actions', label: deck.open ? 'Pipeline bar: Off' : 'Pipeline bar: On', detail: deck.open ? 'hide the bar under the agent’s terminal' : 'show the bar under the agent’s terminal', hint: keys('⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck' }) },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
@@ -1392,82 +1399,55 @@ export function AppShell() {
     )
   }, [sessionsById, data.permissions, openTab, refresh])
 
-  // The Pipeline tab (components/PRsCITab.tsx; "Pipeline" until
-  // 2026-10-14): the deck's cell, large; one per agent session.
+  // The Pipeline (screens/Pipeline.tsx, .ai/04-ui.md § Pipeline): a page of
+  // the dashboard at #/pipeline since 2026-10-15, no longer a tab of its own
+  // (owner, translated: "Pipeline is part of the Dashboard, just a separate page").
   const projectOfSession = useCallback((id: string) => model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((y) => y.session.session_id === id))), [model.projects])
-  const openPRsTab = useCallback((s: SessionSummary, projectId: string) => {
-    openTab({ kind: 'prs', sessionId: prsTabKey(s.session_id), of: s.session_id }, projectId, `Pipeline · ${s.project || sessionTitle(s)}`)
-  }, [openTab])
   const wsRef = useRef(ws)
   wsRef.current = ws
   // ⇧⌘B is the Pipeline one keystroke away (owner, 2026-10-14, translated:
   // "it feels like quick access to the CI/CD page is missing"): it opens the
-  // page as a tab — for the agent in front, else the Pipeline tab open last,
-  // else the newest running agent — or brings it to the front; from the
-  // page, it goes back to the tab before it. The page stays open.
-  const pipelineBackRef = useRef<string | undefined>(undefined)
+  // Dashboard tab at the Pipeline — for the agent in front, else the
+  // repository it showed last — and, from there, goes back to the tab or
+  // screen it was pressed on.
+  const pipelineBackRef = useRef<{ tab?: string; hash: string } | undefined>(undefined)
+  const pipelineShown = dashboardShown && shownRoute.name === 'pipeline'
   const openPipeline = useCallback((of?: SessionSummary) => {
-    const from = current?.id
-    const onPipeline = workspaceShown && focused?.kind === 'prs'
-    let target = of ?? (workspaceShown && frontIsAgent ? focusedSession : undefined)
-    if (!target) {
-      const open = wsRef.current.tabs.filter((t) => leaves(t.root).some((l) => l.target.kind === 'prs'))
-      const last = open[open.length - 1]
-      if (last) {
-        if (from && from !== last.id && !onPipeline) pipelineBackRef.current = from
-        dispatch({ type: 'activate', tabId: last.id })
-        showWorkspace()
-        return
-      }
-      target = [...data.sessions].filter((x) => x.kind !== 'shell' && x.status !== 'ended').sort((x, y) => (y.last_event_at ?? 0) - (x.last_event_at ?? 0))[0]
-    }
-    if (!target) { setToast('The Pipeline reads an agent’s repository: start or open an agent first.'); return }
-    if (from && !onPipeline) pipelineBackRef.current = from
-    openPRsTab(target, projectOfSession(target.session_id)?.project.id ?? activeProjectId)
-  }, [current?.id, workspaceShown, focused?.kind, frontIsAgent, focusedSession, data.sessions, openPRsTab, projectOfSession, activeProjectId, showWorkspace])
-  // Back from the Pipeline: the tab before it, else the agent's own tab.
-  const pipelineBack = useCallback((of: string) => {
+    const target = of ?? (workspaceShown && frontIsAgent ? focusedSession : undefined)
+    if (!pipelineShown) pipelineBackRef.current = { tab: workspaceShown ? current?.id : undefined, hash: location.hash }
+    goHash(target ? href({ name: 'pipeline', of: target.session_id }) : '#/pipeline')
+  }, [workspaceShown, frontIsAgent, focusedSession, pipelineShown, current?.id, goHash])
+  // Back from the Pipeline: the tab or screen before it, else the terminals
+  // (Home when no tab is open).
+  const pipelineBack = useCallback(() => {
     const back = pipelineBackRef.current
     pipelineBackRef.current = undefined
-    if (back && wsRef.current.tabs.some((t) => t.id === back)) {
-      dispatch({ type: 'activate', tabId: back })
-      showWorkspace()
+    if (back?.tab && wsRef.current.tabs.some((t) => t.id === back.tab)) {
+      dispatch({ type: 'activate', tabId: back.tab })
+      goHash(isWorkspaceHash(back.hash) ? back.hash : APP_ROUTE)
       return
     }
-    const agentTab = wsRef.current.tabs.find((t) => leaves(t.root).some((l) => l.target.sessionId === of && l.target.kind !== 'prs'))
-    const s = sessionsById.get(of)
-    if (agentTab) dispatch({ type: 'activate', tabId: agentTab.id })
-    else if (s) openSession(s, projectOfSession(of)?.project.id ?? activeProjectId)
-    showWorkspace()
-  }, [sessionsById, openSession, projectOfSession, activeProjectId, showWorkspace])
-  // In a layout effect, so a key pressed right after a tab switch acts on the tab now in front.
+    if (back && parseHash(back.hash).name !== 'pipeline') { goHash(back.hash); return }
+    goHash(wsRef.current.tabs.length > 0 ? APP_ROUTE : '#/')
+  }, [goHash])
+  // In a layout effect, so a key pressed right after a switch acts on what is now in front.
   useLayoutEffect(() => {
-    expandRef.current = workspaceShown && focused?.kind === 'prs'
-      ? () => pipelineBack(focused.of ?? '')
-      : () => openPipeline()
-  }, [workspaceShown, focused, pipelineBack, openPipeline])
-  const prsInFront = workspaceShown && focused?.kind === 'prs'
+    expandRef.current = pipelineShown ? pipelineBack : () => openPipeline()
+  }, [pipelineShown, pipelineBack, openPipeline])
   const onPipelineButton = useCallback(() => run({ kind: 'deck-expand' }), [run])
-  const renderPRs = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
-    const of = leaf.target.of ?? ''
-    const n = projectOfSession(of)
-    const worktrees = n?.worktrees.map((w) => ({ branch: w.branch, path: w.path, agents: w.sessions.filter((y) => !y.isShell).map((y) => ({ session: y.session, dot: y.dot })) }))
-    return (
-      <PRsCITab
-        sessionId={of}
-        session={sessionsById.get(of)}
-        visible={visible}
-        onBack={() => pipelineBack(of)}
-        onToast={setToast}
-        worktrees={worktrees}
-        onStartAgent={async (req, title) => {
-          const { session_id } = await api.spawn(req)
-          openTab({ kind: 'session', sessionId: session_id }, tab.projectId, title)
-          data.refresh()
-        }}
-      />
-    )
-  }, [projectOfSession, sessionsById, pipelineBack, openTab, data])
+  // What the page gets from the app (lib/pipelineHost): the sessions already
+  // held, an agent's worktrees for its fix actions, a toast, and the way back.
+  const pipelineHost = useMemo<PipelineHost>(() => ({
+    sessions: data.sessions,
+    worktreesOf: (of) => projectOfSession(of)?.worktrees.map((w) => ({ branch: w.branch, path: w.path, agents: w.sessions.filter((y) => !y.isShell).map((y) => ({ session: y.session, dot: y.dot })) })),
+    onStartAgent: async (req, title, of) => {
+      const { session_id } = await api.spawn(req)
+      openTab({ kind: 'session', sessionId: session_id }, projectOfSession(of)?.project.id ?? activeProjectId, title)
+      data.refresh()
+    },
+    onToast: setToast,
+    onBack: pipelineBack,
+  }), [data, projectOfSession, openTab, activeProjectId, pipelineBack])
 
   return (
     <div className="flex h-dvh flex-col text-fg">
@@ -1513,7 +1493,7 @@ export function AppShell() {
               tabDigits={stripDigits}
               onOrderTabs={onOrderTabs}
               onPipeline={onPipelineButton}
-              pipelineActive={prsInFront}
+              pipelineActive={pipelineShown}
             />
           </div>
         )}
@@ -1566,7 +1546,6 @@ export function AppShell() {
                     onResize={onResizePanes}
                     renderFile={renderFile}
                     renderObserve={renderObserve}
-                    renderPRs={renderPRs}
                     chats={chatPanes}
                     onChatClose={onClosePane}
                     onChatRestart={onChatRestart}
@@ -1709,7 +1688,9 @@ export function AppShell() {
                     {/* Settings → Subscriptions types a sign-in into a shell tab (ADR-048). */}
                     <SetupShellContext.Provider value={onSetupAgent}>
                       <Suspense fallback={null}>
-                        <Dashboard route={dashboardRoute} inApp shown={dashboardShown} scroller={getDashScroll} />
+                        <PipelineHostContext.Provider value={pipelineHost}>
+                          <Dashboard route={dashboardRoute} inApp shown={dashboardShown} scroller={getDashScroll} />
+                        </PipelineHostContext.Provider>
                       </Suspense>
                     </SetupShellContext.Provider>
                   </CloseSettingsContext.Provider>

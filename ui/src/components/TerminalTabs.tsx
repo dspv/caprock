@@ -414,7 +414,6 @@ export const TerminalStack = memo(function TerminalStack({
   onResize,
   renderFile,
   renderObserve,
-  renderPRs,
   chats,
   onChatClose,
   onChatRestart,
@@ -433,8 +432,6 @@ export const TerminalStack = memo(function TerminalStack({
   renderFile?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   /** What a watched session's tab shows (components/ObservePane.tsx): its conversation, read-only, no terminal. */
   renderObserve?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
-  /** What a Pipeline page shows (components/PRsCITab.tsx): the deck's cell, large. */
-  renderPRs?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
   /** The session's program exited; the workspace replaces it with a shell. */
   onPaneExit?: (sessionId: string) => void
@@ -477,8 +474,7 @@ export const TerminalStack = memo(function TerminalStack({
         return (
         <div key={t.id} className={`absolute inset-0 ${t.root.type === 'pane' && ownTab(t.root.target) ? 'bg-bg' : 'app-slab'}`} hidden={!shown} data-tab-panel={t.id}>
           {t.root.type === 'pane' && t.root.target.kind === 'file' ? renderFile?.(t, t.root, shown)
-            : t.root.type === 'pane' && t.root.target.kind === 'observe' ? renderObserve?.(t, t.root, shown)
-            : t.root.type === 'pane' && t.root.target.kind === 'prs' ? renderPRs?.(t, t.root, shown) : <PaneView
+            : t.root.type === 'pane' && t.root.target.kind === 'observe' ? renderObserve?.(t, t.root, shown) : <PaneView
             node={t.root}
             visible={shown}
             ctx={{

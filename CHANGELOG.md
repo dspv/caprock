@@ -45,6 +45,21 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   recent sessions…*, or how many sessions are waiting, and the last
   problem if there was one. The same line replaces *your personal Jarvis*
   under the Second Brain screen's title.
+- **dashboard:** The Pipeline is a page of the Dashboard now, beside *Week*
+  in its menu, instead of a tab of its own: ⇧⌘B and *Pipeline* in the
+  sidebar open the Dashboard tab there (Ctrl+Alt+Shift+B on Windows and
+  Linux), and again go back to where you were. It shows one repository —
+  the agent in front's, else the one you looked at last — with buttons
+  beside its title to switch. It is drawn as the Dashboard is: its figures
+  are the Dashboard's tiles, larger and readable, each explained in a card
+  under it on hover rather than a tooltip over the number; every pull
+  request's whole title; and its four steps tell done (ticked), current
+  (filled, ✗ when red, a turning ring while CI runs) and still ahead
+  (outlined) apart by shape as well as colour. A pull request's detail
+  opens beside the list. Home's CI/CD section shows the Pipeline's first
+  five figures at its top — in flight, needing a fix, ready, throughput,
+  CI median — with *Open Pipeline →*. A Pipeline tab saved by an earlier
+  version opens as the page.
 - **brain:** Second Brain's *How it works* now explains it in ten
   seconds. *Remembers what your agents learn — so the next one starts
   smarter*: it keeps the decisions, findings, ideas and open questions

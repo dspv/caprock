@@ -599,7 +599,7 @@ One window, three regions:
   CI/CD and Pull requests should simply be merged properly into one, with
   all the statuses and so on, plus at least a couple of previous PRs"; it
   was three cells — CI, Branch, Pull requests — until then). Its header ends
-  in *Pipeline* (the page in a tab, ⇧⌘B) and a × that hides the deck (⌘B,
+  in *Pipeline* (the page on the dashboard, ⇧⌘B) and a × that hides the deck (⌘B,
   or *Pipeline bar: On/Off* in the palette) ([04-ui.md](04-ui.md) § The
   sidebar footer).
   - **Header.** The title; the session's branch as a mono chip, *feat/x →
@@ -789,28 +789,35 @@ One window, three regions:
     the panel bigger, to see the statuses large and in detail, plus
     statistics … sometimes it's interesting to look"; renamed from *PRs &
     CI* and made one list on 2026-10-14, translated: "PR rows with their
-    statuses, so I understand how things travel, what gets released").
-    ⇧⌘B, the sidebar footer's *Pipeline*, the deck header's *Pipeline*, the
-    palette's *Open Pipeline* or the cockpit's *Pipeline ↗* opens the
-    repository's pull requests as a tab of its own, *Pipeline · repo*
-    (`kind: 'prs'`, one per agent session, never split;
-    `components/PRsCITab.tsx`, words in `lib/prstats.ts`, steps in
-    `lib/journey.ts`); a tab stored as *PRs & CI · repo* is restored under
-    the new name (`parseWorkspace`). From it, *Back ⇧⌘B* in its corner, ⇧⌘B
-    or the footer's button bring back the tab that was in front before; the
-    Pipeline tab stays open. Off macOS the key is Ctrl+Alt+Shift+B: ⌘B's
-    Ctrl+Shift+B is the deck's (rule 12). It shows:
-    - **The flow strip** — in flight, throughput a day over 14 days, opened →
-      merged, merged → released marked *estimate*, the CI median, agent cost
-      (`board.flow` in [03-contracts.md](03-contracts.md) § `…/ci/stats`).
+    statuses, so I understand how things travel, what gets released"; a
+    page of the dashboard since 2026-10-15, translated: "Pipeline is part
+    of the Dashboard, just a separate page"). ⇧⌘B, the sidebar footer's
+    *Pipeline*, the deck header's *Pipeline*, the palette's *Open Pipeline*
+    or the cockpit's *Pipeline ↗* opens the Dashboard tab at `#/pipeline`
+    for the agent in front's repository (`screens/Pipeline.tsx`,
+    `components/PipelineView.tsx`, words in `lib/prstats.ts`, steps in
+    `lib/journey.ts`, the repository in `lib/pipeline.ts`); it is in the
+    dashboard's nav too, and a picker in its head switches repository. A
+    Pipeline tab stored before (`kind: 'prs'`) comes back as the Dashboard
+    tab at that Pipeline, never as a dead tab (`pipelineInStore`). From it,
+    *Back ⇧⌘B* in its head, ⇧⌘B or the footer's button bring back the tab
+    or screen it was opened from. Off macOS the key is Ctrl+Alt+Shift+B:
+    ⌘B's Ctrl+Shift+B is the deck's (rule 12). It is drawn as the
+    dashboard's other pages are ([04-ui.md](04-ui.md) § The Pipeline). It
+    shows:
+    - **The figures** — in flight, needing a fix, ready, throughput a day
+      over 14 days, the CI median, opened → merged, merged → released marked
+      *estimate*, agent cost, as Stat tiles, each explained in a card under
+      it (`board.flow` in [03-contracts.md](03-contracts.md) § `…/ci/stats`).
+      Home's CI/CD panel shows the first five for the same repository.
     - **One list** of pull requests in three scopes — *This session*,
       *Repository* (the repository's 50 most recently updated, the default,
-      kept per viewer) or *Open*. A row: its number, its whole title (two
-      lines at most), its labels (GitHub's colour as a dot, at most six),
-      the four steps *Open → CI → Merged → Released* as pills — the step it
-      is on highlighted in its tone (*CI red*, *CI running*, *CI green*,
+      kept per viewer) or *Open*. A row: its number, its whole title, its
+      labels (GitHub's colour as a dot, at most six), the four steps *Open →
+      CI → Merged → Released* as pills — the step it is on filled in its
+      tone (*CI red* with a ✗, *CI running* with a turning ring, *CI green*,
       *Conflict*, *Changes requested*, the release's tag), the ones behind
-      it muted, the ones ahead faint — how long it has been on that step,
+      it checked, the ones ahead outlined — how long it has been on that step,
       and its agent cost. In flight first (needing a fix, CI running, ready,
       draft; longest-waiting first), then merged and not released, then
       released (newest first; ten, then *Show N more released*), then closed.
@@ -818,8 +825,8 @@ One window, three regions:
       request's own state (`journey` in `lib/journey.ts`, which the
       cockpit's bars use too). Below the list the releases, each with the
       pull requests it shipped and their agent cost.
-    - **The chosen one** — a click on a row opens it over the right of the
-      page (`data-prs-detail`, up to 640px, × or Esc closes): its state, CI,
+    - **The chosen one** — a click on a row opens it beside the list (under
+      it on a narrow window; `data-prs-detail`, × or Esc closes): its state, CI,
       merge state and review as large pills, branch → base, the diff's size
       (*+181 −59 · 13 files · 2 commits*, from GitHub's answer for the pull
       request), when it was opened and how long it took to merge; the
@@ -830,7 +837,7 @@ One window, three regions:
       its median as a tick; and a job's steps — the first failed job by
       itself — with the end of its log and *Investigate*. Its CI is read
       only while it is open.
-    It asks only while it is the tab in front and the window is visible,
+    It asks only while it is the page in front and the window is visible,
     through the deck's routes and kept answers (it opens on what the deck
     last knew). The Board's six columns and the List's figures strip (red
     runs, Actions minutes) went with the one list.

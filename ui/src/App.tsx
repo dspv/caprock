@@ -13,6 +13,7 @@ import { TasksScreen } from '@/screens/Tasks'
 import { OrchestrationScreen } from '@/screens/Orchestration'
 import { NotesScreen } from '@/screens/Notes'
 import { PairScreen } from '@/screens/Pair'
+import { PipelineScreen } from '@/screens/Pipeline'
 import { NewProjectScreen } from '@/components/NewProject'
 import { PhoneHome } from '@/components/PhoneHome'
 import { LanOnlyNotice } from '@/components/LanOnlyNotice'
@@ -128,6 +129,7 @@ export function Dashboard({ route, inApp = false, shown = true, scroller = pageS
       case 'start': return <NewProjectScreen mode={r.mode} />
       case 'mail': return <Suspense fallback={null}><MailScreen /></Suspense>
       case 'brain': return <Suspense fallback={null}><BrainScreen node={r.node} /></Suspense>
+      case 'pipeline': return <PipelineScreen repo={r.repo} of={r.of} />
     }
   }
   // The kept screens opened so far, each with the route it last showed.

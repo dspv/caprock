@@ -525,8 +525,8 @@ describe('the sidebar', () => {
   })
 
   it('names the Pipeline button’s key as each OS spells it', () => {
-    expect(pipelineLabel(false, true)).toBe('Pipeline: every pull request on its way — open, CI, merged, released — in a tab (⇧⌘B)')
-    expect(pipelineLabel(true, false)).toBe('Pipeline is in front — click to go back to the tab before it (Ctrl+Alt+Shift+B)')
+    expect(pipelineLabel(false, true)).toBe('Pipeline: every pull request on its way — open, CI, merged, released — on the dashboard (⇧⌘B)')
+    expect(pipelineLabel(true, false)).toBe('Pipeline is in front — click to go back to where you were (Ctrl+Alt+Shift+B)')
   })
 
   // Owner, 2026-10-14 (translated): "put it on the main screen as a button —

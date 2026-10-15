@@ -139,9 +139,9 @@ others. Installing it: [install-app.md](install-app.md).
   Under *Dashboard*, one row in two halves: **Pipeline** (its key, ⇧⌘B,
   is in its tooltip) and the theme, named too. On Windows and Linux each
   takes a row, and there the Pipeline row shows its key, Ctrl+Alt+Shift+B.
-  A click on *Pipeline* opens the Pipeline page in a tab, or brings it to
-  the front; from it, a click goes back to the tab you were on. The button
-  is in the accent while the page is in front.
+  A click on *Pipeline* opens the Pipeline page on the Dashboard; from it,
+  a click goes back to where you were. The button is in the accent while
+  the page is in front.
   **Mail** sits above *Dashboard*, with its key, ⇧⌘M. It opens Mail in a
   tab of its own beside the Dashboard tab (the envelope and ⇧⌘M); pressed
   again it brings that tab to the front, and its × closes it. With no mail
@@ -595,22 +595,27 @@ others. Installing it: [install-app.md](install-app.md).
   OS, switched in its label.
   ⇧⌘B, *Pipeline* at the foot of the sidebar, *Pipeline* in the deck's
   header, *Open Pipeline* in the palette or *Pipeline ↗* in the cockpit
-  opens the **Pipeline**: the repository's pull requests in a tab of its
-  own, *Pipeline · repo* (a tab saved as *PRs & CI* comes back under the new
-  name). Above, how fast work flows (merges a day, opened → merged, merged →
-  released as an estimate, the CI median, agent cost). Then one list, a row
-  per pull request: its number, its whole title (up to two lines), its
-  labels, and the four steps as pills — *Open → CI → Merged → Released* —
-  the step it is on highlighted, the ones behind it muted (*CI red*, *CI
-  running*, *Conflict*, *Changes requested*, or the release's tag on
-  *Released*), then how long ago and its *agent cost* (what Caprock recorded
+  opens the **Pipeline**, a page of the Dashboard (in its menu beside
+  *Week*, and in the Dashboard tab in the app): one repository's pull
+  requests, the agent in front's, else the one you looked at last — switch
+  repository with the buttons beside its title. A Pipeline tab saved by an
+  earlier version opens as this page instead. Above, how fast work flows,
+  in the Dashboard's figure tiles: in flight, needing a fix, ready, merges a
+  day, the CI median, opened → merged, merged → released as an estimate,
+  agent cost; hover a figure (or focus it) for what it means, in a card
+  under it. Then one list, a row per pull request: its number, its whole
+  title, its labels, and the four steps as pills — *Open → CI → Merged →
+  Released* — a step done ticked, the step it is on filled in its colour (a
+  ✗ on *CI red*, a turning ring on *CI running*; *Conflict*, *Changes
+  requested*, or the release's tag on *Released*), a step still ahead
+  outlined, then how long ago and its *agent cost* (what Caprock recorded
   agents spending on it, at API list price — not a bill). The rows in
   flight come first — needing a fix, CI running, ready, draft — then merged
   and not yet released, then released: ten of those, and *Show N more
   released* for the rest. *This session*, *Repository* and *Open* choose
   which pull requests are listed. Below, each recent release with the pull
   requests it shipped and what the agents spent on them. Click a row for
-  its detail over the right of the page — state, review, merge state and
+  its detail beside the list (under it in a narrow window) — state, review, merge state and
   diff size, the deck's actions, its jobs by runner OS against each one's
   usual time, the jobs on a timeline, and a failed job's steps and log with
   *Investigate*; × or Esc closes it. Its header always says how current
@@ -618,10 +623,10 @@ others. Installing it: [install-app.md](install-app.md).
   faint pulse while a copy kept from before is read again (its rows drawn
   faint until the fresh answer lands); and *Couldn't refresh: <why> ·
   showing data from 15:02 · Retry* when GitHub or the daemon could not be
-  read. The CI/CD section on Now says the same in its header. **Back** in
-  its top-right corner, ⇧⌘B again or *Pipeline* in the sidebar go back to
-  the tab you were on; the Pipeline tab stays open. It reads GitHub only
-  while it is in front.
+  read. The CI/CD section on Home says the same in its header, and shows
+  the Pipeline's first five figures at its top with *Open Pipeline →*.
+  **Back** in its top-right corner, ⇧⌘B again or *Pipeline* in the sidebar
+  go back to where you were. It reads GitHub only while it is in front.
 - **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
   same button), *Review and commit* in the inspector, or "Review changes" in
   the palette. The files are listed as *Staged*, *Changes* and *Conflicts*;
@@ -741,7 +746,7 @@ On macOS:
 | ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                 |
 | ⌘I          | Agent cockpit (the inspector)                                            |
 | ⌘B          | Pipeline bar under the agent's terminal, shown or hidden                 |
-| ⇧⌘B         | Pipeline in a tab; there, back to the tab before                         |
+| ⇧⌘B         | Pipeline on the dashboard; there, back to where you were                 |
 | ⌘\          | Hide or show the sidebar                                                 |
 | ⌘0, ⇧⌘D     | Dashboard tab, where you left it; again: Home, at its top                |
 | ⌘R          | Reload the window (View → Reload)                                        |

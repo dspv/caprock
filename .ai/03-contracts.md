@@ -1811,7 +1811,8 @@ error. The cached answers are never changed: the baselines are set on a copy.
 **`GET /v1/sessions/{id}/ci/stats`** → `SessionCIStats` `{connected, repo?,
 reason?, prs[], stats?, board?, error?, read_at?, fetched_at, refreshing?,
 refresh_error?, refresh_failed_at?}`: the Pipeline
-(.ai/21-app.md § Pipeline), asked only while that tab is in front and
+(.ai/21-app.md § Pipeline), asked only while that page is in front, or
+Home's CI/CD section is unfolded and in front (its Pipeline figures), and
 the window visible. `repo` and `reason` as `SessionRepoCI` says them. `prs`
 is the repository's own pull requests — the `BranchPR` list the Branches
 view reads (`GET …/pulls?state=all&sort=updated&direction=desc&per_page=50`,

@@ -370,7 +370,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
       {/* CI/CD beside the repositories: Actions minutes, CI time, red and stuck
         * runs, GitHub's status, the newest release, and what each pull request
         * cost the agents and who opened it. Folded, it asks nothing. */}
-      <CICDPanel />
+      <CICDPanel sessions={everySession} />
 
       {/* The all-time figures as pictures: donuts with the share printed
         * big, and the agents drawn as the Week card's characters. Collapsible,

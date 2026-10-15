@@ -2,39 +2,50 @@
  * A pull request's four steps, drawn two ways from lib/journey: pills on the
  * Pipeline page's rows, a thin four-part bar in the cockpit. The step it is
  * on is coloured — its CI's colour on the CI step — the ones behind it are
- * muted, the ones ahead faint.
+ * checked, the ones ahead outlined.
  */
 import type { JourneyStep, StepTone } from '@/lib/journey'
 
 const PILL: Record<StepTone, string> = {
-  ok: 'border-ok/45 bg-ok/10 text-ok',
-  fail: 'border-danger/45 bg-danger/10 text-danger',
-  pending: 'border-warn/45 bg-warn/10 text-warn',
-  merged: 'border-merged/45 bg-merged/10 text-merged',
-  accent: 'border-accent/50 bg-accent/10 text-accent',
-  muted: 'border-[var(--app-hairline-strong)] text-fg-muted',
-  faint: 'border-[var(--app-hairline)] text-fg-faint',
+  ok: 'border-ok/55 bg-ok/15 text-ok',
+  fail: 'border-danger/60 bg-danger/15 text-danger',
+  pending: 'border-warn/55 bg-warn/15 text-warn',
+  merged: 'border-merged/55 bg-merged/15 text-merged',
+  accent: 'border-accent/60 bg-accent/15 text-accent',
+  muted: 'border-border-strong bg-panel-2 text-fg',
+  faint: 'border-border-strong text-fg-muted',
 }
 
 const BAR: Record<StepTone, string> = {
   ok: 'bg-ok', fail: 'bg-danger', pending: 'bg-warn', merged: 'bg-merged', accent: 'bg-accent', muted: 'bg-fg-muted', faint: 'bg-[var(--app-hairline-strong)]',
 }
 
+/**
+ * The four steps as pills, each state told by its shape as well as its
+ * colour (owner, 2026-10-15: the stages must read at a glance — done,
+ * current, waiting, failed): a step passed is plain text with a green ✓; the
+ * step it is on is a filled pill in its colour, a ✗ when it failed, a turning
+ * ring while CI runs; a step still ahead is a dashed outline.
+ */
 export function JourneyPills({ steps }: { steps: JourneyStep[] }) {
   return (
-    <span data-journey className="flex min-w-0 items-center gap-1 text-[11px]">
-      {steps.map((s, i) => (
-        <span key={s.key} className="flex items-center gap-1">
-          {i > 0 && <span aria-hidden className={`text-[10px] ${s.state === 'todo' ? 'text-fg-faint/60' : 'text-fg-faint'}`}>→</span>}
-          <span data-journey-step={s.key} data-step-state={s.state} title={s.title}
-            className={`inline-flex h-[19px] items-center whitespace-nowrap rounded-full border px-1.5 ${
-              s.state === 'current' || s.state === 'closed' ? `${PILL[s.tone]} font-medium` : s.state === 'done' ? 'border-transparent text-fg-muted' : 'border-transparent text-fg-faint/70'}`}>
-            {s.state === 'done' && <span aria-hidden className="mr-0.5 text-[10px]">✓</span>}
-            {s.state === 'current' && s.tone === 'pending' && <span aria-hidden className="ci-spin mr-1 inline-block h-[7px] w-[7px] rounded-full" />}
-            {s.text}
+    <span data-journey className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 text-[12px]">
+      {steps.map((s, i) => {
+        const now = s.state === 'current' || s.state === 'closed'
+        return (
+          <span key={s.key} className="flex items-center gap-1">
+            {i > 0 && <span aria-hidden className={`text-[11px] ${s.state === 'todo' ? 'text-fg-faint' : 'text-fg-muted'}`}>→</span>}
+            <span data-journey-step={s.key} data-step-state={s.state} title={s.title}
+              className={`inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-full border px-2 ${
+                now ? `${PILL[s.tone]} font-semibold` : s.state === 'done' ? 'border-transparent px-1 text-fg-muted' : 'border-dashed border-border-strong text-fg-faint'}`}>
+              {s.state === 'done' && <span aria-hidden className="text-[11px] text-ok">✓</span>}
+              {now && s.tone === 'fail' && <span aria-hidden className="text-[11px]">✗</span>}
+              {now && s.tone === 'pending' && <span aria-hidden className="ci-spin inline-block h-[8px] w-[8px] rounded-full" />}
+              {s.text}
+            </span>
           </span>
-        </span>
-      ))}
+        )
+      })}
     </span>
   )
 }

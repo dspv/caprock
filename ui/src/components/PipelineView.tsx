@@ -1,25 +1,27 @@
 /**
- * The Pipeline page (.ai/04-ui.md § Pipeline; until 2026-10-14 "Pipeline"):
- * the session deck's Pull requests & CI cell, large (owner, 2026-10-13,
- * translated: "I want to expand the panel bigger, to see the statuses large
- * and in detail, plus statistics"). ⇧⌘B opens it as a tab of its own and
- * brings back the tab before it.
+ * The Pipeline (.ai/04-ui.md § Pipeline): one repository's pull requests on
+ * their way to a release, a page of the dashboard (screens/Pipeline.tsx, at
+ * #/pipeline) since 2026-10-15 — it was a tab of its own, and read badly
+ * (owner, translated: "everything reads very, very badly … Pipeline is part
+ * of the Dashboard, just a separate page"). So it is drawn as the dashboard
+ * draws: the figures as Stat tiles in a panel, the list and the releases as
+ * panels, captions and secondary text at the dashboard's sizes and contrast.
  *
  * One list (owner, 2026-10-14, translated: "PR titles are missing … I'd
  * merge it all into one — PR rows with their statuses, so I understand how
- * things travel, what gets released"): the flow strip on top, then every
- * pull request as a row — its number, its whole title, its labels, its four
- * steps Open → CI → Merged → Released (lib/journey, the cockpit draws the
- * same), how long in the step, its agent cost — in flight first, then
- * merged, then released (ten, then "Show more"), and the releases below. A
- * row opens the pull request in detail over the list's right side: state,
- * review, merge state and diff, the deck's actions, its jobs by runner OS
- * against each one's median, the jobs on the run's clock, a job's steps and
- * the end of a failed one's log.
+ * things travel, what gets released"): the figures on top, then every pull
+ * request as a row — its number, its whole title, its labels, its four steps
+ * Open → CI → Merged → Released (lib/journey, the cockpit draws the same),
+ * how long in the step, its agent cost — in flight first, then merged, then
+ * released (ten, then "Show more"), and the releases below. A row opens the
+ * pull request in detail beside the list (under it on a narrow window):
+ * state, review, merge state and diff, the deck's actions, its jobs by runner
+ * OS against each one's median, the jobs on the run's clock, a job's steps
+ * and the end of a failed one's log.
  *
- * Asked only while the tab is in front and the window visible (usePoll), and
+ * Asked only while the page is in front and the window visible (usePoll),
  * through the deck's own routes and kept answers (lib/deckCache), so opening
- * it shows what the deck last knew at once.
+ * it shows what was last known at once.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type CIJob, type CIRun, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary, type SpawnRequest } from '@/lib/api'
@@ -33,22 +35,25 @@ import { useCanControl } from '@/lib/useCanControl'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
-import { FlowStrip, Releases } from './PRBoard'
+import { FlowFigures, Releases } from './PRBoard'
 import { JourneyPills } from './Journey'
 import { GitHubPerson } from './GitHubAvatar'
+import { Panel } from './ui'
 import { CI_IDLE_MS, CI_RUNNING_MS, CIMark, DeckSkeleton, ExpandToggle, Freshness, PRS_PENDING_MS, connectGitHub, usePoll } from './SessionDeck'
 
-export interface PRsCITabProps {
-  /** The agent session the tab was opened from: its repository, its pull requests. */
+export interface PipelineViewProps {
+  /** The agent session the page reads through: its repository, its pull requests. */
   sessionId: string
   session?: SessionSummary
-  /** The tab is in front: only then is anything asked. */
+  /** The page is in front: only then is anything asked. */
   visible: boolean
-  /** Back to the deck: the agent's tab, with its deck open. */
-  onBack: () => void
+  /** Back to where ⇧⌘B was pressed (the app); absent, no Back. */
+  onBack?: () => void
   onToast?: (text: string) => void
   worktrees?: DeckWorktree[]
   onStartAgent?: (req: SpawnRequest, title: string) => Promise<void>
+  /** The repository picker, at the head of the page (screens/Pipeline.tsx). */
+  picker?: ReactNode
 }
 
 const SCOPE_KEY = 'caprock.prsTab.scope'
@@ -62,46 +67,58 @@ function readScope(): TabScope {
 /** A refused read with nothing in it (a daemon just started, GitHub down)
  *  never replaces a list that had pull requests: it stays, said to be not
  *  refreshed. */
-const keepStats = (prev: SessionCIStats, next: SessionCIStats) => !!next.error && (next.prs?.length ?? 0) === 0 && (prev.prs?.length ?? 0) > 0
+export const keepStats = (prev: SessionCIStats, next: SessionCIStats) => !!next.error && (next.prs?.length ?? 0) === 0 && (prev.prs?.length ?? 0) > 0
 
-export function PRsCITab(props: PRsCITabProps) {
-  const { session, onBack } = props
+/** The kept answer's key: per repository, so every session in it shares one. */
+export function statsKey(s: Pick<SessionSummary, 'repo_root' | 'cwd'> | undefined, sessionId: string): string {
+  return `stats:${s?.repo_root || s?.cwd || sessionId}`
+}
+
+/** The Pipeline's one answer — the repository's pull requests and figures — read while `on`. Home's card asks through the same. */
+export function usePipelineStats(sessionId: string, s: SessionSummary | undefined, on: boolean, n = 0) {
+  return usePoll<SessionCIStats>(on && !!sessionId, `${sessionId}:${n}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, sessionId ? statsKey(s, sessionId) : undefined, keepStats)
+}
+
+export function PipelineView(props: PipelineViewProps) {
+  const { session, onBack, picker } = props
   if (!session) {
     return (
-      <div className="flex h-full flex-col items-start gap-3 bg-bg p-6 text-[13px]">
-        <p className="text-fg-muted">The session this tab was opened from is no longer listed.</p>
-        <BackButton onBack={onBack} />
+      <div className="grid gap-3">
+        <div className="flex flex-wrap items-center gap-3">{picker}{onBack && <span className="ml-auto"><BackButton onBack={onBack} /></span>}</div>
+        <p className="text-[13px] text-fg-muted">The session this page was opened from is no longer listed.</p>
       </div>
     )
   }
-  return <TabBody {...props} session={session} />
+  return <ViewBody {...props} session={session} />
 }
 
 function BackButton({ onBack }: { onBack: () => void }) {
   return <ExpandToggle collapse onClick={onBack} />
 }
 
-function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, onStartAgent }: PRsCITabProps & { session: SessionSummary }) {
+function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, onStartAgent, picker }: PipelineViewProps & { session: SessionSummary }) {
   const canControl = useCanControl()
   const [scope, setScopeState] = useState<TabScope>(readScope)
   const setScope = (v: TabScope) => { setScopeState(v); try { localStorage.setItem(SCOPE_KEY, v) } catch { /* this page only */ } }
   const [n, setN] = useState(0)
-  // The pull request opened over the list; none until a row is clicked.
+  // The pull request opened beside the list; none until a row is clicked.
   const [chosen, setChosen] = useState<number>()
   const [now, setNow] = useState(() => Date.now())
   const [connecting, setConnecting] = useState(false)
-  const repoScope = s.repo_root || s.cwd || sessionId
 
-  const [stats, statsAt, statsMeta] = usePoll<SessionCIStats>(visible, `${sessionId}:${n}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, `stats:${repoScope}`, keepStats)
+  const [stats, statsAt, statsMeta] = usePipelineStats(sessionId, s, visible, n)
   const [prs] = usePoll<SessionPRs>(visible, `${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`)
   const sessionPRs = useMemo(() => prs?.prs ?? [], [prs])
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
   const rows = useMemo(() => pipelineRows(tabRows(scope, sessionPRs, stats?.prs ?? []), board, stats?.prs ?? []), [scope, sessionPRs, stats?.prs, board])
   const pick = chosen ?? 0
-  // The detail takes the focus as it opens, so Esc closes it whatever was clicked.
+  // Another repository picked: what was open over the old one closes.
+  useEffect(() => { setChosen(undefined) }, [sessionId])
+  // The detail takes the focus as it opens, so Esc closes it whatever was
+  // clicked; under the list (a narrow window) that also brings it into view.
   const detailRef = useRef<HTMLElement>(null)
-  useEffect(() => { if (chosen) detailRef.current?.focus({ preventScroll: true }) }, [chosen])
-  // What the header says of it: the time GitHub was last read (an answer
+  useEffect(() => { if (chosen) detailRef.current?.focus() }, [chosen])
+  // What the head says of it: the time GitHub was last read (an answer
   // composed from an older read says so), and why a read failed: a list
   // GitHub refused comes with the one read before, and what did not fit the
   // daemon's GitHub budget is said in `error` too.
@@ -111,13 +128,13 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
   // Rows not yet re-confirmed — the copy kept from before, an answer that
   // could not be refreshed — are drawn faint until a fresh one lands.
   const unconfirmed = !statsMeta.confirmed || statsFailed
-  // The chosen pull request's CI is read only while it is open over the list.
+  // The chosen pull request's CI is read only while it is open.
   const [ciData, ciAt] = usePoll<SessionCI>(visible && pick > 0, `${sessionId}:${pick}:${n}`, () => api.sessionCI(sessionId, pick), (d) => ciActive(d.ci), CI_RUNNING_MS, pick > 0 ? `ci:${sessionId}:${pick}` : undefined)
   const ci = ciData?.pr?.number === pick ? ciData : undefined
   const connected = stats?.connected ?? prs?.connected
   useEffect(() => { setNow(Date.now()) }, [statsAt, ciAt, prs])
 
-  // A clock only while a job runs, the tab in front and the window shown.
+  // A clock only while a job runs, the page in front and the window shown.
   const running = ciActive(ci?.ci)
   useEffect(() => {
     if (!running || !visible) return
@@ -158,48 +175,53 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
       else return
       e.preventDefault()
     }}
-      className="relative @container/prs flex h-full min-h-0 flex-col bg-bg">
-      <div className="app-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-        <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="shrink-0 text-[15px] font-semibold" title="Each pull request on its way: opened, its CI, merged, released">Pipeline</h1>
-          {stats?.repo && <span className="mono truncate text-[12px] text-fg-muted">{stats.repo}</span>}
-          <span className="ml-auto flex min-w-0 max-w-[50%] items-center justify-end gap-2 text-[11.5px]">
-            <Freshness at={statsShownAt} loading={statsMeta.loading} failed={statsFailed} reason={statsReason} confirmed={statsMeta.confirmed} onRetry={statsMeta.retry} />
-          </span>
-          <BackButton onBack={onBack} />
-        </header>
-        {stats?.reason ? (
-          <p className="text-[13px] text-fg-muted">{stats.reason === 'not_github' ? 'This session’s repository is not on GitHub.' : 'This session’s folder is not a git repository with a remote.'}</p>
-        ) : stats && !stats.connected ? (
-          <div className="flex items-center gap-3 rounded-[var(--radius-panel)] border border-border bg-panel px-4 py-3 text-[13px]">
-            <span className="text-fg-muted">The figures, the repository’s pull requests and their CI are read from GitHub.</span>
-            <button type="button" data-prs-connect disabled={connecting} onClick={() => void connect()} title="Reads GitHub through your GitHub CLI login; turn it off in Settings → GitHub"
-              className="text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'Connect GitHub'}</button>
-          </div>
-        ) : null}
-        {ready && (board ? <FlowStrip board={board} />
-          : !stats ? <DeckSkeleton label="Reading the figures" />
-            : stats.error && (stats.prs?.length ?? 0) === 0 ? <p className="truncate text-[12px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p> : null)}
-        {ready && (
+      className="@container/pipe grid min-w-0 gap-3">
+      <div data-prs-head className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+        {picker}
+        <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[12px] text-fg-muted">
+          <Freshness at={statsShownAt} loading={statsMeta.loading} failed={statsFailed} reason={statsReason} confirmed={statsMeta.confirmed} onRetry={statsMeta.retry} />
+          {onBack && <BackButton onBack={onBack} />}
+        </span>
+      </div>
+      {stats?.reason ? (
+        <p className="rounded-[var(--radius-panel)] border border-border bg-panel px-3 py-3 text-[13px] text-fg-muted">{stats.reason === 'not_github' ? 'This repository is not on GitHub.' : 'This folder is not a git repository with a remote.'}</p>
+      ) : stats && !stats.connected ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-panel)] border border-border bg-panel px-3 py-3 text-[13px]">
+          <span className="text-fg-muted">The figures, the repository’s pull requests and their CI are read from GitHub.</span>
+          <button type="button" data-prs-connect disabled={connecting} onClick={() => void connect()} title="Reads GitHub through your GitHub CLI login; turn it off in Settings → GitHub"
+            className="font-medium text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'Connect GitHub'}</button>
+        </div>
+      ) : null}
+      {ready && (
+        <Panel title={stats?.repo ? <>Flow · <span className="mono normal-case tracking-normal text-fg">{stats.repo}</span></> : 'Flow'}
+          right={<span title="Read from GitHub: the newest pull requests listed, the runs of the last 14 days">GitHub · last {board?.flow.days ?? 14} days</span>}>
+          {board ? <FlowFigures board={board} />
+            : !stats ? <div className="px-3 py-2"><DeckSkeleton label="Reading the figures" /></div>
+              : stats.error && (stats.prs?.length ?? 0) === 0 ? <p className="truncate px-3 py-3 text-[13px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p>
+                : <p className="px-3 py-3 text-[13px] text-fg-muted">No figures yet.</p>}
+        </Panel>
+      )}
+      {ready && (
+        <div className={`grid min-w-0 items-start gap-3 ${p && row ? '@min-[1100px]/pipe:grid-cols-[minmax(0,1fr)_minmax(440px,600px)]' : ''}`}>
           <PipelineList rows={rows} scope={scope} onScope={setScope} pick={pick} onPick={(num) => setChosen(num === pick ? undefined : num)} now={now}
             counts={counts} loaded={!!prs || !!stats} dim={unconfirmed} />
-        )}
-        {ready && board && board.releases.length > 0 && <Releases releases={board.releases} prs={stats?.prs ?? []} now={now} onOpen={(num) => setChosen(num)} />}
-      </div>
-      {/* The chosen pull request over the list's right side, so the list
-        * keeps its width (owner, 2026-10-14: readable at 1512 with the agent
-        * panel open). Esc or × closes it. */}
-      {p && row && (
-        <section data-prs-detail role="dialog" aria-label={`#${row.number} in detail`} ref={detailRef} tabIndex={-1}
-          className="app-scroll outline-none absolute inset-y-0 right-0 z-20 w-[min(640px,94%)] overflow-y-auto border-l border-border bg-panel shadow-[var(--shadow-pop,0_8px_28px_rgba(0,0,0,0.28))]">
-          <div className="sticky top-0 z-10 flex items-center justify-end border-b border-border bg-panel/95 px-2 py-1 backdrop-blur">
-            <button type="button" data-prs-detail-close onClick={() => setChosen(undefined)} title="Close (Esc)" aria-label="Close the pull request’s detail"
-              className="rounded-[5px] px-2 text-[16px] leading-[22px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">×</button>
-          </div>
-          <Detail p={p} row={row} ci={ci} runs={runs} now={now} sessionId={sessionId} kit={kit} connected={connected}
-            why={why} onInvestigated={(t) => onToast?.(t)} sessionName={sessionTitle(s)} onConnect={() => void connect()} />
-        </section>
+          {/* The chosen pull request beside the list, held in view as the
+            * list scrolls; under it on a narrow window. Esc or × closes it. */}
+          {p && row && (
+            <section data-prs-detail role="dialog" aria-label={`#${row.number} in detail`} ref={detailRef} tabIndex={-1}
+              className="app-scroll min-w-0 rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)] outline-none @min-[1100px]/pipe:sticky @min-[1100px]/pipe:top-14 @min-[1100px]/pipe:max-h-[calc(100dvh-140px)] @min-[1100px]/pipe:overflow-y-auto">
+              <header className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-t-[var(--radius-panel)] border-b border-border bg-panel-2 px-3 py-2">
+                <h2 className="text-[11px] font-medium uppercase tracking-[0.12em] text-fg-muted">Pull request #{row.number}</h2>
+                <button type="button" data-prs-detail-close onClick={() => setChosen(undefined)} title={`Close (${keys('Esc')})`} aria-label="Close the pull request’s detail"
+                  className="rounded-[5px] px-2 text-[16px] leading-[22px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">×</button>
+              </header>
+              <Detail p={p} row={row} ci={ci} runs={runs} now={now} sessionId={sessionId} kit={kit} connected={connected}
+                why={why} onInvestigated={(t) => onToast?.(t)} sessionName={sessionTitle(s)} onConnect={() => void connect()} />
+            </section>
+          )}
+        </div>
       )}
+      {ready && board && board.releases.length > 0 && <Releases releases={board.releases} prs={stats?.prs ?? []} now={now} onOpen={(num) => setChosen(num)} />}
     </div>
   )
 }
@@ -209,6 +231,9 @@ function TabBody({ sessionId, session: s, visible, onBack, onToast, worktrees, o
 /** How many released rows show before "Show more". */
 const RELEASED_SHOWN = 10
 
+/** The list's columns: the pull request, its journey, the time in its step, its agent cost. */
+const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_auto_64px_88px] items-center gap-x-4 @max-[820px]/list:grid-cols-[minmax(0,1fr)_auto]'
+
 function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded, dim }: { rows: PipelineRow[]; scope: TabScope; onScope: (s: TabScope) => void; pick: number; onPick: (n: number) => void; now: number; counts: Record<TabScope, number>; loaded: boolean; dim: boolean }) {
   const [allReleased, setAllReleased] = useState(false)
   const released = rows.filter((r) => stageOf(r) === 'released')
@@ -216,60 +241,69 @@ function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded,
   const keep = new Set(released.slice(0, allReleased ? released.length : RELEASED_SHOWN).map((r) => r.number))
   const shown = rows.filter((r) => stageOf(r) !== 'released' || keep.has(r.number))
   return (
-    <section data-prs-list aria-label="Pull requests" className="flex min-w-0 flex-col rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
-      <div role="tablist" aria-label="Which pull requests" className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-panel-2/60 px-2 py-1.5 text-[11.5px]">
+    <Panel title="Pull requests" right={
+      // The same control as Home's agent filter: a filled pill for the one shown.
+      <span role="tablist" aria-label="Which pull requests" className="inline-flex flex-wrap items-center gap-0.5 rounded-md bg-panel-2 p-0.5">
         {(['session', 'repo', 'open'] as TabScope[]).map((k) => (
           <button key={k} type="button" role="tab" aria-selected={scope === k} data-prs-scope={k} onClick={() => onScope(k)}
-            className={`whitespace-nowrap rounded-[5px] px-2 py-[2px] ${scope === k ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:text-fg'}`}>
-            {SCOPE_LABEL[k]} <span className="num text-fg-faint">{counts[k]}</span>
+            className={`whitespace-nowrap rounded-[5px] px-2.5 py-1 text-[12px] transition-colors motion-reduce:transition-none ${scope === k ? 'bg-accent font-medium text-panel' : 'text-fg hover:text-accent'}`}>
+            {SCOPE_LABEL[k]} <span className={`num ${scope === k ? '' : 'text-fg-muted'}`}>{counts[k]}</span>
           </button>
         ))}
-        <span className="ml-auto hidden text-[11px] text-fg-faint @min-[640px]/prs:inline" title={AGENT_COST_NOTE}>Open → CI → Merged → Released · agent cost at list price</span>
-      </div>
-      {!loaded ? <div className="p-2"><DeckSkeleton label="Reading the pull requests" /></div> : rows.length === 0 ? (
-        <p className="p-3 text-[12px] text-fg-faint">{scope === 'session' ? 'No PR from this session yet.' : scope === 'open' ? 'Nothing open.' : 'No pull requests read.'}</p>
-      ) : (
-        <ul>
-          {shown.map((r) => <PipelineItem key={r.number} r={r} on={r.number === pick} onPick={() => onPick(r.number)} now={now} dim={dim || !!r.card?.stale} />)}
-          {hidden > 0 && (
-            <li><button type="button" data-prs-more onClick={() => setAllReleased(true)} className="w-full px-3 py-2 text-left text-[12px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">Show {hidden} more released</button></li>
-          )}
-        </ul>
-      )}
-    </section>
+      </span>
+    }>
+      <section data-prs-list aria-label="Pull requests" className="@container/list min-w-0">
+        {!loaded ? <div className="p-3"><DeckSkeleton label="Reading the pull requests" /></div> : rows.length === 0 ? (
+          <p className="px-3 py-3 text-[13px] text-fg-muted">{scope === 'session' ? 'No pull request from this session yet.' : scope === 'open' ? 'Nothing open.' : 'No pull requests read.'}</p>
+        ) : (
+          <>
+            <div aria-hidden className={`${ROW_GRID} border-b border-border px-3 py-1.5 text-[10.5px] uppercase tracking-[0.12em] text-fg-muted @max-[820px]/list:hidden`}>
+              <span>Pull request</span>
+              <span className="whitespace-nowrap">Open → CI → Merged → Released</span>
+              <span className="text-right">In step</span>
+              <span className="whitespace-nowrap text-right" title={AGENT_COST_NOTE}>Agent cost</span>
+            </div>
+            <ul>
+              {shown.map((r) => <PipelineItem key={r.number} r={r} on={r.number === pick} onPick={() => onPick(r.number)} now={now} dim={dim || !!r.card?.stale} />)}
+              {hidden > 0 && (
+                <li><button type="button" data-prs-more onClick={() => setAllReleased(true)} className="w-full px-3 py-2.5 text-left text-[13px] text-accent hover:bg-[var(--app-row-hover)]">Show {hidden} more released</button></li>
+              )}
+            </ul>
+          </>
+        )}
+      </section>
+    </Panel>
   )
 }
 
-/** One pull request: number, its whole title, labels, the four steps, agent cost. */
+/** One pull request: number, its whole title, labels, the four steps, the time in its step, agent cost. */
 function PipelineItem({ r, on, onPick, now, dim }: { r: PipelineRow; on: boolean; onPick: () => void; now: number; dim: boolean }) {
   const steps = journey(r)
   const at = r.card?.stage_at ?? r.merged_at ?? r.created_at
   const cost = r.card ? costText(r.card.spend) : ''
   return (
-    <li data-prs-row={r.number} data-stage={stageOf(r)} data-prs-unconfirmed={dim ? '' : undefined}>
+    <li data-prs-row={r.number} data-stage={stageOf(r)} data-prs-unconfirmed={dim ? '' : undefined} className="border-b border-border last:border-b-0">
       <button type="button" onClick={onPick} aria-current={on || undefined}
         title={dim ? 'Not re-confirmed: from an earlier read of GitHub' : undefined}
-        className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-b border-[var(--app-hairline)] px-3 py-2 text-left hover:bg-[var(--app-row-hover)] @max-[720px]/prs:grid-cols-1 ${on ? 'bg-[var(--app-row-active)] shadow-[inset_2px_0_0_var(--color-accent)]' : ''} ${dim ? 'opacity-60' : ''}`}>
-        <span className="flex min-w-0 items-start gap-2">
-          <span className="num mt-[1px] shrink-0 text-[12px] text-fg-muted">#{r.number}</span>
+        className={`${ROW_GRID} w-full gap-y-2 px-3 py-2.5 text-left transition-colors hover:bg-[var(--app-row-hover)] motion-reduce:transition-none ${on ? 'bg-[var(--app-row-active)] shadow-[inset_3px_0_0_var(--color-accent)]' : ''} ${dim ? 'opacity-60' : ''}`}>
+        <span className="flex min-w-0 items-baseline gap-2 @max-[820px]/list:col-span-2">
+          <span className="num shrink-0 text-[13px] text-fg-muted">#{r.number}</span>
           <span className="min-w-0 flex-1">
-            <span className="line-clamp-2 text-[13px] leading-[1.35] text-fg">{r.title}</span>
+            <span data-prs-title className="block text-[14px] font-medium leading-[1.35] text-fg [overflow-wrap:anywhere]">{r.title}</span>
             {(r.labels?.length || r.author || r.mine) && (
-              <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-fg-faint">
+              <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[12px] text-fg-muted">
                 {r.labels?.map((l) => <LabelChip key={l.name} name={l.name} color={l.color} />)}
-                {r.author && <GitHubPerson login={r.author} url={r.author_avatar} size={13} className="min-w-0" />}
-                {r.mine && <span className="text-accent">this session</span>}
+                {r.author && <GitHubPerson login={r.author} url={r.author_avatar} size={15} className="min-w-0" />}
+                {r.mine && <span className="font-medium text-accent">this session</span>}
               </span>
             )}
           </span>
         </span>
-        <span className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 @max-[720px]/prs:justify-start">
-          <JourneyPills steps={steps} />
-          {at ? <span className="num w-[52px] shrink-0 text-right text-[11px] text-fg-faint" title={new Date(at).toLocaleString()}>{spanText(Math.max(0, now - at))}</span> : null}
-          <span className="num w-[56px] shrink-0 text-right text-[11.5px] text-fg-muted" title={r.card ? costTitle(r.card.spend) : undefined}>
-            {cost || <span className="text-fg-faint">–</span>}
-            {r.card && r.card.spend.live > 0 && <span className="ml-1 text-ok" title={`${r.card.spend.live} agent session${r.card.spend.live === 1 ? '' : 's'} running on it now`}>●</span>}
-          </span>
+        <JourneyPills steps={steps} />
+        <span className="num text-right text-[12.5px] text-fg-muted @max-[820px]/list:hidden" title={at ? new Date(at).toLocaleString() : undefined}>{at ? spanText(Math.max(0, now - at)) : '–'}</span>
+        <span className="num text-right text-[13px] font-medium text-fg" title={r.card ? costTitle(r.card.spend) : undefined}>
+          {cost || <span className="font-normal text-fg-muted">–</span>}
+          {r.card && r.card.spend.live > 0 && <span className="ml-1 text-ok" title={`${r.card.spend.live} agent session${r.card.spend.live === 1 ? '' : 's'} running on it now`}>●</span>}
         </span>
       </button>
     </li>
@@ -280,8 +314,8 @@ function PipelineItem({ r, on, onPick, now, dim }: { r: PipelineRow; on: boolean
 function LabelChip({ name, color }: { name: string; color?: string }) {
   const c = color && /^[0-9a-f]{6}$/i.test(color) ? `#${color}` : 'var(--color-fg-faint)'
   return (
-    <span data-prs-label={name} className="inline-flex h-[17px] max-w-[160px] items-center gap-1 rounded-full border border-[var(--app-hairline-strong)] px-1.5 text-[10.5px] text-fg-muted">
-      <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: c }} />
+    <span data-prs-label={name} className="inline-flex h-[20px] max-w-[200px] items-center gap-1.5 rounded-full border border-border-strong px-2 text-[11.5px] text-fg">
+      <span aria-hidden className="h-[8px] w-[8px] shrink-0 rounded-full" style={{ background: c }} />
       <span className="truncate">{name}</span>
     </span>
   )
@@ -320,11 +354,11 @@ function Detail({ p, row, ci, runs, now, sessionId, kit, connected, why, onInves
   return (
     <div data-prs-pr={p.number}>
       <div className="flex flex-col gap-2 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-start gap-2">
           <Pill tone={state === 'merged' ? 'merged' : state === 'open' ? (live?.draft ? 'muted' : 'ok') : 'faint'} data="state">{live?.draft && state === 'open' ? 'Draft' : state[0]!.toUpperCase() + state.slice(1)}</Pill>
           <span className="num shrink-0 text-[13px] text-fg-muted">#{p.number}</span>
-          <h2 className="min-w-0 truncate text-[15px] font-semibold" title={live?.title ?? row.title}>{live?.title ?? row.title}</h2>
-          <button type="button" onClick={() => openExternal(live?.url || row.url)} className="ml-auto shrink-0 text-[12px] text-fg-faint hover:text-fg-muted hover:underline">GitHub ↗</button>
+          <h3 className="min-w-0 flex-1 text-[15px] font-semibold leading-snug [overflow-wrap:anywhere]">{live?.title ?? row.title}</h3>
+          <button type="button" onClick={() => openExternal(live?.url || row.url)} className="ml-auto shrink-0 text-[12px] text-accent hover:underline">GitHub ↗</button>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {v && <Pill tone={v.tone} title={v.title} data="ci">{v.text}</Pill>}
@@ -335,10 +369,10 @@ function Detail({ p, row, ci, runs, now, sessionId, kit, connected, why, onInves
           {live?.additions !== undefined && (
             <span data-prs-diff className="num whitespace-nowrap text-[12px]" title={`${live.changed_files ?? '?'} files · ${live.commits ?? '?'} commits`}>
               <span className="text-ok">+{live.additions.toLocaleString('en-US')}</span> <span className="text-danger">−{(live.deletions ?? 0).toLocaleString('en-US')}</span>
-              <span className="text-fg-faint"> · {live.changed_files} files · {live.commits} commits</span>
+              <span className="text-fg-muted"> · {live.changed_files} files · {live.commits} commits</span>
             </span>
           )}
-          <span className="text-[11.5px] text-fg-faint">
+          <span className="text-[12px] text-fg-muted">
             {created ? `opened ${spanText(Math.max(0, now - created))} ago` : ''}{merged && created ? ` · merged in ${spanText(merged - created)}` : ''}
           </span>
         </div>
@@ -347,9 +381,9 @@ function Detail({ p, row, ci, runs, now, sessionId, kit, connected, why, onInves
       {connected === false ? null : !ci ? (
         <div className="border-t border-border px-4 py-3"><DeckSkeleton label="Reading the CI" /></div>
       ) : !ci.ci ? (
-        <p className="border-t border-border px-4 py-3 text-[12px] text-fg-faint">{ci.error ? `CI not read: ${ci.error.message}` : `#${p.number}: no commit to read CI for.`}</p>
+        <p className="border-t border-border px-4 py-3 text-[12px] text-fg-muted">{ci.error ? `CI not read: ${ci.error.message}` : `#${p.number}: no commit to read CI for.`}</p>
       ) : jobs.length === 0 ? (
-        <p className="border-t border-border px-4 py-3 text-[12px] text-fg-faint">No GitHub Actions runs on #{p.number}’s head commit.</p>
+        <p className="border-t border-border px-4 py-3 text-[12px] text-fg-muted">No GitHub Actions runs on #{p.number}’s head commit.</p>
       ) : (
         <>
           <Part title="Checks · job × runner" right={<RunLine runs={runs} now={now} />}>
@@ -370,7 +404,7 @@ function Part({ title, right, children }: { title: string; right?: ReactNode; ch
     <div className="border-t border-border px-4 py-3">
       <div className="mb-2 flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
         <h3 className="shrink-0 text-[11px] font-medium uppercase tracking-[0.12em] text-fg-muted">{title}</h3>
-        {right && <span className="min-w-0 text-[11.5px] text-fg-faint">{right}</span>}
+        {right && <span className="min-w-0 text-[12px] text-fg-muted">{right}</span>}
       </div>
       {children}
     </div>
@@ -394,7 +428,7 @@ function Grid({ runs, now, on, onPick }: { runs: CIRun[]; now: number; on?: numb
   return (
     <div data-prs-grid className="grid gap-[4px]" style={{ gridTemplateColumns: `minmax(84px, 0.9fr) repeat(${g.oses.length}, minmax(0, 1fr))` }}>
       <span />
-      {g.oses.map((o) => <span key={o} className="px-2 text-[10.5px] uppercase tracking-[0.12em] text-fg-faint">{GRID_OS_LABEL[o]}</span>)}
+      {g.oses.map((o) => <span key={o} className="px-2 text-[10.5px] uppercase tracking-[0.12em] text-fg-muted">{GRID_OS_LABEL[o]}</span>)}
       {g.families.map((f) => (
         <GridRow key={f} family={f}>
           {g.oses.map((o) => {
@@ -439,7 +473,7 @@ function GridRow({ family, children }: { family: string; children: ReactNode }) 
 
 function Timeline({ jobs, now }: { jobs: CIJob[]; now: number }) {
   const shown = jobs.filter((j) => j.started_at)
-  if (shown.length === 0) return <p className="text-[12px] text-fg-faint">No job has started yet.</p>
+  if (shown.length === 0) return <p className="text-[12px] text-fg-muted">No job has started yet.</p>
   const t0 = Math.min(...shown.map((j) => j.started_at!))
   const end = Math.max(...shown.map((j) => Math.max(j.completed_at ?? now, j.started_at! + (j.baseline?.median_ms ?? 0))))
   const span = Math.max(end - t0, 1)
@@ -457,11 +491,11 @@ function Timeline({ jobs, now }: { jobs: CIJob[]; now: number }) {
               <span className="absolute top-0 h-full rounded-[3px]" style={{ left: pct(j.started_at!), width: `max(3px, calc(${pct(to)} - ${pct(j.started_at!)}))`, background: fill, opacity: tone === 'running' ? 0.75 : 1 }} />
               {j.baseline && <span aria-hidden className="absolute -top-[3px] h-[15px] w-[2px] rounded bg-fg-muted" style={{ left: pct(j.started_at! + j.baseline.median_ms) }} />}
             </span>
-            <span className="num w-[52px] shrink-0 text-right text-[11px] text-fg-faint">{fmtRun(to - j.started_at!)}</span>
+            <span className="num w-[52px] shrink-0 text-right text-[11px] text-fg-muted">{fmtRun(to - j.started_at!)}</span>
           </div>
         )
       })}
-      <span className="num mt-1 text-right text-[10.5px] text-fg-faint">{fmtRun(span)} from the first job’s start</span>
+      <span className="num mt-1 text-right text-[10.5px] text-fg-muted">{fmtRun(span)} from the first job’s start</span>
     </div>
   )
 }
@@ -499,13 +533,13 @@ function JobPart({ job, runs, sessionId, pr, why, onInvestigated, sessionName }:
         {job.steps.map((st) => (
           <li key={st.number} className={`flex min-w-0 items-center gap-1.5 rounded-[4px] px-1 text-[11.5px] leading-[20px] ${ciTone(st) === 'fail' ? 'bg-danger/10 text-danger' : 'text-fg-muted'}`}>
             <CIMark tone={ciTone(st)} /><span className="min-w-0 flex-1 truncate">{st.name}</span>
-            {st.duration_ms !== undefined && <span className="num shrink-0 text-fg-faint">{fmtRun(st.duration_ms)}</span>}
+            {st.duration_ms !== undefined && <span className="num shrink-0 text-fg-muted">{fmtRun(st.duration_ms)}</span>}
           </li>
         ))}
       </ol>
       {tone === 'fail' && (
         <div className="mt-2 flex flex-col gap-2">
-          {!log ? <p className="text-[11.5px] text-fg-faint">Reading the end of the log…</p> : 'error' in log ? <p className="text-[11.5px] text-warn">Log not read: {log.error}</p> : (
+          {!log ? <p className="text-[11.5px] text-fg-muted">Reading the end of the log…</p> : 'error' in log ? <p className="text-[11.5px] text-warn">Log not read: {log.error}</p> : (
             <pre data-prs-log className="app-scroll max-h-[240px] overflow-auto rounded-[6px] border border-[var(--app-hairline)] bg-[var(--color-term-bg)] px-3 py-2 font-mono text-[11.5px] leading-[1.6] text-[#c9c5be]">
               {log.lines.map((l, i) => <div key={i} className={i === log.error_line ? 'ci-error-line text-[#ff8080]' : ''}>{l || ' '}</div>)}
             </pre>

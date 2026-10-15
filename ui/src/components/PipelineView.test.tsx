@@ -18,7 +18,7 @@ vi.mock('@/lib/api', async (orig) => {
   } }
 })
 
-import { PRsCITab } from './PRsCITab'
+import { PipelineView } from './PipelineView'
 import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 
 const session = { session_id: 's1', cwd: '/w', repo_root: '/w', project: 'w', status: 'active', owned: true, agent: 'claude', git_branch: 'fix/x', started_at: 0, last_event_at: now } as unknown as SessionSummary
@@ -80,9 +80,9 @@ describe('the Pipeline page', () => {
   // travel, what gets released".
   it('is one list: the flow strip, each pull request with its whole title, labels and four steps, in flight first, and the releases', async () => {
     withBoard()
-    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     await rowsDrawn()
-    expect(screen.getByRole('heading', { name: 'Pipeline' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Pull requests' })).toBeInTheDocument()
     expect(document.querySelector('[data-prs-view]')).toBeNull()
     // Needs a fix, then CI running, then released.
     expect(rowOrder()).toEqual(['21', '22', '20'])
@@ -99,16 +99,24 @@ describe('the Pipeline page', () => {
     expect(r20.querySelector('[data-journey-step="released"]')).toHaveTextContent('v1.2.0')
     expect(r20.querySelector('[data-journey-step="released"]')).toHaveAttribute('data-step-state', 'current')
     // The flow strip on top, the releases below; no pull request's CI asked until one is opened.
-    expect(document.querySelector('[data-board-figure="Throughput · 14 days"]')).toHaveTextContent('0.5/day')
-    expect(document.querySelector('[data-board-figure="Merged → released"]')).toHaveTextContent('estimate')
+    expect(document.querySelector('[data-stat="throughput"]')).toHaveTextContent('0.5/day')
+    expect(document.querySelector('[data-stat="lag"]')).toHaveTextContent('estimate')
+    // The dashboard's figure tiles: needing a fix is red, and each says what
+    // it means in a card under it, never a native tooltip over the figure.
+    const fix = document.querySelector('[data-stat="fix"]')!
+    expect(fix).toHaveTextContent('1')
+    expect(fix.querySelector('.text-danger')).toBeInTheDocument()
+    expect(fix.querySelector('[data-stat-hint]')).toHaveAttribute('role', 'tooltip')
+    expect(fix).not.toHaveAttribute('title')
+    expect(document.querySelector('[data-stat="flight"]')).toHaveTextContent('2')
     expect(document.querySelector('[data-board-release="v1.2.0"]')).toHaveTextContent('#20')
     expect(h.asked.some((a) => a.startsWith('ci '))).toBe(false)
     expect(document.querySelector('[data-prs-detail]')).toBeNull()
   })
 
-  it('opens a row in detail over the list, its checks by runner and its log, and closes on Esc', async () => {
+  it('opens a row in detail beside the list, its checks by runner and its log, and closes on Esc', async () => {
     connected()
-    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     await rowsDrawn()
     fireEvent.click(document.querySelector('[data-prs-row="21"] button')!)
     await waitFor(() => expect(h.asked).toContain('ci 21'))
@@ -139,7 +147,7 @@ describe('the Pipeline page', () => {
 
   it('switches between this session’s, the repository’s and the open pull requests, remembering the choice', async () => {
     connected()
-    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     await rowsDrawn()
     expect(rowOrder()).toEqual(['22', '21', '20'])
     fireEvent.click(document.querySelector('[data-prs-scope="session"]')!)
@@ -158,7 +166,7 @@ describe('the Pipeline page', () => {
     const merged = Array.from({ length: 12 }, (_, i) => ({ number: 100 + i, url: `https://github.com/a/b/pull/${100 + i}`, title: `Shipped ${i}`, state: 'merged', merged_at: now - i * 60_000 }))
     st.prs = merged
     st.board = { cards: merged.map((m) => card(m.number, 'released', { release: 'v2.0.0', stage_at: m.merged_at })), releases: [], flow: FLOW }
-    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     await rowsDrawn()
     const released = () => document.querySelectorAll('[data-prs-row][data-stage="released"]').length
     expect(released()).toBe(10)
@@ -169,7 +177,7 @@ describe('the Pipeline page', () => {
   it('asks GitHub for nothing while GitHub is not connected, and says how to connect', async () => {
     h.stats = { connected: false, repo: 'a/b', prs: [] }
     h.prs = { connected: false, prs: [{ session_id: 's1', url: live.url, number: 21, title: live.title, last_at: now }] }
-    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     expect(await screen.findByRole('button', { name: 'Connect GitHub' })).toBeInTheDocument()
     expect(document.querySelector('[data-prs-list]')).toBeNull()
     expect(h.asked).not.toContain('usage')
@@ -190,7 +198,7 @@ describe('the Pipeline page', () => {
     let open = () => {}
     h.statsGate = new Promise<void>((r) => { open = r })
     h.stats = { ...fresh, fetched_at: Date.now(), read_at: Date.now(), board: board('merged') }
-    const view = render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    const view = render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     // Cold start on the kept copy: its age, refreshing, the rows faint.
     const fresh0 = await waitFor(() => {
       const f = document.querySelector('[data-deck-fresh="updating"]')
@@ -209,7 +217,7 @@ describe('the Pipeline page', () => {
     // GitHub refuses the list: the reason and the time of what is shown, and Retry.
     h.stats = { ...fresh, fetched_at: Date.now(), read_at: kept, board: board('merged'), error: { message: 'GitHub answered 502', kind: 'github' } }
     view.unmount()
-    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     const failed = await waitFor(() => {
       const f = document.querySelector('[data-deck-fresh="failed"]')
       if (!f) throw new Error('not failed')
@@ -223,20 +231,20 @@ describe('the Pipeline page', () => {
 
   it('lists the pull requests from an older daemon’s answer too, with no flow strip', async () => {
     connected()
-    render(<PRsCITab sessionId="s1" session={session} visible onBack={() => {}} />)
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     await rowsDrawn()
     expect(document.querySelector('[data-board-flow]')).toBeNull()
     expect(rowOrder()).toEqual(['22', '21', '20'])
     expect(document.querySelector('[data-prs-row="20"] [data-journey-step="merged"]')).toHaveAttribute('data-step-state', 'current')
   })
 
-  it('asks nothing while it is not the tab in front, and goes back to the tab before', async () => {
+  it('asks nothing while it is not in front, and goes back to where ⇧⌘B was pressed', async () => {
     connected()
     const back = vi.fn()
-    render(<PRsCITab sessionId="s1" session={session} visible={false} onBack={back} />)
+    render(<PipelineView sessionId="s1" session={session} visible={false} onBack={back} />)
     await new Promise((r) => setTimeout(r, 20))
     expect(h.asked).toEqual([])
-    const b = screen.getByRole('button', { name: /^Back to the tab you were on/ })
+    const b = screen.getByRole('button', { name: /^Back to where you were/ })
     expect(b).toHaveAttribute('data-prs-back')
     expect(b).toHaveTextContent(/^Back (⇧⌘B|Ctrl\+Alt\+Shift\+B)$/)
     fireEvent.click(b)

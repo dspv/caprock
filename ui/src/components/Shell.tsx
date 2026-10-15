@@ -55,6 +55,10 @@ const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] =
   // A card of one week, to post. Beside Lifetime because it answers the same
   // question for a shorter stretch, in a form made to leave the machine.
   { route: { name: 'week' }, label: 'Week' },
+  // A repository's pull requests on their way to a release (owner,
+  // 2026-10-15, translated: "Pipeline is part of the Dashboard, just a
+  // separate page"). ⇧⌘B and the sidebar's Pipeline open it here.
+  { route: { name: 'pipeline' }, label: 'Pipeline' },
   // "Memory" rather than "Answers": this screen and the handoff a new session
   // gets are the same thing — everything the agents said on this machine —
   // and nobody looking for the second would think to open the first.

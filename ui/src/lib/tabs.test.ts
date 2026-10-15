@@ -8,6 +8,7 @@ import {
   MAX_PANES,
   namingLeaf,
   parseWorkspace,
+  pipelineInStore,
   tabsOf,
   workspaceReducer,
   type Workspace,
@@ -347,21 +348,20 @@ describe('watched session tabs', () => {
   })
 })
 
-describe('the Pipeline tab', () => {
-  const prs = (of: string): WorkspaceAction => ({ type: 'open', target: { kind: 'prs', sessionId: `prs:${of}`, of }, projectId: 'p1', title: `PRs & CI · ${of}` })
-  it('opens once per session, is never split, and is restored from storage', () => {
-    const ws = run(open('a'), prs('a'), open('b'), prs('a'))
-    expect(ws.tabs).toHaveLength(3)
-    expect(focusedLeaf(activeTab(ws)!).target).toEqual({ kind: 'prs', sessionId: 'prs:a', of: 'a' })
-    const split = workspaceReducer(ws, { type: 'split', target: { kind: 'shell', sessionId: 'sh' }, direction: 'row', projectId: 'p1', title: 'shell' })
-    expect(split.tabs).toHaveLength(4)
-    const back = parseWorkspace(JSON.stringify(ws))
-    expect(back.tabs.map((t) => focusedLeaf(t).target.kind)).toEqual(['session', 'prs', 'session'])
-    // Its title before the rename is restored under the new name.
-    expect(back.tabs[1]!.title).toBe('Pipeline · a')
-    // A malformed one is dropped, not trusted.
-    const bad = JSON.parse(JSON.stringify(ws)) as Workspace
-    ;(bad.tabs[1]!.root as { target: { of?: string } }).target.of = 'other'
-    expect(parseWorkspace(JSON.stringify(bad)).tabs).toHaveLength(2)
+describe('a stored Pipeline tab', () => {
+  // The Pipeline is a page of the dashboard since 2026-10-15; a workspace
+  // stored with one as a tab restores it as that page, not a dead tab.
+  it('is not restored as a tab: the Dashboard tab opens at the Pipeline instead', () => {
+    const ws = run(open('a'), open('b'))
+    const stored = JSON.parse(JSON.stringify(ws)) as { tabs: unknown[] }
+    stored.tabs.splice(1, 0, { id: 'tab-p', projectId: 'p1', root: { type: 'pane', id: 'pane-p', target: { kind: 'prs', sessionId: 'prs:a', of: 'a' } }, focusedPaneId: 'pane-p', title: 'Pipeline · a' })
+    const raw = JSON.stringify(stored)
+    const back = parseWorkspace(raw)
+    expect(back.tabs.map((t) => focusedLeaf(t).target.sessionId)).toEqual(['a', 'b'])
+    expect(back.dashboard).toBe(true)
+    expect(pipelineInStore(raw)).toBe('#/pipeline?of=a')
+    expect(pipelineInStore(JSON.stringify(ws))).toBeUndefined()
+    expect(pipelineInStore(null)).toBeUndefined()
+    expect(pipelineInStore('{')).toBeUndefined()
   })
 })
