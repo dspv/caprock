@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createLabel, createRequests, expandTilde, foundHeadline, foundOf, instructionsState, instructionsSummary, lineCount, listedAt,
-  membersLine, parentOf, placeChips, repoFilesLabel, splitMemberFile,
+  createLabel, createRequests, drillPath, expandTilde, filterFolders, foundHeadline, foundOf, instructionsState, instructionsSummary, lineCount, listedAt,
+  membersLine, parentOf, placeChips, repoFilesLabel, splitMemberFile, splitTyped,
 } from './projectWizard'
 import type { Project } from './projects'
 
@@ -91,5 +91,50 @@ describe('instructions at a glance', () => {
     expect(membersLine([{ name: 'api' }, { name: 'web' }, { name: 'infra' }])).toBe('3 repos: api, web, infra')
     expect(membersLine([{ name: 'a' }, { name: 'b' }, { name: 'c' }], 2)).toBe('3 repos: a, b +1')
     expect(membersLine(undefined)).toBe('')
+  })
+})
+
+describe('typing a name in the folder field', () => {
+  it('splits the folder being listed from the name being typed', () => {
+    expect(splitTyped('~/dev/cap')).toEqual({ dir: '~/dev/', partial: 'cap' })
+    expect(splitTyped('~/dev/')).toEqual({ dir: '~/dev/', partial: '' })
+    expect(splitTyped('  ~/dev/ca ')).toEqual({ dir: '~/dev/', partial: 'ca' })
+    expect(splitTyped('~')).toEqual({ dir: '~', partial: '' })
+    expect(splitTyped('~/d')).toEqual({ dir: '~/', partial: 'd' })
+    expect(splitTyped('/Users/ada/dev/x')).toEqual({ dir: '/Users/ada/dev/', partial: 'x' })
+    expect(splitTyped('cap')).toEqual({ dir: '', partial: 'cap' })
+    expect(splitTyped('')).toEqual({ dir: '', partial: '' })
+  })
+
+  it('splits Windows paths: backslashes, drive letters, ~\\', () => {
+    expect(splitTyped('C:\\Users\\ada\\de')).toEqual({ dir: 'C:\\Users\\ada\\', partial: 'de' })
+    expect(splitTyped('C:\\')).toEqual({ dir: 'C:\\', partial: '' })
+    expect(splitTyped('C:')).toEqual({ dir: 'C:\\', partial: '' })
+    expect(splitTyped('d:\\Wo')).toEqual({ dir: 'd:\\', partial: 'Wo' })
+    expect(splitTyped('~\\dev\\cap')).toEqual({ dir: '~\\dev\\', partial: 'cap' })
+    expect(splitTyped('C:/Users/ada')).toEqual({ dir: 'C:/Users/', partial: 'ada' })
+  })
+
+  const entries = [
+    { name: 'ai-crm' }, { name: 'Caprock' }, { name: 'caprock-web' }, { name: 'escape' }, { name: 'notes' }, { name: 'recap' },
+  ]
+  it('keeps the names that start with it first, then the ones that hold it, ignoring case', () => {
+    const got = filterFolders(entries, 'cap')
+    expect(got.map((m) => m.entry.name)).toEqual(['Caprock', 'caprock-web', 'escape', 'recap'])
+    expect(got.map((m) => [m.start, m.length])).toEqual([[0, 3], [0, 3], [2, 3], [2, 3]])
+    expect(filterFolders(entries, 'CAP').map((m) => m.entry.name)).toEqual(['Caprock', 'caprock-web', 'escape', 'recap'])
+  })
+
+  it('an empty name lists everything, unmarked; no match lists nothing', () => {
+    expect(filterFolders(entries, '')).toHaveLength(6)
+    expect(filterFolders(entries, '').every((m) => m.length === 0)).toBe(true)
+    expect(filterFolders(entries, 'zzz')).toEqual([])
+  })
+
+  it('Tab drills in: the folder in ~ form and its own separator', () => {
+    expect(drillPath('/Users/ada/dev/caprock', home)).toBe('~/dev/caprock/')
+    expect(drillPath('/srv/x', home)).toBe('/srv/x/')
+    expect(drillPath('C:\\Users\\ada\\dev\\caprock', 'C:\\Users\\ada')).toBe('~\\dev\\caprock\\')
+    expect(drillPath('D:\\work', 'C:\\Users\\ada')).toBe('D:\\work\\')
   })
 })

@@ -47,6 +47,58 @@ export function expandTilde(p: string, home?: string): string {
 }
 
 /**
+ * A typed path split for the folder list (owner, 2026-10-15, translated:
+ * "search doesn't work — typing the first letters should search these
+ * folders in this directory"): `dir` is the folder whose children are
+ * listed, `partial` the name being typed in it. A path that ends with a
+ * separator, `~` and a bare drive (`C:`) have no partial. `~/dev/cap` →
+ * `~/dev/` + `cap`; `C:\Users\ada\de` → `C:\Users\ada\` + `de`; a name with
+ * no folder before it (`cap`) has no `dir` and lists nothing.
+ */
+export function splitTyped(p: string): { dir: string; partial: string } {
+  const t = p.trim()
+  if (!t) return { dir: '', partial: '' }
+  if (t === '~') return { dir: '~', partial: '' }
+  if (/^[A-Za-z]:$/.test(t)) return { dir: `${t}\\`, partial: '' }
+  const at = Math.max(t.lastIndexOf('/'), t.lastIndexOf('\\'))
+  if (at < 0) return { dir: '', partial: t }
+  return { dir: t.slice(0, at + 1), partial: t.slice(at + 1) }
+}
+
+/** One folder the typed name matches, and where in its name. */
+export interface FolderMatch<E> { entry: E; start: number; length: number }
+
+/**
+ * The folders whose names hold `partial`, ignoring case: the ones that start
+ * with it first, then the ones that hold it elsewhere, each group in the
+ * listing's own order (repositories first, then by name). An empty partial
+ * matches everything, unmarked.
+ */
+export function filterFolders<E extends { name: string }>(entries: readonly E[], partial: string): FolderMatch<E>[] {
+  if (!partial) return entries.map((entry) => ({ entry, start: 0, length: 0 }))
+  const q = partial.toLowerCase()
+  const starts: FolderMatch<E>[] = []
+  const holds: FolderMatch<E>[] = []
+  for (const entry of entries) {
+    const at = entry.name.toLowerCase().indexOf(q)
+    if (at === 0) starts.push({ entry, start: 0, length: partial.length })
+    else if (at > 0) holds.push({ entry, start: at, length: partial.length })
+  }
+  return [...starts, ...holds]
+}
+
+/**
+ * The field after Tab on a folder: its path in `~` form and a separator, so
+ * the next letters search inside it. The separator is the path's own: `\`
+ * for a Windows path, `/` everywhere else.
+ */
+export function drillPath(path: string, home?: string): string {
+  const t = tildePath(path, home)
+  if (t.endsWith('/') || t.endsWith('\\')) return t
+  return t + (path.includes('\\') && !path.includes('/') ? '\\' : '/')
+}
+
+/**
  * The folders offered as one click: where projects already live (the
  * parents of their roots, most projects first), then the default folder and
  * the home folder. In `~` form, at most `limit`, never the filesystem root.
