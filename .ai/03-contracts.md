@@ -15,7 +15,7 @@ Conventions that apply to every contract here: JSON casing is **snake_case**; al
 
 ### Hook payload (what the shim forwards, verbatim)
 
-Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. Event-specific fields the daemon reads:
+Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. The parent's hooks also fire for its subagents' tool calls, under the parent's `session_id`; when such a payload names no `agent_id`, hookd takes it from a `transcript_path` of the form `<session-id>/subagents/…/agent-<id>.jsonl`, so the call is the subagent's and not the main thread's. Event-specific fields the daemon reads:
 
 | Event               | Fields consumed                                              |
 | ------------------- | ------------------------------------------------------------ |
@@ -3112,7 +3112,7 @@ Brain DDL (migrations 0055, 0056).
 
 ```
 GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total, terms?, close?}
-GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?}
+GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?, db_path?}
 POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
 GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
 PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
@@ -3123,6 +3123,7 @@ PUT    /v1/brain/settings       {auto?, daily_tokens?, model?} → BrainAutoStat
 POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 ```
 
+- **`db_path`** on `/v1/brain/status` — the database the memories live in, `caprock.db` in the daemon's data directory (`config.DBPath`), resolved by the daemon rather than guessed per OS by the page; the screen's *Where it's kept* shows it. Omitted when the daemon has no data directory (tests).
 - **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
   event_id?, ts?, project?}, manual, pinned, run_id?, created_at, updated_at,
   degree?, rank?, close?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or

@@ -54,6 +54,7 @@ import { FLAT_ORDER, flatRows, keepsProject, leadKey, ProjectRow, SessionList } 
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { MenuBox, MenuItem, MenuSeparator, type MenuAt } from './RowMenu'
 import { TodayStrip } from './TodayStrip'
+import { useTodayCard } from '@/lib/todayCard'
 import { SidebarFooter } from './SidebarFooter'
 import { CaprockMark, ChatIcon, EyeIcon, FolderIcon, FolderPlusIcon, PlusIcon, SearchIcon } from './AppIcons'
 import { BrainSidebar } from './BrainSidebar'
@@ -221,6 +222,7 @@ export function Sidebar(props: SidebarProps) {
   const { model, activeProjectId } = props
   const [hidden, setHidden] = useState<HiddenProjects>(() => loadHiddenProjects())
   const [folds, setFolds] = useState<Set<string>>(() => loadIds(FOLDS_KEY))
+  const [todayCard, setTodayCard] = useTodayCard()
   const [hiddenSessions, setHiddenSessions] = useState<HiddenSessions>(() => loadHiddenSessions())
   // Hiding a row unlists it here and nowhere else: nothing is signalled, so
   // it is safe on a session another terminal started (rule 7).
@@ -465,11 +467,13 @@ export function Sidebar(props: SidebarProps) {
         </button>
       </div>
 
-      {/* The list scrolls here and ends above the footer, its sibling below:
-        * nothing is drawn under the footer, and the bottom padding leaves the
-        * last line (Second Brain's caption) whole when scrolled to the end. */}
-      <div data-sidebar-scroll className="app-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4" onKeyDown={onKeyDown}>
-        {props.onRoute && (
+      {/* The list scrolls here and ends above Second Brain and the footer,
+        * its siblings below: nothing is drawn under either, and the bottom
+        * padding leaves the last row whole when scrolled to the end. Sized
+        * by its content (flex-auto), so a long list presses on Second Brain,
+        * which shrinks its orb first (components/BrainSidebar.tsx). */}
+      <div data-sidebar-scroll className="app-scroll min-h-0 flex-auto overflow-y-auto px-2 pb-4" onKeyDown={onKeyDown}>
+        {props.onRoute && !todayCard.hidden && (
           <TodayStrip
             today={today}
             loaded={props.loaded ?? true}
@@ -477,6 +481,9 @@ export function Sidebar(props: SidebarProps) {
             onWindows={() => props.onRoute!('#/cost?section=limits')}
             onRunning={() => props.onRoute!('#/home')}
             onWaiting={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
+            folded={todayCard.folded}
+            onFold={(folded) => setTodayCard({ folded })}
+            onHide={() => setTodayCard({ hidden: true })}
           />
         )}
 
@@ -484,7 +491,20 @@ export function Sidebar(props: SidebarProps) {
           * says something (owner, 2026-10-11: "nothing on the right"). */}
         <SectionHead label={grouped ? 'Projects' : 'Sessions'} action={projectCount > 0 ? (
           <span className="flex items-center gap-1">
-            <span className="num text-[11.5px] text-fg-faint" title={`${projectCount} ${projectCount === 1 ? 'project' : 'projects'}, ${busyCount} with something running`}>
+            {/* The Today card hidden, what waits on you is still counted here. */}
+            {props.onRoute && todayCard.hidden && today.waiting > 0 && (
+              <button
+                type="button"
+                data-head-waiting
+                onClick={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
+                title={`${today.waiting} waiting on you. Opens the one that has waited longest.`}
+                aria-label={`${today.waiting} waiting on you`}
+                className="num inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-warn px-1 text-[10.5px] font-semibold text-panel"
+              >
+                {today.waiting}
+              </button>
+            )}
+            <span className="num whitespace-nowrap text-[11.5px] text-fg-faint" title={`${projectCount} ${projectCount === 1 ? 'project' : 'projects'}, ${busyCount} with something running`}>
               {busyCount > 0 && <><span aria-hidden className="mr-1 inline-block h-[6px] w-[6px] rounded-full bg-ok align-middle" />{busyCount} of </>}{projectCount}
             </span>
             {props.onGroupedChange && <ListSwitch grouped={grouped} onChange={props.onGroupedChange} />}
@@ -538,9 +558,12 @@ export function Sidebar(props: SidebarProps) {
             Listed from where your sessions ran. Git state and clone arrive with the projects API.
           </p>
         )}
-        {/* Second Brain below the projects (ADR-063): folds, remembers it. */}
-        {props.onRoute && <BrainSidebar onOpen={props.onRoute} />}
       </div>
+
+      {/* Second Brain under the list (ADR-063), never in its scroll, so its
+        * status line is never cut off by the footer; folds, remembers it.
+        * Its orb sparks for the sessions working now, from this model. */}
+      {props.onRoute && <BrainSidebar onOpen={props.onRoute} working={today.working} />}
 
       <SidebarFooter
         folded={folds.has('footer')}
