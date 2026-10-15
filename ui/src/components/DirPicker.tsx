@@ -174,11 +174,15 @@ function Browser({
   onOpen: (d: string) => void
   onPick: (d: string) => void
 }) {
-  // The selected row, by path; a new folder starts with none.
-  const [sel, setSel] = useState('')
+  // The selected row, by path, kept with the folder it was chosen in: a new
+  // folder starts with none. Clearing it in an effect on the folder lost a
+  // key pressed as the entries were drawn — the effect ran after the key and
+  // undid it.
+  const [pick, setPick] = useState({ dir: '', path: '' })
+  const sel = data && pick.dir === data.dir ? pick.path : ''
+  const setSel = (path: string) => setPick({ dir: data?.dir ?? '', path })
   const list = useRef<HTMLUListElement>(null)
   const entries = data?.entries ?? []
-  useEffect(() => { setSel('') }, [data?.dir])
   const at = entries.findIndex((e) => e.path === sel)
   const chosen = at >= 0 ? entries[at]! : undefined
   const choose = () => { if (data) onPick(chosen ? chosen.path : data.dir) }

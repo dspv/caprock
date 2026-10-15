@@ -7,6 +7,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **app:** a Sunlight theme for working in bright light. It is black text
+  on pure white with no faint greys: every text colour, the faintest
+  included, is 7:1 or more against its background, measured on every
+  surface. Text is one weight heavier, borders and hairlines are dark
+  enough to see in glare, and the sidebar is opaque. The status colours
+  and the accent are saturated and stay apart. Its terminal keeps all 16
+  ANSI colours at 5.3:1 or more on white (the normal eight 7:1), the
+  yellow and cyan that usually wash out included. Pick it under Light in
+  the theme picker or Settings → Appearance.
+
+### Fixed
+
+- **windows:** Caprock no longer flashes console windows that steal the
+  keyboard focus. The daemon ran without a console, so every git, gh or
+  `claude -p` it started opened a window of its own for a fraction of a
+  second, every few seconds, and typing in other windows came out ragged
+  (user report on Windows 10). Every child now starts with a hidden
+  console, and a test keeps it that way.
+
 ## [0.117.5] - 2026-10-15
 
 ### Added
@@ -67,6 +88,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   rather than drawn smaller, and the key stays in the tooltip: a row
   measures itself and brings the chip back when it widens. Off macOS the
   folded keys still show on hover, now at full size.
+- **app:** the theme picker opens whole, above everything. From the
+  sidebar's footer its palettes were cut off at the sidebar's edge and the
+  terminal drew over them; it now opens over the whole window, kept inside
+  it on every edge at any sidebar width and with the footer folded, and
+  scrolls in a window shorter than itself. Opening it puts the focus on the
+  palette in use; Esc, or tabbing past the last palette, closes it and gives
+  the focus back to the button.
+- **picker:** an arrow key pressed in the folder picker the moment a
+  folder's entries appear is no longer lost; the selection used to be
+  cleared just after it was made.
 - **app:** typing a name in New project's folder field now searches the
   folder it is in. `~/dev/cap` used to empty the list; now it lists the
   folders of `~/dev` holding *cap* — the ones starting with it first, the
@@ -80,6 +111,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   second, every few seconds, and typing in other windows came out ragged
   (user report on Windows 10). Every child now starts with a hidden
   console, and a test keeps it that way.
+
 - **mail:** adding an account can no longer sit on *Checking…* forever. A
   server that goes quiet while Mail connects or signs in — IMAP had no limit
   and SMTP waited five minutes per command — now ends the check within 30
