@@ -4195,3 +4195,58 @@ GitHub is not connected; polling it without the tick.
 
 **Revisit if:** GitHub's status page moves or changes its API, or a user
 wants the watch to drive a notification rather than a dot.
+
+## ADR-068 — The dashboard bundle is rebuilt on master, never carried by a pull request
+
+**Date:** 2026-10-15 · **Status:** accepted (owner, 2026-10-15)
+
+**Context.** `internal/api/dist`, the built dashboard, is committed so `go
+install github.com/dspv/caprock/cmd/caprock@latest` embeds a real UI without
+Node, and CI failed every pull request whose copy differed from a fresh
+build. So every PR that touched `ui/` carried a rebuilt bundle, and the
+bundle's file names are content hashes: two such PRs always conflicted in
+`dist` (a modified `index.html`, one deleted and one added asset each),
+whatever else they changed. Of the last 30 merged PRs on 2026-10-15, 23
+carried `dist` (429 file changes between them); #663, #667, #669 and #670
+were hand-merged that day, some twice, only to rebuild it, and the CI panel
+was a column of red *Conflict*.
+
+**Decision.**
+
+- **A pull request never changes `internal/api/dist`.** `ci.yml`'s `no dist
+  in the PR` job diffs the PR's merge commit against its first parent and
+  fails with the command that drops the change (`make dist-reset`, or
+  `git checkout origin/master -- internal/api/dist` after a rebase).
+  `make check` runs the same test locally (`dist-untouched`, against the
+  branch's merge base with `origin/master`).
+- **Master rebuilds it.** `.github/workflows/dist.yml` runs on every push to
+  `master` that touches `ui/`: `make ui`, and when the output differs, a
+  `chore(dist): rebuild the dashboard for <sha>` commit pushed to `master`
+  with `GITHUB_TOKEN`. A lost push race rebuilds from the new head (three
+  tries). It cannot loop: the commit is outside the workflow's `paths`, a
+  `GITHUB_TOKEN` push starts no workflow, and the job skips the Actions bot.
+  `master` has no branch protection and no rulesets (checked 2026-10-15), and
+  `contents: write` is granted per job, so the push is allowed as is.
+- **Go CI keeps building against the committed copy.** It may be one merge
+  behind `ui/`, but no Go test reads the dashboard's bytes; the `ui` job
+  still proves the bundle builds, and `make build (windows-latest)` builds it
+  on Windows. Adding `make ui` to the three go legs would cost an `npm ci` on
+  each for nothing a Go test can see.
+- **A tag holds its own UI, built.** Release `verify (ui)` and `make
+  release-ready` run `dist-check` (fresh build equals the committed copy), so
+  `go install …@vX.Y.Z` and `@latest`, which read the tag's tree, embed the
+  tag's dashboard. The releaser tags after master's rebuild commit lands.
+  goreleaser keeps building the UI from the tag's `ui/` before it compiles.
+
+**Rules out:** carrying `dist` in PRs with a merge driver (`.gitattributes`
+drivers are not run by GitHub's merge, so the panel stays red); not
+committing `dist` at all (`go install` would embed the placeholder page);
+letting a release build its UI and ship with a stale committed copy (the
+release binaries would be right and `go install @latest` silently wrong);
+a bot opening a rebuild PR per merge (a second queue to land, for a commit
+nobody reviews).
+
+**Revisit if:** `master` gets branch protection that blocks the Actions push
+(then the rebuild needs a bypass allowance, or arrives as an auto-merged PR),
+the Vite build stops being deterministic across machines (then `dist-check`
+cannot gate a tag), or `go install` stops being a supported install path.
