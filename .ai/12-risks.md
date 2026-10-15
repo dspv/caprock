@@ -137,7 +137,10 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   count in the Cloudflare dashboard after the first month with users. The
   fallbacks are the paid Workers plan or a relay on a server of ours
   (`caprock remote relay`), with no change on any phone or machine beyond
-  the relay address.
+  the relay address. Computers reaching computers (ADR-067) add a traffic
+  pattern a phone does not have — an app left open all day — so both ends
+  of the channel count relay messages and bytes (`remote.State`,
+  `remote.ClientState`) and channels close after 90 s with nothing open.
 - `OQ-15` — **Is a per-PR merge range calibrated?** The Work board
   (ADR-064) could say how long an open pull request has left until it
   merges, from the Pipeline's open → merge median. Nobody has checked that a

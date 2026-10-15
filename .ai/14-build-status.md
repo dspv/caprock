@@ -73,6 +73,23 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — unreleased: one computer reaches another through the relay (ADR-067, Phase 1 PR1)
+
+The first of Phase 1's three pull requests for *Caprock on every machine*:
+the Go side of the phone's channel, so a daemon can be a relay client to
+another daemon. `internal/remote/client.go` (`Client`: `RoundTrip`,
+`OpenWS`, on demand with a 90 s idle close, backoff, states, relay counters;
+`ParsePairLink`) and `internal/peers` (`machines.json` at 0600, a `Manager`
+that pairs by link, carries requests and sockets as the paired device,
+notices a revoke). The Host counts relay messages and bytes too (OQ-14).
+Tested on a real relay and Host in-process, and by
+`internal/smoke/machines_test.go`: the real binary as the target in its own
+home and data directory, a relay in the test on loopback, the fake claude
+started and typed into through the channel, the relay restarted under an
+open terminal, and a revoke closing it with 1008. Nothing user-visible yet:
+no route, no CLI, no UI, no daemon wiring — PR2 (computers in the daemon,
+the target's computer pairing) and PR3 (the app) follow.
+
 ### 2026-10-15 — unreleased: one changelog fragment per change
 
 With eight to ten pull requests in flight, every one edited CHANGELOG.md's

@@ -34,6 +34,13 @@ type State struct {
 	Phones int `json:"phones"`
 	// Since is when Status last changed.
 	Since time.Time `json:"since"`
+	// Relay messages and their bytes each way since the daemon started, so
+	// what phones and computers cost the relay is measured, not guessed
+	// (OQ-14, ADR-067).
+	MsgsIn   uint64 `json:"msgs_in"`
+	MsgsOut  uint64 `json:"msgs_out"`
+	BytesIn  uint64 `json:"bytes_in"`
+	BytesOut uint64 `json:"bytes_out"`
 }
 
 // Options configure a Host.
@@ -59,6 +66,8 @@ type Host struct {
 
 	mu    sync.Mutex
 	state State
+
+	msgsIn, msgsOut, bytesIn, bytesOut atomic.Uint64
 }
 
 // NewHost makes a host; Run connects it.
@@ -75,8 +84,11 @@ func NewHost(opt Options) *Host {
 // State reports the connection's state.
 func (h *Host) State() State {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.state
+	st := h.state
+	h.mu.Unlock()
+	st.MsgsIn, st.MsgsOut = h.msgsIn.Load(), h.msgsOut.Load()
+	st.BytesIn, st.BytesOut = h.bytesIn.Load(), h.bytesOut.Load()
+	return st
 }
 
 func (h *Host) setState(status, errText string) {
@@ -127,6 +139,7 @@ func (h *Host) Run(ctx context.Context) {
 
 // relayConn is one connection to the relay, shared by every phone on it.
 type relayConn struct {
+	h *Host
 	c *websocket.Conn
 	// ctx is the connection's own: it ends when the connection does.
 	ctx context.Context
@@ -147,7 +160,12 @@ func (r *relayConn) send(ctx context.Context, kind byte, conn uint32, data []byt
 	}
 	wctx, cancel := context.WithTimeout(r.ctx, 30*time.Second)
 	defer cancel()
-	return r.c.Write(wctx, websocket.MessageBinary, Frame(kind, conn, data))
+	err := r.c.Write(wctx, websocket.MessageBinary, Frame(kind, conn, data))
+	if err == nil && r.h != nil {
+		r.h.msgsOut.Add(1)
+		r.h.bytesOut.Add(uint64(len(data) + 5))
+	}
+	return err
 }
 
 func (h *Host) session(ctx context.Context) error {
@@ -188,7 +206,7 @@ func (h *Host) session(ctx context.Context) error {
 
 	sctx, stop := context.WithCancel(ctx)
 	defer stop()
-	rc := &relayConn{c: c, ctx: sctx}
+	rc := &relayConn{h: h, c: c, ctx: sctx}
 	var heard atomic.Int64
 	heard.Store(time.Now().UnixNano())
 	go h.keepalive(sctx, rc, &heard, stop)
@@ -209,6 +227,8 @@ func (h *Host) session(ctx context.Context) error {
 			return err
 		}
 		heard.Store(time.Now().UnixNano())
+		h.msgsIn.Add(1)
+		h.bytesIn.Add(uint64(len(msg)))
 		if typ == websocket.MessageText {
 			continue // "pong"
 		}

@@ -78,23 +78,25 @@ Full detail, including what is not supported, is in
 
 ## Components
 
-| Component  | Role                                                              | Phase |
-| ---------- | ----------------------------------------------------------------- | ----- |
-| `hookd`    | HTTP receiver for shim POSTs (`/v1/hook`), bearer-token gated     | 0     |
-| `shim`     | `caprock-hook` binary: stdin JSON → POST, silent, `exit 0`        | 0     |
-| `ingest`   | Discovers + tails transcript JSONL, parses per-turn usage         | 0     |
-| `store`    | SQLite (pure Go), embedded migrations                             | 0     |
-| `rollup`   | Event → `session_stats` / `daily_stats`; cost via pricing table   | 0     |
-| `api`      | REST + WebSocket fan-out, serves the embedded UI                  | 0     |
-| `ui`       | React + Vite SPA, `go:embed`-ded                                  | 0     |
-| `ptyman`   | Spawn / stream / write / resize / kill PTY sessions               | 1     |
-| `ptyhost`  | Per-session terminal holder that outlives the daemon (ADR-033)    | 1     |
-| `hive`     | Hive dir layout, atomic file ops, single-committer git, ledger    | 2     |
-| `router`   | Mailbox delivery outbox → inbox, ledger append, `mail.*` events   | 2     |
-| `orchestr` | Orchestrator lifecycle, Stop-loop, verification runner, approvals | 2     |
-| `service`  | Autostart: launchd agent / systemd user unit / Startup script     | —     |
-| `userenv`  | The login-shell environment spawned processes start with          | 1     |
-| `logcap`   | Keeps the daemon's log file bounded (rotate at 64MB, keep one)    | —     |
+| Component  | Role                                                               | Phase |
+| ---------- | ------------------------------------------------------------------ | ----- |
+| `hookd`    | HTTP receiver for shim POSTs (`/v1/hook`), bearer-token gated      | 0     |
+| `shim`     | `caprock-hook` binary: stdin JSON → POST, silent, `exit 0`         | 0     |
+| `ingest`   | Discovers + tails transcript JSONL, parses per-turn usage          | 0     |
+| `store`    | SQLite (pure Go), embedded migrations                              | 0     |
+| `rollup`   | Event → `session_stats` / `daily_stats`; cost via pricing table    | 0     |
+| `api`      | REST + WebSocket fan-out, serves the embedded UI                   | 0     |
+| `ui`       | React + Vite SPA, `go:embed`-ded                                   | 0     |
+| `ptyman`   | Spawn / stream / write / resize / kill PTY sessions                | 1     |
+| `ptyhost`  | Per-session terminal holder that outlives the daemon (ADR-033)     | 1     |
+| `hive`     | Hive dir layout, atomic file ops, single-committer git, ledger     | 2     |
+| `router`   | Mailbox delivery outbox → inbox, ledger append, `mail.*` events    | 2     |
+| `orchestr` | Orchestrator lifecycle, Stop-loop, verification runner, approvals  | 2     |
+| `service`  | Autostart: launchd agent / systemd user unit / Startup script      | —     |
+| `userenv`  | The login-shell environment spawned processes start with           | 1     |
+| `logcap`   | Keeps the daemon's log file bounded (rotate at 64MB, keep one)     | —     |
+| `remote`   | The relay channel: host for phones and computers, client to others | 1     |
+| `peers`    | The other computers this one reaches, and a channel to each        | 1     |
 
 **A process Caprock starts gets the user's environment, not the daemon's.** A
 daemon started at login by launchd holds ten variables and
@@ -129,6 +131,25 @@ intact (user report, 2026-10-11, a Russian paste), and an agent's `pbcopy`
 put a Russian line on the clipboard as Mac Roman garble (user report,
 2026-10-15). A locale the user set is
 left alone; Windows gets nothing, ConPTY being UTF-8 already.
+
+### Other computers
+
+**A daemon speaks for the user's other computers; the dashboard only ever
+talks to its own** ([ADR-067](08-decisions.md)). The path of one request:
+
+```
+dashboard ── loopback ──▶ daemon A ── internal/peers ── remote.Client
+   ── Noise NK inside one WebSocket ──▶ relay ──▶ daemon B's remote.Host
+   ── B's own loopback, Via: 1.1 caprock-remote ──▶ B's API, gated as A's device token
+```
+
+B needs nothing it does not already run for a phone: A is one more client of
+its Host, with a device token and a role B's owner gave it. A keeps the
+computers it reaches in `machines.json` (0600) and opens a channel to one
+only while something needs it, closing it after 90 s with nothing open.
+Built so far: the client, the stream layer and the store (`internal/remote`,
+`internal/peers`); the daemon's routes, the target's computer pairing and the
+app follow in the next two pull requests of ADR-067's Phase 1.
 
 ### Native terminals
 
@@ -364,6 +385,8 @@ internal/slashcmd/    # the slash commands an agent offers in a folder, for the 
 internal/alerts/      # when the phone hears about a session, and the message it reads (ADR-036)
 internal/brain/       # Second Brain's automatic extraction: finished sessions read by the user's own `claude -p`, memories kept with provenance (ADR-063)
 internal/templates/   # new project from a template: the user's own list, their gh or a local copy, the brief committed (ADR-065)
+internal/remote/      # access from anywhere (ADR-058): Noise NK, the frame protocol, the Host phones and computers reach, the Client this daemon reaches other computers with (ADR-067); relaysrv/ is `caprock remote relay`
+internal/peers/       # the computers this machine reaches (ADR-067): machines.json (0600), pairing by link, requests and sockets carried as the paired device
 internal/telegram/    # the owner's own bot: Bot API client, long-poll reader, paced outbox, the two-way bridge (ADR-047) — Control
 internal/ptyhost/     # `caprock pty-host`: one process per owned session holding its PTY, so it outlives the daemon (ADR-033); orphan verdicts — Control
 internal/keepawake/   # keeps the computer from idle-sleeping while agents work: modes, keeper, per-OS holders (ADR-049)
