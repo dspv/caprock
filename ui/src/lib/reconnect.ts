@@ -9,6 +9,9 @@
  *   `online`, `pageshow` (the back/forward cache) and a network type change.
  * - **Honest.** A socket silent for DEAD_MS is dead whatever the browser says,
  *   and a woken page asks for a round trip before it trusts an open socket.
+ * - **Watched.** A client with no socket is checked every second too: with
+ *   no retry scheduled, or one overdue, it tries now (`ensure`), so one lost
+ *   timer or one thrown constructor cannot leave it "reconnecting" forever.
  *
  * Kept free of React so it can be driven by fake timers.
  */
@@ -29,6 +32,21 @@ export const LIVENESS_CHECK_MS = 1_000
 export const PROBE_MS = 2_000
 /** An attempt still not open after this is abandoned for a new one (a SYN lost on a bad network). */
 export const CONNECT_TIMEOUT_MS = 10_000
+/**
+ * A scheduled retry this late is taken for lost — a timer the page dropped,
+ * or one held back by a sleep — and runs at once (Reconnector.ensure).
+ */
+export const RETRY_OVERDUE_MS = 3_000
+/**
+ * A terminal paused for its own backlog (TermClient's flow control) whose
+ * terminal has parsed nothing for this long is resumed anyway: the parse
+ * callbacks it waits for are lost, and waiting for them is waiting forever.
+ */
+export const STALL_MS = 15_000
+/** Failed attempts after which the state offers a "Reconnect now" by hand… */
+export const MANUAL_AFTER_ATTEMPTS = 3
+/** …or this long down, whichever comes first. */
+export const MANUAL_AFTER_MS = 10_000
 /** The first retry's delay, and the floor of every later one… */
 export const RECONNECT_MIN_MS = 500
 /** …and the cap the doubling stops at. */
@@ -63,6 +81,15 @@ export interface LinkStatus extends ReconnectStatus {
 export function reconnectDelay(attempt: number, random: () => number = Math.random): number {
   const ceil = Math.min(RECONNECT_MAX_MS, RECONNECT_MIN_MS * 2 ** Math.min(Math.max(attempt, 0), 16))
   return Math.round(RECONNECT_MIN_MS + random() * (ceil - RECONNECT_MIN_MS))
+}
+
+/**
+ * True when a link is down for long enough that the state should offer a
+ * "Reconnect now": the retries go on by themselves either way.
+ */
+export function offersManualRetry(link: Pick<LinkStatus, 'phase' | 'attempt' | 'downSince'>, now: number): boolean {
+  if (link.phase !== 'reconnecting' && link.phase !== 'catching-up') return false
+  return link.attempt >= MANUAL_AFTER_ATTEMPTS || (link.downSince !== null && now - link.downSince >= MANUAL_AFTER_MS)
 }
 
 /** True once a socket last heard from at `heardAt` must be taken for dead. */
@@ -151,6 +178,21 @@ export class Reconnector {
     this.expedited = true
   }
 
+  /** A retry is scheduled (its timer is set). */
+  get scheduled(): boolean { return this.timer !== undefined }
+
+  /**
+   * The watchdog's half: called every LIVENESS_CHECK_MS by a client that has
+   * no socket and means to have one. Nothing scheduled — an attempt that threw
+   * before it made a socket, a timer lost on the way — schedules one; a retry
+   * overdue by RETRY_OVERDUE_MS (a timer the page held back) runs now. So no
+   * single lost event can leave a link "reconnecting" with nothing trying.
+   */
+  ensure(now: number = this.now()): void {
+    if (this.timer === undefined) { this.fail(); return }
+    if (this.nextAt !== null && now - this.nextAt > RETRY_OVERDUE_MS) this.retryNow()
+  }
+
   /** No retry is scheduled after this (a suspended tab, a disposed client). */
   cancel(): void {
     clearTimeout(this.timer)
@@ -178,10 +220,11 @@ interface NetworkInformationLike {
 
 /**
  * Calls `wake` whenever a dropped connection is likely to work again: the
- * page is shown, the browser is back online, the page is restored from the
- * back/forward cache, or the network type changes (Wi-Fi to cellular, where
- * the browser exposes it). Never while the page is hidden. Returns the
- * unsubscribe.
+ * page is shown, the window gets focus (an app window clicked after a sleep
+ * or a network change, which need not change its visibility), the browser is
+ * back online, the page is restored from the back/forward cache, or the
+ * network type changes (Wi-Fi to cellular, where the browser exposes it).
+ * Never while the page is hidden. Returns the unsubscribe.
  */
 export function onNetworkWake(wake: () => void): () => void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return () => {}
@@ -189,11 +232,13 @@ export function onNetworkWake(wake: () => void): () => void {
   const network = (navigator as Navigator & { connection?: NetworkInformationLike }).connection
   document.addEventListener('visibilitychange', fire)
   window.addEventListener('online', fire)
+  window.addEventListener('focus', fire)
   window.addEventListener('pageshow', fire)
   network?.addEventListener?.('change', fire)
   return () => {
     document.removeEventListener('visibilitychange', fire)
     window.removeEventListener('online', fire)
+    window.removeEventListener('focus', fire)
     window.removeEventListener('pageshow', fire)
     network?.removeEventListener?.('change', fire)
   }

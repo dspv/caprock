@@ -36,6 +36,7 @@ const BY_TITLE: [RegExp, string][] = [
   [/^new sessions/i, 'play'],
   [/keep awake/i, 'coffee'],
   [/saved prompts/i, 'bookmark'],
+  [/project templates/i, 'folder'],
   [/appearance/i, 'palette'],
   [/phone/i, 'phone'],
   [/telegram/i, 'send'],

@@ -490,3 +490,61 @@ func TestTermV2ExitSaysARestart(t *testing.T) {
 		}
 	}
 }
+
+// After a network drop a tab's socket can be half-open: the daemon still
+// holds it and nothing more arrives on it, while the tab, having heard
+// nothing for 25 s, attaches again with the same client id and offset (Vova,
+// 2026-10-15). The new attach must be served at once — not queued behind the
+// dead one — with what was applied, the resend dropped, new input typed once
+// and the output reaching the new socket from where the tab stood.
+func TestTermV2ReattachWhileTheOldSocketIsHalfOpen(t *testing.T) {
+	ft := newFakeTerm(1 << 12)
+	ft.echo = true
+	srv, _ := v2Server(t, ft)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	old := dialV2(ctx, t, srv, "?client=tab-1")
+	defer func() { _ = old.CloseNow() }()
+	h := mustHello(ctx, t, old)
+	mustFrame(ctx, t, old) // empty snapshot
+	if err := old.Write(ctx, websocket.MessageBinary, input(1, "ls\r")); err != nil {
+		t.Fatal(err)
+	}
+	pos := h.Offset
+	for pos < h.Offset+3 {
+		if f := mustFrame(ctx, t, old); f.text == nil {
+			pos = f.offset + uint64(len(f.data))
+		}
+	}
+	// The old socket goes half-open: never read again, never closed. Its
+	// input's ack may not have reached the tab, which resends it.
+
+	start := time.Now()
+	c2 := dialV2(ctx, t, srv, fmt.Sprintf("?client=tab-1&since=%d", pos))
+	defer func() { _ = c2.CloseNow() }()
+	h2 := mustHello(ctx, t, c2)
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("the new attach waited %v behind the half-open one", d)
+	}
+	if h2.Reset || h2.Offset != pos || h2.Ack != 1 {
+		t.Fatalf("hello = %+v; want a resume at %d with ack 1", h2, pos)
+	}
+	_ = c2.Write(ctx, websocket.MessageBinary, input(1, "ls\r"))
+	_ = c2.Write(ctx, websocket.MessageBinary, input(2, "pwd\r"))
+	var got []byte
+	for !bytes.Contains(got, []byte("pwd\r")) {
+		if f := mustFrame(ctx, t, c2); f.text == nil {
+			if f.offset != pos+uint64(len(got)) {
+				t.Fatalf("frame at %d; want %d (no gap, no repeat)", f.offset, pos+uint64(len(got)))
+			}
+			got = append(got, f.data...)
+		}
+	}
+	if string(got) != "pwd\r" {
+		t.Fatalf("new socket got %q; want only what was typed after the resume", got)
+	}
+	if typed := ft.typedNow(); strings.Join(typed, ",") != "ls\r,pwd\r" {
+		t.Fatalf("typed %q; the resend must be dropped and the new input typed once", typed)
+	}
+}

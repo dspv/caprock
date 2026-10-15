@@ -213,6 +213,13 @@ class LiveStore {
     this.retry.retryNow()
   }
 
+  /** "Reconnect now", by hand: a new socket at once, whatever the backoff. */
+  reconnectNow() {
+    if (!this.started) return
+    this.drop()
+    this.retry.retryNow()
+  }
+
   private setPhase(phase: LinkStatus['phase']) {
     if (this.state.link.phase !== phase) this.set({ link: { ...this.state.link, phase } })
   }
@@ -273,8 +280,14 @@ class LiveStore {
   /** A socket silent for DEAD_MS is dead, whatever the browser thinks. */
   private tickLiveness() {
     const ws = this.ws
-    if (!ws) return
     const now = Date.now()
+    if (!ws) {
+      // Between sockets: a retry must be on its way, and on time — one lost
+      // timer must not leave the link "reconnecting" with nothing trying.
+      this.setPhase('reconnecting')
+      this.retry.ensure(now)
+      return
+    }
     if (isSilent(this.heard, now) || isConnectStuck(ws.readyState, this.heard, now)) { this.drop(); return }
     if (isProbeLost(this.probeAt, this.heard, now)) { this.drop(); this.retry.retryNow(); return }
     if (this.heard > this.probeAt) this.probeAt = 0

@@ -1564,7 +1564,9 @@ and the points below say where the build settled what this plan left open.
   offset — a slow client costs itself a repaint and costs no other client
   anything. A browser cannot stop reading a WebSocket, so the client closes
   it while more than 1 MiB is waiting for xterm.js to parse, and reconnects
-  with `since` below 256 KiB (xterm.js's write callbacks).
+  with `since` below 256 KiB (xterm.js's write callbacks), or after 15 s
+  with no write callback at all: a pause must not outlive the callbacks it
+  waits for.
 - **Hidden tabs.** A tab not visible for 30 seconds closes its socket; showing
   it reconnects with `since`. Waiting and permission state come from
   `/v1/live`, never from the terminal socket, so a hidden tab still badges.
@@ -1795,6 +1797,11 @@ GitHub by clipboard. In the app three commands do the native parts
   extension is png/jpg/jpeg/gif/webp, and it is a file of at most 10 MB. Any
   path at all would make the command a file reader for whatever page the
   window shows.
+- **`read_dropped_text`** keeps the same rule for the brief of New project
+  from a template (§ Dropping a file): one of the last drop's paths, a
+  `.md`, `.markdown` or `.txt` file of at most 1 MiB, returned only when it
+  is UTF-8. Unit-tested in `capture.rs`; the ACL test refuses it to every
+  other origin.
 - **Verified**: macOS by `cargo clippy -D warnings` and `cargo test` (the
   path rules, and the ACL: another origin is refused all three); the Windows
   code by `cargo clippy --target x86_64-pc-windows-msvc -D warnings` on a
@@ -1847,7 +1854,9 @@ tells a page where a file lives.
   (a `[data-dialog-backdrop]` is in the page) no terminal types a dropped
   path: the file was aimed at the dialog, not the terminal under its
   backdrop. Feedback reads an image from such a drop through the shell
-  (§ Feedback screenshots).
+  (§ Feedback screenshots), and New project from a template reads a `.md`
+  or `.txt` dropped on its Brief step as the brief (`read_dropped_text`,
+  the first path only; [04-ui.md](04-ui.md) § New project from a template).
 - **The popover** shows no terminal and keeps the default handler, so a
   drop there does nothing.
 - **Verified** by unit tests on both halves (`shell.rs` script, the
@@ -1976,8 +1985,12 @@ connection and the work survive a bad network.
 - **Terminal resume** over protocol v2, with exactly-once input.
 - **Reconnect forever.** Exponential backoff with full jitter, from 0.5 s to a
   15 s cap, never giving up; an immediate attempt on `visibilitychange`,
-  `online` and network type change; the ping and 25-second dead deadline of
-  protocol v2 on `/v1/live` as well.
+  `online`, window focus and network type change; the ping and 25-second
+  dead deadline of protocol v2 on `/v1/live` as well. A client between
+  sockets is watched every second too, so a thrown `WebSocket` constructor or
+  a lost timer cannot end the retries; after 3 failed tries or 10 s down the
+  state offers **Reconnect now** (2026-10-15, after Vova's terminals all
+  stayed at *Reconnecting…* past a Wi-Fi drop until each tab was closed).
   Built in WP-13 (2026-10-06): `ui/src/lib/reconnect.ts`, shared by
   `/v1/live` and every terminal; the rules, including the 2-second probe of a
   socket that looks open after a wake and the 10-second limit on an attempt

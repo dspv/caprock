@@ -15,7 +15,7 @@
  */
 
 import {
-  DEAD_MS, LIVENESS_CHECK_MS, PING_MS, PROBE_MS, RECONNECT_MAX_MS, RECONNECT_MIN_MS, Reconnector,
+  DEAD_MS, LIVENESS_CHECK_MS, PING_MS, PROBE_MS, RECONNECT_MAX_MS, RECONNECT_MIN_MS, Reconnector, STALL_MS,
   isConnectStuck, isProbeLost, isSilent, isSuspect, reconnectDelay, type LinkPhase, type LinkStatus,
 } from './reconnect'
 
@@ -109,6 +109,8 @@ export class TermClient {
   private parsing = 0
   /** The socket was let go because the terminal is behind. */
   private drained = true
+  /** When the terminal last reported parsing something, or the socket was let go for it. */
+  private parsedAt = 0
   private stateNow: TermState = 'connecting'
   /** Let go on purpose while out of sight (the app's hidden tabs); `wake` resumes. */
   private suspended = false
@@ -148,6 +150,20 @@ export class TermClient {
   get unacked(): number { return this.pending.reduce((n, p) => n + p.size, 0) }
 
   start(): void { this.connect() }
+
+  /**
+   * "Reconnect now", by hand: a new socket at once, whatever the backoff,
+   * the flow-control pause or a let-go tab was waiting for. The session and
+   * its process are untouched — the new socket resumes from the last byte
+   * this client has, as any reconnect does.
+   */
+  reconnectNow(): void {
+    if (this.ended || this.disposed) return
+    this.suspended = false
+    if (!this.drained) this.unstall()
+    this.drop()
+    this.retry.retryNow()
+  }
 
   /** Type text into the session. False when it could not even be queued. */
   send(text: string): boolean {
@@ -237,7 +253,9 @@ export class TermClient {
    */
   wake(): void {
     this.suspended = false
-    if (this.ended || this.disposed || !this.drained) return
+    if (this.ended || this.disposed) return
+    this.watch()
+    if (!this.drained) return // resumed by the terminal's parse callbacks, or by the watchdog
     const ws = this.ws
     const now = this.now()
     if (ws && ws.readyState === WebSocket.OPEN && now - this.heard <= PING_MS + 2_000) {
@@ -263,7 +281,7 @@ export class TermClient {
     if (this.ended || this.disposed) return
     this.suspended = true
     this.retry.cancel()
-    clearInterval(this.pingTimer)
+    this.unwatch()
     const ws = this.ws
     this.ws = null
     if (ws) { ws.onclose = null; ws.onmessage = null; ws.close() }
@@ -273,10 +291,34 @@ export class TermClient {
     this.disposed = true
     clearTimeout(this.focusTimer)
     this.retry.cancel()
-    clearInterval(this.pingTimer)
+    this.unwatch()
     const ws = this.ws
     this.ws = null
     if (ws) { ws.onclose = null; ws.onmessage = null; ws.close() }
+  }
+
+  /**
+   * The watchdog runs from the first connect until the client is disposed,
+   * ends or is let go out of sight — with a socket or without one, so a client
+   * between sockets is watched too (tick).
+   */
+  private watch(): void {
+    if (this.pingTimer === undefined) this.pingTimer = setInterval(() => this.tick(), LIVENESS_CHECK_MS)
+  }
+
+  private unwatch(): void {
+    clearInterval(this.pingTimer)
+    this.pingTimer = undefined
+  }
+
+  /**
+   * Out of a flow-control pause whose parse callbacks never came: forget the
+   * bytes counted as unparsed and fetch from the offset reached. What was
+   * handed to the terminal stays handed; nothing is fetched twice.
+   */
+  private unstall(): void {
+    this.parsing = 0
+    this.drained = true
   }
 
   private isV2(ws: WebSocket): boolean { return ws.protocol === TERM_V2_PROTOCOL }
@@ -290,11 +332,24 @@ export class TermClient {
 
   private connect(): void {
     if (this.disposed || this.ended || this.suspended) return
+    this.watch()
     const q = new URLSearchParams({ client: this.clientId })
     if (this.pos !== null) q.set('since', String(this.pos))
     const protocols = [TERM_V2_PROTOCOL]
     if (this.opts.deviceToken) protocols.push(`caprock.device.${this.opts.deviceToken}`)
-    const ws = new WebSocket(`${this.opts.url}?${q}`, protocols)
+    let ws: WebSocket
+    try {
+      ws = new WebSocket(`${this.opts.url}?${q}`, protocols)
+    } catch {
+      // A browser can refuse to even start one (a network stack being
+      // replaced under it). Before, this threw out of the retry timer — or
+      // out of xterm's parse callback, wedging its write queue — and nothing
+      // was ever tried again: "Reconnecting…" for good (Vova, 2026-10-15).
+      this.ws = null
+      this.setState('reconnecting')
+      this.retry.fail()
+      return
+    }
     ws.binaryType = 'arraybuffer'
     this.ws = ws
     this.heard = this.now()
@@ -326,7 +381,6 @@ export class TermClient {
     ws.onclose = (e: CloseEvent) => {
       if (this.ws !== ws) return
       this.ws = null
-      clearInterval(this.pingTimer)
       if (this.disposed) return
       if (this.restarting) {
         // The new process takes a moment to start; the daemon answers 501
@@ -338,6 +392,7 @@ export class TermClient {
       }
       if (this.ended || e?.code === 1000) {
         this.ended = true
+        this.unwatch()
         this.setState('ended')
         return
       }
@@ -346,6 +401,7 @@ export class TermClient {
         this.ended = true
         this.revokedReason = e.reason || REVOKED_REASON
         this.retry.cancel()
+        this.unwatch()
         this.setState('revoked')
         return
       }
@@ -356,17 +412,27 @@ export class TermClient {
       this.setState('reconnecting')
       this.retry.fail()
     }
-    clearInterval(this.pingTimer)
-    this.pingTimer = setInterval(() => this.tick(), LIVENESS_CHECK_MS)
   }
 
   private tick(): void {
+    if (this.disposed || this.ended || this.suspended) return
+    const now = this.now()
     const ws = this.ws
-    if (!ws) return
+    if (!ws) {
+      if (!this.drained) {
+        // Paused for the terminal's backlog: resumed by its parse callbacks,
+        // or here once they have been silent for STALL_MS.
+        if (now - this.parsedAt > STALL_MS) { this.unstall(); this.connect() }
+        return
+      }
+      // Between sockets: a retry must be on its way, and on time.
+      if (this.stateNow !== 'reconnecting') this.setState('reconnecting')
+      this.retry.ensure(now)
+      return
+    }
     // A socket that has said nothing for DEAD_MS — or never finished
     // opening — is dead, whatever the browser thinks; so is one that did not
     // answer the ping a wake sent.
-    const now = this.now()
     if (isSilent(this.heard, now) || isConnectStuck(ws.readyState, this.heard, now)) { this.drop(); return }
     if (isProbeLost(this.probeAt, this.heard, now)) { this.drop(); this.retry.retryNow(); return }
     if (this.heard > this.probeAt) this.probeAt = 0
@@ -467,7 +533,8 @@ export class TermClient {
     this.wroteAny = true
     this.parsing += n
     this.opts.callbacks.write(data, () => {
-      this.parsing -= n
+      this.parsing = Math.max(0, this.parsing - n)
+      this.parsedAt = this.now()
       if (!this.drained && this.parsing <= LOW_WATER) {
         this.drained = true
         this.connect()
@@ -477,12 +544,12 @@ export class TermClient {
       // The terminal cannot parse as fast as the session prints. Stop
       // reading, let it catch up, then resume from the offset it reached.
       this.drained = false
+      this.parsedAt = this.now()
       const ws = this.ws
       this.ws = null
       ws.onclose = null
       ws.onmessage = null
       ws.close()
-      clearInterval(this.pingTimer)
       // Not live while the socket is let go: what was printed meanwhile is
       // fetched once the terminal has caught up.
       this.setState('catching-up')

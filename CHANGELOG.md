@@ -7,12 +7,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-Changes waiting for the next release are one file each in `changes/unreleased/`,
-assembled into a version section here by `scripts/changelog.py` when a release is
-cut; `scripts/changelog.py preview` prints that section now. The format is in
-`changes/README.md`.
-
-## [0.118.0] - 2026-10-15
+## [0.119.0] - 2026-10-15
 
 ### Added
 
@@ -27,6 +22,52 @@ cut; `scripts/changelog.py preview` prints that section now. The format is in
   answers and where the mail text goes; it is sent only when you click an
   AI action, and the thread reaches the model fenced as data it must not
   follow.
+- **app:** New project from a template — the dialog. *From a template…* in
+  New project's footer or ⌘K: pick a saved template or look one up
+  (`owner/name`, its link, or a folder), name the project, paste or drop
+  the brief, and the box under it says what *Create* will run and send
+  (the name and visibility, to GitHub, through your own `gh`; nothing
+  without it). Progress shows in the footer; Esc hides it and the agent
+  still starts in its own tab when the project is ready. A failed clone
+  offers *Try the clone again* and *Open on GitHub*. Settings → Project
+  templates edits and removes them. In the app a dropped `.md` or `.txt`
+  becomes the brief (`read_dropped_text`, only from the latest drop).
+- **projects:** start a project from a template — the daemon side. Add your own template (a GitHub template repository,
+  a folder, or both) with where its brief goes and the agent's first
+  prompt; Caprock reads its `TEMPLATE.md` to fill those in. Making a
+  project from it runs your own `gh` on your click (`gh repo create
+  --template`, then `gh repo clone`), or copies the folder's last commit
+  into a new repository when you pick the local copy, then writes your
+  brief and commits it — never pushed. A failure takes away only the
+  folder Caprock made and never deletes a repository on GitHub; Retry
+  picks up where it stopped (ADR-065).
+- **pipeline:** every figure on the Pipeline page — and the five on Home —
+  shows its last 14 days as a small line, with today set against them
+  underneath: *usual*, *above usual +38%*, *below usual −30%*. In flight,
+  throughput, the CI median, opened → merged, merged → released and the
+  agent cost each get one; green where today is the better side (a shorter
+  CI run or merge, more merges), amber the worse, muted for the open count
+  and the cost. Running totals compare today so far with earlier days at
+  the same hour; a day with nothing to measure is a gap, not a zero; with
+  fewer than three earlier days of data it says *not enough history*.
+  Hover a day for its value, or the word for what it is compared with.
+  Counted from what the Pipeline already reads: no new GitHub request.
+
+### Changed
+
+- **app:** the Pipeline has its own tab again, pinned with the system tabs
+  right after the Dashboard tab and before Mail, drawn like them: its glyph
+  and ⌘P (Ctrl⇧P on Windows and Linux), its × while it is in front. ⌘P,
+  *Pipeline* at the foot of the sidebar and *Open Pipeline* in the palette
+  bring it to the front, and again go back to where you were; ⇧⌘B still
+  works and ⌘B stays the Pipeline bar. It stays in the Dashboard too:
+  *Pipeline* in its menu and *Open Pipeline →* on Home take you to that
+  tab, so the page is drawn once and, behind other tabs, reads nothing. The
+  tab is kept across restarts.
+
+## [0.118.0] - 2026-10-15
+
+### Added
 
 - **app:** a live session's row on Home takes you into the running session.
   Click anywhere on the row (or Enter on it) and the session's tab comes to
@@ -76,17 +117,19 @@ cut; `scripts/changelog.py preview` prints that section now. The format is in
   yellow and cyan that usually wash out included. Pick it under Light in
   the theme picker or Settings → Appearance.
 
+- **phone:** Settings → Use on your phone tells you how to get back to a
+  phone you already paired. Each paired phone says *Already paired — just
+  open m.caprock.dev on that phone*, and **Open on the phone again** shows
+  a QR code of that address (the address only: no code and no key, so it
+  pairs nothing) and the Add to Home Screen tip. With a Telegram bot set up,
+  **Send the link to my phone** sends the address to your Telegram chat
+  through your own bot, and says so before you press it.
+- **phone:** right after pairing, the phone's Ready card says *Next time,
+  just open m.caprock.dev on this phone: it stays paired*, and on Android
+  gives Chrome's own step (⋮ → Install app).
+
 ### Changed
 
-- **app:** the Pipeline has its own tab again, pinned with the system tabs
-  right after the Dashboard tab and before Mail, drawn like them: its glyph
-  and ⌘P (Ctrl⇧P on Windows and Linux), its × while it is in front. ⌘P,
-  *Pipeline* at the foot of the sidebar and *Open Pipeline* in the palette
-  bring it to the front, and again go back to where you were; ⇧⌘B still
-  works and ⌘B stays the Pipeline bar. It stays in the Dashboard too:
-  *Pipeline* in its menu and *Open Pipeline →* on Home take you to that
-  tab, so the page is drawn once and, behind other tabs, reads nothing. The
-  tab is kept across restarts.
 - **app:** where you type is easier to find, quietly. The Chat view's field
   carries a hint of the accent at rest — a faint tint and a hairline edge,
   a little stronger with the focus — on every theme and terminal palette.
@@ -102,8 +145,10 @@ cut; `scripts/changelog.py preview` prints that section now. The format is in
   never Ctrl+D, which stays the shell's end of input. The sidebar's footer
   shows *Dashboard ⌘D*, *Pipeline ⌘P* and the theme's ⇧⌘T, folded or not,
   and the palette, the shortcuts list and the tooltips say the new keys.
-- **dashboard:** The Pipeline is in the Dashboard's menu, beside *Week*
-  (in the app it opens in its own tab, above). It shows one repository —
+- **dashboard:** The Pipeline is a page of the Dashboard now, beside *Week*
+  in its menu, instead of a tab of its own: ⌘P and *Pipeline* in the
+  sidebar open the Dashboard tab there (Ctrl+Shift+P on Windows and
+  Linux), and again go back to where you were. It shows one repository —
   the agent in front's, else the one you looked at last — with buttons
   beside its title to switch. It is drawn as the Dashboard is: its figures
   are the Dashboard's tiles, larger and readable, each explained in a card
@@ -113,7 +158,8 @@ cut; `scripts/changelog.py preview` prints that section now. The format is in
   (outlined) apart by shape as well as colour. A pull request's detail
   opens beside the list. Home's CI/CD section shows the Pipeline's first
   five figures at its top — in flight, needing a fix, ready, throughput,
-  CI median — with *Open Pipeline →*.
+  CI median — with *Open Pipeline →*. A Pipeline tab saved by an earlier
+  version opens as the page.
 - **ui:** Get premium in the header is a quiet tinted button, not a bright
   block: the same height, radius and type as Feedback and Settings beside
   it, a faint premium tint with a hairline border and premium-coloured text,
@@ -132,6 +178,30 @@ cut; `scripts/changelog.py preview` prints that section now. The format is in
   your agents a memory*, *Start building* and *How it works*.
 
 ### Fixed
+
+- **app:** terminals reconnect on their own after the network drops. A
+  terminal whose connection was lost retried on a single timer, and the
+  only thing watching it stopped with the socket: when the browser refused
+  to start a new socket once (as a network stack being swapped under it
+  can), or the timer was lost, the tab said *Reconnecting…* for good and
+  nothing typed reached the session until the tab was closed (user report:
+  every tab stuck after a Wi-Fi drop). A terminal between sockets is now
+  checked every second and always has a retry on its way and on time; a
+  pause for its own backlog resumes after 15 s even if the terminal never
+  reports catching up; and the window getting focus checks the connection
+  at once. The badge says the attempt and the next try, and after 3
+  failed tries or 10 s down offers **Reconnect now**, which reconnects the
+  same session — no new process. The dashboard's live connection got the
+  same watchdog and button.
+- **phone:** a phone that cannot connect says which of three things is
+  wrong: *Can't reach the relay* (this phone cannot reach relay.caprock.dev
+  or m.caprock.dev; check your connection or VPN), *Connected to the relay —
+  your computer is offline*, or *Paired device removed*, with a **Details**
+  fold showing the last error, its code and when it happened, the last try
+  and the last time it was connected. A browser with no pairing says *This
+  browser isn't paired* and where to pair (Caprock → Settings → Use on your
+  phone → Show a code), instead of an error or a bare code form. The page
+  also asks the browser to keep its storage, which holds the pairing.
 
 - **picker:** an arrow key pressed in the folder picker the moment a
   folder's entries appear is no longer lost; the selection used to be

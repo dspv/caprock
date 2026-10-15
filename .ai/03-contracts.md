@@ -317,6 +317,17 @@ device. The relay's wire is `internal/remote/wire.go`, the channel's frames
 sending to it, is closed with 4404 and the stale connection dropped (4408
 on the hosted relay), never spliced to a machine that went to sleep.
 
+**The way back to a paired phone (2026-10-15).** `GET /v1/pair/state`
+carries `telegram: true` when a Telegram bot and chat are set up.
+`POST /v1/pair/send-link` (loopback-only, no body read) sends one message to
+that chat — the bridge's outbox, else the report bot, as the alerts do: the
+phone's page `remote.app` with a trailing `/` and one line on Add to Home
+Screen. The address is the daemon's own, never the request's, and carries no
+code, key or token. It answers `{sent: "telegram", link}`; `403` off the
+machine (a paired phone included), `501` in a build without the relay,
+`409` with no bot set up, `502` with Telegram's error. No new destination:
+the chat is the one the owner connected (ADR-047).
+
 - `DELETE /v1/pair/code` withdraws the outstanding code and answers
   `{cleared: true}` whether or not there was one — the dashboard's **Cancel**,
   so a code hidden from the owner is not still valid behind them.
@@ -495,8 +506,10 @@ Every `/v1/live` frame carries a `seq`, so a client that reconnects gets exactly
 One policy for both sockets, `ui/src/lib/reconnect.ts` (WP-13, [21-app.md § Phase A](21-app.md#phase-a--resilience-and-starting-work-p0)). Client-side only: no frame or endpoint changed.
 
 - **Forever, with full jitter.** Retry `n` (from 0) waits a uniform delay between 0.5 s and `min(15 s, 0.5 s × 2^n)`; there is no last attempt. The count and the delay reset when the link is live again: the `hello` on either socket (on a version 1 terminal socket, the open).
-- **At once** on `visibilitychange` to visible, `online`, `pageshow` and `navigator.connection`'s `change` (where the browser has it). An open socket heard from in the last 12 s is pinged and must answer within **2 s**, or it is replaced at once; one silent longer is replaced without asking. If the page wakes while an attempt is still opening, that attempt is given its chance and, should it fail, the next starts with no delay.
+- **At once** on `visibilitychange` to visible, `online`, the window's `focus`, `pageshow` and `navigator.connection`'s `change` (where the browser has it). An open socket heard from in the last 12 s is pinged and must answer within **2 s**, or it is replaced at once; one silent longer is replaced without asking. If the page wakes while an attempt is still opening, that attempt is given its chance and, should it fail, the next starts with no delay.
 - **Dead.** Nothing received for 24 s (checked every second, so a half-open socket is caught within the 25 s deadline), or an attempt not open after **10 s**, closes the socket and counts as a failure.
+- **Watched between sockets.** The once-a-second check runs with no socket too, from the first connect until the client ends, is disposed or (a terminal) is let go out of sight: with no retry scheduled — an attempt whose `WebSocket` constructor threw, a timer lost — one is scheduled, and a retry overdue by more than **3 s** (a timer the page held back) runs at once. A terminal paused for its own backlog (Client backpressure) whose xterm.js has reported nothing parsed for **15 s** resumes anyway, from the offset it reached. Before this (2026-10-15) one thrown constructor ended the retries for good, and the terminal said *Reconnecting…* until its tab was closed.
+- **By hand.** After **3** failed attempts or **10 s** down, the state offers **Reconnect now**: an attempt at once, whatever the backoff, the pause or a let-go tab was waiting for. It resumes the same session from the last byte, as any reconnect; no process is started.
 - **Not retried.** Terminal close 1000 (the process exited) and 1008 (the device lost the controller role; the close reason, or "ask on the machine Caprock runs on", is shown). Close 1011 is retried, and the input it names is resent after the `hello`.
 
 ### Notify frame
@@ -774,6 +787,7 @@ GET  /v1/window-stop                   → the plan-window stop's state (§ Pric
 GET  /v1/keepawake                     → whether the computer is kept awake now (§ Keep awake); 501 when the daemon has no keeper
 POST /v1/report/test                   → sends this week's report now → {sent:"ok"}; 502 with Telegram's error, 501 when reporting is unavailable
 POST /v1/alerts/test                   → sends a test phone alert now, no licence needed → {sent:"ok"}; 502 with Telegram's error or "no bot configured"
+POST /v1/pair/send-link                → sends the phone's page address to the owner's Telegram chat → {sent:"telegram", link}; loopback-only, 409 with no bot (§ Pairing endpoints)
 GET/PUT/POST/DELETE /v1/telegram…      → the Telegram bridge's setup and pairing (§ Telegram bridge)
 POST /v1/shutdown                      → 200 (bearer-token gated; `caprock down`)
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check

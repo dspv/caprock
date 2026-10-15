@@ -186,6 +186,7 @@ Commands are granted per origin (`src-tauri/capabilities/`):
 | `clipboard_image`        | yes         | no           | no      |
 | `capture_webview`        | yes         | no           | no      |
 | `read_dropped_image`     | yes         | no           | no      |
+| `read_dropped_text`      | yes         | no           | no      |
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
 The `app_update_*` commands are the app's updater (F20, `src-tauri/src/updater.rs`,
@@ -197,6 +198,8 @@ updater plugin's own commands are granted to no page. `clipboard_image`,
 screenshots (`src-tauri/src/capture.rs`): a PNG onto the OS clipboard, the
 app's own page as a PNG, and an image file from the last drop on the window;
 the clipboard manager plugin's own commands are granted to no page.
+`read_dropped_text` reads a `.md` or `.txt` file (at most 1 MiB, UTF-8) from
+the last drop the same way, for the brief of New project from a template.
 `open_external` opens `http`, `https` and `mailto` only; a Cmd/Ctrl+click on
 a link in a terminal goes through it (`ui/src/lib/termlinks.ts`).
 `notify` shows one OS notification (`{title, body, id?, sessionId?,

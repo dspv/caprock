@@ -45,6 +45,7 @@ import { EditorSetting } from '@/components/EditorSetting'
 import { DefaultFolderSetting } from '@/components/DefaultFolderSetting'
 import { CustomAgentsSetting } from '@/components/CustomAgentsSetting'
 import { SavedPromptsSetting } from '@/components/SavedPromptsSetting'
+import { TemplatesSetting } from '@/components/TemplatesSetting'
 import { SubscriptionsSetting } from '@/components/SubscriptionsSetting'
 import { SpawnModeSetting } from '@/components/SpawnModeSetting'
 import { KeepAwakeSetting } from '@/components/KeepAwake'
@@ -154,6 +155,7 @@ export function StatusScreen() {
           {owner && <KeepAwakeSetting />}
           <AgentCloseSetting />
           {owner && <SavedPromptsSetting />}
+          {owner && <TemplatesSetting />}
           <AppearanceSection />
           <TerminalSettings />
           {owner && <StatuslineSetting />}
@@ -178,6 +180,7 @@ export function StatusScreen() {
           {owner && <SpawnModeSetting />}
           {owner && <KeepAwakeSetting />}
           {owner && <SavedPromptsSetting />}
+          {owner && <TemplatesSetting />}
           {owner && <StatuslineSetting />}
           {owner && <EditorSetting />}
           {owner && <DefaultFolderSetting />}

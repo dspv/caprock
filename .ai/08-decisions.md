@@ -3554,6 +3554,36 @@ daemon at all: an older daemon answers a newer page's new routes 403 or
 404, never 401 (`TestAPhonesTokenIsOnlyDisownedByA401`, which v0.117.0
 passes too).
 
+*Amended 2026-10-15 — a paired phone finds its way back.* Vova, our first
+user (translated): "yesterday I opened the phone app, then closed the tab;
+in Caprock the device shows as paired; today I want to open the app again
+but I don't remember the link — and that's it … But even then I can't work
+— the link doesn't load; maybe it's some restrictions, my VPN isn't working
+well right now." The phone's token was already kept on the page's origin,
+so the plain address reconnects; nothing said so, anywhere.
+
+- **The address is the way back, and it carries nothing.** Settings shows,
+  beside every paired device, *Already paired — just open m.caprock.dev on
+  that phone*, a QR of that address alone and the Add to Home Screen tip.
+  The QR pairs nothing: no code, no machine key, no token.
+- **Sent to Telegram only where the owner already sends.** *Send the link
+  to my phone* (`POST /v1/pair/send-link`, loopback-only) posts the address
+  to the chat of the bot the owner connected (ADR-047), through the same
+  path as the alerts, and the button says so. No new destination; a phone
+  cannot ask for it.
+- **The page says which of three things failed**: it cannot reach the relay
+  (its connection, a VPN), the relay has no computer (the computer), or the
+  computer removed it (pair again), with a folded *Details* of the last
+  error, its close code and the times. A browser with no token says *This
+  browser isn't paired* and where to pair, not an error.
+- **The page asks the browser to keep its storage** (`storage.persist()`)
+  once paired: the token is the pairing.
+
+Not done: a service worker that would show the page's shell when
+m.caprock.dev itself cannot be reached. A cached shell that then reaches
+nothing says little more than the browser's own error, and a stale shell is
+a risk of its own.
+
 
 ## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
 

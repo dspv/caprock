@@ -344,6 +344,26 @@ others. Installing it: [install-app.md](install-app.md).
   agent here should get (optional). Then *Start an agent here*, or *Just
   add*. Enter moves on at every step and Esc closes. Cloning and a new empty
   folder are under *Clone, or start an empty folder…* in its footer.
+- **New project from a template.** *From a template…* in New project's
+  footer, or *New project from a template…* in ⌘K. A template is your own:
+  a GitHub template repository or a folder on this computer — Caprock has
+  none built in. Add one with *+ Another template*: type `owner/name` (or
+  paste its link) and *Look up* reads its `TEMPLATE.md` and README with your
+  own `gh` login to fill in where the brief goes and the agent's first
+  message; tick *Save as a template* to keep it. Name the project, pick
+  where it lives and whether the repository is private (the default) or
+  public, then paste the brief or drop a `.md` or `.txt` file on the field.
+  The box under it says exactly what *Create* (⌘↩) will do: `gh repo
+  create … --template …`, the clone, the brief written and committed (never
+  pushed), the agent started — and what is sent to GitHub: the name and
+  visibility only. Without `gh`, a template with a folder is copied here
+  instead and nothing leaves the computer; with `gh` signed out, Caprock
+  waits for you — *Check again* after `gh auth login`, or *Make it
+  locally*. The progress shows in the footer; Esc hides it and the agent
+  still starts when the project is ready, in its own tab. If the clone
+  fails after the repository was made, *Try the clone again*; Caprock never
+  deletes a repository on GitHub. Change or remove templates in Settings →
+  Project templates.
 - **Projects.** Caprock lists the repositories your sessions ran in. The Add
   project sheet adds a folder, makes a new one
   (`git init` optional) or clones a repository with git's progress shown.
@@ -1266,14 +1286,33 @@ relay that passes bytes it cannot read
 keeps trying by itself (after 1, 2, 4, 8, 15, then every 30 seconds, and at
 once when the phone comes back to the page or onto a network):
 
-- **Your computer is offline or Caprock isn't running**: the relay has no
+- **Can't reach the relay**: the phone cannot reach relay.caprock.dev or
+  m.caprock.dev. Check its connection or VPN: a VPN, or a network that
+  blocks either address, is the usual cause. **This phone is offline** is
+  the phone with no network at all.
+- **Connected to the relay — your computer is offline**: the relay has no
   connection from it. Wake it, check it is online, open Caprock.
-- **Your computer isn't answering**: the relay reached it but it did not
-  reply, the usual sign of a computer that went to sleep.
-- **Can't reach the relay: check the internet** and **This phone is
-  offline**: the phone's own connection.
-- **This phone was removed: pair again**: it was removed in *Paired
+- **Connected to the relay — your computer isn't answering**: the relay
+  reached it but it did not reply, the usual sign of a computer that went to
+  sleep.
+- **Paired device removed: pair again**: it was removed in *Paired
   devices*. Show a new code and scan it.
+
+**Details**, folded under each of these, lists the last error with the
+relay's code, when it happened, the last try and the last time the phone
+was connected: worth a screenshot when asking for help.
+
+**Getting back to a paired phone.** Closed the tab, and do not remember the
+address? Open **m.caprock.dev** on the same phone, in the same browser: it
+is still paired and connects by itself. Settings → Use on your phone says so
+beside each paired phone, and **Open on the phone again** shows a QR code of
+the address (the address only, which pairs nothing) — and, with a Telegram
+bot set up, **Send the link to my phone** sends it to your Telegram chat
+through your own bot. To keep it one tap away: Share → **Add to Home
+Screen** on an iPhone, ⋮ → **Install app** in Chrome on Android. A browser
+that holds no pairing — cleared storage, another browser, an iPhone's
+home-screen app before you paste the link once — says *This browser isn't
+paired* and where to pair.
 
 A paired phone stays paired. A dropped connection, a restarting computer or
 relay, the phone asleep or offline, or a computer on an older Caprock never

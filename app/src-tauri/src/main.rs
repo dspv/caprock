@@ -63,7 +63,8 @@ macro_rules! handler {
             commands::app_update_asked,
             capture::clipboard_image,
             capture::capture_webview,
-            capture::read_dropped_image
+            capture::read_dropped_image,
+            capture::read_dropped_text
         ]
     };
 }
@@ -376,8 +377,16 @@ mod tests {
         let path = serde_json::json!({"path": "/etc/hosts.png"});
         let err = invoke(DAEMON, "read_dropped_image", path.clone()).expect_err("not dropped");
         assert!(err.to_string().contains("not a dropped file"), "{err}");
+        let brief = serde_json::json!({"path": "/etc/hosts.md"});
+        let err = invoke(DAEMON, "read_dropped_text", brief).expect_err("not dropped");
+        assert!(err.to_string().contains("not a dropped file"), "{err}");
         for url in ["https://example.com/", "http://localhost:4391/"] {
-            for cmd in ["read_dropped_image", "capture_webview", "clipboard_image"] {
+            for cmd in [
+                "read_dropped_image",
+                "read_dropped_text",
+                "capture_webview",
+                "clipboard_image",
+            ] {
                 let err = invoke(url, cmd, path.clone()).expect_err(&format!("{url} {cmd}"));
                 assert!(
                     err.to_string().contains("not allowed"),

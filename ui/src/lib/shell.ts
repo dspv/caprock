@@ -81,6 +81,8 @@ export const shell = {
   captureWindow: () => shellInvoke<ArrayBuffer>('capture_webview'),
   /** An image file from the last drop on the window (png/jpg/jpeg/gif/webp, at most 10 MB). */
   readDroppedImage: (path: string) => shellInvoke<ArrayBuffer>('read_dropped_image', { path }),
+  /** The text of a .md, .markdown or .txt file from the last drop on the window (at most 1 MiB, UTF-8): a template project's brief. */
+  readDroppedText: (path: string) => shellInvoke<string>('read_dropped_text', { path }),
 }
 
 /**

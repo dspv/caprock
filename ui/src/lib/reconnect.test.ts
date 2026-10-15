@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CONNECT_TIMEOUT_MS, DEAD_MS, PROBE_MS, SUSPECT_MS, isSuspect, RECONNECT_MAX_MS, RECONNECT_MIN_MS, Reconnector,
-  isConnectStuck, isProbeLost, isSilent, onNetworkWake, reconnectDelay,
+  isConnectStuck, isProbeLost, isSilent, onNetworkWake, reconnectDelay, RETRY_OVERDUE_MS,
 } from './reconnect'
 
 describe('reconnectDelay', () => {
@@ -166,5 +166,49 @@ describe('onNetworkWake', () => {
     expect(wake).toHaveBeenCalledTimes(4)
     expect(listeners.size).toBe(0)
     delete (navigator as { connection?: unknown }).connection
+  })
+})
+
+describe('Reconnector.ensure — the watchdog (Vova, 2026-10-15)', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('schedules a retry when none is, so an attempt that threw is not the last one', () => {
+    const connect = vi.fn()
+    const r = new Reconnector({ connect, random: () => 0 })
+    expect(r.scheduled).toBe(false)
+    r.ensure()
+    expect(r.scheduled).toBe(true)
+    vi.advanceTimersByTime(RECONNECT_MIN_MS)
+    expect(connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs a retry overdue past RETRY_OVERDUE_MS at once, and leaves one on time alone', () => {
+    const connect = vi.fn()
+    let now = 1_000_000
+    const r = new Reconnector({ connect, random: () => 1, now: () => now })
+    for (let i = 0; i < 6; i++) { r.fail(); r.retryNow() }
+    r.fail()
+    const due = r.status.nextAt!
+    now = due - 1
+    r.ensure(now)
+    expect(connect).toHaveBeenCalledTimes(6)
+    // The page was held back (a sleep): its timer has not run though it is long due.
+    now = due + RETRY_OVERDUE_MS + 1
+    r.ensure(now)
+    expect(connect).toHaveBeenCalledTimes(7)
+  })
+})
+
+describe('onNetworkWake', () => {
+  it('wakes on the window getting focus as well (an app window clicked after a sleep)', () => {
+    const wake = vi.fn()
+    const off = onNetworkWake(wake)
+    window.dispatchEvent(new Event('focus'))
+    window.dispatchEvent(new Event('online'))
+    expect(wake).toHaveBeenCalledTimes(2)
+    off()
+    window.dispatchEvent(new Event('focus'))
+    expect(wake).toHaveBeenCalledTimes(2)
   })
 })

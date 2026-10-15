@@ -92,6 +92,27 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-15 — 0.119.0: Mail's assistant on your own subscription, projects from a template
+
+Mail's AI assistant works with what you already have: your Claude Code,
+Codex or Gemini CLI sign-in, an Anthropic, OpenAI, OpenRouter or DeepSeek
+key, or a local model; *Automatic* picks the first one the computer has, and
+one line says where the mail text goes. New project can start from a
+template. Every Pipeline figure shows its last 14 days, the Pipeline has its
+own tab again, and a paired phone finds its way back with an address, a QR
+and Add to Home Screen.
+
+### 2026-10-15 — New project from a template: the dialog
+
+`TemplateProjectSheet.tsx` (Template · Project · Brief, [04-ui.md § New
+project from a template](04-ui.md)), opened from New project's footer or ⌘K;
+the job in `lib/useTemplateJob.ts` starts the agent when the operation is
+done, with the sheet open or hidden, and saves a new template only then.
+Settings → Project templates. The app's `read_dropped_text` takes a dropped
+`.md` or `.txt` as the brief, only from the latest drop. Tested with vitest
+(the steps, the disclosure on both paths, frames, Retry, the spawn, both
+drops) and `cargo test` for the command and its ACL; rendered in a preview
+daemon with a fake `claude` and no real `gh`.
 
 ### 2026-10-15 — New project from a template: the daemon side
 
@@ -103,6 +124,7 @@ defaults), and making a project from one through the user's own `gh` or as
 a local copy, the brief written and committed, with retry and clean-up that
 never deletes a GitHub repository. The op machinery is the clone's,
 exported (`StartOp`, `UpdateOp`, `FinishOp`). Tested against a fake `gh`
+(`testdata/fakegh`); the dialog followed (above).
 (`testdata/fakegh`); the screen in the app is the next PR.
 
 ### 2026-10-15 — 0.118.0: Work, Pipeline in the dashboard, Sunlight, and keys named after what they open

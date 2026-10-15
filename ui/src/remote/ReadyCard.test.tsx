@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { api } from '@/lib/api'
 import { JUST_PAIRED_KEY } from '@/screens/Pair'
-import { appReport, ReadyCard, ReadyGate, readyCardDue } from './ReadyCard'
+import { appReport, homeScreenSteps, ReadyCard, ReadyGate, readyCardDue } from './ReadyCard'
 
 afterEach(() => {
   cleanup()
@@ -93,5 +93,25 @@ describe('ReadyGate', () => {
     render(<ReadyGate machineId="m" machineName="Mac mini"><p>dashboard</p></ReadyGate>)
     await new Promise((r) => setTimeout(r, 20))
     expect(screen.queryByTestId('ready-card')).toBeNull()
+  })
+})
+
+// Vova, 2026-10-15: the address is the way back, said once right after
+// pairing, with the home-screen step in the words of this phone's browser.
+describe('the way back, after pairing', () => {
+  it('names the address to open next time while the app is not installed', () => {
+    render(<ReadyCard name="Mac mini" me={{ role: 'controller' }} offer="ios" page="m.caprock.dev" kind="ios" onOpen={() => {}} onClose={() => {}} />)
+    expect(screen.getByTestId('ready-return').textContent).toContain('Next time, just open m.caprock.dev on this phone: it stays paired.')
+  })
+  it('says nothing more once the app is installed', () => {
+    render(<ReadyCard name="Mac mini" me={{ role: 'controller' }} offer="installed" page="m.caprock.dev" kind="android" onOpen={() => {}} onClose={() => {}} />)
+    expect(screen.queryByTestId('ready-return')).toBeNull()
+  })
+  it('gives Chrome on Android its own menu step, never "Add to Home screen"', () => {
+    render(<ReadyCard name="Mac mini" me={{ role: 'controller' }} offer={null} page="m.caprock.dev" kind="android" onOpen={() => {}} onClose={() => {}} />)
+    expect(screen.getByTestId('ready-app').textContent).toContain('⋮ → Install app')
+    expect(homeScreenSteps(null, 'android')).not.toContain('Add to Home')
+    expect(homeScreenSteps('ios', null)).toBe('In Safari: Share → Add to Home Screen.')
+    expect(homeScreenSteps(null, null)).toBe('Install the app when the browser offers it.')
   })
 })
