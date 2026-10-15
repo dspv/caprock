@@ -12,6 +12,184 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.122.0] - 2026-10-16
+
+### Added
+
+- **pipeline:** what an hour of agent work costs, and how big the agent
+  team is. Two new figures end the Flow row for the picked repository.
+  **Cost / agent-hour** is the last 24 hours' spend per active agent-hour,
+  at API list price (an estimate). An agent-hour is the burn rate's own
+  rule: one session's clock hour with five or more priced calls. The
+  figure carries a 15-day line, *▲ 35% vs 14-day avg*, and tokens per hour
+  and in all. **Agent team** shows the main sessions and subagents at work
+  in the last ten minutes and today's peak. Its line counts distinct agents
+  a day, captioned with the 14-day average and peak, with each day split
+  by agent kind on hover. Pressed, it opens a 31-day stacked bar chart,
+  like a contributors graph. Both are read from this machine's events by
+  the new `GET /v1/pipeline/agents`. With too little history they say
+  *not enough history*.
+- **pipeline:** share the figures. A Share pill in the Pipeline's head draws
+  the eight Flow figures, each with its 14-day line, as a 2x card in the
+  screen's theme, with the dates and caprock.dev. Save it, copy it, post it
+  to X or LinkedIn with words you can edit (the card goes on the clipboard
+  to paste in), or send it to Telegram: To me through your own paired bot
+  (`POST /v1/telegram/photo`, only on that click), or to someone else
+  through Telegram's share link. The card and the words are anonymous by
+  default ("a GitHub repo", aggregates only, no titles, branches, authors
+  or paths); Show repo name is an opt-in for that one share and is never
+  remembered. The dashboard's share sheet gained the same Post and
+  Telegram actions.
+- **machines:** one of your computers can work on another's sessions
+  (ADR-067). On the computer to be reached, `caprock pair --computer`
+  prints a link (turning access from anywhere on if it is off); on the
+  other, `caprock machines add '<link>'` pairs with it through that
+  computer's own relay, end to end encrypted. Nothing is let in until the
+  first computer's owner allows it by name: a card on its screen, the
+  prompt in the terminal that printed the link, or `caprock machines allow
+  <name>` over SSH. An allowed computer can start agents in any folder, open
+  shells and run tasks there, but never change that computer's settings,
+  pairing, updates or the doctor's stop. `caprock machines revoke <name>`
+  or Remove ends it at once, open terminals included, and `caprock machines
+  forget <name>` on the other side drops it from both. On Linux both
+  `caprock service install` and `caprock pair --computer` say when
+  `loginctl enable-linger` is needed to stay reachable with nobody logged
+  in.
+- **phone:** the phone home shows your releases: per repository, the next
+  version and a row per piece of work with its ten-block progress bar and
+  stage word, the release plan the Pipeline and Work → Release draw. A row
+  opens its pull request on GitHub; a chip switches repository. It reads on
+  opening, on release news, on *Refresh* and on a pull at the top of the
+  home-screen app — never on a timer. A paired phone may now read
+  `GET /v1/sessions/{id}/ci/stats` (read-only), which the bars come from.
+- **phone:** end the session you are in from its bar: a red *End* on a
+  session Caprock started, one confirm sheet (*The conversation is saved
+  and can be continued.*), then the polite stop: Claude Code is asked to
+  exit and write its transcript out, and is killed only if it is still
+  running a few seconds later, so the session can be resumed. Sessions started outside Caprock, and phones that may only
+  read, see no End.
+- **phone:** the session's bar stays at the top while Timeline, Changes or
+  Answers scroll, over the notch, so the way back is always one tap away.
+- **brain:** see Second Brain build. A header strip on its screen says the
+  state (*Building · reading session 12 of 48* over a progress bar, *Up to
+  date · last built 14:02*, *Paused*, *Stopped*, *Waiting* for today's
+  limit), which step a read is at (find sessions, Claude extracts, link into
+  the graph) with the session being read, what it gives (how many new
+  sessions were handed its memories) and counted figures: memories, new
+  today, topics, links, tokens and cost at API list price in the last 24
+  hours. The folded sidebar card reads *Building · 12 of 48* over a thin
+  bar while it builds. `GET /v1/brain/status` carries `stage`, the read's
+  `phase` and these counts; migration 0058 records the memories each new
+  session is handed.
+- **hermes:** Caprock sees Hermes Agent. Its sessions, prompts, replies, tool
+  calls, tokens and cost are read from Hermes's own database, read-only, and
+  shown beside every other agent, with a `hermes` filter and Hermes's own
+  glyph. Cost is Hermes's figure, never re-priced, and the Cost screen says
+  which part the provider reported and which is Hermes's estimate. Cron jobs
+  and gateway chats (Telegram, Slack…) are shown apart as background runs, by
+  source. Delegated subagents sit inside the session that delegated them,
+  counted once. **New agent → Hermes** starts `hermes chat` in a terminal tab
+  and links it to its Hermes record; with no model set, `hermes model` is
+  offered as your own step. See `docs/hermes.md`.
+- **app:** Markdown reads comfortably in a file tab, and goes to another agent
+  in one click. The document sits at a reading measure with a larger heading
+  scale; code blocks have a Copy button, wide tables scroll on their own,
+  task lists show real check boxes, headings take anchors that in-page links
+  jump to, and a relative picture is read from the project through the
+  daemon (one on the web stays its alt text, so nothing is fetched from
+  outside the machine). Contents sit beside a long document on a wide window
+  and in a dropdown on a narrow one, with a thin reading-progress line. The
+  tab's header has a quiet toolbar: *Copy path*, *Copy for an agent*
+  (`@/absolute/path`, which Claude Code, Codex and the others read as a file
+  reference), *Copy Markdown*, *Download*, and *Send to a session*, which
+  types that reference into a running agent Caprock started without sending
+  it, then brings that agent forward for you to add your words. A `.md` path
+  an agent prints in its chat or terminal now opens the file in a tab
+  (⌘-click in the terminal, Ctrl+click elsewhere), and *Open file…* lists
+  Markdown files first. Every "link" is a path on this machine; nothing is
+  uploaded.
+
+### Changed
+
+- **ci:** a pull request no longer carries the built dashboard
+  (`internal/api/dist`). Every two PRs that touched `ui/` used to conflict
+  there, because the bundle's file names are content hashes; now a PR that
+  changes it fails CI's *no dist in the PR* check (and `make check`) with
+  the command that drops it (`make dist-reset`), and a new `dist` workflow
+  rebuilds and commits it on `master` after each merge that touches `ui/`.
+  `go install …@latest` still embeds the tag's dashboard: release `verify`
+  and `make release-ready` check that the tagged commit's copy is its own
+  `ui/` built, so a release is tagged after that rebuild lands (ADR-068).
+- **brain:** the Second Brain graph looks like a knowledge graph: one round
+  disc of small dots that fills the panel, with topics and projects as little
+  bursts of their memories. Dots are in the text colour (dark in a light
+  theme) with a faint tint for topics, edges are hairlines, and the one accent
+  marks the node you hover or open. No names at rest: the hubs' names fade in
+  as you zoom, then every memory's, and hovering names a node and its
+  neighbours while the rest fades. It settles before it is shown and then
+  stays still (no frames at rest); drag a dot and its neighbours follow,
+  scroll or pinch to zoom, and *Fit* brings the whole disc back. The
+  sidebar's turning brain uses the same small dots and hairlines.
+- **pipeline:** the *In flight*, *Needs a fix* and *Ready* counts open the
+  pull requests behind them. Hovering or focusing one lists up to five with
+  why each is there (*CI red*, *Conflict*, *Changes requested*), and *Needs
+  a fix* says how many the page saw fixed in the last 24 hours. A click
+  filters the list to them across the whole repository, even from *This
+  session*, with a *Needs a fix · 4 ×* chip to clear it, and scrolls to
+  the list. A red pull request's CI pill names the failed checks on hover.
+- **app:** "Caprock on this computer" (the popover behind *caprock 1.6 GB ·
+  1.8 GB* in the status bar) says what is wrong in one line — *All good —
+  Caprock uses 1.6 GB*, or *Caprock is using more than it should* with one
+  **Clean up (frees ~X MB)**. Below it, one row per kind of problem in plain
+  words, each with a line of why, its size and a small Stop: *Test copies of
+  Caprock* (left by agent work in temporary folders and worktrees, not your
+  app), *Leftover helpers* (servers finished agent sessions left running),
+  *Disk reads* (normal or more than usual). Pids, paths and the long
+  explanations moved under each row's *Details*; the memory and disk
+  breakdown is behind *What the 1.6 GB is spent on*. Every stop shows the
+  list first, one checkbox per process with the safe ones ticked, and stops
+  nothing until you click *Stop*. The *Advanced* checkbox is gone.
+
+### Fixed
+
+- **remote:** turning access from anywhere on in the first moments after
+  Caprock started could leave it connected but reporting itself off, so the
+  pairing link came back empty until the next restart. The settings are now
+  read once, under the same lock as the switch.
+- **remote:** a request cancelled by the phone or another computer is no
+  longer ended as if its answer were complete, so a cut-short answer is
+  never read as whole.
+- **app:** only the tab you are in looks selected (a user could not tell
+  where she was: the tabs waiting on her wore the same accent bar along
+  their top as the tab in front, so four tabs looked selected). The tab in
+  front alone has the 3px accent edge, the panel's fill and a bold title,
+  and room for about 16 characters of it — it read *ca…*; there its
+  project's name gives way first. A tab waiting on you shows an amber dot
+  before its title, pulsing slowly; one looping or failed a red dot. Never
+  a bar.
+- **app:** closing an agent's tab is one decision at most, and always says
+  the conversation is saved. An idle agent Caprock started ends with its
+  tab, no question, and a toast says *Closed. The conversation is saved —
+  reopen it from History or the sidebar.* One still working or waiting gets
+  one sentence, **Close tab** (it keeps working in the background) and a
+  quiet *Stop it instead*; no checkbox. Settings → Closing a tab still
+  makes it always keep or always stop. Ending now asks the agent to stop
+  (SIGTERM, then a kill after 5 seconds) instead of killing it at once, so
+  Claude Code writes its transcript out and the session can be continued
+  with --resume; the agent-signal endpoint takes `end` for this.
+- **tests:** the template sheet test reads the plan once the parent folder has loaded, so it no longer fails on a slow runner.
+- **ui:** Live Pulse puts the hour's cost in one right-aligned column: every
+  row's chart, money and agents tracks are fixed widths, so `$28.98` and
+  `$0.03` no longer sit at different places depending on the model name
+  beside them.
+- **ui:** Telegram is always a choice on both share sheets (Share your
+  figures and the Pipeline's), in a row right under
+  Share… / Copy / Save. **Send to my Telegram** sends the card through your
+  own bot to your own chat (or reads **Set up Telegram** until one is
+  connected); **Send to someone in Telegram** copies the card and opens
+  Telegram's chat picker — the Telegram app itself in the desktop app when
+  it is installed, else t.me — saying "Image copied — paste it in the chat".
+
 ## [0.121.0] - 2026-10-15
 
 ### Added

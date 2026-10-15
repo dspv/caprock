@@ -168,6 +168,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-16 — 0.122.0: Hermes Agent, a Markdown reader, Second Brain's progress, and a doctor in plain words
+
+A minor release because it carries features. Hermes Agent is observed and started (ADR-069, #691). Markdown files read comfortably, with contents, copy-path and `@path` for another agent (#697). Second Brain shows its stage, N of M with a bar and what it gives (#698). "Caprock on this computer" says what is wrong in one line with one Clean up (ADR-059 amended, #695). The Pipeline shares its figures (#686), shows cost per agent-hour and team size (#687) and its count tiles open their pull requests with the reason (#694); the Second Brain graph looks like a knowledge graph (#688). One selected tab in the strip, and closing a tab asks only when an agent is working (#689). Live Pulse keeps money in one column and Telegram is always a share choice (#696). The phone shows release bars (#692) and can end a session under a pinned header (#693). Computers in the daemon, ADR-067 Phase 1 PR2 (#690); the dashboard bundle is built on master (ADR-068, #679).
+
 ### 2026-10-15 — 0.121.0: one selected row in the sidebar, a quiet Second Brain card
 
 A minor release because it carries features. The sidebar's session rows are bigger, and only the tab in front looks selected — a waiting session is an amber dot and word, never a bar or a fill (a user report: "which tab am I working in?"); the Today card folds to one line or hides (#684). Second Brain's sidebar card is folded and quiet by default and says where its data is kept; the right panel's CI bars name their stages; a subagent's edits no longer raise a loop alert on its parent; the first click on an unfocused macOS window reaches the page (#682). The groundwork for reaching your other computers, ADR-067 Phase 1 PR1, ships with nothing user-visible (#678).
