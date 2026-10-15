@@ -174,6 +174,10 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
   `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/queue`,
+  `/v1/work` and `/v1/sessions/{id}/ci/stats` (the phone home's Releases:
+  the board and one repository's Pipeline answer, composed by the daemon
+  from the GitHub reads it keeps with its own token — the token never
+  leaves it, and a relay phone reads both through the end-to-end channel),
   `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
   `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file`,
@@ -1932,8 +1936,10 @@ error. The cached answers are never changed: the baselines are set on a copy.
 reason?, prs[], stats?, board?, error?, read_at?, fetched_at, refreshing?,
 refresh_error?, refresh_failed_at?}`: the Pipeline
 (.ai/21-app.md § Pipeline), asked only while that page is in front, or
-Home's CI/CD section is unfolded and in front (its Pipeline figures), and
-the window visible. `repo` and `reason` as `SessionRepoCI` says them. `prs`
+Home's CI/CD section is unfolded and in front (its Pipeline figures), or
+the phone home's Releases is opened, refreshed or told of release news
+(04-ui.md § The phone home), and the window visible. A paired device may
+read it (`pairedDeviceRoutes`); nothing on it writes. `repo` and `reason` as `SessionRepoCI` says them. `prs`
 is the repository's own pull requests — the `BranchPR` list the Branches
 view reads (`GET …/pulls?state=all&sort=updated&direction=desc&per_page=50`,
 kept 2 min; `github.RepoPulls` shares the read with `PullsByBranch`), most
