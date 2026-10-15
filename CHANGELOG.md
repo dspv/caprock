@@ -65,6 +65,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   tab, so the page is drawn once and, behind other tabs, reads nothing. The
   tab is kept across restarts.
 
+### Fixed
+
+- **phone:** Settings → Use on your phone tells you how to get back to a
+  phone you already paired. Each paired phone says *Already paired — just
+  open m.caprock.dev on that phone*, and **Open on the phone again** shows
+  a QR code of that address (the address only: no code and no key, so it
+  pairs nothing) and the Add to Home Screen tip. With a Telegram bot set up,
+  **Send the link to my phone** sends the address to your Telegram chat
+  through your own bot, and says so before you press it.
+
 ## [0.118.0] - 2026-10-15
 
 ### Added
@@ -116,17 +126,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   ANSI colours at 5.3:1 or more on white (the normal eight 7:1), the
   yellow and cyan that usually wash out included. Pick it under Light in
   the theme picker or Settings → Appearance.
-
-- **phone:** Settings → Use on your phone tells you how to get back to a
-  phone you already paired. Each paired phone says *Already paired — just
-  open m.caprock.dev on that phone*, and **Open on the phone again** shows
-  a QR code of that address (the address only: no code and no key, so it
-  pairs nothing) and the Add to Home Screen tip. With a Telegram bot set up,
-  **Send the link to my phone** sends the address to your Telegram chat
-  through your own bot, and says so before you press it.
-- **phone:** right after pairing, the phone's Ready card says *Next time,
-  just open m.caprock.dev on this phone: it stays paired*, and on Android
-  gives Chrome's own step (⋮ → Install app).
 
 ### Changed
 
@@ -252,7 +251,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   when it isn't running and follows it to a new port.
 
 ### Changed
-
 
 - **brain:** the sidebar's Second Brain block is a small banner while it is
   empty, instead of a bare 0 and two faint lines: a faint graph breathing
@@ -486,7 +484,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   at once instead of on its next poll. Measured with a test agent: a
   prompt to *working* about 1 s → under 10 ms; an approved 15 s command
   16 s → under 10 ms.
-
 
 ## [0.117.1] - 2026-10-14
 
@@ -4569,7 +4566,6 @@ test helper and published nothing.
   retention setting would delete, and whether compacting the database would
   give anything back.
 
-
 ### Fixed
 
 - **The Tasks screen says who runs a task.** It read "one Claude session per
@@ -7237,7 +7233,6 @@ reported.
   nobody received.
 - **The activity feed told OpenCode users to start `claude`** when it was empty
   under an OpenCode filter.
-
 
 ## [0.21.0] - 2026-08-25
 

@@ -99,7 +99,7 @@ test-go: ## Go tests
 	go test ./...
 
 .PHONY: test-scripts
-test-scripts: ## Release script tests (latest.json for the app updater)
+test-scripts: ## Release script tests (latest.json for the app updater, changelog fragments)
 	python3 -m unittest discover -s scripts -p 'test_*.py'
 
 .PHONY: test-ui
@@ -187,8 +187,9 @@ docs-fmt: ## Tight-align all markdown tables (run after editing any table)
 	@python3 scripts/align-tables.py $(DOCS)
 
 .PHONY: docs-check
-docs-check: ## Fail if any markdown table is unaligned (CI gate)
+docs-check: ## Fail if any markdown table is unaligned or a changelog fragment is malformed (CI gate)
 	@python3 scripts/align-tables.py --check $(DOCS)
+	@python3 scripts/changelog.py check
 
 .PHONY: docs-links
 docs-links: ## Fail if any relative markdown link does not resolve

@@ -24,6 +24,10 @@ this line does not. See `.ai/14-build-status.md`.
 - `pricing/` — versioned model pricing table. `testdata/` — fixtures, fake `claude`.
 - `scripts/` — `align-tables.py`, `check-links.py` (docs gates); `shots.py`, `feature-shots.py`, `refresh-shots.sh` (the documented screenshots).
 - `docs/` — human-facing docs; the spec-migration audit record.
+- `changes/unreleased/` — one changelog fragment per PR. **Never edit
+  `CHANGELOG.md`'s `[Unreleased]`**: add `changes/unreleased/<slug>.md`
+  (format in `changes/README.md`); the release assembles them with
+  `scripts/changelog.py`.
 
 ## How to get context
 

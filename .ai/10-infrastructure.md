@@ -103,7 +103,7 @@ caches and sorter memory are allocated by the driver outside it, so compare
 
 ## Release checklist
 
-1. `14-build-status.md` and README progress bars updated; changelog entry written.
+1. `14-build-status.md` and README progress bars updated; changelog assembled from its fragments (`python3 scripts/changelog.py assemble X.Y.Z YYYY-MM-DD`, see [docs/RELEASING.md](../docs/RELEASING.md)).
 2. `ci.yml` green on `master` including all Windows jobs.
 3. `git tag vX.Y.Z && git push --tags` → `release.yml` builds and publishes the release and pushes the Homebrew formula.
 4. Verify: `brew untap dspv/tap 2>/dev/null; brew install dspv/tap/caprock; caprock --version`.

@@ -354,7 +354,9 @@ A work package is done when all of these hold, in the PR that closes it:
    (rule 8); a UI change in [04-ui.md](04-ui.md); a decision as an ADR or an
    amendment; [21-app.md](21-app.md) updated where behaviour differs from the
    spec; a [14-build-status.md](14-build-status.md) log entry.
-4. **CHANGELOG** entry for anything a user can see.
+4. **Changelog** entry for anything a user can see: a fragment in
+   `changes/unreleased/`, never an edit to `CHANGELOG.md`
+   ([changes/README.md](../changes/README.md)).
 5. **Verified in use, not only in tests.** On a preview daemon (temp HOME, a
    copy of the database, the fake `claude`): the app at 1280×800, 1920×1080
    and its minimum window; the browser at 1400×900; the phone at 320 and

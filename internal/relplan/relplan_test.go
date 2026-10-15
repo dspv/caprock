@@ -54,6 +54,24 @@ func TestParseUnreleasedCapsItems(t *testing.T) {
 	}
 }
 
+func TestAddFragment(t *testing.T) {
+	var u Unreleased
+	AddFragment(&u, []byte("---\nkind: Added\n---\n- **ui:** one.\n  more.\n  - nested\n- **ui:** two.\n"))
+	AddFragment(&u, []byte("- **bare:** no front matter.\n"))
+	want := []string{"**ui:** one.", "**ui:** two.", "**bare:** no front matter."}
+	if u.Count != 3 || fmt.Sprint(u.Items) != fmt.Sprint(want) {
+		t.Fatalf("got %+v", u)
+	}
+}
+
+func TestParseBatch(t *testing.T) {
+	out := "abc blob 5\nhello\nmissing-ref missing\ndef blob 0\n\nxyz blob 3\na\nb\n"
+	got := parseBatch([]byte(out))
+	if len(got) != 3 || string(got[0]) != "hello" || len(got[1]) != 0 || string(got[2]) != "a\nb" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestMedianGap(t *testing.T) {
 	day := int64(24 * time.Hour / time.Millisecond)
 	tags := func(days ...int64) []Tag {
@@ -115,6 +133,21 @@ func TestReadsAClone(t *testing.T) {
 		gitAt(t, up, at, "tag", fmt.Sprintf("v0.%d.0", i))
 	}
 	commit(10, base.AddDate(0, 0, 8))
+	fragDir := filepath.Join(up, "changes", "unreleased")
+	if err := os.MkdirAll(fragDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"b.md":     "---\nkind: Fixed\n---\n- **b:** second.\n",
+		"a.md":     "---\r\nkind: Added\r\n---\r\n- **a:** first by name.\r\n  continued.\r\n",
+		".gitkeep": "",
+		"note.txt": "- not a fragment\n",
+	} {
+		if err := os.WriteFile(filepath.Join(fragDir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitAt(t, up, base, "add", "changes")
 	commit(11, base.AddDate(0, 0, 9))
 	gitAt(t, root, base, "clone", "-q", up, "clone")
 	clone := filepath.Join(root, "clone")
@@ -136,6 +169,20 @@ func TestReadsAClone(t *testing.T) {
 	}
 	if u, ok := ParseUnreleased(cl); !ok || u.Count != 1 || u.Items[0] != "change 11" {
 		t.Fatalf("unreleased = %+v", u)
+	}
+	frags, ok := Fragments(ctx, clone, sha)
+	if !ok || len(frags) != 2 {
+		t.Fatalf("fragments = %q ok %v", frags, ok)
+	}
+	var fu Unreleased
+	for _, f := range frags {
+		AddFragment(&fu, f)
+	}
+	if fu.Count != 2 || fu.Items[0] != "**a:** first by name." || fu.Items[1] != "**b:** second." {
+		t.Fatalf("fragment items = %+v", fu)
+	}
+	if _, ok := Fragments(ctx, up, "v0.0.0"); ok {
+		t.Fatal("a commit without changes/unreleased read fragments")
 	}
 	tags, err := Tags(ctx, clone)
 	if err != nil || len(tags) != 4 || tags[0].Name != "v0.3.0" || tags[0].At != base.AddDate(0, 0, 7).UnixMilli() {
