@@ -18,6 +18,10 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   With no usage yet it is Claude Code alone. Both now say *Free* in a quiet
   accent pill, and the dialog adds *Free — runs on your own Claude, on this
   computer.* The pulses hold still with reduced motion.
+Changes waiting for the next release are one file each in `changes/unreleased/`,
+assembled into a version section here by `scripts/changelog.py` when a release is
+cut; `scripts/changelog.py preview` prints that section now. The format is in
+`changes/README.md`.
 
 ## [0.119.0] - 2026-10-15
 
@@ -77,6 +81,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   tab, so the page is drawn once and, behind other tabs, reads nothing. The
   tab is kept across restarts.
 
+### Fixed
+
+- **phone:** Settings → Use on your phone tells you how to get back to a
+  phone you already paired. Each paired phone says *Already paired — just
+  open m.caprock.dev on that phone*, and **Open on the phone again** shows
+  a QR code of that address (the address only: no code and no key, so it
+  pairs nothing) and the Add to Home Screen tip. With a Telegram bot set up,
+  **Send the link to my phone** sends the address to your Telegram chat
+  through your own bot, and says so before you press it.
+
 ## [0.118.0] - 2026-10-15
 
 ### Added
@@ -129,17 +143,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   yellow and cyan that usually wash out included. Pick it under Light in
   the theme picker or Settings → Appearance.
 
-- **phone:** Settings → Use on your phone tells you how to get back to a
-  phone you already paired. Each paired phone says *Already paired — just
-  open m.caprock.dev on that phone*, and **Open on the phone again** shows
-  a QR code of that address (the address only: no code and no key, so it
-  pairs nothing) and the Add to Home Screen tip. With a Telegram bot set up,
-  **Send the link to my phone** sends the address to your Telegram chat
-  through your own bot, and says so before you press it.
-- **phone:** right after pairing, the phone's Ready card says *Next time,
-  just open m.caprock.dev on this phone: it stays paired*, and on Android
-  gives Chrome's own step (⋮ → Install app).
-
 ### Changed
 
 - **app:** where you type is easier to find, quietly. The Chat view's field
@@ -191,30 +194,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
-- **app:** terminals reconnect on their own after the network drops. A
-  terminal whose connection was lost retried on a single timer, and the
-  only thing watching it stopped with the socket: when the browser refused
-  to start a new socket once (as a network stack being swapped under it
-  can), or the timer was lost, the tab said *Reconnecting…* for good and
-  nothing typed reached the session until the tab was closed (user report:
-  every tab stuck after a Wi-Fi drop). A terminal between sockets is now
-  checked every second and always has a retry on its way and on time; a
-  pause for its own backlog resumes after 15 s even if the terminal never
-  reports catching up; and the window getting focus checks the connection
-  at once. The badge says the attempt and the next try, and after 3
-  failed tries or 10 s down offers **Reconnect now**, which reconnects the
-  same session — no new process. The dashboard's live connection got the
-  same watchdog and button.
-- **phone:** a phone that cannot connect says which of three things is
-  wrong: *Can't reach the relay* (this phone cannot reach relay.caprock.dev
-  or m.caprock.dev; check your connection or VPN), *Connected to the relay —
-  your computer is offline*, or *Paired device removed*, with a **Details**
-  fold showing the last error, its code and when it happened, the last try
-  and the last time it was connected. A browser with no pairing says *This
-  browser isn't paired* and where to pair (Caprock → Settings → Use on your
-  phone → Show a code), instead of an error or a bare code form. The page
-  also asks the browser to keep its storage, which holds the pairing.
-
 - **picker:** an arrow key pressed in the folder picker the moment a
   folder's entries appear is no longer lost; the selection used to be
   cleared just after it was made.
@@ -254,7 +233,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   when it isn't running and follows it to a new port.
 
 ### Changed
-
 
 - **brain:** the sidebar's Second Brain block is a small banner while it is
   empty, instead of a bare 0 and two faint lines: a faint graph breathing
@@ -488,7 +466,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   at once instead of on its next poll. Measured with a test agent: a
   prompt to *working* about 1 s → under 10 ms; an approved 15 s command
   16 s → under 10 ms.
-
 
 ## [0.117.1] - 2026-10-14
 
@@ -4571,7 +4548,6 @@ test helper and published nothing.
   retention setting would delete, and whether compacting the database would
   give anything back.
 
-
 ### Fixed
 
 - **The Tasks screen says who runs a task.** It read "one Claude session per
@@ -7239,7 +7215,6 @@ reported.
   nobody received.
 - **The activity feed told OpenCode users to start `claude`** when it was empty
   under an OpenCode filter.
-
 
 ## [0.21.0] - 2026-08-25
 

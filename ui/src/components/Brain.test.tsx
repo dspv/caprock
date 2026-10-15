@@ -113,6 +113,35 @@ describe('Second Brain', () => {
     expect(screen.getByRole('link', { name: /the session/ }).getAttribute('href')).toBe('#/session/s1?at=5')
   })
 
+  it('searches as one types, marks the matched words in the list and says when close matches are in', async () => {
+    localStorage.setItem('caprock-brain-view', 'list')
+    m.status.mockResolvedValue(status())
+    m.brain.mockImplementation(async (f: { q?: string }) => f.q
+      ? {
+          nodes: [
+            node({ id: 1, title: 'Move the office to Αθήνα', rank: 40 }),
+            node({ id: 2, title: 'Athens trip, the relase notes', rank: 15, close: true }),
+          ],
+          edges: [],
+          total: 2,
+          terms: ['αθηνα', 'release', 'relase'],
+          close: true,
+        }
+      : { nodes: [node({ id: 1, title: 'Move the office to Αθήνα' })], edges: [], total: 1 })
+    render(<BrainScreen />)
+    const box = screen.getByRole('textbox', { name: 'Search memories' })
+    expect(box.getAttribute('placeholder')).toBe('Search titles and summaries — typos are fine')
+    fireEvent.change(box, { target: { value: 'ΑΘΗΝΑ release' } })
+    await waitFor(() => expect(m.brain).toHaveBeenCalledWith(expect.objectContaining({ q: 'ΑΘΗΝΑ release' })))
+    await screen.findByText(/including close matches/)
+    expect(screen.getByText(/2 memories match/)).toBeTruthy()
+    const marks = [...document.querySelectorAll('[data-brain-row] mark[data-match]')].map((e) => e.textContent)
+    expect(marks).toEqual(['Αθήνα', 'relase'])
+    // Best first, as the daemon ranked them.
+    const rows = [...document.querySelectorAll('[data-brain-row]')].map((e) => e.getAttribute('data-brain-row'))
+    expect(rows).toEqual(['1', '2'])
+  })
+
   it('asks everyone once, on the Brain screen, whether to build it automatically; no Premium anywhere', async () => {
     m.status.mockResolvedValue(status({ auto: auto({ chosen: false, on: false, enabled: false }) }))
     m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })

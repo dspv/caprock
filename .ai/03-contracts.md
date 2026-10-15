@@ -3012,10 +3012,11 @@ GET    /v1/inbox/{id}/files/{n}     → the n-th file's bytes, images only (thum
 
 What the sessions decided, found and left open, kept as a graph
 ([ADR-063](08-decisions.md)). Code: `internal/api/brain.go`,
-`internal/store/brain.go`; DDL in § Second Brain DDL (migration 0055).
+`internal/store/brain.go`, `internal/store/brainsearch.go`; DDL in § Second
+Brain DDL (migrations 0055, 0056).
 
 ```
-GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total}
+GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total, terms?, close?}
 GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?}
 POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
 GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
@@ -3029,12 +3030,13 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 
 - **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
   event_id?, ts?, project?}, manual, pinned, run_id?, created_at, updated_at,
-  degree?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or
+  degree?, rank?, close?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or
   `question` (a memory) or `topic`, `person` or `project` (an entity).
   `title` is at most 80 runes and `summary` 400, clipped with `…` on the way
   in. `manual` is true for a node dropped in by hand; `run_id` names the
   automatic extraction's read that made it. `degree` is the number of
-  returned edges touching the node, in a graph read only.
+  returned edges touching the node, in a graph read only; `rank` and
+  `close` are a search's (below).
 - **`BrainEdge`** — `{from, to, kind, weight}`; `kind` is `relates`,
   `follows`, `contradicts` or `part_of`. One edge per `(from, to, kind)`;
   linking an existing pair again adds its weight, capped at 10. A memory
@@ -3042,13 +3044,39 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 - **The graph read** returns the newest memories that pass the filter
   (pinned first, then by `created_at`), at most `limit` (default and ceiling
   5,000), the entities their edges reach, and every edge between returned
-  nodes; with no filter and no `limit`, every entity too, linked or not. `q` matches title
-  or summary, anywhere, wildcards literal; `project` is exact; `since` and
-  `until` bound `created_at`. Only entities join a selection through its
+  nodes; with no filter and no `limit`, every entity too, linked or not.
+  `project` is exact; `since` and `until` bound `created_at`. Only entities join a selection through its
   edges; a memory a selected one relates to is not returned unless it
   passes the filter itself. `total` counts the memories that pass the
   filter, whatever the limit. Summaries are `""` unless `summaries=1`; a
   node's own read carries its summary.
+- **Search (`q`).** The query is folded — NFKD, the combining diacritics
+  of U+0300–U+036F dropped, Unicode lower case, `ς` as `σ`
+  (`store.FoldSearch`) — and split at whitespace into at most 8 words,
+  punctuation and wildcards kept literally. A memory matches when every
+  word, in any order, is a substring of its folded title, summary or
+  project, or of the name of a topic, person or project it has an edge to:
+  `ΑΘΗΝΑ` finds *Αθήνα*, `CAFE` finds *café*, `タワー` finds *東京タワー*.
+  When fewer than 5 memories match that way, a word of 4–7 letters may
+  also match a word 1 edit away, and one of 8 or more 2 edits (insert,
+  delete, change, or swap two neighbours), or the start of a longer word
+  that close — a typo or a different ending; such a memory is a close
+  match (`close: true`). Words with anything but letters and digits, and
+  shorter ones, match exactly only. The close pass reads at most 20,000 of
+  the newest matching-filter memories and compares at most 50,000
+  distinct words. Each memory's `rank` is the sum over the words of
+  40 (a title word is the word), 30 (a title word starts with it), 25
+  (elsewhere in the title), 20 (summary or project), 15 (a linked
+  entity's name), 10 (a close match in the title) or 5 (a close match
+  elsewhere). A search returns memories best first — rank, then pinned,
+  then newest — so `limit` keeps the best. `terms` are the folded words
+  and the close words that matched them (at most 32), for the screen to
+  mark; `close` is true when a returned memory is a close match. Both,
+  and `rank`, are absent without `q`. Measured with
+  `BenchmarkBrainSearch` (2026-10-15, Apple M1 Pro, a 400-character
+  summary per memory, the graph read included): 1,000 memories 2–4 ms,
+  5,000 memories 10–14 ms for a word and 19–34 ms when the close pass
+  runs, against 6 ms and 56 ms for the same read with no search.
 - **A drop.** `kind` defaults to `idea`. With `event_id` the daemon reads
   the note's text, session, time and project from `events` itself — the event
   must be main-thread assistant prose (§ Phase 0's notes rules), else `400`.
@@ -3322,13 +3350,19 @@ GET /v1/work → Work
   is the `CHANGELOG.md` `[Unreleased]` section at the remote's default
   branch as the clone knows it (`ref`, `origin/<default>`, from
   `refs/remotes/origin/HEAD`): `items` the first lines of its top-level
-  bullets, at most 30, nested bullets and sub-headings dropped; absent
-  when the file or the section is not there. `tags` `{last?: {name, at},
+  bullets, at most 30, nested bullets and sub-headings dropped. A
+  repository that keeps one file per change (`changes/unreleased/*.md` at
+  that branch, front matter skipped; Caprock's own since 2026-10-15) has
+  those files' top-level bullets added after the section's, in file-name
+  order, and `count` covers both. Absent when neither the section nor the
+  directory is there. `tags` `{last?: {name, at},
   gap_median_ms?, gaps}` reads the newest 11 tags by creation date;
   `gap_median_ms` is the median time between them, absent with fewer than
   three gaps. `ahead_of_tag` counts the default branch's commits past the
   last tag.
 - **Local only.** Git is read, never fetched: `git show <ref>:CHANGELOG.md`,
+  `git ls-tree <ref> changes/unreleased/` and one `git cat-file --batch`
+  for the fragments,
   `git for-each-ref refs/tags --sort=-creatordate --count=11`, `git
   rev-list --count`, `git symbolic-ref`, `git remote get-url origin`, each
   hidden on Windows (`internal/hidewin`). A repository's reads are kept 60
@@ -4229,7 +4263,7 @@ What was saved for later (§ Inbox). `files` is a JSON array of paths the
 daemon wrote under `<data_dir>/inbox`. No foreign key: unlisting a project
 keeps its items, as it keeps its saved prompts.
 
-### Second Brain DDL (migration 0055)
+### Second Brain DDL (migrations 0055, 0056)
 
 Second Brain's graph and the automatic extraction's reads (§ Second Brain,
 [ADR-063](08-decisions.md)). Every write goes through `internal/store/brain.go`.
@@ -4257,6 +4291,9 @@ CREATE INDEX IF NOT EXISTS idx_brain_nodes_created ON brain_nodes(created_at);
 CREATE INDEX IF NOT EXISTS idx_brain_nodes_session ON brain_nodes(session_id);
 CREATE INDEX IF NOT EXISTS idx_brain_nodes_event ON brain_nodes(event_id) WHERE event_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_brain_nodes_project ON brain_nodes(project, created_at);
+
+-- 0056
+ALTER TABLE brain_nodes ADD COLUMN search TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS brain_edges (
   src         INTEGER NOT NULL REFERENCES brain_nodes(id) ON DELETE CASCADE,
@@ -4287,6 +4324,15 @@ CREATE TABLE IF NOT EXISTS brain_runs (
 CREATE INDEX IF NOT EXISTS idx_brain_runs_session ON brain_runs(session_id, id);
 CREATE INDEX IF NOT EXISTS idx_brain_runs_finished ON brain_runs(finished_at);
 ```
+
+`search` (0056) is the folded title, summary and project, one per line, the
+title first (`store.BrainSearchDoc`), written on every insert and update.
+SQL cannot fold Unicode, so the rows that exist when the migration runs are
+filled by `Store.Open` after it; `meta.brain_search_fold` names the folding
+they were written with, and a new one re-folds every row once. A search reads
+the column for the memories that pass its other filters and matches in Go
+(§ Second Brain, *Search*): no index serves a substring, and SQLite's
+`LIKE` and `instr` measured slower than Go's byte search on the same rows.
 
 `norm` is the title folded for comparison (`store.NormTitle`); the partial
 unique index makes an entity one per normalised title while memories may

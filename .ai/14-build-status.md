@@ -73,6 +73,25 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — unreleased: one changelog fragment per change
+
+With eight to ten pull requests in flight, every one edited CHANGELOG.md's
+`[Unreleased]` section. Git conflicted on them, and three times today merged
+an entry silently into a section already released (#633/#634/#636 into
+0.117.5, #649 and #651 into 0.118.0) because the release PR had shifted the
+context lines; the landing queue's union merge of the section once left a
+broken half-line. Now a pull request adds `changes/unreleased/<slug>.md`
+(`kind:` front matter, then its bullets; format in `changes/README.md`) and
+never touches CHANGELOG.md. `scripts/changelog.py` checks the fragments
+(`make docs-check`), previews the next section, and at release assembles
+them into `## [X.Y.Z] - date`, grouped in Keep a Changelog order, ordered
+within a kind by when git first added each file, and deletes them. The two
+entries that were under `[Unreleased]` are fragments now; assembled, they
+are the section they were. The Work board's next-release list reads the
+fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
+one `cat-file --batch`), so Caprock's own repository does not go blank there.
+A process change, not a product decision: recorded here and in
+[06-engineering-rules.md](06-engineering-rules.md), no ADR.
 ### 2026-10-15 — 0.119.0: Mail's assistant on your own subscription, projects from a template
 
 Mail's AI assistant works with what you already have: your Claude Code,

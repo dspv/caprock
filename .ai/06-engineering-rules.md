@@ -34,6 +34,7 @@ These rules are binding. `CLAUDE.md` links here; an agent reads this file before
 - **Tests before hardening, fixtures before mocks.** Prefer golden-file tests on real transcript fixtures (`testdata/`) and `httptest` over mocks; the fake `claude` (T10) is a real subprocess emitting real hook calls.
 - **UI: strict TypeScript, no `any`;** components derive every color/size from `ui/src/design/tokens.css` ([04-ui.md § Visual direction](04-ui.md#visual-direction-v0-tokens)); numbers render in monospace with tabular numerals.
 - **Commits: Conventional Commits with scope** — `feat(hookd): …`, `fix(ingest): …`, `docs(ai): …`, `ci: …`, `chore(release): …`. Commit bodies explain *why* when the diff does not.
+- **The changelog is one file per change.** A pull request adds `changes/unreleased/<pr-or-branch-slug>.md` (front matter `kind: Added|Changed|Deprecated|Removed|Fixed|Security`, then its `- **scope:** …` bullets) and never edits `CHANGELOG.md`; the release runs `scripts/changelog.py assemble X.Y.Z YYYY-MM-DD`. Every PR editing `[Unreleased]` made git conflict and, on 2026-10-15, merge three entries silently into sections already released. Format: [changes/README.md](../changes/README.md); `make docs-check` validates it.
 - **Docs discipline** — tight-aligned tables via `make docs-fmt`, one fact one home, ADRs for closed debates, absolute dates: see [00-index.md § Documentation rules](00-index.md#documentation-rules).
 
 ## Council quorum for decisions (agents deciding, not decorating)

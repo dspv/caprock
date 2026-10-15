@@ -1,0 +1,13 @@
+-- Second Brain's search column (ADR-063; 03-contracts.md § Second Brain).
+--
+-- search is the node's title, summary and project folded for matching:
+-- decomposed (NFKD), accents and other combining diacritics dropped, lower
+-- case by Unicode's rules, so "ΑΘΗΝΑ" finds "αθηνα" and "CAFE" finds "café".
+-- SQLite's own LIKE folds ASCII only. The three parts are joined by a line
+-- break; the title is the first line, which is how a title hit is ranked
+-- above a summary hit.
+--
+-- Go writes it (store.BrainSearchDoc) on every insert and update. Rows that
+-- exist when this runs are filled in by Store.Open after the migrations
+-- (backfillBrainSearch): SQL has no Unicode folding to do it with.
+ALTER TABLE brain_nodes ADD COLUMN search TEXT NOT NULL DEFAULT '';
