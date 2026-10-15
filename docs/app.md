@@ -342,6 +342,26 @@ others. Installing it: [install-app.md](install-app.md).
   agent here should get (optional). Then *Start an agent here*, or *Just
   add*. Enter moves on at every step and Esc closes. Cloning and a new empty
   folder are under *Clone, or start an empty folder…* in its footer.
+- **New project from a template.** *From a template…* in New project's
+  footer, or *New project from a template…* in ⌘K. A template is your own:
+  a GitHub template repository or a folder on this computer — Caprock has
+  none built in. Add one with *+ Another template*: type `owner/name` (or
+  paste its link) and *Look up* reads its `TEMPLATE.md` and README with your
+  own `gh` login to fill in where the brief goes and the agent's first
+  message; tick *Save as a template* to keep it. Name the project, pick
+  where it lives and whether the repository is private (the default) or
+  public, then paste the brief or drop a `.md` or `.txt` file on the field.
+  The box under it says exactly what *Create* (⌘↩) will do: `gh repo
+  create … --template …`, the clone, the brief written and committed (never
+  pushed), the agent started — and what is sent to GitHub: the name and
+  visibility only. Without `gh`, a template with a folder is copied here
+  instead and nothing leaves the computer; with `gh` signed out, Caprock
+  waits for you — *Check again* after `gh auth login`, or *Make it
+  locally*. The progress shows in the footer; Esc hides it and the agent
+  still starts when the project is ready, in its own tab. If the clone
+  fails after the repository was made, *Try the clone again*; Caprock never
+  deletes a repository on GitHub. Change or remove templates in Settings →
+  Project templates.
 - **Projects.** Caprock lists the repositories your sessions ran in. The Add
   project sheet adds a folder, makes a new one
   (`git init` optional) or clones a repository with git's progress shown.

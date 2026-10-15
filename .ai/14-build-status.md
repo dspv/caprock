@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — New project from a template: the dialog
+
+`TemplateProjectSheet.tsx` (Template · Project · Brief, [04-ui.md § New
+project from a template](04-ui.md)), opened from New project's footer or ⌘K;
+the job in `lib/useTemplateJob.ts` starts the agent when the operation is
+done, with the sheet open or hidden, and saves a new template only then.
+Settings → Project templates. The app's `read_dropped_text` takes a dropped
+`.md` or `.txt` as the brief, only from the latest drop. Tested with vitest
+(the steps, the disclosure on both paths, frames, Retry, the spawn, both
+drops) and `cargo test` for the command and its ACL; rendered in a preview
+daemon with a fake `claude` and no real `gh`.
+
 ### 2026-10-15 — New project from a template: the daemon side
 
 `internal/templates` and seven routes ([03-contracts.md § Project
@@ -83,7 +95,7 @@ defaults), and making a project from one through the user's own `gh` or as
 a local copy, the brief written and committed, with retry and clean-up that
 never deletes a GitHub repository. The op machinery is the clone's,
 exported (`StartOp`, `UpdateOp`, `FinishOp`). Tested against a fake `gh`
-(`testdata/fakegh`); the screen in the app is the next PR.
+(`testdata/fakegh`); the dialog followed (above).
 
 ### 2026-10-15 — 0.117.5: Mail on its own, a check that always ends, no console flashes on Windows
 

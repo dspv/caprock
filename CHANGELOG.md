@@ -9,8 +9,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
-- **projects:** start a project from a template — the daemon side; the
-  screen comes next. Add your own template (a GitHub template repository,
+- **app:** New project from a template — the dialog. *From a template…* in
+  New project's footer or ⌘K: pick a saved template or look one up
+  (`owner/name`, its link, or a folder), name the project, paste or drop
+  the brief, and the box under it says what *Create* will run and send
+  (the name and visibility, to GitHub, through your own `gh`; nothing
+  without it). Progress shows in the footer; Esc hides it and the agent
+  still starts in its own tab when the project is ready. A failed clone
+  offers *Try the clone again* and *Open on GitHub*. Settings → Project
+  templates edits and removes them. In the app a dropped `.md` or `.txt`
+  becomes the brief (`read_dropped_text`, only from the latest drop).
+- **projects:** start a project from a template — the daemon side. Add your own template (a GitHub template repository,
   a folder, or both) with where its brief goes and the agent's first
   prompt; Caprock reads its `TEMPLATE.md` to fill those in. Making a
   project from it runs your own `gh` on your click (`gh repo create

@@ -22,7 +22,9 @@
 //! handler (`shell.rs`) records the paths of the last drop; `read_dropped_image`
 //! reads one of those and nothing else, an image by its extension, at most
 //! 10 MB. Any path at all would turn the command into a file reader for
-//! whatever page the window shows.
+//! whatever page the window shows. `read_dropped_text` keeps the same rule
+//! for the brief of New project from a template: a `.md`, `.markdown` or
+//! `.txt` from that drop, at most 1 MiB, UTF-8.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -86,6 +88,51 @@ pub fn read_dropped_image(
     dropped: tauri::State<'_, Dropped>,
 ) -> Result<Response, String> {
     read_image(&dropped, Path::new(&path)).map(Response::new)
+}
+
+/// The brief New project from a template takes from a file: the daemon's
+/// limit for a brief.
+pub const MAX_TEXT_BYTES: u64 = 1024 * 1024;
+
+/// The extensions a dropped file may have to be read as a brief.
+const TEXT_EXTENSIONS: [&str; 3] = ["md", "markdown", "txt"];
+
+/// Whether a path names a brief by its extension: Markdown or plain text.
+pub fn is_text_path(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| TEXT_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// Reads a dropped brief: one of the last drop's paths, Markdown or text by
+/// its extension, a file, at most MAX_TEXT_BYTES, UTF-8. The same rule as
+/// an image: only what the shell just handed over.
+pub fn read_text(dropped: &Dropped, path: &Path) -> Result<String, String> {
+    if !dropped.contains(path) {
+        return Err("not a dropped file".into());
+    }
+    if !is_text_path(path) {
+        return Err("not a .md or .txt file".into());
+    }
+    let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    if !meta.is_file() {
+        return Err("not a file".into());
+    }
+    if meta.len() > MAX_TEXT_BYTES {
+        return Err("over 1 MiB".into());
+    }
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    String::from_utf8(bytes).map_err(|_| "not UTF-8 text".into())
+}
+
+/// The text of a .md or .txt file dropped on the window, for New project
+/// from a template's brief.
+#[tauri::command]
+pub fn read_dropped_text(
+    path: String,
+    dropped: tauri::State<'_, Dropped>,
+) -> Result<String, String> {
+    read_text(&dropped, Path::new(&path))
 }
 
 /// Put a PNG, sent as the request's raw body, on the system clipboard.
@@ -269,6 +316,59 @@ mod tests {
             read_image(&dropped, &shot).unwrap_err(),
             "not a dropped file"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_brief_is_read_only_from_the_last_drop_as_utf8_text_up_to_1_mib() {
+        let dir = std::env::temp_dir().join(format!("caprock-brief-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let md = dir.join("brief.md");
+        let upper = dir.join("NOTES.TXT");
+        let long = dir.join("long.markdown");
+        let shot = dir.join("shot.png");
+        let latin1 = dir.join("latin1.txt");
+        let big = dir.join("big.md");
+        std::fs::write(&md, "# Brief\nA shop for teas. ∂ café\n").unwrap();
+        std::fs::write(&upper, b"plain").unwrap();
+        std::fs::write(&long, b"x").unwrap();
+        std::fs::write(&shot, b"png").unwrap();
+        std::fs::write(&latin1, [0x63, 0x61, 0x66, 0xe9]).unwrap();
+        std::fs::File::create(&big)
+            .unwrap()
+            .set_len(MAX_TEXT_BYTES + 1)
+            .unwrap();
+        let dropped = Dropped::default();
+
+        // Not dropped: refused even though it is a brief.
+        assert_eq!(read_text(&dropped, &md).unwrap_err(), "not a dropped file");
+
+        dropped.set(&[
+            md.clone(),
+            upper.clone(),
+            long.clone(),
+            shot.clone(),
+            latin1.clone(),
+            big.clone(),
+            dir.clone(),
+        ]);
+        assert_eq!(
+            read_text(&dropped, &md).unwrap(),
+            "# Brief\nA shop for teas. ∂ café\n"
+        );
+        assert_eq!(read_text(&dropped, &upper).unwrap(), "plain");
+        assert_eq!(read_text(&dropped, &long).unwrap(), "x");
+        assert_eq!(
+            read_text(&dropped, &shot).unwrap_err(),
+            "not a .md or .txt file"
+        );
+        assert_eq!(read_text(&dropped, &latin1).unwrap_err(), "not UTF-8 text");
+        assert_eq!(read_text(&dropped, &big).unwrap_err(), "over 1 MiB");
+        assert!(read_text(&dropped, &dir).is_err());
+
+        // A later drop replaces the list.
+        dropped.set(std::slice::from_ref(&shot));
+        assert_eq!(read_text(&dropped, &md).unwrap_err(), "not a dropped file");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

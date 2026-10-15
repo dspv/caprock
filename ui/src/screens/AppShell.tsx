@@ -9,7 +9,7 @@
  * click, never repaints from nothing and never drops a socket that was in use.
  */
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { api, ApiError, errText, type SessionSummary, type SpawnRequest } from '@/lib/api'
+import { api, ApiError, errText, isPairedDevice, type SessionSummary, type SpawnRequest } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { stepUiScale } from '@/lib/uiscale'
@@ -19,6 +19,8 @@ import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { parseHash, type SettingsSection } from '@/lib/router'
 import { goHomeTop, isHomeHash } from '@/lib/screenPlace'
 import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
+import { useTemplateJob } from '@/lib/useTemplateJob'
+import { TemplateProjectSheet } from '@/components/TemplateProjectSheet'
 import { buildSidebar, dotOf, groupProjects, numberedProjects, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type WorktreeNode } from '@/lib/sidebar'
 import {
   activeTab,
@@ -172,6 +174,8 @@ type SheetState =
   | { kind: 'project' }
   /** New project, tap-tap-tap (components/ProjectWizard.tsx); `prompt` is a first message typed in New agent before it, handed back. */
   | { kind: 'new-project'; prompt?: string }
+  /** New project from a template (components/TemplateProjectSheet.tsx, ADR-065); the job it starts lives on in `tplJob`. */
+  | { kind: 'template' }
   | { kind: 'palette' }
   | { kind: 'keys' }
   /** ⌘K "Share my numbers": the share sheet. */
@@ -605,6 +609,20 @@ export function AppShell() {
       .then(({ session_id }) => { openTab({ kind: 'session', sessionId: session_id }, projectId, first.task.slice(0, 60)); refresh() })
       .catch((e) => setToast(`The project is added, but the agent did not start: ${errText(e)}`))
   }, [refresh, openTab])
+
+  // New project from a template (ADR-065): the job outlives its sheet
+  // (lib/useTemplateJob.ts); its agent starts in a tab, as a first task's does.
+  const sheetKind = useRef(sheet?.kind)
+  sheetKind.current = sheet?.kind
+  const tpl = useTemplateJob(data.ops, {
+    onStarted: (sessionId, projectId, job) => { openTab({ kind: 'session', sessionId }, projectId, job.name); refresh() },
+    onMade: (projectId) => { refresh(); dispatch({ type: 'project', projectId }) },
+    toast: setToast,
+    sheetOpen: () => sheetKind.current === 'template',
+    closeSheet: () => setSheet((s) => (s?.kind === 'template' ? null : s)),
+  })
+  const onFromTemplate = useCallback(() => setSheet({ kind: 'template' }), [])
+
   const newShell = useCallback(async (projectId?: string, cwd?: string, split?: 'row' | 'column') => {
     const pid = projectId ?? activeProjectId
     const p: Project | undefined = projectsById.get(pid)
@@ -1147,6 +1165,9 @@ export function AppShell() {
       { id: 'a-shell', group: 'Actions', label: 'New shell', hint: keys('⌘T'), icon: <TerminalIcon size={14} />, run: () => onNewShell() },
       { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat…', detail: 'pick the agent and model; Enter starts the last one used', hint: keys('⌥⌘N'), icon: <ChatIcon size={14} />, run: onQuickChatChooser },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: keys('⌘O'), icon: <FolderPlusIcon size={14} />, run: onAddProject },
+      ...(source === 'api' && !isPairedDevice()
+        ? [{ id: 'a-project-template', group: 'Actions' as const, label: 'New project from a template…', detail: 'a GitHub template repository or a folder, your brief, an agent', icon: <FolderPlusIcon size={14} />, run: onFromTemplate }]
+        : []),
       { id: 'a-brain', group: 'Actions', label: 'Add to Second Brain…', detail: 'keep a line of your own', hint: keys('⇧⌘H'), icon: <BrainGlyph size={14} />, run: () => openBrainCapture() },
       { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'every pull request on its way: open, CI, merged, released', hint: keys('⇧⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck-expand' }) },
       { id: 'a-deck', group: 'Actions', label: deck.open ? 'Pipeline bar: Off' : 'Pipeline bar: On', detail: deck.open ? 'hide the bar under the agent’s terminal' : 'show the bar under the agent’s terminal', hint: keys('⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck' }) },
@@ -1238,7 +1259,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, deck.open, current, onNewAgent, onNewShell, onQuickChatChooser, onAddProject, onDashboard, onMail, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies])
+  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, deck.open, current, onNewAgent, onNewShell, onQuickChatChooser, onAddProject, onDashboard, onMail, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies, onFromTemplate])
 
   // Every session the daemon knows, by what it was about; one that is open or
   // live is already in the list above under its own id.
@@ -1794,6 +1815,19 @@ export function AppShell() {
           onCreated={(id) => { refresh(); dispatch({ type: 'project', projectId: id }) }}
           onStartAgent={(id) => setSheet({ kind: 'agent', projectId: id, prompt: sheet.prompt })}
           onMoreWays={() => setSheet({ kind: 'project' })}
+          onFromTemplate={isPairedDevice() ? undefined : onFromTemplate}
+        />
+      )}
+      {sheet?.kind === 'template' && (
+        <TemplateProjectSheet
+          projects={model.projects.map((n) => n.project)}
+          job={tpl.job}
+          op={tpl.op}
+          onClose={closeSheet}
+          onSubmitted={tpl.submit}
+          onOp={tpl.setOp}
+          onStartAgent={(job) => { tpl.reset(); setSheet({ kind: 'agent', projectId: job.projectId, cwd: job.cwd, here: true, prompt: job.prompt }) }}
+          onReset={tpl.reset}
         />
       )}
       {sheet?.kind === 'project' && (

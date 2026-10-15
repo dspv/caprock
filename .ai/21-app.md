@@ -1762,6 +1762,11 @@ GitHub by clipboard. In the app three commands do the native parts
   extension is png/jpg/jpeg/gif/webp, and it is a file of at most 10 MB. Any
   path at all would make the command a file reader for whatever page the
   window shows.
+- **`read_dropped_text`** keeps the same rule for the brief of New project
+  from a template (§ Dropping a file): one of the last drop's paths, a
+  `.md`, `.markdown` or `.txt` file of at most 1 MiB, returned only when it
+  is UTF-8. Unit-tested in `capture.rs`; the ACL test refuses it to every
+  other origin.
 - **Verified**: macOS by `cargo clippy -D warnings` and `cargo test` (the
   path rules, and the ACL: another origin is refused all three); the Windows
   code by `cargo clippy --target x86_64-pc-windows-msvc -D warnings` on a
@@ -1814,7 +1819,9 @@ tells a page where a file lives.
   (a `[data-dialog-backdrop]` is in the page) no terminal types a dropped
   path: the file was aimed at the dialog, not the terminal under its
   backdrop. Feedback reads an image from such a drop through the shell
-  (§ Feedback screenshots).
+  (§ Feedback screenshots), and New project from a template reads a `.md`
+  or `.txt` dropped on its Brief step as the brief (`read_dropped_text`,
+  the first path only; [04-ui.md](04-ui.md) § New project from a template).
 - **The popover** shows no terminal and keeps the default handler, so a
   drop there does nothing.
 - **Verified** by unit tests on both halves (`shell.rs` script, the
