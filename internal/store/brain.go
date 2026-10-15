@@ -96,6 +96,11 @@ type BrainNode struct {
 	UpdatedAt int64       `json:"updated_at"`
 	// Degree is how many returned edges touch it, filled in by the graph read.
 	Degree int `json:"degree,omitempty"`
+	// Rank is how well a memory matched a search, higher first (brainsearch.go);
+	// Close is true when some word matched only a word a typo or an ending
+	// away. Both are absent outside a search.
+	Rank  int  `json:"rank,omitempty"`
+	Close bool `json:"close,omitempty"`
 }
 
 // BrainEdge is one edge.
@@ -196,10 +201,10 @@ func InsertBrainNode(ctx context.Context, q Querier, v BrainNode, now int64) (Br
 		}
 	}
 	res, err := q.ExecContext(ctx, `INSERT INTO brain_nodes
-		(kind, title, norm, summary, session_id, event_id, source_ts, project, manual, pinned, run_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		v.Kind, v.Title, norm, v.Summary, v.Source.SessionID, nullID(v.Source.EventID), v.Source.Ts, v.Source.Project,
-		v.Manual, v.Pinned, nullID(v.RunID), now, now)
+		(kind, title, norm, summary, search, session_id, event_id, source_ts, project, manual, pinned, run_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		v.Kind, v.Title, norm, v.Summary, BrainSearchDoc(v.Title, v.Summary, v.Source.Project), v.Source.SessionID,
+		nullID(v.Source.EventID), v.Source.Ts, v.Source.Project, v.Manual, v.Pinned, nullID(v.RunID), now, now)
 	if err != nil {
 		return BrainNode{}, false, err
 	}
@@ -292,8 +297,8 @@ func UpdateBrainNode(ctx context.Context, q Querier, id int64, p BrainPatch, now
 			return BrainNode{}, err
 		}
 	}
-	if _, err := q.ExecContext(ctx, `UPDATE brain_nodes SET kind = ?, title = ?, norm = ?, summary = ?, pinned = ?, updated_at = ? WHERE id = ?`,
-		cur.Kind, cur.Title, norm, cur.Summary, cur.Pinned, now, id); err != nil {
+	if _, err := q.ExecContext(ctx, `UPDATE brain_nodes SET kind = ?, title = ?, norm = ?, summary = ?, search = ?, pinned = ?, updated_at = ? WHERE id = ?`,
+		cur.Kind, cur.Title, norm, cur.Summary, BrainSearchDoc(cur.Title, cur.Summary, cur.Source.Project), cur.Pinned, now, id); err != nil {
 		return BrainNode{}, err
 	}
 	return GetBrainNode(ctx, q, id)
@@ -352,8 +357,10 @@ func CountBrainMemories(ctx context.Context, q Querier, manualOnly bool) (int, e
 
 // BrainFilter narrows the graph read.
 type BrainFilter struct {
-	// Query matches a node's title or summary, anywhere, case-insensitively
-	// for ASCII.
+	// Query is words that must each match a memory's title, summary or
+	// project, or the name of an entity it is linked to — in any case, with
+	// or without accents, and, when few memories match exactly, one or two
+	// edits away (brainsearch.go). Matches come best first.
 	Query string
 	// Project keeps the memories of one project.
 	Project string
@@ -376,6 +383,11 @@ type BrainGraph struct {
 	Nodes []BrainNode `json:"nodes"`
 	Edges []BrainEdge `json:"edges"`
 	Total int         `json:"total"`
+	// Terms are a search's words, folded, and the close words that matched
+	// them, for the screen to highlight; Close is true when a returned
+	// memory is a close match. Both are absent outside a search.
+	Terms []string `json:"terms,omitempty"`
+	Close bool     `json:"close,omitempty"`
 }
 
 // empty is a read of the whole graph: no words, project or span, and no
@@ -392,11 +404,6 @@ func ReadBrainGraph(ctx context.Context, q Querier, f BrainFilter) (BrainGraph, 
 	}
 	where := []string{`n.kind NOT IN ('topic','person','project')`}
 	args := []any{}
-	if t := strings.TrimSpace(f.Query); t != "" {
-		p := "%" + escapeLike(t) + "%"
-		where = append(where, `(n.title LIKE ? ESCAPE '\' OR n.summary LIKE ? ESCAPE '\')`)
-		args = append(args, p, p)
-	}
 	if f.Project != "" {
 		where = append(where, `n.project = ?`)
 		args = append(args, f.Project)
@@ -415,17 +422,33 @@ func ReadBrainGraph(ctx context.Context, q Querier, f BrainFilter) (BrainGraph, 
 		cols = strings.Replace(cols, "n.summary", "''", 1)
 	}
 	g := BrainGraph{Nodes: []BrainNode{}, Edges: []BrainEdge{}}
-	if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM brain_nodes n WHERE `+cond, args...).Scan(&g.Total); err != nil {
-		return g, err
-	}
-	rows, err := q.QueryContext(ctx, `SELECT `+cols+` FROM brain_nodes n WHERE `+cond+`
-		ORDER BY n.pinned DESC, n.created_at DESC, n.id DESC LIMIT ?`, append(args, f.Limit)...)
-	if err != nil {
-		return g, err
-	}
-	mems, err := scanBrainRows(rows)
-	if err != nil {
-		return g, err
+	var mems []BrainNode
+	var err error
+	if t := strings.TrimSpace(f.Query); t != "" {
+		hits, terms, err := searchBrain(ctx, q, cond, args, t)
+		if err != nil {
+			return g, err
+		}
+		sortBrainHits(hits)
+		g.Total, g.Terms = len(hits), terms
+		if mems, err = brainHitNodes(ctx, q, cols, hits[:min(len(hits), f.Limit)]); err != nil {
+			return g, err
+		}
+		for _, m := range mems {
+			g.Close = g.Close || m.Close
+		}
+	} else {
+		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM brain_nodes n WHERE `+cond, args...).Scan(&g.Total); err != nil {
+			return g, err
+		}
+		rows, err := q.QueryContext(ctx, `SELECT `+cols+` FROM brain_nodes n WHERE `+cond+`
+			ORDER BY n.pinned DESC, n.created_at DESC, n.id DESC LIMIT ?`, append(args, f.Limit)...)
+		if err != nil {
+			return g, err
+		}
+		if mems, err = scanBrainRows(rows); err != nil {
+			return g, err
+		}
 	}
 	in := make(map[int64]bool, len(mems))
 	for _, m := range mems {
@@ -510,6 +533,38 @@ func ReadBrainGraph(ctx context.Context, q Querier, f BrainFilter) (BrainGraph, 
 	}
 	g.Nodes = nodes
 	return g, nil
+}
+
+// brainHitNodes reads the matched memories, in the hits' order, with their
+// rank.
+func brainHitNodes(ctx context.Context, q Querier, cols string, hits []brainHit) ([]BrainNode, error) {
+	if len(hits) == 0 {
+		return []BrainNode{}, nil
+	}
+	ids := make([]int64, len(hits))
+	for i, h := range hits {
+		ids[i] = h.id
+	}
+	rows, err := q.QueryContext(ctx, `SELECT `+cols+` FROM brain_nodes n WHERE n.id IN (SELECT value FROM json_each(?))`, idList(ids))
+	if err != nil {
+		return nil, err
+	}
+	got, err := scanBrainRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]BrainNode, len(got))
+	for _, n := range got {
+		byID[n.ID] = n
+	}
+	out := make([]BrainNode, 0, len(hits))
+	for _, h := range hits {
+		if n, ok := byID[h.id]; ok {
+			n.Rank, n.Close = h.rank, h.close
+			out = append(out, n)
+		}
+	}
+	return out, nil
 }
 
 // brainBulkRead is the selection above which the graph read scans every edge

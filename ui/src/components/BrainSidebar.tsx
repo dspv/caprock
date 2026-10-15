@@ -7,8 +7,9 @@
  *
  * Before there is anything to show it is a banner, not a bare zero (the owner
  * called the old two faint lines "very sloppily done", translated): the
- * brain made of a graph (BrainMark) as its hero, *Give your agents a
- * memory*, *Start building* and *How it works*. *Start building* opens the consent in place — what is read, by
+ * agents this user runs feeding the brain made of a graph (BrainHero,
+ * components/BrainAgents), *Free*, *One memory for all your agents*, a line
+ * naming those agents, *Start building* and *How it works*. *Start building* opens the consent in place — what is read, by
  * whose claude, where, the daily limit, and where it goes (rule 4) — and only
  * its *Turn on* sends the same PUT /v1/brain/settings as Settings. Once on
  * and still empty, the banner says what it is doing instead.
@@ -22,7 +23,7 @@ import { api, errText, type BrainAutoStatus } from '@/lib/api'
 import { BRAIN_TAGLINE, isEntity, useBrainGraph, useBrainStatus } from '@/lib/brain'
 import { keys } from '@/lib/appkeys'
 import { BrainGraphCanvas } from './BrainGraphCanvas'
-import { BrainMark } from './BrainMark'
+import { agentsLine, BRAIN_HEADLINE, BrainHero, FreePill, useAgentsUsed } from './BrainAgents'
 import { BRAIN_DISCLOSURE, limitLabel } from './BrainAutoSetting'
 import { ChevronIcon } from './AppIcons'
 import { BrainGlyph } from './BrainDrop'
@@ -131,19 +132,22 @@ export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
 }
 
 /**
- * The empty block: the brain made of a graph as its hero (BrainMark), one
- * short line, and either the way to start (off, or never asked) or what it
- * is doing (on, nothing kept yet).
+ * The empty block: the agents this user runs feeding one brain (BrainHero),
+ * *Free*, the headline, a line naming those agents, and either the way to
+ * start (off, or never asked) or what it is doing (on, nothing kept yet).
  */
 function Banner({ auto, onDone, howLink }: { auto?: BrainAutoStatus; onDone: () => void; howLink: ReactNode }) {
   const on = !!auto?.on
+  const agents = useAgentsUsed()
   return (
     <div
       className="grid min-w-0 grid-cols-[minmax(0,1fr)] justify-items-center gap-1.5 rounded-[10px] border border-[var(--app-hairline)] bg-[var(--app-row-hover)] px-1.5 pb-2.5 pt-2 text-center"
       data-brain-banner={on ? 'on' : 'off'}
     >
-      <BrainMark className="h-[104px] w-auto max-w-full" />
-      <p className="px-1.5 text-[13.5px] font-semibold leading-snug text-fg" data-brain-headline title={BRAIN_TAGLINE}>Give your agents a memory</p>
+      <BrainHero agents={agents} className="h-auto w-full max-w-[280px]" />
+      <FreePill className="mt-0.5" />
+      <p className="px-1 text-[13.5px] font-semibold leading-snug text-balance text-fg" data-brain-headline title={BRAIN_TAGLINE}>{BRAIN_HEADLINE}</p>
+      <p className="-mt-1 px-1.5 text-[11.5px] leading-snug text-balance text-fg-muted" data-brain-agents-line>{agentsLine(agents)}</p>
       {on && auto ? (
         <>
           <Progress auto={auto} />
@@ -159,7 +163,7 @@ function Banner({ auto, onDone, howLink }: { auto?: BrainAutoStatus; onDone: () 
               <div>{howLink}</div>
             </>
           )}
-          <p className="px-1.5 text-[10.5px] text-fg-faint">Local · your own Claude · free</p>
+          <p className="px-1.5 text-[10.5px] text-fg-faint">Local · your own Claude</p>
         </>
       )}
     </div>
