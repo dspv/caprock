@@ -6,7 +6,9 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Print mode (`-p`): what Second Brain's extraction calls (internal/brain).
@@ -15,7 +17,8 @@ import (
 // the prompt from stdin, and answers in the shape of `claude -p
 // --output-format json`: one memory per agent passage, at most three, kinds
 // and topics guessed from the words, with a usage block and a cost. No model,
-// no network. FAKECLAUDE_PRINT_FAIL=1 makes it fail as a refused login does.
+// no network. FAKECLAUDE_PRINT_FAIL=1 makes it fail as a refused login does;
+// FAKECLAUDE_PRINT_DELAY_MS makes each answer take that long.
 func printMode(args []string) {
 	need := map[string]bool{"--no-session-persistence": false, "--output-format=json": false, "--tools=": false, "--setting-sources=local": false, "--settings": false}
 	for i, a := range args {
@@ -48,6 +51,11 @@ func printMode(args []string) {
 		os.Exit(1)
 	}
 	in, _ := io.ReadAll(os.Stdin)
+	// FAKECLAUDE_PRINT_DELAY_MS makes a read take that long, so a preview
+	// shows the Second Brain screen reading a session, as a real model does.
+	if ms, err := strconv.Atoi(os.Getenv("FAKECLAUDE_PRINT_DELAY_MS")); err == nil && ms > 0 {
+		time.Sleep(time.Duration(ms) * time.Millisecond)
+	}
 	type mem struct {
 		Kind    string   `json:"kind"`
 		Title   string   `json:"title"`

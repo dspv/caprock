@@ -178,7 +178,7 @@ func TestReadsAClone(t *testing.T) {
 	for _, f := range frags {
 		AddFragment(&fu, f)
 	}
-	if fu.Count != 2 || fu.Items[0] != "**a:** first by name." || fu.Items[1] != "**b:** second." {
+	if fu.Count != 2 || fu.Items[0] != "**a:** first by name." || fu.Items[1] != "**b:** second." || fu.Kinds["Added"] != 1 || fu.Kinds["Fixed"] != 1 {
 		t.Fatalf("fragment items = %+v", fu)
 	}
 	if _, ok := Fragments(ctx, up, "v0.0.0"); ok {
@@ -225,5 +225,27 @@ func gitAt(t *testing.T, dir string, at time.Time, args ...string) {
 		"GIT_AUTHOR_DATE="+stamp, "GIT_COMMITTER_DATE="+stamp, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+emptyConfig(t))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// The kinds are counted from the section's ### headings and the fragments'
+// front matter: the release plan reads an Added entry as a minor release.
+func TestKinds(t *testing.T) {
+	u, ok := ParseUnreleased([]byte("## [Unreleased]\n\n- before any heading\n\n### Added\n\n- **a:** one\n- **a:** two\n\n### Notes\n\n- not a kind\n\n### fixed\n\n- **c:** three\n\n## [1.0.0]\n\n### Added\n\n- old\n"))
+	if !ok || u.Count != 5 || u.Kinds["Added"] != 2 || u.Kinds["Fixed"] != 1 || len(u.Kinds) != 2 {
+		t.Fatalf("section: got %+v", u)
+	}
+	var f Unreleased
+	AddFragment(&f, []byte("---\nkind: Fixed\n---\n- **x:** fix.\n"))
+	AddFragment(&f, []byte("---\r\nkind:  added \r\n---\r\n- **y:** one.\r\n- **y:** two.\r\n"))
+	AddFragment(&f, []byte("- **bare:** no kind.\n"))
+	AddFragment(&f, []byte("---\nkind: Whatever\n---\n- **z:** unknown kind.\n"))
+	if f.Count != 5 || f.Kinds["Fixed"] != 1 || f.Kinds["Added"] != 2 || len(f.Kinds) != 2 {
+		t.Fatalf("fragments: got %+v", f)
+	}
+	var none Unreleased
+	AddFragment(&none, []byte("- **bare:** no kind.\n"))
+	if none.Kinds != nil {
+		t.Fatalf("no kind: got %+v", none.Kinds)
 	}
 }

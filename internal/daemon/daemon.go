@@ -663,6 +663,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Footprint:   func(ctx context.Context, orphans bool) any { return d.footprint(ctx, orphans) },
 		StopOrphans: func(ctx context.Context, t []api.OrphanTarget) any { return d.stopOrphans(ctx, t) },
 		KeepAwake:   d.keepAwakeStatus,
+		UpdateBusy:  d.workingSessions,
 		ReapOrphans: func(ctx context.Context) (any, error) { return d.reapOrphans(ctx, true) },
 		RateLimitsRecorded: func(ctx context.Context) {
 			if d.winStop != nil {
@@ -1511,8 +1512,11 @@ func (d *Daemon) config() config.Config {
 }
 
 // updateTick is how often a long-running daemon asks whether a release check
-// is due. The checker's own MinInterval (6 h) decides whether one is.
-const updateTick = time.Hour
+// is due. The checker's own MinInterval (update.Interval, an hour, measured on
+// the wall clock) decides whether one is; the short tick is what makes a
+// check that fell due while the machine slept run within minutes of waking.
+// A tick that finds nothing due costs a mutex, no request.
+const updateTick = 5 * time.Minute
 
 // updateLoop keeps the release status fresh in a daemon that runs for weeks:
 // without it the only checks were at startup and when the switch was turned
@@ -1592,6 +1596,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		WorktreeCleanup:  projects.NormalizeCleanup(c.WorktreeCleanup),
 		StatuslineMode:   config.NormalizeStatusline(c.StatuslineMode),
 		QuickReplies:     config.EffectiveQuickReplies(c.QuickReplies),
+		AppUpdate:        config.NormalizeAppUpdate(c.AppUpdate),
 	}
 }
 
@@ -1688,6 +1693,10 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	statuslineChanged := in.StatuslineMode != "" && in.StatuslineMode != config.NormalizeStatusline(a.d.opt.Config.StatuslineMode)
 	if statuslineChanged {
 		a.d.opt.Config.StatuslineMode = in.StatuslineMode
+	}
+	// The app's update mode: "ask" until chosen, like the three above.
+	if in.AppUpdate != "" && in.AppUpdate != config.NormalizeAppUpdate(a.d.opt.Config.AppUpdate) {
+		a.d.opt.Config.AppUpdate = in.AppUpdate
 	}
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()

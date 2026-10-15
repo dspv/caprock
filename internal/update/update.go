@@ -14,6 +14,12 @@
 // working Caprock. Running a package manager on the user's behalf from a web
 // page is also exactly the surface a local tool should not open. Instead we
 // name the exact command for how this copy was installed, and the user runs it.
+//
+// The desktop app is the one exception, and it is the app, not this package:
+// its own signed updater replaces the app bundle, which carries the daemon
+// with it (ADR-042), on a click or — when the user chose Update automatically
+// — once no agent is busy (GET /v1/update/busy). The daemon still never
+// overwrites its own binary.
 package update
 
 import (
@@ -76,11 +82,15 @@ type Checker struct {
 	Now func() time.Time
 	// HTTPClient is injectable for tests.
 	HTTPClient *http.Client
-	// MinInterval throttles checks (default 6h). A release is announced on
-	// the day it ships rather than up to a day later, and the request is a
-	// conditional one (ETag): an unchanged answer is a 304 with no body,
-	// which GitHub does not count against the rate limit.
+	// MinInterval throttles checks (default Interval, an hour). Releases
+	// ship several times a day, and the request is a conditional one
+	// (ETag): an unchanged answer is a 304 with no body, which GitHub does
+	// not count against the rate limit.
 	MinInterval time.Duration
+	// RetryAfter is how long a failed check waits before the next one that
+	// was not asked for (default FailRetry): a laptop offline for a day
+	// tries every quarter hour, not on every tick.
+	RetryAfter time.Duration
 	// CaskRoots are where Homebrew keeps installed casks; the app was
 	// installed by the cask when one of them holds caprock-app.
 	CaskRoots []string
@@ -92,8 +102,23 @@ type Checker struct {
 	notes     string
 	etag      string
 	checkedAt time.Time
+	failedAt  time.Time
 	lastErr   string
 }
+
+// Interval is how often a release check is due: hourly, since releases ship
+// several times a day. The daemon asks on a shorter tick (its updateTick)
+// so a check due during sleep runs within minutes of waking.
+const Interval = time.Hour
+
+// FailRetry spaces the checks after a failed one.
+const FailRetry = 15 * time.Minute
+
+// since is wall-clock time from t to now. Both lose their monotonic reading
+// first: on macOS the monotonic clock stops while the machine sleeps, so a
+// laptop closed overnight would otherwise count the night as zero and skip
+// the check due when it wakes.
+func since(now, t time.Time) time.Duration { return now.Round(0).Sub(t.Round(0)) }
 
 // AppCask is the Homebrew cask that installs the desktop app.
 const AppCask = "caprock-app"
@@ -108,7 +133,8 @@ func New() *Checker {
 	return &Checker{
 		Now:         time.Now,
 		HTTPClient:  &http.Client{Timeout: 5 * time.Second},
-		MinInterval: 6 * time.Hour,
+		MinInterval: Interval,
+		RetryAfter:  FailRetry,
 		CaskRoots:   []string{"/opt/homebrew/Caskroom", "/usr/local/Caskroom"},
 		IsDir: func(p string) bool {
 			st, err := os.Stat(p)
@@ -163,7 +189,12 @@ func (c *Checker) Status(enabled bool, current string) Status {
 // about an update must not degrade a working dashboard.
 func (c *Checker) Check(ctx context.Context, force bool) error {
 	c.mu.Lock()
-	if !force && !c.checkedAt.IsZero() && c.Now().Sub(c.checkedAt) < c.MinInterval {
+	now := c.Now()
+	if !force && !c.checkedAt.IsZero() && since(now, c.checkedAt) < c.MinInterval {
+		c.mu.Unlock()
+		return nil
+	}
+	if !force && !c.failedAt.IsZero() && since(now, c.failedAt) < c.RetryAfter {
 		c.mu.Unlock()
 		return nil
 	}
@@ -178,13 +209,13 @@ func (c *Checker) Check(ctx context.Context, force bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err != nil {
-		c.lastErr = err.Error()
+		c.lastErr, c.failedAt = err.Error(), c.Now()
 		return err
 	}
 	if !rel.unchanged {
 		c.latest, c.notes, c.etag = rel.tag, rel.notes, rel.etag
 	}
-	c.lastErr, c.checkedAt = "", c.Now()
+	c.lastErr, c.checkedAt, c.failedAt = "", c.Now(), time.Time{}
 	return nil
 }
 

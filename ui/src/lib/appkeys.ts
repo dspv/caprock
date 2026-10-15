@@ -436,7 +436,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘1–8, ⌘9', 'The Nth tab, in the order opened, as its badge says; ⌘9 the last'],
   ['⌥⌘↓, ⌥⌘↑', 'Next and previous session of the project in front'],
   ['⌥⌘→, ⌥⌘←', 'Next and previous project'],
-  ['⌥⇧↑, ⌥⇧↓', 'Move the focused session row up or down in the sidebar or the Live pulse'],
+  ['⌥⇧↑, ⌥⇧↓', 'Move the focused session row up or down in the sidebar or the Live pulse, or a right panel section by its grip'],
   ['⌃Tab, ⇧⌘[ ]', 'Next and previous tab'],
   ['⌘W', 'Close the tab or pane — the session keeps going'],
   ['⌘E, ⇧⌘E', 'Split: a new shell beside, below'],

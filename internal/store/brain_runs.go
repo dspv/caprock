@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 )
 
 // Second Brain's automatic extraction reads (migration 0055, ADR-063): which
@@ -30,8 +32,11 @@ type BrainRun struct {
 	Error          string  `json:"error,omitempty"`
 	StartedAt      int64   `json:"started_at"`
 	FinishedAt     int64   `json:"finished_at"`
-	// Project is the session's, joined in when listed.
+	// Project, Title and Agent are the session's, joined in when listed;
+	// Title is its own name or, without one, its first stored prompt.
 	Project string `json:"project,omitempty"`
+	Title   string `json:"title,omitempty"`
+	Agent   string `json:"agent,omitempty"`
 }
 
 // InsertBrainRun records a read and returns its id.
@@ -163,7 +168,8 @@ func BrainTokensSince(ctx context.Context, q Querier, since int64) (int64, error
 func LastBrainRuns(ctx context.Context, q Querier, limit int) ([]BrainRun, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT r.id, r.session_id, r.from_event_id, r.through_event_id, r.status, r.model, r.tokens_in, r.tokens_out,
-		       r.cost_usd, r.nodes, r.error, r.started_at, r.finished_at, COALESCE(s.project, '')
+		       r.cost_usd, r.nodes, r.error, r.started_at, r.finished_at, COALESCE(s.project, ''),
+		       COALESCE(NULLIF(s.title, ''), s.prompt, ''), COALESCE(s.agent, '')
 		FROM brain_runs r LEFT JOIN sessions s ON s.session_id = r.session_id
 		WHERE r.status != 'skipped' ORDER BY r.id DESC LIMIT ?`, limit)
 	if err != nil {
@@ -174,7 +180,50 @@ func LastBrainRuns(ctx context.Context, q Querier, limit int) ([]BrainRun, error
 	for rows.Next() {
 		var r BrainRun
 		if err := rows.Scan(&r.ID, &r.SessionID, &r.FromEventID, &r.ThroughEventID, &r.Status, &r.Model, &r.TokensIn, &r.TokensOut,
-			&r.CostUSD, &r.Nodes, &r.Error, &r.StartedAt, &r.FinishedAt, &r.Project); err != nil {
+			&r.CostUSD, &r.Nodes, &r.Error, &r.StartedAt, &r.FinishedAt, &r.Project, &r.Title, &r.Agent); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// BrainSessionInfo is what a screen names a session by while it is read:
+// its own title (or first stored prompt), agent and the time of its last
+// event. A session that is not there gives empty values, not an error.
+func BrainSessionInfo(ctx context.Context, q Querier, sessionID string) (title, agent string, lastEventAt int64, err error) {
+	err = q.QueryRowContext(ctx, `SELECT COALESCE(NULLIF(title, ''), prompt, ''), COALESCE(agent, ''), COALESCE(last_event_at, 0)
+		FROM sessions WHERE session_id = ?`, sessionID).Scan(&title, &agent, &lastEventAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return title, agent, lastEventAt, err
+}
+
+// BrainReadSession is a session active since a moment that the extraction
+// has read at least once without failing, with the memories its reads kept.
+type BrainReadSession struct {
+	SessionID string
+	Project   string
+	Memories  int
+}
+
+// BrainReadSessions lists the sessions active since `since` with a read
+// that did not fail: the "read" side of a build's progress.
+func BrainReadSessions(ctx context.Context, q Querier, since int64) ([]BrainReadSession, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT s.session_id, COALESCE(s.project, ''), COALESCE(SUM(r.nodes), 0)
+		FROM sessions s JOIN brain_runs r ON r.session_id = s.session_id AND r.status != 'failed'
+		WHERE COALESCE(s.last_event_at, 0) >= ?
+		GROUP BY s.session_id`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []BrainReadSession{}
+	for rows.Next() {
+		var r BrainReadSession
+		if err := rows.Scan(&r.SessionID, &r.Project, &r.Memories); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

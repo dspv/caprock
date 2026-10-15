@@ -48,8 +48,10 @@ const (
 	// deleted}, so a screen showing it reads it again.
 	FrameInbox FrameType = "inbox"
 	// FrameBrain says Second Brain changed (03-contracts.md § Second Brain):
-	// {id, op: "added"|"changed"|"deleted", kind?, title?, auto?}, so the
-	// sidebar's graph can drop a new memory in as it arrives.
+	// {id, op: "added"|"changed"|"deleted", kind?, title?, auto?}, so a
+	// screen can drop a new memory in as it arrives; or {op: "progress"}
+	// when an automatic read begins or ends, so the build's status is read
+	// again.
 	FrameBrain FrameType = "brain"
 	// FrameStatus says an owned session's status moved without an event —
 	// input typed into it that it has not answered yet (narrate.Nudge):

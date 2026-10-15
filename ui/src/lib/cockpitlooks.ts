@@ -25,12 +25,13 @@ export interface CockpitLooks {
   tasks: Look
   changes: Look
   ci: Look
+  release: Look
   processes: Look
 }
 
 export const DEFAULT_LOOKS: CockpitLooks = {
   context: 'compact', limits: 'compact', subagents: 'full', tools: 'full',
-  now: 'full', tasks: 'full', changes: 'full', ci: 'full', processes: 'full',
+  now: 'full', tasks: 'full', changes: 'full', ci: 'full', release: 'full', processes: 'full',
 }
 
 export const LOOKS_KEY = 'caprock.app.cockpit-looks'

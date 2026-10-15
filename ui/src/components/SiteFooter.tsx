@@ -17,6 +17,7 @@
 import { useState } from 'react'
 import { TeamsModal } from './TeamsModal'
 import { usePromptDue } from '@/lib/prompts'
+import { SetupChip } from './SetupStrip'
 
 const REPO = 'https://github.com/dspv/caprock'
 const PREMIUM = 'https://caprock.dev/premium'
@@ -51,6 +52,8 @@ export function SiteFooter() {
         {teams && <TeamsModal onClose={() => setTeams(false)} />}
 
         <span className="ml-auto inline-flex items-center gap-4">
+          {/* The setup strip folded by its ×: "0 of 2", a click unfolds it. */}
+          <SetupChip />
           {/* Legible, but still not a second offer: the team line above keeps
             * the accent colour and the arrow, this one reads at the weight of
             * the links beside it. Phrased as a place rather than a question —

@@ -27,6 +27,9 @@ behind it are in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 Paste this into a fresh session of your agent, in an empty folder. Put an issue
 number in the first line, or leave it for the agent to pick a good first issue.
+The four-line prompt under the banner in the [README](../README.md) is the
+short way in: it forks and clones the repository, then sends the agent here to
+follow this one.
 
 ```text
 I want to contribute to Caprock (https://github.com/dspv/caprock), an

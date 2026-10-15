@@ -557,6 +557,7 @@ PUT  /v1/settings                      → store them
 POST /v1/offer                         → {status: "sent"} — forward one offer-survey answer to caprock.dev on the user's click (§ Offer survey, ADR-062)
 GET  /v1/update                        → cached release status (no network I/O)
 POST /v1/update/check                  → check now (403 unless enabled)
+GET  /v1/update/busy                   → {working} — sessions an app restart would interrupt (Update automatically, ADR-042)
 POST /v1/hooks/install                 → {hooks: HooksStatus, backup?} — `caprock hooks install`, from the dashboard
 POST /v1/claude/bypass-consent         → {accepted: true} — the user accepted Caprock's copy of Claude Code's bypass warning (ADR-041)
 GET  /v1/stats/daily?days=30           → DailyStat[]
@@ -793,7 +794,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes, or {op: progress} when an automatic read begins or ends (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -1237,6 +1238,15 @@ effective mode, `full` when never chosen; stored as `statusline_mode` in
 `config.json` the same way as `keep_awake`. A change applies Caprock's own
 `statusLine` entry to match (§ Statusline, *Settings → Status line*).
 
+`GET`/`PUT /v1/settings` carry **`app_update`**: what the desktop app does
+when the release check finds a newer version, one of `ask` (the update card;
+nothing installs until a click) or `auto` (download and verify in the
+background, install once it is safe to restart), else `400` (an empty string
+included). `GET` returns the effective mode, `ask` when never chosen; stored
+as `app_update` in `config.json` the same way as `keep_awake`. Only the app's
+page acts on it; the daemon never installs anything (ADR-042 as amended
+2026-10-15). Choosing `auto` in the app also sends `update_checks: true`.
+
 `PUT /v1/settings` also accepts `gemini_api_key`, write-only and stored in `config.json` (unlike the two credentials below, which the secret store keeps). `GET` reports `gemini_key_set` and `gemini_key_from_env` instead of the value; `GEMINI_API_KEY` in the daemon's environment takes precedence over the stored key when both exist ([ADR-025](08-decisions.md)).
 
 `PUT /v1/settings` also accepts `deepseek_api_key`, the user's DeepSeek key for Claude Code on DeepSeek (see **Subscriptions** below), write-only and kept in the secret store (below), never in `config.json`. `GET` reports `deepseek_key_set`, `deepseek_key_where` and `deepseek_key_hint` — the first three and last four characters (`sk-…1a2b`), or `…` for a key under 16 characters — never the value. Trimmed on the way in; `""` clears it; `400` for a value with a line break or a NUL, or over 512 bytes, because it becomes one environment variable of a child process. Caprock never sends it anywhere and never logs it.
@@ -1417,7 +1427,9 @@ token stays in `config.json`.
 
 **Offer survey** ([ADR-062](08-decisions.md)). `POST /v1/offer {offer, answers, email?}` is the one route that sends what the user chose to Caprock, and the dashboard calls it only from the survey card's **Send** button. `offer` is one of the dashboard's surveys, and `answers` is exactly `{q1, q2}`, each one allowed value: `ads` and `youtube` — `q1` `under-4`, `4-8`, `8-12`, `12+`; `q2` `under-30`, `30-70`, `over-70`. `local-models` — `q1` `coding`, `chat`, `search`, `trying`; `q2` `mac-16`, `mac-24-64`, `mac-96`, `pc-nvidia`, `other`. `email`, when present, is one plain address of at most 254 characters. Anything else is `400` and nothing is sent. The daemon rebuilds the body from those fields alone and POSTs `{offer, answers, email?}` — no version, no identifier — to `https://caprock.dev/api/offer` with a 10 s limit; `CAPROCK_OFFER_URL` replaces the address for a preview stand or a test, which must never reach the real site. `200 {status: "sent"}` when the site took it, `502 {error}` when it did not — the error never carries the email or the address. Machine-only: a paired device gets `403` like every write. The enums live in `internal/api/offer.go`, `ui/src/lib/offer.ts` and the site's `functions/api/offer.ts`, and change together. What keeps a card away is ordinary `settings.prompts` entries: the draw (`offer-variant-ads` or `offer-variant-youtube`), the day any offer last showed (`offer-last`), and per offer `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2`.
 
-`GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once every 6 hours unless forced — at startup, when the switch is turned on, and on an hourly tick that asks whether one is due (so a daemon that runs for weeks still hears of a release) — and each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
+`GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once an hour unless forced (`update.Interval`; releases ship several times a day) — at startup, when the switch is turned on, and on a five-minute tick that asks whether one is due (so a daemon that runs for weeks still hears of a release). The hour is measured on the wall clock, because macOS stops the monotonic clock while the machine sleeps: a check that fell due overnight runs within five minutes of waking. After a failed check the next unforced one waits 15 minutes (`update.FailRetry`), so an offline laptop does not try on every tick. Each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. The daemon does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open. The desktop app replaces its own bundle, which carries the daemon (ADR-042).
+
+`GET /v1/update/busy` returns `{working}`: how many sessions are working now — mid-turn, with subagents still running, or waiting on a permission prompt — the count the keep-awake hold uses (ADR-049). The desktop app set to `app_update: auto` installs a downloaded update only while it is `0`. A read of the local database, no network I/O, nothing about the sessions but the count; a failed count is an error status, never a `0`. Not on a paired device's allowlist.
 
 **`PUT /v1/settings` is a patch, not a replace.** Fields are decoded as pointers, so a body changes only the keys it names and leaves the rest as they were; `PUT {}` is a no-op. An explicit `false` is still honoured, so nothing here is write-only. This is not a convenience: decoding into a plain struct made an absent field indistinguishable from a cleared one, so a short body — or a retry that dropped fields — answered 200 while resetting the stated plan *and* switching the release-check opt-in off. The plan decides what every cost figure on the dashboard claims to be, and `update_checks` gates rule 4's single outbound call; neither may be toggled by omission.
 
@@ -3102,23 +3114,46 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   settings and backfill included, is the machine's (a device gets `403`).
 - **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
   "added" | "changed" | "deleted", kind?, title?, auto?}` (`kind` and `title`
-  absent on a delete).
+  absent on a delete). The automatic extraction also publishes `{op:
+  "progress"}` (no id) as each read begins and ends, so a screen showing
+  the build reads the status again; a screen showing memories ignores it.
 - **The automatic extraction** (`internal/brain`, free). `auto` in the
   status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
   daily_tokens, spent, running, pending, since?, backfill_since?,
-  last_wake?, next_wake?, last_error?, recent: [BrainRun]}`: `chosen` once
+  last_wake?, next_wake?, last_error?, recent: [BrainRun], reading?,
+  build?}`: `chosen` once
   the user has answered, `enabled` when on (only then does it read; no
   licence is looked at), `last_wake` and `next_wake` unix ms — `next_wake`
   absent while off, at or before now just after turning on or while a wake
   runs, so a screen can say when the first memories may come — `spent`
   the tokens of the reads in the last 24 hours, `pending` the sessions
-  waiting, `recent` the last reads that were not skipped. `BrainRun` is
-  `{id, session_id, from_event_id, through_event_id, status: ok | failed |
-  skipped, model?, tokens_in, tokens_out, cost_usd, nodes, error?,
-  started_at, finished_at, project?}`.
+  waiting (counted up to 200), `recent` the last reads that were not
+  skipped. `BrainRun` is `{id, session_id, from_event_id,
+  through_event_id, status: ok | failed | skipped, model?, tokens_in,
+  tokens_out, cost_usd, nodes, error?, started_at, finished_at, project?,
+  title?, agent?}`; `title` is the session's own name, else its first
+  stored prompt, and `agent` its agent, joined in.
+- **What it reads now, and how far it is.** `reading` is present while a
+  read is asking `claude` about a session: `{session_id, title?, agent?,
+  project?, last_event_at?, started_at}` — `title` the session's own name,
+  else its first prompt, flattened and clipped to 80 runes; `last_event_at`
+  when the session last did something and `started_at` when this read
+  began (unix ms). `build` is present while it is on: `{from, sessions,
+  read, memories, truncated?, sources: [{project, read, pending,
+  memories}]}` — `from` the start of what is in reach (the earlier of
+  `since` and `backfill_since`); `read` the sessions active since `from`
+  that a read has gone through without failing and that have nothing new
+  since; `sessions` that plus the sessions waiting (`pending`), so a
+  session read before and waiting again counts once, as waiting; a live
+  session joins once it has been quiet ten minutes, and one waiting out a
+  failure is in neither; `memories` what the reads of those sessions kept
+  (as recorded per read); `truncated` when the waiting were counted only
+  to 200; `sources` the same per project, most sessions first, at most 12.
 - **Settings.** `auto: true` starts reading from that moment and wakes the
   reader at once, not at the next five-minute wake — on the daemon's own
-  loop, never under the request; a second `true` while on does not wake it
+  loop, never under the request; a wake that read a full four is followed
+  by the next after three seconds rather than five minutes, so a build
+  reads one session after another within the daily limit; a second `true` while on does not wake it
   again, and a wake never runs beside another; `false` stops it. Neither needs a licence. `daily_tokens`
   is 20,000–5,000,000 (the screen offers 100k, 300k and 1M; the default is
   300,000) and `model` is `""`, `haiku` (the default) or `sonnet`; anything
@@ -3348,7 +3383,8 @@ GET /v1/work → Work
   sessions first), then those any session recorded something in within 24
   hours (newest first), at most 8. `remote` is `owner/name` from origin's
   web address; `via_session` the newest session that brought it; `live`
-  how many live sessions it has. `unreleased` `{ref, items, count, more?}`
+  how many live sessions it has. `unreleased` `{ref, items, count, more?,
+  kinds?}`
   is the `CHANGELOG.md` `[Unreleased]` section at the remote's default
   branch as the clone knows it (`ref`, `origin/<default>`, from
   `refs/remotes/origin/HEAD`): `items` the first lines of its top-level
@@ -3356,7 +3392,14 @@ GET /v1/work → Work
   repository that keeps one file per change (`changes/unreleased/*.md` at
   that branch, front matter skipped; Caprock's own since 2026-10-15) has
   those files' top-level bullets added after the section's, in file-name
-  order, and `count` covers both. Absent when neither the section nor the
+  order, and `count` covers both. `kinds` (since 2026-10-15) counts the
+  entries by Keep a Changelog kind — `Added`, `Changed`, `Deprecated`,
+  `Removed`, `Fixed`, `Security`, as `{"Added": 2, "Fixed": 3}` — from the
+  `### ` heading an entry sits under in the section and a fragment's
+  `kind:`, case ignored; an entry under no such heading, or a fragment
+  without front matter, counts in `count` only; absent when no entry has a
+  kind. The release plan predicts the next version from it (04-ui.md §
+  Release plan). Absent when neither the section nor the
   directory is there. `tags` `{last?: {name, at},
   gap_median_ms?, gaps}` reads the newest 11 tags by creation date;
   `gap_median_ms` is the median time between them, absent with fewer than

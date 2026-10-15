@@ -1075,7 +1075,7 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   The notice was built on 2026-10-06: the status
   strip names the release and the command for each part Homebrew installed
   (the `caprock-app` cask, the `caprock` formula), dismissed per version; the
-  check runs at most every 6 hours, conditionally
+  check runs at most hourly (every 6 hours until 2026-10-15), conditionally
   ([04-ui.md § Update notice](04-ui.md#update-notice)).
   The `.dmg` opens on a branded window (`bundle.macOS.dmg` in
   `tauri.conf.json`, 2026-10-10): 660×400, caprock.dev's paper ground, the
@@ -1448,7 +1448,8 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   (with `hotkey_status`; built in WP-10, app/README.md),
   `open_external` (https and the editors' schemes only), `daemon_status`, and
   the updater's `app_update_status`, `app_update_check`,
-  `app_update_install` and `app_update_asked` (F20). No
+  `app_update_download` (Update automatically, ADR-042 as amended
+  2026-10-15), `app_update_install` and `app_update_asked` (F20). No
   shell, filesystem or HTTP plugin is exposed to the page. The bundled
   fallback page, on the app's own origin, alone gets `start_daemon`,
   `update_daemon` and `set_background` (built in WP-02; the others arrive

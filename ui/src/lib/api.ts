@@ -885,6 +885,8 @@ export interface Settings {
   keep_awake?: KeepAwakeMode
   /** What happens to finished copies (lib/copies CleanupMode). The daemon returns "ask" when never chosen. */
   worktree_cleanup?: 'off' | 'ask' | 'auto'
+  /** What the desktop app does when a newer release is found (ADR-042): show the card, or install it once nothing is busy. The daemon returns "ask" when never chosen. */
+  app_update?: AppUpdateMode
   /** What Caprock's Claude Code status line shows. The daemon returns "full" when never chosen; "hidden" prints nothing but keeps relaying plan limits; "off" removes Caprock's own statusLine entry. */
   statusline_mode?: StatuslineMode
   /** The one-click replies under a session Caprock started (lib/quickReplies.ts); the defaults until changed. */
@@ -951,6 +953,11 @@ export interface Settings {
 
 /** GET /v1/team-signal: distinct commit authors across the listed repositories. */
 export interface TeamSignal { authors: number; repos: number; window_days: number; checked_ms: number }
+
+export type AppUpdateMode = 'ask' | 'auto'
+
+/** GET /v1/update/busy: sessions an app restart would interrupt (mid-turn, or waiting on a permission prompt). */
+export interface UpdateBusy { working: number }
 
 export interface UpdateStatus {
   enabled: boolean
@@ -1372,6 +1379,36 @@ export interface BrainAutoStatus {
   next_wake?: number
   last_error?: string
   recent: BrainRun[]
+  /** The session being read right now, while a read runs. */
+  reading?: BrainReading
+  /** The progress through every session in reach, while on. */
+  build?: BrainBuild
+}
+
+/** The session the extraction is asking claude about (03-contracts.md § Second Brain). */
+export interface BrainReading {
+  session_id: string
+  /** Its own name, else its first prompt, clipped. */
+  title?: string
+  agent?: string
+  project?: string
+  /** When the session last did something, and when this read began; unix ms. */
+  last_event_at?: number
+  started_at: number
+}
+
+/** How far the extraction has got through the sessions in reach. */
+export interface BrainBuild {
+  /** The start of what is in reach, unix ms. */
+  from: number
+  /** Read plus waiting. */
+  sessions: number
+  read: number
+  /** What the reads of those sessions kept. */
+  memories: number
+  truncated?: boolean
+  /** Per project, most sessions first, at most 12. */
+  sources: { project: string; read: number; pending: number; memories: number }[]
 }
 
 /** One read of one session. */
@@ -1387,6 +1424,9 @@ export interface BrainRun {
   error?: string
   finished_at: number
   project?: string
+  /** The session's own name (or first stored prompt) and agent. */
+  title?: string
+  agent?: string
 }
 
 /** What a backfill would read: an estimate, from the transcript's length. */
@@ -1897,6 +1937,7 @@ export const api = {
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),
+  updateBusy: () => get<UpdateBusy>('/v1/update/busy'),
   saveSettings: (s: Settings) => post<Settings>('/v1/settings', s, 'PUT'),
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
@@ -2380,8 +2421,10 @@ export interface WorkRepo {
   /** The session the repository's Pipeline answer is read through. */
   via_session: string
   live: number
-  /** CHANGELOG's [Unreleased] section on `ref`, as of the last fetch. */
-  unreleased?: { ref: string; items: string[]; count: number; more?: boolean }
+  /** CHANGELOG's [Unreleased] section on `ref`, as of the last fetch; `kinds`
+   *  counts its entries by Keep a Changelog kind (Added, Fixed, …), absent from
+   *  an older daemon or when no entry has a kind. */
+  unreleased?: { ref: string; items: string[]; count: number; more?: boolean; kinds?: Partial<Record<string, number>> }
   tags?: { last?: { name: string; at: number }; gap_median_ms?: number; gaps: number }
   /** Commits on the default branch since the last tag. */
   ahead_of_tag?: number

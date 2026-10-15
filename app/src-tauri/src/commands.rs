@@ -126,6 +126,15 @@ pub async fn app_update_check<R: Runtime>(app: AppHandle<R>) -> Result<crate::up
     Ok(crate::updater::check(app).await)
 }
 
+/// Download and verify, and hold it for a later install: Update
+/// automatically, once the daemon's release check found a newer version.
+#[tauri::command]
+pub async fn app_update_download<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<crate::updater::Info, ()> {
+    Ok(crate::updater::download(app).await)
+}
+
 /// Download, verify, install and restart. Returns only when it did not.
 #[tauri::command]
 pub async fn app_update_install<R: Runtime>(app: AppHandle<R>) -> Result<crate::updater::Info, ()> {
