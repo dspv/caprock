@@ -1,8 +1,8 @@
 /**
  * Caprock's own cost on the status strip — *caprock 1.0 GB · 2.2 GB*, memory
- * then disk — and the panel a click opens: what that memory and disk are spent
- * on, the daemon's disk reads and writes, the warnings with the duplicates
- * behind them, what Caprock did about it on its own, and the buttons. The
+ * then disk — and the doctor a click opens: one verdict line, Clean up, a row
+ * per kind of problem in plain words, and what the memory and disk are spent
+ * on behind the breakdown. The
  * owner asked (2026-10-13, translated): show the memory Caprock takes and
  * what it is spent on, so a user can tell at a glance whether a slowdown is
  * Caprock or not; and disk.
@@ -14,8 +14,8 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, errText } from '@/lib/api'
 import { fmtAgo } from '@/lib/format'
-import { fmtCPU, fmtMem, refreshResources, useResources, type ReapResult } from '@/lib/resources'
-import { age, fmtBytes, footprintText, footprintTitle, ORPHAN_KIND, strayCount, useFootprint, useFootprintWithOrphans, verdictSummary, warnings, windowUsage, type Footprint, type FootprintVerdict, type Orphan, type OrphanStopResult } from '@/lib/footprint'
+import { fmtCPU, fmtMem, useResources } from '@/lib/resources'
+import { age, cleanupList, doctorHeadline, doctorRows, fmtBytes, footprintText, footprintTitle, plainName, safeToStop, startedFrom, useFootprint, useFootprintWithOrphans, warnings, windowUsage, type DoctorRow, type DoctorRowKey, type Footprint, type Orphan, type OrphanStopResult } from '@/lib/footprint'
 import { useNow } from '@/lib/useNow'
 import { useMenuDismiss } from './Cockpit'
 
@@ -115,12 +115,25 @@ export function CaprockFootprint({ owner }: { owner: boolean }) {
 const FRESH_MS = 30_000
 
 const BUTTON = 'h-[26px] shrink-0 rounded-[7px] border border-[var(--app-hairline-strong)] px-2.5 text-[12px] text-fg hover:border-accent disabled:opacity-50'
+const PRIMARY = 'h-[28px] shrink-0 rounded-[7px] bg-accent px-3 text-[12.5px] font-medium text-bg hover:brightness-110 disabled:opacity-50'
+const SMALL = 'h-[22px] shrink-0 rounded-[6px] border border-[var(--app-hairline-strong)] px-2 text-[11.5px] text-fg-muted hover:border-accent hover:text-fg disabled:opacity-50'
 
-/** The panel above the strip: `caprock doctor` in the window. */
+/** Where a confirmation is open: under the verdict for Clean up, under a row for its Stop. */
+type Confirming = { at: 'all' | DoctorRowKey; items: Orphan[] }
+
+/**
+ * The panel above the strip: `caprock doctor` in the window, in plain words
+ * (owner, 2026-10-15: "nothing is understandable"). One verdict line; when
+ * something can be stopped, one Clean up; a row per kind of problem with a
+ * line of why, its size and a small Stop; pids, paths and the daemon's own
+ * sentences under each row's Details; the memory and disk breakdown behind
+ * *Show breakdown*. Nothing is stopped without the confirmation, which lists
+ * every process with its own checkbox (ADR-059).
+ */
 export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose, className = 'absolute bottom-[25px] right-0 z-40' }: {
   f: Footprint
   owner: boolean
-  /** Ask the daemon again now: *Check now*, and after a reap. */
+  /** Ask the daemon again now: *Check now*, and after a stop. */
   onCheck?: () => void
   onClose?: () => void
   className?: string
@@ -136,7 +149,9 @@ export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose
   const now = useNow(5_000)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string>()
-  // *Check now*: "checking…" until an answer newer than the one shown lands.
+  const [confirm, setConfirm] = useState<Confirming>()
+  const [breakdown, setBreakdown] = useState(false)
+  // *Check now*: "Checking…" until an answer newer than the one shown lands.
   const [checking, setChecking] = useState<number>()
   useEffect(() => {
     if (checking === undefined) return
@@ -149,70 +164,211 @@ export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose
     onCheck()
   }
   const sinceCheck = now - f.at
-  const checked = checking !== undefined ? 'checking…' : sinceCheck < 10_000 ? 'checked just now' : `checked ${fmtAgo(f.at, now)}`
-  const warns = warnings(f).length
-  const h = f.memory.hosts
-  const reap = async () => {
+  const checked = checking !== undefined ? 'Checking…' : sinceCheck < 10_000 ? 'Checked just now' : `Checked ${fmtAgo(f.at, now)}`
+  const rows = doctorRows(f)
+  const all = owner ? cleanupList(rows) : []
+  const safe = all.filter(safeToStop)
+  const head = doctorHeadline(f)
+  const stop = async (items: Orphan[]) => {
+    if (!items.length) { setConfirm(undefined); return }
     setBusy(true)
     setNote(undefined)
     try {
-      const r: ReapResult = await api.reapOrphans()
-      const n = r.reaped.length
-      const failed = r.failed?.length ?? 0
-      setNote(`${n === 0 ? 'Nothing to stop' : `Stopped ${n}`}${failed ? `, ${failed} would not stop` : ''}${r.kept.length ? ` · ${r.kept.length} left running: something still runs in them` : ''}.`)
-      await refreshResources()
+      const r: OrphanStopResult = await api.stopOrphans(items.map((x) => ({ pid: x.pid, started_at: x.started_at })))
+      const ok = r.stopped ?? []
+      const bad = r.failed ?? []
+      const freed = ok.reduce((s, x) => s + x.mem_bytes, 0)
+      setNote([
+        ok.length ? `Stopped ${ok.length}${freed ? `, about ${fmtBytes(freed)} freed` : ''}.` : '',
+        bad.length ? `${bad.length} could not be stopped${bad.length === 1 ? `: ${bad[0]!.error}` : ''}.` : '',
+      ].filter(Boolean).join(' '))
       onCheck()
     } catch (e) {
       setNote(errText(e))
     } finally {
       setBusy(false)
+      setConfirm(undefined)
     }
   }
   const copy = () => {
     void navigator.clipboard?.writeText(footprintText(f)).then(() => setNote('Report copied.'), () => setNote('Could not reach the clipboard.'))
   }
-  const body = (
-    <ClosePanel.Provider value={onClose}>
-      <Body f={f} now={now} owner={owner} onStopped={onCheck} />
-    </ClosePanel.Provider>
+  const confirmBox = (at: Confirming['at']) => confirm?.at === at && (
+    <StopConfirm items={confirm.items} at={f.at} busy={busy} onStop={(xs) => void stop(xs)} onCancel={() => setConfirm(undefined)} />
   )
+  const looking = owner && !head.ok && f.orphans && !f.orphans.scanned && f.orphans.count > 0
   return (
-    <div role="dialog" aria-label="Caprock on this computer" data-footprint-panel
-      className={`app-fade-in flex flex-col max-h-[calc(100vh-48px)] w-[340px] max-w-[calc(100vw-24px)] gap-2.5 overflow-y-auto rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-3 text-[12.5px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)] ${className}`}>
-      <div className="flex flex-col gap-0.5">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-[14px] font-semibold">Caprock on this computer</span>
-          {onClose && (
-            <button type="button" aria-label="Close" onClick={onClose} className="text-fg-faint hover:text-fg">×</button>
-          )}
+    <ClosePanel.Provider value={onClose}>
+      <div role="dialog" aria-label="Caprock on this computer" data-footprint-panel
+        className={`app-fade-in flex flex-col max-h-[calc(100vh-48px)] w-[360px] max-w-[calc(100vw-24px)] gap-3 overflow-y-auto rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-3.5 text-[12.5px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)] ${className}`}>
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-[14px] font-semibold">Caprock on this computer</span>
+            {onClose && (
+              <button type="button" aria-label="Close" onClick={onClose} className="text-fg-faint hover:text-fg">×</button>
+            )}
+          </div>
+          <div className="flex items-baseline justify-between gap-2 text-[11.5px] text-fg-faint">
+            <span data-checked title="caprock doctor, in the window">{checked}</span>
+            <button type="button" data-check-now onClick={check} disabled={checking !== undefined} className="text-fg-muted hover:text-accent disabled:opacity-50">Check now</button>
+          </div>
         </div>
-        {/* The command's name, so the panel and `caprock doctor` read as one thing. */}
-        <div className="flex items-baseline justify-between gap-2 text-[11.5px] text-fg-faint">
-          <span><span className="mono">doctor</span> · <span data-checked>{checked}</span></span>
-          <button type="button" data-check-now onClick={check} disabled={checking !== undefined} className="text-fg-muted hover:text-accent disabled:opacity-50">Check now</button>
+
+        <div className="flex flex-col gap-2">
+          <p data-verdict-summary data-ok={head.ok || undefined} className={`flex items-center gap-2 text-[14px] font-medium leading-[18px] ${head.ok ? 'text-ok' : 'text-fg'}`}>
+            {head.ok ? <span aria-hidden>✓</span> : <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full bg-warn" />}
+            {head.text}
+          </p>
+          {safe.length > 0 && !confirm && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" data-cleanup className={PRIMARY} disabled={busy} onClick={() => { setNote(undefined); setConfirm({ at: 'all', items: all }) }}>
+                {busy ? 'Stopping…' : `Clean up (frees ~${fmtBytes(safe.reduce((s, x) => s + x.mem_bytes, 0))})`}
+              </button>
+              <span className="text-[11.5px] text-fg-muted">You see the list first.</span>
+            </div>
+          )}
+          {looking && <p className="text-[11.5px] text-fg-muted">Looking for what can be stopped…</p>}
+          {confirmBox('all')}
+        </div>
+
+        {rows.length > 0 && (
+          <ul data-doctor-rows className="flex flex-col divide-y divide-[var(--app-hairline)] border-y border-[var(--app-hairline)]">
+            {rows.map((r) => (
+              <DoctorRowView key={r.key} r={r} at={f.at} canStop={owner && r.stoppable.length > 0} busy={busy}
+                onStop={() => { setNote(undefined); setConfirm({ at: r.key, items: r.stoppable }) }}>
+                {confirmBox(r.key)}
+              </DoctorRowView>
+            ))}
+          </ul>
+        )}
+
+        {note && <p role="status" data-doctor-note className="text-[11.5px] text-fg-muted">{note}</p>}
+
+        {breakdown && <Breakdown f={f} now={now} />}
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <button type="button" data-breakdown aria-expanded={breakdown} onClick={() => setBreakdown((b) => !b)}
+            className="flex items-center gap-1 text-[12px] text-fg-muted hover:text-accent">
+            <span aria-hidden className={`inline-block text-[10px] transition-transform ${breakdown ? 'rotate-90' : ''}`}>›</span>
+            {breakdown ? 'Hide breakdown' : `What the ${fmtMem(f.memory.total_mem_bytes)} is spent on`}
+          </button>
+          <button type="button" data-copy-report className={BUTTON} onClick={copy} title="The same report `caprock doctor` prints, as text">Copy report</button>
         </div>
       </div>
-      <p data-verdict-summary className={`flex items-center gap-1.5 font-medium ${warns ? 'text-warn' : 'text-ok'}`}>
-        {warns ? <span aria-hidden className="h-[6px] w-[6px] rounded-full bg-warn" /> : <span aria-hidden>✓</span>}
-        {verdictSummary(f)}
-      </p>
-      {body}
-      {note && <p role="status" className="text-[11.5px] text-fg-muted">{note}</p>}
-      <div className="flex flex-wrap items-center gap-2">
-        {owner && h.reapable > 0 && (
-          <button type="button" data-reap className={BUTTON} disabled={busy} onClick={() => void reap()}
-            title="Stops holders whose program has exited, and holders nothing can reach that hold an idle shell. One running an agent or a command is never stopped.">
-            {busy ? 'Stopping…' : `Stop ${h.reapable} ${h.reapable === 1 ? 'orphan' : 'orphans'}`}
-          </button>
+    </ClosePanel.Provider>
+  )
+}
+
+/** One row: what, one line of why, the size, a small Stop; the technical part under Details. */
+function DoctorRowView({ r, at, canStop, busy, onStop, children }: {
+  r: DoctorRow
+  at: number
+  canStop: boolean
+  busy: boolean
+  onStop: () => void
+  children?: ReactNode
+}) {
+  const hasDetails = r.procs.length > 0 || Boolean(r.said)
+  return (
+    <li data-doctor-row={r.key} data-warn={r.warn || undefined} className="flex flex-col gap-0.5 py-2">
+      <div className="flex items-center gap-2">
+        <span aria-hidden className={`h-[6px] w-[6px] shrink-0 rounded-full ${r.warn ? 'bg-warn' : 'bg-[var(--app-hairline-strong)]'}`} />
+        <span className="min-w-0 flex-1 text-fg">
+          {r.title}{r.count !== undefined && <span className="num text-fg-faint"> ({r.count})</span>}
+        </span>
+        {r.value && <span className={`num shrink-0 text-right ${r.key === 'reads' && r.warn ? 'text-warn' : 'text-fg-muted'}`}>{r.value}</span>}
+        {canStop && (
+          <button type="button" data-row-stop disabled={busy} onClick={onStop} aria-label={`Stop: ${r.title}`} className={SMALL}>Stop</button>
         )}
-        <button type="button" data-copy-report className={BUTTON} onClick={copy} title="The same report `caprock doctor` prints, as text">Copy report</button>
+      </div>
+      {r.reason && <p className="pl-[14px] text-[11.5px] leading-[15px] text-fg-muted">{r.reason}</p>}
+      {hasDetails && (
+        <details data-row-details className="group pl-[14px]">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] text-fg-faint hover:text-fg-muted [&::-webkit-details-marker]:hidden">
+            <span aria-hidden className="inline-block text-[9px] transition-transform group-open:rotate-90">›</span>Details
+          </summary>
+          <div className="mt-1 flex flex-col gap-1.5 rounded-[6px] bg-[var(--app-hairline)] px-2 py-1.5 font-mono text-[10.5px] leading-[14px] text-fg-muted">
+            {r.procs.map((p) => {
+              const from = startedFrom(p.data_dir, p.exe)
+              return (
+                <div key={p.pid} data-orphan={p.pid} className="flex flex-col">
+                  <span className="text-fg">{p.label ? `${p.label} · ` : ''}pid {p.pid} · {fmtMem(p.mem_bytes)}{p.started_at ? ` · ${age(at - p.started_at)}` : ''}</span>
+                  {from && <span>started by: {from}</span>}
+                  {p.exe && <span className="break-all">{p.exe}</span>}
+                  {p.data_dir && <span className="break-all">data {p.data_dir}{p.data_dir_gone ? ' (gone)' : ''}</span>}
+                  {p.why && <span className="font-sans text-[11px]">{p.why}</span>}
+                </div>
+              )
+            })}
+            {r.said && <p className="font-sans text-[11px]">{r.said}</p>}
+          </div>
+        </details>
+      )}
+      {children}
+    </li>
+  )
+}
+
+/**
+ * The one confirmation every stop goes through (ADR-059): each process on
+ * its own line with its own checkbox, the safe ones ticked, so the person
+ * sees and can untick each before the one click that stops them.
+ */
+function StopConfirm({ items, at, busy, onStop, onCancel }: { items: Orphan[]; at: number; busy: boolean; onStop: (xs: Orphan[]) => void; onCancel: () => void }) {
+  const [picked, setPicked] = useState<Set<number>>(() => new Set(items.filter(safeToStop).map((x) => x.pid)))
+  const chosen = items.filter((x) => picked.has(x.pid))
+  const freed = chosen.reduce((s, x) => s + x.mem_bytes, 0)
+  const toggle = (pid: number) => setPicked((s) => {
+    const n = new Set(s)
+    if (n.has(pid)) n.delete(pid)
+    else n.add(pid)
+    return n
+  })
+  return (
+    <div role="alertdialog" aria-label="Stop these processes" data-stop-confirm
+      onKeyDown={(e) => { if (e.code === 'Escape') { e.stopPropagation(); onCancel() } }}
+      className="mt-1 flex flex-col gap-2 rounded-[8px] border border-[var(--app-hairline-strong)] bg-[var(--app-hairline)] px-2.5 py-2">
+      <p className="text-[12px] text-fg">Stop these? <span className="text-fg-muted">Untick any you want to keep. Anything unsaved in them is lost.</span></p>
+      <ul className="flex flex-col gap-1">
+        {items.map((x) => {
+          const from = startedFrom(x.data_dir, x.exe)
+          const careful = !safeToStop(x)
+          return (
+            <li key={x.pid}>
+              <label className="flex cursor-pointer items-start gap-2 text-[12px]">
+                <input type="checkbox" data-stop-pick={x.pid} checked={picked.has(x.pid)} onChange={() => toggle(x.pid)} disabled={busy} className="mt-[2px] h-3.5 w-3.5 shrink-0 accent-accent" />
+                <span className="min-w-0 flex-1">
+                  <span className="text-fg">{plainName(x)}</span>
+                  <span className="text-fg-faint"> · {from ?? `running ${age(at - x.started_at)}`}</span>
+                  {careful && <span className="block text-[11px] text-fg-muted">{carefulWhy(x)}</span>}
+                </span>
+                <span className="num shrink-0 text-fg-muted">{fmtMem(x.mem_bytes)}</span>
+              </label>
+            </li>
+          )
+        })}
+      </ul>
+      <div className="flex items-center gap-2">
+        <button type="button" data-stop-confirm-yes autoFocus className={PRIMARY} disabled={busy || chosen.length === 0} onClick={() => onStop(chosen)}>
+          {busy ? 'Stopping…' : chosen.length ? `Stop ${chosen.length}${freed ? ` · frees ~${fmtBytes(freed)}` : ''}` : 'Stop'}
+        </button>
+        <button type="button" data-stop-confirm-no className={BUTTON} disabled={busy} onClick={onCancel}>Cancel</button>
       </div>
     </div>
   )
 }
 
-// --- the pieces ------------------------------------------------------------
+/** Why a listed process is not ticked for you. */
+function carefulWhy(o: Orphan): string {
+  switch (o.kind) {
+    case 'caprock_daemon': return 'Not a test folder: it may be a Caprock you use.'
+    case 'caprock_holder': return 'Something still runs in it; stopping closes that terminal.'
+    case 'caprock_other': return 'Part of an app; it may still be in use.'
+    default: return 'Check it before stopping.'
+  }
+}
 
+// --- the pieces ------------------------------------------------------------
 type Line = { key: string; label: ReactNode; value: string; aside?: string; tone?: 'warn' }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
@@ -299,12 +455,6 @@ export function shortExe(p: string): string {
   return m ? m[1]! : p
 }
 
-/** A path that wraps at its slashes, never inside a name. */
-function Path({ children }: { children: string }) {
-  const parts = shortExe(children).split(/(?<=[/\\])/)
-  return <span className="mono" title={children}>{parts.map((x, i) => <span key={i}>{x}{i < parts.length - 1 && <wbr />}</span>)}</span>
-}
-
 const ClosePanel = createContext<(() => void) | undefined>(undefined)
 
 /** To Settings' Storage section: what fills the database, and the retention that trims it. */
@@ -314,74 +464,6 @@ function StorageLink() {
     <button type="button" data-storage-link onClick={() => { close?.(); openStorageSettings() }} className="text-[11px] font-normal normal-case tracking-normal text-fg-muted hover:text-accent">
       Storage settings →
     </button>
-  )
-}
-
-/**
- * Each warning as one short line a person reads at a glance, the processes
- * behind it under it, and the daemon's own sentence one click down. A code
- * this build does not know shows the daemon's sentence as it is.
- */
-function warningHead(f: Footprint, v: FootprintVerdict): { head: string; detail?: ReactNode } {
-  const d = f.duplicates
-  switch (v.code) {
-    case 'duplicate_daemon': {
-      const ds = d.daemons ?? []
-      return {
-        head: `${plural(ds.length, 'other Caprock daemon')} running`,
-        detail: ds.map((p) => <li key={p.pid}><span className="num">pid {p.pid} · {fmtMem(p.mem_bytes)}</span> · <Path>{p.exe ?? 'unknown'}</Path></li>),
-      }
-    }
-    case 'duplicate_app': {
-      const as = d.apps ?? []
-      return {
-        head: `${as.length} copies of the desktop app`,
-        detail: as.map((p) => <li key={p.pid}><span className="num">pid {p.pid}</span> · <Path>{p.exe ?? 'unknown'}</Path></li>),
-      }
-    }
-    case 'orphans': {
-      const h = f.memory.hosts
-      return {
-        head: `${plural(h.orphans, 'orphaned terminal holder')} of ${h.count}`,
-        detail: (d.other_install_holders.exes ?? []).map((e) => <li key={e.exe}><span className="num">{e.count}</span> from <Path>{e.exe}</Path></li>),
-      }
-    }
-    case 'disk_reads_high': {
-      const hr = f.disk_io?.last_hour
-      return { head: hr ? `Read ${fmtBytes(hr.read_bytes)} from disk in the last ${ioSpan(f)}` : v.text }
-    }
-    case 'stray_processes': {
-      const n = strayCount(f.orphans) + (f.orphans?.by_kind?.claude_child ?? 0)
-      return { head: n > 0 ? `${plural(n, 'process', 'processes')} ${n === 1 ? 'looks' : 'look'} abandoned` : v.text }
-    }
-    case 'database_large': return { head: `The database is ${fmtBytes(f.disk.database_bytes)}` }
-    case 'wal_large': return { head: `The write-ahead log is ${fmtBytes(f.disk.wal_bytes)}` }
-  }
-  return { head: v.text }
-}
-
-function Warnings({ f }: { f: Footprint }) {
-  const warns = warnings(f)
-  if (!warns.length) return null
-  return (
-    <ul data-warnings className="flex flex-col gap-1 rounded-[8px] border border-warn/40 bg-warn/10 px-2.5 py-1.5">
-      {warns.map((v) => {
-        const { head, detail } = warningHead(f, v)
-        return (
-          <li key={v.code} data-verdict={v.code}>
-            <details className="group">
-              <summary className="flex cursor-pointer list-none items-baseline gap-1.5 text-fg [&::-webkit-details-marker]:hidden" title={v.text}>
-                <span aria-hidden className="h-[5px] w-[5px] shrink-0 -translate-y-[2px] rounded-full bg-warn" />
-                <span className="min-w-0 flex-1">{head}</span>
-                {head !== v.text && <span aria-hidden className="shrink-0 text-[10px] text-fg-faint transition-transform group-open:rotate-90">›</span>}
-              </summary>
-              {head !== v.text && <p className="mt-0.5 pl-[11px] text-[11.5px] text-fg-muted">{v.text}</p>}
-            </details>
-            {detail && Array.isArray(detail) && detail.length > 0 && <ul data-duplicates className="flex flex-col pl-[11px] text-[11px] text-fg-muted">{detail}</ul>}
-          </li>
-        )
-      })}
-    </ul>
   )
 }
 
@@ -400,14 +482,13 @@ function Actions({ f, now, limit = 2 }: { f: Footprint; now: number; limit?: num
   )
 }
 
-// --- the body: sections stacked under headers (owner's pick, 2026-10-13) ---
 
-function Body({ f, now, owner, onStopped }: { f: Footprint; now: number; owner: boolean; onStopped: () => void }) {
+// --- the breakdown: sections stacked under headers (owner's pick, 2026-10-13) ---
+
+function Breakdown({ f, now }: { f: Footprint; now: number }) {
   const io = ioLines(f)
   return (
-    <>
-      <Warnings f={f} />
-      <Orphans f={f} owner={owner} onStopped={onStopped} />
+    <div data-breakdown-body className="flex flex-col gap-2.5">
       <section data-memory className="flex flex-col gap-1">
         <Header title="Memory" right={<span className="flex items-baseline gap-2"><span className="num text-[11px] text-fg-faint">{fmtCPU(f.memory.total_cpu_pct)} CPU</span><span className="num font-semibold">{fmtMem(f.memory.total_mem_bytes)}</span></span>} />
         <ul className="flex flex-col">{memoryLines(f).map((l) => <Row key={l.key} l={l} />)}</ul>
@@ -428,143 +509,6 @@ function Body({ f, now, owner, onStopped }: { f: Footprint; now: number; owner: 
           <Actions f={f} now={now} />
         </section>
       )}
-    </>
-  )
-}
-
-// --- orphans: what looks abandoned, and the Advanced stop (ADR-059) --------
-
-/**
- * Processes on this machine that look abandoned, each with why. Read-only
- * until *Advanced* is switched on (off by default, on the computer itself
- * only): then each gets a checkbox and a Stop, and nothing is stopped
- * without a second click on the confirmation. The daemon scans again and
- * signals only what that scan lists with the start time shown here.
- */
-export function Orphans({ f, owner, onStopped }: { f: Footprint; owner: boolean; onStopped?: () => void }) {
-  const o = f.orphans
-  const [advanced, setAdvanced] = useState(false)
-  const [picked, setPicked] = useState<Set<number>>(() => new Set())
-  const [confirm, setConfirm] = useState<number[]>()
-  const [busy, setBusy] = useState(false)
-  const [note, setNote] = useState<string>()
-  if (!o) return null
-  const list = o.list ?? []
-  const byPid = new Map(list.map((x) => [x.pid, x]))
-  const chosen = [...picked].filter((p) => byPid.has(p))
-  const toggle = (pid: number) => setPicked((s) => {
-    const n = new Set(s)
-    if (n.has(pid)) n.delete(pid)
-    else n.add(pid)
-    return n
-  })
-  const stop = async (pids: number[]) => {
-    const targets = pids.flatMap((p) => {
-      const x = byPid.get(p)
-      return x ? [{ pid: p, started_at: x.started_at }] : []
-    })
-    if (!targets.length) { setConfirm(undefined); return }
-    setBusy(true)
-    setNote(undefined)
-    try {
-      const r: OrphanStopResult = await api.stopOrphans(targets)
-      const ok = r.stopped ?? []
-      const bad = r.failed ?? []
-      setNote([ok.length ? `Stopped ${ok.map((x) => `${x.label} (pid ${x.pid})`).join(', ')}.` : '', ...bad.map((x) => `pid ${x.pid} not stopped: ${x.error}.`)].filter(Boolean).join(' '))
-      setPicked(new Set())
-      onStopped?.()
-    } catch (e) {
-      setNote(errText(e))
-    } finally {
-      setBusy(false)
-      setConfirm(undefined)
-    }
-  }
-  const count = o.scanned ? list.length : o.count
-  const canStop = advanced && owner
-  return (
-    <section data-orphans className="flex flex-col gap-1">
-      <Header title="Orphans" right={
-        <span className="flex items-baseline gap-2">
-          {owner && list.length > 0 && (
-            <label className="flex cursor-pointer items-center gap-1 text-[11px] font-normal normal-case tracking-normal text-fg-muted" title="Show a Stop for each process. Off by default; nothing is stopped without your click.">
-              <input type="checkbox" data-advanced checked={advanced} onChange={(e) => { setAdvanced(e.target.checked); setConfirm(undefined) }} className="h-3 w-3 accent-accent" />
-              Advanced
-            </label>
-          )}
-          <span className={`num font-semibold ${strayCount(o) ? 'text-warn' : ''}`}>{count}</span>
-        </span>
-      } />
-      {!o.scanned && <p className="text-[11.5px] text-fg-muted">{o.count ? `${plural(o.count, 'process', 'processes')} at the last check; looking now…` : 'Looking…'}</p>}
-      {o.scanned && list.length === 0 && <p data-orphans-none className="text-[11.5px] text-fg-muted">Nothing looks abandoned.</p>}
-      {list.length > 0 && (
-        <ul className="flex flex-col gap-1.5">
-          {list.map((x) => (
-            <OrphanRow key={x.pid} o={x} at={f.at} advanced={canStop} picked={picked.has(x.pid)} busy={busy}
-              onPick={() => toggle(x.pid)} onStop={() => setConfirm([x.pid])} />
-          ))}
-        </ul>
-      )}
-      {canStop && list.length > 0 && !confirm && (
-        <div className="flex items-center gap-2">
-          <button type="button" data-stop-selected className={BUTTON} disabled={busy || chosen.length === 0} onClick={() => setConfirm(chosen)}>
-            Stop selected{chosen.length ? ` (${chosen.length})` : ''}
-          </button>
-          <span className="text-[11px] text-fg-faint">SIGTERM, then SIGKILL after 5 s</span>
-        </div>
-      )}
-      {confirm && (
-        <div role="alertdialog" aria-label="Stop processes" data-stop-confirm className="flex flex-col gap-1.5 rounded-[8px] border border-warn/40 bg-warn/10 px-2.5 py-1.5">
-          <p className="text-[12px] text-fg">
-            Stop {confirm.length === 1 ? `${byPid.get(confirm[0]!)?.label ?? 'it'} (pid ${confirm[0]})` : plural(confirm.length, 'process', 'processes')}?
-            <span className="text-fg-muted"> Caprock may not have started {confirm.length === 1 ? 'it' : 'them'}; anything unsaved in {confirm.length === 1 ? 'it' : 'them'} is lost.</span>
-          </p>
-          <div className="flex gap-2">
-            <button type="button" data-stop-confirm-yes className={`${BUTTON} text-warn`} disabled={busy} onClick={() => void stop(confirm)}>{busy ? 'Stopping…' : 'Stop'}</button>
-            <button type="button" data-stop-confirm-no className={BUTTON} disabled={busy} onClick={() => setConfirm(undefined)}>Cancel</button>
-          </div>
-        </div>
-      )}
-      {note && <p role="status" data-orphans-note className="text-[11.5px] text-fg-muted">{note}</p>}
-      {o.note && o.scanned && <p className="text-[11px] text-fg-faint">{o.note}</p>}
-    </section>
-  )
-}
-
-function OrphanRow({ o, at, advanced, picked, busy, onPick, onStop }: {
-  o: Orphan
-  at: number
-  advanced: boolean
-  picked: boolean
-  busy: boolean
-  onPick: () => void
-  onStop: () => void
-}) {
-  const where = [o.exe, o.data_dir ? `data ${o.data_dir}${o.data_dir_gone ? ' (gone)' : ''}` : ''].filter(Boolean).join(' · ')
-  return (
-    <li data-orphan={o.pid} data-kind={o.kind} className="flex items-start gap-1.5">
-      {advanced && (
-        <input type="checkbox" aria-label={`Select pid ${o.pid}`} data-orphan-pick checked={picked} onChange={onPick} disabled={busy} className="mt-[3px] h-3 w-3 shrink-0 accent-accent" />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-1.5">
-          <span className="min-w-0 flex-1 truncate" title={`${ORPHAN_KIND[o.kind] ?? o.kind}${where ? ` · ${where}` : ''}`}>
-            <span className="mono text-fg">{o.label}</span>
-            <span className="num text-fg-faint"> · pid {o.pid}</span>
-          </span>
-          <span className="num shrink-0 text-[11px] text-fg-faint" title="how long it has run">{age(at - o.started_at)}</span>
-          <span className="num w-[6ch] shrink-0 text-right text-fg">{fmtMem(o.mem_bytes)}</span>
-        </div>
-        <p className="text-[11px] leading-[15px] text-fg-muted">{o.why}</p>
-        {where && <p className="truncate text-[10.5px] text-fg-faint" title={where}>{where}</p>}
-      </div>
-      {advanced && (
-        <button type="button" data-orphan-stop disabled={busy} onClick={onStop}
-          className="h-[20px] shrink-0 rounded-[6px] border border-[var(--app-hairline-strong)] px-1.5 text-[11px] text-fg-muted hover:border-warn hover:text-warn disabled:opacity-50"
-          title={o.auto ? 'The daemon stops this one on its own; this stops it now.' : 'Stop this process: SIGTERM, then SIGKILL after 5 s.'}>
-          Stop
-        </button>
-      )}
-    </li>
+    </div>
   )
 }
