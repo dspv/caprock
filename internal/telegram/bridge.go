@@ -422,6 +422,23 @@ func (b *Bridge) Status() Status {
 	return out
 }
 
+// ErrNotPaired is a photo asked for with no bot or no chat set up.
+var ErrNotPaired = errors.New("telegram: connect a bot and pair a chat in Settings first")
+
+// SendPhoto sends a PNG with a caption to the paired chat, now: a share
+// card the owner chose to send with a click (POST /v1/telegram/photo). It
+// does not go through the outbox — the person is watching the button and
+// wants the outcome, not a queue — and needs only a bot and a chat, not the
+// alerts or the two-way chat switched on.
+func (b *Bridge) SendPhoto(ctx context.Context, png []byte, caption string) error {
+	token, chat := b.Host.Bot()
+	if token == "" || chat == "" {
+		return ErrNotPaired
+	}
+	_, err := b.client(token).SendPhoto(ctx, chat, png, caption)
+	return err
+}
+
 // --- conversations ---
 
 // Converse marks a session as one the owner talks to from Telegram: its

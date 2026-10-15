@@ -102,6 +102,9 @@ describe('Second Brain', () => {
     // The graph first; the list a click away, and remembered.
     await waitFor(() => expect(document.querySelector('[data-brain-graph="full"]')).not.toBeNull())
     expect(screen.getByRole('img', { name: /Second Brain graph: 3 nodes/ })).toBeTruthy()
+    // A fit button over it, and a legend drawn as the graph is: memory, topic, project.
+    expect(screen.getByRole('button', { name: 'Fit the graph' })).toBeTruthy()
+    expect(document.querySelector('[data-brain-legend]')!.textContent).toMatch(/Memory.*Topic.*Project/)
     fireEvent.click(screen.getByRole('radio', { name: 'List' }))
     expect(localStorage.getItem('caprock-brain-view')).toBe('list')
     const row = await screen.findByRole('button', { name: /Keep SQLite/ })

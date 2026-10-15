@@ -508,3 +508,51 @@ func contains(ss []string, s string) bool {
 	}
 	return false
 }
+
+// SendPhoto needs a bot and a chat, cuts a long caption to Telegram's limit,
+// and never puts the token in its error.
+func TestSendPhotoNeedsAPairedChat(t *testing.T) {
+	const ptoken = "9:SECRET-bridge-photo"
+	bot := telegramtest.New(ptoken, "b")
+	defer bot.Close()
+	h := &photoHost{}
+	b := telegram.New(h, t.TempDir(), nil)
+	b.Base = bot.URL()
+	if err := b.SendPhoto(context.Background(), []byte("x"), "c"); !errors.Is(err, telegram.ErrNotPaired) {
+		t.Fatalf("no bot: %v", err)
+	}
+	h.token, h.chat = ptoken, "5"
+	long := strings.Repeat("é", telegram.MaxCaption+50)
+	if err := b.SendPhoto(context.Background(), []byte("png"), long); err != nil {
+		t.Fatal(err)
+	}
+	s := bot.Sent()
+	if len(s) != 1 || s[0].Method != "sendPhoto" || len([]rune(s[0].Text)) != telegram.MaxCaption || string(s[0].Photo) != "png" {
+		t.Fatalf("sent = %+v", s)
+	}
+	h.token = "9:SECRET-wrong"
+	if err := b.SendPhoto(context.Background(), []byte("png"), ""); err == nil || strings.Contains(err.Error(), "SECRET") {
+		t.Fatalf("a refused token: %v", err)
+	}
+}
+
+type photoHost struct{ token, chat string }
+
+func (h *photoHost) Bot() (string, string)                             { return h.token, h.chat }
+func (h *photoHost) SaveBot(string) error                              { return nil }
+func (h *photoHost) SaveChat(string) error                             { return nil }
+func (h *photoHost) Licensed() bool                                    { return false }
+func (h *photoHost) ChatOn() bool                                      { return false }
+func (h *photoHost) AlertsOn() bool                                    { return false }
+func (h *photoHost) Sessions(context.Context) ([]telegram.Live, error) { return nil, nil }
+func (h *photoHost) Session(context.Context, string) (telegram.Live, bool) {
+	return telegram.Live{}, false
+}
+func (h *photoHost) Type(string, string) error                            { return nil }
+func (h *photoHost) Answer(string, string, bool) error                    { return nil }
+func (h *photoHost) Stop(string) error                                    { return nil }
+func (h *photoHost) Projects(context.Context) ([]telegram.Project, error) { return nil, nil }
+func (h *photoHost) SpawnMode() string                                    { return "" }
+func (h *photoHost) Start(context.Context, string, string, string) (string, error) {
+	return "", nil
+}

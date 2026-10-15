@@ -494,6 +494,12 @@ type Server struct {
 	usual *answerCache
 	// trends holds the Today cells' 14-day trends (trendsTTL).
 	trends *answerCache
+	// pipeAgents holds the Pipeline's agent figures per repository
+	// (pipeAgentsTTL).
+	pipeAgents *answerCache
+	// pipeAgentsPast holds the part of them before today's midnight
+	// (pipeAgentsPastTTL), so a request scans only today.
+	pipeAgentsPast *answerCache
 	// drill holds the tool drill-downs (drillTTL).
 	drill *answerCache
 	// deck holds the session deck's composed Pull requests & CI answers
@@ -527,8 +533,8 @@ func New(d Deps) *Server {
 		}
 	}
 	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
-		trends: newAnswerCache(trendsTTL, trendsMaxStale, time.Now),
-		week:   newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
+		trends: newAnswerCache(trendsTTL, trendsMaxStale, time.Now), pipeAgents: newAnswerCache(pipeAgentsTTL, trendsMaxStale, time.Now), pipeAgentsPast: newAnswerCache(pipeAgentsPastTTL, trendsMaxStale, time.Now),
+		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache()}
 	s.ws.hold = s.holdSocket
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
@@ -620,6 +626,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/telegram/pair", s.handleTelegramPair)
 	m.HandleFunc("DELETE /v1/telegram/pair", s.handleTelegramCancelPair)
 	m.HandleFunc("DELETE /v1/telegram", s.handleTelegramDisconnect)
+	m.HandleFunc("POST /v1/telegram/photo", s.handleTelegramPhoto)
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
@@ -677,6 +684,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("GET /v1/queue", s.handleQueueBoard)
 	m.HandleFunc("GET /v1/work", s.handleWork)
+	m.HandleFunc("GET /v1/pipeline/agents", s.handlePipelineAgents)
 	m.HandleFunc("GET /v1/agents/{id}/queue", s.handleQueue)
 	m.HandleFunc("POST /v1/agents/{id}/queue", s.handleQueueSend)
 	m.HandleFunc("PATCH /v1/agents/{id}/queue/{qid}", s.handleQueueEdit)
