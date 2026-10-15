@@ -4,8 +4,9 @@
 // The Work board's release column asks two questions: what is waiting to
 // ship, and how often does this repository ship. Both are answered from git
 // as it stands on this machine: the CHANGELOG's [Unreleased] section on the
-// remote's default branch (`git show origin/HEAD:CHANGELOG.md`) and the
-// newest tags. Nothing here fetches: the answer is only as fresh as the
+// remote's default branch (`git show origin/HEAD:CHANGELOG.md`), plus the
+// changelog fragments in changes/unreleased/ on that branch for a repository
+// that keeps one file per change, and the newest tags. Nothing here fetches: the answer is only as fresh as the
 // user's last `git fetch`, and the board says so. No release time is
 // predicted; the median gap is a measured spacing, shown as one.
 package relplan
@@ -84,6 +85,36 @@ func ParseUnreleased(changelog []byte) (Unreleased, bool) {
 		}
 	}
 	return u, found
+}
+
+// FragmentsDir is where a repository that keeps one file per change holds
+// the entries waiting for the next release (changes/README.md): each file is
+// a `---`/`kind: …`/`---` front matter and then its bullets.
+const FragmentsDir = "changes/unreleased"
+
+// AddFragment counts one fragment's top-level bullets into u, as
+// ParseUnreleased counts the section's: the front matter is skipped, and a
+// file without a closing `---` is read as bullets alone.
+func AddFragment(u *Unreleased, fragment []byte) {
+	text := strings.ReplaceAll(string(fragment), "\r\n", "\n")
+	if rest, ok := strings.CutPrefix(text, "---\n"); ok {
+		if _, body, ok := strings.Cut(rest, "\n---\n"); ok {
+			text = body
+		}
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if !strings.HasPrefix(line, "- ") && !strings.HasPrefix(line, "* ") {
+			continue
+		}
+		item := strings.TrimSpace(line[2:])
+		if item == "" {
+			continue
+		}
+		u.Count++
+		if len(u.Items) < MaxItems {
+			u.Items = append(u.Items, item)
+		}
+	}
 }
 
 // Tag is one tag and when it was made (unix ms): an annotated tag's own
@@ -168,6 +199,67 @@ func Changelog(ctx context.Context, dir, rev string) ([]byte, bool) {
 		return nil, false
 	}
 	return out, true
+}
+
+// Fragments is the text of every `.md` file in FragmentsDir at rev, in file
+// name order, read with two git processes however many there are. ok is
+// false when rev has no such directory.
+func Fragments(ctx context.Context, dir, rev string) ([][]byte, bool) {
+	out, err := runRaw(ctx, dir, "ls-tree", "-z", "--name-only", rev, FragmentsDir+"/")
+	if err != nil {
+		return nil, false
+	}
+	var paths []string
+	for _, p := range strings.Split(string(out), "\x00") {
+		if strings.HasSuffix(p, ".md") {
+			paths = append(paths, p)
+		}
+	}
+	if len(paths) == 0 {
+		return nil, len(out) > 0
+	}
+	sort.Strings(paths)
+	var in strings.Builder
+	for _, p := range paths {
+		in.WriteString(rev + ":" + p + "\n")
+	}
+	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
+	defer cancel()
+	cmd := hidewin.CommandContext(ctx, "git", "-C", dir, "cat-file", "--batch")
+	cmd.Stdin = strings.NewReader(in.String())
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	if err := cmd.Run(); err != nil {
+		return nil, false
+	}
+	return parseBatch(buf.Bytes()), true
+}
+
+// parseBatch splits `git cat-file --batch` output into the blobs' contents:
+// "<sha> blob <size>\n<content>\n" each; a "missing" line is skipped.
+func parseBatch(b []byte) [][]byte {
+	var blobs [][]byte
+	for len(b) > 0 {
+		nl := bytes.IndexByte(b, '\n')
+		if nl < 0 {
+			break
+		}
+		f := strings.Fields(string(b[:nl]))
+		b = b[nl+1:]
+		if len(f) != 3 || f[1] != "blob" {
+			continue
+		}
+		n, err := strconv.Atoi(f[2])
+		if err != nil || n > len(b) {
+			break
+		}
+		blobs = append(blobs, b[:n])
+		b = b[n:]
+		if len(b) > 0 && b[0] == '\n' {
+			b = b[1:]
+		}
+	}
+	return blobs
 }
 
 // Tags is the repository's newest TagsRead tags, newest first.

@@ -22,9 +22,10 @@
  * link to the moment), what it is linked to, and the means to edit, pin or
  * delete it. Everything is read from and written to this machine's database.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { isPairedDevice, type BrainNode } from '@/lib/api'
 import { BRAIN_TAGLINE, isBuilding, isEntity, KIND_COLOR, KIND_LABEL, openBrainCapture, useBrainGraph, useBrainStatus } from '@/lib/brain'
+import { matchRanges } from '@/lib/brainsearch'
 import { fmtAgo } from '@/lib/format'
 import { keys } from '@/lib/appkeys'
 import { isAppMode } from '@/lib/appmode'
@@ -61,6 +62,21 @@ function Legend() {
       <span className="ml-auto hidden sm:inline">Drag to move · scroll to zoom · double-click to fit</span>
     </div>
   )
+}
+
+/** Text with the search's terms marked where they occur, in any case or accent. */
+function Marked({ text, terms }: { text: string; terms?: string[] }) {
+  const ranges = useMemo(() => matchRanges(text, terms), [text, terms])
+  if (ranges.length === 0) return <>{text}</>
+  const parts: ReactNode[] = []
+  let at = 0
+  ranges.forEach(([a, b], i) => {
+    if (a > at) parts.push(text.slice(at, a))
+    parts.push(<mark key={i} data-match className="rounded-[3px] bg-[color-mix(in_srgb,var(--color-accent)_22%,transparent)] text-fg">{text.slice(a, b)}</mark>)
+    at = b
+  })
+  if (at < text.length) parts.push(text.slice(at))
+  return <>{parts}</>
 }
 
 /** The spans the time filter offers, in days; 0 is all of it. */
@@ -153,8 +169,9 @@ export function BrainScreen({ node }: { node?: number }) {
                 className="input max-w-[360px] flex-1"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Search memories — a name, a decision…"
+                placeholder="Search titles and summaries — typos are fine"
                 aria-label="Search memories"
+                title="Every word has to match a title, summary, project or topic, in any case or accent; a close spelling counts when little matches exactly."
               />
               <select className="input !w-auto max-w-[260px]" value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
                 <option value="">Every project</option>
@@ -187,7 +204,8 @@ export function BrainScreen({ node }: { node?: number }) {
               <div className="min-w-0 flex-1">
                 <p className="px-0.5 pb-1.5 text-[12px] text-fg-muted">
                   {graph.total} {graph.total === 1 ? 'memory' : 'memories'}{filtered ? ' match' : ''}
-                  {graph.total > memories.length ? ` · the newest ${memories.length} shown` : ''}
+                  {graph.total > memories.length ? ` · the ${query ? 'best' : 'newest'} ${memories.length} shown` : ''}
+                  {graph.close && <span data-brain-close> · including close matches</span>}
                 </p>
                 {memories.length > 0 && (view === 'graph' || phase === 'building') ? (
                   <div data-brain-graph-view>
@@ -217,9 +235,9 @@ export function BrainScreen({ node }: { node?: number }) {
                           <span aria-hidden className="inline-block h-[8px] w-[8px] shrink-0 translate-y-[-1px] rounded-full" style={{ background: KIND_COLOR[n.kind] }} />
                           <span className="w-[62px] shrink-0 text-[11.5px] text-fg-muted">{KIND_LABEL[n.kind]}</span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13.5px] text-fg">{n.pinned && <span className="mr-1 text-accent" title="Pinned">●</span>}{n.title}</span>
+                            <span className="block truncate text-[13.5px] text-fg">{n.pinned && <span className="mr-1 text-accent" title="Pinned">●</span>}<Marked text={n.title} terms={graph.terms} /></span>
                             {(topicsOf.get(n.id)?.length ?? 0) > 0 && (
-                              <span className="mt-0.5 block truncate text-[11.5px] text-fg-muted">{topicsOf.get(n.id)!.map((t) => t.title).join(' · ')}</span>
+                              <span className="mt-0.5 block truncate text-[11.5px] text-fg-muted"><Marked text={topicsOf.get(n.id)!.map((t) => t.title).join(' · ')} terms={graph.terms} /></span>
                             )}
                           </span>
                           {n.source.project && <span className="hidden max-w-[140px] shrink-0 truncate text-[11.5px] text-fg-muted sm:inline">{n.source.project}</span>}

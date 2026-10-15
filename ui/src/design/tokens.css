@@ -689,6 +689,17 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   100% { box-shadow: 0 0 0 6px transparent; }
 }
 [data-app] .app-scroll { scrollbar-width: thin; scrollbar-color: var(--app-hairline-strong) transparent; }
+/* The sidebar footer (components/SidebarFooter.tsx): a band of its own under
+ * the list, never over it. A solid fill one step off the panel, so the
+ * translucent sidebar does not run through it, and a hairline on top: the
+ * edge between the list and the tools reads at a glance in every palette
+ * (owner, 2026-10-15, translated: "there isn't a clear enough boundary between
+ * the tools and what's above"). */
+[data-app] .app-sidebar-footer {
+  position: relative;
+  background: color-mix(in srgb, var(--color-fg) 3.5%, var(--color-panel));
+  border-top: 1px solid var(--app-hairline);
+}
 @media (prefers-reduced-motion: reduce) {
   [data-app] .app-row, [data-app] .app-chevron { transition: none; }
   [data-app] .app-fade-in, [data-app] .app-ring { animation: none; }
@@ -749,6 +760,18 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   background: var(--color-panel);
   box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.4);
 }
+/* A folded column's chip is part of its button (components/SidebarFooter
+ * KeySlot): a click on the key is a click on the icon. The pointer over
+ * either lights both, the key one step stronger, so the column reads as one
+ * control; the chip's own look does not change at rest. */
+[data-app] .app-kbd-press { cursor: pointer; transition: border-color 120ms var(--app-ease), background-color 120ms var(--app-ease); }
+[data-app] [data-key-slot]:hover .app-kbd-press,
+[data-app] [data-key-slot]:focus-within .app-kbd-press {
+  border-color: color-mix(in srgb, var(--color-fg) 45%, transparent);
+  background: color-mix(in srgb, var(--color-fg) 16%, transparent);
+}
+[data-app] [data-key-slot]:has(.app-kbd-press:hover) button { background: var(--app-row-hover); color: var(--color-fg); }
+@media (prefers-reduced-motion: reduce) { [data-app] .app-kbd-press { transition: none; } }
 /* A tab's project name when even a whole tab cannot hold it
  * (components/TerminalTabs.tsx TabProject): cut with an ellipsis at rest; under
  * the pointer the cut part slides into view inside the same box and back, so

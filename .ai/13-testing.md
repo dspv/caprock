@@ -148,11 +148,19 @@ already shipped were found by writing them (see
 
 - **`internal/relplan`** parses `[Unreleased]` (missing and empty sections,
   nested bullets and continuation lines dropped, CRLF, a heading with a
-  suffix, more than 30 entries) and the tag gaps (fewer than three gaps give
+  suffix, more than 30 entries), changelog fragments (front matter skipped,
+  CRLF, none at all) and the tag gaps (fewer than three gaps give
   no median), then reads a real clone made in a temp dir with fixed commit
-  dates: the default branch from `origin/HEAD`, the CHANGELOG from that
-  branch rather than the work tree, the tags and the commits past the last
-  one. It runs git, so it runs on all three OSes.
+  dates: the default branch from `origin/HEAD`, the CHANGELOG and the
+  `changes/unreleased/` fragments from that branch rather than the work
+  tree, the tags and the commits past the last one.
+- **`scripts/test_changelog.py`** (`make test-scripts`) covers the fragment
+  format (every rejection `check` makes, Cyrillic included), `assemble`'s
+  Keep a Changelog grouping, its refusals (no fragments, a version already
+  there, a bad date) leaving every file untouched, `preview` writing
+  nothing, and the order within a kind in a real temp repository: when git
+  first added each file, a slug reused after a release by its newest
+  addition, uncommitted files last by name. It runs git, so it runs on all three OSes.
 - **`internal/daemon/workboard_test.go`** drives the board with the agent
   manager faked: a Caprock-started and a hand-started Claude Code session
   each get a running turn's range from the project's history; a permission

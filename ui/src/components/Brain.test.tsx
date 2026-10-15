@@ -113,6 +113,36 @@ describe('Second Brain', () => {
     expect(screen.getByRole('link', { name: /the session/ }).getAttribute('href')).toBe('#/session/s1?at=5')
   })
 
+  it('searches as one types, marks the matched words in the list and says when close matches are in', async () => {
+    localStorage.setItem('caprock-brain-view', 'list')
+    m.status.mockResolvedValue(status())
+    m.brain.mockImplementation(async (f: { q?: string }) => f.q
+      ? {
+          nodes: [
+            node({ id: 1, title: 'Move the office to Αθήνα', rank: 40 }),
+            node({ id: 2, title: 'Athens trip, the relase notes', rank: 15, close: true }),
+          ],
+          edges: [],
+          total: 2,
+          terms: ['αθηνα', 'release', 'relase'],
+          close: true,
+        }
+      : { nodes: [node({ id: 1, title: 'Move the office to Αθήνα' })], edges: [], total: 1 })
+    render(<BrainScreen />)
+    // The search shows once the status says there is something to search.
+    const box = await screen.findByRole('textbox', { name: 'Search memories' })
+    expect(box.getAttribute('placeholder')).toBe('Search titles and summaries — typos are fine')
+    fireEvent.change(box, { target: { value: 'ΑΘΗΝΑ release' } })
+    await waitFor(() => expect(m.brain).toHaveBeenCalledWith(expect.objectContaining({ q: 'ΑΘΗΝΑ release' })))
+    await screen.findByText(/including close matches/)
+    expect(screen.getByText(/2 memories match/)).toBeTruthy()
+    const marks = [...document.querySelectorAll('[data-brain-row] mark[data-match]')].map((e) => e.textContent)
+    expect(marks).toEqual(['Αθήνα', 'relase'])
+    // Best first, as the daemon ranked them.
+    const rows = [...document.querySelectorAll('[data-brain-row]')].map((e) => e.getAttribute('data-brain-row'))
+    expect(rows).toEqual(['1', '2'])
+  })
+
   it('shows its figures and estimates a backfill before starting it', async () => {
     m.status.mockResolvedValue(status({ auto: auto() }))
     m.backfill.mockResolvedValueOnce({ sessions: 12, tokens_estimate: 90_000, days_estimate: 1, daily_tokens: 300_000 })

@@ -530,9 +530,9 @@ func prevOf(e repoGitEntry, ok bool) *repoGit {
 }
 
 // readRepoGit reads one repository from local git alone: origin's address,
-// the remote default branch as the clone knows it, the CHANGELOG's
-// [Unreleased] section on that branch (reused while the branch has not
-// moved), the newest tags and how far the branch is past the last one.
+// the remote default branch as the clone knows it, what waits on that branch
+// for a release — the CHANGELOG's [Unreleased] section plus any
+// changes/unreleased/ fragments (reused while the branch has not moved) — the newest tags and how far the branch is past the last one.
 // Anything git cannot say is left out.
 func readRepoGit(ctx context.Context, root string, prev *repoGit) repoGit {
 	var g repoGit
@@ -548,8 +548,19 @@ func readRepoGit(ctx context.Context, root string, prev *repoGit) repoGit {
 	g.defaultBranch, g.sha = strings.TrimPrefix(ref, "origin/"), sha
 	if prev != nil && prev.sha == sha {
 		g.unreleased = prev.unreleased
-	} else if cl, ok := relplan.Changelog(ctx, root, sha); ok {
-		if u, ok := relplan.ParseUnreleased(cl); ok {
+	} else {
+		var u relplan.Unreleased
+		found := false
+		if cl, ok := relplan.Changelog(ctx, root, sha); ok {
+			u, found = relplan.ParseUnreleased(cl)
+		}
+		if frags, ok := relplan.Fragments(ctx, root, sha); ok {
+			found = true
+			for _, f := range frags {
+				relplan.AddFragment(&u, f)
+			}
+		}
+		if found {
 			items := u.Items
 			if items == nil {
 				items = []string{}
