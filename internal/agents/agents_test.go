@@ -756,3 +756,44 @@ func TestChildEnvStripsClaudeMarkersKeepsTheRest(t *testing.T) {
 		}
 	}
 }
+
+// Closing a tab ends its agent with End: asked first, so the transcript is
+// written and the conversation can be continued; killed only when it will
+// not stop. Never on a session Caprock did not start (rule 7).
+func TestEndAsksFirstAndKillsOnlyWhatWillNotStop(t *testing.T) {
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+	if err := m.End("not-ours"); err == nil {
+		t.Fatal("End on a non-owned session was allowed")
+	}
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	clean := f.session
+	if err := m.End(m.List()[0].SessionID); err != nil {
+		t.Fatal(err)
+	}
+	if !clean.termed.Load() || clean.exitCode() != 0 {
+		t.Fatalf("termed=%v exit=%d, want a clean exit on the polite request", clean.termed.Load(), clean.exitCode())
+	}
+
+	was := endGrace
+	endGrace = 50 * time.Millisecond
+	defer func() { endGrace = was }()
+	a, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stubborn := f.session
+	stubborn.ignoreTerm = true
+	if err := m.End(a.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for stubborn.exitCode() != -1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !stubborn.termed.Load() || stubborn.exitCode() != -1 {
+		t.Fatalf("termed=%v exit=%d, want asked first, then killed", stubborn.termed.Load(), stubborn.exitCode())
+	}
+}

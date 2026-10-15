@@ -867,6 +867,37 @@ func (m *Manager) Signal(sessionID string, sig ptyman.Signal) error {
 	return a.sess.Signal(sig)
 }
 
+// endGrace is how long End lets a session finish on its own before killing it.
+var endGrace = ShutdownGrace
+
+// End stops an owned session the way a user closing its tab means it: asked
+// first (SIGTERM, resumed if paused so it can act on it), so Claude Code
+// flushes its transcript and the conversation can be continued with
+// --resume; killed only if it is still running after endGrace. It returns
+// once the request is sent; the kill, if needed, follows in the background.
+func (m *Manager) End(sessionID string) error {
+	a, ok := m.Get(sessionID)
+	if !ok {
+		return errNotOwned(sessionID)
+	}
+	if a.sess.Paused() {
+		_ = a.sess.Signal(ptyman.SignalResume)
+	}
+	if err := a.sess.Signal(ptyman.SignalTerm); err != nil {
+		return a.sess.Signal(ptyman.SignalKill)
+	}
+	go func() {
+		done := make(chan struct{})
+		go func() { _ = a.sess.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(endGrace):
+			_ = a.sess.Signal(ptyman.SignalKill)
+		}
+	}()
+	return nil
+}
+
 // Resize an owned session's terminal.
 func (m *Manager) Resize(sessionID string, cols, rows int) error {
 	a, ok := m.Get(sessionID)
