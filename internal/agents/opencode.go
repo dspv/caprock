@@ -7,12 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 
 	"github.com/dspv/caprock/internal/userenv"
 )
@@ -108,7 +109,7 @@ func (v *versions) get(bin string, wait bool) string {
 func askVersion(bin string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), versionTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "--version")
+	cmd := hidewin.CommandContext(ctx, bin, "--version")
 	cmd.Env = userenv.Environ(nil)
 	out, err := cmd.Output()
 	if err != nil {

@@ -525,6 +525,9 @@ interface PaneCtx {
   composer?: boolean
 }
 
+/** A Claude Code session (an absent agent is one): its terminal shows the input-box band. */
+const isClaude = (agent?: string) => !agent || agent === 'claude'
+
 function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ctx: PaneCtx }) {
   if (node.type === 'pane') {
     const id = node.target.sessionId
@@ -533,7 +536,8 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
     const cs = ctx.composer ? ctx.sessions?.get(id) : undefined
     const withComposer = !!cs && node.target.kind !== 'shell' && composerFits(cs)
     const term = <PaneTerminal id={id} visible={visible} focused={focused} onPaneStatus={ctx.onPaneStatus} onPaneExit={ctx.onPaneExit}
-      composer={withComposer} agent={cs?.agent} asking={withComposer && !!ctx.permissions?.has(id)} />
+      composer={withComposer} agent={cs?.agent} asking={withComposer && !!ctx.permissions?.has(id)}
+      inputBox={node.target.kind !== 'shell' && isClaude(ctx.sessions?.get(id)?.agent)} />
     const chat = ctx.chats?.get(id)
     const ended = chat?.ended && (
       <ChatEnded visible={visible && focused} onClose={() => ctx.onChatClose?.(node.id)} onRestart={() => ctx.onChatRestart?.(id)} />
@@ -595,7 +599,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
  * callbacks are stable (TerminalStack), so a new session list — the sidebar's
  * dots moving — does not reach a terminal.
  */
-const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit, composer = false, agent, asking = false }: {
+const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit, composer = false, agent, asking = false, inputBox = false }: {
   id: string
   visible: boolean
   focused: boolean
@@ -605,11 +609,13 @@ const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneSt
   composer?: boolean
   agent?: string
   asking?: boolean
+  /** A Claude Code session: the faint band behind its input box. */
+  inputBox?: boolean
 }) {
   const onStatus = useMemo(() => onPaneStatus && ((s: PaneStatus) => onPaneStatus(id, s)), [onPaneStatus, id])
   const onExit = useMemo(() => onPaneExit && (() => onPaneExit(id)), [onPaneExit, id])
   const box = useMemo<PaneComposer | undefined>(() => (composer ? { agent, asking } : undefined), [composer, agent, asking])
-  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} composer={box} />
+  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} composer={box} inputBox={inputBox} />
 })
 
 /** A split's children with a divider between each pair, dragged or moved with the arrow keys. */

@@ -25,11 +25,12 @@ import (
 	"errors"
 	"log/slog"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/disclaim"
@@ -263,7 +264,7 @@ func resolve(ctx context.Context, shell string, base []string) ([]string, error)
 	// The user's profile runs whatever it likes; disclaimed, a privacy prompt
 	// it causes names the shell, not Caprock (internal/disclaim).
 	name, args := disclaim.Wrap(shell, []string{"-l", "-i", "-c", script})
-	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // the user's own shell, fixed script
+	cmd := hidewin.CommandContext(ctx, name, args...) //nolint:gosec // the user's own shell, fixed script
 	cmd.Env = append(append([]string(nil), base...), ResolvingVar+"=1")
 	cmd.Stdin = nil // /dev/null: a profile that prompts reads EOF instead of waiting
 	var out bytes.Buffer

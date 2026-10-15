@@ -73,6 +73,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — 0.117.5: Mail on its own, a check that always ends, no console flashes on Windows
+
+Mail opens on its own at `?mail=1` — the inbox and nothing else of Caprock —
+and `app/mail-mac` builds a Mac preview app around it with Caprock's icon and
+an envelope for the dot (local, not shipped by CI). Adding a mail account can
+no longer hang on *Checking…*: a server that goes quiet ends the check within
+30 seconds and says which one. Caprock no longer flashes console windows on
+Windows, and typing a name in New project filters the folders. Second Brain says when it reads next, and its sidebar block and
+*How it works* are shorter.
+
 ### 2026-10-15 — 0.117.4: terminals that draw right, a dashboard that keeps its place, Second Brain by name
 
 A terminal no longer draws from a glyph atlas another tab rebuilt, and it

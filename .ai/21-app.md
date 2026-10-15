@@ -367,6 +367,22 @@ One window, three regions:
     after the last key): a click on a row picks it, › looks inside one that is
     not a repository. In the desktop app *Choose…* opens the system's folder
     chooser (`pick_folder`, app/README.md).
+    **A name typed after the last separator searches the folder before it**
+    (owner, 2026-10-15, translated: "typing the first letters should search
+    these folders in this directory"; until then `~/dev/cap` emptied the
+    list). When the field is not an existing folder, the folder before the
+    last `/` or `\` is listed instead, kept to the names holding the typed
+    letters, ignoring case: the ones that start with them first, then the
+    ones that hold them elsewhere, the matched letters marked
+    (`splitTyped`, `filterFolders`). Each key re-filters at once; only a new
+    folder waits for the daemon. The first match is highlighted, ↑↓ move
+    the highlight, Enter picks it as a click would, and Tab completes the
+    field to it with a separator (`drillPath`) to keep going inside. With no
+    match the list says *No folder starting with 'cap' in ~/dev* and Enter
+    looks at what was typed. A field naming an existing folder lists what is
+    inside it with nothing highlighted, so Enter looks at that folder, as
+    before. `~`, `~\`, drive letters (`C:`, `C:\Us`) and backslashes work
+    the same way: the daemon expands `~` and resolves the path.
   - **What is there** (`GET /v1/projects/scan`), in 26px type: *One
     repository* (the folder is one, or is inside one — then it is that
     repository, no question), *N repositories* as big checkable cards, all

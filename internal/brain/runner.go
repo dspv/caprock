@@ -12,10 +12,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 
 	"github.com/dspv/caprock/internal/agents"
 )
@@ -123,7 +124,7 @@ func (c ClaudeRunner) Run(ctx context.Context, r Request) (Result, error) {
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, bin, args...)
+	cmd := hidewin.CommandContext(cctx, bin, args...)
 	cmd.Dir = c.Dir
 	if c.Env != nil {
 		if env := c.Env(); len(env) > 0 {

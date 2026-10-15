@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dspv/caprock/internal/hidewin"
+
 	"github.com/dspv/caprock/internal/disclaim"
 	"github.com/dspv/caprock/internal/hive"
 	"github.com/dspv/caprock/internal/store"
@@ -251,12 +253,12 @@ func (b *Board) runCommand(ctx context.Context, command, cwd string) CommandRun 
 	defer cancel()
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(cctx, "cmd", "/C", command)
+		cmd = hidewin.CommandContext(cctx, "cmd", "/C", command)
 	} else {
 		// The user's own check: disclaimed, a privacy prompt it causes names
 		// the shell, not Caprock (internal/disclaim).
 		name, args := disclaim.Wrap("/bin/sh", []string{"-c", command})
-		cmd = exec.CommandContext(cctx, name, args...)
+		cmd = hidewin.CommandContext(cctx, name, args...)
 	}
 	// Never fall back to the daemon's working directory: a command that was meant
 	// to check an agent's worktree must not silently check whatever the daemon

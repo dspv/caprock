@@ -65,7 +65,7 @@ function open(projects: Project[] = []) {
   return cb
 }
 
-const folder = () => screen.getByRole('textbox', { name: 'Folder' })
+const folder = () => screen.getByRole('combobox', { name: 'Folder' })
 
 describe('new project, tap-tap-tap', () => {
   it('a folder of three repositories: all but the one in another project ticked, one project of them with instructions, then an agent', async () => {
@@ -103,7 +103,7 @@ describe('new project, tap-tap-tap', () => {
 
   it('a single repository: one click on its row, Enter creates, the repository’s CLAUDE.md shown on a click, no instructions sent', async () => {
     const cb = open()
-    fireEvent.click(await screen.findByRole('button', { name: /^site/ }))
+    fireEvent.click(await screen.findByRole('option', { name: /^site/ }))
     expect(await screen.findByRole('heading', { name: 'What is there' })).toHaveTextContent('One repository')
     expect(m.scan).toHaveBeenCalledWith('/Users/me/dev/site')
     expect(screen.getByText(/Already has/)).toHaveTextContent('Already has CLAUDE.md — agents read it')
@@ -152,5 +152,107 @@ describe('new project, tap-tap-tap', () => {
     const cb = open()
     fireEvent.click(screen.getByRole('button', { name: /Clone, or start an empty folder/ }))
     expect(cb.onMoreWays).toHaveBeenCalled()
+  })
+})
+
+describe('typing a name searches the folder it is in', () => {
+  const DEV = {
+    dir: '/Users/me/dev', parent: '/Users/me', root: '/Users/me',
+    entries: [
+      { name: 'ai-crm', path: '/Users/me/dev/ai-crm', repo: true },
+      { name: 'caprock', path: '/Users/me/dev/caprock', repo: true },
+      { name: 'Caprock-web', path: '/Users/me/dev/Caprock-web', repo: true },
+      { name: 'escape', path: '/Users/me/dev/escape', repo: false },
+      { name: 'notes', path: '/Users/me/dev/notes', repo: false },
+    ],
+  }
+  const NOTES = { dir: '/Users/me/dev/escape', parent: '/Users/me/dev', root: '/Users/me', entries: [{ name: 'inner', path: '/Users/me/dev/escape/inner', repo: true }] }
+  beforeEach(() => {
+    // Only real folders answer, as the daemon does: a half-typed name is a 404.
+    m.browse.mockImplementation(async (dir: string) => {
+      const d = dir.replace(/[\\/]+$/, '')
+      if (d === '~/dev') return DEV
+      if (d === '~/dev/escape') return NOTES
+      throw new Error('not found')
+    })
+  })
+  const rows = () => screen.getAllByRole('option').map((o) => o.textContent?.replace(/git$/, ''))
+  const selected = () => screen.getAllByRole('option').find((o) => o.getAttribute('aria-selected') === 'true')?.textContent?.replace(/git$/, '')
+
+  it('~/dev/cap keeps the folders of ~/dev that hold "cap", prefix first, the match marked', async () => {
+    open()
+    fireEvent.change(folder(), { target: { value: '~/dev/cap' } })
+    await waitFor(() => expect(rows()).toEqual(['caprock', 'Caprock-web', 'escape']))
+    expect(m.browse).toHaveBeenCalledWith('~/dev/')
+    expect(screen.getAllByText('cap', { selector: 'mark' })).toHaveLength(2)
+    expect(screen.getByText('Cap', { selector: 'mark' })).toBeInTheDocument()
+    expect(selected()).toBe('caprock')
+    // Letters re-filter at once, with no new listing.
+    const calls = m.browse.mock.calls.length
+    fireEvent.change(folder(), { target: { value: '~/dev/capr' } })
+    expect(rows()).toEqual(['caprock', 'Caprock-web'])
+    expect(m.browse.mock.calls.length).toBe(calls)
+  })
+
+  it('arrows move the highlight; Enter picks the highlighted folder', async () => {
+    open()
+    fireEvent.change(folder(), { target: { value: '~/dev/cap' } })
+    await waitFor(() => expect(selected()).toBe('caprock'))
+    fireEvent.keyDown(folder(), { key: 'ArrowDown' })
+    expect(selected()).toBe('Caprock-web')
+    expect(folder()).toHaveAttribute('aria-activedescendant', 'wizard-folder-1')
+    fireEvent.keyDown(folder(), { key: 'ArrowDown' })
+    fireEvent.keyDown(folder(), { key: 'ArrowDown' })
+    expect(selected()).toBe('caprock')
+    fireEvent.keyDown(folder(), { key: 'ArrowUp' })
+    expect(selected()).toBe('escape')
+    fireEvent.keyDown(folder(), { key: 'ArrowUp' })
+    fireEvent.keyDown(folder(), { key: 'Enter' })
+    await screen.findByRole('heading', { name: 'What is there' })
+    expect(m.scan).toHaveBeenCalledWith('/Users/me/dev/Caprock-web')
+  })
+
+  it('Tab completes to the highlighted folder and a separator, and lists inside it', async () => {
+    open()
+    fireEvent.change(folder(), { target: { value: '~/dev/ESC' } })
+    await waitFor(() => expect(selected()).toBe('escape'))
+    fireEvent.keyDown(folder(), { key: 'Tab' })
+    expect(folder()).toHaveValue('~/dev/escape/')
+    await waitFor(() => expect(rows()).toEqual(['inner']))
+    // A plain listing highlights nothing: Enter looks at the folder in the field.
+    expect(selected()).toBeUndefined()
+    fireEvent.keyDown(folder(), { key: 'Enter' })
+    await waitFor(() => expect(m.scan).toHaveBeenCalledWith('~/dev/escape/'))
+  })
+
+  it('no match says so, and Enter looks at what was typed', async () => {
+    open()
+    fireEvent.change(folder(), { target: { value: '~/dev/zz' } })
+    expect(await screen.findByRole('status')).toHaveTextContent("No folder starting with ‘zz’ in ~/dev")
+    expect(screen.queryByRole('listbox')).toBeNull()
+    fireEvent.keyDown(folder(), { key: 'Tab' })
+    expect(folder()).toHaveValue('~/dev/zz')
+  })
+
+  it('an existing folder lists what is inside it, as before', async () => {
+    open()
+    fireEvent.change(folder(), { target: { value: '~/dev' } })
+    await waitFor(() => expect(rows()).toEqual(['ai-crm', 'caprock', 'Caprock-web', 'escape', 'notes']))
+    expect(screen.getByText(/a click picks one/)).toBeInTheDocument()
+    expect(screen.queryAllByText(/./, { selector: 'mark' })).toHaveLength(0)
+    fireEvent.keyDown(folder(), { key: 'ArrowDown' })
+    expect(selected()).toBe('ai-crm')
+  })
+
+  it('a Windows path filters the same way', async () => {
+    m.browse.mockImplementation(async (dir: string) => {
+      if (dir === 'C:\\Users\\me\\dev\\') return { ...DEV, dir: 'C:\\Users\\me\\dev', entries: DEV.entries.map((e) => ({ ...e, path: `C:\\Users\\me\\dev\\${e.name}` })) }
+      throw new Error('not found')
+    })
+    open()
+    fireEvent.change(folder(), { target: { value: 'C:\\Users\\me\\dev\\no' } })
+    await waitFor(() => expect(rows()).toEqual(['notes']))
+    fireEvent.keyDown(folder(), { key: 'Tab' })
+    expect(folder()).toHaveValue('C:\\Users\\me\\dev\\notes\\')
   })
 })
