@@ -115,6 +115,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   yellow and cyan that usually wash out included. Pick it under Light in
   the theme picker or Settings → Appearance.
 
+- **phone:** Settings → Use on your phone tells you how to get back to a
+  phone you already paired. Each paired phone says *Already paired — just
+  open m.caprock.dev on that phone*, and **Open on the phone again** shows
+  a QR code of that address (the address only: no code and no key, so it
+  pairs nothing) and the Add to Home Screen tip. With a Telegram bot set up,
+  **Send the link to my phone** sends the address to your Telegram chat
+  through your own bot, and says so before you press it.
+- **phone:** right after pairing, the phone's Ready card says *Next time,
+  just open m.caprock.dev on this phone: it stays paired*, and on Android
+  gives Chrome's own step (⋮ → Install app).
+
 ### Changed
 
 - **app:** where you type is easier to find, quietly. The Chat view's field
@@ -165,6 +176,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   your agents a memory*, *Start building* and *How it works*.
 
 ### Fixed
+
+- **phone:** a phone that cannot connect says which of three things is
+  wrong: *Can't reach the relay* (this phone cannot reach relay.caprock.dev
+  or m.caprock.dev; check your connection or VPN), *Connected to the relay —
+  your computer is offline*, or *Paired device removed*, with a **Details**
+  fold showing the last error, its code and when it happened, the last try
+  and the last time it was connected. A browser with no pairing says *This
+  browser isn't paired* and where to pair (Caprock → Settings → Use on your
+  phone → Show a code), instead of an error or a bare code form. The page
+  also asks the browser to keep its storage, which holds the pairing.
 
 - **picker:** an arrow key pressed in the folder picker the moment a
   folder's entries appear is no longer lost; the selection used to be

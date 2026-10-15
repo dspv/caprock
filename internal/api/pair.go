@@ -73,6 +73,9 @@ type pairState struct {
 	// Remote is access from anywhere through a relay (ADR-058); absent in a
 	// build without it. A code works over it and over the network alike.
 	Remote *RemoteState `json:"remote,omitempty"`
+	// Telegram says a Telegram bot and chat are set up, so the panel can
+	// offer "Send the link to my phone" (POST /v1/pair/send-link).
+	Telegram bool `json:"telegram,omitempty"`
 	// ExpiresInSec counts the code down. Zero when there is none.
 	ExpiresInSec int              `json:"expires_in_sec,omitempty"`
 	Devices      []pairing.Public `json:"devices"`
@@ -123,6 +126,9 @@ func (s *Server) handlePairState(w http.ResponseWriter, r *http.Request) {
 	st := pairState{Enabled: ps != nil && lanURL != "", URL: lanURL, Devices: []pairing.Public{}, Tailscale: tailscaleUp()}
 	if s.d.LAN != nil {
 		st.KeepOn = s.d.LAN.LANKeepOn()
+	}
+	if s.d.PhoneLink != nil {
+		st.Telegram = s.d.PhoneLink.PhoneLinkReady()
 	}
 	if host := hostOf(lanURL); host != "" {
 		st.Tunnelled = lan.Tunnelled(net.ParseIP(host))

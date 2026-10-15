@@ -1286,14 +1286,33 @@ relay that passes bytes it cannot read
 keeps trying by itself (after 1, 2, 4, 8, 15, then every 30 seconds, and at
 once when the phone comes back to the page or onto a network):
 
-- **Your computer is offline or Caprock isn't running**: the relay has no
+- **Can't reach the relay**: the phone cannot reach relay.caprock.dev or
+  m.caprock.dev. Check its connection or VPN: a VPN, or a network that
+  blocks either address, is the usual cause. **This phone is offline** is
+  the phone with no network at all.
+- **Connected to the relay — your computer is offline**: the relay has no
   connection from it. Wake it, check it is online, open Caprock.
-- **Your computer isn't answering**: the relay reached it but it did not
-  reply, the usual sign of a computer that went to sleep.
-- **Can't reach the relay: check the internet** and **This phone is
-  offline**: the phone's own connection.
-- **This phone was removed: pair again**: it was removed in *Paired
+- **Connected to the relay — your computer isn't answering**: the relay
+  reached it but it did not reply, the usual sign of a computer that went to
+  sleep.
+- **Paired device removed: pair again**: it was removed in *Paired
   devices*. Show a new code and scan it.
+
+**Details**, folded under each of these, lists the last error with the
+relay's code, when it happened, the last try and the last time the phone
+was connected: worth a screenshot when asking for help.
+
+**Getting back to a paired phone.** Closed the tab, and do not remember the
+address? Open **m.caprock.dev** on the same phone, in the same browser: it
+is still paired and connects by itself. Settings → Use on your phone says so
+beside each paired phone, and **Open on the phone again** shows a QR code of
+the address (the address only, which pairs nothing) — and, with a Telegram
+bot set up, **Send the link to my phone** sends it to your Telegram chat
+through your own bot. To keep it one tap away: Share → **Add to Home
+Screen** on an iPhone, ⋮ → **Install app** in Chrome on Android. A browser
+that holds no pairing — cleared storage, another browser, an iPhone's
+home-screen app before you paste the link once — says *This browser isn't
+paired* and where to pair.
 
 A paired phone stays paired. A dropped connection, a restarting computer or
 relay, the phone asleep or offline, or a computer on an older Caprock never

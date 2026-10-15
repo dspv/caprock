@@ -99,6 +99,13 @@ export function installOffer(o: { standalone: boolean; prompt: boolean; installe
   return null
 }
 
+/** Which phone this is, for the words of a home-screen step: an iPhone or iPad, an Android phone, or neither. */
+export function phoneKind(ua: string, touchPoints: number): 'ios' | 'android' | null {
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && touchPoints > 1)) return 'ios'
+  if (/Android/.test(ua)) return 'android'
+  return null
+}
+
 function current(): InstallOffer {
   return installOffer({
     standalone: isStandalone(),

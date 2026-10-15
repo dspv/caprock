@@ -71,9 +71,13 @@ type Deps struct {
 	Telegram TelegramController
 	// Alerts sends a test phone alert on demand (ADR-036). Nil disables the
 	// endpoint.
-	Alerts  AlertSender
-	UI      fs.FS // embedded dashboard (index.html at root); nil ⇒ placeholder
-	Version string
+	Alerts AlertSender
+	// PhoneLink sends the phone's page address to the owner's Telegram chat
+	// ("Send the link to my phone", Settings → Use on your phone). Nil
+	// answers 501.
+	PhoneLink PhoneLinkSender
+	UI        fs.FS // embedded dashboard (index.html at root); nil ⇒ placeholder
+	Version   string
 	// Status returns daemon/ingest/hooks status for /v1/status.
 	Status func(ctx context.Context) any
 	// InstallHooks registers the shim in Claude Code's settings, as
@@ -371,6 +375,15 @@ type AlertSender interface {
 	SendAlertCheck(ctx context.Context) error
 }
 
+// PhoneLinkSender sends the address of the phone's page — no code, no key —
+// to the Telegram chat the owner set up (ADR-047), so a phone that is
+// already paired finds its way back.
+type PhoneLinkSender interface {
+	// PhoneLinkReady reports whether a bot and a chat are set up.
+	PhoneLinkReady() bool
+	SendPhoneLink(ctx context.Context, app string) error
+}
+
 // TaskController is the subset of the Phase 2 hive the API needs.
 type TaskController interface {
 	// Enabled reports whether the task runner is on. It is asked per request
@@ -559,6 +572,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/pair/me", s.handlePairMe)
 	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)
 	m.HandleFunc("POST /v1/pair/remote", s.handleSetRemote)
+	m.HandleFunc("POST /v1/pair/send-link", s.handlePairSendLink)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
 	m.HandleFunc("POST /v1/claude/bypass-consent", s.handleBypassConsent)

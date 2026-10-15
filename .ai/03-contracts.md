@@ -317,6 +317,17 @@ device. The relay's wire is `internal/remote/wire.go`, the channel's frames
 sending to it, is closed with 4404 and the stale connection dropped (4408
 on the hosted relay), never spliced to a machine that went to sleep.
 
+**The way back to a paired phone (2026-10-15).** `GET /v1/pair/state`
+carries `telegram: true` when a Telegram bot and chat are set up.
+`POST /v1/pair/send-link` (loopback-only, no body read) sends one message to
+that chat — the bridge's outbox, else the report bot, as the alerts do: the
+phone's page `remote.app` with a trailing `/` and one line on Add to Home
+Screen. The address is the daemon's own, never the request's, and carries no
+code, key or token. It answers `{sent: "telegram", link}`; `403` off the
+machine (a paired phone included), `501` in a build without the relay,
+`409` with no bot set up, `502` with Telegram's error. No new destination:
+the chat is the one the owner connected (ADR-047).
+
 - `DELETE /v1/pair/code` withdraws the outstanding code and answers
   `{cleared: true}` whether or not there was one — the dashboard's **Cancel**,
   so a code hidden from the owner is not still valid behind them.
@@ -774,6 +785,7 @@ GET  /v1/window-stop                   → the plan-window stop's state (§ Pric
 GET  /v1/keepawake                     → whether the computer is kept awake now (§ Keep awake); 501 when the daemon has no keeper
 POST /v1/report/test                   → sends this week's report now → {sent:"ok"}; 502 with Telegram's error, 501 when reporting is unavailable
 POST /v1/alerts/test                   → sends a test phone alert now, no licence needed → {sent:"ok"}; 502 with Telegram's error or "no bot configured"
+POST /v1/pair/send-link                → sends the phone's page address to the owner's Telegram chat → {sent:"telegram", link}; loopback-only, 409 with no bot (§ Pairing endpoints)
 GET/PUT/POST/DELETE /v1/telegram…      → the Telegram bridge's setup and pairing (§ Telegram bridge)
 POST /v1/shutdown                      → 200 (bearer-token gated; `caprock down`)
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check

@@ -1732,6 +1732,8 @@ export interface PairState {
   /** Access from anywhere through a relay (ADR-058); absent from a daemon
    *  without it. The same code pairs over it. */
   remote?: RemoteState
+  /** A Telegram bot and chat are set up: "Send the link to my phone" can go there. */
+  telegram?: boolean
   devices: PairedDevice[]
 }
 
@@ -1862,6 +1864,8 @@ export const api = {
   setLAN: (on: boolean, keep?: boolean) =>
     post<{ enabled: boolean; url?: string; keep_on?: boolean }>('/v1/pair/lan', keep === undefined ? { on } : { on, keep }),
   setRemote: (on: boolean) => post<RemoteState>('/v1/pair/remote', { on }),
+  /** Sends the phone's page address (no code, no key) to the owner's Telegram chat. */
+  pairSendLink: () => post<{ sent: string; link: string }>('/v1/pair/send-link', {}),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
   /** Give a paired device control of sessions, or take it away. Machine only. */
   pairSetRole: (id: string, role: PairedDevice['role']) =>
