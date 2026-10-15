@@ -73,6 +73,17 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — proposed: My machines (ADR-067)
+
+The owner asked for Caprock on all of a user's computers, each driving
+agents on the others and all seen from the phone. Hosted machines were
+weighed and parked (rule 4, and no measured speed case). ADR-067 and
+[24-machines.md](24-machines.md) set the model: one daemon per machine, a
+mutual `machine` role from one `caprock join`, the local daemon as a client
+over the existing relay, and `/v1/m/{machine}/…` for the dashboard. Nothing
+is built; Phase 1 is three pull requests, and the latency figures it needs
+are `OQ-17` and `OQ-18`.
+
 ### 2026-10-15 — unreleased: one changelog fragment per change
 
 With eight to ten pull requests in flight, every one edited CHANGELOG.md's

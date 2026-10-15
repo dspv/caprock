@@ -27,6 +27,7 @@ Caprock is a local, open-source **mission control for Claude Code**: a single st
 | [21-app.md](21-app.md)                             | The desktop app: goal, features by priority, budgets, protocols | Working on the app, terminal protocol v2, projects |
 | [22-app-plan.md](22-app-plan.md)                   | The desktop app: milestones, work packages, definitions of done | Picking up or finishing an app work package        |
 | [23-grok.md](23-grok.md)                           | Grok Build support: the flags, the files, what is not read      | Adding or changing Grok support                    |
+| [24-machines.md](24-machines.md)                   | My machines: linking the user's computers, plan and phases      | Working on machine-to-machine links or the relay   |
 
 These files absorbed the hand-off specification (`CaprockV2-SPEC.md`, deleted after the loss audit recorded in [docs/migration-audit.md](../docs/migration-audit.md)). The spec is not a separate source of truth — **these files are**. (Numbering is non-contiguous by design — 11 was never used; nothing is missing.)
 

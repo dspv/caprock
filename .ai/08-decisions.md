@@ -4154,3 +4154,101 @@ ever; pushing the brief; creating a project from a phone.
 (GitLab, a plain git URL), which would need a path that is not gh; or
 operations lost to a daemon restart mid-way (`RISK-09`) turn out to matter
 in practice.
+
+
+## ADR-067 — My machines: every computer the user owns runs Caprock, and any of them drives agents on the others
+
+**Date:** 2026-10-15 · **Status:** proposed (owner, translated: "we need to
+move towards encouraging people to install Caprock on their other computers,
+so they can work with them the same way, from the phone and so on — just my
+computers joined in a network"). Plan and phases:
+[24-machines.md](24-machines.md).
+
+*Number note: 065 is on master and 066 is claimed by an open pull request on
+2026-10-15. If another ADR lands as 067 first, this one is renumbered in the
+same PR that merges second.*
+
+**Context.** People run more agents than one laptop holds: on 2026-10-14 the
+owner's own Claude Code process reached 2.6 GB and the load average 140.
+Many already own a second computer — a Mac mini, an older laptop, a Windows
+PC — that sits idle. Hosted machines were weighed the same day and parked:
+on one-core speed a recent Mac is not obviously slower than a rented VM, so
+the case for renting is not proven (24-machines.md § What it is for), and
+a VM in our account would put users' code on a machine we hold. The user's
+own computers carry none of that, and every machine added is another
+install of Caprock. The pieces exist: the relay and its Noise channel
+(ADR-058), device tokens and roles (ADR-029), `caprock service install` for
+a machine nobody sits at. What does not exist is a daemon that is a client
+of another daemon: `remote.Initiate` is used only by the tests.
+
+**Decision.**
+
+- **Every machine runs its own daemon, and stays the owner of its data.**
+  Sessions, transcripts and the database stay on the machine the agent ran
+  on. Another machine reads them over the link, as a paired device does; no
+  machine copies another's database.
+- **A machine joins with one command on the new machine.** Settings → *My
+  machines* → **Add a machine** on any machine shows a link and a code;
+  `caprock join <link>` on the new one — or the same screen there — pairs
+  them. Running the command is the decision on that machine ADR-058
+  requires: it turns access from anywhere on there and remembers it. It
+  works on a machine with no screen.
+- **The link is mutual.** One join leaves each machine holding a token for
+  the other, with a new role, `machine`, recorded in `devices.json` like a
+  phone and listed in Settings with it. Either side's **Remove** revokes its
+  own token at once, and the other's when it is reachable.
+- **The `machine` role is a controller plus the user's own agents.** It may
+  do what a controller may (ADR-029's routes: read, start, type, signal,
+  browse inside home, paste) and also start the user's custom agents and
+  saved prompts. It may never manage pairing, turn access from anywhere on
+  or off, change settings, or stop a process the doctor lists (ADR-059's
+  click is made on the machine itself). A phone reaching a second machine
+  through the first never gets more than the lesser of its own role and the
+  first machine's.
+- **The local daemon is the client.** It keeps a link to each paired
+  machine (`internal/remote`'s Initiator, a Go port of the phone's
+  `transport.ts` framing) and serves it to its own dashboard at
+  `/v1/m/{machine}/…` on loopback. The app and the dashboard keep talking to
+  one origin; the remote daemon needs nothing new beyond the role.
+- **The relay is the path that always works; a direct path is preferred
+  when one exists.** Every machine dials out, so nothing new listens on the
+  internet. Where a machine is already reachable directly — its network
+  listener is on, or both are on one Tailscale network — the link tries
+  every known path at once and keeps the fastest that answers
+  (21-app.md § Phase B), still inside the same Noise channel.
+- **An agent runs where its code is.** The machine picker offers the other
+  machine's own projects and folders. Caprock never syncs a repository
+  between machines and never moves a running session; git is the boundary.
+- **The link's latency is measured and shown.** Every machine's row carries
+  its round trip, and the terminal echo over a link is benched like the
+  local one (21-app.md § Typing beside busy agents). Local echo prediction is
+  built only if those figures say typing needs it.
+- **Free, with no limit on machines, for now.** The point is installs. A
+  paid tier, if any, is decided later from use, not from a survey (owner,
+  2026-10-15: "let them use it, then offer paid").
+
+**What the relay sees.** As ADR-058: machine ids, times, addresses and byte
+counts. A machine dialling another looks to it exactly like a phone doing
+so.
+
+**Consequences.**
+
+- A `machine` token is shell-equivalent on the other machine: whoever holds
+  one machine holds what its agents can do on the rest. Settings says so on
+  the Add screen, in one line.
+- Every machine in the group needs access from anywhere on while linked,
+  including the one the user sits at.
+- Windows is a full host from the first build (rule 2); the two-daemon smoke
+  runs on all three CI systems.
+- The relay's request budget (OQ-14) grows with machine-to-machine traffic,
+  not only phones.
+
+**Rules out:** syncing code or databases between machines; moving a live
+session from one machine to another; streaming a screen; an account or a
+machine directory on our side; opening an inbound port; hosted machines in
+our account — revisit with a new ADR and measured numbers if users ask.
+
+**Revisit if:** the measured round trip over the relay makes typing on
+another machine noticeably worse than local (then the direct path or local
+echo comes first); or people link machines they do not own (then the
+`machine` role needs narrower defaults).

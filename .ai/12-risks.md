@@ -154,6 +154,17 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   plan. The board labels it "as of your last fetch"; whether that is enough,
   or the board should show when the last fetch was, is open. Decided by:
   the first report of a stale release column being taken for current.
+- `OQ-17` — **Is typing on another machine through the relay good
+  enough?** My machines (ADR-067) sends every keystroke to the other machine
+  and back through the relay unless a direct path exists. The round trip
+  and the echo it gives are unmeasured. Decided by: the figures in
+  [24-machines.md § Measure](24-machines.md#measure); if echo is noticeably
+  worse than local, the direct path comes before anything else in Phase 4.
+- `OQ-18` — **Does moving an agent to another machine free this one
+  enough to matter?** The case for My machines is that this machine stays
+  responsive, not that work runs faster. How much memory and CPU one real
+  agent task takes off this machine is unmeasured. Decided by: the same §
+  Measure, before any copy says what a second machine saves.
 
 ## What would falsify the whole plan
 
