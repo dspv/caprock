@@ -79,13 +79,16 @@ others. Installing it: [install-app.md](install-app.md).
   and never chose, you keep Projects; a first visit starts on Tabs.
 - **Closing things: ×.** Hover a tab under the project — or look at the
   one in front, where it always shows — for its **×**: it closes the tab
-  exactly as ⌘W and the tab strip's × do. For an agent Caprock started it
-  asks: **Close tab** (in focus, so ⌘W then Enter) leaves the agent running
-  — it moves to the muted rows, under *Running, no tab* in the Tabs list —
-  and **Close and end the agent** stops it (asking once more if it is still
-  answering); its conversation is kept and can be continued. Tick **Don't
-  ask again** to keep the answer; Settings → *Closing a tab* changes it
-  back. An agent you started in your own terminal is never ended from
+  exactly as ⌘W and the tab strip's × do. An agent Caprock started that is
+  idle ends with its tab, without a question, and Caprock says so: the
+  conversation is saved, and you reopen it from History or the sidebar.
+  One that is still working or waiting on you gets one sentence and one
+  button: **Close tab** (in focus, so ⌘W then Enter) leaves it working in
+  the background — it moves to the muted rows, under *Running, no tab* in
+  the Tabs list — and the quiet link **Stop it instead** under it ends it;
+  Escape cancels. Either way the conversation is saved and can be
+  continued. Settings → *Closing a tab* can make it always keep the agent
+  running or always end it. An agent you started in your own terminal is never ended from
   Caprock: its tab just closes. A shell closes for real, as in any
   terminal app: an idle one ends with its tab; one running a program asks
   first — *Shell 1 is running claude. Close and stop it?* — with **Stop and
@@ -291,8 +294,9 @@ others. Installing it: [install-app.md](install-app.md).
   nothing, and the key reaches only that session. Its card says *DeepSeek*
   and its cost is priced at DeepSeek's list price. Free. *Remove key* turns
   it off.
-- **The tab strip.** The tab in front has an amber top edge; the others are
-  shaded tabs of their own. A tab reads the session's name, then its
+- **The tab strip.** Only the tab in front looks selected: an accent top
+  edge, the panel's colour and a bold title, and room for about 16
+  characters of it; the others are shaded tabs of their own. A tab reads the session's name, then its
   project's name in the project's colour; when room runs short the
   session's name is shortened first, and a project name that still does
   not fit scrolls into view while you point at the tab. The tooltip has
@@ -420,8 +424,9 @@ others. Installing it: [install-app.md](install-app.md).
   you opened them — an agent session, a shell or a file each — and each tab
   is named by its session, with its project's short name after it in the
   project's colour; hover it for the agent and the branch. A tab has no
-  status dot: it is marked only when it needs you — an amber edge along
-  its top while the session waits on you, a red one when it failed. The Dashboard tab is its icon
+  status dot: it is marked only when it needs you — an amber dot before
+  its title while the session waits on you, a red one when it loops or
+  failed. Never a bar: that is the tab you are in. The Dashboard tab is its icon
   and ⌘0, and the inspector's button shows ⌘I beside it, as Deck shows ⌘B.
   Picking
   another project never takes a tab out of the strip: the project's own

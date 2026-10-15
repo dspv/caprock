@@ -11,8 +11,9 @@
  *     #659 sidebar footer edge            ▓▓▓▓▓▓░░░░  CI
  *     Second Brain live build             ▓▓░░░░░░░░  agent
  *
- * Drawn on the Pipeline page, in the right panel (`compact`) and as the Work
- * page's Release view. It reads nothing itself.
+ * Drawn on the Pipeline page, in the right panel (`compact`), as the Work
+ * page's Release view, and on the phone home (`phone`: components/
+ * PhoneReleases). It reads nothing itself.
  */
 import { useMemo, type ReactNode } from 'react'
 import type { SessionCIStats } from '@/lib/api'
@@ -34,9 +35,16 @@ export interface ReleasePlanProps {
   onOpen?: (number: number) => void
   /** Said when there is nothing to plan; absent, nothing is drawn. */
   empty?: ReactNode
+  /**
+   * The phone's size (390px): a row is a 44px tap target with its title on
+   * one line and the bar and word under it, so every bar starts at the same
+   * left edge whatever the title; a pull request row opens the pull request
+   * on GitHub. Takes over `compact` and `onOpen`.
+   */
+  phone?: boolean
 }
 
-export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, empty }: ReleasePlanProps) {
+export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, empty, phone = false }: ReleasePlanProps) {
   const nothing = plan.rows.length === 0 && plan.later.length === 0
   if (nothing && !plan.next && !empty) return null
   const v = plan.next?.version
@@ -44,17 +52,19 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
     <section data-release-plan={plan.name} aria-label={`${plan.name}: next release`} className="grid min-w-0 gap-1.5">
       <header className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
         <h3 data-release-version={v ?? ''} title={plan.next?.title ?? 'No changelog entries read for this repository, so no version is predicted.'}
-          className={`num cursor-help font-semibold text-fg ${compact ? 'text-[13px]' : 'text-[16px] tracking-[-0.01em]'}`}>
+          className={`num font-semibold text-fg ${phone ? 'text-[17px] tracking-[-0.01em]' : compact ? 'cursor-help text-[13px]' : 'cursor-help text-[16px] tracking-[-0.01em]'}`}>
           {v ?? 'Next release'}
         </h3>
-        {v && <span className={`text-fg-faint ${compact ? 'text-[10.5px]' : 'text-[11px] uppercase tracking-[0.1em]'}`}>{compact ? 'next' : 'next release'}</span>}
+        {v && <span className={`text-fg-faint ${compact && !phone ? 'text-[10.5px]' : 'text-[11px] uppercase tracking-[0.1em]'}`}>{compact && !phone ? 'next' : 'next release'}</span>}
         {showRepo && <span className="min-w-0 truncate text-[13px] font-medium text-fg-muted" title={plan.root}>{plan.name}</span>}
         {plan.since && (
-          <span data-release-since title={plan.since.title} className={`num min-w-0 text-fg-muted [overflow-wrap:anywhere] ${compact ? 'basis-full text-[11px]' : 'text-[12.5px]'}`}>{plan.since.text}</span>
+          <span data-release-since title={plan.since.title} className={`num min-w-0 text-fg-muted [overflow-wrap:anywhere] ${phone ? 'basis-full text-[12.5px]' : compact ? 'basis-full text-[11px]' : 'text-[12.5px]'}`}>{plan.since.text}</span>
         )}
       </header>
       {nothing ? (
-        <p className={`text-fg-muted ${compact ? 'text-[11.5px]' : 'text-[12.5px]'}`}>{empty ?? 'Nothing waiting for a release.'}</p>
+        <p className={`text-fg-muted ${phone ? 'text-[14px]' : compact ? 'text-[11.5px]' : 'text-[12.5px]'}`}>{empty ?? 'Nothing waiting for a release.'}</p>
+      ) : phone ? (
+        <PhoneRows plan={plan} />
       ) : (
         <Rows plan={plan} compact={compact} onOpen={onOpen} />
       )}
@@ -73,10 +83,7 @@ function Rows({ plan, compact, onOpen }: { plan: ReleasePlanData; compact: boole
     <li key={r.key} data-release-row={r.number ?? r.key} data-stage={r.stage} className="col-span-3 grid min-w-0 grid-cols-subgrid items-center">
       <Title row={r} root={plan.root} compact={compact} onOpen={onOpen} />
       <Blocks row={r} compact={compact} />
-      <span data-release-word title={r.wordTitle}
-        className={`whitespace-nowrap ${compact ? 'text-[11px]' : 'text-[12px]'} ${r.red ? 'font-medium text-danger' : r.warn ? 'font-medium text-warn' : r.stage === 'merged' ? 'text-merged' : 'text-fg-muted'}`}>
-        {r.word}
-      </span>
+      <Word row={r} className={`whitespace-nowrap ${compact ? 'text-[11px]' : 'text-[12px]'}`} />
     </li>
   )
   return (
@@ -90,6 +97,59 @@ function Rows({ plan, compact, onOpen }: { plan: ReleasePlanData; compact: boole
         ...g.rows.map(row),
       ])}
     </ul>
+  )
+}
+
+/**
+ * The phone's rows: one per piece of work, its title on the first line (cut,
+ * the whole of it on the second line's hover) and the bar and stage word on
+ * the second, so the bars stand in one column at the left edge at any width.
+ * A pull request row is a link to it on GitHub, the whole row its target.
+ */
+function PhoneRows({ plan }: { plan: ReleasePlanData }) {
+  const row = (r: PlanRow) => {
+    const body = (
+      <>
+        <span className="flex min-w-0 items-baseline text-[14px] leading-[1.3]">
+          {r.number ? <span className="num mr-1.5 shrink-0 text-fg-muted">#{r.number}</span> : null}
+          <span className="min-w-0 truncate text-fg">{r.title}</span>
+        </span>
+        <span className="flex min-w-0 items-center gap-2.5">
+          <Blocks row={r} phone />
+          <Word row={r} className="min-w-0 truncate text-[12.5px]" />
+        </span>
+      </>
+    )
+    const cls = 'grid min-h-11 min-w-0 content-center gap-1 px-3 py-2'
+    return (
+      <li key={r.key} data-release-row={r.number ?? r.key} data-stage={r.stage} className="min-w-0 border-b border-border last:border-b-0">
+        {r.url
+          ? <a href={r.url} target="_blank" rel="noopener noreferrer" title={r.title} className={`${cls} text-fg no-underline active:bg-panel-2`}>{body}</a>
+          : <div title={r.title} className={cls}>{body}</div>}
+      </li>
+    )
+  }
+  return (
+    <ul data-release-phone className="-mx-3 min-w-0 border-t border-border">
+      {plan.rows.map(row)}
+      {plan.later.map((g) => [
+        <li key={`later:${g.key}`} data-release-later={g.key}
+          className="border-b border-border px-3 pb-1.5 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-faint last:border-b-0">
+          Later · {g.label}
+        </li>,
+        ...g.rows.map(row),
+      ])}
+    </ul>
+  )
+}
+
+/** The stage word, in the colour its step is drawn in. */
+function Word({ row: r, className }: { row: PlanRow; className: string }) {
+  return (
+    <span data-release-word title={r.wordTitle}
+      className={`${className} ${r.red ? 'font-medium text-danger' : r.warn ? 'font-medium text-warn' : r.stage === 'merged' ? 'text-merged' : 'text-fg-muted'}`}>
+      {r.word}
+    </span>
   )
 }
 
@@ -111,7 +171,7 @@ function Title({ row: r, root, compact, onOpen }: { row: PlanRow; root: string; 
  * step it is on, the step's two red when it failed, amber when a landing
  * label waits on the person; merged rows in the merged colour.
  */
-export function Blocks({ row: r, compact = false }: { row: PlanRow; compact?: boolean }) {
+export function Blocks({ row: r, compact = false, phone = false }: { row: PlanRow; compact?: boolean; phone?: boolean }) {
   const per = BLOCKS / STEPS.length
   const stepStart = r.filled - per
   const tone = r.stage === 'merged' ? 'bg-merged' : 'bg-accent'
@@ -122,7 +182,7 @@ export function Blocks({ row: r, compact = false }: { row: PlanRow; compact?: bo
         const on = i < r.filled
         const last = on && i >= stepStart
         const color = !on ? 'bg-border-strong' : last && r.red ? 'bg-danger' : last && r.warn ? 'bg-warn' : tone
-        return <span key={i} data-block={on ? (last && r.red ? 'red' : last && r.warn ? 'warn' : 'on') : 'off'} className={`${compact ? 'h-[8px] w-[5px]' : 'h-[10px] w-[7px]'} rounded-[1.5px] ${color}`} />
+        return <span key={i} data-block={on ? (last && r.red ? 'red' : last && r.warn ? 'warn' : 'on') : 'off'} className={`${phone ? 'h-[11px] w-[8px] rounded-[2px]' : compact ? 'h-[8px] w-[5px] rounded-[1.5px]' : 'h-[10px] w-[7px] rounded-[1.5px]'} ${color}`} />
       })}
     </span>
   )

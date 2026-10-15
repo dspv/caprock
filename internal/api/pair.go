@@ -10,6 +10,7 @@ import (
 
 	"net"
 
+	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/lan"
 	"github.com/dspv/caprock/internal/pairing"
@@ -51,6 +52,9 @@ type pairState struct {
 	// when the owner left *This phone can type and start agents* ticked,
 	// else "viewer". Empty without a live code.
 	CodeRole string `json:"code_role,omitempty"`
+	// CodeKind is "machine" when the live code pairs a computer (ADR-067),
+	// absent for a phone's code and without one.
+	CodeKind string `json:"code_kind,omitempty"`
 	// Tunnelled says the address reaches other networks (Tailscale) rather
 	// than only this one. The distinction is the whole difference between
 	// "works from the sofa" and "works from anywhere", and a screen that does
@@ -138,6 +142,7 @@ func (s *Server) handlePairState(w http.ResponseWriter, r *http.Request) {
 		if live, left := ps.CodeActive(); live {
 			st.Code = ps.Code()
 			st.CodeRole = ps.CodeRole()
+			st.CodeKind = ps.CodeKind()
 			st.ExpiresInSec = int(left / time.Second)
 		}
 		st.Devices = ps.Devices()
@@ -172,26 +177,47 @@ func (s *Server) handlePairNewCode(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Role string `json:"role"`
+		Kind string `json:"kind"`
 	}
+	const shape = `send {"role": "viewer"|"controller"} or {"kind": "machine"}, or no body`
 	if r.Body != nil {
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
-			s.failCode(w, http.StatusBadRequest, errors.New(`send {"role": "viewer"|"controller"}, or no body`))
+			s.failCode(w, http.StatusBadRequest, errors.New(shape))
 			return
 		}
 	}
 	if req.Role == "" {
 		req.Role = pairing.RoleViewer
 	}
-	if !pairing.ValidRole(req.Role) {
-		s.failCode(w, http.StatusBadRequest, errors.New(`send {"role": "viewer"|"controller"}, or no body`))
+	if !pairing.ValidRole(req.Role) || (req.Kind != pairing.KindPhone && req.Kind != pairing.KindMachine) {
+		s.failCode(w, http.StatusBadRequest, errors.New(shape))
 		return
+	}
+	if req.Kind == pairing.KindMachine {
+		// A computer pairs as a controller, and only after the owner allows
+		// it by name (ADR-067).
+		req.Role = pairing.RoleController
+		// Let another computer in turns access from anywhere on if it is
+		// off: pressing it, at the machine, is that decision (ADR-058,
+		// amended 2026-10-14). A computer reaches this one only through a
+		// relay, and the relay is this machine's own choice.
+		if s.d.Remote == nil {
+			s.failCode(w, http.StatusNotImplemented, errors.New("this build cannot be reached through a relay"))
+			return
+		}
+		if !s.d.Remote.RemoteState("").Enabled {
+			if err := s.d.Remote.SetRemote(true, "", ""); err != nil {
+				s.failCode(w, http.StatusConflict, err)
+				return
+			}
+		}
 	}
 	ps, lanURL := s.lanState()
 	if ps == nil {
 		s.failCode(w, http.StatusConflict, errors.New("network access is off — turn it on from Settings"))
 		return
 	}
-	code, err := ps.NewCodeAs(req.Role)
+	code, err := ps.NewCodeFor(req.Role, req.Kind)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -201,6 +227,9 @@ func (s *Server) handlePairNewCode(w http.ResponseWriter, r *http.Request) {
 		"role":           req.Role,
 		"expires_in_sec": int(pairing.CodeTTL / time.Second),
 		"url":            lanURL,
+	}
+	if req.Kind == pairing.KindMachine {
+		resp["kind"] = pairing.KindMachine
 	}
 	if s.d.Remote != nil {
 		resp["remote"] = s.d.Remote.RemoteState(code)
@@ -260,6 +289,12 @@ func (s *Server) handlePairRedeem(w http.ResponseWriter, r *http.Request) {
 	// the machine; its next request would say the same.
 	_, _, _ = ps.CheckVia(dev.Token, transportOf(r))
 	s.saveDevices()
+	if dev.Kind == pairing.KindMachine {
+		// The owner is asked by name: the dashboard's card, the prompt of
+		// `caprock pair --computer`, or `caprock machines pending`.
+		s.d.Log.Info("a computer redeemed a code and waits to be allowed", "component", "api", "device", dev.ID, "device_name", dev.Name)
+	}
+	s.devicesChanged()
 	writeJSON(w, http.StatusOK, pairResponse{Token: dev.Token, ID: dev.ID, Name: dev.Name})
 }
 
@@ -284,6 +319,8 @@ func (s *Server) handlePairRevoke(w http.ResponseWriter, r *http.Request) {
 	if id == "all" {
 		n := ps.RevokeAll()
 		s.saveDevices()
+		s.closeDeviceSockets("")
+		s.devicesChanged()
 		writeJSON(w, http.StatusOK, map[string]int{"revoked": n})
 		return
 	}
@@ -292,6 +329,9 @@ func (s *Server) handlePairRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.saveDevices()
+	// Its token stops at the next request; a socket it holds open stops now.
+	s.closeDeviceSockets(id)
+	s.devicesChanged()
 	writeJSON(w, http.StatusOK, map[string]int{"revoked": 1})
 }
 
@@ -429,6 +469,11 @@ type pairMe struct {
 	// Installed echoes what the device reported with ?app= and the machine
 	// recorded: whether it runs as the installed app.
 	Installed bool `json:"installed,omitempty"`
+	// Kind is "machine" for a computer (ADR-067), absent for a phone.
+	Kind string `json:"kind,omitempty"`
+	// Pending says the owner has not allowed this computer yet: it reaches
+	// nothing but this answer until they do.
+	Pending bool `json:"pending,omitempty"`
 }
 
 // handlePairMe tells a dashboard which controls to draw (ADR-034). The daemon
@@ -440,7 +485,7 @@ func (s *Server) handlePairMe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, pairMe{Role: "owner"})
 		return
 	}
-	me := pairMe{Role: dev.Role, ID: dev.ID, Name: dev.Name, Via: transportOf(r), Installed: dev.App}
+	me := pairMe{Role: dev.Role, ID: dev.ID, Name: dev.Name, Via: transportOf(r), Installed: dev.App, Kind: dev.Kind, Pending: dev.Pending}
 	// The phone says whether it runs as the installed app (?app=1) or as a
 	// tab Chrome offers to install (?app=0), so the owner's checklist on the
 	// machine can tick *App installed*. A label, never an authorisation.
@@ -493,6 +538,10 @@ func (s *Server) handlePairSetRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.saveDevices()
+	// A socket opened under the old role closes, and reopens under the new
+	// one: the live stream a demoted device held is no exception.
+	s.closeDeviceSockets(id)
+	s.devicesChanged()
 	s.d.Log.Info("paired device role changed", "component", "api", "device", id, "role", req.Role)
 	writeJSON(w, http.StatusOK, map[string]string{"id": id, "role": req.Role})
 }
@@ -530,4 +579,80 @@ func fromThisMachine(r *http.Request, lanHosts ...string) bool {
 		}
 	}
 	return false
+}
+
+// handlePairAllow lets a computer that redeemed a code in (ADR-067): the
+// owner's Allow, by name, on this machine — the dashboard's card, the prompt
+// of `caprock pair --computer`, or `caprock machines allow <name>` over SSH.
+// Loopback-only like every decision about who gets in. Deny is Remove
+// (DELETE /v1/pair/devices/{id}).
+func (s *Server) handlePairAllow(w http.ResponseWriter, r *http.Request) {
+	if !isLocal(r) {
+		s.failCode(w, http.StatusForbidden, errors.New("pairing is managed from the machine Caprock runs on"))
+		return
+	}
+	id := r.PathValue("id")
+	ps, _ := s.lanState()
+	if ps == nil {
+		if s.d.DataDir == "" {
+			s.failCode(w, http.StatusConflict, errors.New("this daemon is not listening on the network"))
+			return
+		}
+		saved, err := config.ReadDevices(s.d.DataDir)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		tmp := pairing.New()
+		tmp.Load(saved)
+		if !tmp.Allow(id) {
+			s.failCode(w, http.StatusNotFound, errors.New("no computer is waiting with that id"))
+			return
+		}
+		if err := config.WriteDevices(s.d.DataDir, tmp.Snapshot()); err != nil {
+			s.fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"id": id, "role": pairing.RoleController})
+		return
+	}
+	if !ps.Allow(id) {
+		s.failCode(w, http.StatusNotFound, errors.New("no computer is waiting with that id"))
+		return
+	}
+	s.saveDevices()
+	s.devicesChanged()
+	s.d.Log.Info("a computer was allowed to control this one", "component", "api", "device", id)
+	writeJSON(w, http.StatusOK, map[string]string{"id": id, "role": pairing.RoleController})
+}
+
+// handlePairForgetMe is a paired device withdrawing itself (ADR-067): what a
+// computer's Forget asks of the machine it forgets, best effort. Its token
+// stops working and its sockets close. The machine itself is no device.
+func (s *Server) handlePairForgetMe(w http.ResponseWriter, r *http.Request) {
+	dev := deviceFrom(r)
+	if dev == nil {
+		s.failCode(w, http.StatusBadRequest, errors.New("this is the machine itself, not a paired device"))
+		return
+	}
+	ps, _ := s.lanState()
+	if ps == nil || !ps.Revoke(dev.ID) {
+		s.failCode(w, http.StatusNotFound, errors.New("no such device"))
+		return
+	}
+	s.saveDevices()
+	s.closeDeviceSockets(dev.ID)
+	s.devicesChanged()
+	s.d.Log.Info("a paired device removed itself", "component", "api", "device", dev.ID, "device_name", dev.Name)
+	writeJSON(w, http.StatusOK, map[string]int{"revoked": 1})
+}
+
+// devicesChanged tells every open dashboard that the guest list changed, so
+// the machine's own screen re-reads GET /v1/pair/state (loopback-only) and
+// asks about a computer that waits. The frame carries nothing: a paired
+// phone on the live stream learns no name from it.
+func (s *Server) devicesChanged() {
+	if s.d.Bus != nil {
+		s.d.Bus.Publish(bus.Frame{Type: bus.FrameDevices, Data: struct{}{}})
+	}
 }

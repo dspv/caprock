@@ -2,10 +2,11 @@
  * What closing the tab of an agent Caprock started does (owner, 2026-10-14).
  * A user wrote (translated): "chats don't disappear when I close them" — the
  * tab closed and its agent ran on, a muted row under "Running, no tab".
- * Closing still never ends anything by itself: **ask** (the default) offers
- * *Close tab* (focused: ⌘W then Enter) or *Close and end the agent*; *Don't
- * ask again* keeps the answer as **keep** or **end**, changed back in
- * Settings → Closing a tab. Kept per viewer, in this browser's storage. An
+ * **ask** (the default, 2026-10-15): an idle agent ends with its tab, no
+ * question, and a toast says the conversation is saved; one working or
+ * waiting on you gets one sentence, *Close tab* (focused: ⌘W then Enter; it
+ * works on) and a quiet *Stop it instead*. **keep** and **end**, set in
+ * Settings → Closing a tab, never ask. Kept per viewer, in this browser's storage. An
  * agent another terminal started is never asked about and never signalled
  * (rule 7; lib/closeShell planAgentClose).
  */
