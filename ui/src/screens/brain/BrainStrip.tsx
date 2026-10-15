@@ -56,7 +56,7 @@ function Figure({ label, children, title }: { label: string; children: ReactNode
   return (
     <div className="grid min-w-0 gap-0" title={title}>
       <dt className="text-[11px] font-medium uppercase tracking-[0.06em] text-fg-muted">{label}</dt>
-      <dd className="num truncate text-[14px] text-fg">{children}</dd>
+      <dd className="num text-[14px] leading-snug text-fg">{children}</dd>
     </div>
   )
 }
@@ -111,7 +111,7 @@ export function BrainStrip({ auto, memories, onChanged, owner = true }: { auto: 
               </span>
               <div className="grid min-w-0 gap-0.5">
                 <span className={`text-[13px] ${state === 'now' ? 'font-semibold text-fg' : 'text-fg'}`}>{step.label}</span>
-                {stepFigure[i] && <span className="num truncate text-[12px] text-fg-muted" title={stepFigure[i]}>{stepFigure[i]}</span>}
+                {stepFigure[i] && <span className="num text-[12px] leading-snug text-fg-muted">{stepFigure[i]}</span>}
                 {i === 1 && r && (
                   <span className="grid min-w-0 gap-0" data-brain-step-reading>
                     <span className="truncate text-[12.5px] text-fg" title={r.title}>{r.title || 'A session'}</span>

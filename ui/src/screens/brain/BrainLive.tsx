@@ -8,13 +8,9 @@
  * sends one with op `progress` — and every few seconds while it builds
  * (lib/brain useBrainStatus):
  *
- * - **Reading now** — `auto.reading`: the session's title, agent, project,
- *   when it ran, and for how long it has been read.
- * - **Sessions** — `auto.build`: read of all in reach, "from the last 30
- *   days", with a bar.
- * - **Memories found** — the build's count, ticking up as reads land.
- * - **Last 24 hours** — `spent` of `daily_tokens`, with a bar, and
- *   `spent_usd`, what claude reported the reads cost at API list price.
+ * - **The header strip** (BrainStrip) — the state, N of M over a bar, the
+ *   step a read is at with the session being read, what it gives, and
+ *   every figure, each once. Beside it turns the living brain.
  * - **Where it comes from** — `build.sources`: each project, sessions read
  *   and waiting, memories kept.
  * - **Just read** — `recent`, the last three reads.
@@ -25,20 +21,16 @@
  * turns the extraction off; *Resume* turns it on and carries on where it
  * stopped, the backfill's reach kept).
  *
- * Beside the figures turns the living brain (components/BrainOrb), the one
- * the sidebar card draws: sparks fly from the agents into it while it
- * reads, and a point lights up as each memory lands.
- *
- * On top sits the header strip (BrainStrip): the state, the bar, the step
- * a read is at and what the brain gives. Not building, the strip is all the
- * screen shows of the extraction, above the graph.
+ * The living brain (components/BrainOrb), the one the sidebar card draws,
+ * sits beside the strip: sparks fly from the agents into it while it
+ * reads, and a point lights up as each memory lands. No card below repeats
+ * a figure of the strip's (owner's coordinator, 2026-10-15).
  */
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { api, errText, type BrainAutoStatus } from '@/lib/api'
 import { brainActivity, buildFigures, isBuilding, tokensShort, useBrainLanded } from '@/lib/brain'
-import { fmtAgo, fmtUSD } from '@/lib/format'
+import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
-import { agentName } from '@/components/Characters'
 import { useAgentsUsed } from '@/components/BrainAgents'
 import { BrainOrb } from '@/components/BrainOrb'
 import '@/components/BrainLive.css'
@@ -46,44 +38,12 @@ import { BrainStrip } from './BrainStrip'
 
 const ONE_MILLION = 1_000_000
 
-/** A number that counts up to its new value instead of jumping (held still under reduced motion). */
-export function Ticker({ value, className = '' }: { value: number; className?: string }) {
-  const [shown, setShown] = useState(value)
-  const from = useRef(value)
-  useEffect(() => {
-    const start = from.current
-    from.current = value
-    let still = false
-    try { still = window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { /* old browser */ }
-    if (still || start === value || typeof window.requestAnimationFrame !== 'function') { setShown(value); return }
-    const t0 = performance.now()
-    let id = 0
-    const step = (t: number) => {
-      const k = Math.min(1, (t - t0) / 700)
-      setShown(Math.round(start + (value - start) * (1 - (1 - k) ** 3)))
-      if (k < 1) id = window.requestAnimationFrame(step)
-    }
-    id = window.requestAnimationFrame(step)
-    return () => window.cancelAnimationFrame(id)
-  }, [value])
-  return <span className={`num ${className}`}>{shown}</span>
-}
-
 function Bar({ share, label, className = '' }: { share: number; label: string; className?: string }) {
   const pct = Math.round(Math.max(0, Math.min(1, share)) * 100)
   return (
     <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
       className={`h-[6px] overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--color-fg-muted)_18%,transparent)] ${className}`}>
       <div className="brain-live-bar h-full rounded-full bg-accent transition-[width] duration-700 ease-out motion-reduce:transition-none" style={{ width: `${pct}%` }} />
-    </div>
-  )
-}
-
-function Card({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`grid min-w-0 content-start gap-1 rounded-[10px] border border-border bg-panel px-3.5 py-3 ${className}`}>
-      <span className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-fg-muted">{label}</span>
-      {children}
     </div>
   )
 }
@@ -122,59 +82,18 @@ export function BrainLive({ auto, onChanged, kinds, count, owner = true }: { aut
   const landed = useBrainLanded()
   const f = buildFigures(auto, now)
   const building = isBuilding(auto)
-  const r = auto.reading
-  const reach = f?.days ? `from the last ${f.days} days` : 'since you turned it on'
-  const spentShare = auto.daily_tokens > 0 ? auto.spent / auto.daily_tokens : 0
   const recent = auto.recent.slice(0, 3)
-  const nextIn = auto.next_wake && auto.next_wake > now ? Math.ceil((auto.next_wake - now) / 1000) : 0
   return (
     <section className="grid gap-3" aria-label="Building Second Brain" data-brain-live={building ? 'building' : 'idle'}>
-      <BrainStrip auto={auto} memories={count} onChanged={onChanged} owner={owner} />
+      {/* The strip carries every figure once; the living brain sits beside it. */}
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_240px]">
+        <BrainStrip auto={auto} memories={count} onChanged={onChanged} owner={owner} />
+        <div className="relative min-h-[200px] overflow-hidden rounded-[12px] border border-border bg-panel" data-brain-live-orb>
+          <BrainOrb kinds={kinds} count={count} agents={agents} activity={brainActivity(auto)} landed={landed} className="absolute inset-0" ariaLabel="Second Brain being built" />
+        </div>
+      </div>
 
       <Problem auto={auto} onChanged={onChanged} />
-
-      <div className="grid gap-3 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
-      <div className="relative min-h-[240px] overflow-hidden rounded-[12px] border border-border bg-panel" data-brain-live-orb>
-        <BrainOrb kinds={kinds} count={count} agents={agents} activity={brainActivity(auto)} landed={landed} className="absolute inset-0" ariaLabel="Second Brain being built" />
-      </div>
-      <div className="grid content-start gap-3 sm:grid-cols-3">
-        <Card label="Reading now" className="sm:col-span-3">
-          {r ? (
-            <div className="grid min-w-0 gap-0.5" data-brain-reading>
-              <span className="truncate text-[15px] font-medium text-fg" title={r.title}>{r.title || 'A session'}</span>
-              <span className="truncate text-[13px] text-fg-muted">
-                {[r.agent ? agentName(r.agent) : '', r.project, r.last_event_at ? `ran ${fmtAgo(r.last_event_at, now)}` : ''].filter(Boolean).join(' · ')}
-              </span>
-              <span className="text-[12px] text-fg-muted">reading for {Math.max(0, Math.round((now - r.started_at) / 1000))}s</span>
-            </div>
-          ) : (
-            <span className="text-[14px] leading-snug text-fg-muted" data-brain-reading-idle>
-              {!auto.on ? 'Paused.' : !auto.claude_found ? 'Nothing — Claude Code is needed.' : auto.pending > 0
-                ? (nextIn > 0 && nextIn < 600 ? `Next session in ${nextIn > 90 ? `${Math.round(nextIn / 60)} min` : `${nextIn}s`}` : 'Opening the next session…')
-                : 'Nothing waiting. New sessions come in as they finish.'}
-            </span>
-          )}
-        </Card>
-        <Card label="Sessions">
-          <span className="text-[15px] text-fg" data-brain-sessions>
-            <span className="num text-[22px] font-semibold">{f?.read ?? 0}</span>
-            <span className="text-fg-muted"> of </span>
-            <span className="num">{f ? `${f.sessions}${f.truncated ? '+' : ''}` : 0}</span>
-          </span>
-          <Bar share={f?.share ?? 0} label="Sessions read" />
-          <span className="text-[12px] text-fg-muted">{reach}</span>
-        </Card>
-        <Card label="Memories found">
-          <Ticker value={f?.memories ?? 0} className="text-[22px] font-semibold text-fg" />
-          <span className="text-[12px] text-fg-muted">so far — each lands in the graph</span>
-        </Card>
-        <Card label="Last 24 hours">
-          <span className="text-[15px] text-fg"><span className="num text-[22px] font-semibold">{tokensShort(auto.spent)}</span><span className="text-fg-muted"> of {tokensShort(auto.daily_tokens)}</span></span>
-          <Bar share={spentShare} label="Tokens used today" />
-          <span className="text-[12px] text-fg-muted">tokens of your daily limit · {fmtUSD(auto.spent_usd ?? 0)} at API list price</span>
-        </Card>
-      </div>
-      </div>
 
       {(f?.sources.length ?? 0) > 0 && (
         <div className="grid gap-1.5" data-brain-sources>

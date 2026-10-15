@@ -116,14 +116,11 @@ describe('the Second Brain screen', () => {
       'What it gives: a new session in a repository starts with up to 5 of its memories — 2 sessions got 9 memories in the last 24 h, 6 in all.')
     const figures = [...document.querySelectorAll('[data-brain-figures] dd')].map((d) => d.textContent)
     expect(figures).toEqual(['8', '3', '5', '17', '84k of 300k', '$0.42 API list price'])
-    const reading = document.querySelector('[data-brain-reading]')!
-    expect(reading.textContent).toMatch(/Fix the flaky cache test/)
-    expect(reading.textContent).toMatch(/Claude Code · acme-api · ran 3d ago/)
-    expect(document.querySelector('[data-brain-sessions]')!.textContent).toBe('12 of 41')
-    expect(screen.getByText('from the last 30 days')).toBeTruthy()
-    expect(screen.getByRole('progressbar', { name: 'Sessions read' }).getAttribute('aria-valuenow')).toBe('29')
-    expect(screen.getByRole('progressbar', { name: 'Tokens used today' }).getAttribute('aria-valuenow')).toBe('28')
-    await waitFor(() => expect(screen.getByText('8', { selector: 'span.num' })).toBeTruthy())
+    // Each figure once: no card below repeats the strip's.
+    expect(document.querySelector('[data-brain-reading], [data-brain-sessions]')).toBeNull()
+    expect(screen.getAllByRole('progressbar').filter((b) => !b.getAttribute('aria-label')!.includes(':'))).toHaveLength(1)
+    expect(screen.getAllByText(/Fix the flaky cache test/)).toHaveLength(1)
+    expect(document.querySelector('[data-brain-live-orb]')).not.toBeNull()
     // Sources: each project, read of all, memories kept.
     const sources = [...document.querySelectorAll('[data-brain-source]')].map((li) => li.textContent)
     expect(sources).toEqual(['acme-api9 of 29 read · 6 memories', 'web3 of 12 read · 2 memories'])
