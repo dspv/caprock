@@ -40,6 +40,12 @@ export type Message = {
   body_html?: string
   structure: { text?: Part; html?: Part; parts: Part[] | null }
   body_state: number
+  /** The local junk filter hides it from the inbox (inbox mail only). */
+  junk?: boolean
+  /** 0–100; 50 is the threshold. */
+  junk_score?: number
+  /** Comma-separated rule codes that pushed it towards junk, strongest first. */
+  junk_why?: string
 }
 
 export type Account = {
@@ -73,7 +79,8 @@ export type State = {
   version: number
   accounts: Account[]
   folders: Folder[]
-  counts: { inbox: number; unread: number; flagged: number }
+  /** junk: inbox mail the junk filter hides (not the Junk folder). */
+  counts: { inbox: number; unread: number; flagged: number; junk?: number }
   /** Sample mode: every route serves made-up accounts; nothing is real. */
   sample?: boolean
 }

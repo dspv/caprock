@@ -10,7 +10,7 @@ import { keys } from '@/lib/appkeys'
 export const MAIL_KEYS = {
   down: 'j', up: 'k',
   compose: 'c', reply: 'r', replyAll: 'a', forward: 'f',
-  archive: 'e', trash: '#', spam: '!', move: 'v',
+  archive: 'e', trash: '#', spam: '!', notSpam: 'n', move: 'v',
   star: 's', unread: 'u', summarise: 'i',
   search: '/', settings: ',', theme: 't', sync: 'g r', help: '?', close: 'Esc',
   send: '⌘↩', draft: '⌘J',
@@ -40,7 +40,7 @@ export function K({ k }: { k: MailKey }) {
 export const SHEET: { title: string; rows: [MailKey, string][] }[] = [
   { title: 'Move around', rows: [['down', 'Next conversation'], ['up', 'Previous conversation'], ['search', 'Search'], ['close', 'Close, back to the list']] },
   { title: 'Go to', rows: [['inbox', 'Inbox'], ['unreadView', 'Unread'], ['starred', 'Starred'], ['sent', 'Sent'], ['drafts', 'Drafts'], ['archiveView', 'Archive'], ['spamView', 'Spam'], ['trashView', 'Trash']] },
-  { title: 'Act on a conversation', rows: [['archive', 'Archive'], ['trash', 'Delete'], ['spam', 'Spam'], ['move', 'Move to folder'], ['star', 'Star'], ['unread', 'Mark unread / read'], ['summarise', 'Summarise with AI']] },
+  { title: 'Act on a conversation', rows: [['archive', 'Archive'], ['trash', 'Delete'], ['spam', 'Spam'], ['notSpam', 'Not spam'], ['move', 'Move to folder'], ['star', 'Star'], ['unread', 'Mark unread / read'], ['summarise', 'Summarise with AI']] },
   { title: 'Write', rows: [['compose', 'New message'], ['reply', 'Reply'], ['replyAll', 'Reply all'], ['forward', 'Forward'], ['send', 'Send'], ['draft', 'Draft the reply with AI']] },
   { title: 'Mail', rows: [['sync', 'Check mail'], ['theme', 'Theme'], ['settings', 'Settings'], ['help', 'This list']] },
 ]

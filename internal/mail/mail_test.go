@@ -232,3 +232,64 @@ func TestDemoEnvForcesSample(t *testing.T) {
 		t.Fatal("demo created the real mail.db")
 	}
 }
+
+// The sample inbox carries junk the server let through: the list leaves it
+// out by default, junk=only lists it, the state counts it, and notjunk brings
+// one back.
+func TestJunkOverHTTP(t *testing.T) {
+	t.Setenv("CAPROCK_MAIL_DEMO", "1")
+	s := New(t.TempDir(), nil)
+	t.Cleanup(s.Close)
+	h := s.Handler()
+	type row struct {
+		ID      int64  `json:"id"`
+		Subject string `json:"subject"`
+		Junk    bool   `json:"junk"`
+		Score   int    `json:"junk_score"`
+		Why     string `json:"junk_why"`
+	}
+	list := func(path string) []row {
+		t.Helper()
+		var rs []row
+		w := do(t, h, "GET", path, nil)
+		if err := json.Unmarshal(w.Body.Bytes(), &rs); err != nil {
+			t.Fatalf("%s: %v %s", path, err, w.Body)
+		}
+		return rs
+	}
+	junkCount := func() int {
+		var st struct {
+			Counts struct{ Junk int } `json:"counts"`
+		}
+		_ = json.Unmarshal(do(t, h, "GET", "/v1/mail/state", nil).Body.Bytes(), &st)
+		return st.Counts.Junk
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for junkCount() < 4 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if n := junkCount(); n != 4 {
+		t.Fatalf("junk count %d, want 4", n)
+	}
+	for _, r := range list("/v1/mail/messages?view=inbox") {
+		if r.Junk {
+			t.Fatalf("junk in the default inbox: %+v", r)
+		}
+		if r.Subject == "Hacker Newsletter #712" && r.Score >= 50 {
+			t.Fatalf("newsletter scored as junk: %+v", r)
+		}
+	}
+	only := list("/v1/mail/messages?view=inbox&junk=only")
+	if len(only) != 4 || !only[0].Junk || only[0].Why == "" {
+		t.Fatalf("junk=only: %+v", only)
+	}
+	if n := len(list("/v1/mail/messages?view=inbox&junk=include")); n != len(list("/v1/mail/messages?view=inbox"))+4 {
+		t.Fatalf("junk=include lists %d", n)
+	}
+	if w := do(t, h, "POST", "/v1/mail/actions", map[string]any{"ids": []int64{only[0].ID}, "action": "notjunk"}); w.Code != 200 {
+		t.Fatalf("notjunk: %d %s", w.Code, w.Body)
+	}
+	if n := junkCount(); n != 3 {
+		t.Fatalf("after notjunk: %d", n)
+	}
+}

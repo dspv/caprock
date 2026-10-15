@@ -3400,6 +3400,20 @@ dashboard and a desktop app on three OSes.
   stripped, and the body renders in a sandboxed iframe under a CSP with no
   script and no network; remote images (tracking pixels) load only when the
   user allows them.
+- **A local junk filter, on by default** (amended 2026-10-15; the owner,
+  translated: "there's a lot of spam in my inbox — every mail client filters
+  this"). Many IMAP hosts leave junk in INBOX and the user's previous client
+  hid it locally. `internal/mail/spam` does the same with no AI and no
+  network: the receiving server's own verdict and its SPF/DKIM/DMARC results
+  from the header, a few cheap rules, and a naive-Bayes classifier in
+  `mail.db` taught by the Junk folder and the user's Spam / Not spam. It is
+  global rather than per account — one person's idea of junk does not
+  change with the address it reached, and a newly added account starts
+  with what the others taught. The verdict only hides inbox mail; nothing
+  is moved or deleted on the server unless the user presses Spam, and
+  anyone the user wrote to or vouched for is never junk. AI triage, when
+  turned on, builds on it rather than replacing it. Details in
+  [03-contracts.md](03-contracts.md) § Mail.
 - **The screen polls a change counter** every 4 s while it is open and the
   page is visible, rather than adding frames to the live socket.
 - **Offered once.** A *Mail* item marked *new* sits last in the dashboard's

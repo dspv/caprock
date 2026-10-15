@@ -53,7 +53,7 @@ const VIEWS: { view: string; label: string; icon: string; k: MailKey }[] = [
 const ACCOUNT_COLORS = ['#2f6fdf', '#e0702a', '#1e9e6a', '#b5479b', '#c9a227', '#5b5bd6']
 export const acctColor = (accounts: Account[], id: number) => ACCOUNT_COLORS[Math.max(0, accounts.findIndex((a) => a.id === id)) % ACCOUNT_COLORS.length]
 
-const MOVES = new Set(['archive', 'trash', 'spam', 'inbox', 'move'])
+const MOVES = new Set(['archive', 'trash', 'spam', 'inbox', 'move', 'notjunk'])
 
 function folderLabel(f: Folder) {
   const parts = f.name.split(f.delim || '/')
@@ -81,6 +81,9 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
   const [sel, setSel] = useState<Sel>({ view: 'inbox' })
   const [q, setQ] = useState('')
   const [msgs, setMsgs] = useState<Message[]>([])
+  // In the Spam view: inbox mail the local junk filter hides, listed above
+  // the server's Junk folder.
+  const [localJunk, setLocalJunk] = useState<Message[]>([])
   const [more, setMore] = useState(true)
   const [cur, setCur] = useState<number | null>(null) // selected row's newest message id
   const [compose, setCompose] = useState<ComposeInit | null>(null)
@@ -151,6 +154,12 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
   const loadList = useCallback(async (append = false) => {
     const last = append ? msgs[msgs.length - 1] : undefined
     const page = await api.list({ ...query, limit: 150, before: last?.date, before_id: last?.id })
+    if (!append) {
+      const hidden = query.view === 'junk' && !query.q
+        ? await api.list({ view: 'inbox', junk: 'only', account: query.account, limit: 150 }).catch(() => [] as Message[])
+        : []
+      setLocalJunk(hidden)
+    }
     setMore(page.length === 150)
     setMsgs((old) => (append ? [...old, ...page] : page))
   }, [query, msgs])
@@ -196,7 +205,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
     return () => clearInterval(t)
   }, [ready, filling])
 
-  const rows = useMemo(() => groupThreads(msgs), [msgs])
+  const rows = useMemo(() => groupThreads([...localJunk, ...msgs]), [localJunk, msgs])
   const curRow = rows.find((r) => r.m.id === cur) ?? null
   const accounts = st?.accounts ?? []
   const aiOn = settings.ai_enabled === '1'
@@ -217,6 +226,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       const i = rows.indexOf(row)
       const next = rows[i + 1] ?? rows[i - 1] ?? null
       setMsgs((ms) => ms.filter((m) => !ids.includes(m.id)))
+      setLocalJunk((ms) => ms.filter((m) => !ids.includes(m.id)))
       setCur(next ? next.m.id : null)
     } else {
       const patch: Partial<Message> =
@@ -229,6 +239,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       if (action === 'archive') flash('Archived')
       if (action === 'trash') flash(sel.view === 'trash' ? 'Deleted for good' : 'Moved to Trash')
       if (action === 'spam') flash('Marked as spam')
+      if (action === 'notjunk') flash('Not spam — back in the Inbox')
     } catch (e) {
       flash('Failed: ' + (e as Error).message)
       listRef2.current(false)
@@ -276,6 +287,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
         case 'e': act('archive'); break
         case '#': case 'Delete': case 'Backspace': act('trash'); break
         case '!': act('spam'); break
+        case 'n': curRow && (sel.view === 'junk' || curRow.m.junk) && act('notjunk'); break
         case 's': curRow && act(curRow.flagged ? 'unflag' : 'flag'); break
         case 'u': curRow && act(curRow.unread ? 'read' : 'unread'); break
         case 'r': last && startReply(last, false); break
@@ -351,7 +363,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
         </div>
         <nav>
           {VIEWS.map((v) => {
-            const n = v.view === 'inbox' ? st.counts.unread : v.view === 'flagged' ? st.counts.flagged : 0
+            const n = v.view === 'inbox' ? st.counts.unread : v.view === 'flagged' ? st.counts.flagged : v.view === 'junk' ? (st.counts.junk ?? 0) : 0
             return (
               <button key={v.view} className={'nav' + (!q && sel.view === v.view && !sel.account ? ' on' : '')}
                 onClick={() => { setSel({ view: v.view }); setQ(''); setCur(null) }}>
@@ -411,11 +423,17 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
           }
         }}>
           {rows.length === 0 && <div className="empty">{q ? 'Nothing found.' : 'No messages.'}</div>}
-          {rows.map((r) => {
+          {rows.map((r, i) => {
             const m = r.m
+            // The Spam view: what Caprock hides first, then the server's Junk folder.
+            const head = sel.view !== 'junk' || q ? null
+              : m.junk && (i === 0 || !rows[i - 1]!.m.junk) ? 'Caprock thinks these are junk'
+              : !m.junk && i > 0 && rows[i - 1]!.m.junk ? 'In your Spam folder' : null
             const name = sel.view === 'sent' ? 'To: ' + (m.to?.[0]?.name || m.to?.[0]?.addr || '') : sender(m)
             return (
-              <div key={m.id} className={'row' + (r.unread ? ' unread' : '') + (cur === m.id ? ' on' : '')} onClick={() => select(r)}>
+              <div key={m.id} className="rowwrap">
+              {head && <div className="rowhead">{head}{m.junk && <span className="muted"> · hidden from the Inbox, nothing moved on the server</span>}</div>}
+              <div className={'row' + (r.unread ? ' unread' : '') + (cur === m.id ? ' on' : '')} onClick={() => select(r)}>
                 <div className="avatar" style={{ background: `hsl(${hue(m.from_addr)} 45% 55%)` }}>{initials(m.from_name || m.from_addr)}</div>
                 <div className="rowmain">
                   <div className="rowtop">
@@ -431,10 +449,12 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
                 </div>
                 {accounts.length > 1 && <span className="acctbar" style={{ background: acctColor(accounts, m.account_id) }} />}
                 <div className="hoveracts" onClick={(e) => e.stopPropagation()}>
+                  {sel.view === 'junk' && <button className="btn small" title="Not spam (n)" onClick={() => act('notjunk', r)}>Not spam</button>}
                   <button className="icon" title="Archive (e)" onClick={() => act('archive', r)}><Icon name="archive" size={15} /></button>
                   <button className="icon" title="Delete (#)" onClick={() => act('trash', r)}><Icon name="trash" size={15} /></button>
                   <button className="icon" title={r.unread ? 'Mark read' : 'Mark unread (u)'} onClick={() => act(r.unread ? 'read' : 'unread', r)}><Icon name="unread" size={15} /></button>
                 </div>
+              </div>
               </div>
             )
           })}

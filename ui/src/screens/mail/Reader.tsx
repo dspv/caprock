@@ -6,6 +6,7 @@ import { MailBody } from './MailBody'
 import { bytes, firstName, hue, initials, longDate, people, sender, shortDate } from './format'
 import { Icon } from './icons'
 import { K } from './keymap'
+import { junkReasons } from './junk'
 import { isTauri } from '@/lib/appmode'
 import { openExternal } from '@/lib/nudges'
 
@@ -132,11 +133,11 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
   return (
     <div className="readwrap">
       <div className="toolbar">
-        {view === 'junk'
-          ? <button className="btn" onClick={() => onAct('inbox')}>Not spam</button>
+        {view === 'junk' || row.m.junk
+          ? <button className="btn" onClick={() => onAct('notjunk')}>Not spam <K k="notSpam" /></button>
           : view !== 'archive' && <button className="icon withkey" title="Archive" onClick={() => onAct('archive')}><Icon name="archive" /> <K k="archive" /></button>}
         <button className="icon withkey" title="Delete" onClick={() => onAct('trash')}><Icon name="trash" /> <K k="trash" /></button>
-        {view !== 'junk' && <button className="icon withkey" title="Spam" onClick={() => onAct('spam')}><Icon name="spam" /> <K k="spam" /></button>}
+        {view !== 'junk' && !row.m.junk && <button className="icon withkey" title="Spam" onClick={() => onAct('spam')}><Icon name="spam" /> <K k="spam" /></button>}
         <div className="movewrap">
           <button className="icon withkey" title="Move to folder" onClick={() => { setMoveOpen(!moveOpen); setMoveAt(0) }}><Icon name="folder" /> <K k="move" /></button>
           {moveOpen && (
@@ -168,6 +169,14 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
       )}
       <div className="readscroll">
         <h1 className="subj">{m0.subject || '(no subject)'}</h1>
+        {m0.junk && (
+          <div className="junknote" role="note">
+            <Icon name="spam" size={14} />
+            <span>Caprock thinks this is junk{junkReasons(m0.junk_why) && ': ' + junkReasons(m0.junk_why)}. It is hidden from the Inbox; nothing was moved on the server.</span>
+            <span className="grow" />
+            <button className="btn small" onClick={() => onAct('notjunk')}>Not spam <K k="notSpam" /></button>
+          </div>
+        )}
         {summary && (
           <div className="summary">
             <div className="sumhead"><Icon name="sparkle" size={14} /> Summary {sumBy && <span className="muted small">by {sumBy}</span>}

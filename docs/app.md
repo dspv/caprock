@@ -165,6 +165,17 @@ others. Installing it: [install-app.md](install-app.md).
   failed with the reason and *Retry*; *Skip for now* moves on and *Come
   back* returns to it. Outlook for Mac's accounts are not read — add them with
   *Sign in with Microsoft*.
+  **Junk stays out of the Inbox**, as in other mail apps, even when your
+  provider leaves it there. Caprock's own filter runs on your computer — no
+  AI, nothing sent anywhere, on from the start: it reads what your mail
+  server wrote into each message (whether the sender's domain vouches for
+  it, the server's own spam verdict), checks for a brand name on an
+  unrelated address, replies going to a free mail address and links hidden
+  behind shorteners, and learns from your Spam folder and from every
+  *Spam* (`!`) and *Not spam* (`n`) you press. Mail from anyone you have
+  written to, or said *Not spam* for, is never junk. What it hides waits
+  under *Caprock thinks these are junk* in Spam (`g !`), with the reason in
+  the message; nothing moves on the server until you press Spam yourself.
   The arrow beside *Send feedback* folds that bottom block to one row of
   icons and back; the app remembers which way you left it. Folded, on a
   Mac each icon has its key drawn small above it; on Windows and Linux,

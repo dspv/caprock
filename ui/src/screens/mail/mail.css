@@ -329,3 +329,8 @@
 .cm .swatch { position: relative; display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: 2px solid; flex: none; }
 .cm .swatch i { position: absolute; right: 1px; bottom: 1px; width: 6px; height: 6px; border-radius: 50%; }
 .cm .nav .swatch { flex: none; width: 16px; }
+
+/* The local junk filter: the Spam view's headings and the reader's note. */
+.cm .rowhead { padding: 10px 14px 4px; font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
+.cm .rowhead .muted { text-transform: none; font-weight: 400; letter-spacing: 0; }
+.cm .junknote { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--danger) 6%, transparent); font-size: 12.5px; }

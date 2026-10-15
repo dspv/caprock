@@ -244,6 +244,11 @@ type Msg struct {
 	Date                          time.Time
 	MessageID, InReplyTo          string
 	Attach                        string // file name of a small attachment
+	// Headers are extra raw header lines, each ending in CRLF, written
+	// first as a receiving server writes its own (Authentication-Results,
+	// X-Spam-Status).
+	Headers string
+	ReplyTo string
 }
 
 // Raw renders the message.
@@ -254,6 +259,10 @@ func (m Msg) Raw() []byte {
 	}
 	if m.MessageID == "" {
 		m.MessageID = fmt.Sprintf("%d.%d@fake.test", m.Date.UnixNano(), len(m.Subject))
+	}
+	b.WriteString(m.Headers)
+	if m.ReplyTo != "" {
+		fmt.Fprintf(&b, "Reply-To: %s\r\n", m.ReplyTo)
 	}
 	fmt.Fprintf(&b, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <%s>\r\nMIME-Version: 1.0\r\n",
 		m.From, m.To, m.Subject, m.Date.Format(time.RFC1123Z), m.MessageID)

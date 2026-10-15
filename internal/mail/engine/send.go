@@ -173,9 +173,10 @@ func (e *Engine) Send(ctx context.Context, d Draft) error {
 	}
 	for _, l := range [][]store.Address{d.To, d.Cc, d.Bcc} {
 		for _, x := range l {
-			_ = e.st.NoteContact(ctx, x, 5, time.Now().Unix())
+			_ = e.st.NoteContact(ctx, x, store.SentWeight, time.Now().Unix())
 		}
 	}
+	e.liftKnown(ctx) // whoever the user just wrote to is no longer junk
 	// Gmail files sent mail itself; everywhere else we append to Sent.
 	if !strings.HasSuffix(strings.ToLower(a.SMTPHost), "gmail.com") {
 		if sent, err := e.st.FolderByRole(ctx, a.ID, "sent"); err == nil {

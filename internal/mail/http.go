@@ -230,7 +230,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	}
 	s.with(w, r, func(st *store.Store, _ *engine.Engine) {
 		q := r.URL.Query()
-		query := store.Query{View: q.Get("view"), Search: q.Get("q")}
+		query := store.Query{View: q.Get("view"), Search: q.Get("q"), Junk: q.Get("junk")}
 		query.AccountID, _ = strconv.ParseInt(q.Get("account"), 10, 64)
 		query.FolderID, _ = strconv.ParseInt(q.Get("folder"), 10, 64)
 		query.Before, _ = strconv.ParseInt(q.Get("before"), 10, 64)
