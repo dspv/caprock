@@ -1,6 +1,6 @@
 # My machines
 
-**Status: proposed, not built.** The decision is
+**Status: accepted, Phase 1 in progress.** The decision is
 [ADR-067](08-decisions.md); this file is what it is for, how it is built,
 in what order, and what is still open. Nothing here is in a release.
 
@@ -71,6 +71,39 @@ machine here; that works without anything hosted.
   that has a Tailscale address, reports its addresses through the link; the
   client then dials every known path at once and keeps the fastest, still
   inside Noise (21-app.md § Phase B). Nothing new listens by default.
+
+## The wire, as Phase 1 builds it
+
+PR 2 moves this into [03-contracts.md](03-contracts.md) with the code; until
+then it is the agreement the Go and UI work build against.
+
+- **A code for a machine.** `POST /v1/pair/code` takes `{"role":"machine"}`
+  (loopback only, as for the other roles) and answers as it does for a
+  phone, `remote.link` included: the link a new machine joins with.
+- **Joining.** `POST /v1/machines/join` `{"link":"…","name":"…"}`, loopback
+  only, on the new machine (`caprock join <link>` calls it). The daemon turns
+  its own access from anywhere on, mints a `machine` device for the other
+  side, dials the link's machine through the relay and calls `POST
+  /v1/pair` there with `{"code","name","machine":{"id","key","relay",
+  "token"}}`: its own identity and the token just minted. The other side
+  redeems the code as a `machine` device, records the sender in its
+  `machines.json`, and answers the usual `{token,id,name}` plus its own
+  `{"machine":{"id","key","relay","name"}}`. Both now hold a token on each
+  other. A failure at any step undoes the local half.
+- **The list.** `GET /v1/machines` (loopback only) →
+  `{"machines":[{"id","name","online","rtt_ms","version","since",
+  "error"}]}`; `online` is the link's state, `rtt_ms` its last measured
+  round trip.
+- **Removing.** `DELETE /v1/machines/{id}` (loopback only) drops the entry
+  and revokes its device here, then calls `DELETE /v1/machines/me` on the
+  other side if it is reachable — the one pairing route a `machine` token
+  may call, and only about itself.
+- **The proxy.** `/v1/m/{id}/…` on loopback forwards method, path, query,
+  body and WebSocket upgrades to that machine's `/v1/…` over the link,
+  carrying the stored token. 502 with `{"error"}` when the link is down;
+  the other side's status otherwise.
+- **Load.** `GET /v1/resources` gains `"machine":{"cpus","load1",
+  "mem_total","mem_available"}` (bytes).
 
 ## Measure
 

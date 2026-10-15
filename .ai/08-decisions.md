@@ -4158,7 +4158,8 @@ in practice.
 
 ## ADR-067 — My machines: every computer the user owns runs Caprock, and any of them drives agents on the others
 
-**Date:** 2026-10-15 · **Status:** proposed (owner, translated: "we need to
+**Date:** 2026-10-15 · **Status:** accepted (owner, 2026-10-15, translated:
+"Yes. Go."; the ask, translated: "we need to
 move towards encouraging people to install Caprock on their other computers,
 so they can work with them the same way, from the phone and so on — just my
 computers joined in a network"). Plan and phases:

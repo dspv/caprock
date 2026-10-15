@@ -73,7 +73,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
-### 2026-10-15 — proposed: My machines (ADR-067)
+### 2026-10-15 — accepted: My machines (ADR-067)
 
 The owner asked for Caprock on all of a user's computers, each driving
 agents on the others and all seen from the phone. Hosted machines were
