@@ -148,8 +148,9 @@ func resolveInRoot(root, req string) (string, error) {
 
 func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	root := s.browseRoot()
-	if deviceFrom(r) != nil {
-		// A controller phone picks folders too (ADR-034), but never outside home.
+	if phoneLimited(r) {
+		// A controller phone picks folders too (ADR-034), but never outside
+		// home. A computer (ADR-067) picks from the machine's own root.
 		root = s.deviceBrowseRoot()
 	}
 	dir, err := resolveInRoot(root, expandTilde(r.URL.Query().Get("dir")))
@@ -167,7 +168,7 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := make([]browseEntry, 0, len(des))
-	remote := deviceFrom(r) != nil
+	remote := phoneLimited(r)
 	for _, de := range des {
 		name := de.Name()
 		if strings.HasPrefix(name, ".") {
@@ -286,7 +287,7 @@ func (s *Server) handleRecentDirs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := make([]recentDir, 0, 8)
-	remote := deviceFrom(r) != nil
+	remote := phoneLimited(r)
 	for _, d := range dirs {
 		if len(out) == 8 {
 			break

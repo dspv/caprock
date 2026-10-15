@@ -8,15 +8,15 @@
  * something is going on". The sidebar card and the screen's "being built"
  * panel draw this one component.
  *
- * What it shows is the daemon's state, not decoration: the points take the
- * kinds of the newest memories (their colours), one point per memory up to
- * a ceiling; sparks fly while the extraction is working (`activity`), as
- * many as it is busy; each memory added (`landed` going up) sends a spark
- * and lights a point. The sessions at work feed it too (`working`, a count
- * the sidebar already has — nothing more is asked of the daemon): a few slow
- * sparks per working session, which drift in and light nothing, because no
- * memory landed. Idle — nothing extracting, no session working — only the
- * slow turn.
+ * What it shows is the daemon's state, not decoration: one point per
+ * memory up to a ceiling, drawn in the Graph view's language — tiny dots in
+ * the text colour, hairline links, sparks in the one accent; sparks fly while
+ * the extraction is working (`activity`), as many as it is busy; each memory
+ * added (`landed` going up) sends a spark and lights a point. The sessions at
+ * work feed it too (`working`, a count the sidebar already has — nothing more
+ * is asked of the daemon): a few slow sparks per working session, which drift
+ * in and light nothing, because no memory landed. Idle — nothing extracting,
+ * no session working — only the slow turn.
  *
  * A 3D projection is a few lines of arithmetic: points on a Fibonacci
  * sphere, turned about the Y axis (and tilted), scaled by perspective, their
@@ -159,14 +159,10 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
       cv.style.width = `${w}px`
       cv.style.height = `${h}px`
     }
-    // A point's colour: the kinds of the newest memories, in turn, so the
-    // cloud has the brain's own mix; the four kinds before there are any.
+    // The points are drawn a group at a time, as many groups as the newest
+    // memories have kinds; all in the text colour (the graph's language: small
+    // dots, hairlines, one accent), so the groups only batch the paths.
     const palette = () => Math.max(1, Math.min(live.current.kinds.length || KINDS.length, 12))
-    const kindColor = (i: number) => {
-      const ks = live.current.kinds
-      const k = ks.length ? ks[i % palette()]! : KINDS[i % KINDS.length]!
-      return colors[k] ?? colors.ring
-    }
 
     let angle = 0
     let last = 0
@@ -203,8 +199,8 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
       }
       // Links, faint, fading with depth: three depth bands, one stroke each
       // (a stroke per link was most of a frame's cost).
-      ctx.lineWidth = 1
-      ctx.strokeStyle = colors.edge
+      ctx.lineWidth = 0.6
+      ctx.strokeStyle = colors.web
       for (let band = 0; band < BANDS; band++) {
         ctx.globalAlpha = (0.07 + (0.22 * (band + 0.5)) / BANDS) * fade
         ctx.beginPath()
@@ -220,12 +216,12 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
       for (let band = 0; band < BANDS; band++) {
         ctx.globalAlpha = (0.25 + (0.75 * (band + 0.5)) / BANDS) * fade
         for (let c = 0; c < palette(); c++) {
-          ctx.fillStyle = kindColor(c)
+          ctx.fillStyle = colors.dot
           ctx.beginPath()
           for (let i = c; i < n; i += palette()) {
             const depth = (pz[i]! + 1) / 2
             if (Math.min(BANDS - 1, Math.floor(depth * BANDS)) !== band || now - pts[i]!.pulse < PULSE_MS) continue
-            const r = (1.3 + depth * 1.5) * (PERSPECTIVE / (PERSPECTIVE - pz[i]!))
+            const r = (0.75 + depth * 0.9) * (PERSPECTIVE / (PERSPECTIVE - pz[i]!))
             ctx.moveTo(px[i]! + r, py[i]!)
             ctx.arc(px[i]!, py[i]!, r, 0, Math.PI * 2)
           }
@@ -238,9 +234,9 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
         if (age >= PULSE_MS) continue
         const depth = (pz[i]! + 1) / 2
         const glow = 1 - age / PULSE_MS
-        const r = (1.3 + depth * 1.5) * (PERSPECTIVE / (PERSPECTIVE - pz[i]!)) * (1 + glow * 1.6)
+        const r = (0.75 + depth * 0.9) * (PERSPECTIVE / (PERSPECTIVE - pz[i]!)) * (1 + glow * 1.6)
         ctx.globalAlpha = (0.25 + 0.75 * depth) * fade
-        ctx.fillStyle = kindColor(i)
+        ctx.fillStyle = colors.dot
         ctx.beginPath()
         ctx.arc(px[i]!, py[i]!, r, 0, Math.PI * 2)
         ctx.fill()
@@ -272,15 +268,15 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
         const x = (1 - e) ** 2 * sx + 2 * (1 - e) * e * mx + e * e * tx
         const y = (1 - e) ** 2 * sy + 2 * (1 - e) * e * my + e * e * ty
         ctx.globalAlpha = Math.min(1, t * 4) * (1 - Math.max(0, t - 0.85) / 0.15) * (sp.slow ? 0.7 : 1) * fade
-        ctx.fillStyle = kindColor(sp.kind)
+        ctx.fillStyle = colors.ring
         ctx.beginPath()
-        ctx.arc(x, y, sp.slow ? 1.8 : 2.2, 0, Math.PI * 2)
+        ctx.arc(x, y, sp.slow ? 1.4 : 1.6, 0, Math.PI * 2)
         ctx.fill()
         // A short tail.
         const e2 = Math.max(0, e - 0.06)
         ctx.globalAlpha *= 0.35
         ctx.beginPath()
-        ctx.arc((1 - e2) ** 2 * sx + 2 * (1 - e2) * e2 * mx + e2 * e2 * tx, (1 - e2) ** 2 * sy + 2 * (1 - e2) * e2 * my + e2 * e2 * ty, 1.5, 0, Math.PI * 2)
+        ctx.arc((1 - e2) ** 2 * sx + 2 * (1 - e2) * e2 * mx + e2 * e2 * tx, (1 - e2) ** 2 * sy + 2 * (1 - e2) * e2 * my + e2 * e2 * ty, 1.1, 0, Math.PI * 2)
         ctx.fill()
       }
       ctx.globalAlpha = 1

@@ -28,6 +28,18 @@ type wsHub struct {
 	// change when LAN access is switched on from the dashboard, and every
 	// handshake reads them, so they are guarded by mu with the connections.
 	lanHosts []string
+	// hold records a device's socket so it can be closed when the device is
+	// removed (Server.holdSocket); nil holds nothing.
+	hold func(r *http.Request, c *websocket.Conn) (release func())
+}
+
+// held records c for r's device, if any; the release runs when the socket's
+// handler returns.
+func (h *wsHub) held(r *http.Request, c *websocket.Conn) func() {
+	if h.hold == nil {
+		return func() {}
+	}
+	return h.hold(r, c)
 }
 
 func newWSHub(b *bus.Bus, log *slog.Logger, lanHost string) *wsHub {
@@ -76,6 +88,7 @@ func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	defer h.held(r, c)()
 	ctx, cancel := context.WithCancel(r.Context())
 	h.mu.Lock()
 	h.conns[c] = cancel
@@ -278,6 +291,7 @@ func (h *wsHub) serveTerm(s *Server) http.HandlerFunc {
 		if err != nil {
 			return
 		}
+		defer h.held(r, c)()
 		// Empty on the machine itself; a device's token otherwise, asked
 		// about again before every frame it sends.
 		var devTok string

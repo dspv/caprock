@@ -862,12 +862,15 @@ func (b *streamBody) abort(err error) {
 	if stop != nil {
 		stop()
 	}
-	_ = b.cc.send(KindCancel, b.id, nil)
+	// Unhooked and dropped before the machine is told: once it has the
+	// cancel it ends its side, and an end that reached this stream first
+	// would read a cut-short body as whole.
 	b.cc.mu.Lock()
 	delete(b.cc.streams, b.id)
 	b.cc.lastActive = time.Now()
 	b.cc.mu.Unlock()
 	b.s.drop(err)
+	_ = b.cc.send(KindCancel, b.id, nil)
 }
 
 // Close stops reading; an answer still arriving is cancelled.

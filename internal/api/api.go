@@ -133,6 +133,9 @@ type Deps struct {
 	// Remote is access from anywhere, through a relay (ADR-058): its state for
 	// the pairing panel and the switch. Nil in builds or tests without it.
 	Remote RemoteControl
+	// Machines are the other computers this machine reaches (ADR-067,
+	// machines.go); nil in a build or test without them.
+	Machines Machines
 	// BrainAuto is Second Brain's automatic extraction (ADR-063). Nil in
 	// builds or tests without it; the graph and manual drops work either way.
 	BrainAuto BrainAuto
@@ -507,6 +510,9 @@ type Server struct {
 	// sizes decides which attached terminal a session's PTY is sized for
 	// (termsize.go).
 	sizes *ptySizes
+	// socks are the paired devices' open sockets, closed when one is
+	// removed or its role changes (devsockets.go).
+	socks deviceSockets
 }
 
 // New builds the router.
@@ -530,6 +536,7 @@ func New(d Deps) *Server {
 		trends: newAnswerCache(trendsTTL, trendsMaxStale, time.Now), pipeAgents: newAnswerCache(pipeAgentsTTL, trendsMaxStale, time.Now), pipeAgentsPast: newAnswerCache(pipeAgentsPastTTL, trendsMaxStale, time.Now),
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache()}
+	s.ws.hold = s.holdSocket
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
 		if s.d.Agents != nil {
 			_ = s.d.Agents.Resize(id, cols, rows)
@@ -592,9 +599,18 @@ func New(d Deps) *Server {
 	m.HandleFunc("DELETE /v1/pair/devices/{id}", s.handlePairRevoke)
 	m.HandleFunc("PUT /v1/pair/devices/{id}/role", s.handlePairSetRole)
 	m.HandleFunc("GET /v1/pair/me", s.handlePairMe)
+	m.HandleFunc("DELETE /v1/pair/me", s.handlePairForgetMe)
+	m.HandleFunc("POST /v1/pair/devices/{id}/allow", s.handlePairAllow)
 	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)
 	m.HandleFunc("POST /v1/pair/remote", s.handleSetRemote)
 	m.HandleFunc("POST /v1/pair/send-link", s.handlePairSendLink)
+	// Other computers this machine reaches (ADR-067, machines.go). Loopback
+	// only, in the handlers, and on no device's allowlist: not transitive.
+	m.HandleFunc("GET /v1/machines", s.handleMachines)
+	m.HandleFunc("POST /v1/machines", s.handleAddMachine)
+	m.HandleFunc("PATCH /v1/machines/{id}", s.handlePatchMachine)
+	m.HandleFunc("DELETE /v1/machines/{id}", s.handleForgetMachine)
+	m.HandleFunc("/v1/m/{id}/{path...}", s.handleMachineProxy)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("GET /v1/update/busy", s.handleUpdateBusy)
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
@@ -2555,7 +2571,9 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dev := deviceFrom(r)
-	if dev != nil {
+	// A phone starts a known agent under home (ADR-034); a computer the owner
+	// allowed starts what the machine's own dashboard may (ADR-067).
+	if phoneLimited(r) {
 		if msg := s.controllerSpawnRefusal(req); msg != "" {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": msg})
 			return
@@ -2652,12 +2670,15 @@ func (s *Server) handleAgentSignal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	// "end" asks the process to stop and kills it only after a grace period,
+	// so Claude Code writes its transcript out and the conversation can be
+	// continued; "kill" is immediate.
 	switch body.Action {
-	case "pause", "resume", "kill":
+	case "pause", "resume", "kill", "end":
 	default:
 		// Name the field, not just the values: the old message ("action must be
 		// pause|resume|kill") left a caller who sent the wrong key guessing.
-		http.Error(w, `body must be {"action": "pause"|"resume"|"kill"}`, http.StatusBadRequest)
+		http.Error(w, `body must be {"action": "pause"|"resume"|"kill"|"end"}`, http.StatusBadRequest)
 		return
 	}
 	if s.refuseShellToDevice(w, r, r.PathValue("id")) {

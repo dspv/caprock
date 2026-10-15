@@ -49,17 +49,22 @@ function useView(): [View, (v: View) => void] {
 
 /** The kinds' colours, so the graph's dots can be read. */
 function Legend() {
-  const kinds = ['decision', 'finding', 'idea', 'question', 'topic', 'project'] as const
+  // As drawn (BrainGraphCanvas): dots in the text colour, a topic with a
+  // faint cool tint, a project bigger and full strength.
+  const items = [
+    { label: 'Memory', size: 4, style: { background: 'var(--color-fg)', opacity: 0.85 } },
+    { label: 'Topic', size: 6, style: { background: 'color-mix(in srgb, #7fa8e0 32%, var(--color-fg))', opacity: 0.86 } },
+    { label: 'Project', size: 8, style: { background: 'var(--color-fg)' } },
+  ]
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-1 px-0.5 pt-1.5 text-[11.5px] text-fg-muted" aria-hidden>
-      {kinds.map((k) => (
-        <span key={k} className="inline-flex items-center gap-1">
-          {/* As drawn: a memory a filled dot, a topic or project a ring. */}
-          <span className="inline-block h-[8px] w-[8px] rounded-full" style={isEntity(k) ? { boxShadow: `inset 0 0 0 1.5px ${KIND_COLOR[k]}` } : { background: KIND_COLOR[k] }} />
-          {KIND_LABEL[k]}
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-0.5 pt-1.5 text-[11.5px] text-fg-muted" aria-hidden data-brain-legend>
+      {items.map((it) => (
+        <span key={it.label} className="inline-flex items-center gap-1.5">
+          <span className="inline-block rounded-full" style={{ width: it.size, height: it.size, ...it.style }} />
+          {it.label}
         </span>
       ))}
-      <span className="ml-auto hidden sm:inline">Drag to move · scroll to zoom · double-click to fit</span>
+      <span className="ml-auto hidden sm:inline">Hover a dot to light its links · zoom in for names · drag to pan or move a dot</span>
     </div>
   )
 }
