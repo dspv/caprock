@@ -21,7 +21,7 @@
  * **End** (owner, 2026-10-15: end the current session quickly): for a session
  * Caprock started and still holds, on a device allowed to control it — rule
  * 7, and `POST /v1/agents/{id}/signal` is a controller's route only. One
- * confirm sheet, then the same stop as the desktop's Stop the session….
+ * confirm sheet, then the polite stop (`end`): SIGTERM, a kill after the grace.
  */
 import { useState, type ReactNode } from 'react'
 import { api, errText } from '@/lib/api'
@@ -159,9 +159,11 @@ export function PhoneSessionBar({
 }
 
 /**
- * End's one confirmation, at the bottom where the thumb is. It stops the
- * process as the desktop's Stop does (`kill`); the conversation stays and
- * can be continued.
+ * End's one confirmation, at the bottom where the thumb is. It sends `end`,
+ * as closing a tab on the desktop does: SIGTERM, so Claude Code writes its
+ * transcript out and `--resume` works, and a kill only if the process is
+ * still running after the grace period. That is what makes "the
+ * conversation is saved and can be continued" true; `kill` would not.
  */
 function EndSheet({ sessionId, title, onClose }: { sessionId: string; title: string; onClose: () => void }) {
   const [busy, setBusy] = useState(false)
@@ -170,7 +172,7 @@ function EndSheet({ sessionId, title, onClose }: { sessionId: string; title: str
     setBusy(true)
     setError('')
     try {
-      await api.signal(sessionId, 'kill')
+      await api.signal(sessionId, 'end')
       onClose()
     } catch (e) {
       setBusy(false)

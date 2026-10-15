@@ -140,7 +140,7 @@ d('a spawned Codex or OpenCode session', () => {
     vi.unstubAllGlobals()
   })
 
-  it('on a phone: End on a session Caprock started, one confirm, then the same stop as the desktop (owner, 2026-10-15)', async () => {
+  it('on a phone: End on a session Caprock started, one confirm, then the polite stop, end (owner, 2026-10-15)', async () => {
     signals.value = []
     spawned({ agent: 'claude', description: 'Fix the login test', description_source: 'title' })
     const mq = (q: string) => ({ matches: q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList
@@ -155,7 +155,7 @@ d('a spawned Codex or OpenCode session', () => {
     expect(signals.value).toEqual([])
     fireEvent.click(screen.getByRole('button', { name: 'End Fix the login test' }))
     fireEvent.click(screen.getByRole('button', { name: 'End session' }))
-    await waitFor(() => expect(signals.value).toEqual([['cap-1', 'kill']]))
+    await waitFor(() => expect(signals.value).toEqual([['cap-1', 'end']]))
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
     vi.unstubAllGlobals()
   })
