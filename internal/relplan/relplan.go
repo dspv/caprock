@@ -44,6 +44,41 @@ type Unreleased struct {
 	Items []string
 	// Count is how many top-level bullets the section has.
 	Count int
+	// Kinds counts the bullets by their Keep a Changelog kind — the `### `
+	// heading they sit under in the section, a fragment's `kind:` — for the
+	// six kinds only (Kinds); a bullet under no such heading counts in Count
+	// alone. Nil when no bullet has a kind. The release plan predicts the
+	// next version from it: an Added entry is a minor release.
+	Kinds map[string]int
+}
+
+// Kinds are Keep a Changelog's six kinds, the ones Unreleased.Kinds counts.
+var Kinds = []string{"Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"}
+
+// kindOf is the kind a `### ` heading or a `kind:` value names, "" for
+// anything else; case is ignored and the canonical spelling returned.
+func kindOf(s string) string {
+	s = strings.TrimSpace(s)
+	for _, k := range Kinds {
+		if strings.EqualFold(s, k) {
+			return k
+		}
+	}
+	return ""
+}
+
+// add counts one bullet into u, under kind when it has one.
+func (u *Unreleased) add(item, kind string) {
+	u.Count++
+	if len(u.Items) < MaxItems {
+		u.Items = append(u.Items, item)
+	}
+	if kind != "" {
+		if u.Kinds == nil {
+			u.Kinds = map[string]int{}
+		}
+		u.Kinds[kind]++
+	}
 }
 
 // ParseUnreleased reads the [Unreleased] section of a Keep a Changelog file.
@@ -53,6 +88,7 @@ type Unreleased struct {
 func ParseUnreleased(changelog []byte) (Unreleased, bool) {
 	var u Unreleased
 	in, found := false, false
+	kind := ""
 	sc := bufio.NewScanner(bytes.NewReader(changelog))
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	for sc.Scan() {
@@ -69,6 +105,10 @@ func ParseUnreleased(changelog []byte) (Unreleased, bool) {
 		if !in {
 			continue
 		}
+		if h, ok := strings.CutPrefix(line, "### "); ok {
+			kind = kindOf(h)
+			continue
+		}
 		// A top-level bullet starts at the first column; an indented one is
 		// nested under the one before it, and anything else is a heading or
 		// a continuation line.
@@ -79,10 +119,7 @@ func ParseUnreleased(changelog []byte) (Unreleased, bool) {
 		if text == "" {
 			continue
 		}
-		u.Count++
-		if len(u.Items) < MaxItems {
-			u.Items = append(u.Items, text)
-		}
+		u.add(text, kind)
 	}
 	return u, found
 }
@@ -93,13 +130,20 @@ func ParseUnreleased(changelog []byte) (Unreleased, bool) {
 const FragmentsDir = "changes/unreleased"
 
 // AddFragment counts one fragment's top-level bullets into u, as
-// ParseUnreleased counts the section's: the front matter is skipped, and a
-// file without a closing `---` is read as bullets alone.
+// ParseUnreleased counts the section's: the front matter is read for its
+// `kind:` and skipped, and a file without a closing `---` is read as bullets
+// alone, of no kind.
 func AddFragment(u *Unreleased, fragment []byte) {
 	text := strings.ReplaceAll(string(fragment), "\r\n", "\n")
+	kind := ""
 	if rest, ok := strings.CutPrefix(text, "---\n"); ok {
-		if _, body, ok := strings.Cut(rest, "\n---\n"); ok {
+		if front, body, ok := strings.Cut(rest, "\n---\n"); ok {
 			text = body
+			for _, l := range strings.Split(front, "\n") {
+				if v, ok := strings.CutPrefix(strings.TrimSpace(l), "kind:"); ok {
+					kind = kindOf(v)
+				}
+			}
 		}
 	}
 	for _, line := range strings.Split(text, "\n") {
@@ -110,10 +154,7 @@ func AddFragment(u *Unreleased, fragment []byte) {
 		if item == "" {
 			continue
 		}
-		u.Count++
-		if len(u.Items) < MaxItems {
-			u.Items = append(u.Items, item)
-		}
+		u.add(item, kind)
 	}
 }
 

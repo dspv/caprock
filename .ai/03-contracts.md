@@ -3346,7 +3346,8 @@ GET /v1/work → Work
   sessions first), then those any session recorded something in within 24
   hours (newest first), at most 8. `remote` is `owner/name` from origin's
   web address; `via_session` the newest session that brought it; `live`
-  how many live sessions it has. `unreleased` `{ref, items, count, more?}`
+  how many live sessions it has. `unreleased` `{ref, items, count, more?,
+  kinds?}`
   is the `CHANGELOG.md` `[Unreleased]` section at the remote's default
   branch as the clone knows it (`ref`, `origin/<default>`, from
   `refs/remotes/origin/HEAD`): `items` the first lines of its top-level
@@ -3354,7 +3355,14 @@ GET /v1/work → Work
   repository that keeps one file per change (`changes/unreleased/*.md` at
   that branch, front matter skipped; Caprock's own since 2026-10-15) has
   those files' top-level bullets added after the section's, in file-name
-  order, and `count` covers both. Absent when neither the section nor the
+  order, and `count` covers both. `kinds` (since 2026-10-15) counts the
+  entries by Keep a Changelog kind — `Added`, `Changed`, `Deprecated`,
+  `Removed`, `Fixed`, `Security`, as `{"Added": 2, "Fixed": 3}` — from the
+  `### ` heading an entry sits under in the section and a fragment's
+  `kind:`, case ignored; an entry under no such heading, or a fragment
+  without front matter, counts in `count` only; absent when no entry has a
+  kind. The release plan predicts the next version from it (04-ui.md §
+  Release plan). Absent when neither the section nor the
   directory is there. `tags` `{last?: {name, at},
   gap_median_ms?, gaps}` reads the newest 11 tags by creation date;
   `gap_median_ms` is the median time between them, absent with fewer than
