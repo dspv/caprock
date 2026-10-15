@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/dspv/caprock/internal/hidewin"
 
 	"github.com/dspv/caprock/internal/wtsetup"
 )
@@ -117,7 +118,7 @@ func worktreeFor(ctx context.Context, repo, branch string) (string, error) {
 }
 
 func gitOut(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := hidewin.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -17,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/store"
@@ -207,7 +208,7 @@ func (s *Service) gitCmd(ctx context.Context, o gitOpts, dir string, args ...str
 		full = append(full, "--literal-pathspecs")
 	}
 	full = append(append(full, "-C", dir), args...)
-	cmd := exec.CommandContext(ctx, gitBin, full...) //nolint:gosec // fixed git subcommands; paths come from git status
+	cmd := hidewin.CommandContext(ctx, gitBin, full...) //nolint:gosec // fixed git subcommands; paths come from git status
 	env := os.Environ()
 	if s.Env != nil {
 		env = s.Env()

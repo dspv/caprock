@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/dspv/caprock/internal/hidewin"
 	"golang.org/x/sys/windows"
 )
 
@@ -21,6 +22,7 @@ func shellCommand(script string) *exec.Cmd {
 	}
 	cmd := exec.Command(comspec)
 	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `"` + comspec + `" /d /s /c "` + script + `"`}
+	hidewin.Hide(cmd)
 	return cmd
 }
 
@@ -34,7 +36,7 @@ func stopTree(cmd *exec.Cmd, force bool) {
 	if force {
 		args = append([]string{"/F"}, args...)
 	}
-	_ = exec.Command("taskkill", args...).Run()
+	_ = hidewin.Command("taskkill", args...).Run()
 	if force {
 		_ = cmd.Process.Kill()
 	}

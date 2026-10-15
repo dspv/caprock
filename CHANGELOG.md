@@ -7,6 +7,20 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **brain:** Second Brain's status says when the reader wakes next
+  (`next_wake`), so a screen can tell you when the first memories may come
+  instead of leaving you at 0. Turning building on still wakes the reader
+  at once, and a double click or a second yes never starts a second read
+  beside the first.
+- **mail:** Mail on its own. `<daemon>/?mail=1` is the inbox and nothing
+  else of Caprock — no sidebar, no tabs — titled *Caprock Mail*.
+  `app/mail-mac` builds a Mac preview app around it: Caprock's icon with an
+  envelope in place of the dot, one window on the running Caprock, so the
+  accounts and mail are the same as in the Mail tab. It waits for Caprock
+  when it isn't running and follows it to a new port.
+
 ### Changed
 
 - **app:** where you type is easier to find, quietly. The Chat view's field
@@ -18,6 +32,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   any cell Claude Code coloured alone, reads only the bottom rows of the
   screen, and draws nothing for other agents, shells, dialogs and menus.
 
+- **brain:** the sidebar's Second Brain block is a small banner while it is
+  empty, instead of a bare 0 and two faint lines: a faint graph breathing
+  (still with reduced motion), *Remembers what your agents learn — so the
+  next one starts smarter.*, **Start building** and *How it works*, and
+  *Local · your own Claude · free*. **Start building** asks in place —
+  your own `claude` and its model, on this computer, the daily token
+  limit, where the prose goes, and that Settings turns it off — and only
+  **Turn on** switches it on and starts on your last 30 days of sessions,
+  within that limit; without Claude Code it says so and offers no
+  button. Once on and still empty it says what it is doing: *Reading your
+  recent sessions…*, or how many sessions are waiting, and the last
+  problem if there was one. The same line replaces *your personal Jarvis*
+  under the Second Brain screen's title.
 - **brain:** Second Brain's *How it works* now explains it in ten
   seconds. *Remembers what your agents learn — so the next one starts
   smarter*: it keeps the decisions, findings, ideas and open questions
@@ -28,6 +55,30 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   up to five memories go into the next session's handoff), and one line
   says that nothing leaves the computer except that call and where to
   turn it off.
+
+### Fixed
+
+- **app:** typing a name in New project's folder field now searches the
+  folder it is in. `~/dev/cap` used to empty the list; now it lists the
+  folders of `~/dev` holding *cap* — the ones starting with it first, the
+  letters marked — and every key narrows it at once. The first match is
+  highlighted: ↑↓ move, Enter picks it, Tab completes to it and goes
+  inside. No match says *No folder starting with 'cap' in ~/dev*. Works
+  with `~`, backslashes and drive letters on Windows.
+- **windows:** Caprock no longer flashes console windows that steal the
+  keyboard focus. The daemon ran without a console, so every git, gh or
+  `claude -p` it started opened a window of its own for a fraction of a
+  second, every few seconds, and typing in other windows came out ragged
+  (user report on Windows 10). Every child now starts with a hidden
+  console, and a test keeps it that way.
+
+- **mail:** adding an account can no longer sit on *Checking…* forever. A
+  server that goes quiet while Mail connects or signs in — IMAP had no limit
+  and SMTP waited five minutes per command — now ends the check within 30
+  seconds with what happened: which server stopped answering, and that
+  another mail app open on the same account can count against the server's
+  connection limit. A synced mailbox still waits in IDLE as long as it
+  needs; the limit is lifted once signed in.
 
 ## [0.117.4] - 2026-10-15
 

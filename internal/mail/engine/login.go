@@ -134,52 +134,66 @@ func loginIMAP(c *imapclient.Client, a store.Account, password string) (string, 
 	return "", explain(a.IMAPHost, a.Email, first)
 }
 
-func dialSMTP(a store.Account) (*smtp.Client, error) {
+func dialSMTP(a store.Account) (*smtp.Client, *boundedConn, error) {
 	addr := net.JoinHostPort(a.SMTPHost, strconv.Itoa(a.SMTPPort))
+	bc, err := dialBounded(addr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("connect %s: %w", addr, err)
+	}
 	var c *smtp.Client
-	var err error
 	switch a.SMTPTLS {
 	case "starttls":
-		c, err = smtp.DialStartTLS(addr, tlsFor(a.SMTPHost))
+		c, err = smtp.NewClientStartTLS(bc, tlsFor(a.SMTPHost))
 	case "none":
-		c, err = smtp.Dial(addr)
+		c = smtp.NewClient(bc)
 	default:
-		c, err = smtp.DialTLS(addr, tlsFor(a.SMTPHost))
+		var tc net.Conn
+		if tc, err = implicitTLS(bc, tlsFor(a.SMTPHost)); err == nil {
+			c = smtp.NewClient(tc)
+		}
 	}
 	if err != nil {
-		return nil, fmt.Errorf("connect %s: %w", addr, err)
+		return nil, nil, fmt.Errorf("connect %s: %w", addr, quiet(a.SMTPHost, err))
 	}
-	return c, nil
+	return c, bc, nil
 }
 
 // loginSMTP signs in, trying the likely names on fresh connections (a
 // refused AUTH can leave a server unwilling to try again on the same one).
 func loginSMTP(a store.Account, password string) (*smtp.Client, error) {
 	if p := oauth.ProviderOf(a.Auth); p != "" {
-		c, err := dialSMTP(a)
+		c, bc, err := dialSMTP(a)
 		if err != nil {
 			return nil, err
 		}
 		if err := c.Auth(oauth.XOAuth2(a.Email, password)); err != nil {
 			c.Close()
-			return nil, oauthRefused(p, "SMTP", err, smtpRefused(err))
+			return nil, oauthRefused(p, "SMTP", quiet(a.SMTPHost, err), smtpRefused(err))
 		}
+		bc.release()
 		return c, nil
 	}
 	var first error
 	for _, name := range smtpNames(a) {
-		c, err := dialSMTP(a)
+		c, bc, err := dialSMTP(a)
 		if err != nil {
 			return nil, err
 		}
+		if err := c.Hello("localhost"); err != nil {
+			c.Close()
+			return nil, quiet(a.SMTPHost, err)
+		}
 		if ok, _ := c.Extension("AUTH"); !ok {
+			bc.release()
 			return c, nil
 		}
 		err = c.Auth(sasl.NewPlainClient("", name, password))
 		if err == nil {
+			bc.release()
 			return c, nil
 		}
 		c.Close()
+		err = quiet(a.SMTPHost, err)
 		if first == nil {
 			first = err
 		}

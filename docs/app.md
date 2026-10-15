@@ -846,8 +846,8 @@ it: nothing that updates behind the sheet takes it from the field you are in.
 
 The few answers worth keeping, kept as a graph: ideas, decisions, findings
 and open questions, each linked to its project and topics and to the moment
-in the session it came from — all your agents build your personal Jarvis
-over time. Open it from *Second Brain* in the dashboard's screen row, or from
+in the session it came from. It remembers what your agents learn, so the
+next one starts smarter. Open it from *Second Brain* in the dashboard's screen row, or from
 the Second Brain block in the app's sidebar.
 
 - **Drop an answer in.** Under any answer on the Memory screen, in a
@@ -862,7 +862,11 @@ the Second Brain block in the app's sidebar.
   double-click to fit, click a dot to open it; *List* shows the same as
   rows. In the app's sidebar, the Second Brain block below your projects shows the
   newest thirty as a small graph — a new memory drops in as it is kept —
-  and the three newest titles.
+  and the three newest titles. While it is empty it is a small card with
+  **Start building**, which asks in place before anything is read (your own
+  `claude`, on this computer, within the daily limit, starting with your
+  last 30 days of sessions; **Turn on** to say yes), and once on it says what it is doing — how many sessions are
+  waiting, or that it is reading — until the first memories arrive.
 - **Find and tidy.** Search, pick a project or a span; open a memory to edit
   its title and summary, pin it, link it to a topic, jump to the session it
   came from, or delete it.

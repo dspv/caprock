@@ -7,11 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 
 	"github.com/dspv/caprock/internal/tcc"
 )
@@ -246,7 +247,7 @@ func runGit(ctx context.Context, timeout time.Duration, dir string, args ...stri
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, gitBin, append([]string{"--no-optional-locks", "-C", dir}, args...)...) //nolint:gosec // fixed git subcommands
+	cmd := hidewin.CommandContext(ctx, gitBin, append([]string{"--no-optional-locks", "-C", dir}, args...)...) //nolint:gosec // fixed git subcommands
 	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "LC_ALL=C")
 	cmd.WaitDelay = time.Second
 	var out, errb bytes.Buffer
