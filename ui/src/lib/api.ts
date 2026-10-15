@@ -1312,11 +1312,23 @@ export interface BrainNode {
   updated_at: number
   /** Edges in the graph read that touch it. */
   degree?: number
+  /** In a search: how well it matched, higher first (title above summary above a close match). */
+  rank?: number
+  /** In a search: some word matched only a word a typo or an ending away. */
+  close?: boolean
 }
 
 export interface BrainEdge { from: number; to: number; kind: BrainEdgeKind; weight: number }
 
-export interface BrainGraph { nodes: BrainNode[]; edges: BrainEdge[]; total: number }
+export interface BrainGraph {
+  nodes: BrainNode[]
+  edges: BrainEdge[]
+  total: number
+  /** In a search: its words, folded, and the close words that matched them, to highlight (lib/brainsearch.ts). */
+  terms?: string[]
+  /** In a search: some returned memory is a close match. */
+  close?: boolean
+}
 
 /** A node's neighbour and the edge between them; `out` when the edge leaves the node asked about. */
 export interface BrainLink { node: BrainNode; kind: BrainEdgeKind; out: boolean; weight: number }

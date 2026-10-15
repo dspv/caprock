@@ -7,6 +7,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Changes waiting for the next release are one file each in `changes/unreleased/`,
+assembled into a version section here by `scripts/changelog.py` when a release is
+cut; `scripts/changelog.py preview` prints that section now. The format is in
+`changes/README.md`.
+
 ## [0.119.0] - 2026-10-15
 
 ### Added
@@ -177,40 +182,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   your agents a memory*, *Start building* and *How it works*.
 
 ### Fixed
-
-- **app:** the terminal in front no longer turns to garbage after a long
-  day of tabs. xterm's WebGL renderer shares one glyph atlas among every
-  terminal, merges its pages when it fills, and after the second merge
-  kept drawing from the old page's texture (the new merged page carried
-  the same per-page version number as the old one): letters clipped and
-  overlapped over the whole screen until font size + then −. Every
-  terminal now re-sends its atlas to the GPU and redraws when a merge
-  happens, and the window back in front after half a minute away does the
-  same for the tab shown.
-
-- **app:** terminals reconnect on their own after the network drops. A
-  terminal whose connection was lost retried on a single timer, and the
-  only thing watching it stopped with the socket: when the browser refused
-  to start a new socket once (as a network stack being swapped under it
-  can), or the timer was lost, the tab said *Reconnecting…* for good and
-  nothing typed reached the session until the tab was closed (user report:
-  every tab stuck after a Wi-Fi drop). A terminal between sockets is now
-  checked every second and always has a retry on its way and on time; a
-  pause for its own backlog resumes after 15 s even if the terminal never
-  reports catching up; and the window getting focus checks the connection
-  at once. The badge says the attempt and the next try, and after 3
-  failed tries or 10 s down offers **Reconnect now**, which reconnects the
-  same session — no new process. The dashboard's live connection got the
-  same watchdog and button.
-- **phone:** a phone that cannot connect says which of three things is
-  wrong: *Can't reach the relay* (this phone cannot reach relay.caprock.dev
-  or m.caprock.dev; check your connection or VPN), *Connected to the relay —
-  your computer is offline*, or *Paired device removed*, with a **Details**
-  fold showing the last error, its code and when it happened, the last try
-  and the last time it was connected. A browser with no pairing says *This
-  browser isn't paired* and where to pair (Caprock → Settings → Use on your
-  phone → Show a code), instead of an error or a bare code form. The page
-  also asks the browser to keep its storage, which holds the pairing.
 
 - **picker:** an arrow key pressed in the folder picker the moment a
   folder's entries appear is no longer lost; the selection used to be
