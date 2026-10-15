@@ -10,6 +10,8 @@ import { hue, initials, quote, replySubject, sender, shortDate } from './format'
 import { Icon } from './icons'
 import './mail.css'
 import { markAnswered } from '@/lib/prompts'
+import { GO, K, KeySheet, type MailKey } from './keymap'
+import { ThemeButton, ThemePick } from './ThemePick'
 
 export type Sel = { view: string; account?: number; folder?: number }
 
@@ -37,15 +39,15 @@ export function groupThreads(ms: Message[]): Row[] {
   return rows
 }
 
-const VIEWS: { view: string; label: string; icon: string }[] = [
-  { view: 'inbox', label: 'Inbox', icon: 'inbox' },
-  { view: 'unread', label: 'Unread', icon: 'unread' },
-  { view: 'flagged', label: 'Starred', icon: 'star' },
-  { view: 'sent', label: 'Sent', icon: 'send' },
-  { view: 'drafts', label: 'Drafts', icon: 'draft' },
-  { view: 'archive', label: 'Archive', icon: 'archive' },
-  { view: 'junk', label: 'Spam', icon: 'spam' },
-  { view: 'trash', label: 'Trash', icon: 'trash' },
+const VIEWS: { view: string; label: string; icon: string; k: MailKey }[] = [
+  { view: 'inbox', label: 'Inbox', icon: 'inbox', k: 'inbox' },
+  { view: 'unread', label: 'Unread', icon: 'unread', k: 'unreadView' },
+  { view: 'flagged', label: 'Starred', icon: 'star', k: 'starred' },
+  { view: 'sent', label: 'Sent', icon: 'send', k: 'sent' },
+  { view: 'drafts', label: 'Drafts', icon: 'draft', k: 'drafts' },
+  { view: 'archive', label: 'Archive', icon: 'archive', k: 'archiveView' },
+  { view: 'junk', label: 'Spam', icon: 'spam', k: 'spamView' },
+  { view: 'trash', label: 'Trash', icon: 'trash', k: 'trashView' },
 ]
 
 const ACCOUNT_COLORS = ['#2f6fdf', '#e0702a', '#1e9e6a', '#b5479b', '#c9a227', '#5b5bd6']
@@ -91,6 +93,12 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
   // Import everything stays on screen while it walks its sign-ins, though
   // the first account it connects would otherwise swap in the inbox.
   const [importing, setImporting] = useState(false)
+  // The `?` sheet, and the keys that act inside the reader (v opens Move,
+  // i summarises): the time of the press, which the reader watches.
+  const [help, setHelp] = useState(false)
+  const [themes, setThemes] = useState(false)
+  const [moveKick, setMoveKick] = useState(0)
+  const [sumKick, setSumKick] = useState(0)
   // The sample is being started because no account exists: say so, not a form.
   const [starting, setStarting] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -248,12 +256,17 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       const el = e.target as HTMLElement
       if (el.closest('input, textarea, select, [contenteditable]') || compose || showSettings) return
       if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (themes) return // ThemePick holds the keys while open
+      if (help) {
+        if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); setHelp(false) }
+        return
+      }
       const i = curRow ? rows.indexOf(curRow) : -1
       const k = e.key
       if (gPending.current) {
         gPending.current = false
-        const map: Record<string, string> = { i: 'inbox', s: 'flagged', t: 'sent', a: 'archive', d: 'drafts', u: 'unread' }
-        if (map[k]) { setSel({ view: map[k]! }); setQ('') }
+        if (k === 'r') { e.preventDefault(); checkMail(); return }
+        if (GO[k]) { e.preventDefault(); setSel({ view: GO[k]! }); setQ(''); setCur(null) }
         return
       }
       const last = threadRef.current[threadRef.current.length - 1] ?? curRow?.m
@@ -270,6 +283,11 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
         case 'f': last && startForward(last); break
         case 'c': startCompose(); break
         case '/': searchRef.current?.focus(); break
+        case 'v': curRow && setMoveKick(Date.now()); break
+        case 'i': curRow && setSumKick(Date.now()); break
+        case ',': setShowSettings(true); break
+        case '?': setHelp(true); break
+        case 't': setThemes(true); break
         case 'g': gPending.current = true; setTimeout(() => (gPending.current = false), 1200); break
         case 'Escape': setCur(null); break
         default: return
@@ -286,6 +304,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
   }, [cur])
 
   const reload = () => { loadState(); listRef2.current(false).catch(() => {}) }
+  const checkMail = () => { setSyncing(true); api.sync().finally(() => setTimeout(() => setSyncing(false), 1200)) }
   const sample = async (on: boolean, then: { step: Step; provider?: ProviderId } = { step: 'choose' }) => {
     if (!on) sampleLeft = true
     await api.sample(on)
@@ -328,7 +347,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
     <div className="app">
       <aside className="side">
         <div className="sidetop">
-          <button className="btn primary compose" onClick={startCompose}><Icon name="compose" /> Compose</button>
+          <button className="btn primary compose" onClick={startCompose}><Icon name="compose" /> Compose <K k="compose" /></button>
         </div>
         <nav>
           {VIEWS.map((v) => {
@@ -336,7 +355,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
             return (
               <button key={v.view} className={'nav' + (!q && sel.view === v.view && !sel.account ? ' on' : '')}
                 onClick={() => { setSel({ view: v.view }); setQ(''); setCur(null) }}>
-                <Icon name={v.icon} /> <span>{v.label}</span> {n > 0 && <em>{n}</em>}
+                <Icon name={v.icon} /> <span>{v.label}</span> {n > 0 && <em>{n}</em>} <K k={v.k} />
               </button>
             )
           })}
@@ -361,10 +380,13 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
           ))}
         </nav>
         <div className="sidefoot">
-          <button className="icon" title="Check mail" onClick={() => { setSyncing(true); api.sync().finally(() => setTimeout(() => setSyncing(false), 1200)) }}>
-            <Icon name="sync" className={syncing ? 'spin' : ''} />
+          <button className="icon withkey" title="Check mail" onClick={checkMail}>
+            <Icon name="sync" className={syncing ? 'spin' : ''} /> <K k="sync" />
           </button>
-          <button className="icon" title="Settings" onClick={() => setShowSettings(true)}><Icon name="gear" /></button>
+          <button className="icon withkey" title="Settings" onClick={() => setShowSettings(true)}><Icon name="gear" /> <K k="settings" /></button>
+          <ThemeButton onOpen={() => setThemes(true)} />
+          <span className="grow" />
+          <button className="link small keyshelp" onClick={() => setHelp(true)}>Shortcuts <K k="help" /></button>
         </div>
       </aside>
 
@@ -377,6 +399,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
                 if (e.key === 'Escape') { setQ(''); (e.target as HTMLInputElement).blur() }
                 if (e.key === 'Enter' || e.key === 'ArrowDown') { (e.target as HTMLInputElement).blur(); select(rows[0] ?? null) }
               }} />
+            {!q && <K k="search" />}
           </div>
           <div className="listtitle">{title}</div>
         </div>
@@ -422,6 +445,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       <main className="reader">
         {curRow ? (
           <Reader key={curRow.m.id} row={curRow} view={sel.view} aiOn={aiOn} settings={settings}
+            moveKick={moveKick} sumKick={sumKick} onSettings={setSettings}
             folders={st.folders.filter((f) => f.account_id === curRow.m.account_id && f.role !== 'noselect')}
             onThread={(t) => (threadRef.current = t)}
             onAct={(a, folder) => act(a, curRow, folder)}
@@ -431,7 +455,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
           <div className="nothing">
             <Icon name="mail" size={40} />
             <div>{rows.length} conversation{rows.length === 1 ? '' : 's'}</div>
-            <div className="muted small">j / k to move, c to compose, / to search</div>
+            <div className="muted small keyline"><K k="down" /> <K k="up" /> move · <K k="compose" /> compose · <K k="search" /> search · <K k="help" /> every shortcut</div>
           </div>
         )}
       </main>
@@ -447,6 +471,8 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
             onAddAccount={st.sample ? () => { setShowSettings(false); sample(false, { step: 'add' }).catch((e) => flash(e.message)) } : undefined} />
         </div>
       )}
+      {help && <KeySheet onClose={() => setHelp(false)} />}
+      {themes && <ThemePick onClose={() => setThemes(false)} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
     </div>

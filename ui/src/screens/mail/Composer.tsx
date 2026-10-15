@@ -3,7 +3,7 @@ import type { Account, Address, Draft } from './mailApi'
 import { api } from './mailApi'
 import { bytes, parseAddresses, people, validAddress } from './format'
 import { Icon } from './icons'
-import { keys } from '@/lib/appkeys'
+import { K } from './keymap'
 
 export type ComposeInit = {
   accountId: number
@@ -158,11 +158,12 @@ export function Composer({ init, accounts, aiOn, onClose, onSent }: {
     <div className="composer" role="dialog" aria-label="New message"
       onKeyDown={(e) => {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send() }
+        if (e.key.toLowerCase() === 'j' && (e.metaKey || e.ctrlKey) && aiOn && init.aiFor) { e.preventDefault(); draftWithAI() }
         if (e.key === 'Escape') { e.stopPropagation(); onClose() }
       }}>
       <div className="chead">
         <b>{init.inReplyTo ? 'Reply' : subject.startsWith('Fwd:') ? 'Forward' : 'New message'}</b>
-        <button className="icon" onClick={onClose} title="Close (Esc)"><Icon name="close" /></button>
+        <button className="icon withkey" onClick={onClose} title="Close"><Icon name="close" /> <K k="close" /></button>
       </div>
       {accounts.length > 1 && (
         <label className="cfield">
@@ -190,7 +191,7 @@ export function Composer({ init, accounts, aiOn, onClose, onSent }: {
           <Icon name="sparkle" />
           <input placeholder="What should the reply say? (optional)" value={instr} onChange={(e) => setInstr(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.metaKey) { e.preventDefault(); draftWithAI() } }} />
-          <button className="btn" disabled={aiBusy} onClick={draftWithAI}>{aiBusy ? 'Writing…' : 'Draft reply'}</button>
+          <button className="btn" disabled={aiBusy} onClick={draftWithAI}>{aiBusy ? 'Writing…' : 'Draft reply'} <K k="draft" /></button>
         </div>
       ) : null}
       <textarea ref={body} className="cbody" value={text} onChange={(e) => setText(e.target.value)}
@@ -207,8 +208,7 @@ export function Composer({ init, accounts, aiOn, onClose, onSent }: {
       )}
       {err && <div className="error">{err}</div>}
       <div className="cfoot">
-        <button className="btn primary" disabled={busy} onClick={send}>{busy ? 'Sending…' : 'Send'}</button>
-        <span className="muted small">{keys('⌘↩')}</span>
+        <button className="btn primary" disabled={busy} onClick={send}>{busy ? 'Sending…' : 'Send'} <K k="send" /></button>
         <label className="icon" title="Attach files">
           <Icon name="clip" />
           <input type="file" multiple hidden onChange={(e) => addFiles(e.target.files)} />

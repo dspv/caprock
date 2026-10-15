@@ -297,3 +297,32 @@
 @media (max-width: 640px) {
 .cm .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Keys on every action (keymap.tsx): small, quiet, always there. */
+.cm kbd.k { font: 10.5px/16px ui-monospace, 'SF Mono', Menlo, monospace; padding: 0 4px; border-bottom-width: 1px; color: var(--muted); background: transparent; white-space: nowrap; }
+.cm .btn kbd.k { margin-left: 6px; }
+.cm .btn.primary kbd.k { color: inherit; border-color: color-mix(in srgb, currentColor 35%, transparent); opacity: .8; }
+.cm .icon.withkey { display: inline-flex; align-items: center; gap: 4px; width: auto; padding: 0 6px; }
+.cm .nav kbd.k { margin-left: auto; opacity: .55; transition: opacity .12s; }
+.cm .nav em + kbd.k { margin-left: 6px; }
+.cm .nav:hover kbd.k, .cm .nav.on kbd.k, .cm .side:focus-within .nav kbd.k { opacity: 1; }
+.cm .searchbox kbd.k { margin-left: auto; }
+.cm .keyline kbd.k { margin: 0 1px; }
+.cm .menu > div.on { background: var(--hover); }
+.cm .menu kbd.k { margin-right: 6px; }
+.cm .keyshelp { display: inline-flex; align-items: center; gap: 6px; }
+.cm .askai { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--accent) 7%, transparent); font-size: 12.5px; }
+.cm .keysheet { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; background: rgb(0 0 0 / .35); }
+.cm .keybox { width: min(860px, 92%); max-height: 86%; overflow: auto; background: var(--side); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 18px 22px 22px; }
+.cm .keyhead { display: flex; align-items: center; font-weight: 600; font-size: 15px; margin-bottom: 12px; }
+.cm .keycols { columns: 3 220px; column-gap: 28px; }
+.cm .keycols section { break-inside: avoid; margin-bottom: 14px; }
+.cm .keycols h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+.cm .keyrow { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+.cm { position: relative; }
+.cm .themepick { position: absolute; left: 12px; bottom: 52px; z-index: 60; width: 260px; background: var(--side); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 10px 6px 6px; }
+.cm .themepick .keyhead { font-size: 13px; padding: 0 8px; margin-bottom: 6px; }
+.cm .themerow { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.cm .themerow.on { background: var(--sel); }
+.cm .swatch { position: relative; display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: 2px solid; flex: none; }
+.cm .swatch i { position: absolute; right: 1px; bottom: 1px; width: 6px; height: 6px; border-radius: 50%; }
