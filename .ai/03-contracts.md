@@ -2405,7 +2405,7 @@ protection).
 GET    /v1/projects                        → {projects: [Project]}; pinned first, then sort, then name
 POST   /v1/projects                        {path, repos?} | {create: {parent, name, git_init?}} | {clone: {url, parent, name?}, op_id?}
                                            path, create → 200 {project, created}; clone → 202 {op, existing}
-GET    /v1/projects/ops                    → {ops: [Op]}; clones running or ended in the last hour, newest first
+GET    /v1/projects/ops                    → {ops: [Op]}; clones and template ops running or ended in the last hour, newest first
 GET    /v1/projects/scan?path=             → ScanResult; what adding a folder would add (machine only)
 POST   /v1/projects/merge                  {ids: [id, id, …]} → {project}; one multi-repo project (machine only)
 PATCH  /v1/projects/{id}                   {name?, pinned?, sort?, defaults?: {agent?, model?, permission_mode?, system_prompt?, setup_command?}, repos?} → {project}
@@ -2524,8 +2524,10 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   life, not the request's. A `POST` whose `op_id` (`[A-Za-z0-9_-]{1,64}`,
   generated when absent) is already known returns that operation with
   `existing: true` and starts nothing.
-- **`Op`** — `{op_id, kind: "clone", state: "running"|"done"|"failed", phase?,
-  progress, url, dest, project_id?, error?, started_at, updated_at}`. `phase`
+- **`Op`** — `{op_id, kind: "clone"|"template", state: "running"|"done"|"failed", phase?,
+  progress, url, dest, project_id?, error?, started_at, updated_at}`; a
+  `template` op also carries `step`, `repo?`, `repo_url?`, `notes?`,
+  `retryable?` and `removed?` (§ Project templates). `phase`
   and `progress` (0 to 100 within the phase) are git's own ("Receiving
   objects", "Resolving deltas"); an `op` frame goes out per step, at most four
   a second plus the last. `error` is the last lines git printed. Kept in
@@ -2728,6 +2730,168 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   are read from files. An agent's `tool.post` of an edit or shell tool asks
   git again after 2 s; a session starting, stopping, asking or ending sends a
   `project` frame after 1 s. Nothing runs on a timer: idle projects run no git.
+
+### Project templates
+
+New project from a template (2026-10-15, [ADR-065](08-decisions.md)). Code:
+`internal/templates`, `internal/api/templates.go`. Every route is the
+machine's: none is on a paired device's or a controller's list, so a phone
+gets `403` from the gate, reading the list included. Free. State-changing
+requests need `Content-Type: application/json` (§ Cross-site request
+protection).
+
+```
+GET    /v1/templates                     → {templates: [Template], gh: GHStatus}
+POST   /v1/templates                     {name, github?, folder?, brief_path, prompt, agent?} → {template}
+PATCH  /v1/templates/{id}                {name?, github?, folder?, brief_path?, prompt?, agent?} → {template}
+DELETE /v1/templates/{id}                → 204; off the list, nothing on disk or GitHub touched
+POST   /v1/templates/inspect             {github} | {folder} → Inspection
+POST   /v1/projects/from-template        CreateRequest → 202 {op, existing}
+POST   /v1/projects/ops/{op_id}/retry    → 202 {op}
+```
+
+- **`Template`** — `{id, name, github?, folder?, brief_path, prompt, agent?,
+  created_at, used_at?}`. `id` is 8 lowercase hex. `name` is trimmed, 1 to 80
+  characters, no control character. A template is a GitHub repository, a
+  folder on this machine, or both: `github` is `owner/name`
+  (`^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$`, the name not `.` or `..`);
+  `folder` is an absolute path to an existing folder (a leading `~` is the
+  home folder; one moved away after it was saved stays on the list).
+  `brief_path` is where the brief is written in the new project: relative,
+  forward slashes, no `..`, `.` or empty segment, no leading `/` or `\`, no
+  backslash, no drive letter, not into `.git/` (any case), each segment a
+  plain folder name that no OS refuses (no `:*?"<>|`, no control character,
+  not ending in a dot or a space, not a Windows device name such as `CON` or
+  `LPT1.txt`), at most 256 bytes. `prompt` is the first prompt for the
+  agent, at most 8 KiB, no NUL; `{brief}` is its only variable and the
+  client replaces it with `brief_path` when it starts the agent (any other
+  `{word}` is `400`; `POST /v1/agents` takes at most 8,000 runes of it). `agent` is one Caprock can start. `used_at` is the
+  last project made with it (matched by `template_name`). A `PATCH` sends
+  only what changes; `""` clears `github`, `folder` or `agent`. `400` with
+  the reason for anything outside these bounds, `404` for an unknown id.
+- **`GHStatus`** — `{installed, logged_in, login?, error?}`: whether the
+  person's own GitHub CLI is on the login shell's `PATH` (else Homebrew's
+  places) and signed in, read with `gh config get -h github.com user` —
+  gh's own config on this machine; nothing is sent to GitHub and the token
+  is never read. `error` says what to do (`gh auth login`).
+- **List.** At most 50 (`400` past it), empty until the person adds one;
+  nothing is built in. **State file**: `<data_dir>/project-templates.json`
+  — `{templates: [Template]}`, written atomically
+  (`config.WriteFileAtomic`, 0600). A file that is not that JSON is renamed
+  `project-templates.json.bad-<unix ms>`, logged, and the list starts empty;
+  an entry that no longer passes the checks is dropped and logged. No DDL.
+- **`Inspection`** — `{github?, folder?, is_template?, visibility?,
+  template_md, brief_path, brief_from: "marker"|"mention"|"default", prompt,
+  prompt_from: "marker"|"default", local_folder?, suggested_name, error?}`,
+  read on the click that asks, to fill in the form. For `github` (the
+  person's gh, signed in): `gh repo view <o/n> --json
+  isTemplate,visibility,nameWithOwner` — `github` comes back as
+  `nameWithOwner`, so a renamed or moved repository (`cybrixcc/corpus` →
+  `dspv/corpus`) is saved under its canonical name — then `gh api -H
+  "Accept: application/vnd.github.raw+json" repos/<o/n>/contents/TEMPLATE.md`
+  and `…/readme`. `visibility` is lower case. When gh is missing, signed out
+  or fails, `error` says why and the answer is still `200`, read from
+  `local_folder` when there is one. `local_folder` is a repository directly
+  in the default folder (`settings.default_folder`, else home; at most 2,000
+  entries looked at) whose `origin` (else first remote), read from
+  `.git/config` with nothing run, is `github.com/<o/n>`. For `folder`:
+  `TEMPLATE.md` and `README.md` are read from disk (regular files only,
+  256 KiB each), and `github` is set when its origin is on github.com.
+  `template_md` is the `TEMPLATE.md` text, at most 64 KiB on a rune boundary,
+  `""` when there is none or it is not UTF-8. `suggested_name` is
+  `new-<repository or folder name>`, numbered (`-2`, `-3`, …) while that is
+  taken in the default folder. Both or neither of `github` and `folder`,
+  a malformed `github`, or a `folder` that is not an absolute folder is
+  `400`.
+- **Defaults** (`brief_path`, `prompt`), first match wins: (1) a marker
+  comment at the very top of `TEMPLATE.md` (after blank lines and a BOM; CRLF
+  read as LF):
+
+  ```
+  <!-- caprock-template
+  brief: docs/source-spec.md
+  prompt: Read TEMPLATE.md. Build the .ai/ corpus from {brief}.
+  -->
+  ```
+
+  either key optional, a line naming no key continuing the prompt, a value
+  that fails the checks above ignored; (2) for the brief, the first
+  backticked `` `docs/<x>.md` `` in `TEMPLATE.md`, then in `README.md`
+  (Corpus's README gives `docs/source-spec.md`); (3) `docs/brief.md`, and the
+  prompt `Read TEMPLATE.md and follow it. The brief of this project is
+  {brief}.` when there is a `TEMPLATE.md`, else `Read {brief}, the brief of
+  this project, and the README, then start the work as they say.`
+- **`CreateRequest`** — `{op_id, source: {github?, folder?}, via:
+  "github"|"local", name, parent, visibility?, brief, brief_path,
+  template_name?}`; the body is at most 2 MiB (`413` past it). `op_id` as
+  for a clone (`[A-Za-z0-9_-]{1,64}`, generated when absent); one already
+  known returns that operation with `existing: true` and starts nothing.
+  `name` is `^[A-Za-z0-9._-]{1,100}$`, not `.` or `..`: the folder's name
+  and, on GitHub, the repository's. `parent` is absolute (`~` is home) and
+  made when missing, after every other check. `brief` is the brief's text:
+  not blank, at most 1 MiB of UTF-8, no NUL. `400` for anything outside
+  these bounds; `409` with `"<parent>/<name> already exists; add it instead,
+  or pick another name"` (home written `~`) when that is a file, a link or a
+  folder with anything in it — an empty folder is used, as for a clone — or
+  when another operation is making it.
+  - **`via: "github"`** needs `source.github` and the person's gh ready:
+    otherwise `409` with `GHStatus.error`, and nothing is made — the daemon
+    never takes the local path instead. `visibility` is `private` (default)
+    or `public`. Steps: `create` — `gh repo create <login>/<name> --template
+    <o/n> --private|--public` (no `--clone`); `clone` — `gh repo clone
+    <login>/<name> <parent>/<name> -- --progress`, git's progress in `phase`
+    and `progress`; GitHub fills a repository made from a template a moment
+    after it exists, so when `git rev-parse --verify HEAD` fails after a
+    clone, the folder is emptied (or removed, when Caprock made it), and the
+    clone tried again after 2 s, six tries in all. Listed with `source:
+    "clone"`.
+  - **`via: "local"`** needs `source.folder`, an existing absolute folder
+    that the new project is not inside (`400` otherwise); gh is never run.
+    Step `copy`: when the folder is the top of a repository with a commit,
+    its last commit (`git archive --format=tar HEAD`, unpacked by the
+    daemon) — uncommitted changes are not copied; otherwise its files,
+    leaving out `.git` and `node_modules` at any depth. No path leaves the
+    project, nothing is written through a link, a link is kept only when it
+    is relative and still resolves inside once every file is in place, and
+    FIFOs, sockets and devices are skipped (counted in a note). At most 5,000
+    files and 256 MB (ADR-050's limits); past either the operation fails,
+    not retryable. Then `git init -q`, `git add -A` and `git commit -q
+    --no-verify -m "Start from the <template_name> template"` ("Start from a
+    template" without one). Listed with `source: "new"`.
+  - **Then, either way:** `brief` — the brief written at
+    `<dest>/<brief_path>`, each folder on the way made or a real folder (a
+    link on the way must resolve inside the project, symlinks resolved), an
+    existing plain file replaced, anything else there refused; `commit` —
+    `git add -- <brief_path>` and `git commit -q --no-verify -m "Add the
+    project brief" -- <brief_path>`, never pushed; `add` — listed as a
+    project (`kind: "repo"`). Without a git identity (name and email) the
+    commits are skipped, the files stay uncommitted, a note says how to set
+    one, and the operation still ends `done`. The agent is not started here:
+    the client starts it with `POST /v1/agents` (`cwd` the new project,
+    `prompt` the template's with `{brief}` replaced) once the op is `done`.
+  - **Environment** for gh and git: the login shell's
+    (`internal/userenv`) plus `GH_PROMPT_DISABLED=1`,
+    `GH_NO_UPDATE_NOTIFIER=1`, `NO_COLOR=1`, `GIT_TERMINAL_PROMPT=0`,
+    `LC_ALL=C`; every process through `internal/hidewin`.
+  - **Failure** cleans up only what Caprock made on this machine: a folder
+    it created is removed, a folder the person had made empty is emptied and
+    kept (`removed: true` either way when something was there). A GitHub
+    repository is **never** deleted; a note names it. `retryable` is true
+    unless trying again would only repeat it: the name already taken on
+    GitHub, the brief refused, the copy past its limits.
+- **Retry** runs a failed, retryable template operation again under the
+  same `op_id`, from its step — a repository already made on GitHub is
+  cloned, not made again. `404` for an op not remembered (an hour after it
+  ended, or across a restart), `409` when it is running, done, not
+  retryable, its destination is no longer free, gh is not ready, or gh is
+  now signed in as another user than the one who made the repository.
+- **`Op`** for these is `kind: "template"` (§ Projects and shells), with
+  `step: "create"|"clone"|"copy"|"brief"|"commit"|"add"`, `url` (the
+  template: `https://github.com/<o/n>` or its folder), `dest`, `repo?`
+  (`<login>/<name>`) and `repo_url?` once made, `notes?` (what the person
+  should know, in order), `retryable?` and `removed?` on failure, and
+  `project_id` when done. A daemon restart forgets a running operation
+  ([12-risks.md](12-risks.md), `RISK-09`).
 
 ### Saved prompts and commands
 

@@ -31,6 +31,7 @@ column says what it is when the suite that actually covers it is included.
 | `ptyman`           | 81.4%   |       | Windows path covered by the `ptyspike` job, not here                            |
 | `termbuf`          | 97.0%   |       | Measured 2026-10-04                                                             |
 | `ptyhost`          | 76.2%   |       | Measured 2026-10-04; the test binary plays holder and child, all three OSes     |
+| `templates`        | 81.2%   |       | Measured 2026-10-15; a fake `gh` (`testdata/fakegh`), never the real one        |
 | `hive`             | 81.2%   |       |                                                                                 |
 | `board`            | 81.0%   |       |                                                                                 |
 | `statusline`       | 80.6%   |       |                                                                                 |
@@ -87,7 +88,7 @@ thing breaking it.
 
 ## Where a bug reaches the user, not just Caprock
 
-Two packages carry a different class of risk, and their tests are written
+Three packages carry a different class of risk, and their tests are written
 accordingly — failure paths first, happy path left to the smoke suite.
 
 - **`shim`** runs inside every hook of every Claude Code session on the machine.
@@ -101,6 +102,20 @@ accordingly — failure paths first, happy path left to the smoke suite.
   defects: a data race on `pty.Close()` between the `Wait` goroutine and an
   explicit `Close()` (four races per run under `-race`), and a clean exit
   reported as `file already closed`.
+
+- **`templates`** makes repositories on the user's GitHub account and folders
+  in their projects folder. Its tests run `testdata/fakegh`, built in
+  `TestMain` (Go, so it runs on Windows), against local bare repositories,
+  with `HOME`, `USERPROFILE` and `GIT_CONFIG_GLOBAL` pointed at temporary
+  ones — never the real gh, the real home or the user's git identity.
+  Covered: a clone failing after the repository was made (the folder Caprock
+  made removed, the remote untouched, no `delete` ever called, Retry clones
+  without making it again), GitHub's empty first clone, an empty folder the
+  user made emptied but kept, a non-empty one never touched, a brief path
+  through a link out of the project, no git identity, the local copy from a
+  repository's last commit and from a plain folder (links, `node_modules`,
+  the limits), `op_id` idempotency, and in `api` the phone's `403` and the
+  2 MiB body limit.
 
 ## Reading another agent's database
 

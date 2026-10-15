@@ -3904,3 +3904,73 @@ kept.
 read returns at most 5,000 and the screen would need clustering on the
 daemon); or the brain's cost to the machine — the database, the reads —
 turns out to need a limit of its own.
+
+## ADR-065 — A project can start from a template: copied, briefed and handed to an agent, through the user's own gh
+
+**Date:** 2026-10-15 · **Status:** accepted (owner, 2026-10-15)
+
+**Context.** The owner keeps a public template repository on GitHub, Corpus
+(`dspv/corpus`): a `.ai/` documentation skeleton whose `TEMPLATE.md` tells an
+agent how to build the project's corpus from a spec dropped in
+`docs/source-spec.md`. He asked (translated, 2026-10-15): "I have a public
+template repo on GitHub, Corpus. I create a new repository from it, feed it
+to an agent with a brief of the project, and it builds it — docs and
+research first, as the template says. Build this harmoniously into Caprock
+so I use it and it doesn't get in other people's way." Today that is four
+tools: GitHub's *Use this template* button, a terminal to clone, an editor
+for the brief, and Caprock to start the agent.
+
+**Decision.**
+
+- **A template is the user's, and there are none until they add one.** A
+  GitHub template repository (`owner/name`), a folder on this machine, or
+  both, with the path the brief is written to and the first prompt
+  (`{brief}` its only variable) and, optionally, the agent. Kept in
+  `<data_dir>/project-templates.json`, at most 50, written atomically; a
+  corrupt file is set aside as `.bad-<ts>` and logged. No DDL. Nobody who
+  does not add a template sees anything change.
+- **GitHub only through the user's own gh, only on a click.** Making the
+  repository is `gh repo create <login>/<name> --template <owner/name>
+  --private|--public`, then `gh repo clone`; reading a template to fill in
+  the form is `gh repo view` and `gh api` for its `TEMPLATE.md` and README.
+  Whether gh is ready is read from gh's own config (`gh config get -h
+  github.com user`), on this machine. Caprock never reads or stores the gh
+  token and adds no GitHub client of its own for this: the outbound calls
+  are gh's, to GitHub, on the user's click, for the repository they named
+  (rule 4).
+- **Without gh, a local copy — never chosen by the daemon.** The local path
+  copies the template folder's last commit (`git archive HEAD`, unpacked by
+  the daemon), or its files when it is not a repository, into a new
+  repository with one commit. The request names the path (`via`); a request
+  for GitHub with gh missing or signed out is `409`, not quietly turned into
+  a local copy, so the user is never surprised by where the project lives.
+  The copy keeps ADR-050's limits: 5,000 files, 256 MB, links only relative
+  and inside.
+- **The brief is committed, never pushed.** It is written at the template's
+  path inside the new project (symlinks resolved; a link that leads out is
+  refused) and committed alone as "Add the project brief". Without a git
+  identity the files stay uncommitted and a note says how to set one; the
+  project is still made.
+- **A failure cleans up only what Caprock made on this machine.** A folder it
+  created is removed; an empty folder the user had made is emptied and kept.
+  A repository made on GitHub is never deleted — the operation says it is
+  kept and can be retried, and Retry clones it rather than making another.
+  GitHub fills a repository made from a template a moment after it exists,
+  so an empty first clone is tried again (six tries, 2 s apart).
+- **The agent starts as any other.** The daemon makes and lists the
+  project; the app then starts the agent with the existing `POST
+  /v1/agents` and the template's prompt. One way to start a session, not
+  two.
+- **The machine's, and free.** Every route is refused to a paired device: a
+  phone does not create repositories on the user's GitHub account. Nothing
+  is gated.
+
+**Rules out:** a built-in list of templates (Caprock does not recommend
+anyone's repository); Caprock's own GitHub token or API client for this; a
+silent fall-back from GitHub to a local copy; deleting a remote repository,
+ever; pushing the brief; creating a project from a phone.
+
+**Revisit if:** people want templates hosted somewhere other than GitHub
+(GitLab, a plain git URL), which would need a path that is not gh; or
+operations lost to a daemon restart mid-way (`RISK-09`) turn out to matter
+in practice.

@@ -75,6 +75,10 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
    - Evidence: the owner's own week (2026-10-04): a list-price total means little until it sits beside the pull requests it paid for, and the figure people want to post is "what my agents shipped".
    - Feature: the **Week** card — PRs, commits, cost per merged PR, who did what — computed locally and drawn to share ([04-ui.md § Week](04-ui.md#week)).
 
+9. **"I create a new repository from my template, feed it to an agent with a brief, and it builds it."**
+   - Evidence: the owner, 2026-10-15 (translated): "I have a public template repo on GitHub, Corpus. I create a new repository from it, feed it to an agent with a brief of the project, and it builds it — docs and research first, as the template says. Build this harmoniously into Caprock so I use it and it doesn't get in other people's way." Today that is GitHub's button, a terminal, an editor and Caprock.
+   - Feature: **New project from a template** — the user's own templates (none built in), made through their own `gh` or as a local copy, the brief written and committed, then the agent started with the template's prompt ([ADR-065](08-decisions.md), [03-contracts.md § Project templates](03-contracts.md#project-templates)). The daemon side shipped first; the screen follows.
+
 ## Product principles
 
 1. **Every pixel earns its place** — each screen answers "what's happening / what does it cost / where do I need to act."

@@ -73,6 +73,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — New project from a template: the daemon side
+
+`internal/templates` and seven routes ([03-contracts.md § Project
+templates](03-contracts.md#project-templates), [ADR-065](08-decisions.md)):
+the user's own template list in `project-templates.json`, inspecting a
+template (its `TEMPLATE.md` marker, a `docs/<x>.md` it names, or the
+defaults), and making a project from one through the user's own `gh` or as
+a local copy, the brief written and committed, with retry and clean-up that
+never deletes a GitHub repository. The op machinery is the clone's,
+exported (`StartOp`, `UpdateOp`, `FinishOp`). Tested against a fake `gh`
+(`testdata/fakegh`); the screen in the app is the next PR.
+
 ### 2026-10-15 — 0.117.5: Mail on its own, a check that always ends, no console flashes on Windows
 
 Mail opens on its own at `?mail=1` — the inbox and nothing else of Caprock —
