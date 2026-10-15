@@ -12,6 +12,69 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.121.0] - 2026-10-15
+
+### Added
+
+- **brain:** Second Brain says where it is kept — in its Settings and under
+  *Details* in How it works: the real path of `caprock.db` as the daemon
+  resolved it (with *Copy path*), the tables `brain_nodes`, `brain_edges`
+  and `brain_runs`, and that the session text goes to Anthropic through
+  your own Claude to be read while nothing goes to Caprock.
+  `GET /v1/brain/status` carries the path as `db_path`.
+- **remote:** the groundwork for reaching your other computers through the
+  relay (ADR-067). A Caprock daemon can now be a client of another
+  machine's daemon over the same end-to-end encrypted channel a phone uses,
+  pair with it by its link and keep the token in `machines.json` (0600),
+  opening the channel only while something needs it. Nothing to see yet:
+  the routes, the target's computer pairing and the app follow.
+
+### Changed
+
+- **app:** the sidebar's session rows are bigger and easy to read (a user
+  could not read them, nor tell which tab she was in). Rows are 38px with
+  the title at 14px; each says its state as a dot and a word — green and
+  breathing while it works, amber while it waits, faint when idle — and a
+  tab's key is the footer's readable chip. The flat list no longer draws
+  the project's name on each row; the tooltip and screen readers still say
+  it. Only the tab in front looks selected now (an accent tint, a 3px
+  accent edge and a bold title): a row waiting on you is marked by its
+  amber dot and word, no longer by a fill and edge of its own, and the
+  project in front lost its edge. The Today card folds to one line by its
+  chevron and can be hidden from its right-click menu; Settings →
+  Appearance shows it again, and while it is hidden the list's heading
+  counts what waits on you.
+- **app:** the sidebar's Second Brain card is quiet by default: folded to one
+  muted row, *Second Brain · Idle · 140 memories* or *Indexing 3 sessions…*,
+  whose small glyph pulses slowly only while a read runs. It lifts a pixel on
+  hover, a click opens Second Brain, and the chevron unfolds a calmer orb
+  (smaller, slower, fainter, fewer sparks). A fold you saved is kept. The
+  card now sits under the list and above the footer instead of at the end
+  of the list's scroll, so its status line is never cut off by the footer;
+  when room is short the orb shrinks (and in a window under 640px tall is
+  not drawn). The orb's sparks also follow the sessions working now.
+- **app:** the right panel's CI pull-request bars say what their stages are:
+  one faint line, *open · CI · merged · released*, over the bars' columns,
+  and each segment's tooltip names its step and state (done, running,
+  failed, waiting) with the landing-queue label on the step a PR is on. The
+  rows are as tall as before.
+
+### Fixed
+
+- **app:** on macOS the first click on a Caprock window that is not in front
+  reaches the page: a tab's × in the title-bar strip closes the tab at once
+  instead of the first click only bringing the window forward. Dragging the
+  window by its title bar works as before.
+- **loop:** a subagent's edits no longer raise a loop alert on its parent. A
+  subagent's tool calls arrive under the parent's session id, and the
+  detector counted them in the parent's window: a parent and two subagents
+  making the same edit, three each, read as nine repeats of one call. Each
+  thread now counts its own — the main thread, and every subagent apart — and
+  a subagent that really repeats itself still raises the alert on the session
+  it works for. A hook fired inside a subagent with no `agent_id` is told
+  apart by its transcript path (`…/subagents/agent-<id>.jsonl`). The Week
+  card's longest loop counts the same way.
+
 ## [0.120.0] - 2026-10-15
 
 ### Added

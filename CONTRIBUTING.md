@@ -52,15 +52,21 @@ otherwise they show as skipped. Every push to `master` builds them.
    add `changes/unreleased/<pr-or-branch-slug>.md` with `kind:` front matter
    and a `- **scope:** …` bullet ([`changes/README.md`](changes/README.md)).
    The release assembles them; parallel PRs never touch the same lines.
-6. `make check` must pass. **No red Windows CI — no exceptions.**
-7. Reference the issue in the PR body: `Closes #<n>`.
-8. Fill in the PR checklist.
-9. **Iterate as a draft; CI runs when it is ready.** Draft pull requests run no
-   CI at all: open it with `gh pr create --draft`, run `make check` locally
-   until it is green, then mark it ready (`gh pr ready`), which runs the full
-   3-OS matrix once. A pull request from a fork also waits for a maintainer to
-   approve the run. Don't push to a ready PR just to see what CI says —
-   that is what `make check` is for ([ADR-061](.ai/08-decisions.md)).
+6. **Never commit `internal/api/dist`.** It is the built dashboard, committed
+   so `go install` embeds a real UI, and only master's `dist` workflow writes
+   it, after your PR merges ([ADR-068](.ai/08-decisions.md)). `make build` and
+   `make ui` leave it modified locally; leave that out of your commits. CI's
+   *no dist in the PR* check (and `make check`) fails a PR that changes it;
+   `make dist-reset` and a commit drop the change.
+7. `make check` must pass. **No red Windows CI — no exceptions.**
+8. Reference the issue in the PR body: `Closes #<n>`.
+9. Fill in the PR checklist.
+10. **Iterate as a draft; CI runs when it is ready.** Draft pull requests run no
+    CI at all: open it with `gh pr create --draft`, run `make check` locally
+    until it is green, then mark it ready (`gh pr ready`), which runs the full
+    3-OS matrix once. A pull request from a fork also waits for a maintainer to
+    approve the run. Don't push to a ready PR just to see what CI says —
+    that is what `make check` is for ([ADR-061](.ai/08-decisions.md)).
 
 ## Rules that matter
 

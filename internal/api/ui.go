@@ -10,7 +10,8 @@ import (
 	"strings"
 )
 
-// distFS is the built dashboard (ui/ → internal/api/dist, git-ignored).
+// distFS is the built dashboard (ui/ → internal/api/dist), committed for `go
+// install` and rebuilt on master after each merge (ADR-068).
 //
 //go:embed all:dist
 var distFS embed.FS

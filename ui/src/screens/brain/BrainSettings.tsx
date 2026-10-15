@@ -4,6 +4,7 @@
  * daily limit. The same PUT /v1/brain/settings as Settings → Second Brain;
  * Escape or a click outside closes it.
  */
+import { BrainWhere } from '@/components/BrainWhere'
 import { useEffect, useRef, useState } from 'react'
 import { api, errText, type BrainAutoStatus } from '@/lib/api'
 import { tokensShort } from '@/lib/brain'
@@ -28,7 +29,7 @@ function Seg<T extends string | number>({ label, value, options, onPick }: { lab
   )
 }
 
-export function BrainSettings({ auto, onChanged }: { auto: BrainAutoStatus; onChanged: () => void }) {
+export function BrainSettings({ auto, dbPath, onChanged }: { auto: BrainAutoStatus; dbPath?: string; onChanged: () => void }) {
   const [open, setOpen] = useState(false)
   const [err, setErr] = useState('')
   const box = useRef<HTMLDivElement>(null)
@@ -54,7 +55,7 @@ export function BrainSettings({ auto, onChanged }: { auto: BrainAutoStatus; onCh
       </button>
       {open && (
         <div role="dialog" aria-label="Second Brain settings"
-          className="absolute right-0 top-[36px] z-20 grid w-[260px] gap-3 rounded-[10px] border border-border-strong bg-panel p-3 shadow-[var(--shadow-panel)]">
+          className="absolute right-0 top-[36px] z-20 grid w-[300px] gap-3 rounded-[10px] border border-border-strong bg-panel p-3 shadow-[var(--shadow-panel)]">
           <label className="flex items-center justify-between gap-2 text-[13.5px] text-fg">
             Build automatically
             <input type="checkbox" role="switch" checked={auto.on} onChange={(e) => save({ auto: e.target.checked })} className="h-4 w-4 accent-[var(--color-accent)]" />
@@ -62,6 +63,7 @@ export function BrainSettings({ auto, onChanged }: { auto: BrainAutoStatus; onCh
           <Seg label="Model" value={model} options={MODELS} onPick={(v) => save({ model: v })} />
           <Seg label="Daily limit" value={limit} options={LIMITS.map((v) => [v, tokensShort(v)] as [number, string])} onPick={(v) => save({ daily_tokens: v })} />
           {err && <p className="text-[12.5px] text-danger">{err}</p>}
+          <BrainWhere dbPath={dbPath ?? ''} className="border-t border-[var(--app-hairline)] pt-2.5" />
         </div>
       )}
     </div>
