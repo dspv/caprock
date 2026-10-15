@@ -9,12 +9,13 @@ const m = vi.hoisted(() => ({
   premium: vi.fn(),
   settings: vi.fn(),
   backfill: vi.fn(),
+  glance: vi.fn((): Promise<unknown> => Promise.resolve({ agents: [], display: {} })),
 }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
     ...actual,
-    api: { ...actual.api, dropBrain: m.drop, brainStatus: m.status, brain: m.brain, brainNode: m.node, premium: m.premium, brainSettings: m.settings, brainBackfill: m.backfill },
+    api: { ...actual.api, dropBrain: m.drop, brainStatus: m.status, brain: m.brain, brainNode: m.node, premium: m.premium, brainSettings: m.settings, brainBackfill: m.backfill, glance: m.glance },
   }
 })
 
@@ -182,15 +183,16 @@ describe('Second Brain', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('is a banner while empty and off: the brain graph, the line, Start building, How it works, no bare zero, nothing sent', async () => {
+  it('is a banner while empty and off: the agents and the brain, Free, the line, Start building, How it works, no bare zero, nothing sent', async () => {
     m.status.mockResolvedValue(status({ memories: 0, manual: 0, auto: auto({ chosen: false, on: false, enabled: false, pending: 0 }) }))
     m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
     render(<BrainSidebar onOpen={vi.fn()} />)
     await screen.findByRole('button', { name: 'Start building' })
     expect(document.querySelector('[data-brain-banner="off"]')).not.toBeNull()
-    expect(document.querySelector('[data-brain-banner] [data-brain-mark]')).not.toBeNull()
-    expect(screen.getByText('Give your agents a memory')).toBeTruthy()
-    expect(screen.getByText('Local · your own Claude · free')).toBeTruthy()
+    expect(document.querySelector('[data-brain-banner] [data-brain-hero] [data-brain-mark]')).not.toBeNull()
+    expect(document.querySelector('[data-brain-banner] [data-brain-free]')!.textContent).toBe('Free')
+    expect(screen.getByText('One memory for all your agents')).toBeTruthy()
+    expect(screen.getByText('Local · your own Claude')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'How it works' })).toBeTruthy()
     expect(screen.queryByText(/Jarvis/)).toBeNull()
     expect(screen.queryByRole('button', { name: /memories — open Second Brain/ })).toBeNull()
@@ -237,8 +239,12 @@ describe('Second Brain', () => {
   it('says what it is doing while on and still empty: sessions waiting, and the last problem', async () => {
     m.status.mockResolvedValue(status({ memories: 0, manual: 0, auto: auto({ pending: 3, last_error: 'claude exited 1' }) }))
     m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
+    m.glance.mockResolvedValueOnce({ agents: [{ agent: 'codex', subagent: false, turns: 9, cost_usd: 0, sessions: 2 }, { agent: 'claude', subagent: false, turns: 40, cost_usd: 0, sessions: 6 }], display: {} })
     render(<BrainSidebar onOpen={vi.fn()} />)
     await screen.findByText('3 sessions waiting · first memories in a few minutes')
+    // The banner draws the agents used, and names them.
+    await screen.findByText('Claude Code and Codex remember together.')
+    expect(m.glance).toHaveBeenCalledWith('30d')
     expect(document.querySelector('[data-brain-banner="on"]')).not.toBeNull()
     expect(screen.getByText('Last problem: claude exited 1')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Start building' })).toBeNull()

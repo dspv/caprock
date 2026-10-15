@@ -1,14 +1,22 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
+
+vi.mock('@/lib/api', async (orig) => {
+  const actual = await orig<typeof import('@/lib/api')>()
+  return { ...actual, api: { ...actual.api, glance: vi.fn(() => Promise.resolve({ agents: [], display: {} })) } }
+})
+
 import { SecondBrainModal } from './SecondBrainModal'
 
 describe('SecondBrainModal', () => {
-  it('is short: the brain graph, a headline, one sub-line, three one-line steps, Jarvis and privacy in a line each', () => {
+  it('is short: the agents and the brain, Free, a headline, the agents line, three one-line steps, Jarvis and Free-and-local in a line each', () => {
     render(<SecondBrainModal onClose={() => {}} onOpen={() => {}} />)
     const dialog = screen.getByRole('dialog', { name: 'Second Brain' })
-    expect(dialog.querySelector('[data-brain-mark]')).not.toBeNull()
-    expect(screen.getByRole('heading', { name: 'Your agents’ memory' })).toBeTruthy()
-    expect(dialog.textContent).toContain('Remembers what your agents learn, so the next one starts smarter.')
+    expect(dialog.querySelector('[data-brain-hero] [data-brain-mark]')).not.toBeNull()
+    expect(dialog.querySelector('[data-brain-free]')!.textContent).toBe('Free')
+    expect(screen.getByRole('heading', { name: 'One memory for all your agents' })).toBeTruthy()
+    // No usage known yet: Claude Code alone.
+    expect(dialog.querySelector('[data-brain-agents-line]')!.textContent).toBe('Claude Code remembers across sessions.')
     const steps = screen.getByRole('list', { name: 'How it works' })
     expect([...steps.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
       'Sessions end',
@@ -16,7 +24,7 @@ describe('SecondBrainModal', () => {
       'The next agent starts smarter',
     ])
     expect(dialog.querySelector('[data-brain-jarvis]')!.textContent).toBe('Over time: your personal Jarvis.')
-    expect(dialog.querySelector('[data-brain-privacy]')!.textContent).toBe('Local. Your own Claude. Off any time in Settings.')
+    expect(dialog.querySelector('[data-brain-privacy]')!.textContent).toBe('Free — runs on your own Claude, on this computer.')
     expect(dialog.textContent).not.toMatch(/Premium|\$/)
     // No second Close: the × (and Escape) close it.
     expect(screen.getAllByRole('button', { name: /^Close/ })).toHaveLength(1)
