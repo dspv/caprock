@@ -306,6 +306,62 @@
 }
 
 /*
+ * Sunlight: for working in bright light (owner, 2026-10-15, translated: "a
+ * screen mode for when you sit in the sun"). Glare washes out everything that
+ * is not far from the ground, so there are no faint greys here: black ink on
+ * pure white, the faintest text 9.8:1 on the darkest surface, every status
+ * colour and the accent 7:1 or more as text on bg, panel and panel-2, dark
+ * hairlines, opaque chrome, and the text one weight heavier (below).
+ * theme.test.ts asserts the 7:1 floor for every text token.
+ */
+[data-theme="light"][data-tone="sun"] {
+  --color-bg: #ffffff;
+  --color-panel: #ffffff;
+  --color-panel-2: #f0f0f0;
+  --color-border: #767676;
+  --color-border-strong: #3b3b3b;
+
+  --color-fg: #000000;
+  --color-fg-muted: #1f1f1f;
+  --color-fg-faint: #3b3b3b;
+
+  --color-ok: #005c19;
+  --color-warn: #6b3d00;
+  --color-danger: #9e0010;
+  --color-info: #0038b8;
+  --color-merged: #6c1ab0;
+
+  --color-accent: #0038b8;
+
+  --color-selection: rgba(0, 56, 184, 0.22);
+  --color-accent-strong: #002a8c;
+  --color-premium: #3d16c4;
+  --color-premium-strong: #2a0e8f;
+
+  --color-term-bg: #1a1b1e;
+  --color-term-border: #33415a;
+
+  /* A shadow is lost in glare; the borders above do the work. */
+  --shadow-panel: 0 0 0 1px #767676;
+
+  /* One weight heavier, and no thinning: macOS's greyscale antialiasing
+   * draws dark-on-light text visibly lighter. The variable faces take 500. */
+  font-weight: 500;
+  -webkit-font-smoothing: auto;
+}
+/* The app's chrome: hairlines dark enough to see in the sun, and an opaque
+ * sidebar — a translucent one lets the desktop wash through it. */
+[data-app][data-tone="sun"] {
+  --app-sidebar-bg: var(--color-panel);
+  --app-hairline: #767676;
+  --app-hairline-strong: #3b3b3b;
+  --app-row-hover: rgba(0, 0, 0, 0.08);
+  --app-row-hover-strong: rgba(0, 0, 0, 0.14);
+  --app-row-active: rgba(0, 0, 0, 0.12);
+  --app-focus: var(--color-accent);
+}
+
+/*
  * The glow (Dark Side and Light Side, `glow` in lib/themes.ts): a soft neon
  * on three things only — the focused field, the primary (filled accent)
  * button and the top edge of the tab in front. Never on text: a dense
@@ -407,6 +463,27 @@ body {
   background-color: #f2a955;
 }
 
+/* Get premium in the header (components/PremiumChip.tsx): a quiet tinted
+ * button, not a bright block (owner, 2026-10-15: the solid violet fill was
+ * "too bright", translated). The premium colour at an eighth of its strength
+ * behind, a hairline of it around, and the label in the premium ink pulled
+ * two fifths towards the palette's own text: premium-strong alone is 4.1:1
+ * on this tint in Dark Warm and Dark Cold, under 4.5:1. The price is the
+ * label at 85%, a step fainter. Measured on every palette: label 5.8:1 or
+ * more, price 4.6:1 or more, at rest and on hover. */
+.premium-cta {
+  --premium-ink: color-mix(in srgb, var(--color-premium-strong) 60%, var(--color-fg));
+  background: color-mix(in srgb, var(--color-premium) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-premium) 45%, transparent);
+  color: var(--premium-ink);
+}
+.premium-cta:hover, .premium-cta:focus-visible {
+  background: color-mix(in srgb, var(--color-premium) 20%, transparent);
+  border-color: color-mix(in srgb, var(--color-premium) 70%, transparent);
+}
+.premium-cta:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-premium) 70%, transparent); outline-offset: 1px; }
+.premium-cta [data-price] { color: color-mix(in srgb, var(--premium-ink) 85%, transparent); }
+
 /* Every number, cost, id, and terminal string is monospace with tabular numerals. */
 .num, .mono {
   font-family: var(--font-mono);
@@ -503,11 +580,29 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
  * light highlight on the chat input line so I understand I'm actively
  * focused in it"). The accent at 60% and a faint 3px ring; a little stronger
  * once there is text in it. Border and shadow only, so its size never
- * changes; no animation beyond a short fade, none with reduced motion. */
-.input.composer-field { transition: border-color 150ms ease, box-shadow 150ms ease; }
+ * changes; no animation beyond a short fade, none with reduced motion.
+ *
+ * At rest it carries a hint of the accent too (owner, 2026-10-15,
+ * translated: "a light, slight highlight of the chat input field, one that
+ * doesn't draw much attention"): 4% in its fill and 22% in its edge, found
+ * at the bottom of a long chat without pulling the eye to it; the fill goes
+ * to 7% with the focus. On the terminal slab (the app's Chat view) its
+ * ground is the slab's own, lifted as the composer's box is (.app-composer),
+ * so it sits right on every terminal palette, light or dark. */
+.input.composer-field {
+  --composer-ground: var(--color-panel-2);
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--composer-ground));
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--color-border-strong));
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+:where([data-app] .app-slab) .input.composer-field {
+  --composer-ground: color-mix(in srgb, var(--color-fg) 5%, var(--color-term-bg));
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--app-hairline-strong));
+}
 .input.composer-field:focus,
 [data-glow] .input.composer-field:focus {
   outline: none;
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--composer-ground));
   border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
 }
@@ -644,21 +739,12 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   background: color-mix(in srgb, var(--color-fg) 7%, transparent);
 }
 /* The key over an icon in the folded sidebar footer (components/SidebarFooter
- * KeySlot; owner, 2026-10-14, translated: "I'd put the key combos above
- * them"): the tab key's shape, smaller and faint, so a row of six reads as
- * labels, not as six more buttons. `.app-kbd-float` is the off-macOS form,
- * shown over the icon under the pointer: on the panel, above the list. */
-[data-app] .app-kbd-faint {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--color-fg-faint);
-  padding: 2px 3px;
-  border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--color-fg) 16%, transparent);
-}
+ * KeySlot) is the same .app-kbd-key as everywhere else: a small faint one
+ * (.app-kbd-faint, 10px) could not be read (owner, 2026-10-15, translated:
+ * "the shortcuts there are tiny, you can't see a damn thing"), so a key that
+ * has no room is left out and kept in the tooltip. `.app-kbd-float` is the
+ * off-macOS form, shown over the icon under the pointer: on the panel, above
+ * the list. */
 [data-app] .app-kbd-float {
   background: var(--color-panel);
   box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.4);

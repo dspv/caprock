@@ -88,8 +88,19 @@ Dashboard (⌘0 stays), ⌘P the Pipeline (⇧⌘B kept as a silent alias), ⇧�
 Work, ⇧⌘T the theme picker; ⌘F and ⌘T stay Find and New shell. Off macOS
 Ctrl+Shift+D, Ctrl+Shift+P, Ctrl+Alt+Shift+W and Ctrl+Alt+Shift+T. The
 every-shortcut-on-every-OS suite presses each, and a new test fails when
-two listed keys read the same off macOS. The sidebar footer's chips were
-measured in a browser at 240–320px on both platforms' spellings.
+two listed keys read the same off macOS. In the sidebar footer the new
+keys go through the measured chip fit (a chip with no room is left out
+whole), and ⇧⌘T opens the portalled theme picker.
+
+### 2026-10-15 — 0.117.5: Mail on its own, a check that always ends, no console flashes on Windows
+
+Mail opens on its own at `?mail=1` — the inbox and nothing else of Caprock —
+and `app/mail-mac` builds a Mac preview app around it with Caprock's icon and
+an envelope for the dot (local, not shipped by CI). Adding a mail account can
+no longer hang on *Checking…*: a server that goes quiet ends the check within
+30 seconds and says which one. Caprock no longer flashes console windows on
+Windows, and typing a name in New project filters the folders. Second Brain says when it reads next, and its sidebar block and
+*How it works* are shorter.
 
 ### 2026-10-15 — 0.117.4: terminals that draw right, a dashboard that keeps its place, Second Brain by name
 

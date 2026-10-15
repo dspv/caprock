@@ -20,7 +20,7 @@
  * Enter advances (⌘↩ from the instructions box), Esc closes. Clone and a
  * new empty folder stay in the Add project sheet, one link away.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { api, errText } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { isMacPlatform, isTauri } from '@/lib/appmode'
@@ -29,7 +29,8 @@ import { instructionsPatch, projectsApi, type FoundRepo, type InstructionFile, t
 import { tildePath } from '@/lib/projectSearch'
 import { foundNote } from '@/lib/multirepo'
 import {
-  createLabel, createRequests, expandTilde, foundHeadline, foundOf, instructionsState, lastSegment, lineCount, listedAt, placeChips, trimSlash,
+  createLabel, createRequests, drillPath, expandTilde, filterFolders, foundHeadline, foundOf, instructionsState, lastSegment, lineCount, listedAt,
+  placeChips, splitTyped, trimSlash,
   type Found, type Shape,
 } from '@/lib/projectWizard'
 import { Sheet, SheetButton } from './Sheet'
@@ -91,14 +92,64 @@ export function ProjectWizard({
   const field = useRef<HTMLInputElement>(null)
   const startButton = useRef<HTMLButtonElement>(null)
 
-  // The folders inside the one in the field, 250 ms after the last key.
+  // The folders inside the one in the field, 250 ms after the last key. A
+  // field that names no folder yet (`~/dev/cap`) lists the folder before the
+  // name instead (`~/dev/`), kept to the names holding what was typed
+  // (owner, 2026-10-15, translated: "typing the first letters should search
+  // these folders in this directory"). The match follows every key at once:
+  // only a new folder waits for the daemon.
   const [listDir, setListDir] = useState('')
   useEffect(() => {
     const t = setTimeout(() => setListDir(path.trim()), 250)
     return () => clearTimeout(t)
   }, [path])
-  const browse = useApi(() => (listDir ? api.browse(listDir) : Promise.resolve(null)), [listDir], { live: false })
-  const entries = browse.data && !browse.error ? browse.data.entries : []
+  const browse = useApi(async () => {
+    if (!listDir) return null
+    try {
+      return { listing: await api.browse(listDir), asked: listDir, filtered: false }
+    } catch (e) {
+      const { dir, partial } = splitTyped(listDir)
+      if (!dir || !partial) throw e
+      return { listing: await api.browse(dir), asked: dir, filtered: true }
+    }
+  }, [listDir], { live: false })
+  const typed = splitTyped(path)
+  // Filtering while the field still points into the folder listed: typed
+  // letters re-filter at once; a field moved elsewhere waits for its listing.
+  const filtering = !!browse.data?.filtered && typed.dir === browse.data.asked
+  const partial = filtering ? typed.partial : ''
+  const matches = useMemo(
+    () => (browse.data && !browse.error && (!browse.data.filtered || filtering) ? filterFolders(browse.data.listing.entries, partial) : []),
+    [browse.data, browse.error, filtering, partial],
+  )
+  const shownDir = browse.data ? tildePath(trimSlash(browse.data.listing.dir), home) : ''
+  // The highlighted row: the first match while a name is typed, so Enter and
+  // Tab take it; none in a plain listing, where Enter looks at the folder in
+  // the field, as before. Up and Down move it.
+  const [cursor, setCursor] = useState<number | null>(null)
+  useEffect(() => { setCursor(null) }, [path])
+  const active = matches.length === 0 ? -1 : cursor !== null ? Math.min(cursor, matches.length - 1) : partial ? 0 : -1
+  const list = useRef<HTMLUListElement>(null)
+  useEffect(() => {
+    if (active < 0) return
+    const row = list.current?.querySelector<HTMLElement>(`[data-folder-index="${active}"]`)
+    row?.scrollIntoView?.({ block: 'nearest' })
+  }, [active])
+  const pickFolder = (p: string) => { setPath(tildePath(p, home)); setPathTouched(true); void look(p) }
+  const onFieldKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.altKey || e.metaKey || e.ctrlKey || e.nativeEvent.isComposing) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (matches.length === 0) return
+      e.preventDefault()
+      const down = e.key === 'ArrowDown'
+      setCursor(active < 0 ? (down ? 0 : matches.length - 1) : (active + (down ? 1 : matches.length - 1)) % matches.length)
+    } else if (e.key === 'Tab' && !e.shiftKey && active >= 0) {
+      e.preventDefault()
+      setPath(drillPath(matches[active]!.entry.path, home))
+      setPathTouched(true)
+      setError('')
+    }
+  }
 
   const listed = found ? listedAt(projects, found.kind === 'multi' ? found.root : found.kind === 'one-below' ? found.repo.path : found.path) : undefined
 
@@ -187,7 +238,11 @@ export function ProjectWizard({
   const advanceRef = useRef<() => void>(() => {})
   advanceRef.current = () => {
     if (busy) return
-    if (step === 'folder') void look(path)
+    if (step === 'folder') {
+      const hit = matches[active]
+      if (hit) pickFolder(hit.entry.path)
+      else void look(path)
+    }
     else if (step === 'found') void create()
     else if (made) { onStartAgent(made.project.id) }
   }
@@ -258,7 +313,13 @@ export function ProjectWizard({
               autoComplete="off"
               placeholder="~/dev/project"
               value={path}
+              role="combobox"
+              aria-expanded={matches.length > 0}
+              aria-controls="wizard-folders"
+              aria-autocomplete="list"
+              aria-activedescendant={active >= 0 ? `wizard-folder-${active}` : undefined}
               onChange={(e) => { setPath(e.target.value); setPathTouched(true); setError('') }}
+              onKeyDown={onFieldKey}
             />
             {isTauri() && (
               <button type="button" onClick={() => void choose()} className="h-[46px] shrink-0 rounded-[8px] border border-[var(--app-hairline-strong)] px-4 text-[14px] text-fg hover:bg-[var(--app-row-hover)]">
@@ -281,27 +342,46 @@ export function ProjectWizard({
               ))}
             </div>
           )}
-          {entries.length > 0 && (
+          {matches.length > 0 && (
             <div className="grid min-w-0 gap-1.5">
-              <p className="text-[12.5px] text-fg-muted">Inside <span className="mono">{tildePath(trimSlash(browse.data?.dir ?? listDir), home)}</span> — a click picks one</p>
-              <ul aria-label="Folders" className="app-scroll grid max-h-[300px] grid-cols-[minmax(0,1fr)] gap-px overflow-y-auto rounded-[10px] border border-[var(--app-hairline)] bg-[var(--app-hairline)]">
-                {entries.map((e) => (
-                  <li key={e.path} className="flex min-w-0 bg-panel">
+              <p className="text-[12.5px] text-fg-muted">
+                {partial
+                  ? <>In <span className="mono">{shownDir}</span>, names with <span className="mono text-fg">{partial}</span> — ↑↓ moves, Tab goes inside, {enter} picks</>
+                  : <>Inside <span className="mono">{shownDir}</span> — a click picks one</>}
+              </p>
+              <ul ref={list} id="wizard-folders" role="listbox" aria-label="Folders" className="app-scroll grid max-h-[300px] grid-cols-[minmax(0,1fr)] gap-px overflow-y-auto rounded-[10px] border border-[var(--app-hairline)] bg-[var(--app-hairline)]">
+                {matches.map(({ entry: e, start, length }, i) => (
+                  <li key={e.path} role="presentation" className={`flex min-w-0 ${i === active ? 'bg-[var(--app-row-active)]' : 'bg-panel'}`}>
                     <button
                       type="button"
-                      onClick={() => { setPath(tildePath(e.path, home)); setPathTouched(true); void look(e.path) }}
+                      id={`wizard-folder-${i}`}
+                      role="option"
+                      aria-selected={i === active}
+                      data-folder-index={i}
+                      tabIndex={-1}
+                      onClick={() => pickFolder(e.path)}
+                      onMouseMove={() => { if (partial && cursor !== i) setCursor(i) }}
                       className="app-row flex h-[44px] min-w-0 flex-1 items-center gap-3 px-4 text-left"
                       title={`Make ${e.name} a project`}
                     >
-                      <span className="mono min-w-0 flex-1 truncate text-[14px] text-fg">{e.name}</span>
+                      <span className="mono min-w-0 flex-1 truncate text-[14px] text-fg">
+                        {length > 0 ? (
+                          <>
+                            {e.name.slice(0, start)}
+                            <mark data-match className="rounded-[3px] bg-[color-mix(in_srgb,var(--color-accent)_22%,transparent)] font-semibold text-fg">{e.name.slice(start, start + length)}</mark>
+                            {e.name.slice(start + length)}
+                          </>
+                        ) : e.name}
+                      </span>
                       {e.repo && <span className="shrink-0 text-[12px] text-fg-muted">git</span>}
                     </button>
                     {!e.repo && (
                       <button
                         type="button"
                         aria-label={`Look inside ${e.name}`}
-                        title="Look inside"
-                        onClick={() => { setPath(`${tildePath(e.path, home)}`); setPathTouched(true) }}
+                        title="Look inside (Tab)"
+                        tabIndex={-1}
+                        onClick={() => { setPath(drillPath(e.path, home)); setPathTouched(true); field.current?.focus() }}
                         className="app-row flex h-[44px] w-[44px] shrink-0 items-center justify-center text-[16px] text-fg-muted"
                       >
                         ›
@@ -311,6 +391,11 @@ export function ProjectWizard({
                 ))}
               </ul>
             </div>
+          )}
+          {filtering && partial && matches.length === 0 && (
+            <p role="status" className="text-[13px] text-fg-muted">
+              No folder starting with ‘<span className="mono text-fg">{partial}</span>’ in <span className="mono">{shownDir}</span>
+            </p>
           )}
         </div>
       )}

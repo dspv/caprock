@@ -126,6 +126,22 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   fallbacks are the paid Workers plan or a relay on a server of ours
   (`caprock remote relay`), with no change on any phone or machine beyond
   the relay address.
+- `OQ-15` — **Is a per-PR merge range calibrated?** The Work board
+  (ADR-064) could say how long an open pull request has left until it
+  merges, from the Pipeline's open → merge median. Nobody has checked that a
+  repository-wide median says anything about one pull request: a typo fix
+  and a migration share the median. Until a backtest on real repositories
+  (open pull requests on a past date, the range the board would have shown,
+  when each actually merged) shows the 25th–75th range holding about half
+  of them, the board shows no per-PR countdown, only the medians with their
+  basis. Decided by: that backtest.
+- `OQ-16` — **Local release state is as fresh as the user's fetch.** The
+  Work board reads the `[Unreleased]` section, the tags and the commits past
+  the last tag from refs the clone already has, and Caprock never fetches
+  (ADR-064). A user who has not fetched in a week sees a week-old release
+  plan. The board labels it "as of your last fetch"; whether that is enough,
+  or the board should show when the last fetch was, is open. Decided by:
+  the first report of a stale release column being taken for current.
 
 ## What would falsify the whole plan
 

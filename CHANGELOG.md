@@ -7,15 +7,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-### Fixed
-
-- **windows:** Caprock no longer flashes console windows that steal the
-  keyboard focus. The daemon ran without a console, so every git, gh or
-  `claude -p` it started opened a window of its own for a fraction of a
-  second, every few seconds, and typing in other windows came out ragged
-  (user report on Windows 10). Every child now starts with a hidden
-  console, and a test keeps it that way.
-
 ### Added
 
 - **app:** a live session's row on Home takes you into the running session.
@@ -43,17 +34,28 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   and first rows above the Live pulse with *Open Work →*. A session row
   brings that session's tab to the front; a pull request's title opens it
   in the Pipeline with its detail open.
-- **brain:** Second Brain's status says when the reader wakes next
-  (`next_wake`), so a screen can tell you when the first memories may come
-  instead of leaving you at 0. Turning building on still wakes the reader
-  at once, and a double click or a second yes never starts a second read
-  beside the first.
-- **mail:** Mail on its own. `<daemon>/?mail=1` is the inbox and nothing
-  else of Caprock — no sidebar, no tabs — titled *Caprock Mail*.
-  `app/mail-mac` builds a Mac preview app around it: Caprock's icon with an
-  envelope in place of the dot, one window on the running Caprock, so the
-  accounts and mail are the same as in the Mail tab. It waits for Caprock
-  when it isn't running and follows it to a new port.
+- **work:** The Work board's daemon answer, `GET /v1/work` (ADR-064): every
+  live session on the machine — started by Caprock or by hand — with its
+  state, its running turn's rough range (Claude Code only, never while it
+  waits on you), its own task list, what it cost today and the pull
+  requests it recorded; the task runner's tasks and the queued messages;
+  and each repository's `[Unreleased]` CHANGELOG entries, newest tags and
+  commits past the last one, read from local git as of your last fetch.
+  Nothing is written, nothing is polled, GitHub is not asked and git never
+  fetches. The screen comes next.
+- **pipeline:** The PRs & CI board's flow strip carries how often the
+  repository ships: the median gap between its releases already read
+  (`release_gap_median_ms`, with three gaps or more), never a date for the
+  next one.
+- **app:** a Sunlight theme for working in bright light. It is black text
+  on pure white with no faint greys: every text colour, the faintest
+  included, is 7:1 or more against its background, measured on every
+  surface. Text is one weight heavier, borders and hairlines are dark
+  enough to see in glare, and the sidebar is opaque. The status colours
+  and the accent are saturated and stay apart. Its terminal keeps all 16
+  ANSI colours at 5.3:1 or more on white (the normal eight 7:1), the
+  yellow and cyan that usually wash out included. Pick it under Light in
+  the theme picker or Settings → Appearance.
 
 ### Changed
 
@@ -64,19 +66,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   never Ctrl+D, which stays the shell's end of input. The sidebar's footer
   shows *Dashboard ⌘D*, *Pipeline ⌘P* and the theme's ⇧⌘T, folded or not,
   and the palette, the shortcuts list and the tooltips say the new keys.
-- **brain:** the sidebar's Second Brain block is a small banner while it is
-  empty, instead of a bare 0 and two faint lines: a faint graph breathing
-  (still with reduced motion), *Remembers what your agents learn — so the
-  next one starts smarter.*, **Start building** and *How it works*, and
-  *Local · your own Claude · free*. **Start building** asks in place —
-  your own `claude` and its model, on this computer, the daily token
-  limit, where the prose goes, and that Settings turns it off — and only
-  **Turn on** switches it on and starts on your last 30 days of sessions,
-  within that limit; without Claude Code it says so and offers no
-  button. Once on and still empty it says what it is doing: *Reading your
-  recent sessions…*, or how many sessions are waiting, and the last
-  problem if there was one. The same line replaces *your personal Jarvis*
-  under the Second Brain screen's title.
 - **dashboard:** The Pipeline is a page of the Dashboard now, beside *Week*
   in its menu, instead of a tab of its own: ⌘P and *Pipeline* in the
   sidebar open the Dashboard tab there (Ctrl+Shift+P on Windows and
@@ -92,6 +81,72 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   five figures at its top — in flight, needing a fix, ready, throughput,
   CI median — with *Open Pipeline →*. A Pipeline tab saved by an earlier
   version opens as the page.
+- **ui:** Get premium in the header is a quiet tinted button, not a bright
+  block: the same height, radius and type as Feedback and Settings beside
+  it, a faint premium tint with a hairline border and premium-coloured text,
+  the price a step fainter, a little stronger on hover. Its text reads at
+  4.5:1 or more in every palette.
+
+- **brain:** Second Brain looks like what it is: a brain made of a graph.
+  Nodes and links in the side view of a brain, in the memory kinds'
+  colours, softly pulsing, with a new node dropping in now and then and
+  linking up (still with reduced motion; CSS only, nothing runs in the
+  background). *How it works* is big and short — *Your agents' memory*,
+  one line on what it does, three one-line steps, *Over time: your
+  personal Jarvis*, one line on privacy and one button; the defaults
+  (Haiku, 300k tokens a day, up to five memories) moved into a folded
+  *Details*. The empty sidebar banner leads with the same brain, *Give
+  your agents a memory*, *Start building* and *How it works*.
+
+### Fixed
+
+- **windows:** Caprock no longer flashes console windows that steal the
+  keyboard focus. The daemon ran without a console, so every git, gh or
+  `claude -p` it started opened a window of its own for a fraction of a
+  second, every few seconds, and typing in other windows came out ragged
+  (user report on Windows 10). Every child now starts with a hidden
+  console, and a test keeps it that way.
+
+## [0.117.5] - 2026-10-15
+
+### Added
+
+- **brain:** Second Brain's status says when the reader wakes next
+  (`next_wake`), so a screen can tell you when the first memories may come
+  instead of leaving you at 0. Turning building on still wakes the reader
+  at once, and a double click or a second yes never starts a second read
+  beside the first.
+- **mail:** Mail on its own. `<daemon>/?mail=1` is the inbox and nothing
+  else of Caprock — no sidebar, no tabs — titled *Caprock Mail*.
+  `app/mail-mac` builds a Mac preview app around it: Caprock's icon with an
+  envelope in place of the dot, one window on the running Caprock, so the
+  accounts and mail are the same as in the Mail tab. It waits for Caprock
+  when it isn't running and follows it to a new port.
+
+### Changed
+
+- **app:** where you type is easier to find, quietly. The Chat view's field
+  carries a hint of the accent at rest — a faint tint and a hairline edge,
+  a little stronger with the focus — on every theme and terminal palette.
+  In a Claude Code terminal, the rows of its input box (between the two
+  rules, at the `❯` prompt) sit on a faint band of the terminal's own
+  background, lifted a step: it follows the box as it grows or moves, leaves
+  any cell Claude Code coloured alone, reads only the bottom rows of the
+  screen, and draws nothing for other agents, shells, dialogs and menus.
+
+- **brain:** the sidebar's Second Brain block is a small banner while it is
+  empty, instead of a bare 0 and two faint lines: a faint graph breathing
+  (still with reduced motion), *Remembers what your agents learn — so the
+  next one starts smarter.*, **Start building** and *How it works*, and
+  *Local · your own Claude · free*. **Start building** asks in place —
+  your own `claude` and its model, on this computer, the daily token
+  limit, where the prose goes, and that Settings turns it off — and only
+  **Turn on** switches it on and starts on your last 30 days of sessions,
+  within that limit; without Claude Code it says so and offers no
+  button. Once on and still empty it says what it is doing: *Reading your
+  recent sessions…*, or how many sessions are waiting, and the last
+  problem if there was one. The same line replaces *your personal Jarvis*
+  under the Second Brain screen's title.
 - **brain:** Second Brain's *How it works* now explains it in ten
   seconds. *Remembers what your agents learn — so the next one starts
   smarter*: it keeps the decisions, findings, ideas and open questions
@@ -104,6 +159,37 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   turn it off.
 
 ### Fixed
+
+- **app:** the sidebar footer's shortcuts are readable. Folded, the keys
+  above the icons were small faint 10px chips; now every key in the footer
+  is the New agent chip's size, folded or not. Where one has no room —
+  beside a row's words, or over a folded icon — it is left out whole
+  rather than drawn smaller, and the key stays in the tooltip: a row
+  measures itself and brings the chip back when it widens. Off macOS the
+  folded keys still show on hover, now at full size.
+- **app:** the theme picker opens whole, above everything. From the
+  sidebar's footer its palettes were cut off at the sidebar's edge and the
+  terminal drew over them; it now opens over the whole window, kept inside
+  it on every edge at any sidebar width and with the footer folded, and
+  scrolls in a window shorter than itself. Opening it puts the focus on the
+  palette in use; Esc, or tabbing past the last palette, closes it and gives
+  the focus back to the button.
+- **picker:** an arrow key pressed in the folder picker the moment a
+  folder's entries appear is no longer lost; the selection used to be
+  cleared just after it was made.
+- **app:** typing a name in New project's folder field now searches the
+  folder it is in. `~/dev/cap` used to empty the list; now it lists the
+  folders of `~/dev` holding *cap* — the ones starting with it first, the
+  letters marked — and every key narrows it at once. The first match is
+  highlighted: ↑↓ move, Enter picks it, Tab completes to it and goes
+  inside. No match says *No folder starting with 'cap' in ~/dev*. Works
+  with `~`, backslashes and drive letters on Windows.
+- **windows:** Caprock no longer flashes console windows that steal the
+  keyboard focus. The daemon ran without a console, so every git, gh or
+  `claude -p` it started opened a window of its own for a fraction of a
+  second, every few seconds, and typing in other windows came out ragged
+  (user report on Windows 10). Every child now starts with a hidden
+  console, and a test keeps it that way.
 
 - **mail:** adding an account can no longer sit on *Checking…* forever. A
   server that goes quiet while Mail connects or signs in — IMAP had no limit

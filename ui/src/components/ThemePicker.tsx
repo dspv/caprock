@@ -1,11 +1,12 @@
 /**
- * The eight palettes as swatches, in two groups — Dark, then Light: hovering
+ * The nine palettes as swatches, in two groups — Dark, then Light: hovering
  * one shows it on the whole page, leaving puts back what is kept, and a click
  * keeps it (owner, 2026-10-11: "not just poking — you open it, move across,
  * it changes, and you pick what you like", translated). Used by the theme
  * buttons' popover and by Settings → Appearance, larger there.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { THEME_MODE_NAME, THEME_SWATCH, endThemePreview, previewThemeMode, useThemeMode, type ThemeMode } from '@/lib/theme'
 import { THEMES } from '@/lib/themes'
 
@@ -64,45 +65,128 @@ function Swatch({ m, big }: { m: ThemeMode; big: boolean }) {
   )
 }
 
-/** The theme button's popover: the picker, opening up or down from the button. */
-/** `align`: which edge of the button the picker lines up with — `right` (it opens leftwards) by default, `left` where the button sits near the window's left edge. */
+/** The popover's width: two columns of swatches with their names. */
+export const THEME_MENU_W = 248
+/** The least room kept between the popover and any edge of the window. */
+const EDGE = 8
+/** The gap between the button and the popover. */
+const GAP = 6
+
+export interface MenuRect { left: number; top: number; right: number; bottom: number }
+
+/**
+ * Where the popover goes, in window coordinates: beside the button on the
+ * preferred side (`up` or `down`) when it fits there, else on the side with
+ * more room; its `align` edge on the button's; then held inside the window
+ * on every edge, `EDGE` px in. Taller than the window, it is capped at the
+ * window less the margins and scrolls (`maxHeight`). Pure, for the tests.
+ */
+export function placeThemeMenu(btn: MenuRect, height: number, view: { w: number; h: number }, placement: 'up' | 'down', align: 'left' | 'right'): { left: number; top: number; width: number; maxHeight: number } {
+  const width = Math.max(0, Math.min(THEME_MENU_W, view.w - 2 * EDGE))
+  const maxHeight = Math.max(0, view.h - 2 * EDGE)
+  const h = Math.min(height, maxHeight)
+  const above = btn.top - GAP - EDGE
+  const below = view.h - btn.bottom - GAP - EDGE
+  const up = placement === 'up' ? h <= above || above >= below : !(h <= below || below >= above)
+  let top = up ? btn.top - GAP - h : btn.bottom + GAP
+  top = Math.max(EDGE, Math.min(top, view.h - EDGE - h))
+  let left = align === 'left' ? btn.left : btn.right - width
+  left = Math.max(EDGE, Math.min(left, view.w - EDGE - width))
+  return { left, top, width, maxHeight }
+}
+
+/**
+ * The theme button's popover: the picker, opening up or down from the button.
+ * `align`: which edge of the button the picker lines up with — `right` (it
+ * opens leftwards) by default, `left` where the button sits near the
+ * window's left edge.
+ *
+ * Portalled to <body> and placed in window coordinates (owner, 2026-10-15,
+ * translated: "look how it appears!!"): inside the sidebar it was cut at the
+ * sidebar's edge — the sidebar's backdrop filter makes it the containing
+ * block of anything positioned inside it — and the terminal drew over the
+ * rest. It now sits above everything and is kept inside the window on every
+ * edge, whatever the sidebar's width or fold.
+ *
+ * Keyboard: opening it puts the focus on the palette in use; Tab and ⇧Tab
+ * walk the palettes, and past either end, or Esc, close it and give the
+ * focus back to the button. `openOn` (⇧⌘T) opens it the same way from the
+ * keyboard, or closes it when open.
+ */
 export function ThemeMenu({ children, label, placement = 'up', align = 'right', className = '', boxClassName = '', openOn }: { children: React.ReactNode; label: string; placement?: 'up' | 'down'; align?: 'left' | 'right'; className?: string; /** The wrapper's classes, e.g. to let the button fill a grid cell. */ boxClassName?: string; /** A window event that opens the picker, or closes it when open (⇧⌘T, the sidebar footer's button only). */ openOn?: string }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<ReturnType<typeof placeThemeMenu> | null>(null)
   const box = useRef<HTMLSpanElement>(null)
-  // Opened by its key, the picker takes the focus on the palette in use, so
-  // Tab moves across the palettes (each one tried as it is reached), Enter
-  // keeps one and Esc closes.
-  const byKey = useRef(false)
+  const button = useRef<HTMLButtonElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
+  const close = (focusBack: boolean) => {
+    setOpen(false)
+    setPos(null)
+    if (focusBack) button.current?.focus()
+  }
+  const place = () => {
+    if (!button.current || !menu.current) return
+    const next = placeThemeMenu(button.current.getBoundingClientRect(), menu.current.scrollHeight, { w: window.innerWidth, h: window.innerHeight }, placement, align)
+    setPos((cur) => (cur && cur.left === next.left && cur.top === next.top && cur.width === next.width && cur.maxHeight === next.maxHeight ? cur : next))
+  }
+  // Measured before paint, so it never shows in the wrong place.
+  useLayoutEffect(() => { if (open) place() })
+  // Its key (⇧⌘T) opens it as a click does — the palette in use takes the
+  // focus once placed — or closes it, the focus going back to the button.
+  const openRef = useRef(open)
+  useEffect(() => { openRef.current = open }, [open])
   useEffect(() => {
     if (!openOn) return
-    const on = () => setOpen((o) => { byKey.current = !o; return !o })
+    const on = () => (openRef.current ? close(true) : setOpen(true))
     window.addEventListener(openOn, on)
     return () => window.removeEventListener(openOn, on)
   }, [openOn])
   useEffect(() => {
-    if (!open || !byKey.current) return
-    byKey.current = false
-    box.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]')?.focus()
-  }, [open])
-  useEffect(() => {
     if (!open) return
-    const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (!box.current?.contains(t) && !menu.current?.contains(t)) close(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(true) }
+    const onResize = () => place()
     window.addEventListener('mousedown', onDown, true)
     window.addEventListener('keydown', onKey, true)
-    return () => { window.removeEventListener('mousedown', onDown, true); window.removeEventListener('keydown', onKey, true) }
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('mousedown', onDown, true)
+      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('resize', onResize)
+    }
   }, [open])
+  // Once placed, the palette in use takes the focus.
+  const placed = !!pos
+  useEffect(() => {
+    if (!open || !placed) return
+    const on = menu.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]') ?? menu.current?.querySelector<HTMLElement>('[role="radio"]')
+    on?.focus({ preventScroll: true })
+  }, [open, placed])
+  const onMenuKey = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Tab') return
+    const radios = Array.from(menu.current?.querySelectorAll<HTMLElement>('[role="radio"]') ?? [])
+    const i = radios.indexOf(document.activeElement as HTMLElement)
+    if ((e.shiftKey && i === 0) || (!e.shiftKey && i === radios.length - 1)) {
+      e.preventDefault()
+      close(true)
+    }
+  }
   return (
     <span ref={box} className={`relative inline-flex ${boxClassName}`}>
-      <button type="button" aria-label={label} title={open ? undefined : label} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={className}>
+      <button ref={button} type="button" aria-label={label} title={open ? undefined : label} aria-haspopup="dialog" aria-expanded={open} onClick={() => (open ? close(false) : setOpen(true))} className={className}>
         {children}
       </button>
-      {open && (
-        <div role="dialog" aria-label="Theme" data-theme-menu
-          className={`app-fade-in absolute z-50 w-[248px] rounded-[12px] border border-[var(--app-hairline-strong,var(--color-border-strong))] bg-panel p-2.5 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)] ${placement === 'up' ? 'bottom-[calc(100%+6px)]' : 'top-[calc(100%+6px)]'} ${align === 'left' ? 'left-0' : 'right-0'}`}>
+      {open && createPortal(
+        <div ref={menu} role="dialog" aria-label="Theme" data-theme-menu onKeyDown={onMenuKey}
+          style={pos ? { left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight } : { left: 0, top: 0, width: THEME_MENU_W, visibility: 'hidden' }}
+          className="app-fade-in fixed z-[100] overflow-y-auto overscroll-contain rounded-[12px] border border-[var(--app-hairline-strong,var(--color-border-strong))] bg-panel p-2.5 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]">
           <div className="mb-2 px-0.5 text-[11px] uppercase tracking-[0.1em] text-fg-faint">Theme · hover to try</div>
-          <ThemePicker onPicked={() => setOpen(false)} />
-        </div>
+          <ThemePicker onPicked={() => close(true)} />
+        </div>,
+        document.body,
       )}
     </span>
   )
