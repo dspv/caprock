@@ -524,6 +524,59 @@ describe('the sidebar', () => {
     } finally { platform.mockRestore() }
   })
 
+  // Owner, 2026-10-15, translated: "I wanted to click the key combo with the
+  // mouse and it doesn't click".
+  it('makes a folded key part of its icon’s button: a click on it does what the icon does', () => {
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
+    try {
+      localStorage.setItem(FOLDS_KEY, JSON.stringify(['footer']))
+      const onMail = vi.fn(), onSettingsSection = vi.fn(), onPipeline = vi.fn()
+      const { props } = renderSidebar({ onSettings: vi.fn(), onSettingsSection, onMail, onPipeline })
+      const footer = document.querySelector('[data-sidebar-footer]')!
+      const chip = (k: string) => [...footer.querySelectorAll<HTMLElement>('[data-key-slot] > kbd')].find((c) => c.textContent === k)!
+      fireEvent.click(chip('⇧⌘M'))
+      expect(onMail).toHaveBeenCalledTimes(1)
+      fireEvent.click(chip('⌘D'))
+      expect(props.onDashboard).toHaveBeenCalledTimes(1)
+      fireEvent.click(chip('⌘,'))
+      expect(onSettingsSection).toHaveBeenCalledWith('phone')
+      fireEvent.click(chip('⌘P'))
+      expect(onPipeline).toHaveBeenCalledTimes(1)
+      fireEvent.click(chip('⇧⌘T'))
+      expect(document.querySelector('[data-theme-menu]')).not.toBeNull()
+      // Each chip carries its button's tooltip, and the column stays one
+      // control: one tab stop and one name, the icon's.
+      for (const slot of footer.querySelectorAll('[data-key-slot]')) {
+        const k = slot.querySelector('kbd')!, b = slot.querySelector('button')!
+        expect(k.getAttribute('title')).toBe(b.getAttribute('title') || b.getAttribute('aria-label'))
+        expect(k).toHaveAttribute('aria-hidden')
+        expect(k).not.toHaveAttribute('tabindex')
+        expect(slot.querySelectorAll('button')).toHaveLength(1)
+      }
+    } finally { platform.mockRestore() }
+  })
+
+  // Owner, 2026-10-15, translated: "there isn't a clear enough boundary
+  // between the tools and what's above … its caption can't even be seen".
+  it('ends the list above the footer: siblings in one column, nothing drawn under the footer', () => {
+    for (const folded of [false, true]) {
+      localStorage.setItem(FOLDS_KEY, JSON.stringify(folded ? ['footer'] : []))
+      const { unmount } = renderSidebar({ onSettings: vi.fn(), onMail: vi.fn(), onPipeline: vi.fn() })
+      const aside = document.querySelector('aside.app-sidebar')!
+      const list = document.querySelector('[data-sidebar-scroll]')!
+      const footer = document.querySelector('[data-sidebar-footer]')!
+      expect(aside).toHaveClass('flex', 'flex-col', 'min-h-0')
+      // The list scrolls in its own area, shrinking to what is left.
+      expect(list.parentElement).toBe(aside)
+      expect(list).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto', 'pb-4')
+      // The footer is the list's next sibling, in the flow: never over it.
+      expect(list.nextElementSibling).toBe(footer)
+      expect(footer).toHaveClass('app-sidebar-footer', 'shrink-0')
+      expect(footer.className).not.toMatch(/\b(absolute|fixed|sticky)\b|-mt-/)
+      unmount()
+    }
+  })
+
   it('spells the folded keys for Windows and Linux and shows them on hover there', () => {
     const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Linux x86_64')
     try {
