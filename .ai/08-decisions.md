@@ -3846,8 +3846,8 @@ searching prose.
   many sessions and tokens that is.
 - **How a session is read** (`internal/brain`). A session is read once it
   has ended or been quiet for ten minutes, and again only when it has new
-  prose; at most four per wake, a wake every five minutes, one at a time,
-  off the request path. A session whose agent wrote fewer than 300
+  prose; at most four per wake, a wake every five minutes and one at once
+  when it is turned on, one at a time, off the request path. A session whose agent wrote fewer than 300
   characters is recorded as skipped and never sent. The read is the
   session's prompts and answers (main thread only, the newest 24,000
   characters when there are more), the project's name and the topics

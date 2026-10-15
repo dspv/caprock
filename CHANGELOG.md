@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **brain:** Second Brain's status says when the reader wakes next
+  (`next_wake`), so a screen can tell you when the first memories may come
+  instead of leaving you at 0. Turning building on still wakes the reader
+  at once, and a double click or a second yes never starts a second read
+  beside the first.
+
 ## [0.117.4] - 2026-10-15
 
 ### Changed
