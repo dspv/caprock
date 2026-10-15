@@ -604,6 +604,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/telegram/pair", s.handleTelegramPair)
 	m.HandleFunc("DELETE /v1/telegram/pair", s.handleTelegramCancelPair)
 	m.HandleFunc("DELETE /v1/telegram", s.handleTelegramDisconnect)
+	m.HandleFunc("POST /v1/telegram/photo", s.handleTelegramPhoto)
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)

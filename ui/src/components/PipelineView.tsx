@@ -37,6 +37,7 @@ import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
 import { FlowFigures, Releases } from './PRBoard'
 import { PipelineRelease } from './ReleasePlan'
+import { PipelineShareButton } from './PipelineShare'
 import { JourneyPills } from './Journey'
 import { GitHubPerson } from './GitHubAvatar'
 import { Panel } from './ui'
@@ -184,6 +185,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
       <div data-prs-head className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         {picker}
         <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[12px] text-fg-muted">
+          {ready && board && <PipelineShareButton board={board} repo={stats?.repo} />}
           <Freshness at={statsShownAt} loading={statsMeta.loading} failed={statsFailed} reason={statsReason} confirmed={statsMeta.confirmed} onRetry={statsMeta.retry} github />
           {onBack && <BackButton onBack={onBack} />}
         </span>
