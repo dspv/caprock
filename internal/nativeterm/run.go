@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 )
 
 // openTimeout bounds `open` and `osascript`, which return once the window
@@ -32,6 +34,7 @@ func Run(ctx context.Context, p Plan, env []string) error {
 		defer cancel()
 		cmd := exec.CommandContext(ctx, p.Command, p.Args...)
 		cmd.Dir, cmd.Env = p.Dir, env
+		hidewin.Hide(cmd)
 		var out bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &out
 		if err := cmd.Run(); err != nil {

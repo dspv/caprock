@@ -11,7 +11,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -19,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/store"
@@ -207,7 +208,7 @@ func newOpID() string {
 // runClone runs `git clone --progress` and turns its progress lines into op
 // frames, at most four a second.
 func (s *Service) runClone(ctx context.Context, opID, rawURL, dest string) {
-	cmd := exec.CommandContext(ctx, gitBin, "clone", "--progress", "--", rawURL, dest) //nolint:gosec // URL checked by CheckCloneURL, after --
+	cmd := hidewin.CommandContext(ctx, gitBin, "clone", "--progress", "--", rawURL, dest) //nolint:gosec // URL checked by CheckCloneURL, after --
 	env := os.Environ()
 	if s.Env != nil {
 		env = s.Env()

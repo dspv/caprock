@@ -19,6 +19,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/dspv/caprock/internal/hidewin"
 )
 
 // IncludeFile is the file at the repository root that names what to copy.
@@ -246,7 +248,7 @@ func checkIgnored(ctx context.Context, dir string, paths []string) ([]string, er
 		in.WriteString(p)
 		in.WriteByte(0)
 	}
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "check-ignore", "-z", "--stdin")
+	cmd := hidewin.CommandContext(ctx, "git", "-C", dir, "check-ignore", "-z", "--stdin")
 	cmd.Stdin = &in
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -262,7 +264,7 @@ func checkIgnored(ctx context.Context, dir string, paths []string) ([]string, er
 }
 
 func gitList(ctx context.Context, dir string, args ...string) ([]string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := hidewin.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

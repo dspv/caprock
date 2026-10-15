@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 )
 
 // Other returns the first address of the other kind than primary: the
@@ -96,7 +98,7 @@ func MagicDNSName(ctx context.Context, ip net.IP) string {
 	}
 	for _, cli := range tailscaleCLIs() {
 		c, cancel := context.WithTimeout(ctx, 2*time.Second)
-		raw, err := exec.CommandContext(c, cli, "status", "--json").Output() //nolint:gosec // fixed binary, fixed args
+		raw, err := hidewin.CommandContext(c, cli, "status", "--json").Output() //nolint:gosec // fixed binary, fixed args
 		cancel()
 		if err != nil {
 			continue

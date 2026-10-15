@@ -7,6 +7,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **windows:** Caprock no longer flashes console windows that steal the
+  keyboard focus. The daemon ran without a console, so every git, gh or
+  `claude -p` it started opened a window of its own for a fraction of a
+  second, every few seconds, and typing in other windows came out ragged
+  (user report on Windows 10). Every child now starts with a hidden
+  console, and a test keeps it that way.
+
 ### Added
 
 - **brain:** Second Brain's status says when the reader wakes next

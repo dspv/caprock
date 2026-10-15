@@ -6,11 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 
 	"github.com/dspv/caprock/internal/secret"
 )
@@ -137,7 +138,7 @@ func (g GHCLI) Token(ctx context.Context) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "auth", "token", "--hostname", "github.com") //nolint:gosec // fixed arguments
+	cmd := hidewin.CommandContext(ctx, bin, "auth", "token", "--hostname", "github.com") //nolint:gosec // fixed arguments
 	cmd.Env = append(append([]string{}, env...), "GH_PROMPT_DISABLED=1", "NO_COLOR=1", "GH_NO_UPDATE_NOTIFIER=1")
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
