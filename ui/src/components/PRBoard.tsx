@@ -59,7 +59,7 @@ export function flowFigures(board: PRBoard): FlowFigure[] {
  * The flow as figure tiles. `compact`: Home's five (in flight, needs a fix,
  * ready, throughput, CI median) in its CI/CD panel.
  */
-export function FlowFigures({ board, compact }: { board: PRBoard; compact?: boolean }) {
+export function FlowFigures({ board, compact, extra }: { board: PRBoard; compact?: boolean; extra?: ReactNode }) {
   const all = flowFigures(board)
   const shown = compact ? all.slice(0, 5) : all
   // Columns by the panel's own width, not the window's: in the app the
@@ -67,7 +67,9 @@ export function FlowFigures({ board, compact }: { board: PRBoard; compact?: bool
   return (
     <div className="@container/flow">
       <div data-board-flow aria-label="How pull requests move"
-        className={`grid grid-cols-2 divide-x divide-border ${compact ? '@min-[520px]/flow:grid-cols-3 @min-[820px]/flow:grid-cols-5' : '@min-[560px]/flow:grid-cols-4 @min-[1180px]/flow:grid-cols-8'}`}>
+        className={`grid grid-cols-2 divide-x divide-border ${compact ? '@min-[520px]/flow:grid-cols-3 @min-[820px]/flow:grid-cols-5'
+          // Ten with the agent figures (the Pipeline): two rows of five, then one.
+          : extra ? '@min-[560px]/flow:grid-cols-5 @min-[1280px]/flow:grid-cols-10' : '@min-[560px]/flow:grid-cols-4 @min-[1180px]/flow:grid-cols-8'}`}>
         {shown.map((x) => {
           const pts = x.series ? board.flow.series?.[x.series] : undefined
           return (
@@ -75,6 +77,7 @@ export function FlowFigures({ board, compact }: { board: PRBoard; compact?: bool
               trend={x.series && pts && pts.length > 1 ? <FlowTrend k={x.series} pts={pts} label={x.label} /> : undefined} />
           )
         })}
+        {extra}
       </div>
     </div>
   )

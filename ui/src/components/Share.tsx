@@ -28,7 +28,7 @@ import { cardFilename, drawShareCard, PERIOD_LABEL, screenLook, STEP_LABEL, type
 import { CARD_SIZE, WeekCard, type CardLayout } from './WeekCard'
 import { Scaled } from './Scaled'
 import { renderCardPNG } from '@/lib/cardimage'
-import { openExternal } from '@/lib/nudges'
+import { ShareActions, xPostURL } from './ShareActions'
 import { CloseButton, DialogBackdrop } from './Dialog'
 import { periodWords } from '@/lib/week'
 import { currentFigures, currentStory, fetchFigures, fetchStory, FRESH_MS, lastFigures, lastStory, warmShare } from '@/lib/sharecache'
@@ -95,17 +95,8 @@ const PERIOD_WORDS: Record<SharePeriod, string> = {
 }
 
 export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => void; initialPeriod?: SharePeriod }) {
-  // Two separate things, and conflating them produced two cards.
-  //
-  // `drawing` is "the card is being made" — that is what the label reports,
-  // and it ends when the PNG exists. `locked` is "this dialog has already
-  // started something" — it must outlast the label, because the OS share
-  // sheet stays open long after the drawing is done. When one flag did both,
-  // clearing it to fix the stuck "preparing…" also re-enabled the button
-  // underneath the open share sheet, and a second click drew a second card.
-  const [drawing, setDrawing] = useState(false)
-  const [locked, setLocked] = useState(false)
-  const [note, setNote] = useState('')
+  // The buttons and what they report live in ShareActions, shared with the
+  // Pipeline's card.
   // Which stretch the card is about. Defaults to the week: a working week is
   // the thing people actually finish and want to show, and an all-time total
   // shared on its own reads as a boast rather than a result.
@@ -145,6 +136,9 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
   const [steps, setSteps] = useState<Set<CardStep>>(new Set())
   const [startedAt, setStartedAt] = useState(() => Date.now())
   const card = useRef<HTMLElement>(null)
+  // The post's words, editable; reset when the period changes.
+  const [postText, setPostText] = useState(() => xText(initialPeriod))
+  useEffect(() => { setPostText(xText(period)) }, [period])
 
   // Figures. The last reading for the period is drawn at once (a canvas draw
   // is milliseconds); the current one is fetched behind it and replaces it.
@@ -252,114 +246,6 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
     return renderCardPNG(card.current, size)
   }
 
-  /** The good path: hand the file to the OS and let it offer every app. */
-  const shareNative = async () => {
-    if (locked) return
-    setLocked(true); setDrawing(true); setNote('')
-    try {
-      const blob = await build()
-      if (!blob) { setNote('Could not draw the card in this browser.'); setLocked(false); return }
-      const file = new File([blob], fileName(), { type: 'image/png' })
-      // The label stops saying "drawing" here, because the drawing is done.
-      // The button stays disabled, because the share sheet is about to open
-      // and pressing again behind it would draw a second card.
-      setDrawing(false)
-      // The file travels alone.
-      //
-      // Sending `{files, text}` together looks like a courtesy — the picture
-      // plus a caption to paste with it — but the receiving app decides what
-      // to do with two payloads, and several of them treat it as two items:
-      // the owner pressed Copy in the macOS share sheet and got the card
-      // twice. The card already carries every figure and the caveat, so the
-      // caption was never load-bearing; the image is the share.
-      await navigator.share({ files: [file] })
-      onClose()
-    } catch (e) {
-      // A cancelled share sheet is not an error worth reporting — but it does
-      // hand the dialog back, so the buttons have to work again.
-      if ((e as Error)?.name !== 'AbortError') setNote('Sharing was not available — the card was not sent.')
-      setLocked(false)
-    } finally { setDrawing(false) }
-  }
-
-  /** The fallback: save the image to downloads. */
-  const save = async () => {
-    if (locked) return
-    setLocked(true); setDrawing(true); setNote('')
-    try {
-      const blob = await build()
-      if (!blob) { setNote('Could not draw the card in this browser.'); return }
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = fileName()
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 10_000)
-      setNote('Saved to your downloads.')
-    } catch {
-      setNote('Could not read the figures — nothing was saved.')
-    } finally { setDrawing(false); setLocked(false) }
-  }
-
-  /**
-   * Put the card on the clipboard, to paste into a post or a chat. Returns
-   * whether it got there: a browser without image clipboard support (or a
-   * page that is not focused) refuses, and the caller says so.
-   */
-  const copyBlob = async (blob: Blob): Promise<boolean> => {
-    try {
-      if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return false
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  const copy = async () => {
-    if (locked) return
-    setLocked(true); setDrawing(true); setNote('')
-    try {
-      const blob = await build()
-      if (!blob) { setNote('Could not draw the card in this browser.'); return }
-      setNote(await copyBlob(blob) ? 'Copied — paste it anywhere.' : 'This browser would not copy an image. Save the image instead.')
-    } catch {
-      setNote('Could not read the figures — nothing was copied.')
-    } finally { setDrawing(false); setLocked(false) }
-  }
-
-  /**
-   * X cannot be handed an image by URL, so this copies the card (or saves it
-   * when copying is refused) and opens a post with the words written; the
-   * image is one paste away. The note says exactly that.
-   */
-  const postX = async () => {
-    if (locked) return
-    setLocked(true); setDrawing(true); setNote('')
-    try {
-      const blob = await build()
-      let how = 'Opened X with the text.'
-      if (blob && await copyBlob(blob)) how = 'Opened X with the text — the card is on your clipboard, paste it in.'
-      else if (blob) {
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url; a.download = fileName()
-        document.body.appendChild(a); a.click(); a.remove()
-        setTimeout(() => URL.revokeObjectURL(url), 10_000)
-        how = 'Opened X with the text — the card is in your downloads, drag it in.'
-      }
-      openExternal(xIntent(period))
-      setNote(how)
-    } catch {
-      setNote('Could not read the figures — nothing was posted.')
-    } finally { setDrawing(false); setLocked(false) }
-  }
-
-  const canNative = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function'
-    && navigator.canShare({ files: [new File([], 'x.png', { type: 'image/png' })] })
-
   const words = periodWords(period)
   const storyEmpty = style === 'story' && !!story && story.sessions === 0
   const aspect = style === 'figures' ? '1200 / 630' : `${size.w} / ${size.h}`
@@ -369,8 +255,6 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
 
   const seg = (on: boolean) => `rounded-[5px] px-2.5 py-1 text-[12px] transition-colors ${on ? 'bg-panel text-fg font-medium shadow-sm' : 'text-fg-muted hover:text-fg'}`
   const group = 'inline-flex items-center gap-0.5 rounded-md border border-border bg-panel-2 p-0.5'
-  const quiet = 'rounded-md border border-border px-3 py-2 text-[13px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50'
-  const primary = 'rounded-md bg-accent px-4 py-2.5 text-[14px] font-semibold text-bg transition hover:brightness-110 disabled:opacity-50'
 
   return (
     <DialogBackdrop
@@ -465,44 +349,10 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
             )}
           </div>
 
-          {/* One obvious next step, filled: the operating system's share menu
-            * where there is one, the clipboard where there is not — the
-            * fastest way into any post or chat. Then the other ways out,
-            * quiet, beside it. Hover is a fill, not a border shade: a control
-            * the eye cannot confirm it is pointing at reads as disabled. */}
-          <div className="flex flex-wrap items-stretch gap-2">
-            {canNative ? (
-              <button onClick={shareNative} disabled={locked || storyEmpty} className={`${primary} min-w-[180px] flex-1`}
-                title="Opens your share menu — Messages, Mail, anywhere">
-                {drawing ? 'Drawing the card…' : 'Share…'}
-              </button>
-            ) : (
-              <button onClick={copy} disabled={locked || storyEmpty} className={`${primary} min-w-[180px] flex-1`}
-                title="Puts the picture on your clipboard, to paste into a post or a chat">
-                {drawing ? 'Drawing the card…' : 'Copy image'}
-              </button>
-            )}
-            {canNative && (
-              <button onClick={copy} disabled={locked || storyEmpty} className={quiet}>Copy image</button>
-            )}
-            <button
-              onClick={save}
-              disabled={locked || storyEmpty}
-              title={style === 'story' ? `A ${size.w}×${size.h} PNG in your downloads` : 'A 1200×630 PNG in your downloads'}
-              className={quiet}
-            >
-              Save image
-            </button>
-            <button
-              onClick={postX}
-              disabled={locked || storyEmpty}
-              title="Opens a post on X with the text written; the card goes on your clipboard to paste in"
-              className={quiet}
-            >
-              Post to X
-            </button>
-          </div>
-          {note && <p className="mt-2 text-[12px] text-fg-muted" role="status">{note}</p>}
+          {/* The ways out — Share…, copy, save, post, Telegram — one
+            * component for every card (ShareActions). */}
+          <ShareActions build={build} fileName={fileName} text={postText} onText={setPostText} link="https://caprock.dev"
+            disabled={storyEmpty} onShared={onClose} />
 
           {/* One claim per line: the reader is scanning for what does and does
             * not leave the machine, and a sentence makes them read it. */}
@@ -523,9 +373,13 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
  * their caveat, and a number typed into a tweet travels without it.
  */
 export function xIntent(period: SharePeriod): string {
+  return xPostURL(xText(period), 'https://caprock.dev')
+}
+
+/** The post's first draft for a period: no figure in it. */
+export function xText(period: SharePeriod): string {
   const what = period === 'all' ? 'My Claude Code, all time' : `My Claude Code ${PERIOD_LABEL[period]}`
-  const text = `${what}, measured on my own machine with Caprock — free and open source.`
-  return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent('https://caprock.dev')}`
+  return `${what}, measured on my own machine with Caprock — free and open source.`
 }
 
 function Failed() {

@@ -7,7 +7,14 @@
  * anchor per node (d3's forceX/forceY towards a point of its own — Second
  * Brain pulls each memory towards its project, so projects read as
  * clusters) and a collision radius per node (d3's forceCollide — room for a
- * hub's label, so labels do not pile up).
+ * hub's label, so labels do not pile up). Per link, a strength and a rest
+ * length of its own (d3's link.strength and link.distance); per node, a
+ * fixed place (d3's fx/fy), for a node held by the pointer.
+ *
+ * With no anchors, the many-body force (which falls off as 1/d) against the
+ * linear pull to the centre settles into an evenly filled disc whose radius
+ * grows with the square root of the node count — the shape of a knowledge
+ * graph in Obsidian, which Second Brain draws.
  *
  * Positions survive a new graph: a node already placed keeps its place, a
  * new one starts beside a neighbour, so a memory dropping in does not
@@ -28,12 +35,19 @@ export interface SimNode {
   pull?: number
   /** Collision radius: no other node's comes closer. Unset: no collision. */
   cr?: number
+  /** A fixed place: while set, the node stays there and the rest move around it. */
+  fx?: number
+  fy?: number
 }
 
 export interface SimLink {
   /** Indexes into nodes. */
   s: number
   t: number
+  /** Multiplies the link's strength (default 1): below 1, a looser tie. */
+  w?: number
+  /** Its own rest length, instead of the simulation's. */
+  d?: number
 }
 
 export interface SimOptions {
@@ -142,7 +156,7 @@ export class Simulation {
     this.strength = new Float64Array(links.length)
     links.forEach((l, i) => {
       this.bias[i] = count[l.s]! / (count[l.s]! + count[l.t]!)
-      this.strength[i] = 1 / Math.min(count[l.s]!, count[l.t]!)
+      this.strength[i] = (l.w ?? 1) / Math.min(count[l.s]!, count[l.t]!)
     })
   }
 
@@ -170,7 +184,7 @@ export class Simulation {
         dy = 1e-3
       }
       const len = Math.sqrt(dx * dx + dy * dy)
-      const f = ((len - this.distance) / len) * alpha * this.strength[i]!
+      const f = ((len - (links[i]!.d ?? this.distance)) / len) * alpha * this.strength[i]!
       dx *= f
       dy *= f
       const b = this.bias[i]!
@@ -205,6 +219,13 @@ export class Simulation {
       } else {
         n.vx -= n.x * g
         n.vy -= n.y * g
+      }
+      if (n.fx !== undefined && n.fy !== undefined) {
+        n.x = n.fx
+        n.y = n.fy
+        n.vx = 0
+        n.vy = 0
+        continue
       }
       n.vx *= 1 - VELOCITY_DECAY
       n.vy *= 1 - VELOCITY_DECAY
