@@ -26,9 +26,9 @@ function seed(kv: Record<string, string>) {
 }
 
 describe('the palette table', () => {
-  it('lists eight palettes, dark ones first, with unique ids and their sub-attribute', () => {
-    expect(THEME_MODES).toEqual(['dark-pastel', 'dark-warm', 'dark-cold', 'dark-side', 'light', 'light-cold', 'book', 'light-side'])
-    expect(THEMES.map((t) => t.name)).toEqual(['Dark Pastel', 'Dark Warm', 'Dark Cold', 'Dark Side', 'Light', 'Light Cold', 'Book', 'Light Side'])
+  it('lists nine palettes, dark ones first, with unique ids and their sub-attribute', () => {
+    expect(THEME_MODES).toEqual(['dark-pastel', 'dark-warm', 'dark-cold', 'dark-side', 'light', 'light-cold', 'book', 'light-side', 'sunlight'])
+    expect(THEMES.map((t) => t.name)).toEqual(['Dark Pastel', 'Dark Warm', 'Dark Cold', 'Dark Side', 'Light', 'Light Cold', 'Book', 'Light Side', 'Sunlight'])
     const keys = THEMES.map((t) => `${t.theme}/${t.sub}`)
     expect(new Set(keys).size).toBe(THEMES.length)
   })
@@ -92,6 +92,51 @@ describe('the calm palettes', () => {
   it('Dark Cold’s softer accent still reads at 4.5:1 on every surface', () => {
     const c = block('[data-theme="dark"][data-dark="slate"] {')
     for (const g of ['bg', 'panel', 'panel-2']) expect(contrast(c.accent!, c[g]!), g).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+describe('Sunlight, for bright light', () => {
+  // Glare washes out whatever is near the ground (owner, 2026-10-15): every
+  // text token holds 7:1 (WCAG AAA) on every surface, not just body ink.
+  const c = block('[data-theme="light"][data-tone="sun"] {')
+  const TEXT = ['fg', 'fg-muted', 'fg-faint', 'accent', 'accent-strong', 'info', 'ok', 'warn', 'danger', 'merged', 'premium', 'premium-strong']
+
+  it('is black on pure white', () => {
+    expect(c.fg).toBe('#000000')
+    expect(c.bg).toBe('#ffffff')
+    expect(c.panel).toBe('#ffffff')
+  })
+
+  it('keeps every text token at 7:1 or more on bg, panel and panel-2', () => {
+    for (const g of ['bg', 'panel', 'panel-2']) {
+      for (const k of TEXT) expect(contrast(c[k]!, c[g]!), `${k} on ${g}`).toBeGreaterThanOrEqual(7)
+    }
+    // A filled accent button carries the panel colour as its label.
+    expect(contrast(c.panel!, c.accent!)).toBeGreaterThanOrEqual(7)
+  })
+
+  it('draws borders you can see in glare: 3:1 or more as a non-text edge', () => {
+    for (const g of ['bg', 'panel', 'panel-2']) {
+      for (const k of ['border', 'border-strong']) expect(contrast(c[k]!, c[g]!), `${k} on ${g}`).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  it('keeps its status colours apart from each other and from the ink', () => {
+    const hues = ['accent', 'ok', 'warn', 'danger', 'merged', 'premium'].map((k) => c[k]!)
+    expect(new Set([...hues, c.fg, c['fg-faint']]).size).toBe(hues.length + 2)
+  })
+
+  it('sets heavier, unthinned text and opaque, dark app hairlines', () => {
+    const css = readFileSync(join(ui, 'src', 'design', 'tokens.css'), 'utf8')
+    const at = css.indexOf('[data-theme="light"][data-tone="sun"] {')
+    const body = css.slice(at, css.indexOf('}', at))
+    expect(body).toContain('font-weight: 500;')
+    expect(body).toContain('-webkit-font-smoothing: auto;')
+    const app = css.slice(css.indexOf('[data-app][data-tone="sun"] {'))
+    const appBody = app.slice(0, app.indexOf('}'))
+    expect(appBody).toContain('--app-sidebar-bg: var(--color-panel);')
+    const hair = /--app-hairline: (#[0-9a-f]{6});/.exec(appBody)![1]!
+    expect(contrast(hair, c.panel!)).toBeGreaterThanOrEqual(3)
   })
 })
 

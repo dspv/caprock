@@ -77,6 +77,9 @@ type msgQueue struct {
 	// The Queue view's estimates, by project (queueboard.go).
 	estMu sync.Mutex
 	est   map[string]estEntry
+	// todos is each session's summed-up task list, kept while the
+	// session records nothing new (queueboard.go, todo).
+	todos map[string]todoEntry
 	now   func() time.Time
 }
 
@@ -92,7 +95,7 @@ func newMsgQueue(d *Daemon) *msgQueue {
 	q := &msgQueue{
 		d: d, settle: queueSettle, gap: queueTypeGap,
 		locks: map[string]*sync.Mutex{}, continued: map[string]bool{}, typed: map[string]time.Time{},
-		inflight: map[string]string{}, est: map[string]estEntry{}, now: time.Now,
+		inflight: map[string]string{}, est: map[string]estEntry{}, todos: map[string]todoEntry{}, now: time.Now,
 	}
 	if d.mgr != nil {
 		q.sess = d.mgr

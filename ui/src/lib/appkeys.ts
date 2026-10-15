@@ -15,6 +15,15 @@ import { isMacPlatform } from './appmode'
 /** Dispatched on window by ⌘F; the focused pane of the tab in front opens its find bar (F16). */
 export const FIND_EVENT = 'caprock:terminal-find'
 
+/** Dispatched on window by ⇧⌘T; the sidebar footer's theme button opens its picker, or closes it. */
+export const THEME_MENU_EVENT = 'caprock:theme-menu'
+
+/** Keys named after what they open (owner, 2026-10-15), in macOS spelling; `keys()` writes them for this OS. */
+export const DASHBOARD_KEY = '⌘D'
+export const PIPELINE_KEY = '⌘P'
+export const WORK_KEY = '⇧⌘W'
+export const THEME_KEY = '⇧⌘T'
+
 export type AppCommand =
   | { kind: 'new-shell' }
   | { kind: 'new-agent' }
@@ -26,8 +35,12 @@ export type AppCommand =
   | { kind: 'palette' }
   | { kind: 'inspector' }
   | { kind: 'deck' }
-  /** ⇧⌘B: the Pipeline page in a tab, or, from it, back to the tab before. */
-  | { kind: 'deck-expand' }
+  /** ⌘P (⇧⌘B, its older key): the Pipeline page on the dashboard, or, from it, back to where it was pressed. */
+  | { kind: 'pipeline' }
+  /** ⇧⌘W: the Work page on the dashboard, or, from it, back to where it was pressed. */
+  | { kind: 'work' }
+  /** ⇧⌘T: the theme picker at the foot of the sidebar, open or closed. */
+  | { kind: 'theme' }
   | { kind: 'changes' }
   | { kind: 'sidebar' }
   | { kind: 'dashboard' }
@@ -205,8 +218,10 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
       switch (baseKey(e)) {
         case 'e': return { kind: 'split', direction: 'column' }
         case '0': return { kind: 'zoom', step: 0 }
-        case 'b': return { kind: 'deck-expand' }
+        case 'b': return { kind: 'pipeline' }
         case 'f': return { kind: 'feedback' }
+        case 't': return { kind: 'theme' }
+        case 'w': return { kind: 'work' }
       }
     }
     return null
@@ -233,10 +248,22 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         // stays the app's Hide; macOS, its Services and the Mac terminals
         // bind nothing to ⇧⌘H (⇧⌘M is Mail's, ⇧⌘Y and ⇧⌘L are Services').
         case 'h': return { kind: 'brain-capture' }
-        // The deck (⌘B) large and back: Expand, Collapse. In a browser
-        // ⇧⌘B is the bookmarks bar, which the browser may keep for itself;
-        // the deck's button is there either way.
-        case 'b': return { kind: 'deck-expand' }
+        // The Pipeline's key until 2026-10-15, when it became ⌘P (P for
+        // Pipeline); kept working, no longer shown.
+        case 'b': return { kind: 'pipeline' }
+        // T for theme: the picker at the foot of the sidebar (owner,
+        // 2026-10-15, translated: "bind shortcuts to the names"). ⌘T stays
+        // New shell, as in every terminal, so the theme takes Shift; off
+        // macOS Ctrl+Shift+T is ⌘T's, so it takes Alt too (OFF_MAC_ALT).
+        // No Mac terminal binds ⇧⌘T and Tauri's default menu has none; in a
+        // browser it is Reopen closed tab, which the browser keeps.
+        case 't': return { kind: 'theme' }
+        // W for Work, the dashboard's page of work on its way to a release.
+        // ⌘W stays Close the tab or pane; ⇧⌘W is no item of Tauri's default
+        // menu (Close Window is ⌘W) and reaches no shell. Off macOS
+        // Ctrl+Shift+W is ⌘W's, so it takes Alt too (OFF_MAC_ALT). In a
+        // browser it closes the window, which the browser keeps.
+        case 'w': return { kind: 'work' }
         // F for feedback (owner, 2026-10-14, translated: "Send feedback
         // should also open with a key combo … maybe people will file more
         // issues"). ⇧⌘F is bound by no Mac terminal or browser default that
@@ -303,6 +330,18 @@ function plain(k: string): AppCommand | null {
     // ⌘0, beside ⌘1–⌘9: the Dashboard is the tab before the first (owner,
     // 2026-10-11: ⇧⌘D was awkward to reach). ⇧⌘D still works.
     case '0': return { kind: 'dashboard' }
+    // Keys named after what they open (owner, 2026-10-15, translated: "bind
+    // shortcuts to the names: ⌘D Dashboard (keep ⌘0 too) … ⌘P Pipeline").
+    // ⌘D is no item of Tauri's default menu and reaches no shell (the
+    // terminal's split is ⌘E here). Off macOS it is Ctrl+Shift+D, the same
+    // key ⇧⌘D always was there: bare Ctrl+D is a shell's end of input and
+    // stays the terminal's.
+    case 'd': return { kind: 'dashboard' }
+    // ⌘P, Pipeline: the Tauri menu has no Print, and the palette is ⌘K, so
+    // nothing of ours or the webview's holds it; off macOS Ctrl+Shift+P is
+    // bound by no other key of the app (Ctrl+P alone stays readline's and
+    // PSReadLine's previous-line).
+    case 'p': return { kind: 'pipeline' }
     default:
       // ⌘1–⌘9 are the strip's tabs by place, ⌘9 the last, and the strip is
       // in the order the tabs were opened (owner, 2026-10-14, translated:
@@ -329,10 +368,12 @@ export function keys(mac: string, isMac = isMacPlatform()): string {
 
 /** ⇧⌘ chords whose ⌘ twin is also a shortcut: off macOS both would read
  *  Ctrl+Shift+key, so these take Alt as well (split below, default size,
- *  the deck's Expand beside the deck's own Ctrl+Shift+B, feedback beside
- *  Find's Ctrl+Shift+F). Ctrl+Alt+Shift+B and Ctrl+Alt+Shift+F are bound by
- *  no shell, PSReadLine, Windows Terminal or GNOME default. */
-const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0', '⇧⌘B', '⇧⌘F'])
+ *  the Pipeline's older key beside the deck's own Ctrl+Shift+B, feedback
+ *  beside Find's Ctrl+Shift+F, the theme beside New shell's Ctrl+Shift+T,
+ *  Work beside Close's Ctrl+Shift+W). Ctrl+Alt+Shift+B, F, T and W are bound
+ *  by no shell, PSReadLine, Windows Terminal or GNOME default (GNOME's
+ *  terminal key is Ctrl+Alt+T, without Shift). */
+const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0', '⇧⌘B', '⇧⌘F', '⇧⌘T', '⇧⌘W'])
 
 function offMac(k: string): string {
   if (/[↩↵]/.test(k)) return `${k.includes('⌘') ? 'Ctrl+' : ''}${k.includes('⇧') ? 'Shift+' : ''}Enter`
@@ -403,11 +444,13 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘F', 'Find in the terminal'],
   ['⌘I', 'Inspector'],
   ['⌘B', 'Pipeline bar under the agent’s terminal, shown or hidden'],
-  ['⇧⌘B', 'Pipeline in a tab; there, back to the tab before'],
+  ['⌘P', 'Pipeline on the dashboard; there, back to where you were'],
+  ['⇧⌘W', 'Work on the dashboard: every piece of work on its way to a release; there, back'],
   ['⇧⌘G', 'Changes: the diff of the session in front'],
   ['⌘\\', 'Hide or show the sidebar'],
-  ['⌘0, ⇧⌘D', 'Dashboard, where you left it; again: Home, at its top'],
+  ['⌘D, ⌘0', 'Dashboard, where you left it; again: Home, at its top'],
   ['⌘,', 'Settings'],
+  ['⇧⌘T', 'Theme: open the picker'],
   ['⇧⌘F', 'Send feedback: a bug, an idea or a question'],
   ['⇧⌘M', 'Mail, in a tab of its own'],
   ['⌘+, ⌘−, ⇧⌘0', 'Interface size: bigger, smaller, back to the default'],

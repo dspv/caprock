@@ -15,8 +15,8 @@
  * newest bar, which costs nothing and means "this minute is still filling".
  */
 import { branchLabel, projectLabels, sessionHealth } from '@/lib/sessionLabels'
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { api, type DiffResult, type Event, type SessionCI, type SessionSummary } from '@/lib/api'
+import { useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { api, errText, type DiffResult, type Event, type SessionCI, type SessionSummary } from '@/lib/api'
 import { live } from '@/lib/live'
 import { useFrameBatch } from '@/lib/framebatch'
 import { buildPulse, costTier, medianCost, trackState, windowCost, windowEvents, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
@@ -39,6 +39,8 @@ import { mayShare, overlapChip, useOverlap, type OverlapChip } from '@/lib/overl
 import { SpawnDialog } from '@/components/SpawnDialog'
 import { worktreeSlug } from '@/lib/slug'
 import { OverlapLine } from '@/components/OverlapLine'
+import { PipelineHostContext } from '@/lib/pipelineHost'
+import { endable, sessionJump, type SessionJump } from '@/lib/sessionJump'
 
 /** How many tracks to show. More than this and no single one is readable. */
 const MAX_TRACKS = 6
@@ -267,7 +269,7 @@ function PulseRows({ rows, minute, labels, all, open, onToggle, manual, onReorde
     onReorder([...next, ...manual.filter((k) => !next.includes(k))])
   }
   const press = (key: string) => (e: ReactPointerEvent<HTMLElement>) => {
-    if (e.button !== 0 || (e.target as Element).closest('button, a, canvas, [data-pulse-chip]')) return
+    if (e.button !== 0 || (e.target as Element).closest('button, a, canvas, [data-pulse-chip], [data-live-session]')) return
     // A drag selected the rows' text on its way down (seen on the preview,
     // 2026-10-14); the click that opens a row still fires.
     if (e.pointerType === 'mouse') e.preventDefault()
@@ -582,8 +584,23 @@ function LiveSession({ x, now, hourCost }: { x: SessionSummary; now: number; hou
   const pr = ci.data?.pr
   const ciw = ciWord(ci.data)
   const ctx = x.context
+  // In the desktop app the row is the way into the running session
+  // (lib/sessionJump.ts); in a browser it keeps its "open" link to the page.
+  const host = useContext(PipelineHostContext)
+  const open = host.onOpenSession
+  const jump = open ? sessionJump(x, host.tabDigitOf?.(x.session_id)) : null
+  const go = open && jump && jump.kind !== 'away' ? () => open(x.session_id) : undefined
   return (
-    <li className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-0.5 py-1.5 border-t border-border/60 first:border-t-0 min-w-0">
+    <li
+      data-live-session={x.session_id}
+      data-jump={jump?.kind}
+      tabIndex={go ? 0 : undefined}
+      aria-label={go ? `Go to session ${sessionTitle(x)}` : undefined}
+      title={go ? `Go to this session's tab${jump?.kind === 'tab' && jump.digit ? ` (${keys(`⌘${jump.digit}`)})` : ''}` : undefined}
+      onClick={go ? (e) => { if (!(e.target as Element).closest('a, button, select, input')) go() } : undefined}
+      onKeyDown={go ? (e) => { if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); go() } } : undefined}
+      className={`group grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-0.5 py-1.5 border-t border-border/60 first:border-t-0 min-w-0 ${go ? '-mx-2 px-2 rounded-sm cursor-pointer hover:bg-panel-2 focus-visible:bg-panel-2 focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent' : ''}`}
+    >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
           <SessionCharacter agent={x.agent} sessionId={x.session_id} size={22} />
@@ -598,7 +615,9 @@ function LiveSession({ x, now, hourCost }: { x: SessionSummary; now: number; hou
             <span className="num shrink-0 text-[11px] text-fg-faint" title={plan.next ? `Next: ${plan.next}` : undefined}>plan {plan.done}/{plan.total}</span>
           )}
           <span className="shrink-0 text-[11px] text-fg-faint whitespace-nowrap">{fmtAgo(x.last_event_at, now)}</span>
-          <a href={href({ name: 'session', id: x.session_id })} className="shrink-0 text-[11px] text-fg-faint hover:text-fg whitespace-nowrap">open</a>
+          {jump ? <SessionWays x={x} jump={jump} /> : (
+            <a href={href({ name: 'session', id: x.session_id })} className="shrink-0 text-[11px] text-fg-faint hover:text-fg whitespace-nowrap">open</a>
+          )}
         </div>
       </div>
       <div className="min-w-0 pl-[30px] sm:pl-0 sm:text-right text-[11.5px] text-fg-muted" data-pulse-facts={x.session_id}>
@@ -628,6 +647,87 @@ function LiveSession({ x, now, hourCost }: { x: SessionSummary; now: number; hou
         )}
       </div>
     </li>
+  )
+}
+
+/**
+ * A live row's ways in, in the desktop app (lib/sessionJump.ts): where a
+ * click on the row goes, said on hover and focus with the tab's ⌘N; the
+ * session's page as a quiet *details*; for a session another terminal holds,
+ * that fact and *Continue in Caprock*; and *End* for one Caprock started
+ * that sits at its prompt — at once, or after one question when messages
+ * wait in its queue (ADR-053), which ending would drop.
+ */
+function SessionWays({ x, jump }: { x: SessionSummary; jump: SessionJump }) {
+  const host = useContext(PipelineHostContext)
+  const [busy, setBusy] = useState(false)
+  const [queued, setQueued] = useState(0)
+  const away = jump.kind === 'away' || (jump.kind === 'tab' && !jump.typeable)
+  const where = jump.kind === 'away' && jump.why === 'detached' ? 'no terminal' : 'in your terminal'
+  const canContinue = away && !!host.onStartAgent && (x.agent ?? 'claude') === 'claude'
+  const canEnd = !!host.onEndSession && endable(x)
+  const small = 'shrink-0 text-[11px] whitespace-nowrap'
+  const cont = async () => {
+    if (!host.onStartAgent) return
+    setBusy(true)
+    try {
+      await host.onStartAgent({ cwd: x.cwd, resume: x.session_id, fork: true }, `${sessionTitle(x)} (copy)`, x.session_id)
+    } catch (e) {
+      host.onToast?.(`Could not continue the session: ${errText(e)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const end = async () => {
+    // Messages waiting for its turn (ADR-053) go with it: say so once.
+    let n = 0
+    try { n = (await api.queue(x.session_id)).messages?.length ?? 0 } catch { /* none known: end */ }
+    if (n > 0) { setQueued(n); return }
+    host.onEndSession?.(x.session_id)
+  }
+  if (queued > 0) {
+    return (
+      <span className={`${small} text-warn`} data-end-confirm={x.session_id}>
+        {queued} queued message{queued === 1 ? '' : 's'} will be dropped.{' '}
+        <button type="button" onClick={() => { setQueued(0); host.onEndSession?.(x.session_id) }} className="text-danger hover:underline">End anyway</button>{' '}
+        <button type="button" onClick={() => setQueued(0)} className="text-fg-muted hover:text-fg">Keep</button>
+      </span>
+    )
+  }
+  return (
+    <>
+      {jump.kind !== 'away' && (
+        <span aria-hidden className={`${small} text-accent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100`} data-go-hint>
+          Go to session ↗{jump.kind === 'tab' && jump.digit ? <span className="ml-1 mono text-fg-faint">{keys(`⌘${jump.digit}`)}</span> : null}
+        </span>
+      )}
+      {away && (
+        <span className={`${small} text-fg-faint`} title={x.owned ? 'Its terminal is gone — Caprock can’t type into it.' : 'Started in your terminal — end it there. Caprock can’t type into it.'}>{where}</span>
+      )}
+      <a href={href({ name: 'session', id: x.session_id })} className={`${small} text-fg-faint hover:text-fg`}>details</a>
+      {canContinue && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => { void cont() }}
+          title="Starts a new process on a copy of this conversation, in a Caprock tab. The one in your terminal keeps running, untouched."
+          className={`${small} text-fg-muted hover:text-fg disabled:opacity-50`}
+        >
+          {busy ? 'Starting…' : 'Continue in Caprock'}
+        </button>
+      )}
+      {canEnd && (
+        <button
+          type="button"
+          onClick={() => { void end() }}
+          aria-label={`End session ${sessionTitle(x)}`}
+          title="End this session: it is idle at its prompt. Caprock started it, so Caprock stops it."
+          className={`${small} text-fg-faint hover:text-danger`}
+        >
+          × End
+        </button>
+      )}
+    </>
   )
 }
 

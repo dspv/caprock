@@ -41,7 +41,7 @@ import { sessionTitle } from '@/lib/sidebar'
 import { useCanControl } from '@/lib/useCanControl'
 import { githubApi } from '@/lib/github'
 import { openExternal } from '@/lib/nudges'
-import { keys } from '@/lib/appkeys'
+import { PIPELINE_KEY, keys } from '@/lib/appkeys'
 import { hasConflict, isBehind, prAgents, prStatus, queuedFor, quickActions, QUICK_LABEL, topChip, typeable, type DeckWorktree, type PRAgent, type PRChip, type PRStatus } from '@/lib/prforce'
 import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
 
@@ -74,7 +74,7 @@ export interface SessionDeckProps {
   onStartAgent?: (req: SpawnRequest, title: string) => Promise<void>
   /** The project's finished copies, over the Branches view (components/CleanupLine). */
   cleanup?: ReactNode
-  /** The Pipeline page in a tab (⇧⌘B): the header's *Pipeline*. */
+  /** The Pipeline page on the dashboard (⌘P): the header's *Pipeline*. */
   onOpenPipeline?: () => void
   /** Hides the bar (⌘B): the header's ×. */
   onHide?: () => void
@@ -197,22 +197,23 @@ function DeckBody({ s, sessionId, changed, branch, ahead, onReviewChanges, onToa
   )
 }
 
-/** The Pipeline page's way back (`collapse`: *Back*, to the tab before it),
- *  or the deck's way there (*Pipeline*), both ⇧⌘B (Ctrl+Alt+Shift+B off
- *  macOS, where ⌘B is Ctrl+Shift+B). `compact`: the deck's header, the key
- *  in the tooltip only. */
+/** The Pipeline page's way back (`collapse`: *Back*, to the tab or screen
+ *  ⌘P was pressed on), or the deck's way there (*Pipeline*, on the
+ *  dashboard), both ⌘P (Ctrl+Shift+P off macOS; ⇧⌘B, its key until
+ *  2026-10-15, still works). `compact`: the deck's header, the key in the
+ *  tooltip only. */
 export function ExpandToggle({ collapse, onClick, compact }: { collapse?: boolean; onClick: () => void; compact?: boolean }) {
-  const k = keys('⇧⌘B')
+  const k = keys(PIPELINE_KEY)
   return (
     <button
       type="button"
       data-deck-expand={collapse ? undefined : ''}
       data-prs-back={collapse ? '' : undefined}
       onClick={onClick}
-      aria-label={collapse ? `Back to the tab you were on (${k})` : `Open the Pipeline: every pull request on its way to a release, in a tab (${k})`}
+      aria-label={collapse ? `Back to where you were (${k})` : `Open the Pipeline: every pull request on its way to a release, on the dashboard (${k})`}
       title={collapse
-        ? `Back to the tab you were on; ${k} opens the Pipeline again`
-        : `The Pipeline: every pull request of the repository on its way — open, CI, merged, released — in a tab (${k})`}
+        ? `Back to where you were; ${k} opens the Pipeline again`
+        : `The Pipeline: every pull request of the repository on its way — open, CI, merged, released — on the dashboard (${k})`}
       className={compact
         ? 'flex h-[18px] shrink-0 items-center gap-1 rounded-[4px] px-1 text-[10.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-accent'
         : 'flex h-[26px] shrink-0 items-center gap-1.5 rounded-[6px] border border-accent/60 px-2 text-[12px] font-medium text-accent hover:bg-accent/10'}

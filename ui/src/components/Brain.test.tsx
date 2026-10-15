@@ -182,14 +182,14 @@ describe('Second Brain', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('is a banner while empty and off: the line, Start building, How it works, no bare zero, nothing sent', async () => {
+  it('is a banner while empty and off: the brain graph, the line, Start building, How it works, no bare zero, nothing sent', async () => {
     m.status.mockResolvedValue(status({ memories: 0, manual: 0, auto: auto({ chosen: false, on: false, enabled: false, pending: 0 }) }))
     m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
     render(<BrainSidebar onOpen={vi.fn()} />)
     await screen.findByRole('button', { name: 'Start building' })
     expect(document.querySelector('[data-brain-banner="off"]')).not.toBeNull()
-    expect(document.querySelector('[data-brain-ghost]')).not.toBeNull()
-    expect(screen.getByText('Remembers what your agents learn — so the next one starts smarter.')).toBeTruthy()
+    expect(document.querySelector('[data-brain-banner] [data-brain-mark]')).not.toBeNull()
+    expect(screen.getByText('Give your agents a memory')).toBeTruthy()
     expect(screen.getByText('Local · your own Claude · free')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'How it works' })).toBeTruthy()
     expect(screen.queryByText(/Jarvis/)).toBeNull()

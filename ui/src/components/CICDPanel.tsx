@@ -18,9 +18,12 @@
  *
  * Folded, nothing is asked: the body (and its poll) is mounted only while the
  * panel is open, and the poll pauses while the window is hidden.
+ *
+ * At its head, the Pipeline's own figures for the repository the Pipeline
+ * shows, with the way to the page (components/PipelineCard.tsx).
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
-import { api, errText } from '@/lib/api'
+import { api, errText, type SessionSummary } from '@/lib/api'
 import { readDeck, writeDeck } from '@/lib/deckCache'
 import { fmtAgo } from '@/lib/format'
 import { fmtRun } from '@/lib/ci'
@@ -31,6 +34,7 @@ import { usageLine, type ActionsUsage } from '@/lib/runnercost'
 import { AGENT_COST_NOTE } from '@/lib/prboard'
 import { asReposCI, keepWhileReading, loadHiddenRepos, owners, prTokens, quietText, redPct, rowErrorText, saveHiddenRepos, sectionErrorText, sharedTitle, statusLine, stuckText, type ReposCI, type RepoCIQuiet, type RepoCIRow } from '@/lib/reposci'
 import { Panel } from './ui'
+import { PipelineCard } from './PipelineCard'
 import { Freshness } from './Freshness'
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 import { EyeOffIcon } from './AppIcons'
@@ -56,7 +60,7 @@ interface CICDFresh {
   retry: () => void
 }
 
-export function CICDPanel() {
+export function CICDPanel({ sessions = [] }: { sessions?: readonly SessionSummary[] } = {}) {
   const [fresh, setFresh] = useState<CICDFresh>()
   return (
     <Panel fold="now.cicd" title="CI/CD" right={
@@ -65,7 +69,7 @@ export function CICDPanel() {
         <span className="truncate" title="GitHub's runs, pull requests and releases as the Pipeline page reads them, and githubstatus.com; agent cost at API list price">GitHub · agent cost at list price</span>
       </span>
     }>
-      <CICDBody onFresh={setFresh} />
+      <CICDBody onFresh={setFresh} sessions={sessions} />
     </Panel>
   )
 }
@@ -128,7 +132,7 @@ function useReposCI(older: boolean, hide: readonly string[]): { data?: ReposCI; 
   return { data, failed, usage, loading, reason, confirmed, retry }
 }
 
-function CICDBody({ onFresh }: { onFresh: (f: CICDFresh | undefined) => void }) {
+function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) => void; sessions: readonly SessionSummary[] }) {
   const [older, setOlder] = useState(false)
   const [hidden, setHidden] = useState<Set<string>>(() => loadHiddenRepos())
   const hide = useMemo(() => [...hidden].sort(), [hidden])
@@ -190,6 +194,9 @@ function CICDBody({ onFresh }: { onFresh: (f: CICDFresh | undefined) => void }) 
           {calm}
         </p>
       )}
+      {/* The Pipeline's figures for the repository it shows, and the way there:
+        * part of this panel, not a second CI block beside it. */}
+      <PipelineCard sessions={sessions} />
       {data.repos.length === 0 && data.quiet.length === 0 ? <p className="px-3 py-3 text-[12.5px] text-fg-muted">No listed repository is on GitHub.</p>
         : data.repos.length === 0 && !older ? <p className="px-3 py-3 text-[12.5px] text-fg-muted">No repository on GitHub had a session in the last {days} days.</p>
           : data.repos.map((r) => <RepoBlock key={r.project_id} r={r} now={now} usage={usage[r.repo.split('/')[0] ?? '']} calm={!!calm} onHide={() => setHide(r.repo, true)} />)}

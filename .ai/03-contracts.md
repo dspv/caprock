@@ -1811,7 +1811,8 @@ error. The cached answers are never changed: the baselines are set on a copy.
 **`GET /v1/sessions/{id}/ci/stats`** → `SessionCIStats` `{connected, repo?,
 reason?, prs[], stats?, board?, error?, read_at?, fetched_at, refreshing?,
 refresh_error?, refresh_failed_at?}`: the Pipeline
-(.ai/21-app.md § Pipeline), asked only while that tab is in front and
+(.ai/21-app.md § Pipeline), asked only while that page is in front, or
+Home's CI/CD section is unfolded and in front (its Pipeline figures), and
 the window visible. `repo` and `reason` as `SessionRepoCI` says them. `prs`
 is the repository's own pull requests — the `BranchPR` list the Branches
 view reads (`GET …/pulls?state=all&sort=updated&direction=desc&per_page=50`,
@@ -1860,10 +1861,15 @@ over the 14 local calendar days ending today:
   shipped), `cost_usd`, `sessions` and `partial` (the list may not reach
   back to the release before it), newest first, at most 6. `flow`
   `{counts{stage}, days, merged, ttm_median_ms?, ttm_count,
-  release_lag_median_ms?, release_lag_count, ci_median_ms?, cost_usd}`:
+  release_lag_median_ms?, release_lag_count, release_gap_median_ms?,
+  release_gap_count, ci_median_ms?, cost_usd}`:
   merged → released is the median of publish minus merge over the window's
   released cards (absent with fewer than two), CI the busiest workflow's
-  median. The releases are `GET …/releases?per_page=10`
+  median. `release_gap_median_ms` is the median time between consecutive
+  published releases among those already read (the newest ten; no further
+  GitHub read), absent with fewer than three gaps; `release_gap_count` is
+  how many gaps there were (2026-10-15, ADR-064). It is how often the
+  repository ships, never a date for the next release. The releases are `GET …/releases?per_page=10`
   (`github.RepoReleases`): `{tag, name?, url?, published_at, prerelease?}`,
   drafts and unpublished ones left out, kept 2 minutes (10 before
   2026-10-14: a new release missed the board that long); a failed list
@@ -3043,6 +3049,105 @@ GET /v1/queue → QueueBoard
   its prompt) is an ordinary turn and gets the ordinary finished alert.
 - **Who.** A read open to every paired device, as the per-session queue is.
   `501` without a queue (a test server).
+
+### Work
+
+The Work board ([ADR-064](08-decisions.md)): a branch is the unit of work.
+Across every live session on the machine — started by Caprock or by hand —
+what is being worked on, by whom, roughly how long the running turn has
+left, what it cost today, what is planned (the task runner's tasks and the
+queued messages) and what each repository has merged and not released.
+Columns are derived on the page from this answer and the Pipeline's board
+(`GET /v1/repos/ci`, `board`), joined by branch; nothing is stored. Code:
+`internal/daemon/workboard.go`, `internal/relplan`,
+`internal/store/workspend.go`, `internal/api/work.go`.
+
+```
+GET /v1/work → Work
+```
+
+- **`Work`** — `{now, day_start, sessions: [WorkSession], tasks?:
+  [WorkTask], hive, queued: [WorkQueued], repos: [WorkRepo], totals}`.
+  `now` is the daemon's clock (unix ms), every ETA in ms from it;
+  `day_start` the local midnight today's figures count from. `hive` is
+  `on` or `off`; `tasks` is absent when the task runner is off. `totals`
+  is `{live, working, waiting_you, today_usd, machine_today_usd}`:
+  `today_usd` sums the live sessions', `machine_today_usd` is every
+  session's priced cost since `day_start` (internal model work left out).
+- **`WorkSession`** — `{session_id, agent, owned, model?, model_display?,
+  subscription?, name?, description?, description_source?, project,
+  repo_root?, worktree?, branch?, on_default?, started_at, worked_at?,
+  state, turn_started_at?, turn_left?, estimate?, estimate_note?, todo?,
+  cost_usd, today_usd, prs: [{number, url, title?, opened_at?,
+  merged_at?}], link, link_note?}`. Every session not ended, shells left
+  out, at most 200: waiting on you first, then working, background, at
+  the prompt, each by project. `description` is the session list's.
+  `on_default` is whether `branch` is the remote's default branch as the
+  clone knows it, absent when either is unknown. `prs` are the session's
+  recorded pull requests (§ session_prs), newest four. `cost_usd` is the
+  session's total, `today_usd` its priced cost since `day_start`
+  (`store.SpendBySessionSince`: one grouped sum over
+  `idx_events_attr_work`, which covers it).
+- **`state`** — `working`, `permission`, `question`, `at_prompt` or
+  `background` (the turn ended, subagents it started still work). A
+  Caprock-started Claude Code session reads the queue's own waiting
+  (§ Queued messages); one started by hand reads its newest main-thread
+  hook event the same way, except that a permission prompt is the dialog
+  still on its screen (no manager holds it); a session whose hooks cannot
+  say (another agent, Claude Code without hooks) reads as the Now screen
+  narrates its newest main-thread events.
+- **Estimates** — the Queue's, unchanged (§ Queue, RISK-08): Claude Code
+  only, the project's newest finished turns, `turn_left` only while
+  `working` and never while it waits on you (`estimate_note` says why
+  there is none). Hand-started Claude Code sessions get them too: the
+  turns come from the hooks either way. No task completion time, no
+  per-PR merge countdown, no clock time for the next release.
+- **`todo`** is `{active?, done, total}` as on the Queue, kept while the
+  session's `last_event_at` has not moved and for at most 2 minutes.
+- **`link`** — how the session is tied to a pull request: `recorded` (its
+  own `gh pr` commands named one), else `branch` (it works on a branch
+  that is not the default, so a pull request whose head is that branch is
+  its), else `none` with `link_note`. Never guessed from a title.
+- **`WorkTask`** — `{id, title, status, session_id?, branch?, budget_usd,
+  spent_usd}`: every task not done or failed, and those finished in the
+  last 24 hours. `branch` is the worker's `caprock/<assignee>`;
+  `session_id` the open assignment's.
+- **`WorkQueued`** — `{session_id, position, text, start?, finish?}`: the
+  messages in owned sessions' queues, `text` clipped to 200 characters,
+  `start`/`finish` as the Queue's.
+- **`WorkRepo`** — `{root, name, remote?, via_session, live, unreleased?,
+  tags?, ahead_of_tag?}`: the live sessions' repositories (most live
+  sessions first), then those any session recorded something in within 24
+  hours (newest first), at most 8. `remote` is `owner/name` from origin's
+  web address; `via_session` the newest session that brought it; `live`
+  how many live sessions it has. `unreleased` `{ref, items, count, more?}`
+  is the `CHANGELOG.md` `[Unreleased]` section at the remote's default
+  branch as the clone knows it (`ref`, `origin/<default>`, from
+  `refs/remotes/origin/HEAD`): `items` the first lines of its top-level
+  bullets, at most 30, nested bullets and sub-headings dropped; absent
+  when the file or the section is not there. `tags` `{last?: {name, at},
+  gap_median_ms?, gaps}` reads the newest 11 tags by creation date;
+  `gap_median_ms` is the median time between them, absent with fewer than
+  three gaps. `ahead_of_tag` counts the default branch's commits past the
+  last tag.
+- **Local only.** Git is read, never fetched: `git show <ref>:CHANGELOG.md`,
+  `git for-each-ref refs/tags --sort=-creatordate --count=11`, `git
+  rev-list --count`, `git symbolic-ref`, `git remote get-url origin`, each
+  hidden on Windows (`internal/hidewin`). A repository's reads are kept 60
+  seconds, and the CHANGELOG is reused while the default branch's commit
+  has not moved. Everything from git is only as fresh as the user's last
+  fetch, and the page says so. GitHub is never asked by this route. Nothing
+  is written. No DDL.
+- **Live.** Nothing polls: the page asks again on live frames, as the Queue
+  does.
+- **Cost.** Measured 2026-10-15 on a copy of the owner's database (1.69 GB,
+  534,812 events, 6 live sessions, 2 repositories), without an agent
+  manager: 9.0 ms median warm (p90 9.5 ms), 380 ms for the first answer,
+  which reads the repositories and the turn history; re-reading two
+  repositories' git took 110–150 ms. The today's-spend sum took 1.7 ms
+  cold, 0.5 ms warm.
+- **Who.** A read open to every paired device, as the Queue is. `501`
+  without a work board (a test server).
 
 ### Chat field pickers
 

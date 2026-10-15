@@ -20,17 +20,15 @@
  * What a pane shows: an agent session, a shell (a session of kind `shell`),
  * one of the project's files, read-only, a session Caprock cannot type
  * into — one started in another terminal, or one that ended — shown as its
- * conversation, read-only (`observe`, components/ObservePane.tsx; rule 7),
- * or the session deck's pull requests and CI, large (`prs`,
- * components/PRsCITab.tsx). A file's `sessionId` is its key (lib/files.ts
- * fileKey), and a Pipeline page's is prsTabKey(of), so each opens once, as a
- * session does.
+ * conversation, read-only (`observe`, components/ObservePane.tsx; rule 7).
+ * A file's `sessionId` is its key (lib/files.ts fileKey), so each opens once,
+ * as a session does. The Pipeline was a tab too (`prs`) until 2026-10-15; it
+ * is a page of the dashboard now, and a stored one is read as that page
+ * (parseWorkspace, pipelineInStore).
  */
 export interface TabTarget {
-  kind: 'session' | 'shell' | 'file' | 'observe' | 'prs'
+  kind: 'session' | 'shell' | 'file' | 'observe'
   sessionId: string
-  /** A Pipeline page: the agent session it was opened from, whose repository it shows. */
-  of?: string
   /** A file: its path relative to the worktree. */
   path?: string
   /** A file: the linked worktree's name; '' or absent for the main checkout. */
@@ -390,22 +388,41 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
   }
 }
 
-/** The key of the Pipeline page opened from session `of`: one per session. */
-export function prsTabKey(of: string): string {
-  return `prs:${of}`
-}
-
 function isTarget(v: unknown): v is TabTarget {
   const t = v as TabTarget
   if (!t || typeof t.sessionId !== 'string' || t.sessionId === '') return false
   if (t.kind === 'file') return typeof t.path === 'string' && t.path !== '' && (t.worktree === undefined || typeof t.worktree === 'string')
-  if (t.kind === 'prs') return typeof t.of === 'string' && t.of !== '' && t.sessionId === prsTabKey(t.of)
   return t.kind === 'session' || t.kind === 'shell' || t.kind === 'observe'
 }
 
-/** A pane that is a whole tab, never split: a file, a session watched read-only, or the Pipeline page. */
+/** A pane that is a whole tab, never split: a file, or a session watched read-only. */
 export function ownTab(t: TabTarget): boolean {
-  return t.kind === 'file' || t.kind === 'observe' || t.kind === 'prs'
+  return t.kind === 'file' || t.kind === 'observe'
+}
+
+/** A stored Pipeline tab (before 2026-10-15): the agent session it was opened from. */
+function storedPipeline(t: unknown): string | undefined {
+  const root = (t as { root?: { type?: string; target?: { kind?: string; of?: unknown } } } | null)?.root
+  if (root?.type !== 'pane' || root.target?.kind !== 'prs') return undefined
+  return typeof root.target.of === 'string' ? root.target.of : ''
+}
+
+/**
+ * Where the Dashboard tab opens when the stored workspace had a Pipeline tab
+ * (before 2026-10-15): the Pipeline page, for the agent the last one was
+ * opened from. Undefined when it had none.
+ */
+export function pipelineInStore(raw: string | null): string | undefined {
+  if (!raw) return undefined
+  try {
+    const v = JSON.parse(raw) as { tabs?: unknown[] }
+    const ofs = (Array.isArray(v.tabs) ? v.tabs : []).map(storedPipeline).filter((x): x is string => x !== undefined)
+    if (ofs.length === 0) return undefined
+    const of = ofs[ofs.length - 1]
+    return of ? `#/pipeline?of=${encodeURIComponent(of)}` : '#/pipeline'
+  } catch {
+    return undefined
+  }
 }
 
 function isPane(v: unknown): v is PaneNode {
@@ -432,8 +449,10 @@ export function parseWorkspace(raw: string | null): Workspace {
     if (v.version !== 1 || !Array.isArray(v.tabs)) return EMPTY_WORKSPACE
     const tabs = v.tabs.filter((t): t is Tab =>
       !!t && typeof t.id === 'string' && typeof t.projectId === 'string' && isPane(t.root) && typeof t.focusedPaneId === 'string',
-    // "PRs & CI · repo" was the Pipeline tab's title before 2026-10-14.
-    ).map((t) => ({ ...t, title: typeof t.title === 'string' ? t.title.replace(/^PRs & CI(?= · |$)/, 'Pipeline') : '' }))
+    ).map((t) => ({ ...t, title: typeof t.title === 'string' ? t.title : '' }))
+    // A Pipeline tab (before 2026-10-15) is a page of the dashboard now: it
+    // is not restored as a tab, and the Dashboard tab takes its place.
+    const hadPipeline = v.tabs.some((t) => storedPipeline(t) !== undefined)
     const ids = new Set(tabs.map((t) => t.id))
     const activeByProject: Record<string, string> = {}
     for (const [p, id] of Object.entries(v.activeByProject ?? {})) {
@@ -443,7 +462,7 @@ export function parseWorkspace(raw: string | null): Workspace {
     // same fields and reads as it is: its tabs are already one list, in the
     // order they were opened; only `dashboard` is new, and absent means shut.
     const ws: Workspace = { version: 1, tabs, activeByProject, activeProject: typeof v.activeProject === 'string' ? v.activeProject : '' }
-    if (v.dashboard === true) ws.dashboard = true
+    if (v.dashboard === true || hadPipeline) ws.dashboard = true
     if (v.mail === true) ws.mail = true
     return ws
   } catch {

@@ -6,9 +6,9 @@
  * newest titles and the count. A title or a dot opens it on `#/brain`.
  *
  * Before there is anything to show it is a banner, not a bare zero (the owner
- * called the old two faint lines "very sloppily done", translated): a faint
- * graph breathing, the one line on what it is, *Start building* and *How it
- * works*. *Start building* opens the consent in place — what is read, by
+ * called the old two faint lines "very sloppily done", translated): the
+ * brain made of a graph (BrainMark) as its hero, *Give your agents a
+ * memory*, *Start building* and *How it works*. *Start building* opens the consent in place — what is read, by
  * whose claude, where, the daily limit, and where it goes (rule 4) — and only
  * its *Turn on* sends the same PUT /v1/brain/settings as Settings. Once on
  * and still empty, the banner says what it is doing instead.
@@ -22,6 +22,7 @@ import { api, errText, type BrainAutoStatus } from '@/lib/api'
 import { BRAIN_TAGLINE, isEntity, useBrainGraph, useBrainStatus } from '@/lib/brain'
 import { keys } from '@/lib/appkeys'
 import { BrainGraphCanvas } from './BrainGraphCanvas'
+import { BrainMark } from './BrainMark'
 import { BRAIN_DISCLOSURE, limitLabel } from './BrainAutoSetting'
 import { ChevronIcon } from './AppIcons'
 import { BrainGlyph } from './BrainDrop'
@@ -130,31 +131,32 @@ export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
 }
 
 /**
- * The empty block: a faint graph, the line on what it is, and either the way
- * to start (off, or never asked) or what it is doing (on, nothing kept yet).
+ * The empty block: the brain made of a graph as its hero (BrainMark), one
+ * short line, and either the way to start (off, or never asked) or what it
+ * is doing (on, nothing kept yet).
  */
 function Banner({ auto, onDone, howLink }: { auto?: BrainAutoStatus; onDone: () => void; howLink: ReactNode }) {
   const on = !!auto?.on
   return (
     <div
-      className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1.5 rounded-[8px] border border-[var(--app-hairline)] bg-[var(--app-row-hover)] px-1 pb-2 pt-1.5"
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)] justify-items-center gap-1.5 rounded-[10px] border border-[var(--app-hairline)] bg-[var(--app-row-hover)] px-1.5 pb-2.5 pt-2 text-center"
       data-brain-banner={on ? 'on' : 'off'}
     >
-      <GhostGraph />
-      <p className="px-1.5 text-[12px] font-medium leading-snug text-fg" data-brain-tagline>{BRAIN_TAGLINE}</p>
+      <BrainMark className="h-[104px] w-auto max-w-full" />
+      <p className="px-1.5 text-[13.5px] font-semibold leading-snug text-fg" data-brain-headline title={BRAIN_TAGLINE}>Give your agents a memory</p>
       {on && auto ? (
         <>
           <Progress auto={auto} />
-          {howLink}
+          <div>{howLink}</div>
         </>
       ) : (
         <>
           {auto ? (
-            <StartBuilding auto={auto} onDone={onDone} howLink={howLink} />
+            <StartBuilding auto={auto} onDone={onDone} howLink={howLink} center />
           ) : (
             <>
               <p className="px-1.5 text-[11.5px] leading-snug text-fg-muted">Drop an answer in from Memory or a chat, or {keys('⇧⌘H')}.</p>
-              {howLink}
+              <div>{howLink}</div>
             </>
           )}
           <p className="px-1.5 text-[10.5px] text-fg-faint">Local · your own Claude · free</p>
@@ -169,7 +171,7 @@ function Banner({ auto, onDone, howLink }: { auto?: BrainAutoStatus; onDone: () 
  * yes. Nothing is sent before *Turn on* (rule 4); without claude there is no
  * button, only why.
  */
-function StartBuilding({ auto, onDone, howLink, compact }: { auto: BrainAutoStatus; onDone: () => void; howLink: ReactNode; compact?: boolean }) {
+function StartBuilding({ auto, onDone, howLink, compact, center }: { auto: BrainAutoStatus; onDone: () => void; howLink: ReactNode; compact?: boolean; center?: boolean }) {
   const [asking, setAsking] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -187,7 +189,7 @@ function StartBuilding({ auto, onDone, howLink, compact }: { auto: BrainAutoStat
   }
   if (!asking) {
     return (
-      <div className={`flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 ${compact ? '' : 'px-1.5'}`}>
+      <div className={`flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 ${compact ? '' : 'px-1.5'} ${center ? 'justify-center' : ''}`}>
         <button
           type="button"
           onClick={() => setAsking(true)}
@@ -204,7 +206,7 @@ function StartBuilding({ auto, onDone, howLink, compact }: { auto: BrainAutoStat
   return (
     <div
       ref={(el) => el?.scrollIntoView?.({ block: 'nearest' })}
-      className="mx-0.5 grid min-w-0 gap-1.5 rounded-[6px] border border-[var(--app-hairline)] bg-panel p-2 text-[11.5px] leading-snug text-fg-muted"
+      className="mx-0.5 grid min-w-0 gap-1.5 justify-self-stretch rounded-[6px] border text-left border-[var(--app-hairline)] bg-panel p-2 text-[11.5px] leading-snug text-fg-muted"
       data-brain-sidebar-consent
     >
       <p className="text-fg">
@@ -251,7 +253,7 @@ function Progress({ auto }: { auto: BrainAutoStatus }) {
   return (
     <div className="grid min-w-0 gap-0.5 px-1.5 text-[11.5px] leading-snug" data-brain-progress>
       {line && (
-        <p className="flex min-w-0 items-center gap-1.5 text-fg-muted">
+        <p className="flex min-w-0 items-center justify-center gap-1.5 text-fg-muted">
           <span className={`h-[6px] w-[6px] shrink-0 rounded-full bg-accent ${auto.running ? 'graph-breathe' : 'opacity-60'}`} aria-hidden />
           <span className="min-w-0">{line}</span>
         </p>
@@ -261,32 +263,5 @@ function Progress({ auto }: { auto: BrainAutoStatus }) {
       )}
       {auto.last_error && <p className="truncate text-warn" title={auto.last_error}>Last problem: {auto.last_error}</p>}
     </div>
-  )
-}
-
-/** A faint graph in the kinds' colours; its dots breathe slowly, and hold still under prefers-reduced-motion (`.graph-breathe`). */
-const GHOST_NODES: [number, number, number, string][] = [
-  [100, 30, 5, 'var(--brain-idea)'], [58, 18, 3.5, 'var(--brain-decision)'], [146, 16, 3.5, 'var(--brain-finding)'],
-  [40, 44, 3, 'var(--brain-topic)'], [160, 46, 3.5, 'var(--brain-question)'], [76, 50, 3, 'var(--brain-finding)'],
-  [124, 52, 3, 'var(--brain-decision)'], [18, 24, 2.5, 'var(--brain-topic)'], [184, 26, 2.5, 'var(--brain-idea)'],
-]
-const GHOST_LINKS: [number, number][] = [[0, 1], [0, 2], [0, 5], [0, 6], [1, 3], [1, 7], [2, 4], [2, 8], [4, 6], [3, 5]]
-
-function GhostGraph() {
-  return (
-    <svg viewBox="0 0 200 64" className="block h-[52px] w-full" aria-hidden="true" data-brain-ghost>
-      <g opacity="0.5">
-        {GHOST_LINKS.map(([a, b]) => (
-          <line key={`${a}-${b}`} x1={GHOST_NODES[a]![0]} y1={GHOST_NODES[a]![1]} x2={GHOST_NODES[b]![0]} y2={GHOST_NODES[b]![1]}
-            stroke="var(--color-border-strong)" strokeWidth="0.8" />
-        ))}
-      </g>
-      <g opacity="0.6">
-        {GHOST_NODES.map(([x, y, r, c], i) => (
-          <circle key={i} cx={x} cy={y} r={r} fill={c} className="graph-breathe"
-            style={{ animationDuration: `${4 + (i % 3)}s`, animationDelay: `${-i * 0.7}s` }} />
-        ))}
-      </g>
-    </svg>
   )
 }

@@ -17,6 +17,16 @@ import {
 
 const HEX = /^#[0-9a-f]{6}$/
 
+/** WCAG contrast of two #rrggbb colours. */
+function contrast(a: string, b: string): number {
+  const lum = (h: string) => {
+    const [r, g, bl] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * bl!
+  }
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p)
+  return (x! + 0.05) / (y! + 0.05)
+}
+
 describe('terminal palettes', () => {
   it('keeps Dark Warm on the dashboard terminal’s ink and the dark panel’s ground', () => {
     for (const k of ['foreground', 'cursor'] as const) {
@@ -35,6 +45,7 @@ describe('terminal palettes', () => {
     expect(terminalTheme(MATCH_APP_THEME, { mode: 'dark-side' }).id).toBe('dark-side')
     expect(terminalTheme(MATCH_APP_THEME, { mode: 'light-cold' }).id).toBe('light-cold')
     expect(terminalTheme(MATCH_APP_THEME, { mode: 'light-side' }).id).toBe('light-side')
+    expect(terminalTheme(MATCH_APP_THEME, { mode: 'sunlight' }).id).toBe('sunlight')
     const book = terminalTheme(MATCH_APP_THEME, { mode: 'book' })
     expect(book.tone).toBe('light')
     expect(book.colors.background).toBe(THEME_COLORS.book)
@@ -52,7 +63,7 @@ describe('terminal palettes', () => {
 
   it('offers the new palettes by name in Settings → Terminal', () => {
     const names = TERMINAL_CHOICES.map((c) => c.name)
-    for (const n of ['Dark Warm', 'Dark Cold', 'Dark Side', 'Book', 'Light Cold', 'Light Side']) expect(names).toContain(n)
+    for (const n of ['Dark Warm', 'Dark Cold', 'Dark Side', 'Book', 'Light Cold', 'Light Side', 'Sunlight']) expect(names).toContain(n)
   })
 
   it('reads the app’s look off <html>', () => {
@@ -91,11 +102,26 @@ describe('terminal palettes', () => {
 
   it('keeps the 16 ANSI colours of every palette distinct', () => {
     const ansi = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as const
-    for (const id of ['slate', 'dark-pastel', 'dark-side', 'light-cold', 'light-side']) {
+    for (const id of ['slate', 'dark-pastel', 'dark-side', 'light-cold', 'light-side', 'sunlight']) {
       const c = terminalTheme(id).colors
       const all = [...ansi.map((k) => c[k]), ...ansi.map((k) => c[`bright${k[0]!.toUpperCase()}${k.slice(1)}` as keyof typeof c])]
       expect(new Set(all).size, id).toBe(16)
     }
+  })
+
+  it('Sunlight: every ANSI colour 4.5:1 or more on its white, the normal eight 7:1, yellow and cyan included', () => {
+    const c = terminalTheme('sunlight').colors
+    expect(c.background).toBe('#ffffff')
+    expect(contrast(c.foreground, c.background)).toBeGreaterThanOrEqual(7)
+    const ansi = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as const
+    for (const k of ansi) {
+      expect(contrast(c[k], c.background), k).toBeGreaterThanOrEqual(7)
+      const bright = `bright${k[0]!.toUpperCase()}${k.slice(1)}` as keyof typeof c
+      expect(contrast(c[bright], c.background), bright).toBeGreaterThanOrEqual(4.5)
+    }
+    expect(contrast(c.cursor, c.background)).toBeGreaterThanOrEqual(7)
+    // Selected text stays readable.
+    expect(contrast(c.foreground, c.selectionBackground)).toBeGreaterThanOrEqual(7)
   })
 
   it('gives every palette all 21 colours as #rrggbb, with unique ids', () => {

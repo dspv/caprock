@@ -1,11 +1,15 @@
 /**
- * The Pipeline page's flow strip and releases (.ai/04-ui.md § Pipeline;
- * owner, 2026-10-14, translated: "essentially accounting of releases and
- * commits-PRs. That's the stat to watch."): on top, how fast work flows —
- * throughput, opened → merged, merged → released (an estimate), the CI
- * median, the agent cost listed; below the list, each recent release with
- * the pull requests it shipped and what the agents spent on them. Both come
- * in the page's one answer (…/ci/stats' `board`): nothing here asks.
+ * The Pipeline's figures and releases (.ai/04-ui.md § Pipeline; owner,
+ * 2026-10-14, translated: "essentially accounting of releases and
+ * commits-PRs. That's the stat to watch."): how fast work flows — in flight,
+ * needing a fix, ready, throughput, the CI median, opened → merged, merged →
+ * released (an estimate), the agent cost listed — as the dashboard's own
+ * figure tiles (Stat), each explained in a card under it, never over it
+ * (owner, 2026-10-15, translated: "everything reads very badly … simply in
+ * the Dashboard's style"); and each recent release with the pull requests it
+ * shipped and what the agents spent on them. Both come in the page's one
+ * answer (…/ci/stats' `board`): nothing here asks. Home's CI/CD panel draws
+ * the first five figures from the same answer (PipelineCard).
  */
 import type { ReactNode } from 'react'
 import type { BranchPR } from '@/lib/branches'
@@ -14,33 +18,55 @@ import { spanText } from '@/lib/prstats'
 import { fmtAgo } from '@/lib/format'
 import { fmtRun } from '@/lib/ci'
 import { openExternal } from '@/lib/nudges'
+import { Panel, Stat } from './ui'
 
 // ---------------------------------------------------------------- the flow
 
-function Figure({ label, value, note, title }: { label: string; value: ReactNode; note?: ReactNode; title?: string }) {
-  return (
-    <div data-board-figure={label} title={title} className="flex min-w-0 flex-col gap-0.5">
-      <span className="truncate text-[10.5px] uppercase tracking-[0.12em] text-fg-faint">{label}</span>
-      <span className="num truncate text-[18px] font-semibold leading-tight text-fg">{value}</span>
-      {note && <span className="truncate text-[11px] text-fg-muted">{note}</span>}
-    </div>
-  )
-}
+/** One figure of the flow: its caption, value, the line under it, and what it means. */
+export interface FlowFigure { key: string; label: string; value: string; sub: ReactNode; hint: string; tone?: 'ok' | 'danger' }
 
-export function FlowStrip({ board }: { board: PRBoard }) {
+/** The flow's figures in reading order; Home shows the first five. */
+export function flowFigures(board: PRBoard): FlowFigure[] {
   const f = board.flow
   const open = f.counts.draft + f.counts.open + f.counts.fix + f.counts.ready
+  return [
+    { key: 'flight', label: 'In flight', value: String(open), sub: `${f.counts.open} with CI running${f.counts.draft ? ` · ${f.counts.draft} draft` : ''}`,
+      hint: 'Open pull requests among the newest listed: drafts, CI running, needing a fix and ready.' },
+    { key: 'fix', label: 'Needs a fix', value: String(f.counts.fix), sub: f.counts.fix ? 'red CI, a conflict or changes asked' : 'nothing is red', tone: f.counts.fix ? 'danger' : undefined,
+      hint: 'Open pull requests with a red check, a merge conflict, or a review asking for changes.' },
+    { key: 'ready', label: 'Ready', value: String(f.counts.ready), sub: 'green, awaiting a merge', tone: f.counts.ready ? 'ok' : undefined,
+      hint: 'Open pull requests whose checks passed (or that have none): waiting for a review or a merge.' },
+    { key: 'throughput', label: `Throughput · ${f.days}d`, value: perDay(f.merged, f.days), sub: `${f.merged} merged`,
+      hint: `Pull requests merged in the last ${f.days} days, a day on average, from GitHub's merge stamps.` },
+    { key: 'ci', label: 'CI median', value: f.ci_median_ms ? fmtRun(f.ci_median_ms) : '–', sub: f.ci_median_ms ? 'one successful run' : 'fewer than two runs',
+      hint: "The busiest workflow's median successful run, start to finish, from GitHub's run times." },
+    { key: 'ttm', label: 'Opened → merged', value: f.ttm_median_ms ? spanText(f.ttm_median_ms) : '–', sub: f.ttm_median_ms ? `median of ${f.ttm_count}` : 'fewer than two merges',
+      hint: "The median time from opened to merged of the pull requests merged in the window, from GitHub's stamps." },
+    { key: 'lag', label: 'Merged → released', value: f.release_lag_median_ms ? `~${spanText(f.release_lag_median_ms)}` : '–',
+      sub: f.release_lag_median_ms ? `estimate · ${f.release_lag_count} released` : f.release_lag_count === 1 ? 'one release so far' : 'no release matched',
+      hint: 'An estimate: each merge into the default branch is matched to the first release published after it, and the median taken of merge to publish.' },
+    { key: 'cost', label: 'Agent cost', value: `$${f.cost_usd.toFixed(2)}`, sub: 'on these PRs · API list price', hint: AGENT_COST_NOTE },
+  ]
+}
+
+/**
+ * The flow as figure tiles. `compact`: Home's five (in flight, needs a fix,
+ * ready, throughput, CI median) in its CI/CD panel.
+ */
+export function FlowFigures({ board, compact }: { board: PRBoard; compact?: boolean }) {
+  const all = flowFigures(board)
+  const shown = compact ? all.slice(0, 5) : all
+  // Columns by the panel's own width, not the window's: in the app the
+  // sidebar and the tab take a third of it.
   return (
-    <section data-board-flow aria-label="How pull requests move" className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-x-6 gap-y-3 rounded-[var(--radius-panel)] border border-border bg-panel px-4 py-3 shadow-[var(--shadow-panel)]">
-      <Figure label="In flight" value={open} note={`${f.counts.fix} need${f.counts.fix === 1 ? 's' : ''} a fix · ${f.counts.ready} ready`} title="Open pull requests among the newest listed: draft, CI running, needing a fix, ready" />
-      <Figure label={`Throughput · ${f.days} days`} value={perDay(f.merged, f.days)} note={`${f.merged} merged`} title={`Pull requests merged in the last ${f.days} days, a day on average, from GitHub's merge stamps`} />
-      <Figure label="Opened → merged" value={f.ttm_median_ms ? spanText(f.ttm_median_ms) : '–'} note={f.ttm_median_ms ? `median of ${f.ttm_count}` : 'fewer than two merges'}
-        title="The median time from opened to merged of the pull requests merged in the window, GitHub's stamps" />
-      <Figure label="Merged → released" value={f.release_lag_median_ms ? `~${spanText(f.release_lag_median_ms)}` : '–'} note={f.release_lag_median_ms ? `estimate · ${f.release_lag_count} released` : f.release_lag_count === 1 ? 'one release so far' : 'no release matched'}
-        title="An estimate: each merge into the default branch is matched to the first release published after it, and the median taken of merge to publish" />
-      <Figure label="CI" value={f.ci_median_ms ? fmtRun(f.ci_median_ms) : '–'} note={f.ci_median_ms ? 'median successful run' : 'fewer than two runs'} title="The busiest workflow's median successful run, start to finish, GitHub's run times" />
-      <Figure label="Agent cost" value={`$${f.cost_usd.toFixed(2)}`} note="on the board · API list price" title={AGENT_COST_NOTE} />
-    </section>
+    <div className="@container/flow">
+      <div data-board-flow aria-label="How pull requests move"
+        className={`grid grid-cols-2 divide-x divide-border ${compact ? '@min-[520px]/flow:grid-cols-3 @min-[820px]/flow:grid-cols-5' : '@min-[560px]/flow:grid-cols-4 @min-[1180px]/flow:grid-cols-8'}`}>
+        {shown.map((x) => (
+          <Stat key={x.key} data={x.key} label={x.label} value={x.value} sub={x.sub} tone={x.tone} hint={x.hint} size="compact" />
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -49,44 +75,44 @@ export function FlowStrip({ board }: { board: PRBoard }) {
 export function Releases({ releases, prs, now, onOpen }: { releases: BoardRelease[]; prs: BranchPR[]; now: number; onOpen: (n: number) => void }) {
   const byNum = new Map(prs.map((p) => [p.number, p]))
   return (
-    <section data-board-releases aria-label="Releases" className="rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
-      <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b border-border bg-panel-2/60 px-3 py-2">
-        <h3 className="text-[11px] font-medium uppercase tracking-[0.12em] text-fg-muted">Releases</h3>
-        <span className="text-[11px] text-fg-faint" title={`Each merge into the default branch is matched to the first release published after it, from the newest listed pull requests. ${AGENT_COST_NOTE}`}>
-          what each shipped, matched by merge time · agent cost at API list price
-        </span>
-      </header>
-      {releases.length === 0 ? <p className="px-3 py-3 text-[12px] text-fg-faint">No published release read.</p> : (
-        <ul>
-          {releases.map((r) => (
-            <li key={r.tag} data-board-release={r.tag} className="grid grid-cols-[minmax(120px,0.9fr)_minmax(0,3fr)_auto] items-start gap-x-4 border-b border-[var(--app-hairline)] px-3 py-2 last:border-b-0 @max-[760px]/prs:grid-cols-1">
-              <div className="min-w-0">
-                <button type="button" onClick={() => r.url && openExternal(r.url)} className="mono truncate text-[13px] font-semibold text-fg hover:underline" title={r.name ? `${r.name}\nOpen on GitHub` : 'Open on GitHub'}>{r.tag}</button>
-                <div className="text-[11px] text-fg-faint" title={new Date(r.published_at).toLocaleString()}>
-                  {fmtAgo(r.published_at, now)}{r.prerelease ? ' · pre-release' : ''}
+    <Panel fold="pipeline.releases" title="Releases" right={
+      <span title={`Each merge into the default branch is matched to the first release published after it, from the newest listed pull requests. ${AGENT_COST_NOTE}`}>
+        what each shipped, matched by merge time · agent cost at list price
+      </span>
+    }>
+      <div data-board-releases>
+        {releases.length === 0 ? <p className="px-3 py-3 text-[13px] text-fg-muted">No published release read.</p> : (
+          <ul>
+            {releases.map((r) => (
+              <li key={r.tag} data-board-release={r.tag} className="grid grid-cols-[minmax(120px,0.9fr)_minmax(0,3fr)_auto] items-start gap-x-4 gap-y-1.5 border-b border-border px-3 py-2.5 last:border-b-0 @max-[760px]/pipe:grid-cols-1">
+                <div className="min-w-0">
+                  <button type="button" onClick={() => r.url && openExternal(r.url)} className="mono truncate text-[14px] font-semibold text-fg hover:underline" title={r.name ? `${r.name}\nOpen on GitHub` : 'Open on GitHub'}>{r.tag}</button>
+                  <div className="text-[12px] text-fg-muted" title={new Date(r.published_at).toLocaleString()}>
+                    {fmtAgo(r.published_at, now)}{r.prerelease ? ' · pre-release' : ''}
+                  </div>
                 </div>
-              </div>
-              <div className="flex min-w-0 flex-wrap gap-1">
-                {r.prs.length === 0 ? <span className="text-[11.5px] text-fg-faint">{r.partial ? 'its merges are older than the pull requests listed' : 'no listed pull request merged for it'}</span>
-                  : r.prs.map((n) => {
-                    const p = byNum.get(n)
-                    return (
-                      <button key={n} type="button" onClick={() => onOpen(n)} title={p?.title ?? `#${n}`}
-                        className="inline-flex max-w-[260px] items-center gap-1 rounded-full border border-[var(--app-hairline)] px-2 py-[1px] text-[11.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">
-                        <span className="num shrink-0">#{n}</span><span className="truncate">{p?.title}</span>
-                      </button>
-                    )
-                  })}
-                {r.partial && r.prs.length > 0 && <span className="self-center text-[11px] text-fg-faint" title="The listed pull requests may not reach back to the release before it">· older merges may be missing</span>}
-              </div>
-              <div className="text-right">
-                <div className="num text-[13px] font-semibold text-fg" title={AGENT_COST_NOTE}>{r.cost_usd > 0 ? `$${r.cost_usd.toFixed(2)}` : '–'}</div>
-                <div className="text-[11px] text-fg-faint">{r.prs.length} PR{r.prs.length === 1 ? '' : 's'}{r.sessions ? ` · ${r.sessions} session${r.sessions === 1 ? '' : 's'}` : ''}</div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+                <div className="flex min-w-0 flex-wrap gap-1.5">
+                  {r.prs.length === 0 ? <span className="text-[12px] text-fg-muted">{r.partial ? 'its merges are older than the pull requests listed' : 'no listed pull request merged for it'}</span>
+                    : r.prs.map((n) => {
+                      const p = byNum.get(n)
+                      return (
+                        <button key={n} type="button" onClick={() => onOpen(n)} title={p?.title ?? `#${n}`}
+                          className="inline-flex max-w-[320px] items-center gap-1.5 rounded-full border border-border-strong px-2.5 py-[2px] text-[12px] text-fg hover:border-accent/60 hover:text-accent">
+                          <span className="num shrink-0 text-fg-muted">#{n}</span><span className="truncate">{p?.title}</span>
+                        </button>
+                      )
+                    })}
+                  {r.partial && r.prs.length > 0 && <span className="self-center text-[12px] text-fg-muted" title="The listed pull requests may not reach back to the release before it">· older merges may be missing</span>}
+                </div>
+                <div className="text-right @max-[760px]/pipe:text-left">
+                  <div className="num text-[14px] font-semibold text-fg" title={AGENT_COST_NOTE}>{r.cost_usd > 0 ? `$${r.cost_usd.toFixed(2)}` : '–'}</div>
+                  <div className="text-[12px] text-fg-muted">{r.prs.length} PR{r.prs.length === 1 ? '' : 's'}{r.sessions ? ` · ${r.sessions} session${r.sessions === 1 ? '' : 's'}` : ''}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Panel>
   )
 }

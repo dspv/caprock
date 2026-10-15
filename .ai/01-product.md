@@ -74,6 +74,9 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
 8. **"What did all of this actually buy?" — the question after the bill.**
    - Evidence: the owner's own week (2026-10-04): a list-price total means little until it sits beside the pull requests it paid for, and the figure people want to post is "what my agents shipped".
    - Feature: the **Week** card — PRs, commits, cost per merged PR, who did what — computed locally and drawn to share ([04-ui.md § Week](04-ui.md#week)).
+9. **"With several agents on several branches, what is on its way to the next release, and where is each piece?"**
+   - Evidence: the owner, 2026-10-15, of a status report that listed RELEASE / IN WORK / NEXT with a bar per item (translated): "exactly this I want to see on the project-manager page".
+   - Feature: the **Work** page — one row per branch at its furthest stage, agent → PR → CI → merged → released, its live sessions attached, estimates only with a measured basis, and the next release's cadence per repository ([04-ui.md § Work](04-ui.md#work), [ADR-064](08-decisions.md)).
 
 ## Product principles
 
