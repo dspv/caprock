@@ -127,6 +127,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   rather than drawn smaller, and the key stays in the tooltip: a row
   measures itself and brings the chip back when it widens. Off macOS the
   folded keys still show on hover, now at full size.
+- **mail:** the Caprock Mail preview app reloads onto Caprock's new page
+  after Caprock updates (it used to keep showing the page from before the
+  update when the port stayed the same), and a click on its Dock icon
+  brings the window back.
+
 ## [0.117.5] - 2026-10-15
 
 ### Added
