@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CockpitCI, checkSummary } from './CockpitCI'
 import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 import { prChecks } from '@/lib/ci'
@@ -16,7 +16,12 @@ const RUNNING = { state: 'pending', passed: 2, failed: 0, pending: 1, items: [
 ] }
 const PASSED = { state: 'pass', passed: 1, failed: 0, pending: 0, items: [{ name: 'lint', state: 'pass' }] }
 
-afterEach(() => { forgetDeckAnswers(); localStorage.clear(); vi.unstubAllGlobals() })
+// The clock stands at `now` in every test. The block reads Date.now() as it
+// draws, and the fixtures were stamped when this file loaded: on a busy runner
+// the first test here started more than a second later, so "4m 00s" read
+// "4m 01s". Only Date is faked; timers stay real.
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'], now }) })
+afterEach(() => { forgetDeckAnswers(); localStorage.clear(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('the cockpit’s CI block', () => {
   it('counts a PR’s checks and the time since the first started', () => {

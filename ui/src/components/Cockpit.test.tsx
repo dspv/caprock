@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Event, SessionSummary, SubagentsNow, Summary } from '@/lib/api'
 
 const now = Date.now()
@@ -57,6 +57,11 @@ import { ORDER_KEY, resetOrderForTest } from '@/lib/cockpitorder'
 import { getSubagentFields, resetSubagentFieldsForTest, setSubagentFields } from '@/lib/subagentview'
 
 beforeEach(() => {
+  // The clock stands at `now` in every test. The fixtures are stamped when
+  // this file loads and the cockpit reads Date.now() as it draws, so a busy
+  // runner that reached the subagent tests ten seconds in read "10m 10s"
+  // where "10m 0Xs" was asked. Only Date is faked; timers stay real.
+  vi.useFakeTimers({ toFake: ['Date'], now })
   localStorage.clear()
   resetSpendPrefsForTest()
   resetSubagentFieldsForTest()
@@ -66,6 +71,8 @@ beforeEach(() => {
   h.summaries = {}
   h.summaryAsked = []
 })
+
+afterEach(() => { vi.useRealTimers() })
 
 /** Switch the spend details, open on the chart by default, to Numbers. */
 function showNumbers() {

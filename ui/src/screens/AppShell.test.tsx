@@ -83,7 +83,7 @@ vi.mock('@/lib/api', async (orig) => {
         sessions.push(chatSession(id))
         return { session_id: id, cwd: chatSession(id).cwd }
       },
-      summary: async () => ({ cost_usd: 1.25, projects: [{ project: 'app', dir: '/w/app', cost_usd: 1.25, tokens: 0, sessions: 2 }], rate_limits: { five_hour: { used_percentage: 40, resets_at: 0 } } }),
+      summary: async () => ({ cost_usd: 1.25, savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 }, projects: [{ project: 'app', dir: '/w/app', cost_usd: 1.25, tokens: 0, sessions: 2 }], rate_limits: { five_hour: { used_percentage: 40, resets_at: 0 } } }),
       signal: async (id: string, action: string) => { spawned.signals.push([id, action]) },
       permission: async () => ({ permission: null }),
       diff: async () => ({ root: '/w/app', branch: 'main', files: [], stat: '' }),
