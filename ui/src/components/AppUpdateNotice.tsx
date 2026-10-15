@@ -11,8 +11,9 @@
  * dashboard's banner (UpdateBanner).
  *
  * Reading `/v1/update` never touches the network; the daemon's own check
- * (at most every 6 h, conditional, only while Settings → Privacy allows it)
- * is what finds a release. The app fetches `latest.json` only on a click.
+ * (due hourly, conditional, only while Settings → Updates allows it)
+ * is what finds a release. The app fetches `latest.json` on a click, or by
+ * itself with Update automatically chosen (AppAutoUpdate).
  */
 import { useEffect, useRef, useState } from 'react'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'

@@ -1130,14 +1130,28 @@ shows what is new, or **Not now** to hide that version.
 
 - **Checking.** On its first launch the app asks once: *Check for updates
   automatically?* With **Yes**, Caprock asks GitHub for the newest version
-  number at most every 6 hours; Settings → *Privacy* turns it off again.
-  With **No**, nothing is checked until you ask: **Caprock → Check for
-  Updates…** on macOS, **Check for Updates…** in the tray menu, or *Check for
-  updates* in the command palette (⌘K).
+  number once an hour, and soon after the computer wakes; Settings →
+  *Updates* turns it off again and has **Check now**. With **No**, nothing
+  is checked until you ask: **Caprock → Check for Updates…** on macOS,
+  **Check for Updates…** in the tray menu, *Check for updates* in the
+  command palette (⌘K), or **Check now** in Settings → *Updates*.
+- **Ask me, or Update automatically.** Settings → *Updates* → *New version*
+  chooses what happens when one is out. **Ask me** (the default) is the card
+  above. **Update automatically** — also *Always update automatically* on
+  the card — downloads it in the background and restarts into it only when
+  no agent is working or waiting for your answer in any tab, you have left
+  Caprock alone for two minutes, and nothing you typed into a text field is
+  waiting to be sent. Until then it waits and looks again. Ten seconds
+  before the restart a card says *Updating to vX in 10 s*, with **Not now**
+  (that version waits an hour) and **Restart now**; pressing a key or
+  clicking anywhere else also calls it off until the next quiet moment.
+  After the restart one line says *Updated to vX · What's new*. Sessions and
+  tabs come back exactly as after a click on Update.
 - **What is sent.** The automatic check asks GitHub which release is the
   latest. *Update* and *Check for Updates…* also fetch the release's
   `latest.json` and, when you update, the new app from GitHub's release
-  downloads. None of these carries anything about you or your work: no
+  downloads; with **Update automatically**, the app fetches those two by
+  itself once the check finds a newer version. None of these carries anything about you or your work: no
   account, no identifier, not even your version.
 - **What is checked.** Every update is signed with Caprock's release key,
   and the app installs nothing whose signature or version does not match.

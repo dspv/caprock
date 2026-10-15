@@ -8,7 +8,8 @@
  * What tells the page a newer release exists is still the daemon's release
  * check (`/v1/update`, off until the user turns it on). The shell fetches
  * `latest.json` only when asked to: a click on Update or on Check for
- * Updates.
+ * Updates, or — with Update automatically chosen — once the daemon reports
+ * a newer version (components/AppAutoUpdate).
  */
 import { useSyncExternalStore } from 'react'
 import { isTauri } from './appmode'
@@ -21,6 +22,8 @@ export type AppUpdatePhase =
   | { phase: 'up_to_date' }
   | { phase: 'available'; next: string }
   | { phase: 'downloading'; next: string; downloaded: number; total: number | null }
+  /** Downloaded and verified, held until the install (Update automatically). */
+  | { phase: 'ready'; next: string }
   | { phase: 'installing'; next: string }
   | { phase: 'failed'; error: string }
 
@@ -62,6 +65,8 @@ export const appUpdate = {
   refresh: () => shell.updateStatus().then(set, () => { /* an older shell: no updater */ }),
   /** Fetch latest.json once (Check for Updates). */
   check: () => shell.updateCheck().then(set, () => {}),
+  /** Download and verify in the background, install later (Update automatically). */
+  download: () => shell.updateDownload().then(set, () => {}),
   /** Download, verify, install and restart; resolves only if it did not. */
   install: () => shell.updateInstall().then(set, () => {}),
   /** The first-launch question was answered. */
@@ -132,7 +137,8 @@ export function offerFor(info: AppUpdateInfo | undefined, st: UpdateStatus | und
       case 'downloading': return { kind: 'progress', next: v(info.next), pct: info.total ? Math.min(100, Math.floor((info.downloaded / info.total) * 100)) : null }
       case 'installing': return { kind: 'installing', next: v(info.next) }
       case 'failed': return { kind: 'failed', error: info.error }
-      case 'available': return dismissed === v(info.next) ? { kind: 'none' } : { kind: 'install', next: v(info.next) }
+      case 'available':
+      case 'ready': return dismissed === v(info.next) ? { kind: 'none' } : { kind: 'install', next: v(info.next) }
       default: break
     }
     const latest = st?.enabled ? st.latest : undefined

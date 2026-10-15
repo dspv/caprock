@@ -68,6 +68,7 @@ import { ShareDialog } from '@/components/Share'
 import { usePromptSync } from '@/lib/nudges'
 import { AppUpdateToast } from '@/components/AppUpdateToast'
 import { AppUpdateAsk } from '@/components/AppUpdateAsk'
+import { AppAutoUpdate } from '@/components/AppAutoUpdate'
 import { appUpdate } from '@/lib/appupdate'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { ChatView } from '@/components/ChatView'
@@ -1865,6 +1866,7 @@ export function AppShell() {
       <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} session={focused?.kind === 'session' && workspaceShown ? focusedSession : undefined} version={version} figures={!prefs.sidebar} />
       <AppUpdateToast />
       {isTauri() && <AppUpdateAsk />}
+      {isTauri() && <AppAutoUpdate />}
 
       {feedbackAt !== null && <FeedbackDialog screen={feedbackAt} onClose={() => setFeedbackAt(null)} />}
       {toast && (

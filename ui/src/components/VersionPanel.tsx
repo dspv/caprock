@@ -101,7 +101,7 @@ export function VersionPanel({ shown, title, status, onStatus }: {
           </div>
           <p className="text-fg-muted" data-checked>
             {st?.enabled === false
-              ? 'Release checks are off in Settings → Privacy.'
+              ? 'Release checks are off in Settings → Updates.'
               : st?.checked_at ? `Checked ${fmtAgo(st.checked_at, now)}` : 'Not checked yet'}
           </p>
           {apart && (
