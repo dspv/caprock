@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.118.0] - 2026-10-15
+
 ### Added
 
 - **app:** a live session's row on Home takes you into the running session.
@@ -68,6 +70,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   *Pipeline* in its menu and *Open Pipeline →* on Home take you to that
   tab, so the page is drawn once and, behind other tabs, reads nothing. The
   tab is kept across restarts.
+- **app:** where you type is easier to find, quietly. The Chat view's field
+  carries a hint of the accent at rest — a faint tint and a hairline edge,
+  a little stronger with the focus — on every theme and terminal palette.
+  In a Claude Code terminal, the rows of its input box (between the two
+  rules, at the `❯` prompt) sit on a faint band of the terminal's own
+  background, lifted a step: it follows the box as it grows or moves, leaves
+  any cell Claude Code coloured alone, reads only the bottom rows of the
+  screen, and draws nothing for other agents, shells, dialogs and menus.
 - **app:** keys named after what they open. ⌘D opens the Dashboard (⌘0
   still does), ⌘P the Pipeline (⇧⌘B still works), ⇧⌘T the theme picker,
   and ⇧⌘W Work; ⌘F stays Find and ⌘T New shell. On Windows and Linux they
@@ -106,16 +116,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **picker:** an arrow key pressed in the folder picker the moment a
+  folder's entries appear is no longer lost; the selection used to be
+  cleared just after it was made.
+- **app:** the theme picker opens whole, above everything. From the
+  sidebar's footer its palettes were cut off at the sidebar's edge and the
+  terminal drew over them; it now opens over the whole window, kept inside
+  it on every edge at any sidebar width and with the footer folded, and
+  scrolls in a window shorter than itself. Opening it puts the focus on the
+  palette in use; Esc, or tabbing past the last palette, closes it and gives
+  the focus back to the button.
+- **app:** the sidebar footer's shortcuts are readable. Folded, the keys
+  above the icons were small faint 10px chips; now every key in the footer
+  is the New agent chip's size, folded or not. Where one has no room —
+  beside a row's words, or over a folded icon — it is left out whole
+  rather than drawn smaller, and the key stays in the tooltip: a row
+  measures itself and brings the chip back when it widens. Off macOS the
+  folded keys still show on hover, now at full size.
 - **mail:** the Caprock Mail preview app reloads onto Caprock's new page
   after Caprock updates (it used to keep showing the page from before the
   update when the port stayed the same), and a click on its Dock icon
   brings the window back.
-- **windows:** Caprock no longer flashes console windows that steal the
-  keyboard focus. The daemon ran without a console, so every git, gh or
-  `claude -p` it started opened a window of its own for a fraction of a
-  second, every few seconds, and typing in other windows came out ragged
-  (user report on Windows 10). Every child now starts with a hidden
-  console, and a test keeps it that way.
 
 ## [0.117.5] - 2026-10-15
 
@@ -135,14 +156,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
-- **app:** where you type is easier to find, quietly. The Chat view's field
-  carries a hint of the accent at rest — a faint tint and a hairline edge,
-  a little stronger with the focus — on every theme and terminal palette.
-  In a Claude Code terminal, the rows of its input box (between the two
-  rules, at the `❯` prompt) sit on a faint band of the terminal's own
-  background, lifted a step: it follows the box as it grows or moves, leaves
-  any cell Claude Code coloured alone, reads only the bottom rows of the
-  screen, and draws nothing for other agents, shells, dialogs and menus.
 
 - **brain:** the sidebar's Second Brain block is a small banner while it is
   empty, instead of a bare 0 and two faint lines: a faint graph breathing
@@ -170,23 +183,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
-- **app:** the sidebar footer's shortcuts are readable. Folded, the keys
-  above the icons were small faint 10px chips; now every key in the footer
-  is the New agent chip's size, folded or not. Where one has no room —
-  beside a row's words, or over a folded icon — it is left out whole
-  rather than drawn smaller, and the key stays in the tooltip: a row
-  measures itself and brings the chip back when it widens. Off macOS the
-  folded keys still show on hover, now at full size.
-- **app:** the theme picker opens whole, above everything. From the
-  sidebar's footer its palettes were cut off at the sidebar's edge and the
-  terminal drew over them; it now opens over the whole window, kept inside
-  it on every edge at any sidebar width and with the footer folded, and
-  scrolls in a window shorter than itself. Opening it puts the focus on the
-  palette in use; Esc, or tabbing past the last palette, closes it and gives
-  the focus back to the button.
-- **picker:** an arrow key pressed in the folder picker the moment a
-  folder's entries appear is no longer lost; the selection used to be
-  cleared just after it was made.
 - **app:** typing a name in New project's folder field now searches the
   folder it is in. `~/dev/cap` used to empty the list; now it lists the
   folders of `~/dev` holding *cap* — the ones starting with it first, the

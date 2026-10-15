@@ -73,6 +73,10 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — 0.118.0: Work, Pipeline in the dashboard, Sunlight, and keys named after what they open
+
+A minor release because it carries features (owner rule, 2026-10-15: a feature is a minor release, fixes are patches). The Work page (`#/work`, ⇧⌘W) lists every piece of work on its way to a release, from `GET /v1/work` (ADR-064); the Pipeline is a page of the dashboard; Home's session rows take you into the running session and end an idle one Caprock started; the Sunlight theme, a theme picker that is never clipped, readable footer key chips, ⌘D/⌘P/⇧⌘T/⇧⌘W, a quieter Get premium and Second Brain drawn as a brain made of a graph. The changelog entries for #633, #634 and #636 had been merged into the 0.117.5 section by the landing queue's union merge; they are moved to 0.118.0, where they shipped.
+
 ### 2026-10-15 — unreleased: Work in the dashboard, and keys named after what they open
 
 Work (PR C of the Work board) is a page of the dashboard: `#/work`, second
