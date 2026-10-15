@@ -9,6 +9,18 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **mail:** the AI assistant works with the subscriptions you already have.
+  *Summarise* and *Draft reply* can go through your own logged-in Claude
+  Code, Codex or Gemini CLI (run headless, with no tools, hooks or session
+  file), through an API key for Anthropic, OpenAI, OpenRouter or DeepSeek
+  (kept in your keychain, never shown again), or through a local model
+  server as before. *Automatic*, the default, uses the first of claude,
+  codex, gemini and a local server this computer has, so with Claude Code
+  installed turning AI on is the only step. Settings show which provider
+  answers and where the mail text goes; it is sent only when you click an
+  AI action, and the thread reaches the model fenced as data it must not
+  follow.
+
 - **app:** a live session's row on Home takes you into the running session.
   Click anywhere on the row (or Enter on it) and the session's tab comes to
   the front, as its ⌘N does, or opens if it has none; *Go to session ↗* with

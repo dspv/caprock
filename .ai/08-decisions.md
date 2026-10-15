@@ -3275,11 +3275,11 @@ dashboard and a desktop app on three OSes.
   no database file, no goroutine, no connection; `GET /v1/mail/state` answers
   from nothing. Adding an account is the switch, removing the last one ends
   the traffic. Once on, Caprock talks only to the IMAP and SMTP servers the
-  user typed in, and — only when local AI is turned on in Mail's settings —
-  to the model server at the address shown there (Ollama on loopback by
-  default) — and, for an account signed in with Google or Microsoft, to
-  that provider (below). Nothing is sent to Caprock. The add-account form
-  says so.
+  user typed in, and — only when AI is turned on in Mail's settings and the
+  user runs an AI action — to the AI provider chosen there (amended
+  2026-10-15, below) — and, for an account signed in with Google or
+  Microsoft, to that provider (below). Nothing is sent to Caprock. The
+  add-account form says so.
 - **Passwords in the OS keychain**, a 0600 file only where there is none
   (Linux without a Secret Service). iCloud has no OAuth for mail, so an
   app-specific password stays the only way there; any IMAP host takes a
@@ -3358,6 +3358,33 @@ dashboard and a desktop app on three OSes.
   through the nudge system after two days of use, only while no account
   exists; opening Mail or dismissing it answers it.
 
+- **AI through the provider the user picks** (amended 2026-10-15; the
+  owner, translated: "Why only Ollama — just let the user authorise any
+  subscription they want, like Caprock does now"). Until then the
+  assistant spoke only to an OpenAI-compatible server on the machine. Now
+  *Summarise* and *Draft reply* go to one provider chosen in Mail's
+  settings: the user's own logged-in coding CLI — Claude Code, Codex or
+  Gemini CLI, run headless with no tool, no hooks, no session file and the
+  thread on stdin (the Second Brain pattern of ADR-063) — an API with the
+  user's key (Anthropic's Messages API; OpenAI, OpenRouter or DeepSeek
+  through the OpenAI-compatible API), or the local server as before.
+  *Automatic*, the default, takes the first of claude → codex → gemini →
+  local that this computer has, so with `claude` installed nothing needs
+  setting up beyond turning AI on. What is sent where: the last eight
+  messages of the thread (sender, date, subject, text), the user's
+  instruction for a draft, and the account's name, to that CLI's vendor
+  through the CLI's own login (Anthropic, OpenAI, Google), or to
+  api.anthropic.com, api.openai.com, openrouter.ai (which passes it to the
+  model's vendor), api.deepseek.com or the local address — only when the
+  user clicks an AI action, never in the background. The settings panel
+  states the destination for the chosen provider under the picker. Keys
+  go through `internal/secret` (the macOS login keychain, else a 0600 file
+  in the data directory), never `mail.db`, `config.json` or a log, and no
+  route returns one. Mail content is fenced as data between nonce lines
+  the instructions name, and no CLI is given a tool, so a message cannot
+  make the model act. Turning AI off, or picking the local server, stops
+  it; a key is removed from the same panel.
+
 - **Adding an account is an address and a password.** Server settings come
   from a table of about 40 consumer and hosting services, each entry citing
   the provider's own settings page (QQ Mail, NetEase, Naver and Spectrum are
@@ -3368,7 +3395,8 @@ dashboard and a desktop app on three OSes.
   but where its mail already lives (rule 4).
 
 **Consequences.** One more outbound path exists, to destinations the user
-chose; the binary grows by the IMAP, SMTP and MIME libraries. Not built:
+chose (the mail servers, and the AI provider while AI is on); the binary
+grows by the IMAP, SMTP and MIME libraries. Not built:
 server-side drafts, notifications, rules, mail on a paired phone
 (attachments and the iframe's images need the device token, which plain URLs
 do not carry).
