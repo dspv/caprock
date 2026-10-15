@@ -153,8 +153,13 @@ func TestTwoDaemonsOneControlsTheOther(t *testing.T) {
 	// Revoked on the target: the open terminal closes at once with 1008,
 	// and the proxy says revoked.
 	runCLI(t, caprock, tEnv, "machines", "revoke", name)
-	if code := term.waitClosed(t); code != websocket.StatusPolicyViolation {
-		t.Fatalf("after revoke the terminal closed with %d, want 1008", code)
+	select {
+	case code := <-term.closed:
+		if code != websocket.StatusPolicyViolation {
+			t.Fatalf("after revoke the terminal closed with %d, want 1008", code)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatalf("after revoke the terminal stayed open\ntarget log:\n%s\ncontroller log:\n%s", target.log(), controller.log())
 	}
 	var refused struct {
 		Status string `json:"status"`
@@ -279,15 +284,4 @@ func (lt *localTerm) waitFor(t *testing.T, want string) {
 	lt.mu.Lock()
 	defer lt.mu.Unlock()
 	t.Fatalf("the terminal through the proxy never showed %q; it showed %q", want, lt.buf.String())
-}
-
-func (lt *localTerm) waitClosed(t *testing.T) websocket.StatusCode {
-	t.Helper()
-	select {
-	case code := <-lt.closed:
-		return code
-	case <-time.After(30 * time.Second):
-		t.Fatal("the terminal through the proxy stayed open")
-		return 0
-	}
 }
