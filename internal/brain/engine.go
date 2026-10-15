@@ -56,7 +56,11 @@ type Engine struct {
 	Config func() config.BrainConfig
 	// ClaudeFound reports whether a claude binary is installed.
 	ClaudeFound func() bool
-	Runner      Runner
+	// HandoffOn reports whether new sessions are handed what the last one
+	// left (Settings → Memory between sessions), which is how memories reach
+	// agents. Nil reads as off.
+	HandoffOn func() bool
+	Runner    Runner
 
 	mu      sync.Mutex
 	running bool
@@ -294,13 +298,18 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 	}
 	e.startReading(ctx, c, in.Passages, started)
 	res, callErr := e.Runner.Run(ctx, Request{System: System, Prompt: in.Prompt, Model: e.model()})
-	e.stopReading()
+	if callErr == nil {
+		e.setPhase(PhaseLinking)
+	}
 	run.FinishedAt = e.now().UnixMilli()
 	run.TokensIn, run.TokensOut, run.CostUSD = res.TokensIn, res.TokensOut, res.CostUSD
 	if res.Model != "" {
 		run.Model = res.Model
 	}
 	if callErr != nil {
+		// The read ends once it is recorded, so the frame that says so
+		// finds it in the status.
+		defer e.stopReading()
 		if ctx.Err() != nil {
 			return true, ctx.Err()
 		}
@@ -323,6 +332,7 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 		}
 		return store.SetBrainRunNodes(ctx, q, id, len(added))
 	})
+	e.stopReading()
 	if err != nil {
 		return true, err
 	}
@@ -421,6 +431,15 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 	return added, nil
 }
 
+// A read's phases, in order: claude is asked for the memories, then what it
+// returned is stored and linked into the graph. Reading the session's prose
+// from the database comes before both and takes milliseconds; it is not a
+// phase of its own.
+const (
+	PhaseExtracting = "extracting"
+	PhaseLinking    = "linking"
+)
+
 // Reading is the session a read is asking claude about, for the status's
 // "reading now" line.
 type Reading struct {
@@ -433,11 +452,16 @@ type Reading struct {
 	// this read began. Unix ms.
 	LastEventAt int64 `json:"last_event_at,omitempty"`
 	StartedAt   int64 `json:"started_at"`
+	// Phase is PhaseExtracting while claude is asked, PhaseLinking while
+	// its memories are stored and linked.
+	Phase string `json:"phase"`
+	// Passages is how many passages of the session's prose were sent.
+	Passages int `json:"passages"`
 }
 
 // startReading records the session being read and says so on the bus.
 func (e *Engine) startReading(ctx context.Context, c store.BrainCandidate, passages []store.BrainPassage, at int64) {
-	r := &Reading{SessionID: c.SessionID, Project: c.Project, LastEventAt: c.LastEventAt, StartedAt: at}
+	r := &Reading{SessionID: c.SessionID, Project: c.Project, LastEventAt: c.LastEventAt, StartedAt: at, Phase: PhaseExtracting, Passages: len(passages)}
 	if title, agent, last, err := store.BrainSessionInfo(ctx, e.Store.DB(), c.SessionID); err == nil {
 		r.Title, r.Agent = title, agent
 		if last > 0 {
@@ -457,6 +481,16 @@ func (e *Engine) startReading(ctx context.Context, c store.BrainCandidate, passa
 	e.reading = r
 	e.mu.Unlock()
 	e.publishProgress()
+}
+
+// setPhase moves the read on to its next phase. No frame: linking takes
+// milliseconds, and the read's end follows at once with one.
+func (e *Engine) setPhase(p string) {
+	e.mu.Lock()
+	if e.reading != nil {
+		e.reading.Phase = p
+	}
+	e.mu.Unlock()
 }
 
 func (e *Engine) stopReading() {
@@ -493,9 +527,23 @@ type Status struct {
 	ClaudeFound bool   `json:"claude_found"`
 	Model       string `json:"model"`
 	DailyTokens int64  `json:"daily_tokens"`
-	// Spent is what the reads used in the last 24 hours.
-	Spent   int64 `json:"spent"`
-	Running bool  `json:"running"`
+	// Spent is what the reads used in the last 24 hours; SpentUSD what
+	// claude reported they cost (at API list price), summed.
+	Spent    int64   `json:"spent"`
+	SpentUSD float64 `json:"spent_usd"`
+	// Stage is where the build is, one of the Stage* values.
+	Stage string `json:"stage"`
+	// LastRead is when the newest read that kept something finished, unix ms.
+	LastRead int64 `json:"last_read,omitempty"`
+	// NewToday is the memories added since local midnight, by hand or read.
+	NewToday int `json:"new_today"`
+	// Topics and Links are the graph's topics and the links between nodes.
+	Topics int `json:"topics"`
+	Links  int `json:"links"`
+	// Handoff is how the memories reach agents: a new session in a
+	// repository is handed up to five of its memories with the handoff.
+	Handoff Handoff `json:"handoff"`
+	Running bool    `json:"running"`
 	// Pending is how many sessions wait to be read (counted up to 200).
 	Pending int `json:"pending"`
 	// Reading is the session being read right now, while a read runs.
@@ -512,6 +560,29 @@ type Status struct {
 	LastError string `json:"last_error,omitempty"`
 	// Recent is the newest reads that did something.
 	Recent []store.BrainRun `json:"recent"`
+}
+
+// The build's stages, as Status.Stage names them.
+const (
+	StageOff        = "off"        // not turned on, or paused
+	StageNoClaude   = "no_claude"  // on, but no claude to read with
+	StageLimit      = "limit"      // sessions wait, today's tokens are used
+	StageExtracting = "extracting" // claude is reading a session
+	StageLinking    = "linking"    // a read's memories are being stored
+	StageWaiting    = "waiting"    // sessions wait; the next read is due
+	StageUpToDate   = "up_to_date" // nothing waits
+)
+
+// Handoff is how often memories reached agents: sessions started that were
+// handed some, and how many memories in all, in the last 24 hours and since
+// it was first counted (migration 0058).
+type Handoff struct {
+	// On is whether new sessions are handed anything at all.
+	On          bool `json:"on"`
+	Sessions24h int  `json:"sessions_24h"`
+	Memories24h int  `json:"memories_24h"`
+	Sessions    int  `json:"sessions"`
+	Memories    int  `json:"memories"`
 }
 
 // Build is how far the extraction has got through the sessions in reach.
@@ -630,7 +701,46 @@ func (e *Engine) Status(ctx context.Context) Status {
 	if runs, err := store.LastBrainRuns(ctx, e.Store.DB(), 5); err == nil {
 		st.Recent = runs
 	}
+	e.measure(ctx, &st)
+	st.Stage = stage(st, e.Config().Auto != nil && *e.Config().Auto)
 	return st
+}
+
+// measure fills in the counted figures: cost, the last read, today's new
+// memories, the graph's size and the handoff's reach. A failed count stays 0.
+func (e *Engine) measure(ctx context.Context, st *Status) {
+	db := e.Store.DB()
+	now := e.now()
+	day := now.Add(-24 * time.Hour).UnixMilli()
+	st.SpentUSD, _ = store.BrainCostSince(ctx, db, day)
+	st.LastRead, _ = store.BrainLastRead(ctx, db)
+	y, m, d := now.Date()
+	st.NewToday, _ = store.CountBrainMemoriesSince(ctx, db, time.Date(y, m, d, 0, 0, 0, 0, now.Location()).UnixMilli())
+	st.Topics, st.Links, _ = store.BrainGraphCounts(ctx, db)
+	if e.HandoffOn != nil {
+		st.Handoff.On = e.HandoffOn()
+	}
+	st.Handoff.Sessions24h, st.Handoff.Memories24h, _ = store.BrainHandedSince(ctx, db, day)
+	st.Handoff.Sessions, st.Handoff.Memories, _ = store.BrainHandedSince(ctx, db, 0)
+}
+
+// stage names where the build is, from the status it is part of.
+func stage(st Status, on bool) string {
+	switch {
+	case !on:
+		return StageOff
+	case st.Reading != nil && st.Reading.Phase == PhaseLinking:
+		return StageLinking
+	case st.Reading != nil:
+		return StageExtracting
+	case !st.ClaudeFound:
+		return StageNoClaude
+	case st.Pending > 0 && st.Spent >= st.DailyTokens:
+		return StageLimit
+	case st.Pending > 0:
+		return StageWaiting
+	}
+	return StageUpToDate
 }
 
 // Estimate is what reading back to a moment would take: sessions with

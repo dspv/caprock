@@ -538,7 +538,12 @@ runs no lookup.
 A served handoff also carries up to five of the repository's Second Brain
 memories (§ Second Brain), pinned first then newest, each `- kind: title —
 summary` with the summary clipped to 160 runes, in a budget of 700 runes of
-their own after the passage; none when the repository has none.
+their own after the passage; none when the repository has none. How many
+went is recorded on the session (migration 0058: `ALTER TABLE sessions ADD
+COLUMN handoff_brain INTEGER NOT NULL DEFAULT 0` and `CREATE INDEX
+idx_sessions_handoff_brain ON sessions(started_at) WHERE handoff_brain >
+0`), so the Second Brain status can say how often agents start with its
+memories (§ Second Brain, `handoff`).
 
 **Measuring it.** Whenever there is a passage to hand over, the session records
 whether it got it: `sessions.handoff` is `1` (served) or `2` (held back);
@@ -3328,23 +3333,40 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   the build reads the status again; a screen showing memories ignores it.
 - **The automatic extraction** (`internal/brain`, free). `auto` in the
   status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
-  daily_tokens, spent, running, pending, since?, backfill_since?,
-  last_wake?, next_wake?, last_error?, recent: [BrainRun], reading?,
-  build?}`: `chosen` once
+  daily_tokens, spent, spent_usd, stage, last_read?, new_today, topics,
+  links, handoff, running, pending, since?, backfill_since?, last_wake?,
+  next_wake?, last_error?, recent: [BrainRun], reading?, build?}`: `chosen` once
   the user has answered, `enabled` when on (only then does it read; no
   licence is looked at), `last_wake` and `next_wake` unix ms — `next_wake`
   absent while off, at or before now just after turning on or while a wake
   runs, so a screen can say when the first memories may come — `spent`
   the tokens of the reads in the last 24 hours, `pending` the sessions
   waiting (counted up to 200), `recent` the last reads that were not
-  skipped. `BrainRun` is `{id, session_id, from_event_id,
+  skipped. `spent_usd` is the reads' `cost_usd` in the last 24 hours —
+  what claude reported, at API list price; `last_read` when the newest read
+  with status `ok` finished; `new_today` the memories (not entities) added
+  since the daemon's local midnight, by hand or read; `topics` the topic
+  entities and `links` the rows of `brain_edges`. `stage` is where the
+  build is: `off` (not on), `extracting` or `linking` (a read is asking
+  claude, or storing what it returned), `no_claude`, `limit` (sessions
+  wait and `spent` has reached `daily_tokens`), `waiting` (sessions wait
+  for the next wake), `up_to_date` (none waits) — in that order of
+  precedence. `handoff` is how memories reach agents: `{on, sessions_24h,
+  memories_24h, sessions, memories}` — `on` whether Memory between sessions
+  is on (without it no session is handed anything), then the sessions
+  started in the last 24 hours, and in all, that were handed Second Brain
+  memories with their handoff and how many (`sessions.handoff_brain`,
+  § SessionStart handoff). `BrainRun` is `{id, session_id, from_event_id,
   through_event_id, status: ok | failed | skipped, model?, tokens_in,
   tokens_out, cost_usd, nodes, error?, started_at, finished_at, project?,
   title?, agent?}`; `title` is the session's own name, else its first
   stored prompt, and `agent` its agent, joined in.
 - **What it reads now, and how far it is.** `reading` is present while a
   read is asking `claude` about a session: `{session_id, title?, agent?,
-  project?, last_event_at?, started_at}` — `title` the session's own name,
+  project?, last_event_at?, started_at, phase, passages}` — `phase`
+  `extracting` while claude is asked, `linking` while its memories are
+  stored and linked (no frame of its own; it lasts milliseconds),
+  `passages` how many passages of prose were sent; `title` the session's own name,
   else its first prompt, flattened and clipped to 80 runes; `last_event_at`
   when the session last did something and `started_at` when this read
   began (unix ms). `build` is present while it is on: `{from, sessions,

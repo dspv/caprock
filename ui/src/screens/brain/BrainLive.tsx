@@ -13,7 +13,8 @@
  * - **Sessions** — `auto.build`: read of all in reach, "from the last 30
  *   days", with a bar.
  * - **Memories found** — the build's count, ticking up as reads land.
- * - **Today** — `spent` of `daily_tokens`, with a bar.
+ * - **Last 24 hours** — `spent` of `daily_tokens`, with a bar, and
+ *   `spent_usd`, what claude reported the reads cost at API list price.
  * - **Where it comes from** — `build.sources`: each project, sessions read
  *   and waiting, memories kept.
  * - **Just read** — `recent`, the last three reads.
@@ -28,17 +29,20 @@
  * the sidebar card draws: sparks fly from the agents into it while it
  * reads, and a point lights up as each memory lands.
  *
- * Not building and up to date, it is one quiet line (BrainLiveLine).
+ * On top sits the header strip (BrainStrip): the state, the bar, the step
+ * a read is at and what the brain gives. Not building, the strip is all the
+ * screen shows of the extraction, above the graph.
  */
 import { useEffect, useRef, useState } from 'react'
 import { api, errText, type BrainAutoStatus } from '@/lib/api'
 import { brainActivity, buildFigures, isBuilding, tokensShort, useBrainLanded } from '@/lib/brain'
-import { fmtAgo } from '@/lib/format'
+import { fmtAgo, fmtUSD } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { agentName } from '@/components/Characters'
 import { useAgentsUsed } from '@/components/BrainAgents'
 import { BrainOrb } from '@/components/BrainOrb'
 import '@/components/BrainLive.css'
+import { BrainStrip } from './BrainStrip'
 
 const ONE_MILLION = 1_000_000
 
@@ -84,21 +88,6 @@ function Card({ label, children, className = '' }: { label: string; children: Re
   )
 }
 
-/** Pause (off) and Resume (on again, the reach kept). */
-function PauseButton({ auto, onChanged }: { auto: BrainAutoStatus; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false)
-  const flip = () => {
-    setBusy(true)
-    api.brainSettings({ auto: !auto.on }).then(() => { setBusy(false); onChanged() }, () => { setBusy(false); onChanged() })
-  }
-  return (
-    <button type="button" disabled={busy} onClick={flip} data-brain-pause
-      className="rounded-[7px] border border-border px-2.5 py-1 text-[12.5px] text-fg-muted hover:border-border-strong hover:text-fg disabled:opacity-50">
-      {auto.on ? 'Pause' : 'Resume'}
-    </button>
-  )
-}
-
 /** The one thing wrong, in words, with the one action that fixes it. */
 function Problem({ auto, onChanged }: { auto: BrainAutoStatus; onChanged: () => void }) {
   const [err, setErr] = useState('')
@@ -127,7 +116,7 @@ function Problem({ auto, onChanged }: { auto: BrainAutoStatus; onChanged: () => 
   )
 }
 
-export function BrainLive({ auto, onChanged, kinds, count }: { auto: BrainAutoStatus; onChanged: () => void; kinds: string[]; count: number }) {
+export function BrainLive({ auto, onChanged, kinds, count, owner = true }: { auto: BrainAutoStatus; onChanged: () => void; kinds: string[]; count: number; owner?: boolean }) {
   const now = useNow(1000)
   const agents = useAgentsUsed()
   const landed = useBrainLanded()
@@ -140,16 +129,7 @@ export function BrainLive({ auto, onChanged, kinds, count }: { auto: BrainAutoSt
   const nextIn = auto.next_wake && auto.next_wake > now ? Math.ceil((auto.next_wake - now) / 1000) : 0
   return (
     <section className="grid gap-3" aria-label="Building Second Brain" data-brain-live={building ? 'building' : 'idle'}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className={`h-[9px] w-[9px] shrink-0 rounded-full ${building ? 'brain-live-dot bg-accent' : 'bg-fg-faint'}`} aria-hidden />
-        <h2 className="text-[16px] font-semibold text-fg">
-          {!auto.on ? 'Paused' : building ? 'Building your Second Brain' : 'Up to date'}
-        </h2>
-        <span className="text-[13px] text-fg-muted">
-          {!auto.on ? '· nothing is read until you resume' : building ? `· your own Claude (${auto.model}) is reading your sessions` : '· a session is read 10 minutes after it goes quiet'}
-        </span>
-        <span className="ml-auto"><PauseButton auto={auto} onChanged={onChanged} /></span>
-      </div>
+      <BrainStrip auto={auto} memories={count} onChanged={onChanged} owner={owner} />
 
       <Problem auto={auto} onChanged={onChanged} />
 
@@ -188,10 +168,10 @@ export function BrainLive({ auto, onChanged, kinds, count }: { auto: BrainAutoSt
           <Ticker value={f?.memories ?? 0} className="text-[22px] font-semibold text-fg" />
           <span className="text-[12px] text-fg-muted">so far — each lands in the graph</span>
         </Card>
-        <Card label="Today">
+        <Card label="Last 24 hours">
           <span className="text-[15px] text-fg"><span className="num text-[22px] font-semibold">{tokensShort(auto.spent)}</span><span className="text-fg-muted"> of {tokensShort(auto.daily_tokens)}</span></span>
           <Bar share={spentShare} label="Tokens used today" />
-          <span className="text-[12px] text-fg-muted">tokens, your daily limit</span>
+          <span className="text-[12px] text-fg-muted">tokens of your daily limit · {fmtUSD(auto.spent_usd ?? 0)} at API list price</span>
         </Card>
       </div>
       </div>
@@ -232,20 +212,5 @@ export function BrainLive({ auto, onChanged, kinds, count }: { auto: BrainAutoSt
         </div>
       )}
     </section>
-  )
-}
-
-/** On and up to date, or paused, with memories: one quiet line, and a way back in. */
-export function BrainLiveLine({ auto, onChanged }: { auto: BrainAutoStatus; onChanged: () => void }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-[13px] text-fg-muted" data-brain-live-line>
-      <span className={`h-[7px] w-[7px] rounded-full ${auto.on ? 'bg-accent' : 'bg-fg-faint'}`} aria-hidden />
-      <span>
-        {auto.on
-          ? <>Up to date · new sessions are read as they finish · {tokensShort(auto.spent)} of {tokensShort(auto.daily_tokens)} tokens today</>
-          : 'Paused · nothing new is read'}
-      </span>
-      {!auto.on && <PauseButton auto={auto} onChanged={onChanged} />}
-    </div>
   )
 }

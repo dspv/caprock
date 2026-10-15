@@ -1447,6 +1447,32 @@ export interface BrainAutoStatus {
   reading?: BrainReading
   /** The progress through every session in reach, while on. */
   build?: BrainBuild
+  /** What claude reported the reads in the last 24 hours cost, in US dollars at API list price. */
+  spent_usd?: number
+  /** Where the build is. */
+  stage?: BrainStage
+  /** When the newest read that kept something finished, unix ms. */
+  last_read?: number
+  /** Memories added since the daemon's local midnight, by hand or read. */
+  new_today?: number
+  /** The graph's topics, and the links between its nodes. */
+  topics?: number
+  links?: number
+  /** How the memories reach agents: new sessions handed some with the handoff. */
+  handoff?: BrainHandoff
+}
+
+/** Where a build is (03-contracts.md § Second Brain). */
+export type BrainStage = 'off' | 'no_claude' | 'limit' | 'extracting' | 'linking' | 'waiting' | 'up_to_date'
+
+/** New sessions handed Second Brain memories with their handoff, last 24 hours and in all. */
+export interface BrainHandoff {
+  /** Settings → Memory between sessions is on: new sessions are handed anything at all. */
+  on: boolean
+  sessions_24h: number
+  memories_24h: number
+  sessions: number
+  memories: number
 }
 
 /** The session the extraction is asking claude about (03-contracts.md § Second Brain). */
@@ -1459,6 +1485,10 @@ export interface BrainReading {
   /** When the session last did something, and when this read began; unix ms. */
   last_event_at?: number
   started_at: number
+  /** claude is asked for memories (extracting), then they are stored and linked (linking). */
+  phase?: 'extracting' | 'linking'
+  /** Passages of the session's prose sent. */
+  passages?: number
 }
 
 /** How far the extraction has got through the sessions in reach. */

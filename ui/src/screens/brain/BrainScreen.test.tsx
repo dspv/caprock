@@ -35,7 +35,9 @@ const building = (over: Partial<BrainAutoStatus> = {}) => auto({
   running: true,
   pending: 29,
   backfill_since: Date.now() - 30 * DAY,
-  reading: { session_id: 's12', title: 'Fix the flaky cache test', agent: 'claude', project: 'acme-api', last_event_at: Date.now() - 3 * DAY, started_at: Date.now() - 4000 },
+  reading: { session_id: 's12', title: 'Fix the flaky cache test', agent: 'claude', project: 'acme-api', last_event_at: Date.now() - 3 * DAY, started_at: Date.now() - 4000, phase: 'extracting', passages: 14 },
+  new_today: 3, topics: 5, links: 17, spent_usd: 0.42,
+  handoff: { on: true, sessions_24h: 2, memories_24h: 9, sessions: 6, memories: 27 },
   build: {
     from: Date.now() - 30 * DAY, sessions: 41, read: 12, memories: 8,
     sources: [{ project: 'acme-api', read: 9, pending: 20, memories: 6 }, { project: 'web', read: 3, pending: 9, memories: 2 }],
@@ -93,7 +95,8 @@ describe('the Second Brain screen', () => {
     expect(m.settings).toHaveBeenCalledWith({ auto: true })
     expect(m.settings.mock.invocationCallOrder[0]).toBeLessThan(m.backfill.mock.invocationCallOrder[0]!)
     await waitFor(() => expect(document.querySelector('[data-brain-phase="building"]')).not.toBeNull())
-    expect(screen.getByRole('heading', { name: 'Building your Second Brain' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Building' })).toBeTruthy()
+    expect(document.querySelector('[data-brain-state-detail]')!.textContent).toBe('· 0 of 41 read · opening the next session')
     expect(document.querySelector('[data-brain-graph-waiting]')!.textContent).toMatch(/Memories land here/)
   })
 
@@ -101,7 +104,18 @@ describe('the Second Brain screen', () => {
     m.status.mockResolvedValue(status({ memories: 8, auto: building() }))
     m.brain.mockResolvedValue({ nodes: [node({ id: 1 }), node({ id: 2, title: 'Use a queue' })], edges: [], total: 2 })
     render(<BrainScreen />)
-    await screen.findByRole('heading', { name: 'Building your Second Brain' })
+    await screen.findByRole('heading', { name: 'Building' })
+    // The strip: the state with N of M over a bar, the step lit, the session under it.
+    expect(document.querySelector('[data-brain-state-detail]')!.textContent).toBe('· reading session 13 of 41')
+    expect(screen.getByRole('progressbar', { name: 'Build progress' }).getAttribute('aria-valuenow')).toBe('29')
+    expect(document.querySelector('[data-brain-pct]')!.textContent).toBe('29%')
+    expect([...document.querySelectorAll('[data-brain-step]')].map((s) => s.getAttribute('data-brain-step-state'))).toEqual(['done', 'now', 'idle'])
+    expect(document.querySelector('[data-brain-step="find"]')!.textContent).toMatch(/41 in reach · from the last 30 days/)
+    expect(document.querySelector('[data-brain-step-reading]')!.textContent).toMatch(/Fix the flaky cache test.*Claude Code · acme-api · 14 passages · 4s/)
+    expect(document.querySelector('[data-brain-gives]')!.textContent).toBe(
+      'What it gives: a new session in a repository starts with up to 5 of its memories — 2 sessions got 9 memories in the last 24 h, 6 in all.')
+    const figures = [...document.querySelectorAll('[data-brain-figures] dd')].map((d) => d.textContent)
+    expect(figures).toEqual(['8', '3', '5', '17', '84k of 300k', '$0.42 API list price'])
     const reading = document.querySelector('[data-brain-reading]')!
     expect(reading.textContent).toMatch(/Fix the flaky cache test/)
     expect(reading.textContent).toMatch(/Claude Code · acme-api · ran 3d ago/)
@@ -109,7 +123,7 @@ describe('the Second Brain screen', () => {
     expect(screen.getByText('from the last 30 days')).toBeTruthy()
     expect(screen.getByRole('progressbar', { name: 'Sessions read' }).getAttribute('aria-valuenow')).toBe('29')
     expect(screen.getByRole('progressbar', { name: 'Tokens used today' }).getAttribute('aria-valuenow')).toBe('28')
-    await waitFor(() => expect(screen.getByText('8', { selector: '.num' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('8', { selector: 'span.num' })).toBeTruthy())
     // Sources: each project, read of all, memories kept.
     const sources = [...document.querySelectorAll('[data-brain-source]')].map((li) => li.textContent)
     expect(sources).toEqual(['acme-api9 of 29 read · 6 memories', 'web3 of 12 read · 2 memories'])
@@ -148,13 +162,18 @@ describe('the Second Brain screen', () => {
   })
 
   it('with memories: the graph and the list with search, one quiet line, and a gear with three settings', async () => {
-    m.status.mockResolvedValue({ ...status({ memories: 2, projects: [{ project: 'acme-api', count: 2 }], auto: auto() }), db_path: 'C:\\Users\\me\\AppData\\Roaming\\caprock\\caprock.db' })
+    m.status.mockResolvedValue({ ...status({ memories: 2, projects: [{ project: 'acme-api', count: 2 }], auto: auto({ stage: 'up_to_date', last_read: Date.now() - 60_000, handoff: { on: false, sessions_24h: 0, memories_24h: 0, sessions: 0, memories: 0 } }) }), db_path: 'C:\\Users\\me\\AppData\\Roaming\\caprock\\caprock.db' })
     m.brain.mockResolvedValue({ nodes: [node({ id: 1 }), node({ id: 2, title: 'Use a queue' })], edges: [], total: 2 })
     m.settings.mockResolvedValue(auto())
     render(<BrainScreen />)
     await screen.findByRole('textbox', { name: 'Search memories' })
     expect(document.querySelector('[data-brain-phase="memories"]')).not.toBeNull()
-    expect(document.querySelector('[data-brain-live-line]')!.textContent).toMatch(/Up to date/)
+    expect(document.querySelector('[data-brain-state]')!.textContent).toBe('Up to date')
+    expect(document.querySelector('[data-brain-state-detail]')!.textContent).toMatch(/^· last built \d\d:\d\d$/)
+    expect(document.querySelector('[data-brain-strip]')!.getAttribute('data-brain-stage')).toBe('up_to_date')
+    expect([...document.querySelectorAll('[data-brain-step]')].every((s) => s.getAttribute('data-brain-step-state') === 'done')).toBe(true)
+    // Memory between sessions off: it says agents get nothing, and why.
+    expect(document.querySelector('[data-brain-gives]')!.textContent).toMatch(/nothing reaches your agents yet — Memory between sessions is off/)
     expect(document.querySelector('[data-brain-start]')).toBeNull()
     expect(document.querySelector('[data-brain-live]')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /Settings/ }))

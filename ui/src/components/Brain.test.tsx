@@ -223,7 +223,7 @@ describe('Second Brain', () => {
     const row = await waitFor(() => { const r = document.querySelector('[data-brain-row]'); expect(r).not.toBeNull(); return r! })
     expect(localStorage.getItem('caprock.app.brain-fold')).toBeNull()
     expect(document.querySelector('[data-brain-orb]')).toBeNull()
-    expect(row.querySelector('[data-brain-mode]')!.textContent).toBe('Second Brain · Idle · 4 memories')
+    expect(row.querySelector('[data-brain-mode]')!.textContent).toBe('Second Brain · Up to date · 4 memories')
     expect(row.querySelector('[data-brain-mode]')).toHaveClass('text-fg-muted')
     expect(row.querySelector('[data-brain-glyph]')).toHaveAttribute('data-brain-glyph', 'still')
     expect(row.querySelector('.brain-glyph-reading, .brain-live-dot')).toBeNull()
@@ -234,8 +234,8 @@ describe('Second Brain', () => {
     expect(m.brain).toHaveBeenCalledWith({ limit: 30 })
     expect(screen.getByRole('heading', { name: 'Second Brain' })).toBeTruthy()
     const line = document.querySelector('[data-brain-card] [data-brain-mode]')!
-    expect(line.textContent).toBe('4 memories')
-    expect(line.parentElement!.textContent).toMatch(/updated/)
+    expect(line.textContent).toBe('Up to date')
+    expect(line.parentElement!.textContent).toMatch(/· updated/)
     fireEvent.click(screen.getByRole('button', { name: 'Fold Second Brain' }))
     expect(localStorage.getItem('caprock.app.brain-fold')).toBe('closed')
     expect(document.querySelector('[data-brain-orb]')).toBeNull()
@@ -252,7 +252,7 @@ describe('Second Brain', () => {
     const onOpen = vi.fn()
     localStorage.setItem('caprock.app.brain-fold', 'open') // unfolded by this viewer
     render(<BrainSidebar onOpen={onOpen} />)
-    const block = await screen.findByRole('link', { name: /^Open Second Brain — Idle/ })
+    const block = await screen.findByRole('link', { name: /^Open Second Brain — Up to date/ })
     expect(block.tabIndex).toBe(0)
     fireEvent.click(screen.getByRole('heading', { name: 'Second Brain' }))
     expect(onOpen).toHaveBeenLastCalledWith('#/brain')
@@ -279,22 +279,26 @@ describe('Second Brain', () => {
     m.brain.mockResolvedValue({ nodes: [node({ id: 1 })], edges: [], total: 1 })
     localStorage.setItem('caprock.app.brain-fold', 'open') // unfolded by this viewer
     render(<BrainSidebar onOpen={vi.fn()} />)
-    await screen.findByText('Extracting from acme-api…')
+    await screen.findByText('Reading acme-api…')
     expect(screen.getByText('· 12 of 41')).toBeTruthy()
     expect(document.querySelector('[data-brain-sidebar-live] [role="progressbar"]')!.getAttribute('aria-valuenow')).toBe('27')
     fireEvent.click(screen.getByRole('button', { name: 'Fold Second Brain' }))
     // Folded while it reads: what it does, and the glyph is the one thing that moves.
     const row = document.querySelector('[data-brain-row]')!
-    expect(row.querySelector('[data-brain-mode]')!.textContent).toBe('Extracting from acme-api…')
+    expect(row.querySelector('[data-brain-mode]')!.textContent).toBe('Building · 12 of 41')
+    expect(row.querySelector('[data-brain-mode]')!.getAttribute('title')).toBe('Building · reading session 12 of 41 — Fix the flaky cache test')
+    expect(row.querySelector('[data-brain-row-bar]')!.getAttribute('aria-valuenow')).toBe('27')
     expect(row.querySelector('[data-brain-glyph]')).toHaveClass('brain-glyph-reading')
   })
 
-  it('names each mode in words: paused, needs Claude Code, indexing, limit reached', () => {
+  it('names each mode in words: paused, needs Claude Code, sessions to read, linking, limit reached', () => {
     const st = (a: Partial<BrainAutoStatus>, memories = 3) => status({ memories, auto: auto(a) }) as BrainStatus
     expect(brainMode(st({ on: false, chosen: true })).mode).toBe('Paused')
     expect(brainMode(st({ on: false, chosen: false }), 0).mode).toBe('Not started')
     expect(brainMode(st({ claude_found: false })).mode).toBe('Needs Claude Code')
-    expect(brainMode(st({ pending: 3 })).mode).toBe('Indexing 3 sessions')
+    expect(brainMode(st({ pending: 3 })).mode).toBe('3 sessions to read')
+    expect(brainMode(st({ pending: 3, spent: 300_000 })).mode).toBe('Today’s limit reached')
+    expect(brainMode(st({ reading: { session_id: 's', project: 'web', started_at: 1, phase: 'linking' } })).mode).toBe('Linking web')
     expect(brainMode(st({ pending: 0, spent: 300_000 })).mode).toBe('Today’s limit reached')
     expect(brainMode(st({ pending: 0 }), 2).metric).toBe('3 · +2 today')
   })

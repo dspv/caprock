@@ -5,7 +5,8 @@
  * current from the live socket (a `brain` frame on every change).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, errText, type BrainAutoStatus, type BrainDrop, type BrainFilterQuery, type BrainGraph, type BrainKind, type BrainNode, type BrainStatus } from './api'
+import { api, errText, type BrainAutoStatus, type BrainDrop, type BrainFilterQuery, type BrainGraph, type BrainKind, type BrainNode, type BrainStage, type BrainStatus } from './api'
+import { fmtWhen } from './format'
 import { live } from './live'
 import { everyWhileVisible } from './visible'
 
@@ -205,10 +206,74 @@ export function brainMode(status: BrainStatus | null, today = 0): { mode: string
   if (!auto.on) return { mode: auto.chosen ? 'Paused' : 'Not started', metric, active: false }
   if (!auto.claude_found) return { mode: 'Needs Claude Code', metric, active: false }
   if (auto.reading) {
-    const where = auto.reading.project ? `Extracting from ${auto.reading.project}` : 'Extracting from a session'
-    return { mode: where, metric: n > 0 ? String(n) : '', active: true }
+    const verb = auto.reading.phase === 'linking' ? 'Linking' : 'Reading'
+    return { mode: auto.reading.project ? `${verb} ${auto.reading.project}` : `${verb} a session`, metric: n > 0 ? String(n) : '', active: true }
   }
-  if (auto.pending > 0) return { mode: `Indexing ${auto.pending} session${auto.pending === 1 ? '' : 's'}`, metric: n > 0 ? String(n) : '', active: true }
   if (auto.daily_tokens > 0 && auto.spent >= auto.daily_tokens) return { mode: 'Today’s limit reached', metric, active: false }
-  return { mode: 'Idle', metric, active: false }
+  if (auto.pending > 0) return { mode: `${auto.pending} session${auto.pending === 1 ? '' : 's'} to read`, metric: n > 0 ? String(n) : '', active: true }
+  return { mode: 'Up to date', metric, active: false }
 }
+
+/** Where a build is: the daemon's `stage`, or the same worked out from an older daemon's status. */
+export function brainStage(auto: BrainAutoStatus | undefined): BrainStage {
+  if (!auto || !auto.on) return 'off'
+  if (auto.stage) return auto.stage
+  if (auto.reading) return auto.reading.phase === 'linking' ? 'linking' : 'extracting'
+  if (!auto.claude_found) return 'no_claude'
+  if (auto.pending > 0 && auto.spent >= auto.daily_tokens) return 'limit'
+  return auto.pending > 0 ? 'waiting' : 'up_to_date'
+}
+
+/** A clock time today ("14:02"), else the day and time ("12 Oct 14:02"). */
+export function clockOrDay(ms: number, now = Date.now()): string {
+  const d = new Date(ms)
+  if (d.toDateString() === new Date(now).toDateString()) return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return fmtWhen(ms, now)
+}
+
+/**
+ * The build's state as one line (the screen's strip and the sidebar card):
+ * a word, what it means now, and how far it is — every figure from the
+ * status, none made up. `share` is the sessions read of all in reach while
+ * it builds, else null (no bar). `n of m` is the session being read, or the
+ * sessions read when between reads.
+ */
+export function brainState(auto: BrainAutoStatus | undefined, now = Date.now()): {
+  stage: BrainStage; word: string; detail: string; tone: 'active' | 'calm' | 'off' | 'warn'; share: number | null; n: number; m: number
+} {
+  const stage = brainStage(auto)
+  const b = auto?.build
+  const m = b?.sessions ?? 0
+  const read = b?.read ?? 0
+  const n = auto?.reading ? Math.min(read + 1, Math.max(m, 1)) : read
+  const share = m > 0 ? Math.min(1, read / m) : null
+  const of = m > 0 ? `${n} of ${m}${b?.truncated ? '+' : ''}` : ''
+  switch (stage) {
+    case 'off':
+      return auto?.chosen
+        ? { stage, word: 'Paused', detail: 'you paused it — nothing new is read until you resume', tone: 'off', share: null, n, m }
+        : { stage, word: 'Off', detail: 'not started — nothing is read until you start it', tone: 'off', share: null, n, m }
+    case 'no_claude':
+      return { stage, word: 'Stopped', detail: 'Claude Code was not found on this computer, so nothing can be read', tone: 'warn', share: null, n, m }
+    case 'limit':
+      return { stage, word: 'Waiting', detail: `today’s ${tokensShort(auto?.daily_tokens ?? 0)} tokens are used; it goes on as the day rolls over${of ? ` · ${read} of ${m} read` : ''}`, tone: 'warn', share, n, m }
+    case 'extracting':
+      return { stage, word: 'Building', detail: of ? `reading session ${of}` : 'reading a session', tone: 'active', share, n, m }
+    case 'linking':
+      return { stage, word: 'Building', detail: of ? `linking what session ${n} of ${m} gave` : 'linking what a session gave', tone: 'active', share, n, m }
+    case 'waiting': {
+      const next = auto?.next_wake && auto.next_wake > now ? Math.ceil((auto.next_wake - now) / 1000) : 0
+      const when = next > 0 && next < 600 ? (next > 90 ? `next in ${Math.round(next / 60)} min` : `next in ${next}s`) : 'opening the next session'
+      return { stage, word: 'Building', detail: `${of ? `${read} of ${m} read · ` : ''}${when}`, tone: 'active', share, n, m }
+    }
+    default:
+      return { stage, word: 'Up to date', detail: auto?.last_read ? `last built ${clockOrDay(auto.last_read, now)}` : 'nothing read yet — a session is read 10 minutes after it goes quiet', tone: 'calm', share: null, n, m }
+  }
+}
+
+/** The steps one read goes through, in order, as the strip shows them. */
+export const BRAIN_STEPS: { stage: 'find' | 'extracting' | 'linking'; label: string }[] = [
+  { stage: 'find', label: 'Find finished sessions' },
+  { stage: 'extracting', label: 'Claude extracts memories' },
+  { stage: 'linking', label: 'Link into the graph' },
+]
