@@ -178,7 +178,7 @@ export function SidebarFooter(props: SidebarFooterProps) {
         * (owner, 2026-10-14, translated: "move them onto a separate row and
         * split it into two parts — two buttons in one row, neat, so it's
         * clear what's there"). The theme on the right: its picker opens up
-        * and to the left, and from the left half it would leave the sidebar.
+        * and to the left, over the main area (ThemeMenu keeps it whole).
         * Off macOS each takes a row (splitModeRow). */}
       <div data-mode-row className={`grid gap-1 ${split ? 'grid-cols-2' : 'grid-cols-[minmax(0,1fr)]'}`}>
         {hasBar && <PipelineButton active={props.pipelineActive} onClick={props.onPipeline!} labelled chip={!split} />}

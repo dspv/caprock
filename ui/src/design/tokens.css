@@ -559,11 +559,29 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
  * light highlight on the chat input line so I understand I'm actively
  * focused in it"). The accent at 60% and a faint 3px ring; a little stronger
  * once there is text in it. Border and shadow only, so its size never
- * changes; no animation beyond a short fade, none with reduced motion. */
-.input.composer-field { transition: border-color 150ms ease, box-shadow 150ms ease; }
+ * changes; no animation beyond a short fade, none with reduced motion.
+ *
+ * At rest it carries a hint of the accent too (owner, 2026-10-15,
+ * translated: "a light, slight highlight of the chat input field, one that
+ * doesn't draw much attention"): 4% in its fill and 22% in its edge, found
+ * at the bottom of a long chat without pulling the eye to it; the fill goes
+ * to 7% with the focus. On the terminal slab (the app's Chat view) its
+ * ground is the slab's own, lifted as the composer's box is (.app-composer),
+ * so it sits right on every terminal palette, light or dark. */
+.input.composer-field {
+  --composer-ground: var(--color-panel-2);
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--composer-ground));
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--color-border-strong));
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+:where([data-app] .app-slab) .input.composer-field {
+  --composer-ground: color-mix(in srgb, var(--color-fg) 5%, var(--color-term-bg));
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--app-hairline-strong));
+}
 .input.composer-field:focus,
 [data-glow] .input.composer-field:focus {
   outline: none;
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--composer-ground));
   border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
 }
