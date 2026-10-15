@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchAppShortcut, moveKeysLine, stripKey, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
+import { matchAppShortcut, moveKeysLine, ownsTerminalKey, stripKey, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
 
 const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
   key,
@@ -280,16 +280,69 @@ describe('every listed shortcut, on every OS', () => {
   // does changed with it.
   // Owner, 2026-10-14: Expand needs a key. ⌘B is the deck, so off macOS
   // Ctrl+Shift+B is taken by it and Expand takes Alt as well.
-  it('makes ⇧⌘B the Pipeline on the dashboard and back, Ctrl+Alt+Shift+B off macOS, beside ⌘B', () => {
-    expect(SHORTCUTS.find(([k]) => k === '⇧⌘B')?.[1]).toMatch(/^Pipeline on the dashboard; there, back to where you were/)
-    expect(keys('⇧⌘B', false)).toBe('Ctrl+Alt+Shift+B')
+  it('makes ⌘P the Pipeline on the dashboard and back, Ctrl+Shift+P off macOS, and keeps ⇧⌘B as a silent alias', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⌘P')?.[1]).toMatch(/^Pipeline on the dashboard; there, back to where you were/)
+    expect(SHORTCUTS.some(([k]) => k.split(', ').includes('⇧⌘B'))).toBe(false)
+    expect(keys('⌘P', false)).toBe('Ctrl+Shift+P')
+    expect(matchAppShortcut(event('KeyP', 'p', { metaKey: true }), true)).toEqual({ kind: 'pipeline' })
+    expect(matchAppShortcut(event('KeyP', 'P', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'pipeline' })
+    // The older key, on both platforms.
+    expect(matchAppShortcut(event('KeyB', 'B', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'pipeline' })
+    expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'pipeline' })
     expect(keys('⌘B', false)).toBe('Ctrl+Shift+B')
-    expect(matchAppShortcut(event('KeyB', 'B', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'deck-expand' })
     expect(matchAppShortcut(event('KeyB', 'b', { metaKey: true }), true)).toEqual({ kind: 'deck' })
-    expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'deck-expand' })
     expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'deck' })
-    // Ctrl+B alone stays the terminal's (tmux's prefix, readline's back-char).
+    // Ctrl+P and Ctrl+B alone stay the terminal's (previous line; tmux's prefix, back-char).
+    expect(matchAppShortcut(event('KeyP', 'p', { ctrlKey: true }), false)).toBeNull()
     expect(matchAppShortcut(event('KeyB', 'b', { ctrlKey: true }), false)).toBeNull()
+  })
+
+  // Owner, 2026-10-15, translated: "bind shortcuts to the names: ⌘D
+  // Dashboard (keep ⌘0 too)". Off macOS it is Ctrl+Shift+D, never Ctrl+D,
+  // a shell's end of input.
+  it('makes ⌘D the Dashboard beside ⌘0, Ctrl+Shift+D off macOS, and leaves Ctrl+D to the shell', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⌘D, ⌘0')?.[1]).toMatch(/^Dashboard/)
+    expect(keys('⌘D, ⌘0', false)).toBe('Ctrl+Shift+D, Ctrl+Shift+0')
+    expect(matchAppShortcut(event('KeyD', 'd', { metaKey: true }), true)).toEqual({ kind: 'dashboard' })
+    expect(matchAppShortcut(event('Digit0', '0', { metaKey: true }), true)).toEqual({ kind: 'dashboard' })
+    expect(matchAppShortcut(event('KeyD', 'D', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'dashboard' })
+    expect(matchAppShortcut(event('KeyD', 'D', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'dashboard' })
+    expect(matchAppShortcut(event('KeyD', 'd', { ctrlKey: true }), false)).toBeNull()
+    expect(ownsTerminalKey(event('KeyD', 'd', { ctrlKey: true }), false)).toBe(false)
+  })
+
+  // ⌘T stays New shell and ⌘W Close, as in every terminal; the theme and
+  // Work take Shift, and off macOS Alt as well, since Ctrl+Shift+T and
+  // Ctrl+Shift+W are ⌘T's and ⌘W's there.
+  it('makes ⇧⌘T the theme picker and ⇧⌘W Work, Ctrl+Alt+Shift+T and W off macOS, beside New shell and Close', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⇧⌘T')?.[1]).toMatch(/^Theme/)
+    expect(SHORTCUTS.find(([k]) => k === '⇧⌘W')?.[1]).toMatch(/^Work on the dashboard/)
+    expect(keys('⇧⌘T', false)).toBe('Ctrl+Alt+Shift+T')
+    expect(keys('⇧⌘W', false)).toBe('Ctrl+Alt+Shift+W')
+    expect(matchAppShortcut(event('KeyT', 'T', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'theme' })
+    expect(matchAppShortcut(event('KeyW', 'W', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'work' })
+    expect(matchAppShortcut(event('KeyT', 't', { metaKey: true }), true)).toEqual({ kind: 'new-shell' })
+    expect(matchAppShortcut(event('KeyW', 'w', { metaKey: true }), true)).toEqual({ kind: 'detach-tab' })
+    expect(matchAppShortcut(event('KeyT', 'T', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'theme' })
+    expect(matchAppShortcut(event('KeyW', 'W', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'work' })
+    expect(matchAppShortcut(event('KeyT', 'T', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'new-shell' })
+    expect(matchAppShortcut(event('KeyW', 'W', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'detach-tab' })
+    // Ctrl+Alt+T without Shift (GNOME's terminal) is never ours.
+    expect(matchAppShortcut(event('KeyT', 't', { ctrlKey: true, altKey: true }), false)).toBeNull()
+  })
+
+  // Rule 12: no two rows of the list may read the same off macOS.
+  it('spells every listed chord differently off macOS', () => {
+    const seen = new Map<string, string>()
+    for (const [k, does] of SHORTCUTS) {
+      for (const c of k.split(', ')) {
+        const off = keys(c, false)
+        if (!off) continue
+        const prev = seen.get(off)
+        expect(prev === undefined || prev === does, `${off}: ${prev} and ${does}`).toBe(true)
+        seen.set(off, does)
+      }
+    }
   })
 
   // Owner, 2026-10-14: Send feedback opens from the keyboard. ⌘F is Find,

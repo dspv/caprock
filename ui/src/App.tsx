@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Shell } from '@/components/Shell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useRoute, type Route } from '@/lib/router'
@@ -14,12 +14,14 @@ import { OrchestrationScreen } from '@/screens/Orchestration'
 import { NotesScreen } from '@/screens/Notes'
 import { PairScreen } from '@/screens/Pair'
 import { PipelineScreen } from '@/screens/Pipeline'
+import { WorkScreen } from '@/screens/Work'
 import { NewProjectScreen } from '@/components/NewProject'
 import { PhoneHome } from '@/components/PhoneHome'
 import { LanOnlyNotice } from '@/components/LanOnlyNotice'
 import { useNarrowScreen } from '@/lib/phone'
 import { BrainCaptureHost } from '@/components/BrainCapture'
 import { ScreenShown } from '@/lib/refresh'
+import { PipelineHostContext } from '@/lib/pipelineHost'
 import { keptScreen, pageScroller, placeKey, useScrollPlace } from '@/lib/screenPlace'
 
 // Mail is its own world (internal/mail); its code loads only when opened.
@@ -129,7 +131,8 @@ export function Dashboard({ route, inApp = false, shown = true, scroller = pageS
       case 'start': return <NewProjectScreen mode={r.mode} />
       case 'mail': return <Suspense fallback={null}><MailScreen /></Suspense>
       case 'brain': return <Suspense fallback={null}><BrainScreen node={r.node} /></Suspense>
-      case 'pipeline': return <PipelineScreen repo={r.repo} of={r.of} />
+      case 'pipeline': return <PipelineScreen repo={r.repo} of={r.of} pr={r.pr} />
+      case 'work': return <WorkScreenHosted />
     }
   }
   // The kept screens opened so far, each with the route it last showed.
@@ -153,4 +156,10 @@ export function Dashboard({ route, inApp = false, shown = true, scroller = pageS
       </Shell>
     </ScreenShown.Provider>
   )
+}
+
+/** Work, with the app's way to bring a session's tab forward (lib/pipelineHost); in a browser, a session's page. */
+function WorkScreenHosted() {
+  const host = useContext(PipelineHostContext)
+  return <WorkScreen onOpenSession={host.onOpenSession} />
 }

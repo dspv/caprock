@@ -28,7 +28,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   rough range, CI against its median, merge to release against the median
   lag, and the gap since the last tag against the usual gap. Rows that
   need you come first; agents idle for over 30 minutes fold into one line.
-  The page and its Home card are built; the route and its key come next.
+  It is second in the Dashboard's menu (⇧⌘W; Ctrl+Alt+Shift+W on Windows
+  and Linux, and again back to where you were), and Home shows its headline
+  and first rows above the Live pulse with *Open Work →*. A session row
+  brings that session's tab to the front; a pull request's title opens it
+  in the Pipeline with its detail open.
 - **brain:** Second Brain's status says when the reader wakes next
   (`next_wake`), so a screen can tell you when the first memories may come
   instead of leaving you at 0. Turning building on still wakes the reader
@@ -43,6 +47,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** keys named after what they open. ⌘D opens the Dashboard (⌘0
+  still does), ⌘P the Pipeline (⇧⌘B still works), ⇧⌘T the theme picker,
+  and ⇧⌘W Work; ⌘F stays Find and ⌘T New shell. On Windows and Linux they
+  are Ctrl+Shift+D, Ctrl+Shift+P, Ctrl+Alt+Shift+T and Ctrl+Alt+Shift+W —
+  never Ctrl+D, which stays the shell's end of input. The sidebar's footer
+  shows *Dashboard ⌘D*, *Pipeline ⌘P* and the theme's ⇧⌘T, folded or not,
+  and the palette, the shortcuts list and the tooltips say the new keys.
 - **brain:** the sidebar's Second Brain block is a small banner while it is
   empty, instead of a bare 0 and two faint lines: a faint graph breathing
   (still with reduced motion), *Remembers what your agents learn — so the
@@ -57,8 +68,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   problem if there was one. The same line replaces *your personal Jarvis*
   under the Second Brain screen's title.
 - **dashboard:** The Pipeline is a page of the Dashboard now, beside *Week*
-  in its menu, instead of a tab of its own: ⇧⌘B and *Pipeline* in the
-  sidebar open the Dashboard tab there (Ctrl+Alt+Shift+B on Windows and
+  in its menu, instead of a tab of its own: ⌘P and *Pipeline* in the
+  sidebar open the Dashboard tab there (Ctrl+Shift+P on Windows and
   Linux), and again go back to where you were. It shows one repository —
   the agent in front's, else the one you looked at last — with buttons
   beside its title to switch. It is drawn as the Dashboard is: its figures

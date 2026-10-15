@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=]
+// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -29,8 +29,12 @@ export type Route =
   // The Pipeline (.ai/04-ui.md § Pipeline): one repository's pull requests
   // on their way to a release. `repo` is the repository's folder on this
   // machine; `of` the agent session it was opened from (its This session
-  // view, and its repository when `repo` is absent).
-  | { name: 'pipeline'; repo?: string; of?: string }
+  // view, and its repository when `repo` is absent); `pr` a pull request
+  // whose detail opens beside the list (a Work row's title links there).
+  | { name: 'pipeline'; repo?: string; of?: string; pr?: number }
+  // Work (.ai/04-ui.md § Work): every piece of work on the machine on its
+  // way to a release.
+  | { name: 'work' }
 
 export type StartMode = 'clone' | 'new' | 'worktree'
 
@@ -83,8 +87,11 @@ export function parseHash(hash: string): Route {
     case 'pipeline': {
       const repo = params.get('repo') || undefined
       const of = params.get('of') || undefined
-      return { name: 'pipeline', ...(repo ? { repo } : {}), ...(of ? { of } : {}) }
+      const pr = Number(params.get('pr'))
+      return { name: 'pipeline', ...(repo ? { repo } : {}), ...(of ? { of } : {}), ...(Number.isInteger(pr) && pr > 0 ? { pr } : {}) }
     }
+    case 'work':
+      return { name: 'work' }
     case 'start': {
       const mode = params.get('mode')
       return mode === 'clone' || mode === 'new' || mode === 'worktree' ? { name: 'start', mode } : { name: 'start' }
@@ -114,10 +121,12 @@ export function href(r: Route): string {
     case 'mail': return '#/mail'
     case 'brain': return r.node ? `#/brain?node=${r.node}` : '#/brain'
     case 'start': return r.mode ? `#/start?mode=${r.mode}` : '#/start'
+    case 'work': return '#/work'
     case 'pipeline': {
       const q = new URLSearchParams()
       if (r.repo) q.set('repo', r.repo)
       if (r.of) q.set('of', r.of)
+      if (r.pr) q.set('pr', String(r.pr))
       const s = q.toString()
       return `#/pipeline${s ? `?${s}` : ''}`
     }

@@ -24,12 +24,13 @@ export function WorkHomeCard({ openHref = '#/work', onOpenSession }: { openHref?
 }
 
 export function WorkHomeCardView({ work, now, openHref = '#/work', onOpenSession }: { work: Work; now: number; openHref?: string; onOpenSession?: (id: string) => void }) {
-  if (work.totals.live === 0) return null
+  // Read defensively: a partial answer draws nothing rather than take Home down with it.
+  if (!work.totals || !(work.totals.live > 0)) return null
   const board = buildWork(work, NO_STATS, now)
   const top = board.items.filter((it) => it.needsYou || it.working).slice(0, SHOWN)
   return (
-    <section data-work-home aria-label="Work" className="border-b border-border">
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 pt-2.5">
+    <section data-work-home aria-label="Work" className="min-w-0 rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
+      <div className={`flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 pt-2.5 ${top.length > 0 ? '' : 'pb-2.5'}`}>
         <span className="text-[13px] font-medium text-fg">Work</span>
         <span className="num min-w-0 text-[12px] text-fg-muted [overflow-wrap:anywhere]">{headline(board.counts)}</span>
         <a href={openHref} data-work-open-page className="ml-auto shrink-0 text-[12px] font-medium text-accent no-underline hover:underline">Open Work →</a>

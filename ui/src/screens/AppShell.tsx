@@ -14,7 +14,7 @@ import { useApi } from '@/lib/useApi'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
-import { FIND_EVENT, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
+import { DASHBOARD_KEY, FIND_EVENT, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { href, parseHash, type SettingsSection } from '@/lib/router'
 import { goHomeTop, isHomeHash } from '@/lib/screenPlace'
@@ -191,6 +191,7 @@ type SheetState =
 /** The dashboard's screens, reachable from the palette by name: [route, label, what is on it]. */
 const SCREENS: [string, string, string][] = [
   ['home', 'Home', 'every session on the machine, live'],
+  ['work', 'Open Work', 'every piece of work on its way to a release'],
   ['cost', 'Cost', 'spend by day, project and model'],
   ['history', 'Lifetime', 'every session, every day, in totals'],
   ['week', 'Week', 'one week, as a card'],
@@ -968,9 +969,10 @@ export function AppShell() {
   // ⇧⌘G opens the diff of the session in front; what that is is known further
   // down (focusedWorktree), so it is reached through a ref set there.
   const openChangesRef = useRef<(() => void) | undefined>(undefined)
-  // ⇧⌘B: the Pipeline page, and from it back — set further down, where both
-  // are known (openPipeline, pipelineBack).
+  // ⌘P: the Pipeline page, and from it back — set further down, where both
+  // are known (openPipeline, pipelineBack). ⇧⌘W the same for Work.
   const expandRef = useRef<(() => void) | undefined>(undefined)
+  const workRef = useRef<(() => void) | undefined>(undefined)
   const run = useCallback((c: AppCommand) => {
     switch (c.kind) {
       // In the folder of the session in front — its worktree, not the project's root.
@@ -989,8 +991,20 @@ export function AppShell() {
         setDeck((d) => ({ ...d, open: !d.open }))
         showWorkspace()
         break
-      case 'deck-expand':
+      case 'pipeline':
         expandRef.current?.()
+        break
+      case 'work':
+        workRef.current?.()
+        break
+      // The picker at the foot of the sidebar (SidebarFooter's ThemeButton):
+      // the sidebar is shown first when it was hidden, so the picker has
+      // somewhere to open from.
+      case 'theme':
+        if (!prefs.sidebar) {
+          setPrefs((p) => ({ ...p, sidebar: true }))
+          window.setTimeout(() => window.dispatchEvent(new Event(THEME_MENU_EVENT)), 0)
+        } else window.dispatchEvent(new Event(THEME_MENU_EVENT))
         break
       case 'changes':
         if (openChangesRef.current) openChangesRef.current()
@@ -1017,7 +1031,7 @@ export function AppShell() {
       case 'mail': onMail(); break
       case 'zoom': stepUiScale(c.step); break
     }
-  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession, onMail, dashboardShown, goHash])
+  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession, onMail, dashboardShown, goHash, prefs.sidebar])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -1155,14 +1169,14 @@ export function AppShell() {
       { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat…', detail: 'pick the agent and model; Enter starts the last one used', hint: keys('⌥⌘N'), icon: <ChatIcon size={14} />, run: onQuickChatChooser },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: keys('⌘O'), icon: <FolderPlusIcon size={14} />, run: onAddProject },
       { id: 'a-brain', group: 'Actions', label: 'Add to Second Brain…', detail: 'keep a line of your own', hint: keys('⇧⌘H'), icon: <BrainGlyph size={14} />, run: () => openBrainCapture() },
-      { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'on the dashboard: every pull request on its way — open, CI, merged, released', hint: keys('⇧⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck-expand' }) },
+      { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'on the dashboard: every pull request on its way — open, CI, merged, released', hint: keys(PIPELINE_KEY), icon: <DeckIcon size={14} />, run: () => run({ kind: 'pipeline' }) },
       { id: 'a-deck', group: 'Actions', label: deck.open ? 'Pipeline bar: Off' : 'Pipeline bar: On', detail: deck.open ? 'hide the bar under the agent’s terminal' : 'show the bar under the agent’s terminal', hint: keys('⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck' }) },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
       ...(source === 'api' && activeProject?.kind === 'repo'
         ? [{ id: 'a-copies', group: 'Actions' as const, label: 'Clean up copies…', detail: `${activeProject.name}: worktrees, sizes, merged`, icon: <BranchIcon size={14} />, run: () => onCleanCopies(activeProject.id) }]
         : []),
-      { id: 'a-dashboard', group: 'Actions', label: 'Open the dashboard', hint: keys('⌘0'), icon: <DashboardIcon size={14} />, run: onDashboard },
+      { id: 'a-dashboard', group: 'Actions', label: 'Open the dashboard', hint: keys(DASHBOARD_KEY), icon: <DashboardIcon size={14} />, run: onDashboard },
       { id: 'a-mail', group: 'Actions', label: 'Open Mail', detail: 'every inbox in one place, in its own tab', hint: keys('⇧⌘M'), icon: <MailIcon size={14} />, run: onMail },
       { id: 'a-settings', group: 'Actions', label: 'Settings', detail: 'permission mode, theme, terminal, notifications, phone', hint: keys('⌘,'), icon: <SettingsIcon size={14} />, run: onSettings },
       { id: 'a-phone', group: 'Actions', label: 'Open Caprock on your phone', detail: 'pair with a QR code, then add it to the home screen', icon: <SettingsIcon size={14} />, run: openPhoneSettings },
@@ -1171,9 +1185,10 @@ export function AppShell() {
       { id: 'a-doctor', group: 'Actions', label: 'Caprock doctor', detail: 'what Caprock costs this computer: memory, disk, duplicates', icon: <SparkIcon size={14} />, run: openCaprockDoctor },
       { id: 'a-keys', group: 'Actions', label: 'Keyboard shortcuts', detail: 'every key the app answers to', icon: <SearchIcon size={14} />, run: () => setSheet({ kind: 'keys' }) },
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
+      { id: 'a-theme-pick', group: 'Actions', label: 'Choose a theme…', detail: 'the eight palettes: hover one to try it', hint: keys(THEME_KEY), icon: <SparkIcon size={14} />, run: () => run({ kind: 'theme' }) },
       ...(isTauri() ? [{ id: 'a-zoom-reset', group: 'Actions' as const, label: 'Interface size: back to the default', hint: isMacPlatform() ? keys('⇧⌘0') : undefined, icon: <SparkIcon size={14} />, run: () => stepUiScale(0) }] : []),
       { id: 'a-share', group: 'Actions', label: 'Share my numbers', detail: 'a card of your figures: copy, save or post to X', icon: <SparkIcon size={14} />, run: () => setSheet({ kind: 'share' }) },
-      ...SCREENS.map(([route, label, detail]) => ({ id: `a-screen-${route}`, group: 'Actions' as const, label, detail, icon: route === 'brain' ? <BrainGlyph size={14} /> : <DashboardIcon size={14} />, run: () => { location.hash = `#/${route}` } })),
+      ...SCREENS.map(([route, label, detail]) => ({ id: `a-screen-${route}`, group: 'Actions' as const, label, detail, ...(route === 'work' ? { hint: keys(WORK_KEY) } : {}), icon: route === 'brain' ? <BrainGlyph size={14} /> : <DashboardIcon size={14} />, run: () => { location.hash = `#/${route}` } })),
       { id: 'a-waiting', group: 'Actions', label: 'Next session waiting on you', hint: keys('⌘J'), icon: <SparkIcon size={14} />, run: jumpToWaiting },
       { id: 'a-saved', group: 'Actions', label: 'Run saved…', detail: 'a saved prompt or command', icon: <SparkIcon size={14} />, run: () => setSheet({ kind: 'saved' }) },
       manageSaved,
@@ -1405,7 +1420,7 @@ export function AppShell() {
   const projectOfSession = useCallback((id: string) => model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((y) => y.session.session_id === id))), [model.projects])
   const wsRef = useRef(ws)
   wsRef.current = ws
-  // ⇧⌘B is the Pipeline one keystroke away (owner, 2026-10-14, translated:
+  // ⌘P (⇧⌘B until 2026-10-15) is the Pipeline one keystroke away (owner, 2026-10-14, translated:
   // "it feels like quick access to the CI/CD page is missing"): it opens the
   // Dashboard tab at the Pipeline — for the agent in front, else the
   // repository it showed last — and, from there, goes back to the tab or
@@ -1430,11 +1445,38 @@ export function AppShell() {
     if (back && parseHash(back.hash).name !== 'pipeline') { goHash(back.hash); return }
     goHash(wsRef.current.tabs.length > 0 ? APP_ROUTE : '#/')
   }, [goHash])
+  // Work (⇧⌘W) the same way: the Dashboard tab at #/work, and from it back
+  // to the tab or screen it was pressed on.
+  const workBackRef = useRef<{ tab?: string; hash: string } | undefined>(undefined)
+  const workShown = dashboardShown && shownRoute.name === 'work'
+  const openWork = useCallback(() => {
+    if (!workShown) workBackRef.current = { tab: workspaceShown ? current?.id : undefined, hash: location.hash }
+    goHash(href({ name: 'work' }))
+  }, [workShown, workspaceShown, current?.id, goHash])
+  const workBack = useCallback(() => {
+    const back = workBackRef.current
+    workBackRef.current = undefined
+    if (back?.tab && wsRef.current.tabs.some((t) => t.id === back.tab)) {
+      dispatch({ type: 'activate', tabId: back.tab })
+      goHash(isWorkspaceHash(back.hash) ? back.hash : APP_ROUTE)
+      return
+    }
+    if (back && parseHash(back.hash).name !== 'work') { goHash(back.hash); return }
+    goHash(wsRef.current.tabs.length > 0 ? APP_ROUTE : '#/')
+  }, [goHash])
   // In a layout effect, so a key pressed right after a switch acts on what is now in front.
   useLayoutEffect(() => {
     expandRef.current = pipelineShown ? pipelineBack : () => openPipeline()
-  }, [pipelineShown, pipelineBack, openPipeline])
-  const onPipelineButton = useCallback(() => run({ kind: 'deck-expand' }), [run])
+    workRef.current = workShown ? workBack : openWork
+  }, [pipelineShown, pipelineBack, openPipeline, workShown, workBack, openWork])
+  const onPipelineButton = useCallback(() => run({ kind: 'pipeline' }), [run])
+  // A session row on Work or Home's Work strip: its tab, brought forward
+  // (opened when it has none); a session not in the list, its page.
+  const openSessionById = useCallback((id: string) => {
+    const s = sessionsById.get(id)
+    if (!s) { goHash(`#/session/${encodeURIComponent(id)}`); return }
+    openSession(s, placeOf(id)?.node.project.id ?? activeProjectId)
+  }, [sessionsById, openSession, placeOf, activeProjectId, goHash])
   // What the page gets from the app (lib/pipelineHost): the sessions already
   // held, an agent's worktrees for its fix actions, a toast, and the way back.
   const pipelineHost = useMemo<PipelineHost>(() => ({
@@ -1447,7 +1489,8 @@ export function AppShell() {
     },
     onToast: setToast,
     onBack: pipelineBack,
-  }), [data, projectOfSession, openTab, activeProjectId, pipelineBack])
+    onOpenSession: openSessionById,
+  }), [data, projectOfSession, openTab, activeProjectId, pipelineBack, openSessionById])
 
   return (
     <div className="flex h-dvh flex-col text-fg">

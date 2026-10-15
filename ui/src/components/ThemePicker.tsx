@@ -66,9 +66,24 @@ function Swatch({ m, big }: { m: ThemeMode; big: boolean }) {
 
 /** The theme button's popover: the picker, opening up or down from the button. */
 /** `align`: which edge of the button the picker lines up with — `right` (it opens leftwards) by default, `left` where the button sits near the window's left edge. */
-export function ThemeMenu({ children, label, placement = 'up', align = 'right', className = '', boxClassName = '' }: { children: React.ReactNode; label: string; placement?: 'up' | 'down'; align?: 'left' | 'right'; className?: string; /** The wrapper's classes, e.g. to let the button fill a grid cell. */ boxClassName?: string }) {
+export function ThemeMenu({ children, label, placement = 'up', align = 'right', className = '', boxClassName = '', openOn }: { children: React.ReactNode; label: string; placement?: 'up' | 'down'; align?: 'left' | 'right'; className?: string; /** The wrapper's classes, e.g. to let the button fill a grid cell. */ boxClassName?: string; /** A window event that opens the picker, or closes it when open (⇧⌘T, the sidebar footer's button only). */ openOn?: string }) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLSpanElement>(null)
+  // Opened by its key, the picker takes the focus on the palette in use, so
+  // Tab moves across the palettes (each one tried as it is reached), Enter
+  // keeps one and Esc closes.
+  const byKey = useRef(false)
+  useEffect(() => {
+    if (!openOn) return
+    const on = () => setOpen((o) => { byKey.current = !o; return !o })
+    window.addEventListener(openOn, on)
+    return () => window.removeEventListener(openOn, on)
+  }, [openOn])
+  useEffect(() => {
+    if (!open || !byKey.current) return
+    byKey.current = false
+    box.current?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]')?.focus()
+  }, [open])
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }

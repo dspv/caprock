@@ -145,6 +145,16 @@ describe('the Pipeline page', () => {
     expect(document.querySelector('[data-prs-detail]')).toBeNull()
   })
 
+  // A Work row's title links to #/pipeline?repo=…&pr=N (lib/work pipelineHref).
+  it('opens the pull request the address names in detail as the page opens', async () => {
+    connected()
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} pr={21} />)
+    await rowsDrawn()
+    await waitFor(() => expect(h.asked).toContain('ci 21'))
+    await waitFor(() => expect(document.querySelector('[data-prs-detail]')).toHaveAttribute('aria-label', '#21 in detail'))
+    expect(document.querySelector('[data-prs-row="21"] button')).toHaveAttribute('aria-current', 'true')
+  })
+
   it('switches between this session’s, the repository’s and the open pull requests, remembering the choice', async () => {
     connected()
     render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
@@ -238,7 +248,7 @@ describe('the Pipeline page', () => {
     expect(document.querySelector('[data-prs-row="20"] [data-journey-step="merged"]')).toHaveAttribute('data-step-state', 'current')
   })
 
-  it('asks nothing while it is not in front, and goes back to where ⇧⌘B was pressed', async () => {
+  it('asks nothing while it is not in front, and goes back to where ⌘P was pressed', async () => {
     connected()
     const back = vi.fn()
     render(<PipelineView sessionId="s1" session={session} visible={false} onBack={back} />)
@@ -246,7 +256,7 @@ describe('the Pipeline page', () => {
     expect(h.asked).toEqual([])
     const b = screen.getByRole('button', { name: /^Back to where you were/ })
     expect(b).toHaveAttribute('data-prs-back')
-    expect(b).toHaveTextContent(/^Back (⇧⌘B|Ctrl\+Alt\+Shift\+B)$/)
+    expect(b).toHaveTextContent(/^Back (⌘P|Ctrl\+Shift\+P)$/)
     fireEvent.click(b)
     expect(back).toHaveBeenCalledTimes(1)
   })

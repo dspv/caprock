@@ -122,23 +122,25 @@ others. Installing it: [install-app.md](install-app.md).
   open it, a hidden project or session to show it again. A project shows
   in the list again while something runs or waits in it, or while it is
   the one in front, hidden or not.
-- **Dashboard.** At the bottom of the sidebar, *Dashboard* (⌘0, or ⇧⌘D) opens Home,
+- **Dashboard.** At the bottom of the sidebar, *Dashboard* (⌘D, or ⌘0) opens Home,
   Cost, Lifetime and the other screens in a *Dashboard* tab pinned at the
   left of the tab strip; your terminals stay in the strip beside it, one click
   away, and the tab brings back the screen you left it on until you close it —
   scrolled where you left it, with the rows you opened still open. Each
   dashboard screen keeps its own place too, so Home → Cost → Home lands
-  where Home was. ⌘0 again, with the dashboard in front, goes to Home at
-  its top; on Home's top it goes back to your terminals.
+  where Home was. ⌘D (or ⌘0) again, with the dashboard in front, goes to
+  Home at its top; on Home's top it goes back to your terminals.
   The Dashboard tab is its icon and its key, ⌘0 (⌘, while it shows
   Settings); its × shows while it is in front.
   On the Dashboard's *Today*, each figure has a faint line of your last 14
   days under it and one word: *usual*, *above usual +38%*, *below usual
   −20%*, or *not enough history* in your first days. It compares with your
   own median by the same time of day; hover it for the figures behind it.
-  Under *Dashboard*, one row in two halves: **Pipeline** (its key, ⇧⌘B,
-  is in its tooltip) and the theme, named too. On Windows and Linux each
-  takes a row, and there the Pipeline row shows its key, Ctrl+Alt+Shift+B.
+  Under *Dashboard*, one row in two halves: **Pipeline ⌘P** and the theme,
+  named too, with ⇧⌘T, which opens the theme picker from anywhere. A key
+  shows where it fits beside the name and is in the tooltip either way. On
+  Windows and Linux each takes a row: *Pipeline Ctrl+Shift+P*, the theme
+  Ctrl+Alt+Shift+T.
   A click on *Pipeline* opens the Pipeline page on the Dashboard; from it,
   a click goes back to where you were. The button is in the accent while
   the page is in front.
@@ -593,7 +595,7 @@ others. Installing it: [install-app.md](install-app.md).
   block; *Expand* makes the block taller (remembered), *Pipeline ↗* opens
   the page. Its other views are one ring with *10/11 · 5m* or the jobs by
   OS, switched in its label.
-  ⇧⌘B, *Pipeline* at the foot of the sidebar, *Pipeline* in the deck's
+  ⌘P, *Pipeline* at the foot of the sidebar, *Pipeline* in the deck's
   header, *Open Pipeline* in the palette or *Pipeline ↗* in the cockpit
   opens the **Pipeline**, a page of the Dashboard (in its menu beside
   *Week*, and in the Dashboard tab in the app): one repository's pull
@@ -625,8 +627,18 @@ others. Installing it: [install-app.md](install-app.md).
   showing data from 15:02 · Retry* when GitHub or the daemon could not be
   read. The CI/CD section on Home says the same in its header, and shows
   the Pipeline's first five figures at its top with *Open Pipeline →*.
-  **Back** in its top-right corner, ⇧⌘B again or *Pipeline* in the sidebar
+  **Back** in its top-right corner, ⌘P again or *Pipeline* in the sidebar
   go back to where you were. It reads GitHub only while it is in front.
+  ⇧⌘B, its key before, still works.
+- **Work.** *Work*, second in the Dashboard's menu, or ⇧⌘W, lists every
+  piece of work on your machine on its way to a release: a row per branch
+  at its furthest step — agent, pull request, CI, merged, released — with
+  the agents on it, grouped *Next release*, *In review*, *In work*,
+  *Planned* and *Released* (or as Kanban columns). Home shows its headline
+  and the first rows that need you or are working, above the Live pulse,
+  with *Open Work →*. A session row brings that session's tab to the
+  front; a pull request's title opens it in the Pipeline, its detail open.
+  ⇧⌘W again goes back to where you were.
 - **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
   same button), *Review and commit* in the inspector, or "Review changes" in
   the palette. The files are listed as *Staged*, *Changes* and *Conflicts*;
@@ -746,14 +758,18 @@ On macOS:
 | ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                 |
 | ⌘I          | Agent cockpit (the inspector)                                            |
 | ⌘B          | Pipeline bar under the agent's terminal, shown or hidden                 |
-| ⇧⌘B         | Pipeline on the dashboard; there, back to where you were                 |
+| ⌘P          | Pipeline on the dashboard; there, back to where you were                 |
+| ⇧⌘W         | Work on the dashboard; there, back to where you were                     |
 | ⌘\          | Hide or show the sidebar                                                 |
-| ⌘0, ⇧⌘D     | Dashboard tab, where you left it; again: Home, at its top                |
+| ⌘D, ⌘0      | Dashboard tab, where you left it; again: Home, at its top                |
+| ⇧⌘T         | Theme: open the picker                                                   |
 | ⌘R          | Reload the window (View → Reload)                                        |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
-(Quick chat is Ctrl+Alt+Shift+N, the Pipeline Ctrl+Alt+Shift+B,
-Send feedback Ctrl+Alt+Shift+F, since Ctrl+Shift+F is Find; tabs are
+(Quick chat is Ctrl+Alt+Shift+N; Send feedback Ctrl+Alt+Shift+F, Work
+Ctrl+Alt+Shift+W and the theme Ctrl+Alt+Shift+T, since Ctrl+Shift+F, W and T
+are Find, Close and New shell; the Dashboard is Ctrl+Shift+D, never Ctrl+D,
+which stays the shell's end of input; tabs are
 Ctrl+Shift+1–9; Add to Second Brain is Ctrl+Shift+H). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are

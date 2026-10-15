@@ -176,7 +176,7 @@ export interface SidebarProps {
   /** Settings on the phone or Telegram section: the row's "phone, Telegram"
    *  words, and the row itself (owner, 2026-10-13). Absent: plain Settings. */
   onSettingsSection?: (section: SettingsSection) => void
-  /** The footer's Pipeline button (⇧⌘B), and whether the Pipeline tab is in
+  /** The footer's Pipeline button (⌘P), and whether the Pipeline tab is in
    *  front (components/SidebarFooter). */
   onPipeline?: () => void
   pipelineActive?: boolean

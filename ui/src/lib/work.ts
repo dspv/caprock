@@ -421,7 +421,7 @@ export function boardOf(st: SessionCIStats | undefined): PRBoard | undefined {
 
 /** Where a pull request row goes: the Pipeline's detail for it. */
 export function pipelineHref(root: string, pr: number): string {
-  return `${href({ name: 'pipeline', repo: root })}&pr=${pr}`
+  return href({ name: 'pipeline', repo: root, pr })
 }
 
 /** The header line: "3 agents live · 1 building · 2 on open PRs · 1 needs you". */

@@ -73,6 +73,24 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — unreleased: Work in the dashboard, and keys named after what they open
+
+Work (PR C of the Work board) is a page of the dashboard: `#/work`, second
+in its nav, kept mounted like the other screens, with Home's Work strip
+above the Live pulse and *Open Work* in the palette. In the app a session
+row brings its tab forward; a pull request's title opens the Pipeline with
+its detail open (`&pr=`). It reads `GET /v1/work`, which lands with the
+daemon half of the board: against a daemon without it the page says it
+cannot reach the daemon and Home's strip draws nothing.
+
+The keys follow the owner's ask to name them after what they open: ⌘D the
+Dashboard (⌘0 stays), ⌘P the Pipeline (⇧⌘B kept as a silent alias), ⇧⌘W
+Work, ⇧⌘T the theme picker; ⌘F and ⌘T stay Find and New shell. Off macOS
+Ctrl+Shift+D, Ctrl+Shift+P, Ctrl+Alt+Shift+W and Ctrl+Alt+Shift+T. The
+every-shortcut-on-every-OS suite presses each, and a new test fails when
+two listed keys read the same off macOS. The sidebar footer's chips were
+measured in a browser at 240–320px on both platforms' spellings.
+
 ### 2026-10-15 — 0.117.4: terminals that draw right, a dashboard that keeps its place, Second Brain by name
 
 A terminal no longer draws from a glyph atlas another tab rebuilt, and it

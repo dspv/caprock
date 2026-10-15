@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { href, parseHash } from './router'
+import { keptScreen } from './screenPlace'
 
 describe('router', () => {
   it('parses and renders routes symmetrically', () => {
@@ -69,5 +70,22 @@ describe('the settings route', () => {
     }
     expect(parseHash('#/settings')).toEqual({ name: 'settings' })
     expect(parseHash('#/settings/printer')).toEqual({ name: 'settings' })
+  })
+})
+
+describe('the Work and Pipeline routes', () => {
+  it('opens Work at #/work, kept like the other dashboard screens', () => {
+    expect(href({ name: 'work' })).toBe('#/work')
+    expect(parseHash('#/work')).toEqual({ name: 'work' })
+    expect(keptScreen({ name: 'work' })).toBe('work')
+  })
+
+  it('carries a pull request to open in the Pipeline, and drops a nonsense one', () => {
+    const h = href({ name: 'pipeline', repo: '/w/app', pr: 641 })
+    expect(h).toBe('#/pipeline?repo=%2Fw%2Fapp&pr=641')
+    expect(parseHash(h)).toEqual({ name: 'pipeline', repo: '/w/app', pr: 641 })
+    for (const bad of ['pr=abc', 'pr=-1', 'pr=0', 'pr=1.5']) {
+      expect(parseHash(`#/pipeline?repo=x&${bad}`)).toEqual({ name: 'pipeline', repo: 'x' })
+    }
   })
 })

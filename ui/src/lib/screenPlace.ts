@@ -8,7 +8,7 @@
  * Two halves:
  *
  * - **Kept screens.** The dashboard's own screens (KEPT_SCREENS: Home, Cost,
- *   Lifetime, Week, Pipeline, Memory, Tasks) stay mounted once opened and are hidden,
+ *   Work, Lifetime, Week, Pipeline, Memory, Tasks) stay mounted once opened and are hidden,
  *   not dropped, while another screen or a terminal tab is in front — so an
  *   opened row, a fold, a filter is still there on return. A hidden one asks
  *   nothing and its clocks stop (`ScreenShown`, lib/refresh.ts). The rest —
@@ -24,7 +24,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 import { href, type Route } from './router'
 
 /** The dashboard screens kept mounted once opened, by route name. */
-export const KEPT_SCREENS: readonly Route['name'][] = ['now', 'cost', 'history', 'week', 'pipeline', 'notes', 'tasks']
+export const KEPT_SCREENS: readonly Route['name'][] = ['now', 'work', 'cost', 'history', 'week', 'pipeline', 'notes', 'tasks']
 
 /** The kept screen a route shows, or undefined for one that mounts only while shown. */
 export function keptScreen(r: Route): Route['name'] | undefined {

@@ -121,16 +121,17 @@ describe('the session deck in the app', () => {
   // Owner, 2026-10-14, translated: "it feels like quick access to the CI/CD
   // page is missing". Since 2026-10-15 the Pipeline is a page of the
   // dashboard ("Pipeline is part of the Dashboard, just a separate page"):
-  // ⇧⌘B opens the Dashboard tab at #/pipeline and, from there, goes back.
+  // ⌘P (⇧⌘B until 2026-10-15) opens the Dashboard tab at #/pipeline and,
+  // from there, goes back.
   const dashboardTab = () => screen.getByRole('tab', { name: /^Dashboard/ })
   const pipelinePage = () => waitFor(() => {
     const v = document.querySelector('[data-dashboard-view]:not([hidden]) [data-prs-tab]')
     if (!v) throw new Error('no Pipeline page')
     return v
   }, { timeout: 5000 })
-  it('opens the Pipeline in the Dashboard tab on ⇧⌘B and goes back to the tab before on ⇧⌘B or Back', async () => {
+  it('opens the Pipeline in the Dashboard tab on ⌘P and goes back to the tab before on ⌘P or Back', async () => {
     await openAgent()
-    const shiftCmdB = () => act(() => { fireEvent.keyDown(window, { key: 'B', code: 'KeyB', metaKey: true, shiftKey: true }) })
+    const shiftCmdB = () => act(() => { fireEvent.keyDown(window, { key: 'p', code: 'KeyP', metaKey: true }) })
     cmdB()
     shiftCmdB()
     expect(location.hash).toBe('#/pipeline?of=agent-1')
@@ -154,7 +155,7 @@ describe('the session deck in the app', () => {
 
   it('opens the Pipeline from the sidebar footer’s button and from the bar’s own control, and hides the bar with its ×', async () => {
     await openAgent()
-    expect(pipelineButton()).toHaveAccessibleName('Pipeline: every pull request on its way — open, CI, merged, released — on the dashboard (⇧⌘B)')
+    expect(pipelineButton()).toHaveAccessibleName('Pipeline: every pull request on its way — open, CI, merged, released — on the dashboard (⌘P)')
     fireEvent.click(pipelineButton())
     await pipelinePage()
     expect(dashboardTab()).toHaveAttribute('aria-selected', 'true')
@@ -188,8 +189,76 @@ describe('the session deck in the app', () => {
     act(() => { fireEvent.keyDown(window, { key: 'k', code: 'KeyK', metaKey: true }) })
     fireEvent.change(screen.getByRole('combobox', { name: 'Search' }), { target: { value: 'pipeline' } })
     const options = screen.getAllByRole('option').map((o) => o.textContent ?? '')
-    expect(options.some((t) => t.startsWith('Open Pipeline') && t.includes('⇧⌘B'))).toBe(true)
+    expect(options.some((t) => t.startsWith('Open Pipeline') && t.includes('⌘P'))).toBe(true)
     fireEvent.click(screen.getAllByRole('option').find((o) => o.textContent?.startsWith('Pipeline bar: On'))!)
     expect(await screen.findByRole('region', { name: 'Session deck' })).toBeInTheDocument()
+  })
+
+  // ⇧⌘B, the Pipeline's key until 2026-10-15, still works, unlisted.
+  it('keeps ⇧⌘B as a silent alias of ⌘P', async () => {
+    await openAgent()
+    const shiftCmdB = () => act(() => { fireEvent.keyDown(window, { key: 'B', code: 'KeyB', metaKey: true, shiftKey: true }) })
+    shiftCmdB()
+    expect(location.hash).toBe('#/pipeline?of=agent-1')
+    await pipelinePage()
+    shiftCmdB()
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true'))
+  })
+})
+
+// Owner, 2026-10-15, translated: "bind shortcuts to the names: ⌘D Dashboard
+// (keep ⌘0 too) … ⌘T theme". ⌘T stays New shell, so the theme is ⇧⌘T, and
+// Work, the dashboard's page of work on its way, is ⇧⌘W.
+describe('keys named after what they open', () => {
+  const press = (key: string, mods: { shiftKey?: boolean } = {}) =>
+    act(() => { fireEvent.keyDown(window, { key: mods.shiftKey ? key.toUpperCase() : key, code: `Key${key.toUpperCase()}`, metaKey: true, ...mods }) })
+  const dashboardTab = () => screen.getByRole('tab', { name: /^Dashboard/ })
+  const agentInFront = () => waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true'))
+
+  it('opens the dashboard on ⌘D as ⌘0 does, and from Home at its top goes back to the terminals', async () => {
+    await openAgent()
+    press('d')
+    await waitFor(() => expect(dashboardTab()).toHaveAttribute('aria-selected', 'true'))
+    expect(location.hash).toBe('#/')
+    press('d')
+    await agentInFront()
+    act(() => { fireEvent.keyDown(window, { key: '0', code: 'Digit0', metaKey: true }) })
+    await waitFor(() => expect(dashboardTab()).toHaveAttribute('aria-selected', 'true'))
+  })
+
+  it('opens Work in the Dashboard tab on ⇧⌘W, in the nav second, and goes back to the tab before on ⇧⌘W', async () => {
+    await openAgent()
+    press('w', { shiftKey: true })
+    expect(location.hash).toBe('#/work')
+    await waitFor(() => expect(dashboardTab()).toHaveAttribute('aria-selected', 'true'))
+    const work = screen.getByRole('link', { name: 'Work' })
+    expect(work).toHaveAttribute('aria-current', 'page')
+    expect([...work.parentElement!.querySelectorAll('a')].map((a) => a.textContent)).toEqual(expect.arrayContaining(['Home', 'Work']))
+    expect(work.parentElement!.querySelectorAll('a')[1]).toBe(work)
+    press('w', { shiftKey: true })
+    await agentInFront()
+    // ⌘W stays Close.
+    expect(location.hash).not.toBe('#/work')
+  })
+
+  it('opens the theme picker on ⇧⌘T, focused on the palette in use, and closes it again', async () => {
+    await openAgent()
+    expect(document.querySelector('[data-theme-menu]')).toBeNull()
+    press('t', { shiftKey: true })
+    await waitFor(() => expect(document.querySelector('[data-theme-menu]')).toBeTruthy())
+    expect(document.activeElement).toHaveAttribute('aria-checked', 'true')
+    press('t', { shiftKey: true })
+    await waitFor(() => expect(document.querySelector('[data-theme-menu]')).toBeNull())
+    // ⌘T is still New shell, never the theme.
+    expect(document.querySelector('[data-theme-menu]')).toBeNull()
+  })
+
+  it('lists Open Work and Choose a theme in the palette with their keys', async () => {
+    await openAgent()
+    act(() => { fireEvent.keyDown(window, { key: 'k', code: 'KeyK', metaKey: true }) })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search' }), { target: { value: 'work' } })
+    expect(screen.getAllByRole('option').some((o) => o.textContent?.startsWith('Open Work') && o.textContent.includes('⇧⌘W'))).toBe(true)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search' }), { target: { value: 'theme' } })
+    expect(screen.getAllByRole('option').some((o) => o.textContent?.startsWith('Choose a theme') && o.textContent.includes('⇧⌘T'))).toBe(true)
   })
 })

@@ -47,13 +47,15 @@ export interface PipelineViewProps {
   session?: SessionSummary
   /** The page is in front: only then is anything asked. */
   visible: boolean
-  /** Back to where ⇧⌘B was pressed (the app); absent, no Back. */
+  /** Back to where ⌘P was pressed (the app); absent, no Back. */
   onBack?: () => void
   onToast?: (text: string) => void
   worktrees?: DeckWorktree[]
   onStartAgent?: (req: SpawnRequest, title: string) => Promise<void>
   /** The repository picker, at the head of the page (screens/Pipeline.tsx). */
   picker?: ReactNode
+  /** A pull request whose detail opens as the page does, or as the address names another (`&pr=`). */
+  pr?: number
 }
 
 const SCOPE_KEY = 'caprock.prsTab.scope'
@@ -96,7 +98,7 @@ function BackButton({ onBack }: { onBack: () => void }) {
   return <ExpandToggle collapse onClick={onBack} />
 }
 
-function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, onStartAgent, picker }: PipelineViewProps & { session: SessionSummary }) {
+function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, onStartAgent, picker, pr }: PipelineViewProps & { session: SessionSummary }) {
   const canControl = useCanControl()
   const [scope, setScopeState] = useState<TabScope>(readScope)
   const setScope = (v: TabScope) => { setScopeState(v); try { localStorage.setItem(SCOPE_KEY, v) } catch { /* this page only */ } }
@@ -114,6 +116,8 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
   const pick = chosen ?? 0
   // Another repository picked: what was open over the old one closes.
   useEffect(() => { setChosen(undefined) }, [sessionId])
+  // The pull request the address names opens beside the list (a Work row's title).
+  useEffect(() => { if (pr) setChosen(pr) }, [pr, sessionId])
   // The detail takes the focus as it opens, so Esc closes it whatever was
   // clicked; under the list (a narrow window) that also brings it into view.
   const detailRef = useRef<HTMLElement>(null)

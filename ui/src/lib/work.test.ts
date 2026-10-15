@@ -157,6 +157,6 @@ describe('the repositories', () => {
   it('opens a pull request in the Pipeline at its repository', () => {
     const h = pipelineHref('/w/my app', 631)
     expect(h).toBe('#/pipeline?repo=%2Fw%2Fmy+app&pr=631')
-    expect(parseHash(h)).toMatchObject({ name: 'pipeline', repo: '/w/my app' })
+    expect(parseHash(h)).toEqual({ name: 'pipeline', repo: '/w/my app', pr: 631 })
   })
 })

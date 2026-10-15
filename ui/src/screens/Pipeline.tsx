@@ -4,7 +4,9 @@
  * Dashboard as a separate page, opened there — Pipeline, simply in the
  * Dashboard's style … Pipeline is part of the Dashboard, just a separate
  * page"). It sits in the dashboard's nav beside Cost and Week, renders in the
- * Dashboard tab, and ⇧⌘B (or the sidebar's Pipeline) opens it there.
+ * Dashboard tab, and ⌘P (or the sidebar's Pipeline) opens it there.
+ * `pr` (#/pipeline?repo=…&pr=N, a Work row's title) opens that pull
+ * request's detail beside the list.
  *
  * It shows one repository, picked in its head: the one the address names
  * (`repo`), else that of the agent it was opened from (`of`), else the one
@@ -26,7 +28,7 @@ const PILLS = 5
 
 const none = (): Promise<SessionSummary[]> => Promise.resolve([])
 
-export function PipelineScreen({ repo, of }: { repo?: string; of?: string }) {
+export function PipelineScreen({ repo, of, pr }: { repo?: string; of?: string; pr?: number }) {
   const host = useContext(PipelineHostContext)
   const shown = useContext(ScreenShown)
   // The app hands its own list; a browser tab reads it, rarely: a new
@@ -76,6 +78,7 @@ export function PipelineScreen({ repo, of }: { repo?: string; of?: string }) {
         worktrees={host.worktreesOf?.(s.session_id)}
         onStartAgent={host.onStartAgent ? (req, title) => host.onStartAgent!(req, title, s.session_id) : undefined}
         picker={picker}
+        pr={pr}
       />
     </div>
   )
