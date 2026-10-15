@@ -1006,6 +1006,37 @@ own memory as below). Only reads: nothing is signalled except by the reap below.
   `GET` answers the last sample when it is under 5 s old, otherwise takes one.
 - **A paired device may read it**; it may not reap.
 
+`GET /v1/resources/history[?since=<unix ms>]` (2026-10-15) is the same
+figures over the last hour, for the status bar's resource popover
+([04-ui.md § Status strip](04-ui.md)). Code: `internal/daemon/reshistory.go`.
+
+```json
+{"interval_s": 5, "capacity": 720,
+ "at": [1791400000000, 1791400005000],
+ "caprock": {"cpu": [3.8, 4.1], "mem": [450887680, 451000320]},
+ "all": {"cpu": [0, 112.3], "mem": [1048576, 5242880]},
+ "sessions": {"<session id>": {"cpu": [null, 12.3], "mem": [1048576, 2097152]}}}
+```
+
+- **What is kept.** Every sample the meter takes (§ When it samples above),
+  in a ring of `capacity` slots — an hour at `interval_s` — oldest dropped
+  first. It takes no sample of its own and does not keep the meter sampling,
+  so the history has gaps where no window was open; asking it is a read.
+  `since` answers only samples taken after that time (the popover asks after
+  the newest it has, so the hour is fetched once).
+- **Series.** Each array lines up with `at`, oldest first. `caprock` is the
+  daemon, the terminal holders, the app and its web view summed; `all` is
+  every session's tree summed (a CPU before its first rate counts as none);
+  `sessions` has one series per session that appears in the window, `null`
+  where it was not running or where its CPU had no rate yet. CPU is rounded
+  to 0.1; memory is kept in KiB and answered in bytes.
+- **Cost** (measured 2026-10-15, Apple M1 Pro under load, ten sessions — more
+  than the owner runs at once, `BenchmarkResourceHistory`): a full hour holds
+  157 KB of heap; keeping a sample takes 0.15 µs and allocates nothing; the
+  full hour answered as JSON is 135 KB and 1.8 ms. A preview daemon with two
+  sessions answered its first 20 minutes in 15 KB and 2.5 ms.
+- **A paired device may read it**, as it reads `GET /v1/resources`.
+
 `POST /v1/resources/reap` → `{reaped[], failed[]?, kept[]}` (verdicts as in
 `hosts.list`; `failed` is `{pid, error}`): stops every holder whose verdict is
 `reap`, and lists in `kept` the orphans left running because something still

@@ -161,6 +161,8 @@ type resourceMeter struct {
 	// scans.
 	orphSampler *procstat.Sampler
 	orphLast    OrphanReport
+	// hist is the last hour of samples (reshistory.go).
+	hist resourceHistory
 }
 
 func newResourceMeter() *resourceMeter {
@@ -325,7 +327,16 @@ func (d *Daemon) sampleResources(ctx context.Context) *ResourceReport {
 	r.apps = withMemory(scan.apps, use)
 	d.res.forgetGone(tab)
 	d.res.last = r
+	d.res.hist.record(r)
 	return r
+}
+
+// resourceHistory answers GET /v1/resources/history: the samples kept since
+// sinceMs. It takes no sample of its own.
+func (d *Daemon) resourceHistory(sinceMs int64) *ResourceHistory {
+	d.res.mu.Lock()
+	defer d.res.mu.Unlock()
+	return d.res.hist.since(sinceMs)
 }
 
 // forgetGone drops the caches keyed by processes that no longer exist.
