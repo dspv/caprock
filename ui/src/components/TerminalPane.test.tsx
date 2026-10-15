@@ -23,6 +23,8 @@ const h = vi.hoisted(() => ({
   blurs: 0,
   webgl: { made: 0, disposed: 0 },
   noInsides: false,
+  /** Each WebGL addon's page-merge listener (onRemoveTextureAtlasCanvas): firing one is a merge in the shared atlas. */
+  merges: [] as (() => void)[],
   resizes: [] as number[][],
   wakes: 0,
   /** What the fit addon measures; null as for a pane never laid out. */
@@ -49,7 +51,7 @@ vi.mock('@xterm/xterm', () => ({
     scrollToLine(n: number) { this.scrolledTo = n }
     reset() { h.writes.push('reset') }
     clearTextureAtlas() { h.steps.push('atlas') }
-    refresh() {}
+    refresh() { h.steps.push('refresh') }
     scrollToBottom() {}
     onData() { return { dispose() {} } }
     onResize() { return { dispose() {} } }
@@ -75,6 +77,7 @@ vi.mock('@xterm/addon-webgl', () => ({
     // The addon's insides reuploadGlyphs reaches; null in a test of the fallback.
     _renderer = h.noInsides ? undefined : { _charAtlas: {}, _glyphRenderer: { value: { setAtlas: () => { h.steps.push('upload') } } } }
     onContextLoss() {}
+    onRemoveTextureAtlasCanvas(fn: () => void) { h.merges.push(fn); return { dispose() {} } }
     dispose() { h.webgl.disposed++ }
   },
 }))
@@ -107,7 +110,7 @@ vi.mock('@/lib/termv2', () => ({
 }))
 vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
 
-import { HIDDEN_DISCONNECT_MS, HIDDEN_HOLD_BYTES, KEEP_WEBGL_HIDDEN, LONG_HIDDEN_MS, SETTLE_MS, TerminalPane, keptWebglCount } from './TerminalPane'
+import { FOCUS_HEAL_MS, HIDDEN_DISCONNECT_MS, HIDDEN_HOLD_BYTES, KEEP_WEBGL_HIDDEN, LONG_HIDDEN_MS, SETTLE_MS, TerminalPane, keptWebglCount } from './TerminalPane'
 import { WEBGL_QUIET_MS } from './Terminal'
 import { FIND_EVENT } from '@/lib/appkeys'
 import { setTerminalPrefs, DEFAULT_PREFS } from '@/lib/termprefs'
@@ -128,6 +131,7 @@ beforeEach(() => {
   h.blurs = 0
   h.webgl.made = 0
   h.webgl.disposed = 0
+  h.merges.length = 0
   h.resizes.length = 0
   h.wakes = 0
   h.fitSize = { cols: 120, rows: 40 }
@@ -662,5 +666,36 @@ describe('switching tabs shows the terminal as it was', () => {
     } finally {
       h.noInsides = false
     }
+  })
+  // The owner, 2026-10-15: the tab in front garbled, every glyph from the
+  // wrong cells of the atlas, until font +/-. A page merge in the atlas all
+  // tabs share left a texture unit holding the old page (lib/termatlas).
+  it('a page merge in the shared atlas has every pane with WebGL re-send its atlas and redraw, rasterising nothing', async () => {
+    working('a')
+    const b = working('b')
+    b.rerender(<TerminalPane sessionId="b" active={false} />)
+    expect(h.merges).toHaveLength(2)
+    h.steps.length = 0
+    // One merge: four pages removed, each addon told four times.
+    for (let i = 0; i < 4; i++) for (const fire of h.merges) fire()
+    expect(count('upload')).toBe(8)
+    await act(async () => { await Promise.resolve() })
+    expect(count('refresh')).toBe(2)
+    expect(count('atlas')).toBe(0)
+  })
+
+  it('the window back in front after a while re-sends the atlas of the pane in front; a quick switch of apps does nothing', () => {
+    working('a')
+    h.steps.length = 0
+    act(() => { window.dispatchEvent(new Event('blur')) })
+    act(() => { vi.advanceTimersByTime(2_000) })
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(count('upload')).toBe(0)
+    act(() => { window.dispatchEvent(new Event('blur')) })
+    act(() => { vi.advanceTimersByTime(FOCUS_HEAL_MS + 1) })
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(count('upload')).toBe(1)
+    expect(count('refresh')).toBe(1)
+    expect(count('atlas')).toBe(0)
   })
 })

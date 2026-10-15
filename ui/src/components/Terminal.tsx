@@ -19,7 +19,8 @@ import { modeOfRoot, themeRow } from '@/lib/themes'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
-import { loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
+import { clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
+import { healAtlasMerges } from '@/lib/termatlas'
 import { blinkWhileVisible } from '@/lib/visible'
 
 /**
@@ -263,6 +264,9 @@ export function TerminalView({
           webgl.dispose()
         })
         term.loadAddon(webgl)
+        // The atlas is shared with every other terminal: a page merge must
+        // not leave this one drawing from a stale texture (lib/termatlas).
+        healAtlasMerges(webgl, term, () => clearGlyphAtlas(term))
       } catch {
         // No WebGL here. The default renderer is already drawing, so there
         // is nothing to do and nothing worth telling the user.
