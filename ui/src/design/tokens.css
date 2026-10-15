@@ -660,22 +660,24 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 }
 [data-app] .app-row { transition: background-color 120ms var(--app-ease), color 120ms var(--app-ease); }
 [data-app] .app-row:hover { background: var(--app-row-hover); }
-/* A row that waits on you: an amber edge and tint, on the row itself. The
- * separate Waiting on you block is gone (owner, 2026-10-11: "everything is
- * already visible in Projects", translated), so the row says it. Before the
- * current-row rules: the tab in front keeps its own fill and edge. */
-[data-app] .app-row[data-waiting] { background: color-mix(in srgb, var(--color-accent) 11%, transparent); box-shadow: inset 2px 0 0 var(--color-accent); }
-[data-app] .app-row[data-waiting]:hover { background: color-mix(in srgb, var(--color-accent) 17%, transparent); }
+/* A row that waits on you has no fill and no edge: it says so with its amber
+ * dot and word (components/ProjectRow.tsx). A fill and an edge are the tab in
+ * front's alone — with both on a waiting row too, a user could not tell which
+ * tab she was in (2026-10-15, translated: "which tab am I working in?"). */
 [data-app] .app-row[aria-current="true"] { background: var(--app-row-active); }
-/* The tab in front, in the sidebar's list under the current project: the one
- * highlighted row in the sidebar, its fill plus an edge in the text colour —
- * "what am I on" at a glance (owner, 2026-10-09). Not amber: in the sidebar
- * amber means one thing, waiting on you. */
-[data-app] .app-row[data-tab-row][aria-current="true"] { box-shadow: inset 2px 0 0 var(--color-fg); }
-/* The project in front (⌃⌘1–⌃⌘9 land on it): its edge, faint, with no fill,
- * so the tab in front stays the one highlighted row and the eye still
- * finds which project it is in among the others (owner, 2026-10-13). */
-[data-app] .app-row[data-project-row][data-current] { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-fg) 40%, transparent); }
+/* The tab in front: the one selected row in the sidebar — an accent tint, a
+ * solid 3px accent edge and a bold title, "what am I on" at a glance (owner,
+ * 2026-10-09). The project in front has no edge any more, only its bold name. */
+[data-app] .app-row.app-row-selected,
+[data-app] .app-row.app-row-selected:hover {
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+/* A session row's dot (components/ProjectRow.tsx RowDot): working breathes,
+ * slowly; waiting wears an amber halo. Both still under reduced motion. */
+[data-app] .app-dot-working { animation: appDotBreathe 2.4s ease-in-out infinite; }
+@keyframes appDotBreathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+[data-app] .app-dot-waiting { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warn) 30%, transparent); }
 [data-app] :focus-visible:not(input, textarea, select) { outline: 2px solid var(--app-focus); outline-offset: -2px; border-radius: 6px; }
 [data-app] .xterm :focus-visible { outline: none; }
 [data-app] .app-chevron { transition: transform 120ms var(--app-ease); }
@@ -702,7 +704,7 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 }
 @media (prefers-reduced-motion: reduce) {
   [data-app] .app-row, [data-app] .app-chevron { transition: none; }
-  [data-app] .app-fade-in, [data-app] .app-ring { animation: none; }
+  [data-app] .app-fade-in, [data-app] .app-ring, [data-app] .app-dot-working { animation: none; }
 }
 /* The sidebar's primary action: the accent as a border and label on the
  * panel, not a fill (owner, 2026-10-09). Still the one accent-framed control. */

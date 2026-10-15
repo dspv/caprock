@@ -141,7 +141,8 @@ One window, three regions:
   each project, every agent session** (owner, 2026-10-13, translated:
   "when will this *+1 more* go away … show only the agent sessions, don't
   move anything, don't add extra elements"): working, waiting and idle,
-  one 28px row each with no agent mark (the agent is in the tooltip), and
+  one 38px row each, its title 14px, its state a dot and a word, with no
+  agent mark (the agent is in the tooltip), and
   no *+N more* line. That line (FB-053, earlier the same day: only what was
   active, the rest folded behind *+N more*) hid the very rows the owner
   steered by. Shells and file tabs have no rows — they are in the strip —
@@ -151,9 +152,9 @@ One window, three regions:
   ([04-ui.md](04-ui.md) § Sidebar). Rows read the strip's names
   (`lib/tablabels.ts`; a branch only when it is not the project's). No
   worktree or branch rows, and no ended session — those are on the
-  project's page (*Recent*), in ⌘K and in the Inbox. The one highlighted
-  row in the sidebar is the tab in front; the current project's name is
-  bold, with a faint edge and no fill. **Rows keep their
+  project's page (*Recent*), in ⌘K and in the Inbox. The one selected row
+  in the sidebar is the tab in front — accent tint, 3px accent edge, bold
+  title; the current project's name is bold, with no edge or fill. **Rows keep their
   places** (owner, 2026-10-13, translated: "fixed positions, I orient
   visually by them"; `lib/rowOrder.ts`): by the order set by hand, then by
   when the session started, never by the strip, the front or a state, so a
@@ -163,8 +164,9 @@ One window, three regions:
   list's under `*`). **Group by project or one list** (owner, same day,
   translated: "top I see 1, 2, 3; on the left I see 4, 2"): a switch
   beside the heading (`caprock.app.sidebar-grouped`; *Projects* | *Tabs*
-  in words since 2026-10-14) switches to one flat list of every agent session, each row
-  with its project's dot and short name. **Tabs are the navigation**
+  in words since 2026-10-14) switches to one flat list of every agent session;
+  since 2026-10-15 a row there no longer draws its project's name (a user
+  could not read the rows) — the tooltip and the accessible name say it. **Tabs are the navigation**
   (owner, 2026-10-14, translated: "I sometimes work with 5 projects at
   once, sometimes 2. I just want to switch between them with key combos"):
   ⌘1–⌘9 (Ctrl+Shift+1–9 off macOS) is the strip's Nth tab, ⌘9 the last,
@@ -189,7 +191,8 @@ One window, three regions:
   ⌥← ⌥→ or ⌘↑ ⌘↓). There is no *Waiting on you* section
   (owner, 2026-10-11: "not needed at all — everything is already visible in
   Projects", translated): a session that waits is marked on its own row,
-  amber edge and tint and *waiting* (or *asks* at a permission prompt), and
+  an amber dot and the amber word *waiting* (or *asks* at a permission
+  prompt) — never a fill or an edge, which are the tab in front's — and
   a project folded by hand still lists what waits in it. Every row under a
   project can be got rid of (owner, same day: "nothing can be done … I
   can't close it or hide it afterwards", translated): a tab row's × closes
@@ -446,7 +449,10 @@ One window, three regions:
   *Running* → `#/now`, *Waiting* → the first Inbox item. Code:
   `components/TodayStrip.tsx`, `lib/today.ts`. While the sidebar is open
   the status strip drops its plan windows and spend, so the same figures
-  are never on screen twice.
+  are never on screen twice. It folds to one line by its chevron and hides
+  from its right-click menu; Settings → Appearance shows it again, and
+  while hidden the list's heading counts what waits (a user, 2026-10-15;
+  `lib/todayCard.ts`, [04-ui.md](04-ui.md) § Sidebar).
 - **Project menu** (owner, same day: "a way to hide or close projects";
   the hover-only eye was not found). The row's ⋯ — on hover or focus — a
   right-click on the row, or

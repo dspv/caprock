@@ -38,6 +38,7 @@ import { Choice, Details, Section, Toggle } from '@/components/SettingsParts'
 import { GlobalHotkey } from '@/components/GlobalHotkey'
 import { isAppMode, isMacPlatform, isTauri } from '@/lib/appmode'
 import { useSidebarMode, type SidebarMode } from '@/lib/sidebarMode'
+import { useTodayCard } from '@/lib/todayCard'
 import { UI_SCALES, setUiScale, useUiScale, type UiScale } from '@/lib/uiscale'
 import { TerminalSettings } from '@/components/TerminalSettings'
 import { StatuslineSetting } from '@/components/StatuslineSetting'
@@ -282,6 +283,7 @@ function AppearanceSection() {
       <ThemePicker size="cards" />
       {isTauri() && <InterfaceSize />}
       <SidebarModeSetting />
+      <TodayCardSetting />
       <FaceDefaultSetting />
       <p className="text-[12px] text-fg-muted">Saved in this browser only.</p>
     </Section>
@@ -303,6 +305,19 @@ function SidebarModeSetting() {
         Projects lists the sessions under their projects; Tabs puts them in one list in the tabs&rsquo; order, each with its tab&rsquo;s key. The same switch sits beside the sidebar&rsquo;s heading.
       </p>
     </div>
+  )
+}
+
+/** The sidebar's Today card, hidden from its own menu and brought back here (lib/todayCard.ts). */
+function TodayCardSetting() {
+  const [card, setCard] = useTodayCard()
+  return (
+    <Toggle
+      checked={!card.hidden}
+      onChange={(v) => setCard({ hidden: !v })}
+      label="Show today's figures in the sidebar"
+      hint="Spend, running, waiting and the plan windows above the session list. Hidden, what waits on you is counted beside the list's heading."
+    />
   )
 }
 
