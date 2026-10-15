@@ -22,9 +22,9 @@
  * into — one started in another terminal, or one that ended — shown as its
  * conversation, read-only (`observe`, components/ObservePane.tsx; rule 7).
  * A file's `sessionId` is its key (lib/files.ts fileKey), so each opens once,
- * as a session does. The Pipeline was a tab too (`prs`) until 2026-10-15; it
- * is a page of the dashboard now, and a stored one is read as that page
- * (parseWorkspace, pipelineInStore).
+ * as a session does. The Pipeline was a pane too (`prs`) until 2026-10-15; it
+ * is a pinned system tab of its own now (`Workspace.pipeline`), and a stored
+ * one is read as that tab (parseWorkspace, pipelineInStore).
  */
 export interface TabTarget {
   kind: 'session' | 'shell' | 'file' | 'observe'
@@ -80,6 +80,12 @@ export interface Workspace {
    * the first time Mail is opened until it is closed. Absent reads as false.
    */
   mail?: boolean
+  /**
+   * The Pipeline tab is in the strip, pinned right after the Dashboard tab:
+   * there from the first time the Pipeline is opened until it is closed.
+   * Absent reads as false.
+   */
+  pipeline?: boolean
 }
 
 export type WorkspaceAction =
@@ -99,6 +105,8 @@ export type WorkspaceAction =
   | { type: 'dashboard'; open: boolean }
   /** Puts the pinned Mail tab in the strip, or takes it out. */
   | { type: 'mail'; open: boolean }
+  /** Puts the pinned Pipeline tab in the strip, or takes it out. */
+  | { type: 'pipeline'; open: boolean }
   | { type: 'retitle'; sessionId: string; title: string }
   | { type: 'drop-session'; sessionId: string }
   /**
@@ -315,6 +323,13 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       delete rest.mail
       return rest
     }
+    case 'pipeline': {
+      if (!!ws.pipeline === a.open) return ws
+      if (a.open) return { ...ws, pipeline: true }
+      const rest = { ...ws }
+      delete rest.pipeline
+      return rest
+    }
     case 'retitle': {
       let changed = false
       const tabs = ws.tabs.map((t) => {
@@ -408,8 +423,8 @@ function storedPipeline(t: unknown): string | undefined {
 }
 
 /**
- * Where the Dashboard tab opens when the stored workspace had a Pipeline tab
- * (before 2026-10-15): the Pipeline page, for the agent the last one was
+ * Where the Pipeline tab opens when the stored workspace had a Pipeline pane
+ * tab (before 2026-10-15): the Pipeline, for the agent the last one was
  * opened from. Undefined when it had none.
  */
 export function pipelineInStore(raw: string | null): string | undefined {
@@ -450,8 +465,8 @@ export function parseWorkspace(raw: string | null): Workspace {
     const tabs = v.tabs.filter((t): t is Tab =>
       !!t && typeof t.id === 'string' && typeof t.projectId === 'string' && isPane(t.root) && typeof t.focusedPaneId === 'string',
     ).map((t) => ({ ...t, title: typeof t.title === 'string' ? t.title : '' }))
-    // A Pipeline tab (before 2026-10-15) is a page of the dashboard now: it
-    // is not restored as a tab, and the Dashboard tab takes its place.
+    // A Pipeline pane tab (before 2026-10-15) is not restored as a pane: the
+    // pinned Pipeline tab takes its place.
     const hadPipeline = v.tabs.some((t) => storedPipeline(t) !== undefined)
     const ids = new Set(tabs.map((t) => t.id))
     const activeByProject: Record<string, string> = {}
@@ -462,8 +477,9 @@ export function parseWorkspace(raw: string | null): Workspace {
     // same fields and reads as it is: its tabs are already one list, in the
     // order they were opened; only `dashboard` is new, and absent means shut.
     const ws: Workspace = { version: 1, tabs, activeByProject, activeProject: typeof v.activeProject === 'string' ? v.activeProject : '' }
-    if (v.dashboard === true || hadPipeline) ws.dashboard = true
+    if (v.dashboard === true) ws.dashboard = true
     if (v.mail === true) ws.mail = true
+    if (v.pipeline === true || hadPipeline) ws.pipeline = true
     return ws
   } catch {
     return EMPTY_WORKSPACE
