@@ -331,8 +331,8 @@
 .cm .nav .swatch { flex: none; width: 16px; }
 /* AI triage: the inbox filters, the status line, the offer, the row labels. */
 .cm { --cat-important: var(--color-accent); --cat-updates: var(--color-ok); --cat-newsletter: var(--color-warn); --cat-spam: var(--color-danger); }
-.cm .cats { display: flex; flex-wrap: wrap; gap: 2px; padding: 8px 10px 0; }
-.cm .cat { display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 2px 6px; cursor: pointer; color: var(--muted); white-space: nowrap; font-size: 12.5px; }
+.cm .cats { display: flex; flex-wrap: wrap; gap: 0; padding: 8px 8px 0; }
+.cm .cat { display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 2px 5px; cursor: pointer; color: var(--muted); white-space: nowrap; font-size: 12.5px; }
 .cm .cat:hover { background: var(--hover); color: var(--text); }
 .cm .cat.on { border-color: var(--line); background: var(--panel); color: var(--text); font-weight: 500; }
 .cm .cat em { font-style: normal; font-size: 11px; border-radius: 8px; padding: 0 5px; background: color-mix(in srgb, var(--cat-important) 16%, transparent); }

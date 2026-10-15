@@ -56,7 +56,7 @@ export const CATS: { cat: Cat; label: string; k: MailKey }[] = [
   { cat: 'all', label: 'All', k: 'catAll' },
   { cat: 'important', label: 'Important', k: 'catImportant' },
   { cat: 'updates', label: 'Updates', k: 'catUpdates' },
-  { cat: 'newsletter', label: 'Newsletters', k: 'catNewsletter' },
+  { cat: 'newsletter', label: 'News', k: 'catNewsletter' },
   { cat: 'spam', label: 'Spam', k: 'catSpam' },
 ]
 const CAT_BY_KEY: Record<string, Cat> = { 1: 'all', 2: 'important', 3: 'updates', 4: 'newsletter', 5: 'spam' }
