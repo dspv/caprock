@@ -14,13 +14,13 @@ describe('closing an agent\'s tab, the setting', () => {
     expect(loadAgentClose()).toBe('ask')
   })
 
-  it('is the way back from "Don\'t ask again": Settings and the close agree at once', () => {
+  it('sets always keep or always end, and back to asking while it works: Settings and the close agree at once', () => {
     const hook = renderHook(() => useAgentClose())
     render(<AgentCloseSetting />)
-    expect(screen.getByRole('radio', { name: 'Ask' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: 'Ask while it works' })).toHaveAttribute('aria-checked', 'true')
     act(() => saveAgentClose('keep'))
     expect(screen.getByRole('radio', { name: 'Keep it running' })).toHaveAttribute('aria-checked', 'true')
-    fireEvent.click(screen.getByRole('radio', { name: 'Ask' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Ask while it works' }))
     expect(localStorage.getItem(AGENT_CLOSE_KEY)).toBe('ask')
     expect(hook.result.current[0]).toBe('ask')
   })
