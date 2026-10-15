@@ -7,7 +7,6 @@ import (
 
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/peers"
-	"github.com/dspv/caprock/internal/remote"
 )
 
 // Other computers (ADR-067): this daemon as a relay client to the user's
@@ -31,12 +30,10 @@ type machinesAdapter struct {
 
 func (a *machinesAdapter) mgr() *peers.Manager {
 	a.once.Do(func() {
-		self := ""
-		if set, err := remote.Load(a.d.opt.DataDir); err == nil {
-			if keys, err := set.Keys(); err == nil {
-				self = keys.HostID()
-			}
-		}
+		// This machine's own relay id, read under the daemon's lock as the
+		// pairing panel reads it (never a second load of remote.json, which
+		// could write keys of its own).
+		self := a.d.RemoteState("").HostID
 		m, err := peers.Open(peers.Options{Dir: a.d.opt.DataDir, Self: self, Name: machineName(), Log: a.d.log})
 		if err != nil {
 			a.d.log.Warn("could not read the computers this one reaches; listing none", "component", "peers", "err", err)
