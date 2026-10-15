@@ -1701,6 +1701,41 @@ and `ui/src/lib/composer.ts`.
   the terminal's ground, a hairline at rest, the accent edge and a 3px
   accent halo when it has the keyboard, in every terminal palette.
 
+## Quick replies
+
+One-click replies to a running session (owner, 2026-10-15: "one-click quick
+replies to a running session: Continue, Shorter and the like"). Built in
+`ui/src/components/QuickReplies.tsx`, `ui/src/lib/quickReplies.ts` and
+`internal/config/quickreply.go`.
+
+- **Where.** A row of small chips under the terminal of a session Caprock
+  started — live, not detached, not a shell (`composerFits`, rule 7) — above
+  the composer when it is on, and whether or not it is; and above the chat's
+  field while the chat can type (`ChatView`, the phone's chat included). A
+  session Caprock only watches never gets the row, and the daemon refuses
+  its queue whatever the page draws. A sibling after the terminal's box, so
+  it never remounts the host.
+- **Sending** is the composer's path, `POST /v1/agents/{id}/queue`
+  (ADR-053): the reply's fixed text, typed in at once at the prompt,
+  otherwise held and typed when the turn ends; the daemon types a line
+  break as ESC CR and submits with Enter after a pause. The chip clicked
+  shows a tick for a moment; a refusal says *Not sent: <why>* beside the row.
+  A click keeps the keyboard where it was (the terminal or the box).
+- **The list.** *Continue* (`Continue.`), *Shorter* (`Shorter, please: say
+  it in fewer words.`), *Explain* (`Explain what you just did and why.`),
+  *Run tests* (`Run the tests and fix what fails.`), *Commit* (`Commit the
+  changes with a clear message.`) — `config.DefaultQuickReplies`, until the
+  user changes them in Settings → Terminal → *Quick replies*: add, remove,
+  reorder (↑ ↓), rename; at most 10, a label of 24 characters, a text of 300
+  bytes. Kept by the daemon (`settings.quick_replies`, 03-contracts § Settings),
+  so the app, a browser tab and a paired phone draw the same row; an empty
+  list draws no row.
+- **Keys.** None: no new global shortcut (rule 12); the chips take Tab
+  focus like any button.
+- **Look.** `.app-quick` in `tokens.css`: 22px pills in the slab's own ink
+  over the terminal's background, like the composer's box, so they read on
+  a dark or a light terminal palette.
+
 ## Shell tabs
 
 - `POST /v1/shells` with `{"project_id"|"cwd", "cols", "rows"}` starts the

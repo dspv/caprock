@@ -857,6 +857,12 @@ export interface KeepAwakeStatus {
   error?: string
 }
 
+/** One quick reply: the chip's label and the text it sends (config.QuickReply). */
+export interface QuickReply {
+  label: string
+  text: string
+}
+
 /** Settings → Status line (config.json statusline_mode). */
 export type StatuslineMode = 'full' | 'short' | 'hidden' | 'off'
 
@@ -881,6 +887,8 @@ export interface Settings {
   worktree_cleanup?: 'off' | 'ask' | 'auto'
   /** What Caprock's Claude Code status line shows. The daemon returns "full" when never chosen; "hidden" prints nothing but keeps relaying plan limits; "off" removes Caprock's own statusLine entry. */
   statusline_mode?: StatuslineMode
+  /** The one-click replies under a session Caprock started (lib/quickReplies.ts); the defaults until changed. */
+  quick_replies?: QuickReply[]
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
   /** The share of a Claude plan window (50–99) at which Premium pauses the

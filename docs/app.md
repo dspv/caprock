@@ -817,6 +817,14 @@ the box tells you to answer in the terminal. It is off by default, and with
 it off nothing about the terminal changes; the box's ⋯ menu turns it off
 again. Sessions started in another terminal never get one.
 
+**Quick replies.** Under the terminal of every agent Caprock started, and
+above the chat's field, a row of small buttons sends a short reply in one
+click: *Continue*, *Shorter*, *Explain*, *Run tests*, *Commit*. A reply is
+sent the way the composer sends — at once when the agent is at its prompt,
+after its turn otherwise. Change the list in Settings → Terminal → *Quick
+replies* (add, remove, reorder, rename); remove them all and the row is gone.
+Sessions started in another terminal never get the row.
+
 The interface size lives in Settings → Appearance (100, 110, 125 or 140%),
 and the app opens at 110%. It zooms the whole window natively, terminal
 included, so text stays sharp and clicks land where they should. In a

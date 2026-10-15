@@ -239,6 +239,10 @@ type Config struct {
 	// plan windows to the daemon; "off" also removes Caprock's own statusLine entry from Claude Code's
 	// settings, and choosing again puts it back. Written only once chosen.
 	StatuslineMode string `json:"statusline_mode,omitempty"`
+	// QuickReplies are the one-click replies under a session Caprock started
+	// (quickreply.go). Absent means DefaultQuickReplies; an empty list means
+	// the user removed every one. Written only once changed.
+	QuickReplies *[]QuickReply `json:"quick_replies,omitempty"`
 }
 
 // The status line modes (config.json "statusline_mode").
