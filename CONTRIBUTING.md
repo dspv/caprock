@@ -48,10 +48,14 @@ otherwise they show as skipped. Every push to `master` builds them.
 3. Keep the PR to **one focused change**.
 4. **Conventional Commits with scope**: `feat(hookd): …`, `fix(ingest): …`,
    `docs(ai): …`, `ci: …`, `chore(release): …`.
-5. `make check` must pass. **No red Windows CI — no exceptions.**
-6. Reference the issue in the PR body: `Closes #<n>`.
-7. Fill in the PR checklist.
-8. **Iterate as a draft; CI runs when it is ready.** Draft pull requests run no
+5. **A changelog entry is its own file**, not an edit to `CHANGELOG.md`:
+   add `changes/unreleased/<pr-or-branch-slug>.md` with `kind:` front matter
+   and a `- **scope:** …` bullet ([`changes/README.md`](changes/README.md)).
+   The release assembles them; parallel PRs never touch the same lines.
+6. `make check` must pass. **No red Windows CI — no exceptions.**
+7. Reference the issue in the PR body: `Closes #<n>`.
+8. Fill in the PR checklist.
+9. **Iterate as a draft; CI runs when it is ready.** Draft pull requests run no
    CI at all: open it with `gh pr create --draft`, run `make check` locally
    until it is green, then mark it ready (`gh pr ready`), which runs the full
    3-OS matrix once. A pull request from a fork also waits for a maintainer to

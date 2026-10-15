@@ -345,7 +345,7 @@ internal/ingest/      # transcript discovery + tailer (fsnotify + poll) + parser
 internal/loop/        # loop detector
 internal/narrate/     # tool event → phrase, health badge, plan progress
 internal/eta/         # the Queue view's rough estimates: turn-length quantiles, remaining time, queue positions
-internal/relplan/     # the Work board's release column from local git: CHANGELOG [Unreleased], tag gaps, commits past the last tag; never fetches (ADR-064)
+internal/relplan/     # the Work board's release column from local git: CHANGELOG [Unreleased] + changes/unreleased/ fragments, tag gaps, commits past the last tag; never fetches (ADR-064)
 internal/toolcmd/     # the command a call ran, read out of its input (Codex's exec script) for every one-line description
 internal/gitdiff/     # live `git diff` of a session's cwd
 internal/api/         # REST + WS + embedded UI (dist/ committed for go install, placeholder/ fallback)

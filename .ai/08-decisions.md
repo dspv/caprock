@@ -3979,7 +3979,8 @@ What is missing is one view that puts them side by side per piece of work.
   completion time, a per-PR merge countdown, or a clock time for the next
   release.
 - **Release plans are read locally.** The `[Unreleased]` section of
-  `CHANGELOG.md` at the remote's default branch, the newest tags and the
+  `CHANGELOG.md` at the remote's default branch (and, since 2026-10-15, the
+  changelog fragments in `changes/unreleased/` there), the newest tags and the
   commits past the last one come from `git show`, `git for-each-ref` and
   `git rev-list` against refs the clone already has. Caprock never runs
   `git fetch` for this; the board labels it "as of your last fetch". Every

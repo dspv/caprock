@@ -115,7 +115,19 @@ install command that is missing.
 1. Make sure `master` is green locally: `go test ./...`, `golangci-lint run ./...`,
    `make check`, `go test -tags smoke ./internal/smoke/... ./internal/board/...`,
    and `GOOS=windows go build ./...`.
-2. Update `CHANGELOG.md` and the progress in `.ai/14-build-status.md` + README.
+2. Assemble the changelog and update the progress in `.ai/14-build-status.md` +
+   README. Pull requests never edit `CHANGELOG.md`; each leaves one fragment in
+   `changes/unreleased/` ([`changes/README.md`](../changes/README.md)). Read
+   what will ship, then write it into its section and delete the fragments,
+   in the release pull request:
+
+   ```bash
+   python3 scripts/changelog.py preview                     # the next section, unchanged files
+   python3 scripts/changelog.py assemble X.Y.Z YYYY-MM-DD   # CHANGELOG.md gets ## [X.Y.Z] - date
+   ```
+
+   Edit the assembled section by hand afterwards if it needs an intro line;
+   `release-notes.py` reads it at tag time as before.
 3. Tag and let `goreleaser` build + publish the GitHub release:
 
    ```bash

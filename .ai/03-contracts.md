@@ -3308,13 +3308,19 @@ GET /v1/work → Work
   is the `CHANGELOG.md` `[Unreleased]` section at the remote's default
   branch as the clone knows it (`ref`, `origin/<default>`, from
   `refs/remotes/origin/HEAD`): `items` the first lines of its top-level
-  bullets, at most 30, nested bullets and sub-headings dropped; absent
-  when the file or the section is not there. `tags` `{last?: {name, at},
+  bullets, at most 30, nested bullets and sub-headings dropped. A
+  repository that keeps one file per change (`changes/unreleased/*.md` at
+  that branch, front matter skipped; Caprock's own since 2026-10-15) has
+  those files' top-level bullets added after the section's, in file-name
+  order, and `count` covers both. Absent when neither the section nor the
+  directory is there. `tags` `{last?: {name, at},
   gap_median_ms?, gaps}` reads the newest 11 tags by creation date;
   `gap_median_ms` is the median time between them, absent with fewer than
   three gaps. `ahead_of_tag` counts the default branch's commits past the
   last tag.
 - **Local only.** Git is read, never fetched: `git show <ref>:CHANGELOG.md`,
+  `git ls-tree <ref> changes/unreleased/` and one `git cat-file --batch`
+  for the fragments,
   `git for-each-ref refs/tags --sort=-creatordate --count=11`, `git
   rev-list --count`, `git symbolic-ref`, `git remote get-url origin`, each
   hidden on Windows (`internal/hidewin`). A repository's reads are kept 60
