@@ -67,6 +67,7 @@ import { ShareMoment } from '@/components/Nudges'
 import { ShareDialog } from '@/components/Share'
 import { usePromptSync } from '@/lib/nudges'
 import { AppUpdateToast } from '@/components/AppUpdateToast'
+import { ComputerAsks } from '@/components/ComputerAsks'
 import { AppUpdateAsk } from '@/components/AppUpdateAsk'
 import { AppAutoUpdate } from '@/components/AppAutoUpdate'
 import { UpdateCheckBanner } from '@/components/UpdateCheckBanner'
@@ -1881,6 +1882,8 @@ export function AppShell() {
       <ShareMoment />
       <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} session={focused?.kind === 'session' && workspaceShown ? focusedSession : undefined} version={version} figures={!prefs.sidebar} sessions={data.sessions} onOpenSession={openSessionById} />
       <AppUpdateToast />
+      {/* Another computer asking to control this one (ADR-067). */}
+      <ComputerAsks />
       {isTauri() && <AppUpdateAsk />}
       {isTauri() && <AppAutoUpdate />}
       <UpdateCheckBanner />

@@ -31,7 +31,16 @@ var (
 	// ErrNotAccepting is a target with no pairing open: access from
 	// anywhere is off there.
 	ErrNotAccepting = errors.New("that computer is not accepting pairings: turn on access from anywhere there")
+	// ErrBadLink is a link that is not a pairing link; the error that
+	// matches it says what is wrong with it.
+	ErrBadLink = errors.New("that is not a pairing link")
 )
+
+// linkError is a pairing link that does not parse: its own message, and
+// errors.Is(err, ErrBadLink).
+type linkError struct{ error }
+
+func (linkError) Is(target error) bool { return target == ErrBadLink }
 
 // Statuses beyond remote.ClientState's.
 const (
@@ -40,6 +49,10 @@ const (
 	// deleted — the user decides to forget it — and asked again on the next
 	// check, so a computer that was wrong about it comes back by itself.
 	StatusRevoked = "revoked"
+	// StatusPending is a computer that took this machine's code and waits
+	// for its owner to allow this machine by name there (ADR-067). Until
+	// then the token reaches nothing but GET /v1/pair/me.
+	StatusPending = "pending"
 )
 
 // Options configure a Manager.
@@ -73,6 +86,10 @@ type Status struct {
 	// Role is this machine's role there as the computer last said it:
 	// viewer or controller; empty until asked.
 	Role string `json:"role,omitempty"`
+	// Kind is what the computer paired this machine as: "machine" (full
+	// control, ADR-067), or empty for a phone's code — a computer from
+	// before ADR-067's PR2, which pairs one as an ordinary device.
+	Kind string `json:"kind,omitempty"`
 	// LastSeen is when the computer last answered, unix milliseconds by
 	// this machine's clock; 0 for not since this daemon started.
 	LastSeen int64 `json:"last_seen,omitempty"`
@@ -93,6 +110,8 @@ type Manager struct {
 type peer struct {
 	client   *remote.Client
 	role     string
+	kind     string
+	pending  bool
 	lastSeen time.Time
 	revoked  bool
 	checking bool
@@ -185,9 +204,12 @@ func (m *Manager) statusLocked(mach Machine) Status {
 	}
 	st := p.client.State()
 	s.Status, s.Error, s.Version, s.Streams = st.Status, st.Error, st.Version, st.Streams
-	s.Role = p.role
+	s.Role, s.Kind = p.role, p.kind
 	if !p.lastSeen.IsZero() {
 		s.LastSeen = p.lastSeen.UnixMilli()
+	}
+	if p.pending && !p.revoked {
+		s.Status, s.Error = StatusPending, "waiting for that computer's owner to allow this one there"
 	}
 	if p.revoked {
 		s.Status, s.Error = StatusRevoked, "that computer removed this one: pair again there to reach it"
@@ -202,7 +224,7 @@ func (m *Manager) statusLocked(mach Machine) Status {
 func (m *Manager) Pair(ctx context.Context, link string) (Status, error) {
 	info, err := remote.ParsePairLink(link)
 	if err != nil {
-		return Status{}, err
+		return Status{}, linkError{err}
 	}
 	if info.Code == "" {
 		return Status{}, ErrNoCode
@@ -311,9 +333,31 @@ func (m *Manager) Rename(id, name string) error {
 	return nil
 }
 
+// Leave asks computer id to drop this machine (DELETE /v1/pair/me): Forget's
+// courtesy to the computer, best effort. An error says only that it was not
+// done — offline, already removed, or a computer from before ADR-067's PR2.
+func (m *Manager) Leave(ctx context.Context, id string) error {
+	tok, p, err := m.lookup(id)
+	if err != nil {
+		return err
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, "http://machine/v1/pair/me", nil)
+	req.Header.Set("X-Caprock-Device", tok)
+	res, err := p.client.RoundTrip(req)
+	if err != nil {
+		return err
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("that computer answered %d", res.StatusCode)
+	}
+	return nil
+}
+
 // Forget deletes a computer and its token here. The computer still lists
-// this machine until its owner removes it there (asking it to is ADR-067's
-// next step, DELETE /v1/pair/me).
+// this machine until its owner removes it there, unless Leave reached it
+// first.
 func (m *Manager) Forget(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -448,13 +492,15 @@ func (m *Manager) Check(ctx context.Context, id string) (Status, error) {
 		if !p.revoked {
 			m.log.Info("a computer no longer knows this one", "component", "peers", "id", id)
 		}
-		p.revoked, p.role = true, ""
+		p.revoked, p.role, p.pending = true, "", false
 	case http.StatusOK:
 		var me struct {
-			Role string `json:"role"`
+			Role    string `json:"role"`
+			Kind    string `json:"kind"`
+			Pending bool   `json:"pending"`
 		}
 		_ = json.Unmarshal(b, &me)
-		p.revoked, p.role = false, me.Role
+		p.revoked, p.role, p.kind, p.pending = false, me.Role, me.Kind, me.Pending
 	}
 	m.mu.Unlock()
 	return m.Get(id)
