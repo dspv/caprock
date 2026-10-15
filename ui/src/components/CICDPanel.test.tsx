@@ -2,10 +2,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReposCI, RepoCIRow } from '@/lib/reposci'
 
-const h = vi.hoisted(() => ({ answer: undefined as unknown, asked: 0, usage: [] as string[], q: [] as unknown[] }))
+const h = vi.hoisted(() => ({ answer: undefined as unknown, asked: 0, usage: [] as string[], q: [] as unknown[], stats: [] as string[] }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return { ...actual, api: { ...actual.api,
+    sessionCIStats: async (id: string) => {
+      h.stats.push(id)
+      return { connected: true, repo: 'ada/app', fetched_at: Date.now(), prs: [], board: { cards: [], releases: [], flow: { counts: { draft: 1, open: 2, fix: 1, ready: 3, merged: 0, released: 0 }, days: 14, merged: 14, ttm_count: 0, release_lag_count: 0, ci_median_ms: 430_000, cost_usd: 0 } } }
+    },
     reposCI: async (q?: unknown) => { h.asked++; h.q.push(q); return typeof h.answer === 'function' ? (h.answer as (q: unknown) => unknown)(q) : h.answer },
     actionsUsage: async (owner?: string) => {
       h.usage.push(owner ?? '')
@@ -19,6 +23,7 @@ import { PANEL_FOLDS_KEY } from './ui'
 import { forgetDeckAnswers } from '@/lib/deckCache'
 import { compactTokens, HIDDEN_REPOS_KEY, keepWhileReading, prTokens, quietText, redPct, rowErrorText, sectionErrorText, statusLine, stuckText } from '@/lib/reposci'
 import { spanText } from '@/lib/prstats'
+import type { SessionSummary } from '@/lib/api'
 
 const now = Date.now()
 const days = Array.from({ length: 14 }, (_, i) => new Date(now - (13 - i) * 86_400_000).toISOString().slice(0, 10))
@@ -28,7 +33,7 @@ const row = (p: Partial<RepoCIRow>): RepoCIRow => ({
   ...p,
 })
 
-afterEach(() => { h.answer = undefined; h.asked = 0; h.usage = []; h.q = []; forgetDeckAnswers(); localStorage.clear() })
+afterEach(() => { h.answer = undefined; h.asked = 0; h.usage = []; h.q = []; h.stats = []; forgetDeckAnswers(); localStorage.clear() })
 
 describe('the CI/CD section', () => {
   it('shows each repository’s CI, stuck runs, release, the costliest pull requests and who opened them', async () => {
@@ -169,5 +174,48 @@ describe('the CI/CD section', () => {
     expect(redPct({ runs: 47, red: 3, reruns: 0, listed: 100, per_day: [], workflows: [] })).toBe('6.4%')
     expect(redPct({ runs: 0, red: 0, reruns: 0, listed: 0, per_day: [], workflows: [] })).toBeUndefined()
     expect(stuckText({ id: 1, name: 'release', status: 'queued', since: now - 22 * 60_000 }, now, spanText)).toBe('release waiting for a runner 22m')
+  })
+})
+
+// Owner, 2026-10-15, translated: "so that metrics from it can be
+// harmoniously put into the Dashboard". The Pipeline's own figures head the
+// CI/CD panel — not a second CI block — for the repository it shows.
+describe('the Pipeline in the CI/CD section', () => {
+  const agent = (id: string, root: string, at: number) => ({ session_id: id, cwd: root, repo_root: root, project: root.split('/').pop(), status: 'active', last_event_at: at }) as unknown as SessionSummary
+  const connected = { github_connected: true, repos: [row({})], quiet: [] } satisfies ReposCI
+
+  it('shows in flight, needing a fix, ready, throughput and the CI median, read through the newest agent, and links to the page', async () => {
+    h.answer = connected
+    localStorage.setItem('caprock.pipeline.repo', '/w/app')
+    render(<CICDPanel sessions={[agent('old', '/w/app', 1), agent('new', '/w/app', 5), agent('other', '/w/site', 9)]} />)
+    const card = await waitFor(() => {
+      const c = document.querySelector('[data-pipeline-card]')
+      if (!c) throw new Error('no card')
+      return c
+    })
+    expect(h.stats).toEqual(['new'])
+    expect(card).toHaveTextContent('ada/app')
+    expect(card.querySelector('[data-stat="flight"]')).toHaveTextContent('7')
+    expect(card.querySelector('[data-stat="fix"]')).toHaveTextContent('1')
+    expect(card.querySelector('[data-stat="ready"]')).toHaveTextContent('3')
+    expect(card.querySelector('[data-stat="throughput"]')).toHaveTextContent('1.0/day')
+    expect(card.querySelector('[data-stat="ci"]')).toHaveTextContent('7m 10s')
+    expect(card.querySelector('[data-stat="cost"]')).toBeNull()
+    expect(card.querySelector('[data-pipeline-open]')).toHaveAttribute('href', '#/pipeline?repo=%2Fw%2Fapp')
+  })
+
+  it('is not drawn, and asks nothing, without an agent session or with GitHub not connected', async () => {
+    h.answer = connected
+    const first = render(<CICDPanel sessions={[]} />)
+    await waitFor(() => expect(document.querySelector('[data-cicd-repo]')).toBeInTheDocument())
+    expect(document.querySelector('[data-pipeline-card]')).toBeNull()
+    expect(h.stats).toEqual([])
+    first.unmount()
+    forgetDeckAnswers()
+    localStorage.clear()
+    h.answer = { github_connected: false, repos: [] }
+    render(<CICDPanel sessions={[agent('a', '/w/app', 1)]} />)
+    await waitFor(() => expect(document.querySelector('[data-cicd="off"]')).toBeInTheDocument())
+    expect(h.stats).toEqual([])
   })
 })

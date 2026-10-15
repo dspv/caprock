@@ -15,10 +15,11 @@
 import { describe, it, expect, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { PulsePanel, TIER_TOKEN, IDLE_TOKEN } from './Pulse'
+import { PipelineHostContext, type PipelineHost } from '@/lib/pipelineHost'
 import type { Event, SessionSummary } from '@/lib/api'
 
 /** Seeded events per session id, keyed the way the panel asks for them. */
-const seeded = vi.hoisted(() => ({ value: {} as Record<string, Event[]>, asked: [] as string[], overlap: { window_minutes: 30, sessions: {} } as unknown, overlapAsked: 0 }))
+const seeded = vi.hoisted(() => ({ value: {} as Record<string, Event[]>, asked: [] as string[], overlap: { window_minutes: 30, sessions: {} } as unknown, overlapAsked: 0, queued: {} as Record<string, number> }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -30,6 +31,7 @@ vi.mock('@/lib/api', async (orig) => {
       session: async () => ({ repo: { url: 'https://github.com/o/caprock', root: '/r/caprock' } }),
       summary: async () => ({ projects: [{ project: 'caprock', dir: '/r/caprock', tokens: 1_200_000, cost_usd: 42.5, sessions: 3 }] }),
       overlap: async () => { seeded.overlapAsked++; return seeded.overlap },
+      queue: async (id: string) => ({ session_id: id, messages: Array.from({ length: seeded.queued[id] ?? 0 }, (_, i) => ({ id: i, text: 'next' })), waiting: {} }),
       diff: async (id: string) => id === 'a'
         ? { root: '/r/caprock', branch: 'feat/retry', base: 'since master', files: [{ path: 'a.go', status: 'M', additions: 120, deletions: 40 }, { path: 'b.go', status: 'A', additions: 3, deletions: 0 }], stat: '' }
         : { root: '/r/caprock', branch: 'master', files: [], stat: '' },
@@ -455,6 +457,107 @@ describe('a pulse row, opened', () => {
     for (const el of ways.querySelectorAll('a, button')) {
       expect(el.className, el.textContent ?? '').not.toMatch(/bg-accent|border-accent/)
     }
+  })
+})
+
+// Owner, 2026-10-15 (translated): "From here I want to drop into the
+// session itself — the same running one — with one button", and "if a
+// process is idle, let me close it with one small button" (lib/sessionJump.ts).
+describe('a live session row, in the desktop app', () => {
+  const NOW = Date.parse('2026-08-21T12:00:00Z')
+  const mine = session({ session_id: 'a', project: 'caprock', cwd: '/r/caprock', owned: true, activity: { phrase: 'running go test', health: 'working', at: '' } })
+  const idleMine = session({ session_id: 'b', project: 'caprock', cwd: '/r/caprock', owned: true, started_at: NOW - 60_000, activity: { phrase: 'waiting for you', health: 'waiting-on-you', at: '' } })
+  const theirs = session({ session_id: 'c', project: 'caprock', cwd: '/r/caprock', owned: false, started_at: NOW - 120_000, activity: { phrase: 'waiting for you', health: 'waiting-on-you', at: '' } })
+
+  async function openRow(host: PipelineHost, sessions: SessionSummary[]) {
+    localStorage.clear()
+    seeded.value = { a: [turn('a', NOW - 60_000)] }
+    render(<PipelineHostContext.Provider value={host}><PulsePanel sessions={sessions} now={NOW} /></PipelineHostContext.Provider>)
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /what is running in/i }).length).toBeGreaterThan(0))
+    fireEvent.click(screen.getAllByRole('button', { name: /what is running in/i })[0]!)
+    await waitFor(() => expect(document.querySelector('[data-live-session]')).not.toBeNull())
+    return (id: string) => document.querySelector<HTMLElement>(`[data-live-session="${id}"]`)!
+  }
+
+  it('brings the session\'s tab forward on a click anywhere on the row, and says its key', async () => {
+    const onOpenSession = vi.fn()
+    const row = await openRow({ onOpenSession, tabDigitOf: (id) => (id === 'a' ? 3 : undefined) }, [mine])
+    expect(row('a').dataset.jump).toBe('tab')
+    expect(within(row('a')).getByText(/Go to session/).textContent).toMatch(/3$/)
+    fireEvent.click(within(row('a')).getByText('running go test'))
+    expect(onOpenSession).toHaveBeenCalledWith('a')
+    // The page is still one quiet click away, and it does not jump.
+    const details = within(row('a')).getByRole('link', { name: 'details' })
+    expect(details.getAttribute('href')).toBe('#/session/a')
+    onOpenSession.mockClear()
+    fireEvent.click(details)
+    expect(onOpenSession).not.toHaveBeenCalled()
+  })
+
+  it('goes in with Enter from the keyboard', async () => {
+    const onOpenSession = vi.fn()
+    const row = await openRow({ onOpenSession, tabDigitOf: () => undefined }, [mine])
+    expect(row('a').dataset.jump).toBe('open')
+    expect(row('a').tabIndex).toBe(0)
+    row('a').focus()
+    fireEvent.keyDown(row('a'), { key: 'Enter' })
+    expect(onOpenSession).toHaveBeenCalledWith('a')
+  })
+
+  it('offers only the safe ways for a session started in the user\'s terminal', async () => {
+    const onOpenSession = vi.fn()
+    const onStartAgent = vi.fn(async () => {})
+    const onEndSession = vi.fn()
+    const row = await openRow({ onOpenSession, onStartAgent, onEndSession, tabDigitOf: () => undefined }, [mine, theirs])
+    const r = row('c')
+    expect(r.dataset.jump).toBe('away')
+    expect(r.tabIndex).toBe(-1)
+    const where = within(r).getByText('in your terminal')
+    expect(where.getAttribute('title')).toMatch(/Started in your terminal — end it there/)
+    // No jump, and never an End: Caprock did not start it (rule 7).
+    fireEvent.click(where)
+    expect(onOpenSession).not.toHaveBeenCalled()
+    expect(within(r).queryByRole('button', { name: /^End session/ })).toBeNull()
+    expect(within(r).queryByText(/Go to session/)).toBeNull()
+    expect(within(r).getByRole('link', { name: 'details' }).getAttribute('href')).toBe('#/session/c')
+    const cont = within(r).getByRole('button', { name: 'Continue in Caprock' })
+    expect(cont.getAttribute('title')).toMatch(/new process.*keeps running, untouched/)
+    fireEvent.click(cont)
+    await waitFor(() => expect(onStartAgent).toHaveBeenCalledWith({ cwd: '/r/caprock', resume: 'c', fork: true }, expect.any(String), 'c'))
+  })
+
+  it('ends an idle session Caprock started with one click, and never a working one', async () => {
+    const onEndSession = vi.fn()
+    const row = await openRow({ onOpenSession: vi.fn(), onEndSession, tabDigitOf: () => undefined }, [mine, idleMine])
+    expect(within(row('a')).queryByRole('button', { name: /^End session/ })).toBeNull()
+    fireEvent.click(within(row('b')).getByRole('button', { name: /^End session/ }))
+    await waitFor(() => expect(onEndSession).toHaveBeenCalledWith('b'))
+  })
+
+  it('asks once before ending a session with messages queued for it', async () => {
+    seeded.queued = { b: 2 }
+    const onEndSession = vi.fn()
+    const onOpenSession = vi.fn()
+    const row = await openRow({ onOpenSession, onEndSession, tabDigitOf: () => undefined }, [mine, idleMine])
+    fireEvent.click(within(row('b')).getByRole('button', { name: /^End session/ }))
+    expect(await within(row('b')).findByText(/2 queued messages will be dropped/)).toBeInTheDocument()
+    expect(onEndSession).not.toHaveBeenCalled()
+    fireEvent.click(within(row('b')).getByRole('button', { name: 'Keep' }))
+    expect(onEndSession).not.toHaveBeenCalled()
+    fireEvent.click(within(row('b')).getByRole('button', { name: /^End session/ }))
+    fireEvent.click(await within(row('b')).findByRole('button', { name: 'End anyway' }))
+    expect(onEndSession).toHaveBeenCalledWith('b')
+    expect(onOpenSession).not.toHaveBeenCalled()
+    seeded.queued = {}
+  })
+
+  it('keeps the plain "open" link to the page in a browser', async () => {
+    const row = await openRow({}, [mine, theirs])
+    expect(row('a').dataset.jump).toBeUndefined()
+    expect(row('a').tabIndex).toBe(-1)
+    expect(within(row('a')).getByRole('link', { name: 'open' }).getAttribute('href')).toBe('#/session/a')
+    expect(within(row('c')).queryByText('Continue in Caprock')).toBeNull()
+    expect(within(row('c')).queryByText('in your terminal')).toBeNull()
   })
 })
 

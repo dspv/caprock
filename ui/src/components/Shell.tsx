@@ -46,6 +46,10 @@ const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] =
   // the main button is depressing — it's not clear that it's the main one,
   // and you're always trying to get back to the main one").
   { route: { name: 'now' }, label: 'Home' },
+  // Every piece of work on its way to a release (.ai/04-ui.md § Work): second,
+  // because it is what Home's Work strip opens and the page the owner asked
+  // to see as a project manager. ⇧⌘W opens it.
+  { route: { name: 'work' }, label: 'Work' },
   { route: { name: 'cost' }, label: 'Cost' },
   // 'History' read as a log of past sessions. The screen is the opposite: one
   // set of lifetime totals — every session, every day, what it all cost —
@@ -55,6 +59,11 @@ const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] =
   // A card of one week, to post. Beside Lifetime because it answers the same
   // question for a shorter stretch, in a form made to leave the machine.
   { route: { name: 'week' }, label: 'Week' },
+  // A repository's pull requests on their way to a release (owner,
+  // 2026-10-15, translated: "Pipeline is part of the Dashboard, just a
+  // separate page"). In the app this link leads to the Pipeline's own
+  // pinned tab (AppShell), so the page is drawn once.
+  { route: { name: 'pipeline' }, label: 'Pipeline' },
   // "Memory" rather than "Answers": this screen and the handoff a new session
   // gets are the same thing — everything the agents said on this machine —
   // and nobody looking for the second would think to open the first.

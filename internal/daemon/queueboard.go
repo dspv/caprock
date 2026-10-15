@@ -192,28 +192,8 @@ func (q *msgQueue) boardSession(ctx context.Context, a *agents.Agent, s store.Se
 	for i, m := range v.Messages {
 		bs.Queue = append(bs.Queue, api.BoardItem{QueuedMessage: m, Position: i + 1})
 	}
-	todos, err := store.SessionTodos(ctx, q.d.store.DB(), a.SessionID)
-	if err != nil {
+	if bs.Todo, err = q.todo(ctx, a.SessionID, s.LastEventAt); err != nil {
 		return bs, err
-	}
-	if len(todos.Items) > 0 {
-		t := &api.BoardTodo{}
-		for _, it := range todos.Items {
-			if it.Status == "cancelled" {
-				continue
-			}
-			t.Total++
-			if it.Status == "completed" {
-				t.Done++
-			}
-			if it.Status == "in_progress" && t.Active == "" {
-				t.Active = it.ActiveForm
-				if t.Active == "" {
-					t.Active = it.Text
-				}
-			}
-		}
-		bs.Todo = t
 	}
 
 	// Estimates: Claude Code only — the one agent whose turn ends Caprock
@@ -263,6 +243,66 @@ func (q *msgQueue) boardSession(ctx context.Context, a *agents.Agent, s store.Se
 	free, _ := st.Queued(rem, len(bs.Queue))
 	bs.FreeIn = toETA(free)
 	return bs, nil
+}
+
+type todoEntry struct {
+	lastAt int64
+	at     time.Time
+	todo   *api.BoardTodo
+}
+
+// todo is todoOf, kept while the session's newest event (lastAt, its row's
+// last_event_at) has not moved and for at most estTTL. Rebuilding a task
+// list reads every task call's payload: on a copy of the owner's database
+// it was most of the Work board's time (2026-10-15).
+func (q *msgQueue) todo(ctx context.Context, id string, lastAt int64) (*api.BoardTodo, error) {
+	now := q.now()
+	q.estMu.Lock()
+	e, ok := q.todos[id]
+	q.estMu.Unlock()
+	if ok && lastAt > 0 && e.lastAt == lastAt && now.Sub(e.at) < estTTL {
+		return e.todo, nil
+	}
+	t, err := todoOf(ctx, q.d.store.DB(), id)
+	if err != nil {
+		return nil, err
+	}
+	q.estMu.Lock()
+	for k, old := range q.todos {
+		if now.Sub(old.at) > estTTL {
+			delete(q.todos, k)
+		}
+	}
+	q.todos[id] = todoEntry{lastAt: lastAt, at: now, todo: t}
+	q.estMu.Unlock()
+	return t, nil
+}
+
+// todoOf sums up the agent's own task list: what it is on, and how many of
+// its items are done (cancelled ones are not counted). nil when the session
+// never kept one.
+func todoOf(ctx context.Context, db store.Querier, sessionID string) (*api.BoardTodo, error) {
+	todos, err := store.SessionTodos(ctx, db, sessionID)
+	if err != nil || len(todos.Items) == 0 {
+		return nil, err
+	}
+	t := &api.BoardTodo{}
+	for _, it := range todos.Items {
+		if it.Status == "cancelled" {
+			continue
+		}
+		t.Total++
+		if it.Status == "completed" {
+			t.Done++
+		}
+		if it.Status == "in_progress" && t.Active == "" {
+			t.Active = it.ActiveForm
+			if t.Active == "" {
+				t.Active = it.Text
+			}
+		}
+	}
+	return t, nil
 }
 
 func agentOr(kind string) string {

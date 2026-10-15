@@ -97,12 +97,21 @@ export function Panel({ title, center, right, children, className = '', onMouseE
   )
 }
 
-export function Stat({ label, value, sub, tone, size = 'default', trend }: {
+export function Stat({ label, value, sub, tone, size = 'default', trend, hint, data }: {
   label: string
   value: ReactNode
   sub?: ReactNode
   /** A small picture under the figure — the Now screen's 14-day trend. */
   trend?: ReactNode
+  /**
+   * What the figure means, as a card under the tile, its width, on hover or
+   * focus — never the native tooltip, which opens under the pointer, over
+   * the very figure it explains (owner, 2026-10-15, on the Pipeline's
+   * figures). Not laid out until shown, so it never widens the page.
+   */
+  hint?: ReactNode
+  /** A name for tests and the page's own styles (`data-stat`). */
+  data?: string
   tone?: 'ok' | 'warn' | 'danger' | 'info'
   /** `compact` for reference figures in dense rows; `hero` for the one number
    *  a screen is about. Sized uniformly, a row of six is a list, not a
@@ -118,7 +127,8 @@ export function Stat({ label, value, sub, tone, size = 'default', trend }: {
     // as text stuck to the underside of a number rather than as a row.
     //
     // A size container, so the figure can shrink to the tile (statFit).
-    <div className="@container flex h-full flex-col px-3 py-2.5 min-w-0">
+    <div data-stat={data} tabIndex={hint ? 0 : undefined}
+      className={`@container flex h-full flex-col px-3 py-2.5 min-w-0 ${hint ? 'group/stat relative outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent' : ''}`}>
       <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">{label}</div>
       {/* Semibold, not just larger: weight separates a figure from its
        * neighbours without spending a pixel of density, which is what a dense
@@ -128,6 +138,12 @@ export function Stat({ label, value, sub, tone, size = 'default', trend }: {
       {/* Wraps rather than ending in an ellipsis: a cut
        * "at API list price · not a…" dropped the half that mattered. */}
       {sub && <div className="mt-auto pt-1 text-[11px] leading-snug text-fg-muted num [overflow-wrap:anywhere]">{sub}</div>}
+      {hint && (
+        <span role="tooltip" data-stat-hint
+          className="pointer-events-none absolute inset-x-1 top-full z-30 mt-1 hidden rounded-lg border border-border-strong bg-panel px-3 py-2 text-[12.5px] leading-snug text-fg shadow-lg group-hover/stat:block group-focus-visible/stat:block">
+          {hint}
+        </span>
+      )}
     </div>
   )
 }

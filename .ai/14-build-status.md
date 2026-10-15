@@ -85,6 +85,29 @@ never deletes a GitHub repository. The op machinery is the clone's,
 exported (`StartOp`, `UpdateOp`, `FinishOp`). Tested against a fake `gh`
 (`testdata/fakegh`); the screen in the app is the next PR.
 
+### 2026-10-15 — 0.118.0: Work, Pipeline in the dashboard, Sunlight, and keys named after what they open
+
+A minor release because it carries features (owner rule, 2026-10-15: a feature is a minor release, fixes are patches). The Work page (`#/work`, ⇧⌘W) lists every piece of work on its way to a release, from `GET /v1/work` (ADR-064); the Pipeline is a page of the dashboard; Home's session rows take you into the running session and end an idle one Caprock started; the Sunlight theme, a theme picker that is never clipped, readable footer key chips, ⌘D/⌘P/⇧⌘T/⇧⌘W, a quieter Get premium and Second Brain drawn as a brain made of a graph. The changelog entries for #633, #634 and #636 had been merged into the 0.117.5 section by the landing queue's union merge; they are moved to 0.118.0, where they shipped.
+
+### 2026-10-15 — unreleased: Work in the dashboard, and keys named after what they open
+
+Work (PR C of the Work board) is a page of the dashboard: `#/work`, second
+in its nav, kept mounted like the other screens, with Home's Work strip
+above the Live pulse and *Open Work* in the palette. In the app a session
+row brings its tab forward; a pull request's title opens the Pipeline with
+its detail open (`&pr=`). It reads `GET /v1/work`, which lands with the
+daemon half of the board: against a daemon without it the page says it
+cannot reach the daemon and Home's strip draws nothing.
+
+The keys follow the owner's ask to name them after what they open: ⌘D the
+Dashboard (⌘0 stays), ⌘P the Pipeline (⇧⌘B kept as a silent alias), ⇧⌘W
+Work, ⇧⌘T the theme picker; ⌘F and ⌘T stay Find and New shell. Off macOS
+Ctrl+Shift+D, Ctrl+Shift+P, Ctrl+Alt+Shift+W and Ctrl+Alt+Shift+T. The
+every-shortcut-on-every-OS suite presses each, and a new test fails when
+two listed keys read the same off macOS. In the sidebar footer the new
+keys go through the measured chip fit (a chip with no room is left out
+whole), and ⇧⌘T opens the portalled theme picker.
+
 ### 2026-10-15 — 0.117.5: Mail on its own, a check that always ends, no console flashes on Windows
 
 Mail opens on its own at `?mail=1` — the inbox and nothing else of Caprock —
