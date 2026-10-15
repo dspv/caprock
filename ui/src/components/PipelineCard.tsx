@@ -16,6 +16,7 @@ import { useContext, useMemo } from 'react'
 import type { SessionSummary } from '@/lib/api'
 import { asBoard } from '@/lib/prboard'
 import { pickPipeline } from '@/lib/pipeline'
+import { useRepoRemotes } from '@/lib/useRepoRemotes'
 import { href } from '@/lib/router'
 import { ScreenShown } from '@/lib/refresh'
 import { usePipelineStats } from './PipelineView'
@@ -23,7 +24,9 @@ import { FlowFigures } from './PRBoard'
 
 export function PipelineCard({ sessions }: { sessions: readonly SessionSummary[] }) {
   const shown = useContext(ScreenShown)
-  const pick = useMemo(() => pickPipeline(sessions, {}), [sessions])
+  // The same repositories as the page's picker: git, on GitHub (lib/pipeline).
+  const remotes = useRepoRemotes(sessions)
+  const pick = useMemo(() => pickPipeline(sessions, {}, undefined, remotes), [sessions, remotes])
   const s = pick.session
   const [stats] = usePipelineStats(s?.session_id ?? '', s, shown)
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])

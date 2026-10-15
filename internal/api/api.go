@@ -661,6 +661,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/team-signal", s.handleTeamSignal)
 	m.HandleFunc("GET /v1/repos/activity", s.handleReposActivity)
 	m.HandleFunc("GET /v1/repos/ci", s.handleReposCI)
+	m.HandleFunc("GET /v1/repos/remotes", s.handleReposRemotes)
 	m.HandleFunc("POST /v1/projects", s.handleAddProject)
 	m.HandleFunc("GET /v1/projects/ops", s.handleProjectOps)
 	// New project from a template (ADR-065, templates.go); the machine's only.

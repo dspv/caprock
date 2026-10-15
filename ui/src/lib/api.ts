@@ -609,6 +609,21 @@ export interface RepoActivity {
   }
 }
 
+/** One folder asked of `GET /v1/repos/remotes`. */
+export interface RepoRemote {
+  dir: string
+  /** The repository's top level; absent when the folder is not in a git repository. */
+  root?: string
+  /** owner/name on GitHub; absent without a GitHub remote. */
+  repo?: string
+  /** A folder macOS guards (Documents, Downloads…): never read, so not known either way. */
+  guarded?: boolean
+}
+
+export interface RepoRemotes {
+  repos: RepoRemote[]
+}
+
 export interface ReposActivity {
   repos: RepoActivity[]
   github_connected: boolean
@@ -1828,6 +1843,8 @@ export const api = {
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */
   /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */
   reposActivity: () => get<ReposActivity>('/v1/repos/activity'),
+  /** Which folders are git repositories with a GitHub remote (the Pipeline's picker). */
+  repoRemotes: (dirs: readonly string[]) => get<RepoRemotes>(`/v1/repos/remotes?${dirs.map((d) => `dir=${encodeURIComponent(d)}`).join('&')}`),
   /** The Now screen's CI/CD section (.ai/04-ui.md § CI/CD on Now). */
   reposCI: (q: { older?: boolean; hide?: readonly string[] } = {}) => {
     const p = new URLSearchParams()
