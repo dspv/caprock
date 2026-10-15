@@ -177,7 +177,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
   `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file`,
-  `/v1/projects/{id}/files`, `/v1/brain`, `/v1/brain/status` and
+  `/v1/projects/{id}/files`, `/v1/projects/{id}/image`, `/v1/brain`, `/v1/brain/status` and
   `/v1/brain/nodes/{id}`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
   orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
@@ -3729,8 +3729,9 @@ linked worktree as in Changes; absent or empty is the project's root —
 for a plain folder project too. An unknown project or worktree is `404`.
 
 ```
-GET /v1/projects/{id}/file?path=<p>[&worktree=] → FileContent
-GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?}
+GET /v1/projects/{id}/file?path=<p>[&worktree=]  → FileContent
+GET /v1/projects/{id}/files[?worktree=]          → {files: [string], truncated?}
+GET /v1/projects/{id}/image?path=<p>[&worktree=] → the picture's bytes
 ```
 
 - **`FileContent`** — `{path, size, text, truncated?, binary?, lang}`.
@@ -3748,12 +3749,20 @@ GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?
   anything outside the project. Only a regular file: a folder, socket,
   device or FIFO is `400` (checked before opening, so a FIFO never blocks);
   a missing file or a dangling link is `404`.
+- **`image`** is a picture a rendered Markdown file shows, sent as bytes
+  under its own type, by the same path rules as `file`. Only `.png`,
+  `.jpg`/`.jpeg`, `.gif`, `.webp`, `.avif`, `.svg`, `.bmp` and `.ico`
+  (`415` otherwise), at most 10 MB (`413`). Sent with `X-Content-Type-Options:
+  nosniff`, `Cache-Control: no-store` and `Content-Security-Policy:
+  default-src 'none'; style-src 'unsafe-inline'; sandbox`, so an SVG opened
+  on its own runs no script. The file tab fetches it with the device token
+  and shows it from an object URL; an image on the web is never fetched.
 - **`files`** is `git ls-files -z --cached --others --exclude-standard` in
   a repository (tracked files and new ones git does not ignore), else a walk
   that skips dot-folders, `node_modules` and symlinked folders; sorted, at
   most 20,000 (`truncated`). The palette filters it in the browser.
-- **Who.** Both are reads, open to every paired device as a worktree's diff
-  is (`pairedDeviceRoutes`). Nothing here writes, and no route is added for
+- **Who.** All three are reads, open to every paired device as a worktree's
+  diff is (`pairedDeviceRoutes`). Nothing here writes, and no route is added for
   a controller. On macOS a folder behind a privacy prompt is refused as the
   Changes routes refuse it (`tcc`).
 

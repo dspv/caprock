@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -161,5 +162,46 @@ func TestCutTextNeverSplitsACharacter(t *testing.T) {
 	code, got := getFile(t, s, machine, "", id, "wide.txt")
 	if code != http.StatusOK || got.Binary || !got.Truncated || len(got.Text) > projects.MaxFileBytes {
 		t.Fatalf("wide: %d binary=%v truncated=%v len=%d", code, got.Binary, got.Truncated, len(got.Text))
+	}
+}
+
+// A picture a Markdown file shows comes back as bytes with its type, by the
+// file read's rules; anything that is not an image is refused.
+func TestAnImageReadsAsBytes(t *testing.T) {
+	s, viewer, _, repo, id := changesServer(t)
+	png := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0}
+	writeFile(t, filepath.Join(repo, "docs", "shot.png"), png)
+	writeFile(t, filepath.Join(repo, "logo.svg"), []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`))
+	writeFile(t, filepath.Join(repo, "notes.md"), []byte("# hi\n"))
+	img := func(from, token, rel string) *httptest.ResponseRecorder {
+		return call(t, s, from, token, "GET", "/v1/projects/"+id+"/image?path="+url.QueryEscape(rel), "")
+	}
+	w := img(machine, "", "docs/shot.png")
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/png" || !bytes.Equal(w.Body.Bytes(), png) {
+		t.Fatalf("png: %d %q %v", w.Code, w.Header().Get("Content-Type"), w.Body.Bytes())
+	}
+	if w.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Errorf("png: no nosniff")
+	}
+	if w := img(testPhone, viewer, "docs/shot.png"); w.Code != http.StatusOK {
+		t.Errorf("a viewer reading the png: %d", w.Code)
+	}
+	w = img(machine, "", "logo.svg")
+	if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/svg+xml" || !strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox") {
+		t.Errorf("svg: %d %q %q", w.Code, w.Header().Get("Content-Type"), w.Header().Get("Content-Security-Policy"))
+	}
+	if w := img(machine, "", "notes.md"); w.Code != http.StatusUnsupportedMediaType {
+		t.Errorf("a Markdown file as an image: %d, want 415", w.Code)
+	}
+	if w := img(machine, "", "../x.png"); w.Code != http.StatusBadRequest {
+		t.Errorf("../x.png: %d, want 400", w.Code)
+	}
+	if w := img(machine, "", "gone.png"); w.Code != http.StatusNotFound {
+		t.Errorf("gone.png: %d, want 404", w.Code)
+	}
+	big := make([]byte, projects.MaxImageBytes+1)
+	writeFile(t, filepath.Join(repo, "big.png"), big)
+	if w := img(machine, "", "big.png"); w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("big.png: %d, want 413", w.Code)
 	}
 }

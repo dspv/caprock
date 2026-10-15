@@ -729,6 +729,7 @@ func New(d Deps) *Server {
 	// One file, read-only, and the list of them (files.go).
 	m.HandleFunc("GET /v1/projects/{id}/file", s.handleProjectFile)
 	m.HandleFunc("GET /v1/projects/{id}/files", s.handleProjectFiles)
+	m.HandleFunc("GET /v1/projects/{id}/image", s.handleProjectImage)
 	m.HandleFunc("/v1/mail/", s.handleMail)
 	m.HandleFunc("GET /v1/github", s.handleGitHubStatus)
 	m.HandleFunc("PATCH /v1/github", s.handleGitHubPatch)

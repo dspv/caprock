@@ -117,13 +117,23 @@ export function fuzzyScore(query: string, path: string): number {
   return score * 1000 - Math.min(p.length, 999)
 }
 
-/** The best matches first, at most `limit`. */
+/**
+ * The best matches first, at most `limit`. With nothing typed, the Markdown
+ * files lead — the shallowest first, so README.md and the docs are a
+ * keystroke away — then the rest in order. Typed, a Markdown file wins a
+ * tie: the picker is how a document is found to read.
+ */
 export function rankFiles(files: readonly string[], query: string, limit = 50): string[] {
-  if (!query.trim()) return files.slice(0, limit)
+  if (!query.trim()) {
+    const depth = (f: string) => f.split('/').length
+    const docs = files.filter((f) => isMarkdown(f)).sort((a, b) => depth(a) - depth(b) || a.localeCompare(b))
+    if (docs.length >= limit) return docs.slice(0, limit)
+    return [...docs, ...files.filter((f) => !isMarkdown(f))].slice(0, limit)
+  }
   const scored: { f: string; s: number }[] = []
   for (const f of files) {
     const s = fuzzyScore(query, f)
-    if (s > 0) scored.push({ f, s })
+    if (s > 0) scored.push({ f, s: s + (isMarkdown(f) ? 500 : 0) })
   }
   scored.sort((a, b) => b.s - a.s)
   return scored.slice(0, limit).map((x) => x.f)

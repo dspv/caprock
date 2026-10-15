@@ -29,6 +29,7 @@ import { useQueue } from '@/lib/queue'
 import { QueuedList } from './QueuedList'
 import { NewPill } from './NewPill'
 import { Prose } from './Prose'
+import { requestOpenPath } from '@/lib/mdreader'
 import { TerminalKeys } from './TerminalKeys'
 import { ChevronIcon } from './AppIcons'
 import { touchScreen } from '@/lib/phone'
@@ -122,6 +123,9 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   const [received, setReceived] = useState(0)
   const [sendError, setSendError] = useState('')
   const stick = useStickToBottom({ total: received })
+  // A `.md` path in a reply opens in a file tab; the workspace resolves it
+  // against this session's folder (lib/mdreader OPEN_PATH_EVENT).
+  const onPath = useCallback((path: string) => requestOpenPath({ path, sessionId }), [sessionId])
   const box = useRef<HTMLDivElement | null>(null)
 
   const commit = useCallback((incoming: readonly Event[]): number => {
@@ -367,7 +371,7 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
               : <button type="button" className="link" onClick={() => void revealOlder()}>load earlier</button>}
             </div>
           </div>
-          {shown.map((m) => <Message key={m.id} m={m} />)}
+          {shown.map((m) => <Message key={m.id} m={m} onPath={onPath} />)}
           {showInput && msgQueue.messages.length > 0 && (
             <QueuedList
               messages={msgQueue.messages}
@@ -397,7 +401,7 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
 }
 
 /** A finished message never changes, so it renders once. */
-const Message = memo(function Message({ m }: { m: ChatMessage }) {
+const Message = memo(function Message({ m, onPath }: { m: ChatMessage; onPath?: (path: string) => void }) {
   if (m.kind === 'user') {
     return (
       <div data-msg-id={m.id} className="flex justify-end py-1.5">
@@ -410,7 +414,7 @@ const Message = memo(function Message({ m }: { m: ChatMessage }) {
   if (m.kind === 'assistant') {
     return (
       <div data-msg-id={m.id} className="group py-1.5 [&_div]:text-fg [&>div]:text-[14px]">
-        <Prose text={m.text} />
+        <Prose text={m.text} onPath={onPath} />
         {/* Keep it in Second Brain (ADR-063): quiet until the reply is hovered or focused. */}
         <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
           <BrainDropButton eventId={m.id} className="-ml-1 mt-0.5" />
