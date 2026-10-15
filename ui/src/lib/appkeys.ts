@@ -60,7 +60,7 @@ export type AppCommand =
   | { kind: 'settings' }
   /** ⇧⌘F: the Send feedback form, from anywhere. */
   | { kind: 'feedback' }
-  /** ⇧⌘M: Mail, in a tab of its own. */
+  /** ⇧⌘M: Mail, in a window of its own (lib/mailwindow.ts). */
   | { kind: 'mail' }
   | { kind: 'zoom'; step: 1 | -1 | 0 }
 
@@ -452,7 +452,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘,', 'Settings'],
   ['⇧⌘T', 'Theme: open the picker'],
   ['⇧⌘F', 'Send feedback: a bug, an idea or a question'],
-  ['⇧⌘M', 'Mail, in a tab of its own'],
+  ['⇧⌘M', 'Mail, in a window of its own'],
   ['⌘+, ⌘−, ⇧⌘0', 'Interface size: bigger, smaller, back to the default'],
   ['⌘R', 'Reload the window'],
 ]

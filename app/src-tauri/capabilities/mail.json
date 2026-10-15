@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "mail",
+  "description": "The Mail window: the daemon's /?mail=1 page (Mail alone) in a second window of the app. It may open web and mailto links in the system browser or mail app; nothing else.",
+  "windows": ["mail"],
+  "remote": { "urls": ["http://127.0.0.1:*"] },
+  "permissions": [
+    "allow-open-external"
+  ]
+}

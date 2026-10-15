@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "daemon",
-  "description": "The dashboard served by the daemon on loopback. It may read the daemon's state, open web links, drag the window, fill the menu bar and badge, set the global hotkey and show and withdraw OS notifications, and install a signed app update when the user clicks for it (F20), and for a feedback report put an image on the clipboard, capture its own page read an image file the user just dropped on the window, read a .md or .txt file the user just dropped on the window as the brief of New project from a template, set its own zoom (Appearance → Interface size), and open the system's folder chooser for New project (it returns the path the user picked). Nothing else that starts processes or touches files: the hotkey choice and that verified update are the only writes.",
+  "description": "The dashboard served by the daemon on loopback. It may read the daemon's state, open web links, drag the window, fill the menu bar and badge, set the global hotkey and show and withdraw OS notifications, and install a signed app update when the user clicks for it (F20), and for a feedback report put an image on the clipboard, capture its own page read an image file the user just dropped on the window, read a .md or .txt file the user just dropped on the window as the brief of New project from a template, set its own zoom (Appearance → Interface size), open the system's folder chooser for New project (it returns the path the user picked), and open Mail in its own window: the installed Caprock Mail preview on macOS, else a second window of this app on the daemon's /?mail=1. Nothing else that starts processes or touches files: launching that one installed app is the only process, the hotkey choice and that verified update are the only writes.",
   "windows": ["main"],
   "remote": { "urls": ["http://127.0.0.1:*"] },
   "permissions": [
@@ -24,6 +24,8 @@
     "allow-capture-webview",
     "allow-read-dropped-image",
     "allow-read-dropped-text",
-    "allow-set-zoom"
+    "allow-set-zoom",
+    "allow-open-mail-app",
+    "allow-open-mail-window"
   ]
 }

@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::webview::{DownloadEvent, NewWindowResponse};
-use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, Runtime, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -135,20 +135,9 @@ pub fn build(
         // notification would wait for the app to come forward (WP-09).
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         .initialization_script(INIT_SCRIPT)
-        .on_navigation(move |url| {
-            // Main-frame navigation stays on this daemon or the fallback page;
-            // anything else, another local port included, is a link the user
-            // meant for the browser.
-            let port = sup.runtime().map(|rt| rt.port);
-            if (port.is_some() && is_daemon(url, port)) || is_local(url) || url.scheme() == "about"
-            {
-                return true;
-            }
-            open_external(&opener, url);
-            false
-        })
+        .on_navigation(move |url| allow_navigation(&opener, &sup, url))
         .on_new_window(move |url, _| {
-            open_external(&opener2, &url);
+            open_link(&opener2, &url);
             NewWindowResponse::Deny
         })
         .on_download(save_download)
@@ -291,7 +280,22 @@ pub fn drop_script(paths: &[PathBuf], (x, y): (f64, f64), scale: f64) -> Option<
     ))
 }
 
-fn open_external(app: &AppHandle, url: &Url) {
+/// The main window's and the Mail window's navigation rule: main-frame
+/// navigation stays on this daemon or the fallback page; anything else,
+/// another local port included, is a link the user meant for the browser,
+/// opened there and refused here.
+pub fn allow_navigation<R: Runtime>(app: &AppHandle<R>, sup: &Supervisor, url: &Url) -> bool {
+    let port = sup.runtime().map(|rt| rt.port);
+    if (port.is_some() && is_daemon(url, port)) || is_local(url) || url.scheme() == "about" {
+        return true;
+    }
+    open_link(app, url);
+    false
+}
+
+/// An http(s) or mailto link in the system browser or mail app; any other
+/// scheme is dropped.
+pub fn open_link<R: Runtime>(app: &AppHandle<R>, url: &Url) {
     if matches!(url.scheme(), "http" | "https" | "mailto") {
         let _ = app.opener().open_url(url.as_str(), None::<&str>);
     }
@@ -305,7 +309,7 @@ pub struct Downloads(Mutex<HashMap<String, PathBuf>>);
 /// WebView writes it to a temporary file first and the dialog opens when it
 /// is complete: the download callback runs on the main thread, where a
 /// blocking dialog would deadlock the very event loop it needs.
-fn save_download(webview: tauri::Webview, event: DownloadEvent<'_>) -> bool {
+pub fn save_download<R: Runtime>(webview: tauri::Webview<R>, event: DownloadEvent<'_>) -> bool {
     let app = webview.app_handle();
     let downloads = app.state::<Downloads>();
     match event {
@@ -436,9 +440,10 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
             if was_connected && !connected {
                 crate::tray::daemon_gone(&app);
             }
-            #[cfg(target_os = "macos")]
             if let State::Connected { port, .. } = &state {
+                #[cfg(target_os = "macos")]
                 crate::popover::ensure(&app, *port);
+                crate::mail::follow(&app, *port);
             }
             was_connected = connected;
             let main = app.get_webview_window(MAIN);
@@ -486,6 +491,7 @@ fn reload_after_swap(app: &AppHandle, port: u16) {
     }
     #[cfg(target_os = "macos")]
     crate::popover::reload(app, port);
+    crate::mail::reload(app, port);
 }
 
 /// View → Reload (Cmd+R): the main window loads its page again. On the

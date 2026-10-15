@@ -83,6 +83,10 @@ export const shell = {
   readDroppedImage: (path: string) => shellInvoke<ArrayBuffer>('read_dropped_image', { path }),
   /** The text of a .md, .markdown or .txt file from the last drop on the window (at most 1 MiB, UTF-8): a template project's brief. */
   readDroppedText: (path: string) => shellInvoke<string>('read_dropped_text', { path }),
+  /** macOS: launch or bring forward the installed Caprock Mail preview; false when there is none (and on every other OS). */
+  openMailApp: () => shellInvoke<boolean>('open_mail_app'),
+  /** A second window of the app on the daemon's `/?mail=1`, focused when already open; false with no daemon to load it from. */
+  openMailWindow: () => shellInvoke<boolean>('open_mail_window'),
 }
 
 /**

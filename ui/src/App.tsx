@@ -23,6 +23,7 @@ import { BrainCaptureHost } from '@/components/BrainCapture'
 import { ScreenShown } from '@/lib/refresh'
 import { PipelineHostContext } from '@/lib/pipelineHost'
 import { keptScreen, pageScroller, placeKey, useScrollPlace } from '@/lib/screenPlace'
+import { MailWindowBanner } from '@/screens/mail/MailWindowBanner'
 
 // Mail is its own world (internal/mail); its code loads only when opened.
 const MailScreen = lazy(() => import('@/screens/mail/MailScreen').then((m) => ({ default: m.MailScreen })))
@@ -129,7 +130,7 @@ export function Dashboard({ route, inApp = false, shown = true, scroller = pageS
       case 'graph': return <OrchestrationScreen />
       case 'notes': return <NotesScreen />
       case 'start': return <NewProjectScreen mode={r.mode} />
-      case 'mail': return <Suspense fallback={null}><MailScreen /></Suspense>
+      case 'mail': return <><div className="mb-3"><MailWindowBanner shortcut={false} /></div><Suspense fallback={null}><MailScreen /></Suspense></>
       case 'brain': return <Suspense fallback={null}><BrainScreen node={r.node} /></Suspense>
       case 'pipeline': return <PipelineScreen repo={r.repo} of={r.of} pr={r.pr} />
       case 'work': return <WorkScreenHosted />

@@ -1448,11 +1448,26 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   (with `hotkey_status`; built in WP-10, app/README.md),
   `open_external` (https and the editors' schemes only), `daemon_status`, and
   the updater's `app_update_status`, `app_update_check`,
-  `app_update_install` and `app_update_asked` (F20). No
+  `app_update_install` and `app_update_asked` (F20), and `open_mail_app` and
+  `open_mail_window`, which open Mail in a window of its own (below). No
   shell, filesystem or HTTP plugin is exposed to the page. The bundled
   fallback page, on the app's own origin, alone gets `start_daemon`,
   `update_daemon` and `set_background` (built in WP-02; the others arrive
   with their work packages).
+- **Mail opens in a window of its own, never as a workspace tab** (owner,
+  2026-10-15, translated: "it should be native — either call the installed
+  app, or show a big banner to go there"). The sidebar's *Mail*, ⇧⌘M and the
+  palette ask `open_mail_app` first: on macOS the installed Caprock Mail
+  preview (`app/mail-mac`, bundle id `dev.caprock.mail.preview`, in
+  /Applications or ~/Applications) is launched or brought forward with
+  `open`. Without it, `open_mail_window` opens a second window of the app,
+  *Caprock Mail* (label `mail`, `src-tauri/src/mail.rs`), on the daemon's
+  `/?mail=1` — Mail alone, no sidebar or tabs — with the main window's link
+  rule and download handling, and a capability of its own that grants
+  `open_external` alone (`capabilities/mail.json`). It follows the daemon to
+  a new port and reloads after a swap, as the popover does. The Mail tab is
+  left for a browser (under a banner that opens `/?mail=1` in a browser
+  window) and for a shell older than these commands. .ai/04-ui.md § Mail.
 - **The daemon supervisor** reads `runtime.json`, starts the bundled binary
   when no daemon answers, and never stops a daemon it did not start — save
   one case on macOS: a Homebrew formula's daemon, moved onto the app's own
@@ -1498,8 +1513,8 @@ app had no reload command.
 - **A late swap reloads.** A daemon that came up after launch is replaced
   when the window may already show its page: the monitor follows the swap's
   state rather than the old daemon, and once the new one answers on the same
-  port it reloads the main window and the popover (the URL, hash route
-  included, is kept). On another port the page moves there on the same
+  port it reloads the main window, the popover and the Mail window (the
+  URL, hash route included, is kept). On another port the page moves there on the same
   route.
 - **Every page checks for itself.** The daemon writes its version into the
   page it serves (`<meta name="caprock-version">`, `internal/api/ui.go`), and

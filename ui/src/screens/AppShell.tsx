@@ -43,6 +43,8 @@ import { baseName, fileKey } from '@/lib/files'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
 import { useShellTray } from '@/lib/tray'
 import { OPEN_SESSION_EVENT } from '@/lib/shell'
+import { openMailBrowserWindow, openMailOutside } from '@/lib/mailwindow'
+import { MailWindowBanner } from '@/screens/mail/MailWindowBanner'
 import { useOsNotifications } from '@/lib/notify'
 import { useTheme } from '@/lib/theme'
 import { useDaemonVersion } from '@/lib/useDaemonVersion'
@@ -406,12 +408,47 @@ export function AppShell() {
     // In the same render as the dispatch: on the old hash the tab reopened.
     if (!isWorkspaceHash(location.hash) && !isSystemTabHash(location.hash)) goHash(APP_ROUTE)
   }, [goHash])
+  // Mail opens in a window of its own (owner, 2026-10-15): in the desktop
+  // app the installed Caprock Mail preview, else the app's own Mail window
+  // (lib/mailwindow.ts). The Mail tab is the browser's, under a banner that
+  // leads to a window, and an older shell's, which has neither command.
+  const [mailTabOk, setMailTabOk] = useState(() => !isTauri())
+  // Where #/mail came from, to go back to once Mail opened outside.
+  const beforeMail = useRef(APP_ROUTE)
+  useEffect(() => { if (!mailShown) beforeMail.current = hash }, [hash, mailShown])
+  // A Mail tab kept from before, in an app that opens Mail outside: gone.
+  useEffect(() => {
+    if (!mailTabOk && ws.mail) dispatch({ type: 'mail', open: false })
+  }, [mailTabOk, ws.mail])
+  // #/mail from anywhere else (the dashboard's Mail, the Mail strip's
+  // button): in the app, Mail opens outside and the page goes back.
+  useEffect(() => {
+    if (!mailShown || mailTabOk) return
+    void openMailOutside().then((ok) => {
+      if (!ok) { setMailTabOk(true); return }
+      if (parseHash(location.hash).name === 'mail') goHash(beforeMail.current || APP_ROUTE)
+    })
+  }, [mailShown, mailTabOk, goHash])
   // The Mail tab: in the strip from the first time Mail is opened (the
   // sidebar's Mail row, ⇧⌘M, the dashboard's Mail, the palette) until its ×.
   useEffect(() => {
-    if (mailShown && !ws.mail) dispatch({ type: 'mail', open: true })
-  }, [mailShown, ws.mail])
-  const onMail = useCallback(() => { if (parseHash(location.hash).name !== 'mail') goHash('#/mail') }, [goHash])
+    if (mailShown && mailTabOk && !ws.mail) dispatch({ type: 'mail', open: true })
+  }, [mailShown, mailTabOk, ws.mail])
+  const showMailTab = useCallback(() => { if (parseHash(location.hash).name !== 'mail') goHash('#/mail') }, [goHash])
+  /** The sidebar's Mail, ⇧⌘M and the palette. */
+  const onMail = useCallback(() => {
+    if (mailTabOk) {
+      // A browser on the Mail tab already: Mail alone in a window (the banner's button).
+      if (!isTauri() && parseHash(location.hash).name === 'mail') openMailBrowserWindow()
+      else showMailTab()
+      return
+    }
+    void openMailOutside().then((ok) => {
+      if (ok) return
+      setMailTabOk(true)
+      showMailTab()
+    })
+  }, [mailTabOk, showMailTab])
   const closeMail = useCallback(() => {
     dispatch({ type: 'mail', open: false })
     if (parseHash(location.hash).name === 'mail') goHash(APP_ROUTE)
@@ -1205,7 +1242,7 @@ export function AppShell() {
         ? [{ id: 'a-copies', group: 'Actions' as const, label: 'Clean up copies…', detail: `${activeProject.name}: worktrees, sizes, merged`, icon: <BranchIcon size={14} />, run: () => onCleanCopies(activeProject.id) }]
         : []),
       { id: 'a-dashboard', group: 'Actions', label: 'Open the dashboard', hint: keys(DASHBOARD_KEY), icon: <DashboardIcon size={14} />, run: onDashboard },
-      { id: 'a-mail', group: 'Actions', label: 'Open Mail', detail: 'every inbox in one place, in its own tab', hint: keys('⇧⌘M'), icon: <MailIcon size={14} />, run: onMail },
+      { id: 'a-mail', group: 'Actions', label: 'Open Mail', detail: 'every inbox in one place, in its own window', hint: keys('⇧⌘M'), icon: <MailIcon size={14} />, run: onMail },
       { id: 'a-settings', group: 'Actions', label: 'Settings', detail: 'permission mode, theme, terminal, notifications, phone', hint: keys('⌘,'), icon: <SettingsIcon size={14} />, run: onSettings },
       { id: 'a-phone', group: 'Actions', label: 'Open Caprock on your phone', detail: 'pair with a QR code, then add it to the home screen', icon: <SettingsIcon size={14} />, run: openPhoneSettings },
       { id: 'a-telegram', group: 'Actions', label: 'Connect Telegram', detail: 'messages when a session needs you; reply from the chat', icon: <SettingsIcon size={14} />, run: () => openSettingsSection('telegram') },
@@ -1616,7 +1653,7 @@ export function AppShell() {
                 onClose: closeDashboard,
               } : undefined}
               pipeline={ws.pipeline || pipelineShown ? { active: pipelineShown, onActivate: () => { if (!pipelineShown) goHash(lastPipeline.current || '#/pipeline') }, onClose: closePipeline } : undefined}
-              mail={ws.mail || mailShown ? { active: mailShown, onActivate: onMail, onClose: closeMail } : undefined}
+              mail={ws.mail || (mailShown && mailTabOk) ? { active: mailShown, onActivate: showMailTab, onClose: closeMail } : undefined}
               paneTools={workspaceShown}
               sessions={sessionsById}
               permissions={data.permissions}
@@ -1774,14 +1811,17 @@ export function AppShell() {
                   </div>
                 )}
               </div>
-              {mailShown && (
+              {mailShown && mailTabOk && (
                 /* Mail fills its tab: no dashboard header, its own three columns. */
-                <div data-mail-view className="absolute inset-0 bg-bg">
-                  <ErrorBoundary label="Mail">
-                    <Suspense fallback={null}>
-                      <MailScreen fill />
-                    </Suspense>
-                  </ErrorBoundary>
+                <div data-mail-view className="absolute inset-0 flex flex-col bg-bg">
+                  {!isTauri() && <div className="shrink-0 p-3 pb-2"><MailWindowBanner /></div>}
+                  <div className="relative min-h-0 flex-1">
+                    <ErrorBoundary label="Mail">
+                      <Suspense fallback={null}>
+                        <MailScreen fill />
+                      </Suspense>
+                    </ErrorBoundary>
+                  </div>
                 </div>
               )}
               {/* The Pipeline fills its tab: no dashboard header, the page

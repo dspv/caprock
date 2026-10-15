@@ -47,7 +47,7 @@ export interface SidebarFooterProps {
   onToggleFold: () => void
   dashboardActive: boolean
   onDashboard: () => void
-  /** Mail in its own tab (⇧⌘M); absent, no Mail row. */
+  /** Mail in its own window (⇧⌘M); absent, no Mail row. */
   onMail?: () => void
   /** The Mail tab is in front. */
   mailActive?: boolean
