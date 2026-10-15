@@ -64,6 +64,7 @@ macro_rules! handler {
             popover::tray_fit,
             commands::app_update_status,
             commands::app_update_check,
+            commands::app_update_download,
             commands::app_update_install,
             commands::app_update_asked,
             capture::clipboard_image,
@@ -452,10 +453,14 @@ mod tests {
         // Refused for a development build without touching the network.
         let st = invoke(DAEMON, "app_update_install", serde_json::json!({})).expect("allowed");
         assert_eq!(st["phase"], "idle");
+        // The background download refuses a development build the same way.
+        let st = invoke(DAEMON, "app_update_download", serde_json::json!({})).expect("allowed");
+        assert_eq!(st["phase"], "idle");
         for url in ["https://example.com/", "http://localhost:4391/"] {
             for cmd in [
                 "app_update_status",
                 "app_update_check",
+                "app_update_download",
                 "app_update_install",
                 "app_update_asked",
             ] {
@@ -466,9 +471,10 @@ mod tests {
                 );
             }
         }
-        let err = invoke_in("tray", POPOVER, "app_update_install", serde_json::json!({}))
-            .expect_err("popover");
-        assert!(err.to_string().contains("not allowed"), "{err}");
+        for cmd in ["app_update_install", "app_update_download"] {
+            let err = invoke_in("tray", POPOVER, cmd, serde_json::json!({})).expect_err("popover");
+            assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
+        }
     }
 
     #[test]

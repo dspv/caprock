@@ -29,8 +29,17 @@
  * can't see a damn thing"). Where one does not fit — beside a row's words,
  * or over a folded icon — it is left out whole, measured (lib/keyChipFit),
  * and the key stays in the tooltip; it is never drawn smaller.
+ *
+ * The block is its own band under the sidebar's list, never over it: a
+ * flex sibling after the list's scroll area, on a solid fill with a hairline
+ * on top (`.app-sidebar-footer`, design/tokens.css), so the edge reads at a
+ * glance in every palette (owner, 2026-10-15, translated: "there isn't a
+ * clear enough boundary between the tools and what's above … its caption
+ * can't even be seen"). The list scrolls inside its own area and ends above
+ * the band, its last line whole when scrolled to the end.
  */
-import type { ReactNode, RefObject } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
+import type { MouseEvent, ReactNode, RefObject } from 'react'
 import type { SettingsSection } from '@/lib/router'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { THEMES } from '@/lib/themes'
@@ -106,7 +115,7 @@ export function SidebarFooter(props: SidebarFooterProps) {
   if (props.folded) return <FoldedFooter {...props} />
   const split = splitModeRow() && hasBar
   return (
-    <div data-sidebar-footer className="grid shrink-0 grid-cols-[minmax(0,1fr)] gap-1.5 border-t border-[var(--app-hairline)] px-2 py-2">
+    <div data-sidebar-footer className="app-sidebar-footer grid shrink-0 grid-cols-[minmax(0,1fr)] gap-1.5 px-2 py-2">
       {/* Feedback on a labelled row of its own: on screen whatever tab is in
         * front, where the header's button is only on the dashboard. As a bare
         * icon beside Settings and the theme switch it read as a volume
@@ -239,7 +248,7 @@ function FoldedFooter(props: SidebarFooterProps) {
   const [ref, fit] = useFoldedChipFit<HTMLDivElement>(slots.length, chips === 'shown')
   const anyShown = chips === 'shown' && slots.some((s, i) => s.key && fit[i] !== false)
   return (
-    <div ref={ref as RefObject<HTMLDivElement>} data-sidebar-footer data-folded-keys={chips} className="flex shrink-0 items-end gap-0.5 border-t border-[var(--app-hairline)] px-1 pb-1.5 pt-1">
+    <div ref={ref as RefObject<HTMLDivElement>} data-sidebar-footer data-folded-keys={chips} className="app-sidebar-footer flex shrink-0 items-end gap-0.5 px-1 pb-1.5 pt-2">
       {slots.map((s, i) => (
         <KeySlot key={i} keyLabel={s.key} chips={chips} edge={s.edge} fits={fit[i] !== false} line={anyShown}>{s.node}</KeySlot>
       ))}
@@ -253,22 +262,48 @@ function FoldedFooter(props: SidebarFooterProps) {
  * chip sits above the icon, and a column with no key keeps an empty slot of
  * the same height. `hover`: the chip floats above the column under the
  * pointer or focus, held to the `edge` side so it stays inside the sidebar.
+ *
+ * The chip is part of the button below it (owner, 2026-10-15, translated: "I
+ * wanted to click the key combo with the mouse and it doesn't click"): a
+ * click on it is a click on the icon's own button, the same handler, and it
+ * carries that button's tooltip. The column is one control: one tab stop
+ * (the icon), one name for a screen reader, the chip a larger mouse target
+ * hidden from both; the chip and the icon light up together under the
+ * pointer (`[data-key-slot]` in design/tokens.css).
  */
 function KeySlot({ keyLabel, chips, edge, fits, line, children }: { keyLabel?: string; chips: 'shown' | 'hover'; edge: 'left' | 'right'; fits: boolean; line: boolean; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [title, setTitle] = useState<string>()
+  // The action's tooltip changes with its state (Pipeline in front, the
+  // palette's name), so it is read from the button after every render.
+  useLayoutEffect(() => {
+    const b = action(ref.current)
+    const t = b?.title || b?.getAttribute('aria-label') || undefined
+    if (t !== title) setTitle(t)
+  })
+  const press = (e: MouseEvent) => {
+    e.stopPropagation()
+    action(ref.current)?.click()
+  }
   return (
-    <div data-key-slot className={`group relative flex max-w-[48px] flex-1 flex-col items-center ${chips === 'shown' && keyLabel && fits ? 'min-w-min' : 'min-w-[32px]'}`}>
+    <div ref={ref} data-key-slot className={`group relative flex max-w-[48px] flex-1 flex-col items-center ${chips === 'shown' && keyLabel && fits ? 'min-w-min' : 'min-w-[32px]'}`}>
       {chips === 'shown' ? (
         keyLabel ? (
-          <kbd aria-hidden data-key-chip data-dropped={fits ? undefined : ''} className={fits ? 'app-kbd-key mb-[3px]' : 'app-kbd-key pointer-events-none invisible absolute bottom-full'}>{keyLabel}</kbd>
+          <kbd aria-hidden data-key-chip data-dropped={fits ? undefined : ''} title={title} onClick={press} className={fits ? 'app-kbd-key app-kbd-press mb-[3px]' : 'app-kbd-key pointer-events-none invisible absolute bottom-full'}>{keyLabel}</kbd>
         ) : line ? (
           <kbd aria-hidden className="app-kbd-key invisible mb-[3px]">·</kbd>
         ) : null
       ) : keyLabel ? (
-        <kbd aria-hidden className={`app-kbd-key app-kbd-float pointer-events-none invisible absolute bottom-[calc(100%+3px)] z-10 group-hover:visible group-focus-within:visible ${edge === 'left' ? 'left-0' : 'right-0'}`}>{keyLabel}</kbd>
+        <kbd aria-hidden data-key-chip title={title} onClick={press} className={`app-kbd-key app-kbd-float app-kbd-press invisible absolute bottom-[calc(100%+3px)] z-10 group-hover:visible group-focus-within:visible ${edge === 'left' ? 'left-0' : 'right-0'}`}>{keyLabel}</kbd>
       ) : null}
       {children}
     </div>
   )
+}
+
+/** The button a folded column stands for: its icon's, the only one in it. */
+function action(slot: HTMLElement | null): HTMLButtonElement | null {
+  return slot?.querySelector<HTMLButtonElement>('button') ?? null
 }
 
 /** What the Pipeline button's tooltip and name say. */

@@ -7,6 +7,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **brain:** the Second Brain banner and *How it works* show the agents you
+  actually use — up to five of Claude Code, Codex, Gemini CLI, OpenCode and
+  DeepSeek, from your last 30 days, drawn as Caprock's own characters (Claude
+  in the face you picked, duck included) — around the brain, each line
+  carrying a pulse into it: *One memory for all your agents*, with a line
+  naming them (*Claude Code, Codex and Gemini CLI remember together.*).
+  With no usage yet it is Claude Code alone. Both now say *Free* in a quiet
+  accent pill, and the dialog adds *Free — runs on your own Claude, on this
+  computer.* The pulses hold still with reduced motion.
 Changes waiting for the next release are one file each in `changes/unreleased/`,
 assembled into a version section here by `scripts/changelog.py` when a release is
 cut; `scripts/changelog.py preview` prints that section now. The format is in

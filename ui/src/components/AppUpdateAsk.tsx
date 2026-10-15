@@ -1,7 +1,7 @@
 /**
  * The desktop app's one question about updates (F20), on its first launch:
  * "Check for updates automatically?", Yes highlighted. It is the release
- * check that already exists (Settings → Privacy, `update_checks`), asked in
+ * check that already exists (Settings → Updates, `update_checks`), asked in
  * the app instead of in a banner, and never an OS dialog. Answered once
  * either way; with checks already on it is not asked at all.
  */
@@ -37,8 +37,8 @@ export function AppUpdateAsk() {
     >
       <p className="font-medium">Check for updates automatically?</p>
       <p className="text-[12px] leading-relaxed text-fg-muted">
-        Every few hours Caprock asks GitHub for the newest version number. Nothing about you or your work is sent,
-        and nothing installs until you click Update. Change it any time in Settings → Privacy.
+        Once an hour Caprock asks GitHub for the newest version number. Nothing about you or your work is sent,
+        and nothing installs until you click Update. Change it any time in Settings → Updates.
       </p>
       <div className="flex items-center justify-end gap-2">
         <button

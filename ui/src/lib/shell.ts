@@ -67,6 +67,8 @@ export const shell = {
   updateStatus: () => shellInvoke<AppUpdateInfo>('app_update_status'),
   /** Fetch latest.json once. */
   updateCheck: () => shellInvoke<AppUpdateInfo>('app_update_check'),
+  /** Download and verify, and hold it for a later install (Update automatically). */
+  updateDownload: () => shellInvoke<AppUpdateInfo>('app_update_download'),
   /** Download, verify, install and restart; resolves only when it did not. */
   updateInstall: () => shellInvoke<AppUpdateInfo>('app_update_install'),
   /** The first-launch question about update checks was answered. */

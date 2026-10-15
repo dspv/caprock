@@ -31,6 +31,7 @@ import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
 import { keys } from '@/lib/appkeys'
 import { Processes } from './ResourceMeter'
 import { CockpitCI } from './CockpitCI'
+import { CockpitRelease } from './ReleasePlan'
 
 const DIFF_REFRESH_MS = 20_000
 const DIFF_FILES_SHOWN = 5
@@ -122,6 +123,7 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
           summary={summary}
           changes={<Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} onOpenFile={onOpenFile} />}
           ci={<CockpitCI sessionId={sessionId} repoScope={s?.repo_root || s?.cwd || undefined} onOpen={onOpenPRs} />}
+          release={<CockpitRelease sessionId={sessionId} repoRoot={s?.repo_root || undefined} />}
           processes={<Processes sessionId={sessionId} />}
         />
         <Actions s={s} sessionId={sessionId} isShell={false} ended={ended} editor={editor} onDetach={onDetach} />
