@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Folder, Message, Settings } from './mailApi'
-import { api, partURL } from './mailApi'
+import { api, partURL, whoText } from './mailApi'
 import type { Row } from './MailScreen'
 import { MailBody } from './MailBody'
 import { bytes, firstName, hue, initials, longDate, people, sender, shortDate } from './format'
@@ -9,11 +9,17 @@ import { K } from './keymap'
 import { isTauri } from '@/lib/appmode'
 import { openExternal } from '@/lib/nudges'
 
-export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, onReply, onForward, onMailto, moveKick = 0, sumKick = 0, onSettings }: {
+export function Reader({ row, view, aiOn, settings, who = '', onAiSettings, onNotSpam, folders, onThread, onAct, onReply, onForward, onMailto, moveKick = 0, sumKick = 0, onSettings }: {
   row: Row
   view: string
   aiOn: boolean
   settings: Settings
+  /** Who does the AI work ("Claude Code · haiku"), shown under a summary. */
+  who?: string
+  /** Opens Settings on its AI section. */
+  onAiSettings?: () => void
+  /** Not spam (n): back to the inbox from Spam, or the AI's spam label taken back. */
+  onNotSpam?: () => void
   /** When the v and i keys were last pressed (ms): open Move, summarise. */
   moveKick?: number
   sumKick?: number
@@ -63,7 +69,7 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
     try {
       const r = await api.summarize(row.m.id)
       setSummary(r.text)
-      setSumBy(r.label ?? '')
+      setSumBy(whoText(r))
     } catch (e) {
       setSummary('Could not summarise: ' + (e as Error).message)
       setSumBy('')
@@ -92,7 +98,7 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
     try {
       const r = await api.summarize(row.m.id)
       setSummary(r.text)
-      setSumBy(r.label ?? '')
+      setSumBy(whoText(r))
     } catch (e) {
       setSummary('Could not summarise: ' + (e as Error).message)
     } finally {
@@ -133,8 +139,9 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
     <div className="readwrap">
       <div className="toolbar">
         {view === 'junk'
-          ? <button className="btn" onClick={() => onAct('inbox')}>Not spam</button>
+          ? <button className="btn" onClick={() => (onNotSpam ? onNotSpam() : onAct('inbox'))}>Not spam <K k="notSpam" /></button>
           : view !== 'archive' && <button className="icon withkey" title="Archive" onClick={() => onAct('archive')}><Icon name="archive" /> <K k="archive" /></button>}
+        {view !== 'junk' && row.m.ai?.category === 'spam' && onNotSpam && <button className="btn" onClick={onNotSpam}>Not spam <K k="notSpam" /></button>}
         <button className="icon withkey" title="Delete" onClick={() => onAct('trash')}><Icon name="trash" /> <K k="trash" /></button>
         {view !== 'junk' && <button className="icon withkey" title="Spam" onClick={() => onAct('spam')}><Icon name="spam" /> <K k="spam" /></button>}
         <div className="movewrap">
@@ -168,11 +175,18 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
       )}
       <div className="readscroll">
         <h1 className="subj">{m0.subject || '(no subject)'}</h1>
-        {summary && (
+        {summary ? (
           <div className="summary">
-            <div className="sumhead"><Icon name="sparkle" size={14} /> Summary {sumBy && <span className="muted small">by {sumBy}</span>}
+            <div className="sumhead"><Icon name="sparkle" size={14} /> Summary
               <button className="icon tiny" onClick={() => setSummary(null)}><Icon name="close" size={12} /></button></div>
             <div className="sumtext">{summary}</div>
+            <SumFoot by={sumBy || who} onAiSettings={onAiSettings} />
+          </div>
+        ) : row.m.ai?.summary && !sumBusy && (
+          // The one line triage stored: shown at once; i writes the full summary.
+          <div className="summary short">
+            <div className="shortline"><Icon name="sparkle" size={13} /><span>{row.m.ai.summary}</span></div>
+            <SumFoot by={row.m.ai.user ? '' : who} onAiSettings={onAiSettings} more={() => summarize().catch(() => {})} />
           </div>
         )}
         {err && <div className="error">{err}</div>}
@@ -222,6 +236,17 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/** Under a summary: who wrote it, the way to change that, and the full summary for a short one. */
+function SumFoot({ by, onAiSettings, more }: { by: string; onAiSettings?: () => void; more?: () => void }) {
+  return (
+    <div className="sumfoot muted small">
+      {by && <span>by {by}</span>}
+      {by && onAiSettings && <> · <button className="link" onClick={onAiSettings}>change</button></>}
+      {more && <>{by && ' · '}<button className="link" onClick={more}>Full summary</button> <K k="summarise" /></>}
     </div>
   )
 }

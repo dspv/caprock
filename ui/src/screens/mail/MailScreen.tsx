@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Account, Folder, Message, Settings, State } from './mailApi'
-import { api } from './mailApi'
+import type { Account, AIStatus, Category, Folder, Message, Settings, State } from './mailApi'
+import { api, whoText } from './mailApi'
 import type { ComposeInit } from './Composer'
 import { Composer } from './Composer'
 import { Reader } from './Reader'
@@ -50,7 +50,24 @@ const VIEWS: { view: string; label: string; icon: string; k: MailKey }[] = [
   { view: 'trash', label: 'Trash', icon: 'trash', k: 'trashView' },
 ]
 
-const ACCOUNT_COLORS = ['#2f6fdf', '#e0702a', '#1e9e6a', '#b5479b', '#c9a227', '#5b5bd6']
+/** The inbox's AI filters. All is everything the AI did not call spam. */
+export type Cat = 'all' | Category
+export const CATS: { cat: Cat; label: string; k: MailKey }[] = [
+  { cat: 'all', label: 'All', k: 'catAll' },
+  { cat: 'important', label: 'Important', k: 'catImportant' },
+  { cat: 'updates', label: 'Updates', k: 'catUpdates' },
+  { cat: 'newsletter', label: 'Newsletters', k: 'catNewsletter' },
+  { cat: 'spam', label: 'Spam', k: 'catSpam' },
+]
+const CAT_BY_KEY: Record<string, Cat> = { 1: 'all', 2: 'important', 3: 'updates', 4: 'newsletter', 5: 'spam' }
+/** The label on a row: its category, or *Reply* when the last message waits on the user. */
+export const LABEL: Record<Category, string> = { important: 'Important', updates: 'Update', newsletter: 'Newsletter', spam: 'Spam' }
+
+/** "Let AI sort your inbox" was put away in this browser. */
+const OFFER_KEY = 'caprock.mail.triage-offer'
+const offerHidden = () => { try { return localStorage.getItem(OFFER_KEY) === 'no' } catch { return false } }
+
+const ACCOUNT_COLORS =['#2f6fdf', '#e0702a', '#1e9e6a', '#b5479b', '#c9a227', '#5b5bd6']
 export const acctColor = (accounts: Account[], id: number) => ACCOUNT_COLORS[Math.max(0, accounts.findIndex((a) => a.id === id)) % ACCOUNT_COLORS.length]
 
 const MOVES = new Set(['archive', 'trash', 'spam', 'inbox', 'move'])
@@ -84,7 +101,15 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
   const [more, setMore] = useState(true)
   const [cur, setCur] = useState<number | null>(null) // selected row's newest message id
   const [compose, setCompose] = useState<ComposeInit | null>(null)
-  const [showSettings, setShowSettings] = useState(false)
+  const [showSettings, setShowSettingsRaw] = useState(false)
+  // Where Settings opens: at the top, or on the AI section (the "change"
+  // links beside whoever does the AI work).
+  const [settingsAt, setSettingsAt] = useState<'top' | 'ai'>('top')
+  const setShowSettings = (on: boolean) => { setShowSettingsRaw(on); if (on) setSettingsAt('top') }
+  const openAiSettings = () => { setShowSettingsRaw(true); setSettingsAt('ai') }
+  const [cat, setCat] = useState<Cat>('all')
+  const [aiSt, setAiSt] = useState<AIStatus | null>(null)
+  const [offerOff, setOfferOff] = useState(offerHidden)
   const [toast, setToast] = useState('')
   const [syncing, setSyncing] = useState(false)
   // Where the first-run card opens: its choices, or straight at the provider
@@ -138,15 +163,22 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       setStarting(false)
     }
     setSt(s)
+    // The list below answers for this version: a change before the first
+    // poll (the sorter finishing, say) must still bring the list again.
+    version.current = s.version
     listRef2.current(false).catch(() => {})
   }, [])
 
+  // The AI filters act on the inbox only, never on a search.
+  const inboxView = sel.view === 'inbox' && !q
+  useEffect(() => { setCat('all') }, [sel.view, sel.account, sel.folder])
   const query = useMemo(() => ({
     view: q ? (sel.view === 'folder' ? 'folder' : 'all') : sel.view,
     account: sel.account,
     folder: sel.folder,
     q,
-  }), [sel, q])
+    cat: inboxView ? (cat === 'all' ? 'nospam' : cat) : undefined,
+  }), [sel, q, cat, inboxView])
 
   const loadList = useCallback(async (append = false) => {
     const last = append ? msgs[msgs.length - 1] : undefined
@@ -200,6 +232,28 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
   const curRow = rows.find((r) => r.m.id === cur) ?? null
   const accounts = st?.accounts ?? []
   const aiOn = settings.ai_enabled === '1'
+  // Who does the AI work, named wherever it acts (owner, 2026-10-15: the
+  // provider and model pickers were there, but he did not find them).
+  const modelKeys = Object.keys(settings).filter((k) => k.startsWith('ai_model')).map((k) => settings[k]).join('|')
+  useEffect(() => {
+    if (!ready) return
+    let live = true
+    api.aiStatus().then((s) => live && setAiSt(s)).catch(() => {})
+    return () => { live = false }
+  }, [ready, aiOn, settings.ai_provider, settings.ai_url, modelKeys])
+  const who = st?.sample ? (st.triage?.by || 'Sample labels') : whoText(aiSt)
+  const triage = st?.triage
+  const catCount = (c: Category) => (triage?.counts ?? []).filter((x) => x.category === c && (!sel.account || x.account_id === sel.account)).reduce((n, x) => n + x.n, 0)
+  const labelled = (triage?.counts ?? []).length > 0
+  const showCats = inboxView && (aiOn || !!st?.sample || labelled)
+  const showOffer = inboxView && !aiOn && !st?.sample && !offerOff
+  const turnOnSorting = async () => {
+    try {
+      setSettings(await api.putSettings({ ai_enabled: '1' }))
+      loadState()
+    } catch (e) { flash('Failed: ' + (e as Error).message) }
+  }
+  const hideOffer = () => { setOfferOff(true); try { localStorage.setItem(OFFER_KEY, 'no') } catch { /* private window */ } }
 
   const select = (r: Row | null) => {
     setCur(r?.m.id ?? null)
@@ -234,6 +288,43 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       listRef2.current(false)
     }
     loadState()
+  }
+
+  /**
+   * Not spam: in the Spam folder it goes back to the inbox (the server
+   * action); in the inbox it takes back the AI's spam label, for good — and
+   * that sender's later mail is never sorted as spam.
+   */
+  const notSpam = async (row = curRow) => {
+    if (!row) return
+    if (sel.view === 'junk') { await act('inbox', row); flash('Moved to Inbox'); return }
+    if (row.m.ai?.category !== 'spam') return
+    const ids = row.ids
+    if (inboxView && cat === 'spam') {
+      const i = rows.indexOf(row)
+      const next = rows[i + 1] ?? rows[i - 1] ?? null
+      setMsgs((ms) => ms.filter((m) => !ids.includes(m.id)))
+      setCur(next ? next.m.id : null)
+    } else {
+      setMsgs((ms) => ms.map((m) => (ids.includes(m.id) && m.ai ? { ...m, ai: { ...m.ai, category: 'important', user: true } } : m)))
+    }
+    try {
+      await api.label(row.m.id, 'important')
+      flash('Not spam — moved to Important')
+    } catch (e) {
+      flash('Failed: ' + (e as Error).message)
+      listRef2.current(false)
+    }
+    loadState()
+  }
+  const pickCat = (c: Cat) => {
+    setCur(null)
+    if (sel.view === 'inbox' && !q) { setCat(c); return }
+    // From another folder: to the inbox first; the change of view resets
+    // the filter, so it is set after.
+    setSel({ view: 'inbox', account: sel.account })
+    setQ('')
+    setTimeout(() => setCat(c), 0)
   }
 
   const startReply = (m: Message, all: boolean) => {
@@ -276,6 +367,8 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
         case 'e': act('archive'); break
         case '#': case 'Delete': case 'Backspace': act('trash'); break
         case '!': act('spam'); break
+        case 'n': curRow && notSpam(); break
+        case '1': case '2': case '3': case '4': case '5': pickCat(CAT_BY_KEY[k]!); break
         case 's': curRow && act(curRow.flagged ? 'unflag' : 'flag'); break
         case 'u': curRow && act(curRow.unread ? 'read' : 'unread'); break
         case 'r': last && startReply(last, false); break
@@ -403,6 +496,42 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
           <div className="listtitle">{title}</div>
         </div>
         {errAcct && <div className="banner warn">{errAcct.email}: {errAcct.last_error}</div>}
+        {showCats && (
+          <div className="cats" role="tablist" aria-label="Sort with AI">
+            {CATS.map((c) => {
+              const n = c.cat === 'spam' ? catCount('spam') : 0
+              return (
+                <button key={c.cat} role="tab" aria-selected={cat === c.cat} className={'cat ' + c.cat + (cat === c.cat ? ' on' : '')} onClick={() => pickCat(c.cat)}>
+                  {c.label}{n > 0 && <em>{n}</em>} <K k={c.k} />
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {showCats && (
+          <div className="triagebar small muted">
+            {triage?.running
+              ? <span><span className="pulse" /> Sorting {triage.pending} conversation{triage.pending === 1 ? '' : 's'}… · {triage.by || who}</span>
+              : st.sample
+                ? <span>Sample labels: made up with the sample inbox, no AI is asked.</span>
+                : aiOn
+                  ? <span>{who ? <>Sorted by {who}</> : 'No AI is set up yet'} · <button className="link" onClick={openAiSettings}>change</button></span>
+                  : <span>Sorting is off · <button className="link" onClick={openAiSettings}>AI settings</button></span>}
+          </div>
+        )}
+        {showOffer && (
+          <div className="offer small">
+            <Icon name="sparkle" size={14} />
+            {aiSt?.available
+              ? <span>Let AI sort your inbox into Important, Updates, Newsletters and Spam. Sorting sends the sender, subject and start of each conversation to {aiSt.sends_to}.</span>
+              : <span>Let AI sort your inbox — no AI is set up on this computer yet.</span>}
+            <span className="grow" />
+            {aiSt?.available
+              ? <button className="btn primary" onClick={() => turnOnSorting()}>Turn on</button>
+              : <button className="btn" onClick={openAiSettings}>Set up</button>}
+            <button className="icon tiny" title="Not now" aria-label="Not now" onClick={hideOffer}><Icon name="close" size={12} /></button>
+          </div>
+        )}
         <div className="rows" ref={listRef} onScroll={(e) => {
           const el = e.currentTarget
           if (more && el.scrollTop + el.clientHeight > el.scrollHeight - 400) {
@@ -426,11 +555,15 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
                     {r.flagged && <Icon name="star" size={13} className="star" />}
                     <span className="date">{shortDate(m.date)}</span>
                   </div>
-                  <div className="subject">{m.subject || '(no subject)'}</div>
-                  <div className="snippet">{m.snippet}</div>
+                  <div className="subject">
+                    {m.ai && <span className={'tag ' + m.ai.category + (m.ai.reply ? ' reply' : '')} title={m.ai.user ? 'Your label' : 'Sorted by AI'}>{m.ai.reply ? 'Reply' : LABEL[m.ai.category]}</span>}
+                    {m.subject || '(no subject)'}
+                  </div>
+                  <div className={'snippet' + (m.ai?.summary ? ' aisum' : '')}>{m.ai?.summary || m.snippet}</div>
                 </div>
                 {accounts.length > 1 && <span className="acctbar" style={{ background: acctColor(accounts, m.account_id) }} />}
                 <div className="hoveracts" onClick={(e) => e.stopPropagation()}>
+                  {m.ai?.category === 'spam' && sel.view === 'inbox' && <button className="btn tinybtn" title="Not spam (n)" onClick={() => notSpam(r)}>Not spam</button>}
                   <button className="icon" title="Archive (e)" onClick={() => act('archive', r)}><Icon name="archive" size={15} /></button>
                   <button className="icon" title="Delete (#)" onClick={() => act('trash', r)}><Icon name="trash" size={15} /></button>
                   <button className="icon" title={r.unread ? 'Mark read' : 'Mark unread (u)'} onClick={() => act(r.unread ? 'read' : 'unread', r)}><Icon name="unread" size={15} /></button>
@@ -444,6 +577,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       <main className="reader">
         {curRow ? (
           <Reader key={curRow.m.id} row={curRow} view={sel.view} aiOn={aiOn} settings={settings}
+            who={who} onAiSettings={openAiSettings} onNotSpam={() => notSpam(curRow)}
             moveKick={moveKick} sumKick={sumKick} onSettings={setSettings}
             folders={st.folders.filter((f) => f.account_id === curRow.m.account_id && f.role !== 'noselect')}
             onThread={(t) => (threadRef.current = t)}
@@ -460,12 +594,12 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       </main>
 
       {compose && (
-        <Composer init={compose} accounts={accounts} aiOn={aiOn} onClose={() => setCompose(null)}
+        <Composer init={compose} accounts={accounts} aiOn={aiOn} who={who} onAiSettings={openAiSettings} onClose={() => setCompose(null)}
           onSent={() => { setCompose(null); flash('Sent') }} />
       )}
       {showSettings && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setShowSettings(false)}>
-          <SettingsPanel accounts={accounts} settings={settings} onSettings={setSettings}
+          <SettingsPanel accounts={accounts} settings={settings} onSettings={setSettings} section={settingsAt}
             onClose={() => setShowSettings(false)} onChanged={() => { loadState(); listRef2.current(false) }}
             onAddAccount={st.sample ? () => { setShowSettings(false); sample(false, { step: 'add' }).catch((e) => flash(e.message)) } : undefined} />
         </div>

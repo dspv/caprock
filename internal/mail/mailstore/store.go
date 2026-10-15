@@ -379,6 +379,8 @@ type Message struct {
 	Structure  Structure `json:"structure"`
 	BodyState  int       `json:"body_state"`
 	ThreadSize int       `json:"thread_size,omitempty"`
+	// AI is the assistant's label for the conversation (List only).
+	AI *Triage `json:"ai,omitempty"`
 }
 
 // UpsertHeader stores a message's envelope and flags. Body fields are kept.
@@ -528,9 +530,13 @@ type Query struct {
 	AccountID int64
 	FolderID  int64
 	Search    string
-	Before    int64 // date cursor, exclusive
-	BeforeID  int64
-	Limit     int
+	// Category narrows the list to conversations the assistant labelled so:
+	// important updates newsletter spam, or "nospam" for everything not
+	// labelled spam. "" is no filter.
+	Category string
+	Before   int64 // date cursor, exclusive
+	BeforeID int64
+	Limit    int
 }
 
 // List runs a list query, newest first.
@@ -565,6 +571,16 @@ func (s *Store) List(ctx context.Context, q Query) ([]Message, error) {
 		where = append(where, "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)")
 		args = append(args, fts)
 	}
+	// The one place "spam" in the inbox is decided: a local junk flag, when
+	// one exists, joins the AI's label here (OR in both clauses).
+	switch q.Category {
+	case "":
+	case "nospam":
+		where = append(where, "NOT EXISTS (SELECT 1 FROM triage t WHERE t.account_id=m.account_id AND t.thread_key=m.thread_key AND t.category='spam')")
+	default:
+		where = append(where, "EXISTS (SELECT 1 FROM triage t WHERE t.account_id=m.account_id AND t.thread_key=m.thread_key AND t.category=?)")
+		args = append(args, q.Category)
+	}
 	if q.Before != 0 {
 		where = append(where, "(m.date < ? OR (m.date = ? AND m.id < ?))")
 		args = append(args, q.Before, q.Before, q.BeforeID)
@@ -578,7 +594,11 @@ func (s *Store) List(ctx context.Context, q Query) ([]Message, error) {
 	}
 	tail += ` ORDER BY m.date DESC, m.id DESC LIMIT ?`
 	args = append(args, q.Limit)
-	return s.queryMessages(ctx, tail, args...)
+	ms, err := s.queryMessages(ctx, tail, args...)
+	if err != nil {
+		return nil, err
+	}
+	return ms, s.attachTriage(ctx, ms)
 }
 
 // ftsQuery turns free text into an FTS5 prefix query: every word must match.

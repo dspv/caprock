@@ -40,6 +40,30 @@ export type Message = {
   body_html?: string
   structure: { text?: Part; html?: Part; parts: Part[] | null }
   body_state: number
+  /** The assistant's label for the conversation (list rows only). */
+  ai?: Triage
+}
+
+/** AI triage categories, in the order the inbox filters show them. */
+export type Category = 'important' | 'updates' | 'newsletter' | 'spam'
+
+export type Triage = {
+  category: Category
+  /** The last message waits on the user's answer. */
+  reply?: boolean
+  summary?: string
+  /** provider[/model] that answered; "user" for the user's own label, "sample" in sample mode. */
+  model?: string
+  user?: boolean
+  at: number
+}
+
+export type TriageState = {
+  running: boolean
+  pending: number
+  /** Who sorts: "Claude Code · haiku". */
+  by: string
+  counts: { account_id: number; category: Category; n: number }[]
 }
 
 export type Account = {
@@ -76,6 +100,8 @@ export type State = {
   counts: { inbox: number; unread: number; flagged: number }
   /** Sample mode: every route serves made-up accounts; nothing is real. */
   sample?: boolean
+  /** AI triage, from daemons that have it. */
+  triage?: TriageState
 }
 
 export type ImportAccount = {
@@ -185,6 +211,8 @@ export type AIStatus = {
   error?: string
   /** The local server's models, when it is the one in use. */
   models: string[]
+  /** The model that answers ("" for a CLI's own default). */
+  model?: string
   providers: AIProvider[]
 }
 
@@ -251,13 +279,19 @@ export const api = {
   /** Stores a provider's API key in the system keychain; '' removes it. Never read back. */
   aiKey: (provider: string, key: string) => req<{ ok: boolean; key_set: boolean }>('PUT', '/v1/mail/ai/key', { provider, key }),
   /** `provider` and `label` name who answered (absent from a daemon before provider choice). */
-  summarize: (id: number) => req<{ text: string; provider?: string; label?: string }>('POST', '/v1/mail/ai/summarize', { message_id: id }),
+  summarize: (id: number) => req<{ text: string; provider?: string; label?: string; model?: string }>('POST', '/v1/mail/ai/summarize', { message_id: id }),
   draft: (id: number, instruction: string) => req<{ text: string; provider?: string; label?: string }>('POST', '/v1/mail/ai/draft', { message_id: id, instruction }),
+  /** The user's own label for a conversation (Not spam), kept from then on. */
+  label: (id: number, category: Category) => req<{ ok: boolean }>('POST', '/v1/mail/triage/label', { message_id: id, category }),
 }
 
 export function partURL(id: number, path: string, download = false) {
   return `/v1/mail/messages/${id}/part/${encodeURIComponent(path)}${download ? '?download=1' : ''}`
 }
+
+/** Who does the AI work, for the screen: "Claude Code · haiku", or the label alone. */
+export const whoText = (s: { label?: string; model?: string } | null | undefined) =>
+  s?.label ? s.label + (s.model ? ' · ' + s.model : '') : ''
 
 /** The same client under a name that reads clearly outside the mail screen. */
 export const mailApi = api

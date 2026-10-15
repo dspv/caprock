@@ -54,6 +54,10 @@ func seedDemo(st *store.Store, sec secrets.Store) (func(), error) {
 			Body: "Hello, the technician will come on Tuesday between 9 and 12. Will someone be home?\n\nRui", Date: ago(20 * time.Hour)}, true},
 		{"INBOX", fakemail.Msg{From: "Hacker Newsletter <kale@hackernewsletter.com>", Subject: "Hacker Newsletter #712",
 			Body: "This week: local-first software, SQLite in production, and why your mail client is slow.", Date: ago(60 * time.Hour)}, true},
+		{"INBOX", fakemail.Msg{From: "ShopMart Deals <deals@shopmart-offers.biz>", Subject: "40% off everything — this weekend only",
+			Body: "Our biggest sale of the season starts now. Use code WEEKEND40 at checkout. Unsubscribe any time.", Date: ago(9 * time.Hour)}, false},
+		{"INBOX", fakemail.Msg{From: "Mailbox Support <alerts@mailbox-verify-center.info>", Subject: "Action required: your mailbox will be closed",
+			Body: "We could not verify your mailbox. Sign in within 24 hours at the link below or your messages will be deleted.", Date: ago(14 * time.Hour)}, false},
 	}
 	var servers []*fakemail.Server
 	add := func(name, email string, seeds []seed) error {

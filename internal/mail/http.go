@@ -44,6 +44,7 @@ func (s *Service) Handler() http.Handler {
 	m.HandleFunc("POST /v1/mail/ai/summarize", s.aiSummarize)
 	m.HandleFunc("POST /v1/mail/ai/draft", s.aiDraft)
 	m.HandleFunc("PUT /v1/mail/ai/key", s.aiKey)
+	m.HandleFunc("POST /v1/mail/triage/label", s.triageLabel)
 	s.oauthRoutes(m) // http_oauth.go
 	return m
 }
@@ -101,7 +102,8 @@ func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, err)
 			return
 		}
-		writeJSON(w, map[string]any{"accounts": accts, "folders": folders, "counts": counts, "version": s.version.Load(), "sample": sample})
+		writeJSON(w, map[string]any{"accounts": accts, "folders": folders, "counts": counts, "version": s.version.Load(), "sample": sample,
+			"triage": s.triageStatus(ctx, st)})
 	})
 }
 
@@ -236,6 +238,9 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 		query.Before, _ = strconv.ParseInt(q.Get("before"), 10, 64)
 		query.BeforeID, _ = strconv.ParseInt(q.Get("before_id"), 10, 64)
 		query.Limit, _ = strconv.Atoi(q.Get("limit"))
+		if c := q.Get("cat"); c == "nospam" || ai.ValidCategory(c) {
+			query.Category = c
+		}
 		ms, err := st.List(r.Context(), query)
 		if err != nil {
 			fail(w, 500, err)
@@ -385,8 +390,9 @@ var settingKeys = map[string]string{
 	"ai_enabled":    "0",
 	"ai_provider":   "", // "" is automatic: the first of ai.AutoOrder that works
 	"ai_url":        ai.DefaultURL,
-	"ai_model":      "",    // the local server's model; "" is its first
-	"remote_images": "ask", // ask | always
+	"ai_model":      "",     // the local server's model; "" is its first
+	"remote_images": "ask",  // ask | always
+	"ai_language":   "auto", // auto (the email's own) | en | ru | es | de
 }
 
 func init() {
@@ -438,12 +444,22 @@ func (s *Service) putSettings(w http.ResponseWriter, r *http.Request) {
 			if _, ok := settingKeys[k]; !ok {
 				continue
 			}
+			if k == "ai_language" && ai.LanguageName(v) == "" {
+				v = "auto" // only the fixed set reaches a prompt
+			}
 			if err := st.SetSetting(r.Context(), k, v); err != nil {
 				fail(w, 500, err)
 				return
 			}
 		}
 		s.version.Add(1)
+		// AI turned on, or its provider changed: sort now, past failures forgotten.
+		for k := range in {
+			if strings.HasPrefix(k, "ai_") {
+				s.retryTriage()
+				break
+			}
+		}
 		writeJSON(w, readSettings(r.Context(), st))
 	})
 }
