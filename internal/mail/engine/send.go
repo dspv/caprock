@@ -237,7 +237,9 @@ func TestAccount(a store.Account, password string) (store.Account, error) {
 	if err != nil {
 		return a, fmt.Errorf("IMAP: %w", err)
 	}
-	_ = c.Logout().Wait()
+	// Signed in is all a check needs; a LOGOUT answer is not waited for,
+	// so a server slow to say goodbye cannot hold the request.
+	_ = c.Logout()
 	c.Close()
 	a.Username = name
 	sc, err := loginSMTP(a, password)
@@ -245,5 +247,7 @@ func TestAccount(a store.Account, password string) (store.Account, error) {
 		return a, fmt.Errorf("SMTP: %w", err)
 	}
 	defer sc.Close()
-	return a, sc.Quit()
+	sc.CommandTimeout = 5 * time.Second
+	_ = sc.Quit()
+	return a, nil
 }
