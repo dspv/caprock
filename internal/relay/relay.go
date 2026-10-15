@@ -201,6 +201,8 @@ func AgentName(agent string) string {
 		return "Gemini CLI"
 	case "deepseek":
 		return "DeepSeek Harness"
+	case "hermes":
+		return "Hermes Agent"
 	default:
 		return "Claude Code"
 	}

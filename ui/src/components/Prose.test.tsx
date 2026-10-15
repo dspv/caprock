@@ -6,8 +6,8 @@
  * The fix is not a Markdown library. These tests hold both halves of that: the
  * shapes our notes use are rendered, and nothing remote can become markup.
  */
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { Prose, parseDoc, parseNotes, inlines } from './Prose'
 
 describe('a document (the file tab)', () => {
@@ -18,6 +18,22 @@ describe('a document (the file tab)', () => {
     expect(blocks[1]).toMatchObject({ marker: '1.', depth: 0 })
     expect(blocks[2]).toMatchObject({ marker: '·', depth: 1 })
     expect(blocks[4]).toEqual({ kind: 'code', lang: 'go', text: 'func main() {\n\n}' })
+  })
+
+  it('turns a .md path in a reply into a button that opens it, and leaves a URL text', () => {
+    const onPath = vi.fn()
+    render(<Prose text={'I wrote `docs/PLAN.md` and /Users/me/app/NOTES.md:3; see https://x.dev/a.md'} onPath={onPath} />)
+    const buttons = screen.getAllByRole('button')
+    expect(buttons.map((b) => b.textContent)).toEqual(['docs/PLAN.md', '/Users/me/app/NOTES.md:3'])
+    fireEvent.click(buttons[1]!)
+    expect(onPath).toHaveBeenCalledWith('/Users/me/app/NOTES.md')
+  })
+
+  it('reads a quote wrapped over several lines as one, and task items as boxes', () => {
+    const blocks = parseDoc('> one\n> two\n\n> three\n\n- [x] done\n- [ ] open')
+    expect(blocks.filter((b) => b.kind === 'quote')).toHaveLength(2)
+    expect(blocks[0]).toMatchObject({ kind: 'quote', parts: [{ text: 'one two' }] })
+    expect(blocks.slice(2).map((b) => (b.kind === 'item' ? b.task : null))).toEqual(['done', 'open'])
   })
 
   it('leaves the chat renderer as it was: a link stays text there', () => {

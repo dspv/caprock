@@ -75,6 +75,7 @@ import { isMacPlatform } from '@/lib/appmode'
 import { registerBenchTerminal } from '@/lib/benchhook'
 import { writeSliced } from '@/lib/termwrite'
 import { attachTerminalLinks } from '@/lib/termlinks'
+import { requestOpenPath } from '@/lib/mdreader'
 import { lineFor, markOf, saveScroll, takeScroll } from '@/lib/termresume'
 import { APP_UPDATE_EVENT } from '@/lib/appupdate'
 import { WEBGL_QUIET_MS } from './Terminal'
@@ -271,8 +272,9 @@ export function TerminalPane({
     term.open(el)
     const unblink = blinkWhileVisible(term, true)
     const unbench = registerBenchTerminal(sessionId, term)
-    // URLs and OSC 8 links open on Cmd/Ctrl+click (lib/termlinks).
-    const links = attachTerminalLinks(term)
+    // URLs and OSC 8 links open on Cmd/Ctrl+click (lib/termlinks); a `.md`
+    // path opens in a file tab, resolved against this session's folder.
+    const links = attachTerminalLinks(term, { onPath: (path) => requestOpenPath({ path, sessionId }) })
     const band = attachInputBoxBand(term)
     bandRef.current = band
     band.setEnabled(inputBoxRef.current)

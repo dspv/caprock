@@ -745,6 +745,7 @@ func New(d Deps) *Server {
 	// One file, read-only, and the list of them (files.go).
 	m.HandleFunc("GET /v1/projects/{id}/file", s.handleProjectFile)
 	m.HandleFunc("GET /v1/projects/{id}/files", s.handleProjectFiles)
+	m.HandleFunc("GET /v1/projects/{id}/image", s.handleProjectImage)
 	m.HandleFunc("/v1/mail/", s.handleMail)
 	m.HandleFunc("GET /v1/github", s.handleGitHubStatus)
 	m.HandleFunc("PATCH /v1/github", s.handleGitHubPatch)
@@ -2630,9 +2631,9 @@ func (s *Server) handleAgentModels(w http.ResponseWriter, r *http.Request) {
 			out.Models = m
 		}
 		out.Default = codex.ConfiguredModel()
-	case "claude", "gemini", "opencode", "grok":
+	case "claude", "gemini", "opencode", "grok", "hermes":
 	default:
-		http.Error(w, `agent must be one of claude, codex, opencode, gemini, grok`, http.StatusBadRequest)
+		http.Error(w, `agent must be one of claude, codex, opencode, gemini, grok, hermes`, http.StatusBadRequest)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -2777,10 +2778,10 @@ func agentFilter(v string) (store.AgentFilter, error) {
 	switch v {
 	case "", "all":
 		return "", nil
-	case "claude", "opencode", "gemini", "codex", "deepseek", "grok":
+	case "claude", "opencode", "gemini", "codex", "deepseek", "grok", "hermes":
 		return store.AgentFilter(v), nil
 	default:
-		return "", fmt.Errorf("unknown agent %q: use claude, opencode, gemini, codex, deepseek, grok, or omit for all", v)
+		return "", fmt.Errorf("unknown agent %q: use claude, opencode, gemini, codex, deepseek, grok, hermes, or omit for all", v)
 	}
 }
 

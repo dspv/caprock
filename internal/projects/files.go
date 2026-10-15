@@ -267,3 +267,75 @@ func LangOf(path string) string {
 	}
 	return "text"
 }
+
+// MaxImageBytes caps an image a Markdown file shows; past it, refused.
+const MaxImageBytes = 10 << 20
+
+// imageTypes are the pictures a Markdown file in the file tab may show,
+// by extension. Nothing else is served raw.
+var imageTypes = map[string]string{
+	".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+	".webp": "image/webp", ".avif": "image/avif", ".svg": "image/svg+xml", ".bmp": "image/bmp",
+	".ico": "image/x-icon",
+}
+
+// The refusals of an image read, apart from those of a file read.
+var (
+	// ErrNotImage is a path whose extension is not a picture's.
+	ErrNotImage = errors.New("not an image")
+	// ErrTooLarge is an image past MaxImageBytes.
+	ErrTooLarge = errors.New("the image is too large to show")
+)
+
+// ImageType is the media type of a picture by its extension; "" when the
+// path is not one.
+func ImageType(rel string) string {
+	return imageTypes[strings.ToLower(filepath.Ext(rel))]
+}
+
+// ReadImage reads a picture inside a project's folder, whole, for an
+// image in a Markdown file: the same path rules as ReadFile, an image
+// extension, and at most MaxImageBytes.
+func (s *Service) ReadImage(ctx context.Context, id int64, worktree, rel string) ([]byte, string, error) {
+	if err := checkRelPath(rel); err != nil {
+		return nil, "", err
+	}
+	typ := ImageType(rel)
+	if typ == "" {
+		return nil, "", ErrNotImage
+	}
+	dir, err := s.folderPath(ctx, id, worktree)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := tcc.Check(dir); err != nil {
+		return nil, "", err
+	}
+	real, err := resolveInside(dir, rel)
+	if err != nil {
+		return nil, "", err
+	}
+	fi, err := os.Stat(real)
+	if err != nil {
+		return nil, "", ErrNoFile
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, "", ErrNotRegular
+	}
+	if fi.Size() > MaxImageBytes {
+		return nil, "", ErrTooLarge
+	}
+	f, err := os.Open(real) //nolint:gosec // resolved inside the project above
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(io.LimitReader(f, MaxImageBytes+1))
+	if err != nil {
+		return nil, "", err
+	}
+	if len(b) > MaxImageBytes {
+		return nil, "", ErrTooLarge
+	}
+	return b, typ, nil
+}

@@ -231,7 +231,8 @@ describe('new project from a template', () => {
     render(<Host />)
     await toBrief(/Site/)
     const plan = screen.getByRole('region', { name: 'When you press Create' })
-    expect(plan).toHaveTextContent('Copies /Users/me/templates/site to ~/dev/new-site')
+    // The plan settles after the name check resolves; read it once it has.
+    await waitFor(() => expect(plan).toHaveTextContent('Copies /Users/me/templates/site to ~/dev/new-site'))
     expect(plan).toHaveTextContent('git init and one commit')
     expect(plan).toHaveTextContent('Nothing leaves this computer.')
     expect(plan).not.toHaveTextContent('gh repo create')

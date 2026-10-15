@@ -101,7 +101,7 @@ func (s *Server) openTerminalInfo(sess store.Session) *OpenTerminalInfo {
 		info.Modes = []string{}
 		info.Reason = "Claude Code has deleted its transcript (it keeps them 30 days by default, see cleanupPeriodDays)."
 	}
-	if (sess.Agent == agents.AgentCodex || sess.Agent == agents.AgentOpenCode) && sess.Owned && sess.NativeID == "" {
+	if (sess.Agent == agents.AgentCodex || sess.Agent == agents.AgentOpenCode || sess.Agent == agents.AgentHermes) && sess.Owned && sess.NativeID == "" {
 		// Started here and never linked: nothing was sent, so the agent never
 		// made a thread or a session to go back to (the same answer resume
 		// gives).
@@ -126,8 +126,11 @@ func nativeID(sess store.Session) string {
 }
 
 func agentLabel(agent string) string {
-	if agent == agents.AgentOpenCode {
+	switch agent {
+	case agents.AgentOpenCode:
 		return "OpenCode"
+	case agents.AgentHermes:
+		return "Hermes"
 	}
 	return "Codex"
 }

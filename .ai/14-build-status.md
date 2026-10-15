@@ -6,7 +6,7 @@ The running log: what is done, what is not, what is next. **Update this file and
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
-Since Orchestrate closed, the product has grown one observation surface across five agents (Claude Code, OpenCode, Gemini CLI, Codex and DeepSeek Harness), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, the ability to pick up a session Caprock did not start, or continue one that has ended, and a memory handoff that tells a new session what the last one left in its folder ([ADR-030](08-decisions.md)) — measurable since 2026-09-30 with an opt-in holdout. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
+Since Orchestrate closed, the product has grown one observation surface across six agents (Claude Code, OpenCode, Gemini CLI, Codex, DeepSeek Harness and Hermes Agent), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, the ability to pick up a session Caprock did not start, or continue one that has ended, and a memory handoff that tells a new session what the last one left in its folder ([ADR-030](08-decisions.md)) — measurable since 2026-09-30 with an opt-in holdout. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
 
 ## Progress by track
 
@@ -44,15 +44,17 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 - **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **every phase is tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
-- **Five agent sources share the observation screens.** Claude Code remains the
+- **Six agent sources share the observation screens.** Claude Code remains the
   full Observe → Control → Orchestrate path. Caprock can also start, type into,
   continue and stop Codex and OpenCode TUIs, linked to the record their own
-  files keep ([ADR-031](08-decisions.md)); DeepSeek Harness is observation-only,
-  and the task runner works with Claude Code only. Gemini sessions started by
-  Caprock are observed through OpenTelemetry, prompts included. The Now
-  filter is `all / claude / opencode / gemini / codex / deepseek`. See
-  [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md) and
-  [20-deepseek.md](20-deepseek.md).
+  files keep ([ADR-031](08-decisions.md)), and Hermes Agent's chat, linked to
+  its row in Hermes's database ([ADR-069](08-decisions.md)); DeepSeek Harness
+  is observation-only, and the task runner works with Claude Code only. Gemini
+  sessions started by Caprock are observed through OpenTelemetry, prompts
+  included. Hermes's cron and gateway runs are shown apart on the Cost screen.
+  The Now filter is `all / claude / opencode / gemini / codex / deepseek /
+  hermes`. See [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md),
+  [20-deepseek.md](20-deepseek.md) and [24-hermes.md](24-hermes.md).
 - **The paid tier is live.** The daily spend cap (`internal/cap`) pauses the
   sessions Caprock started when the day crosses a limit; the weekly report and
   Gemini on the user's own key are paid surfaces too. Payment is a licence key
@@ -101,6 +103,27 @@ controller pairing by link, the target allowing it from its CLI, the fake
 claude started, typed into and echoed through `/v1/m/{id}/…`, then a revoke
 on the target closing the terminal with 1008 and the proxy answering
 `revoked`. PR3 (the app) follows.
+
+### 2026-10-15 — unreleased: Hermes Agent, observed and started (ADR-069)
+
+A user asked for Hermes Agent. `internal/hermes` reads Hermes's
+`state.db` read-only (`mode=ro`, busy timeout, never `immutable`), every five
+seconds: sessions, prompts, replies and tool calls, and Hermes's own cost —
+the provider's figure when Hermes says it is real, its estimate otherwise,
+labelled by `cost_basis`, never re-priced. Hermes keeps usage on the session
+row, so each pass records the difference from what Caprock holds; totals
+equal Hermes's and a re-read adds nothing. Delegated subagents are filed in
+their parent; branches, resets and compression continuations are sessions of
+their own. Cron and gateway runs are marked background and split out on the
+Cost screen's new Hermes panel. *New agent → Hermes* starts `hermes chat`
+(argv from the real `hermes chat --help`, 0.21.6), linked to its row by folder
+and the start time Hermes's id carries; `hermes model` is shown as the user's
+own step when no model is set. Hermes gets its own glyph and teal, drawn here.
+Tested on a fixture built from Hermes's own CREATE statements — mapping, cost
+bases, subagents, background sources, linking, a missing and a locked
+database; no real Hermes conversation was run and no real `state.db` row was
+read (the owner's machine has none yet). Not read: a second Hermes profile,
+per-model splits. See [24-hermes.md](24-hermes.md).
 
 ### 2026-10-15 — unreleased: one computer reaches another through the relay (ADR-067, Phase 1 PR1)
 

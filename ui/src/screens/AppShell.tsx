@@ -84,6 +84,8 @@ import { FilePicker } from '@/components/FilePicker'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import type { HandoffTarget } from '@/components/AgentHandoff'
 import { liveOwnedSession } from '@/lib/handoff'
+import { locateFile, OPEN_PATH_EVENT, type FileRoot, type OpenPathDetail } from '@/lib/mdreader'
+import type { SendTarget } from '@/components/FileTools'
 import { CloseSettingsContext } from '@/lib/settingsClose'
 import { SetupShellContext } from '@/lib/setupShell'
 import { QuickChatSheet, quickChatRequest, quickChoiceLabel, rememberQuickChoice, rememberedQuickChoice, type QuickChoice } from '@/components/QuickChat'
@@ -1410,6 +1412,31 @@ export function AppShell() {
     const w = n.worktrees.find((x) => (worktree ? !x.isMain && x.key === worktree : x.isMain))
     return w?.path || (worktree ? undefined : n.project.root || undefined)
   }, [model.projects])
+  /**
+   * The sessions a file's reference may be typed into from its tab: agents
+   * Caprock started that still run (rule 7), newest first. The same array
+   * until what it lists changes, as the session list answers often.
+   */
+  const sendRows: { t: SendTarget; at: number }[] = []
+  for (const n of model.projects) {
+    for (const w of n.worktrees) {
+      for (const x of w.sessions) {
+        if (x.isShell || !attachable(x.session)) continue
+        sendRows.push({ t: { id: x.session.session_id, title: x.title, where: w.isMain ? n.project.name : `${n.project.name} · ${w.branch || w.key}` }, at: x.session.worked_at ?? 0 })
+      }
+    }
+  }
+  sendRows.sort((a, b) => b.at - a.at)
+  const sendKey = JSON.stringify(sendRows.map(({ t }) => [t.id, t.title, t.where]))
+  const sendTargetsRef = useRef<{ key: string; list: readonly SendTarget[] }>({ key: '', list: [] })
+  if (sendTargetsRef.current.key !== sendKey) sendTargetsRef.current = { key: sendKey, list: sendRows.map(({ t }) => t) }
+  const sendTargets = sendTargetsRef.current.list
+  /** A reference typed into a session from a file tab: that session comes to the front, its prompt waiting. */
+  const onSentRef = useCallback((sessionId: string) => {
+    const s = sessionsById.get(sessionId)
+    const pid = model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((x) => x.session.session_id === sessionId)))?.project.id
+    if (s && pid) openSession(s, pid)
+  }, [sessionsById, model.projects, openSession])
   const renderFile = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
     const wt = leaf.target.worktree ?? ''
     const path = leaf.target.path ?? ''
@@ -1422,9 +1449,34 @@ export function AppShell() {
         visible={visible}
         onOpenFile={(p) => openFile(tab.projectId, wt, p)}
         editor={editors && folder ? { name: preferredName(editors), open: () => openInEditor(joinPath(folder, path), path) } : undefined}
+        absPath={folder ? joinPath(folder, path) : undefined}
+        sendTargets={sendTargets}
+        onSent={onSentRef}
       />
     )
-  }, [folderOf, openFile, editors, openInEditor])
+  }, [folderOf, openFile, editors, openInEditor, sendTargets, onSentRef])
+
+  // A `.md` path an agent printed, clicked in its chat or terminal: open it
+  // in a file tab when it lies inside a project Caprock knows (lib/mdreader).
+  const openPathCtx = useRef({ projects: model.projects, sessionsById })
+  openPathCtx.current = { projects: model.projects, sessionsById }
+  useEffect(() => {
+    const onOpenPath = (e: Event) => {
+      const d = (e as CustomEvent<OpenPathDetail>).detail
+      if (!d?.path) return
+      const { projects, sessionsById: byId } = openPathCtx.current
+      const roots: FileRoot[] = []
+      for (const n of projects) {
+        if (n.project.root) roots.push({ projectId: n.project.id, worktree: '', folder: n.project.root })
+        for (const w of n.worktrees) if (w.path) roots.push({ projectId: n.project.id, worktree: w.isMain ? '' : w.key, folder: w.path })
+      }
+      const hit = locateFile(d.path, byId.get(d.sessionId)?.cwd ?? '', roots)
+      if (hit) openFile(hit.projectId, hit.worktree, hit.path)
+      else setToast(`${d.path} is not inside a project Caprock knows, so it cannot open in a tab.`)
+    }
+    window.addEventListener(OPEN_PATH_EVENT, onOpenPath)
+    return () => window.removeEventListener(OPEN_PATH_EVENT, onOpenPath)
+  }, [openFile])
   const focusedFile = focused?.kind === 'file'
 
   // A watched session that Caprock now holds a terminal for — continued here

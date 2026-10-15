@@ -106,7 +106,7 @@ describe('openLink', () => {
 // sequence becomes a link through the terminal's own provider, and both go
 // through the same modifier and scheme checks.
 describe('attachTerminalLinks', () => {
-  const setup = async (text: string) => {
+  const setup = async (text: string, onPath?: (p: string) => void) => {
     // jsdom has no matchMedia; xterm asks it for the device pixel ratio.
     if (!window.matchMedia) {
       Object.defineProperty(window, 'matchMedia', {
@@ -125,10 +125,10 @@ describe('attachTerminalLinks', () => {
     })
     term.open(host)
     const opened: string[] = []
-    const links = attachTerminalLinks(term, { mac: true, open: (u) => opened.push(u) })
+    const links = attachTerminalLinks(term, { mac: true, open: (u) => opened.push(u), onPath })
     await new Promise<void>((r) => term.write(text, r))
-    const linksOn = (y: number) =>
-      new Promise<ILink[]>((r) => providers[0]!.provideLinks(y, (l) => r(l ?? [])))
+    const linksOn = (y: number, n = 0) =>
+      new Promise<ILink[]>((r) => providers[n]!.provideLinks(y, (l) => r(l ?? [])))
     const teardown = () => {
       links.dispose()
       term.dispose()
@@ -147,6 +147,19 @@ describe('attachTerminalLinks', () => {
     expect(t.opened).toEqual([])
     link.activate(click({ metaKey: true }), link.text)
     expect(t.opened).toEqual(['https://github.com/dspv/caprock/actions/runs/1'])
+    t.teardown()
+  })
+
+  it('opens a .md path an agent printed in a tab, on Cmd+click only', async () => {
+    const paths: string[] = []
+    const t = await setup('⏺ Wrote docs/PLAN.md and @/Users/me/app/NOTES.md:4\r\n', (p) => paths.push(p))
+    const links = await t.linksOn(1, 1)
+    expect(links.map((l) => l.text)).toEqual(['docs/PLAN.md', '/Users/me/app/NOTES.md'])
+    links[0]!.activate(click(), links[0]!.text)
+    expect(paths).toEqual([])
+    links[1]!.activate(click({ metaKey: true }), links[1]!.text)
+    expect(paths).toEqual(['/Users/me/app/NOTES.md'])
+    expect(t.opened).toEqual([])
     t.teardown()
   })
 

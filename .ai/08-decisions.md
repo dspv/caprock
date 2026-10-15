@@ -4558,3 +4558,70 @@ nobody reviews).
 (then the rebuild needs a bypass allowance, or arrives as an auto-merged PR),
 the Vite build stops being deterministic across machines (then `dist-check`
 cannot gate a tag), or `go install` stops being a supported install path.
+
+---
+
+## ADR-069 — Hermes Agent is read from its own database, priced by Hermes, with its background runs shown apart; Caprock can start it
+
+**Date:** 2026-10-15 · **Status:** accepted (owner, 2026-10-11, translated:
+install Hermes, test it, and ship Hermes support in Caprock if it works; a
+user asked for it). Details and the source lines it rests on:
+[24-hermes.md](24-hermes.md).
+
+**Context.** Hermes Agent (Nous Research) keeps every conversation — its CLI
+and TUI, its cron jobs, chats through its gateway — in one SQLite database,
+`<hermes home>/state.db`, with per-session token counters and its own cost.
+It also has shell hooks and signed outbound webhooks, but cost is only in the
+database. Read from Hermes 0.21.6's source and `--help`, not from a session
+run against an API.
+
+**Decisions.**
+
+- **Observe by reading the database, read-only, as OpenCode's is.** Opened
+  `mode=ro` with a busy timeout and one connection; never `immutable=1`, which
+  in WAL mode misses the WAL. Polled every five seconds; a locked or missing
+  database skips a pass and never fails startup. A column an older Hermes
+  lacks reads as NULL. No hook or webhook is installed into Hermes.
+- **Hermes's figure, never ours.** Its turns are not priced from Caprock's
+  table (`event.SourceHermes`, like `SourceOpenCode`). The provider's figure
+  when Hermes says it is real (`cost_status = 'actual'` or a provider billing
+  `cost_source`), its estimate otherwise, $0 on a subscription route, and no
+  cost — unpriced — when Hermes has none (rule 6). Each usage event says which
+  in `cost_basis`, and the Cost screen labels the two kinds separately.
+- **Usage is reconciled per session.** Hermes stores usage on the session
+  row, not on messages, so each pass records the difference between Hermes's
+  counters and what Caprock holds — on the newest new reply, or on a
+  `usage_only` turn keyed by the counters — so totals equal Hermes's and a
+  re-read adds nothing.
+- **Subagents by Hermes's own markers.** A child with `_delegate_from` is a
+  subagent filed in its parent (`agent_id`, `sidechain`); a branch, a reset
+  and a compression continuation are sessions of their own. Rows are summed,
+  not rolled up: Hermes folds a child's cost into its parent in memory only.
+- **Background is Hermes's definition.** Every source outside Hermes's
+  `ATTENDED_SOURCES` (`cli`, `tui`, `desktop`, `acp`) — cron, gateway chats,
+  one-shot runs — is background, shown as its own figure, by source, inside
+  the total.
+- **Liveness.** Hermes records no process per session: an observed session
+  goes by the clock, like the other imported agents, and ends when Hermes
+  writes `ended_at`.
+- **Launch.** `New agent → Hermes` runs `hermes chat` (`-m`, `--yolo` for
+  Bypass, `-q` for the first message, `chat --resume <id>` to continue; no
+  fork). Hermes cannot be told a session id, so the row is linked to the
+  spawn by folder and the start time Hermes's id carries (`sessionlink`'s
+  heuristic match, as Codex's). Caprock-started sessions are controllable;
+  observed ones are not (rule 7). When no model is configured the catalog
+  offers the user's own `hermes model` as the step, typed in a shell tab,
+  never run; Caprock only checks whether the key is set and never enters a
+  credential.
+- **The mark is ours.** No Nous Research logo is licensed for use here, so
+  Hermes gets a glyph drawn in the repo (a winged H) and a teal of our own.
+
+**Rules out:** installing Hermes shell hooks or webhooks for cost (the
+database is the only place it is); pricing Hermes's tokens with Caprock's
+table; writing to `state.db` in any way; folding background runs out of the
+total.
+
+**Revisit if:** Hermes starts writing usage per message (the reconciliation
+can go); Hermes gets a flag that names a session's id (the link becomes
+exact); a user runs several Hermes profiles (read each profile's database); or
+a figure is found where Caprock's and Hermes's own `insights` disagree.

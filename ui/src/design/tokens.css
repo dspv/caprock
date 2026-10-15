@@ -401,6 +401,9 @@
   --agent-claude: color-mix(in srgb, #d97757 70%, var(--color-fg-muted));
   --agent-gemini: color-mix(in srgb, #8e75b2 70%, var(--color-fg-muted));
   --agent-deepseek: color-mix(in srgb, #5786fe 70%, var(--color-fg-muted));
+  /* Hermes Agent: a teal of our own — no brand colour of Nous Research's is
+   * used here, as no mark of theirs is (AgentMarks.tsx). */
+  --agent-hermes: color-mix(in srgb, #2f9e86 70%, var(--color-fg-muted));
 }
 
 /* Second Brain's kinds (lib/brain.ts KIND_COLOR): the same 70/30-style mix

@@ -6,7 +6,7 @@ import (
 )
 
 // nativeID is what an agent's session id looks like: a UUID for Claude Code
-// and Codex, ses_… for OpenCode. Anything else — a leading dash that would
+// and Codex, ses_… for OpenCode, YYYYMMDD_HHMMSS_hex for Hermes. Anything else — a leading dash that would
 // read as a flag, a quote, a space — is not an id and is not passed on.
 var nativeID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
@@ -26,6 +26,7 @@ var ErrNoNativeResume = errors.New("this agent cannot reopen a session by id")
 //   - opencode (1.15.10): `--session <id>`.
 //   - gemini: `--resume` takes "latest" or an index into the current folder's
 //     list, not an id, so nothing is sure to reopen this session.
+//   - hermes (Hermes Agent 0.21.6): `chat --resume <id>`; it has no fork.
 //
 // Forking is Claude Code's only: `codex fork` and `opencode --fork` exist, but
 // both copy the history with its cost into a new session Caprock would count
@@ -47,6 +48,11 @@ func resumeArgs(agent, id string, fork bool) ([]string, error) {
 			return nil, errors.New("this OpenCode session is still running; continue it here once it has ended")
 		}
 		return []string{"--session", id}, nil
+	case AgentHermes:
+		if fork {
+			return nil, errors.New("hermes cannot branch a session from the command line; continue it or start a new one")
+		}
+		return []string{"chat", "--resume", id}, nil
 	}
 	return nil, ErrNoNativeResume
 }
