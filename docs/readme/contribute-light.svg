@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="200" viewBox="0 0 880 200" role="img" aria-labelledby="t">
+  <title id="t">Contribute with your AI: copy the prompt below, paste it into your coding agent, and it opens the pull request.</title>
+  <rect x="0.5" y="0.5" width="879" height="199" rx="18" fill="#f5f8fc" stroke="#c4cfdf"/>
+  <text x="440.0" y="48" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="13" font-weight="600" letter-spacing="2.6" fill="#0057e0">CONTRIBUTE WITH YOUR AI</text>
+  <text x="440.0" y="94" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="-0.6" fill="#121b2a">One prompt. Your agent does the rest.</text>
+  <rect x="50.0" y="132" width="248" height="40" rx="10" fill="#e5ebf4" stroke="#c4cfdf"/>
+  <circle cx="72.0" cy="152" r="10" fill="none" stroke="#0057e0" stroke-width="1.5"/>
+  <text x="72.0" y="156.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" font-weight="600" fill="#0057e0">1</text>
+  <text x="92.0" y="157.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" fill="#121b2a">Copy the prompt below</text>
+  <rect x="316.0" y="132" width="248" height="40" rx="10" fill="#e5ebf4" stroke="#c4cfdf"/>
+  <circle cx="338.0" cy="152" r="10" fill="none" stroke="#0057e0" stroke-width="1.5"/>
+  <text x="338.0" y="156.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" font-weight="600" fill="#0057e0">2</text>
+  <text x="358.0" y="157.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" fill="#121b2a">Paste it into your agent</text>
+  <rect x="582.0" y="132" width="248" height="40" rx="10" fill="#e5ebf4" stroke="#c4cfdf"/>
+  <circle cx="604.0" cy="152" r="10" fill="none" stroke="#0057e0" stroke-width="1.5"/>
+  <text x="604.0" y="156.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="12" font-weight="600" fill="#0057e0">3</text>
+  <text x="624.0" y="157.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" fill="#121b2a">It opens the pull request</text>
+</svg>

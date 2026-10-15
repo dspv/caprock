@@ -894,6 +894,8 @@ export interface Settings {
   keep_awake?: KeepAwakeMode
   /** What happens to finished copies (lib/copies CleanupMode). The daemon returns "ask" when never chosen. */
   worktree_cleanup?: 'off' | 'ask' | 'auto'
+  /** What the desktop app does when a newer release is found (ADR-042): show the card, or install it once nothing is busy. The daemon returns "ask" when never chosen. */
+  app_update?: AppUpdateMode
   /** What Caprock's Claude Code status line shows. The daemon returns "full" when never chosen; "hidden" prints nothing but keeps relaying plan limits; "off" removes Caprock's own statusLine entry. */
   statusline_mode?: StatuslineMode
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
@@ -958,6 +960,11 @@ export interface Settings {
 
 /** GET /v1/team-signal: distinct commit authors across the listed repositories. */
 export interface TeamSignal { authors: number; repos: number; window_days: number; checked_ms: number }
+
+export type AppUpdateMode = 'ask' | 'auto'
+
+/** GET /v1/update/busy: sessions an app restart would interrupt (mid-turn, or waiting on a permission prompt). */
+export interface UpdateBusy { working: number }
 
 export interface UpdateStatus {
   enabled: boolean
@@ -1906,6 +1913,7 @@ export const api = {
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),
+  updateBusy: () => get<UpdateBusy>('/v1/update/busy'),
   saveSettings: (s: Settings) => post<Settings>('/v1/settings', s, 'PUT'),
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
@@ -2389,8 +2397,10 @@ export interface WorkRepo {
   /** The session the repository's Pipeline answer is read through. */
   via_session: string
   live: number
-  /** CHANGELOG's [Unreleased] section on `ref`, as of the last fetch. */
-  unreleased?: { ref: string; items: string[]; count: number; more?: boolean }
+  /** CHANGELOG's [Unreleased] section on `ref`, as of the last fetch; `kinds`
+   *  counts its entries by Keep a Changelog kind (Added, Fixed, …), absent from
+   *  an older daemon or when no entry has a kind. */
+  unreleased?: { ref: string; items: string[]; count: number; more?: boolean; kinds?: Partial<Record<string, number>> }
   tags?: { last?: { name: string; at: number }; gap_median_ms?: number; gaps: number }
   /** Commits on the default branch since the last tag. */
   ahead_of_tag?: number

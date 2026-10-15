@@ -5,9 +5,11 @@
  * memory kinds' colours (`--brain-idea`, `-decision`, `-finding`,
  * `-question`; tokens.css), so it follows every palette.
  *
- * Used large in the *How it works* dialog (SecondBrainModal) and medium as
- * the hero of the sidebar's empty Second Brain banner (BrainSidebar). The
- * size is the caller's: give it a height (or width) in `className`.
+ * It sits at the middle of BrainHero (components/BrainAgents), the agents
+ * this user runs feeding it, which is the hero of the *How it works* dialog
+ * (SecondBrainModal) and of the sidebar's empty Second Brain banner
+ * (BrainSidebar). The size is the caller's: a height (or width) in
+ * `className`, or a box inside another drawing.
  *
  * It is alive, cheaply (resources are the moat): no JavaScript runs after
  * the first render. A few nodes pulse, and every ten seconds a new node
@@ -44,9 +46,10 @@ function radius(i: number): number {
   return i < INSIDE ? 2.4 : 3 + ((i * 7) % 3)
 }
 
-export function BrainMark({ className = '' }: { className?: string }) {
+/** `x`, `y`, `width` and `height` seat it inside another drawing (BrainHero). */
+export function BrainMark({ className = '', x, y, width, height }: { className?: string; x?: number; y?: number; width?: number; height?: number }) {
   return (
-    <svg viewBox="10 -4 214 168" className={`brain-mark block ${className}`} aria-hidden="true" data-brain-mark>
+    <svg viewBox="10 -4 214 168" x={x} y={y} width={width} height={height} className={`brain-mark block ${className}`} aria-hidden="true" data-brain-mark>
       <path d={CEREBELLUM} className="brain-mark-shape" />
       <path d={CEREBRUM} className="brain-mark-shape" />
       <g className="brain-mark-links">

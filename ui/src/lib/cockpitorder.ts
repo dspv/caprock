@@ -2,16 +2,19 @@
  * The order of the cockpit's sections under the agent, per viewer (owner,
  * 2026-10-14, translated: "I want to be able to reorder the sections, but so
  * it doesn't trigger by accident — so everyone sets up what interests
- * them"). Changed only in the cockpit's *Arrange* mode, never by dragging a
- * heading; kept in localStorage. Anything stored that is not a known section
+ * them"; 2026-10-15: "reorderable by users … and to be able to move all of
+ * it higher"). Changed in the cockpit's *Arrange* mode, by dragging a
+ * section's own small handle (never its heading), by ⌥⇧↑ ⌥⇧↓ on that
+ * handle, or from the handle's menu (Move up, Move down, Move to top, Reset
+ * order); kept in localStorage. Anything stored that is not a known section
  * is dropped, and a section the stored order lacks takes its default place.
  */
 import { useSyncExternalStore } from 'react'
 
-export type CockpitSection = 'now' | 'context' | 'limits' | 'spend' | 'subagents' | 'tasks' | 'tools' | 'changes' | 'ci' | 'processes'
+export type CockpitSection = 'now' | 'context' | 'limits' | 'spend' | 'subagents' | 'tasks' | 'tools' | 'changes' | 'ci' | 'release' | 'processes'
 
 /** The order the cockpit opens in, and what *Reset to default order* restores. */
-export const DEFAULT_ORDER: readonly CockpitSection[] = ['now', 'context', 'limits', 'spend', 'subagents', 'tasks', 'tools', 'changes', 'ci', 'processes']
+export const DEFAULT_ORDER: readonly CockpitSection[] = ['now', 'context', 'limits', 'spend', 'subagents', 'tasks', 'tools', 'changes', 'ci', 'release', 'processes']
 
 /** Each section's name, as its heading and the Arrange list say it. */
 export const SECTION_NAMES: Record<CockpitSection, string> = {
@@ -24,6 +27,7 @@ export const SECTION_NAMES: Record<CockpitSection, string> = {
   tools: 'Recent tools',
   changes: 'Changes',
   ci: 'CI',
+  release: 'Release',
   processes: 'Processes',
 }
 
@@ -59,6 +63,56 @@ export function moveSection(order: readonly CockpitSection[], id: CockpitSection
   next[i] = next[j]!
   next[j] = id
   return next
+}
+
+/** The order with one section put at `index` (0 is the top), the others closing up around it. */
+export function moveSectionTo(order: readonly CockpitSection[], id: CockpitSection, index: number): CockpitSection[] {
+  const rest = order.filter((x) => x !== id)
+  if (rest.length === order.length) return [...order]
+  const at = Math.max(0, Math.min(rest.length, Math.round(index)))
+  rest.splice(at, 0, id)
+  return rest
+}
+
+/**
+ * The order with a section moved one place among those `shown` (the
+ * sections drawn for this session; one with nothing to show is skipped, so
+ * every press moves it past a section the viewer can see): just above the
+ * shown one before it (-1), or just below the one after it (+1). Unchanged
+ * at an edge.
+ */
+export function stepSection(order: readonly CockpitSection[], id: CockpitSection, shown: readonly CockpitSection[], by: -1 | 1): CockpitSection[] {
+  const seen = order.filter((x) => x === id || shown.includes(x))
+  const i = seen.indexOf(id)
+  const other = i < 0 ? undefined : seen[i + by]
+  if (!other) return [...order]
+  const rest = order.filter((x) => x !== id)
+  const at = rest.indexOf(other)
+  rest.splice(by < 0 ? at : at + 1, 0, id)
+  return rest
+}
+
+/**
+ * The order after a section dragged among those shown is dropped at place
+ * `k` of the others shown (0 above the first, their count below the last).
+ */
+export function dropSection(order: readonly CockpitSection[], id: CockpitSection, others: readonly CockpitSection[], k: number): CockpitSection[] {
+  const rest = order.filter((x) => x !== id)
+  if (others.length === 0) return [...order]
+  const at = k < others.length ? rest.indexOf(others[k]!) : rest.indexOf(others[others.length - 1]!) + 1
+  if (at < 0) return [...order]
+  rest.splice(at, 0, id)
+  return rest
+}
+
+/**
+ * Where a dragged section lands: the place among the other sections, top to
+ * bottom, whose vertical middles are `mids`, that the pointer at `y` is
+ * above — past every middle, the end.
+ */
+export function dropIndex(mids: readonly number[], y: number): number {
+  const i = mids.findIndex((m) => y < m)
+  return i < 0 ? mids.length : i
 }
 
 export function isDefaultOrder(order: readonly CockpitSection[]): boolean {
