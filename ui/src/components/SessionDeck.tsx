@@ -1094,7 +1094,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
           </button>
         )}
         <span className="ml-auto flex min-w-0 items-baseline justify-end gap-2 text-[11px] text-fg-faint">
-          <span data-deck-fresh-slot className="hidden @min-[640px]:contents"><Freshness compact at={viewAt} loading={viewMeta.loading} failed={viewMeta.failed} reason={viewMeta.reason} confirmed={viewMeta.confirmed} onRetry={viewMeta.retry} /></span>
+          <span data-deck-fresh-slot className="hidden @min-[640px]:contents"><Freshness compact at={viewAt} loading={viewMeta.loading} failed={viewMeta.failed} reason={viewMeta.reason} confirmed={viewMeta.confirmed} onRetry={viewMeta.retry} github /></span>
           {view === 'pr' && prsData && !prsData.connected && rows.length > 0 && (
             <button type="button" disabled={connecting} onClick={() => void connect()} title="Reads CI and reviews through your GitHub CLI login; turn it off in Settings → GitHub" className="text-accent hover:underline disabled:opacity-60">{connecting ? 'connecting…' : 'connect GitHub for CI'}</button>
           )}

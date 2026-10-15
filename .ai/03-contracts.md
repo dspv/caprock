@@ -3703,6 +3703,7 @@ GET    /v1/github/owners                   → {owners: [{login, avatar_url?, or
 GET    /v1/github/repos?owner=&q=&page=    → RepoPage
 GET    /v1/github/prs                      → {prs: [PR]}
 GET    /v1/github/actions-usage?owner=     → ActionsUsage (§ Runner cost, under Phase 1 additions)
+GET    /v1/github/statuspage               → GitHubStatusPage (409 not_connected while GitHub is not connected)
 GET    /v1/projects/{id}/github[?worktree=]          → WorktreeInfo
 POST   /v1/projects/{id}/github/refresh[?worktree=]  → WorktreeInfo (read now)
 GET    /v1/projects/{id}/github/items[?q=]           → Items (open issues and pull requests)
@@ -3710,6 +3711,11 @@ POST   /v1/projects/{id}/github/pr[?worktree=]  {title, body, base?, draft} → 
 POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, protocol?, push?} → CreateRepoResult
 ```
 
+- **`GitHubStatusPage`** — `{indicator, description, components, incidents,
+  at, error?}`, the same shape and the same read as `status` in `GET
+  /v1/repos/ci` (`github.StatusPage`, kept 5 minutes, sent no token, cookie
+  or anything about the user). Every paired device may ask; nothing is sent
+  while GitHub is not connected.
 - **`Status`** — `{connected, source?, user?: {login, name?, avatar_url?,
   html_url?}, scopes, scopes_known, token_kind?, checked_at?, sources: {gh,
   stored, store, store_note?, oauth, client?}, health: {last_ok_at?, error?:
@@ -3828,7 +3834,10 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
   connected and only for what is on screen, neither sent the token or
   anything about the user: `www.githubstatus.com`'s public summary, by the
   daemon while Now's CI/CD section is open (§ `GET /v1/repos/ci`, kept 5
-  minutes); and `avatars.githubusercontent.com`, the pull request authors'
+  minutes), and through `GET /v1/github/statuspage` — the same read, the
+  same keep — which the dashboard asks only after a GitHub read failed on
+  the network or with a 5xx, or every 5 minutes while the viewer has ticked
+  *Watch GitHub Status* ([ADR-066](08-decisions.md)); and `avatars.githubusercontent.com`, the pull request authors'
   pictures GitHub named, loaded by the page itself (no referrer) on the PRs
   & CI Board and the CI/CD section — any other address draws initials.
   Settings → GitHub says so.

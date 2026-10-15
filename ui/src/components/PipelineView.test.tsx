@@ -297,8 +297,12 @@ describe('the Pipeline page', () => {
       if (!f) throw new Error('not failed')
       return f
     })
-    expect(failed).toHaveTextContent('Couldn’t refresh: GitHub answered 502')
-    expect(failed).toHaveTextContent('showing data from')
+    // A 502 is GitHub's side: said plainly, the age in words, the raw reason
+    // in the tooltip, and GitHub's own status page asked.
+    expect(failed).toHaveTextContent('Couldn’t reach GitHub.')
+    expect(failed).toHaveTextContent(/Showing data from \d+ h ago\./)
+    expect(failed.getAttribute('title')).toContain('GitHub answered 502')
+    expect(failed.querySelector('[data-gh-status]')).toBeInTheDocument()
     expect(failed.querySelector('[data-deck-fresh-retry]')).toBeInTheDocument()
     expect(document.querySelector('[data-prs-row="22"]')).toHaveAttribute('data-prs-unconfirmed')
   })

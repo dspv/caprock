@@ -20,6 +20,7 @@ import { CaprockFootprint } from './FootprintPanel'
 import { isPairedDevice } from '@/lib/api'
 import { useAppUpdate } from '@/lib/appupdate'
 import { VersionPanel } from './VersionPanel'
+import { GitHubStatusDot } from './GitHubOutage'
 import { SetupChip } from './SetupStrip'
 
 export function StatusStrip({ summary, pane, session, version, figures = true, sessions, onOpenSession }: {
@@ -73,6 +74,8 @@ export function StatusStrip({ summary, pane, session, version, figures = true, s
         {pane && pane.status !== 'live' && (
           <span title="The terminal in front">{pane.status}</span>
         )}
+        {/* Only while Watch GitHub Status is ticked and GitHub reports an incident. */}
+        <GitHubStatusDot />
         {/* The setup strip folded by its ×: "0 of 2", a click unfolds it. */}
         <SetupChip />
         {/* Only while the daemon holds the machine awake (ADR-049). */}
