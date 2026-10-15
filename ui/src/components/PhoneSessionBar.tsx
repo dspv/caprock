@@ -14,9 +14,17 @@
  * Over the chat (`overlay`) the bar is drawn on top of the conversation, which
  * keeps its first 44px free, and slides away while the reader scrolls down
  * (lib/phone useHideOnScroll): the chat never moves when it does. A strip at
- * the top brings it back.
+ * the top brings it back. On the other views the page scrolls and the bar
+ * stays at the top (sticky), over the safe area, so the way back is always a
+ * thumb away (owner, 2026-10-15).
+ *
+ * **End** (owner, 2026-10-15: end the current session quickly): for a session
+ * Caprock started and still holds, on a device allowed to control it — rule
+ * 7, and `POST /v1/agents/{id}/signal` is a controller's route only. One
+ * confirm sheet, then the same stop as the desktop's Stop the session….
  */
 import { useState, type ReactNode } from 'react'
+import { api, errText } from '@/lib/api'
 import { HealthDot } from './ui'
 import { machineSwitch } from '@/lib/machineswitch'
 import type { Health } from '@/lib/api'
@@ -29,7 +37,7 @@ const LABEL: Record<PhoneView, string> = { chat: 'Chat', terminal: 'Terminal', c
 export const PHONE_BAR_PX = 44
 
 export function PhoneSessionBar({
-  backHref, title, health, alert, views, active, onPick, overlay = false, hidden = false, onReveal, children,
+  backHref, title, health, alert, views, active, onPick, overlay = false, hidden = false, onReveal, end, children,
 }: {
   backHref: string
   title: string
@@ -45,11 +53,14 @@ export function PhoneSessionBar({
   /** Slid away (overlay only). */
   hidden?: boolean
   onReveal?: () => void
+  /** The session to offer to end; absent, no End (not ours, ended, or a reader). */
+  end?: { sessionId: string }
   /** The sheet: what the bar does not say. */
   children?: ReactNode
 }) {
   const [sheet, setSheet] = useState(false)
   const [menu, setMenu] = useState(false)
+  const [ending, setEnding] = useState(false)
   const talk = (['chat', 'terminal'] as PhoneView[]).filter((v) => views.includes(v))
   const rest = (['changes', 'timeline', 'notes'] as PhoneView[]).filter((v) => views.includes(v))
   const restActive = rest.includes(active)
@@ -60,10 +71,11 @@ export function PhoneSessionBar({
       <div
         data-phone-bar
         data-hidden={away ? '' : undefined}
-        className={`${overlay ? 'absolute -left-3 -right-3 top-0' : 'relative -mx-3'} z-30 h-11 overflow-hidden ${away ? 'pointer-events-none' : ''}`}
+        data-sticky={overlay ? undefined : ''}
+        className={`${overlay ? 'absolute -left-3 -right-3 top-0 h-11' : 'sticky top-0 -mx-3 -mt-[env(safe-area-inset-top)] bg-panel pt-[env(safe-area-inset-top)]'} z-30 overflow-hidden ${away ? 'pointer-events-none' : ''}`}
       >
-        <div className={`flex h-11 items-center gap-1 border-b border-border bg-panel pl-0.5 pr-2 transition-transform duration-200 motion-reduce:transition-none ${away ? '-translate-y-full' : ''}`}>
-          <a href={backHref} aria-label="Back to Home" className="flex h-11 w-9 shrink-0 items-center justify-center text-[24px] leading-none text-fg-muted no-underline hover:no-underline">
+        <div className={`flex h-11 items-center gap-1 border-b border-border bg-panel pl-0.5 pr-1.5 transition-transform duration-200 motion-reduce:transition-none ${away ? '-translate-y-full' : ''}`}>
+          <a href={backHref} aria-label="Back to Home" className="flex h-11 w-11 shrink-0 items-center justify-center text-[24px] leading-none text-fg-muted no-underline hover:no-underline">
             ‹
           </a>
           <button
@@ -99,8 +111,15 @@ export function PhoneSessionBar({
               </button>
             )}
           </span>
+          {end && (
+            <button type="button" data-phone-end onClick={() => { setSheet(false); setMenu(false); setEnding(true) }}
+              aria-label={`End ${title}`} className="h-11 shrink-0 px-2 text-[13px] font-medium text-danger">
+              End
+            </button>
+          )}
         </div>
       </div>
+      {end && ending && <EndSheet sessionId={end.sessionId} title={title} onClose={() => setEnding(false)} />}
       {away && (
         <button
           type="button"
@@ -113,7 +132,7 @@ export function PhoneSessionBar({
         <>
           <div aria-hidden className="fixed inset-0 z-20 bg-black/30" onClick={() => { setSheet(false); setMenu(false) }} />
           {menu ? (
-            <div role="menu" aria-label="Other views" className="absolute right-0 top-12 z-40 w-44 overflow-hidden rounded-md border border-border-strong bg-panel py-1 shadow-lg">
+            <div role="menu" aria-label="Other views" className="fixed right-2 top-[calc(env(safe-area-inset-top)+3rem)] z-40 w-44 overflow-hidden rounded-md border border-border-strong bg-panel py-1 shadow-lg">
               {rest.map((v) => (
                 <button
                   key={v}
@@ -128,13 +147,51 @@ export function PhoneSessionBar({
               ))}
             </div>
           ) : (
-            <div data-phone-sheet className="absolute -left-3 -right-3 top-11 z-40 max-h-[75dvh] overflow-y-auto overflow-x-hidden border-b border-border bg-panel px-3 pb-3 pt-2.5 shadow-lg">
+            <div data-phone-sheet className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+2.75rem)] z-40 max-h-[75dvh] overflow-y-auto overflow-x-hidden border-b border-border bg-panel px-3 pb-3 pt-2.5 shadow-lg">
               {children}
               <MachineList />
             </div>
           )}
         </>
       )}
+    </>
+  )
+}
+
+/**
+ * End's one confirmation, at the bottom where the thumb is. It stops the
+ * process as the desktop's Stop does (`kill`); the conversation stays and
+ * can be continued.
+ */
+function EndSheet({ sessionId, title, onClose }: { sessionId: string; title: string; onClose: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const end = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await api.signal(sessionId, 'kill')
+      onClose()
+    } catch (e) {
+      setBusy(false)
+      setError(errText(e))
+    }
+  }
+  return (
+    <>
+      <div aria-hidden className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+      <div role="alertdialog" aria-modal="true" aria-label="End the session" data-phone-end-sheet
+        className="fixed inset-x-0 bottom-0 z-50 grid gap-3 rounded-t-[16px] border-t border-border-strong bg-panel px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-lg">
+        <p className="min-w-0 text-[16px] font-medium leading-snug text-fg [overflow-wrap:anywhere]">End {title}?</p>
+        <p className="text-[14px] text-fg-muted">The conversation is saved and can be continued.</p>
+        {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={onClose} className="min-h-11 rounded-[10px] border border-border-strong text-[15px] text-fg">Keep it</button>
+          <button type="button" autoFocus disabled={busy} onClick={() => void end()} className="min-h-11 rounded-[10px] bg-danger text-[15px] font-medium text-panel disabled:opacity-50">
+            {busy ? 'Ending…' : 'End session'}
+          </button>
+        </div>
+      </div>
     </>
   )
 }

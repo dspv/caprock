@@ -11,6 +11,7 @@ const earlier = vi.hoisted(() => ({ value: [] as Event[] }))
 const earlierCalls = vi.hoisted(() => ({ value: [] as { before: number; limit: number }[] }))
 const termsMade = vi.hoisted(() => ({ n: 0 }))
 const diffCalls = vi.hoisted(() => ({ n: 0 }))
+const signals = vi.hoisted(() => ({ value: [] as [string, string][] }))
 /** When set, the session answers only once it resolves: a busy daemon. */
 const sessionGate = vi.hoisted(() => ({ wait: undefined as Promise<void> | undefined }))
 /** The same for the diff. */
@@ -48,6 +49,7 @@ vi.mock('@/lib/api', async (orig) => {
       session: async () => { await sessionGate.wait; return detail.value },
       diff: async () => { diffCalls.n++; await diffGate.wait; return diffResult.value },
       notes: async () => [],
+      signal: async (id: string, action: string) => { signals.value.push([id, action]) },
       eventsBefore: async (_id: string, before: number, limit: number) => {
         earlierCalls.value.push({ before, limit })
         return earlier.value
@@ -135,6 +137,54 @@ d('a spawned Codex or OpenCode session', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Other views' }))
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'Timeline' }))
     expect(location.hash).toContain('tab=timeline')
+    vi.unstubAllGlobals()
+  })
+
+  it('on a phone: End on a session Caprock started, one confirm, then the same stop as the desktop (owner, 2026-10-15)', async () => {
+    signals.value = []
+    spawned({ agent: 'claude', description: 'Fix the login test', description_source: 'title' })
+    const mq = (q: string) => ({ matches: q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList
+    vi.stubGlobal('matchMedia', mq)
+    render(<SessionScreen id="cap-1" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'End Fix the login test' }))
+    const sheet = screen.getByRole('alertdialog', { name: 'End the session' })
+    expect(sheet).toHaveTextContent('End Fix the login test?')
+    expect(sheet).toHaveTextContent('The conversation is saved and can be continued.')
+    fireEvent.click(screen.getByRole('button', { name: 'Keep it' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(signals.value).toEqual([])
+    fireEvent.click(screen.getByRole('button', { name: 'End Fix the login test' }))
+    fireEvent.click(screen.getByRole('button', { name: 'End session' }))
+    await waitFor(() => expect(signals.value).toEqual([['cap-1', 'kill']]))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    vi.unstubAllGlobals()
+  })
+
+  it('on a phone: no End on a session started outside Caprock (rule 7), nor on an ended one', async () => {
+    const mq = (q: string) => ({ matches: q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList
+    vi.stubGlobal('matchMedia', mq)
+    spawned({ agent: 'claude', owned: false })
+    const { container, unmount } = render(<SessionScreen id="cap-1" />)
+    await screen.findByRole('log', { name: 'Conversation' })
+    expect(container.querySelector('[data-phone-end]')).toBeNull()
+    unmount()
+    spawned({ agent: 'claude', status: 'ended' })
+    const again = render(<SessionScreen id="cap-1" />)
+    await screen.findByRole('log', { name: 'Conversation' })
+    expect(again.container.querySelector('[data-phone-end]')).toBeNull()
+    vi.unstubAllGlobals()
+  })
+
+  it('on a phone: off the chat the bar stays at the top while the page scrolls', async () => {
+    spawned({ agent: 'claude' })
+    const mq = (q: string) => ({ matches: q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList
+    vi.stubGlobal('matchMedia', mq)
+    const { container } = render(<SessionScreen id="cap-1" tab="timeline" />)
+    await screen.findByText(/Events ·/)
+    const bar = container.querySelector<HTMLElement>('[data-phone-bar]')!
+    expect(bar.hasAttribute('data-sticky')).toBe(true)
+    expect(bar.className).toContain('sticky')
+    expect(bar.className).toContain('top-0')
     vi.unstubAllGlobals()
   })
 
