@@ -97,6 +97,9 @@ type Deps struct {
 	// nil ⇒ 501.
 	Resources   func(ctx context.Context) any
 	ReapOrphans func(ctx context.Context) (any, error)
+	// ResourceHistory returns the meter's kept samples after a unix-ms
+	// time for GET /v1/resources/history. nil ⇒ 501.
+	ResourceHistory func(sinceMs int64) any
 	// Footprint returns what Caprock costs this machine for GET
 	// /v1/footprint; orphans is ?orphans=1, which takes the orphan list now.
 	// StopOrphans stops processes from that list for POST
@@ -613,6 +616,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/status", s.handleStatus)
 	m.HandleFunc("GET /v1/storage", s.handleStorage)
 	m.HandleFunc("GET /v1/resources", s.handleResources)
+	m.HandleFunc("GET /v1/resources/history", s.handleResourceHistory)
 	m.HandleFunc("POST /v1/resources/reap", s.handleReapOrphans)
 	m.HandleFunc("GET /v1/footprint", s.handleFootprint)
 	m.HandleFunc("POST /v1/footprint/orphans/stop", s.handleStopOrphans)
@@ -725,6 +729,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/github/repos", s.handleGitHubRepos)
 	m.HandleFunc("GET /v1/github/prs", s.handleGitHubPRs)
 	m.HandleFunc("GET /v1/github/actions-usage", s.handleGitHubActionsUsage)
+	m.HandleFunc("GET /v1/github/statuspage", s.handleGitHubStatusPage)
 	m.HandleFunc("GET /v1/projects/{id}/github", s.handleWorktreeGitHub)
 	m.HandleFunc("POST /v1/projects/{id}/github/refresh", s.handleWorktreeGitHubRefresh)
 	m.HandleFunc("GET /v1/projects/{id}/github/items", s.handleGitHubItems)

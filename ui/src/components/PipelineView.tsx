@@ -184,7 +184,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
       <div data-prs-head className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         {picker}
         <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[12px] text-fg-muted">
-          <Freshness at={statsShownAt} loading={statsMeta.loading} failed={statsFailed} reason={statsReason} confirmed={statsMeta.confirmed} onRetry={statsMeta.retry} />
+          <Freshness at={statsShownAt} loading={statsMeta.loading} failed={statsFailed} reason={statsReason} confirmed={statsMeta.confirmed} onRetry={statsMeta.retry} github />
           {onBack && <BackButton onBack={onBack} />}
         </span>
       </div>

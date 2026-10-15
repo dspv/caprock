@@ -941,7 +941,10 @@ One window, three regions:
   runs; this is the way back to what ended.
 - **Status strip (bottom).** Connection state, plan limits (5-hour and 7-day)
   and today's spend while the sidebar is hidden (its Today strip carries
-  them otherwise), what Caprock itself costs this computer — *caprock
+  them otherwise), with an agent in front what its processes use (*agent
+  cpu 8.1% ram 413 MB*, which opens the last hour's CPU and memory charts
+  and who uses the most, [04-ui.md § Status strip](04-ui.md)), what Caprock
+  itself costs this computer — *caprock
   1.1 GB · 2.2 GB*, memory and disk, memory alone in a window under
   1,250 px, the warning colour with a dot when the doctor flags something,
   and a click (or the palette's *Caprock doctor*) opens `caprock doctor` as
