@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.117.5] - 2026-10-15
+
 ### Added
 
 - **brain:** Second Brain's status says when the reader wakes next
@@ -14,8 +16,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   instead of leaving you at 0. Turning building on still wakes the reader
   at once, and a double click or a second yes never starts a second read
   beside the first.
+- **mail:** Mail on its own. `<daemon>/?mail=1` is the inbox and nothing
+  else of Caprock — no sidebar, no tabs — titled *Caprock Mail*.
+  `app/mail-mac` builds a Mac preview app around it: Caprock's icon with an
+  envelope in place of the dot, one window on the running Caprock, so the
+  accounts and mail are the same as in the Mail tab. It waits for Caprock
+  when it isn't running and follows it to a new port.
 
 ### Changed
+
+- **app:** where you type is easier to find, quietly. The Chat view's field
+  carries a hint of the accent at rest — a faint tint and a hairline edge,
+  a little stronger with the focus — on every theme and terminal palette.
+  In a Claude Code terminal, the rows of its input box (between the two
+  rules, at the `❯` prompt) sit on a faint band of the terminal's own
+  background, lifted a step: it follows the box as it grows or moves, leaves
+  any cell Claude Code coloured alone, reads only the bottom rows of the
+  screen, and draws nothing for other agents, shells, dialogs and menus.
 
 - **brain:** the sidebar's Second Brain block is a small banner while it is
   empty, instead of a bare 0 and two faint lines: a faint graph breathing
@@ -46,6 +63,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 - **picker:** an arrow key pressed in the folder picker the moment a
   folder's entries appear is no longer lost; the selection used to be
   cleared just after it was made.
+- **app:** typing a name in New project's folder field now searches the
+  folder it is in. `~/dev/cap` used to empty the list; now it lists the
+  folders of `~/dev` holding *cap* — the ones starting with it first, the
+  letters marked — and every key narrows it at once. The first match is
+  highlighted: ↑↓ move, Enter picks it, Tab completes to it and goes
+  inside. No match says *No folder starting with 'cap' in ~/dev*. Works
+  with `~`, backslashes and drive letters on Windows.
 - **windows:** Caprock no longer flashes console windows that steal the
   keyboard focus. The daemon ran without a console, so every git, gh or
   `claude -p` it started opened a window of its own for a fraction of a
