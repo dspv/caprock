@@ -21,6 +21,11 @@ func TestReposCI(t *testing.T) {
 	now := time.Now()
 	s, _, _, repo, _, _ := githubServer(t, statsRoutes(now))
 	s.d.GitHub.StatusURL = s.d.GitHub.API + "/status"
+	// The composed answer is under test, not the quick one: the first
+	// composition after connecting reads the status page and three GitHub
+	// lists, which on a loaded Windows runner outlasts deckBudget (300 ms) and
+	// then answers with the repositories only, Status nil.
+	s.deck.budget = 10 * time.Second
 	ctx := context.Background()
 	if err := store.UpsertSession(ctx, s.d.Store.DB(), "s1", store.SessionPatch{Cwd: repo, Agent: "claude", GitBranch: "feat/nine", StartedAt: 1000, LastEventAt: now.UnixMilli()}); err != nil {
 		t.Fatal(err)
