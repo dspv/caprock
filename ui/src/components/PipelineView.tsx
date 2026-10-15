@@ -36,6 +36,7 @@ import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
 import { FlowFigures, Releases } from './PRBoard'
+import { PipelineRelease } from './ReleasePlan'
 import { JourneyPills } from './Journey'
 import { GitHubPerson } from './GitHubAvatar'
 import { Panel } from './ui'
@@ -205,6 +206,9 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
                 : <p className="px-3 py-3 text-[13px] text-fg-muted">No figures yet.</p>}
         </Panel>
       )}
+      {/* The next release, by the page's own answer (owner, 2026-10-15,
+        * translated: "I'm missing progress bars to the release here"). */}
+      {ready && (s.repo_root || s.cwd) && <PipelineRelease root={(s.repo_root || s.cwd)!} stats={stats} visible={visible} now={now} onOpen={(num) => setChosen(num)} />}
       {ready && (
         <div className={`grid min-w-0 items-start gap-3 ${p && row ? '@min-[1100px]/pipe:grid-cols-[minmax(0,1fr)_minmax(440px,600px)]' : ''}`}>
           <PipelineList rows={rows} scope={scope} onScope={setScope} pick={pick} onPick={(num) => setChosen(num === pick ? undefined : num)} now={now}

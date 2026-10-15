@@ -4,10 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UpdateStatus } from '@/lib/api'
 import { APP_UPDATE_EVENT, resetAppUpdate, type AppUpdateInfo } from '@/lib/appupdate'
 
-const h = vi.hoisted(() => ({ st: undefined as unknown }))
+const h = vi.hoisted(() => ({ st: undefined as unknown, saved: [] as unknown[] }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, update: async () => h.st } }
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      update: async () => h.st,
+      settings: async () => ({ update_checks: true, app_update: 'ask', plan_kind: '', plan_label: '', plan_usd_per_month: 0 }),
+      saveSettings: async (p: unknown) => { h.saved.push(p); return {} },
+    },
+  }
 })
 
 import { AppUpdateToast, TOAST_KEY } from './AppUpdateToast'
@@ -70,5 +78,15 @@ describe('the update card', () => {
     render(<AppUpdateToast />)
     await act(async () => { await Promise.resolve() })
     expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  // Last: it switches the shared settings cache to auto for the rest of the file.
+  it('Always update automatically flips the setting, and from then on the card does not ask', async () => {
+    render(<AppUpdateToast />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Always update automatically' }))
+    expect(h.saved).toContainEqual({ app_update: 'auto', update_checks: true })
+    // No restart now: the automatic path waits for a quiet moment.
+    expect(invoke).not.toHaveBeenCalledWith('app_update_install', {})
+    expect(screen.queryByText('0.80.0')).toBeNull()
   })
 })

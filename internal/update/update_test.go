@@ -240,15 +240,15 @@ func TestConditionalCheckKeepsTheCachedRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Within the interval: no request at all.
-	now = now.Add(5 * time.Hour)
+	now = now.Add(59 * time.Minute)
 	if err := c.Check(context.Background(), false); err != nil {
 		t.Fatal(err)
 	}
 	if len(seen) != 1 {
-		t.Fatalf("checked %d times within 6 h, want once", len(seen))
+		t.Fatalf("checked %d times within an hour, want once", len(seen))
 	}
 	// Past it: a conditional request, answered 304.
-	now = now.Add(2 * time.Hour)
+	now = now.Add(2 * time.Minute)
 	if err := c.Check(context.Background(), false); err != nil {
 		t.Fatal(err)
 	}
@@ -283,5 +283,78 @@ func TestAppCommandFromTheCask(t *testing.T) {
 	c.IsDir = func(string) bool { return false }
 	if st := c.Status(true, "v0.8.0"); st.AppCommand != "" {
 		t.Fatalf("no cask: app_command %q", st.AppCommand)
+	}
+}
+
+// Releases ship several times a day: a check is due every hour, and the
+// default says so.
+func TestAReleaseCheckIsDueHourly(t *testing.T) {
+	if c := New(); c.MinInterval != time.Hour || Interval != time.Hour {
+		t.Fatalf("interval %v, want an hour", c.MinInterval)
+	}
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		_, _ = w.Write([]byte(`{"tag_name":"v0.9.0"}`))
+	}))
+	defer srv.Close()
+	old := LatestURL
+	LatestURL = srv.URL
+	defer func() { LatestURL = old }()
+
+	now := time.Unix(1_800_000_000, 0)
+	c := New()
+	c.Now = func() time.Time { return now }
+	// Ticks every five minutes for three hours: one request an hour.
+	for i := 0; i <= 36; i++ {
+		_ = c.Check(context.Background(), false)
+		now = now.Add(5 * time.Minute)
+	}
+	if hits != 4 {
+		t.Fatalf("%d requests in three hours of 5-minute ticks, want 4 (start + hourly)", hits)
+	}
+}
+
+// A sleeping Mac stops the monotonic clock: the interval is measured on the
+// wall clock, so the check due during the night runs on the first tick
+// after waking.
+func TestTheIntervalIsWallClockAcrossSleep(t *testing.T) {
+	before := time.Now() // carries a monotonic reading
+	after := before.Round(0).Add(8 * time.Hour)
+	if got := since(after, before); got != 8*time.Hour {
+		t.Fatalf("since = %v, want 8h", got)
+	}
+}
+
+// Offline, a failed check is retried after FailRetry, not on every tick;
+// a check the user asks for is never held back.
+func TestAFailedCheckWaitsBeforeTheNext(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	old := LatestURL
+	LatestURL = srv.URL
+	defer func() { LatestURL = old }()
+
+	now := time.Unix(1_800_000_000, 0)
+	c := New()
+	c.Now = func() time.Time { return now }
+	_ = c.Check(context.Background(), false)
+	now = now.Add(5 * time.Minute)
+	_ = c.Check(context.Background(), false)
+	if hits != 1 {
+		t.Fatalf("%d requests 5 min after a failure, want 1", hits)
+	}
+	_ = c.Check(context.Background(), true)
+	if hits != 2 {
+		t.Fatalf("a forced check was held back: %d", hits)
+	}
+	now = now.Add(FailRetry)
+	_ = c.Check(context.Background(), false)
+	if hits != 3 {
+		t.Fatalf("no retry after FailRetry: %d", hits)
 	}
 }

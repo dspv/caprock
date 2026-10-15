@@ -9,7 +9,9 @@
  * restart** downloads with progress, checks the signature, installs and
  * relaunches with every session, tab, split and scroll position back where
  * it was. **Later** hides the card for that version; the strip keeps the
- * offer. It never takes focus from the terminal.
+ * offer. **Always update automatically** switches Settings → Updates to
+ * Update automatically (AppAutoUpdate), and from then on this card does not
+ * ask. It never takes focus from the terminal.
  */
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -17,6 +19,7 @@ import { appUpdate, offerFor, useAppUpdate, v } from '@/lib/appupdate'
 import { openExternal } from '@/lib/nudges'
 import { NotesDialog } from './Shell'
 import { useUpdateStatus } from './AppUpdateNotice'
+import { usePlan } from './PlanPicker'
 
 /** The version whose card was put away; the strip's offer is separate. */
 export const TOAST_KEY = 'caprock.update.toastSeen'
@@ -28,6 +31,7 @@ function readSeen(): string {
 export function AppUpdateToast() {
   const st = useUpdateStatus()
   const info = useAppUpdate()
+  const [plan, savePlan] = usePlan()
   const [seen, setSeen] = useState(readSeen)
   const [notes, setNotes] = useState(false)
   const offer = offerFor(info, st, '')
@@ -35,6 +39,9 @@ export function AppUpdateToast() {
   const next = offer.kind === 'install' || offer.kind === 'progress' || offer.kind === 'installing' ? offer.next : ''
   const current = info?.version ? v(info.version).replace(/^v/, '') : ''
   if (!next || (offer.kind === 'install' && seen === next)) return null
+  // Update automatically: AppAutoUpdate downloads in the background and
+  // gives its own notice before the restart; this card does not ask.
+  if (plan?.app_update === 'auto') return null
 
   const later = () => {
     try { localStorage.setItem(TOAST_KEY, next) } catch { /* hidden for this page only */ }
@@ -77,6 +84,18 @@ export function AppUpdateToast() {
               Update and restart
             </button>
           </div>
+          {/* The standing answer, one click (owner, 2026-10-15): flips
+            * Settings → Updates to Update automatically, which needs the
+            * release check on. It does not restart now. */}
+          <button
+            type="button"
+            data-always-auto
+            onClick={() => savePlan({ app_update: 'auto', update_checks: true })}
+            className="justify-self-start text-[12px] text-fg-muted hover:text-accent"
+            title="From now on, download updates in the background and restart into them when no agent is busy and you are away"
+          >
+            Always update automatically
+          </button>
         </>
       )}
       {offer.kind === 'progress' && (

@@ -176,6 +176,11 @@ type Deps struct {
 	// Update reports whether a newer release exists. nil ⇒ 501. It is only
 	// ever consulted when the user enabled checks.
 	Update UpdateController
+	// UpdateBusy counts the sessions an app restart would interrupt — an
+	// agent mid-turn or waiting on a permission prompt — for GET
+	// /v1/update/busy, which the desktop app reads before it installs an
+	// update on its own (ADR-042 as amended). nil ⇒ 501.
+	UpdateBusy func(ctx context.Context) (int, error)
 	// Terminals opens a session in the user's own terminal application. nil ⇒
 	// the open-terminal endpoints return 501 and no session offers it.
 	Terminals TerminalController
@@ -361,6 +366,10 @@ type Settings struct {
 	// plan windows; "off" removes Caprock's own statusLine entry from
 	// Claude Code's settings (never the user's own).
 	StatuslineMode string `json:"statusline_mode"`
+	// AppUpdate is what the desktop app does when a newer release is found:
+	// one of config.AppUpdateModes. GET returns the effective mode, "ask"
+	// when never chosen.
+	AppUpdate string `json:"app_update"`
 }
 
 // ReportSender sends one weekly report immediately.
@@ -577,6 +586,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/pair/remote", s.handleSetRemote)
 	m.HandleFunc("POST /v1/pair/send-link", s.handlePairSendLink)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
+	m.HandleFunc("GET /v1/update/busy", s.handleUpdateBusy)
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
 	m.HandleFunc("POST /v1/claude/bypass-consent", s.handleBypassConsent)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
@@ -1382,6 +1392,24 @@ func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.d.Update.Status(true, s.d.Version))
 }
 
+// handleUpdateBusy is GET /v1/update/busy: how many sessions are working now
+// (mid-turn, subagents still running, or waiting on a permission prompt), the
+// same count the keep-awake hold uses. The desktop app set to update
+// automatically installs only while this is 0. A read of the local database:
+// no network I/O, and nothing about the sessions but the count.
+func (s *Server) handleUpdateBusy(w http.ResponseWriter, r *http.Request) {
+	if s.d.UpdateBusy == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("not available"))
+		return
+	}
+	n, err := s.d.UpdateBusy(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"working": n})
+}
+
 // handleGetSettings returns the user-stated settings. Absent settings are not
 // an error — they mean "not stated", and the UI simply omits the comparison.
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
@@ -1430,6 +1458,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		KeepAwake       *string  `json:"keep_awake"`
 		WorktreeCleanup *string  `json:"worktree_cleanup"`
 		StatuslineMode  *string  `json:"statusline_mode"`
+		AppUpdate       *string  `json:"app_update"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
@@ -1553,6 +1582,14 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.StatuslineMode = v
+	}
+	if patch.AppUpdate != nil {
+		v := strings.TrimSpace(*patch.AppUpdate)
+		if !config.ValidAppUpdate(v) {
+			s.failCode(w, http.StatusBadRequest, fmt.Errorf("app_update must be one of %s", strings.Join(config.AppUpdateModes, ", ")))
+			return
+		}
+		in.AppUpdate = v
 	}
 	// Only touched when the caller named it. GET never returns the token, so a
 	// UI that reads settings and writes them back always omits it — treating
