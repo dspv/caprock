@@ -9,6 +9,11 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **brain:** Second Brain's status says when the reader wakes next
+  (`next_wake`), so a screen can tell you when the first memories may come
+  instead of leaving you at 0. Turning building on still wakes the reader
+  at once, and a double click or a second yes never starts a second read
+  beside the first.
 - **mail:** Mail on its own. `<daemon>/?mail=1` is the inbox and nothing
   else of Caprock — no sidebar, no tabs — titled *Caprock Mail*.
   `app/mail-mac` builds a Mac preview app around it: Caprock's icon with an
@@ -28,6 +33,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   up to five memories go into the next session's handoff), and one line
   says that nothing leaves the computer except that call and where to
   turn it off.
+
+### Fixed
+
+- **mail:** adding an account can no longer sit on *Checking…* forever. A
+  server that goes quiet while Mail connects or signs in — IMAP had no limit
+  and SMTP waited five minutes per command — now ends the check within 30
+  seconds with what happened: which server stopped answering, and that
+  another mail app open on the same account can count against the server's
+  connection limit. A synced mailbox still waits in IDLE as long as it
+  needs; the limit is lifted once signed in.
 
 ## [0.117.4] - 2026-10-15
 
