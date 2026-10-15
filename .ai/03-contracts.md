@@ -1862,7 +1862,7 @@ over the 14 local calendar days ending today:
   back to the release before it), newest first, at most 6. `flow`
   `{counts{stage}, days, merged, ttm_median_ms?, ttm_count,
   release_lag_median_ms?, release_lag_count, release_gap_median_ms?,
-  release_gap_count, ci_median_ms?, cost_usd}`:
+  release_gap_count, ci_median_ms?, cost_usd, series}`:
   merged → released is the median of publish minus merge over the window's
   released cards (absent with fewer than two), CI the busiest workflow's
   median. `release_gap_median_ms` is the median time between consecutive
@@ -1874,6 +1874,26 @@ over the 14 local calendar days ending today:
   drafts and unpublished ones left out, kept 2 minutes (10 before
   2026-10-14: a new release missed the board that long); a failed list
   keeps the last one, and with none is no releases, not an error.
+- **The figures day by day** (2026-10-15) — `flow.series` is
+  `{flight?, throughput?, ci?, ttm?, lag?, cost?}`, each `[{day, value?, n,
+  by_now?}]`: one point per local calendar day of the window (the daemon's
+  time zone, cut at local midnight), oldest first, today last
+  (`internal/api/prboardseries.go`). Counted from what the board already
+  read — the list's stamps, the runs list, the releases — with no further
+  GitHub request. `n` is how many samples the value rests on; `value` is
+  absent on a day with none for a median (a gap, never a zero).
+  `flight` is the pull requests open at each day's end (opened by then,
+  not yet merged or closed; a closed one without `closed_at` is left out),
+  today's point the In flight figure itself. `throughput` is the merges
+  each day; `cost` the agent cost (`spend.cost_usd`) of the pull requests
+  merged that day; both carry `by_now`, the same up to the clock time it is
+  now. `ci` is the busiest workflow's successful runs' median by the day
+  they started (absent with no workflow), `ttm` opened → merged by merge
+  day, `lag` merged → released by the day the release was published (so a
+  merge not yet released is in no day); a day's median of one sample is
+  that sample. Needs a fix and Ready have no series: a past day's check
+  state is not in anything read. Each `BranchPR` also carries
+  `closed_at?` (GitHub's stamp, unix ms, merged or not) from the same list.
 - **Who opened it** — each `BranchPR` (here and in the Branches view) also
   carries `head` (the head branch), `author` and `author_avatar` (GitHub's
   `user.login` and `user.avatar_url`, an address on

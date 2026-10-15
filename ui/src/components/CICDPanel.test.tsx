@@ -8,7 +8,9 @@ vi.mock('@/lib/api', async (orig) => {
   return { ...actual, api: { ...actual.api,
     sessionCIStats: async (id: string) => {
       h.stats.push(id)
-      return { connected: true, repo: 'ada/app', fetched_at: Date.now(), prs: [], board: { cards: [], releases: [], flow: { counts: { draft: 1, open: 2, fix: 1, ready: 3, merged: 0, released: 0 }, days: 14, merged: 14, ttm_count: 0, release_lag_count: 0, ci_median_ms: 430_000, cost_usd: 0 } } }
+      return { connected: true, repo: 'ada/app', fetched_at: Date.now(), prs: [], board: { cards: [], releases: [], flow: { counts: { draft: 1, open: 2, fix: 1, ready: 3, merged: 0, released: 0 }, days: 14, merged: 14, ttm_count: 0, release_lag_count: 0, ci_median_ms: 430_000, cost_usd: 0,
+        // Every earlier day's CI median 7m 10s, today's 10m: longer, amber.
+        series: { ci: Array.from({ length: 14 }, (_, i) => ({ day: `2026-10-${String(i + 1).padStart(2, '0')}`, value: i === 13 ? 600_000 : 430_000, n: 3 })) } } } }
     },
     reposCI: async (q?: unknown) => { h.asked++; h.q.push(q); return typeof h.answer === 'function' ? (h.answer as (q: unknown) => unknown)(q) : h.answer },
     actionsUsage: async (owner?: string) => {
@@ -201,6 +203,12 @@ describe('the Pipeline in the CI/CD section', () => {
     expect(card.querySelector('[data-stat="throughput"]')).toHaveTextContent('1.0/day')
     expect(card.querySelector('[data-stat="ci"]')).toHaveTextContent('7m 10s')
     expect(card.querySelector('[data-stat="cost"]')).toBeNull()
+    // The same tiles as the page: the CI median's last 14 days and today
+    // against them; a figure without a series in the answer has no line.
+    const word = card.querySelector('[data-trend="ci"] [data-compare]')!
+    expect(word).toHaveTextContent('above usual +40%')
+    expect(word).toHaveAttribute('data-tone', 'warn')
+    expect(card.querySelector('[data-stat="flight"] [data-trend]')).toBeNull()
     expect(card.querySelector('[data-pipeline-open]')).toHaveAttribute('href', '#/pipeline?repo=%2Fw%2Fapp')
   })
 

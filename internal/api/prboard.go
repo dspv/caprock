@@ -115,6 +115,10 @@ type BoardFlow struct {
 	CIMedianMS int64 `json:"ci_median_ms,omitempty"`
 	// CostUSD sums the cards' agent cost.
 	CostUSD float64 `json:"cost_usd"`
+	// Series is each figure's day by day over the window, keyed by the
+	// figure (flight, throughput, ci, ttm, lag, cost; prboardseries.go).
+	// Needs a fix and Ready have none: a past day's check state is not read.
+	Series map[string][]FlowPoint `json:"series"`
 }
 
 // boardInput is what a board is built from.
@@ -155,6 +159,7 @@ func buildBoard(in boardInput) PRBoard {
 		return nil
 	}
 	byTag := map[string]*BoardRelease{}
+	shipped := map[int]github.RepoRelease{}
 	var lags []int64
 	for _, p := range in.prs {
 		c := BoardCard{Number: p.Number, Spend: in.spend[p.URL]}
@@ -173,6 +178,7 @@ func buildBoard(in boardInput) PRBoard {
 		case "merged":
 			rel := shippedIn(p)
 			if rel != nil {
+				shipped[p.Number] = *rel
 				b := byTag[rel.Tag]
 				if b == nil {
 					b = &BoardRelease{RepoRelease: *rel, PRs: []int{}}
@@ -238,9 +244,14 @@ func buildBoard(in boardInput) PRBoard {
 	out.Flow.TTMMedianMS, out.Flow.TTMCount = github.TimeToMerge(in.prs, in.now, in.days)
 	out.Flow.ReleaseLagMedianMS, out.Flow.ReleaseLagCount = medianMS(lags), len(lags)
 	out.Flow.ReleaseGapMedianMS, out.Flow.ReleaseGapCount = releaseGap(rels)
+	var workflow string
 	if st := github.RunStats(in.runs, in.now, in.days); len(st.Workflows) > 0 {
 		out.Flow.CIMedianMS = st.Workflows[0].MedianMS
+		workflow = st.Workflows[0].Name
 	}
+	c := out.Flow.Counts
+	out.Flow.Series = flowSeries(seriesInput{in: in, shipped: shipped, workflow: workflow,
+		openNow: c[StageDraft] + c[StageOpen] + c[StageFix] + c[StageReady]})
 	return out
 }
 
