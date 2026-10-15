@@ -97,6 +97,7 @@ var builders = map[string]func(launchInput) (launch, error){
 	AgentCodex:    codexLaunch,
 	AgentOpenCode: opencodeLaunch,
 	AgentGrok:     grokLaunch,
+	AgentHermes:   hermesLaunch,
 }
 
 //nolint:unparam // one signature for every builder; Claude Code's has nothing to refuse

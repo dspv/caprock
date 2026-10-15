@@ -7,8 +7,8 @@
  * turning cloud, the agents this user runs at its rim, sparks travelling
  * from them into it while the extraction works and a point lighting up as
  * each memory lands — and one quiet line of what it is doing, from the
- * daemon: "Extracting from acme-api", "Indexing 3 sessions", "Idle · 16
- * memories · updated 1m ago", "Paused", with a thin bar while it builds.
+ * daemon: "Reading acme-api… · 12 of 48", "3 sessions to read", "Up to
+ * date · last built 14:02", "Paused", with a thin bar while it builds.
  * Folded, it is one row: the glyph and that same mode in words, with the
  * count — what it does now first (owner, 2026-10-15: "what it is doing right
  * now matters more than the numbers"). The chevron folds and unfolds it,
@@ -31,8 +31,9 @@
  *
  * Folded by default (owner, 2026-10-15, translated: "compact but
  * interactive, not grabbing attention"): one quiet row in muted colours — a
- * small static glyph and the mode in words, *Second Brain · Idle · 140
- * memories* or *Indexing 3 sessions…*. The glyph is the only thing that
+ * small static glyph and the mode in words, *Second Brain · Up to date ·
+ * 140 memories*, or while it builds *Building · 12 of 48* (the session
+ * being read of all in reach) over a 2px bar. The glyph is the only thing that
  * moves, a slow pulse, and only while a read actually runs. The row lifts a
  * pixel on hover; a click opens the screen; the chevron unfolds the orb.
  * A fold the viewer saved is kept: only the default changed. Unfolded, the
@@ -53,7 +54,7 @@
  */
 import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { BrainAutoStatus } from '@/lib/api'
-import { brainActivity, brainMode, buildFigures, isBuilding, isEntity, useBrainGraph, useBrainLanded, useBrainStatus } from '@/lib/brain'
+import { brainActivity, brainMode, brainState, buildFigures, clockOrDay, isBuilding, isEntity, useBrainGraph, useBrainLanded, useBrainStatus } from '@/lib/brain'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { agentsLine, BRAIN_HEADLINE, BrainHero, FreePill, useAgentsUsed } from './BrainAgents'
@@ -104,9 +105,15 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
   const building = isBuilding(auto)
   // Actually reading right now, not just with sessions queued: the glyph's pulse.
   const reading = active && !!(auto?.reading || auto?.running)
-  // The folded row's words: what it does while it works, else the name, the mode and the count.
+  // The folded row's words: while it builds, *Building · 12 of 48* (the
+  // session being read of all in reach) over a thin bar; else the name, the
+  // mode and the count.
   const count = status.memories > 0 ? `${status.memories} ${status.memories === 1 ? 'memory' : 'memories'}` : ''
-  const rowText = active ? `${mode}…` : ['Second Brain', mode, count].filter(Boolean).join(' · ')
+  const state = brainState(auto, now)
+  const rowText = active
+    ? (state.m > 0 ? `Building · ${state.n} of ${state.m}` : `${mode}…`)
+    : ['Second Brain', mode, count].filter(Boolean).join(' · ')
+  const rowTitle = active ? `${state.word} · ${state.detail}${auto?.reading?.title ? ` — ${auto.reading.title}` : ''}` : rowText
   const banner = status.memories === 0 && !auto?.on
   const go = () => onOpen('#/brain')
   const onKey = (e: KeyboardEvent) => {
@@ -167,11 +174,18 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
         ) : (
           // Folded: one quiet row — the glyph (pulsing slowly only while a
           // read runs) and the mode in words, muted.
-          <div className="flex h-[30px] min-w-0 shrink-0 items-center gap-1.5 px-1.5" data-brain-row>
+          <div className="relative flex h-[30px] min-w-0 shrink-0 items-center gap-1.5 px-1.5" data-brain-row>
             <h2 className="sr-only">Second Brain</h2>
             <span className={`flex shrink-0 text-fg-faint ${reading ? 'brain-glyph-reading' : ''}`} data-brain-glyph={reading ? 'reading' : 'still'}><BrainGlyph size={12} /></span>
-            <span className="min-w-0 flex-1 truncate text-[12px] text-fg-muted" data-brain-mode title={rowText}>{rowText}</span>
+            <span className="min-w-0 flex-1 truncate text-[12px] text-fg-muted" data-brain-mode title={rowTitle}>{rowText}</span>
             {chevron}
+            {building && state.share !== null && (
+              // A hairline of progress under the row: sessions read of all in reach.
+              <span className="absolute inset-x-1.5 bottom-[2px] h-[2px] overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--color-fg-muted)_16%,transparent)]"
+                role="progressbar" aria-label="Sessions read" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(state.share * 100)} data-brain-row-bar>
+                <span className="block h-full rounded-full bg-accent/70 transition-[width] duration-700 motion-reduce:transition-none" style={{ width: `${Math.round(state.share * 100)}%` }} />
+              </span>
+            )}
           </div>
         )}
         {open && (
@@ -208,13 +222,14 @@ function StatusLine({ auto, mode, metric, active, building, count, newest, now, 
 }) {
   const f = building ? buildFigures(auto) : null
   const share = f?.share ?? 0
-  // Working: the mode, then how far. Idle: the count and when it last
-  // grew ("16 memories · updated 1m ago"). Otherwise the mode, then the count.
-  const idle = mode === 'Idle' && count > 0
-  const lead = active ? `${mode}…` : idle ? `${count} ${count === 1 ? 'memory' : 'memories'}` : mode
+  // Working: the mode, then how far. Up to date: when it last built (the
+  // newest read that kept something), else when a memory last landed
+  // ("Up to date · last built 14:02"). Otherwise the mode, then the count.
+  const idle = mode === 'Up to date' && count > 0
+  const lead = active ? `${mode}…` : mode
   const after = active
     ? (f && f.sessions > 0 ? `${Math.min(f.read + (auto?.reading ? 1 : 0), f.sessions)} of ${f.sessions}` : '')
-    : idle ? (newest ? `updated ${fmtAgo(newest, now)}` : '') : metric
+    : idle ? (auto?.last_read ? `last built ${clockOrDay(auto.last_read, now)}` : newest ? `updated ${fmtAgo(newest, now)}` : metric) : metric
   return (
     <div className="grid min-w-0 shrink-0 gap-1 px-1.5" data-brain-status data-brain-sidebar-live={building ? '' : undefined}>
       <p className="flex min-w-0 items-center gap-1.5 text-[12.5px] leading-snug">

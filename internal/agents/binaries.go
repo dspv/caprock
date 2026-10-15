@@ -19,11 +19,13 @@ const (
 	AgentOpenCode = "opencode"
 	// AgentGrok is xAI's Grok Build CLI, `grok` (ADR-046).
 	AgentGrok = "grok"
+	// AgentHermes is Nous Research's Hermes Agent CLI, `hermes` (ADR-069).
+	AgentHermes = "hermes"
 )
 
 // Spawnable lists the agents Caprock can start, in the order the dialog
 // offers them.
-var Spawnable = []string{AgentClaude, AgentCodex, AgentOpenCode, AgentGemini, AgentGrok}
+var Spawnable = []string{AgentClaude, AgentCodex, AgentOpenCode, AgentGemini, AgentGrok, AgentHermes}
 
 // IsSpawnable reports whether agent names one Caprock can start. "" is Claude
 // Code, which every request before the agent field meant.

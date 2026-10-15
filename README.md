@@ -223,16 +223,17 @@ settings). Say no and it still reads your history from transcripts.
 
 Run [OpenCode](https://github.com/anomalyco/opencode),
 [Codex](https://developers.openai.com/codex),
-[DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) or
+[DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness),
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) or
 [Gemini CLI](https://github.com/google-gemini/gemini-cli) too? All are shown on
-the same screens — OpenCode from its own database, Codex and DeepSeek Harness
-from the transcripts they write, Gemini through the telemetry it writes when
-Caprock starts it. See
-[OpenCode, Codex and DeepSeek Harness](#opencode-codex-and-deepseek-harness) for
-what that covers and what it does not.
+the same screens — OpenCode and Hermes Agent from their own databases, Codex
+and DeepSeek Harness from the transcripts they write, Gemini through the
+telemetry it writes when Caprock starts it. See
+[OpenCode, Codex and DeepSeek Harness](#opencode-codex-and-deepseek-harness) and
+[Hermes Agent](#hermes-agent) for what that covers and what it does not.
 
 Caprock starts Codex, OpenCode (1 or 2, whichever `opencode --version`
-says is installed) and Gemini CLI sessions too: whichever of them
+says is installed), Gemini CLI and Hermes Agent sessions too: whichever of them
 is installed appears next to Claude Code in the New Session dialog — same
 terminal, same directory picker, its own filter chip — and the dialog remembers
 the one you picked last. A Codex or OpenCode session started here shows its
@@ -323,7 +324,7 @@ report says when. Details: [docs/doctor.md](docs/doctor.md).
 
 ## Take the record out
 
-Every agent Caprock reads — Claude Code, Codex, OpenCode, Gemini CLI, DeepSeek —
+Every agent Caprock reads — Claude Code, Codex, OpenCode, Gemini CLI, DeepSeek, Hermes —
 lands in the same tables with the same columns. `caprock export` writes one of
 them out, for a spreadsheet, a notebook or your own warehouse:
 
@@ -391,7 +392,7 @@ and the cost add up over all of them, and the rows carry each agent's own mark
 so you can still tell them apart.
 
 **Or see one at a time.** The Home screen carries
-`all / claude / opencode / gemini / codex / deepseek` in the middle of its
+`all / claude / opencode / gemini / codex / deepseek / hermes` in the middle of its
 header, and it applies to the whole screen — today's totals, the live pulse, the
 activity feed, the projects list and the session cards all answer the same
 question. It appears only on a machine that runs more than one.
@@ -436,6 +437,18 @@ and the task runner works with Claude Code alone. A session started outside
 Caprock refreshes every few seconds rather than instantly, so the Home screen
 lags a little behind it — the Cost and Lifetime screens are unaffected. Verified on macOS; it builds and its tests pass on Linux and
 Windows, but it has not been run on either.
+
+### Hermes Agent
+
+Caprock reads [Hermes Agent](https://github.com/NousResearch/hermes-agent)'s
+own database (`~/.hermes/state.db`), read-only, and starts Hermes in a
+terminal tab from **New agent**. Every Hermes session — its CLI and TUI, and
+the cron jobs and gateway chats that run with nobody watching — is on the same
+screens, with Hermes's own cost figures, never re-priced: the Cost screen says
+which part the provider reported and which part is Hermes's estimate, and
+shows background runs apart, by source. Delegated subagents sit inside the
+session that delegated them, counted once. Nothing is installed into Hermes.
+Only Hermes's default profile is read. See [docs/hermes.md](docs/hermes.md).
 
 ### Claude Code on DeepSeek
 

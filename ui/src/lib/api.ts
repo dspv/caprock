@@ -34,7 +34,7 @@ export interface Session {
   name?: string
   /** Which coding agent produced this session. Absent means Claude Code,
    *  which is what every session was before OpenCode support. */
-  agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek'
+  agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek' | 'hermes'
   /** The agent's own id for a Codex or OpenCode session Caprock started under
    *  an id of its own — the thread or session its importer files under this
    *  one. Absent until the first message is sent, and for every other session. */
@@ -737,8 +737,25 @@ export interface Summary {
   unpriced?: Unpriced
   /** Known internal model work, measured but excluded from user-work totals. */
   background?: BackgroundUsage
+  /** Hermes Agent's share of the total, split by what kind of figure it is
+   *  and by background work (ADR-069). Absent without Hermes turns. */
+  hermes?: HermesCost
   /** The viewer's own usual over the last 30 days (lib/usual.ts); absent with too little history. */
   usual?: Usual
+}
+
+/** Hermes Agent's spend in a range (store.HermesCost). Every figure is
+ *  Hermes's own: the provider's billing where Hermes recorded it, Hermes's
+ *  estimate otherwise; Caprock's table never prices it. */
+export interface HermesCost {
+  total_usd: number
+  actual_usd: number
+  estimated_usd: number
+  included_turns?: number
+  unpriced_turns?: number
+  /** Spend nobody watched as it ran: cron jobs, gateway chats, one-shot runs. */
+  background_usd: number
+  sources?: { source: string; cost_usd: number }[]
 }
 
 export interface RateWindow {
@@ -1205,6 +1222,10 @@ export interface Status {
   codex?: { sessions: number; events: number; unpriced?: number; last_poll_ms?: number }
   /** DeepSeek Harness reports the same terms; absent when DSH has no sessions. */
   deepseek?: { sessions: number; events: number; unpriced?: number; last_poll_ms?: number }
+  /** Hermes Agent's reader (ADR-069): sessions read, events stored, turns
+   *  Hermes could not price, and how many sessions ran in the background
+   *  (cron, a gateway chat). Absent when there is no Hermes database. */
+  hermes?: { sessions: number; events: number; unpriced?: number; background?: number; last_poll_ms?: number }
   version: string
   /** GOOS/GOARCH — what a bug report needs and nobody remembers to include. */
   platform?: string
@@ -1237,6 +1258,8 @@ export interface Status {
   opencode_available?: boolean
   /** xAI's Grok Build CLI (ADR-046). Absent on older daemons. */
   grok_available?: boolean
+  /** Nous Research's Hermes Agent CLI (ADR-069). Absent on older daemons. */
+  hermes_available?: boolean
   /** The version of the OpenCode a new session would start ("2.0.26"),
    *  absent while the daemon has not asked it. OpenCode 1 and 2 take
    *  different flags, so a mode can become something different in each. */
@@ -1447,6 +1470,32 @@ export interface BrainAutoStatus {
   reading?: BrainReading
   /** The progress through every session in reach, while on. */
   build?: BrainBuild
+  /** What claude reported the reads in the last 24 hours cost, in US dollars at API list price. */
+  spent_usd?: number
+  /** Where the build is. */
+  stage?: BrainStage
+  /** When the newest read that kept something finished, unix ms. */
+  last_read?: number
+  /** Memories added since the daemon's local midnight, by hand or read. */
+  new_today?: number
+  /** The graph's topics, and the links between its nodes. */
+  topics?: number
+  links?: number
+  /** How the memories reach agents: new sessions handed some with the handoff. */
+  handoff?: BrainHandoff
+}
+
+/** Where a build is (03-contracts.md § Second Brain). */
+export type BrainStage = 'off' | 'no_claude' | 'limit' | 'extracting' | 'linking' | 'waiting' | 'up_to_date'
+
+/** New sessions handed Second Brain memories with their handoff, last 24 hours and in all. */
+export interface BrainHandoff {
+  /** Settings → Memory between sessions is on: new sessions are handed anything at all. */
+  on: boolean
+  sessions_24h: number
+  memories_24h: number
+  sessions: number
+  memories: number
 }
 
 /** The session the extraction is asking claude about (03-contracts.md § Second Brain). */
@@ -1459,6 +1508,10 @@ export interface BrainReading {
   /** When the session last did something, and when this read began; unix ms. */
   last_event_at?: number
   started_at: number
+  /** claude is asked for memories (extracting), then they are stored and linked (linking). */
+  phase?: 'extracting' | 'linking'
+  /** Passages of the session's prose sent. */
+  passages?: number
 }
 
 /** How far the extraction has got through the sessions in reach. */
