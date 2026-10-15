@@ -2380,8 +2380,10 @@ export interface WorkRepo {
   /** The session the repository's Pipeline answer is read through. */
   via_session: string
   live: number
-  /** CHANGELOG's [Unreleased] section on `ref`, as of the last fetch. */
-  unreleased?: { ref: string; items: string[]; count: number; more?: boolean }
+  /** CHANGELOG's [Unreleased] section on `ref`, as of the last fetch; `kinds`
+   *  counts its entries by Keep a Changelog kind (Added, Fixed, …), absent from
+   *  an older daemon or when no entry has a kind. */
+  unreleased?: { ref: string; items: string[]; count: number; more?: boolean; kinds?: Partial<Record<string, number>> }
   tags?: { last?: { name: string; at: number }; gap_median_ms?: number; gaps: number }
   /** Commits on the default branch since the last tag. */
   ahead_of_tag?: number

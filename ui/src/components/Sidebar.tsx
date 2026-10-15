@@ -465,7 +465,10 @@ export function Sidebar(props: SidebarProps) {
         </button>
       </div>
 
-      <div className="app-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-3" onKeyDown={onKeyDown}>
+      {/* The list scrolls here and ends above the footer, its sibling below:
+        * nothing is drawn under the footer, and the bottom padding leaves the
+        * last line (Second Brain's caption) whole when scrolled to the end. */}
+      <div data-sidebar-scroll className="app-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4" onKeyDown={onKeyDown}>
         {props.onRoute && (
           <TodayStrip
             today={today}

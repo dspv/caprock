@@ -173,7 +173,7 @@ describe('the agent cockpit', () => {
   it('falls back to compact when the stored looks are broken', () => {
     localStorage.setItem(LOOKS_KEY, '{not json')
     resetLooksForTest()
-    expect(getLooks()).toEqual({ context: 'compact', limits: 'compact', subagents: 'full', tools: 'full', now: 'full', tasks: 'full', changes: 'full', ci: 'full', processes: 'full' })
+    expect(getLooks()).toEqual({ context: 'compact', limits: 'compact', subagents: 'full', tools: 'full', now: 'full', tasks: 'full', changes: 'full', ci: 'full', release: 'full', processes: 'full' })
     localStorage.setItem(LOOKS_KEY, JSON.stringify({ context: 'huge', limits: 'full', tools: 7 }))
     resetLooksForTest()
     expect(getLooks()).toMatchObject({ context: 'compact', limits: 'full', subagents: 'full', tools: 'full' })
@@ -900,8 +900,8 @@ describe('arranging the cockpit', () => {
     expect(document.activeElement).toHaveAccessibleName('Move Recent tools up')
     fireEvent.click(within(arrange).getByRole('button', { name: 'Move Spend up' }))
     expect(within(arrange).getAllByRole('listitem').map((li) => li.textContent?.replace(/[↑↓\d]/g, ''))).toEqual(
-      ['Now', 'Recent tools', 'Context', 'Spend', 'Plan limits', 'Subagents', 'Tasks', 'Changes', 'CI', 'Processes'])
-    expect(JSON.parse(localStorage.getItem(ORDER_KEY)!)).toEqual(['now', 'tools', 'context', 'spend', 'limits', 'subagents', 'tasks', 'changes', 'ci', 'processes'])
+      ['Now', 'Recent tools', 'Context', 'Spend', 'Plan limits', 'Subagents', 'Tasks', 'Changes', 'CI', 'Release', 'Processes'])
+    expect(JSON.parse(localStorage.getItem(ORDER_KEY)!)).toEqual(['now', 'tools', 'context', 'spend', 'limits', 'subagents', 'tasks', 'changes', 'ci', 'release', 'processes'])
     fireEvent.click(within(arrange).getByRole('button', { name: 'Done' }))
     expect(regions()).toEqual(['Now', 'Recent tool calls', 'Context', 'Spend', 'Plan limits'])
     // A fresh page reads the order back.
