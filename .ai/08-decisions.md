@@ -4236,7 +4236,12 @@ and travels in its pairing link, so two machines may use different relays.
   or `caprock pair --computer` over SSH on a machine with no screen). The
   controller redeems it, and the target then shows *"MacBook wants to
   control this computer"* with **Allow** / **Deny** — on its screen, or as a
-  prompt in the terminal that ran `caprock pair --computer`. Until the owner
+  prompt in the terminal that ran `caprock pair --computer`. **On a headless
+  target the command line is the screen:** `caprock machines allow <name>`
+  (and `caprock machines deny <name>`), run on the target over SSH, counts
+  as Allow, exactly as the button does; `caprock machines pending` lists
+  what waits. Run on the target, by whoever holds a shell there, it is the
+  owner's decision on the machine. Until the owner
   allows it the token reaches nothing but `GET /v1/pair/me`, which answers
   `pending`; nothing is read before the owner has seen the name. The kind
   travels with the code, never with the redeeming request: a device cannot
@@ -4292,7 +4297,8 @@ and travels in its pairing link, so two machines may use different relays.
    Its daemon parses the link, dials the target's relay, runs Noise NK
    against the pinned key, and redeems the code through the channel with
    `POST /v1/pair` and its own name.
-3. On the target: the owner allows it, by name. The device is stored with
+3. On the target: the owner allows it, by name — the button, the prompt,
+   or `caprock machines allow <name>` over SSH. The device is stored with
    `kind: "machine"` and the controller role.
 4. The controller keeps `{id, key, relay, name, token, device_id,
    added_at}` in `machines.json`, 0600, beside `remote.json` and
@@ -4360,6 +4366,20 @@ guessed.
   another computer are shown as that computer stated them; the merged list
   (Phase 3) orders by them and does not correct them.
 
+**A headless target.** A Mac mini in a cupboard, a Linux VM or a box at a
+provider has no screen: everything the target's owner does goes through
+SSH — `caprock remote on`, `caprock pair --computer` (prints the link),
+`caprock machines allow|deny <name>`, and **Remove** as `caprock
+machines revoke <name>` (all new in PR2). It must keep running with
+nobody logged in. On macOS the launchd
+agent (`caprock service install`) runs while the user's session exists,
+which on a Mac mini with automatic login is always. On Linux the systemd
+**user** unit stops when the user's last session ends unless lingering is
+on: `loginctl enable-linger <user>` (once, as root or with polkit). From
+PR2, `caprock service install` and `caprock pair --computer` on Linux say
+so when lingering is off; they never run it. Without it the target goes
+offline the moment the SSH session that set it up closes.
+
 **The Windows host.** A Windows machine is a target like any other: the
 Host, the relay client and Noise are plain Go, and sessions run under
 ConPTY in the pty-host. `machines.json`'s 0600 is not enforced there; the
@@ -4387,20 +4407,39 @@ Phase 2's smoke adds a Windows target to the matrix.
     daemon wiring.
   - *PR2 — computers in the daemon.* The target side: codes for a computer
     (`kind` on the code, `kind: "machine"` in `devices.json`), the pending
-    state and **Allow** / **Deny** (screen and `caprock pair --computer`),
+    state and **Allow** / **Deny** (the screen, the prompt of `caprock pair
+    --computer`, and `caprock machines pending|allow|deny|revoke <name>` for
+    the computers that reach this one),
     `computerRoutes` and the lifted spawn limits, `DELETE /v1/pair/me`, and
     sockets closed on revoke and demotion. The controller side:
     `internal/daemon` wiring, `GET/POST /v1/machines`, `PATCH/DELETE
     /v1/machines/{id}`, the `/v1/m/{id}/{path…}` proxy (HTTP through
     `httputil.ReverseProxy` on the peer's channel, WebSockets bridged, the
     device subprotocol never echoed, `503 offline`, `404` unknown), all
-    loopback-only, and `caprock machines [ls|add|rm]`. The smoke grows to
+    loopback-only, and `caprock machines ls|add|forget` for the computers
+    this one reaches. The smoke grows to
     two real daemons, the controller's routes included.
   - *PR3 — other computers in the app.* Sessions tagged by computer in the
     sidebar, the Session view and terminal through `/v1/m/{id}/…`,
     Settings → Computers, offline and revoked states, and `bench/peer.mjs`
     measuring keystroke-to-echo through the local relay and the hosted one,
     recorded with a date (no latency figure is stated before that, rule 6).
+    And the **install hook** — the owner's goal (2026-10-15, translated):
+    "encourage installing Caprock on their other computers":
+    - *With no computer linked*, one quiet sidebar row, **+ Add a machine**,
+      opening Settings → Computers with the steps for the other machine
+      (install, `caprock remote on`, show the link). No badge, no modal.
+    - *When this machine is loaded and a linked one is not*, the New-agent
+      sheet says once — *"This Mac is busy — run it on Mac mini (12 GB
+      free)?"* (figures here are examples) — with the machine picked by one
+      click (the picker itself is Phase 2; until then the line opens that
+      computer's sessions). Shown once per load episode, dismissible, never
+      when the other machine is offline. "Loaded" and "free" are read, not
+      guessed: `/v1/resources` gains machine-wide `cpus`, `load1`,
+      `mem_total` and `mem_available` (a contract change in that PR, with
+      `.ai/03-contracts.md`), read on each machine and fetched from the
+      other through `/v1/m/{id}/v1/resources`. The thresholds are set from
+      OQ-19's measurement, not before.
 - **Phase 2 — start and finish work on another computer:** a Machine picker
   in New agent (projects, folders, models and agents read from the target;
   offline ones disabled); permission buttons, the queue, Changes, diff and
@@ -4415,6 +4454,22 @@ Phase 2's smoke adds a Windows target to the matrix.
   the controller's key, and whatever OQ-14's measurements call for (a relay
   of one's own is already `caprock remote relay`).
 
+**What is claimed, and what it costs.**
+
+- **Measure before any public claim** (rule 6). Four open questions in
+  `.ai/12-risks.md` gate the copy: the round trip over the relay (OQ-17),
+  terminal echo through a link (OQ-18), the memory and CPU a real task
+  frees on this machine when it runs elsewhere (OQ-19), and whether the
+  other machine is actually quicker at `go test` and the UI build (OQ-20).
+  **The pitch is not "faster".** It is *this Mac stays responsive*, *more
+  agents at once*, *work goes on with the lid closed* — and each of those is
+  said with a measured figure or not at all.
+- **Free, with no limit on machines, for now.** Linking computers is not a
+  paid feature and is not counted. A hosted or resold machine (a VPS we run
+  for the user) is **parked**: it would put the user's code and sessions on
+  a server of ours, which rule 4 does not allow as things stand, and its
+  only selling point would be speed nobody has measured (OQ-20).
+
 No migration in Phases 1–3: nothing about another computer is stored in
 SQLite.
 
@@ -4422,8 +4477,9 @@ SQLite.
 that is transitive or symmetric by default; a computer naming its own kind
 or role; a computer managing the target's pairing, settings or the doctor's
 stop; typing into or signalling anything the target's Caprock did not start;
-a change to the relay for this; stating a latency or capacity figure before
-it is measured.
+a change to the relay for this; stating a latency, capacity or speed figure
+before it is measured; selling "faster"; a limit on linked machines or a
+hosted machine of ours, for now.
 
 **Revisit if:** the hosted relay's limits (OQ-14) are reached by computers
 rather than phones; a user needs a computer that may manage the target's

@@ -89,6 +89,13 @@ started and typed into through the channel, the relay restarted under an
 open terminal, and a revoke closing it with 1008. Nothing user-visible yet:
 no route, no CLI, no UI, no daemon wiring — PR2 (computers in the daemon,
 the target's computer pairing) and PR3 (the app) follow.
+ADR-067 also records, from the parallel design in #677: a headless target
+allows a computer with `caprock machines allow <name>` over SSH (and needs
+`loginctl enable-linger` on Linux); PR3's install hook (*+ Add a machine*,
+and "This Mac is busy — run it on …" once, from machine-wide figures in
+`/v1/resources`); OQ-17–OQ-20, measured before any public claim, with the
+pitch "this Mac stays responsive", not "faster"; and linking is free with no
+machine limit, a hosted machine of ours parked.
 
 ### 2026-10-15 — unreleased: one changelog fragment per change
 
