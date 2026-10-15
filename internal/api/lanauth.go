@@ -349,6 +349,11 @@ var pairedDeviceRoutes = map[string]bool{
 	// The Pipeline's agent figures: what an hour of agent work costs and
 	// how many agents worked, per repository; read-only.
 	"GET /v1/pipeline/agents": true,
+	// The Pipeline's one answer — the repository's pull requests and its
+	// figures — which the phone's Releases section draws its bars from
+	// (04-ui.md § The phone home). Composed from the GitHub reads the daemon
+	// keeps, with the daemon's own token; nothing on it writes.
+	"GET /v1/sessions/{id}/ci/stats": true,
 	// The chat field's pickers: the session's slash commands (names and
 	// descriptions from its .claude folders) and its folder's file list,
 	// as a project's file list is a read.

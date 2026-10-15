@@ -179,11 +179,15 @@ describe('the app workspace', () => {
     expect(tab).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
     await cmd('w')
-    // An agent Caprock started: asked, with Close tab in focus.
+    // An agent Caprock started, still working: one sentence, one button in
+    // focus, a quiet way to stop it, and no checkbox (owner, 2026-10-15).
     const sheet = await screen.findByRole('dialog', { name: "Close an agent's tab" })
-    expect(within(sheet).getByText(/Close “Fix the login bug”\?/)).toBeInTheDocument()
+    expect(within(sheet).getByText(/^“Fix the login bug” is still working\. It will keep working in the background — you'll find it in the sidebar\. The conversation is saved\.$/)).toBeInTheDocument()
     const keep = within(sheet).getByRole('button', { name: 'Close tab' })
     expect(keep).toHaveFocus()
+    expect(within(sheet).getByRole('button', { name: 'Stop it instead' })).toBeInTheDocument()
+    expect(within(sheet).queryByRole('checkbox')).toBeNull()
+    expect(within(sheet).queryAllByRole('button').map((b) => b.textContent).filter((t) => t !== '')).toEqual(['Close tab', 'Stop it instead'])
     fireEvent.click(keep)
     await waitFor(() => expect(screen.queryByRole('tab')).not.toBeInTheDocument())
     // An agent's tab is not its process: closing it stops nothing.
@@ -192,10 +196,9 @@ describe('the app workspace', () => {
     expect(localStorage.getItem('caprock.app.agent-close')).toBeNull()
   })
 
-  // Owner, 2026-10-14 (a user, translated: "chats don't disappear when I
-  // close them"): closing can end an agent Caprock started, when asked to.
-  it('ends an agent Caprock started with its tab when you choose to, and remembers "Don\'t ask again"', async () => {
-    // Idle: no second question.
+  // Owner, 2026-10-15 (translated): "I never understand whether data is
+  // kept and which button to pick. It must be very simple — one button."
+  it('ends an idle agent Caprock started with its tab, no question, and says the conversation is saved', async () => {
     const was = sessions[0]!
     sessions[0] = { ...was, activity: { phrase: '', at: '', health: 'idle' } }
     try {
@@ -203,15 +206,40 @@ describe('the app workspace', () => {
       await openFromPalette('Fix the login bug')
       await screen.findByRole('tab', { name: /Fix the login bug/ })
       await cmd('w')
-      const sheet = await screen.findByRole('dialog', { name: "Close an agent's tab" })
-      fireEvent.click(within(sheet).getByRole('checkbox', { name: /Don.t ask again/ }))
-      fireEvent.click(within(sheet).getByRole('button', { name: 'Close and end the agent' }))
-      await waitFor(() => expect(spawned.signals).toEqual([['agent-1', 'kill']]))
+      // `end`: asked to stop first, so the transcript is written and --resume works.
+      await waitFor(() => expect(spawned.signals).toEqual([['agent-1', 'end']]))
+      expect(screen.queryByRole('dialog')).toBeNull()
       expect(screen.queryByRole('tab')).not.toBeInTheDocument()
-      expect(localStorage.getItem('caprock.app.agent-close')).toBe('end')
+      expect(await screen.findByText('Closed. The conversation is saved — reopen it from History or the sidebar.')).toBeInTheDocument()
+      expect(localStorage.getItem('caprock.app.agent-close')).toBeNull()
     } finally {
       sessions[0] = was
     }
+  })
+
+  it('stops an agent that is still working only from the quiet link, in one step', async () => {
+    await renderApp()
+    await openFromPalette('Fix the login bug')
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    await cmd('w')
+    const sheet = await screen.findByRole('dialog', { name: "Close an agent's tab" })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Stop it instead' }))
+    await waitFor(() => expect(spawned.signals).toEqual([['agent-1', 'end']]))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    expect(await screen.findByText('Closed. The conversation is saved — reopen it from History or the sidebar.')).toBeInTheDocument()
+  })
+
+  it('cancels on Escape: the tab stays and nothing is stopped', async () => {
+    await renderApp()
+    await openFromPalette('Fix the login bug')
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    await cmd('w')
+    await screen.findByRole('dialog', { name: "Close an agent's tab" })
+    await act(() => { fireEvent.keyDown(window, { key: 'Escape' }) })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toBeInTheDocument()
+    expect(spawned.signals).toEqual([])
   })
 
   it('asks once more before ending an agent that is still answering, and Keep leaves it running', async () => {
@@ -539,7 +567,7 @@ describe('the app workspace', () => {
   it('ends an idle quick chat with its tab, without asking', async () => {
     await startChat()
     await cmd('w')
-    await waitFor(() => expect(spawned.signals).toEqual([['chat-1', 'kill']]))
+    await waitFor(() => expect(spawned.signals).toEqual([['chat-1', 'end']]))
     expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
     expect(screen.queryByRole('dialog', { name: /Close a chat/ })).toBeNull()
   })
@@ -555,7 +583,7 @@ describe('the app workspace', () => {
     expect(ask).toHaveTextContent('Stop the chat? It is still answering.')
     expect(spawned.signals).toEqual([])
     fireEvent.click(within(ask).getByRole('button', { name: 'Stop and close' }))
-    await waitFor(() => expect(spawned.signals).toEqual([['chat-1', 'kill']]))
+    await waitFor(() => expect(spawned.signals).toEqual([['chat-1', 'end']]))
     expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
   })
 

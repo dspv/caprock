@@ -31,6 +31,8 @@ export interface BoardCard {
   stage_at?: number
   ci?: 'running' | 'fail' | 'pass' | 'none'
   why?: 'ci' | 'conflict' | 'changes_requested'
+  /** With `why` ci: the failed checks' names (or workflows'), at most three; absent from an older daemon. */
+  failed?: string[]
   review?: string
   release?: string
   spend: PRSpend
