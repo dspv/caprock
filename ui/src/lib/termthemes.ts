@@ -19,6 +19,10 @@
  *   cool for the two Colds, low-chroma for Dark Pastel, blue and green on sand
  *   for Light Side, red-leaning on near-black for Dark Side, every colour
  *   still distinct from the others.
+ * - **Sunlight** is ours: black on pure white for bright light, every one of
+ *   the 16 colours 5.3:1 or more on the ground and the eight normal ones 7:1
+ *   or more — the yellow a dark ochre, the cyan a deep teal, "white" and
+ *   bright white mid greys — so nothing washes out in glare.
  * - **Match app** is not a palette but a choice: the app palette's own
  *   terminal (`terminal` in lib/themes.ts) on that palette's panel colour, so
  *   the terminal reads as part of the window rather than a window on top of
@@ -188,6 +192,37 @@ export const DARK_SIDE_TERMINAL_THEME: TerminalColors = {
 }
 
 /**
+ * Sunlight's terminal: black on white, a deep blue cursor, and a 16-colour
+ * set that holds in glare — every colour 5.3:1 or more on the ground, the
+ * normal eight 7:1 or more (termthemes.test.ts measures them). On a light
+ * ground "white" and bright white are text colours too, so they are greys
+ * dark enough to read rather than near-white.
+ */
+export const SUNLIGHT_TERMINAL_THEME: TerminalColors = {
+  background: '#ffffff',
+  foreground: '#000000',
+  cursor: '#0038b8',
+  cursorAccent: '#ffffff',
+  selectionBackground: '#c2d3f5',
+  black: '#000000',
+  red: '#b3000f',
+  green: '#00661c',
+  yellow: '#755000',
+  blue: '#0038b8',
+  magenta: '#8f0f8f',
+  cyan: '#00616b',
+  white: '#545454',
+  brightBlack: '#3b3b3b',
+  brightRed: '#d10014',
+  brightGreen: '#007a24',
+  brightYellow: '#8a5d00',
+  brightBlue: '#1452d6',
+  brightMagenta: '#a3179f',
+  brightCyan: '#00737d',
+  brightWhite: '#6b6b6b',
+}
+
+/**
  * The contrast every terminal cell keeps against its own background, in every
  * palette (WCAG AA for body text): the ground, a colour a program paints
  * behind text, and the selection.
@@ -288,6 +323,7 @@ export const TERMINAL_THEMES: readonly TerminalTheme[] = [
       brightWhite: '#e5dfd1',
     },
   },
+  { id: 'sunlight', name: 'Sunlight', tone: 'light', colors: SUNLIGHT_TERMINAL_THEME },
   { id: 'dark-side', name: 'Dark Side', tone: 'dark', colors: DARK_SIDE_TERMINAL_THEME },
   {
     id: 'catppuccin-mocha',

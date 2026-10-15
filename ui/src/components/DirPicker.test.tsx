@@ -132,6 +132,40 @@ describe('DirPicker', () => {
     await waitFor(() => expect(browse).toHaveBeenCalledWith('/Users/x/dev/api'))
     browse.mockRestore()
   })
+
+  // A key pressed the moment a folder's entries appear is not lost. The
+  // selection used to be cleared by an effect on the folder, which React runs
+  // after the commit that draws the entries; on a loaded CI runner the test's
+  // ArrowDown landed in between and the late clear undid it (2026-10-14).
+  it('keeps a key pressed as soon as the folder is drawn', async () => {
+    data.recent = []
+    data.browse = {
+      dir: '/Users/x/dev',
+      parent: '/Users/x',
+      root: '/Users/x',
+      entries: [{ name: 'api', path: '/Users/x/dev/api', repo: true }],
+    }
+    const mod = await import('@/lib/api')
+    let land: (b: BrowseResponse) => void = () => {}
+    const browse = vi.spyOn(mod.api, 'browse').mockImplementation(() => new Promise((r) => { land = r }))
+    render(<DirPicker value="" onPick={() => {}} start="~/dev" />)
+    await screen.findByRole('listbox', { name: 'Folders' })
+    // The answer lands outside act, and the key follows the commit that
+    // draws it at once, as a findBy on a loaded runner can: the DOM is there,
+    // that commit's passive effects have not run yet.
+    const drawn = new Promise<void>((done) => {
+      const mo = new MutationObserver(() => {
+        if (screen.queryByRole('option', { name: /api/ })) { mo.disconnect(); done() }
+      })
+      mo.observe(document.body, { childList: true, subtree: true })
+    })
+    land(data.browse)
+    await drawn
+    expect(screen.getByRole('option', { name: /api/ })).toHaveAttribute('aria-selected', 'false')
+    fireEvent.keyDown(screen.getByRole('listbox', { name: 'Folders' }), { key: 'ArrowDown' })
+    await waitFor(() => expect(screen.getByRole('option', { name: /api/ })).toHaveAttribute('aria-selected', 'true'))
+    browse.mockRestore()
+  })
 })
 
 describe('crumbs', () => {

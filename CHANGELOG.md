@@ -22,6 +22,37 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   repository ships: the median gap between its releases already read
   (`release_gap_median_ms`, with three gaps or more), never a date for the
   next one.
+- **app:** a Sunlight theme for working in bright light. It is black text
+  on pure white with no faint greys: every text colour, the faintest
+  included, is 7:1 or more against its background, measured on every
+  surface. Text is one weight heavier, borders and hairlines are dark
+  enough to see in glare, and the sidebar is opaque. The status colours
+  and the accent are saturated and stay apart. Its terminal keeps all 16
+  ANSI colours at 5.3:1 or more on white (the normal eight 7:1), the
+  yellow and cyan that usually wash out included. Pick it under Light in
+  the theme picker or Settings → Appearance.
+
+### Changed
+
+- **brain:** Second Brain looks like what it is: a brain made of a graph.
+  Nodes and links in the side view of a brain, in the memory kinds'
+  colours, softly pulsing, with a new node dropping in now and then and
+  linking up (still with reduced motion; CSS only, nothing runs in the
+  background). *How it works* is big and short — *Your agents' memory*,
+  one line on what it does, three one-line steps, *Over time: your
+  personal Jarvis*, one line on privacy and one button; the defaults
+  (Haiku, 300k tokens a day, up to five memories) moved into a folded
+  *Details*. The empty sidebar banner leads with the same brain, *Give
+  your agents a memory*, *Start building* and *How it works*.
+
+### Fixed
+
+- **windows:** Caprock no longer flashes console windows that steal the
+  keyboard focus. The daemon ran without a console, so every git, gh or
+  `claude -p` it started opened a window of its own for a fraction of a
+  second, every few seconds, and typing in other windows came out ragged
+  (user report on Windows 10). Every child now starts with a hidden
+  console, and a test keeps it that way.
 
 ## [0.117.5] - 2026-10-15
 
@@ -76,6 +107,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** the theme picker opens whole, above everything. From the
+  sidebar's footer its palettes were cut off at the sidebar's edge and the
+  terminal drew over them; it now opens over the whole window, kept inside
+  it on every edge at any sidebar width and with the footer folded, and
+  scrolls in a window shorter than itself. Opening it puts the focus on the
+  palette in use; Esc, or tabbing past the last palette, closes it and gives
+  the focus back to the button.
+- **picker:** an arrow key pressed in the folder picker the moment a
+  folder's entries appear is no longer lost; the selection used to be
+  cleared just after it was made.
 - **app:** typing a name in New project's folder field now searches the
   folder it is in. `~/dev/cap` used to empty the list; now it lists the
   folders of `~/dev` holding *cap* — the ones starting with it first, the
@@ -89,6 +130,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   second, every few seconds, and typing in other windows came out ragged
   (user report on Windows 10). Every child now starts with a hidden
   console, and a test keeps it that way.
+
 - **mail:** adding an account can no longer sit on *Checking…* forever. A
   server that goes quiet while Mail connects or signs in — IMAP had no limit
   and SMTP waited five minutes per command — now ends the check within 30
