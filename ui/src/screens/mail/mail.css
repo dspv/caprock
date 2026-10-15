@@ -180,6 +180,8 @@
 .cm .sheet { background: var(--bg); border-radius: 12px; box-shadow: var(--shadow); width: min(600px, calc(100vw - 40px)); max-height: calc(100vh - 60px); overflow-y: auto; }
 .cm .sheet .setup { border: 0; box-shadow: none; }
 .cm .settings { padding: 0 0 22px; }
+.cm .field .keyrow { display: flex; gap: 6px; }
+.cm .field .keyrow input { flex: 1; min-width: 0; }
 .cm .settings > :not(.chead) { margin-left: 22px; margin-right: 22px; }
 .cm .settings h3 { font-size: 13px; margin: 22px 22px 8px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .cm .acctrow { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }

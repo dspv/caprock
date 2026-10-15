@@ -25,6 +25,7 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
   const [err, setErr] = useState('')
   const [summary, setSummary] = useState<string | null>(null)
   const [sumBusy, setSumBusy] = useState(false)
+  const [sumBy, setSumBy] = useState('')
   const [remote, setRemote] = useState<Set<number>>(new Set())
   const [moveOpen, setMoveOpen] = useState(false)
 
@@ -46,9 +47,12 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
   const summarize = async () => {
     setSumBusy(true)
     try {
-      setSummary((await api.summarize(row.m.id)).text)
+      const r = await api.summarize(row.m.id)
+      setSummary(r.text)
+      setSumBy(r.label ?? '')
     } catch (e) {
       setSummary('Could not summarise: ' + (e as Error).message)
+      setSumBy('')
     } finally {
       setSumBusy(false)
     }
@@ -89,7 +93,7 @@ export function Reader({ row, view, aiOn, settings, folders, onThread, onAct, on
         <h1 className="subj">{m0.subject || '(no subject)'}</h1>
         {summary && (
           <div className="summary">
-            <div className="sumhead"><Icon name="sparkle" size={14} /> Summary <span className="muted small">by your local model</span>
+            <div className="sumhead"><Icon name="sparkle" size={14} /> Summary {sumBy && <span className="muted small">by {sumBy}</span>}
               <button className="icon tiny" onClick={() => setSummary(null)}><Icon name="close" size={12} /></button></div>
             <div className="sumtext">{summary}</div>
           </div>

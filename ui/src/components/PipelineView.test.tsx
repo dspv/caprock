@@ -114,6 +114,46 @@ describe('the Pipeline page', () => {
     expect(document.querySelector('[data-prs-detail]')).toBeNull()
   })
 
+  // Owner, 2026-10-15, translated: "I want the figures in dynamics, like
+  // everywhere else in our app — the metric, plus a small chart, and
+  // above/below the average indicator".
+  it('draws each figure with a history as its last 14 days and today against them', async () => {
+    withBoard()
+    const pts = (v: (i: number) => number | undefined, extra: (i: number) => object = () => ({})) =>
+      Array.from({ length: 14 }, (_, i) => ({ day: day(i), value: v(i), n: v(i) === undefined ? 0 : 1, ...extra(i) }))
+    const st = h.stats as { board: { flow: Record<string, unknown> } }
+    st.board.flow = { ...FLOW, series: {
+      flight: pts(() => 2),
+      throughput: pts((i) => (i % 2 ? 1 : 0), (i) => ({ n: i % 2, by_now: i === 13 ? 0 : i % 2 })),
+      ci: pts((i) => (i === 13 ? 300_000 : 430_000)),
+      ttm: pts((i) => (i >= 12 ? 3_600_000 : undefined)),
+      lag: pts((i) => (i < 5 ? 3_600_000 : undefined)),
+      cost: pts(() => 0, () => ({ n: 0, by_now: 0 })),
+    } }
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    const word = (k: string) => document.querySelector(`[data-trend="${k}"] [data-compare]`)
+    // A shorter CI run than usual is better: green, and hovering says the basis.
+    expect(word('ci')).toHaveTextContent('below usual −30%')
+    expect(word('ci')).toHaveAttribute('data-tone', 'ok')
+    expect(word('ci')).toHaveAttribute('title', '5m 00s today · vs the median of the daily medians, last 14 days: 7m 10s, on the 13 days with a successful run')
+    expect(document.querySelector('[data-trend="ci"] [role="img"]')).toHaveAttribute('aria-label', 'CI median, last 14 days, today last')
+    // The open count is neither good nor bad.
+    expect(word('flight')).toHaveTextContent('usual')
+    expect(word('flight')).toHaveAttribute('data-tone', 'none')
+    // No merge yet today: fewer merges by this hour, which is worse.
+    expect(word('throughput')).toHaveTextContent('below usual')
+    expect(word('throughput')).toHaveAttribute('data-tone', 'warn')
+    // One earlier day with a merge: no comparison. No release today: said so.
+    expect(word('ttm')).toHaveTextContent('not enough history')
+    expect(word('lag')).toHaveTextContent('no release yet today')
+    // Needing a fix and ready have no history to draw.
+    expect(document.querySelector('[data-stat="fix"] [data-trend]')).toBeNull()
+    expect(document.querySelector('[data-stat="ready"] [data-trend]')).toBeNull()
+    // Each day says itself on hover.
+    expect([...document.querySelectorAll('[data-trend="ttm"] rect title')].map((t) => t.textContent).at(-1)).toBe('Today · 1h, median of 1 merge')
+  })
+
   it('opens a row in detail beside the list, its checks by runner and its log, and closes on Esc', async () => {
     connected()
     render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)

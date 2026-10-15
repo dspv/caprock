@@ -192,6 +192,25 @@ func windowStart(now time.Time, days int) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, now.Location()).AddDate(0, 0, -(days - 1))
 }
 
+// DayOf is which of the days days ending today (now's location) t falls
+// on, 0 the oldest; -1 outside the window or for a zero stamp. A day with a
+// clock change counts by the calendar.
+func DayOf(t int64, now time.Time, days int) int {
+	return dayIndex(t, windowStart(now, days), days)
+}
+
+// WindowDays names the days days ending today, oldest first, "2006-01-02"
+// in now's location, with each one's start (its local midnight).
+func WindowDays(now time.Time, days int) ([]string, []time.Time) {
+	start := windowStart(now, days)
+	names, starts := make([]string, days), make([]time.Time, days)
+	for i := range names {
+		starts[i] = start.AddDate(0, 0, i)
+		names[i] = starts[i].Format("2006-01-02")
+	}
+	return names, starts
+}
+
 // MergesPerDay counts the pull requests merged on each of the days days
 // ending today (now's location), oldest first.
 func MergesPerDay(prs []BranchPR, now time.Time, days int) []int {

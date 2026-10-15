@@ -628,6 +628,18 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	d.mail = mail.New(d.opt.DataDir, d.log)
 	defer d.mail.Close()
+	// Mail's assistant can ask the user's own claude, codex or gemini: the
+	// same binaries the spawn dialog finds, in the login shell's environment.
+	d.mail.SetAI(mail.AIDeps{
+		Binary: func(command string) string {
+			if command == agents.AgentClaude {
+				return d.mgr.ClaudeBinary()
+			}
+			return agents.FindBinary(command)
+		},
+		Env: func() []string { return userenv.Environ(d.log) },
+		Dir: filepath.Join(d.opt.DataDir, "mail-ai"),
+	})
 	// Second Brain's automatic extraction (ADR-063): started here, idle
 	// until the user turns it on.
 	d.brain = d.newBrain()

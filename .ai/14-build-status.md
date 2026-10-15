@@ -96,6 +96,7 @@ a local copy, the brief written and committed, with retry and clean-up that
 never deletes a GitHub repository. The op machinery is the clone's,
 exported (`StartOp`, `UpdateOp`, `FinishOp`). Tested against a fake `gh`
 (`testdata/fakegh`); the dialog followed (above).
+(`testdata/fakegh`); the screen in the app is the next PR.
 
 ### 2026-10-15 — 0.118.0: Work, Pipeline in the dashboard, Sunlight, and keys named after what they open
 

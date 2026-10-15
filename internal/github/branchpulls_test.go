@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"testing"
@@ -145,5 +146,19 @@ func TestNewlyMerged(t *testing.T) {
 	}
 	if got := newlyMerged(now, now); len(got) != 0 {
 		t.Fatalf("again: %v", got)
+	}
+}
+
+// A closed pull request carries GitHub's closing stamp from the list: when
+// it left the Pipeline's in-flight count.
+func TestOwnPullsReadClosedAt(t *testing.T) {
+	var list []apiPull
+	if err := json.Unmarshal([]byte(`[{"number":4,"state":"closed","created_at":"2026-10-10T09:00:00Z","closed_at":"2026-10-11T12:00:00Z","head":{"ref":"x","sha":"a"},"base":{"ref":"master"}},
+		{"number":5,"state":"open","created_at":"2026-10-10T09:00:00Z","closed_at":null,"head":{"ref":"y","sha":"b"},"base":{"ref":"master"}}]`), &list); err != nil {
+		t.Fatal(err)
+	}
+	got := ownPulls(Repo{Owner: "dspv", Name: "caprock"}, list)
+	if want := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC).UnixMilli(); got[0].pr.ClosedAt != want || got[1].pr.ClosedAt != 0 {
+		t.Errorf("closed_at = %d, %d", got[0].pr.ClosedAt, got[1].pr.ClosedAt)
 	}
 }
