@@ -306,6 +306,62 @@
 }
 
 /*
+ * Sunlight: for working in bright light (owner, 2026-10-15, translated: "a
+ * screen mode for when you sit in the sun"). Glare washes out everything that
+ * is not far from the ground, so there are no faint greys here: black ink on
+ * pure white, the faintest text 9.8:1 on the darkest surface, every status
+ * colour and the accent 7:1 or more as text on bg, panel and panel-2, dark
+ * hairlines, opaque chrome, and the text one weight heavier (below).
+ * theme.test.ts asserts the 7:1 floor for every text token.
+ */
+[data-theme="light"][data-tone="sun"] {
+  --color-bg: #ffffff;
+  --color-panel: #ffffff;
+  --color-panel-2: #f0f0f0;
+  --color-border: #767676;
+  --color-border-strong: #3b3b3b;
+
+  --color-fg: #000000;
+  --color-fg-muted: #1f1f1f;
+  --color-fg-faint: #3b3b3b;
+
+  --color-ok: #005c19;
+  --color-warn: #6b3d00;
+  --color-danger: #9e0010;
+  --color-info: #0038b8;
+  --color-merged: #6c1ab0;
+
+  --color-accent: #0038b8;
+
+  --color-selection: rgba(0, 56, 184, 0.22);
+  --color-accent-strong: #002a8c;
+  --color-premium: #3d16c4;
+  --color-premium-strong: #2a0e8f;
+
+  --color-term-bg: #1a1b1e;
+  --color-term-border: #33415a;
+
+  /* A shadow is lost in glare; the borders above do the work. */
+  --shadow-panel: 0 0 0 1px #767676;
+
+  /* One weight heavier, and no thinning: macOS's greyscale antialiasing
+   * draws dark-on-light text visibly lighter. The variable faces take 500. */
+  font-weight: 500;
+  -webkit-font-smoothing: auto;
+}
+/* The app's chrome: hairlines dark enough to see in the sun, and an opaque
+ * sidebar — a translucent one lets the desktop wash through it. */
+[data-app][data-tone="sun"] {
+  --app-sidebar-bg: var(--color-panel);
+  --app-hairline: #767676;
+  --app-hairline-strong: #3b3b3b;
+  --app-row-hover: rgba(0, 0, 0, 0.08);
+  --app-row-hover-strong: rgba(0, 0, 0, 0.14);
+  --app-row-active: rgba(0, 0, 0, 0.12);
+  --app-focus: var(--color-accent);
+}
+
+/*
  * The glow (Dark Side and Light Side, `glow` in lib/themes.ts): a soft neon
  * on three things only — the focused field, the primary (filled accent)
  * button and the top edge of the tab in front. Never on text: a dense

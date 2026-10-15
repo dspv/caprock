@@ -8,12 +8,12 @@ afterEach(() => {
 })
 
 describe('the theme picker', () => {
-  it('groups the eight palettes: Dark, then Light', () => {
+  it('groups the nine palettes: Dark, then Light', () => {
     localStorage.setItem('caprock-theme', 'dark')
     render(<ThemePicker />)
     const names = (g: string) => within(screen.getByRole('group', { name: g })).getAllByRole('radio').map((r) => r.textContent?.replace('✓', ''))
     expect(names('Dark')).toEqual(['Dark Pastel', 'Dark Warm', 'Dark Cold', 'Dark Side'])
-    expect(names('Light')).toEqual(['Light', 'Light Cold', 'Book', 'Light Side'])
+    expect(names('Light')).toEqual(['Light', 'Light Cold', 'Book', 'Light Side', 'Sunlight'])
   })
 
   it('tries a palette on hover, puts the kept one back on leave, and keeps one on click', () => {
