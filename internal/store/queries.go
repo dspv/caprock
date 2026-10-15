@@ -696,7 +696,7 @@ func MarkIdleSessions(ctx context.Context, q Querier, before int64) ([]string, e
 // One fact is still available for those: the disk. A watched session with no
 // pid whose transcript file is gone, or whose directory is gone, ends now
 // rather than a day from now (see goneFromDisk). Imported history (OpenCode,
-// Codex, DeepSeek) stays on the clock alone.
+// Codex, DeepSeek, Hermes) stays on the clock alone.
 func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, error) {
 	rows, err := q.QueryContext(ctx,
 		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude'), COALESCE(owned, 0),
@@ -777,9 +777,11 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 // so the rows describe work that happened, possibly months ago, with no process
 // to ask about. They are history, and history is never live. Without this a
 // hundred imported Codex transcripts would every one of them claim to be
-// running.
+// running. Hermes Agent's rows are read out of its database the same way
+// (ADR-069); Hermes records no process per session, so an observed one goes
+// by the clock — and by its own ended_at, which the importer applies.
 func ownsItsProcess(agent string) bool {
-	return agent != "opencode" && agent != "codex" && agent != "deepseek"
+	return agent != "opencode" && agent != "codex" && agent != "deepseek" && agent != "hermes"
 }
 
 // updateStatusByID sets one status on a known set of sessions, in chunks that
@@ -1628,6 +1630,11 @@ type Summary struct {
 	// kept outside user session/turn/cost totals. It is not an error and carries
 	// no invented dollar value when its vendor publishes none.
 	Background *BackgroundUsage `json:"background,omitempty"`
+	// Hermes is Hermes Agent's spend in the range, split by what kind of
+	// figure it is and by background work (ADR-069). Already inside CostUSD;
+	// omitted when the range has no Hermes turns or another agent is
+	// filtered for.
+	Hermes *HermesCost `json:"hermes,omitempty"`
 }
 
 // Unpriced is the volume that could not be priced, and which models caused it.
@@ -2185,6 +2192,13 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		return s, err
 	} else {
 		s.Background = b
+	}
+	if agent == "" || agent == "hermes" {
+		h, err := HermesSpend(ctx, q, fromMs)
+		if err != nil {
+			return s, err
+		}
+		s.Hermes = h
 	}
 	// Both levels of the projects roll-up come from ONE pass. Grouping by
 	// (project, first segment of repo_path) and summing the segments back up

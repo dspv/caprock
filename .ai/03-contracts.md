@@ -892,6 +892,15 @@ Extended thinking is never stored at all — only `type: "text"` blocks are read
 
 **OpenCode prompts are `turn.user` in Claude Code's shape** (`internal/opencode`, `PromptText`): key `oc-user:<message id>`, `ts` the message's `time.created`, payload `{prompt, cwd, sidechain}`. `prompt` is the user message's `text` parts — without those marked `synthetic` or `ignored`, and without any part that opens with `<system-reminder>` (context another program injected through OpenCode, which it does not mark) — trimmed, joined with a newline and clipped to the same 16000 runes. A message left with no text stores nothing. A child session's prompt is its parent agent's brief and carries `sidechain: true`. The first pass after a start inserts the prompts of sessions imported before they were read; the key makes every later pass a no-op. Measured on a copy of the owner's database (2026-10-01): 1,609 prompts (47 in child sessions), the pass 4.0 s, a later start 1.8–1.9 s, the database 2.9 MB larger.
 
+**Hermes Agent is read from its state database into the same shapes** (`internal/hermes`, [ADR-069](08-decisions.md), [24-hermes.md](24-hermes.md)). `<hermes home>/state.db` (`$HERMES_HOME`, else `~/.hermes`, `%LOCALAPPDATA%\hermes` on native Windows) is opened `mode=ro` with `busy_timeout(5000)` and one connection, never `immutable=1`, and polled every 5 s; columns are asked for through `pragma_table_info`, so one an older Hermes lacks reads as NULL. Events carry `source: "hermes"` and sessions `agent: "hermes"`, under Hermes's own session id (or, for a session Caprock started, the Caprock id it is linked to — `sessions.native_id`, by folder and the time Hermes's `YYYYMMDD_HHMMSS_<hex>` id carries, `sessionlink`'s match):
+- a `user` message → `turn.user`, key `hm-user:<message id>`, payload `{prompt, cwd, hermes_source, background?, sidechain?}`;
+- an `assistant` message → `turn.assistant`, key `hm-msg:<message id>`, `msg_id` `hermes/<message id>`, payload `{text, model, cwd, hermes_source, background?, sidechain?}`; Hermes's compression summaries (`_compressed_summary`) and `tool` results are not stored;
+- each call in its `tool_calls` → `tool.pre`, key `hm-tool:<message id>:<call id>`, the same `msg_id`, payload `{tool_name, tool_input, cwd, hermes_tool}`, with `terminal`/`read_file`/`write_file`/`patch`/`search_files`/`web_search`/`web_extract`/`delegate_task` named `Bash`/`Read`/`Write`/`Edit`/`Grep`/`WebSearch`/`WebFetch`/`Task` and a file tool's `path` stored as `file_path` (resolved against the session's `cwd` when relative);
+- **usage**: Hermes keeps tokens and cost on the session row only, so each pass stores `counters − SUM(what Caprock holds for that session and agent_id)`, each part clamped at zero, on the newest `turn.assistant` the pass inserts — or, with none, on a `turn.assistant` of its own, key `hm-usage:<hermes id>:<total tokens>:<api calls>:<cost in micro-USD>`, payload `{usage_only: true, …}`. Tokens map `input_tokens`/`output_tokens`/`cache_read_tokens`/`cache_write_tokens` straight (Hermes's input is fresh input); `reasoning_tokens` goes in the payload. The usage-carrying event's payload also has `cost_basis` (`actual`, `estimated`, `included`, `unknown`), `cost_source` and `provider`. `cost_usd` is Hermes's figure, never the table's: `actual_cost_usd` when Hermes says it is real (`cost_status = 'actual'` or `cost_source` `provider_cost_api`/`provider_generation_api`), else — for that same status — `estimated_cost_usd`; `estimated_cost_usd` for `estimated`; `0` for `included`/`billing_mode = 'subscription_included'`; NULL (unpriced) when Hermes has none;
+- **subagents**: a child whose `model_config._delegate_from` is its parent (or a child with no branch, reset or compression marker) is stored inside the main-thread session it descends from with `agent_id` = its own id and `sidechain: true`; a branch (`_branched_from`), a reset (`_reset_from`) and the continuation of a parent that ended on `compression` are sessions of their own;
+- **background**: `hermes_source` is the main thread's `source`; `background: true` when it is not one of Hermes's attended sources (`cli`, `tui`, `desktop`, `acp`);
+- **ended**: a main-thread session under Hermes's own id whose `ended_at` is set is marked `ended`.
+
 **DeepSeek Harness's injected context is not a prompt.** DSH writes the AGENTS.md/CLAUDE.md instructions (`source.kind: agent-instructions`) and its runtime-policy snapshot (`plugin`) as `user/message` records; only `source.kind: user` is stored as `turn.user` (a record with no `source` is kept). Rows imported before this are removed once, after the importer's first pass (`meta.deepseek_injected_removed`): each transcript is read again and a `turn.user` row is deleted only when its key `dsh:user:<seq>` names a record whose `source.kind` is set and is not `user` — never judged by its text; a session whose transcript is gone keeps its rows. A `turn.user` row added nothing to `session_stats` or `daily_stats`, so nothing moves there; `sessions.started_at`, `last_event_at` and `worked_at` are recomputed from the remaining events, in the same transaction, only where one equals a deleted row's `ts`. On a copy of the owner's database (2026-10-01) it deleted 5 of 22 DeepSeek prompts and changed no session time or total.
 
 **Codex writes `payload.text` too** (`source = codex`), under the same cap: the `output_text` of the assistant messages each sampling request produced, on that request's `turn.assistant`. Threads Codex imported from another agent store nothing at all, and subagent threads keep no text. Codex turns stored before this were given their text once from the rollouts still on disk (`meta.codex_text_backfilled`), rewriting only `payload.text` on the row whose key and timestamp match. See [19-codex.md § Prose](19-codex.md#prose).
@@ -1408,7 +1417,7 @@ The message is sent with `parse_mode: HTML`, every string from a session
 escaped (`&`, `<`, `>`). Its first line says whose it is: the agent's mark and
 name, the project and the session's name as Now shows it (`🟠 Claude Code ·
 caprock · Fix the cache test`; marks: Claude Code 🟠, Codex ⚪, OpenCode ⚫,
-Gemini CLI 🔵, DeepSeek Harness 🐋, Grok Build ⬛) ([ADR-047](08-decisions.md)).
+Gemini CLI 🔵, DeepSeek Harness 🐋, Grok Build ⬛, Hermes Agent 🪽) ([ADR-047](08-decisions.md)).
 The second is the status (`✅ Finished`, `⚠️ Stopped: <error>`, `⏳ Needs
 approval`, `❓ Needs your answer`); then the folder with home as `~` and the
 branch; for a dialog the tool and its command, file, URL or question (100
@@ -1693,7 +1702,10 @@ next read of any total is without it. `caprock sessions rm [ids…]
 [--cwd-prefix dir] [--yes]` calls it; without `--yes` it is a dry run.
 
 **`agent`** is `claude` (default), `codex`, `opencode`, `gemini`, `grok`
-(2026-10-10, [23-grok.md](23-grok.md)) or a custom agent, `custom:<id>`
+(2026-10-10, [23-grok.md](23-grok.md)), `hermes` (2026-10-15,
+[24-hermes.md](24-hermes.md): `hermes chat`, `-m`, `--yolo` for
+`bypassPermissions`, `-q` for the first message, `chat --resume <native id>`;
+`fork` is a 400) or a custom agent, `custom:<id>`
 (below); any other value is a 400. `permission_mode` is always in Claude Code's words and each
 agent's argv builder translates or drops it (`internal/agents/argv.go`; the
 per-agent flags are in [19-codex.md](19-codex.md) and
@@ -2211,13 +2223,17 @@ is sent anywhere by this call. Not open to paired devices.
 **`GET /v1/agents/models?agent=`** — the models an agent's own CLI lists. For
 `codex`: the `visibility: "list"` entries of `$CODEX_HOME/models_cache.json` in
 `priority` order, and `default` from the top-level `model` in `config.toml`.
-`claude`, `gemini`, `opencode` and `grok` answer an empty list; an unknown
+`claude`, `gemini`, `opencode`, `grok` and `hermes` answer an empty list; an unknown
 agent is a 400. No network I/O. Kept for older pages; the pickers read the
 catalog below.
 
 **`GET /v1/agents/catalog`** — every agent the pickers offer, installed or not
 ([ADR-046](08-decisions.md)), in their order: Claude Code, Codex, OpenCode,
-Gemini CLI, Grok, then the custom agents. A `CatalogEntry` is `{id, label,
+Gemini CLI, Grok, Hermes, then the custom agents. Hermes is `observed: true`
+and `typed_model: true`; when its `config.yaml` (under `$HERMES_HOME`, else
+`~/.hermes`) names no `model.default`, its `setup` is `no_provider` with the
+command `hermes model` — only whether the key is set is read, never its
+value ([ADR-069](08-decisions.md)). A `CatalogEntry` is `{id, label,
 installed, ready, default?, models: [{id, label}], typed_model?, observed,
 custom?, locked?, prompt, setup?: {reason, text, command?, docs?}}`:
 `installed` is the binary found (the rule under `/v1/status` below); `ready`
@@ -2375,8 +2391,10 @@ one's: Claude Code's under `<dir>/projects/`, Codex's under
 whose transcript path is under `profiles/<id>/` records `sessions.subscription
 = <id>`.
 
-**`/v1/status`** carries `codex_available`, `opencode_available` and
-`grok_available` beside `claude_available` and `gemini_available`: the binary
+**`/v1/status`** carries `hermes` — `{sessions, events, unpriced?, background?,
+last_poll_ms?}`, the Hermes Agent reader, absent while there is no Hermes
+database — and `codex_available`, `opencode_available`,
+`grok_available` and `hermes_available` beside `claude_available` and `gemini_available`: the binary
 found on the daemon's PATH, the login shell's (once resolved — never waited
 for), or the installers' directories (`~/.local/bin`, `~/bin`,
 `/opt/homebrew/bin`, `/usr/local/bin`, `~/.opencode/bin`, `~/.grok/bin`, and
@@ -4190,7 +4208,13 @@ Live frames gained `mail.*` events (router) in Phase 2.
 
 
 **`GET /v1/stats/summary` takes `?agent=`** — `claude`, `opencode`, `gemini`,
-`codex`, `deepseek`, or omitted for every agent. An unrecognised value is a **400**: returning every agent's spend
+`codex`, `deepseek`, `grok`, `hermes`, or omitted for every agent. With no filter or
+`hermes`, the summary carries **`hermes`** when the range has Hermes turns
+(`store.HermesCost`, [ADR-069](08-decisions.md)): `{total_usd, actual_usd,
+estimated_usd, included_turns?, unpriced_turns?, background_usd,
+sources?: [{source, cost_usd}]}` — Hermes's own figures by `cost_basis`, and
+the background part by `hermes_source`, largest first; all of it already
+inside `cost_usd`. An unrecognised value is a **400**: returning every agent's spend
 under a heading that names one is worse than an error, because nothing on the
 screen would say so. The filter is a subquery on `sessions` rather than a join,
 because `events` carries no agent of its own and a join would change the row
@@ -4248,7 +4272,7 @@ closed a session while its owner was at lunch. See
 
 Two exceptions, both deliberate:
 
-- **Agents Caprock only observes** (`opencode`) are judged by the clock alone.
+- **Agents Caprock only observes** (`opencode`, `codex`, `deepseek`, `hermes`; one Caprock started is judged by its process) are judged by the clock alone. A Hermes session also ends when Hermes writes its `ended_at`.
   Their rows are read out of another tool's database, arrive months old, and
   have no process of ours to ask about.
 - **Sessions with no pid** — written by an older shim, or read from a transcript
@@ -5029,7 +5053,7 @@ No DDL change was needed for either fix here, only honest use of the existing co
 ## Pricing table
 
 - Embedded JSON `pricing/pricing.json` (the spec's "ported from Caprock-python" — authored from the Anthropic pricing page in practice, [ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson)); overridable by a user file (`<data_dir>/pricing.json`); `pricing_version` recorded in `meta` so historical cost is never silently recomputed — the one exception is a turn a table version lists under `corrections` (below), which is recomputed openly and logged.
-- **Who prices what.** Four of the five sources are priced by this table; one is not. Claude Code, Gemini, Codex and **DeepSeek Harness** report tokens and no cost, so the table does the arithmetic. **OpenCode** reports its own cost, which is carried through unchanged — two different arithmetics over the same tokens would give one session two totals. The `source` on an event is what tells a reader which produced a figure. Codex is why the table carries OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6` family, read from developers.openai.com on 2026-09-06; `gpt-6-sol` and `gpt-6-luna`, read 2026-09-29; `gpt-6-astra` and `gpt-6.1-sol`, read 2026-09-30 — the gpt-6 >272K-token tier is not modelled, and no observed turn reached it). `cache_write_*` is `0` on the gpt-5 rows because OpenAI did not charge for writing its cache, which is "not charged" rather than "unknown". The gpt-6 model pages bill cache writes at 1.25x input, so those rows carry it — to no effect yet: Codex reports `cache_write_input_tokens` as 0 on every gpt-6 turn observed, so written tokens arrive as plain input and the gpt-6 rows under-report by up to a quarter of that unknown share. DeepSeek Harness names `deepseek-v4-pro`, already present from the OpenCode third-party rows; its `cache_write_*` is unused because DSH reports no cache-write split.
+- **Who prices what.** Four of the six sources are priced by this table; two are not. **Hermes Agent** prices its own calls and records whether a figure is the provider's or its estimate; Caprock carries it unchanged with that basis ([ADR-069](08-decisions.md)). Claude Code, Gemini, Codex and **DeepSeek Harness** report tokens and no cost, so the table does the arithmetic. **OpenCode** reports its own cost, which is carried through unchanged — two different arithmetics over the same tokens would give one session two totals. The `source` on an event is what tells a reader which produced a figure. Codex is why the table carries OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6` family, read from developers.openai.com on 2026-09-06; `gpt-6-sol` and `gpt-6-luna`, read 2026-09-29; `gpt-6-astra` and `gpt-6.1-sol`, read 2026-09-30 — the gpt-6 >272K-token tier is not modelled, and no observed turn reached it). `cache_write_*` is `0` on the gpt-5 rows because OpenAI did not charge for writing its cache, which is "not charged" rather than "unknown". The gpt-6 model pages bill cache writes at 1.25x input, so those rows carry it — to no effect yet: Codex reports `cache_write_input_tokens` as 0 on every gpt-6 turn observed, so written tokens arrive as plain input and the gpt-6 rows under-report by up to a quarter of that unknown share. DeepSeek Harness names `deepseek-v4-pro`, already present from the OpenCode third-party rows; its `cache_write_*` is unused because DSH reports no cache-write split.
 - **A turn whose model is not in the table is priced once the table has it.**
   It is stored with no cost and sits outside every total, counted as
   unpriced; adding the model's row fixed only the turns after it. On start

@@ -93,6 +93,11 @@ const (
 	// transcripts. Like Codex they are priced by our own table: DSH reports
 	// token counts but never a cost of its own.
 	SourceDeepseek Source = "deepseek"
+	// SourceHermes marks events read from Hermes Agent's state database.
+	// Like OpenCode they carry the agent's own cost — Hermes prices every
+	// call itself and records whether the figure is the provider's or its
+	// estimate — so the pricing table is never applied to them (ADR-069).
+	SourceHermes Source = "hermes"
 )
 
 // TokenDelta carries per-turn token usage (turn.assistant only).

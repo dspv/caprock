@@ -80,6 +80,7 @@ func startDaemon(t *testing.T, dataDir, root string) (string, context.CancelFunc
 			CodexDir: "off",
 			// Keep exact-count smoke isolated from real DeepSeek transcripts too.
 			DeepseekDir: "off",
+			HermesDB:    "off",
 			IdleAfter:   30 * time.Second,
 			OnReady:     func(u string) { ready <- u },
 		})

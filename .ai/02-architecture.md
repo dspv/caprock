@@ -31,11 +31,12 @@ Two data planes, mirroring what works in Munder Difflin, but in Go:
 
 **Why not Electron:** the only thing Electron buys is bundling Chromium. A Go daemon + browser tab gives the same UI with zero ABI pain, one `go build` per platform, and the option of a TUI later. Desktop wrapper (Tauri/Wails) is a packaging decision for later, not an architecture decision now ([ADR-003](08-decisions.md#adr-003--ui-stack-react--vite-embedded-in-the-go-binary-via-goembed)).
 
-## Five agents, each by its own route
+## Six agents, each by its own route
 
 Caprock reads [OpenCode](https://github.com/anomalyco/opencode),
-[Gemini CLI](https://github.com/google-gemini/gemini-cli), OpenAI Codex and
-DeepSeek Harness as well as Claude Code. Each arrives by a different route, and the asymmetry is the
+[Gemini CLI](https://github.com/google-gemini/gemini-cli), OpenAI Codex,
+DeepSeek Harness and [Hermes Agent](https://github.com/NousResearch/hermes-agent)
+as well as Claude Code. Each arrives by a different route, and the asymmetry is the
 point — each is read the way that agent already keeps its own records, rather
 than by asking it to keep ours:
 
@@ -58,8 +59,15 @@ than by asking it to keep ours:
   ([19-codex.md](19-codex.md)).
 - **DeepSeek Harness** is read the same way from its own transcripts
   ([20-deepseek.md](20-deepseek.md)).
+- **Hermes Agent** keeps one SQLite database (`<hermes home>/state.db`) with
+  per-session token counters and its own cost, opened read-only and polled
+  like OpenCode's. Its usage lives on the session row, not on messages, so the
+  importer records the difference between Hermes's counters and Caprock's on
+  each pass; Hermes's figure is carried across, never recomputed, and its
+  cron and gateway runs are marked background ([24-hermes.md](24-hermes.md),
+  [ADR-069](08-decisions.md)).
 
-All five land in the same `events` and `sessions` tables, distinguished by
+All six land in the same `events` and `sessions` tables, distinguished by
 `events.source` and `sessions.agent`. Everything downstream — loop detection,
 narration, work-kind classification, per-directory attribution — works on all of
 them without knowing there is more than one, because each ingester shapes its
@@ -72,9 +80,13 @@ are not, which is why
 `ownsItsProcess()` gives it a clock where the others get process liveness
 ([ADR-028](08-decisions.md)).
 
+Hermes Agent is both: Caprock reads every Hermes session, and starts one in a
+terminal tab when asked; an observed one goes by the clock, one it started by
+its process.
+
 Full detail, including what is not supported, is in
-[16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md) and
-[20-deepseek.md](20-deepseek.md).
+[16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md),
+[20-deepseek.md](20-deepseek.md) and [24-hermes.md](24-hermes.md).
 
 ## Components
 
@@ -229,6 +241,7 @@ This is where the incumbent bleeds users, so it is a hard requirement, not a nic
 - **Transcript JSONL** (`~/.claude/projects/…`). Gives the full message stream incl. per-turn token usage (input / output / cache read / cache write), model, text of assistant turns. Tailed by `ingest`. Latency: ~seconds. The observed on-disk shape (2026-08-18) is recorded in [03-contracts.md § Transcript JSONL](03-contracts.md#transcript-jsonl-observed-shape).
 - **Gemini telemetry** (`<data_dir>/gemini/<session_id>.otel.log`). Gemini CLI has no hooks Caprock can install and writes no transcript, but it writes OpenTelemetry, and `GEMINI_TELEMETRY_OUTFILE` makes it write to a file Caprock names — the counterpart of Claude Code's transcript. A spawned session gets telemetry switched on with prompts included (`GEMINI_TELEMETRY_LOG_PROMPTS=true`, ADR-027 as amended 2026-10-01); a tailer reads each file from a remembered offset and records `user_prompt` / `api_response` / `tool_call` as `turn.user` / `turn.assistant` / `tool.post`. Latency: ~seconds. Cache *writes* stay zero — Gemini reports reads and has no counterpart figure, and a column meaning "we do not know" is better empty ([ADR-027](08-decisions.md)).
 - **DeepSeek Harness transcripts** (`~/.dsh/sessions/<cwd>/<id>/session.v3.jsonl.zstd`). One append-only JSONL transcript per session, Zstandard-compressed, carrying the model, per-turn token usage (fresh input / cache read / output, reported separately), tool calls and prompts. Read by `internal/deepseek` the same way Codex's importer reads its rollouts — a poll that re-reads only changed files, keyed by the record's monotonic `seq`. Latency: poll cadence (5s), sessions are history rather than live. Cache *writes* stay zero — DSH reports reads and no write counterpart ([20-deepseek.md](20-deepseek.md)).
+- **Hermes Agent's state database** (`<hermes home>/state.db`: `$HERMES_HOME`, else `~/.hermes`, or `%LOCALAPPDATA%\hermes` on native Windows). SQLite in WAL mode; `sessions` carries cumulative tokens, Hermes's estimated and actual cost with their status and source, `source` (cli, cron, telegram…), `parent_session_id`, `cwd`, `git_branch`; `messages` carries the text and tool calls. Read by `internal/hermes`, `mode=ro`, every five seconds; see [24-hermes.md](24-hermes.md).
 - **PTY bytes.** Raw terminal for the detail view; also fallback signal when hooks aren't installed. Latency: real-time. Deliberately not parsed for figures: it is a picture of a redrawing TUI, and token counts guessed from rendered text would break on the agent's next release.
 
 Cost = token usage × pricing table (the spec says "ported from Caprock"; in practice the table is authored from the Anthropic pricing page and the cache-savings *formula* is what ports from Caprock-python — [ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson), [03-contracts.md § Pricing table](03-contracts.md#pricing-table)). Cache hit-rate math also ports from Caprock.
