@@ -4154,3 +4154,44 @@ ever; pushing the brief; creating a project from a phone.
 (GitLab, a plain git URL), which would need a path that is not gh; or
 operations lost to a daemon restart mid-way (`RISK-09`) turn out to matter
 in practice.
+
+## ADR-066 — When GitHub cannot be read, the daemon asks GitHub's status page whose fault it is; watching it is opt-in
+
+**Date:** 2026-10-15 · **Status:** accepted (owner, 2026-10-15)
+
+**Context.** A GitHub read that timed out said *Couldn't refresh: could not
+reach GitHub (api.github.com): context deadline exceeded. Check the
+connection; Caprock tries again later · showing data from 17:27*. The owner
+could not tell from it whether GitHub was down or his connection was, and
+asked for a shorter line that answers that, plus an optional informer while
+GitHub has an incident. Caprock already reads `www.githubstatus.com`'s
+public summary for Now's CI/CD section, under the GitHub integration.
+
+**Decision.**
+
+- **Same destination, same integration, one more moment.** After a GitHub
+  read fails on the network or with a 5xx (`isReachFailure`), the dashboard
+  asks `GET /v1/github/statuspage` and the daemon reads the status page —
+  the existing `github.StatusPage`: a plain GET of the public summary, no
+  token, no cookie, nothing about the user, kept five minutes, and nothing
+  while GitHub is not connected. A refused token, a spent rate limit or a
+  missing repository asks nothing: the status page cannot explain them.
+- **The summary, not `status.json`.** It carries the indicator and
+  description `status.json` has, plus the incident's name and link the line
+  shows, and it is already the one read and kept; a second URL would be a
+  second request for less.
+- **Watching is opt-in and the viewer's.** *Watch GitHub Status*, ticked in
+  that line, asks every five minutes while GitHub is connected and shows a
+  status-bar dot only while GitHub reports an incident. Off by default,
+  kept in the viewer's browser storage; the daemon's five-minute keep bounds
+  the outbound reads whatever the number of windows.
+- **Said where it is switched on** (rule 4, ADR-047): Settings → GitHub
+  says that Caprock also checks githubstatus.com when GitHub can't be
+  reached, and every five minutes with the tick; `docs/app.md` and
+  `03-contracts.md` § GitHub list it with the other destinations.
+
+**Rules out:** the browser calling githubstatus.com itself; asking it while
+GitHub is not connected; polling it without the tick.
+
+**Revisit if:** GitHub's status page moves or changes its API, or a user
+wants the watch to drive a notification rather than a dot.

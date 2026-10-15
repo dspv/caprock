@@ -7,6 +7,7 @@
 import { useMemo } from 'react'
 import { Choice, Section, Toggle } from './SettingsParts'
 import { useComposerEnabled } from '@/lib/composer'
+import { QuickRepliesSetting } from './QuickRepliesSetting'
 import {
   DEFAULT_PREFS,
   FONT_SIZE_RANGE,
@@ -65,11 +66,12 @@ export function TerminalSettings() {
         hint="For agents Caprock started: write a message in a box under the terminal, with the / and @ pickers and your saved prompts, and send it with Enter. While the agent works it waits in the queue. The terminal keeps working as it does now."
       />
       <p className="flex flex-wrap items-center gap-x-3 text-[12px] text-fg-muted">
-        Every open terminal changes as you choose. Saved in this browser only.
+        Every open terminal changes as you choose. The appearance and the composer are saved in this browser only.
         <button type="button" onClick={() => set(DEFAULT_PREFS)} className="text-fg-muted underline-offset-2 hover:text-fg hover:underline">
           Reset to the defaults
         </button>
       </p>
+      <QuickRepliesSetting />
     </Section>
   )
 }

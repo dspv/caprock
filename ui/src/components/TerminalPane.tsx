@@ -50,6 +50,10 @@
  *   session is an agent Caprock started: a box under the terminal, inside the
  *   pane. The tree has the same shape with it or without it, so switching it
  *   never remounts the terminal's host.
+ * - **Quick replies** (components/QuickReplies.tsx): a row of one-click
+ *   replies under the terminal of a session Caprock started, above the
+ *   composer when it is on; a sibling after the terminal's box, so it never
+ *   remounts the host.
  * - **Where you type** (lib/terminputbox): in a Claude Code session, the rows
  *   of its input box sit on a faint band, found again after each parsed
  *   write from the bottom rows alone; another agent or a shell gets none.
@@ -76,6 +80,7 @@ import { APP_UPDATE_EVENT } from '@/lib/appupdate'
 import { WEBGL_QUIET_MS } from './Terminal'
 import { NewPill } from './NewPill'
 import { Composer } from './Composer'
+import { QuickReplies } from './QuickReplies'
 import { TerminalFind, type TermSearch } from './TerminalFind'
 import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPrefs } from '@/lib/termprefs'
 import { searchColors, terminalTheme } from '@/lib/termthemes'
@@ -185,6 +190,7 @@ export function TerminalPane({
   onStatus,
   onExit,
   composer,
+  quickReplies = false,
   inputBox = false,
 }: {
   sessionId: string
@@ -200,6 +206,8 @@ export function TerminalPane({
    */
   onExit?: (code: number) => void
   composer?: PaneComposer
+  /** A session Caprock started: the quick replies under its terminal (rule 7; lib/quickReplies). */
+  quickReplies?: boolean
   /** A Claude Code session: its input box gets the faint band (lib/terminputbox). */
   inputBox?: boolean
 }) {
@@ -822,6 +830,7 @@ export function TerminalPane({
         <NewPill count={newLines} unit={newLines === 1 ? 'new line' : 'new lines'} onJump={() => api.current?.scrollToBottom()} />
       </div>
     </div>
+    {quickReplies && <QuickReplies sessionId={sessionId} className={composer ? 'pb-0' : ''} />}
     {composer && (
       <Composer
         sessionId={sessionId}

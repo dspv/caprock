@@ -239,6 +239,10 @@ type Config struct {
 	// plan windows to the daemon; "off" also removes Caprock's own statusLine entry from Claude Code's
 	// settings, and choosing again puts it back. Written only once chosen.
 	StatuslineMode string `json:"statusline_mode,omitempty"`
+	// QuickReplies are the one-click replies under a session Caprock started
+	// (quickreply.go). Absent means DefaultQuickReplies; an empty list means
+	// the user removed every one. Written only once changed.
+	QuickReplies *[]QuickReply `json:"quick_replies,omitempty"`
 	// AppUpdate is what the desktop app does when the release check finds a
 	// newer version (ADR-042, amended 2026-10-15): "ask" shows the update
 	// card, "auto" downloads the signed bundle in the background and installs

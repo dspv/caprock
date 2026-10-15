@@ -830,6 +830,14 @@ the box tells you to answer in the terminal. It is off by default, and with
 it off nothing about the terminal changes; the box's ⋯ menu turns it off
 again. Sessions started in another terminal never get one.
 
+**Quick replies.** Under the terminal of every agent Caprock started, and
+above the chat's field, a row of small buttons sends a short reply in one
+click: *Continue*, *Shorter*, *Explain*, *Run tests*, *Commit*. A reply is
+sent the way the composer sends — at once when the agent is at its prompt,
+after its turn otherwise. Change the list in Settings → Terminal → *Quick
+replies* (add, remove, reorder, rename); remove them all and the row is gone.
+Sessions started in another terminal never get the row.
+
 The interface size lives in Settings → Appearance (100, 110, 125 or 140%),
 and the app opens at 110%. It zooms the whole window natively, terminal
 included, so text stays sharp and clicks land where they should. In a
@@ -1009,7 +1017,9 @@ phone. Nothing is sent to GitHub until you connect. Besides
 in the session deck, the job's log is downloaded from the signed address
 GitHub points to on its log storage; while Home's CI/CD section is open, the
 daemon reads `www.githubstatus.com`'s public status at most every five
-minutes; and the Pipeline and the CI/CD section show pull request
+minutes; when GitHub can't be reached, it reads the same status page to say
+whether GitHub or your connection is at fault, and every five minutes if you
+tick *Watch GitHub Status* in that line; and the Pipeline and the CI/CD section show pull request
 authors' pictures from `avatars.githubusercontent.com`, loaded by the page
 with no referrer.
 

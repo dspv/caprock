@@ -32,6 +32,7 @@ import { Prose } from './Prose'
 import { TerminalKeys } from './TerminalKeys'
 import { ChevronIcon } from './AppIcons'
 import { touchScreen } from '@/lib/phone'
+import { QuickReplies } from './QuickReplies'
 
 /** Events fetched when the view opens, and per page back. */
 export const CHAT_PAGE_EVENTS = 300
@@ -385,6 +386,8 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
       {showInput && (
         <div className="shrink-0">
           {sendError && <div role="alert" className="px-3 pt-1.5 text-[12px] text-danger">{sendError}</div>}
+          {/* One click sends a reply (lib/quickReplies.ts); only while it can be typed into (rule 7). */}
+          {canType && <QuickReplies sessionId={sessionId} onSend={submitText} className="px-3" />}
           <TerminalKeys send={send} attach={attachPhotos} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={phone} />
         </div>
       )}

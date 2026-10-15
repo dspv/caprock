@@ -97,6 +97,9 @@ type Deps struct {
 	// nil ⇒ 501.
 	Resources   func(ctx context.Context) any
 	ReapOrphans func(ctx context.Context) (any, error)
+	// ResourceHistory returns the meter's kept samples after a unix-ms
+	// time for GET /v1/resources/history. nil ⇒ 501.
+	ResourceHistory func(sinceMs int64) any
 	// Footprint returns what Caprock costs this machine for GET
 	// /v1/footprint; orphans is ?orphans=1, which takes the orphan list now.
 	// StopOrphans stops processes from that list for POST
@@ -363,6 +366,10 @@ type Settings struct {
 	// plan windows; "off" removes Caprock's own statusLine entry from
 	// Claude Code's settings (never the user's own).
 	StatuslineMode string `json:"statusline_mode"`
+	// QuickReplies are the one-click replies under a session Caprock
+	// started (config.QuickReply). GET returns the list in use, the defaults
+	// until changed; PUT replaces the whole list (config.NormalizeQuickReplies).
+	QuickReplies []config.QuickReply `json:"quick_replies"`
 	// AppUpdate is what the desktop app does when a newer release is found:
 	// one of config.AppUpdateModes. GET returns the effective mode, "ask"
 	// when never chosen.
@@ -613,6 +620,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/status", s.handleStatus)
 	m.HandleFunc("GET /v1/storage", s.handleStorage)
 	m.HandleFunc("GET /v1/resources", s.handleResources)
+	m.HandleFunc("GET /v1/resources/history", s.handleResourceHistory)
 	m.HandleFunc("POST /v1/resources/reap", s.handleReapOrphans)
 	m.HandleFunc("GET /v1/footprint", s.handleFootprint)
 	m.HandleFunc("POST /v1/footprint/orphans/stop", s.handleStopOrphans)
@@ -671,6 +679,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/team-signal", s.handleTeamSignal)
 	m.HandleFunc("GET /v1/repos/activity", s.handleReposActivity)
 	m.HandleFunc("GET /v1/repos/ci", s.handleReposCI)
+	m.HandleFunc("GET /v1/repos/remotes", s.handleReposRemotes)
 	m.HandleFunc("POST /v1/projects", s.handleAddProject)
 	m.HandleFunc("GET /v1/projects/ops", s.handleProjectOps)
 	// New project from a template (ADR-065, templates.go); the machine's only.
@@ -724,6 +733,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/github/repos", s.handleGitHubRepos)
 	m.HandleFunc("GET /v1/github/prs", s.handleGitHubPRs)
 	m.HandleFunc("GET /v1/github/actions-usage", s.handleGitHubActionsUsage)
+	m.HandleFunc("GET /v1/github/statuspage", s.handleGitHubStatusPage)
 	m.HandleFunc("GET /v1/projects/{id}/github", s.handleWorktreeGitHub)
 	m.HandleFunc("POST /v1/projects/{id}/github/refresh", s.handleWorktreeGitHubRefresh)
 	m.HandleFunc("GET /v1/projects/{id}/github/items", s.handleGitHubItems)
@@ -1454,7 +1464,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		KeepAwake       *string  `json:"keep_awake"`
 		WorktreeCleanup *string  `json:"worktree_cleanup"`
 		StatuslineMode  *string  `json:"statusline_mode"`
-		AppUpdate       *string  `json:"app_update"`
+		// The whole list, replaced; absent or null leaves it as it is.
+		QuickReplies *[]config.QuickReply `json:"quick_replies"`
+		AppUpdate    *string              `json:"app_update"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
@@ -1472,11 +1484,20 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		// prompts not named keep their answer.
 		Prompts map[string]int64 `json:"prompts"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
+	// 16 KiB: the quick replies are the largest field, ten of 300 bytes.
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
 		return
 	}
 	in := s.d.Settings.Get()
+	if patch.QuickReplies != nil {
+		q, err := config.NormalizeQuickReplies(*patch.QuickReplies)
+		if err != nil {
+			s.failCode(w, http.StatusBadRequest, err)
+			return
+		}
+		in.QuickReplies = q
+	}
 	if patch.UpdateChecks != nil {
 		in.UpdateChecks = *patch.UpdateChecks
 	}

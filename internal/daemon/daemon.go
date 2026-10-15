@@ -660,12 +660,13 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, PhoneLink: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, WindowStop: d.windowStopStatus,
-		Resources:   func(ctx context.Context) any { return d.resources(ctx) },
-		Footprint:   func(ctx context.Context, orphans bool) any { return d.footprint(ctx, orphans) },
-		StopOrphans: func(ctx context.Context, t []api.OrphanTarget) any { return d.stopOrphans(ctx, t) },
-		KeepAwake:   d.keepAwakeStatus,
-		UpdateBusy:  d.workingSessions,
-		ReapOrphans: func(ctx context.Context) (any, error) { return d.reapOrphans(ctx, true) },
+		Resources:       func(ctx context.Context) any { return d.resources(ctx) },
+		ResourceHistory: func(since int64) any { return d.resourceHistory(since) },
+		Footprint:       func(ctx context.Context, orphans bool) any { return d.footprint(ctx, orphans) },
+		StopOrphans:     func(ctx context.Context, t []api.OrphanTarget) any { return d.stopOrphans(ctx, t) },
+		KeepAwake:       d.keepAwakeStatus,
+		UpdateBusy:      d.workingSessions,
+		ReapOrphans:     func(ctx context.Context) (any, error) { return d.reapOrphans(ctx, true) },
 		RateLimitsRecorded: func(ctx context.Context) {
 			if d.winStop != nil {
 				d.winStop.Check(ctx)
@@ -1596,6 +1597,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		KeepAwake:        keepawake.Normalize(c.KeepAwake),
 		WorktreeCleanup:  projects.NormalizeCleanup(c.WorktreeCleanup),
 		StatuslineMode:   config.NormalizeStatusline(c.StatuslineMode),
+		QuickReplies:     config.EffectiveQuickReplies(c.QuickReplies),
 		AppUpdate:        config.NormalizeAppUpdate(c.AppUpdate),
 	}
 }
@@ -1667,6 +1669,13 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.NotifyApproval = &notifyApproval
 	a.d.opt.Config.NotifyFinished = &notifyFinished
 	a.d.opt.Config.Prompts = maps.Clone(in.Prompts)
+	// The quick replies: stored only when they differ from the list in use,
+	// so an install that never changed them keeps the defaults as they
+	// change, rather than having them written down by an unrelated save.
+	if in.QuickReplies != nil && !slices.Equal(in.QuickReplies, config.EffectiveQuickReplies(a.d.opt.Config.QuickReplies)) {
+		q := slices.Clone(in.QuickReplies)
+		a.d.opt.Config.QuickReplies = &q
+	}
 	// Stored only when it changes, so an install that never chose keeps
 	// following the default rather than having it written down by the next
 	// unrelated save (GET returns the effective mode, and a screen writes
