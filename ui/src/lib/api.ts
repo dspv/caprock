@@ -1,6 +1,7 @@
 // Typed client for the daemon API (.ai/03-contracts.md § HTTP API). snake_case
 // on the wire, kept as-is in the types so the contract is visible in the code.
 import type { ReapResult, ResourceReport } from './resources'
+import type { ResourceHistory } from './resourceHistory'
 import type { Footprint, OrphanStopResult, OrphanTarget } from './footprint'
 import type { PullRequest } from './github'
 import type { Usual } from './usual'
@@ -607,6 +608,21 @@ export interface RepoActivity {
     ci?: { runs: number; red: number; workflow?: string; median_ms?: number }
     release?: { tag?: string; state: string; at?: number }
   }
+}
+
+/** One folder asked of `GET /v1/repos/remotes`. */
+export interface RepoRemote {
+  dir: string
+  /** The repository's top level; absent when the folder is not in a git repository. */
+  root?: string
+  /** owner/name on GitHub; absent without a GitHub remote. */
+  repo?: string
+  /** A folder macOS guards (Documents, Downloads…): never read, so not known either way. */
+  guarded?: boolean
+}
+
+export interface RepoRemotes {
+  repos: RepoRemote[]
 }
 
 export interface ReposActivity {
@@ -1868,6 +1884,8 @@ export const api = {
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */
   /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */
   reposActivity: () => get<ReposActivity>('/v1/repos/activity'),
+  /** Which folders are git repositories with a GitHub remote (the Pipeline's picker). */
+  repoRemotes: (dirs: readonly string[]) => get<RepoRemotes>(`/v1/repos/remotes?${dirs.map((d) => `dir=${encodeURIComponent(d)}`).join('&')}`),
   /** The Now screen's CI/CD section (.ai/04-ui.md § CI/CD on Now). */
   reposCI: (q: { older?: boolean; hide?: readonly string[] } = {}) => {
     const p = new URLSearchParams()
@@ -1974,6 +1992,8 @@ export const api = {
   storage: () => get<StorageReport>('/v1/storage'),
   /** What each live session's process tree and Caprock itself cost (lib/resources.ts). */
   resources: () => get<ResourceReport>('/v1/resources'),
+  /** The meter's kept samples after `since` (unix ms), as series: the status bar's popover (lib/resourceHistory.ts). */
+  resourceHistory: (since = 0) => get<ResourceHistory>(`/v1/resources/history${since > 0 ? `?since=${since}` : ''}`),
   /** Stop the orphaned pty-hosts nothing runs in. Machine only. */
   reapOrphans: () => post<ReapResult>('/v1/resources/reap', {}),
   /**

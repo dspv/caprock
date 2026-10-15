@@ -297,6 +297,7 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/status":                          true,
 	"GET /v1/storage":                         true, // sizes only; the data dir is already in /v1/status
 	"GET /v1/resources":                       true, // CPU and memory of the session trees and of Caprock; the reap is machine-only
+	"GET /v1/resources/history":               true, // the meter's last hour, the same figures over time
 	"GET /v1/footprint":                       true, // what Caprock costs this machine; a read, like /v1/resources
 	"GET /v1/update":                          true,
 	"GET /v1/settings":                        true, // without the licence key; see handleGetSettings
@@ -349,6 +350,8 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/repos/activity": true,
 	// Now's CI/CD section: the kept GitHub reads the PRs & CI tab makes.
 	"GET /v1/repos/ci": true,
+	// The Pipeline's repository picker: which folders are on GitHub, from git.
+	"GET /v1/repos/remotes": true,
 	// A multi-repo project's repositories with their branches (ADR-055).
 	"GET /v1/projects/{id}/repos": true,
 
