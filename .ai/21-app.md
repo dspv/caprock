@@ -1558,7 +1558,9 @@ and the points below say where the build settled what this plan left open.
   offset — a slow client costs itself a repaint and costs no other client
   anything. A browser cannot stop reading a WebSocket, so the client closes
   it while more than 1 MiB is waiting for xterm.js to parse, and reconnects
-  with `since` below 256 KiB (xterm.js's write callbacks).
+  with `since` below 256 KiB (xterm.js's write callbacks), or after 15 s
+  with no write callback at all: a pause must not outlive the callbacks it
+  waits for.
 - **Hidden tabs.** A tab not visible for 30 seconds closes its socket; showing
   it reconnects with `since`. Waiting and permission state come from
   `/v1/live`, never from the terminal socket, so a hidden tab still badges.
@@ -1970,8 +1972,12 @@ connection and the work survive a bad network.
 - **Terminal resume** over protocol v2, with exactly-once input.
 - **Reconnect forever.** Exponential backoff with full jitter, from 0.5 s to a
   15 s cap, never giving up; an immediate attempt on `visibilitychange`,
-  `online` and network type change; the ping and 25-second dead deadline of
-  protocol v2 on `/v1/live` as well.
+  `online`, window focus and network type change; the ping and 25-second
+  dead deadline of protocol v2 on `/v1/live` as well. A client between
+  sockets is watched every second too, so a thrown `WebSocket` constructor or
+  a lost timer cannot end the retries; after 3 failed tries or 10 s down the
+  state offers **Reconnect now** (2026-10-15, after Vova's terminals all
+  stayed at *Reconnecting…* past a Wi-Fi drop until each tab was closed).
   Built in WP-13 (2026-10-06): `ui/src/lib/reconnect.ts`, shared by
   `/v1/live` and every terminal; the rules, including the 2-second probe of a
   socket that looks open after a wake and the 10-second limit on an attempt

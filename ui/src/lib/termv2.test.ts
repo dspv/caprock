@@ -4,7 +4,7 @@
  * resent until acknowledged, liveness, backpressure and reconnecting forever.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CONNECT_TIMEOUT_MS, PROBE_MS } from './reconnect'
+import { CONNECT_TIMEOUT_MS, LIVENESS_CHECK_MS, PROBE_MS, RETRY_OVERDUE_MS, STALL_MS, offersManualRetry } from './reconnect'
 import {
   BACKOFF_MAX_MS, BACKOFF_MIN_MS, DEAD_MS, FOCUS_DEBOUNCE_MS, HIGH_WATER, OFFLINE_QUEUE_BYTES, TERM_V2_PROTOCOL,
   TermClient, backoff, type TermState,
@@ -257,7 +257,7 @@ describe('TermClient (protocol v2)', () => {
     let off = 0
     while (off <= HIGH_WATER) { s1.bytes(off, chunk); off += chunk.length }
     expect(s1.readyState).toBe(FakeSocket.CLOSED)
-    vi.advanceTimersByTime(60_000)
+    vi.advanceTimersByTime(STALL_MS - 1_000)
     expect(FakeSocket.all).toHaveLength(1) // not before the terminal catches up
     pendingDone.forEach((d) => d())
     expect(FakeSocket.all).toHaveLength(2)
@@ -601,5 +601,175 @@ describe('TermClient — claiming the PTY (focus)', () => {
     s1.accept('')
     t.c.blur()
     expect(texts(s1)).toEqual([])
+  })
+})
+
+// Vova, 2026-10-15: after a Wi-Fi drop every tab hung at "Reconnecting…"
+// and nothing he typed went anywhere until the tab was closed. Each case
+// below is a way the client could stop trying for good; none may.
+describe('TermClient — never stops trying (the Wi-Fi drop)', () => {
+  beforeEach(() => {
+    FakeSocket.all = []
+    vi.useFakeTimers()
+    vi.stubGlobal('WebSocket', FakeSocket)
+  })
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+
+  it('a half-open socket — open, silent, no close event — is replaced within DEAD_MS and input goes through', () => {
+    const t = mount()
+    const s1 = last()
+    s1.accept()
+    s1.text({ hello: { v: 2, offset: 5, reset: true, ack: 0 } })
+    s1.bytes(5, 'ready')
+    expect(t.c.state).toBe('live')
+    // The network goes; the browser still says OPEN and never fires close.
+    t.c.send('ls\r')
+    vi.advanceTimersByTime(DEAD_MS)
+    expect(FakeSocket.all.length).toBeGreaterThan(1)
+    expect(t.states).toContain('reconnecting')
+    vi.advanceTimersByTime(30_000)
+    const s2 = last()
+    expect(s2.query.get('since')).toBe('5')
+    s2.accept()
+    s2.text({ hello: { v: 2, offset: 5, reset: false, ack: 0 } })
+    expect(t.c.state).toBe('live')
+    // What was typed into the dead socket is sent again on the new one.
+    expect(s2.inputs().map((i) => i.text)).toEqual(['ls\r'])
+    t.c.send('pwd\r')
+    expect(s2.inputs().map((i) => i.text)).toEqual(['ls\r', 'pwd\r'])
+  })
+
+  it('a WebSocket constructor that throws is retried, not the end of the client', () => {
+    const t = mount()
+    last().drop()
+    // The browser refuses to start sockets for a while (a network stack
+    // being replaced under it).
+    const Real = FakeSocket
+    let refusing = true
+    vi.stubGlobal('WebSocket', class extends Real {
+      constructor(url: string, p: string[]) {
+        if (refusing) throw new DOMException('refused', 'SecurityError')
+        super(url, p)
+      }
+    })
+    expect(() => vi.advanceTimersByTime(20_000)).not.toThrow()
+    expect(t.c.state).toBe('reconnecting')
+    expect(t.c.link.attempt).toBeGreaterThan(2)
+    refusing = false
+    const before = FakeSocket.all.length
+    vi.advanceTimersByTime(t.c.link.nextAt! - Date.now())
+    expect(FakeSocket.all).toHaveLength(before + 1)
+    last().accept()
+    last().text({ hello: { v: 2, offset: 0, reset: true, ack: 0 } })
+    expect(t.c.state).toBe('live')
+  })
+
+  it('a close the browser never reports is caught by the watchdog', () => {
+    const t = mount()
+    const s1 = last()
+    s1.accept()
+    s1.text({ hello: { v: 2, offset: 0, reset: true, ack: 0 } })
+    // The socket dies; its close event is lost (no onclose call at all),
+    // and the daemon's pings stop.
+    s1.readyState = FakeSocket.CLOSED
+    vi.advanceTimersByTime(DEAD_MS + LIVENESS_CHECK_MS)
+    expect(t.c.state).toBe('reconnecting')
+    vi.advanceTimersByTime(20_000)
+    expect(FakeSocket.all.length).toBeGreaterThan(1)
+  })
+
+  it('a retry timer that never fires is noticed and the attempt made anyway', () => {
+    const t = mount()
+    const s1 = last()
+    s1.accept()
+    s1.text({ hello: { v: 2, offset: 0, reset: true, ack: 0 } })
+    // The page loses the one timer the retry was waiting on.
+    const realSetTimeout = globalThis.setTimeout
+    let lost = 0
+    vi.stubGlobal('setTimeout', ((_fn: () => void, ms?: number) => { lost++; return realSetTimeout(() => {}, ms ?? 0) }) as typeof setTimeout)
+    s1.drop()
+    vi.unstubAllGlobals()
+    vi.stubGlobal('WebSocket', FakeSocket)
+    expect(lost).toBe(1)
+    expect(FakeSocket.all).toHaveLength(1)
+    vi.advanceTimersByTime(t.c.link.nextAt! - Date.now() + RETRY_OVERDUE_MS + 2 * LIVENESS_CHECK_MS)
+    expect(FakeSocket.all).toHaveLength(2)
+  })
+
+  it('a pending attempt that never opens or fails is abandoned for a new one, forever', () => {
+    mount()
+    // Every attempt hangs in CONNECTING (an SYN the network lost).
+    vi.advanceTimersByTime(5 * 60_000)
+    expect(FakeSocket.all.length).toBeGreaterThan(10)
+    // Each old attempt was closed; only the newest is still trying.
+    expect(FakeSocket.all.slice(0, -1).every((s) => s.readyState === FakeSocket.CLOSED)).toBe(true)
+  })
+
+  it('the online event retries at once instead of waiting out a 15 s backoff', () => {
+    const t = mount()
+    for (let i = 0; i < 8; i++) { last().drop(); vi.advanceTimersByTime(t.c.link.nextAt! - Date.now()) }
+    last().drop()
+    expect(t.c.link.nextAt! - Date.now()).toBeGreaterThan(400)
+    const before = FakeSocket.all.length
+    // TerminalPane and Terminal call wake() on online, focus, visibility.
+    t.c.wake()
+    expect(FakeSocket.all).toHaveLength(before + 1)
+  })
+
+  it('a flow-control pause whose parse callbacks never come resumes after STALL_MS', () => {
+    const t = mount({ write: () => { /* the terminal never reports parsing it */ } })
+    const s1 = last()
+    s1.accept()
+    s1.text({ hello: { v: 2, offset: 0, reset: true, ack: 0 } })
+    s1.bytes(0, '')
+    const chunk = 'x'.repeat(64 * 1024)
+    let off = 0
+    while (off <= HIGH_WATER) { s1.bytes(off, chunk); off += chunk.length }
+    expect(s1.readyState).toBe(FakeSocket.CLOSED)
+    expect(t.c.state).toBe('catching-up')
+    // A wake while paused does not open a socket, but cannot stop the watchdog either.
+    t.c.wake()
+    expect(FakeSocket.all).toHaveLength(1)
+    vi.advanceTimersByTime(STALL_MS + LIVENESS_CHECK_MS)
+    expect(FakeSocket.all).toHaveLength(2)
+    expect(last().query.get('since')).toBe(String(off))
+  })
+
+  it('Reconnect now opens a socket at once, from the offset, even for a let-go tab', () => {
+    const t = mount()
+    const s1 = last()
+    s1.accept()
+    s1.text({ hello: { v: 2, offset: 3, reset: true, ack: 0 } })
+    s1.bytes(3, 'abc')
+    t.c.suspend()
+    expect(FakeSocket.all).toHaveLength(1)
+    t.c.reconnectNow()
+    expect(FakeSocket.all).toHaveLength(2)
+    expect(last().query.get('since')).toBe('3')
+    // And in the middle of a backoff.
+    last().drop()
+    const before = FakeSocket.all.length
+    t.c.reconnectNow()
+    expect(FakeSocket.all).toHaveLength(before + 1)
+  })
+
+  it('offers the button only once the retries have failed a few times or for a while', () => {
+    const now = 1_000_000
+    expect(offersManualRetry({ phase: 'reconnecting', attempt: 1, downSince: now - 2_000 }, now)).toBe(false)
+    expect(offersManualRetry({ phase: 'reconnecting', attempt: 3, downSince: now - 2_000 }, now)).toBe(true)
+    expect(offersManualRetry({ phase: 'reconnecting', attempt: 1, downSince: now - 10_000 }, now)).toBe(true)
+    expect(offersManualRetry({ phase: 'live', attempt: 9, downSince: null }, now)).toBe(false)
+    expect(offersManualRetry({ phase: 'ended', attempt: 9, downSince: now - 60_000 }, now)).toBe(false)
+  })
+
+  it('stops watching once ended or disposed: no timer keeps a closed tab alive', () => {
+    const t = mount()
+    last().accept()
+    last().drop(1000)
+    expect(t.c.state).toBe('ended')
+    expect(vi.getTimerCount()).toBe(0)
+    const u = mount()
+    u.c.dispose()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

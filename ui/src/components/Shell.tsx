@@ -154,7 +154,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           <FeedbackButton screen={screenName(route)} />
           {/* Live only with a round trip in the last 25 s; otherwise what is
             * being done about it (components/ConnectionState.tsx). */}
-          {!app && <ConnectionState link={link} heardAt={liveStore.heardAt} />}
+          {!app && <ConnectionState link={link} heardAt={liveStore.heardAt} onReconnect={() => liveStore.reconnectNow()} />}
           {/* Inside the app the status strip carries it (StatusStrip). */}
           {!app && <StaleUiPill />}
           {/* Setting the plan is a settings change: on the machine only (ADR-029). */}

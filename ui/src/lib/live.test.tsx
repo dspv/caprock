@@ -1,6 +1,7 @@
 import { act, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HIDDEN_FLUSH_MS, HIDDEN_HELD_MAX, live, statusStep, useLiveTick } from './live'
+import { RETRY_OVERDUE_MS } from './reconnect'
 
 describe('live store', () => {
   it('collects alerts and bumps tick on session/event frames', () => {
@@ -313,6 +314,26 @@ describe('live replay', () => {
     expect(s2.readyState).toBe(FakeLiveSocket.CLOSED)
     expect(lastSocket()).not.toBe(s2)
     expect(since(lastSocket())).toBe('1')
+  })
+
+  // Vova, 2026-10-15: a Wi-Fi drop left every connection "reconnecting".
+  it('a retry timer the page lost is noticed by the watchdog, and Reconnect now goes at once', () => {
+    const store = fresh()
+    store.start()
+    const s1 = lastSocket()
+    s1.accept()
+    s1.frame({ type: 'hello', seq: 1, data: { server_time: 0 } })
+    const realSetTimeout = globalThis.setTimeout
+    vi.stubGlobal('setTimeout', ((_fn: () => void, ms?: number) => realSetTimeout(() => {}, ms ?? 0)) as typeof setTimeout)
+    s1.drop() // the retry is scheduled on a timer that will never run
+    vi.stubGlobal('setTimeout', realSetTimeout)
+    expect(FakeLiveSocket.all).toHaveLength(1)
+    vi.advanceTimersByTime(store.getState().link.nextAt! - Date.now() + RETRY_OVERDUE_MS + 2_000)
+    expect(FakeLiveSocket.all).toHaveLength(2)
+    // By hand, in the middle of a backoff.
+    lastSocket().drop()
+    store.reconnectNow()
+    expect(FakeLiveSocket.all).toHaveLength(3)
   })
 })
 
