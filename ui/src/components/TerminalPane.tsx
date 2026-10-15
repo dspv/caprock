@@ -50,6 +50,9 @@
  *   session is an agent Caprock started: a box under the terminal, inside the
  *   pane. The tree has the same shape with it or without it, so switching it
  *   never remounts the terminal's host.
+ * - **Where you type** (lib/terminputbox): in a Claude Code session, the rows
+ *   of its input box sit on a faint band, found again after each parsed
+ *   write from the bottom rows alone; another agent or a shell gets none.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
@@ -75,6 +78,7 @@ import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPr
 import { searchColors, terminalTheme } from '@/lib/termthemes'
 import { checkTerminalCell, clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 import { blinkWhileVisible, pageHidden } from '@/lib/visible'
+import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
 
 export { APP_TERMINAL_THEME } from '@/lib/termthemes'
 
@@ -184,6 +188,7 @@ export function TerminalPane({
   onStatus,
   onExit,
   composer,
+  inputBox = false,
 }: {
   sessionId: string
   /** The tab is in front and the workspace is showing. */
@@ -198,6 +203,8 @@ export function TerminalPane({
    */
   onExit?: (code: number) => void
   composer?: PaneComposer
+  /** A Claude Code session: its input box gets the faint band (lib/terminputbox). */
+  inputBox?: boolean
 }) {
   const host = useRef<HTMLDivElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -219,6 +226,9 @@ export function TerminalPane({
   onStatusRef.current = onStatus
   const onExitRef = useRef(onExit)
   onExitRef.current = onExit
+  const bandRef = useRef<InputBoxBand | null>(null)
+  const inputBoxRef = useRef(inputBox)
+  inputBoxRef.current = inputBox
 
   useEffect(() => {
     const el = host.current
@@ -255,6 +265,9 @@ export function TerminalPane({
     const unbench = registerBenchTerminal(sessionId, term)
     // URLs and OSC 8 links open on Cmd/Ctrl+click (lib/termlinks).
     const links = attachTerminalLinks(term)
+    const band = attachInputBoxBand(term)
+    bandRef.current = band
+    band.setEnabled(inputBoxRef.current)
     const resultsSub = search.onDidChangeResults((r) => setResults({ index: r.resultIndex, count: r.resultCount }))
     const decorations = () => ({ decorations: searchColors(terminalTheme(prefs.theme)) })
     searchRef.current = {
@@ -445,7 +458,10 @@ export function TerminalPane({
       lastInput = Date.now()
       conn.send(d)
     })
-    const sizeSub = term.onResize(({ cols, rows }) => conn.resize(cols, rows))
+    const sizeSub = term.onResize(({ cols, rows }) => {
+      conn.resize(cols, rows)
+      band.update()
+    })
     const input = attachTerminalInput(term, el, (d) => conn.send(d), {
       isAppKey: (e) => ownsTerminalKey(e, isMac),
     })
@@ -468,6 +484,7 @@ export function TerminalPane({
         if (!raf) raf = requestAnimationFrame(publish)
       }
       lastBase = base
+      band.update()
     })
     const scrollSub = term.onScroll(() => {
       if (atBottom() && pendingNew !== 0) {
@@ -597,6 +614,7 @@ export function TerminalPane({
       prefs = next
       Object.assign(term.options, xtermOptions(next, monoStack))
       setForeground(terminalTheme(next.theme).colors.foreground)
+      band.update()
       // A new face or size is a new cell: fit again so the columns are right.
       lastGeom = ''
       if (visible) refit()
@@ -703,6 +721,8 @@ export function TerminalPane({
       conn.dispose()
       unbench()
       links.dispose()
+      band.dispose()
+      bandRef.current = null
       term.dispose()
     }
   }, [sessionId])
@@ -718,6 +738,10 @@ export function TerminalPane({
   useEffect(() => {
     if (active && focused) api.current?.focus()
   }, [active, focused])
+
+  useEffect(() => {
+    bandRef.current?.setEnabled(inputBox)
+  }, [inputBox, sessionId])
 
   return (
     // One shape with the composer or without it (the header): the inner box
