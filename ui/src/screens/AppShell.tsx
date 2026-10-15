@@ -69,7 +69,8 @@ import { usePromptSync } from '@/lib/nudges'
 import { AppUpdateToast } from '@/components/AppUpdateToast'
 import { AppUpdateAsk } from '@/components/AppUpdateAsk'
 import { AppAutoUpdate } from '@/components/AppAutoUpdate'
-import { appUpdate } from '@/lib/appupdate'
+import { UpdateCheckBanner } from '@/components/UpdateCheckBanner'
+import { checkByHand } from '@/lib/checkbanner'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { ChatView } from '@/components/ChatView'
 import { ChangesView } from '@/components/ChangesView'
@@ -1224,7 +1225,7 @@ export function AppShell() {
       ...savedItems,
     )
     // F20: the app's own updater; the answer shows in the status strip.
-    if (isTauri()) items.push({ id: 'a-update', group: 'Actions', label: 'Check for updates', icon: <SparkIcon size={14} />, run: () => { void appUpdate.check() } })
+    if (isTauri()) items.push({ id: 'a-update', group: 'Actions', label: 'Check for updates', icon: <SparkIcon size={14} />, run: () => { void checkByHand() } })
     if (current) {
       items.push(
         { id: 'a-find', group: 'Actions', label: focused?.kind === 'file' ? 'Find in the file' : 'Find in the terminal', hint: keys('⌘F'), icon: <SearchIcon size={14} />, run: () => window.dispatchEvent(new Event(FIND_EVENT)) },
@@ -1867,6 +1868,7 @@ export function AppShell() {
       <AppUpdateToast />
       {isTauri() && <AppUpdateAsk />}
       {isTauri() && <AppAutoUpdate />}
+      <UpdateCheckBanner />
 
       {feedbackAt !== null && <FeedbackDialog screen={feedbackAt} onClose={() => setFeedbackAt(null)} />}
       {toast && (

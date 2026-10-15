@@ -20,6 +20,7 @@ import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
 import { appUpdate, offerFor, useAppUpdate, v } from '@/lib/appupdate'
 import { Copyable } from './ui'
 import { everyWhileVisible } from '@/lib/visible'
+import { checkingByHand } from '@/lib/checkbanner'
 
 /** UpdateBanner's key: "not now" in either place hides that version in both. */
 export const DISMISS_KEY = 'caprock.update.dismissed'
@@ -77,13 +78,17 @@ export function AppUpdateNotice() {
     }
   }, [open])
   const phase = info?.phase
+  const prevPhase = useRef(phase)
   useEffect(() => {
+    const was = prevPhase.current
+    prevPhase.current = phase
     setSettled(false)
     // A check the user asked for is answered even for a version they said
     // "not now" to.
     if (phase === 'checking') setDismissed('')
-    // A failure opens its own explanation.
-    if (phase === 'failed') setOpen(true)
+    // A failed install opens its own explanation. A failed check is the
+    // check banner's to say (UpdateCheckBanner), with Retry.
+    if (phase === 'failed' && was !== 'checking' && !checkingByHand()) setOpen(true)
     if (phase !== 'up_to_date') return
     const t = window.setTimeout(() => setSettled(true), UP_TO_DATE_MS)
     return () => window.clearTimeout(t)

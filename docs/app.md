@@ -1134,7 +1134,11 @@ shows what is new, or **Not now** to hide that version.
   *Updates* turns it off again and has **Check now**. With **No**, nothing
   is checked until you ask: **Caprock → Check for Updates…** on macOS,
   **Check for Updates…** in the tray menu, *Check for updates* in the
-  command palette (⌘K), or **Check now** in Settings → *Updates*.
+  command palette (⌘K), or **Check now** in Settings → *Updates*. A check
+  you ask for always answers: *You're up to date — Caprock X is the latest*,
+  with **Close** (it goes by itself after a few seconds), or, when GitHub
+  could not be reached, the error with **Retry**. The hourly check in the
+  background says nothing unless there is a new version.
 - **Ask me, or Update automatically.** Settings → *Updates* → *New version*
   chooses what happens when one is out. **Ask me** (the default) is the card
   above. **Update automatically** — also *Always update automatically* on

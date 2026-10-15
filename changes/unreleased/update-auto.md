@@ -13,3 +13,8 @@ kind: Added
   seconds' notice and **Not now**, and *Updated to vX · What's new*
   afterwards. Sessions and tabs come back as after any update. The update
   card also offers **Always update automatically**.
+- **app:** a check for updates you ask for always answers. Nothing newer:
+  a banner says *You're up to date — Caprock X is the latest · checked just
+  now*, with **Close**, and goes after 8 seconds unless the pointer is on
+  it. A failed check shows the error with **Retry**. The hourly background
+  check stays silent when there is nothing new.

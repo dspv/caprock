@@ -41,6 +41,13 @@ export type AppUpdateInfo = {
 export const APP_UPDATE_EVENT = 'caprock:app-update'
 
 let current: AppUpdateInfo | undefined
+let background = 0
+
+/** The updater's last known state, outside React. */
+export function appUpdateNow(): AppUpdateInfo | undefined { return current }
+
+/** A background download (Update automatically) is running. */
+export function inBackground(): boolean { return background > 0 }
 let started = false
 const subs = new Set<() => void>()
 
@@ -64,9 +71,13 @@ function start() {
 export const appUpdate = {
   refresh: () => shell.updateStatus().then(set, () => { /* an older shell: no updater */ }),
   /** Fetch latest.json once (Check for Updates). */
-  check: () => shell.updateCheck().then(set, () => {}),
-  /** Download and verify in the background, install later (Update automatically). */
-  download: () => shell.updateDownload().then(set, () => {}),
+  check: () => shell.updateCheck().then((i) => { set(i); return i }, () => undefined),
+  /** Download and verify in the background, install later (Update automatically).
+   *  While it runs, `inBackground()` is true: its "checking" is nobody's question. */
+  download: () => {
+    background++
+    return shell.updateDownload().then((i) => { set(i); background-- }, () => { background-- })
+  },
   /** Download, verify, install and restart; resolves only if it did not. */
   install: () => shell.updateInstall().then(set, () => {}),
   /** The first-launch question was answered. */
@@ -87,6 +98,7 @@ export function resetAppUpdate() {
   if (typeof window !== 'undefined') window.removeEventListener(APP_UPDATE_EVENT, onEvent)
   started = false
   current = undefined
+  background = 0
 }
 
 /** `a` is a newer version than `b`; either may carry a leading v. Pre-release tags rank below the release. */

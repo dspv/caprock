@@ -17,8 +17,9 @@
  */
 import { useEffect, useState } from 'react'
 import { api, type AppUpdateMode, type UpdateStatus } from '@/lib/api'
-import { appUpdate, newerVersion, useAppUpdate, v } from '@/lib/appupdate'
+import { newerVersion, useAppUpdate, v } from '@/lib/appupdate'
 import { isTauri } from '@/lib/appmode'
+import { checkByHand } from '@/lib/checkbanner'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { usePlan } from './PlanPicker'
@@ -59,9 +60,9 @@ export function UpdatesSetting() {
     setChecking(true)
     setError('')
     try {
-      const [s] = await Promise.all([api.checkUpdate(), app?.supported ? appUpdate.check() : Promise.resolve()])
-      setSt(s)
-      if (s.error) setError(s.error)
+      // Up to date, or the error with Retry, is the banner's (lib/checkbanner).
+      const s = await checkByHand()
+      if (s) setSt(s)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {

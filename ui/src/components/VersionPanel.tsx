@@ -13,9 +13,10 @@
  * Updates does.
  */
 import { useEffect, useRef, useState } from 'react'
-import { api, type UpdateStatus } from '@/lib/api'
+import type { UpdateStatus } from '@/lib/api'
 import { appUpdate, newerVersion, offerFor, useAppUpdate, v } from '@/lib/appupdate'
 import { openExternal } from '@/lib/nudges'
+import { checkByHand } from '@/lib/checkbanner'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { upgradeCommands } from './AppUpdateNotice'
@@ -65,9 +66,9 @@ export function VersionPanel({ shown, title, status, onStatus }: {
     setChecking(true)
     setError('')
     try {
-      const [s] = await Promise.all([api.checkUpdate(), appUpdate.check()])
-      onStatus(s)
-      if (s.error) setError(s.error)
+      // The answer is the banner's (lib/checkbanner): up to date, or the error with Retry.
+      const s = await checkByHand()
+      if (s) onStatus(s)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
