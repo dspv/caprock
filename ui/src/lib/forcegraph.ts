@@ -3,7 +3,11 @@
  * to own: many-body repulsion by Barnes–Hut (a quadtree, so 5,000 nodes cost
  * n·log n a tick, not n²), springs along the edges, and a pull to the
  * centre so islands stay on screen. The model is d3-force's, written out so
- * the dashboard takes no dependency for it.
+ * the dashboard takes no dependency for it. Two optional forces on top: an
+ * anchor per node (d3's forceX/forceY towards a point of its own — Second
+ * Brain pulls each memory towards its project, so projects read as
+ * clusters) and a collision radius per node (d3's forceCollide — room for a
+ * hub's label, so labels do not pile up).
  *
  * Positions survive a new graph: a node already placed keeps its place, a
  * new one starts beside a neighbour, so a memory dropping in does not
@@ -18,6 +22,12 @@ export interface SimNode {
   vy: number
   /** Drawn radius; repulsion does not use it. */
   r: number
+  /** An anchor this node is pulled towards with strength `pull` (0–1), if any. */
+  ax?: number
+  ay?: number
+  pull?: number
+  /** Collision radius: no other node's comes closer. Unset: no collision. */
+  cr?: number
 }
 
 export interface SimLink {
@@ -185,17 +195,77 @@ export class Simulation {
     for (let i = 0; i < nodes.length; i++) insert(root, i, nodes, 0)
     const k = this.charge * alpha
     for (let i = 0; i < nodes.length; i++) this.repel(root, i, k)
-    // Gravity, then move.
+    this.collide()
+    // Gravity and anchors, then move.
     const g = this.gravity * alpha
     for (const n of nodes) {
-      n.vx -= n.x * g
-      n.vy -= n.y * g
+      if (n.pull && n.ax !== undefined && n.ay !== undefined) {
+        n.vx += (n.ax - n.x) * n.pull * alpha
+        n.vy += (n.ay - n.y) * n.pull * alpha
+      } else {
+        n.vx -= n.x * g
+        n.vy -= n.y * g
+      }
       n.vx *= 1 - VELOCITY_DECAY
       n.vy *= 1 - VELOCITY_DECAY
       n.x += n.vx
       n.y += n.vy
     }
     this.alpha += (0 - this.alpha) * ALPHA_DECAY
+  }
+
+  /**
+   * Pushes apart nodes whose collision circles overlap, through a grid of
+   * cells as wide as the largest circle, so it costs about n a tick.
+   */
+  private collide(): void {
+    const { nodes } = this
+    let most = 0
+    for (const n of nodes) if (n.cr && n.cr > most) most = n.cr
+    if (most <= 0) return
+    const cell = most * 2
+    const grid = new Map<string, number[]>()
+    nodes.forEach((n, i) => {
+      if (!n.cr) return
+      const key = `${Math.floor(n.x / cell)},${Math.floor(n.y / cell)}`
+      const list = grid.get(key)
+      if (list) list.push(i)
+      else grid.set(key, [i])
+    })
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i]!
+      if (!a.cr) continue
+      const gx = Math.floor(a.x / cell)
+      const gy = Math.floor(a.y / cell)
+      for (let ox = -1; ox <= 1; ox++) {
+        for (let oy = -1; oy <= 1; oy++) {
+          for (const j of grid.get(`${gx + ox},${gy + oy}`) ?? []) {
+            if (j <= i) continue
+            const b = nodes[j]!
+            const min = a.cr + (b.cr ?? 0)
+            let dx = b.x + b.vx - a.x - a.vx
+            let dy = b.y + b.vy - a.y - a.vy
+            let d2 = dx * dx + dy * dy
+            if (d2 >= min * min) continue
+            if (d2 === 0) {
+              dx = ((i % 3) - 1) * 0.1 || 0.1
+              dy = ((j % 3) - 1) * 0.1 || 0.1
+              d2 = dx * dx + dy * dy
+            }
+            const d = Math.sqrt(d2)
+            const f = ((min - d) / d) * 0.5
+            dx *= f
+            dy *= f
+            // The bigger one moves less.
+            const wa = (b.cr ?? 0) ** 2 / ((a.cr ** 2) + (b.cr ?? 0) ** 2 || 1)
+            a.vx -= dx * wa
+            a.vy -= dy * wa
+            b.vx += dx * (1 - wa)
+            b.vy += dy * (1 - wa)
+          }
+        }
+      }
+    }
   }
 
   private repel(q: Quad, i: number, k: number): void {

@@ -1,10 +1,12 @@
 /**
- * The setup strip ticks each item from the daemon, retires an item for good
- * on "Not needed", hides for a week on ×, and is gone once nothing is left.
+ * The setup strip ticks each item from the daemon, has two buttons — Set up
+ * (a list of the items) and Later (three days) — retires an item for good on
+ * "Not needed", folds to a status-bar chip on ×, and is gone once nothing is
+ * left.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { SetupStrip } from './SetupStrip'
+import { SetupChip, SetupStrip, resetSetupChip } from './SetupStrip'
 import { api, type PairState, type TelegramStatus } from '@/lib/api'
 import { resetPrompts } from '@/lib/prompts'
 import { resetNudgeSlots } from '@/lib/nudges'
@@ -20,26 +22,33 @@ function state(phones: number, telegram: boolean) {
   vi.spyOn(api, 'telegram').mockResolvedValue({ bot_set: telegram, chat_set: telegram, polling: false } as TelegramStatus)
 }
 
-const settle = () => new Promise((r) => setTimeout(r, 20))
+const settle = () => act(() => new Promise((r) => setTimeout(r, 20)))
 
-beforeEach(() => { resetPrompts(); resetNudgeSlots(); vi.restoreAllMocks(); location.hash = '' })
+beforeEach(() => { resetPrompts(); resetNudgeSlots(); resetSetupChip(); vi.restoreAllMocks(); location.hash = '' })
 
 describe('SetupStrip', () => {
-  it('offers both when neither is connected, and opens Settings at the section', async () => {
+  it('has two buttons, and Set up lists both items with their actions', async () => {
     state(0, false)
     render(<SetupStrip now={NOW} />)
-    expect(await screen.findByText('Open on your phone')).toBeTruthy()
-    expect(screen.getByText('Connect Telegram')).toBeTruthy()
+    expect(await screen.findByText('Set up')).toBeTruthy()
+    expect(screen.getByText('Later')).toBeTruthy()
+    expect(screen.queryByText('Connect Telegram')).toBeNull()
     expect(document.body.textContent).toContain('0 of 2')
+    fireEvent.click(screen.getByText('Set up'))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByText('Open on your phone')).toBeTruthy()
     fireEvent.click(screen.getByText('Connect Telegram'))
     expect(location.hash).toBe('#/settings')
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('ticks what is connected and keeps offering the rest', async () => {
     state(1, false)
     render(<SetupStrip now={NOW} />)
-    expect(await screen.findByText(/Phone connected/)).toBeTruthy()
+    fireEvent.click(await screen.findByText('Set up'))
+    expect(screen.getByText(/Phone connected/)).toBeTruthy()
     expect(document.body.textContent).toContain('1 of 2')
+    expect(screen.queryByText('Open on your phone')).toBeNull()
     expect(screen.getByText('Connect Telegram')).toBeTruthy()
   })
 
@@ -50,22 +59,48 @@ describe('SetupStrip', () => {
     expect(container.textContent).toBe('')
   })
 
-  it('"Not needed" retires one item for good', async () => {
+  it('"Not needed" in the list retires one item for good', async () => {
     state(0, false)
     const { rerender } = render(<SetupStrip now={NOW} />)
-    fireEvent.click((await screen.findAllByText('Not needed'))[1]!)
+    fireEvent.click(await screen.findByText('Set up'))
+    fireEvent.click(screen.getAllByText('Not needed')[1]!)
     expect(screen.queryByText('Connect Telegram')).toBeNull()
     expect(screen.getByText('Open on your phone')).toBeTruthy()
     rerender(<SetupStrip now={NOW + 365 * DAY} />)
     expect(screen.queryByText('Connect Telegram')).toBeNull()
   })
 
-  it('× hides it for a week', async () => {
+  it('Later snoozes it for three days', async () => {
     state(0, false)
     const { container, rerender } = render(<SetupStrip now={NOW} />)
-    fireEvent.click(await screen.findByLabelText('Hide for a week'))
+    fireEvent.click(await screen.findByText('Later'))
     expect(container.textContent).toBe('')
-    rerender(<SetupStrip now={NOW + 8 * DAY} />)
-    expect(await screen.findByText('Open on your phone')).toBeTruthy()
+    rerender(<SetupStrip now={NOW + 2 * DAY} />)
+    await settle()
+    expect(container.textContent).toBe('')
+    rerender(<SetupStrip now={NOW + 3 * DAY + 1} />)
+    expect(await screen.findByText('Set up')).toBeTruthy()
+  })
+
+  it('× folds it to a chip that unfolds it, and folding is not a dismissal', async () => {
+    state(0, false)
+    const { container } = render(<><SetupStrip now={NOW} /><footer data-testid="bar"><SetupChip /></footer></>)
+    expect(await screen.findByText('Set up')).toBeTruthy()
+    expect(screen.getByTestId('bar').textContent).toBe('')
+    fireEvent.click(screen.getByLabelText('Fold to the status bar'))
+    expect(screen.queryByText('Set up')).toBeNull()
+    const chip = container.querySelector('[data-setup-chip]')!
+    expect(chip.textContent).toBe('0 of 2')
+    // Still folded much later: × is not a snooze that runs out.
+    fireEvent.click(chip)
+    expect(await screen.findByText('Set up')).toBeTruthy()
+    expect(container.querySelector('[data-setup-chip]')).toBeNull()
+  })
+
+  it('the chip shows nothing while the strip is unfolded or has nothing left', async () => {
+    state(2, true)
+    const { container } = render(<><SetupStrip now={NOW} /><SetupChip /></>)
+    await settle()
+    expect(container.textContent).toBe('')
   })
 })

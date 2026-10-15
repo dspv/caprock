@@ -137,7 +137,7 @@ func TestAReadKeepsMemoriesLinkedToTheirProjectAndTopics(t *testing.T) {
 	}
 	frames := 0
 	for len(sub.C) > 0 {
-		if f := <-sub.C; f.Type == bus.FrameBrain {
+		if f := <-sub.C; f.Type == bus.FrameBrain && f.Data.(map[string]any)["op"] == "added" {
 			frames++
 		}
 	}

@@ -1,0 +1,43 @@
+/* Second Brain being built (screens/brain/BrainLive.tsx, BrainSidebar.tsx): a dot that
+ * breathes while a read runs, bars with a light running along them, and the
+ * fix button of a problem. CSS only; still under prefers-reduced-motion. */
+.brain-live-dot {
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent);
+  animation: brainLiveDot 1.8s ease-out infinite;
+}
+@keyframes brainLiveDot {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent); }
+  70%  { box-shadow: 0 0 0 7px color-mix(in srgb, var(--color-accent) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 0%, transparent); }
+}
+
+[data-brain-live="building"] .brain-live-bar,
+[data-brain-sidebar-live] .brain-live-bar {
+  background-image: linear-gradient(90deg, transparent 0%, color-mix(in srgb, white 35%, transparent) 50%, transparent 100%);
+  background-size: 60px 100%;
+  background-repeat: no-repeat;
+  animation: brainLiveRun 1.6s linear infinite;
+}
+@keyframes brainLiveRun {
+  from { background-position: -60px 0; }
+  to   { background-position: calc(100% + 60px) 0; }
+}
+
+@layer components {
+  .brain-live-fix {
+    border-radius: 7px;
+    padding: 4px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-fg);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-warn) 60%, transparent);
+    background: color-mix(in srgb, var(--color-warn) 15%, transparent);
+  }
+  .brain-live-fix:hover { background: color-mix(in srgb, var(--color-warn) 25%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brain-live-dot,
+  [data-brain-live="building"] .brain-live-bar,
+  [data-brain-sidebar-live] .brain-live-bar { animation: none; }
+}

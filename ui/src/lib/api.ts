@@ -1386,6 +1386,36 @@ export interface BrainAutoStatus {
   next_wake?: number
   last_error?: string
   recent: BrainRun[]
+  /** The session being read right now, while a read runs. */
+  reading?: BrainReading
+  /** The progress through every session in reach, while on. */
+  build?: BrainBuild
+}
+
+/** The session the extraction is asking claude about (03-contracts.md § Second Brain). */
+export interface BrainReading {
+  session_id: string
+  /** Its own name, else its first prompt, clipped. */
+  title?: string
+  agent?: string
+  project?: string
+  /** When the session last did something, and when this read began; unix ms. */
+  last_event_at?: number
+  started_at: number
+}
+
+/** How far the extraction has got through the sessions in reach. */
+export interface BrainBuild {
+  /** The start of what is in reach, unix ms. */
+  from: number
+  /** Read plus waiting. */
+  sessions: number
+  read: number
+  /** What the reads of those sessions kept. */
+  memories: number
+  truncated?: boolean
+  /** Per project, most sessions first, at most 12. */
+  sources: { project: string; read: number; pending: number; memories: number }[]
 }
 
 /** One read of one session. */
@@ -1401,6 +1431,9 @@ export interface BrainRun {
   error?: string
   finished_at: number
   project?: string
+  /** The session's own name (or first stored prompt) and agent. */
+  title?: string
+  agent?: string
 }
 
 /** What a backfill would read: an estimate, from the transcript's length. */
