@@ -38,6 +38,9 @@ type BranchPR struct {
 	// merged: what the PRs & CI tab's merges per day and time to merge count.
 	CreatedAt int64 `json:"created_at,omitempty"`
 	MergedAt  int64 `json:"merged_at,omitempty"`
+	// ClosedAt is GitHub's stamp of its closing, merged or not (unix ms), 0
+	// while open: when it left the Pipeline's in-flight count.
+	ClosedAt int64 `json:"closed_at,omitempty"`
 	// Head is the head branch; Author and AuthorAvatar who opened it, as
 	// GitHub names them (the avatar a URL on avatars.githubusercontent.com):
 	// the PRs & CI board's cards and the Now screen's "who".
@@ -99,6 +102,9 @@ func ownPulls(repo Repo, list []apiPull) []ownPull {
 		}
 		pr := BranchPR{Number: p.Number, URL: p.HTMLURL, Title: p.Title, State: p.state(), Draft: p.Draft,
 			Base: p.Base.Ref, HeadSHA: p.Head.SHA, CreatedAt: unixMS(p.CreatedAt), MergedAt: p.mergedMS(), Head: p.Head.Ref}
+		if p.ClosedAt != nil {
+			pr.ClosedAt = unixMS(*p.ClosedAt)
+		}
 		if p.User != nil {
 			pr.Author, pr.AuthorAvatar = p.User.Login, p.User.AvatarURL
 		}

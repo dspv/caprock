@@ -26,4 +26,18 @@ describe('the board’s words', () => {
     expect(initials('dependabot[bot]')).toBe('DE')
     expect(initials('ada-lovelace')).toBe('AL')
   })
+
+  it('reads the figures’ series: a missing value stays a gap, an odd series or point is dropped', () => {
+    const b = asBoard({ cards: [], flow: { counts: {}, series: {
+      ci: [{ day: '2026-10-13', n: 0 }, { day: '2026-10-14', value: 430_000, n: 2 }, { value: 1 }],
+      throughput: [{ day: '2026-10-14', value: 2, n: 2, by_now: 1 }],
+      fix: [{ day: '2026-10-14', value: 1, n: 1 }],
+      ttm: 'x',
+    } } })!
+    expect(b.flow.series?.ci).toEqual([{ day: '2026-10-13', value: undefined, n: 0, by_now: undefined }, { day: '2026-10-14', value: 430_000, n: 2, by_now: undefined }])
+    expect(b.flow.series?.throughput?.[0]?.by_now).toBe(1)
+    expect(b.flow.series && 'fix' in b.flow.series).toBe(false)
+    expect(b.flow.series?.ttm).toBeUndefined()
+    expect(asBoard({ cards: [], flow: {} })!.flow.series).toBeUndefined()
+  })
 })
