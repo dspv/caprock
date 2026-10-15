@@ -2075,12 +2075,14 @@ over the 14 local calendar days ending today:
 
 - **Board** (2026-10-14) — `board` `{cards[], releases[], flow,
   default_branch?}`, the tab's Board view (`internal/api/prboard.go`). Each
-  `BoardCard` `{number, stage, stage_at?, ci?, why?, review?, release?,
+  `BoardCard` `{number, stage, stage_at?, ci?, why?, failed[]?, review?, release?,
   spend, stale?}` is a pull request of `prs` (its title, `author`, `author_avatar`
   and link are that entry's); closed unmerged ones and merges before the 14
   days are left out. `stage` is `draft`, `open` (checks running, or not
   read), `fix` (`why`: `ci` a failed check, `conflict` GitHub's `mergeable`
-  false or `mergeable_state` `dirty`, `changes_requested`), `ready` (checks
+  false or `mergeable_state` `dirty`, `changes_requested`; with `ci`,
+  `failed` names up to 3 failed checks, or failed workflows when read from
+  the runs list), `ready` (checks
   passed, or none ran), `merged` or `released`. An open pull request's
   checks are the deck's kept read (`github.PullByURL`) for the newest 12
   open ones, read 4 at once (`boardLiveParallel`), else the runs list by
