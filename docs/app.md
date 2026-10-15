@@ -176,6 +176,21 @@ others. Installing it: [install-app.md](install-app.md).
   written to, or said *Not spam* for, is never junk. What it hides waits
   under *Caprock thinks these are junk* in Spam (`g !`), with the reason in
   the message; nothing moves on the server until you press Spam yourself.
+  **AI sorting.** With AI turned on in Mail's settings (or *Turn on* on the
+  line above the inbox), Mail sorts your newest 200 inbox conversations, and
+  then new mail as it arrives, into Important, Updates, Newsletters and Spam,
+  each with a one-line summary in place of the snippet; *Reply* marks one that
+  waits on your answer. Keys `1`–`5` pick All (everything but spam),
+  Important, Updates, Newsletters and Spam. Spam is one list and one count
+  whoever found it: the junk filter's catch first, then the AI's, each with a
+  single *Spam* label, and the message says why. Mail the junk filter caught
+  is never sent to the AI. Nothing is moved on the server: `!` sends a
+  conversation to your Junk folder, `n` says it is not spam — for the filter
+  and the AI at once, and for that sender from then on. Sorting sends the sender, subject and the
+  start of each conversation to the AI provider you chose in Settings › AI —
+  the line under the inbox and every summary name it, with *change* to pick
+  another — and nowhere else. Settings › AI also sets the language summaries
+  are written in.
   The arrow beside *Send feedback* folds that bottom block to one row of
   icons and back; the app remembers which way you left it. Folded, on a
   Mac each icon has its key drawn small above it; on Windows and Linux,
@@ -1125,8 +1140,9 @@ and says under each field where it is; the (i) beside it explains the rest.
 - **What each is sent to.** The DeepSeek key goes only to `api.deepseek.com`,
   from the environment of a session you start on DeepSeek. The bot token goes
   only to `api.telegram.org`. The GitHub token goes only to `api.github.com`.
-  A mail password goes only to the mail servers you entered. Nothing goes to
-  Caprock.
+  A mail password goes only to the mail servers you entered. With Mail's AI
+  on, mail text goes only to the AI provider chosen in Mail's settings.
+  Nothing goes to Caprock.
 - **Backups.** Time Machine backs up the login keychain encrypted; it reaches
   iCloud Keychain only if you move an item there yourself. A key in a file is
   backed up like any other file in your home folder.

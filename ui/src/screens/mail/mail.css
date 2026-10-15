@@ -334,3 +334,30 @@
 .cm .rowhead { padding: 10px 14px 4px; font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
 .cm .rowhead .muted { text-transform: none; font-weight: 400; letter-spacing: 0; }
 .cm .junknote { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--danger) 6%, transparent); font-size: 12.5px; }
+/* AI triage: the inbox filters, the status line, the offer, the row labels. */
+.cm { --cat-important: var(--color-accent); --cat-updates: var(--color-ok); --cat-newsletter: var(--color-warn); --cat-spam: var(--color-danger); }
+.cm .cats { display: flex; flex-wrap: wrap; gap: 0; padding: 8px 8px 0; }
+.cm .cat { display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 2px 5px; cursor: pointer; color: var(--muted); white-space: nowrap; font-size: 12.5px; }
+.cm .cat:hover { background: var(--hover); color: var(--text); }
+.cm .cat.on { border-color: var(--line); background: var(--panel); color: var(--text); font-weight: 500; }
+.cm .cat em { font-style: normal; font-size: 11px; border-radius: 8px; padding: 0 5px; background: color-mix(in srgb, var(--cat-important) 16%, transparent); }
+.cm .cat.spam em { background: color-mix(in srgb, var(--cat-spam) 16%, transparent); color: var(--cat-spam); }
+.cm .cat kbd.k { opacity: .55; }
+.cm .cat.on kbd.k, .cm .cat:hover kbd.k { opacity: 1; }
+.cm .triagebar { padding: 4px 14px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm .triagebar .pulse { width: 6px; height: 6px; vertical-align: 1px; }
+.cm .offer { display: flex; align-items: center; gap: 8px; margin: 8px 12px 0; padding: 7px 10px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); background: color-mix(in srgb, var(--accent) 6%, var(--bg)); }
+.cm .offer > svg { color: var(--accent); flex: none; }
+.cm .tag { display: inline-block; font-size: 10.5px; line-height: 15px; font-weight: 500; padding: 0 5px; border-radius: 4px; margin-right: 6px; vertical-align: 1px; --c: var(--cat-important); color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent); }
+.cm .tag.updates { --c: var(--cat-updates); }
+.cm .tag.newsletter { --c: var(--cat-newsletter); }
+.cm .tag.spam { --c: var(--cat-spam); }
+.cm .tag.reply { color: var(--accent-text); background: var(--cat-important); }
+.cm .snippet.aisum { color: var(--text); opacity: .82; }
+.cm .hoveracts .tinybtn { padding: 2px 8px; font-size: 12px; margin: 2px; }
+.cm .summary.short { padding: 8px 12px; }
+.cm .shortline { display: flex; gap: 7px; align-items: baseline; }
+.cm .shortline svg { color: var(--accent); flex: none; transform: translateY(2px); }
+.cm .sumfoot { margin-top: 6px; }
+.cm .sumfoot kbd.k { margin-left: 4px; }
+.cm .aibar .who { white-space: nowrap; }

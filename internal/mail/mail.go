@@ -7,7 +7,8 @@
 // machine. Once an account exists, Caprock talks only to the IMAP and SMTP
 // servers the user typed in (for an account signed in with Google or
 // Microsoft: that provider's servers and token endpoint, internal/mail/oauth),
-// and — only when AI is turned on and the user runs an AI action — to the
+// and — only while AI is turned on: for an AI action the user runs, and for
+// the background sorting of the inbox (triage.go) — to the
 // provider picked in Mail's settings: the vendor of the user's own coding
 // CLI (Claude Code, Codex, Gemini CLI), an API with the user's key, or a
 // model server at the address given (loopback by default). See internal/mail/ai.
@@ -50,6 +51,7 @@ type Service struct {
 	version atomic.Int64 // bumped on every local change; the UI polls it
 	oauth   oauthFlows   // sign-ins with Google/Microsoft waiting for the browser
 	ai      aiState      // the assistant's CLI finder, key stores (http_ai.go)
+	tri     triageState  // the background sorter (triage.go)
 }
 
 // sampleBox is the throwaway instance behind sample mode.
@@ -72,6 +74,7 @@ func New(dataDir string, log *slog.Logger) *Service {
 	}
 	s := &Service{dir: dataDir, log: log.With("component", "mail"),
 		sec: secrets.Default(dataDir), demo: os.Getenv("CAPROCK_MAIL_DEMO") == "1"}
+	s.tri.init()
 	if _, err := os.Stat(s.dbPath()); err == nil && !s.demo {
 		if _, err := s.open(); err != nil {
 			s.log.Warn("mail: open", "err", err)
@@ -116,7 +119,7 @@ func (s *Service) openLocked() (*store.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	eng := engine.New(st, s.sec, func(string, int64) { s.version.Add(1) })
+	eng := engine.New(st, s.sec, s.engineNotify)
 	if err := eng.Start(); err != nil {
 		st.Close()
 		return nil, err
@@ -146,7 +149,7 @@ func (s *Service) startSampleLocked() error {
 		_ = os.RemoveAll(dir)
 		return err
 	}
-	eng := engine.New(st, sec, func(string, int64) { s.version.Add(1) })
+	eng := engine.New(st, sec, s.engineNotify)
 	if err := eng.Start(); err != nil {
 		stop()
 		st.Close()
@@ -228,6 +231,10 @@ func (s *Service) secrets() secrets.Store {
 
 // Close stops syncing and closes the database (and the sample, if on).
 func (s *Service) Close() {
+	s.tri.mu.Lock() // kickTriage starts a run only under this lock, before cancel
+	s.tri.cancel()
+	s.tri.mu.Unlock()
+	s.tri.wg.Wait() // a sorting run ends before its database closes
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.stopSampleLocked()
@@ -262,4 +269,14 @@ func (s *Service) parts(ctx context.Context) (*store.Store, *engine.Engine, erro
 		return nil, nil, errClosed
 	}
 	return s.st, s.eng, ctx.Err()
+}
+
+// engineNotify is told of every local change the sync engine makes: the
+// screen's change counter moves, and a finished sync pass lets the sorter
+// look for new inbox mail (triage.go).
+func (s *Service) engineNotify(kind string, _ int64) {
+	s.version.Add(1)
+	if kind == "sync" {
+		s.kickTriage()
+	}
 }

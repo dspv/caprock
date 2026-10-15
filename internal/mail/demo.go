@@ -77,6 +77,10 @@ func seedDemo(st *store.Store, sec secrets.Store) (func(), error) {
 			Headers: "Authentication-Results: mx.fastmail.com; spf=fail smtp.mailfrom=apple-id-verify.top; dkim=none; dmarc=none\r\n",
 			HTML:    `<p>Your Apple ID has been locked for security reasons.</p><p><a href="https://apple-id-verify.top/unlock">appleid.apple.com</a></p>`,
 			Body:    "Your Apple ID has been locked for security reasons.", Date: ago(10 * time.Hour)}, false},
+		{"INBOX", fakemail.Msg{From: "ShopMart Deals <deals@shopmart-offers.biz>", Subject: "40% off everything — this weekend only",
+			Body: "Our biggest sale of the season starts now. Use code WEEKEND40 at checkout. Unsubscribe any time.", Date: ago(9 * time.Hour)}, false},
+		{"INBOX", fakemail.Msg{From: "Mailbox Support <alerts@mailbox-verify-center.info>", Subject: "Action required: your mailbox will be closed",
+			Body: "We could not verify your mailbox. Sign in within 24 hours at the link below or your messages will be deleted.", Date: ago(14 * time.Hour)}, false},
 	}
 	var servers []*fakemail.Server
 	add := func(name, email string, seeds []seed) error {

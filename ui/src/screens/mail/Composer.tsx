@@ -71,10 +71,14 @@ function AddressField({ label, value, onChange, autoFocus }: { label: string; va
   )
 }
 
-export function Composer({ init, accounts, aiOn, onClose, onSent }: {
+export function Composer({ init, accounts, aiOn, who = '', onAiSettings, onClose, onSent }: {
   init: ComposeInit
   accounts: Account[]
   aiOn: boolean
+  /** Who drafts ("Claude Code · haiku"), named on the AI bar. */
+  who?: string
+  /** Opens Settings on its AI section. */
+  onAiSettings?: () => void
   onClose: () => void
   onSent: () => void
 }) {
@@ -192,6 +196,7 @@ export function Composer({ init, accounts, aiOn, onClose, onSent }: {
           <input placeholder="What should the reply say? (optional)" value={instr} onChange={(e) => setInstr(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.metaKey) { e.preventDefault(); draftWithAI() } }} />
           <button className="btn" disabled={aiBusy} onClick={draftWithAI}>{aiBusy ? 'Writing…' : 'Draft reply'} <K k="draft" /></button>
+          {who && <span className="who muted small">{who}{onAiSettings && <> · <button className="link" onClick={onAiSettings}>change</button></>}</span>}
         </div>
       ) : null}
       <textarea ref={body} className="cbody" value={text} onChange={(e) => setText(e.target.value)}

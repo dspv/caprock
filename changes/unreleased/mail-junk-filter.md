@@ -14,3 +14,9 @@ kind: Added
   Hidden mail is listed under *Caprock thinks these are junk* in Spam
   (`g !`), whose count the sidebar shows, and the reader says why; nothing is
   moved or deleted on the server unless you press Spam yourself.
+- **mail:** with AI sorting on, Spam is one list and one count whoever
+  found it: the inbox's Spam filter (`5`) and the Spam folder view show the
+  junk filter's catch first, then the AI's, each with a single *Spam* label,
+  and `n` clears both at once — the filter learns, the AI's label is taken
+  back, and the sender is never spam again. Mail the filter caught is never
+  sent to the AI.

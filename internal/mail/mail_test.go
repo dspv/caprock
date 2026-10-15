@@ -247,6 +247,9 @@ func TestJunkOverHTTP(t *testing.T) {
 		Junk    bool   `json:"junk"`
 		Score   int    `json:"junk_score"`
 		Why     string `json:"junk_why"`
+		AI      *struct {
+			Category string `json:"category"`
+		} `json:"ai"`
 	}
 	list := func(path string) []row {
 		t.Helper()
@@ -265,11 +268,32 @@ func TestJunkOverHTTP(t *testing.T) {
 		return st.Counts.Junk
 	}
 	deadline := time.Now().Add(10 * time.Second)
-	for junkCount() < 4 && time.Now().Before(deadline) {
+	// Four caught by the filter, one more labelled spam by the sample's AI.
+	for junkCount() < 5 && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}
+	if n := junkCount(); n != 5 {
+		t.Fatalf("spam count %d, want 5", n)
+	}
+	union := list("/v1/mail/messages?view=inbox&cat=spam")
+	if len(union) != 5 {
+		t.Fatalf("cat=spam lists %d, want the union of 5", len(union))
+	}
+	for _, r := range list("/v1/mail/messages?view=inbox&cat=nospam") {
+		if r.Junk || r.AI != nil && r.AI.Category == "spam" {
+			t.Fatalf("spam in All: %+v", r)
+		}
+	}
+	// Not spam on the AI's catch takes its label back too.
+	for _, r := range union {
+		if !r.Junk {
+			if w := do(t, h, "POST", "/v1/mail/actions", map[string]any{"ids": []int64{r.ID}, "action": "notjunk"}); w.Code != 200 {
+				t.Fatalf("notjunk on AI spam: %d %s", w.Code, w.Body)
+			}
+		}
+	}
 	if n := junkCount(); n != 4 {
-		t.Fatalf("junk count %d, want 4", n)
+		t.Fatalf("after Not spam on the AI's catch: %d", n)
 	}
 	for _, r := range list("/v1/mail/messages?view=inbox") {
 		if r.Junk {

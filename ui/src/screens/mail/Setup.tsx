@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Account, AIStatus, ProviderGuess, Settings } from './mailApi'
-import { api } from './mailApi'
+import { api, whoText } from './mailApi'
 import { Icon } from './icons'
 import type { Provider } from './Onboarding'
 import { AddFlow } from './Onboarding'
@@ -110,8 +110,10 @@ function Sec({ v, on }: { v: string; on: (v: string) => void }) {
   )
 }
 
-export function SettingsPanel({ accounts, settings, onSettings, onClose, onChanged, onAddAccount }: {
+export function SettingsPanel({ accounts, settings, onSettings, onClose, onChanged, onAddAccount, section = 'top' }: {
   accounts: Account[]
+  /** Where it opens: at the top, or scrolled to the AI section. */
+  section?: 'top' | 'ai'
   settings: Settings
   onSettings: (s: Settings) => void
   onClose: () => void
@@ -154,7 +156,7 @@ export function SettingsPanel({ accounts, settings, onSettings, onClose, onChang
         Load remote images automatically <span className="muted small">(off: senders cannot tell when you open their mail)</span>
       </label>
 
-      <AISettings settings={settings} set={set} />
+      <AISettings settings={settings} set={set} focus={section === 'ai'} />
 
       <h3>Keyboard</h3>
       <div className="keys small">
@@ -189,7 +191,14 @@ function EditAccount({ a, onDone }: { a: Account; onDone: () => void }) {
 
 // The assistant: which provider answers, its model, its key, and — always
 // shown — where the mail text goes when Summarise or Draft reply runs.
-function AISettings({ settings, set }: { settings: Settings; set: (k: string, v: string) => Promise<void> }) {
+/** ai_language's choices; the daemon takes only these (internal/mail/ai Languages). */
+export const AI_LANGUAGES: [string, string][] = [
+  ['auto', 'Same as the email'], ['en', 'English'], ['ru', 'Russian'], ['es', 'Spanish'], ['de', 'German'],
+]
+
+function AISettings({ settings, set, focus = false }: { settings: Settings; set: (k: string, v: string) => Promise<void>; focus?: boolean }) {
+  const head = useRef<HTMLHeadingElement>(null)
+  useEffect(() => { if (focus) head.current?.scrollIntoView?.({ block: 'start' }) }, [focus])
   const [st, setSt] = useState<AIStatus | null>(null)
   const [key, setKey] = useState('')
   const [keyErr, setKeyErr] = useState('')
@@ -221,8 +230,8 @@ function AISettings({ settings, set }: { settings: Settings; set: (k: string, v:
 
   return (
     <>
-      <h3>AI assistant</h3>
-      <p className="muted small">Summaries and reply drafts. Mail text is sent only when you click Summarise or Draft reply, and only to the provider chosen here.</p>
+      <h3 ref={head} id="mail-ai-settings">AI assistant</h3>
+      <p className="muted small">Inbox sorting, summaries and reply drafts, all through the provider chosen here and nowhere else. While AI is on, Mail sorts new inbox conversations in the background: the sender, subject and the start of each conversation go to that provider. A whole thread is sent only when you click Summarise or Draft reply.</p>
       <label className="check">
         <input type="checkbox" checked={settings.ai_enabled === '1'} onChange={(e) => set('ai_enabled', e.target.checked ? '1' : '0')} />
         Enable AI features
@@ -266,9 +275,16 @@ function AISettings({ settings, set }: { settings: Settings; set: (k: string, v:
             onBlur={(e) => e.target.value.trim() !== (settings[modelKey] ?? '') && set(modelKey, e.target.value.trim())} />
         </label>
       )}
+      <label className="field">
+        <span>Language</span>
+        <select aria-label="AI language" value={settings.ai_language || 'auto'} onChange={(e) => set('ai_language', e.target.value)}>
+          {AI_LANGUAGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </label>
+      <p className="muted small">What summaries and inbox one-liners are written in. A drafted reply stays in the language of the mail it answers unless you say otherwise in its instruction.</p>
       <div className="small">
         {st === null ? '…' : st.available
-          ? <span className="ok">● {st.label}. Mail text goes to {st.sends_to}.</span>
+          ? <span className="ok">● {whoText(st)}. Mail text goes to {st.sends_to}.</span>
           : <span className="muted">○ {st.error}{p && p.kind !== 'local' && <>. Once set up, mail text goes to {p.sends_to}.</>}{p?.kind === 'local' && <> Install <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a>, then run <code>ollama pull qwen3:8b</code>.</>}</span>}
       </div>
     </>

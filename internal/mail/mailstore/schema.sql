@@ -118,3 +118,30 @@ CREATE TABLE IF NOT EXISTS junk_allow (
     addr TEXT PRIMARY KEY,
     at   INTEGER NOT NULL
 );
+
+-- AI triage (added 2026-10-15): one row per inbox conversation the assistant
+-- sorted, keyed like the conversation itself. message_id is the newest
+-- message (row id) it saw, so a conversation that gains a message is sorted
+-- again; user_set marks a label the user gave, which the model never
+-- overwrites. Rows go with their account.
+CREATE TABLE IF NOT EXISTS triage (
+    account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    thread_key  TEXT NOT NULL,
+    message_id  INTEGER NOT NULL DEFAULT 0,
+    category    TEXT NOT NULL,              -- important | updates | newsletter | spam
+    reply       INTEGER NOT NULL DEFAULT 0, -- the last message waits on the user's answer
+    summary     TEXT NOT NULL DEFAULT '',
+    model       TEXT NOT NULL DEFAULT '',   -- provider[/model] that answered; "user" or "sample"
+    user_set    INTEGER NOT NULL DEFAULT 0,
+    at          INTEGER NOT NULL,           -- unix seconds
+    PRIMARY KEY (account_id, thread_key)
+);
+
+-- Senders the user said are not spam, per account: the model's spam verdict
+-- for their mail is replaced by the label the user gave.
+CREATE TABLE IF NOT EXISTS triage_senders (
+    account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    addr        TEXT NOT NULL,
+    category    TEXT NOT NULL,
+    PRIMARY KEY (account_id, addr)
+);

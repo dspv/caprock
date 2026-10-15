@@ -16,6 +16,7 @@ export const MAIL_KEYS = {
   send: '⌘↩', draft: '⌘J',
   inbox: 'g i', unreadView: 'g u', starred: 'g s', sent: 'g t',
   drafts: 'g d', archiveView: 'g a', spamView: 'g !', trashView: 'g #',
+  catAll: '1', catImportant: '2', catUpdates: '3', catNewsletter: '4', catSpam: '5',
 } as const
 
 export type MailKey = keyof typeof MAIL_KEYS
@@ -41,6 +42,7 @@ export const SHEET: { title: string; rows: [MailKey, string][] }[] = [
   { title: 'Move around', rows: [['down', 'Next conversation'], ['up', 'Previous conversation'], ['search', 'Search'], ['close', 'Close, back to the list']] },
   { title: 'Go to', rows: [['inbox', 'Inbox'], ['unreadView', 'Unread'], ['starred', 'Starred'], ['sent', 'Sent'], ['drafts', 'Drafts'], ['archiveView', 'Archive'], ['spamView', 'Spam'], ['trashView', 'Trash']] },
   { title: 'Act on a conversation', rows: [['archive', 'Archive'], ['trash', 'Delete'], ['spam', 'Spam'], ['notSpam', 'Not spam'], ['move', 'Move to folder'], ['star', 'Star'], ['unread', 'Mark unread / read'], ['summarise', 'Summarise with AI']] },
+  { title: 'Sort with AI', rows: [['catAll', 'All but spam'], ['catImportant', 'Important'], ['catUpdates', 'Updates'], ['catNewsletter', 'Newsletters'], ['catSpam', 'Spam, the filter’s and the AI’s']] },
   { title: 'Write', rows: [['compose', 'New message'], ['reply', 'Reply'], ['replyAll', 'Reply all'], ['forward', 'Forward'], ['send', 'Send'], ['draft', 'Draft the reply with AI']] },
   { title: 'Mail', rows: [['sync', 'Check mail'], ['theme', 'Theme'], ['settings', 'Settings'], ['help', 'This list']] },
 ]

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -218,10 +219,13 @@ func (e *Engine) learnFromUser(ctx context.Context, ids []int64, isSpam bool) er
 		if _, err := e.st.Learn(ctx, r.AccountID, junkKey(r), junkTokens(r), isSpam, true); err != nil {
 			return err
 		}
+		// The AI triage hears the same verdict, so the two never disagree
+		// with the user: Spam labels the conversation spam, Not spam takes
+		// back an AI spam label and keeps the sender out of spam for good.
 		if isSpam {
-			err = e.st.DisallowSender(ctx, r.FromAddr)
+			err = errors.Join(e.st.DisallowSender(ctx, r.FromAddr), e.st.LabelTriage(ctx, r.AccountID, r.ThreadKey, "spam", r.FromAddr))
 		} else {
-			err = e.st.AllowSender(ctx, r.FromAddr)
+			err = errors.Join(e.st.AllowSender(ctx, r.FromAddr), e.st.UnspamTriage(ctx, r.AccountID, r.ThreadKey, r.FromAddr))
 		}
 		if err != nil {
 			return err

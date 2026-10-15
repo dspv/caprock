@@ -329,8 +329,25 @@ func (s *Store) SetLastUID(ctx context.Context, folderID int64, uid uint32) erro
 func (s *Store) RecountFolder(ctx context.Context, folderID int64) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE folders SET
 		total=(SELECT COUNT(*) FROM messages WHERE folder_id=?),
-		unread=(SELECT COUNT(*) FROM messages WHERE folder_id=? AND seen=0 AND junk=0) WHERE id=?`, folderID, folderID, folderID)
+		unread=(SELECT COUNT(*) FROM messages m WHERE m.folder_id=? AND m.seen=0 AND NOT `+SpamSQL+`) WHERE id=?`, folderID, folderID, folderID)
 	return err
+}
+
+// RecountInbox refreshes the counts of an account's inbox folders (a spam
+// label changed: the unread count leaves spam out).
+func (s *Store) RecountInbox(ctx context.Context, accountID int64) error {
+	fs, err := s.Folders(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	for _, f := range fs {
+		if f.Role == "inbox" {
+			if err := s.RecountFolder(ctx, f.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Address is a display name and an address.
@@ -396,6 +413,8 @@ type Message struct {
 	// JunkHdr is the filter's facts from the header (JSON spam.Header),
 	// written once when the header is stored.
 	JunkHdr string `json:"-"`
+	// AI is the assistant's label for the conversation (List only).
+	AI *Triage `json:"ai,omitempty"`
 }
 
 // UpsertHeader stores a message's envelope and flags. Body fields are kept.
@@ -548,11 +567,19 @@ type Query struct {
 	// Junk decides what happens to mail the junk filter flagged: "" leaves
 	// it out of inbox, unread and all (it shows everywhere else),
 	// "include" keeps it, "only" lists nothing else.
-	Junk     string
+	Junk string
+	// Category narrows the list to conversations the assistant labelled so:
+	// important updates newsletter spam, or "nospam" for everything not
+	// labelled spam. "" is no filter.
+	Category string
 	Before   int64 // date cursor, exclusive
 	BeforeID int64
 	Limit    int
 }
+
+// SpamSQL is true for a message (as m) that is spam in the inbox's sense:
+// the local junk filter flagged it, or the AI labelled its conversation spam.
+const SpamSQL = `(m.junk=1 OR EXISTS (SELECT 1 FROM triage t WHERE t.account_id=m.account_id AND t.thread_key=m.thread_key AND t.category='spam'))`
 
 // List runs a list query, newest first.
 func (s *Store) List(ctx context.Context, q Query) ([]Message, error) {
@@ -577,7 +604,7 @@ func (s *Store) List(ctx context.Context, q Query) ([]Message, error) {
 	switch {
 	case q.Junk == "only":
 		where = append(where, "m.junk=1")
-	case q.Junk == "include":
+	case q.Junk == "include", q.Category == "spam":
 	case q.Search == "" && (q.View == "inbox" || q.View == "unread" || q.View == "all" || q.View == ""):
 		where = append(where, "m.junk=0")
 	}
@@ -593,6 +620,18 @@ func (s *Store) List(ctx context.Context, q Query) ([]Message, error) {
 		where = append(where, "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)")
 		args = append(args, fts)
 	}
+	// The one place "spam" in the inbox is decided: the local junk filter's
+	// flag or the AI's label, either one (SpamSQL).
+	switch q.Category {
+	case "":
+	case "nospam":
+		where = append(where, "NOT "+SpamSQL)
+	case "spam":
+		where = append(where, SpamSQL)
+	default:
+		where = append(where, "EXISTS (SELECT 1 FROM triage t WHERE t.account_id=m.account_id AND t.thread_key=m.thread_key AND t.category=?)")
+		args = append(args, q.Category)
+	}
 	if q.Before != 0 {
 		where = append(where, "(m.date < ? OR (m.date = ? AND m.id < ?))")
 		args = append(args, q.Before, q.Before, q.BeforeID)
@@ -606,7 +645,11 @@ func (s *Store) List(ctx context.Context, q Query) ([]Message, error) {
 	}
 	tail += ` ORDER BY m.date DESC, m.id DESC LIMIT ?`
 	args = append(args, q.Limit)
-	return s.queryMessages(ctx, tail, args...)
+	ms, err := s.queryMessages(ctx, tail, args...)
+	if err != nil {
+		return nil, err
+	}
+	return ms, s.attachTriage(ctx, ms)
 }
 
 // ftsQuery turns free text into an FTS5 prefix query: every word must match.
@@ -671,20 +714,26 @@ type Counts struct {
 	Inbox   int `json:"inbox"`
 	Unread  int `json:"unread"`
 	Flagged int `json:"flagged"`
-	// Junk is the inbox mail the junk filter hides (not the Junk folder).
+	// Junk is the inbox conversations that are spam, by the junk filter or
+	// the AI (not the Junk folder).
 	Junk int `json:"junk"`
 }
 
-// UnifiedCounts counts across accounts. Inbox and unread leave out what the
-// junk filter hides; Junk counts that.
+// UnifiedCounts counts across accounts. Inbox and unread leave out spam
+// (SpamSQL: the junk filter's flag or the AI's label); Junk counts the inbox
+// conversations that are spam either way.
 func (s *Store) UnifiedCounts(ctx context.Context) (Counts, error) {
 	var c Counts
 	err := s.db.QueryRowContext(ctx, `SELECT
-		COALESCE(SUM(CASE WHEN f.role='inbox' AND m.junk=0 THEN 1 ELSE 0 END),0),
-		COALESCE(SUM(CASE WHEN f.role='inbox' AND m.seen=0 AND m.junk=0 THEN 1 ELSE 0 END),0),
-		COALESCE(SUM(CASE WHEN m.flagged=1 AND f.role NOT IN ('trash','junk') THEN 1 ELSE 0 END),0),
-		COALESCE(SUM(CASE WHEN f.role='inbox' AND m.junk=1 THEN 1 ELSE 0 END),0)
-		FROM messages m JOIN folders f ON f.id=m.folder_id`).Scan(&c.Inbox, &c.Unread, &c.Flagged, &c.Junk)
+		COALESCE(SUM(CASE WHEN f.role='inbox' AND NOT `+SpamSQL+` THEN 1 ELSE 0 END),0),
+		COALESCE(SUM(CASE WHEN f.role='inbox' AND m.seen=0 AND NOT `+SpamSQL+` THEN 1 ELSE 0 END),0),
+		COALESCE(SUM(CASE WHEN m.flagged=1 AND f.role NOT IN ('trash','junk') THEN 1 ELSE 0 END),0)
+		FROM messages m JOIN folders f ON f.id=m.folder_id`).Scan(&c.Inbox, &c.Unread, &c.Flagged)
+	if err != nil {
+		return c, err
+	}
+	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT DISTINCT m.account_id, m.thread_key
+		FROM messages m JOIN folders f ON f.id=m.folder_id WHERE f.role='inbox' AND `+SpamSQL+`)`).Scan(&c.Junk)
 	return c, err
 }
 
