@@ -489,6 +489,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.link = sessionlink.New(d.store, d.log)
 	// Resolve the login-shell environment sessions are started with now, so
 	// the first one the user starts does not wait on their shell profile.
+	userenv.EnsureProcessLocale()
 	userenv.Warm(d.log)
 	// The log file, whichever of the two the daemon was started with, is
 	// kept to a bounded size.
