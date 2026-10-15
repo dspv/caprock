@@ -7,6 +7,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+## [0.119.0] - 2026-10-15
+
 ### Added
 
 - **mail:** the AI assistant works with the subscriptions you already have.

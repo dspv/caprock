@@ -73,6 +73,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — 0.119.0: Mail's assistant on your own subscription, projects from a template
+
+Mail's AI assistant works with what you already have: your Claude Code,
+Codex or Gemini CLI sign-in, an Anthropic, OpenAI, OpenRouter or DeepSeek
+key, or a local model; *Automatic* picks the first one the computer has, and
+one line says where the mail text goes. New project can start from a
+template. Every Pipeline figure shows its last 14 days, the Pipeline has its
+own tab again, and a paired phone finds its way back with an address, a QR
+and Add to Home Screen.
+
 ### 2026-10-15 — New project from a template: the dialog
 
 `TemplateProjectSheet.tsx` (Template · Project · Brief, [04-ui.md § New
