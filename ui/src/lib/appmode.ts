@@ -20,6 +20,19 @@ export function isTrayRoute(hash: string = typeof location === 'undefined' ? '' 
   return hash === TRAY_ROUTE || hash.startsWith(`${TRAY_ROUTE}?`)
 }
 
+/**
+ * The query flag of Mail on its own: `<daemon>/?mail=1` is the inbox and
+ * nothing else, no sidebar or tabs. The Mac preview of Caprock Mail
+ * (app/mail-mac) loads it.
+ */
+export const MAIL_QUERY = 'mail'
+
+/** Whether this page is Mail on its own rather than Caprock. */
+export function isMailApp(search: string = typeof location === 'undefined' ? '' : location.search): boolean {
+  const flag = new URLSearchParams(search).get(MAIL_QUERY)
+  return flag === '1' || flag === 'true'
+}
+
 /** The query flag that turns the app mode on for any route. */
 export const APP_QUERY = 'app'
 

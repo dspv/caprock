@@ -6,7 +6,7 @@ import '@fontsource-variable/hanken-grotesk'
 import '@fontsource-variable/jetbrains-mono'
 import '@/design/tokens.css'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { isAppMode, isTrayRoute } from '@/lib/appmode'
+import { isAppMode, isMailApp, isTrayRoute } from '@/lib/appmode'
 import { loadTerminalFont } from '@/lib/termfont'
 import { watchUiVersion } from '@/lib/staleui'
 import { applyUiScale } from '@/lib/uiscale'
@@ -15,7 +15,7 @@ import { listenForInstall } from '@/remote/install'
 
 // The app opens on terminals: start fetching every subset of their face now,
 // while the workspace chunk is still loading (lib/termfont).
-if (isAppMode() && !isTrayRoute()) loadTerminalFont()
+if (isAppMode() && !isTrayRoute() && !isMailApp()) loadTerminalFont()
 
 // The desktop window's interface size; the popover keeps its own (lib/uiscale).
 if (!isTrayRoute()) applyUiScale()
@@ -55,8 +55,11 @@ markPageVisibility()
 // Tauri spike measured a terminal beside the full dashboard 4–6 ms slower to
 // echo than a lean one (.ai/21-app.md § Performance budgets).
 // The menu bar popover (macOS) is a third, smaller chunk: no terminal, no dashboard.
+// Mail on its own (`?mail=1`) is a fourth: the inbox and nothing of Caprock.
 const Root = remote
   ? lazy(() => import('./remote/RemoteRoot'))
+  : isMailApp()
+  ? lazy(() => import('./screens/mail/MailApp'))
   : isTrayRoute()
   ? lazy(() => import('./screens/TrayPanel'))
   : isAppMode() ? lazy(() => import('./screens/AppShell')) : lazy(() => import('./App'))

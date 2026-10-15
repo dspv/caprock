@@ -7,6 +7,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **mail:** Mail on its own. `<daemon>/?mail=1` is the inbox and nothing
+  else of Caprock — no sidebar, no tabs — titled *Caprock Mail*.
+  `app/mail-mac` builds a Mac preview app around it: Caprock's icon with an
+  envelope in place of the dot, one window on the running Caprock, so the
+  accounts and mail are the same as in the Mail tab. It waits for Caprock
+  when it isn't running and follows it to a new port.
+
 ### Changed
 
 - **brain:** Second Brain's *How it works* now explains it in ten
