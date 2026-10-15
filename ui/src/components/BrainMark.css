@@ -64,3 +64,61 @@
   .brain-mark-pulse, .brain-mark-new, .brain-mark-ring,
   .brain-mark-links .brain-mark-link-new { animation: none; }
 }
+
+/* BrainHero (components/BrainAgents.tsx): the agents this user runs around
+ * the brain, each line carrying a pulse into it. The pulse is one short dash
+ * of a path normalised to length 1 (pathLength=1), its offset run from
+ * before the start to past the end; it fades in at the agent and out inside
+ * the brain. Held still halfway along under prefers-reduced-motion. */
+.brain-hero { overflow: visible; }
+.brain-hero-links path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-fg-muted) 60%, transparent);
+  stroke-width: 1.3;
+  stroke-dasharray: 2.5 3;
+}
+.brain-hero-seat {
+  fill: var(--color-panel);
+  stroke: color-mix(in srgb, var(--color-fg-muted) 40%, transparent);
+  stroke-width: 1;
+}
+.brain-hero-pulse {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 0.07 2;
+  stroke-dashoffset: -0.5;
+  animation: brainHeroPulse 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes brainHeroPulse {
+  0%   { stroke-dashoffset: 0.07; opacity: 0; }
+  12%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { stroke-dashoffset: -1; opacity: 0; }
+}
+/* A pale hat keeps an edge on a light ground, as in the cockpit. */
+[data-theme="light"] .brain-hero { --character-outline: var(--color-border-strong); }
+
+/* "Free" (FreePill): an accent tint and hairline, the label pulled towards
+ * the palette's text so it reads on every tint — the quiet register of Get
+ * premium (.premium-cta), in the accent, not a solid block. In the
+ * components layer, so a caller's size utilities win over these defaults. */
+@layer components {
+  .brain-free {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: color-mix(in srgb, var(--color-accent) 70%, var(--color-fg));
+    background: color-mix(in srgb, var(--color-accent) 13%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 38%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brain-hero-pulse { animation: none; }
+}
