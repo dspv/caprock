@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -65,8 +66,12 @@ type BoardCard struct {
 	// when not read.
 	CI string `json:"ci,omitempty"`
 	// Why is what put it in fix: ci | conflict | changes_requested.
-	Why    string `json:"why,omitempty"`
-	Review string `json:"review,omitempty"`
+	Why string `json:"why,omitempty"`
+	// Failed names what failed when Why is ci: the failed checks (or, read
+	// from the runs list, workflows), at most failedNames, so the Pipeline
+	// row can say which without opening the pull request.
+	Failed []string `json:"failed,omitempty"`
+	Review string   `json:"review,omitempty"`
 	// Release is the tag it shipped in (released only).
 	Release string `json:"release,omitempty"`
 	// Spend is the agent work Caprock recorded for it (store.SpendByPR).
@@ -288,6 +293,7 @@ func openStage(p github.BranchPR, live github.PR, runs []github.CIRun, c *BoardC
 	switch {
 	case ci == "fail":
 		c.Why = "ci"
+		c.Failed = failedChecks(p.HeadSHA, live, runs)
 	case conflict:
 		c.Why = "conflict"
 	case c.Review == "changes_requested":
@@ -308,6 +314,37 @@ func openStage(p github.BranchPR, live github.PR, runs []github.CIRun, c *BoardC
 		return StageReady, since(to)
 	}
 	return StageOpen, p.CreatedAt
+}
+
+// failedNames is how many failed checks a card names.
+const failedNames = 3
+
+// failedChecks names a red pull request's failed checks: from its live read,
+// else the failed workflows of its head commit in the runs list.
+func failedChecks(sha string, live github.PR, runs []github.CIRun) []string {
+	var out []string
+	add := func(name string) {
+		if name != "" && len(out) < failedNames && !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+	if live.Number != 0 {
+		for _, k := range live.Checks.Items {
+			if k.State == "fail" {
+				add(k.Name)
+			}
+		}
+		return out
+	}
+	for _, r := range runs {
+		if r.HeadSHA == sha && r.Status == "completed" {
+			switch r.Conclusion {
+			case "failure", "timed_out", "startup_failure":
+				add(r.Name)
+			}
+		}
+	}
+	return out
 }
 
 // runsState is a head commit's state from the runs list: running while one

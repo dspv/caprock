@@ -3685,6 +3685,24 @@ paired device's route list.
 heuristics cannot tell it apart — narrow the heuristics before widening
 anything.
 
+**Amended 2026-10-15 (owner: the doctor must say what is wrong in one line
+and fix it with one button).** The Advanced checkbox is gone: on the machine
+itself the doctor shows **Clean up** and a **Stop** per row by default. Each
+opens one confirmation that lists every process it would stop on its own line
+with its own checkbox, the safe ones ticked (test copies of Caprock in a
+temporary folder or worktree, terminals the daemon reaps itself, ended
+claudes, MCP servers, Claude Code leftovers, caprock commands outside an app
+bundle) and the rest shown unticked with why. One click on *Stop N* then
+stops the ticked ones. This is read as satisfying "a direct, per-item,
+confirmed user action": the person sees each item, can untick each, and
+nothing is signalled before that click; a stop-all that does not show the
+items stays ruled out. Unchanged: never automatic, never from a paired
+device, never the orchestrator or an agent, pid and start time re-checked by
+a fresh scan. Considered and not done: stopping test copies on their own
+after N minutes without a client (a Settings toggle, off by default) — that
+is an automatic stop of a process Caprock did not start and needs its own
+ADR.
+
 ## ADR-060 — Phone access may stay on across restarts, when the owner ticks it
 
 **Date:** 2026-10-14 · **Status:** accepted

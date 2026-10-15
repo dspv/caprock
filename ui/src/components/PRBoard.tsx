@@ -23,6 +23,7 @@ import { spanText } from '@/lib/prstats'
 import { fmtAgo } from '@/lib/format'
 import { fmtRun } from '@/lib/ci'
 import { openExternal } from '@/lib/nudges'
+import { isBucket, type Bucket } from '@/lib/flowbucket'
 import { Panel, Stat } from './ui'
 import { TrendLine } from './TodayTrend'
 
@@ -59,7 +60,14 @@ export function flowFigures(board: PRBoard): FlowFigure[] {
  * The flow as figure tiles. `compact`: Home's five (in flight, needs a fix,
  * ready, throughput, CI median) in its CI/CD panel.
  */
-export function FlowFigures({ board, compact, extra }: { board: PRBoard; compact?: boolean; extra?: ReactNode }) {
+export function FlowFigures({ board, compact, extra, bucket, onBucket, preview }: {
+  board: PRBoard; compact?: boolean; extra?: ReactNode
+  /** The count tile whose pull requests the list shows (the Pipeline), and a click on one: In flight, Needs a fix, Ready. */
+  bucket?: Bucket
+  onBucket?: (b: Bucket) => void
+  /** What a count tile's hover lists in place of its sentence: its pull requests. */
+  preview?: (b: Bucket) => ReactNode
+}) {
   const all = flowFigures(board)
   const shown = compact ? all.slice(0, 5) : all
   // Columns by the panel's own width, not the window's: in the app the
@@ -72,8 +80,11 @@ export function FlowFigures({ board, compact, extra }: { board: PRBoard; compact
           : extra ? '@min-[560px]/flow:grid-cols-5 @min-[1280px]/flow:grid-cols-10' : '@min-[560px]/flow:grid-cols-4 @min-[1180px]/flow:grid-cols-8'}`}>
         {shown.map((x) => {
           const pts = x.series ? board.flow.series?.[x.series] : undefined
+          const b = onBucket && isBucket(x.key) ? x.key : undefined
           return (
-            <Stat key={x.key} data={x.key} label={x.label} value={x.value} sub={x.sub} tone={x.tone} hint={x.hint} size="compact"
+            <Stat key={x.key} data={x.key} label={x.label} value={x.value} sub={x.sub} tone={x.tone} size="compact"
+              hint={b && preview ? preview(b) : x.hint} wideHint={!!(b && preview)}
+              onClick={b ? () => onBucket!(b) : undefined} pressed={b !== undefined && bucket === b}
               trend={x.series && pts && pts.length > 1 ? <FlowTrend k={x.series} pts={pts} label={x.label} /> : undefined} />
           )
         })}

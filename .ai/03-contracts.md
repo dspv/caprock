@@ -174,6 +174,10 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
   `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/queue`,
+  `/v1/work` and `/v1/sessions/{id}/ci/stats` (the phone home's Releases:
+  the board and one repository's Pipeline answer, composed by the daemon
+  from the GitHub reads it keeps with its own token — the token never
+  leaves it, and a relay phone reads both through the end-to-end channel),
   `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
   `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file`,
@@ -1361,8 +1365,8 @@ scan's counts and an empty list.
   with `doctor.txt` pin the two renderings to each other.
 
 `POST /v1/footprint/orphans/stop` `{targets: [{pid, started_at}]}` (1 to 256)
-→ `{stopped: [orphan…], failed: [{pid, error}]}`: the Advanced mode's Stop
-and Stop selected ([ADR-059](08-decisions.md)). The daemon takes the orphan
+→ `{stopped: [orphan…], failed: [{pid, error}]}`: the doctor's Clean up
+and row Stop ([ADR-059](08-decisions.md)). The daemon takes the orphan
 list again and stops only a target that list holds with the same
 `started_at`; anything else fails with *not on the doctor's list now*.
 Each is sent SIGTERM, then SIGKILL after 5 s if it is still there (Windows:
@@ -1750,7 +1754,7 @@ DELETE /v1/subscriptions/{id}        → 204; 409 while a session Caprock starte
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 GET    /v1/agents/{id}/queue         → QueueView; the messages waiting for the turn to end (§ Queued messages)
 POST   /v1/agents/{id}/queue         {text} → {sent, queued?, queue: QueueView}; typed in now at the prompt, otherwise queued
-POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
+POST   /v1/agents/{id}/signal        {action: pause|resume|kill|end} → 204 (owned PTYs only; end = SIGTERM, SIGKILL after 5s)
 GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since, queued?, agent_id?, agent_type?, waiting?} | null}; the oldest prompt an owned session waits on, queued = how many more are outstanding, waiting = all of them when two or more
 POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny|dismiss} → 204; 409 when that prompt is not the oldest outstanding, or no permission menu is on screen at all (the prompt is dropped); 422 {error} when the menu on screen has no such option, or more than one prompt is outstanding (nothing typed); dismiss types nothing and drops that prompt, any of them
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit; subprotocol caprock.term.v2 [?since=&client=] = protocol v2
@@ -2048,8 +2052,10 @@ error. The cached answers are never changed: the baselines are set on a copy.
 reason?, prs[], stats?, board?, error?, read_at?, fetched_at, refreshing?,
 refresh_error?, refresh_failed_at?}`: the Pipeline
 (.ai/21-app.md § Pipeline), asked only while that page is in front, or
-Home's CI/CD section is unfolded and in front (its Pipeline figures), and
-the window visible. `repo` and `reason` as `SessionRepoCI` says them. `prs`
+Home's CI/CD section is unfolded and in front (its Pipeline figures), or
+the phone home's Releases is opened, refreshed or told of release news
+(04-ui.md § The phone home), and the window visible. A paired device may
+read it (`pairedDeviceRoutes`); nothing on it writes. `repo` and `reason` as `SessionRepoCI` says them. `prs`
 is the repository's own pull requests — the `BranchPR` list the Branches
 view reads (`GET …/pulls?state=all&sort=updated&direction=desc&per_page=50`,
 kept 2 min; `github.RepoPulls` shares the read with `PullsByBranch`), most
@@ -2075,12 +2081,14 @@ over the 14 local calendar days ending today:
 
 - **Board** (2026-10-14) — `board` `{cards[], releases[], flow,
   default_branch?}`, the tab's Board view (`internal/api/prboard.go`). Each
-  `BoardCard` `{number, stage, stage_at?, ci?, why?, review?, release?,
+  `BoardCard` `{number, stage, stage_at?, ci?, why?, failed[]?, review?, release?,
   spend, stale?}` is a pull request of `prs` (its title, `author`, `author_avatar`
   and link are that entry's); closed unmerged ones and merges before the 14
   days are left out. `stage` is `draft`, `open` (checks running, or not
   read), `fix` (`why`: `ci` a failed check, `conflict` GitHub's `mergeable`
-  false or `mergeable_state` `dirty`, `changes_requested`), `ready` (checks
+  false or `mergeable_state` `dirty`, `changes_requested`; with `ci`,
+  `failed` names up to 3 failed checks, or failed workflows when read from
+  the runs list), `ready` (checks
   passed, or none ran), `merged` or `released`. An open pull request's
   checks are the deck's kept read (`github.PullByURL`) for the newest 12
   open ones, read 4 at once (`boardLiveParallel`), else the runs list by
@@ -4306,7 +4314,7 @@ POST     /v1/orchestrator/stop        → kills the orchestrator + every worker 
 
 **`budget_usd` is enforced, not decorative, and never defaults to unlimited.** The reconciler tick re-attributes each live task's cost and, when spend passes the budget, **kills the worker session** before moving the task to `needs_you`, with the reason appended to the task body (no column, no DDL — the body is already returned by `GET /v1/tasks/{id}` and rendered by the UI). Parking the file alone left the process spending. `0` or absent on create becomes `board.DefaultBudgetUSD` ($5): an unattended session with no ceiling was the unsafe default. `budget_usd: 0` in a hand-authored hive task file still means no limit — Caprock does not rewrite a user's file. See [05-orchestration.md § Approvals](05-orchestration.md).
 
-**`POST /v1/orchestrator/stop` is the emergency stop.** One call kills the orchestrator and every worker it spawned, and latches the router so it does not respawn them on the next tick; `start` clears the latch. It stops processes and leaves task files untouched. `POST /v1/agents/{id}/signal` remains the per-agent control — it takes `{"action": "pause"|"resume"|"kill"}`, and its 400 names that field, not only the accepted values.
+**`POST /v1/orchestrator/stop` is the emergency stop.** One call kills the orchestrator and every worker it spawned, and latches the router so it does not respawn them on the next tick; `start` clears the latch. It stops processes and leaves task files untouched. `POST /v1/agents/{id}/signal` remains the per-agent control — it takes `{"action": "pause"|"resume"|"kill"|"end"}`, and its 400 names that field, not only the accepted values. `end` is what closing a tab sends: it asks the process to stop (SIGTERM, resumed first if paused) so Claude Code writes its transcript out and the session can be continued with `--resume`, and kills it only if it is still running five seconds later; `kill` is immediate.
 
 **`POST /v1/tasks/{id}/verify` never strands a task.** Verification walks a legal status route rather than skipping a transition it cannot make in one hop, so a verify from any non-`verifying` status still lands the task in `done`, `in_progress` or `needs_you`. Guarding a single hop and no-opping when illegal used to leave the task where it was, after which the next verify failed with `illegal task transition`.
 

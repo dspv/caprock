@@ -32,7 +32,7 @@ export const STEP_NAME: Record<StepKey, string> = { open: 'Open', ci: 'CI', merg
 
 /** What a row knows: its card, if the board has one, and its own state. */
 export interface JourneyInput {
-  card?: Pick<BoardCard, 'stage' | 'ci' | 'why' | 'release' | 'stage_at'>
+  card?: Pick<BoardCard, 'stage' | 'ci' | 'why' | 'release' | 'stage_at' | 'failed'>
   state: 'open' | 'closed' | 'merged'
   draft?: boolean
   merged_at?: number
@@ -46,12 +46,18 @@ export function stageOf(p: JourneyInput): Stage | 'closed' {
   return p.draft ? 'draft' : 'open'
 }
 
+/** What a red pull request's CI pill says on hover: the failed checks by name, when the daemon named them. */
+export function failedTitle(failed: readonly string[] | undefined): string {
+  if (!failed?.length) return 'A check on its head commit failed'
+  return `${failed.length === 1 ? 'Failed' : 'Failed checks'}: ${failed.join(', ')}`
+}
+
 function ciStep(card: JourneyInput['card'], stage: Stage | 'closed'): Pick<JourneyStep, 'text' | 'tone' | 'title'> {
   if (card?.why === 'conflict') return { text: 'Conflict', tone: 'fail', title: 'GitHub says it conflicts with its base branch' }
   if (card?.why === 'changes_requested') return { text: 'Changes requested', tone: 'fail', title: 'A reviewer asked for changes' }
   switch (card?.ci) {
     case 'running': return { text: 'CI running', tone: 'pending', title: 'Its head commit’s checks are running' }
-    case 'fail': return { text: 'CI red', tone: 'fail', title: 'A check on its head commit failed' }
+    case 'fail': return { text: 'CI red', tone: 'fail', title: failedTitle(card.failed) }
     case 'pass': return { text: 'CI green', tone: 'ok', title: 'Every check on its head commit passed' }
     case 'none': return { text: 'No checks', tone: 'muted', title: 'No check ran on its head commit' }
   }
