@@ -14,6 +14,9 @@ import { FIND_EVENT } from '@/lib/appkeys'
 // transformed the whole app inside the first test's 5 s budget, and on a busy
 // machine that alone timed it out. vi.mock is hoisted above this.
 import { AppShell, nextWaiting, worktreeSlug } from './AppShell'
+// The dashboard AppShell loads lazily, loaded with this file for the same
+// reason: whichever test opens it first must not pay for transforming it.
+import '@/App'
 
 vi.mock('@/components/TerminalPane', () => ({
   // The program's exit, pressed by hand: what /exit or Ctrl+D does to a pane.
