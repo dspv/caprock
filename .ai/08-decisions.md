@@ -3275,11 +3275,11 @@ dashboard and a desktop app on three OSes.
   no database file, no goroutine, no connection; `GET /v1/mail/state` answers
   from nothing. Adding an account is the switch, removing the last one ends
   the traffic. Once on, Caprock talks only to the IMAP and SMTP servers the
-  user typed in, and — only when local AI is turned on in Mail's settings —
-  to the model server at the address shown there (Ollama on loopback by
-  default) — and, for an account signed in with Google or Microsoft, to
-  that provider (below). Nothing is sent to Caprock. The add-account form
-  says so.
+  user typed in, and — only when AI is turned on in Mail's settings and the
+  user runs an AI action — to the AI provider chosen there (amended
+  2026-10-15, below) — and, for an account signed in with Google or
+  Microsoft, to that provider (below). Nothing is sent to Caprock. The
+  add-account form says so.
 - **Passwords in the OS keychain**, a 0600 file only where there is none
   (Linux without a Secret Service). iCloud has no OAuth for mail, so an
   app-specific password stays the only way there; any IMAP host takes a
@@ -3358,6 +3358,33 @@ dashboard and a desktop app on three OSes.
   through the nudge system after two days of use, only while no account
   exists; opening Mail or dismissing it answers it.
 
+- **AI through the provider the user picks** (amended 2026-10-15; the
+  owner, translated: "Why only Ollama — just let the user authorise any
+  subscription they want, like Caprock does now"). Until then the
+  assistant spoke only to an OpenAI-compatible server on the machine. Now
+  *Summarise* and *Draft reply* go to one provider chosen in Mail's
+  settings: the user's own logged-in coding CLI — Claude Code, Codex or
+  Gemini CLI, run headless with no tool, no hooks, no session file and the
+  thread on stdin (the Second Brain pattern of ADR-063) — an API with the
+  user's key (Anthropic's Messages API; OpenAI, OpenRouter or DeepSeek
+  through the OpenAI-compatible API), or the local server as before.
+  *Automatic*, the default, takes the first of claude → codex → gemini →
+  local that this computer has, so with `claude` installed nothing needs
+  setting up beyond turning AI on. What is sent where: the last eight
+  messages of the thread (sender, date, subject, text), the user's
+  instruction for a draft, and the account's name, to that CLI's vendor
+  through the CLI's own login (Anthropic, OpenAI, Google), or to
+  api.anthropic.com, api.openai.com, openrouter.ai (which passes it to the
+  model's vendor), api.deepseek.com or the local address — only when the
+  user clicks an AI action, never in the background. The settings panel
+  states the destination for the chosen provider under the picker. Keys
+  go through `internal/secret` (the macOS login keychain, else a 0600 file
+  in the data directory), never `mail.db`, `config.json` or a log, and no
+  route returns one. Mail content is fenced as data between nonce lines
+  the instructions name, and no CLI is given a tool, so a message cannot
+  make the model act. Turning AI off, or picking the local server, stops
+  it; a key is removed from the same panel.
+
 - **Adding an account is an address and a password.** Server settings come
   from a table of about 40 consumer and hosting services, each entry citing
   the provider's own settings page (QQ Mail, NetEase, Naver and Spectrum are
@@ -3368,7 +3395,8 @@ dashboard and a desktop app on three OSes.
   but where its mail already lives (rule 4).
 
 **Consequences.** One more outbound path exists, to destinations the user
-chose; the binary grows by the IMAP, SMTP and MIME libraries. Not built:
+chose (the mail servers, and the AI provider while AI is on); the binary
+grows by the IMAP, SMTP and MIME libraries. Not built:
 server-side drafts, notifications, rules, mail on a paired phone
 (attachments and the iframe's images need the device token, which plain URLs
 do not carry).
@@ -3525,6 +3553,36 @@ and lanauth's one 401 for both stays. The page needs nothing new from the
 daemon at all: an older daemon answers a newer page's new routes 403 or
 404, never 401 (`TestAPhonesTokenIsOnlyDisownedByA401`, which v0.117.0
 passes too).
+
+*Amended 2026-10-15 — a paired phone finds its way back.* Vova, our first
+user (translated): "yesterday I opened the phone app, then closed the tab;
+in Caprock the device shows as paired; today I want to open the app again
+but I don't remember the link — and that's it … But even then I can't work
+— the link doesn't load; maybe it's some restrictions, my VPN isn't working
+well right now." The phone's token was already kept on the page's origin,
+so the plain address reconnects; nothing said so, anywhere.
+
+- **The address is the way back, and it carries nothing.** Settings shows,
+  beside every paired device, *Already paired — just open m.caprock.dev on
+  that phone*, a QR of that address alone and the Add to Home Screen tip.
+  The QR pairs nothing: no code, no machine key, no token.
+- **Sent to Telegram only where the owner already sends.** *Send the link
+  to my phone* (`POST /v1/pair/send-link`, loopback-only) posts the address
+  to the chat of the bot the owner connected (ADR-047), through the same
+  path as the alerts, and the button says so. No new destination; a phone
+  cannot ask for it.
+- **The page says which of three things failed**: it cannot reach the relay
+  (its connection, a VPN), the relay has no computer (the computer), or the
+  computer removed it (pair again), with a folded *Details* of the last
+  error, its close code and the times. A browser with no token says *This
+  browser isn't paired* and where to pair, not an error.
+- **The page asks the browser to keep its storage** (`storage.persist()`)
+  once paired: the token is the pairing.
+
+Not done: a service worker that would show the page's shell when
+m.caprock.dev itself cannot be reached. A cached shell that then reaches
+nothing says little more than the browser's own error, and a stale shell is
+a risk of its own.
 
 
 ## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
@@ -3970,3 +4028,75 @@ it is calibrated (12-risks.md); people want a plan item that no agent was
 asked to do yet (then the task runner's inbox is the place, not a new
 store); or the board's reads stop being cheap (measured 9 ms warm on the
 owner's database, 2026-10-15).
+
+---
+
+## ADR-065 — A project can start from a template: copied, briefed and handed to an agent, through the user's own gh
+
+**Date:** 2026-10-15 · **Status:** accepted (owner, 2026-10-15)
+
+**Context.** The owner keeps a public template repository on GitHub, Corpus
+(`dspv/corpus`): a `.ai/` documentation skeleton whose `TEMPLATE.md` tells an
+agent how to build the project's corpus from a spec dropped in
+`docs/source-spec.md`. He asked (translated, 2026-10-15): "I have a public
+template repo on GitHub, Corpus. I create a new repository from it, feed it
+to an agent with a brief of the project, and it builds it — docs and
+research first, as the template says. Build this harmoniously into Caprock
+so I use it and it doesn't get in other people's way." Today that is four
+tools: GitHub's *Use this template* button, a terminal to clone, an editor
+for the brief, and Caprock to start the agent.
+
+**Decision.**
+
+- **A template is the user's, and there are none until they add one.** A
+  GitHub template repository (`owner/name`), a folder on this machine, or
+  both, with the path the brief is written to and the first prompt
+  (`{brief}` its only variable) and, optionally, the agent. Kept in
+  `<data_dir>/project-templates.json`, at most 50, written atomically; a
+  corrupt file is set aside as `.bad-<ts>` and logged. No DDL. Nobody who
+  does not add a template sees anything change.
+- **GitHub only through the user's own gh, only on a click.** Making the
+  repository is `gh repo create <login>/<name> --template <owner/name>
+  --private|--public`, then `gh repo clone`; reading a template to fill in
+  the form is `gh repo view` and `gh api` for its `TEMPLATE.md` and README.
+  Whether gh is ready is read from gh's own config (`gh config get -h
+  github.com user`), on this machine. Caprock never reads or stores the gh
+  token and adds no GitHub client of its own for this: the outbound calls
+  are gh's, to GitHub, on the user's click, for the repository they named
+  (rule 4).
+- **Without gh, a local copy — never chosen by the daemon.** The local path
+  copies the template folder's last commit (`git archive HEAD`, unpacked by
+  the daemon), or its files when it is not a repository, into a new
+  repository with one commit. The request names the path (`via`); a request
+  for GitHub with gh missing or signed out is `409`, not quietly turned into
+  a local copy, so the user is never surprised by where the project lives.
+  The copy keeps ADR-050's limits: 5,000 files, 256 MB, links only relative
+  and inside.
+- **The brief is committed, never pushed.** It is written at the template's
+  path inside the new project (symlinks resolved; a link that leads out is
+  refused) and committed alone as "Add the project brief". Without a git
+  identity the files stay uncommitted and a note says how to set one; the
+  project is still made.
+- **A failure cleans up only what Caprock made on this machine.** A folder it
+  created is removed; an empty folder the user had made is emptied and kept.
+  A repository made on GitHub is never deleted — the operation says it is
+  kept and can be retried, and Retry clones it rather than making another.
+  GitHub fills a repository made from a template a moment after it exists,
+  so an empty first clone is tried again (six tries, 2 s apart).
+- **The agent starts as any other.** The daemon makes and lists the
+  project; the app then starts the agent with the existing `POST
+  /v1/agents` and the template's prompt. One way to start a session, not
+  two.
+- **The machine's, and free.** Every route is refused to a paired device: a
+  phone does not create repositories on the user's GitHub account. Nothing
+  is gated.
+
+**Rules out:** a built-in list of templates (Caprock does not recommend
+anyone's repository); Caprock's own GitHub token or API client for this; a
+silent fall-back from GitHub to a local copy; deleting a remote repository,
+ever; pushing the brief; creating a project from a phone.
+
+**Revisit if:** people want templates hosted somewhere other than GitHub
+(GitLab, a plain git URL), which would need a path that is not gh; or
+operations lost to a daemon restart mid-way (`RISK-09`) turn out to matter
+in practice.

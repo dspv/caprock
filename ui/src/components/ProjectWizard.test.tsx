@@ -153,6 +153,24 @@ describe('new project, tap-tap-tap', () => {
     fireEvent.click(screen.getByRole('button', { name: /Clone, or start an empty folder/ }))
     expect(cb.onMoreWays).toHaveBeenCalled()
   })
+
+  it('offers From a template… beside it, and only on the first step', async () => {
+    const onFromTemplate = vi.fn()
+    render(<ProjectWizard projects={[]} onClose={vi.fn()} onCreated={vi.fn()} onStartAgent={vi.fn()} onMoreWays={vi.fn()} onFromTemplate={onFromTemplate} />)
+    const link = screen.getByRole('button', { name: 'From a template…' })
+    expect(link.parentElement).toHaveTextContent('Clone, or start an empty folder…·From a template…')
+    fireEvent.click(link)
+    expect(onFromTemplate).toHaveBeenCalled()
+    fireEvent.change(folder(), { target: { value: '~/work' } })
+    fireEvent.keyDown(folder(), { key: 'Enter' })
+    await screen.findByRole('heading', { name: 'What is there' })
+    expect(screen.queryByRole('button', { name: 'From a template…' })).toBeNull()
+  })
+
+  it('without a template handler (a paired device), no link', () => {
+    open()
+    expect(screen.queryByRole('button', { name: 'From a template…' })).toBeNull()
+  })
 })
 
 describe('typing a name searches the folder it is in', () => {

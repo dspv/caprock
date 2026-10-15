@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 )
 
 // RemoteControl is the daemon's side of access from anywhere (ADR-058).
@@ -62,4 +64,38 @@ func (s *Server) handleSetRemote(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, s.d.Remote.RemoteState(code))
+}
+
+// handlePairSendLink sends the phone's page address (remote.app, e.g.
+// https://m.caprock.dev/) to the owner's Telegram chat: "Send the link to my
+// phone" beside a paired device. The address is the daemon's own, never the
+// request's, and carries no code, key or token — a paired phone reconnects
+// with the token it keeps, and an unpaired one is told so. Loopback-only, and
+// the destination is the one the owner set up (ADR-047): nothing new leaves
+// the machine.
+func (s *Server) handlePairSendLink(w http.ResponseWriter, r *http.Request) {
+	if !isLocal(r) {
+		s.failCode(w, http.StatusForbidden, errors.New("the link is sent from the machine Caprock runs on"))
+		return
+	}
+	if s.d.Remote == nil || s.d.PhoneLink == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("this build cannot send the phone's link"))
+		return
+	}
+	if !s.d.PhoneLink.PhoneLinkReady() {
+		s.failCode(w, http.StatusConflict, errors.New("no Telegram bot is set up: Settings → Telegram"))
+		return
+	}
+	app := s.d.Remote.RemoteState("").App
+	if app == "" {
+		s.failCode(w, http.StatusConflict, errors.New("no phone page is set"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	if err := s.d.PhoneLink.SendPhoneLink(ctx, app); err != nil {
+		s.failCode(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"sent": "telegram", "link": app})
 }

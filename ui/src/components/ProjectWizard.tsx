@@ -18,7 +18,8 @@
  *  3. **Done.** Start an agent there, or close.
  *
  * Enter advances (⌘↩ from the instructions box), Esc closes. Clone and a
- * new empty folder stay in the Add project sheet, one link away.
+ * new empty folder stay in the Add project sheet, one link away; a project
+ * from a template is the link beside it (TemplateProjectSheet.tsx).
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { api, errText } from '@/lib/api'
@@ -53,6 +54,7 @@ export function ProjectWizard({
   onCreated,
   onStartAgent,
   onMoreWays,
+  onFromTemplate,
 }: {
   projects: readonly Project[]
   onClose: () => void
@@ -62,6 +64,8 @@ export function ProjectWizard({
   onStartAgent: (projectId: string) => void
   /** Clone or a new empty folder: the Add project sheet. */
   onMoreWays?: () => void
+  /** From a template: components/TemplateProjectSheet.tsx (ADR-065). */
+  onFromTemplate?: () => void
 }) {
   const isMac = isMacPlatform()
   const settings = useApi(() => api.settings(), [], { live: false })
@@ -281,8 +285,12 @@ export function ProjectWizard({
         <>
           {error ? (
             <p role="alert" className="mr-auto min-w-0 truncate text-[13px] text-danger" title={error}>{error}</p>
-          ) : step === 'folder' && onMoreWays ? (
-            <button type="button" onClick={onMoreWays} className="mr-auto text-[13px] text-fg-muted hover:text-fg">Clone, or start an empty folder…</button>
+          ) : step === 'folder' && (onMoreWays || onFromTemplate) ? (
+            <span className="mr-auto flex min-w-0 flex-wrap items-center gap-x-2 text-[13px] text-fg-muted">
+              {onMoreWays && <button type="button" onClick={onMoreWays} className="hover:text-fg">Clone, or start an empty folder…</button>}
+              {onMoreWays && onFromTemplate && <span aria-hidden="true" className="text-fg-faint">·</span>}
+              {onFromTemplate && <button type="button" onClick={onFromTemplate} className="hover:text-fg">From a template…</button>}
+            </span>
           ) : step === 'found' ? (
             <button type="button" onClick={() => { setStep('folder'); setError('') }} className="mr-auto text-[13px] text-fg-muted hover:text-fg">← Another folder</button>
           ) : <span className="mr-auto" />}
@@ -452,12 +460,17 @@ export function ProjectWizard({
 }
 
 function StepsTitle({ step }: { step: Step }) {
-  const at = STEPS.findIndex((s) => s.key === step)
+  return <StepsHeader title="New project" steps={STEPS} step={step} />
+}
+
+/** A sheet's title with its numbered steps; New project from a template uses it too. */
+export function StepsHeader<K extends string>({ title, steps, step }: { title: string; steps: readonly { key: K; label: string }[]; step: K }) {
+  const at = steps.findIndex((s) => s.key === step)
   return (
     <span className="flex items-center gap-3">
-      <span>New project</span>
+      <span>{title}</span>
       <ol aria-label="Steps" className="flex items-center gap-1.5 text-[12.5px] font-normal">
-        {STEPS.map((s, i) => (
+        {steps.map((s, i) => (
           <li key={s.key} aria-current={i === at ? 'step' : undefined} className={`flex items-center gap-1.5 ${i === at ? 'text-fg' : i < at ? 'text-fg-muted' : 'text-fg-faint'}`}>
             {i > 0 && <span aria-hidden="true" className="text-fg-faint">·</span>}
             <span className={`flex h-[18px] w-[18px] items-center justify-center rounded-full text-[11px] tabular-nums ${i === at ? 'bg-[var(--app-row-active)] text-fg' : ''}`}>{i < at ? '✓' : i + 1}</span>

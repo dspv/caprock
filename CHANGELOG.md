@@ -9,6 +9,64 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **mail:** the AI assistant works with the subscriptions you already have.
+  *Summarise* and *Draft reply* can go through your own logged-in Claude
+  Code, Codex or Gemini CLI (run headless, with no tools, hooks or session
+  file), through an API key for Anthropic, OpenAI, OpenRouter or DeepSeek
+  (kept in your keychain, never shown again), or through a local model
+  server as before. *Automatic*, the default, uses the first of claude,
+  codex, gemini and a local server this computer has, so with Claude Code
+  installed turning AI on is the only step. Settings show which provider
+  answers and where the mail text goes; it is sent only when you click an
+  AI action, and the thread reaches the model fenced as data it must not
+  follow.
+- **app:** New project from a template — the dialog. *From a template…* in
+  New project's footer or ⌘K: pick a saved template or look one up
+  (`owner/name`, its link, or a folder), name the project, paste or drop
+  the brief, and the box under it says what *Create* will run and send
+  (the name and visibility, to GitHub, through your own `gh`; nothing
+  without it). Progress shows in the footer; Esc hides it and the agent
+  still starts in its own tab when the project is ready. A failed clone
+  offers *Try the clone again* and *Open on GitHub*. Settings → Project
+  templates edits and removes them. In the app a dropped `.md` or `.txt`
+  becomes the brief (`read_dropped_text`, only from the latest drop).
+- **projects:** start a project from a template — the daemon side. Add your own template (a GitHub template repository,
+  a folder, or both) with where its brief goes and the agent's first
+  prompt; Caprock reads its `TEMPLATE.md` to fill those in. Making a
+  project from it runs your own `gh` on your click (`gh repo create
+  --template`, then `gh repo clone`), or copies the folder's last commit
+  into a new repository when you pick the local copy, then writes your
+  brief and commits it — never pushed. A failure takes away only the
+  folder Caprock made and never deletes a repository on GitHub; Retry
+  picks up where it stopped (ADR-065).
+- **pipeline:** every figure on the Pipeline page — and the five on Home —
+  shows its last 14 days as a small line, with today set against them
+  underneath: *usual*, *above usual +38%*, *below usual −30%*. In flight,
+  throughput, the CI median, opened → merged, merged → released and the
+  agent cost each get one; green where today is the better side (a shorter
+  CI run or merge, more merges), amber the worse, muted for the open count
+  and the cost. Running totals compare today so far with earlier days at
+  the same hour; a day with nothing to measure is a gap, not a zero; with
+  fewer than three earlier days of data it says *not enough history*.
+  Hover a day for its value, or the word for what it is compared with.
+  Counted from what the Pipeline already reads: no new GitHub request.
+
+### Changed
+
+- **app:** the Pipeline has its own tab again, pinned with the system tabs
+  right after the Dashboard tab and before Mail, drawn like them: its glyph
+  and ⌘P (Ctrl⇧P on Windows and Linux), its × while it is in front. ⌘P,
+  *Pipeline* at the foot of the sidebar and *Open Pipeline* in the palette
+  bring it to the front, and again go back to where you were; ⇧⌘B still
+  works and ⌘B stays the Pipeline bar. It stays in the Dashboard too:
+  *Pipeline* in its menu and *Open Pipeline →* on Home take you to that
+  tab, so the page is drawn once and, behind other tabs, reads nothing. The
+  tab is kept across restarts.
+
+## [0.118.0] - 2026-10-15
+
+### Added
+
 - **app:** a live session's row on Home takes you into the running session.
   Click anywhere on the row (or Enter on it) and the session's tab comes to
   the front, as its ⌘N does, or opens if it has none; *Go to session ↗* with
@@ -57,8 +115,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   yellow and cyan that usually wash out included. Pick it under Light in
   the theme picker or Settings → Appearance.
 
+- **phone:** Settings → Use on your phone tells you how to get back to a
+  phone you already paired. Each paired phone says *Already paired — just
+  open m.caprock.dev on that phone*, and **Open on the phone again** shows
+  a QR code of that address (the address only: no code and no key, so it
+  pairs nothing) and the Add to Home Screen tip. With a Telegram bot set up,
+  **Send the link to my phone** sends the address to your Telegram chat
+  through your own bot, and says so before you press it.
+- **phone:** right after pairing, the phone's Ready card says *Next time,
+  just open m.caprock.dev on this phone: it stays paired*, and on Android
+  gives Chrome's own step (⋮ → Install app).
+
 ### Changed
 
+- **app:** where you type is easier to find, quietly. The Chat view's field
+  carries a hint of the accent at rest — a faint tint and a hairline edge,
+  a little stronger with the focus — on every theme and terminal palette.
+  In a Claude Code terminal, the rows of its input box (between the two
+  rules, at the `❯` prompt) sit on a faint band of the terminal's own
+  background, lifted a step: it follows the box as it grows or moves, leaves
+  any cell Claude Code coloured alone, reads only the bottom rows of the
+  screen, and draws nothing for other agents, shells, dialogs and menus.
 - **app:** keys named after what they open. ⌘D opens the Dashboard (⌘0
   still does), ⌘P the Pipeline (⇧⌘B still works), ⇧⌘T the theme picker,
   and ⇧⌘W Work; ⌘F stays Find and ⌘T New shell. On Windows and Linux they
@@ -114,16 +191,37 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   failed tries or 10 s down offers **Reconnect now**, which reconnects the
   same session — no new process. The dashboard's live connection got the
   same watchdog and button.
+- **phone:** a phone that cannot connect says which of three things is
+  wrong: *Can't reach the relay* (this phone cannot reach relay.caprock.dev
+  or m.caprock.dev; check your connection or VPN), *Connected to the relay —
+  your computer is offline*, or *Paired device removed*, with a **Details**
+  fold showing the last error, its code and when it happened, the last try
+  and the last time it was connected. A browser with no pairing says *This
+  browser isn't paired* and where to pair (Caprock → Settings → Use on your
+  phone → Show a code), instead of an error or a bare code form. The page
+  also asks the browser to keep its storage, which holds the pairing.
+
+- **picker:** an arrow key pressed in the folder picker the moment a
+  folder's entries appear is no longer lost; the selection used to be
+  cleared just after it was made.
+- **app:** the theme picker opens whole, above everything. From the
+  sidebar's footer its palettes were cut off at the sidebar's edge and the
+  terminal drew over them; it now opens over the whole window, kept inside
+  it on every edge at any sidebar width and with the footer folded, and
+  scrolls in a window shorter than itself. Opening it puts the focus on the
+  palette in use; Esc, or tabbing past the last palette, closes it and gives
+  the focus back to the button.
+- **app:** the sidebar footer's shortcuts are readable. Folded, the keys
+  above the icons were small faint 10px chips; now every key in the footer
+  is the New agent chip's size, folded or not. Where one has no room —
+  beside a row's words, or over a folded icon — it is left out whole
+  rather than drawn smaller, and the key stays in the tooltip: a row
+  measures itself and brings the chip back when it widens. Off macOS the
+  folded keys still show on hover, now at full size.
 - **mail:** the Caprock Mail preview app reloads onto Caprock's new page
   after Caprock updates (it used to keep showing the page from before the
   update when the port stayed the same), and a click on its Dock icon
   brings the window back.
-- **windows:** Caprock no longer flashes console windows that steal the
-  keyboard focus. The daemon ran without a console, so every git, gh or
-  `claude -p` it started opened a window of its own for a fraction of a
-  second, every few seconds, and typing in other windows came out ragged
-  (user report on Windows 10). Every child now starts with a hidden
-  console, and a test keeps it that way.
 
 ## [0.117.5] - 2026-10-15
 
@@ -143,14 +241,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
-- **app:** where you type is easier to find, quietly. The Chat view's field
-  carries a hint of the accent at rest — a faint tint and a hairline edge,
-  a little stronger with the focus — on every theme and terminal palette.
-  In a Claude Code terminal, the rows of its input box (between the two
-  rules, at the `❯` prompt) sit on a faint band of the terminal's own
-  background, lifted a step: it follows the box as it grows or moves, leaves
-  any cell Claude Code coloured alone, reads only the bottom rows of the
-  screen, and draws nothing for other agents, shells, dialogs and menus.
 
 - **brain:** the sidebar's Second Brain block is a small banner while it is
   empty, instead of a bare 0 and two faint lines: a faint graph breathing
@@ -178,23 +268,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
-- **app:** the sidebar footer's shortcuts are readable. Folded, the keys
-  above the icons were small faint 10px chips; now every key in the footer
-  is the New agent chip's size, folded or not. Where one has no room —
-  beside a row's words, or over a folded icon — it is left out whole
-  rather than drawn smaller, and the key stays in the tooltip: a row
-  measures itself and brings the chip back when it widens. Off macOS the
-  folded keys still show on hover, now at full size.
-- **app:** the theme picker opens whole, above everything. From the
-  sidebar's footer its palettes were cut off at the sidebar's edge and the
-  terminal drew over them; it now opens over the whole window, kept inside
-  it on every edge at any sidebar width and with the footer folded, and
-  scrolls in a window shorter than itself. Opening it puts the focus on the
-  palette in use; Esc, or tabbing past the last palette, closes it and gives
-  the focus back to the button.
-- **picker:** an arrow key pressed in the folder picker the moment a
-  folder's entries appear is no longer lost; the selection used to be
-  cleared just after it was made.
 - **app:** typing a name in New project's folder field now searches the
   folder it is in. `~/dev/cap` used to empty the list; now it lists the
   folders of `~/dev` holding *cap* — the ones starting with it first, the

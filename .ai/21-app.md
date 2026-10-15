@@ -615,7 +615,7 @@ One window, three regions:
   CI/CD and Pull requests should simply be merged properly into one, with
   all the statuses and so on, plus at least a couple of previous PRs"; it
   was three cells — CI, Branch, Pull requests — until then). Its header ends
-  in *Pipeline* (the page on the dashboard, ⌘P) and a × that hides the deck (⌘B,
+  in *Pipeline* (the Pipeline tab, ⌘P) and a × that hides the deck (⌘B,
   or *Pipeline bar: On/Off* in the palette) ([04-ui.md](04-ui.md) § The
   sidebar footer).
   - **Header.** The title; the session's branch as a mono chip, *feat/x →
@@ -806,18 +806,24 @@ One window, three regions:
     statistics … sometimes it's interesting to look"; renamed from *PRs &
     CI* and made one list on 2026-10-14, translated: "PR rows with their
     statuses, so I understand how things travel, what gets released"; a
-    page of the dashboard since 2026-10-15, translated: "Pipeline is part
-    of the Dashboard, just a separate page"). ⌘P, the sidebar footer's
+    page of the dashboard for part of 2026-10-15, then, translated: "I want
+    the Pipeline shown in the dashboard too, and as a separate page with
+    its own tab — among the system tabs, next to the dashboard"). In the
+    app `#/pipeline` is the **Pipeline tab**, pinned right after the
+    Dashboard tab and before Mail, folded to its glyph and ⌘P like them
+    (`Workspace.pipeline`, kept across restarts). ⌘P, the sidebar footer's
     *Pipeline*, the deck header's *Pipeline*, the palette's *Open Pipeline*
-    or the cockpit's *Pipeline ↗* opens the Dashboard tab at `#/pipeline`
-    for the agent in front's repository (`screens/Pipeline.tsx`,
+    or the cockpit's *Pipeline ↗* bring it to the front for the agent in
+    front's repository, else where it was left (`screens/Pipeline.tsx`,
     `components/PipelineView.tsx`, words in `lib/prstats.ts`, steps in
-    `lib/journey.ts`, the repository in `lib/pipeline.ts`); it is in the
-    dashboard's nav too, and a picker in its head switches repository. A
-    Pipeline tab stored before (`kind: 'prs'`) comes back as the Dashboard
-    tab at that Pipeline, never as a dead tab (`pipelineInStore`). From it,
-    *Back ⌘P* in its head, ⌘P or the footer's button bring back the tab
-    or screen it was opened from. Off macOS the key is Ctrl+Shift+P
+    `lib/journey.ts`, the repository in `lib/pipeline.ts`); a picker in its
+    head switches repository. The dashboard keeps its nav entry and Home's
+    card; inside the Dashboard tab both lead to the Pipeline tab, so the
+    page is drawn once, and hidden it asks nothing. A Pipeline pane tab
+    stored before (`kind: 'prs'`) comes back as the Pipeline tab at that
+    Pipeline, never as a dead pane (`pipelineInStore`). From it, *Back ⌘P*
+    in its head, ⌘P, the footer's button or its × bring back the tab or
+    screen it was opened from. ⌘B stays the deck. Off macOS the key is Ctrl+Shift+P
     (rule 12). ⇧⌘B, its key until 2026-10-15, still works and is no longer
     shown (Ctrl+Alt+Shift+B off macOS, where ⌘B's Ctrl+Shift+B is the
     deck's). `#/pipeline?…&pr=N` opens pull request N's detail as the page
@@ -1791,6 +1797,11 @@ GitHub by clipboard. In the app three commands do the native parts
   extension is png/jpg/jpeg/gif/webp, and it is a file of at most 10 MB. Any
   path at all would make the command a file reader for whatever page the
   window shows.
+- **`read_dropped_text`** keeps the same rule for the brief of New project
+  from a template (§ Dropping a file): one of the last drop's paths, a
+  `.md`, `.markdown` or `.txt` file of at most 1 MiB, returned only when it
+  is UTF-8. Unit-tested in `capture.rs`; the ACL test refuses it to every
+  other origin.
 - **Verified**: macOS by `cargo clippy -D warnings` and `cargo test` (the
   path rules, and the ACL: another origin is refused all three); the Windows
   code by `cargo clippy --target x86_64-pc-windows-msvc -D warnings` on a
@@ -1843,7 +1854,9 @@ tells a page where a file lives.
   (a `[data-dialog-backdrop]` is in the page) no terminal types a dropped
   path: the file was aimed at the dialog, not the terminal under its
   backdrop. Feedback reads an image from such a drop through the shell
-  (§ Feedback screenshots).
+  (§ Feedback screenshots), and New project from a template reads a `.md`
+  or `.txt` dropped on its Brief step as the brief (`read_dropped_text`,
+  the first path only; [04-ui.md](04-ui.md) § New project from a template).
 - **The popover** shows no terminal and keeps the default handler, so a
   drop there does nothing.
 - **Verified** by unit tests on both halves (`shell.rs` script, the

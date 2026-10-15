@@ -139,6 +139,15 @@ export class Channel {
   /** Whether this page has had the channel open at least once. */
   everOpen = false
   welcome: { v: number; version: string; name: string } | null = null
+  /**
+   * What the page's **Details** shows (Vova, 2026-10-15: "the link doesn't
+   * load; maybe my VPN"): the last failure in the channel's own words, with
+   * the relay's close code and when; when the last attempt started; when the
+   * channel was last open.
+   */
+  lastError: { problem: Problem; reason: string; code: number; at: number } | null = null
+  lastAttemptAt: number | null = null
+  lastOpenAt: number | null = null
   private ws: WebSocket | null = null
   private session: Session | null = null
   private opening: Promise<void> | null = null
@@ -297,6 +306,7 @@ export class Channel {
       if (this.problem !== 'removed') {
         this.problem = 'removed'
         this.reason = 'This phone was removed on the computer.'
+        this.lastError = { problem: 'removed', reason: 'GET /v1/pair/me answered 401 on two connections', code: 401, at: Date.now() }
         for (const fn of this.listeners) fn(this.state)
       }
       this.slowRecheck()
@@ -379,6 +389,7 @@ export class Channel {
     this.clearRetry()
     this.forced = null
     // The last reason stays while trying again: the screen keeps saying why.
+    this.lastAttemptAt = Date.now()
     this.set('connecting', this.reason, this.problem)
     return new Promise<void>((resolve, reject) => {
       const url = this.machine.relay.replace(/\/$/, '') + '/v1/c/' + this.machine.id
@@ -386,6 +397,7 @@ export class Channel {
       try {
         ws = new this.NativeWebSocket(url)
       } catch (e) {
+        this.lastError = { problem: 'relay-unreachable', reason: String(e), code: 0, at: Date.now() }
         this.set('offline', String(e), 'relay-unreachable')
         this.schedule()
         reject(e)
@@ -446,6 +458,7 @@ export class Channel {
           this.attempt = 0
           this.refusals = 0
           this.everOpen = true
+          this.lastOpenAt = Date.now()
           this.serial++
           // A phone found removed stays so until the machine says otherwise.
           const removed = this.problem === 'removed'
@@ -513,6 +526,7 @@ export class Channel {
           why = closeReason || 'connection lost'
         }
         if (this.problem === 'removed') problem = 'removed'
+        this.lastError = { problem, reason: why, code, at: Date.now() }
         this.set(needsPairing(problem) ? 'closed' : 'offline', why, problem)
         const streams = [...this.streams.values()]
         this.streams.clear()

@@ -61,7 +61,8 @@ const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] =
   { route: { name: 'week' }, label: 'Week' },
   // A repository's pull requests on their way to a release (owner,
   // 2026-10-15, translated: "Pipeline is part of the Dashboard, just a
-  // separate page"). ⌘P and the sidebar's Pipeline open it here.
+  // separate page"). In the app this link leads to the Pipeline's own
+  // pinned tab (AppShell), so the page is drawn once.
   { route: { name: 'pipeline' }, label: 'Pipeline' },
   // "Memory" rather than "Answers": this screen and the handoff a new session
   // gets are the same thing — everything the agents said on this machine —

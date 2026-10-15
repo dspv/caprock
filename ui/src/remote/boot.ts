@@ -135,6 +135,7 @@ export function prepare(loc: Location = window.location, hist: History = history
       cur.token = token
       saveMachines(ms.map((m) => (m.id === cur.id ? cur : m)))
       write(PAIRING_KEY, null)
+      keepStorage()
     } else if (cur.token) {
       // Pairing again did not finish (a spent or expired code, or the page
       // closed first): back to the token that worked before.
@@ -154,6 +155,29 @@ export function prepare(loc: Location = window.location, hist: History = history
   }
   write(CURRENT_KEY, cur.id)
   return cur
+}
+
+/**
+ * Asks the browser to keep this origin's storage — the token is the pairing,
+ * and a browser short of space, or Safari's tracking rules, may otherwise
+ * clear it (Vova, 2026-10-15: a phone paired yesterday has to open today with
+ * nothing but the address). A request the browser may refuse quietly; the
+ * page works either way.
+ */
+export function keepStorage(nav: Navigator | undefined = typeof navigator === 'undefined' ? undefined : navigator) {
+  try {
+    void nav?.storage?.persist?.().catch(() => {})
+  } catch { /* an old browser */ }
+}
+
+/**
+ * True when this browser has the machine on its list but holds no token for
+ * it and is not in the middle of pairing: storage was partly cleared, or the
+ * pairing never finished. The page says so instead of a pairing form or an
+ * error (Vova, 2026-10-15).
+ */
+export function notPairedHere(m: Machine | undefined): boolean {
+  return Boolean(m) && !m!.token && !raw(DEVICE_TOKEN_KEY) && raw(PAIRING_KEY) !== m!.id
 }
 
 /**

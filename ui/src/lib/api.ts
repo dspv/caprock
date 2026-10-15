@@ -8,6 +8,7 @@ import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
 import type { BranchPR, SessionBranches } from './branches'
 import type { PRBoard } from './prboard'
 import type { ReposCI } from './reposci'
+import type { CreateRequest, GHStatus, Inspection, Template, TemplateInput, TemplateOp } from './templates'
 
 export type Health = 'working' | 'idle' | 'waiting-on-you' | 'looping' | 'error' | 'ended'
 
@@ -1731,6 +1732,8 @@ export interface PairState {
   /** Access from anywhere through a relay (ADR-058); absent from a daemon
    *  without it. The same code pairs over it. */
   remote?: RemoteState
+  /** A Telegram bot and chat are set up: "Send the link to my phone" can go there. */
+  telegram?: boolean
   devices: PairedDevice[]
 }
 
@@ -1861,6 +1864,8 @@ export const api = {
   setLAN: (on: boolean, keep?: boolean) =>
     post<{ enabled: boolean; url?: string; keep_on?: boolean }>('/v1/pair/lan', keep === undefined ? { on } : { on, keep }),
   setRemote: (on: boolean) => post<RemoteState>('/v1/pair/remote', { on }),
+  /** Sends the phone's page address (no code, no key) to the owner's Telegram chat. */
+  pairSendLink: () => post<{ sent: string; link: string }>('/v1/pair/send-link', {}),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
   /** Give a paired device control of sessions, or take it away. Machine only. */
   pairSetRole: (id: string, role: PairedDevice['role']) =>
@@ -1955,6 +1960,17 @@ export const api = {
   addSavedPrompt: (d: SavedDraft) => post<{ item: SavedPrompt }>('/v1/saved-prompts', d),
   updateSavedPrompt: (id: number, d: Partial<SavedDraft>) => post<{ item: SavedPrompt }>(`/v1/saved-prompts/${id}`, d, 'PATCH'),
   removeSavedPrompt: (id: number) => post<void>(`/v1/saved-prompts/${id}`, {}, 'DELETE'),
+  /** Project templates (ADR-065; 03-contracts.md § Project templates). The machine only: a paired device gets 403. */
+  templates: () => get<{ templates: Template[]; gh: GHStatus }>('/v1/templates'),
+  addTemplate: (t: TemplateInput) => post<{ template: Template }>('/v1/templates', t),
+  updateTemplate: (id: string, t: TemplateInput) => post<{ template: Template }>(`/v1/templates/${encodeURIComponent(id)}`, t, 'PATCH'),
+  removeTemplate: (id: string) => post<void>(`/v1/templates/${encodeURIComponent(id)}`, {}, 'DELETE'),
+  /** Reads a template on this click: a GitHub one through the person's own gh. */
+  inspectTemplate: (src: { github: string } | { folder: string }) => post<Inspection>('/v1/templates/inspect', src),
+  /** Starts making the project; answers at once with the operation (202). */
+  fromTemplate: (req: CreateRequest) => post<{ op: TemplateOp; existing: boolean }>('/v1/projects/from-template', req),
+  /** A failed, retryable template operation, again from the step it failed at. */
+  retryOp: (opId: string) => post<{ op: TemplateOp }>(`/v1/projects/ops/${encodeURIComponent(opId)}/retry`, {}),
   /** Second Brain (03-contracts.md § Second Brain). Writing it is the machine's. */
   brain: (f: BrainFilterQuery = {}) => {
     const qs = new URLSearchParams()

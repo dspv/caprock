@@ -73,6 +73,35 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — New project from a template: the dialog
+
+`TemplateProjectSheet.tsx` (Template · Project · Brief, [04-ui.md § New
+project from a template](04-ui.md)), opened from New project's footer or ⌘K;
+the job in `lib/useTemplateJob.ts` starts the agent when the operation is
+done, with the sheet open or hidden, and saves a new template only then.
+Settings → Project templates. The app's `read_dropped_text` takes a dropped
+`.md` or `.txt` as the brief, only from the latest drop. Tested with vitest
+(the steps, the disclosure on both paths, frames, Retry, the spawn, both
+drops) and `cargo test` for the command and its ACL; rendered in a preview
+daemon with a fake `claude` and no real `gh`.
+
+### 2026-10-15 — New project from a template: the daemon side
+
+`internal/templates` and seven routes ([03-contracts.md § Project
+templates](03-contracts.md#project-templates), [ADR-065](08-decisions.md)):
+the user's own template list in `project-templates.json`, inspecting a
+template (its `TEMPLATE.md` marker, a `docs/<x>.md` it names, or the
+defaults), and making a project from one through the user's own `gh` or as
+a local copy, the brief written and committed, with retry and clean-up that
+never deletes a GitHub repository. The op machinery is the clone's,
+exported (`StartOp`, `UpdateOp`, `FinishOp`). Tested against a fake `gh`
+(`testdata/fakegh`); the dialog followed (above).
+(`testdata/fakegh`); the screen in the app is the next PR.
+
+### 2026-10-15 — 0.118.0: Work, Pipeline in the dashboard, Sunlight, and keys named after what they open
+
+A minor release because it carries features (owner rule, 2026-10-15: a feature is a minor release, fixes are patches). The Work page (`#/work`, ⇧⌘W) lists every piece of work on its way to a release, from `GET /v1/work` (ADR-064); the Pipeline is a page of the dashboard; Home's session rows take you into the running session and end an idle one Caprock started; the Sunlight theme, a theme picker that is never clipped, readable footer key chips, ⌘D/⌘P/⇧⌘T/⇧⌘W, a quieter Get premium and Second Brain drawn as a brain made of a graph. The changelog entries for #633, #634 and #636 had been merged into the 0.117.5 section by the landing queue's union merge; they are moved to 0.118.0, where they shipped.
+
 ### 2026-10-15 — unreleased: Work in the dashboard, and keys named after what they open
 
 Work (PR C of the Work board) is a page of the dashboard: `#/work`, second

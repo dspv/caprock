@@ -995,6 +995,12 @@ func newChildDir(parent, name string) (string, error) {
 	return filepath.Join(p, name), nil
 }
 
+// ExpandHome turns a leading ~ into the user's home folder.
+func ExpandHome(path string) string { return expandHome(path) }
+
+// CheckFolderName refuses anything that is not one ordinary folder name.
+func CheckFolderName(name string) error { return checkFolderName(name) }
+
 // checkFolderName refuses anything that is not one ordinary folder name.
 func checkFolderName(name string) error {
 	if name == "" || name == "." || name == ".." || len(name) > 255 || strings.ContainsAny(name, `/\:*?"<>|`) {

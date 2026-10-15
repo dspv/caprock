@@ -33,7 +33,7 @@ import (
 // a reconnecting client missed.
 type Op struct {
 	ID        string `json:"op_id"`
-	Kind      string `json:"kind"`            // clone
+	Kind      string `json:"kind"`            // clone | template
 	State     string `json:"state"`           // running | done | failed
 	Phase     string `json:"phase,omitempty"` // git's words: "Receiving objects", "Resolving deltas", …
 	Progress  int    `json:"progress"`        // 0–100 within the phase
@@ -43,6 +43,17 @@ type Op struct {
 	Error     string `json:"error,omitempty"`
 	StartedAt int64  `json:"started_at"`
 	UpdatedAt int64  `json:"updated_at"`
+
+	// A project started from a template (kind "template", internal/templates)
+	// also says which step it is on, the GitHub repository it made, what
+	// the person should know (notes), whether a failed one may be tried
+	// again, and whether the folder it made was taken away again.
+	Step      string   `json:"step,omitempty"` // create | clone | copy | brief | commit | add
+	Repo      string   `json:"repo,omitempty"` // owner/name on GitHub
+	RepoURL   string   `json:"repo_url,omitempty"`
+	Notes     []string `json:"notes,omitempty"`
+	Retryable bool     `json:"retryable,omitempty"`
+	Removed   bool     `json:"removed,omitempty"`
 }
 
 // Op states.
@@ -199,6 +210,65 @@ func (s *Service) Clone(opID, rawURL, parent, name string) (Op, bool, error) {
 	return cp, false, nil
 }
 
+// ValidOpID reports whether id is what a client may name an operation.
+func ValidOpID(id string) bool { return validOpID.MatchString(id) }
+
+// NewOpID is an operation id for a client that sent none.
+func NewOpID() string { return newOpID() }
+
+// StartOp registers op (its ID set; it starts running) and sends its first
+// frame. An id already known is returned as it is, with existing true, and
+// nothing is registered: Clone's rule.
+func (s *Service) StartOp(op Op) (Op, bool) {
+	now := s.Now().UnixMilli()
+	op.State, op.StartedAt, op.UpdatedAt = OpRunning, now, now
+	s.ops.mu.Lock()
+	if o, ok := s.ops.ops[op.ID]; ok {
+		cp := *o
+		s.ops.mu.Unlock()
+		return cp, true
+	}
+	s.ops.ops[op.ID] = &op
+	cp := op
+	s.ops.mu.Unlock()
+	s.publishOp(cp)
+	return cp, false
+}
+
+// UpdateOp changes a remembered operation with fn and sends the frame; false
+// for an id no longer known.
+func (s *Service) UpdateOp(id string, fn func(*Op)) (Op, bool) {
+	s.ops.mu.Lock()
+	o, ok := s.ops.ops[id]
+	if !ok {
+		s.ops.mu.Unlock()
+		return Op{}, false
+	}
+	fn(o)
+	o.UpdatedAt = s.Now().UnixMilli()
+	cp := *o
+	s.ops.mu.Unlock()
+	s.publishOp(cp)
+	return cp, true
+}
+
+// FinishOp ends an operation: done with projectID, or failed with err.
+func (s *Service) FinishOp(id string, projectID int64, err error) { s.finishOp(id, projectID, err) }
+
+// ListCreated lists a repository Caprock just made at root; source is
+// store.ProjectSourceClone or store.ProjectSourceNew.
+func (s *Service) ListCreated(ctx context.Context, root, source string) (View, error) {
+	v, _, err := s.insert(ctx, root, store.ProjectKindRepo, source)
+	return v, err
+}
+
+// ParseGitProgress reads one of git's progress lines ("Receiving objects:
+// 45% ...") as its phase and percentage.
+func ParseGitProgress(line string) (string, int, bool) { return parseProgress(line) }
+
+// SplitCRLF is a bufio.SplitFunc on CR or LF, for git's redrawn progress.
+func SplitCRLF(data []byte, atEOF bool) (int, []byte, error) { return splitCRLF(data, atEOF) }
+
 func newOpID() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)
@@ -315,10 +385,13 @@ func (s *Service) finishOp(id string, projectID int64, err error) {
 	}
 	cp := *o
 	s.ops.mu.Unlock()
-	if err != nil {
-		s.Log.Warn("clone failed", "component", "projects", "url", cp.URL, "err", err)
-	} else {
+	switch {
+	case err != nil:
+		s.Log.Warn(cp.Kind+" failed", "component", "projects", "url", cp.URL, "dest", cp.Dest, "err", err)
+	case cp.Kind == "clone":
 		s.Log.Info("cloned a project", "component", "projects", "dest", cp.Dest)
+	default:
+		s.Log.Info("made a project", "component", "projects", "kind", cp.Kind, "dest", cp.Dest)
 	}
 	s.publishOp(cp)
 }

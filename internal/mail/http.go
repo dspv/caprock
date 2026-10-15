@@ -43,6 +43,7 @@ func (s *Service) Handler() http.Handler {
 	m.HandleFunc("GET /v1/mail/ai/status", s.aiStatus)
 	m.HandleFunc("POST /v1/mail/ai/summarize", s.aiSummarize)
 	m.HandleFunc("POST /v1/mail/ai/draft", s.aiDraft)
+	m.HandleFunc("PUT /v1/mail/ai/key", s.aiKey)
 	s.oauthRoutes(m) // http_oauth.go
 	return m
 }
@@ -382,9 +383,28 @@ func (s *Service) contacts(w http.ResponseWriter, r *http.Request) {
 // Settings the screen may read and write.
 var settingKeys = map[string]string{
 	"ai_enabled":    "0",
+	"ai_provider":   "", // "" is automatic: the first of ai.AutoOrder that works
 	"ai_url":        ai.DefaultURL,
-	"ai_model":      "",
+	"ai_model":      "",    // the local server's model; "" is its first
 	"remote_images": "ask", // ask | always
+}
+
+func init() {
+	// Every other provider keeps its own model, so switching back and forth
+	// never hands one provider's model name to another.
+	for _, p := range ai.Providers {
+		if p.ID != ai.ProviderLocal {
+			settingKeys[modelKey(p.ID)] = ""
+		}
+	}
+}
+
+// modelKey is the setting that holds a provider's model.
+func modelKey(provider string) string {
+	if provider == ai.ProviderLocal {
+		return "ai_model"
+	}
+	return "ai_model_" + provider
 }
 
 func readSettings(ctx context.Context, st *store.Store) map[string]string {
@@ -425,119 +445,5 @@ func (s *Service) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		s.version.Add(1)
 		writeJSON(w, readSettings(r.Context(), st))
-	})
-}
-
-func aiClient(ctx context.Context, st *store.Store) *ai.Client {
-	set := readSettings(ctx, st)
-	return &ai.Client{URL: set["ai_url"], Model: set["ai_model"]}
-}
-
-func (s *Service) aiStatus(w http.ResponseWriter, r *http.Request) {
-	s.with(w, r, func(st *store.Store, _ *engine.Engine) {
-		models, err := aiClient(r.Context(), st).Models(r.Context())
-		if err != nil {
-			writeJSON(w, map[string]any{"available": false, "error": err.Error(), "models": []string{}})
-			return
-		}
-		writeJSON(w, map[string]any{"available": true, "models": models})
-	})
-}
-
-type aiReq struct {
-	MessageID   int64  `json:"message_id"`
-	Instruction string `json:"instruction"`
-}
-
-func aiThread(ctx context.Context, st *store.Store, eng *engine.Engine, id int64) ([]ai.Mail, store.Account, error) {
-	m, err := st.Message(ctx, id)
-	if err != nil {
-		return nil, store.Account{}, err
-	}
-	a, err := st.Account(ctx, m.AccountID)
-	if err != nil {
-		return nil, a, err
-	}
-	th, err := st.Thread(ctx, m.AccountID, m.ThreadKey)
-	if err != nil {
-		return nil, a, err
-	}
-	if len(th) > 8 {
-		th = th[len(th)-8:]
-	}
-	var out []ai.Mail
-	for _, t := range th {
-		full, err := eng.EnsureBody(ctx, t.ID)
-		if err != nil && full.ID == 0 {
-			continue
-		}
-		from := full.FromName
-		if from == "" {
-			from = full.FromAddr
-		}
-		out = append(out, ai.Mail{From: from, Date: time.Unix(full.Date, 0).Format("2006-01-02 15:04"), Subject: full.Subject, Body: full.BodyText})
-	}
-	return out, a, nil
-}
-
-// AI runs only when the user turned it on in Mail's settings.
-func aiAllowed(ctx context.Context, st *store.Store) error {
-	if readSettings(ctx, st)["ai_enabled"] != "1" {
-		return errors.New("local AI is off; turn it on in Mail settings")
-	}
-	return nil
-}
-
-func (s *Service) aiSummarize(w http.ResponseWriter, r *http.Request) {
-	s.with(w, r, func(st *store.Store, eng *engine.Engine) {
-		var req aiReq
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			fail(w, 400, err)
-			return
-		}
-		if err := aiAllowed(r.Context(), st); err != nil {
-			fail(w, 409, err)
-			return
-		}
-		th, _, err := aiThread(r.Context(), st, eng, req.MessageID)
-		if err != nil {
-			fail(w, 404, err)
-			return
-		}
-		out, err := aiClient(r.Context(), st).Summarize(r.Context(), th)
-		if err != nil {
-			fail(w, 502, err)
-			return
-		}
-		writeJSON(w, map[string]string{"text": out})
-	})
-}
-
-func (s *Service) aiDraft(w http.ResponseWriter, r *http.Request) {
-	s.with(w, r, func(st *store.Store, eng *engine.Engine) {
-		var req aiReq
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			fail(w, 400, err)
-			return
-		}
-		if err := aiAllowed(r.Context(), st); err != nil {
-			fail(w, 409, err)
-			return
-		}
-		th, a, err := aiThread(r.Context(), st, eng, req.MessageID)
-		if err != nil {
-			fail(w, 404, err)
-			return
-		}
-		me := a.Name
-		if me == "" {
-			me = a.Email
-		}
-		out, err := aiClient(r.Context(), st).DraftReply(r.Context(), th, me, req.Instruction)
-		if err != nil {
-			fail(w, 502, err)
-			return
-		}
-		writeJSON(w, map[string]string{"text": out})
 	})
 }

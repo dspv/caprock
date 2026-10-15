@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
-import { ALLOW_TYPE_KEY, Pairing, pairChecklist, needsRepair, PHONE_SECTION, TELEGRAM_SECTION, openSettingsSection, pairLink, phoneStatus, takeCodeOnArrival } from './Pairing'
+import { ALLOW_TYPE_KEY, Pairing, pairChecklist, needsRepair, offersOpenAgain, PHONE_SECTION, TELEGRAM_SECTION, openSettingsSection, pairLink, phonePage, phoneStatus, takeCodeOnArrival } from './Pairing'
 import { Section } from './SettingsParts'
 import { PairScreen, codeFromHash, defaultDeviceName } from '@/screens/Pair'
 import { api, type PairState } from '@/lib/api'
@@ -441,4 +441,72 @@ describe('the checklist button fixes a view-only phone', () => {
     fireEvent.click(fix)
     await waitFor(() => expect(setRole).toHaveBeenCalledWith('p1', 'controller'))
   }, 10000)
+})
+
+// Vova, 2026-10-15 (translated): "yesterday I opened the phone app, then
+// closed the tab; in Caprock the device shows as paired; today I want to
+// open the app again but I don't remember the link — and that's it".
+describe('a paired phone finds its way back', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it('the address, as typed and as the QR opens it, carries nothing after the page', () => {
+    expect(phonePage('https://m.caprock.dev')).toEqual({ host: 'm.caprock.dev', url: 'https://m.caprock.dev/' })
+    expect(phonePage('https://m.caprock.dev/')).toEqual({ host: 'm.caprock.dev', url: 'https://m.caprock.dev/' })
+    expect(phonePage('https://example.org/caprock/')).toEqual({ host: 'example.org/caprock', url: 'https://example.org/caprock/' })
+  })
+
+  it('is offered for a phone through the relay, not for a Wi-Fi link or the machine itself', () => {
+    expect(offersOpenAgain({ name: 'iPhone', via: 'relay' })).toBe(true)
+    expect(offersOpenAgain({ name: 'iPhone' })).toBe(true)
+    expect(offersOpenAgain({ name: 'iPhone', via: 'lan' })).toBe(false)
+    expect(offersOpenAgain({ name: 'This computer · Safari' })).toBe(false)
+  })
+
+  it('every paired device says to just open the address, and opens a QR of the address alone', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [{ ...phone, via: 'relay' }, { ...tablet, via: 'relay' }], remote: { ...remoteOn, app: 'https://m.caprock.dev' } })
+    render(<Pairing />)
+    const lines = await screen.findAllByTestId('device-open-again')
+    expect(lines).toHaveLength(2)
+    expect(lines[0]!.textContent).toContain('Already paired — just open m.caprock.dev on that phone.')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Open on the phone again' })[0]!)
+    const block = screen.getByTestId('open-again')
+    const qr = block.querySelector('svg')!
+    expect(qr.getAttribute('data-qr-text')).toBe('https://m.caprock.dev/')
+    expect(qr.getAttribute('aria-label')).toBe('QR code that opens m.caprock.dev')
+    expect(block.textContent).toContain('Share → Add to Home Screen')
+    // No Telegram bot: no button that would have nowhere to go.
+    expect(screen.queryByTestId('send-link')).toBeNull()
+    expect(screen.queryByTestId('open-again-off')).toBeNull()
+  })
+
+  it('sends the link to Telegram when a bot is set up, saying what it sends', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, telegram: true, devices: [{ ...phone, via: 'relay' }], remote: { ...remoteOn, app: 'https://m.caprock.dev' } })
+    const send = vi.spyOn(api, 'pairSendLink').mockResolvedValue({ sent: 'telegram', link: 'https://m.caprock.dev' })
+    render(<Pairing />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open on the phone again' }))
+    expect(screen.getByTestId('open-again').textContent).toContain('no code and no key')
+    fireEvent.click(screen.getByTestId('send-link'))
+    await waitFor(() => expect(send).toHaveBeenCalled())
+    expect(await screen.findByText('Sent to Telegram ✓')).toBeTruthy()
+  })
+
+  it('with access from anywhere off, says the page cannot reach the computer and turns it on', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [{ ...phone, via: 'relay' }], remote: remoteOff })
+    const setRemote = vi.spyOn(api, 'setRemote').mockResolvedValue(remoteOn)
+    render(<Pairing />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open on the phone again' }))
+    expect(screen.getByTestId('open-again-off').textContent).toContain('Access from anywhere is off')
+    fireEvent.click(screen.getByRole('button', { name: 'Turn it on' }))
+    await waitFor(() => expect(setRemote).toHaveBeenCalledWith(true))
+  })
+
+  it('is not offered on a Wi-Fi link row, which has its own way to move', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [{ ...phone, via: 'lan' }], remote: remoteOn })
+    render(<Pairing />)
+    expect(await screen.findByTestId('device-repair')).toBeTruthy()
+    expect(screen.queryByTestId('device-open-again')).toBeNull()
+  })
 })

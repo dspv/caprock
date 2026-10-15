@@ -228,10 +228,15 @@ export interface Project {
 /** A `project` frame on /v1/live: the whole project, or `{id, removed: true}`. */
 export type ProjectFrame = ApiProject
 
-/** An `op` frame on /v1/live: progress of a clone. */
+/**
+ * An `op` frame on /v1/live: progress of a clone, or of a project made from
+ * a template (`kind: "template"`, lib/templates.ts, which carries more).
+ * Every reader finds its own operation by `op_id`, so a clone's progress
+ * never shows a template's and the other way round.
+ */
 export interface OpFrame {
   op_id: string
-  kind?: 'clone'
+  kind?: 'clone' | 'template'
   state: 'running' | 'done' | 'failed'
   phase?: string
   progress?: number
@@ -239,6 +244,8 @@ export interface OpFrame {
   dest?: string
   error?: string
   project_id?: number
+  started_at?: number
+  updated_at?: number
 }
 
 export type AddProjectRequest =

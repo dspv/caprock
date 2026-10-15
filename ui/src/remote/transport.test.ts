@@ -365,3 +365,34 @@ describe('pair again only when it is so', () => {
     expect(ch.problem).toBe('')
   })
 })
+
+// Vova, 2026-10-15: "the link doesn't load; maybe my VPN". The page's
+// Details says what failed last, with the relay's code, and when.
+describe('what Details reads', () => {
+  it('records the last failure, the last try and the last time it was open', async () => {
+    const ch = channel()
+    expect(ch.lastError).toBeNull()
+    const p = ch.connect()
+    expect(ch.lastAttemptAt).toBe(Date.now())
+    last().serverClose(1006)
+    await expect(p).rejects.toThrow()
+    expect(ch.lastError).toMatchObject({ problem: 'relay-unreachable', code: 1006, at: Date.now() })
+    expect(ch.lastOpenAt).toBeNull()
+
+    vi.advanceTimersByTime(ch.nextAt! - Date.now())
+    last().open()
+    last().serverClose(4404, 'the machine is not connected')
+    await Promise.resolve()
+    expect(ch.lastError).toMatchObject({ problem: 'machine-offline', code: 4404 })
+
+    vi.advanceTimersByTime(ch.nextAt! - Date.now())
+    last().open()
+    last().answer()
+    await Promise.resolve()
+    expect(ch.state).toBe('open')
+    expect(ch.lastOpenAt).toBe(Date.now())
+    // The last failure stays readable after recovering.
+    expect(ch.lastError?.problem).toBe('machine-offline')
+    ch.close()
+  })
+})

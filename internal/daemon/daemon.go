@@ -64,6 +64,7 @@ import (
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/subs"
 	"github.com/dspv/caprock/internal/telegram"
+	"github.com/dspv/caprock/internal/templates"
 	"github.com/dspv/caprock/internal/termbuf"
 	"github.com/dspv/caprock/internal/update"
 	"github.com/dspv/caprock/internal/userenv"
@@ -627,12 +628,36 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	d.mail = mail.New(d.opt.DataDir, d.log)
 	defer d.mail.Close()
+	// Mail's assistant can ask the user's own claude, codex or gemini: the
+	// same binaries the spawn dialog finds, in the login shell's environment.
+	d.mail.SetAI(mail.AIDeps{
+		Binary: func(command string) string {
+			if command == agents.AgentClaude {
+				return d.mgr.ClaudeBinary()
+			}
+			return agents.FindBinary(command)
+		},
+		Env: func() []string { return userenv.Environ(d.log) },
+		Dir: filepath.Join(d.opt.DataDir, "mail-ai"),
+	})
 	// Second Brain's automatic extraction (ADR-063): started here, idle
 	// until the user turns it on.
 	d.brain = d.newBrain()
 	d.brain.Start(ctx)
+	// New project from a template (ADR-065): the person's own list, and their
+	// own gh, run only on a click.
+	var tpls *templates.Service
+	if d.projs != nil {
+		file := ""
+		if d.opt.DataDir != "" {
+			file = filepath.Join(d.opt.DataDir, templates.StateFile)
+		}
+		tpls = templates.New(&templates.Store{File: file, Log: d.log}, d.projs, d.log)
+		tpls.Env = func() []string { return userenv.Environ(d.log) }
+		tpls.Ctx = ctx
+	}
 	d.api = api.New(api.Deps{
-		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, Telegram: d.tg,
+		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, PhoneLink: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, WindowStop: d.windowStopStatus,
 		Resources:   func(ctx context.Context) any { return d.resources(ctx) },
 		Footprint:   func(ctx context.Context, orphans bool) any { return d.footprint(ctx, orphans) },
@@ -660,7 +685,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			Preferred: func() string { return d.config().Editor },
 		},
 		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d,
-		Projects: d.projs, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
+		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
 		Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 	})
 	srv := &http.Server{Handler: d.markWrites(d.api), ReadHeaderTimeout: 10 * time.Second}

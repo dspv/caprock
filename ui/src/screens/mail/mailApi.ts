@@ -155,6 +155,39 @@ export type ProviderGuess = {
 
 export type Settings = Record<string, string>
 
+/** One provider the assistant can ask, as GET /v1/mail/ai/status lists it. */
+export type AIProvider = {
+  id: string
+  label: string
+  kind: 'cli' | 'api' | 'local'
+  command?: string
+  default_model?: string
+  needs_model?: boolean
+  model_hint?: string
+  /** Where the mail text goes when an AI action runs. */
+  sends_to: string
+  available: boolean
+  /** Why not, when not available. */
+  why?: string
+  model: string
+  key_set?: boolean
+  key_where?: { kind: string; path?: string; note?: string }
+}
+
+export type AIStatus = {
+  /** The saved choice; '' is automatic. */
+  chosen: string
+  /** The provider in use ('' when automatic finds none). */
+  provider: string
+  label: string
+  sends_to: string
+  available: boolean
+  error?: string
+  /** The local server's models, when it is the one in use. */
+  models: string[]
+  providers: AIProvider[]
+}
+
 export type Draft = {
   account_id: number
   to: Address[]
@@ -212,9 +245,14 @@ export const api = {
   contacts: (q: string) => req<Address[]>('GET', '/v1/mail/contacts?q=' + encodeURIComponent(q)),
   settings: () => req<Settings>('GET', '/v1/mail/settings'),
   putSettings: (s: Settings) => req<Settings>('PUT', '/v1/mail/settings', s),
-  aiStatus: () => req<{ available: boolean; models: string[]; error?: string }>('GET', '/v1/mail/ai/status'),
-  summarize: (id: number) => req<{ text: string }>('POST', '/v1/mail/ai/summarize', { message_id: id }),
-  draft: (id: number, instruction: string) => req<{ text: string }>('POST', '/v1/mail/ai/draft', { message_id: id, instruction }),
+  // A daemon before provider choice answered only available/models/error.
+  aiStatus: () => req<Partial<AIStatus> & { available: boolean }>('GET', '/v1/mail/ai/status')
+    .then((r): AIStatus => ({ chosen: '', provider: '', label: '', sends_to: '', ...r, models: r.models ?? [], providers: r.providers ?? [] })),
+  /** Stores a provider's API key in the system keychain; '' removes it. Never read back. */
+  aiKey: (provider: string, key: string) => req<{ ok: boolean; key_set: boolean }>('PUT', '/v1/mail/ai/key', { provider, key }),
+  /** `provider` and `label` name who answered (absent from a daemon before provider choice). */
+  summarize: (id: number) => req<{ text: string; provider?: string; label?: string }>('POST', '/v1/mail/ai/summarize', { message_id: id }),
+  draft: (id: number, instruction: string) => req<{ text: string; provider?: string; label?: string }>('POST', '/v1/mail/ai/draft', { message_id: id, instruction }),
 }
 
 export function partURL(id: number, path: string, download = false) {

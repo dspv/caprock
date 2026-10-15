@@ -25,6 +25,7 @@ fn main() {
             "clipboard_image",
             "capture_webview",
             "read_dropped_image",
+            "read_dropped_text",
             "set_zoom",
         ]),
     ))

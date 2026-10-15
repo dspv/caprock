@@ -7,8 +7,10 @@
 // machine. Once an account exists, Caprock talks only to the IMAP and SMTP
 // servers the user typed in (for an account signed in with Google or
 // Microsoft: that provider's servers and token endpoint, internal/mail/oauth),
-// and — when local AI is turned on — to the model
-// server at the address in Mail's settings (loopback by default).
+// and — only when AI is turned on and the user runs an AI action — to the
+// provider picked in Mail's settings: the vendor of the user's own coding
+// CLI (Claude Code, Codex, Gemini CLI), an API with the user's key, or a
+// model server at the address given (loopback by default). See internal/mail/ai.
 package mail
 
 import (
@@ -47,6 +49,7 @@ type Service struct {
 	sample  *sampleBox   // non-nil while sample mode is on
 	version atomic.Int64 // bumped on every local change; the UI polls it
 	oauth   oauthFlows   // sign-ins with Google/Microsoft waiting for the browser
+	ai      aiState      // the assistant's CLI finder, key stores (http_ai.go)
 }
 
 // sampleBox is the throwaway instance behind sample mode.
