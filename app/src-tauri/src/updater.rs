@@ -2,9 +2,13 @@
 //! out" to the new app running, through `tauri-plugin-updater`.
 //!
 //! - **What tells us an update exists** is the daemon's release check
-//!   (`/v1/update`, off until the user turns it on). The app makes no
-//!   periodic request of its own: it fetches `latest.json` only when the
-//!   user clicks **Update** or **Check for Updates…** (rule 4).
+//!   (`/v1/update`, off until the user turns it on, due hourly). The app
+//!   makes no periodic request of its own: it fetches `latest.json` when
+//!   the user clicks **Update** or **Check for Updates…**, or — with
+//!   **Update automatically** chosen in Settings → Updates — once, when the
+//!   daemon reports a newer version, to download and verify it in the
+//!   background ([`download`]); the page installs it when no agent is busy
+//!   and the user is away (rule 4; ADR-042 as amended 2026-10-15).
 //! - **Nothing installs without a valid signature.** The bundle is verified
 //!   against the public key in `tauri.conf.json` (minisign) and the version
 //!   it was signed for, before a byte of it is written.
@@ -66,6 +70,11 @@ pub enum Phase {
         downloaded: u64,
         total: Option<u64>,
     },
+    /// Downloaded and its signature verified, held in memory until the page
+    /// asks to install it (Update automatically waits for a quiet moment).
+    Ready {
+        next: String,
+    },
     /// Verified; being put in place. The app restarts right after.
     Installing {
         next: String,
@@ -96,6 +105,8 @@ pub struct Updates {
     file: PathBuf,
     phase: Mutex<Phase>,
     pending: Mutex<Option<Update>>,
+    /// A verified bundle waiting for [`install`]: what [`download`] leaves.
+    ready: Mutex<Option<(Update, Vec<u8>)>>,
     busy: Mutex<bool>,
 }
 
@@ -113,6 +124,7 @@ impl Updates {
             file: data_dir.join("app-update.json"),
             phase: Mutex::new(Phase::Idle),
             pending: Mutex::new(None),
+            ready: Mutex::new(None),
             busy: Mutex::new(false),
         }
     }
@@ -267,6 +279,13 @@ pub async fn check<R: Runtime>(app: AppHandle<R>) -> Info {
     st.set_phase(match result {
         Ok(Some(u)) => {
             let version = u.version.clone();
+            // A bundle held for an older release than the one now on offer
+            // is dropped: the next install fetches the newest.
+            let mut ready = st.ready.lock().unwrap_or_else(|e| e.into_inner());
+            if ready.as_ref().is_some_and(|(r, _)| r.version != version) {
+                *ready = None;
+            }
+            drop(ready);
             *st.pending.lock().unwrap_or_else(|e| e.into_inner()) = Some(u);
             Phase::Available { next: version }
         }
@@ -287,36 +306,30 @@ async fn check_once<R: Runtime>(app: &AppHandle<R>) -> Result<Option<Update>, St
     updater.check().await.map_err(|e| explain(&e))
 }
 
-/// Downloads, verifies and installs the update, then restarts the app. On
-/// Windows the installer takes over and the app exits from inside the
-/// plugin. Returns only when something failed.
-pub async fn install<R: Runtime>(app: AppHandle<R>) -> Info {
+/// Finds the update (the one a check left, else a fresh check) and downloads
+/// it with progress. The plugin verifies the signature, and the version it
+/// was signed for, before it returns the bytes. On no update or a failure
+/// the phase says so and `None` comes back; the caller releases the claim.
+async fn fetch<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, Vec<u8>)> {
     let st = app.state::<Updates>();
-    if this_blocked().is_some() || !st.claim() {
-        return info(&app);
-    }
     let pending = st.pending.lock().unwrap_or_else(|e| e.into_inner()).take();
     let update = match pending {
         Some(u) => Ok(Some(u)),
         None => {
             st.set_phase(Phase::Checking);
-            announce(&app);
-            check_once(&app).await
+            announce(app);
+            check_once(app).await
         }
     };
     let update = match update {
         Ok(Some(u)) => u,
         Ok(None) => {
             st.set_phase(Phase::UpToDate);
-            st.release();
-            announce(&app);
-            return info(&app);
+            return None;
         }
         Err(error) => {
             st.set_phase(Phase::Failed { error });
-            st.release();
-            announce(&app);
-            return info(&app);
+            return None;
         }
     };
     let version = update.version.clone();
@@ -325,11 +338,11 @@ pub async fn install<R: Runtime>(app: AppHandle<R>) -> Info {
         downloaded: 0,
         total: None,
     });
-    announce(&app);
+    announce(app);
     let mut downloaded: u64 = 0;
     let mut last = Instant::now();
     let progress_app = app.clone();
-    let progress_version = version.clone();
+    let progress_version = version;
     let bytes = update
         .download(
             move |chunk, total| {
@@ -349,15 +362,69 @@ pub async fn install<R: Runtime>(app: AppHandle<R>) -> Info {
             || {},
         )
         .await;
-    let bytes = match bytes {
-        Ok(b) => b,
+    match bytes {
+        Ok(b) => Some((update, b)),
         Err(e) => {
             st.set_phase(Phase::Failed { error: explain(&e) });
-            st.release();
-            announce(&app);
-            return info(&app);
+            None
         }
+    }
+}
+
+/// Downloads and verifies the update and holds it, without installing:
+/// what **Update automatically** does as soon as the daemon's release check
+/// finds a newer version (ADR-042, amended 2026-10-15). The page installs it
+/// later, when no agent is busy and the user is away. Only the user's
+/// choice in Settings → Updates leads here; the request is the same
+/// `latest.json` and bundle a click on Update fetches.
+pub async fn download<R: Runtime>(app: AppHandle<R>) -> Info {
+    let st = app.state::<Updates>();
+    if this_blocked().is_some() || !st.claim() {
+        return info(&app);
+    }
+    let held = st
+        .ready
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .map(|(u, _)| u.version.clone());
+    match held {
+        Some(next) => st.set_phase(Phase::Ready { next }),
+        None => {
+            if let Some((update, bytes)) = fetch(&app).await {
+                let next = update.version.clone();
+                *st.ready.lock().unwrap_or_else(|e| e.into_inner()) = Some((update, bytes));
+                st.set_phase(Phase::Ready { next });
+            }
+        }
+    }
+    st.release();
+    announce(&app);
+    info(&app)
+}
+
+/// Installs the update — the one [`download`] holds, else downloaded and
+/// verified now — then restarts the app. On Windows the installer takes
+/// over and the app exits from inside the plugin. Returns only when
+/// something failed.
+pub async fn install<R: Runtime>(app: AppHandle<R>) -> Info {
+    let st = app.state::<Updates>();
+    if this_blocked().is_some() || !st.claim() {
+        return info(&app);
+    }
+    let held = st.ready.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let (update, bytes) = match held {
+        Some(r) => r,
+        None => match fetch(&app).await {
+            Some(r) => r,
+            None => {
+                st.release();
+                announce(&app);
+                return info(&app);
+            }
+        },
     };
+    let version = update.version.clone();
     st.set_phase(Phase::Installing {
         next: version.clone(),
     });
@@ -486,6 +553,13 @@ mod tests {
         assert_eq!(v["next"], "0.79.0");
         assert_eq!(v["version"], "0.78.1");
         assert_eq!(v["total"], 40);
+        // A downloaded, verified bundle waiting for a quiet moment.
+        u.set_phase(Phase::Ready {
+            next: "0.79.0".into(),
+        });
+        let v = serde_json::to_value(u.info("0.78.1", None)).unwrap();
+        assert_eq!(v["phase"], "ready");
+        assert_eq!(v["next"], "0.79.0");
     }
 
     #[test]

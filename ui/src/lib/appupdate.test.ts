@@ -46,6 +46,10 @@ describe('offerFor (F20)', () => {
     expect(offerFor(app({ phase: 'failed', error: 'boom' }), daemon, '')).toEqual({ kind: 'failed', error: 'boom' })
   })
 
+  it('offers a bundle downloaded in the background as one click (Update automatically)', () => {
+    expect(offerFor(app({ phase: 'ready', next: '0.79.0' }), daemon, '')).toEqual({ kind: 'install', next: 'v0.79.0' })
+  })
+
   it('says up to date after a check that found nothing', () => {
     expect(offerFor(app({ phase: 'up_to_date' }), { ...daemon, latest: 'v0.78.1', update_available: false }, '')).toEqual({ kind: 'up_to_date', version: 'v0.78.1' })
   })

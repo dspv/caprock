@@ -20,16 +20,28 @@ brew install --cask dspv/tap/caprock-app
 
 <sub>A real Caprock work session in this repository. Example figures.</sub>
 
-> **🤖 Contribute with your AI →** hand your coding agent one prompt and it
-> picks an issue, runs every check locally and opens a pull request.
-> [How it works](docs/contributing-with-ai.md).
-
 Other downloads: [macOS .dmg](https://github.com/dspv/caprock/releases/latest/download/Caprock-macOS.dmg) ·
 [Windows](https://github.com/dspv/caprock/releases/latest/download/Caprock-Windows-setup.exe) ·
 [.AppImage](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.AppImage) ·
 [.deb](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.deb) ·
 [.rpm](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.rpm) ·
 [the daemon on its own](#install)
+
+<p align="center"><a href="docs/contributing-with-ai.md"><picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/readme/contribute-light.svg">
+  <img alt="Contribute with your AI: copy the prompt below, paste it into your agent, and it opens the pull request" src="docs/readme/contribute.svg" width="880">
+</picture></a></p>
+
+```text
+I want to contribute to Caprock. Run `gh repo fork dspv/caprock --clone`,
+then read docs/contributing-with-ai.md in the clone and follow the prompt
+under "The prompt" in it, step by step. Work on the smallest open issue
+labelled "good first issue" unless I name another, and tell me which.
+```
+
+Paste it into Claude Code, Codex or any coding agent, in an empty folder. It
+runs every check on your machine and opens the pull request;
+[how it works](docs/contributing-with-ai.md).
 
 ## Every agent in a real terminal tab
 

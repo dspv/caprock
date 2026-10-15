@@ -149,6 +149,10 @@ type WorkUnreleased struct {
 	Count int      `json:"count"`
 	// More: Count is larger than Items.
 	More bool `json:"more,omitempty"`
+	// Kinds counts the entries by Keep a Changelog kind (Added, Fixed, …):
+	// the `### ` heading in the section, a fragment's `kind:`. An entry of
+	// no kind counts in Count only. Absent when none has a kind.
+	Kinds map[string]int `json:"kinds,omitempty"`
 }
 
 // WorkTags is the newest tags, read locally.

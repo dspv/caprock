@@ -55,6 +55,7 @@ import { GitHubSettings } from '@/components/GitHubSettings'
 import { WindowStopSetting } from '@/components/WindowStopSetting'
 import { Locked } from '@/components/Locked'
 import { BrainAutoSetting } from '@/components/BrainAutoSetting'
+import { UpdatesSetting } from '@/components/UpdatesSetting'
 import { CloseButton, dialogOpen } from '@/components/Dialog'
 import { escapeLeavesPage, useCloseSettings } from '@/lib/settingsClose'
 import { CaprockItself } from '@/components/ResourceMeter'
@@ -191,6 +192,7 @@ export function StatusScreen() {
           {owner && isTauri() && <GlobalHotkey />}
         </>
       )}
+      {owner && <UpdatesSetting />}
       {owner && <PrivacySection />}
       {owner && <MemorySection />}
       {owner && <BrainSection />}
@@ -324,19 +326,14 @@ function InterfaceSize() {
 }
 
 function PrivacySection() {
-  const [plan, savePlan] = usePlan()
+  const [plan] = usePlan()
   if (!plan) return null
   return (
     <Section title="Privacy">
-      <Toggle
-        checked={plan.update_checks}
-        onChange={(on) => savePlan({ update_checks: on })}
-        label="Tell me when a new version is out"
-        hint="At most every 6 hours, asks GitHub for the latest version number. Nothing about you is sent, and nothing goes to us."
-      />
       <p className="text-[12px] leading-relaxed text-fg-muted">
-        Apart from the Telegram messages you set up yourself and GitHub once you connect it, that is the only thing
-        Caprock ever sends over the internet. Everything else stays on this computer.
+        The release check {plan.update_checks ? 'is on' : 'is off'} (Updates, above): it asks GitHub for the latest version number,
+        and with Update automatically the app then downloads that version from GitHub. Apart from it, the Telegram messages you set
+        up yourself and GitHub once you connect it, Caprock sends nothing over the internet. Everything else stays on this computer.
       </p>
     </Section>
   )

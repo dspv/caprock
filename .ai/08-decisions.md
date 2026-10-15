@@ -2183,7 +2183,8 @@ kept by the remembered pick.
 ## ADR-042 — The app updates itself in one click: a minisign-signed bundle, one channel, checked only when the release check is on or the user asks
 
 **Date:** 2026-10-06 · **Status:** accepted (owner asked for it: "no
-convenient seamless app update" was what bothered him most, translated)
+convenient seamless app update" was what bothered him most, translated) ·
+**Amended:** 2026-10-15 (hourly checks, Update automatically; below)
 
 **Context.** Until now the app named the command for how it was installed
 (F12) and never replaced itself: a Homebrew user ran `brew upgrade --cask`,
@@ -2267,6 +2268,54 @@ quarantine step goes. Nothing in the app changes.
 measure that an update still opens without a prompt), a second channel
 (beta) is wanted, or GitHub's `releases/latest/download` redirect stops
 serving release assets.
+
+**Amended 2026-10-15: checked hourly, and Update automatically is a
+choice.** The owner asked (translated): "the product should check for a new
+version a bit more often. And add an option — either turn on auto-update,
+or ask the user right now." Releases now ship several times a day, so a
+six-hour throttle meant most of them were announced after the next one was
+out.
+
+- **The release check is due hourly** (`update.Interval`), on a five-minute
+  tick measured on the wall clock, so a check that fell due while the Mac
+  slept runs within minutes of waking; after a failure the next unforced
+  try waits 15 minutes. It is the same conditional request to the same
+  endpoint (an unchanged release is a `304` with no body), still off until
+  switched on. Nothing new is sent. Settings → **Updates** holds the
+  switch, when it last asked, and **Check now**.
+- **Settings → Updates, in the desktop app where it can replace itself:
+  Ask me (the default) / Update automatically** (`app_update` in
+  `/v1/settings`). Ask me is everything above, unchanged. Update
+  automatically reverses one rejected option above, *downloading in the
+  background before the click*, because now the user asked for it: once
+  the daemon reports a newer version, the app fetches `latest.json` and the
+  bundle — the same two requests a click makes, with the same signature
+  and version checks — and holds the verified bytes (`app_update_download`,
+  phase `ready`). Choosing it also switches the release check on.
+- **It restarts only when it is safe:** no session working or waiting on a
+  permission prompt (`GET /v1/update/busy`, the keep-awake count; a count
+  that cannot be read counts as busy), the page left alone for two minutes
+  (no key, click, pointer move or scroll), and nothing typed into a text
+  field on the page. Otherwise it looks again every 30 seconds. Then a
+  ten-second notice, *Updating to vX in 10 s*, with **Not now** (holds that
+  version back an hour) and **Restart now**; a key or a click elsewhere
+  calls it off until the next quiet moment. After the restart one line
+  says *Updated to vX · What's new*.
+- **Sessions and tabs come back as on any update** — the path is the one a
+  click on Update takes: each session's terminal lives in its pty-host,
+  which outlives the app and the daemon (ADR-033; the daemon's restart
+  tests, `TestSessionSurvivesItsDaemon`, `TestAPromptSurvivesADaemonRestart`),
+  and the page keeps tabs, splits and scroll in its storage. What is typed
+  in a terminal is in the session's process and survives; a draft in a
+  page field would not, hence the rule above.
+- **The update card offers *Always update automatically*** as a secondary
+  action that flips the setting; it does not restart there and then.
+- **Unchanged:** the daemon never overwrites its own binary, and a
+  Homebrew, Scoop, `go install` or downloaded daemon is still told the
+  command (F12). Only the app's own minisign-verified bundle installs
+  itself, and only the app's page acts on `app_update`; a `.deb`, `.rpm`,
+  development or translocated app still cannot update itself and shows no
+  choice.
 
 ## ADR-044 — Sessions answer for themselves to macOS privacy prompts; background reads skip every guarded place
 
