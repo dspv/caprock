@@ -1898,7 +1898,13 @@ func (a *agentAdapter) Write(id string, data []byte) error     { return a.m.Inpu
 func (a *agentAdapter) Resize(id string, cols, rows int) error { return a.m.Resize(id, cols, rows) }
 
 func (a *agentAdapter) Signal(id, action string) error {
-	if err := a.m.Signal(id, ptyman.Signal(action)); err != nil {
+	var err error
+	if action == "end" {
+		err = a.m.End(id)
+	} else {
+		err = a.m.Signal(id, ptyman.Signal(action))
+	}
+	if err != nil {
 		return err
 	}
 	// Signalled by hand: the plan-window stop no longer resumes it later.

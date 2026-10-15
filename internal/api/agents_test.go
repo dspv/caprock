@@ -116,6 +116,9 @@ func TestAgentsEndpoints(t *testing.T) {
 	if r := do("POST", "/v1/agents/new-session/signal", `{"action":"kill"}`); r.StatusCode != 204 || len(fa.sigs) != 1 || fa.sigs[0] != "kill" {
 		t.Fatalf("signal: %d %v", r.StatusCode, fa.sigs)
 	}
+	if r := do("POST", "/v1/agents/new-session/signal", `{"action":"end"}`); r.StatusCode != 204 || len(fa.sigs) != 2 || fa.sigs[1] != "end" {
+		t.Fatalf("end: %d %v", r.StatusCode, fa.sigs)
+	}
 	if r := do("POST", "/v1/agents/x/signal", `{"action":"bogus"}`); r.StatusCode != 400 {
 		t.Fatalf("bad action: %d", r.StatusCode)
 	}

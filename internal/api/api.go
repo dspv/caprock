@@ -2652,12 +2652,15 @@ func (s *Server) handleAgentSignal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	// "end" asks the process to stop and kills it only after a grace period,
+	// so Claude Code writes its transcript out and the conversation can be
+	// continued; "kill" is immediate.
 	switch body.Action {
-	case "pause", "resume", "kill":
+	case "pause", "resume", "kill", "end":
 	default:
 		// Name the field, not just the values: the old message ("action must be
 		// pause|resume|kill") left a caller who sent the wrong key guessing.
-		http.Error(w, `body must be {"action": "pause"|"resume"|"kill"}`, http.StatusBadRequest)
+		http.Error(w, `body must be {"action": "pause"|"resume"|"kill"|"end"}`, http.StatusBadRequest)
 		return
 	}
 	if s.refuseShellToDevice(w, r, r.PathValue("id")) {

@@ -288,15 +288,19 @@ One window, three regions:
   folder, or one this window spawned a moment ago that the session list
   does not have yet (`planChatClose`, `lib/closeShell.ts`). One whose agent
   already exited is not signalled. Closing the tab of any other agent
-  Caprock started asks *Close tab* (focused; the agent runs on) or *Close
-  and end the agent*, with *Don't ask again* (since 2026-10-14;
-  `lib/agentClose.ts`, .ai/04-ui.md); an agent another terminal started
+  Caprock started ends it when it is idle, with a toast that the
+  conversation is saved; one working or waiting asks one sentence with
+  *Close tab* (focused; the agent runs on) and a quiet *Stop it instead*
+  (since 2026-10-15; `lib/agentClose.ts`, .ai/04-ui.md). Ending is the
+  `end` signal — SIGTERM, then SIGKILL after 5 s — so the transcript is
+  written and the session can be continued; an agent another terminal started
   only loses its tab. The tab's × says *the chat ends* on a chat, *keep
   the agent running or end it* on an agent Caprock started and *the agent
   keeps running* on the rest.
 - **Tab strip** (owner, 2026-10-09: "tabs are barely noticeable", and "the
-  + amber, or better a dropdown", translated). The tab in front has a 2px
-  amber top edge over its hairline frame and a medium-weight label
+  + amber, or better a dropdown", translated). The tab in front has a 3px
+  accent top edge over its hairline frame and a bold label, and is the only
+  tab that does (2026-10-15: a waiting tab is an amber dot, not a bar)
   (`.app-tab-front`); every other tab is a faintly filled surface with its own
   hairline frame (`.app-tab-back`), 4px apart, so each reads as a tab in both
   themes. The pinned Dashboard tab is not a session and looks it
