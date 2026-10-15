@@ -563,6 +563,7 @@ POST /v1/hooks/install                 → {hooks: HooksStatus, backup?} — `ca
 POST /v1/claude/bypass-consent         → {accepted: true} — the user accepted Caprock's copy of Claude Code's bypass warning (ADR-041)
 GET  /v1/stats/daily?days=30           → DailyStat[]
 GET  /v1/stats/trends?agent=…         → Trends — Now's Today cells: 14 previous days cut at this time of day, today, the usual burn
+GET  /v1/pipeline/agents?repo=…      → RepoAgents — the Pipeline's cost per agent-hour and agent team for a repository's folders (§ Pipeline agents)
 POST /v1/hook                          → 204 (shim only, bearer-token gated; the event is written even after the shim hangs up)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
@@ -3459,6 +3460,67 @@ GET /v1/work → Work
   cold, 0.5 ms warm.
 - **Who.** A read open to every paired device, as the Queue is. `501`
   without a work board (a test server).
+
+### Pipeline agents
+
+The Pipeline's two agent figures for one repository — what an hour of agent
+work costs and how many agents worked ([04-ui.md](04-ui.md) § The Pipeline,
+*The agent figures*). Measured from the events of the sessions whose
+`repo_root` is one of the folders named; nothing is stored. Code:
+`internal/store/pipelineagents.go`, `internal/api/pipelineagents.go`.
+
+```
+GET /v1/pipeline/agents?repo=<root>[&repo=<root>…] → RepoAgents
+```
+
+`repo` is required (a 400 without one, and above 32): every folder of the
+repository, as clones of one GitHub repository are several. Read-only, so a
+paired device may ask it.
+
+- **`RepoAgents`** — `{days, rate, team}`; `days` is 14, the window the
+  usuals are set against.
+- **`rate`** — `{last24, usual?, series}`, each a `RateSpan` `{cost_usd,
+  active_hours, active_cost_usd, tokens, active_tokens, wall_hours, days?}`.
+  An **active agent-hour** is `usual.burn`'s rule (`UsualMinCalls`): one
+  session's clock hour — local, counted from a local midnight — in which
+  it made at least five priced calls costing more than nothing, its
+  subagents' turns included, since they are rows of the same session. Two
+  sessions in one clock hour are two agent-hours; `wall_hours` counts that
+  hour once, as any hour with a priced turn. The rate is
+  `active_cost_usd / active_hours`; spend in an hour below the rule is in
+  `cost_usd` but not in the rate. `tokens` is input, output, cache reads and
+  writes; `active_tokens` the active hours' share. `last24` is the last 24
+  clock hours, the current one included; `usual` the 14×24 hours before
+  them, with `days` the 24-hour stretches among them that had an active
+  hour, absent when none had. `series` is the previous 14 local days,
+  oldest first, then today so far. The client withholds a comparison below
+  three `days`: "not enough history".
+- **`team`** — `{now, peak_today, series}`. An agent is a main session
+  (`agent_id` empty) or a subagent (one `agent_id` in one session — the
+  harness's agent id, which the hooks carry inside a subagent, § Subagent
+  reads DDL) with an assistant turn. `now` is `{sessions, subagents}` with
+  a turn in the last ten minutes (the five-minute bucket the ten begin in
+  counts whole). `series` is the previous 30 local days, oldest first, then
+  today: `{day, sessions, subagents, by_kind?, peak}`, distinct agents that
+  day, `by_kind` the same split by `sessions.agent` (`claude`, `codex`,
+  `opencode`, `gemini`, …), and `peak` the most agents with a turn in one
+  five-minute bucket (five minutes divides every UTC offset, so a bucket
+  never straddles a local midnight); `peak_today` is today's.
+
+One grouped scan per figure, off the covering `idx_events_turn_agent`
+(`kind, ts, session_id, agent_id, … cost_usd, tokens…, internal`): per
+(session, hour) for the rate, per (session, agent id, five-minute bucket)
+for the team, the session set a subquery off `idx_sessions_repo_branch`.
+The whole window is too slow to ask once a minute — on a 1.7 GB copy of the
+owner's database, for its busiest repository (2026-10-15, through the Go
+driver, warm): 105 ms for 16 days of the rate and 125 ms for 31 days of the
+team; 34 ms and 122 ms in the sqlite shell. So the window is cut at today's
+local midnight: the days before are scanned once and kept per folder set
+and day for 30 minutes (`pipeAgentsPastTTL`; a transcript read late still
+reaches them), as hourly sums and finished days, and a request scans only
+today — 26 ms warm for both figures together at 20:30 on that repository's
+busiest day, 5–8 ms for a quieter one, against 300 ms once a day for the
+days before. The answer itself is cached for a minute (`pipeAgentsTTL`).
 
 ### Chat field pickers
 
