@@ -80,10 +80,12 @@ import { TerminalFind, type TermSearch } from './TerminalFind'
 import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPrefs } from '@/lib/termprefs'
 import { searchColors, terminalTheme } from '@/lib/termthemes'
 import { checkTerminalCell, clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
+import { healAtlasMerges, reuploadGlyphs } from '@/lib/termatlas'
 import { blinkWhileVisible, pageHidden } from '@/lib/visible'
 import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
 
 export { APP_TERMINAL_THEME } from '@/lib/termthemes'
+export { reuploadGlyphs } from '@/lib/termatlas'
 
 
 /** A tab out of sight this long drops its socket. */
@@ -117,6 +119,13 @@ export const KEEP_WEBGL_HIDDEN = 3
  */
 export const LONG_HIDDEN_MS = 5 * 60_000
 
+/**
+ * The window back in focus after at least this long in the background
+ * re-sends the pane's glyph atlas to the GPU (`reuploadGlyphs`): a cheap
+ * self-heal for a texture WebKit let go, never on a quick switch of apps.
+ */
+export const FOCUS_HEAL_MS = 30_000
+
 type Kept = { drop: () => void }
 const keptWebgl: Kept[] = []
 function releaseWebgl(p: Kept) {
@@ -149,21 +158,6 @@ export function keptWebglCount(): number {
  * it cannot throw here, and the pane falls back to waiting for the observer
  * (one blank frame, nothing worse).
  */
-/**
- * Sends the WebGL renderer's glyph atlas to the GPU again, from the canvas it
- * was rasterised into, without rasterising anything: the next frame re-uploads
- * every page (the addon's own `setAtlas`, which marks each page's texture
- * stale). False when the addon's insides are not what this expects (another
- * version); the caller then rebuilds the atlas instead.
- */
-export function reuploadGlyphs(addon: unknown): boolean {
-  const r = (addon as { _renderer?: { _charAtlas?: unknown; _glyphRenderer?: { value?: { setAtlas?: (a: unknown) => void } } } })._renderer
-  const glyphs = r?._glyphRenderer?.value
-  if (!r?._charAtlas || typeof glyphs?.setAtlas !== 'function') return false
-  try { glyphs.setAtlas(r._charAtlas) } catch { return false }
-  return true
-}
-
 function paintNow(term: Xterm) {
   const rs = (term as unknown as { _core?: { _renderService?: { _handleIntersectionChange?: (e: { isIntersecting: boolean; intersectionRatio: number }) => void } } })._core?._renderService
   try { rs?._handleIntersectionChange?.({ isIntersecting: true, intersectionRatio: 1 }) } catch { /* another xterm */ }
@@ -439,6 +433,9 @@ export function TerminalPane({
           if (visible) scheduleWebgl()
         })
         term.loadAddon(addon)
+        // A page merge in the atlas this terminal shares with every other
+        // tab left it drawing from a stale texture unit, for good (lib/termatlas).
+        healAtlasMerges(addon, term, () => clearGlyphAtlas(term))
         webgl = addon
         // Another renderer, another cell: fit to it now, not a frame later.
         lastGeom = ''
@@ -589,6 +586,22 @@ export function TerminalPane({
     window.addEventListener('focus', onFocusWake)
     window.addEventListener('pageshow', onFocusWake)
 
+    // The window back in front after a while in the background (another app
+    // on top, never hidden, so no visibilitychange): the pane in front sends
+    // its atlas to the GPU again and redraws — one upload per page, no
+    // rasterising, never on a quick ⌘-Tab and never on a timer.
+    let blurredAt = 0
+    const onBlur = () => { blurredAt = Date.now() }
+    const onFocusBack = () => {
+      const away = blurredAt > 0 ? Date.now() - blurredAt : 0
+      blurredAt = 0
+      if (!visible || !webgl || away < FOCUS_HEAL_MS) return
+      if (!reuploadGlyphs(webgl)) { repaintGlyphs(); return }
+      term.refresh(0, term.rows - 1)
+    }
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocusBack)
+
     // One PTY, several terminals (this app, a phone): it is the size of the
     // one in use (internal/api/termsize.go). Typing claims it on the daemon's
     // side; looking claims it here — the window gaining focus or coming back
@@ -719,6 +732,8 @@ export function TerminalPane({
       if (raf) cancelAnimationFrame(raf)
       if (fitRaf) cancelAnimationFrame(fitRaf)
       document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('focus', onFocusBack)
       dprQuery?.removeEventListener('change', onDpr)
       window.removeEventListener('online', onWake)
       window.removeEventListener('focus', onFocusWake)
