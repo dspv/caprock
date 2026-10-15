@@ -87,3 +87,26 @@ func TestBuildBoard(t *testing.T) {
 		t.Errorf("flow: %+v", b.Flow)
 	}
 }
+
+// How often the repository ships: the median gap between consecutive
+// releases already read, with at least three gaps; never a date.
+func TestBoardReleaseGap(t *testing.T) {
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	day := 24 * time.Hour
+	rel := func(tag string, daysAgo int) github.RepoRelease {
+		return github.RepoRelease{Tag: tag, PublishedAt: now.Add(-time.Duration(daysAgo) * day).UnixMilli()}
+	}
+	// Two gaps: the count, no median. The two releases from the earlier
+	// test's board already said nothing either.
+	b := buildBoard(boardInput{releases: []github.RepoRelease{rel("v3", 1), rel("v2", 3), rel("v1", 4)}, now: now, days: 14})
+	if b.Flow.ReleaseGapMedianMS != 0 || b.Flow.ReleaseGapCount != 2 {
+		t.Fatalf("two gaps: %+v", b.Flow)
+	}
+	// Gaps of 1, 2, 4 and 6 days, listed newest first as GitHub does, and
+	// one without a stamp, which is skipped: the median is 3 days.
+	rels := []github.RepoRelease{rel("v5", 0), rel("v4", 6), {Tag: "draftish"}, rel("v3", 10), rel("v2", 12), rel("v1", 13)}
+	b = buildBoard(boardInput{releases: rels, now: now, days: 14})
+	if b.Flow.ReleaseGapCount != 4 || b.Flow.ReleaseGapMedianMS != (3*day).Milliseconds() {
+		t.Fatalf("four gaps: %+v", b.Flow)
+	}
+}

@@ -8,15 +8,15 @@ afterEach(() => {
 })
 
 describe('the theme toggle', () => {
-  it('walks all eight, dark ones first, and back to Dark Pastel', () => {
+  it('walks all nine, dark ones first, and back to Dark Pastel', () => {
     localStorage.setItem('caprock-theme', 'dark')
     const { result } = renderHook(() => useThemeMode())
     const seen = [result.current.mode]
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 9; i++) {
       act(() => result.current.cycle())
       seen.push(result.current.mode)
     }
-    expect(seen).toEqual(['dark-pastel', 'dark-warm', 'dark-cold', 'dark-side', 'light', 'light-cold', 'book', 'light-side', 'dark-pastel'])
+    expect(seen).toEqual(['dark-pastel', 'dark-warm', 'dark-cold', 'dark-side', 'light', 'light-cold', 'book', 'light-side', 'sunlight', 'dark-pastel'])
     expect(result.current.next).toBe('dark-warm')
   })
 

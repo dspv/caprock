@@ -331,6 +331,9 @@ var pairedDeviceRoutes = map[string]bool{
 	// The Queue view: the queues of every owned session with their rough
 	// estimates and the turns finished lately — the same reads, together.
 	"GET /v1/queue": true,
+	// The Work board (ADR-064): the same reads across every live session,
+	// plus the release state the clone holds locally; nothing on it writes.
+	"GET /v1/work": true,
 	// The chat field's pickers: the session's slash commands (names and
 	// descriptions from its .claude folders) and its folder's file list,
 	// as a project's file list is a read.

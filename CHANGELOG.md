@@ -7,6 +7,31 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **work:** The Work board's daemon answer, `GET /v1/work` (ADR-064): every
+  live session on the machine — started by Caprock or by hand — with its
+  state, its running turn's rough range (Claude Code only, never while it
+  waits on you), its own task list, what it cost today and the pull
+  requests it recorded; the task runner's tasks and the queued messages;
+  and each repository's `[Unreleased]` CHANGELOG entries, newest tags and
+  commits past the last one, read from local git as of your last fetch.
+  Nothing is written, nothing is polled, GitHub is not asked and git never
+  fetches. The screen comes next.
+- **pipeline:** The PRs & CI board's flow strip carries how often the
+  repository ships: the median gap between its releases already read
+  (`release_gap_median_ms`, with three gaps or more), never a date for the
+  next one.
+- **app:** a Sunlight theme for working in bright light. It is black text
+  on pure white with no faint greys: every text colour, the faintest
+  included, is 7:1 or more against its background, measured on every
+  surface. Text is one weight heavier, borders and hairlines are dark
+  enough to see in glare, and the sidebar is opaque. The status colours
+  and the accent are saturated and stay apart. Its terminal keeps all 16
+  ANSI colours at 5.3:1 or more on white (the normal eight 7:1), the
+  yellow and cyan that usually wash out included. Pick it under Light in
+  the theme picker or Settings → Appearance.
+
 ### Changed
 
 - **ui:** Get premium in the header is a quiet tinted button, not a bright
@@ -14,6 +39,26 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   it, a faint premium tint with a hairline border and premium-coloured text,
   the price a step fainter, a little stronger on hover. Its text reads at
   4.5:1 or more in every palette.
+
+- **brain:** Second Brain looks like what it is: a brain made of a graph.
+  Nodes and links in the side view of a brain, in the memory kinds'
+  colours, softly pulsing, with a new node dropping in now and then and
+  linking up (still with reduced motion; CSS only, nothing runs in the
+  background). *How it works* is big and short — *Your agents' memory*,
+  one line on what it does, three one-line steps, *Over time: your
+  personal Jarvis*, one line on privacy and one button; the defaults
+  (Haiku, 300k tokens a day, up to five memories) moved into a folded
+  *Details*. The empty sidebar banner leads with the same brain, *Give
+  your agents a memory*, *Start building* and *How it works*.
+
+### Fixed
+
+- **windows:** Caprock no longer flashes console windows that steal the
+  keyboard focus. The daemon ran without a console, so every git, gh or
+  `claude -p` it started opened a window of its own for a fraction of a
+  second, every few seconds, and typing in other windows came out ragged
+  (user report on Windows 10). Every child now starts with a hidden
+  console, and a test keeps it that way.
 
 ## [0.117.5] - 2026-10-15
 
