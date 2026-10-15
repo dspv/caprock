@@ -239,6 +239,34 @@ type Config struct {
 	// plan windows to the daemon; "off" also removes Caprock's own statusLine entry from Claude Code's
 	// settings, and choosing again puts it back. Written only once chosen.
 	StatuslineMode string `json:"statusline_mode,omitempty"`
+	// AppUpdate is what the desktop app does when the release check finds a
+	// newer version (ADR-042, amended 2026-10-15): "ask" shows the update
+	// card, "auto" downloads the signed bundle in the background and installs
+	// it once no agent is busy and the user is away. Empty is "ask". Only the
+	// app's page acts on it; the daemon never installs anything itself.
+	// Written only once chosen.
+	AppUpdate string `json:"app_update,omitempty"`
+}
+
+// The desktop app's update modes (config.json "app_update").
+const (
+	AppUpdateAsk  = "ask"
+	AppUpdateAuto = "auto"
+)
+
+// AppUpdateModes lists the accepted values of AppUpdate.
+var AppUpdateModes = []string{AppUpdateAsk, AppUpdateAuto}
+
+// ValidAppUpdate reports whether v is one of AppUpdateModes.
+func ValidAppUpdate(v string) bool { return v == AppUpdateAsk || v == AppUpdateAuto }
+
+// NormalizeAppUpdate is the effective mode: anything unknown or unset is
+// "ask", what every install did before the choice existed.
+func NormalizeAppUpdate(v string) string {
+	if ValidAppUpdate(v) {
+		return v
+	}
+	return AppUpdateAsk
 }
 
 // The status line modes (config.json "statusline_mode").

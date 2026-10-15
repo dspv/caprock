@@ -11,7 +11,7 @@
  * and the day's summary for the plan windows. Nothing here is estimated, and a
  * figure an agent does not report is left out rather than drawn as a zero.
  */
-import { Fragment, createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { api, type Event, type Permission, type RateWindow, type SessionSummary, type Subagent, type SubagentDone, type SubagentsNow, type Summary } from '@/lib/api'
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
@@ -44,6 +44,7 @@ import { overlapChip, useOverlap } from '@/lib/overlap'
 import { sessionTitle } from '@/lib/sidebar'
 import { orderSubagents, presetOf, setSubagentFields, useSubagentFields, SUBAGENT_FIELDS, SUBAGENT_PRESETS, type SubagentFields } from '@/lib/subagentview'
 import { SubagentDetail } from './SubagentDetail'
+import { SectionFrames } from './SectionFrames'
 import {
   askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtAge, fmtRun, planWindowsFor, requester, runningTool, runVerb, subagentWaiting, toolGroups, toolKind, toolRuns, RUNNING_STALE_MS, SLOW_MS,
   type CockpitState, type SubagentChip, type ToolGroup, type ToolRun,
@@ -113,7 +114,7 @@ const STATE_TEXT: Record<CockpitState, string> = {
 }
 
 /** The cockpit's sections below the permission card, in reading order. */
-export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, processes }: {
+export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, release, processes }: {
   s: SessionSummary
   sessionId: string
   hasPermission: boolean
@@ -122,6 +123,8 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, pro
   changes?: ReactNode
   /** The session's pull requests and their checks (CockpitCI), placed and folded with the rest. */
   ci?: ReactNode
+  /** The repository's next release (ReleasePlan's CockpitRelease), likewise. */
+  release?: ReactNode
   /** The session's busiest processes (ResourceMeter's Processes), likewise. */
   processes?: ReactNode
 }) {
@@ -159,7 +162,9 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, pro
   // places), its subagents, its task list.
   // That is the default; each viewer can put the sections in another order
   // in Arrange mode (owner, 2026-10-14, translated: "so everyone sets up
-  // what interests them"). The agent's own block stays on top.
+  // what interests them"), or by a section's own grip — drag, ⌥⇧↑ ⌥⇧↓,
+  // its menu (SectionFrames; owner, 2026-10-15). The agent's own block
+  // stays on top.
   const order = useSectionOrder()
   const [arranging, setArranging] = useState(false)
   const sections: Record<CockpitSection, ReactNode> = {
@@ -181,6 +186,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, pro
     tools: <Timeline runs={runs} total={s.stats?.tool_calls} now={now} cwd={s.cwd} />,
     changes: changes ? <Foldable id="changes">{changes}</Foldable> : null,
     ci: ci ? <Foldable id="ci">{ci}</Foldable> : null,
+    release: release ? <Foldable id="release">{release}</Foldable> : null,
     processes: processes ? <Foldable id="processes">{processes}</Foldable> : null,
   }
   return (
@@ -188,7 +194,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, pro
       <Hero s={s} sessionId={sessionId} state={state} asking={hasPermission || !!permission} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} />
       {arranging
         ? <ArrangeSections order={order} onDone={() => setArranging(false)} />
-        : order.map((id) => <Fragment key={id}>{sections[id]}</Fragment>)}
+        : <SectionFrames order={order} sections={sections} />}
       {!arranging && <ArrangeButton onArrange={() => setArranging(true)} />}
     </>
   )
@@ -282,7 +288,7 @@ const FoldCtx = createContext<{ full: boolean; toggle: () => void } | null>(null
  * right (*3 of 7 done*, *4 min ago*, *12% · 210 MB*) are its one line.
  * Kept per viewer with the other looks (lib/cockpitlooks).
  */
-function Foldable({ id, children }: { id: 'now' | 'tasks' | 'changes' | 'ci' | 'processes'; children: ReactNode }) {
+function Foldable({ id, children }: { id: 'now' | 'tasks' | 'changes' | 'ci' | 'release' | 'processes'; children: ReactNode }) {
   const looks = useLooks()
   const full = looks[id] === 'full'
   const ctx = useMemo(() => ({ full, toggle: () => setLook(id, full ? 'compact' : 'full') }), [id, full])

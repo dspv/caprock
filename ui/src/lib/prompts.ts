@@ -26,7 +26,7 @@ export type PromptKind =
   | 'premium-hint' | 'premium-banner' | 'premium-limit' | 'premium-cap'
   | 'teams-banner' | 'teams-nudge'
   | 'star-dismissed' | 'star-done'
-  | 'setup-later' | 'setup-phone-skip' | 'setup-telegram-skip'
+  | 'setup-later' | 'setup-phone-skip' | 'setup-telegram-skip' | 'setup-collapsed' | 'setup-expanded'
   | 'mail-later' | 'mail-done'
   | OfferPromptKind
 
@@ -66,11 +66,16 @@ const PERIOD_MS: Record<PromptKind, number> = {
   'star-dismissed': 30 * DAY,
   // "I starred it" is final.
   'star-done': Number.POSITIVE_INFINITY,
-  // The setup strip: × on the strip is "later", a week; "Not needed" on one
-  // item is final for that item. Once both are connected or skipped it is gone.
-  'setup-later': 7 * DAY,
+  // The setup strip: *Later* puts it away for three days (a week, on ×, until
+  // 2026-10-15); "Not needed" on one item is final for that item. Once both
+  // are connected or skipped it is gone. × folds it to a chip in the status
+  // bar and the chip unfolds it: two marks kept for good, the later one wins
+  // (a max-merge store cannot clear a mark, so unfolding is a mark too).
+  'setup-later': 3 * DAY,
   'setup-phone-skip': Number.POSITIVE_INFINITY,
   'setup-telegram-skip': Number.POSITIVE_INFINITY,
+  'setup-collapsed': Number.POSITIVE_INFINITY,
+  'setup-expanded': Number.POSITIVE_INFINITY,
   // The Mail offer: × is "not now" for a month; opening Mail answers it for good.
   'mail-later': 30 * DAY,
   'mail-done': Number.POSITIVE_INFINITY,

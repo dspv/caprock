@@ -23,6 +23,7 @@ import { navigate } from '@/lib/router'
 import { ScreenShown } from '@/lib/refresh'
 import { PipelineHostContext } from '@/lib/pipelineHost'
 import { pickPipeline, pipelineRepos, rememberRepo, type PipelineRepo } from '@/lib/pipeline'
+import { useRepoRemotes } from '@/lib/useRepoRemotes'
 import { PipelineView } from '@/components/PipelineView'
 import { Empty, Skeleton } from '@/components/ui'
 
@@ -38,8 +39,10 @@ export function PipelineScreen({ repo, of, pr }: { repo?: string; of?: string; p
   // repository is a new session, not something to watch for by the second.
   const own = useApi(host.sessions ? none : () => api.sessions(), [!!host.sessions], { live: false, intervalMs: 60_000 })
   const sessions = host.sessions ?? own.data
-  const repos = useMemo(() => pipelineRepos(sessions ?? []), [sessions])
-  const pick = useMemo(() => pickPipeline(sessions ?? [], { repo, of }), [sessions, repo, of])
+  // Only git repositories with a GitHub remote, clones of one folded (lib/pipeline).
+  const remotes = useRepoRemotes(sessions)
+  const repos = useMemo(() => pipelineRepos(sessions ?? [], remotes), [sessions, remotes])
+  const pick = useMemo(() => pickPipeline(sessions ?? [], { repo, of }, undefined, remotes), [sessions, repo, of, remotes])
   // What is shown is what Home's card and the next visit show.
   useEffect(() => { if (pick.repo && shown) rememberRepo(pick.repo.root) }, [pick.repo, shown])
 
@@ -56,7 +59,7 @@ export function PipelineScreen({ repo, of, pr }: { repo?: string; of?: string; p
   if (repos.length === 0) {
     return (
       <Empty title="No repository yet">
-        The Pipeline shows a repository’s pull requests on their way to a release. Start an agent in a git repository on GitHub and it shows up here.
+        The Pipeline shows a repository’s pull requests on their way to a release. Start an agent in a git repository on GitHub and it shows up here; a folder that is not one is not listed.
       </Empty>
     )
   }
@@ -64,7 +67,9 @@ export function PipelineScreen({ repo, of, pr }: { repo?: string; of?: string; p
     return (
       <div className="grid gap-3">
         <div className="flex flex-wrap items-center gap-3">{picker}</div>
-        <p className="text-[13px] text-fg-muted">No agent session was recorded in that repository. Pick one above.</p>
+        <p className="text-[13px] text-fg-muted">{of && !repo
+          ? 'That agent’s folder is not a git repository on GitHub, so it has no pipeline. Pick a repository above.'
+          : 'No agent session was recorded in that repository. Pick one above.'}</p>
       </div>
     )
   }
@@ -87,6 +92,11 @@ export function PipelineScreen({ repo, of, pr }: { repo?: string; of?: string; p
   )
 }
 
+/** A picker entry's tooltip: owner/name on GitHub, then every folder folded into it. */
+function pickerTitle(r: PipelineRepo): string {
+  return [r.remote, ...r.roots].filter(Boolean).join('\n')
+}
+
 /** The repositories as the dashboard's filter pills; the rest in a list. A dot marks one with an agent running. */
 function RepoPicker({ repos, current, onPick }: { repos: PipelineRepo[]; current?: string; onPick: (root: string) => void }) {
   const pills = repos.slice(0, PILLS)
@@ -101,7 +111,7 @@ function RepoPicker({ repos, current, onPick }: { repos: PipelineRepo[]; current
         {pills.map((r) => {
           const on = r.root === current
           return (
-            <button key={r.root} type="button" role="tab" aria-selected={on} data-pipeline-repo={r.name} onClick={() => onPick(r.root)} title={r.root}
+            <button key={r.root} type="button" role="tab" aria-selected={on} data-pipeline-repo={r.name} onClick={() => onPick(r.root)} title={pickerTitle(r)}
               className={`inline-flex max-w-[220px] items-center gap-1.5 whitespace-nowrap rounded-[5px] px-2.5 py-1 text-[12px] transition-colors motion-reduce:transition-none ${on ? 'bg-accent font-medium text-panel' : 'text-fg hover:text-accent'}`}>
               {r.live > 0 && <span aria-label={`${r.live} agent${r.live === 1 ? '' : 's'} running`} className={`inline-block h-[6px] w-[6px] shrink-0 rounded-full ${on ? 'bg-panel' : 'bg-ok'}`} />}
               <span className="truncate">{r.name}</span>
@@ -113,7 +123,7 @@ function RepoPicker({ repos, current, onPick }: { repos: PipelineRepo[]; current
         <select aria-label="Another repository" value="" onChange={(e) => { if (e.target.value) onPick(e.target.value) }}
           className="h-[28px] max-w-[200px] rounded-md border border-border bg-panel-2 px-2 text-[12px] text-fg">
           <option value="">{rest.length} more…</option>
-          {rest.map((r) => <option key={r.root} value={r.root}>{r.name}</option>)}
+          {rest.map((r) => <option key={r.root} value={r.root} title={pickerTitle(r)}>{r.name}</option>)}
         </select>
       )}
     </div>

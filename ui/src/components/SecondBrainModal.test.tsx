@@ -1,14 +1,22 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
+
+vi.mock('@/lib/api', async (orig) => {
+  const actual = await orig<typeof import('@/lib/api')>()
+  return { ...actual, api: { ...actual.api, glance: vi.fn(() => Promise.resolve({ agents: [], display: {} })) } }
+})
+
 import { SecondBrainModal } from './SecondBrainModal'
 
 describe('SecondBrainModal', () => {
-  it('is short: the brain graph, a headline, one sub-line, three one-line steps, Jarvis and privacy in a line each', () => {
+  it('is short: the agents and the brain, Free, a headline, the agents line, three one-line steps, Jarvis and Free-and-local in a line each', () => {
     render(<SecondBrainModal onClose={() => {}} onOpen={() => {}} />)
     const dialog = screen.getByRole('dialog', { name: 'Second Brain' })
-    expect(dialog.querySelector('[data-brain-mark]')).not.toBeNull()
-    expect(screen.getByRole('heading', { name: 'Your agents’ memory' })).toBeTruthy()
-    expect(dialog.textContent).toContain('Remembers what your agents learn, so the next one starts smarter.')
+    expect(dialog.querySelector('[data-brain-hero] [data-brain-mark]')).not.toBeNull()
+    expect(dialog.querySelector('[data-brain-free]')!.textContent).toBe('Free')
+    expect(screen.getByRole('heading', { name: 'One memory for all your agents' })).toBeTruthy()
+    // No usage known yet: Claude Code alone.
+    expect(dialog.querySelector('[data-brain-agents-line]')!.textContent).toBe('Claude Code remembers across sessions.')
     const steps = screen.getByRole('list', { name: 'How it works' })
     expect([...steps.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
       'Sessions end',
@@ -16,7 +24,7 @@ describe('SecondBrainModal', () => {
       'The next agent starts smarter',
     ])
     expect(dialog.querySelector('[data-brain-jarvis]')!.textContent).toBe('Over time: your personal Jarvis.')
-    expect(dialog.querySelector('[data-brain-privacy]')!.textContent).toBe('Local. Your own Claude. Off any time in Settings.')
+    expect(dialog.querySelector('[data-brain-privacy]')!.textContent).toBe('Free — runs on your own Claude, on this computer.')
     expect(dialog.textContent).not.toMatch(/Premium|\$/)
     // No second Close: the × (and Escape) close it.
     expect(screen.getAllByRole('button', { name: /^Close/ })).toHaveLength(1)
@@ -30,10 +38,13 @@ describe('SecondBrainModal', () => {
     // The defaults are the daemon's (internal/brain/engine.go), not invented.
     expect(details.textContent).toMatch(/Haiku/)
     expect(details.textContent).toMatch(/300k tokens a day/)
-    expect(details.textContent).toMatch(/up to five/)
-    expect(details.textContent).toMatch(/handoff/)
-    expect(details.textContent).toMatch(/Nothing leaves your computer except the call your own claude makes/)
-    expect(details.textContent).toMatch(/Settings → Second Brain/)
+    expect(details.textContent).toMatch(/Up to 5 memories/)
+    expect(details.textContent).toMatch(/change in Settings/)
+    // Readable: at most three lines of about ten words, in the text colour.
+    const items = [...details.querySelectorAll('li')].map((li) => li.textContent ?? '')
+    expect(items.length).toBeLessThanOrEqual(3)
+    for (const t of items) expect(t.split(/\s+/).length).toBeLessThanOrEqual(11)
+    expect(details.className).toMatch(/\btext-fg\b/)
   })
 
   it('opens the Second Brain screen and closes', () => {
