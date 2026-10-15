@@ -53,6 +53,7 @@ import { openExternal } from '@/lib/nudges'
 import { isAppMode, isMacPlatform } from '@/lib/appmode'
 import { context, currentScreen, isSendable, issueURL, kindForCode, KINDS, type FeedbackKind } from '@/lib/feedback'
 import { keys } from '@/lib/appkeys'
+import { useChipFit } from '@/lib/keyChipFit'
 import { accept, baseName, copyImage, imageTypeOfPath, imagesIn, MAX_SHOTS, nextShot, stepLine, toPNG, type Shot } from '@/lib/attachments'
 import { captureSupported, shell } from '@/lib/shell'
 import { DROP_PATHS_EVENT } from '@/lib/xtermInput'
@@ -87,6 +88,34 @@ function isWriting(el: EventTarget | null, title: HTMLInputElement | null): bool
 }
 
 /**
+ * The labelled row in the app sidebar's footer. The hint ("bug, idea,
+ * question") gives way first; when the words and the key still do not both
+ * fit, the key is left out whole and stays in the tooltip (owner,
+ * 2026-10-15, translated: "the shortcuts there are tiny, you can't see a
+ * damn thing"). Off macOS that is Ctrl+Alt+Shift+F, ~140px. The words never
+ * shrink: a shrinkable label lost a subpixel to the hint and drew "…".
+ */
+function FeedbackRow({ onClick }: { onClick: () => void }) {
+  const [ref, fits] = useChipFit<HTMLButtonElement>()
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      title={`${TIP} (${keys(KEY)})`}
+      aria-label="Send feedback"
+      aria-keyshortcuts={ariaKeys()}
+      className="app-row relative flex h-[28px] w-full items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-fg-muted hover:text-fg"
+    >
+      <BugIcon size={15} className="shrink-0 text-accent" />
+      <span data-key-label className="shrink-0 whitespace-nowrap">Send feedback</span>
+      <span data-key-give className="min-w-0 flex-auto shrink-[100] truncate text-[11px] text-fg-faint">bug, idea, question</span>
+      <kbd aria-hidden data-key-chip data-dropped={fits ? undefined : ''} className={`app-kbd-key shrink-0 ${fits ? '' : 'pointer-events-none invisible absolute'}`}>{keys(KEY)}</kbd>
+    </button>
+  )
+}
+
+/**
  * `header`: the labelled button in the dashboard's header. `row`: the
  * labelled row in the app sidebar's bottom block. `icon`: an icon button
  * for that block when it is collapsed, sized by `className` and `iconSize`
@@ -110,22 +139,7 @@ export function FeedbackButton({ screen, variant = 'header', className, iconSize
           <BugIcon size={iconSize} className="text-accent" />
         </button>
       ) : variant === 'row' ? (
-        <button
-          type="button"
-          onClick={show}
-          title={`${TIP} (${keys(KEY)})`}
-          aria-label="Send feedback"
-          aria-keyshortcuts={ariaKeys()}
-          className="app-row flex h-[28px] w-full items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-fg-muted hover:text-fg"
-        >
-          <BugIcon size={15} className="text-accent" />
-          {/* Off macOS the key, Ctrl+Alt+Shift+F, takes the room: the hint goes
-            * first, then the words shorten. On a Mac they never need to, and a
-            * shrinkable label lost a subpixel to the hint and drew "…". */}
-          <span className={`flex-auto whitespace-nowrap ${isMacPlatform() ? 'shrink-0' : 'min-w-0 truncate'}`}>Send feedback</span>
-          <span className="min-w-0 shrink-[100] truncate text-[11px] text-fg-faint">bug, idea, question</span>
-          <kbd aria-hidden className="app-kbd-key shrink-0">{keys(KEY)}</kbd>
-        </button>
+        <FeedbackRow onClick={show} />
       ) : (
         <button
           type="button"

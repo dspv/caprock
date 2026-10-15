@@ -18,13 +18,20 @@
  * ⇧⌘M. It opens the Mail tab, or brings it to the front.
  *
  * Collapsed, the block is one row of icons, the same actions and the way back.
+ *
+ * Every key is drawn at the New agent chip's size (owner, 2026-10-15,
+ * translated: "these buttons fold down; the shortcuts there are tiny, you
+ * can't see a damn thing"). Where one does not fit — beside a row's words,
+ * or over a folded icon — it is left out whole, measured (lib/keyChipFit),
+ * and the key stays in the tooltip; it is never drawn smaller.
  */
-import type { ReactNode } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import type { SettingsSection } from '@/lib/router'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { THEMES } from '@/lib/themes'
 import { keys } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
+import { useChipFit, useFoldedChipFit } from '@/lib/keyChipFit'
 import { ThemeMenu } from './ThemePicker'
 import { FEEDBACK_KEY, FeedbackButton } from './Feedback'
 import { ChevronIcon, PipelineIcon, DashboardIcon, MailIcon, MoonIcon, SettingsIcon, SunIcon } from './AppIcons'
@@ -58,18 +65,19 @@ export const PIPELINE_KEY = '⇧⌘B'
 const SQUARE = 'flex shrink-0 items-center justify-center text-fg-muted transition-colors hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none'
 /** A labelled 32px row: Mail, Dashboard, the two halves under it, Settings. */
 const ROW = 'app-row flex h-[32px] min-w-0 items-center gap-2 rounded-[8px] border border-[var(--app-hairline-strong)] px-2 text-left text-[13px] text-fg'
-/** The folded row's icons: as wide as their column, 32px tall. */
-const ICON = `${SQUARE} h-[32px] w-full rounded-[7px]`
+/** The folded row's icons: as wide as their column, 32px tall, never under 32px. */
+const ICON = `${SQUARE} h-[32px] w-full min-w-[32px] rounded-[7px]`
 /** The folded row's glyphs, one size up from the rows' 15 (owner,
  *  2026-10-14, translated: "the icons can be one size bigger"). */
 const GLYPH = 18
 
 /**
  * How the folded row draws its keys: above every icon, or above the one
- * under the pointer. Measured at the 260px sidebar (240–320 checked): a
- * column is 33–44px and a macOS chip (⇧⌘M, ⌘,) 26–30px, so on a Mac every
- * key fits over its icon. Off macOS the same keys are Ctrl+Shift+M and
- * Ctrl+Alt+Shift+F, 75–105px, three columns wide: there a key shows on hover
+ * under the pointer. A macOS chip at the New agent size is 32px (⌘0, ⌘,)
+ * or 40px (⇧⌘F, ⇧⌘M, ⇧⌘B), so on a Mac a column widens to its chip and
+ * all five fit the 260px sidebar; a narrower one leaves out the widest
+ * first (useFoldedChipFit). Off macOS the same keys are Ctrl+Shift+M and
+ * Ctrl+Alt+Shift+F, 63–141px, three columns wide: there a key shows on hover
  * and keyboard focus only.
  */
 export function foldedKeys(isMac = isMacPlatform()): 'shown' | 'hover' {
@@ -78,11 +86,11 @@ export function foldedKeys(isMac = isMacPlatform()): 'shown' | 'hover' {
 
 /**
  * Whether Pipeline and the theme share a row as two halves. A half is
- * 110–150px (sidebar 240–320): "CI Page" (~45px) and the ⇧⌘B chip (37px)
- * did not both fit at 240, so a half drops the chip and keeps the words; the
- * key stays in its tooltip. Off macOS the chip is Ctrl+Alt+Shift+B, which
- * has room on a full row, so there each of the two takes a row of its own
- * and keeps its chip.
+ * 110–150px (sidebar 240–320): "Pipeline" (~50px) and the ⇧⌘B chip (40px)
+ * do not both fit at 260, so there the half leaves the chip out, measured,
+ * and keeps the words; the key stays in its tooltip. Off macOS the chip is
+ * Ctrl+Alt+Shift+B, which has room on a full row, so there each of the two
+ * takes a row of its own and keeps its chip.
  */
 export function splitModeRow(isMac = isMacPlatform()): boolean {
   return isMac
@@ -91,50 +99,7 @@ export function splitModeRow(isMac = isMacPlatform()): boolean {
 export function SidebarFooter(props: SidebarFooterProps) {
   const toPhone = () => (props.onSettingsSection ? props.onSettingsSection('phone') : props.onSettings?.())
   const hasBar = !!props.onPipeline
-  if (props.folded) {
-    const chips = foldedKeys()
-    return (
-      /* Collapsed (owner, 2026-10-11, translated: "can this block fold and
-       * unfold"): the same actions as icons, plus the way back. Each icon has
-       * its key above it (owner, 2026-10-14, translated: "I'd put the key
-       * combos above them"). */
-      <div data-sidebar-footer data-folded-keys={chips} className="flex shrink-0 items-end gap-0.5 border-t border-[var(--app-hairline)] px-1.5 pb-1.5 pt-1">
-        <KeySlot keyLabel={keys(FEEDBACK_KEY)} chips={chips} edge="left">
-          <FeedbackButton variant="icon" className={ICON} iconSize={GLYPH} />
-        </KeySlot>
-        {props.onMail && (
-          <KeySlot keyLabel={keys(MAIL_KEY)} chips={chips} edge="left">
-            <IconButton label={`Mail (${keys(MAIL_KEY)})`} onClick={props.onMail}>
-              <MailIcon size={GLYPH} className="text-accent" />
-            </IconButton>
-          </KeySlot>
-        )}
-        <KeySlot keyLabel={keys('⌘0')} chips={chips} edge="left">
-          <IconButton label={`Dashboard (${keys('⌘0')})`} onClick={props.onDashboard}>
-            <DashboardIcon size={GLYPH} />
-          </IconButton>
-        </KeySlot>
-        {props.onSettings && (
-          <KeySlot keyLabel={keys('⌘,')} chips={chips} edge="right">
-            <IconButton label={`Settings: phone, Telegram (${keys('⌘,')})`} onClick={toPhone}>
-              <SettingsIcon size={GLYPH} />
-            </IconButton>
-          </KeySlot>
-        )}
-        {hasBar && (
-          <KeySlot keyLabel={keys(PIPELINE_KEY)} chips={chips} edge="right">
-            <PipelineButton active={props.pipelineActive} onClick={props.onPipeline!} className={ICON} />
-          </KeySlot>
-        )}
-        {/* No key of its own: an empty slot keeps the icons on one line.
-          * Opening rightwards: from here a leftward picker left the window. */}
-        <KeySlot chips={chips} edge="right">
-          <ThemeButton className={ICON} boxClassName="w-full" align="left" />
-        </KeySlot>
-        <FooterToggle open={false} onToggle={props.onToggleFold} />
-      </div>
-    )
-  }
+  if (props.folded) return <FoldedFooter {...props} />
   const split = splitModeRow() && hasBar
   return (
     <div data-sidebar-footer className="grid shrink-0 grid-cols-[minmax(0,1fr)] gap-1.5 border-t border-[var(--app-hairline)] px-2 py-2">
@@ -147,33 +112,25 @@ export function SidebarFooter(props: SidebarFooterProps) {
         <FooterToggle open onToggle={props.onToggleFold} />
       </div>
       {props.onMail && (
-        <button
-          type="button"
-          data-nav-row
+        <KeyRow
           data-mail-button
           aria-current={props.mailActive ? 'true' : undefined}
           aria-keyshortcuts={isMacPlatform() ? 'Shift+Meta+M' : 'Control+Shift+M'}
           title={`Mail: every inbox in one place (${keys(MAIL_KEY)})`}
           onClick={props.onMail}
-          className={ROW}
-        >
-          <MailIcon size={15} className="text-accent" />
-          <span className="min-w-0 flex-1 truncate">Mail</span>
-          <kbd className="app-kbd-key shrink-0">{keys(MAIL_KEY)}</kbd>
-        </button>
+          icon={<MailIcon size={15} className="shrink-0 text-accent" />}
+          label="Mail"
+          keyLabel={keys(MAIL_KEY)}
+        />
       )}
-      <button
-        type="button"
-        data-nav-row
+      <KeyRow
         aria-current={props.dashboardActive ? 'true' : undefined}
         onClick={props.onDashboard}
         title={`The dashboard, where you left it (${keys('⌘0')}); again: Home, at its top`}
-        className={ROW}
-      >
-        <DashboardIcon size={15} className="text-fg-muted" />
-        <span className="min-w-0 flex-1 truncate">Dashboard</span>
-        <kbd className="app-kbd-key shrink-0">{keys('⌘0')}</kbd>
-      </button>
+        icon={<DashboardIcon size={15} className="shrink-0 text-fg-muted" />}
+        label="Dashboard"
+        keyLabel={keys('⌘0')}
+      />
       {/* Pipeline and the theme: two halves of one row, each with its name
         * (owner, 2026-10-14, translated: "move them onto a separate row and
         * split it into two parts — two buttons in one row, neat, so it's
@@ -181,7 +138,7 @@ export function SidebarFooter(props: SidebarFooterProps) {
         * and to the left, and from the left half it would leave the sidebar.
         * Off macOS each takes a row (splitModeRow). */}
       <div data-mode-row className={`grid gap-1 ${split ? 'grid-cols-2' : 'grid-cols-[minmax(0,1fr)]'}`}>
-        {hasBar && <PipelineButton active={props.pipelineActive} onClick={props.onPipeline!} labelled chip={!split} />}
+        {hasBar && <PipelineButton active={props.pipelineActive} onClick={props.onPipeline!} labelled />}
         <ThemeButton className={`${ROW} w-full hover:bg-[var(--app-row-hover)]`} boxClassName="min-w-0" labelled />
       </div>
       {/* Settings as a row with its name, not a bare icon (owner, 2026-10-11,
@@ -193,27 +150,96 @@ export function SidebarFooter(props: SidebarFooterProps) {
         * phone and Telegram are"). Buttons beside the row's button, never
         * inside it: a button in a button is invalid and one swallows the
         * other's click. */}
-      {props.onSettings && (
-        <div className="app-row relative flex h-[32px] min-w-0 items-center gap-1 rounded-[8px] border border-[var(--app-hairline-strong)] pr-2 text-[13px] text-fg">
-          <button
-            type="button"
-            data-nav-row
-            onClick={toPhone}
-            className="flex h-full min-w-fit flex-1 items-center gap-2 rounded-[8px] pl-2 text-left"
-          >
-            <SettingsIcon size={15} className="text-fg-muted" />
-            <span className="flex-1">Settings</span>
-          </button>
-          {props.onSettingsSection && (
-            <span className="flex min-w-0 shrink items-center truncate text-[11px] text-fg-faint">
-              <button type="button" onClick={toPhone} className="rounded-sm hover:text-accent hover:underline" title="Settings → Use on your phone">phone</button>
-              <span aria-hidden>,&nbsp;</span>
-              <button type="button" onClick={() => props.onSettingsSection?.('telegram')} className="rounded-sm hover:text-accent hover:underline" title="Settings → Telegram">Telegram</button>
-            </span>
-          )}
-          <kbd className="app-kbd shrink-0">{keys('⌘,')}</kbd>
-        </div>
+      {props.onSettings && <SettingsRow onPhone={toPhone} onSettingsSection={props.onSettingsSection} />}
+    </div>
+  )
+}
+
+/** The class a key chip takes: drawn, or left out unseen but still measurable. */
+function chipClass(fits: boolean): string {
+  return `app-kbd-key shrink-0 ${fits ? '' : 'pointer-events-none invisible absolute right-2'}`
+}
+
+/** A labelled 32px row with its key at the end, left out when it does not fit. */
+function KeyRow({ icon, label, keyLabel, ...rest }: { icon: ReactNode; label: string; keyLabel: string; title: string; onClick: () => void; 'aria-current'?: 'true'; 'aria-keyshortcuts'?: string; 'data-mail-button'?: boolean }) {
+  const [ref, fits] = useChipFit<HTMLButtonElement>([keyLabel])
+  return (
+    <button ref={ref} type="button" data-nav-row {...rest} className={`${ROW} relative`}>
+      {icon}
+      <span data-key-label className="min-w-0 flex-1 truncate">{label}</span>
+      <kbd data-key-chip data-dropped={fits ? undefined : ''} className={chipClass(fits)}>{keyLabel}</kbd>
+    </button>
+  )
+}
+
+/**
+ * Settings as a row with its name, not a bare icon (owner, 2026-10-11,
+ * translated: "I don't see Settings from here"). The words "phone" and
+ * "Telegram" are links of their own, each landing on its section; the row
+ * lands on the phone (owner, 2026-10-13). Buttons beside the row's button,
+ * never inside it: a button in a button is invalid and one swallows the
+ * other's click. They give way first; then the key is left out.
+ */
+function SettingsRow({ onPhone, onSettingsSection }: { onPhone: () => void; onSettingsSection?: (section: SettingsSection) => void }) {
+  const [ref, fits] = useChipFit<HTMLDivElement>()
+  return (
+    <div ref={ref} className="app-row relative flex h-[32px] min-w-0 items-center gap-1 rounded-[8px] border border-[var(--app-hairline-strong)] pr-2 text-[13px] text-fg">
+      <button
+        type="button"
+        data-nav-row
+        onClick={onPhone}
+        title={`Settings (${keys('⌘,')})`}
+        className="flex h-full min-w-fit flex-1 items-center gap-2 rounded-[8px] pl-2 text-left"
+      >
+        <SettingsIcon size={15} className="shrink-0 text-fg-muted" />
+        <span data-key-label className="flex-1 whitespace-nowrap">Settings</span>
+      </button>
+      {onSettingsSection && (
+        <span data-key-give className="flex min-w-0 shrink items-center truncate text-[11px] text-fg-faint">
+          <button type="button" onClick={onPhone} className="rounded-sm hover:text-accent hover:underline" title="Settings → Use on your phone">phone</button>
+          <span aria-hidden>,&nbsp;</span>
+          <button type="button" onClick={() => onSettingsSection('telegram')} className="rounded-sm hover:text-accent hover:underline" title="Settings → Telegram">Telegram</button>
+        </span>
       )}
+      <kbd data-key-chip data-dropped={fits ? undefined : ''} className={chipClass(fits)}>{keys('⌘,')}</kbd>
+    </div>
+  )
+}
+
+/**
+ * The folded block: one row of icons with their keys above them (owner,
+ * 2026-10-11, translated: "can this block fold and unfold"; 2026-10-14:
+ * "I'd put the key combos above them"), the same actions and the way back.
+ * On a Mac a column is as wide as its chip; the ones that do not fit are
+ * left out, the widest first, and a row with none left draws no key line.
+ */
+function FoldedFooter(props: SidebarFooterProps) {
+  const toPhone = () => (props.onSettingsSection ? props.onSettingsSection('phone') : props.onSettings?.())
+  const hasBar = !!props.onPipeline
+  const chips = foldedKeys()
+  const slots: { key?: string; edge: 'left' | 'right'; node: ReactNode }[] = [
+    { key: keys(FEEDBACK_KEY), edge: 'left', node: <FeedbackButton variant="icon" className={ICON} iconSize={GLYPH} /> },
+    ...(props.onMail ? [{
+      key: keys(MAIL_KEY), edge: 'left' as const,
+      node: <IconButton label={`Mail (${keys(MAIL_KEY)})`} onClick={props.onMail}><MailIcon size={GLYPH} className="text-accent" /></IconButton>,
+    }] : []),
+    { key: keys('⌘0'), edge: 'left', node: <IconButton label={`Dashboard (${keys('⌘0')})`} onClick={props.onDashboard}><DashboardIcon size={GLYPH} /></IconButton> },
+    ...(props.onSettings ? [{
+      key: keys('⌘,'), edge: 'right' as const,
+      node: <IconButton label={`Settings: phone, Telegram (${keys('⌘,')})`} onClick={toPhone}><SettingsIcon size={GLYPH} /></IconButton>,
+    }] : []),
+    ...(hasBar ? [{ key: keys(PIPELINE_KEY), edge: 'right' as const, node: <PipelineButton active={props.pipelineActive} onClick={props.onPipeline!} className={ICON} /> }] : []),
+    // No key of its own. Opening rightwards: from here a leftward picker left the window.
+    { edge: 'right', node: <ThemeButton className={ICON} boxClassName="w-full" align="left" /> },
+  ]
+  const [ref, fit] = useFoldedChipFit<HTMLDivElement>(slots.length, chips === 'shown')
+  const anyShown = chips === 'shown' && slots.some((s, i) => s.key && fit[i] !== false)
+  return (
+    <div ref={ref as RefObject<HTMLDivElement>} data-sidebar-footer data-folded-keys={chips} className="flex shrink-0 items-end gap-0.5 border-t border-[var(--app-hairline)] px-1 pb-1.5 pt-1">
+      {slots.map((s, i) => (
+        <KeySlot key={i} keyLabel={s.key} chips={chips} edge={s.edge} fits={fit[i] !== false} line={anyShown}>{s.node}</KeySlot>
+      ))}
+      <FooterToggle open={false} onToggle={props.onToggleFold} />
     </div>
   )
 }
@@ -224,13 +250,17 @@ export function SidebarFooter(props: SidebarFooterProps) {
  * the same height. `hover`: the chip floats above the column under the
  * pointer or focus, held to the `edge` side so it stays inside the sidebar.
  */
-function KeySlot({ keyLabel, chips, edge, children }: { keyLabel?: string; chips: 'shown' | 'hover'; edge: 'left' | 'right'; children: ReactNode }) {
+function KeySlot({ keyLabel, chips, edge, fits, line, children }: { keyLabel?: string; chips: 'shown' | 'hover'; edge: 'left' | 'right'; fits: boolean; line: boolean; children: ReactNode }) {
   return (
-    <div data-key-slot className="group relative flex min-w-[32px] max-w-[44px] flex-1 flex-col items-center">
+    <div data-key-slot className={`group relative flex max-w-[48px] flex-1 flex-col items-center ${chips === 'shown' && keyLabel && fits ? 'min-w-min' : 'min-w-[32px]'}`}>
       {chips === 'shown' ? (
-        <kbd aria-hidden className={`app-kbd-faint mb-[3px] ${keyLabel ? '' : 'invisible'}`}>{keyLabel ?? '·'}</kbd>
+        keyLabel ? (
+          <kbd aria-hidden data-key-chip data-dropped={fits ? undefined : ''} className={fits ? 'app-kbd-key mb-[3px]' : 'app-kbd-key pointer-events-none invisible absolute bottom-full'}>{keyLabel}</kbd>
+        ) : line ? (
+          <kbd aria-hidden className="app-kbd-key invisible mb-[3px]">·</kbd>
+        ) : null
       ) : keyLabel ? (
-        <kbd aria-hidden className={`app-kbd-faint app-kbd-float pointer-events-none invisible absolute bottom-[calc(100%+3px)] z-10 group-hover:visible group-focus-within:visible ${edge === 'left' ? 'left-0' : 'right-0'}`}>{keyLabel}</kbd>
+        <kbd aria-hidden className={`app-kbd-key app-kbd-float pointer-events-none invisible absolute bottom-[calc(100%+3px)] z-10 group-hover:visible group-focus-within:visible ${edge === 'left' ? 'left-0' : 'right-0'}`}>{keyLabel}</kbd>
       ) : null}
       {children}
     </div>
@@ -246,22 +276,14 @@ export function pipelineLabel(active?: boolean, isMac?: boolean): string {
 
 /**
  * The Pipeline button. In a half of the split row (240–320px sidebar, a
- * half 110–150px) "Pipeline" and the ⇧⌘B chip measured 50 + 37px beside the
- * glyph, too tight at 240: there the key is in the tooltip; on a row of its
- * own (off macOS) the chip shows (`chip`).
+ * half 110–150px) "Pipeline" and the ⇧⌘B chip need ~140px with the glyph:
+ * at 260 the chip is left out and the key is in the tooltip; on a row of its
+ * own (off macOS) the chip shows. Measured, not assumed.
  */
-function PipelineButton({ active, onClick, className, labelled, chip }: { active?: boolean; onClick: () => void; className?: string; labelled?: boolean; chip?: boolean }) {
+function PipelineButton({ active, onClick, className, labelled }: { active?: boolean; onClick: () => void; className?: string; labelled?: boolean }) {
   const label = pipelineLabel(active)
   const tone = active ? 'text-accent' : ''
-  if (labelled) {
-    return (
-      <button type="button" data-pipeline-button aria-current={active ? 'true' : undefined} title={label} aria-label={label} onClick={onClick} className={`${ROW} hover:bg-[var(--app-row-hover)]`}>
-        <PipelineIcon size={15} className={`shrink-0 ${tone || 'text-fg-muted'}`} />
-        <span className="min-w-0 flex-1 truncate">Pipeline</span>
-        {chip && <kbd className="app-kbd-key shrink-0">{keys(PIPELINE_KEY)}</kbd>}
-      </button>
-    )
-  }
+  if (labelled) return <PipelineRow label={label} tone={tone} active={active} onClick={onClick} />
   return (
     <button
       type="button"
@@ -273,6 +295,17 @@ function PipelineButton({ active, onClick, className, labelled, chip }: { active
       className={tone ? `${className!.replace('text-fg-muted', '').replace('hover:text-fg ', '')} ${tone}` : className}
     >
       <PipelineIcon size={GLYPH} />
+    </button>
+  )
+}
+
+function PipelineRow({ label, tone, active, onClick }: { label: string; tone: string; active?: boolean; onClick: () => void }) {
+  const [ref, fits] = useChipFit<HTMLButtonElement>()
+  return (
+    <button ref={ref} type="button" data-pipeline-button aria-current={active ? 'true' : undefined} title={label} aria-label={label} onClick={onClick} className={`${ROW} relative hover:bg-[var(--app-row-hover)]`}>
+      <PipelineIcon size={15} className={`shrink-0 ${tone || 'text-fg-muted'}`} />
+      <span data-key-label className="min-w-0 flex-1 truncate">Pipeline</span>
+      <kbd data-key-chip data-dropped={fits ? undefined : ''} className={chipClass(fits)}>{keys(PIPELINE_KEY)}</kbd>
     </button>
   )
 }
