@@ -146,7 +146,7 @@ func ToolInput(hermes string, in map[string]any, cwd string) map[string]any {
 	switch hermes {
 	case "read_file", "write_file", "patch":
 		if p, ok := in["path"].(string); ok && p != "" {
-			if !filepath.IsAbs(p) && !strings.HasPrefix(p, "~") && cwd != "" {
+			if !filepath.IsAbs(p) && !strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "~") && cwd != "" { // "/…" is absolute where Hermes ran, even read on Windows
 				p = filepath.Join(cwd, p)
 			}
 			out["file_path"] = p
