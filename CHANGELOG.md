@@ -7,14 +7,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
-### Fixed
-
-- **windows:** Caprock no longer flashes console windows that steal the
-  keyboard focus. The daemon ran without a console, so every git, gh or
-  `claude -p` it started opened a window of its own for a fraction of a
-  second, every few seconds, and typing in other windows came out ragged
-  (user report on Windows 10). Every child now starts with a hidden
-  console, and a test keeps it that way.
+## [0.117.5] - 2026-10-15
 
 ### Added
 
@@ -58,6 +51,12 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **windows:** Caprock no longer flashes console windows that steal the
+  keyboard focus. The daemon ran without a console, so every git, gh or
+  `claude -p` it started opened a window of its own for a fraction of a
+  second, every few seconds, and typing in other windows came out ragged
+  (user report on Windows 10). Every child now starts with a hidden
+  console, and a test keeps it that way.
 - **mail:** adding an account can no longer sit on *Checking…* forever. A
   server that goes quiet while Mail connects or signs in — IMAP had no limit
   and SMTP waited five minutes per command — now ends the check within 30
