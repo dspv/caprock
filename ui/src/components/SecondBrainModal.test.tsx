@@ -38,10 +38,13 @@ describe('SecondBrainModal', () => {
     // The defaults are the daemon's (internal/brain/engine.go), not invented.
     expect(details.textContent).toMatch(/Haiku/)
     expect(details.textContent).toMatch(/300k tokens a day/)
-    expect(details.textContent).toMatch(/up to five/)
-    expect(details.textContent).toMatch(/handoff/)
-    expect(details.textContent).toMatch(/Nothing leaves your computer except the call your own claude makes/)
-    expect(details.textContent).toMatch(/Settings → Second Brain/)
+    expect(details.textContent).toMatch(/Up to 5 memories/)
+    expect(details.textContent).toMatch(/change in Settings/)
+    // Readable: at most three lines of about ten words, in the text colour.
+    const items = [...details.querySelectorAll('li')].map((li) => li.textContent ?? '')
+    expect(items.length).toBeLessThanOrEqual(3)
+    for (const t of items) expect(t.split(/\s+/).length).toBeLessThanOrEqual(11)
+    expect(details.className).toMatch(/\btext-fg\b/)
   })
 
   it('opens the Second Brain screen and closes', () => {
