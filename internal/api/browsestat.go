@@ -63,7 +63,7 @@ type statResponse struct {
 // it tells a caller nothing the folder browser would not.
 func (s *Server) handleBrowseStat(w http.ResponseWriter, r *http.Request) {
 	root := s.browseRoot()
-	if deviceFrom(r) != nil {
+	if phoneLimited(r) {
 		root = s.deviceBrowseRoot()
 	}
 	p := expandTilde(r.URL.Query().Get("path"))

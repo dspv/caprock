@@ -590,6 +590,13 @@ func (p *phone) serveHTTP(ctx context.Context, id uint32, head reqHead, body []b
 			break
 		}
 	}
+	// A body cut short because the other end cancelled is not a whole one:
+	// ending it here would tell a reader still draining its queue that the
+	// short body was complete (TestACancelledRequestLeavesTheChannelUp, seen
+	// on Windows, where the cancel's round trip beat the reader).
+	if ctx.Err() != nil {
+		return
+	}
 	_ = p.send(KindResEnd, id, nil)
 }
 

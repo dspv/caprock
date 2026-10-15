@@ -84,16 +84,25 @@ func remoteCmd() *cobra.Command {
 
 // pairCmd issues a code and draws the QR in the terminal.
 func pairCmd() *cobra.Command {
-	return &cobra.Command{
+	var computer, noWait bool
+	c := &cobra.Command{
 		Use:   "pair",
-		Short: "Show a pairing code and its QR here, for a phone to scan",
+		Short: "Show a pairing code and its QR here, for a phone to scan (or --computer, for another computer)",
 		Long: "Issues a one-time code (valid five minutes) and draws the QR a phone scans.\n" +
 			"With access from anywhere on, the QR opens the phone's page through the relay;\n" +
-			"otherwise it opens this machine's network address.",
+			"otherwise it opens this machine's network address.\n\n" +
+			"With --computer it prints a link for another computer's Caprock instead\n" +
+			"(`caprock machines add '<link>'` there), turning access from anywhere on if it\n" +
+			"is off, and waits here to ask whether to allow that computer by name. Over SSH\n" +
+			"on a machine with no screen this is the screen; `caprock machines allow <name>`\n" +
+			"does the same later.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			rt, err := runningDaemon()
 			if err != nil {
 				return err
+			}
+			if computer {
+				return pairComputer(cmd, rt, !noWait)
 			}
 			var got struct {
 				Code   string           `json:"code"`
@@ -122,6 +131,9 @@ func pairCmd() *cobra.Command {
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&computer, "computer", false, "a link for another computer's Caprock to control this one (ADR-067)")
+	c.Flags().BoolVar(&noWait, "no-wait", false, "with --computer: print the link and return; allow later with `caprock machines allow <name>`")
+	return c
 }
 
 func relayCmd() *cobra.Command {
@@ -192,6 +204,12 @@ func printRemote(out io.Writer) error {
 
 // daemonJSON calls the local daemon's API and decodes its answer.
 func daemonJSON(rt config.Runtime, method, path string, body, into any) error {
+	return daemonJSONWait(rt, method, path, body, into, 10*time.Second)
+}
+
+// daemonJSONWait is daemonJSON with its own time limit, for a call that waits
+// on another computer (pairing through a relay).
+func daemonJSONWait(rt config.Runtime, method, path string, body, into any, wait time.Duration) error {
 	var rd io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
@@ -202,7 +220,7 @@ func daemonJSON(rt config.Runtime, method, path string, body, into any) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	res, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	res, err := (&http.Client{Timeout: wait}).Do(req)
 	if err != nil {
 		return err
 	}
@@ -216,6 +234,9 @@ func daemonJSON(rt config.Runtime, method, path string, body, into any) error {
 			return errors.New(e.Error)
 		}
 		return fmt.Errorf("caprock answered %s", res.Status)
+	}
+	if into == nil {
+		return nil
 	}
 	return json.Unmarshal(b, into)
 }
