@@ -137,7 +137,10 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   count in the Cloudflare dashboard after the first month with users. The
   fallbacks are the paid Workers plan or a relay on a server of ours
   (`caprock remote relay`), with no change on any phone or machine beyond
-  the relay address.
+  the relay address. Computers reaching computers (ADR-067) add a traffic
+  pattern a phone does not have — an app left open all day — so both ends
+  of the channel count relay messages and bytes (`remote.State`,
+  `remote.ClientState`) and channels close after 90 s with nothing open.
 - `OQ-15` — **Is a per-PR merge range calibrated?** The Work board
   (ADR-064) could say how long an open pull request has left until it
   merges, from the Pipeline's open → merge median. Nobody has checked that a
@@ -154,6 +157,32 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   plan. The board labels it "as of your last fetch"; whether that is enough,
   or the board should show when the last fetch was, is open. Decided by:
   the first report of a stale release column being taken for current.
+- `OQ-17` — **Round trip over the relay between two computers.** A
+  request from one daemon to another goes out to the relay and back
+  (ADR-067); how long that takes from one home network to the same home,
+  and from abroad, is unmeasured. Decided by: `bench/peer.mjs` (PR3 of
+  ADR-067) through the local `relaysrv` and through `relay.caprock.dev`,
+  median and p95, recorded with a date in `.ai/21-app.md`. No latency figure
+  is stated anywhere public before then (rule 6).
+- `OQ-18` — **Terminal echo through a link.** Keystroke-to-echo for a
+  session on another computer, through the controller's `/v1/m/{id}/…`
+  proxy and the relay, against the same session typed into locally. Decided
+  by: the same bench, through `/v1/m/…`, with a date. Until then a remote
+  terminal is not described as "instant" or "like local".
+- `OQ-19` — **What running a task elsewhere frees on this machine.** The
+  case for a second computer is that this Mac stays responsive and runs
+  more agents (or works with the lid closed), not that anything is faster.
+  How much memory and CPU one real agent task costs here, and so what
+  moving it to another computer gives back, is unmeasured. Decided by: one
+  real task run here and then on a linked computer, this machine's memory
+  and CPU read from the footprint meter (`/v1/resources`) for both, with a
+  date.
+- `OQ-20` — **Is another computer actually quicker at the work?** Whether a
+  linked machine finishes the same work sooner depends on that machine, not
+  on Caprock. Decided by: `go test ./...` and the UI build of this
+  repository on both machines, timed, with a date. The pitch is "this Mac
+  stays responsive / more agents / lid closed", never "faster", until this
+  says otherwise for the machines named.
 
 ## What would falsify the whole plan
 

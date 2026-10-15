@@ -366,6 +366,10 @@ type Settings struct {
 	// plan windows; "off" removes Caprock's own statusLine entry from
 	// Claude Code's settings (never the user's own).
 	StatuslineMode string `json:"statusline_mode"`
+	// QuickReplies are the one-click replies under a session Caprock
+	// started (config.QuickReply). GET returns the list in use, the defaults
+	// until changed; PUT replaces the whole list (config.NormalizeQuickReplies).
+	QuickReplies []config.QuickReply `json:"quick_replies"`
 	// AppUpdate is what the desktop app does when a newer release is found:
 	// one of config.AppUpdateModes. GET returns the effective mode, "ask"
 	// when never chosen.
@@ -1460,7 +1464,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		KeepAwake       *string  `json:"keep_awake"`
 		WorktreeCleanup *string  `json:"worktree_cleanup"`
 		StatuslineMode  *string  `json:"statusline_mode"`
-		AppUpdate       *string  `json:"app_update"`
+		// The whole list, replaced; absent or null leaves it as it is.
+		QuickReplies *[]config.QuickReply `json:"quick_replies"`
+		AppUpdate    *string              `json:"app_update"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
@@ -1478,11 +1484,20 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		// prompts not named keep their answer.
 		Prompts map[string]int64 `json:"prompts"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
+	// 16 KiB: the quick replies are the largest field, ten of 300 bytes.
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
 		return
 	}
 	in := s.d.Settings.Get()
+	if patch.QuickReplies != nil {
+		q, err := config.NormalizeQuickReplies(*patch.QuickReplies)
+		if err != nil {
+			s.failCode(w, http.StatusBadRequest, err)
+			return
+		}
+		in.QuickReplies = q
+	}
 	if patch.UpdateChecks != nil {
 		in.UpdateChecks = *patch.UpdateChecks
 	}

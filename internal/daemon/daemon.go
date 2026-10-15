@@ -489,6 +489,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.link = sessionlink.New(d.store, d.log)
 	// Resolve the login-shell environment sessions are started with now, so
 	// the first one the user starts does not wait on their shell profile.
+	userenv.EnsureProcessLocale()
 	userenv.Warm(d.log)
 	// The log file, whichever of the two the daemon was started with, is
 	// kept to a bounded size.
@@ -1596,6 +1597,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		KeepAwake:        keepawake.Normalize(c.KeepAwake),
 		WorktreeCleanup:  projects.NormalizeCleanup(c.WorktreeCleanup),
 		StatuslineMode:   config.NormalizeStatusline(c.StatuslineMode),
+		QuickReplies:     config.EffectiveQuickReplies(c.QuickReplies),
 		AppUpdate:        config.NormalizeAppUpdate(c.AppUpdate),
 	}
 }
@@ -1667,6 +1669,13 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.NotifyApproval = &notifyApproval
 	a.d.opt.Config.NotifyFinished = &notifyFinished
 	a.d.opt.Config.Prompts = maps.Clone(in.Prompts)
+	// The quick replies: stored only when they differ from the list in use,
+	// so an install that never changed them keeps the defaults as they
+	// change, rather than having them written down by an unrelated save.
+	if in.QuickReplies != nil && !slices.Equal(in.QuickReplies, config.EffectiveQuickReplies(a.d.opt.Config.QuickReplies)) {
+		q := slices.Clone(in.QuickReplies)
+		a.d.opt.Config.QuickReplies = &q
+	}
 	// Stored only when it changes, so an install that never chose keeps
 	// following the default rather than having it written down by the next
 	// unrelated save (GET returns the effective mode, and a screen writes

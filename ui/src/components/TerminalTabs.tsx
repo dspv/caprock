@@ -566,8 +566,11 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
     // The composer: switched on, and an agent Caprock started (rule 7).
     const cs = ctx.composer ? ctx.sessions?.get(id) : undefined
     const withComposer = !!cs && node.target.kind !== 'shell' && composerFits(cs)
+    // The quick replies: an agent Caprock started, live, whatever the composer (rule 7).
+    const own = ctx.sessions?.get(id)
+    const quick = !!own && node.target.kind !== 'shell' && composerFits(own)
     const term = <PaneTerminal id={id} visible={visible} focused={focused} onPaneStatus={ctx.onPaneStatus} onPaneExit={ctx.onPaneExit}
-      composer={withComposer} agent={cs?.agent} asking={withComposer && !!ctx.permissions?.has(id)}
+      composer={withComposer} quick={quick} agent={cs?.agent} asking={withComposer && !!ctx.permissions?.has(id)}
       inputBox={node.target.kind !== 'shell' && isClaude(ctx.sessions?.get(id)?.agent)} />
     const chat = ctx.chats?.get(id)
     const ended = chat?.ended && (
@@ -630,7 +633,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
  * callbacks are stable (TerminalStack), so a new session list — the sidebar's
  * dots moving — does not reach a terminal.
  */
-const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit, composer = false, agent, asking = false, inputBox = false }: {
+const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit, composer = false, quick = false, agent, asking = false, inputBox = false }: {
   id: string
   visible: boolean
   focused: boolean
@@ -638,6 +641,8 @@ const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneSt
   onPaneExit?: (sessionId: string) => void
   /** Primitives, so the memo still holds while the session list moves. */
   composer?: boolean
+  /** The quick replies under the terminal: a session Caprock started. */
+  quick?: boolean
   agent?: string
   asking?: boolean
   /** A Claude Code session: the faint band behind its input box. */
@@ -646,7 +651,7 @@ const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneSt
   const onStatus = useMemo(() => onPaneStatus && ((s: PaneStatus) => onPaneStatus(id, s)), [onPaneStatus, id])
   const onExit = useMemo(() => onPaneExit && (() => onPaneExit(id)), [onPaneExit, id])
   const box = useMemo<PaneComposer | undefined>(() => (composer ? { agent, asking } : undefined), [composer, agent, asking])
-  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} composer={box} inputBox={inputBox} />
+  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} composer={box} quickReplies={quick} inputBox={inputBox} />
 })
 
 /** A split's children with a divider between each pair, dragged or moved with the arrow keys. */

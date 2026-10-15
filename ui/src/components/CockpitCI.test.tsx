@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CockpitCI, checkSummary } from './CockpitCI'
 import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 import { prChecks } from '@/lib/ci'
@@ -16,7 +16,12 @@ const RUNNING = { state: 'pending', passed: 2, failed: 0, pending: 1, items: [
 ] }
 const PASSED = { state: 'pass', passed: 1, failed: 0, pending: 0, items: [{ name: 'lint', state: 'pass' }] }
 
-afterEach(() => { forgetDeckAnswers(); localStorage.clear(); vi.unstubAllGlobals() })
+// The clock stands at `now` in every test. The block reads Date.now() as it
+// draws, and the fixtures were stamped when this file loaded: on a busy runner
+// the first test here started more than a second later, so "4m 00s" read
+// "4m 01s". Only Date is faked; timers stay real.
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'], now }) })
+afterEach(() => { forgetDeckAnswers(); localStorage.clear(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('the cockpit’s CI block', () => {
   it('counts a PR’s checks and the time since the first started', () => {
@@ -29,7 +34,7 @@ describe('the cockpit’s CI block', () => {
     const stats = {
       connected: true, repo: 'a/b', fetched_at: now, read_at: now,
       prs: [
-        { number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fix the login', state: 'open', created_at: now - 3_600_000 },
+        { number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fix the login', state: 'open', created_at: now - 3_600_000, labels: [{ name: 'landing: queued' }] },
         { number: 8, url: 'https://github.com/a/b/pull/8', title: 'Release notes', state: 'merged', created_at: now - 7_200_000, merged_at: now - 5_000_000 },
         { number: 7, url: 'https://github.com/a/b/pull/7', title: 'Old one', state: 'merged', created_at: now - 9_000_000, merged_at: now - 8_000_000 },
       ],
@@ -55,7 +60,19 @@ describe('the cockpit’s CI block', () => {
     expect(ci).toHaveClass('bg-danger')
     expect(document.querySelector('[data-cockpit-ci-pr="9"]')).toHaveTextContent('Fix the login')
     expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-journey-seg="merged"]')).toHaveAttribute('data-step-state', 'current')
-    expect(document.querySelector('[data-cockpit-ci-pr="7"] [data-journey-bar]')).toHaveAttribute('aria-label', expect.stringContaining('v1.2.0 (now)'))
+    expect(document.querySelector('[data-cockpit-ci-pr="7"] [data-journey-bar]')).toHaveAttribute('aria-label', expect.stringContaining('Released done (v1.2.0)'))
+    // Owner, 2026-10-15, translated: "it's not clear what the stages are".
+    // One legend over the bars' columns, and every segment says its step and
+    // state, the landing label on the step it is on; the rows do not grow.
+    const legend = document.querySelector('[data-journey-legend]')!
+    expect([...legend.children].map((e) => e.textContent)).toEqual(['open', 'CI', 'merged', 'released'])
+    expect(legend).toHaveClass('grid-cols-4', 'gap-[3px]')
+    expect(legend.nextElementSibling).toBe(document.querySelector('[data-cockpit-journey]'))
+    expect(ci).toHaveAttribute('title', 'CI: failed — CI red · landing: queued. A check on its head commit failed')
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-journey-seg="open"]')).toHaveAttribute('title', 'Open: done. Opened')
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-journey-seg="merged"]')).toHaveAttribute('title', 'Merged: waiting. Not merged yet')
+    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-journey-seg="ci"]')!.getAttribute('title')).toMatch(/^CI: done\./)
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-journey-seg="ci"]')).toHaveClass('h-[4px]')
     // It scrolls inside the block; Expand only past a few rows; the page one click away.
     expect(document.querySelector('[data-cockpit-journey]')).toHaveClass('overflow-y-auto', 'max-h-[176px]')
     expect(document.querySelector('[data-cockpit-ci-tall]')).toBeNull()

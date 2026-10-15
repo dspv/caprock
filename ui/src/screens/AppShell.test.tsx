@@ -14,6 +14,9 @@ import { FIND_EVENT } from '@/lib/appkeys'
 // transformed the whole app inside the first test's 5 s budget, and on a busy
 // machine that alone timed it out. vi.mock is hoisted above this.
 import { AppShell, nextWaiting, worktreeSlug } from './AppShell'
+// The dashboard AppShell loads lazily, loaded with this file for the same
+// reason: whichever test opens it first must not pay for transforming it.
+import '@/App'
 
 vi.mock('@/components/TerminalPane', () => ({
   // The program's exit, pressed by hand: what /exit or Ctrl+D does to a pane.
@@ -83,7 +86,7 @@ vi.mock('@/lib/api', async (orig) => {
         sessions.push(chatSession(id))
         return { session_id: id, cwd: chatSession(id).cwd }
       },
-      summary: async () => ({ cost_usd: 1.25, projects: [{ project: 'app', dir: '/w/app', cost_usd: 1.25, tokens: 0, sessions: 2 }], rate_limits: { five_hour: { used_percentage: 40, resets_at: 0 } } }),
+      summary: async () => ({ cost_usd: 1.25, savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 }, projects: [{ project: 'app', dir: '/w/app', cost_usd: 1.25, tokens: 0, sessions: 2 }], rate_limits: { five_hour: { used_percentage: 40, resets_at: 0 } } }),
       signal: async (id: string, action: string) => { spawned.signals.push([id, action]) },
       permission: async () => ({ permission: null }),
       diff: async () => ({ root: '/w/app', branch: 'main', files: [], stat: '' }),

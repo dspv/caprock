@@ -568,9 +568,12 @@ describe('the sidebar', () => {
       expect(aside).toHaveClass('flex', 'flex-col', 'min-h-0')
       // The list scrolls in its own area, shrinking to what is left.
       expect(list.parentElement).toBe(aside)
-      expect(list).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto', 'pb-4')
-      // The footer is the list's next sibling, in the flow: never over it.
-      expect(list.nextElementSibling).toBe(footer)
+      expect(list).toHaveClass('min-h-0', 'flex-auto', 'overflow-y-auto', 'pb-4')
+      // The footer follows the list in the flow — Second Brain between them
+      // when it is shown, never inside the list's scroll: never over it.
+      const after = list.nextElementSibling
+      expect(after?.matches('[data-brain-sidebar]') ? after.nextElementSibling : after).toBe(footer)
+      expect(list.querySelector('[data-brain-sidebar]')).toBeNull()
       expect(footer).toHaveClass('app-sidebar-footer', 'shrink-0')
       expect(footer.className).not.toMatch(/\b(absolute|fixed|sticky)\b|-mt-/)
       unmount()

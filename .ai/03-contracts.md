@@ -15,7 +15,7 @@ Conventions that apply to every contract here: JSON casing is **snake_case**; al
 
 ### Hook payload (what the shim forwards, verbatim)
 
-Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. Event-specific fields the daemon reads:
+Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. The parent's hooks also fire for its subagents' tool calls, under the parent's `session_id`; when such a payload names no `agent_id`, hookd takes it from a `transcript_path` of the form `<session-id>/subagents/…/agent-<id>.jsonl`, so the call is the subagent's and not the main thread's. Event-specific fields the daemon reads:
 
 | Event               | Fields consumed                                              |
 | ------------------- | ------------------------------------------------------------ |
@@ -316,6 +316,53 @@ device. The relay's wire is `internal/remote/wire.go`, the channel's frames
 (the daemon pings every 25 s) for 75 s as gone: a phone arriving for it, or
 sending to it, is closed with 4404 and the stale connection dropped (4408
 on the hosted relay), never spliced to a machine that went to sleep.
+
+**Other computers (ADR-067).** A daemon reaches another machine's daemon as
+that machine's paired device, over the same relay channel a phone uses —
+the target runs its ordinary Host and gate, unchanged. What exists so far
+(PR1 of Phase 1; no route, CLI or UI yet):
+
+- **`machines.json`** in the data directory, mode 0600 (written atomically;
+  on Windows the mode is not enforced and the file is in the user's
+  profile, as `devices.json` is): a JSON array of `{id, key, relay, name,
+  token, device_id, added_at}` — `id` the target's relay id (its Ed25519
+  key, base64url), `key` its X25519 static key (base64url, pinned by every
+  handshake), `relay` the `wss://` address from its link, `name` this
+  machine's label for it (40 characters, printable), `token` this machine's
+  device token there, `device_id` the target's id for this device, and
+  `added_at` unix milliseconds by this machine's clock. An entry missing
+  `id`, `key`, `relay` or `token` is skipped on read; a file that is not
+  JSON reads as no computers (logged), never as a crash. Never in
+  `config.json`.
+- **The link** a computer is paired with is `remote.PairLink`'s (above):
+  `ParsePairLink` takes the whole link, the same wrapped in `<>` or quotes,
+  or only the part after `?`. `r` must pass `CheckRelayURL`, `h` must be an
+  Ed25519 key, `k` 32 bytes, `c` digits only; `n` is optional. Pairing
+  needs `c`; it is redeemed with `POST /v1/pair` `{code, name}` through the
+  channel, and the target's `401` and `409` are told apart (wrong code;
+  pairing not open there).
+- **The client side of the channel** (`remote.Client`) speaks
+  `internal/remote/proto.go` as the phone does: the Hello is `{v: 1}`, the
+  Welcome's `version` and `name` are kept, stream ids are odd and count up
+  from 1, at most 64 open, and bodies go in frames of at most 60 KB.
+  Requests carry only the headers in `requestHeaders`; every request a
+  computer makes sets `X-Caprock-Device` to its token there, and every
+  socket offers `caprock.device.<token>` after the caller's protocols.
+  `Cookie`, `Origin`, `Referer`, `Authorization` and `Sec-*` from the local
+  caller are removed first. One attempt (relay, handshake, Welcome) is
+  bounded by 10 s; a failed one backs off 1 s doubling to 30 s, during which
+  a request is answered at once with the last failure. An open channel
+  pings the relay every 25 s, is dropped after 60 s unheard, and closes
+  after 90 s with no stream open. A stream whose reader falls 512 frames
+  behind is cancelled (`KindCancel`), never the channel. Its states are
+  `idle`, `connecting`, `online`, `offline` (4404, the relay unreachable,
+  or a drop), `refused` (the target hung up on the handshake: another key)
+  and `closed`; `internal/peers` adds `revoked` when `GET /v1/pair/me`
+  answers 401, cleared when a later check answers 200.
+- **Relay counters.** `remote.State` (the Host) and `remote.ClientState`
+  count relay messages and bytes each way (`msgs_in`, `msgs_out`,
+  `bytes_in`, `bytes_out`) since the daemon started, for OQ-14. Not in any
+  API answer yet.
 
 **The way back to a paired phone (2026-10-15).** `GET /v1/pair/state`
 carries `telegram: true` when a Telegram bot and chat are set up.
@@ -850,11 +897,11 @@ Extended thinking is never stored at all — only `type: "text"` blocks are read
 
 **Codex prompts and tool results are `turn.user` and `tool.post` in Claude Code's shape** (`source = codex`). A prompt: key `codex:user:<line>`, payload `{prompt, cwd}`, from the `item_completed` `UserMessage` item (else the `user_message` event), clipped to 16000 runes; none for imported or subagent threads. A result: key `codex:result:<line>` (`codex:sub:<thread>:result:<line>` in a subagent file, with `agent_id` and `sidechain`), `tool` the call's name, payload `{session_id, cwd, tool_name, tool_use_id, tool_response, is_error, exit_code?}`, `tool_response` text clipped to 8000 runes, `exit_code` only where Codex recorded one (`shell`). A call whose request ended (`task_complete`, `turn_aborted`, or the next `task_started`) with no output record gets one too, key `codex:interrupted:<call line>` (`codex:sub:<thread>:interrupted:<call line>`), `tool_response` empty and `interrupted: true`; the chat shows it as interrupted, not running. Every Codex `tool.pre` carries `tool_use_id` = Codex's `call_id`, and its `tool_input` is the call's argument object (a `function_call`'s JSON-string arguments unwrapped; `shell`'s argv `command` turned into its command line, the array kept as `argv`). Rows stored before carry neither; a one-time pass (`meta.codex_chat_backfilled`) stores the missing prompts and results from the rollouts still on disk and rewrites only `tool_use_id` and `tool_input` on the call whose key and timestamp match. See [19-codex.md § Chat](19-codex.md#chat).
 
-Five indexes exist purely for read speed, created by migrations 0006 to 0010: `idx_events_kind_ts` (kind, ts) and `idx_events_cost_cover`, which additionally carries `model`, `session_id`, the token/cost columns and (since migration 0026) `internal` so the summary aggregates are answered from the index without touching the table. Together they take `/v1/stats/summary?range=all` from ~820ms to ~340ms and `/v1/history` from ~830ms to ~470ms on a 184k-event database, for roughly 30MB of index on a 306MB file. `idx_events_session_id` (session_id, id) serves the per-session event lookup behind Now, and `idx_events_kind_id` (kind, id) serves the Memory screen — both order by id, which the ts-ordered indexes cannot satisfy, so without them SQLite read every matching row and sorted it in a temp B-tree to return the newest few. Migration 0026 rebuilt `idx_events_cost_cover`, `idx_events_tool_dist` and `idx_events_attr_work` with `internal` as their last column: every aggregate filters on `internal = 0` since migration 0024, and without the column none of them covered any more — each query fetched every full row to test one flag, which put `/v1/history?range=all` at 9s on a 300k-event database. It also added `idx_events_ts_cover` (ts, internal, kind, session_id, token/cost columns) for the two range aggregates that group by kind or count distinct sessions; both pin it with `INDEXED BY`, because without ANALYZE statistics SQLite picked `idx_events_kind_id` or `idx_events_session_id` and walked the whole table — 4.8s for today's 772 events. `idx_events_ts_model` (ts, model, cost_usd) serves the model mix, which every summary computes: `idx_events_cost_cover` carries `model` but leads on `kind`, so a ts-only filter cannot use it — 146ms against 56ms over 30 days on a 190k-event database. `idx_events_user_turn` (migration 0033) finds a session's first prompts for the sessions list's descriptions; see § First-prompt DDL.
+Five indexes were added purely for read speed by migrations 0006 to 0010: `idx_events_kind_ts` (kind, ts) and `idx_events_cost_cover`, which additionally carries `model`, `session_id`, the token/cost columns and (since migration 0026) `internal` so the summary aggregates are answered from the index without touching the table. Together they take `/v1/stats/summary?range=all` from ~820ms to ~340ms and `/v1/history` from ~830ms to ~470ms on a 184k-event database, for roughly 30MB of index on a 306MB file. `idx_events_session_id` (session_id, id) serves the per-session event lookup behind Now, and `idx_events_kind_id` (kind, id) serves the Memory screen — both order by id, which the ts-ordered indexes cannot satisfy, so without them SQLite read every matching row and sorted it in a temp B-tree to return the newest few. Migration 0026 rebuilt `idx_events_cost_cover`, `idx_events_tool_dist` and `idx_events_attr_work` with `internal` as their last column: every aggregate filters on `internal = 0` since migration 0024, and without the column none of them covered any more — each query fetched every full row to test one flag, which put `/v1/history?range=all` at 9s on a 300k-event database. It also added `idx_events_ts_cover` (ts, internal, kind, session_id, token/cost columns) for the two range aggregates that group by kind or count distinct sessions; both pin it with `INDEXED BY`, because without ANALYZE statistics SQLite picked `idx_events_kind_id` or `idx_events_session_id` and walked the whole table — 4.8s for today's 772 events. `idx_events_ts_model` (ts, model, cost_usd) served the model mix, which every summary computes: `idx_events_cost_cover` carries `model` but leads on `kind`, so a ts-only filter could not use it — 146ms against 56ms over 30 days on a 190k-event database. Migration 0057 dropped both once later indexes had taken over their queries; see § Superseded indexes DDL. `idx_events_user_turn` (migration 0033) finds a session's first prompts for the sessions list's descriptions; see § First-prompt DDL.
 
 Note-**search** deliberately still scans: an FTS5 index answers in 6ms against ~165ms, but it matches whole words, so searching `chestr` finds 394 rows with LIKE and 0 with FTS. People search their own sessions for fragments — half an error message, part of a path — and a faster search that misses them is not the same feature.
 
-Anything added to the summary aggregates should either use these columns or extend the covering index — a column outside it costs the Go driver a table fetch per row, which is far more expensive than the same SQL timed in the sqlite3 shell suggests.
+Anything added to the summary aggregates should either use these columns or extend the covering index it reads (`idx_events_turn_agent`, `idx_events_ts_cover`) — a column outside it costs the Go driver a table fetch per row, which is far more expensive than the same SQL timed in the sqlite3 shell suggests.
 
 `ListEvents`, `EventsAfter`, `SessionNotes` and `SearchNotes` all clamp `limit` to `MaxEventPage` (5000) instead of falling back to a small default, which made a caller asking for everything receive a fraction of it — `notes?limit=5001` returned 200 rows where `limit=5000` returned 2372.
 
@@ -1309,6 +1356,8 @@ GitHub token is (§ GitHub, "Where the token lives"):
   Telegram bridge's Disconnect) deletes it from the store.
 
 `PUT /v1/settings` accepts `default_folder` (2026-10-09): where the app's Add project sheet starts — its folder field, a new project's parent, a clone's destination and the folder browser. Empty is the home folder; otherwise an absolute path or one led by `~`, one line, at most 1024 bytes (`400` otherwise). Stored as `default_folder` in `config.json` and returned by `GET`. It changes no boundary: `/v1/browse` and `/v1/browse/stat` stay rooted at `browse_root`.
+
+`GET`/`PUT /v1/settings` carry `quick_replies` (2026-10-15): `[{label, text}]`, the one-click replies under a session Caprock started ([21-app.md § Quick replies](21-app.md#quick-replies)). `GET` returns the list in use — `config.DefaultQuickReplies` until changed. `PUT` replaces the whole list; absent or `null` leaves it. Each label and text is trimmed; at most 10 replies, a label of 1–24 characters on one line, a text of 1–300 bytes with no control character but a newline; anything else is a `400` and nothing changes. Stored in `config.json` only once it differs from the list in use, so writing back what was read never freezes the defaults; an empty list is kept as empty. A paired device does not write it. The `PUT` body may be up to 16 KiB (4 KiB before).
 
 `GET`/`PUT /v1/settings` carry `prompts` (2026-10-09): when each of the dashboard's own offers was last answered, a map of prompt id → Unix ms, stored in `config.json` so an answer given in the desktop app holds in a browser tab too ([04-ui.md § Product-led surfaces](04-ui.md#product-led-surfaces)). Ids in use: `star-done`, `star-dismissed`, `premium-limit`, `premium-cap`, `premium-hint`, `premium-banner`, `teams-nudge`, `share-week`, `share-month`, and the offer survey's (`offer-variant-ads`, `offer-variant-youtube`, `offer-last`, and `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2` per offer; ADR-062). `PUT` **merges**: each named id keeps the later of its stored time and the new one, `0` removes it, ids not named are untouched. An id must be `a-z`, `0-9` and `-`, at most 40 bytes; a negative time or more than 64 ids is a `400`. Absent from `GET` when empty. A paired device does not write it; its answers stay in its own browser.
 
@@ -3063,7 +3112,7 @@ Brain DDL (migrations 0055, 0056).
 
 ```
 GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total, terms?, close?}
-GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?}
+GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?, db_path?}
 POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
 GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
 PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
@@ -3074,6 +3123,7 @@ PUT    /v1/brain/settings       {auto?, daily_tokens?, model?} → BrainAutoStat
 POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 ```
 
+- **`db_path`** on `/v1/brain/status` — the database the memories live in, `caprock.db` in the daemon's data directory (`config.DBPath`), resolved by the daemon rather than guessed per OS by the page; the screen's *Where it's kept* shows it. Omitted when the daemon has no data directory (tests).
 - **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
   event_id?, ts?, project?}, manual, pinned, run_id?, created_at, updated_at,
   degree?, rank?, close?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or
@@ -4038,7 +4088,7 @@ measured and is quietly skewed is worse than one that is not there;
 
 **`create` makes the working directory, one level, under a parent that already exists.** Starting a new project otherwise meant leaving the dashboard, creating the folder in a terminal, and returning to type its path — a path the user had already typed. It is opt-in and defaults to false: this endpoint executes a command from its body, so a missing directory stays an error unless the caller explicitly asked for it to be made. Deliberately `Mkdir`, never `MkdirAll` — the parent must exist, so a typo in an absolute path fails loudly instead of materialising a chain of directories somewhere the user has never been. The path is cleaned before the parent is checked, so a path that climbs out with `..` is verified against where it actually lands. An existing directory is not an error.
 
-Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one, and `LANG` set to a UTF-8 locale when none of `LC_ALL`, `LC_CTYPE` or `LANG` is (`agents.withUTF8Locale`; not on Windows). Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501) only when no agent's binary is found; Caprock then stays observe-only. Codex, OpenCode and Gemini get their own argv and are never written into `~/.claude.json` ([ADR-031](08-decisions.md)). The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
+Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one, and `LANG` set to a UTF-8 locale when none of `LC_ALL`, `LC_CTYPE` or `LANG` is (`userenv.WithUTF8Locale`; not on Windows). Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501) only when no agent's binary is found; Caprock then stays observe-only. Codex, OpenCode and Gemini get their own argv and are never written into `~/.claude.json` ([ADR-031](08-decisions.md)). The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
 
 ### Phase 2 additions
 
@@ -4581,7 +4631,7 @@ CREATE INDEX IF NOT EXISTS idx_events_turn_msg
 Finds an assistant turn by message id across sessions — the per-turn
 `store.TurnPaidElsewhere` lookup on the write path and the GROUP BY in
 `rollup.RepairForkedTurns` (see **A turn is paid once across sessions** under
-Hook shim). `idx_events_msg` leads on `session_id` and cannot answer either.
+Hook shim). An index leading on `session_id` cannot answer either.
 On the owner's database (2026-10-03) the repair found 827 copied turns from
 one fork and took $212.93 and 381M tokens out of the totals.
 
@@ -4744,6 +4794,7 @@ ALTER TABLE events ADD COLUMN msg_id TEXT;      -- assistant message id; links a
 ALTER TABLE events ADD COLUMN touch_dir TEXT;   -- directory the tool touched, slash-normalized; NULL when none
 CREATE INDEX IF NOT EXISTS idx_events_touch ON events(kind, ts, session_id, msg_id, touch_dir);
 CREATE INDEX IF NOT EXISTS idx_events_msg ON events(session_id, msg_id) WHERE msg_id IS NOT NULL;
+-- both dropped by migration 0057 (§ Superseded indexes DDL)
 
 -- migration 0013, widened by 0014: the carry-forward scan's order, covering
 -- every column it reads — including `tool`, which the work-kind breakdown
@@ -4784,6 +4835,23 @@ The per-directory breakdown is charged by **which files Claude touched**, not by
 - **No query of its own.** The rows the breakdown needs are exactly the rows the carry-forward scan already reads, so the classification rides along in that scan. Measured through the Go driver on the owner's 191k-event database (2026-08-23, 30d, best of fifteen): the summary answers in **249 ms** before and **279 ms** after (+30 ms). A separate aggregate over the same events cost **292 ms** on its own — nearly ten times as much for the same seven numbers.
 - **Codex's `exec` is classified by the tool its script ran (migration 0038).** `exec` wraps a JavaScript script that calls the real tools (`tools.exec_command(…)`, `tools.apply_patch(…)`); of 13,086 calls on the owner's machine 63% ran a command and 14% applied a patch, so counting every `exec` as a command read 30-day editing as 0.4% of spend instead of 4.8% (2026-10-05). `store.innerTool` names the tool when the event is written — of several, the one whose kind wins the precedence; `exec` when the script names none — into `events.inner_tool`, and the scan classifies `COALESCE(inner_tool, tool)`. Stored, not read from the payload in the scan, because that broke the covering index: 30-day summary ~270 ms → ~760 ms. Migration 0038 adds the column to `idx_events_attr_work`; `Store.backfillInnerTool` fills rows already stored (Go, so the script is read by one regex), gated by the `inner_tool_backfilled` meta key.
 - **Why `tool` had to enter the index.** The scan reads it per row, and it was carried by no existing index, so the plan fell off the covering path onto the table: **~578 ms** against **~80 ms** covering. Migration 0014 widens `idx_events_attr` into `idx_events_attr_work` and drops the original; SQLite cannot add a column to an index in place, and a stale duplicate would cost write throughput on every ingested event for nothing.
+
+### Superseded indexes DDL (migration 0057)
+
+```sql
+DROP INDEX IF EXISTS idx_events_touch;
+DROP INDEX IF EXISTS idx_events_ts_model;
+DROP INDEX IF EXISTS idx_events_cost_cover;
+DROP INDEX IF EXISTS idx_events_msg;
+```
+
+Four indexes whose queries later indexes took over, dropped for the space they took: 125 MiB of a 1041 MiB database of 519,000 events, measured after a full VACUUM (2026-10-15). Which index each query uses was read from `EXPLAIN QUERY PLAN` of every statement the Go test suite runs, against a copy of that database; nothing else changed plan.
+
+- **`idx_events_touch`** served the attribution scan, which has run on `idx_events_attr_work` since migrations 0013 and 0014 (§ Touch attribution DDL).
+- **`idx_events_ts_model`** served a model mix filtered on `ts` alone. The model mix now also filters on `kind = 'turn.assistant'` and is answered from `idx_events_turn_agent`, which covers it.
+- **`idx_events_cost_cover`** had one reader left, `store.WhereWeLeftOff`, which pinned it for its (kind, ts, session_id) prefix. It pins `idx_events_turn_agent` now, which leads on the same columns for assistant turns: 0.42 ms on a hit either way, 37.4 ms against 37.7 ms for a project with no passage.
+- **`idx_events_msg`** had one reader left, OpenCode's `refreshText`, which now pins `idx_events_session_id`: 0.52 ms against 0.54 ms for a 401-event session. Unpinned, SQLite falls to `idx_events_kind_id` and takes 441 ms.
+- **The space comes back the usual way:** by incremental vacuum, or by the one-time idle VACUUM on a database not yet switched to it (§ Payload compaction and auto-vacuum).
 
 ### Rate-limit snapshots DDL (migration 0005)
 

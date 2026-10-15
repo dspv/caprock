@@ -7,6 +7,76 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+Changes waiting for the next release are one file each in `changes/unreleased/`,
+assembled into a version section here by `scripts/changelog.py` when a release is
+cut; `scripts/changelog.py preview` prints that section now. The format is in
+`changes/README.md`.
+
+## [0.121.0] - 2026-10-15
+
+### Added
+
+- **brain:** Second Brain says where it is kept — in its Settings and under
+  *Details* in How it works: the real path of `caprock.db` as the daemon
+  resolved it (with *Copy path*), the tables `brain_nodes`, `brain_edges`
+  and `brain_runs`, and that the session text goes to Anthropic through
+  your own Claude to be read while nothing goes to Caprock.
+  `GET /v1/brain/status` carries the path as `db_path`.
+- **remote:** the groundwork for reaching your other computers through the
+  relay (ADR-067). A Caprock daemon can now be a client of another
+  machine's daemon over the same end-to-end encrypted channel a phone uses,
+  pair with it by its link and keep the token in `machines.json` (0600),
+  opening the channel only while something needs it. Nothing to see yet:
+  the routes, the target's computer pairing and the app follow.
+
+### Changed
+
+- **app:** the sidebar's session rows are bigger and easy to read (a user
+  could not read them, nor tell which tab she was in). Rows are 38px with
+  the title at 14px; each says its state as a dot and a word — green and
+  breathing while it works, amber while it waits, faint when idle — and a
+  tab's key is the footer's readable chip. The flat list no longer draws
+  the project's name on each row; the tooltip and screen readers still say
+  it. Only the tab in front looks selected now (an accent tint, a 3px
+  accent edge and a bold title): a row waiting on you is marked by its
+  amber dot and word, no longer by a fill and edge of its own, and the
+  project in front lost its edge. The Today card folds to one line by its
+  chevron and can be hidden from its right-click menu; Settings →
+  Appearance shows it again, and while it is hidden the list's heading
+  counts what waits on you.
+- **app:** the sidebar's Second Brain card is quiet by default: folded to one
+  muted row, *Second Brain · Idle · 140 memories* or *Indexing 3 sessions…*,
+  whose small glyph pulses slowly only while a read runs. It lifts a pixel on
+  hover, a click opens Second Brain, and the chevron unfolds a calmer orb
+  (smaller, slower, fainter, fewer sparks). A fold you saved is kept. The
+  card now sits under the list and above the footer instead of at the end
+  of the list's scroll, so its status line is never cut off by the footer;
+  when room is short the orb shrinks (and in a window under 640px tall is
+  not drawn). The orb's sparks also follow the sessions working now.
+- **app:** the right panel's CI pull-request bars say what their stages are:
+  one faint line, *open · CI · merged · released*, over the bars' columns,
+  and each segment's tooltip names its step and state (done, running,
+  failed, waiting) with the landing-queue label on the step a PR is on. The
+  rows are as tall as before.
+
+### Fixed
+
+- **app:** on macOS the first click on a Caprock window that is not in front
+  reaches the page: a tab's × in the title-bar strip closes the tab at once
+  instead of the first click only bringing the window forward. Dragging the
+  window by its title bar works as before.
+- **loop:** a subagent's edits no longer raise a loop alert on its parent. A
+  subagent's tool calls arrive under the parent's session id, and the
+  detector counted them in the parent's window: a parent and two subagents
+  making the same edit, three each, read as nine repeats of one call. Each
+  thread now counts its own — the main thread, and every subagent apart — and
+  a subagent that really repeats itself still raises the alert on the session
+  it works for. A hook fired inside a subagent with no `agent_id` is told
+  apart by its transcript path (`…/subagents/agent-<id>.jsonl`). The Week
+  card's longest loop counts the same way.
+
+## [0.120.0] - 2026-10-15
+
 ### Added
 
 - **brain:** the Second Brain banner and *How it works* show the agents you
@@ -18,10 +88,159 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   With no usage yet it is Claude Code alone. Both now say *Free* in a quiet
   accent pill, and the dialog adds *Free — runs on your own Claude, on this
   computer.* The pulses hold still with reduced motion.
-Changes waiting for the next release are one file each in `changes/unreleased/`,
-assembled into a version section here by `scripts/changelog.py` when a release is
-cut; `scripts/changelog.py preview` prints that section now. The format is in
-`changes/README.md`.
+- **app:** a release plan with progress bars — on the Pipeline, in the
+  right panel and on Work. The next version your changelog entries call
+  for (a feature makes a minor release, fixes a patch; hover it for how it
+  was counted), then a ten-block bar per pull request merged since the last
+  tag, open, or agent still at work, with its step in a word — a
+  landing-queue label such as *landing: queued* when it has one, the CI
+  step red when a check failed — and drafts and idle agents under *Later*.
+  It is a *Next release* panel under the Pipeline's figures, a *Release*
+  section in the right panel and a third view on Work beside List and
+  Kanban. The right panel's sections now move by a small grip at their top
+  left: drag it, press ⌥⇧↑ ⌥⇧↓ on it (Ctrl+Shift+↑ ↓ on Windows and
+  Linux), or click it for Move up, Move down, Move to top and Reset order;
+  the order is kept for you.
+- **app:** the release check runs hourly instead of every six hours, and
+  within five minutes of the computer waking; it is the same conditional
+  request to GitHub, and nothing new is sent. Settings has its own
+  **Updates** section: the switch, when Caprock last checked, and **Check
+  now**. In the desktop app it adds a choice for a new version: **Ask me**
+  (the card, as before) or **Update automatically**, which downloads the
+  update in the background and restarts into it only when no agent is
+  working or waiting on a permission prompt, you have left the app alone
+  for two minutes, and nothing typed is waiting to be sent — with ten
+  seconds' notice and **Not now**, and *Updated to vX · What's new*
+  afterwards. Sessions and tabs come back as after any update. The update
+  card also offers **Always update automatically**.
+- **app:** a check for updates you ask for always answers. Nothing newer:
+  a banner says *You're up to date — Caprock X is the latest · checked just
+  now*, with **Close**, and goes after 8 seconds unless the pointer is on
+  it. A failed check shows the error with **Retry**. The hourly background
+  check stays silent when there is nothing new.
+- **brain:** Second Brain starts in one click and you can watch it being built.
+  The empty screen is one picture, *Give your agents a memory*, *Free* and
+  *Start building*, with one line on what it does (your own Claude reads your
+  last 30 days on this computer, up to the daily limit, nothing goes to
+  Caprock) and the rest under *Details*. The click turns it on and reads the
+  past month. While it builds, the screen shows the session it is reading,
+  *12 of 41 sessions* with a bar, memories found counting up, today's tokens,
+  where it all comes from per project, and the last reads, with *Pause* and
+  the one fix for a problem (*Check again*, *Raise to 1M a day*). A build now
+  reads session after session instead of four every five minutes.
+- **brain:** the living brain: a slowly turning cloud of your memories with
+  your agents at its rim and sparks flying into it while it reads, in the
+  sidebar card and on the screen. At rest it added about 0.6% of the page's
+  main thread (measured in a headless browser, 2026-10-15), and nothing while
+  out of view.
+- **app:** the status bar's *agent cpu … ram …* opens a popover on hover,
+  focus or click: CPU and memory over the last 15 minutes or hour for the
+  agent in front, all sessions and Caprock itself, each with its figure now,
+  peak and average, and the sessions using the most right now, a click on one
+  bringing its tab forward. The daemon keeps the samples it already takes in
+  a fixed one-hour ring (`GET /v1/resources/history`): 157 KB for ten
+  sessions, no new sampling.
+- **app:** quick replies: under the terminal of every agent Caprock started,
+  and above the chat's field, a row of small buttons sends *Continue*,
+  *Shorter*, *Explain*, *Run tests* or *Commit* in one click, the way the
+  composer sends. Edit the list in Settings → Terminal → *Quick replies*.
+  Sessions started in another terminal never get the row.
+
+### Changed
+
+- **changelog:** a pull request no longer edits `CHANGELOG.md`. It adds one
+  file, `changes/unreleased/<slug>.md`, holding its entry under a `kind:`
+  line, and the release writes them all into the new version's section with
+  `scripts/changelog.py assemble`; `scripts/changelog.py preview` shows that
+  section before then, and `make docs-check` rejects a malformed file. With
+  many pull requests in flight, editing one shared section made git conflict
+  and, three times on 2026-10-15, put entries silently into releases that
+  had already shipped. The Work page's next-release list reads these files
+  too, from any repository that keeps them.
+- **brain:** the sidebar's Second Brain card is one click target into the
+  screen, folds to one row that says what it is doing (*Extracting from
+  acme-api*, *Indexing 3 sessions*, *Idle*, *Paused*) with the count, and its
+  *Start building* opens the screen instead of a wall of consent text.
+- **brain:** the graph reads at a glance: memories cluster around their
+  project, a dot's size is its links and its colour its kind, only projects
+  and the busiest topics are named, and hovering a node lights its
+  neighbourhood and dims the rest. Settings on the screen are one gear with
+  three choices; *How it works* says its details in three short lines.
+- **ui:** the *Take Caprock with you* strip has two buttons instead of five:
+  *Set up* opens a small list of Phone and Telegram, each with its state, its
+  own action and *Not needed*, and *Later* hides the strip for three days. The
+  × folds it to a *0 of 2* chip in the status bar that opens it again.
+- **ui:** a GitHub read that fails on the network or with a 5xx now says
+  *Couldn't reach GitHub. Showing data from 6 min ago.* with *Retry*, the raw
+  error and the exact time in the tooltip, and then what GitHub's status page
+  reports: an outage with a link to it, or *all systems operational — likely
+  your connection*. *Watch GitHub Status* in that line, off by default, shows
+  a dot in the status bar while GitHub reports an incident. The daemon reads
+  githubstatus.com only while GitHub is connected, with nothing about you.
+- **store:** four indexes that later ones had replaced are dropped, giving
+  back 125 MiB of a 1041 MiB database of 519,000 events, with every query
+  as fast as before. The space returns as the database's idle vacuum runs.
+
+### Fixed
+
+- **app:** terminals reconnect on their own after the network drops. A
+  terminal whose connection was lost retried on a single timer, and the
+  only thing watching it stopped with the socket: when the browser refused
+  to start a new socket once (as a network stack being swapped under it
+  can), or the timer was lost, the tab said *Reconnecting…* for good and
+  nothing typed reached the session until the tab was closed (user report:
+  every tab stuck after a Wi-Fi drop). A terminal between sockets is now
+  checked every second and always has a retry on its way and on time; a
+  pause for its own backlog resumes after 15 s even if the terminal never
+  reports catching up; and the window getting focus checks the connection
+  at once. The badge says the attempt and the next try, and after 3
+  failed tries or 10 s down offers **Reconnect now**, which reconnects the
+  same session — no new process. The dashboard's live connection got the
+  same watchdog and button.
+- **brain:** search finds any language's letters in any case, several
+  words, and small typos. Second Brain's search matched one phrase, and
+  ignored case for Latin letters only, so a memory in Greek or with
+  accents was missed when typed in another case. Now every word has to
+  match, in any order, in a title, summary, project or linked topic, with
+  case and accents ignored in every script; when little matches exactly, a
+  word a typo or an ending away counts too, said as *including close
+  matches*. Results come best first — title above summary above a close
+  match — and the List view marks the matched words. The search box says
+  what it searches.
+- **app:** the terminal in front no longer turns to garbage after a long
+  day of tabs. xterm's WebGL renderer shares one glyph atlas among every
+  terminal, merges its pages when it fills, and after the second merge
+  kept drawing from the old page's texture (the new merged page carried
+  the same per-page version number as the old one): letters clipped and
+  overlapped over the whole screen until font size + then −. Every
+  terminal now re-sends its atlas to the GPU and redraws when a merge
+  happens, and the window back in front after half a minute away does the
+  same for the tab shown.
+- **app:** the sidebar footer is a band of its own under the list, on a solid
+  fill with a hairline on top, so the edge between the list and the tools reads
+  at a glance in every palette; the list scrolls above it and its last line
+  (Second Brain's *Local · your own Claude · free*) is whole when scrolled to
+  the end. Folded, a key above an icon is part of that icon's button: a click
+  on ⌘D, ⌘P, ⇧⌘M and the rest does what the icon does, with its tooltip.
+- **pipeline:** the repository picker lists only git repositories on GitHub.
+  A folder outside git (a copy in Downloads, a quick chat's folder, the paste
+  folder), a repository with no remote and one on another host are no longer
+  offered, so picking an entry never ends on "This folder is not a git
+  repository with a remote". Two clones of one GitHub repository are one
+  entry, and two entries that would read the same word show owner/name, else
+  their parent folder. The *N more…* list follows the same rules, and Home's
+  Pipeline card picks from the same list. New read: `GET /v1/repos/remotes`.
+- **ui:** the theme picker is walked with the arrow keys, each palette shown as the focus lands on it; Enter or Space keeps it.
+- **agents:** text copied from an agent (its `pbcopy`) keeps non-Latin letters: every process Caprock starts gets a UTF-8 locale when it has none, not only agent tabs, and the daemon sets one on itself at start.
+- **ui:** the UI tests that turned PRs red at random pass every time. The
+  chat test's live store dialled a socket nobody answered and flipped the
+  link to *reconnecting* mid-test; the cockpit tests compared times drawn
+  from the clock with fixtures stamped when the file loaded; the app
+  workspace tests handed the dashboard a summary without `savings`, so the
+  Now screen crashed whenever it drew one; and the first test to open the
+  lazily loaded dashboard paid for transforming it inside its own 5 s, then
+  asked for its links before they had drawn. Tests only; nothing in the
+  product changed.
 
 ## [0.119.0] - 2026-10-15
 

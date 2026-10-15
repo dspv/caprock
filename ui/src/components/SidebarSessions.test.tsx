@@ -4,15 +4,16 @@
  * anything, don't add extra elements … 'More projects' and 'Hidden' in one
  * button like 'More…'", and "a switch like 'group by projects' or not".
  */
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/lib/projects'
-import type { SessionSummary } from '@/lib/api'
+import type { SessionSummary, Summary } from '@/lib/api'
 import { buildSidebar } from '@/lib/sidebar'
 import { tabLabels } from '@/lib/tablabels'
 import type { Tab } from '@/lib/tabs'
 import { HIDDEN_KEY, HIDDEN_SESSIONS_KEY, Sidebar, type SidebarProps } from './Sidebar'
 import { flatRows } from './ProjectRow'
+import { saveTodayCard, TODAY_FOLD_KEY, TODAY_SHOWN_KEY } from '@/lib/todayCard'
 
 Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
 
@@ -73,10 +74,14 @@ describe('the sessions under a project', () => {
     expect(rows()).toEqual(['w1', 'wt', 'i1', 'b1'])
     expect(document.querySelector('[data-more-rows]')).toBeNull()
     expect(screen.queryByText(/more›|Fold \d back/)).toBeNull()
-    // One line each, compact, with no agent mark.
+    // One line each, 38px with a 14px title, easy to read (a user,
+    // 2026-10-15), with no agent mark; the state as a dot and a word.
     const row = document.querySelector('[data-live-row="w1"]')!
-    expect(row.className).toContain('h-[28px]')
+    expect(row.className).toContain('h-[38px]')
+    expect(row.querySelector('[data-row-title]')!.className).toContain('text-[14px]')
     expect(row.querySelector('[aria-label="Claude Code"]')).toBeNull()
+    expect(row.querySelector('[data-row-dot="working"]')).not.toBeNull()
+    expect(row.querySelector('[data-state="working"]')!.textContent).toBe('working')
   })
 
   it('takes a hidden session off the list until More… shows it again', () => {
@@ -107,7 +112,7 @@ describe('the sessions under a project', () => {
 })
 
 describe('group by project, off', () => {
-  it('lists every session in one flat list, each with its project dimmed', () => {
+  it('lists every session in one flat list; a row names its project only in its tooltip and accessible name', () => {
     const onGroupedChange = vi.fn()
     setup(mix(), [], { grouped: false, onGroupedChange })
     expect(document.querySelector('[data-project-row]')).toBeNull()
@@ -116,10 +121,14 @@ describe('group by project, off', () => {
     expect([...list.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['w1', 'wt', 'i1', 'b1'])
     // ⌘N is a tab's: a row with no tab has no key.
     expect(list.querySelectorAll('[data-row-key-digit]')).toHaveLength(0)
-    expect(list.querySelector('[data-live-row="b1"] [data-row-project-mark]')!.textContent).toBe('beta')
-    // As on the tabs: no status dot and no project dot, the project its coloured name.
-    expect(list.querySelectorAll('[role="img"]')).toHaveLength(0)
-    expect((list.querySelector('[data-live-row="b1"] [data-row-project-mark]') as HTMLElement).style.color).not.toBe('')
+    // The project is not drawn on the row (a user, 2026-10-15: the rows
+    // were too small to read); a screen reader and the tooltip still say it.
+    const b1 = list.querySelector<HTMLElement>('[data-live-row="b1"]')!
+    expect(b1.querySelector('[data-row-project]')!.className).toContain('sr-only')
+    expect(b1).toHaveAccessibleName(/beta/)
+    expect(b1.title).toContain('beta')
+    // Every row has its state dot, as under a project.
+    expect(list.querySelectorAll('[data-row-dot]')).toHaveLength(4)
     // The switch says both choices in words, the one shown checked.
     const sw = screen.getByRole('radiogroup', { name: 'List sessions by' })
     expect(sw.textContent).toBe('ProjectsTabs')
@@ -165,5 +174,75 @@ describe('group by project, off', () => {
     cleanup()
     setup(mix(), tabs, { grouped: true })
     expect(document.querySelector('[data-untabbed-heading]')).toBeNull()
+  })
+})
+
+// A user, 2026-10-15 (translated): "which tab am I working in?" The waiting
+// row had a fill and an edge, as the tab in front did: two rows looked selected.
+describe('one selected row', () => {
+  it('is the tab in front alone; a row waiting in another project is marked by its amber dot and word, with no fill or edge of its own', () => {
+    const tabs: Tab[] = [{ id: 'tb', projectId: 'beta', root: pane('pb', 'session', 'b1'), focusedPaneId: 'pb', title: 'Beta work' }]
+    for (const grouped of [true, false]) {
+      setup(mix(), tabs, { grouped, activeTabId: 'tb', tabDigits: new Map([['tb', 1]]) })
+      const selected = [...document.querySelectorAll('.app-row-selected')]
+      expect(selected).toHaveLength(1)
+      expect(selected[0]).toHaveAttribute('data-tab-row', 'tb')
+      expect(selected[0]).toHaveAttribute('aria-current', 'true')
+      expect(selected[0]!.querySelector('[data-row-title]')!.className).toContain('font-semibold')
+      expect(document.querySelectorAll('[aria-current="true"], [data-selected]')).toHaveLength(1)
+      const wt = document.querySelector('[data-live-row="wt"]')!
+      expect(wt).toHaveAttribute('data-waiting', 'true')
+      expect(wt.className).not.toContain('app-row-selected')
+      expect(wt.querySelector('[data-row-dot="waiting"]')!.className).toContain('bg-warn')
+      expect(wt.querySelector('[data-state="waiting"]')!.className).toContain('text-warn')
+      cleanup()
+    }
+  })
+})
+
+// A user, 2026-10-15 (translated): "can this be hidden? it's in the way".
+describe('the Today card', () => {
+  const route = { onRoute: vi.fn(), loaded: true }
+
+  it('folds to one line by its chevron, with the waiting count in amber, and unfolds; the fold is remembered', () => {
+    const summary = { cost_usd: 19.99, rate_limits: { five_hour: { used_percentage: 40, resets_at: Date.now() / 1000 + 3600 } } } as unknown as Summary
+    setup(mix(), [], { ...route, summary })
+    fireEvent.click(document.querySelector('[data-today-fold]')!)
+    const card = screen.getByRole('region', { name: 'Today' })
+    expect(card).toHaveAttribute('data-today-folded')
+    expect(card.textContent).toMatch(/^\$19\.99 · 4 running · 1 waiting$/)
+    // A thin 5-hour bar under the line.
+    expect(within(card).getByRole('meter', { name: /5-hour window used/ })).toHaveAttribute('aria-valuenow', '40')
+    expect(card.querySelector('[data-today-waiting]')!.className).toContain('text-warn')
+    expect(localStorage.getItem(TODAY_FOLD_KEY)).toBe('closed')
+    cleanup()
+    setup(mix(), [], route)
+    expect(screen.getByRole('region', { name: 'Today' })).toHaveAttribute('data-today-folded')
+    fireEvent.click(document.querySelector('[data-today-unfold]')!)
+    expect(screen.getByRole('region', { name: 'Today' })).not.toHaveAttribute('data-today-folded')
+    expect(localStorage.getItem(TODAY_FOLD_KEY)).toBe('open')
+  })
+
+  it('hides from its menu, keeps what waits counted on the list heading, and comes back from Settings', () => {
+    const { props } = setup(mix(), [], route)
+    expect(document.querySelector('[data-head-waiting]')).toBeNull()
+    fireEvent.contextMenu(screen.getByRole('region', { name: 'Today' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Hide this card/ }))
+    expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
+    expect(localStorage.getItem(TODAY_SHOWN_KEY)).toBe('off')
+    // Nothing that needs you is lost: the count is beside the heading, and opens it.
+    const head = document.querySelector<HTMLElement>('[data-head-waiting]')!
+    expect(head.textContent).toBe('1')
+    expect(head.className).toContain('bg-warn')
+    fireEvent.click(head)
+    expect(props.onOpenInbox).toHaveBeenCalled()
+    // Hidden stays hidden on the next load.
+    cleanup()
+    setup(mix(), [], route)
+    expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
+    // Settings → Appearance's toggle (lib/todayCard) brings it back at once.
+    act(() => saveTodayCard({ hidden: false }))
+    expect(screen.getByRole('region', { name: 'Today' })).toBeInTheDocument()
+    expect(document.querySelector('[data-head-waiting]')).toBeNull()
   })
 })
