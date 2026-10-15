@@ -10,42 +10,48 @@
  * shipped and what the agents spent on them. Both come in the page's one
  * answer (…/ci/stats' `board`): nothing here asks. Home's CI/CD panel draws
  * the first five figures from the same answer (PipelineCard).
+ *
+ * Each figure with a day-by-day series carries the Today cells' line and
+ * word under it (FlowTrend, lib/flowtrend.ts; owner, 2026-10-15,
+ * translated: "the figures in dynamics, like everywhere else in our app").
  */
 import type { ReactNode } from 'react'
 import type { BranchPR } from '@/lib/branches'
-import { AGENT_COST_NOTE, perDay, type BoardRelease, type PRBoard } from '@/lib/prboard'
+import { AGENT_COST_NOTE, perDay, type BoardRelease, type FlowPoint, type PRBoard, type SeriesKey } from '@/lib/prboard'
+import { flowCompare, flowCompareTitle, flowPointTitle, flowTone, flowUsualLine, flowWord } from '@/lib/flowtrend'
 import { spanText } from '@/lib/prstats'
 import { fmtAgo } from '@/lib/format'
 import { fmtRun } from '@/lib/ci'
 import { openExternal } from '@/lib/nudges'
 import { Panel, Stat } from './ui'
+import { TrendLine } from './TodayTrend'
 
 // ---------------------------------------------------------------- the flow
 
 /** One figure of the flow: its caption, value, the line under it, and what it means. */
-export interface FlowFigure { key: string; label: string; value: string; sub: ReactNode; hint: string; tone?: 'ok' | 'danger' }
+export interface FlowFigure { key: string; label: string; value: string; sub: ReactNode; hint: string; tone?: 'ok' | 'danger'; series?: SeriesKey }
 
 /** The flow's figures in reading order; Home shows the first five. */
 export function flowFigures(board: PRBoard): FlowFigure[] {
   const f = board.flow
   const open = f.counts.draft + f.counts.open + f.counts.fix + f.counts.ready
   return [
-    { key: 'flight', label: 'In flight', value: String(open), sub: `${f.counts.open} with CI running${f.counts.draft ? ` · ${f.counts.draft} draft` : ''}`,
+    { key: 'flight', series: 'flight', label: 'In flight', value: String(open), sub: `${f.counts.open} with CI running${f.counts.draft ? ` · ${f.counts.draft} draft` : ''}`,
       hint: 'Open pull requests among the newest listed: drafts, CI running, needing a fix and ready.' },
     { key: 'fix', label: 'Needs a fix', value: String(f.counts.fix), sub: f.counts.fix ? 'red CI, a conflict or changes asked' : 'nothing is red', tone: f.counts.fix ? 'danger' : undefined,
       hint: 'Open pull requests with a red check, a merge conflict, or a review asking for changes.' },
     { key: 'ready', label: 'Ready', value: String(f.counts.ready), sub: 'green, awaiting a merge', tone: f.counts.ready ? 'ok' : undefined,
       hint: 'Open pull requests whose checks passed (or that have none): waiting for a review or a merge.' },
-    { key: 'throughput', label: `Throughput · ${f.days}d`, value: perDay(f.merged, f.days), sub: `${f.merged} merged`,
+    { key: 'throughput', series: 'throughput', label: `Throughput · ${f.days}d`, value: perDay(f.merged, f.days), sub: `${f.merged} merged`,
       hint: `Pull requests merged in the last ${f.days} days, a day on average, from GitHub's merge stamps.` },
-    { key: 'ci', label: 'CI median', value: f.ci_median_ms ? fmtRun(f.ci_median_ms) : '–', sub: f.ci_median_ms ? 'one successful run' : 'fewer than two runs',
+    { key: 'ci', series: 'ci', label: 'CI median', value: f.ci_median_ms ? fmtRun(f.ci_median_ms) : '–', sub: f.ci_median_ms ? 'one successful run' : 'fewer than two runs',
       hint: "The busiest workflow's median successful run, start to finish, from GitHub's run times." },
-    { key: 'ttm', label: 'Opened → merged', value: f.ttm_median_ms ? spanText(f.ttm_median_ms) : '–', sub: f.ttm_median_ms ? `median of ${f.ttm_count}` : 'fewer than two merges',
+    { key: 'ttm', series: 'ttm', label: 'Opened → merged', value: f.ttm_median_ms ? spanText(f.ttm_median_ms) : '–', sub: f.ttm_median_ms ? `median of ${f.ttm_count}` : 'fewer than two merges',
       hint: "The median time from opened to merged of the pull requests merged in the window, from GitHub's stamps." },
-    { key: 'lag', label: 'Merged → released', value: f.release_lag_median_ms ? `~${spanText(f.release_lag_median_ms)}` : '–',
+    { key: 'lag', series: 'lag', label: 'Merged → released', value: f.release_lag_median_ms ? `~${spanText(f.release_lag_median_ms)}` : '–',
       sub: f.release_lag_median_ms ? `estimate · ${f.release_lag_count} released` : f.release_lag_count === 1 ? 'one release so far' : 'no release matched',
       hint: 'An estimate: each merge into the default branch is matched to the first release published after it, and the median taken of merge to publish.' },
-    { key: 'cost', label: 'Agent cost', value: `$${f.cost_usd.toFixed(2)}`, sub: 'on these PRs · API list price', hint: AGENT_COST_NOTE },
+    { key: 'cost', series: 'cost', label: 'Agent cost', value: `$${f.cost_usd.toFixed(2)}`, sub: 'on these PRs · API list price', hint: AGENT_COST_NOTE },
   ]
 }
 
@@ -62,9 +68,40 @@ export function FlowFigures({ board, compact }: { board: PRBoard; compact?: bool
     <div className="@container/flow">
       <div data-board-flow aria-label="How pull requests move"
         className={`grid grid-cols-2 divide-x divide-border ${compact ? '@min-[520px]/flow:grid-cols-3 @min-[820px]/flow:grid-cols-5' : '@min-[560px]/flow:grid-cols-4 @min-[1180px]/flow:grid-cols-8'}`}>
-        {shown.map((x) => (
-          <Stat key={x.key} data={x.key} label={x.label} value={x.value} sub={x.sub} tone={x.tone} hint={x.hint} size="compact" />
-        ))}
+        {shown.map((x) => {
+          const pts = x.series ? board.flow.series?.[x.series] : undefined
+          return (
+            <Stat key={x.key} data={x.key} label={x.label} value={x.value} sub={x.sub} tone={x.tone} hint={x.hint} size="compact"
+              trend={x.series && pts && pts.length > 1 ? <FlowTrend k={x.series} pts={pts} label={x.label} /> : undefined} />
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+const WORD_TONE = { ok: 'text-ok', warn: 'text-warn', none: 'text-fg-muted' } as const
+const DOT_TONE = { ok: 'bg-ok', warn: 'bg-warn', none: 'bg-fg-muted' } as const
+
+/**
+ * One figure's last days: the Today cells' line (TrendLine), the dashed
+ * usual across it, today a dot at the right end, and the word under it —
+ * green where today is the better side of usual, amber the worse, muted for
+ * a figure with no better direction (lib/flowtrend.ts). Hovering a day says
+ * that day; hovering the word says what today is set against.
+ */
+export function FlowTrend({ k, pts, label }: { k: SeriesKey; pts: readonly FlowPoint[]; label: string }) {
+  const c = flowCompare(k, pts)
+  const tone = flowTone(k, c)
+  const n = pts.length
+  const usual = c && c.kind !== 'thin' ? flowUsualLine(k, c.usual) : undefined
+  return (
+    <div className="mt-1 min-w-0" data-trend={k}>
+      <TrendLine pts={pts.map((p) => p.value)} titles={pts.map((p, i) => flowPointTitle(k, p, i === n - 1))} usual={usual}
+        dot={DOT_TONE[tone]} label={`${label}, last ${n} days, today last`} isolated />
+      <div className="mt-0.5 h-[15px] truncate text-[11px] leading-[15px] num" data-compare={c?.kind ?? 'none'} data-tone={tone}
+        title={c ? flowCompareTitle(k, c, n) : undefined}>
+        {c && <span className={c.kind === 'thin' || c.kind === 'quiet' ? 'text-fg-faint' : WORD_TONE[tone]}>{flowWord(k, c)}</span>}
       </div>
     </div>
   )

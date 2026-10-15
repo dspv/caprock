@@ -3,8 +3,11 @@
  * § Pipeline; owner, 2026-10-15, translated: "I'd build this into the
  * Dashboard as a separate page, opened there — Pipeline, simply in the
  * Dashboard's style … Pipeline is part of the Dashboard, just a separate
- * page"). It sits in the dashboard's nav beside Cost and Week, renders in the
- * Dashboard tab, and ⌘P (or the sidebar's Pipeline) opens it there.
+ * page"). It sits in the dashboard's nav beside Cost and Week. In the app it
+ * renders in a pinned tab of its own beside the Dashboard tab (owner, later
+ * that day, translated: "as a separate page with its own tab — among the
+ * system tabs, next to the dashboard"; AppShell), where the nav, Home's card
+ * and ⌘P lead; in a browser, inside the dashboard.
  * `pr` (#/pipeline?repo=…&pr=N, a Work row's title) opens that pull
  * request's detail beside the list.
  *

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Account, ProviderGuess, Settings } from './mailApi'
+import type { Account, AIStatus, ProviderGuess, Settings } from './mailApi'
 import { api } from './mailApi'
 import { Icon } from './icons'
 import type { Provider } from './Onboarding'
@@ -120,13 +120,8 @@ export function SettingsPanel({ accounts, settings, onSettings, onClose, onChang
   onAddAccount?: () => void
 }) {
   const [adding, setAdding] = useState(false)
-  const [ai, setAi] = useState<{ available: boolean; models: string[]; error?: string } | null>(null)
   const [editing, setEditing] = useState<Account | null>(null)
   const set = (k: string, v: string) => api.putSettings({ [k]: v }).then(onSettings)
-
-  useEffect(() => {
-    api.aiStatus().then(setAi).catch(() => setAi(null))
-  }, [settings.ai_url])
 
   if (adding) return <div className="sheet"><div className="setup onboard"><AddFlow onDone={() => { setAdding(false); onChanged() }} onCancel={() => setAdding(false)} /></div></div>
 
@@ -159,25 +154,7 @@ export function SettingsPanel({ accounts, settings, onSettings, onClose, onChang
         Load remote images automatically <span className="muted small">(off: senders cannot tell when you open their mail)</span>
       </label>
 
-      <h3>Local AI</h3>
-      <p className="muted small">Summaries and reply drafts from a model running on this computer (Ollama, LM Studio, llama.cpp). Mail is never sent to a cloud service.</p>
-      <label className="check">
-        <input type="checkbox" checked={settings.ai_enabled === '1'} onChange={(e) => set('ai_enabled', e.target.checked ? '1' : '0')} />
-        Enable AI features
-      </label>
-      <label className="field"><span>Server</span><input defaultValue={settings.ai_url} onBlur={(e) => e.target.value !== settings.ai_url && set('ai_url', e.target.value)} /></label>
-      <label className="field">
-        <span>Model</span>
-        <select value={settings.ai_model} onChange={(e) => set('ai_model', e.target.value)}>
-          <option value="">First available</option>
-          {ai?.models.map((m) => <option key={m}>{m}</option>)}
-        </select>
-      </label>
-      <div className="small">
-        {ai === null ? '…' : ai.available
-          ? <span className="ok">● Connected, {ai.models.length} model{ai.models.length === 1 ? '' : 's'}</span>
-          : <span className="muted">○ No model server found. Install <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a>, then run <code>ollama pull qwen3:8b</code>.</span>}
-      </div>
+      <AISettings settings={settings} set={set} />
 
       <h3>Keyboard</h3>
       <div className="keys small">
@@ -207,5 +184,93 @@ function EditAccount({ a, onDone }: { a: Account; onDone: () => void }) {
         }}>Save</button>
       </div>
     </div>
+  )
+}
+
+// The assistant: which provider answers, its model, its key, and — always
+// shown — where the mail text goes when Summarise or Draft reply runs.
+function AISettings({ settings, set }: { settings: Settings; set: (k: string, v: string) => Promise<void> }) {
+  const [st, setSt] = useState<AIStatus | null>(null)
+  const [key, setKey] = useState('')
+  const [keyErr, setKeyErr] = useState('')
+  const [tick, setTick] = useState(0)
+  const modelKeys = Object.keys(settings).filter((k) => k.startsWith('ai_model')).map((k) => settings[k]).join('|')
+
+  useEffect(() => {
+    let live = true
+    api.aiStatus().then((s) => live && setSt(s)).catch(() => live && setSt(null))
+    return () => { live = false }
+  }, [settings.ai_url, settings.ai_provider, modelKeys, tick])
+
+  const chosen = settings.ai_provider ?? ''
+  const shownId = chosen || st?.provider || ''
+  const p = st?.providers.find((x) => x.id === shownId)
+  const modelKey = p?.kind === 'local' ? 'ai_model' : 'ai_model_' + shownId
+
+  const saveKey = async (v: string) => {
+    if (!p) return
+    setKeyErr('')
+    try {
+      await api.aiKey(p.id, v)
+      setKey('')
+      setTick((t) => t + 1)
+    } catch (e) {
+      setKeyErr((e as Error).message)
+    }
+  }
+
+  return (
+    <>
+      <h3>AI assistant</h3>
+      <p className="muted small">Summaries and reply drafts. Mail text is sent only when you click Summarise or Draft reply, and only to the provider chosen here.</p>
+      <label className="check">
+        <input type="checkbox" checked={settings.ai_enabled === '1'} onChange={(e) => set('ai_enabled', e.target.checked ? '1' : '0')} />
+        Enable AI features
+      </label>
+      <label className="field">
+        <span>Provider</span>
+        <select aria-label="AI provider" value={chosen} onChange={(e) => { setKey(''); set('ai_provider', e.target.value) }}>
+          <option value="">Automatic{!chosen && st?.label ? ` (${st.label})` : ''}</option>
+          {st?.providers.map((x) => (
+            <option key={x.id} value={x.id}>{x.label}{x.available ? '' : x.kind === 'cli' ? ' (not installed)' : x.kind === 'api' && !x.key_set ? ' (needs a key)' : ''}</option>
+          ))}
+        </select>
+      </label>
+      {p?.kind === 'api' && (
+        <div className="field">
+          <span>API key</span>
+          <div className="keyrow">
+            <input type="password" autoComplete="off" aria-label={`${p.label} key`} value={key} onChange={(e) => setKey(e.target.value)}
+              placeholder={p.key_set ? (p.key_where?.kind === 'file' ? 'Saved in a file only you can read' : 'Saved in your keychain') : 'Paste your API key'} />
+            <button type="button" className="btn" disabled={!key.trim()} onClick={() => saveKey(key.trim())}>Save</button>
+            {p.key_set && <button type="button" className="btn danger" onClick={() => saveKey('')}>Remove</button>}
+          </div>
+          {keyErr && <div className="error">{keyErr}</div>}
+        </div>
+      )}
+      {p?.kind === 'local' && (
+        <label className="field"><span>Server</span><input defaultValue={settings.ai_url} onBlur={(e) => e.target.value !== settings.ai_url && set('ai_url', e.target.value)} /></label>
+      )}
+      {p?.kind === 'local' ? (
+        <label className="field">
+          <span>Model</span>
+          <select value={settings.ai_model ?? ''} onChange={(e) => set('ai_model', e.target.value)}>
+            <option value="">First available</option>
+            {st?.models.map((m) => <option key={m}>{m}</option>)}
+          </select>
+        </label>
+      ) : p && (
+        <label className="field">
+          <span>Model</span>
+          <input key={modelKey} aria-label="AI model" defaultValue={settings[modelKey] ?? ''} placeholder={p.model_hint}
+            onBlur={(e) => e.target.value.trim() !== (settings[modelKey] ?? '') && set(modelKey, e.target.value.trim())} />
+        </label>
+      )}
+      <div className="small">
+        {st === null ? '…' : st.available
+          ? <span className="ok">● {st.label}. Mail text goes to {st.sends_to}.</span>
+          : <span className="muted">○ {st.error}{p && p.kind !== 'local' && <>. Once set up, mail text goes to {p.sends_to}.</>}{p?.kind === 'local' && <> Install <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a>, then run <code>ollama pull qwen3:8b</code>.</>}</span>}
+      </div>
+    </>
   )
 }

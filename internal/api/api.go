@@ -44,6 +44,7 @@ import (
 	"github.com/dspv/caprock/internal/projects"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/subs"
+	"github.com/dspv/caprock/internal/templates"
 	"github.com/dspv/caprock/internal/update"
 )
 
@@ -181,6 +182,9 @@ type Deps struct {
 	// Projects is the projects list, its git state and clones (nil ⇒ the
 	// /v1/projects endpoints return 501).
 	Projects *projects.Service
+	// Templates makes projects from the person's templates (ADR-065; nil ⇒
+	// /v1/templates and /v1/projects/from-template return 501).
+	Templates *templates.Service
 	// GitHub is the GitHub integration (nil ⇒ the /v1/github endpoints
 	// return 501).
 	GitHub *github.Service
@@ -659,6 +663,14 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/repos/ci", s.handleReposCI)
 	m.HandleFunc("POST /v1/projects", s.handleAddProject)
 	m.HandleFunc("GET /v1/projects/ops", s.handleProjectOps)
+	// New project from a template (ADR-065, templates.go); the machine's only.
+	m.HandleFunc("GET /v1/templates", s.handleTemplates)
+	m.HandleFunc("POST /v1/templates", s.handleAddTemplate)
+	m.HandleFunc("POST /v1/templates/inspect", s.handleInspectTemplate)
+	m.HandleFunc("PATCH /v1/templates/{id}", s.handlePatchTemplate)
+	m.HandleFunc("DELETE /v1/templates/{id}", s.handleDeleteTemplate)
+	m.HandleFunc("POST /v1/projects/from-template", s.handleFromTemplate)
+	m.HandleFunc("POST /v1/projects/ops/{op_id}/retry", s.handleRetryOp)
 	// Multi-repo projects (ADR-055, multirepo.go).
 	m.HandleFunc("GET /v1/projects/scan", s.handleScanProject)
 	m.HandleFunc("POST /v1/projects/merge", s.handleMergeProjects)

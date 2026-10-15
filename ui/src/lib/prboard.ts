@@ -66,6 +66,40 @@ export interface BoardFlow {
   release_gap_count?: number
   ci_median_ms?: number
   cost_usd: number
+  /** Each figure day by day over the window, keyed by the figure (flight,
+   *  throughput, ci, ttm, lag, cost); absent from an older daemon. */
+  series?: Partial<Record<SeriesKey, FlowPoint[]>>
+}
+
+/** The figures that have a day-by-day series (internal/api/prboardseries.go). */
+export type SeriesKey = 'flight' | 'throughput' | 'ci' | 'ttm' | 'lag' | 'cost'
+const SERIES_KEYS: readonly SeriesKey[] = ['flight', 'throughput', 'ci', 'ttm', 'lag', 'cost']
+
+/** One local day of a figure's series. */
+export interface FlowPoint {
+  /** "2026-10-14", the daemon's local calendar day. */
+  day: string
+  /** The day's figure; absent on a day with no sample for a median: a gap, not a zero. */
+  value?: number
+  /** How many samples it rests on. */
+  n: number
+  /** A running total's value up to the clock time it is now (throughput, cost). */
+  by_now?: number
+}
+
+const fin = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+
+/** The series as the tiles read them: an odd point is a gap, an odd series none. */
+function asSeries(v: unknown): Partial<Record<SeriesKey, FlowPoint[]>> | undefined {
+  if (!v || typeof v !== 'object') return undefined
+  const out: Partial<Record<SeriesKey, FlowPoint[]>> = {}
+  for (const k of SERIES_KEYS) {
+    const pts = (v as Record<string, unknown>)[k]
+    if (!Array.isArray(pts)) continue
+    out[k] = pts.filter((p): p is FlowPoint => !!p && typeof p === 'object' && typeof (p as FlowPoint).day === 'string')
+      .map((p) => ({ day: p.day, value: fin(p.value), n: fin(p.n) ?? 0, by_now: fin(p.by_now) }))
+  }
+  return out
 }
 
 export interface PRBoard {
@@ -110,6 +144,7 @@ export function asBoard(v: unknown): PRBoard | undefined {
       counts, days: num(f.days) || 14, merged: num(f.merged), ttm_median_ms: f.ttm_median_ms || undefined, ttm_count: num(f.ttm_count),
       release_lag_median_ms: f.release_lag_median_ms || undefined, release_lag_count: num(f.release_lag_count),
       release_gap_median_ms: f.release_gap_median_ms || undefined, release_gap_count: num(f.release_gap_count), ci_median_ms: f.ci_median_ms || undefined, cost_usd: num(f.cost_usd),
+      series: asSeries(f.series),
     },
   }
 }

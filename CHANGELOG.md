@@ -9,6 +9,44 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **projects:** start a project from a template — the daemon side; the
+  screen comes next. Add your own template (a GitHub template repository,
+  a folder, or both) with where its brief goes and the agent's first
+  prompt; Caprock reads its `TEMPLATE.md` to fill those in. Making a
+  project from it runs your own `gh` on your click (`gh repo create
+  --template`, then `gh repo clone`), or copies the folder's last commit
+  into a new repository when you pick the local copy, then writes your
+  brief and commits it — never pushed. A failure takes away only the
+  folder Caprock made and never deletes a repository on GitHub; Retry
+  picks up where it stopped (ADR-065).
+- **pipeline:** every figure on the Pipeline page — and the five on Home —
+  shows its last 14 days as a small line, with today set against them
+  underneath: *usual*, *above usual +38%*, *below usual −30%*. In flight,
+  throughput, the CI median, opened → merged, merged → released and the
+  agent cost each get one; green where today is the better side (a shorter
+  CI run or merge, more merges), amber the worse, muted for the open count
+  and the cost. Running totals compare today so far with earlier days at
+  the same hour; a day with nothing to measure is a gap, not a zero; with
+  fewer than three earlier days of data it says *not enough history*.
+  Hover a day for its value, or the word for what it is compared with.
+  Counted from what the Pipeline already reads: no new GitHub request.
+
+## [0.118.0] - 2026-10-15
+
+### Added
+
+- **mail:** the AI assistant works with the subscriptions you already have.
+  *Summarise* and *Draft reply* can go through your own logged-in Claude
+  Code, Codex or Gemini CLI (run headless, with no tools, hooks or session
+  file), through an API key for Anthropic, OpenAI, OpenRouter or DeepSeek
+  (kept in your keychain, never shown again), or through a local model
+  server as before. *Automatic*, the default, uses the first of claude,
+  codex, gemini and a local server this computer has, so with Claude Code
+  installed turning AI on is the only step. Settings show which provider
+  answers and where the mail text goes; it is sent only when you click an
+  AI action, and the thread reaches the model fenced as data it must not
+  follow.
+
 - **app:** a live session's row on Home takes you into the running session.
   Click anywhere on the row (or Enter on it) and the session's tab comes to
   the front, as its ⌘N does, or opens if it has none; *Go to session ↗* with
@@ -70,6 +108,23 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** the Pipeline has its own tab again, pinned with the system tabs
+  right after the Dashboard tab and before Mail, drawn like them: its glyph
+  and ⌘P (Ctrl⇧P on Windows and Linux), its × while it is in front. ⌘P,
+  *Pipeline* at the foot of the sidebar and *Open Pipeline* in the palette
+  bring it to the front, and again go back to where you were; ⇧⌘B still
+  works and ⌘B stays the Pipeline bar. It stays in the Dashboard too:
+  *Pipeline* in its menu and *Open Pipeline →* on Home take you to that
+  tab, so the page is drawn once and, behind other tabs, reads nothing. The
+  tab is kept across restarts.
+- **app:** where you type is easier to find, quietly. The Chat view's field
+  carries a hint of the accent at rest — a faint tint and a hairline edge,
+  a little stronger with the focus — on every theme and terminal palette.
+  In a Claude Code terminal, the rows of its input box (between the two
+  rules, at the `❯` prompt) sit on a faint band of the terminal's own
+  background, lifted a step: it follows the box as it grows or moves, leaves
+  any cell Claude Code coloured alone, reads only the bottom rows of the
+  screen, and draws nothing for other agents, shells, dialogs and menus.
 - **app:** keys named after what they open. ⌘D opens the Dashboard (⌘0
   still does), ⌘P the Pipeline (⇧⌘B still works), ⇧⌘T the theme picker,
   and ⇧⌘W Work; ⌘F stays Find and ⌘T New shell. On Windows and Linux they
@@ -77,10 +132,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   never Ctrl+D, which stays the shell's end of input. The sidebar's footer
   shows *Dashboard ⌘D*, *Pipeline ⌘P* and the theme's ⇧⌘T, folded or not,
   and the palette, the shortcuts list and the tooltips say the new keys.
-- **dashboard:** The Pipeline is a page of the Dashboard now, beside *Week*
-  in its menu, instead of a tab of its own: ⌘P and *Pipeline* in the
-  sidebar open the Dashboard tab there (Ctrl+Shift+P on Windows and
-  Linux), and again go back to where you were. It shows one repository —
+- **dashboard:** The Pipeline is in the Dashboard's menu, beside *Week*
+  (in the app it opens in its own tab, above). It shows one repository —
   the agent in front's, else the one you looked at last — with buttons
   beside its title to switch. It is drawn as the Dashboard is: its figures
   are the Dashboard's tiles, larger and readable, each explained in a card
@@ -90,8 +143,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   (outlined) apart by shape as well as colour. A pull request's detail
   opens beside the list. Home's CI/CD section shows the Pipeline's first
   five figures at its top — in flight, needing a fix, ready, throughput,
-  CI median — with *Open Pipeline →*. A Pipeline tab saved by an earlier
-  version opens as the page.
+  CI median — with *Open Pipeline →*.
 - **ui:** Get premium in the header is a quiet tinted button, not a bright
   block: the same height, radius and type as Feedback and Settings beside
   it, a faint premium tint with a hairline border and premium-coloured text,
@@ -121,16 +173,27 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   phone → Show a code), instead of an error or a bare code form. The page
   also asks the browser to keep its storage, which holds the pairing.
 
+- **picker:** an arrow key pressed in the folder picker the moment a
+  folder's entries appear is no longer lost; the selection used to be
+  cleared just after it was made.
+- **app:** the theme picker opens whole, above everything. From the
+  sidebar's footer its palettes were cut off at the sidebar's edge and the
+  terminal drew over them; it now opens over the whole window, kept inside
+  it on every edge at any sidebar width and with the footer folded, and
+  scrolls in a window shorter than itself. Opening it puts the focus on the
+  palette in use; Esc, or tabbing past the last palette, closes it and gives
+  the focus back to the button.
+- **app:** the sidebar footer's shortcuts are readable. Folded, the keys
+  above the icons were small faint 10px chips; now every key in the footer
+  is the New agent chip's size, folded or not. Where one has no room —
+  beside a row's words, or over a folded icon — it is left out whole
+  rather than drawn smaller, and the key stays in the tooltip: a row
+  measures itself and brings the chip back when it widens. Off macOS the
+  folded keys still show on hover, now at full size.
 - **mail:** the Caprock Mail preview app reloads onto Caprock's new page
   after Caprock updates (it used to keep showing the page from before the
   update when the port stayed the same), and a click on its Dock icon
   brings the window back.
-- **windows:** Caprock no longer flashes console windows that steal the
-  keyboard focus. The daemon ran without a console, so every git, gh or
-  `claude -p` it started opened a window of its own for a fraction of a
-  second, every few seconds, and typing in other windows came out ragged
-  (user report on Windows 10). Every child now starts with a hidden
-  console, and a test keeps it that way.
 
 ## [0.117.5] - 2026-10-15
 
@@ -150,14 +213,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
-- **app:** where you type is easier to find, quietly. The Chat view's field
-  carries a hint of the accent at rest — a faint tint and a hairline edge,
-  a little stronger with the focus — on every theme and terminal palette.
-  In a Claude Code terminal, the rows of its input box (between the two
-  rules, at the `❯` prompt) sit on a faint band of the terminal's own
-  background, lifted a step: it follows the box as it grows or moves, leaves
-  any cell Claude Code coloured alone, reads only the bottom rows of the
-  screen, and draws nothing for other agents, shells, dialogs and menus.
 
 - **brain:** the sidebar's Second Brain block is a small banner while it is
   empty, instead of a bare 0 and two faint lines: a faint graph breathing
@@ -185,23 +240,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
-- **app:** the sidebar footer's shortcuts are readable. Folded, the keys
-  above the icons were small faint 10px chips; now every key in the footer
-  is the New agent chip's size, folded or not. Where one has no room —
-  beside a row's words, or over a folded icon — it is left out whole
-  rather than drawn smaller, and the key stays in the tooltip: a row
-  measures itself and brings the chip back when it widens. Off macOS the
-  folded keys still show on hover, now at full size.
-- **app:** the theme picker opens whole, above everything. From the
-  sidebar's footer its palettes were cut off at the sidebar's edge and the
-  terminal drew over them; it now opens over the whole window, kept inside
-  it on every edge at any sidebar width and with the footer folded, and
-  scrolls in a window shorter than itself. Opening it puts the focus on the
-  palette in use; Esc, or tabbing past the last palette, closes it and gives
-  the focus back to the button.
-- **picker:** an arrow key pressed in the folder picker the moment a
-  folder's entries appear is no longer lost; the selection used to be
-  cleared just after it was made.
 - **app:** typing a name in New project's folder field now searches the
   folder it is in. `~/dev/cap` used to empty the list; now it lists the
   folders of `~/dev` holding *cap* — the ones starting with it first, the

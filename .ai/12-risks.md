@@ -54,6 +54,18 @@ The Queue view says when a queued message starts and is done from how long the p
 
 Mitigation: the ranges are calibrated, the points are not, so the view shows the p25–p75 range with the word "rough" and its basis ("middle half of the last 200 turns in caprock"), never a single time; under five finished turns in a project it shows the count, not a number; for agents whose turn end Caprock does not hear (everything but Claude Code with hooks) it shows none. Re-run the backtest over a database copy before presenting the estimate as anything better.
 
+**`RISK-09` — A template operation is forgotten by a daemon restart.**
+Making a project from a template (ADR-065) runs in the daemon, off the
+request, and its state lives only in memory, as a clone's does. A restart
+mid-way forgets it: the op is gone from `/v1/projects/ops`, Retry answers
+`404`, and nothing cleans up — a half-cloned or half-copied folder stays in
+the parent folder, and a repository already made on GitHub stays there (it
+is never deleted, by design). Mitigation: each step is short (the slowest is
+the clone), the folder is the one the user named, and making the project
+again with another name, or adding the half-made folder by hand, is plain;
+nothing on GitHub is lost. Persisting operations would need a state file and
+a resume path for each step; revisit if users meet this in practice.
+
 ## Open questions
 
 Anything the spec did not answer. Do not resolve these by inventing an answer. "Decided by" is a person, an event, or a task — never "later".

@@ -19,7 +19,7 @@ import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane'
 import { composerFits, useComposerEnabled } from '@/lib/composer'
 import { AgentGlyph, agentGlyphLabel } from './AgentMarks'
-import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, MailIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, MailIcon, PipelineIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { sessionHealth } from '@/lib/sessionLabels'
 import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
@@ -40,7 +40,7 @@ export interface DashboardTab {
 }
 
 
-/** A pinned tab of the app's own (Mail): front or not, and how to bring or close it. */
+/** A pinned tab of the app's own (Pipeline, Mail): front or not, and how to bring or close it. */
 export interface SystemTab {
   active: boolean
   onActivate: () => void
@@ -72,7 +72,9 @@ export interface TabStripProps {
   labels?: ReadonlyMap<string, TabLabel>
   /** The Dashboard tab, when it is open. */
   dashboard?: DashboardTab
-  /** The Mail tab, when it is open: after the Dashboard tab, before the terminals. */
+  /** The Pipeline tab, when it is open: right after the Dashboard tab. */
+  pipeline?: SystemTab
+  /** The Mail tab, when it is open: after the Dashboard and Pipeline tabs, before the terminals. */
   mail?: SystemTab
   /** The terminals are in front, so the chat and inspector buttons apply. */
   paneTools?: boolean
@@ -221,6 +223,39 @@ export function TabStrip(props: TabStripProps) {
               title="Close the dashboard tab"
               onClick={(e) => { e.stopPropagation(); props.dashboard!.onClose() }}
               className={`h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${props.dashboard.active ? 'flex' : 'hidden'}`}
+            >
+              <CloseIcon size={12} />
+            </button>
+          </div>
+        )}
+        {props.pipeline && (
+          /* The Pipeline's own tab (owner, 2026-10-15, translated: "I want
+           * the Pipeline in the dashboard too, and as a separate page with
+           * its own tab — among the system tabs, next to the dashboard"):
+           * right after the Dashboard tab, folded to its glyph and its key. */
+          <div
+            role="tab"
+            tabIndex={props.pipeline.active ? 0 : -1}
+            aria-selected={props.pipeline.active}
+            data-pipeline-tab
+            onClick={props.pipeline.onActivate}
+            onAuxClick={(e) => { if (e.button === 1) props.pipeline!.onClose() }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.pipeline!.onActivate() }}
+            title={`Pipeline — ${keys('⌘P')}; ${keys('⌘P')} again: back to where you were`}
+            aria-label="Pipeline"
+            aria-keyshortcuts={isMacPlatform() ? 'Meta+P' : 'Control+Shift+P'}
+            className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-1 rounded-t-[9px] px-2 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
+              props.pipeline.active ? 'app-tab-front app-tab-dash bg-bg font-medium text-fg' : 'app-tab-dash text-fg hover:text-fg'
+            }`}
+          >
+            <PipelineIcon size={15} className="text-accent" />
+            <kbd data-tab-key aria-hidden className="app-kbd-sm">{stripKey('P')}</kbd>
+            <button
+              type="button"
+              aria-label="Close tab Pipeline"
+              title="Close the Pipeline tab"
+              onClick={(e) => { e.stopPropagation(); props.pipeline!.onClose() }}
+              className={`h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${props.pipeline.active ? 'flex' : 'hidden'}`}
             >
               <CloseIcon size={12} />
             </button>

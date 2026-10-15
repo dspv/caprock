@@ -295,6 +295,46 @@ describe('a file tab', () => {
     }
   })
 
+  // Owner, 2026-10-15, translated: "as a separate page with its own tab —
+  // among the system tabs, next to the dashboard".
+  it('pins the Pipeline tab right after the Dashboard tab and before Mail, folded to its glyph and ⌘P', () => {
+    const onActivate = vi.fn()
+    const onClose = vi.fn()
+    const draw = (active: boolean) => render(
+      <TabStrip tabs={[tab('one')]} activeTabId={undefined} sessions={new Map()} permissions={new Set()} inspectorOpen={false} sidebarOpen
+        onActivate={() => {}} onDetach={() => {}} onMove={() => {}} onNewAgent={() => {}} onNewShell={() => {}} onToggleInspector={() => {}}
+        dashboard={{ active: false, label: 'Dashboard', onActivate: () => {}, onClose: () => {} }}
+        pipeline={{ active, onActivate, onClose }}
+        mail={{ active: false, onActivate: () => {}, onClose: () => {} }} />,
+    )
+    const a = draw(true)
+    const pinned = screen.getAllByRole('tab').map((t) => t.getAttribute('aria-label') ?? t.getAttribute('data-tab-index'))
+    expect(pinned).toEqual(['Dashboard', 'Pipeline', 'Mail', '0'])
+    const p = document.querySelector('[data-pipeline-tab]')!
+    expect(p).toHaveAttribute('aria-selected', 'true')
+    expect(p.querySelector('[data-tab-key]')!.textContent).toBe('⌘P')
+    expect(p.getAttribute('title')).toBe('Pipeline — ⌘P; ⌘P again: back to where you were')
+    expect(p.querySelector('svg')).toBeTruthy()
+    // Its name is not drawn, only its glyph and key; the × shows while it is in front.
+    expect(p.textContent).toBe('⌘P')
+    expect(screen.getByRole('button', { name: 'Close tab Pipeline' }).className).toContain('flex')
+    fireEvent.click(p)
+    expect(onActivate).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Close tab Pipeline' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(onActivate).toHaveBeenCalledTimes(1)
+    a.unmount()
+    const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Linux x86_64')
+    try {
+      draw(false)
+      expect(document.querySelector('[data-pipeline-tab] [data-tab-key]')!.textContent).toBe('Ctrl⇧P')
+      expect(document.querySelector('[data-pipeline-tab]')).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+P')
+      expect(screen.getByRole('button', { name: 'Close tab Pipeline' }).className).toContain('hidden')
+    } finally {
+      platform.mockRestore()
+    }
+  })
+
   it('shows what the workspace draws for a file, not a terminal', () => {
     const renderFile = vi.fn((_t: Tab, leaf: { target: { path?: string } }, visible: boolean) => <p>{`${leaf.target.path} ${visible ? 'in front' : 'behind'}`}</p>)
     render(<TerminalStack tabs={[fileTab]} visibleTabId="f" renderFile={renderFile} />)

@@ -74,6 +74,7 @@ import { AttemptsCompare } from '@/components/AttemptsCompare'
 import { FileView } from '@/components/FileView'
 import { attachable, ObservePane } from '@/components/ObservePane'
 import { PipelineHostContext, type PipelineHost } from '@/lib/pipelineHost'
+import { ScreenShown } from '@/lib/refresh'
 import { FilePicker } from '@/components/FilePicker'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import type { HandoffTarget } from '@/components/AgentHandoff'
@@ -115,9 +116,16 @@ export { worktreeSlug }
 
 const Dashboard = lazy(() => import('@/App').then((m) => ({ default: m.Dashboard })))
 const MailScreen = lazy(() => import('@/screens/mail/MailScreen').then((m) => ({ default: m.MailScreen })))
+const PipelineScreen = lazy(() => import('@/screens/Pipeline').then((m) => ({ default: m.PipelineScreen })))
 const PairScreen = lazy(() => import('@/screens/Pair').then((m) => ({ default: m.PairScreen })))
 
 const UI_KEY = 'caprock.app.ui'
+
+/** A route that is a pinned system tab of its own (Mail, Pipeline), not a dashboard screen. */
+function isSystemTabHash(h: string): boolean {
+  const name = parseHash(h).name
+  return name === 'mail' || name === 'pipeline'
+}
 
 interface UiPrefs {
   sidebar: boolean
@@ -267,7 +275,12 @@ export function AppShell() {
   // Mail is a tab of its own, not the Dashboard tab's (owner, 2026-10-14):
   // #/mail brings the Mail tab to the front.
   const mailShown = !workspaceShown && parseHash(hash).name === 'mail'
-  const dashboardShown = !workspaceShown && !mailShown
+  // So is the Pipeline (owner, 2026-10-15, translated: "I want the Pipeline
+  // shown in the dashboard too, and as a separate page with its own tab —
+  // among the system tabs, next to the dashboard"): #/pipeline brings the
+  // Pipeline tab to the front, from the dashboard's nav and Home's card too.
+  const pipelineShown = !workspaceShown && parseHash(hash).name === 'pipeline'
+  const dashboardShown = !workspaceShown && !mailShown && !pipelineShown
   const data = useWorkspaceData()
   const [ws, dispatch] = useReducer(workspaceReducer, undefined, loadWorkspace)
   const [prefs, setPrefs] = useState<UiPrefs>(loadPrefs)
@@ -377,14 +390,7 @@ export function AppShell() {
 
   // The Dashboard tab: in the strip from the moment a dashboard screen is
   // shown until it is closed, and it brings back the screen last shown in it.
-  // A Pipeline tab stored before 2026-10-15 comes back as this tab's
-  // Pipeline page (lib/tabs pipelineInStore).
-  const lastDashboard = useRef<string | null>(null)
-  if (lastDashboard.current === null) {
-    let stored: string | null = null
-    try { stored = localStorage.getItem(WORKSPACE_KEY) } catch { /* nothing stored */ }
-    lastDashboard.current = pipelineInStore(stored) ?? '#/'
-  }
+  const lastDashboard = useRef<string>('#/')
   if (dashboardShown) lastDashboard.current = hash
   useEffect(() => {
     if (dashboardShown && !ws.dashboard) dispatch({ type: 'dashboard', open: true })
@@ -394,7 +400,7 @@ export function AppShell() {
     dispatch({ type: 'dashboard', open: false })
     lastDashboard.current = '#/'
     // In the same render as the dispatch: on the old hash the tab reopened.
-    if (!isWorkspaceHash(location.hash) && parseHash(location.hash).name !== 'mail') goHash(APP_ROUTE)
+    if (!isWorkspaceHash(location.hash) && !isSystemTabHash(location.hash)) goHash(APP_ROUTE)
   }, [goHash])
   // The Mail tab: in the strip from the first time Mail is opened (the
   // sidebar's Mail row, ⇧⌘M, the dashboard's Mail, the palette) until its ×.
@@ -698,7 +704,7 @@ export function AppShell() {
   const dashScroll = useRef<HTMLDivElement>(null)
   const getDashScroll = useCallback(() => dashScroll.current, [])
   const onDashboard = useCallback(() => {
-    if (!isWorkspaceHash(location.hash) && parseHash(location.hash).name !== 'mail') goHomeTop(goHash)
+    if (!isWorkspaceHash(location.hash) && !isSystemTabHash(location.hash)) goHomeTop(goHash)
     else goHash(lastDashboard.current || '#/')
   }, [goHash])
   /**
@@ -1170,7 +1176,7 @@ export function AppShell() {
       { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat…', detail: 'pick the agent and model; Enter starts the last one used', hint: keys('⌥⌘N'), icon: <ChatIcon size={14} />, run: onQuickChatChooser },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: keys('⌘O'), icon: <FolderPlusIcon size={14} />, run: onAddProject },
       { id: 'a-brain', group: 'Actions', label: 'Add to Second Brain…', detail: 'keep a line of your own', hint: keys('⇧⌘H'), icon: <BrainGlyph size={14} />, run: () => openBrainCapture() },
-      { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'on the dashboard: every pull request on its way — open, CI, merged, released', hint: keys(PIPELINE_KEY), icon: <DeckIcon size={14} />, run: () => run({ kind: 'pipeline' }) },
+      { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'in its own tab: every pull request on its way — open, CI, merged, released', hint: keys(PIPELINE_KEY), icon: <DeckIcon size={14} />, run: () => run({ kind: 'pipeline' }) },
       { id: 'a-deck', group: 'Actions', label: deck.open ? 'Pipeline bar: Off' : 'Pipeline bar: On', detail: deck.open ? 'hide the bar under the agent’s terminal' : 'show the bar under the agent’s terminal', hint: keys('⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck' }) },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
@@ -1415,37 +1421,56 @@ export function AppShell() {
     )
   }, [sessionsById, data.permissions, openTab, refresh])
 
-  // The Pipeline (screens/Pipeline.tsx, .ai/04-ui.md § Pipeline): a page of
-  // the dashboard at #/pipeline since 2026-10-15, no longer a tab of its own
-  // (owner, translated: "Pipeline is part of the Dashboard, just a separate page").
+  // The Pipeline (screens/Pipeline.tsx, .ai/04-ui.md § Pipeline): a pinned
+  // system tab of its own, right after the Dashboard tab, at #/pipeline. The
+  // dashboard keeps its nav entry and Home's card; both lead here, so the
+  // page is drawn once.
   const projectOfSession = useCallback((id: string) => model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((y) => y.session.session_id === id))), [model.projects])
   const wsRef = useRef(ws)
   wsRef.current = ws
   // ⌘P (⇧⌘B until 2026-10-15) is the Pipeline one keystroke away (owner, 2026-10-14, translated:
-  // "it feels like quick access to the CI/CD page is missing"): it opens the
-  // Dashboard tab at the Pipeline — for the agent in front, else the
-  // repository it showed last — and, from there, goes back to the tab or
-  // screen it was pressed on.
+  // "it feels like quick access to the CI/CD page is missing"): it brings
+  // the Pipeline tab to the front — for the agent in front, else where it
+  // was left — and, from there, goes back to the tab or screen before it,
+  // however the Pipeline was reached (the key, the nav, Home's card).
   const pipelineBackRef = useRef<{ tab?: string; hash: string } | undefined>(undefined)
-  const pipelineShown = dashboardShown && shownRoute.name === 'pipeline'
+  if (!pipelineShown) pipelineBackRef.current = { tab: workspaceShown ? current?.id : undefined, hash }
+  // The Pipeline tab brings back the repository and pull request last shown
+  // in it; a Pipeline pane tab stored before 2026-10-15 comes back as this
+  // tab, at that agent's repository (lib/tabs pipelineInStore).
+  const lastPipeline = useRef<string | null>(null)
+  if (lastPipeline.current === null) {
+    let stored: string | null = null
+    try { stored = localStorage.getItem(WORKSPACE_KEY) } catch { /* nothing stored */ }
+    lastPipeline.current = pipelineInStore(stored) ?? '#/pipeline'
+  }
+  if (pipelineShown) lastPipeline.current = hash
+  useEffect(() => {
+    if (pipelineShown && !ws.pipeline) dispatch({ type: 'pipeline', open: true })
+  }, [pipelineShown, ws.pipeline])
+  const pipelineRoute = parseHash(pipelineShown ? hash : lastPipeline.current)
   const openPipeline = useCallback((of?: SessionSummary) => {
     const target = of ?? (workspaceShown && frontIsAgent ? focusedSession : undefined)
-    if (!pipelineShown) pipelineBackRef.current = { tab: workspaceShown ? current?.id : undefined, hash: location.hash }
-    goHash(target ? href({ name: 'pipeline', of: target.session_id }) : '#/pipeline')
-  }, [workspaceShown, frontIsAgent, focusedSession, pipelineShown, current?.id, goHash])
+    goHash(target ? href({ name: 'pipeline', of: target.session_id }) : lastPipeline.current || '#/pipeline')
+  }, [workspaceShown, frontIsAgent, focusedSession, goHash])
   // Back from the Pipeline: the tab or screen before it, else the terminals
   // (Home when no tab is open).
   const pipelineBack = useCallback(() => {
     const back = pipelineBackRef.current
-    pipelineBackRef.current = undefined
     if (back?.tab && wsRef.current.tabs.some((t) => t.id === back.tab)) {
       dispatch({ type: 'activate', tabId: back.tab })
       goHash(isWorkspaceHash(back.hash) ? back.hash : APP_ROUTE)
       return
     }
-    if (back && parseHash(back.hash).name !== 'pipeline') { goHash(back.hash); return }
+    if (back && parseHash(back.hash).name !== 'pipeline' && !(isWorkspaceHash(back.hash) && wsRef.current.tabs.length === 0)) { goHash(back.hash); return }
     goHash(wsRef.current.tabs.length > 0 ? APP_ROUTE : '#/')
   }, [goHash])
+  // Its ×: out of the strip, and back to where it was opened from.
+  const closePipeline = useCallback(() => {
+    dispatch({ type: 'pipeline', open: false })
+    lastPipeline.current = '#/pipeline'
+    if (parseHash(location.hash).name === 'pipeline') pipelineBack()
+  }, [pipelineBack])
   // Work (⇧⌘W) the same way: the Dashboard tab at #/work, and from it back
   // to the tab or screen it was pressed on.
   const workBackRef = useRef<{ tab?: string; hash: string } | undefined>(undefined)
@@ -1569,6 +1594,7 @@ export function AppShell() {
                 onActivate: () => { if (!dashboardShown) goHash(lastDashboard.current || '#/') },
                 onClose: closeDashboard,
               } : undefined}
+              pipeline={ws.pipeline || pipelineShown ? { active: pipelineShown, onActivate: () => { if (!pipelineShown) goHash(lastPipeline.current || '#/pipeline') }, onClose: closePipeline } : undefined}
               mail={ws.mail || mailShown ? { active: mailShown, onActivate: onMail, onClose: closeMail } : undefined}
               paneTools={workspaceShown}
               sessions={sessionsById}
@@ -1734,6 +1760,29 @@ export function AppShell() {
                     <Suspense fallback={null}>
                       <MailScreen fill />
                     </Suspense>
+                  </ErrorBoundary>
+                </div>
+              )}
+              {/* The Pipeline fills its tab: no dashboard header, the page
+                * at the dashboard's width. Kept mounted while its tab is in
+                * the strip, so it comes back where it was left; hidden, it
+                * asks nothing (ScreenShown, PipelineView's visible). */}
+              {(ws.pipeline || pipelineShown) && (
+                <div data-pipeline-view className="app-scroll absolute inset-0 overflow-y-auto bg-bg" hidden={!pipelineShown}>
+                  <ErrorBoundary label="Pipeline">
+                    <ScreenShown.Provider value={pipelineShown}>
+                      <PipelineHostContext.Provider value={pipelineHost}>
+                        <div className="mx-auto w-full max-w-[1600px] p-3">
+                          <Suspense fallback={null}>
+                          <PipelineScreen
+                            repo={pipelineRoute.name === 'pipeline' ? pipelineRoute.repo : undefined}
+                            of={pipelineRoute.name === 'pipeline' ? pipelineRoute.of : undefined}
+                            pr={pipelineRoute.name === 'pipeline' ? pipelineRoute.pr : undefined}
+                          />
+                          </Suspense>
+                        </div>
+                      </PipelineHostContext.Provider>
+                    </ScreenShown.Provider>
                   </ErrorBoundary>
                 </div>
               )}
