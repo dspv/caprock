@@ -714,6 +714,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/github/repos", s.handleGitHubRepos)
 	m.HandleFunc("GET /v1/github/prs", s.handleGitHubPRs)
 	m.HandleFunc("GET /v1/github/actions-usage", s.handleGitHubActionsUsage)
+	m.HandleFunc("GET /v1/github/statuspage", s.handleGitHubStatusPage)
 	m.HandleFunc("GET /v1/projects/{id}/github", s.handleWorktreeGitHub)
 	m.HandleFunc("POST /v1/projects/{id}/github/refresh", s.handleWorktreeGitHubRefresh)
 	m.HandleFunc("GET /v1/projects/{id}/github/items", s.handleGitHubItems)

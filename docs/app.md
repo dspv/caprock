@@ -996,7 +996,9 @@ phone. Nothing is sent to GitHub until you connect. Besides
 in the session deck, the job's log is downloaded from the signed address
 GitHub points to on its log storage; while Home's CI/CD section is open, the
 daemon reads `www.githubstatus.com`'s public status at most every five
-minutes; and the Pipeline and the CI/CD section show pull request
+minutes; when GitHub can't be reached, it reads the same status page to say
+whether GitHub or your connection is at fault, and every five minutes if you
+tick *Watch GitHub Status* in that line; and the Pipeline and the CI/CD section show pull request
 authors' pictures from `avatars.githubusercontent.com`, loaded by the page
 with no referrer.
 

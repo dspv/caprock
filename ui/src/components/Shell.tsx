@@ -38,6 +38,7 @@ import { Prose } from './Prose'
 import { ConnectionState } from './ConnectionState'
 import { PhoneBar } from './PhoneBar'
 import { StaleUiPill } from './StaleUiPill'
+import { GitHubStatusDot } from './GitHubOutage'
 import { isAppMode } from '@/lib/appmode'
 import { useNarrowScreen } from '@/lib/phone'
 
@@ -157,6 +158,8 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
             * being done about it (components/ConnectionState.tsx). */}
           {!app && <ConnectionState link={link} heardAt={liveStore.heardAt} onReconnect={() => liveStore.reconnectNow()} />}
           {/* Inside the app the status strip carries it (StatusStrip). */}
+          {/* The browser's status bar is this header: the GitHub Status dot, opt-in. */}
+          {!app && <span className="text-[12px] text-fg-muted"><GitHubStatusDot /></span>}
           {!app && <StaleUiPill />}
           {/* Setting the plan is a settings change: on the machine only (ADR-029). */}
           {!isPairedDevice() && <PlanChip plan={plan} onSave={savePlan} />}

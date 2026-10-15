@@ -91,6 +91,23 @@ func (s *Server) handleGitHubStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.d.GitHub.Status())
 }
 
+// handleGitHubStatusPage answers GitHub's own status page (githubstatus.com),
+// kept five minutes (github.StatusPage). The dashboard asks it after a GitHub
+// read failed on the network or with a 5xx, to say whether GitHub or the
+// connection is at fault, and every five minutes while the user has ticked
+// *Watch GitHub Status*. Nothing is sent while GitHub is not connected: 409.
+func (s *Server) handleGitHubStatusPage(w http.ResponseWriter, r *http.Request) {
+	if !s.requireGitHub(w) {
+		return
+	}
+	st, ok := s.d.GitHub.StatusPage(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "GitHub is not connected", "kind": github.KindNotConnected})
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
 func (s *Server) handleGitHubConnect(w http.ResponseWriter, r *http.Request) {
 	if !s.requireGitHub(w) {
 		return
