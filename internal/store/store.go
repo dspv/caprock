@@ -294,6 +294,11 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		s.log.Warn("touch backfill incomplete; some historical spend reports as unattributed",
 			"component", "store", "err", err)
 	}
+	// Migration 0056's search column is Unicode-folded in Go (brainsearch.go).
+	if err := s.backfillBrainSearch(ctx); err != nil {
+		s.log.Warn("Second Brain search backfill incomplete; older memories may not be found by search",
+			"component", "store", "err", err)
+	}
 	if err := s.backfillInnerTool(ctx); err != nil {
 		s.log.Warn("inner tool backfill incomplete; some Codex edits still count as commands",
 			"component", "store", "err", err)

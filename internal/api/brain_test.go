@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -74,6 +75,12 @@ func TestBrainDropFromANoteReadsTheRecord(t *testing.T) {
 	}
 	if code := e.get(t, "/v1/brain?summaries=1&q=wal", &g); code != 200 || g.Total != 1 || g.Nodes[0].Summary == "" {
 		t.Errorf("search with summaries: %d %+v", code, g)
+	}
+	// Several words in any case, one of them a typo: ranked, with the words
+	// to mark and the close match said.
+	if code := e.get(t, "/v1/brain?q=SQLITE+Postgers", &g); code != 200 || g.Total != 1 || g.Nodes[0].Rank == 0 || !g.Close ||
+		!slices.Contains(g.Terms, "sqlite") || !slices.Contains(g.Terms, "postgres") {
+		t.Errorf("search with a typo: %d %+v", code, g)
 	}
 
 	// The same answer again is the same memory.
