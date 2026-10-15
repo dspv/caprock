@@ -1849,6 +1849,19 @@ GitHub by clipboard. In the app three commands do the native parts
   app before they shipped: running the app on the owner's machine would have
   taken his clipboard and could have adopted his daemon.
 
+## The first click
+
+The first click on a Caprock window that is not in front reaches the page
+(2026-10-15). The main window is built with `accept_first_mouse(true)`
+(`shell.rs`): macOS otherwise spends a click on an inactive window on
+bringing it forward, and the tab strip sits in the overlay title-bar band, so
+closing a tab with its × from another app took two clicks — the first one
+only focused the window. Windows and Linux already pass that click through;
+the setting is a no-op there. Dragging the window is unchanged: the strip's
+empty space and the sidebar's top keep `data-tauri-drag-region`, and a press
+that moves still drags the window, while a press that does not lands on what
+is under it, as before. The popover and the other windows keep the default.
+
 ## Dropping a file
 
 A file dragged from Finder, Explorer or a file manager onto a terminal in the

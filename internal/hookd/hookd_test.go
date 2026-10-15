@@ -406,3 +406,40 @@ func TestNormalizeCapsTheToolFieldsLikeTheTranscript(t *testing.T) {
 		t.Fatalf("small body changed: %s (tool bytes %d)", ev.Payload, ev.ToolBytes)
 	}
 }
+
+// The parent's hooks fire for its subagents' tool calls too, under the
+// parent's session id. A payload that names no agent_id but whose transcript
+// is a subagent's file is that subagent's call, not the parent's.
+func TestNormalizeReadsTheSubagentFromItsTranscriptPath(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	cases := []struct{ path, want string }{
+		{"/home/u/.claude/projects/-home-u-proj/sess-abc.jsonl", ""},
+		{"/home/u/.claude/projects/-home-u-proj/sess-abc/subagents/agent-a1b2c3.jsonl", "a1b2c3"},
+		{"/home/u/.claude/projects/-home-u-proj/sess-abc/subagents/workflows/wf_1/agent-d4e5.jsonl", "d4e5"},
+		{`C:\Users\u\.claude\projects\C--proj\sess-abc\subagents\agent-f6.jsonl`, "f6"},
+		{"/home/u/.claude/projects/-home-u-proj/sess-abc/subagents/notes.txt", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		raw, _ := json.Marshal(map[string]any{
+			"session_id": "sess-abc", "hook_event_name": "PreToolUse", "tool_name": "Edit",
+			"tool_use_id": "toolu_9", "transcript_path": c.path, "cwd": "/home/u/proj",
+			"tool_input": map[string]string{"file_path": "/home/u/proj/a.go"},
+		})
+		ev, _, err := Normalize(raw, now)
+		if err != nil {
+			t.Fatalf("%s: %v", c.path, err)
+		}
+		if ev.AgentID != c.want || ev.Subagent() != (c.want != "") {
+			t.Errorf("%q: agent %q subagent %v, want %q", c.path, ev.AgentID, ev.Subagent(), c.want)
+		}
+	}
+	// An agent_id in the payload wins over the path.
+	raw, _ := json.Marshal(map[string]any{
+		"session_id": "sess-abc", "hook_event_name": "PreToolUse", "tool_name": "Edit", "agent_id": "named",
+		"transcript_path": "/p/sess-abc/subagents/agent-other.jsonl",
+	})
+	if ev, _, err := Normalize(raw, now); err != nil || ev.AgentID != "named" {
+		t.Fatalf("agent_id lost: %+v %v", ev, err)
+	}
+}

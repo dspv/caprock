@@ -10,16 +10,21 @@
  *
  * What it shows is the daemon's state, not decoration: the points take the
  * kinds of the newest memories (their colours), one point per memory up to
- * a ceiling; sparks fly only while the extraction is working (`activity`),
- * as many as it is busy; each memory added (`landed` going up) sends a spark
- * and lights a point. Idle, only the slow turn.
+ * a ceiling; sparks fly while the extraction is working (`activity`), as
+ * many as it is busy; each memory added (`landed` going up) sends a spark
+ * and lights a point. The sessions at work feed it too (`working`, a count
+ * the sidebar already has — nothing more is asked of the daemon): a few slow
+ * sparks per working session, which drift in and light nothing, because no
+ * memory landed. Idle — nothing extracting, no session working — only the
+ * slow turn.
  *
  * A 3D projection is a few lines of arithmetic: points on a Fibonacci
  * sphere, turned about the Y axis (and tilted), scaled by perspective, their
  * alpha by depth. One canvas, no library.
  *
- * Cheap (resources are the moat): about 30 frames a second while sparks
- * fly, 6 while it only turns, each frame a handful of batched paths (one
+ * Cheap (resources are the moat): about 30 frames a second while the
+ * extraction's sparks fly, 10 while only the sessions' slow ones do, 6 while
+ * it only turns, each frame a handful of batched paths (one
  * per depth band and colour); no frame at all while the card is out of
  * view (IntersectionObserver) or the window hidden; under
  * prefers-reduced-motion one still frame.
@@ -39,12 +44,18 @@ const TURN = 0.12 // radians a second
 const TILT = 0.38
 const PERSPECTIVE = 2.8
 const FLIGHT_MS = 1500
+/** A working session's spark: slower, and one every SESSION_GAP_MS per session. */
+const SLOW_FLIGHT_MS = 2600
+const SESSION_GAP_MS = 4000
+/** Sessions beyond this add no more sparks: a busy day stays calm. */
+const SESSIONS_MAX = 6
 const PULSE_MS = 900
 /** Depth bands: points and links are drawn a band at a time, back to front. */
 const BANDS = 3
 
 interface Pt { x: number; y: number; z: number; kind: number; pulse: number }
-interface Spark { from: number; to: number; at: number; kind: number }
+/** `slow`: a working session's — slower, and it lights no point (no memory landed). */
+interface Spark { from: number; to: number; at: number; kind: number; slow: boolean }
 
 function reducedMotion(): boolean {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false }
@@ -79,21 +90,23 @@ export interface BrainOrbProps {
   activity: number
   /** Goes up by one per memory added; each step sends a spark and lights a point. */
   landed: number
+  /** Sessions working right now, from data the page already has; a few slow sparks each. */
+  working?: number
   className?: string
   /** Draw the agents' faces at the rim (the sidebar's card and the screen). */
   showAgents?: boolean
   ariaLabel?: string
 }
 
-export function BrainOrb({ kinds, count, agents, activity, landed, className = '', showAgents = true, ariaLabel }: BrainOrbProps) {
+export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, className = '', showAgents = true, ariaLabel }: BrainOrbProps) {
   const wrap = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const claudeFace = useSessionFace(undefined)
   const shown = showAgents ? agents.slice(0, 4) : []
   const rim = seats(shown.length)
   // Live inputs for the running loop, without restarting it.
-  const live = useRef({ activity, landed, rim, kinds })
-  live.current = { activity, landed, rim, kinds }
+  const live = useRef({ activity, landed, rim, kinds, working })
+  live.current = { activity, landed, rim, kinds, working }
   const n = Math.max(MIN, Math.min(MAX, count))
 
   useEffect(() => {
@@ -231,9 +244,9 @@ export function BrainOrb({ kinds, count, agents, activity, landed, className = '
       const seatsNow = live.current.rim
       for (let s = sparks.length - 1; s >= 0; s--) {
         const sp = sparks[s]!
-        const t = (now - sp.at) / FLIGHT_MS
+        const t = (now - sp.at) / (sp.slow ? SLOW_FLIGHT_MS : FLIGHT_MS)
         if (t >= 1) {
-          pts[sp.to]!.pulse = now
+          if (!sp.slow) pts[sp.to]!.pulse = now
           sparks.splice(s, 1)
           continue
         }
@@ -247,10 +260,10 @@ export function BrainOrb({ kinds, count, agents, activity, landed, className = '
         const my = (sy + ty) / 2 - 18
         const x = (1 - e) ** 2 * sx + 2 * (1 - e) * e * mx + e * e * tx
         const y = (1 - e) ** 2 * sy + 2 * (1 - e) * e * my + e * e * ty
-        ctx.globalAlpha = Math.min(1, t * 4) * (1 - Math.max(0, t - 0.85) / 0.15)
+        ctx.globalAlpha = Math.min(1, t * 4) * (1 - Math.max(0, t - 0.85) / 0.15) * (sp.slow ? 0.7 : 1)
         ctx.fillStyle = kindColor(sp.kind)
         ctx.beginPath()
-        ctx.arc(x, y, 2.2, 0, Math.PI * 2)
+        ctx.arc(x, y, sp.slow ? 1.8 : 2.2, 0, Math.PI * 2)
         ctx.fill()
         // A short tail.
         const e2 = Math.max(0, e - 0.06)
@@ -262,10 +275,10 @@ export function BrainOrb({ kinds, count, agents, activity, landed, className = '
       ctx.globalAlpha = 1
     }
 
-    const spark = (now: number) => {
+    const spark = (now: number, slow = false) => {
       const seatsN = Math.max(1, live.current.rim.length)
       const to = Math.floor(Math.random() * n)
-      sparks.push({ from: Math.floor(Math.random() * seatsN), to, at: now, kind: to })
+      sparks.push({ from: Math.floor(Math.random() * seatsN), to, at: now, kind: to, slow })
     }
 
     if (reducedMotion()) {
@@ -286,7 +299,18 @@ export function BrainOrb({ kinds, count, agents, activity, landed, className = '
     let timer = 0
     let visible = true
     let onScreen = true
-    const gapNow = () => (live.current.activity > 0 || sparks.length > 0 ? 1000 / 30 : 1000 / 6)
+    let lastSlow = 0
+    const sessionsNow = () => Math.min(SESSIONS_MAX, Math.max(0, Math.floor(live.current.working)))
+    // 30 frames a second while the extraction's sparks fly; 10 while only
+    // sessions' slow ones do (small, faint and slow, they read as smooth at
+    // 10 — measured: 15 cost about a point of main thread more with three
+    // sessions working); 6 while it only turns (slow enough that 6 reads as
+    // smooth).
+    const gapNow = () => {
+      if (live.current.activity > 0 || sparks.some((sp) => !sp.slow)) return 1000 / 30
+      if (sessionsNow() > 0 || sparks.length > 0) return 1000 / 10
+      return 1000 / 6
+    }
     const loop = (now: number) => {
       frame = 0
       const dt = last ? Math.min(150, now - last) : 0
@@ -294,14 +318,14 @@ export function BrainOrb({ kinds, count, agents, activity, landed, className = '
       angle += (TURN * dt) / 1000
       const a = live.current.activity
       if (a > 0 && now - lastSpark > 900 / a) { spark(now); lastSpark = now }
+      const ws = sessionsNow()
+      if (ws > 0 && now - lastSlow > SESSION_GAP_MS / ws) { spark(now, true); lastSlow = now }
       while (seenLanded < live.current.landed) { seenLanded++; spark(now) }
       draw(now)
       start()
     }
     function start() {
       if (frame || timer || !visible || !onScreen) return
-      // 30 frames a second while sparks fly; 6 while it only turns (the turn
-      // is slow enough that 6 reads as smooth).
       timer = window.setTimeout(() => { timer = 0; if (visible && onScreen) frame = requestAnimationFrame(loop) }, gapNow())
     }
     const stop = () => {

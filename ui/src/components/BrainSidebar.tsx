@@ -14,6 +14,21 @@
  * "what it is doing right now matters more than the numbers"). The chevron
  * folds it, remembered in this browser.
  *
+ * It sits under the list, above the sidebar's footer, never inside the
+ * list's scroll (owner, 2026-10-15: with a long list of sessions the status
+ * line under the orb was cut off by the footer). When the list and the card
+ * do not both fit, the card gives way first — it shrinks twenty times as
+ * readily as the list (`shrink-[20]`), and inside it only the orb does, from
+ * 150px down to 64px — and the list scrolls above it; the status line never
+ * shrinks and is always whole. In a window under 640px tall the orb is not
+ * drawn at all (`[@media(max-height:640px)]`), so the heading and the line are all the card takes
+ * and the list keeps its room. The off-and-empty banner, taller, scrolls
+ * inside its own share instead.
+ *
+ * The orb's sparks follow the extraction and, beside it, the sessions
+ * working now (`working`, from the sidebar's own model; nothing more is
+ * fetched): a few slow sparks per working session, the slow turn when none.
+ *
  * The whole card is one way into `#/brain` (owner, 2026-10-15: "the whole
  * block as an interactive element"): a click anywhere, or Enter or Space,
  * opens the screen; it takes focus and lights up on hover. The chevron and
@@ -55,7 +70,7 @@ function own(fn: () => void) {
   return (e: MouseEvent) => { e.stopPropagation(); fn() }
 }
 
-export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
+export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) => void; working?: number }) {
   const { status } = useBrainStatus()
   const [fold, setFold] = useState(readFold)
   const [how, setHow] = useState(false)
@@ -105,18 +120,27 @@ export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
     </button>
   )
   return (
-    <section className="mt-3 border-t border-[var(--app-hairline)] pt-1" aria-label="Second Brain" data-brain-sidebar data-brain-fold={open ? 'open' : 'closed'}>
+    // Under the list and above the footer, never in the list's scroll. It
+    // gives way before the list does, down to a floor that still holds the
+    // heading, a 64px orb and the whole status line (or a scrolled banner);
+    // folded it is one row and does not shrink at all.
+    <section
+      className={`flex shrink-[20] flex-col border-t border-[var(--app-hairline)] px-2 pb-1 pt-1 ${open ? (banner ? 'min-h-[140px]' : 'min-h-[136px] [@media(max-height:640px)]:min-h-[64px]') : ''}`}
+      aria-label="Second Brain"
+      data-brain-sidebar
+      data-brain-fold={open ? 'open' : 'closed'}
+    >
       <div
         role="link"
         tabIndex={0}
         aria-label={`Open Second Brain — ${mode}${metric ? `, ${metric}` : ''}`}
         onClick={go}
         onKeyDown={onKey}
-        className="mx-0.5 cursor-pointer rounded-[10px] outline-none transition-colors hover:bg-[var(--app-row-hover)] focus-visible:ring-2 focus-visible:ring-accent/60 motion-reduce:transition-none"
+        className="mx-0.5 flex min-h-0 cursor-pointer flex-col rounded-[10px] outline-none transition-colors hover:bg-[var(--app-row-hover)] focus-visible:ring-2 focus-visible:ring-accent/60 motion-reduce:transition-none"
         data-brain-block
       >
         {open ? (
-          <div className="flex h-[28px] items-center gap-1.5 px-1.5 pt-1.5">
+          <div className="flex h-[28px] shrink-0 items-center gap-1.5 px-1.5 pt-1.5">
             <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-muted">
               <BrainGlyph size={12} className="shrink-0" />
               <span className="truncate">Second Brain</span>
@@ -125,7 +149,7 @@ export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
           </div>
         ) : (
           // Folded: one row — what it is doing, then a figure or two.
-          <div className="flex h-[30px] min-w-0 items-center gap-1.5 px-1.5" data-brain-row>
+          <div className="flex h-[30px] min-w-0 shrink-0 items-center gap-1.5 px-1.5" data-brain-row>
             <h2 className="sr-only">Second Brain</h2>
             <BrainGlyph size={12} className="shrink-0 text-fg-muted" />
             {dot}
@@ -136,18 +160,19 @@ export function BrainSidebar({ onOpen }: { onOpen: (hash: string) => void }) {
         )}
         {open && (
           banner ? (
-            <div className="px-1 pb-1.5 pt-1">
+            <div className="app-scroll min-h-0 overflow-y-auto px-1 pb-1.5 pt-1" data-brain-banner-box>
               <Banner auto={auto} onStart={go} howLink={howLink} />
             </div>
           ) : (
-            <div className="grid min-w-0 gap-1 px-1 pb-2" data-brain-card>
+            <div className="flex min-h-0 min-w-0 flex-col gap-1 px-1 pb-2" data-brain-card>
               <BrainOrb
                 kinds={memories.map((n) => n.kind)}
                 count={status.memories}
                 agents={agents}
                 activity={brainActivity(auto)}
                 landed={landed}
-                className="h-[150px]"
+                working={working}
+                className="h-[150px] min-h-[64px] shrink [@media(max-height:640px)]:hidden"
                 ariaLabel={`Second Brain: ${mode}`}
               />
               <StatusLine auto={auto} mode={mode} metric={metric} active={active} building={building} count={status.memories} newest={memories[0]?.created_at} now={now} dot={dot} />
@@ -174,7 +199,7 @@ function StatusLine({ auto, mode, metric, active, building, count, newest, now, 
     ? (f && f.sessions > 0 ? `${Math.min(f.read + (auto?.reading ? 1 : 0), f.sessions)} of ${f.sessions}` : '')
     : idle ? (newest ? `updated ${fmtAgo(newest, now)}` : '') : metric
   return (
-    <div className="grid min-w-0 gap-1 px-1.5" data-brain-sidebar-live={building ? '' : undefined}>
+    <div className="grid min-w-0 shrink-0 gap-1 px-1.5" data-brain-status data-brain-sidebar-live={building ? '' : undefined}>
       <p className="flex min-w-0 items-center gap-1.5 text-[12.5px] leading-snug">
         {dot}
         <span className="min-w-0 shrink truncate text-fg" data-brain-mode title={auto?.reading?.title}>{lead}</span>

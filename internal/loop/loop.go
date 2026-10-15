@@ -52,7 +52,16 @@ type Alert struct {
 	TaxPricedCalls int `json:"tax_priced_calls,omitempty"`
 }
 
-// Detector keeps a sliding window of recent tool.pre signatures per session.
+// Detector keeps a sliding window of recent tool.pre signatures per thread:
+// the session's main thread, and each of its subagents apart.
+//
+// A subagent's calls arrive under its parent's session id (hooks fire inside
+// subagents, and the transcript files a sidechain under its parent), so one
+// window per session added a subagent's edits to the parent's: the parent and
+// three subagents fixing the same import read as one session repeating
+// itself, and the parent was flagged for a loop it was not in. Each thread
+// now counts only its own calls (lane); a subagent that really loops still
+// raises the alert, on the session it works for.
 type Detector struct {
 	K      int
 	Window time.Duration
@@ -61,7 +70,22 @@ type Detector struct {
 	Cooldown time.Duration
 
 	mu       sync.Mutex
-	sessions map[string]*sessionWindow
+	sessions map[string]*sessionWindow // by lane
+	swept    time.Time                 // when quiet lanes were last dropped
+}
+
+// lane is the window an event counts in: the session for its main thread,
+// the session and the subagent for a subagent's call (event.Subagent: an
+// agent id, or a sidechain mark without one).
+func lane(ev event.Event) string {
+	if !ev.Subagent() {
+		return ev.SessionID
+	}
+	id := ev.AgentID
+	if id == "" {
+		id = "sidechain"
+	}
+	return ev.SessionID + "\x00" + id
 }
 
 type hit struct {
@@ -136,10 +160,21 @@ func (d *Detector) Observe(ev event.Event) *Alert {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	sw := d.sessions[ev.SessionID]
+	key := lane(ev)
+	// A lane per subagent is many more lanes than one per session: drop the
+	// ones that went quiet, once a window, so a long day does not keep them.
+	if ev.Ts.Sub(d.swept) > d.Window {
+		d.swept = ev.Ts
+		for k, w := range d.sessions {
+			if n := len(w.hits); n == 0 || ev.Ts.Sub(w.hits[n-1].ts) > d.Window+d.Cooldown {
+				delete(d.sessions, k)
+			}
+		}
+	}
+	sw := d.sessions[key]
 	if sw == nil {
 		sw = &sessionWindow{alerted: map[string]time.Time{}}
-		d.sessions[ev.SessionID] = sw
+		d.sessions[key] = sw
 	}
 	cut := ev.Ts.Add(-d.Window)
 	// Drop hits outside the window (hits arrive roughly in order; tolerate skew).
@@ -185,10 +220,14 @@ func (d *Detector) Observe(ev event.Event) *Alert {
 	}
 }
 
-// Forget drops a session's window (session ended).
+// Forget drops a session's windows, its subagents' included (session ended).
 func (d *Detector) Forget(sessionID string) {
 	d.mu.Lock()
-	delete(d.sessions, sessionID)
+	for k := range d.sessions {
+		if k == sessionID || strings.HasPrefix(k, sessionID+"\x00") {
+			delete(d.sessions, k)
+		}
+	}
 	d.mu.Unlock()
 }
 

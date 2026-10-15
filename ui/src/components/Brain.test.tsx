@@ -187,6 +187,22 @@ describe('Second Brain', () => {
     expect(m.backfill).not.toHaveBeenCalled()
   })
 
+  // Owner, 2026-10-15: with a long list of sessions the line under the orb
+  // was cut off by the footer. The card is capped and the orb gives way.
+  it('keeps its status line whole: the card is capped, the orb shrinks, the line does not', async () => {
+    m.status.mockResolvedValue(status({ memories: 4, manual: 0, auto: auto({ pending: 0, spent: 1000 }) }))
+    m.brain.mockResolvedValue({ nodes: [1, 2, 3, 4].map((id) => node({ id, title: `Memory ${id}` })), edges: [], total: 4 })
+    render(<BrainSidebar onOpen={vi.fn()} working={3} />)
+    await waitFor(() => expect(document.querySelector('[data-brain-orb]')).not.toBeNull())
+    const section = document.querySelector('[data-brain-sidebar]')!
+    // It gives way before the list, down to a floor that holds the line.
+    expect(section).toHaveClass('flex', 'flex-col', 'shrink-[20]', 'min-h-[136px]')
+    expect(document.querySelector('[data-brain-block]')).toHaveClass('flex', 'flex-col', 'min-h-0')
+    expect(document.querySelector('[data-brain-card]')).toHaveClass('flex', 'flex-col', 'min-h-0')
+    expect(document.querySelector('[data-brain-orb]')).toHaveClass('h-[150px]', 'min-h-[64px]', 'shrink')
+    expect(document.querySelector('[data-brain-status]')).toHaveClass('shrink-0')
+  })
+
   it('is the turning brain and one quiet line of what it does; the chevron folds it to one row, remembered', async () => {
     const t = Date.now()
     m.status.mockResolvedValue(status({ memories: 4, manual: 0, auto: auto({ pending: 0, spent: 1000 }) }))

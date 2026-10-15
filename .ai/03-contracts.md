@@ -15,7 +15,7 @@ Conventions that apply to every contract here: JSON casing is **snake_case**; al
 
 ### Hook payload (what the shim forwards, verbatim)
 
-Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. Event-specific fields the daemon reads:
+Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. The parent's hooks also fire for its subagents' tool calls, under the parent's `session_id`; when such a payload names no `agent_id`, hookd takes it from a `transcript_path` of the form `<session-id>/subagents/…/agent-<id>.jsonl`, so the call is the subagent's and not the main thread's. Event-specific fields the daemon reads:
 
 | Event               | Fields consumed                                              |
 | ------------------- | ------------------------------------------------------------ |
