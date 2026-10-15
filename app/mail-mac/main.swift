@@ -11,11 +11,16 @@ import WebKit
 let dataDir = ProcessInfo.processInfo.environment["CAPROCK_DATA_DIR"].map { URL(fileURLWithPath: $0) }
     ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/caprock")
 
-/// The daemon's port from runtime.json, if a daemon there answers /healthz.
-func daemonPort() -> Int? {
+/// The running daemon: its port and when it started. An update restarts the
+/// daemon on the same port, so the start time is what tells a new UI apart.
+struct Daemon: Equatable { let port: Int; let started: Int }
+
+/// The daemon named by runtime.json, if it answers /healthz.
+func daemon() -> Daemon? {
     guard let raw = try? Data(contentsOf: dataDir.appendingPathComponent("runtime.json")),
           let obj = try? JSONSerialization.jsonObject(with: raw) as? [String: Any],
           let port = obj["port"] as? Int,
+          let started = (obj["started_at"] as? NSNumber)?.intValue,
           let url = URL(string: "http://127.0.0.1:\(port)/healthz") else { return nil }
     var req = URLRequest(url: url)
     req.timeoutInterval = 1.5
@@ -26,7 +31,7 @@ func daemonPort() -> Int? {
         sem.signal()
     }.resume()
     _ = sem.wait(timeout: .now() + 2)
-    return ok ? port : nil
+    return ok ? Daemon(port: port, started: started) : nil
 }
 
 let waitingPage = """
@@ -41,7 +46,8 @@ div{text-align:center;max-width:340px;line-height:1.5}b{display:block;font-size:
 final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
     var window: NSWindow!
     var web: WKWebView!
-    var port: Int?
+    var current: Daemon?
+    var port: Int? { current?.port }
     var timer: Timer?
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -59,7 +65,9 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
         window.contentView = web
         window.center()
         window.setFrameAutosaveName("CaprockMailWindow")
+        window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
         connect()
         // A Caprock restarted or updated may come back on another port.
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.recheck() }
@@ -67,10 +75,10 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
 
     func connect() {
         DispatchQueue.global().async {
-            let p = daemonPort()
+            let d = daemon()
             DispatchQueue.main.async {
-                self.port = p
-                if let p = p, let url = URL(string: "http://127.0.0.1:\(p)/?mail=1") {
+                self.current = d
+                if let d = d, let url = URL(string: "http://127.0.0.1:\(d.port)/?mail=1") {
                     self.web.load(URLRequest(url: url))
                 } else {
                     self.web.loadHTMLString(waitingPage, baseURL: nil)
@@ -81,12 +89,19 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKU
 
     func recheck() {
         DispatchQueue.global().async {
-            let p = daemonPort()
-            DispatchQueue.main.async { if p != self.port { self.connect() } }
+            let d = daemon()
+            DispatchQueue.main.async { if d != self.current { self.connect() } }
         }
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
+    // Closing the window keeps the app in the Dock, like Mail.app; a click on
+    // the Dock icon brings the window back.
+    func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { false }
+
+    func applicationShouldHandleReopen(_ app: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        window.makeKeyAndOrderFront(nil)
+        return true
+    }
 
     // Links that leave the daemon open in the browser, like in Caprock.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,

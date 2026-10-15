@@ -7,6 +7,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **mail:** the Caprock Mail preview app reloads onto Caprock's new page
+  after Caprock updates (it used to keep showing the page from before the
+  update when the port stayed the same), and a click on its Dock icon
+  brings the window back.
+
 ## [0.117.5] - 2026-10-15
 
 ### Added
