@@ -7,6 +7,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Fixed
+
+- **app:** typing a name in New project's folder field now searches the
+  folder it is in. `~/dev/cap` used to empty the list; now it lists the
+  folders of `~/dev` holding *cap* — the ones starting with it first, the
+  letters marked — and every key narrows it at once. The first match is
+  highlighted: ↑↓ move, Enter picks it, Tab completes to it and goes
+  inside. No match says *No folder starting with 'cap' in ~/dev*. Works
+  with `~`, backslashes and drive letters on Windows.
+
 ### Changed
 
 - **brain:** Second Brain's *How it works* now explains it in ten
