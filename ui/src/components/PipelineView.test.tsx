@@ -1,16 +1,21 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionSummary } from '@/lib/api'
 
 const now = Date.now()
 const day = (i: number) => new Date(now - (13 - i) * 86_400_000).toISOString().slice(0, 10)
 
-const h = vi.hoisted(() => ({ statsGate: undefined as Promise<void> | undefined, stats: undefined as unknown, prs: { connected: true, prs: [] as unknown[] } as unknown, ci: {} as Record<number, unknown>, asked: [] as string[], queued: [] as string[], logs: 0 }))
+const h = vi.hoisted(() => ({ statsGate: undefined as Promise<void> | undefined, stats: undefined as unknown, prs: { connected: true, prs: [] as unknown[] } as unknown, ci: {} as Record<number, unknown>, asked: [] as string[], queued: [] as string[], logs: 0, work: 0 }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return { ...actual, api: { ...actual.api,
     sessionCIStats: async () => { h.asked.push('stats'); if (h.statsGate) await h.statsGate; return h.stats },
     sessionPRs: async () => { h.asked.push('prs'); return h.prs },
+    work: async () => {
+      h.work++
+      return { now, day_start: 0, sessions: [], hive: 'off', queued: [], totals: { live: 0, working: 0, waiting_you: 0, today_usd: 0, machine_today_usd: 0 },
+        repos: [{ root: '/w', name: 'w', via_session: 's1', live: 1, unreleased: { ref: 'origin/main', items: ['x'], count: 1, kinds: { Fixed: 1 } }, tags: { last: { name: 'v1.2.0', at: now - 600_000 }, gaps: 0 } }] }
+    },
     sessionCI: async (_id: string, pr?: number) => { h.asked.push(`ci ${pr}`); return h.ci[pr ?? 0] ?? { connected: true } },
     actionsUsage: async () => { h.asked.push('usage'); throw new Error('no billing') },
     sessionCILog: async () => { h.logs++; return { job_id: 72, lines: ['--- FAIL: TestRestore (0.42s)', '##[error]Process completed with exit code 1.'], error_line: 1 } },
@@ -48,7 +53,7 @@ function connected() {
   ] }] } }
 }
 
-afterEach(() => { h.statsGate = undefined; h.stats = undefined; h.prs = { connected: true, prs: [] }; h.ci = {}; h.asked = []; h.queued = []; h.logs = 0; forgetDeckAnswers(); localStorage.clear() })
+afterEach(() => { h.statsGate = undefined; h.stats = undefined; h.prs = { connected: true, prs: [] }; h.ci = {}; h.asked = []; h.queued = []; h.logs = 0; h.work = 0; forgetDeckAnswers(); localStorage.clear() })
 
 const card = (number: number, stage: string, p: object = {}) => ({ number, stage, stage_at: now - 600_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] }, ...p })
 const FLOW = { counts: { draft: 0, open: 1, fix: 1, ready: 0, merged: 0, released: 1 }, days: 14, merged: 7, ttm_median_ms: 2 * 3_600_000, ttm_count: 7, release_lag_median_ms: 5 * 3_600_000, release_lag_count: 4, ci_median_ms: 430_000, cost_usd: 15.5 }
@@ -75,6 +80,25 @@ async function rowsDrawn() {
 }
 
 describe('the Pipeline page', () => {
+  // Owner, 2026-10-15, translated: "I'm missing progress bars to the release here".
+  it('puts the next release under Flow: the version its changelog calls for and a bar per pull request in flight', async () => {
+    withBoard()
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    const panel = document.querySelector('[data-pipeline-release]') as HTMLElement
+    expect(panel).not.toBeNull()
+    expect(await screen.findByRole('heading', { name: '1.2.1' })).toBeInTheDocument()
+    expect(h.work).toBe(1)
+    // Flow first, then the plan, then the list.
+    const flow = document.querySelector('[data-stat="flight"]')!
+    expect(flow.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect([...panel.querySelectorAll('[data-release-row]')].map((e) => e.getAttribute('data-release-row'))).toEqual(['21', '22'])
+    expect(panel.querySelector('[data-release-row="21"] [data-release-word]')).toHaveTextContent('CI red')
+    // A row opens its pull request beside the list.
+    fireEvent.click(within(panel).getByRole('button', { name: /#22/ }))
+    expect(await screen.findByRole('dialog', { name: '#22 in detail' })).toBeInTheDocument()
+  })
+
   // Owner, 2026-10-14, translated: "PR titles are missing … I'd merge it all
   // into one — PR rows with their statuses, so I understand how things
   // travel, what gets released".
@@ -206,7 +230,7 @@ describe('the Pipeline page', () => {
     expect(rowOrder()).toEqual(['22', '21'])
     expect(localStorage.getItem('caprock.prsTab.scope')).toBe('open')
     // A pull request that is not the session's is read when opened.
-    fireEvent.click(screen.getByText('Bump deps'))
+    fireEvent.click(within(document.querySelector('[data-prs-list]') as HTMLElement).getByText('Bump deps'))
     await waitFor(() => expect(h.asked).toContain('ci 22'))
   })
 

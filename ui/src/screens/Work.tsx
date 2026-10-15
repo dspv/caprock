@@ -6,7 +6,9 @@
  *
  * By default a list grouped Next release (merged and waiting, and ready
  * pull requests) / In review / In work / Planned / Released (recent, folded);
- * a toggle shows the same cards as Kanban columns. One row per piece of work
+ * a toggle shows the same cards as Kanban columns, or as *Release*: each
+ * repository's next version with a block progress bar per piece of work
+ * (components/ReleasePlan; owner, 2026-10-15). One row per piece of work
  * — a repository and branch at its furthest stage, its live sessions
  * attached; a session with no pull request is its own row (lib/work.ts).
  * Rows that need the person come first, then the working ones; sessions idle
@@ -25,13 +27,23 @@ import { boardOf, buildWork, groupOf, GROUPS, headline, laneOf, LANES, RELEASED_
 import { useWork, useWorkStats } from '@/lib/useWork'
 import { WorkColumn, WorkLane } from '@/components/WorkLane'
 import { NextRelease } from '@/components/NextRelease'
+import { ReleasePlan } from '@/components/ReleasePlan'
+import { planEmpty, releasePlan } from '@/lib/releaseplan'
 import { Empty, Skeleton } from '@/components/ui'
 
-type View = 'list' | 'kanban'
+type View = 'list' | 'kanban' | 'release'
 const VIEW_KEY = 'caprock.work.view'
+const VIEWS: { v: View; label: string; title: string }[] = [
+  { v: 'list', label: 'List', title: 'Grouped: next release, in review, in work, planned, released' },
+  { v: 'kanban', label: 'Kanban', title: 'The same cards as five columns' },
+  { v: 'release', label: 'Release', title: 'Each repository’s next version, with a progress bar per piece of work' },
+]
 
 function readView(): View {
-  try { return localStorage.getItem(VIEW_KEY) === 'kanban' ? 'kanban' : 'list' } catch { return 'list' }
+  try {
+    const v = localStorage.getItem(VIEW_KEY)
+    return v === 'kanban' || v === 'release' ? v : 'list'
+  } catch { return 'list' }
 }
 
 export interface WorkScreenProps {
@@ -89,10 +101,10 @@ export function WorkView({ work, stats, now, passed, onOpenSession }: { work: Wo
           {fmtUSD(work.totals.today_usd)} today on live work · {fmtUSD(work.totals.machine_today_usd)} on the machine
         </p>
         <span role="tablist" aria-label="View" className="ml-auto inline-flex items-center gap-0.5 rounded-md bg-panel-2 p-0.5">
-          {(['list', 'kanban'] as View[]).map((v) => (
-            <button key={v} type="button" role="tab" aria-selected={view === v} data-work-view={v} onClick={() => setView(v)}
+          {VIEWS.map(({ v, label, title }) => (
+            <button key={v} type="button" role="tab" aria-selected={view === v} data-work-view={v} title={title} onClick={() => setView(v)}
               className={`whitespace-nowrap rounded-[5px] px-2.5 py-1 text-[12px] transition-colors motion-reduce:transition-none ${view === v ? 'bg-accent font-medium text-panel' : 'text-fg hover:text-accent'}`}>
-              {v === 'list' ? 'List' : 'Kanban'}
+              {label}
             </button>
           ))}
         </span>
@@ -104,8 +116,10 @@ export function WorkView({ work, stats, now, passed, onOpenSession }: { work: Wo
         </Empty>
       ) : (
         <>
-          <NextRelease repos={work.repos ?? []} stats={stats} items={board.items} now={serverNow} />
-          {view === 'list' ? (
+          {view !== 'release' && <NextRelease repos={work.repos ?? []} stats={stats} items={board.items} now={serverNow} />}
+          {view === 'release' ? (
+            <ReleaseView work={work} stats={stats} board={board} now={serverNow} />
+          ) : view === 'list' ? (
             <div className="grid min-w-0 gap-3">
               {GROUPS.map((g, i) => (
                 <WorkLane key={g.key} id={`list-${g.key}`} label={g.label} note={g.note} items={groupOf(board.items, g.key)} {...common}
@@ -133,6 +147,25 @@ export function WorkView({ work, stats, now, passed, onOpenSession }: { work: Wo
           )}
         </>
       )}
+    </div>
+  )
+}
+
+/** The Release view: a plan per repository with something on its way, in the board's repository order. */
+function ReleaseView({ work, stats, board, now }: { work: Work; stats: ReadonlyMap<string, SessionCIStats | undefined>; board: WorkBoard; now: number }) {
+  const plans = (work.repos ?? [])
+    .map((r) => releasePlan({ root: r.root, repo: r, stats: stats.get(r.root), items: board.items, idle: board.idle, now }))
+    .filter((p) => !planEmpty(p))
+  if (plans.length === 0) {
+    return <Empty title="Nothing on its way to a release">Merged pull requests, open ones and agents at work show here per repository, with the next version their changelog entries call for.</Empty>
+  }
+  return (
+    <div data-work-release className="grid min-w-0 gap-3">
+      {plans.map((p) => (
+        <article key={p.root} className="min-w-0 rounded-[var(--radius-panel)] border border-border bg-panel px-3 py-2.5 shadow-[var(--shadow-panel)]">
+          <ReleasePlan plan={p} showRepo />
+        </article>
+      ))}
     </div>
   )
 }

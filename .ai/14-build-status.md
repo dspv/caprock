@@ -1597,7 +1597,8 @@ decided without the owner (the decisions are listed in the PR).
   the 2026-10-04 "grey on cream" report applied where it can be.
 - **Update notice (F12).** The status strip's *vX.Y.Z is out*, with
   `app_command` (the cask) beside `command` (the formula). The checker now
-  runs at most every 6 hours on an hourly tick, with an ETag.
+  runs at most every 6 hours on an hourly tick, with an ETag (hourly on a
+  five-minute tick since 2026-10-15, ADR-042 as amended).
 
 The dashboard's own terminal (`Terminal.tsx`) keeps its fixed graphite
 palette: the settings are the app workspace's.

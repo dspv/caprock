@@ -59,7 +59,7 @@ const VIEWS: { v: CockpitCIView; label: string; title: string }[] = [
 ]
 
 /** The deck's last answer under key, redrawn when the deck is told a new one. */
-function useDeckAnswer<T>(key: string): { d?: T; at?: number } {
+export function useDeckAnswer<T>(key: string): { d?: T; at?: number } {
   const snap = useSyncExternalStore(
     (cb) => onDeckAnswer((k) => { if (k === key) cb() }),
     () => readDeck<T>(key),

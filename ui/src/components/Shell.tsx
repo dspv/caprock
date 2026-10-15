@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { UpdateCheckBanner } from './UpdateCheckBanner'
 import { CloseButton, DialogBackdrop } from '@/components/Dialog'
 import type { ReactNode } from 'react'
 import { live as liveStore, useLiveLink } from '@/lib/live'
@@ -103,6 +104,8 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const phoneHome = !app && narrow && route.name === 'now' && !route.full
   return (
     <div className="min-h-screen flex flex-col">
+      {/* The answer to a check by hand; the app draws its own (AppShell). */}
+      {!app && <UpdateCheckBanner />}
       {/* Wraps on a phone. One fixed-height row was 882px wide at 390, so
         * every screen on a paired phone scrolled sideways before it showed
         * anything. On a desktop it is still one row. */}
