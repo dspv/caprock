@@ -92,6 +92,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-15 — 0.120.0: Second Brain you watch being built, release plan, updates on their own
+
+A minor release because it carries features. Second Brain starts in one click and shows its build live, with the living brain in the sidebar card (#656, #658, #668); the release plan with progress bars on the Pipeline, in the right panel and on Work, and right-panel sections that move (#664); hourly update checks, *Update automatically* in the desktop app and a *You're up to date* answer (#666, ADR-042 amended); the resource popover (#663); quick replies under owned sessions (#670); *Couldn't reach GitHub* in words plus a GitHub Status check (#669, ADR-066); the setup strip cut to two buttons (#665); the Pipeline picker lists only GitHub repositories (#667); the theme picker walks with the arrows (#671); a UTF-8 locale for every child process, so an agent's pbcopy keeps non-Latin text (#673); four superseded indexes dropped, 125 MiB on a contributor's 1 GB database, a first external contribution (#675); flaky UI tests fixed at their causes (#674). The first release assembled from `changes/unreleased/` fragments (#654); one entry merged before fragments existed (#656) had stayed under *Unreleased* and is moved into 0.120.0.
+
 ### 2026-10-15 — 0.119.0: Mail's assistant on your own subscription, projects from a template
 
 Mail's AI assistant works with what you already have: your Claude Code,
