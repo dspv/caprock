@@ -32,6 +32,13 @@ const STEPS: [ReactNode, string][] = [
   [<svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 1.8l1.6 4.1 4.1 1.6-4.1 1.6L8 13.2 6.4 9.1 2.3 7.5l4.1-1.6z" {...stroke} /></svg>, 'The next agent starts smarter'],
 ]
 
+/** What Details says, one short line each. The numbers are the daemon's defaults. */
+const DETAILS = [
+  'Reads a session when it ends or goes quiet 10 min',
+  'Haiku, up to 300k tokens a day — change in Settings',
+  'Up to 5 memories go into your next session there',
+]
+
 export function SecondBrainModal({ onClose, onOpen }: { onClose: () => void; onOpen?: () => void }) {
   const panel = useDialogFocus()
   const agents = useAgentsUsed()
@@ -67,13 +74,12 @@ export function SecondBrainModal({ onClose, onOpen }: { onClose: () => void; onO
           className="mt-4 w-full rounded-lg bg-accent px-3 py-2.5 text-[14.5px] font-semibold text-panel hover:bg-accent-strong">
           {onOpen ? 'Open Second Brain' : 'Got it'}
         </button>
-        <details className="mt-3 text-left text-[12px] leading-snug text-fg-muted" data-brain-details>
-          <summary className="cursor-pointer select-none text-center text-fg-faint hover:text-fg">Details</summary>
-          <ul className="mt-2 grid list-disc gap-1 pl-4">
-            <li>Once you turn it on, each session that finishes, or goes quiet for ten minutes, is read.</li>
-            <li>Your own <span className="mono">claude</span> reads it with Haiku, up to 300k tokens a day by default; change either, or turn it off, in Settings → Second Brain.</li>
-            <li>It keeps decisions, findings, ideas and open questions; up to five of a project’s memories go into the handoff of the next session you start there.</li>
-            <li>Nothing leaves your computer except the call your own <span className="mono">claude</span> makes.</li>
+        {/* Three short lines in the text colour (the owner, 2026-10-15,
+          * translated: four long grey bullets "don't read at all"). */}
+        <details className="mt-3 text-left text-[13.5px] leading-relaxed text-fg" data-brain-details>
+          <summary className="cursor-pointer select-none text-center text-[12.5px] text-fg-muted hover:text-fg">Details</summary>
+          <ul className="mx-auto mt-2 grid max-w-[340px] list-disc gap-1 pl-5">
+            {DETAILS.map((d) => <li key={d}>{d}</li>)}
           </ul>
         </details>
       </div>

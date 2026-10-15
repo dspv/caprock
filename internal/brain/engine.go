@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -21,9 +22,13 @@ const (
 	// DefaultDailyTokens caps what the extraction spends in a rolling day.
 	DefaultDailyTokens = 300_000
 	// Interval is how often the extraction wakes; each wake reads at most
-	// Batch sessions.
+	// Batch sessions. A wake that read a full Batch is followed by the next
+	// after Continue, not Interval: while a build has sessions waiting it
+	// reads one after another, within the daily cap, so the screen shows it
+	// working instead of a pause of five minutes between every four.
 	Interval = 5 * time.Minute
 	Batch    = 4
+	Continue = 3 * time.Second
 	// IdleAfter is how long a session must have been quiet before it is read,
 	// so a read sees a finished stretch of work, not the middle of a turn.
 	IdleAfter = 10 * time.Minute
@@ -53,8 +58,10 @@ type Engine struct {
 	ClaudeFound func() bool
 	Runner      Runner
 
-	mu        sync.Mutex
-	running   bool
+	mu      sync.Mutex
+	running bool
+	// reading is the session a read is asking claude about right now.
+	reading   *Reading
 	lastWake  time.Time
 	lastError string
 	kick      chan struct{}
@@ -104,8 +111,14 @@ func (e *Engine) Start(ctx context.Context) {
 			case <-t.C:
 			case <-kick:
 			}
-			if _, err := e.Wake(ctx); err != nil && ctx.Err() == nil {
+			n, err := e.Wake(ctx)
+			if err != nil && ctx.Err() == nil {
 				e.log().Warn("second brain: a wake failed", "component", "brain", "err", err)
+			}
+			wait := Interval
+			if n >= Batch {
+				// More may be waiting: go on after a breath.
+				wait = Continue
 			}
 			if !t.Stop() {
 				select {
@@ -113,9 +126,9 @@ func (e *Engine) Start(ctx context.Context) {
 				default:
 				}
 			}
-			t.Reset(Interval)
+			t.Reset(wait)
 			e.mu.Lock()
-			e.nextWake = e.now().Add(Interval)
+			e.nextWake = e.now().Add(wait)
 			if len(kick) > 0 {
 				// A Kick arrived during the wake: the next one is now.
 				e.nextWake = e.now()
@@ -279,7 +292,9 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 		_, err := store.InsertBrainRun(ctx, db, run)
 		return false, err
 	}
+	e.startReading(ctx, c, in.Passages, started)
 	res, callErr := e.Runner.Run(ctx, Request{System: System, Prompt: in.Prompt, Model: e.model()})
+	e.stopReading()
 	run.FinishedAt = e.now().UnixMilli()
 	run.TokensIn, run.TokensOut, run.CostUSD = res.TokensIn, res.TokensOut, res.CostUSD
 	if res.Model != "" {
@@ -406,6 +421,61 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 	return added, nil
 }
 
+// Reading is the session a read is asking claude about, for the status's
+// "reading now" line.
+type Reading struct {
+	SessionID string `json:"session_id"`
+	// Title is the session's own name, else its first prompt, clipped.
+	Title   string `json:"title,omitempty"`
+	Agent   string `json:"agent,omitempty"`
+	Project string `json:"project,omitempty"`
+	// LastEventAt is when the session last did something; StartedAt when
+	// this read began. Unix ms.
+	LastEventAt int64 `json:"last_event_at,omitempty"`
+	StartedAt   int64 `json:"started_at"`
+}
+
+// startReading records the session being read and says so on the bus.
+func (e *Engine) startReading(ctx context.Context, c store.BrainCandidate, passages []store.BrainPassage, at int64) {
+	r := &Reading{SessionID: c.SessionID, Project: c.Project, LastEventAt: c.LastEventAt, StartedAt: at}
+	if title, agent, last, err := store.BrainSessionInfo(ctx, e.Store.DB(), c.SessionID); err == nil {
+		r.Title, r.Agent = title, agent
+		if last > 0 {
+			r.LastEventAt = last
+		}
+	}
+	if r.Title == "" {
+		for _, p := range passages {
+			if p.User {
+				r.Title = p.Text
+				break
+			}
+		}
+	}
+	r.Title = clip(strings.Join(strings.Fields(r.Title), " "), 80)
+	e.mu.Lock()
+	e.reading = r
+	e.mu.Unlock()
+	e.publishProgress()
+}
+
+func (e *Engine) stopReading() {
+	e.mu.Lock()
+	e.reading = nil
+	e.mu.Unlock()
+	e.publishProgress()
+}
+
+// publishProgress says a read began or ended: a `brain` frame with op
+// "progress" and no id, so a screen showing the build reads the status
+// again. Screens showing memories ignore it.
+func (e *Engine) publishProgress() {
+	if e.Bus == nil {
+		return
+	}
+	e.Bus.Publish(bus.Frame{Type: bus.FrameBrain, Data: map[string]any{"op": "progress"}})
+}
+
 func (e *Engine) publish(n store.BrainNode) {
 	if e.Bus == nil {
 		return
@@ -427,16 +497,102 @@ type Status struct {
 	Spent   int64 `json:"spent"`
 	Running bool  `json:"running"`
 	// Pending is how many sessions wait to be read (counted up to 200).
-	Pending       int   `json:"pending"`
-	Since         int64 `json:"since,omitempty"`
-	BackfillSince int64 `json:"backfill_since,omitempty"`
-	LastWake      int64 `json:"last_wake,omitempty"`
+	Pending int `json:"pending"`
+	// Reading is the session being read right now, while a read runs.
+	Reading *Reading `json:"reading,omitempty"`
+	// Build is the progress through everything in reach — the sessions
+	// since `since` or `backfill_since` — while it is on.
+	Build         *Build `json:"build,omitempty"`
+	Since         int64  `json:"since,omitempty"`
+	BackfillSince int64  `json:"backfill_since,omitempty"`
+	LastWake      int64  `json:"last_wake,omitempty"`
 	// NextWake is when the next wake is due, unix ms; absent while it is off.
 	// At or before now when one was just asked for or is running.
 	NextWake  int64  `json:"next_wake,omitempty"`
 	LastError string `json:"last_error,omitempty"`
 	// Recent is the newest reads that did something.
 	Recent []store.BrainRun `json:"recent"`
+}
+
+// Build is how far the extraction has got through the sessions in reach.
+type Build struct {
+	// From is the start of what is in reach, unix ms (the earlier of `since`
+	// and `backfill_since`).
+	From int64 `json:"from"`
+	// Sessions is Read plus Pending: the sessions in reach that are read, or
+	// quiet and waiting to be. A live session joins once it goes quiet.
+	Sessions int `json:"sessions"`
+	Read     int `json:"read"`
+	// Memories is what the reads of those sessions kept.
+	Memories int `json:"memories"`
+	// Truncated is set when the waiting sessions were counted only to 200.
+	Truncated bool `json:"truncated,omitempty"`
+	// Sources is the same per project, most sessions first, at most 12.
+	Sources []BuildSource `json:"sources"`
+}
+
+// BuildSource is one project's share of a build.
+type BuildSource struct {
+	Project  string `json:"project"`
+	Read     int    `json:"read"`
+	Pending  int    `json:"pending"`
+	Memories int    `json:"memories"`
+}
+
+// statusPending is how far the status counts the waiting sessions.
+const statusPending = 200
+
+// build counts the progress through what is in reach; cands are the
+// sessions waiting (from candidates). A session read before and waiting
+// again counts once, as waiting, with the memories it already gave.
+func (e *Engine) build(ctx context.Context, cands []store.BrainCandidate) (*Build, error) {
+	from := e.readFrom()
+	if from <= 0 {
+		return nil, nil
+	}
+	read, err := store.BrainReadSessions(ctx, e.Store.DB(), from)
+	if err != nil {
+		return nil, err
+	}
+	b := &Build{From: from, Truncated: len(cands) >= statusPending, Sources: []BuildSource{}}
+	by := map[string]*BuildSource{}
+	src := func(p string) *BuildSource {
+		if s := by[p]; s != nil {
+			return s
+		}
+		s := &BuildSource{Project: p}
+		by[p] = s
+		return s
+	}
+	waiting := make(map[string]bool, len(cands))
+	for _, c := range cands {
+		waiting[c.SessionID] = true
+		src(c.Project).Pending++
+	}
+	for _, r := range read {
+		s := src(r.Project)
+		s.Memories += r.Memories
+		b.Memories += r.Memories
+		if !waiting[r.SessionID] {
+			s.Read++
+			b.Read++
+		}
+	}
+	b.Sessions = b.Read + len(cands)
+	for _, s := range by {
+		b.Sources = append(b.Sources, *s)
+	}
+	sort.Slice(b.Sources, func(i, j int) bool {
+		x, y := b.Sources[i], b.Sources[j]
+		if x.Read+x.Pending != y.Read+y.Pending {
+			return x.Read+x.Pending > y.Read+y.Pending
+		}
+		return x.Project < y.Project
+	})
+	if len(b.Sources) > 12 {
+		b.Sources = b.Sources[:12]
+	}
+	return b, nil
 }
 
 // Status reports the extraction's state.
@@ -452,6 +608,10 @@ func (e *Engine) Status(ctx context.Context) Status {
 	}
 	e.mu.Lock()
 	st.Running, st.LastError = e.running, e.lastError
+	if e.reading != nil {
+		r := *e.reading
+		st.Reading = &r
+	}
 	if !e.lastWake.IsZero() {
 		st.LastWake = e.lastWake.UnixMilli()
 	}
@@ -460,8 +620,11 @@ func (e *Engine) Status(ctx context.Context) Status {
 	}
 	e.mu.Unlock()
 	if st.On {
-		if cands, err := e.candidates(ctx, 200); err == nil {
+		if cands, err := e.candidates(ctx, statusPending); err == nil {
 			st.Pending = len(cands)
+			if b, err := e.build(ctx, cands); err == nil {
+				st.Build = b
+			}
 		}
 	}
 	if runs, err := store.LastBrainRuns(ctx, e.Store.DB(), 5); err == nil {

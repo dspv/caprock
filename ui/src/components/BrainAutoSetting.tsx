@@ -160,29 +160,3 @@ function Recent({ auto }: { auto: BrainAutoStatus }) {
     </Details>
   )
 }
-
-/**
- * The question, asked once on the Brain screen, of everyone: build it
- * automatically, or not. Either answer is kept; Settings changes it later.
- */
-export function BrainConsent({ auto, onAnswer }: { auto: BrainAutoStatus; onAnswer: () => void }) {
-  const [busy, setBusy] = useState(false)
-  if (auto.chosen) return null
-  const answer = (v: boolean) => {
-    setBusy(true)
-    api.brainSettings({ auto: v }).then(onAnswer, () => setBusy(false))
-  }
-  return (
-    <div className="grid max-w-[760px] gap-2 rounded-[var(--radius-panel)] border border-border bg-panel p-4" data-brain-consent>
-      <span className="text-[14.5px] font-medium text-fg">Build it from your sessions automatically?</span>
-      <span className="text-[12.5px] leading-relaxed text-fg-muted">
-        When a session has been quiet for ten minutes, a small model reads what it decided and found and keeps it here,
-        within a daily limit of {limitLabel(auto.daily_tokens)} tokens. {BRAIN_DISCLOSURE}
-      </span>
-      <span className="flex gap-2">
-        <button type="button" className="rounded-[6px] bg-accent px-3 py-1.5 text-[13px] font-medium text-panel disabled:opacity-50" disabled={busy} onClick={() => answer(true)}>Turn it on</button>
-        <button type="button" className="rounded-[6px] border border-border px-3 py-1.5 text-[13px] text-fg hover:text-accent disabled:opacity-50 disabled:hover:text-fg" disabled={busy} onClick={() => answer(false)}>Not now</button>
-      </span>
-    </div>
-  )
-}
