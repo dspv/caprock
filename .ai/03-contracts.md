@@ -190,6 +190,11 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   anywhere?, app?, installed?}`, where `via` is how this request arrived (below),
   `anywhere` is true while access from anywhere is on, and `app` (sent with
   it) is the phone's page, so a Wi-Fi link's notice names where the app is.
+  A computer (below) also gets `kind: "machine"`, and `pending: true` while
+  its owner has not allowed it. `DELETE /v1/pair/me` is open to every
+  paired device, waiting or not: it removes the asking device itself (its
+  token stops, its sockets close) and answers `{revoked: 1}`; on loopback it
+  is `400` — the machine is no device (ADR-067).
   `?app=1` or `?app=0` reports whether the phone runs as the installed app
   (2026-10-14); the machine stores it per device as `app` in `devices.json`
   (saved when it changes), lists it in `GET /v1/pair/state`'s `devices`, and
@@ -230,7 +235,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   /v1/projects/{id}/changes/stage`, `unstage`, `discard`, `commit`, `push`,
   `pull` and `fetch`, in a worktree that resolves under home (§ Changes). From a device a clone URL must also begin `https://` or
   `git@` (`400` otherwise, before git runs). Everything
-  else stays `403` for every device: settings, pairing, hive, tasks creation
+  else stays `403` for a phone (a computer's wider list is below): settings, pairing, hive, tasks creation
   and verify, orchestrator, hooks install, shutdown, update check, report
   test, Gemini ask, `open-terminal`, the editor routes, `POST /v1/sessions/remove`, and every
   shell route — `POST`/`GET /v1/shells`, and a shell's terminal, input and
@@ -244,6 +249,40 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `permission_mode` is allowed, `bypassPermissions` included (ADR-034).
   Refusal is `403` with `{error}`. A session started from a device is logged
   with the device's id and name.
+- **A computer** ([ADR-067](08-decisions.md)) is another machine's Caprock,
+  paired with a code for a computer (`POST /v1/pair/code {kind:
+  "machine"}`, below) and stored in `devices.json` with `kind: "machine"`.
+  The kind comes from the code, never from the redeeming request. It is
+  stored `pending: true` and, until the owner allows it (`POST
+  /v1/pair/devices/{id}/allow`), its token reaches `GET /v1/pair/me` and
+  `DELETE /v1/pair/me` and nothing else: every other `/v1` request is `403`
+  with `error` *this computer is waiting to be allowed on the machine
+  Caprock runs on*; its role reads as `viewer` (`RoleOf`) and its terminal
+  frames are refused. Allowed, it is a controller that may also make the
+  requests in `computerRoutes` (`internal/api/lanauth.go`): `POST` and `GET
+  /v1/shells` (and a shell's terminal, input and signal through the agent
+  routes), `GET /v1/hive/starter`, `POST /v1/hive`, `POST /v1/tasks`, `POST
+  /v1/tasks/{id}/verify`, `POST /v1/orchestrator/start` and `/stop`, `GET
+  /v1/agents/custom`, `GET /v1/activity`, `GET /v1/overlap`, `GET
+  /v1/update/busy`, `GET /v1/github/actions-usage` and `/statuspage`, a
+  session's `prs`, `ci`, `branches`, `ci/jobs/{job}/log`, `ci/release`,
+  `ci/main` and `ci/stats`, `POST /v1/sessions/{id}/prs/{number}/rerun` and
+  `/update-branch`, `GET /v1/projects/{id}/branches`, `copies`, `cleanup`,
+  `POST /v1/projects/{id}/copies/remove`, `cleanup` and `cleanup/restore`,
+  `GET /v1/projects/scan`, `POST /v1/projects/merge` and `POST
+  /v1/projects/{id}/split`. A phone's limits do not apply to it
+  (`phoneLimited`): `POST /v1/agents` may name any folder, `command`, `args`
+  and `chat`; the folder picker, `GET /v1/browse/stat`, `GET
+  /v1/browse/repos` and `GET /v1/recent-dirs` use the machine's own root;
+  projects, worktrees and changes may be outside home; a project's setup
+  command may be set. It stays `403` on everything the machine keeps, whatever
+  the role: `/v1/pair/*` but `me`, settings writes (`PUT /v1/settings`,
+  Telegram, GitHub connect, custom agents, subscriptions, Second Brain's
+  settings), `POST /v1/footprint/orphans/stop`, `POST /v1/resources/reap`,
+  `POST /v1/shutdown`, `POST /v1/update/check`, `POST /v1/hooks/install`,
+  `open-terminal`, the editor routes, `POST /v1/sessions/remove`,
+  `/v1/machines` and `/v1/m/…`. Rule 7 is unchanged: the agent manager
+  starts, types into and signals only what this daemon started.
 - **`GET /v1/browse` from a controller** is rooted at the owner's browse root
   when that resolves inside home, else at home; a `dir` above it, outside it or
   through a symlink out of it is `404`, as on the machine, and an entry that
@@ -254,6 +293,15 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   every frame a device sends, its role is read again (`pairing.Store.RoleOf`);
   once it is not a controller — demoted, revoked, or network access turned off
   — the socket closes with `1008` and the frame is not written.
+- **A device's sockets close when it is removed or its role changes**
+  (ADR-067). Every `/v1/live` and terminal socket (v1 and v2) a device opens
+  is held by the device's id; `DELETE /v1/pair/devices/{id}` (Deny, Remove,
+  `caprock machines deny|revoke`), `DELETE /v1/pair/devices/all`, `PUT
+  /v1/pair/devices/{id}/role` and `DELETE /v1/pair/me` close them at once
+  with `1008` and the reason *this device was removed or its access changed
+  on the machine*. The device reconnects and the gate answers it as it now
+  stands. Before this, `/v1/live` kept streaming to a removed device until it
+  reconnected.
 - **Refusal is `401` with `{error, detail}`** for a device that has not paired,
   and `403` with the same shape for a paired device asking for more than its
   role allows — the `detail` tells a viewer where control is granted — not a
@@ -294,7 +342,21 @@ viewer, as `caprock pair` and `caprock remote` send; any other role, or a
 body that is not JSON, is `400`) and answers `{code, role, expires_in_sec,
 url, remote?}`; `GET /v1/pair/state` names the outstanding code's role as
 `code_role`. The device pairing with that code gets that role; nothing the
-device sends names one. `POST /v1/pair`
+device sends names one. `{kind: "machine"}` issues a code **for a computer**
+(ADR-067; any other `kind` but none or `""` is `400`): its role is
+`controller` whatever `role` says, it turns access from anywhere on first if
+it is off (`501` in a build without the relay, `409` when that fails), and
+the answer adds `kind: "machine"`; `GET /v1/pair/state` names it as
+`code_kind: "machine"` (absent for a phone's code). Each listed device
+carries `kind` (`"machine"`, absent for a phone) and `pending` (true while a
+computer waits). `POST /v1/pair/devices/{id}/allow` (loopback-only, no body)
+allows a waiting computer — `200 {id, role: "controller"}`, `404` for an
+unknown id or one not waiting; while network access is off it edits
+`devices.json`. Deny is `DELETE /v1/pair/devices/{id}`. Every change to the
+guest list (a pairing, a removal, a role, an allow) publishes a `devices`
+frame on `/v1/live` with `data: {}`: the machine's own dashboard re-reads
+`GET /v1/pair/state` and asks about a computer that waits; the frame names
+nothing, so a phone on the stream learns no name. `POST /v1/pair`
 takes `{code, name}` and returns `{token, id, name}` — the name prefixed
 `This computer · ` when the request came from the machine's own network
 address; it is the one call a device makes before it is trusted, and
@@ -319,8 +381,8 @@ on the hosted relay), never spliced to a machine that went to sleep.
 
 **Other computers (ADR-067).** A daemon reaches another machine's daemon as
 that machine's paired device, over the same relay channel a phone uses —
-the target runs its ordinary Host and gate, unchanged. What exists so far
-(PR1 of Phase 1; no route, CLI or UI yet):
+the target runs its ordinary Host and gate, and pairs it as a computer
+(above). The controller's side:
 
 - **`machines.json`** in the data directory, mode 0600 (written atomically;
   on Windows the mode is not enforced and the file is in the user's
@@ -358,7 +420,61 @@ the target runs its ordinary Host and gate, unchanged. What exists so far
   `idle`, `connecting`, `online`, `offline` (4404, the relay unreachable,
   or a drop), `refused` (the target hung up on the handshake: another key)
   and `closed`; `internal/peers` adds `revoked` when `GET /v1/pair/me`
-  answers 401, cleared when a later check answers 200.
+  answers 401, cleared when a later check answers 200, and `pending` while
+  it answers `pending: true`.
+- **`GET /v1/machines`** answers `{machines: [{id, name, relay, added_at,
+  status, error?, version?, role?, kind?, last_seen?, streams}]}`, in the
+  order added, never a token. `?check=1` first asks each computer `GET
+  /v1/pair/me` through its channel, at once, for 12 s at most. **`POST
+  /v1/machines`** `{link}` pairs (60 s at most) and answers that computer's
+  entry: `400` for a link that does not parse, carries no code, names this
+  machine, or a code the computer refused; `409` when the computer is not
+  accepting pairings; `503` offline or relay unreachable; `502` refused
+  (another key) or anything else; `504` out of time. The name it gives the
+  target is this machine's host name without `.local`. **`PATCH
+  /v1/machines/{id}`** `{name}` renames it here (`400` empty, `404`
+  unknown) and answers the entry. **`DELETE /v1/machines/{id}`** asks the
+  computer to drop this machine (`DELETE /v1/pair/me`, 10 s at most, best
+  effort), deletes it and its token here, and answers `{forgotten: true,
+  released}`.
+- **The proxy `/v1/m/{id}/{path…}`**, any method: `path` is a path on that
+  computer's API (`v1/…` or `healthz`, else `404`), carried with the query
+  through its channel as this machine's device there. HTTP goes through
+  `httputil.ReverseProxy` on the channel and is streamed as it arrives;
+  `Cookie`, `Origin`, `Referer`, `Authorization` and `Sec-*` never travel.
+  A WebSocket (`Upgrade: websocket`) is opened there first — a refusal there
+  answers here as its HTTP status (`4000 + status`) — then accepted here and
+  bridged message by message; the caller's subprotocols are offered there
+  minus any `caprock.device.*`, and only the protocol the computer chose is
+  echoed, never a device token; a close there closes here with its code (a
+  dropped channel, 1006, drops the local socket). Errors: `404 {error: "no
+  such computer"}`; `503 {error, status: "offline"}`; `502 {error, status:
+  "refused"}`; a computer that answers `401` is asked `GET /v1/pair/me` once
+  and, when that says this machine was removed, the answer is `403 {error,
+  status: "revoked"}`; while it reads `revoked`, each request asks again
+  before forwarding and goes through once it is allowed back. A waiting
+  computer's `403` passes through.
+- **Loopback only, not transitive.** `/v1/machines` and `/v1/m/…` refuse
+  anything but this machine's own clients in the handlers (`403`, or the
+  gate's `401` for a relayed request with network access off) and are on no
+  device's allowlist, so a phone or a computer paired with this machine
+  gets `403` there. `501` in a build without them.
+- **The CLI** (`cmd/caprock/machines.go`), against the local daemon:
+  `caprock machines` / `ls` (the computers this one reaches, checked, and
+  the computers that reach this one from `GET /v1/pair/state`), `add
+  <link>` (`POST /v1/machines`), `forget <name|id>`, and for the computers
+  that reach this one `pending`, `allow <name|id>` (`POST
+  /v1/pair/devices/{id}/allow`), `deny <name|id>` (a waiting one) and
+  `revoke <name|id>` (`DELETE /v1/pair/devices/{id}`). A name matches case
+  insensitively; two of one name are refused and named by id. `caprock pair
+  --computer` issues a code for a computer, prints `caprock machines add
+  '<link>'` for the other computer, and — when stdin is a terminal and
+  without `--no-wait` — waits until the code expires (plus 30 s) for a new
+  waiting computer and asks `"<name>" wants to control this computer.
+  Allow? [y/N]`, allowing on `y`/`yes` and removing it otherwise. On Linux,
+  when `loginctl show-user <user> --property=Linger --value` answers `no`,
+  it and `caprock service install` print how to run `loginctl enable-linger
+  <user>`; neither runs it.
 - **Relay counters.** `remote.State` (the Host) and `remote.ClientState`
   count relay messages and bytes each way (`msgs_in`, `msgs_out`,
   `bytes_in`, `bytes_out`) since the daemon started, for OQ-14. Not in any
@@ -842,7 +958,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes, or {op: progress} when an automatic read begins or ends (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes, or {op: progress} when an automatic read begins or ends (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the

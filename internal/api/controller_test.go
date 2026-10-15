@@ -158,8 +158,9 @@ func TestEveryEndpointForEveryRole(t *testing.T) {
 			}
 
 			// The pairing endpoint is open to every device, paired or not; it
-			// only exchanges a code for a token.
-			open := pattern == "POST /v1/pair"
+			// only exchanges a code for a token. Withdrawing itself is open to
+			// every paired device (ADR-067).
+			open := pattern == "POST /v1/pair" || pattern == "DELETE /v1/pair/me"
 			wantViewer := 0
 			if !viewerMay[pattern] && !open {
 				wantViewer = http.StatusForbidden

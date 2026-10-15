@@ -57,6 +57,10 @@ const (
 	// input typed into it that it has not answered yet (narrate.Nudge):
 	// {session_id, kind, at}. A screen asks for the session again at once.
 	FrameStatus FrameType = "status"
+	// FrameDevices says the paired devices changed — one paired, removed,
+	// given a role, or a computer waiting to be allowed (ADR-067). It carries
+	// nothing; the machine's own dashboard re-reads GET /v1/pair/state.
+	FrameDevices FrameType = "devices"
 )
 
 // Frame is what goes over /v1/live. Seq is set by Publish: one more than the
