@@ -30,6 +30,13 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Fixed
 
+- **app:** the theme picker opens whole, above everything. From the
+  sidebar's footer its palettes were cut off at the sidebar's edge and the
+  terminal drew over them; it now opens over the whole window, kept inside
+  it on every edge at any sidebar width and with the footer folded, and
+  scrolls in a window shorter than itself. Opening it puts the focus on the
+  palette in use; Esc, or tabbing past the last palette, closes it and gives
+  the focus back to the button.
 - **mail:** adding an account can no longer sit on *Checking…* forever. A
   server that goes quiet while Mail connects or signs in — IMAP had no limit
   and SMTP waited five minutes per command — now ends the check within 30
