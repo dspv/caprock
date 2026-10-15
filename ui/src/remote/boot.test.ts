@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { DEVICE_TOKEN_KEY, abandonPairing, currentMachine, forDaemon, forgetMachine, machines, parsePairLink, prepare, relayAllowed, selectMachine } from './boot'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEVICE_TOKEN_KEY, abandonPairing, currentMachine, forDaemon, forgetMachine, keepStorage, machines, notPairedHere, parsePairLink, prepare, relayAllowed, selectMachine } from './boot'
 
 const id = 'a'.repeat(43)
 const key = 'b'.repeat(43)
@@ -173,5 +173,59 @@ describe('machines on this phone', () => {
     const a = fakeLocation(link())
     prepare(a.loc, a.hist)
     expect(abandonPairing()).toBe(false)
+  })
+
+  // Vova, 2026-10-15 (translated): "yesterday I opened the phone app, then
+  // closed the tab … today I want to open the app again but I don't remember
+  // the link". The address alone is the way back: the token is on this
+  // origin, on the machine's record, and nothing in the address is needed.
+  it('the next day, the plain address reconnects without pairing again', () => {
+    paired()
+    localStorage.removeItem(DEVICE_TOKEN_KEY) // whatever the dashboard's copy did
+    const l = fakeLocation('')
+    const m = prepare(l.loc, l.hist)
+    expect(m?.id).toBe(id)
+    expect(localStorage.getItem(DEVICE_TOKEN_KEY)).toBe('tok-1')
+    expect(notPairedHere(m)).toBe(false)
+  })
+
+  it('a machine with no token here, and no pairing under way, is "not paired here"', () => {
+    localStorage.setItem('caprock.remote.machines', JSON.stringify([{ id, key, relay: 'wss://relay.example', name: 'Mac mini', token: '' }]))
+    localStorage.setItem('caprock.remote.current', id)
+    const m = prepare(fakeLocation('').loc, fakeLocation('').hist)
+    expect(notPairedHere(m)).toBe(true)
+    expect(notPairedHere(undefined)).toBe(false)
+  })
+
+  it('a phone redeeming a code is not "not paired here"', () => {
+    const a = fakeLocation(link())
+    const m = prepare(a.loc, a.hist)
+    expect(m?.token).toBe('')
+    expect(notPairedHere(m)).toBe(false)
+  })
+})
+
+describe('keepStorage', () => {
+  it('asks the browser to keep this origin\'s storage, and survives a browser without it', () => {
+    const persist = vi.fn(() => Promise.resolve(true))
+    keepStorage({ storage: { persist } } as unknown as Navigator)
+    expect(persist).toHaveBeenCalledOnce()
+    expect(() => keepStorage({} as Navigator)).not.toThrow()
+    expect(() => keepStorage(undefined)).not.toThrow()
+  })
+
+  it('is asked once a pairing completes', () => {
+    localStorage.clear()
+    const persist = vi.fn(() => Promise.resolve(true))
+    vi.stubGlobal('navigator', { ...navigator, storage: { persist } })
+    try {
+      const a = fakeLocation(link())
+      prepare(a.loc, a.hist)
+      localStorage.setItem(DEVICE_TOKEN_KEY, 'tok-1')
+      prepare(fakeLocation('#/').loc, fakeLocation('#/').hist)
+      expect(persist).toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

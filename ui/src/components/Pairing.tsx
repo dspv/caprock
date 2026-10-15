@@ -45,6 +45,14 @@
  * The QR code is drawn here, in the browser, by ui/src/lib/qr.ts: the link
  * carries a code that lets a device in, and it is not sent anywhere to be
  * rendered.
+ *
+ * **A paired phone finds its way back** (Vova, 2026-10-15, translated: "I
+ * opened the phone app, then closed the tab … today I want to open it again
+ * but I don't remember the link — and that's it"). The phone keeps its token
+ * on the page's own origin, so opening the page's address again is all it
+ * takes; every paired device's row says so — the address to type, a QR of
+ * that address alone (no code, no key: it pairs nothing), and, with a
+ * Telegram bot set up, **Send the link to my phone**.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText, type PairAddress, type PairedDevice, type PairState, type RemoteState } from '@/lib/api'
@@ -145,6 +153,26 @@ export function addressesOf(s: Pick<PairState, 'url' | 'tunnelled' | 'addresses'
   const all: PairAddress[] = s.addresses?.length ? s.addresses : s.url ? [{ url: s.url, kind: s.tunnelled ? 'tailscale' : 'lan' }] : []
   const rank = { anywhere: -1, tailscale: 0, magicdns: 1, lan: 2 } as const
   return [...all].sort((a, b) => rank[a.kind] - rank[b.kind])
+}
+
+/**
+ * The phone's page as a person types it — "m.caprock.dev" — and as a QR opens
+ * it — "https://m.caprock.dev/". Nothing after the address: the QR beside a
+ * paired device must pair nothing and carry nothing secret; the phone's own
+ * stored token does the rest.
+ */
+export function phonePage(app: string): { host: string; url: string } {
+  try {
+    const u = new URL(app)
+    return { host: u.host + u.pathname.replace(/\/+$/, ''), url: u.origin + u.pathname.replace(/\/*$/, '/') }
+  } catch {
+    return { host: app, url: app }
+  }
+}
+
+/** Whether a row gets "Open on the phone again": a device that reaches the machine through the relay, not the machine's own browser. */
+export function offersOpenAgain(d: Pick<PairedDevice, 'name' | 'via'>): boolean {
+  return d.via !== 'lan' && !/^This computer/.test(d.name)
 }
 
 /** Whether a paired device's name says it is a phone or a tablet. */
@@ -505,7 +533,15 @@ export function Pairing() {
             <button onClick={showCode} disabled={busy} className="font-medium text-accent hover:underline disabled:opacity-50">Show a code</button>
           </div>
         )}
-        <Devices devices={s.devices} now={now} onRemove={remove} onRole={setRole} onRepair={remote ? showCode : undefined} busy={busy} />
+        <Devices
+          devices={s.devices}
+          now={now}
+          onRemove={remove}
+          onRole={setRole}
+          onRepair={remote ? showCode : undefined}
+          openAgain={remote?.app ? { app: remote.app, anywhere, telegram: Boolean(s.telegram), onTurnOn: () => turnRemote(true) } : undefined}
+          busy={busy}
+        />
 
         <div className="grid gap-1 border-t border-border pt-3 text-[12px] leading-relaxed text-fg-muted">
           <p>Only phones you pair get in, each with the role you chose here; take control away or remove one with a click.</p>
@@ -722,12 +758,23 @@ const VIA_LABEL: Record<NonNullable<PairedDevice['via']>, string> = {
   lan: 'Wi-Fi link',
 }
 
+interface OpenAgainProps {
+  /** The phone's page, remote.app. */
+  app: string
+  /** Access from anywhere is on: without it the page reaches nothing. */
+  anywhere: boolean
+  /** A Telegram bot is set up, so the link can be sent there. */
+  telegram: boolean
+  onTurnOn: () => void
+}
+
 function Devices({
   devices,
   now,
   onRemove,
   onRole,
   onRepair,
+  openAgain,
   busy,
 }: {
   devices: PairedDevice[]
@@ -736,8 +783,11 @@ function Devices({
   onRole: (id: string, role: PairedDevice['role']) => void
   /** Shows the code a Wi-Fi-linked phone re-pairs with; absent without the relay. */
   onRepair?: () => void
+  /** The way back to the phone's page for a paired device; absent without the relay. */
+  openAgain?: OpenAgainProps
   busy: boolean
 }) {
+  const [expanded, setExpanded] = useState('')
   if (devices.length === 0) return null
   return (
     <div className="grid gap-1.5">
@@ -780,6 +830,20 @@ function Devices({
                     </button>
                   </span>
                 )}
+                {openAgain && !repair && offersOpenAgain(d) && (
+                  <span data-testid="device-open-again" className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-fg-muted">
+                    <span>
+                      Already paired — just open <b className="mono font-medium text-fg select-all">{phonePage(openAgain.app).host}</b> on that phone.
+                    </span>
+                    <button
+                      onClick={() => setExpanded((x) => (x === d.id ? '' : d.id))}
+                      aria-expanded={expanded === d.id}
+                      className="font-medium text-accent hover:underline"
+                    >
+                      {expanded === d.id ? 'Hide' : 'Open on the phone again'}
+                    </button>
+                  </span>
+                )}
               </span>
               {d.role === 'controller' ? (
                 <button
@@ -805,10 +869,93 @@ function Devices({
               >
                 Remove
               </button>
+              {openAgain && expanded === d.id && offersOpenAgain(d) && <OpenAgain {...openAgain} name={d.name} busy={busy} />}
             </li>
           )
         })}
       </ul>
+    </div>
+  )
+}
+
+/**
+ * "Open on the phone again", under a paired device: the plain address, a QR
+ * of that address alone, and the link sent to Telegram when a bot is set up.
+ * Vova, 2026-10-15: a paired phone, a closed tab, and no way back but
+ * removing it and pairing again.
+ */
+export function OpenAgain({ app, anywhere, telegram, onTurnOn, name, busy }: OpenAgainProps & { name: string; busy: boolean }) {
+  const page = phonePage(app)
+  const qr = useMemo(() => qrPath(encodeQR(page.url)), [page.url])
+  const [sent, setSent] = useState<'' | 'sending' | 'sent'>('')
+  const [error, setError] = useState('')
+  async function send() {
+    setSent('sending')
+    setError('')
+    try {
+      await api.pairSendLink()
+      setSent('sent')
+    } catch (e) {
+      setSent('')
+      setError(errText(e))
+    }
+  }
+  return (
+    <div data-testid="open-again" className="flex w-full basis-full flex-wrap items-start gap-x-5 gap-y-3 border-t border-border pt-3">
+      {/* Black on white whatever the theme, as the pairing QR. The address
+        * alone: scanning it pairs nothing. */}
+      <svg
+        viewBox={qr.viewBox}
+        role="img"
+        aria-label={`QR code that opens ${page.host}`}
+        data-qr-text={page.url}
+        className="h-auto w-full max-w-[160px] shrink-0 rounded-md bg-white p-1.5"
+        shapeRendering="crispEdges"
+      >
+        <path d={qr.d} fill="#000" />
+      </svg>
+      <div className="grid min-w-0 flex-1 basis-[220px] gap-2 text-[13px] leading-snug text-fg-muted">
+        <p className="text-[14px] text-fg">
+          Already paired — just open <b className="mono font-medium select-all">{page.host}</b> on {name ? <>“{name}”</> : 'that phone'}.
+        </p>
+        <p>
+          Type the address, or scan this code with that phone&apos;s camera. It carries the address only, no code: the phone connects with the
+          pairing it keeps, in the same browser it paired in.
+        </p>
+        <p>
+          <b className="font-medium text-fg">Tip:</b> Share → <b className="font-medium text-fg">Add to Home Screen</b> to keep it as an app (on Android, ⋮ →{' '}
+          <b className="font-medium text-fg">Install app</b>).
+        </p>
+        {!anywhere && (
+          <p data-testid="open-again-off" className="text-warn">
+            Access from anywhere is off, so the page cannot reach this computer.{' '}
+            <button onClick={onTurnOn} disabled={busy} className="font-medium text-accent underline disabled:opacity-50">
+              Turn it on
+            </button>
+          </p>
+        )}
+        {/* Kept with explanations off: it is the answer to "the link doesn't load". */}
+        <p className="text-fg-faint" data-keep>
+          The phone needs to reach {page.host} and the relay. A VPN or a network that blocks either shows on the phone as “Can’t reach the relay”.
+        </p>
+        {telegram && (
+          <div className="grid gap-1">
+            <button
+              data-testid="send-link"
+              onClick={() => void send()}
+              disabled={sent === 'sending'}
+              className="w-fit rounded-md border border-border px-2.5 py-1 text-[12px] text-fg hover:border-accent disabled:opacity-50"
+            >
+              {sent === 'sent' ? 'Sent to Telegram ✓' : sent === 'sending' ? 'Sending…' : 'Send the link to my phone'}
+            </button>
+            {/* Rule 4: say where it goes and what it carries. */}
+            <span className="text-[12px] text-fg-faint">
+              One message to your Telegram chat through your own bot (Settings → Telegram): the address {page.url}, no code and no key.
+            </span>
+            {error && <span className="text-[12px] text-danger">{error}</span>}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

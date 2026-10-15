@@ -9,9 +9,9 @@
  * own, and the camera opens links in Safari).
  */
 import { Suspense, lazy, useEffect, useState } from 'react'
-import { abandonPairing, currentChannel, currentMachine, forgetMachine, install, machines, parsePairLink, prepare, selectMachine } from './boot'
+import { abandonPairing, currentChannel, currentMachine, forgetMachine, install, keepStorage, machines, notPairedHere, parsePairLink, prepare, selectMachine } from './boot'
 import { PAIR_FAILED_EVENT } from '@/screens/Pair'
-import { needsPairing, type ChannelState, type Problem } from './transport'
+import { needsPairing, type Channel, type ChannelState, type Problem } from './transport'
 import { promptInstall, useInstallOffer, type InstallOffer } from './install'
 import { useRoute } from '@/lib/router'
 import { useNarrowScreen } from '@/lib/phone'
@@ -24,6 +24,8 @@ const App = lazy(() => import('../App'))
 // token the pairing screen left, which machine is current.
 const machine = prepare()
 if (machine) install(machine)
+// The token is the pairing: ask the browser to keep it (boot.keepStorage).
+if (machine?.token) keepStorage()
 
 // A pairing link opened while the page is already up changes only the hash,
 // which loads nothing; start over so prepare() reads it.
@@ -84,6 +86,10 @@ export default function RemoteRoot() {
     return () => provideMachineSwitch(null)
   }, [several])
   if (!machine) return <AddMachine first />
+  // On the list, but no token here and no pairing under way: say exactly
+  // that, not a pairing form or a connection error (Vova, 2026-10-15).
+  if (notPairedHere(machine) && !pairing) return <NotPairedHere name={machine.name} onPair={() => setPairing(true)} />
+  if (pairing && notPairedHere(machine)) return <AddMachine onCancel={() => setPairing(false)} />
   const blocked = needsPairing(link.problem)
   return (
     <div className="flex min-h-dvh flex-col">
@@ -190,27 +196,35 @@ export function barLabel(state: ChannelState, problem: Problem): string {
   }
 }
 
-/** What went wrong and what to do, for each problem. */
-export function explain(problem: Problem, name: string, relay: string): { title: string; body: string } {
+/**
+ * What went wrong and what to do, for each problem. Three are told apart
+ * because each has a different fix (Vova, 2026-10-15, translated: "the link
+ * doesn't load; maybe it's some restrictions, my VPN isn't working well right
+ * now"): the phone cannot reach the relay (its connection, a VPN); the relay
+ * answers but the computer is not there (the computer); the computer
+ * removed this phone (pair again).
+ */
+export function explain(problem: Problem, name: string, relay: string, page = typeof window === 'undefined' ? '' : window.location.host): { title: string; body: string } {
   let host = relay
   try {
     host = new URL(relay).host
   } catch { /* the address as given */ }
+  const hosts = page && page !== host ? `${host} / ${page}` : host
   switch (problem) {
     case 'machine-offline':
       return {
-        title: 'Your computer is offline or Caprock isn’t running',
-        body: `${name} is not connected to the relay. Wake it up, check it is on the internet, and open Caprock on it. This page keeps trying by itself.`,
+        title: 'Connected to the relay — your computer is offline',
+        body: `This phone reached the relay at ${host}, but ${name} is not connected to it: asleep, off the internet, or Caprock isn’t running on it. Wake it and open Caprock. This page keeps trying by itself.`,
       }
     case 'no-answer':
       return {
-        title: 'Your computer isn’t answering',
+        title: 'Connected to the relay — your computer isn’t answering',
         body: `The relay reached ${name}, but it did not reply. It may be asleep, or Caprock on it is restarting. This page keeps trying by itself.`,
       }
     case 'relay-unreachable':
       return {
-        title: 'Can’t reach the relay: check the internet',
-        body: `This phone cannot reach ${host}. Check Wi-Fi or mobile data. This page keeps trying by itself.`,
+        title: 'Can’t reach the relay',
+        body: `This phone cannot reach ${hosts}. Check your connection or VPN: a VPN, or a network that blocks it, is the usual cause. This page keeps trying by itself.`,
       }
     case 'no-internet':
       return { title: 'This phone is offline', body: 'Check Wi-Fi or mobile data. This page reconnects as soon as the network is back.' }
@@ -221,7 +235,7 @@ export function explain(problem: Problem, name: string, relay: string): { title:
       }
     case 'removed':
       return {
-        title: 'This phone was removed: pair again',
+        title: 'Paired device removed: pair again',
         body: `${name} no longer lets this phone in. On the computer, open Caprock: Settings → Use on your phone → Show a code, and scan it. This page keeps checking, and comes back by itself if it was a mistake.`,
       }
     case 'lost':
@@ -266,6 +280,72 @@ function ConnectionProblem({ link, onPair }: { link: Link; onPair: () => void })
           Pair again
         </button>
       </div>
+      <Details ch={currentChannel()} relay={cur?.relay ?? ''} />
+    </div>
+  )
+}
+
+/** A clock time, or a dash. */
+function at(t: number | null | undefined): string {
+  if (!t) return '—'
+  return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+/** The page loaded at… — the start of everything Details reports. */
+const LOADED_AT = Date.now()
+
+/**
+ * The facts behind the headline, folded: what the relay last said and when,
+ * when this page last tried and was last connected. For the owner reading it
+ * out, or a screenshot sent to whoever helps (Vova, 2026-10-15).
+ */
+export function detailRows(ch: Pick<Channel, 'lastError' | 'lastAttemptAt' | 'lastOpenAt' | 'attempt'> | null, relay: string, page: string, loadedAt: number): [string, string][] {
+  const e = ch?.lastError
+  return [
+    ['Page', page || '—'],
+    ['Relay', relay || '—'],
+    ['Last error', e ? `${e.problem}: ${e.reason}${e.code ? ` (code ${e.code})` : ''}` : '—'],
+    ['Error at', at(e?.at)],
+    ['Last try', at(ch?.lastAttemptAt)],
+    ['Last connected', ch?.lastOpenAt ? at(ch.lastOpenAt) : 'not since the page loaded'],
+    ['Page loaded', at(loadedAt)],
+    ['Tries since', String(ch?.attempt ?? 0)],
+  ]
+}
+
+function Details({ ch, relay }: { ch: Channel | null; relay: string }) {
+  const rows = detailRows(ch, relay, window.location.host, LOADED_AT)
+  return (
+    <details data-testid="connection-details" className="mt-6 text-[14px] text-fg-muted">
+      <summary className="cursor-pointer select-none text-fg-faint">Details</summary>
+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        {rows.map(([k, v]) => (
+          <div key={k} className="contents">
+            <dt className="text-fg-faint">{k}</dt>
+            <dd className="mono min-w-0 break-words text-fg">{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  )
+}
+
+/**
+ * This browser has the machine on its list and no token for it: storage
+ * cleared, or a pairing that never finished. Said in so many words, with the
+ * way back (Vova, 2026-10-15).
+ */
+function NotPairedHere({ name, onPair }: { name: string; onPair: () => void }) {
+  return (
+    <div role="alert" data-testid="not-paired-here" className="mx-auto max-w-md px-6 pb-10 pt-[max(2rem,env(safe-area-inset-top))]">
+      <h1 className="text-[22px] font-semibold leading-tight text-fg">This browser isn’t paired</h1>
+      <p className="mt-2 text-[16px] leading-snug text-fg-muted">
+        It knows {name}, but holds no pairing for it: its storage was cleared, or pairing did not finish. On your computer:{' '}
+        <b className="font-semibold text-fg">Caprock → Settings → Use on your phone → Show a code</b>, and scan it with this phone.
+      </p>
+      <button type="button" onClick={onPair} className="mt-6 min-h-12 w-full rounded-xl bg-accent text-[17px] font-semibold text-bg">
+        Pair this browser
+      </button>
     </div>
   )
 }
@@ -458,6 +538,14 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
               <p className="text-[22px] font-semibold text-fg">Caprock</p>
               <p className="text-[14px] text-fg-muted">caprock.dev · on your phone</p>
             </div>
+          </div>
+          {/* Opened with nothing stored: a newcomer, or a phone whose storage
+            * was cleared, or another browser (Vova, 2026-10-15). Say which
+            * is which before the steps. */}
+          <div role="note" data-testid="not-paired-here" className="mt-6 rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-[15px] leading-snug text-fg">
+            <b className="font-semibold">This browser isn’t paired.</b> Paired this phone before? Its storage was cleared, or this is another
+            browser{standalone() ? ' — a Home Screen app keeps storage of its own' : ''}. On your computer:{' '}
+            <b className="font-semibold">Caprock → Settings → Use on your phone → Show a code</b>.
           </div>
           <h1 className="mt-8 text-[32px] font-semibold leading-tight text-fg">Your computer, on your phone</h1>
           <p className="mt-2 text-[17px] text-fg-muted">Every session of the Caprock app on your computer, from anywhere. No app store needed.</p>

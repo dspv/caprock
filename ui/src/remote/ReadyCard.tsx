@@ -18,7 +18,7 @@
 import { useEffect, useState } from 'react'
 import { api, isPairedDevice, type PairMe } from '@/lib/api'
 import { JUST_PAIRED_KEY } from '@/screens/Pair'
-import { promptInstall, useInstallOffer, type InstallOffer } from './install'
+import { phoneKind, promptInstall, useInstallOffer, type InstallOffer } from './install'
 /** "<machine id>:<role>" the card was last closed for. */
 const DISMISSED_KEY = 'caprock.remote.readyDismissed'
 
@@ -116,7 +116,19 @@ export function ReadyGate({ machineId, machineName, children }: { machineId: str
   return <ReadyCard name={machineName} me={me} offer={offer} onOpen={() => { close(); window.location.hash = '#/' }} onClose={close} />
 }
 
-export function ReadyCard({ name, me, offer, onOpen, onClose }: { name: string; me: PairMe; offer: InstallOffer; onOpen: () => void; onClose: () => void }) {
+/**
+ * The words for keeping the page as an app when Chrome has not offered its
+ * own install (or on an iPhone, which never does): Safari's Share, Chrome's
+ * ⋮ menu. "Install app" in Chrome's menu, never "Add to Home screen", which
+ * makes a second, plain shortcut beside an app already installed.
+ */
+export function homeScreenSteps(offer: InstallOffer, kind: 'ios' | 'android' | null): string {
+  if (offer === 'ios' || kind === 'ios') return 'In Safari: Share → Add to Home Screen.'
+  if (kind === 'android') return 'In Chrome: ⋮ → Install app. If the menu says Open in app, it is already installed.'
+  return 'Install the app when the browser offers it.'
+}
+
+export function ReadyCard({ name, me, offer, onOpen, onClose, page = typeof window === 'undefined' ? '' : window.location.host, kind = typeof navigator === 'undefined' ? null : phoneKind(navigator.userAgent, navigator.maxTouchPoints ?? 0) }: { name: string; me: PairMe; offer: InstallOffer; onOpen: () => void; onClose: () => void; page?: string; kind?: 'ios' | 'android' | null }) {
   const canType = me.role === 'controller'
   const installed = offer === null ? isStandalone() || Boolean(me.installed) : offer === 'installed'
   return (
@@ -154,9 +166,18 @@ export function ReadyCard({ name, me, offer, onOpen, onClose }: { name: string; 
           ) : offer === 'ios' ? (
             <>Optional: Share → <b className="font-semibold text-fg">Add to Home Screen</b></>
           ) : (
-            <>Optional: install the app when the browser offers it</>
+            <>Optional: {homeScreenSteps(offer, kind)}</>
           )}
         </Row>
+        {/* Vova, 2026-10-15 (translated): "I opened the phone app, then
+          * closed the tab … today I want to open it again but I don't
+          * remember the link". The address is the way back; this phone keeps
+          * its pairing. */}
+        {!installed && page && (
+          <Row ok={false} optional testid="ready-return">
+            Next time, just open <b className="font-semibold text-fg select-all">{page}</b> on this phone: it stays paired.
+          </Row>
+        )}
       </ul>
       <button type="button" onClick={onOpen} className="mt-8 min-h-14 w-full rounded-xl bg-accent text-[17px] font-semibold text-bg">
         Open sessions

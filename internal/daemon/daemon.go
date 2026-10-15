@@ -632,7 +632,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.brain = d.newBrain()
 	d.brain.Start(ctx)
 	d.api = api.New(api.Deps{
-		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, Telegram: d.tg,
+		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, PhoneLink: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, WindowStop: d.windowStopStatus,
 		Resources:   func(ctx context.Context) any { return d.resources(ctx) },
 		Footprint:   func(ctx context.Context, orphans bool) any { return d.footprint(ctx, orphans) },
