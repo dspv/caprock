@@ -776,6 +776,16 @@ func TestEndAsksFirstAndKillsOnlyWhatWillNotStop(t *testing.T) {
 	if !clean.termed.Load() || clean.exitCode() != 0 {
 		t.Fatalf("termed=%v exit=%d, want a clean exit on the polite request", clean.termed.Load(), clean.exitCode())
 	}
+	// The fake reuses one session id: let the first session's exit finish
+	// unregistering it, or it races the second spawn and takes the new
+	// registration with it (seen on macOS CI).
+	gone := time.Now().Add(2 * time.Second)
+	for len(m.List()) > 0 && time.Now().Before(gone) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if n := len(m.List()); n != 0 {
+		t.Fatalf("the ended session is still listed (%d)", n)
+	}
 
 	was := endGrace
 	endGrace = 50 * time.Millisecond

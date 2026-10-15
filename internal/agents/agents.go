@@ -886,12 +886,13 @@ func (m *Manager) End(sessionID string) error {
 	if err := a.sess.Signal(ptyman.SignalTerm); err != nil {
 		return a.sess.Signal(ptyman.SignalKill)
 	}
+	grace := endGrace // read once, here: tests change it between calls
 	go func() {
 		done := make(chan struct{})
 		go func() { _ = a.sess.Wait(); close(done) }()
 		select {
 		case <-done:
-		case <-time.After(endGrace):
+		case <-time.After(grace):
 			_ = a.sess.Signal(ptyman.SignalKill)
 		}
 	}()
