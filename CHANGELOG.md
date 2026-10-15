@@ -7,6 +7,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **brain:** Second Brain looks like what it is: a brain made of a graph.
+  Nodes and links in the side view of a brain, in the memory kinds'
+  colours, softly pulsing, with a new node dropping in now and then and
+  linking up (still with reduced motion; CSS only, nothing runs in the
+  background). *How it works* is big and short — *Your agents' memory*,
+  one line on what it does, three one-line steps, *Over time: your
+  personal Jarvis*, one line on privacy and one button; the defaults
+  (Haiku, 300k tokens a day, up to five memories) moved into a folded
+  *Details*. The empty sidebar banner leads with the same brain, *Give
+  your agents a memory*, *Start building* and *How it works*.
+
 ## [0.117.5] - 2026-10-15
 
 ### Added
