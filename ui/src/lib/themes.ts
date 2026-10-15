@@ -12,7 +12,7 @@
  * can import it freely.
  */
 
-export type ThemeMode = 'dark-pastel' | 'dark-warm' | 'dark-cold' | 'dark-side' | 'light' | 'light-cold' | 'book' | 'light-side'
+export type ThemeMode = 'dark-pastel' | 'dark-warm' | 'dark-cold' | 'dark-side' | 'light' | 'light-cold' | 'book' | 'light-side' | 'sunlight'
 
 export interface ThemeRow {
   id: ThemeMode
@@ -79,6 +79,14 @@ export const THEMES: readonly ThemeRow[] = [
     id: 'light-side', name: 'Light Side', theme: 'light', sub: 'side', panel: '#f9f6ef',
     swatch: { bg: '#f2eee5', panel: '#f9f6ef', fg: '#1d2127', muted: '#5e636b', accent: '#1763cc', accent2: '#137a3f' },
     terminal: 'light-side', dashTerminal: 'slate', glow: true,
+  },
+  {
+    // For bright light (owner, 2026-10-15, translated: "a screen mode for
+    // when you sit in the sun"): black on pure white, no faint greys, every
+    // text colour 7:1 or more, dark hairlines, heavier text (tokens.css).
+    id: 'sunlight', name: 'Sunlight', theme: 'light', sub: 'sun', panel: '#ffffff',
+    swatch: { bg: '#ffffff', panel: '#f0f0f0', fg: '#000000', muted: '#3b3b3b', accent: '#0038b8' },
+    terminal: 'sunlight', dashTerminal: 'slate',
   },
 ]
 
