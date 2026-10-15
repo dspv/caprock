@@ -235,7 +235,11 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       if (filling && n++ < 40) listRef2.current(false).catch(() => {})
       tick()
     }, filling ? 400 : 4000)
-    return () => clearInterval(t)
+    // A hidden tab skips its ticks; coming back asks at once, so the counts
+    // are not a poll behind.
+    const back = () => { if (!document.hidden) tick() }
+    document.addEventListener('visibilitychange', back)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', back) }
   }, [ready, filling])
 
   // Spam lists the junk filter's catch first, then the AI's: the inbox's

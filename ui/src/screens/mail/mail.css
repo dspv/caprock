@@ -336,11 +336,11 @@
 .cm .junknote { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--danger) 6%, transparent); font-size: 12.5px; }
 /* AI triage: the inbox filters, the status line, the offer, the row labels. */
 .cm { --cat-important: var(--color-accent); --cat-updates: var(--color-ok); --cat-newsletter: var(--color-warn); --cat-spam: var(--color-danger); }
-.cm .cats { display: flex; flex-wrap: wrap; gap: 0; padding: 8px 8px 0; }
-.cm .cat { display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 2px 5px; cursor: pointer; color: var(--muted); white-space: nowrap; font-size: 12.5px; }
+.cm .cats { display: flex; flex-wrap: wrap; gap: 0; padding: 8px 6px 0; }
+.cm .cat { display: inline-flex; align-items: center; gap: 4px; border: 1px solid transparent; background: none; border-radius: 6px; padding: 2px 4px; cursor: pointer; color: var(--muted); white-space: nowrap; font-size: 12px; }
 .cm .cat:hover { background: var(--hover); color: var(--text); }
 .cm .cat.on { border-color: var(--line); background: var(--panel); color: var(--text); font-weight: 500; }
-.cm .cat em { font-style: normal; font-size: 11px; border-radius: 8px; padding: 0 5px; background: color-mix(in srgb, var(--cat-important) 16%, transparent); }
+.cm .cat em { font-style: normal; font-size: 10.5px; border-radius: 8px; padding: 0 4px; background: color-mix(in srgb, var(--cat-important) 16%, transparent); }
 .cm .cat.spam em { background: color-mix(in srgb, var(--cat-spam) 16%, transparent); color: var(--cat-spam); }
 .cm .cat kbd.k { opacity: .55; }
 .cm .cat.on kbd.k, .cm .cat:hover kbd.k { opacity: 1; }
