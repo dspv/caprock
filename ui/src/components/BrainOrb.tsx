@@ -50,6 +50,10 @@ const SESSION_GAP_MS = 4000
 /** Sessions beyond this add no more sparks: a busy day stays calm. */
 const SESSIONS_MAX = 6
 const PULSE_MS = 900
+/** The calm brain: how much of the turn, of the contrast, and of the sparks it keeps. */
+const CALM_TURN = 0.5
+const CALM_ALPHA = 0.6
+const CALM_SPARKS = 0.5
 /** Depth bands: points and links are drawn a band at a time, back to front. */
 const BANDS = 3
 
@@ -92,21 +96,27 @@ export interface BrainOrbProps {
   landed: number
   /** Sessions working right now, from data the page already has; a few slow sparks each. */
   working?: number
+  /**
+   * The sidebar's quieter brain (owner, 2026-10-15: "not grabbing
+   * attention"): it turns at CALM_TURN of the speed, draws at CALM_ALPHA of
+   * the contrast, and sends half the sparks. The screen draws the full one.
+   */
+  calm?: boolean
   className?: string
   /** Draw the agents' faces at the rim (the sidebar's card and the screen). */
   showAgents?: boolean
   ariaLabel?: string
 }
 
-export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, className = '', showAgents = true, ariaLabel }: BrainOrbProps) {
+export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, calm = false, className = '', showAgents = true, ariaLabel }: BrainOrbProps) {
   const wrap = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const claudeFace = useSessionFace(undefined)
   const shown = showAgents ? agents.slice(0, 4) : []
   const rim = seats(shown.length)
   // Live inputs for the running loop, without restarting it.
-  const live = useRef({ activity, landed, rim, kinds, working })
-  live.current = { activity, landed, rim, kinds, working }
+  const live = useRef({ activity, landed, rim, kinds, working, calm })
+  live.current = { activity, landed, rim, kinds, working, calm }
   const n = Math.max(MIN, Math.min(MAX, count))
 
   useEffect(() => {
@@ -169,6 +179,7 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
 
     const draw = (now: number) => {
       const d = dpr()
+      const fade = live.current.calm ? CALM_ALPHA : 1
       ctx.setTransform(d, 0, 0, d, 0, 0)
       ctx.clearRect(0, 0, w, h)
       const cx = w / 2
@@ -195,7 +206,7 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
       ctx.lineWidth = 1
       ctx.strokeStyle = colors.edge
       for (let band = 0; band < BANDS; band++) {
-        ctx.globalAlpha = 0.07 + (0.22 * (band + 0.5)) / BANDS
+        ctx.globalAlpha = (0.07 + (0.22 * (band + 0.5)) / BANDS) * fade
         ctx.beginPath()
         for (const [a, b] of links) {
           const depth = (pz[a]! + pz[b]! + 2) / 4
@@ -207,7 +218,7 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
       }
       // Points, back to front by depth band, one fill per band and colour.
       for (let band = 0; band < BANDS; band++) {
-        ctx.globalAlpha = 0.25 + (0.75 * (band + 0.5)) / BANDS
+        ctx.globalAlpha = (0.25 + (0.75 * (band + 0.5)) / BANDS) * fade
         for (let c = 0; c < palette(); c++) {
           ctx.fillStyle = kindColor(c)
           ctx.beginPath()
@@ -228,12 +239,12 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
         const depth = (pz[i]! + 1) / 2
         const glow = 1 - age / PULSE_MS
         const r = (1.3 + depth * 1.5) * (PERSPECTIVE / (PERSPECTIVE - pz[i]!)) * (1 + glow * 1.6)
-        ctx.globalAlpha = 0.25 + 0.75 * depth
+        ctx.globalAlpha = (0.25 + 0.75 * depth) * fade
         ctx.fillStyle = kindColor(i)
         ctx.beginPath()
         ctx.arc(px[i]!, py[i]!, r, 0, Math.PI * 2)
         ctx.fill()
-        ctx.globalAlpha = 0.55 * glow
+        ctx.globalAlpha = 0.55 * glow * fade
         ctx.strokeStyle = colors.ring
         ctx.lineWidth = 1.2
         ctx.beginPath()
@@ -260,7 +271,7 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
         const my = (sy + ty) / 2 - 18
         const x = (1 - e) ** 2 * sx + 2 * (1 - e) * e * mx + e * e * tx
         const y = (1 - e) ** 2 * sy + 2 * (1 - e) * e * my + e * e * ty
-        ctx.globalAlpha = Math.min(1, t * 4) * (1 - Math.max(0, t - 0.85) / 0.15) * (sp.slow ? 0.7 : 1)
+        ctx.globalAlpha = Math.min(1, t * 4) * (1 - Math.max(0, t - 0.85) / 0.15) * (sp.slow ? 0.7 : 1) * fade
         ctx.fillStyle = kindColor(sp.kind)
         ctx.beginPath()
         ctx.arc(x, y, sp.slow ? 1.8 : 2.2, 0, Math.PI * 2)
@@ -315,11 +326,13 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
       frame = 0
       const dt = last ? Math.min(150, now - last) : 0
       last = now
-      angle += (TURN * dt) / 1000
+      const calmNow = live.current.calm
+      angle += (TURN * (calmNow ? CALM_TURN : 1) * dt) / 1000
+      const sparkRate = calmNow ? CALM_SPARKS : 1
       const a = live.current.activity
-      if (a > 0 && now - lastSpark > 900 / a) { spark(now); lastSpark = now }
+      if (a > 0 && now - lastSpark > 900 / (a * sparkRate)) { spark(now); lastSpark = now }
       const ws = sessionsNow()
-      if (ws > 0 && now - lastSlow > SESSION_GAP_MS / ws) { spark(now, true); lastSlow = now }
+      if (ws > 0 && now - lastSlow > SESSION_GAP_MS / (ws * sparkRate)) { spark(now, true); lastSlow = now }
       while (seenLanded < live.current.landed) { seenLanded++; spark(now) }
       draw(now)
       start()

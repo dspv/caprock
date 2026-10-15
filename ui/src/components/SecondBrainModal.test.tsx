@@ -3,7 +3,8 @@ import { fireEvent, render, screen } from '@testing-library/react'
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, glance: vi.fn(() => Promise.resolve({ agents: [], display: {} })) } }
+  return { ...actual, api: { ...actual.api, glance: vi.fn(() => Promise.resolve({ agents: [], display: {} })),
+    brainStatus: vi.fn(() => Promise.resolve({ memories: 0, manual: 0, projects: [], db_path: '/Users/me/Library/Application Support/caprock/caprock.db' })) } }
 })
 
 import { SecondBrainModal } from './SecondBrainModal'
@@ -45,6 +46,19 @@ describe('SecondBrainModal', () => {
     expect(items.length).toBeLessThanOrEqual(3)
     for (const t of items) expect(t.split(/\s+/).length).toBeLessThanOrEqual(11)
     expect(details.className).toMatch(/\btext-fg\b/)
+  })
+
+  // Owner, 2026-10-15: show where the data lives — the daemon's real path.
+  it('says under Details where it is kept: the daemon’s path, the tables, and what leaves the machine', async () => {
+    render(<SecondBrainModal onClose={() => {}} onOpen={() => {}} />)
+    const where = document.querySelector('[data-brain-details] [data-brain-where]')!
+    expect(where.textContent).toMatch(/Where it’s kept/)
+    await screen.findByText('/Users/me/Library/Application Support/caprock/caprock.db')
+    expect(where.textContent).toMatch(/brain_nodes · brain_edges · brain_runs/)
+    expect(where.querySelector('[data-brain-leaves]')!.textContent).toBe('The session text goes to Anthropic through your own Claude to be read; nothing goes to Caprock.')
+    expect(where.querySelector('[data-brain-db-copy]')!.textContent).toBe('Copy path')
+    // No reveal in Finder or Explorer exists, so none is offered.
+    expect(where.textContent).not.toMatch(/Show in/)
   })
 
   it('opens the Second Brain screen and closes', () => {

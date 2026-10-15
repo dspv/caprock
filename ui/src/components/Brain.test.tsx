@@ -161,6 +161,7 @@ describe('Second Brain', () => {
   it('is a banner while empty and off: the agents and the brain, Free, the line, Start building, How it works, no bare zero, nothing sent', async () => {
     m.status.mockResolvedValue(status({ memories: 0, manual: 0, auto: auto({ chosen: false, on: false, enabled: false, pending: 0 }) }))
     m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
+    localStorage.setItem('caprock.app.brain-fold', 'open') // unfolded by this viewer
     render(<BrainSidebar onOpen={vi.fn()} />)
     await screen.findByRole('button', { name: 'Start building' })
     expect(document.querySelector('[data-brain-banner="off"]')).not.toBeNull()
@@ -177,6 +178,7 @@ describe('Second Brain', () => {
     m.status.mockResolvedValue(status({ memories: 0, manual: 0, auto: auto({ chosen: false, on: false, enabled: false, pending: 0 }) }))
     m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
     const onOpen = vi.fn()
+    localStorage.setItem('caprock.app.brain-fold', 'open') // unfolded by this viewer
     render(<BrainSidebar onOpen={onOpen} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Start building' }))
     expect(onOpen).toHaveBeenCalledTimes(1)
@@ -192,6 +194,7 @@ describe('Second Brain', () => {
   it('keeps its status line whole: the card is capped, the orb shrinks, the line does not', async () => {
     m.status.mockResolvedValue(status({ memories: 4, manual: 0, auto: auto({ pending: 0, spent: 1000 }) }))
     m.brain.mockResolvedValue({ nodes: [1, 2, 3, 4].map((id) => node({ id, title: `Memory ${id}` })), edges: [], total: 4 })
+    localStorage.setItem('caprock.app.brain-fold', 'open') // unfolded by this viewer
     render(<BrainSidebar onOpen={vi.fn()} working={3} />)
     await waitFor(() => expect(document.querySelector('[data-brain-orb]')).not.toBeNull())
     const section = document.querySelector('[data-brain-sidebar]')!
@@ -199,11 +202,13 @@ describe('Second Brain', () => {
     expect(section).toHaveClass('flex', 'flex-col', 'shrink-[20]', 'min-h-[136px]')
     expect(document.querySelector('[data-brain-block]')).toHaveClass('flex', 'flex-col', 'min-h-0')
     expect(document.querySelector('[data-brain-card]')).toHaveClass('flex', 'flex-col', 'min-h-0')
-    expect(document.querySelector('[data-brain-orb]')).toHaveClass('h-[150px]', 'min-h-[64px]', 'shrink')
+    expect(document.querySelector('[data-brain-orb]')).toHaveClass('h-[120px]', 'min-h-[64px]', 'shrink')
     expect(document.querySelector('[data-brain-status]')).toHaveClass('shrink-0')
   })
 
-  it('is the turning brain and one quiet line of what it does; the chevron folds it to one row, remembered', async () => {
+  // Owner, 2026-10-15, translated: "compact but interactive, not grabbing
+  // attention". Folded by default; a saved fold is kept.
+  it('starts folded: one quiet row, a still glyph and the mode in words; the chevron unfolds the calm brain, remembered', async () => {
     const t = Date.now()
     m.status.mockResolvedValue(status({ memories: 4, manual: 0, auto: auto({ pending: 0, spent: 1000 }) }))
     m.brain.mockResolvedValue({
@@ -211,7 +216,17 @@ describe('Second Brain', () => {
       edges: [],
       total: 4,
     })
-    render(<BrainSidebar onOpen={vi.fn()} />)
+    const { unmount } = render(<BrainSidebar onOpen={vi.fn()} />)
+    const row = await waitFor(() => { const r = document.querySelector('[data-brain-row]'); expect(r).not.toBeNull(); return r! })
+    expect(localStorage.getItem('caprock.app.brain-fold')).toBeNull()
+    expect(document.querySelector('[data-brain-orb]')).toBeNull()
+    expect(row.querySelector('[data-brain-mode]')!.textContent).toBe('Second Brain · Idle · 4 memories')
+    expect(row.querySelector('[data-brain-mode]')).toHaveClass('text-fg-muted')
+    expect(row.querySelector('[data-brain-glyph]')).toHaveAttribute('data-brain-glyph', 'still')
+    expect(row.querySelector('.brain-glyph-reading, .brain-live-dot')).toBeNull()
+    expect(document.querySelector('[data-brain-block]')!.className).toMatch(/hover:-translate-y-px/)
+    fireEvent.click(screen.getByRole('button', { name: 'Unfold Second Brain' }))
+    expect(localStorage.getItem('caprock.app.brain-fold')).toBe('open')
     await waitFor(() => expect(document.querySelector('[data-brain-orb]')).not.toBeNull())
     expect(m.brain).toHaveBeenCalledWith({ limit: 30 })
     expect(screen.getByRole('heading', { name: 'Second Brain' })).toBeTruthy()
@@ -221,18 +236,18 @@ describe('Second Brain', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Fold Second Brain' }))
     expect(localStorage.getItem('caprock.app.brain-fold')).toBe('closed')
     expect(document.querySelector('[data-brain-orb]')).toBeNull()
-    // Folded: one row, the mode first, then the figures.
-    const row = document.querySelector('[data-brain-row]')!
-    expect(row.querySelector('[data-brain-mode]')!.textContent).toBe('Idle')
-    expect(row.querySelector('[data-brain-metric]')!.textContent).toBe('4 · +4 today')
-    fireEvent.click(screen.getByRole('button', { name: 'Unfold Second Brain' }))
-    expect(localStorage.getItem('caprock.app.brain-fold')).toBe('open')
+    unmount()
+    // A viewer who unfolded it keeps it unfolded.
+    localStorage.setItem('caprock.app.brain-fold', 'open')
+    render(<BrainSidebar onOpen={vi.fn()} />)
+    await waitFor(() => expect(document.querySelector('[data-brain-orb]')).not.toBeNull())
   })
 
   it('is one interactive card: a click anywhere or Enter opens the screen; the chevron only folds', async () => {
     m.status.mockResolvedValue(status({ memories: 4, auto: auto({ pending: 0 }) }))
     m.brain.mockResolvedValue({ nodes: [node({ id: 7, title: 'Memory 7' })], edges: [], total: 1 })
     const onOpen = vi.fn()
+    localStorage.setItem('caprock.app.brain-fold', 'open') // unfolded by this viewer
     render(<BrainSidebar onOpen={onOpen} />)
     const block = await screen.findByRole('link', { name: /^Open Second Brain — Idle/ })
     expect(block.tabIndex).toBe(0)
@@ -259,14 +274,16 @@ describe('Second Brain', () => {
       }),
     }))
     m.brain.mockResolvedValue({ nodes: [node({ id: 1 })], edges: [], total: 1 })
+    localStorage.setItem('caprock.app.brain-fold', 'open') // unfolded by this viewer
     render(<BrainSidebar onOpen={vi.fn()} />)
     await screen.findByText('Extracting from acme-api…')
     expect(screen.getByText('· 12 of 41')).toBeTruthy()
     expect(document.querySelector('[data-brain-sidebar-live] [role="progressbar"]')!.getAttribute('aria-valuenow')).toBe('27')
     fireEvent.click(screen.getByRole('button', { name: 'Fold Second Brain' }))
+    // Folded while it reads: what it does, and the glyph is the one thing that moves.
     const row = document.querySelector('[data-brain-row]')!
-    expect(row.querySelector('[data-brain-mode]')!.textContent).toBe('Extracting from acme-api')
-    expect(row.querySelector('[data-brain-metric]')!.textContent).toBe('8')
+    expect(row.querySelector('[data-brain-mode]')!.textContent).toBe('Extracting from acme-api…')
+    expect(row.querySelector('[data-brain-glyph]')).toHaveClass('brain-glyph-reading')
   })
 
   it('names each mode in words: paused, needs Claude Code, indexing, limit reached', () => {
