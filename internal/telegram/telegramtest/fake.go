@@ -4,6 +4,7 @@ package telegramtest
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -31,7 +32,9 @@ type Sent struct {
 	// ForceReply says the message asked for a reply.
 	ForceReply bool
 	Emoji      string
-	At         time.Time
+	// Photo is a sendPhoto's file; Text is then its caption.
+	Photo []byte
+	At    time.Time
 }
 
 // Bot is a fake Bot API serving one bot.
@@ -189,6 +192,10 @@ func (b *Bot) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in map[string]any
+	if method == "sendPhoto" {
+		b.photo(w, r)
+		return
+	}
 	_ = json.NewDecoder(r.Body).Decode(&in)
 
 	b.mu.Lock()
@@ -264,6 +271,32 @@ func (b *Bot) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": 404, "description": "Not Found: method not found"})
 	}
+}
+
+// photo takes a sendPhoto upload as Telegram does: multipart, chat_id,
+// caption and the file in `photo`.
+func (b *Bot) photo(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(20 << 20); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": 400, "description": "Bad Request: not multipart"})
+		return
+	}
+	f, _, err := r.FormFile("photo")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": 400, "description": "Bad Request: there is no photo in the request"})
+		return
+	}
+	raw, _ := io.ReadAll(f)
+	_ = f.Close()
+	s := Sent{Method: "sendPhoto", ChatID: r.FormValue("chat_id"), Text: r.FormValue("caption"), Photo: raw, At: time.Now()}
+	b.mu.Lock()
+	b.calls = append(b.calls, "sendPhoto")
+	b.nextMsg++
+	s.MessageID = b.nextMsg
+	b.sent = append(b.sent, s)
+	b.mu.Unlock()
+	ok200(w, telegram.Message{MessageID: s.MessageID})
 }
 
 // poll confirms updates below offset and returns the rest, holding the
