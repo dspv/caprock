@@ -34,7 +34,9 @@ import { LastWord } from '@/components/LastWord'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { href } from '@/lib/router'
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
+import { WorkHomeCard } from '@/components/WorkHomeCard'
+import { PipelineHostContext } from '@/lib/pipelineHost'
 import { useNow, useNowFor } from '@/lib/useNow'
 import { LivePace, NOW_LIVE_MS, SLOW_LIVE_MS } from '@/lib/refresh'
 import { useNarrowScreen } from '@/lib/phone'
@@ -79,6 +81,8 @@ const fmtCount = (n: number) => Math.round(n).toLocaleString('en-US')
  */
 export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   const [showEnded, setShowEnded] = useState(false)
+  // In the app a Work row brings the session's tab forward (lib/pipelineHost).
+  const workHost = useContext(PipelineHostContext)
   // Which agent this whole screen is about. It reaches every panel, so the
   // figure at the top and the rows underneath always answer the same question
   // — a filtered list beside an unfiltered total is how a reader ends up
@@ -358,6 +362,11 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
       <PlanLimitsPanel limits={summary.data?.rate_limits} codex={summary.data?.codex_rate_limits} now={now} />
       <PlanLimitNudge limits={summary.data?.rate_limits} now={now} />
 
+      {/* Work, as a strip above the pulse (.ai/04-ui.md § Work): the headline
+        * and the first rows that need you or are working, with the way to
+        * the page. Nothing until an agent is live; hidden, it asks nothing. */}
+      <WorkHomeCard onOpenSession={workHost.onOpenSession} />
+
       {/* The shape of the work, above the detail of it: a glance says which
         * sessions are busy, which are grinding, and which have gone quiet. */}
       <PulsePanel sessions={list} now={now} />
@@ -370,7 +379,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
       {/* CI/CD beside the repositories: Actions minutes, CI time, red and stuck
         * runs, GitHub's status, the newest release, and what each pull request
         * cost the agents and who opened it. Folded, it asks nothing. */}
-      <CICDPanel />
+      <CICDPanel sessions={everySession} />
 
       {/* The all-time figures as pictures: donuts with the share printed
         * big, and the agents drawn as the Week card's characters. Collapsible,

@@ -29,6 +29,137 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   folder Caprock made and never deletes a repository on GitHub; Retry
   picks up where it stopped (ADR-065).
 
+## [0.118.0] - 2026-10-15
+
+### Added
+
+- **app:** a live session's row on Home takes you into the running session.
+  Click anywhere on the row (or Enter on it) and the session's tab comes to
+  the front, as its ⌘N does, or opens if it has none; *Go to session ↗* with
+  the tab's key shows on hover, and *details* still opens the session page.
+  A session started in your own terminal says *in your terminal* and offers
+  *Continue in Caprock*: a new process on a copy of the conversation, in a
+  new tab, leaving the one in your terminal untouched. An idle session
+  Caprock started gets a small **× End**, which asks first only when
+  messages wait in its queue; a working session and one your terminal
+  started never do. In a browser the row keeps its *open* link.
+- **work:** the Work page — every piece of work on the machine on its way to
+  a release, one row per branch at its furthest stage, grouped Next release,
+  In review, In work, Planned and Released, or as Kanban columns. Each row
+  has a bar along agent → PR → CI → merged → released filled to its stage
+  (red when CI failed or it conflicts), who works on it (the agent and
+  model, started by Caprock or your terminal), elapsed time and agent cost
+  at list price. Estimates appear only with a measured basis: a turn's
+  rough range, CI against its median, merge to release against the median
+  lag, and the gap since the last tag against the usual gap. Rows that
+  need you come first; agents idle for over 30 minutes fold into one line.
+  It is second in the Dashboard's menu (⇧⌘W; Ctrl+Alt+Shift+W on Windows
+  and Linux, and again back to where you were), and Home shows its headline
+  and first rows above the Live pulse with *Open Work →*. A session row
+  brings that session's tab to the front; a pull request's title opens it
+  in the Pipeline with its detail open.
+- **work:** The Work board's daemon answer, `GET /v1/work` (ADR-064): every
+  live session on the machine — started by Caprock or by hand — with its
+  state, its running turn's rough range (Claude Code only, never while it
+  waits on you), its own task list, what it cost today and the pull
+  requests it recorded; the task runner's tasks and the queued messages;
+  and each repository's `[Unreleased]` CHANGELOG entries, newest tags and
+  commits past the last one, read from local git as of your last fetch.
+  Nothing is written, nothing is polled, GitHub is not asked and git never
+  fetches. The screen comes next.
+- **pipeline:** The PRs & CI board's flow strip carries how often the
+  repository ships: the median gap between its releases already read
+  (`release_gap_median_ms`, with three gaps or more), never a date for the
+  next one.
+- **app:** a Sunlight theme for working in bright light. It is black text
+  on pure white with no faint greys: every text colour, the faintest
+  included, is 7:1 or more against its background, measured on every
+  surface. Text is one weight heavier, borders and hairlines are dark
+  enough to see in glare, and the sidebar is opaque. The status colours
+  and the accent are saturated and stay apart. Its terminal keeps all 16
+  ANSI colours at 5.3:1 or more on white (the normal eight 7:1), the
+  yellow and cyan that usually wash out included. Pick it under Light in
+  the theme picker or Settings → Appearance.
+
+### Changed
+
+- **app:** the Pipeline has its own tab again, pinned with the system tabs
+  right after the Dashboard tab and before Mail, drawn like them: its glyph
+  and ⌘P (Ctrl⇧P on Windows and Linux), its × while it is in front. ⌘P,
+  *Pipeline* at the foot of the sidebar and *Open Pipeline* in the palette
+  bring it to the front, and again go back to where you were; ⇧⌘B still
+  works and ⌘B stays the Pipeline bar. It stays in the Dashboard too:
+  *Pipeline* in its menu and *Open Pipeline →* on Home take you to that
+  tab, so the page is drawn once and, behind other tabs, reads nothing. The
+  tab is kept across restarts.
+- **app:** where you type is easier to find, quietly. The Chat view's field
+  carries a hint of the accent at rest — a faint tint and a hairline edge,
+  a little stronger with the focus — on every theme and terminal palette.
+  In a Claude Code terminal, the rows of its input box (between the two
+  rules, at the `❯` prompt) sit on a faint band of the terminal's own
+  background, lifted a step: it follows the box as it grows or moves, leaves
+  any cell Claude Code coloured alone, reads only the bottom rows of the
+  screen, and draws nothing for other agents, shells, dialogs and menus.
+- **app:** keys named after what they open. ⌘D opens the Dashboard (⌘0
+  still does), ⌘P the Pipeline (⇧⌘B still works), ⇧⌘T the theme picker,
+  and ⇧⌘W Work; ⌘F stays Find and ⌘T New shell. On Windows and Linux they
+  are Ctrl+Shift+D, Ctrl+Shift+P, Ctrl+Alt+Shift+T and Ctrl+Alt+Shift+W —
+  never Ctrl+D, which stays the shell's end of input. The sidebar's footer
+  shows *Dashboard ⌘D*, *Pipeline ⌘P* and the theme's ⇧⌘T, folded or not,
+  and the palette, the shortcuts list and the tooltips say the new keys.
+- **dashboard:** The Pipeline is in the Dashboard's menu, beside *Week*
+  (in the app it opens in its own tab, above). It shows one repository —
+  the agent in front's, else the one you looked at last — with buttons
+  beside its title to switch. It is drawn as the Dashboard is: its figures
+  are the Dashboard's tiles, larger and readable, each explained in a card
+  under it on hover rather than a tooltip over the number; every pull
+  request's whole title; and its four steps tell done (ticked), current
+  (filled, ✗ when red, a turning ring while CI runs) and still ahead
+  (outlined) apart by shape as well as colour. A pull request's detail
+  opens beside the list. Home's CI/CD section shows the Pipeline's first
+  five figures at its top — in flight, needing a fix, ready, throughput,
+  CI median — with *Open Pipeline →*.
+- **ui:** Get premium in the header is a quiet tinted button, not a bright
+  block: the same height, radius and type as Feedback and Settings beside
+  it, a faint premium tint with a hairline border and premium-coloured text,
+  the price a step fainter, a little stronger on hover. Its text reads at
+  4.5:1 or more in every palette.
+
+- **brain:** Second Brain looks like what it is: a brain made of a graph.
+  Nodes and links in the side view of a brain, in the memory kinds'
+  colours, softly pulsing, with a new node dropping in now and then and
+  linking up (still with reduced motion; CSS only, nothing runs in the
+  background). *How it works* is big and short — *Your agents' memory*,
+  one line on what it does, three one-line steps, *Over time: your
+  personal Jarvis*, one line on privacy and one button; the defaults
+  (Haiku, 300k tokens a day, up to five memories) moved into a folded
+  *Details*. The empty sidebar banner leads with the same brain, *Give
+  your agents a memory*, *Start building* and *How it works*.
+
+### Fixed
+
+- **picker:** an arrow key pressed in the folder picker the moment a
+  folder's entries appear is no longer lost; the selection used to be
+  cleared just after it was made.
+- **app:** the theme picker opens whole, above everything. From the
+  sidebar's footer its palettes were cut off at the sidebar's edge and the
+  terminal drew over them; it now opens over the whole window, kept inside
+  it on every edge at any sidebar width and with the footer folded, and
+  scrolls in a window shorter than itself. Opening it puts the focus on the
+  palette in use; Esc, or tabbing past the last palette, closes it and gives
+  the focus back to the button.
+- **app:** the sidebar footer's shortcuts are readable. Folded, the keys
+  above the icons were small faint 10px chips; now every key in the footer
+  is the New agent chip's size, folded or not. Where one has no room —
+  beside a row's words, or over a folded icon — it is left out whole
+  rather than drawn smaller, and the key stays in the tooltip: a row
+  measures itself and brings the chip back when it widens. Off macOS the
+  folded keys still show on hover, now at full size.
+- **mail:** the Caprock Mail preview app reloads onto Caprock's new page
+  after Caprock updates (it used to keep showing the page from before the
+  update when the port stayed the same), and a click on its Dock icon
+  brings the window back.
+
 ## [0.117.5] - 2026-10-15
 
 ### Added
@@ -47,14 +178,6 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
-- **app:** where you type is easier to find, quietly. The Chat view's field
-  carries a hint of the accent at rest — a faint tint and a hairline edge,
-  a little stronger with the focus — on every theme and terminal palette.
-  In a Claude Code terminal, the rows of its input box (between the two
-  rules, at the `❯` prompt) sit on a faint band of the terminal's own
-  background, lifted a step: it follows the box as it grows or moves, leaves
-  any cell Claude Code coloured alone, reads only the bottom rows of the
-  screen, and draws nothing for other agents, shells, dialogs and menus.
 
 - **brain:** the sidebar's Second Brain block is a small banner while it is
   empty, instead of a bare 0 and two faint lines: a faint graph breathing
@@ -95,6 +218,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   second, every few seconds, and typing in other windows came out ragged
   (user report on Windows 10). Every child now starts with a hidden
   console, and a test keeps it that way.
+
 - **mail:** adding an account can no longer sit on *Checking…* forever. A
   server that goes quiet while Mail connects or signs in — IMAP had no limit
   and SMTP waited five minutes per command — now ends the check within 30

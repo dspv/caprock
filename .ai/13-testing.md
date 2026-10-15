@@ -32,6 +32,7 @@ column says what it is when the suite that actually covers it is included.
 | `termbuf`          | 97.0%   |       | Measured 2026-10-04                                                             |
 | `ptyhost`          | 76.2%   |       | Measured 2026-10-04; the test binary plays holder and child, all three OSes     |
 | `templates`        | 81.2%   |       | Measured 2026-10-15; a fake `gh` (`testdata/fakegh`), never the real one        |
+| `relplan`          | 95.0%   |       | Measured 2026-10-15; a real clone in a temp dir, so all three OSes run git      |
 | `hive`             | 81.2%   |       |                                                                                 |
 | `board`            | 81.0%   |       |                                                                                 |
 | `statusline`       | 80.6%   |       |                                                                                 |
@@ -139,6 +140,32 @@ agent tag, dropping OpenCode's cost, removing tool-name normalisation or
 re-enabling the pricing table each turns the suite red. Two defects that had
 already shipped were found by writing them (see
 [16-opencode.md](16-opencode.md)).
+
+## The Work board
+
+`GET /v1/work` (ADR-064) is tested in three layers, all on fakes: no real
+`claude`, no real HOME, the store in memory.
+
+- **`internal/relplan`** parses `[Unreleased]` (missing and empty sections,
+  nested bullets and continuation lines dropped, CRLF, a heading with a
+  suffix, more than 30 entries) and the tag gaps (fewer than three gaps give
+  no median), then reads a real clone made in a temp dir with fixed commit
+  dates: the default branch from `origin/HEAD`, the CHANGELOG from that
+  branch rather than the work tree, the tags and the commits past the last
+  one. It runs git, so it runs on all three OSes.
+- **`internal/daemon/workboard_test.go`** drives the board with the agent
+  manager faked: a Caprock-started and a hand-started Claude Code session
+  each get a running turn's range from the project's history; a permission
+  dialog and a question have no range; another agent gets a note; a turn
+  over with a subagent still at work reads `background`; a shell is left
+  out; queued messages are folded together and clipped; today's spend
+  leaves yesterday out; each kind of link (`recorded`, `branch`, `none`)
+  appears; tasks are absent with the runner off and listed with it on. The
+  git reads are a stub there, and their 60-second keep is checked.
+- **`internal/store/workspend_test.go`** and **`internal/api/work_test.go`**
+  cover the grouped sum (internal work and other sessions left out) and the
+  wire shape (absent fields left out, `501` without a board);
+  `prboard_test.go` covers the release gap.
 
 ## Known gaps, and why they are open
 

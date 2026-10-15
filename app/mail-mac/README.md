@@ -6,8 +6,10 @@ Caprock daemon's `<daemon>/?mail=1` page in a WebKit window, so the accounts
 and the mail are the same as in Caprock's Mail tab ([ADR-057](../../.ai/08-decisions.md)).
 
 It starts nothing and stores nothing of its own. Without a running Caprock it
-says so and fills in when Caprock starts; a Caprock restarted on another port
-is picked up from `runtime.json` within a few seconds. Links that leave the
+says so and fills in when Caprock starts; a Caprock updated or restarted, on
+the same port or another, is picked up from `runtime.json` within a few
+seconds and the page reloads onto its UI. Closing the window keeps the app in
+the Dock, like Mail.app; a click on the icon brings the window back. Links that leave the
 daemon open in the browser; attachments save to Downloads.
 
 This is a preview for this machine, not a release: it is signed ad hoc, needs
