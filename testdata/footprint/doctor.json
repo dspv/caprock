@@ -39,9 +39,9 @@
     ]
   },
   "verdicts": [
-    {"level": "warn", "code": "duplicate_daemon", "text": "1 other Caprock daemon running beside this one (pid 9214 /opt/homebrew/bin/caprock, data /tmp/stand), using 33 MB. Caprock never stops another daemon on its own; stop the ones you do not use (the doctor's Advanced mode can)."},
+    {"level": "warn", "code": "duplicate_daemon", "text": "1 other Caprock daemon running beside this one (pid 9214 /opt/homebrew/bin/caprock, data /tmp/stand), using 33 MB. Caprock never stops another daemon on its own; stop the ones you do not use (the doctor's Clean up can)."},
     {"level": "warn", "code": "orphans", "text": "11 of 26 terminal holders are orphans no Caprock will reattach to (all of them together use 260 MB). 11 hold only an idle shell or nothing: the daemon stops them on its own within 10 minutes (the Stop button in Settings does it now)."},
-    {"level": "warn", "code": "stray_processes", "text": "2 processes look abandoned: 1 claude, 1 MCP server. Caprock never stops them on its own; the doctor's Advanced mode or `caprock doctor --stop <pid>` can."},
+    {"level": "warn", "code": "stray_processes", "text": "2 processes look abandoned: 1 claude, 1 MCP server. Caprock never stops them on its own; the doctor's Clean up or `caprock doctor --stop <pid>` can."},
     {"level": "warn", "code": "disk_reads_high", "text": "The daemon read 1.6 GB from disk in the last 60 minutes (over 500 MB)."},
     {"level": "ok", "code": "other_install_holders", "text": "11 terminal holders run from another Caprock install or an older version (9 from /opt/homebrew/bin/caprock, 2 from /Applications/Caprock 0.104.app/Contents/MacOS/caprock). 11 of them are orphans (above)."}
   ],

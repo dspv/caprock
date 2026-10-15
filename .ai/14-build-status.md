@@ -549,7 +549,7 @@ session started that outlived it — each with why, never anything with a
 terminal, in a live session, of another user, younger than two minutes or
 in an app bundle (a framework Python's `Python.app` is not one). Taken on
 demand (`?orphans=1`, the open panel, `caprock doctor`); the 10-minute sweep
-keeps the count. The panel's Advanced mode and `caprock doctor --stop <pid>`
+keeps the count. The panel's Clean up (since 2026-10-15; Advanced mode before) and `caprock doctor --stop <pid>`
 stop one listed process on a confirmed click, pid and start time checked
 before SIGTERM and SIGKILL; rule 7 now names this as its one exception. On
 the owner's Mac (read-only, 2026-10-14) the doctor listed a Python

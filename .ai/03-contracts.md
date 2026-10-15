@@ -1245,8 +1245,8 @@ scan's counts and an empty list.
   with `doctor.txt` pin the two renderings to each other.
 
 `POST /v1/footprint/orphans/stop` `{targets: [{pid, started_at}]}` (1 to 256)
-→ `{stopped: [orphan…], failed: [{pid, error}]}`: the Advanced mode's Stop
-and Stop selected ([ADR-059](08-decisions.md)). The daemon takes the orphan
+→ `{stopped: [orphan…], failed: [{pid, error}]}`: the doctor's Clean up
+and row Stop ([ADR-059](08-decisions.md)). The daemon takes the orphan
 list again and stops only a target that list holds with the same
 `started_at`; anything else fails with *not on the doctor's list now*.
 Each is sent SIGTERM, then SIGKILL after 5 s if it is still there (Windows:

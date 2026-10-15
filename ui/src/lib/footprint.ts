@@ -151,12 +151,6 @@ export function warnings(f: Footprint | undefined): FootprintVerdict[] {
   return (f?.verdicts ?? []).filter((v) => v.level === 'warn')
 }
 
-/** "All good", or how many things to look at: the panel's one-line verdict. */
-export function verdictSummary(f: Footprint): string {
-  const n = warnings(f).length
-  return n === 0 ? 'All good' : `${n} ${n === 1 ? 'thing' : 'things'} to look at`
-}
-
 /** The window: the app's own process and the web view helpers that draw it. */
 export function windowUsage(f: Footprint): { mem_bytes: number; cpu_pct: number; procs: number } | undefined {
   const { app, webview } = f.memory
@@ -299,22 +293,6 @@ function orphanLines(at: number, p: Orphan, indent: string): string[] {
   return out
 }
 
-/** The kinds a person reads: "claude", "MCP server", "Caprock daemon". */
-export const ORPHAN_KIND: Record<string, string> = {
-  caprock_daemon: 'Caprock daemon',
-  caprock_holder: 'terminal holder',
-  caprock_other: 'Caprock command',
-  claude: 'claude',
-  mcp_server: 'MCP server',
-  claude_child: 'from Claude Code',
-}
-
-/** The orphans the strip warns about: not Caprock's own (those have their own warnings), not what Claude Code left on purpose. */
-export function strayCount(o: OrphanReport | undefined): number {
-  const k = o?.by_kind ?? {}
-  return (k.claude ?? 0) + (k.mcp_server ?? 0) + (k.caprock_other ?? 0)
-}
-
 /** For the strip's tooltip: what the two figures are. */
 export function footprintTitle(f: Footprint): string {
   return [
@@ -322,4 +300,215 @@ export function footprintTitle(f: Footprint): string {
     ...warnings(f).map((v) => v.text),
     'Click for what it is spent on — caprock doctor.',
   ].join('\n')
+}
+
+// --- the doctor in plain words (owner, 2026-10-15) --------------------------
+//
+// The owner opened the doctor on a day with three test daemons, four
+// leftover servers and a busy disk, and read a wall of pids and paths
+// (translated): "nothing is understandable". The panel now says one verdict
+// line, then one row per kind of problem in words a non-engineer reads in
+// three seconds; pids, paths and the daemon's own sentences are one click
+// down, under Details.
+
+/** A temporary folder or an agent's worktree: where agent work starts throwaway daemons. */
+const THROWAWAY = [
+  /[/\\]\.claude[/\\]worktrees[/\\]/,
+  /[/\\]scratchpad[/\\]/,
+  /^\/(private\/)?tmp\//,
+  /^\/(private\/)?var\/folders\//,
+  /[/\\]Temp[/\\]/i,
+]
+
+export function isThrowawayPath(p: string | undefined): boolean {
+  return Boolean(p) && THROWAWAY.some((r) => r.test(p!))
+}
+
+/** A Caprock started from a temporary folder or a worktree: agent work, not the person's app. */
+export function isTestCopy(o: { exe?: string; data_dir?: string; data_dir_gone?: boolean }): boolean {
+  return Boolean(o.data_dir_gone) || isThrowawayPath(o.data_dir) || isThrowawayPath(o.exe)
+}
+
+/**
+ * Where a process came from, in words: "worktree phone-end", "agent
+ * scratchpad caprock-triage", "a temporary folder". Undefined for a path
+ * that is none of those.
+ */
+export function startedFrom(...paths: (string | undefined)[]): string | undefined {
+  for (const p of paths) {
+    if (!p) continue
+    const wt = /[/\\]\.claude[/\\]worktrees[/\\]([^/\\]+)/.exec(p)
+    if (wt) return `worktree ${wt[1]}`
+    const sp = /[/\\]scratchpad[/\\]([^/\\]+)/.exec(p)
+    if (sp) return `agent scratchpad ${sp[1]}`
+  }
+  return paths.some(isThrowawayPath) ? 'a temporary folder' : undefined
+}
+
+/**
+ * Whether Clean up ticks it by default. Everything the doctor lists may be
+ * stopped (ADR-059); these are the ones that are safe to stop without
+ * reading further. Left unticked: a terminal holder something still runs in
+ * (stopping it closes that terminal), a Caprock daemon for a data folder
+ * that is not a temporary one (it may be a second install someone uses),
+ * and a Caprock command inside an app bundle.
+ */
+export function safeToStop(o: Orphan): boolean {
+  switch (o.kind) {
+    case 'caprock_daemon': return isTestCopy(o)
+    case 'caprock_holder': return Boolean(o.auto)
+    case 'caprock_other': return !/\.app[/\\]/.test(o.exe ?? '')
+    default: return true
+  }
+}
+
+export type DoctorRowKey = 'copies' | 'apps' | 'terminals' | 'commands' | 'claude' | 'helpers' | 'reads' | 'database' | 'wal' | 'daemon' | string
+
+/** One row of the doctor: what, why in a line, how big, and what can be stopped. */
+export interface DoctorRow {
+  key: DoctorRowKey
+  title: string
+  count?: number
+  /** One line, in words. */
+  reason: string
+  /** "66 MB", "1.6 GB / hour". */
+  value?: string
+  /** Amber only for a real problem: a warning verdict. */
+  warn: boolean
+  /** What its Stop and Clean up may stop: listed by the doctor's scan, on the machine. */
+  stoppable: Orphan[]
+  /** The processes behind it, for Details: from the scan, or the duplicates when the scan has not landed. */
+  procs: { pid: number; mem_bytes: number; started_at?: number; exe?: string; data_dir?: string; data_dir_gone?: boolean; why?: string; label?: string }[]
+  /** The daemon's own sentence, for Details. */
+  said?: string
+}
+
+/** The rows, problems first, in the order a person would act on them. */
+export function doctorRows(f: Footprint): DoctorRow[] {
+  const verdict = (code: string) => (f.verdicts ?? []).find((v) => v.code === code)
+  const isWarn = (code: string) => verdict(code)?.level === 'warn'
+  const list = f.orphans?.scanned ? (f.orphans.list ?? []) : []
+  const of = (...kinds: string[]) => list.filter((o) => kinds.includes(o.kind))
+  const mem = (xs: { mem_bytes: number }[]) => xs.reduce((s, x) => s + x.mem_bytes, 0)
+  const rows: DoctorRow[] = []
+
+  if (verdict('daemon_not_running')) {
+    rows.push({ key: 'daemon', title: 'Caprock is not running', reason: 'Start it from the desktop app or with caprock up.', warn: true, stoppable: [], procs: [], said: verdict('daemon_not_running')!.text })
+  }
+
+  // Other daemons: from the scan when it is in (with what Stop needs), else the duplicates.
+  const daemons = of('caprock_daemon')
+  const dups = f.duplicates.daemons ?? []
+  const copies = daemons.length ? daemons : dups
+  if (copies.length) {
+    const test = copies.every(isTestCopy)
+    rows.push({
+      key: 'copies',
+      title: test ? 'Test copies of Caprock' : 'Other copies of Caprock',
+      count: copies.length,
+      reason: test ? 'Started by agent work, not your app.' : `Running for ${copies.length === 1 ? 'a different data folder' : 'different data folders'}, beside your app.`,
+      value: fmtBytes(daemons.length ? mem(daemons) : f.memory.other_daemons_mem_bytes || mem(dups)),
+      warn: isWarn('duplicate_daemon'),
+      stoppable: daemons,
+      procs: copies,
+      said: verdict('duplicate_daemon')?.text,
+    })
+  }
+
+  const apps = f.duplicates.apps ?? []
+  if (apps.length > 1) {
+    rows.push({ key: 'apps', title: 'The desktop app is open twice', count: apps.length, reason: 'Quit all but one.', value: fmtBytes(mem(apps)), warn: isWarn('duplicate_app'), stoppable: [], procs: apps, said: verdict('duplicate_app')?.text })
+  }
+
+  const holders = of('caprock_holder')
+  const h = f.memory.hosts
+  if (holders.length || h.orphans > 0) {
+    const n = holders.length || h.orphans
+    rows.push({
+      key: 'terminals',
+      title: 'Unused Caprock terminals',
+      count: n,
+      reason: h.reapable > 0 || holders.some((o) => o.auto) ? 'Nothing is attached to them. Caprock clears these on its own.' : 'Nothing is attached to them, but something still runs inside.',
+      value: holders.length ? fmtBytes(mem(holders)) : undefined,
+      warn: isWarn('orphans'),
+      stoppable: holders,
+      procs: holders,
+      said: verdict('orphans')?.text,
+    })
+  }
+
+  const strayWarn = isWarn('stray_processes')
+  const commands = of('caprock_other')
+  if (commands.length) {
+    rows.push({ key: 'commands', title: 'Leftover Caprock commands', count: commands.length, reason: 'Started by a window or script that has closed.', value: fmtBytes(mem(commands)), warn: strayWarn, stoppable: commands, procs: commands })
+  }
+  const claudes = of('claude')
+  if (claudes.length) {
+    rows.push({ key: 'claude', title: 'Finished Claude sessions still running', count: claudes.length, reason: 'Their session has ended; the process did not.', value: fmtBytes(mem(claudes)), warn: strayWarn, stoppable: claudes, procs: claudes })
+  }
+  const helpers = of('mcp_server', 'claude_child')
+  if (helpers.length) {
+    rows.push({ key: 'helpers', title: 'Leftover helpers', count: helpers.length, reason: 'Servers left running by finished agent sessions.', value: fmtBytes(mem(helpers)), warn: strayWarn && helpers.some((o) => o.kind === 'mcp_server'), stoppable: helpers, procs: helpers, said: verdict('stray_processes')?.text })
+  }
+  // Before the scan lands: the strip's counts, so the row is not missing for ten seconds.
+  if (!f.orphans?.scanned && f.orphans && f.orphans.count > 0) {
+    const k = f.orphans.by_kind ?? {}
+    const n = (k.claude ?? 0) + (k.mcp_server ?? 0) + (k.claude_child ?? 0) + (k.caprock_other ?? 0)
+    if (n) rows.push({ key: 'helpers', title: 'Leftover processes', count: n, reason: 'Left running by finished sessions. Looking at them now…', warn: strayWarn, stoppable: [], procs: [], said: verdict('stray_processes')?.text })
+  }
+
+  const io = f.disk_io?.last_hour
+  if (io) {
+    const high = isWarn('disk_reads_high')
+    const span = io.seconds >= 3540 ? 'hour' : `${Math.max(1, Math.round(io.seconds / 60))} min`
+    // The daemon's own threshold, as its sentence says it: "(over 500 MB)".
+    const over = /\(over ([0-9.]+ [KMG]?B)\)/.exec(verdict('disk_reads_high')?.text ?? '')?.[1]
+    rows.push({
+      key: 'reads',
+      title: 'Disk reads',
+      reason: high ? `More than usual for Caprock${over ? ` (over ${over} an hour)` : ''}.` : 'Normal for Caprock.',
+      value: `${fmtBytes(io.read_bytes)} / ${span}`,
+      warn: high, stoppable: [], procs: [], said: verdict('disk_reads_high')?.text,
+    })
+  }
+  if (verdict('database_large')) {
+    rows.push({ key: 'database', title: 'History is large', reason: 'A retention period in Settings deletes old events.', value: fmtBytes(f.disk.database_bytes), warn: isWarn('database_large'), stoppable: [], procs: [], said: verdict('database_large')!.text })
+  }
+  if (verdict('wal_large')) {
+    rows.push({ key: 'wal', title: 'A database file has grown', reason: 'Caprock folds it back on its own within minutes.', value: fmtBytes(f.disk.wal_bytes), warn: isWarn('wal_large'), stoppable: [], procs: [], said: verdict('wal_large')!.text })
+  }
+  // A warning this build does not know: the daemon's sentence as it is.
+  const known = new Set(['ok', 'daemon_not_running', 'duplicate_daemon', 'duplicate_app', 'orphans', 'stray_processes', 'disk_reads_high', 'database_large', 'wal_large', 'other_install_holders'])
+  for (const v of warnings(f)) {
+    if (!known.has(v.code)) rows.push({ key: v.code, title: v.text, reason: '', warn: true, stoppable: [], procs: [] })
+  }
+  // Problems first; the rest keep their order.
+  return [...rows.filter((r) => r.warn), ...rows.filter((r) => !r.warn)]
+}
+
+/** Everything Clean up offers: each row's stoppable processes, in row order. */
+export function cleanupList(rows: DoctorRow[]): Orphan[] {
+  const seen = new Set<number>()
+  return rows.flatMap((r) => r.stoppable).filter((o) => !seen.has(o.pid) && seen.add(o.pid))
+}
+
+/** The one line at the top. */
+export function doctorHeadline(f: Footprint): { ok: boolean; text: string } {
+  if ((f.verdicts ?? []).some((v) => v.code === 'daemon_not_running')) return { ok: false, text: 'Caprock is not running' }
+  if (!warnings(f).length) return { ok: true, text: `All good — Caprock uses ${fmtMem(f.memory.total_mem_bytes)}` }
+  return { ok: false, text: 'Caprock is using more than it should' }
+}
+
+/** "3 test copies of Caprock", for the confirmation and the note after a stop. */
+export function plainName(o: Orphan): string {
+  switch (o.kind) {
+    case 'caprock_daemon': return isTestCopy(o) ? 'Test copy of Caprock' : 'Other copy of Caprock'
+    case 'caprock_holder': return 'Unused Caprock terminal'
+    case 'caprock_other': {
+      const app = /([^/\\]+)\.app[/\\]/.exec(o.exe ?? '')?.[1]
+      return app ? `${app} helper` : `Leftover ${o.label}`
+    }
+    case 'claude': return 'Finished Claude session'
+    default: return `Leftover ${o.label}`
+  }
 }
