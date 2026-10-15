@@ -2019,6 +2019,8 @@ export const api = {
   queue: (id: string) => get<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue`),
   /** The Queue view: every owned session, what waits in its queue, rough estimates, recent turns. */
   queueBoard: () => get<QueueBoard>('/v1/queue'),
+  /** The Work board: live sessions with their pull requests, tasks, queued messages, each repository's release cadence. */
+  work: () => get<Work>('/v1/work'),
   /** The chat field's send: typed in now at the prompt, otherwise queued. */
   queueSend: (id: string, text: string) => post<QueueSendResult>(`/v1/agents/${encodeURIComponent(id)}/queue`, { text }),
   queueEdit: (id: string, qid: number, text: string) => post<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue/${qid}`, { text }, 'PATCH'),
@@ -2230,7 +2232,7 @@ export interface BoardSession {
   waiting: QueueWaiting
   /** Unix ms the running turn's prompt went in; absent when not known. */
   turn_started_at?: number
-  todo?: { active?: string; done: number; total: number }
+  todo?: BoardTodo
   queue: BoardItem[]
   turn_left?: ETA
   /** When a message added now would start; absent when it cannot be estimated. */
@@ -2256,6 +2258,109 @@ export interface QueueBoard {
   sessions: BoardSession[]
   done: BoardDone[]
   done_since: number
+}
+
+/** The agent's own task list in short: the step it is on, how many are done of how many. */
+export interface BoardTodo {
+  active?: string
+  done: number
+  total: number
+}
+
+/** What an agent session is doing, as the Work board says it. */
+export type WorkState = 'working' | 'permission' | 'question' | 'at_prompt' | 'background'
+
+/** A pull request a session opened or was recorded on. */
+export interface WorkPR {
+  number: number
+  url: string
+  title?: string
+  opened_at?: number
+  merged_at?: number
+}
+
+/** One live agent session on the Work board (GET /v1/work). */
+export interface WorkSession {
+  session_id: string
+  agent: string
+  /** Caprock started it (true), or it runs in the person's own terminal (false). */
+  owned: boolean
+  model?: string
+  model_display?: string
+  subscription?: string
+  name?: string
+  description?: string
+  description_source?: string
+  project: string
+  repo_root?: string
+  worktree?: string
+  branch?: string
+  /** It works on the repository's default branch. */
+  on_default?: boolean
+  started_at: number
+  /** When it last did work (unix ms). */
+  worked_at?: number
+  state: WorkState
+  turn_started_at?: number
+  turn_left?: ETA
+  estimate?: TurnEstimate
+  estimate_note?: string
+  todo?: BoardTodo
+  /** At API list price, not a bill. */
+  cost_usd: number
+  today_usd: number
+  prs: WorkPR[]
+  /** How its pull requests were found: its branch's, the ones recorded on it, none. */
+  link: 'branch' | 'recorded' | 'none'
+  link_note?: string
+}
+
+/** A hive task (Tasks), when the hive is on. */
+export interface WorkTask {
+  id: string
+  title: string
+  status: string
+  session_id?: string
+  branch?: string
+  budget_usd: number
+  spent_usd: number
+}
+
+/** A message waiting for an owned session's turn to end (ADR-053). */
+export interface WorkQueued {
+  session_id: string
+  position: number
+  text: string
+  start?: ETA
+  finish?: ETA
+}
+
+/** A repository on the Work board: its release cadence and what waits for the next release. */
+export interface WorkRepo {
+  root: string
+  name: string
+  /** owner/name on GitHub; absent when the remote is not GitHub's. */
+  remote?: string
+  /** The session the repository's Pipeline answer is read through. */
+  via_session: string
+  live: number
+  /** CHANGELOG's [Unreleased] section on `ref`, as of the last fetch. */
+  unreleased?: { ref: string; items: string[]; count: number; more?: boolean }
+  tags?: { last?: { name: string; at: number }; gap_median_ms?: number; gaps: number }
+  /** Commits on the default branch since the last tag. */
+  ahead_of_tag?: number
+}
+
+/** GET /v1/work: the work on its way to a release, across the machine. */
+export interface Work {
+  now: number
+  day_start: number
+  sessions: WorkSession[]
+  tasks?: WorkTask[]
+  hive: 'on' | 'off'
+  queued: WorkQueued[]
+  repos: WorkRepo[]
+  totals: { live: number; working: number; waiting_you: number; today_usd: number; machine_today_usd: number }
 }
 
 export interface QueueSendResult {

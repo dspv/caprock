@@ -18,6 +18,17 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **work:** the Work page — every piece of work on the machine on its way to
+  a release, one row per branch at its furthest stage, grouped Next release,
+  In review, In work, Planned and Released, or as Kanban columns. Each row
+  has a bar along agent → PR → CI → merged → released filled to its stage
+  (red when CI failed or it conflicts), who works on it (the agent and
+  model, started by Caprock or your terminal), elapsed time and agent cost
+  at list price. Estimates appear only with a measured basis: a turn's
+  rough range, CI against its median, merge to release against the median
+  lag, and the gap since the last tag against the usual gap. Rows that
+  need you come first; agents idle for over 30 minutes fold into one line.
+  The page and its Home card are built; the route and its key come next.
 - **brain:** Second Brain's status says when the reader wakes next
   (`next_wake`), so a screen can tell you when the first memories may come
   instead of leaving you at 0. Turning building on still wakes the reader

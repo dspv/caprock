@@ -61,6 +61,9 @@ export interface BoardFlow {
   /** Merged → released: an estimate, the release matched by time. */
   release_lag_median_ms?: number
   release_lag_count: number
+  /** Release → release: the median gap between published releases, and how many gaps it is of. */
+  release_gap_median_ms?: number
+  release_gap_count?: number
   ci_median_ms?: number
   cost_usd: number
 }
@@ -105,7 +108,8 @@ export function asBoard(v: unknown): PRBoard | undefined {
       .map((r) => ({ ...r, prs: Array.isArray(r.prs) ? r.prs : [], cost_usd: num(r.cost_usd), sessions: num(r.sessions), published_at: num(r.published_at) })),
     flow: {
       counts, days: num(f.days) || 14, merged: num(f.merged), ttm_median_ms: f.ttm_median_ms || undefined, ttm_count: num(f.ttm_count),
-      release_lag_median_ms: f.release_lag_median_ms || undefined, release_lag_count: num(f.release_lag_count), ci_median_ms: f.ci_median_ms || undefined, cost_usd: num(f.cost_usd),
+      release_lag_median_ms: f.release_lag_median_ms || undefined, release_lag_count: num(f.release_lag_count),
+      release_gap_median_ms: f.release_gap_median_ms || undefined, release_gap_count: num(f.release_gap_count), ci_median_ms: f.ci_median_ms || undefined, cost_usd: num(f.cost_usd),
     },
   }
 }
