@@ -36,6 +36,7 @@ import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
 import { FlowFigures, Releases } from './PRBoard'
+import { CostHourStat, TeamChart, TeamStat, useRepoAgents } from './AgentFigures'
 import { PipelineRelease } from './ReleasePlan'
 import { JourneyPills } from './Journey'
 import { GitHubPerson } from './GitHubAvatar'
@@ -57,6 +58,8 @@ export interface PipelineViewProps {
   picker?: ReactNode
   /** A pull request whose detail opens as the page does, or as the address names another (`&pr=`). */
   pr?: number
+  /** The repository's folders (clones of one are several), for its agent figures; absent, the session's own. */
+  roots?: string[]
 }
 
 const SCOPE_KEY = 'caprock.prsTab.scope'
@@ -99,7 +102,7 @@ function BackButton({ onBack }: { onBack: () => void }) {
   return <ExpandToggle collapse onClick={onBack} />
 }
 
-function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, onStartAgent, picker, pr }: PipelineViewProps & { session: SessionSummary }) {
+function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, onStartAgent, picker, pr, roots }: PipelineViewProps & { session: SessionSummary }) {
   const canControl = useCanControl()
   const [scope, setScopeState] = useState<TabScope>(readScope)
   const setScope = (v: TabScope) => { setScopeState(v); try { localStorage.setItem(SCOPE_KEY, v) } catch { /* this page only */ } }
@@ -110,6 +113,11 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
   const [connecting, setConnecting] = useState(false)
 
   const [stats, statsAt, statsMeta] = usePipelineStats(sessionId, s, visible, n)
+  // What an hour of agent work costs and how big the agent team is, from
+  // the repository's own sessions (AgentFigures).
+  const agentRoots = useMemo(() => roots?.length ? roots : [s.repo_root || s.cwd].filter((x): x is string => !!x), [roots, s.repo_root, s.cwd])
+  const [agents] = useRepoAgents(agentRoots, visible)
+  const [teamOpen, setTeamOpen] = useState(false)
   const [prs] = usePoll<SessionPRs>(visible, `${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`)
   const sessionPRs = useMemo(() => prs?.prs ?? [], [prs])
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
@@ -200,12 +208,13 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
       {ready && (
         <Panel title={stats?.repo ? <>Flow · <span className="mono normal-case tracking-normal text-fg">{stats.repo}</span></> : 'Flow'}
           right={<span title="Read from GitHub: the newest pull requests listed, the runs of the last 14 days">GitHub · last {board?.flow.days ?? 14} days</span>}>
-          {board ? <FlowFigures board={board} />
+          {board ? <FlowFigures board={board} extra={agents && <><CostHourStat a={agents} /><TeamStat a={agents} open={teamOpen} onToggle={() => setTeamOpen((o) => !o)} /></>} />
             : !stats ? <div className="px-3 py-2"><DeckSkeleton label="Reading the figures" /></div>
               : stats.error && (stats.prs?.length ?? 0) === 0 ? <p className="truncate px-3 py-3 text-[13px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p>
                 : <p className="px-3 py-3 text-[13px] text-fg-muted">No figures yet.</p>}
         </Panel>
       )}
+      {ready && teamOpen && agents && <TeamChart a={agents} onClose={() => setTeamOpen(false)} />}
       {/* The next release, by the page's own answer (owner, 2026-10-15,
         * translated: "I'm missing progress bars to the release here"). */}
       {ready && (s.repo_root || s.cwd) && <PipelineRelease root={(s.repo_root || s.cwd)!} stats={stats} visible={visible} now={now} onOpen={(num) => setChosen(num)} />}

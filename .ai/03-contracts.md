@@ -15,7 +15,7 @@ Conventions that apply to every contract here: JSON casing is **snake_case**; al
 
 ### Hook payload (what the shim forwards, verbatim)
 
-Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. Event-specific fields the daemon reads:
+Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. The parent's hooks also fire for its subagents' tool calls, under the parent's `session_id`; when such a payload names no `agent_id`, hookd takes it from a `transcript_path` of the form `<session-id>/subagents/…/agent-<id>.jsonl`, so the call is the subagent's and not the main thread's. Event-specific fields the daemon reads:
 
 | Event               | Fields consumed                                              |
 | ------------------- | ------------------------------------------------------------ |
@@ -317,6 +317,53 @@ device. The relay's wire is `internal/remote/wire.go`, the channel's frames
 sending to it, is closed with 4404 and the stale connection dropped (4408
 on the hosted relay), never spliced to a machine that went to sleep.
 
+**Other computers (ADR-067).** A daemon reaches another machine's daemon as
+that machine's paired device, over the same relay channel a phone uses —
+the target runs its ordinary Host and gate, unchanged. What exists so far
+(PR1 of Phase 1; no route, CLI or UI yet):
+
+- **`machines.json`** in the data directory, mode 0600 (written atomically;
+  on Windows the mode is not enforced and the file is in the user's
+  profile, as `devices.json` is): a JSON array of `{id, key, relay, name,
+  token, device_id, added_at}` — `id` the target's relay id (its Ed25519
+  key, base64url), `key` its X25519 static key (base64url, pinned by every
+  handshake), `relay` the `wss://` address from its link, `name` this
+  machine's label for it (40 characters, printable), `token` this machine's
+  device token there, `device_id` the target's id for this device, and
+  `added_at` unix milliseconds by this machine's clock. An entry missing
+  `id`, `key`, `relay` or `token` is skipped on read; a file that is not
+  JSON reads as no computers (logged), never as a crash. Never in
+  `config.json`.
+- **The link** a computer is paired with is `remote.PairLink`'s (above):
+  `ParsePairLink` takes the whole link, the same wrapped in `<>` or quotes,
+  or only the part after `?`. `r` must pass `CheckRelayURL`, `h` must be an
+  Ed25519 key, `k` 32 bytes, `c` digits only; `n` is optional. Pairing
+  needs `c`; it is redeemed with `POST /v1/pair` `{code, name}` through the
+  channel, and the target's `401` and `409` are told apart (wrong code;
+  pairing not open there).
+- **The client side of the channel** (`remote.Client`) speaks
+  `internal/remote/proto.go` as the phone does: the Hello is `{v: 1}`, the
+  Welcome's `version` and `name` are kept, stream ids are odd and count up
+  from 1, at most 64 open, and bodies go in frames of at most 60 KB.
+  Requests carry only the headers in `requestHeaders`; every request a
+  computer makes sets `X-Caprock-Device` to its token there, and every
+  socket offers `caprock.device.<token>` after the caller's protocols.
+  `Cookie`, `Origin`, `Referer`, `Authorization` and `Sec-*` from the local
+  caller are removed first. One attempt (relay, handshake, Welcome) is
+  bounded by 10 s; a failed one backs off 1 s doubling to 30 s, during which
+  a request is answered at once with the last failure. An open channel
+  pings the relay every 25 s, is dropped after 60 s unheard, and closes
+  after 90 s with no stream open. A stream whose reader falls 512 frames
+  behind is cancelled (`KindCancel`), never the channel. Its states are
+  `idle`, `connecting`, `online`, `offline` (4404, the relay unreachable,
+  or a drop), `refused` (the target hung up on the handshake: another key)
+  and `closed`; `internal/peers` adds `revoked` when `GET /v1/pair/me`
+  answers 401, cleared when a later check answers 200.
+- **Relay counters.** `remote.State` (the Host) and `remote.ClientState`
+  count relay messages and bytes each way (`msgs_in`, `msgs_out`,
+  `bytes_in`, `bytes_out`) since the daemon started, for OQ-14. Not in any
+  API answer yet.
+
 **The way back to a paired phone (2026-10-15).** `GET /v1/pair/state`
 carries `telegram: true` when a Telegram bot and chat are set up.
 `POST /v1/pair/send-link` (loopback-only, no body read) sends one message to
@@ -563,6 +610,7 @@ POST /v1/hooks/install                 → {hooks: HooksStatus, backup?} — `ca
 POST /v1/claude/bypass-consent         → {accepted: true} — the user accepted Caprock's copy of Claude Code's bypass warning (ADR-041)
 GET  /v1/stats/daily?days=30           → DailyStat[]
 GET  /v1/stats/trends?agent=…         → Trends — Now's Today cells: 14 previous days cut at this time of day, today, the usual burn
+GET  /v1/pipeline/agents?repo=…      → RepoAgents — the Pipeline's cost per agent-hour and agent team for a repository's folders (§ Pipeline agents)
 POST /v1/hook                          → 204 (shim only, bearer-token gated; the event is written even after the shim hangs up)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
@@ -3065,7 +3113,7 @@ Brain DDL (migrations 0055, 0056).
 
 ```
 GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total, terms?, close?}
-GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?}
+GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?, db_path?}
 POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
 GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
 PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
@@ -3076,6 +3124,7 @@ PUT    /v1/brain/settings       {auto?, daily_tokens?, model?} → BrainAutoStat
 POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 ```
 
+- **`db_path`** on `/v1/brain/status` — the database the memories live in, `caprock.db` in the daemon's data directory (`config.DBPath`), resolved by the daemon rather than guessed per OS by the page; the screen's *Where it's kept* shows it. Omitted when the daemon has no data directory (tests).
 - **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
   event_id?, ts?, project?}, manual, pinned, run_id?, created_at, updated_at,
   degree?, rank?, close?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or
@@ -3459,6 +3508,67 @@ GET /v1/work → Work
   cold, 0.5 ms warm.
 - **Who.** A read open to every paired device, as the Queue is. `501`
   without a work board (a test server).
+
+### Pipeline agents
+
+The Pipeline's two agent figures for one repository — what an hour of agent
+work costs and how many agents worked ([04-ui.md](04-ui.md) § The Pipeline,
+*The agent figures*). Measured from the events of the sessions whose
+`repo_root` is one of the folders named; nothing is stored. Code:
+`internal/store/pipelineagents.go`, `internal/api/pipelineagents.go`.
+
+```
+GET /v1/pipeline/agents?repo=<root>[&repo=<root>…] → RepoAgents
+```
+
+`repo` is required (a 400 without one, and above 32): every folder of the
+repository, as clones of one GitHub repository are several. Read-only, so a
+paired device may ask it.
+
+- **`RepoAgents`** — `{days, rate, team}`; `days` is 14, the window the
+  usuals are set against.
+- **`rate`** — `{last24, usual?, series}`, each a `RateSpan` `{cost_usd,
+  active_hours, active_cost_usd, tokens, active_tokens, wall_hours, days?}`.
+  An **active agent-hour** is `usual.burn`'s rule (`UsualMinCalls`): one
+  session's clock hour — local, counted from a local midnight — in which
+  it made at least five priced calls costing more than nothing, its
+  subagents' turns included, since they are rows of the same session. Two
+  sessions in one clock hour are two agent-hours; `wall_hours` counts that
+  hour once, as any hour with a priced turn. The rate is
+  `active_cost_usd / active_hours`; spend in an hour below the rule is in
+  `cost_usd` but not in the rate. `tokens` is input, output, cache reads and
+  writes; `active_tokens` the active hours' share. `last24` is the last 24
+  clock hours, the current one included; `usual` the 14×24 hours before
+  them, with `days` the 24-hour stretches among them that had an active
+  hour, absent when none had. `series` is the previous 14 local days,
+  oldest first, then today so far. The client withholds a comparison below
+  three `days`: "not enough history".
+- **`team`** — `{now, peak_today, series}`. An agent is a main session
+  (`agent_id` empty) or a subagent (one `agent_id` in one session — the
+  harness's agent id, which the hooks carry inside a subagent, § Subagent
+  reads DDL) with an assistant turn. `now` is `{sessions, subagents}` with
+  a turn in the last ten minutes (the five-minute bucket the ten begin in
+  counts whole). `series` is the previous 30 local days, oldest first, then
+  today: `{day, sessions, subagents, by_kind?, peak}`, distinct agents that
+  day, `by_kind` the same split by `sessions.agent` (`claude`, `codex`,
+  `opencode`, `gemini`, …), and `peak` the most agents with a turn in one
+  five-minute bucket (five minutes divides every UTC offset, so a bucket
+  never straddles a local midnight); `peak_today` is today's.
+
+One grouped scan per figure, off the covering `idx_events_turn_agent`
+(`kind, ts, session_id, agent_id, … cost_usd, tokens…, internal`): per
+(session, hour) for the rate, per (session, agent id, five-minute bucket)
+for the team, the session set a subquery off `idx_sessions_repo_branch`.
+The whole window is too slow to ask once a minute — on a 1.7 GB copy of the
+owner's database, for its busiest repository (2026-10-15, through the Go
+driver, warm): 105 ms for 16 days of the rate and 125 ms for 31 days of the
+team; 34 ms and 122 ms in the sqlite shell. So the window is cut at today's
+local midnight: the days before are scanned once and kept per folder set
+and day for 30 minutes (`pipeAgentsPastTTL`; a transcript read late still
+reaches them), as hourly sums and finished days, and a request scans only
+today — 26 ms warm for both figures together at 20:30 on that repository's
+busiest day, 5–8 ms for a quieter one, against 300 ms once a day for the
+days before. The answer itself is cached for a minute (`pipeAgentsTTL`).
 
 ### Chat field pickers
 

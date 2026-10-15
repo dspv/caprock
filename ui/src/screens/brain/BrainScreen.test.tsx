@@ -148,7 +148,7 @@ describe('the Second Brain screen', () => {
   })
 
   it('with memories: the graph and the list with search, one quiet line, and a gear with three settings', async () => {
-    m.status.mockResolvedValue(status({ memories: 2, projects: [{ project: 'acme-api', count: 2 }], auto: auto() }))
+    m.status.mockResolvedValue({ ...status({ memories: 2, projects: [{ project: 'acme-api', count: 2 }], auto: auto() }), db_path: 'C:\\Users\\me\\AppData\\Roaming\\caprock\\caprock.db' })
     m.brain.mockResolvedValue({ nodes: [node({ id: 1 }), node({ id: 2, title: 'Use a queue' })], edges: [], total: 2 })
     m.settings.mockResolvedValue(auto())
     render(<BrainScreen />)
@@ -160,6 +160,10 @@ describe('the Second Brain screen', () => {
     fireEvent.click(screen.getByRole('button', { name: /Settings/ }))
     const pop = screen.getByRole('dialog', { name: 'Second Brain settings' })
     expect(pop.textContent).toMatch(/Build automatically/)
+    // Where it's kept: the path the daemon resolved, as it gave it.
+    expect(pop.querySelector('[data-brain-db-path]')!.textContent).toBe('C:\\Users\\me\\AppData\\Roaming\\caprock\\caprock.db')
+    expect(pop.textContent).toMatch(/brain_nodes · brain_edges · brain_runs/)
+    expect(pop.textContent).toMatch(/nothing goes to Caprock/)
     fireEvent.click(screen.getByRole('radio', { name: 'Sonnet' }))
     await waitFor(() => expect(m.settings).toHaveBeenCalledWith({ model: 'sonnet' }))
     fireEvent.click(screen.getByRole('radio', { name: '1M' }))

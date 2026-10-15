@@ -48,6 +48,27 @@ jobs:
           if grep -qE '^(app/|Makefile$|scripts/check-app-mic\.sh$|scripts/check-app-signature\.sh$|scripts/macos-selfsign-keychain\.sh$|\.github/workflows/ci\.yml$)' <<<"$files"; then app=true; fi
           echo "app=$app" | tee -a "$GITHUB_OUTPUT"
 
+  # A pull request never carries internal/api/dist (ADR-068). The built
+  # dashboard is content-hashed, so any two PRs that rebuilt it conflicted
+  # there whatever else they touched; master's dist workflow rebuilds it after
+  # each merge instead. The checkout is the PR's merge commit, so its first
+  # parent is master as it stands now and the diff is exactly what merging
+  # would change.
+  no-dist:
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    name: no dist in the PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - name: the PR leaves internal/api/dist alone
+        run: |
+          if git diff --quiet HEAD^1 HEAD -- internal/api/dist; then echo "dist untouched"; exit 0; fi
+          echo "::error title=internal/api/dist is in this PR::dist is rebuilt on master after merge; drop your dist changes: make dist-reset && git commit -m 'chore: drop the dist changes' (or: git checkout origin/master -- internal/api/dist after rebasing on origin/master)"
+          git --no-pager diff --stat HEAD^1 HEAD -- internal/api/dist | tail -5
+          exit 1
+
   ui:
     if: ${{ !github.event.pull_request.draft }}
     name: ui (typecheck, test, build)
@@ -67,17 +88,17 @@ jobs:
         working-directory: ui
       - name: release script tests (latest.json)
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      # The dashboard builds. Its output is thrown away: master's dist
+      # workflow commits the build (ADR-068).
       - run: npm run build
         working-directory: ui
-      - name: dist is committed and in sync (so `go install` embeds a real UI)
-        run: |
-          git diff --quiet -- internal/api/dist || {
-            echo "internal/api/dist/ is stale — run 'make ui' and commit the result";
-            git --no-pager diff --stat -- internal/api/dist; exit 1; }
 
-  # The go jobs build against the committed internal/api/dist rather than
-  # waiting for the ui job's: the ui job fails when that copy is stale, so a
-  # green run tested the same bytes either way, three minutes sooner.
+  # The go jobs build against master's committed internal/api/dist, which can
+  # be one merge behind ui/ (ADR-068), rather than building the dashboard on
+  # three OS: no Go test reads the dashboard's bytes (they serve fakes), the
+  # ui job proves it builds, and make-windows runs `make build`, which builds
+  # it on Windows too. Building it here would add npm to every leg for nothing
+  # a Go test can see.
   go:
     if: ${{ !github.event.pull_request.draft }}
     name: go (${{ matrix.os }})

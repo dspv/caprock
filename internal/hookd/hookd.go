@@ -81,6 +81,26 @@ func endsTheSession(reason string) bool {
 	}
 }
 
+// subagentOf is the agent id a hook fired inside a subagent names through its
+// transcript path, `<session-id>/subagents/agent-<id>.jsonl` (deeper under
+// `subagents/` for a workflow's agents), or "" for the main thread's.
+//
+// The parent's hooks fire for its subagents' tool calls too, under the
+// parent's session id; a payload without agent_id would otherwise read as
+// the parent's own call, and three subagents fixing one import raised a loop
+// alert on a parent that made one edit (loop.Detector counts per thread).
+func subagentOf(transcript string) string {
+	t := strings.ReplaceAll(transcript, "\\", "/")
+	if !strings.Contains(t, "/subagents/") {
+		return ""
+	}
+	base := t[strings.LastIndex(t, "/")+1:]
+	if !strings.HasPrefix(base, "agent-") || !strings.HasSuffix(base, ".jsonl") {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(base, "agent-"), ".jsonl")
+}
+
 // RecordTimeout bounds one hook event's write. Far longer than the shim waits
 // on purpose: the shim's second is about not delaying Claude Code, and has
 // nothing to do with how long the event may take to reach the database.
@@ -110,6 +130,9 @@ func Normalize(raw []byte, now time.Time) (*event.Event, rollup.SessionInfo, err
 		SessionID: p.SessionID,
 		Source:    event.SourceHook,
 		AgentID:   p.AgentID,
+	}
+	if ev.AgentID == "" {
+		ev.AgentID = subagentOf(p.TranscriptPath)
 	}
 	ev.Payload, ev.ToolBytes = capBody(raw)
 	switch p.HookEventName {

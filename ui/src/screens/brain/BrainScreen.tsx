@@ -148,7 +148,7 @@ export function BrainScreen({ node }: { node?: number }) {
               className="h-[30px] rounded-[7px] px-2 text-[12.5px] text-fg-muted hover:bg-panel-2 hover:text-fg" data-brain-add-note>
               Add a note
             </button>
-            {auto && <BrainSettings auto={auto} onChanged={reloadStatus} />}
+            {auto && <BrainSettings auto={auto} dbPath={status?.db_path} onChanged={reloadStatus} />}
           </div>
         )}
       </header>

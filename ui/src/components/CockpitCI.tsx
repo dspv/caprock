@@ -36,9 +36,10 @@ import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
 import { asBoard } from '@/lib/prboard'
 import { tabRows, spanText } from '@/lib/prstats'
 import { journey, pipelineRows, stageOf } from '@/lib/journey'
+import { landingOf } from '@/lib/releaseplan'
 import { CheckSummary, StateMark } from './CheckSummary'
 import { SectionLabel, useFolded } from './Cockpit'
-import { JourneyBar } from './Journey'
+import { JourneyBar, JourneyLegend } from './Journey'
 import { CI_IDLE_MS, usePoll } from './SessionDeck'
 
 /** The most pull requests the PRs view lists (it scrolls). */
@@ -115,6 +116,8 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
 
   const body = view === 'ring' && lead ? <Ring p={lead} ci={ci.d} now={now} /> : view === 'grid' && lead ? <ByOS p={lead} ci={ci.d} now={now} /> : view === 'dots' ? (
     journeyRows.length === 0 ? <span className="text-[11.5px] text-fg-faint">Reading the repository’s pull requests…</span> : (
+      <div className="grid gap-1">
+      <JourneyLegend className="-mr-1.5 pr-1.5" />
       <ul data-cockpit-journey className={`app-scroll -mr-1.5 grid content-start gap-1.5 overflow-y-auto pr-1.5 ${tall ? 'max-h-[440px]' : 'max-h-[176px]'}`}>
         {journeyRows.map((r) => {
           const steps = journey(r)
@@ -126,11 +129,12 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
                 <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg" title={r.title}>{r.title}</span>
                 {since ? <span className="num shrink-0 text-[10.5px] text-fg-faint" title={new Date(since).toLocaleString()}>{spanText(Math.max(0, now - since))}</span> : null}
               </span>
-              <JourneyBar steps={steps} />
+              <JourneyBar steps={steps} landing={landingOf(r.labels)?.word} />
             </li>
           )
         })}
       </ul>
+      </div>
     )
   ) : null
   if (!body) return null

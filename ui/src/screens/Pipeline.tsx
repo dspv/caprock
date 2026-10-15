@@ -87,6 +87,7 @@ export function PipelineScreen({ repo, of, pr }: { repo?: string; of?: string; p
         onStartAgent={host.onStartAgent ? (req, title) => host.onStartAgent!(req, title, s.session_id) : undefined}
         picker={picker}
         pr={pr}
+        roots={pick.repo.roots}
       />
     </div>
   )

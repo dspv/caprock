@@ -19,6 +19,7 @@
  * opens the Brain screen. Nothing here sends anything. The
  * ×, Escape and the backdrop close it; there is no second Close.
  */
+import { BrainWhere } from './BrainWhere'
 import type { ReactNode } from 'react'
 import { agentsLine, BRAIN_HEADLINE, BrainHero, FreePill, useAgentsUsed } from './BrainAgents'
 import { CloseButton, DialogBackdrop } from './Dialog'
@@ -81,6 +82,7 @@ export function SecondBrainModal({ onClose, onOpen }: { onClose: () => void; onO
           <ul className="mx-auto mt-2 grid max-w-[340px] list-disc gap-1 pl-5">
             {DETAILS.map((d) => <li key={d}>{d}</li>)}
           </ul>
+          <BrainWhere className="mx-auto mt-3 max-w-[340px]" />
         </details>
       </div>
     </DialogBackdrop>

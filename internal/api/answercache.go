@@ -81,6 +81,14 @@ const (
 	// carries the local day, so midnight starts a new one.
 	trendsTTL      = 5 * time.Minute
 	trendsMaxStale = 30 * time.Minute
+	// pipeAgentsTTL is how long a repository's agent figures on the
+	// Pipeline are served as they are: their "now" is ten minutes wide, so
+	// a minute late is still now. The key carries the local day.
+	pipeAgentsTTL = time.Minute
+	// pipeAgentsPastTTL is how long the days before today are kept: no new
+	// turn lands in them, but a transcript read late (a daemon catching up
+	// after a restart) can still add one.
+	pipeAgentsPastTTL = 30 * time.Minute
 )
 
 // answerEntry is one key's cached answer, or the in-flight computation of it.
