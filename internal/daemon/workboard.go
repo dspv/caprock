@@ -565,7 +565,7 @@ func readRepoGit(ctx context.Context, root string, prev *repoGit) repoGit {
 			if items == nil {
 				items = []string{}
 			}
-			g.unreleased = &api.WorkUnreleased{Ref: ref, Items: items, Count: u.Count, More: u.Count > len(items)}
+			g.unreleased = &api.WorkUnreleased{Ref: ref, Items: items, Count: u.Count, More: u.Count > len(items), Kinds: u.Kinds}
 		}
 	}
 	tags, err := relplan.Tags(ctx, root)

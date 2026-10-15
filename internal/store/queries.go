@@ -2210,7 +2210,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	//
 	// Grouping in SQL meant joining sessions on every one of ~90k assistant
 	// events and grouping on a wide text key; grouping on the integer-ish
-	// session_id alone runs off idx_events_cost_cover and needs no join and no
+	// session_id alone runs off idx_events_turn_agent and needs no join and no
 	// COUNT(DISTINCT) — a session's row IS one distinct session. The mapping
 	// from session to (repository, segment) is then applied to tens of rows
 	// instead of tens of thousands. Measured on the owner's 190k-event
@@ -3121,7 +3121,7 @@ func SpendSince(ctx context.Context, q Querier, fromMs int64) (float64, error) {
 // passage long enough — every session from "/" — walked all of history: 4-6 s
 // on the owner's 1.2 GB database (2026-10-05), longer than the SessionStart
 // hook waits, and the lookup died cancelled every time. The session ids are
-// on idx_events_cost_cover, so rows of other projects are skipped without
+// on idx_events_turn_agent, so rows of other projects are skipped without
 // touching their payloads: under 0.1 s for any project, same answers.
 func WhereWeLeftOff(ctx context.Context, q Querier, project string, before int64, minLen int) (AssistantNote, error) {
 	if minLen <= 0 {
@@ -3130,7 +3130,7 @@ func WhereWeLeftOff(ctx context.Context, q Querier, project string, before int64
 	row := q.QueryRowContext(ctx, `
 		SELECT e.id, e.session_id, ?, e.ts, COALESCE(e.model,''),
 		       COALESCE(json_extract(e.payload, '$.text'), '')
-		FROM events e INDEXED BY idx_events_cost_cover
+		FROM events e INDEXED BY idx_events_turn_agent
 		WHERE e.session_id IN (SELECT session_id FROM sessions WHERE project = ?)
 		  AND `+assistantTextWhere+`
 		  AND e.ts < ?

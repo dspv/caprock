@@ -5,8 +5,9 @@
  * current from the live socket (a `brain` frame on every change).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, errText, type BrainDrop, type BrainFilterQuery, type BrainGraph, type BrainKind, type BrainNode, type BrainStatus } from './api'
+import { api, errText, type BrainAutoStatus, type BrainDrop, type BrainFilterQuery, type BrainGraph, type BrainKind, type BrainNode, type BrainStatus } from './api'
 import { live } from './live'
+import { everyWhileVisible } from './visible'
 
 /** Said on window to open the quick capture; `detail.text` prefills it. */
 export const BRAIN_CAPTURE_EVENT = 'caprock:brain-capture'
@@ -63,25 +64,65 @@ export async function dropIntoBrain(d: BrainDrop): Promise<DropResult> {
   }
 }
 
-/** Calls `fn` on every brain change the live socket reports, and after a replay gap. */
-export function useBrainFrames(fn: (f?: { id: number; op: string; title?: string; kind?: string; auto?: boolean }) => void) {
+/** Calls `fn` on every brain change the live socket reports, and after a replay gap; a read's `progress` frames only with `{progress: true}`. */
+export function useBrainFrames(fn: (f?: { id: number; op: string; title?: string; kind?: string; auto?: boolean }) => void, opts?: { progress?: boolean }) {
+  const progress = !!opts?.progress
   const ref = useRef(fn)
   ref.current = fn
   useEffect(() => live.onFrame((f) => {
-    if (f.type === 'brain') ref.current(f.data)
-    else if (f.type === 'reset') ref.current()
-  }), [])
+    if (f.type === 'brain') {
+      // A read beginning or ending changes no memory; only the status cares.
+      if ((f.data as { op?: string } | undefined)?.op === 'progress' && !progress) return
+      ref.current(f.data)
+    } else if (f.type === 'reset') ref.current()
+  }), [progress])
 }
 
-/** Second Brain's status, kept current. */
+/** How often the status is read again while a build is going, on top of the frames. */
+const BUILD_POLL_MS = 4000
+
+/** Whether the extraction is working through sessions: on, and reading or with some waiting. */
+export function isBuilding(auto: BrainAutoStatus | undefined): boolean {
+  return !!auto?.on && auto.claude_found && (auto.running || !!auto.reading || auto.pending > 0)
+}
+
+/**
+ * Second Brain's status, kept current: read again on every brain frame
+ * (spaced, so eight memories landing read it once) and, while a build is
+ * going, every few seconds too, so its clock and countdown move.
+ */
 export function useBrainStatus(): { status: BrainStatus | null; reload: () => void } {
   const [status, setStatus] = useState<BrainStatus | null>(null)
   const reload = useCallback(() => {
     api.brainStatus().then(setStatus, () => {})
   }, [])
   useEffect(reload, [reload])
-  useBrainFrames(reload)
+  const timer = useRef<number | undefined>(undefined)
+  useBrainFrames(() => {
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(reload, 150)
+  }, { progress: true })
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const building = isBuilding(status?.auto)
+  useEffect(() => {
+    if (!building) return
+    return everyWhileVisible(reload, BUILD_POLL_MS)
+  }, [building, reload])
   return { status, reload }
+}
+
+/** What *Start building* reads first: the past month. */
+export const BACKFILL_DAYS = 30
+
+/**
+ * One click: the yes (PUT /v1/brain/settings {auto: true}), then the past
+ * month (POST /v1/brain/backfill {days: 30}). Turning on alone reads only
+ * sessions that end after it; the line beside the button promises the last
+ * 30 days, so the backfill follows at once. Nothing runs before this call.
+ */
+export async function startBuilding(): Promise<void> {
+  await api.brainSettings({ auto: true })
+  await api.brainBackfill(BACKFILL_DAYS, true)
 }
 
 /**
@@ -108,4 +149,66 @@ export function useBrainGraph(filter: BrainFilterQuery, gapMs = 400): { graph: B
   })
   useEffect(() => () => window.clearTimeout(timer.current), [])
   return { graph, error, reload }
+}
+
+/** 100k, 300k, 1M: a token count as people say a limit. */
+export function tokensShort(v: number): string {
+  if (v >= 1_000_000 && v % 1_000_000 === 0) return `${v / 1_000_000}M`
+  if (v >= 1000) return `${Math.round(v / 1000)}k`
+  return String(v)
+}
+
+/**
+ * The one line beside *Start building* that says what it does (rule 4; the
+ * rest is under Details): whose model, what, where, how much, and that
+ * nothing goes to Caprock. The cap is the daemon's, as the status says it.
+ */
+export function startLine(dailyTokens: number): string {
+  return `Your own Claude reads your last ${BACKFILL_DAYS} days of sessions on this computer · up to ${tokensShort(dailyTokens)} tokens a day · nothing goes to Caprock`
+}
+
+/** A build in figures: read of all, the days it reaches back (0 when it reads only from the yes), and the share done. */
+export function buildFigures(auto: BrainAutoStatus | undefined, now = Date.now()) {
+  const b = auto?.build
+  if (!b) return null
+  const reach = auto?.backfill_since && auto.backfill_since <= b.from + 1000
+  const days = reach ? Math.max(1, Math.round((now - b.from) / 86_400_000)) : 0
+  const share = b.sessions > 0 ? Math.min(1, b.read / b.sessions) : 1
+  return { ...b, days, share }
+}
+
+/** How many memories have been added since the caller mounted, from the live socket: the orb sends a spark for each. */
+export function useBrainLanded(): number {
+  const [n, setN] = useState(0)
+  useBrainFrames((f) => { if (f?.op === 'added') setN((v) => v + 1) })
+  return n
+}
+
+/** How busy the extraction is, for the orb's sparks: 0 idle, 1 with sessions waiting, 2 while one is read. */
+export function brainActivity(auto: BrainAutoStatus | undefined): number {
+  if (!isBuilding(auto)) return 0
+  return auto?.reading ? 2 : 1
+}
+
+/**
+ * What Second Brain is doing, in words, and a figure or two: the sidebar
+ * card's line. What it does now comes first (owner, 2026-10-15: "what it is
+ * doing right now matters more than the numbers"), so while it works the
+ * figure shrinks to the count and the mode keeps the room.
+ */
+export function brainMode(status: BrainStatus | null, today = 0): { mode: string; metric: string; active: boolean } {
+  const n = status?.memories ?? 0
+  const count = `${n} ${n === 1 ? 'memory' : 'memories'}`
+  const metric = n > 0 ? (today > 0 ? `${n} · +${today} today` : count) : ''
+  const auto = status?.auto
+  if (!auto) return { mode: n > 0 ? 'Kept by hand' : 'Not started', metric, active: false }
+  if (!auto.on) return { mode: auto.chosen ? 'Paused' : 'Not started', metric, active: false }
+  if (!auto.claude_found) return { mode: 'Needs Claude Code', metric, active: false }
+  if (auto.reading) {
+    const where = auto.reading.project ? `Extracting from ${auto.reading.project}` : 'Extracting from a session'
+    return { mode: where, metric: n > 0 ? String(n) : '', active: true }
+  }
+  if (auto.pending > 0) return { mode: `Indexing ${auto.pending} session${auto.pending === 1 ? '' : 's'}`, metric: n > 0 ? String(n) : '', active: true }
+  if (auto.daily_tokens > 0 && auto.spent >= auto.daily_tokens) return { mode: 'Today’s limit reached', metric, active: false }
+  return { mode: 'Idle', metric, active: false }
 }

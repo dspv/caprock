@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { THEME_MENU_W, ThemeMenu, ThemePicker, placeThemeMenu } from './ThemePicker'
+import { THEME_MENU_W, ThemeMenu, ThemePicker, nextSwatch, placeThemeMenu } from './ThemePicker'
 
 afterEach(() => {
   localStorage.clear()
@@ -132,5 +132,35 @@ describe('where the theme popover opens', () => {
     act(() => { window.dispatchEvent(new Event('caprock:theme-menu-test')) })
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(document.activeElement).toBe(button)
+  })
+
+  it('walks the swatches with the arrows as they are laid out, in two columns across the groups', () => {
+    // Two columns, 100 wide, 60 tall: a b / c d, then a gap, e f / g.
+    const r = (x: number, y: number) => ({ left: x, top: y, width: 100, height: 60, right: x + 100, bottom: y + 60 }) as DOMRect
+    const rects = [r(0, 0), r(110, 0), r(0, 70), r(110, 70), r(0, 180), r(110, 180), r(0, 250)]
+    expect(nextSwatch(rects.at(0)!, rects, 'ArrowRight')).toBe(1)
+    expect(nextSwatch(rects.at(1)!, rects, 'ArrowRight')).toBeNull()
+    expect(nextSwatch(rects.at(1)!, rects, 'ArrowDown')).toBe(3)
+    expect(nextSwatch(rects.at(3)!, rects, 'ArrowDown')).toBe(5)
+    expect(nextSwatch(rects.at(5)!, rects, 'ArrowDown')).toBe(6)
+    expect(nextSwatch(rects.at(6)!, rects, 'ArrowUp')).toBe(4)
+    expect(nextSwatch(rects.at(0)!, rects, 'ArrowUp')).toBeNull()
+    expect(nextSwatch(rects.at(2)!, rects, 'ArrowLeft')).toBeNull()
+    expect(nextSwatch(rects.at(0)!, rects, 'Enter')).toBeNull()
+  })
+
+  it('moves the focus with an arrow, and the swatch it lands on is previewed on the page', () => {
+    localStorage.setItem('caprock-theme', 'dark')
+    render(<ThemePicker />)
+    const radios = screen.getAllByRole('radio')
+    // jsdom lays nothing out: give each swatch a place, two to a row.
+    radios.forEach((el, i) => { el.getBoundingClientRect = () => ({ left: (i % 2) * 110, top: Math.floor(i / 2) * 70, width: 100, height: 60, right: (i % 2) * 110 + 100, bottom: Math.floor(i / 2) * 70 + 60, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect })
+    const [a, b, , d] = radios as [HTMLElement, HTMLElement, HTMLElement, HTMLElement]
+    a.focus()
+    fireEvent.keyDown(a, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(b)
+    fireEvent.keyDown(b, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(d)
+    expect(document.documentElement.getAttribute('data-theme')).not.toBeNull()
   })
 })

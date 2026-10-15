@@ -550,11 +550,18 @@ others. Installing it: [install-app.md](install-app.md).
   *PRs*, *Ring* and *By OS* switch what it shows (*By OS*: the newest pull
   request's checks on Linux, macOS and Windows, each with its state and
   time).
-  To put the sections in another order, click *Arrange sections* under
-  the last one: each section gets ↑ and ↓, *Reset to default order* puts
-  them back, and *Done* (or Esc) returns. Nothing moves by dragging a
-  heading, so it never happens by accident, and the order is kept for
-  you on this computer. The permission prompt and its buttons sit
+  To put the sections in another order, drag a section by the small grip
+  that shows at its top left when you point at it, or focus the grip and
+  press ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift+↑ ↓ on Windows and Linux); click the grip for
+  *Move up*, *Move down*, *Move to top* and *Reset order*. *Arrange
+  sections* under the last one does it too: each section gets ↑ and ↓,
+  *Reset to default order* puts them back, and *Done* (or Esc) returns.
+  Nothing moves by dragging a heading, so it never happens by accident,
+  and the order is kept for you on this computer. **Release** shows the
+  repository's next release: the version its changelog entries call for
+  (a feature makes a minor release, fixes a patch; hover it for how it was
+  counted) and a ten-block progress bar per pull request and agent on its
+  way there. The permission prompt and its buttons sit
   at the top while one waits. Click a changed file to read it in a tab
   (in a folder that is not a git repository, it opens in your editor at
   its first change). Beside a shell tab it shows the folder and its
@@ -629,7 +636,11 @@ others. Installing it: [install-app.md](install-app.md).
   in the Dashboard's figure tiles: in flight, needing a fix, ready, merges a
   day, the CI median, opened → merged, merged → released as an estimate,
   agent cost; hover a figure (or focus it) for what it means, in a card
-  under it. Then one list, a row per pull request: its number, its whole
+  under it. Under them, **Next release**: the version this repository's
+  changelog entries call for (a feature makes a minor release, fixes a
+  patch), then a ten-block progress bar per pull request merged since the
+  last tag, open, or agent still at work, with its step in a word — a
+  landing-queue label such as *landing: queued* when it has one. Then one list, a row per pull request: its number, its whole
   title, its labels, and the four steps as pills — *Open → CI → Merged →
   Released* — a step done ticked, the step it is on filled in its colour (a
   ✗ on *CI red*, a turning ring on *CI running*; *Conflict*, *Changes
@@ -659,7 +670,9 @@ others. Installing it: [install-app.md](install-app.md).
   piece of work on your machine on its way to a release: a row per branch
   at its furthest step — agent, pull request, CI, merged, released — with
   the agents on it, grouped *Next release*, *In review*, *In work*,
-  *Planned* and *Released* (or as Kanban columns). Home shows its headline
+  *Planned* and *Released* (or as Kanban columns, or as *Release*: each
+  repository's next version with a progress bar per piece of work, drafts
+  and idle agents under *Later*). Home shows its headline
   and the first rows that need you or are working, above the Live pulse,
   with *Open Work →*. A session row brings that session's tab to the
   front; a pull request's title opens it in the Pipeline, its detail open.
@@ -759,36 +772,36 @@ others. Installing it: [install-app.md](install-app.md).
 
 On macOS:
 
-| Keys        | Does                                                                     |
-| ----------- | ------------------------------------------------------------------------ |
-| ⌘T          | New shell in the folder of the tab                                       |
-| ⇧⌘N         | New agent session                                                        |
-| ⌥⌘N         | Quick chat: pick, or Enter for the last                                  |
-| ⌘O          | Add a project: one repository or several (clone, new: in its footer)     |
-| ⌘1–8, ⌘9    | The Nth tab, in the order opened; the last                               |
-| ⌥⌘↓, ⌥⌘↑    | Next and previous session of the project in front                        |
-| ⌥⌘→, ⌥⌘←    | Next and previous project                                                |
-| ⌥⇧↑, ⌥⇧↓    | Move the focused session row up or down in the sidebar or the Live pulse |
-| ⌃Tab, ⇧⌘[ ] | Next and previous tab                                                    |
-| ⌘W          | Close the tab (the session keeps going)                                  |
-| ⌘E, ⇧⌘E     | Split: a new shell beside, below                                         |
-| ⌘[ ]        | Previous and next pane                                                   |
-| ⌘J          | Next session waiting on you                                              |
-| ⇧⌘H         | Add to Second Brain: keep a line of your own                             |
-| ⌘F          | Find in the terminal or the file                                         |
-| ⌘K          | Command palette                                                          |
-| ⌘,          | Settings                                                                 |
-| ⇧⌘F         | Send feedback                                                            |
-| ⇧⌘M         | Mail, in a tab of its own                                                |
-| ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                 |
-| ⌘I          | Agent cockpit (the inspector)                                            |
-| ⌘B          | Pipeline bar under the agent's terminal, shown or hidden                 |
-| ⌘P          | Pipeline, in a tab of its own; there, back to where you were             |
-| ⇧⌘W         | Work on the dashboard; there, back to where you were                     |
-| ⌘\          | Hide or show the sidebar                                                 |
-| ⌘D, ⌘0      | Dashboard tab, where you left it; again: Home, at its top                |
-| ⇧⌘T         | Theme: open the picker                                                   |
-| ⌘R          | Reload the window (View → Reload)                                        |
+| Keys        | Does                                                                                |
+| ----------- | ----------------------------------------------------------------------------------- |
+| ⌘T          | New shell in the folder of the tab                                                  |
+| ⇧⌘N         | New agent session                                                                   |
+| ⌥⌘N         | Quick chat: pick, or Enter for the last                                             |
+| ⌘O          | Add a project: one repository or several (clone, new: in its footer)                |
+| ⌘1–8, ⌘9    | The Nth tab, in the order opened; the last                                          |
+| ⌥⌘↓, ⌥⌘↑    | Next and previous session of the project in front                                   |
+| ⌥⌘→, ⌥⌘←    | Next and previous project                                                           |
+| ⌥⇧↑, ⌥⇧↓    | Move the focused sidebar or Live pulse row, or right panel section grip, up or down |
+| ⌃Tab, ⇧⌘[ ] | Next and previous tab                                                               |
+| ⌘W          | Close the tab (the session keeps going)                                             |
+| ⌘E, ⇧⌘E     | Split: a new shell beside, below                                                    |
+| ⌘[ ]        | Previous and next pane                                                              |
+| ⌘J          | Next session waiting on you                                                         |
+| ⇧⌘H         | Add to Second Brain: keep a line of your own                                        |
+| ⌘F          | Find in the terminal or the file                                                    |
+| ⌘K          | Command palette                                                                     |
+| ⌘,          | Settings                                                                            |
+| ⇧⌘F         | Send feedback                                                                       |
+| ⇧⌘M         | Mail, in a tab of its own                                                           |
+| ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                            |
+| ⌘I          | Agent cockpit (the inspector)                                                       |
+| ⌘B          | Pipeline bar under the agent's terminal, shown or hidden                            |
+| ⌘P          | Pipeline, in a tab of its own; there, back to where you were                        |
+| ⇧⌘W         | Work on the dashboard; there, back to where you were                                |
+| ⌘\          | Hide or show the sidebar                                                            |
+| ⌘D, ⌘0      | Dashboard tab, where you left it; again: Home, at its top                           |
+| ⇧⌘T         | Theme: open the picker                                                              |
+| ⌘R          | Reload the window (View → Reload)                                                   |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 (Quick chat is Ctrl+Alt+Shift+N; Send feedback Ctrl+Alt+Shift+F, Work
@@ -816,6 +829,14 @@ waits in the queue and the box says so; when the agent asks for permission,
 the box tells you to answer in the terminal. It is off by default, and with
 it off nothing about the terminal changes; the box's ⋯ menu turns it off
 again. Sessions started in another terminal never get one.
+
+**Quick replies.** Under the terminal of every agent Caprock started, and
+above the chat's field, a row of small buttons sends a short reply in one
+click: *Continue*, *Shorter*, *Explain*, *Run tests*, *Commit*. A reply is
+sent the way the composer sends — at once when the agent is at its prompt,
+after its turn otherwise. Change the list in Settings → Terminal → *Quick
+replies* (add, remove, reorder, rename); remove them all and the row is gone.
+Sessions started in another terminal never get the row.
 
 The interface size lives in Settings → Appearance (100, 110, 125 or 140%),
 and the app opens at 110%. It zooms the whole window natively, terminal
@@ -996,7 +1017,9 @@ phone. Nothing is sent to GitHub until you connect. Besides
 in the session deck, the job's log is downloaded from the signed address
 GitHub points to on its log storage; while Home's CI/CD section is open, the
 daemon reads `www.githubstatus.com`'s public status at most every five
-minutes; and the Pipeline and the CI/CD section show pull request
+minutes; when GitHub can't be reached, it reads the same status page to say
+whether GitHub or your connection is at fault, and every five minutes if you
+tick *Watch GitHub Status* in that line; and the Pipeline and the CI/CD section show pull request
 authors' pictures from `avatars.githubusercontent.com`, loaded by the page
 with no referrer.
 
@@ -1130,14 +1153,32 @@ shows what is new, or **Not now** to hide that version.
 
 - **Checking.** On its first launch the app asks once: *Check for updates
   automatically?* With **Yes**, Caprock asks GitHub for the newest version
-  number at most every 6 hours; Settings → *Privacy* turns it off again.
-  With **No**, nothing is checked until you ask: **Caprock → Check for
-  Updates…** on macOS, **Check for Updates…** in the tray menu, or *Check for
-  updates* in the command palette (⌘K).
+  number once an hour, and soon after the computer wakes; Settings →
+  *Updates* turns it off again and has **Check now**. With **No**, nothing
+  is checked until you ask: **Caprock → Check for Updates…** on macOS,
+  **Check for Updates…** in the tray menu, *Check for updates* in the
+  command palette (⌘K), or **Check now** in Settings → *Updates*. A check
+  you ask for always answers: *You're up to date — Caprock X is the latest*,
+  with **Close** (it goes by itself after a few seconds), or, when GitHub
+  could not be reached, the error with **Retry**. The hourly check in the
+  background says nothing unless there is a new version.
+- **Ask me, or Update automatically.** Settings → *Updates* → *New version*
+  chooses what happens when one is out. **Ask me** (the default) is the card
+  above. **Update automatically** — also *Always update automatically* on
+  the card — downloads it in the background and restarts into it only when
+  no agent is working or waiting for your answer in any tab, you have left
+  Caprock alone for two minutes, and nothing you typed into a text field is
+  waiting to be sent. Until then it waits and looks again. Ten seconds
+  before the restart a card says *Updating to vX in 10 s*, with **Not now**
+  (that version waits an hour) and **Restart now**; pressing a key or
+  clicking anywhere else also calls it off until the next quiet moment.
+  After the restart one line says *Updated to vX · What's new*. Sessions and
+  tabs come back exactly as after a click on Update.
 - **What is sent.** The automatic check asks GitHub which release is the
   latest. *Update* and *Check for Updates…* also fetch the release's
   `latest.json` and, when you update, the new app from GitHub's release
-  downloads. None of these carries anything about you or your work: no
+  downloads; with **Update automatically**, the app fetches those two by
+  itself once the check finds a newer version. None of these carries anything about you or your work: no
   account, no identifier, not even your version.
 - **What is checked.** Every update is signed with Caprock's release key,
   and the app installs nothing whose signature or version does not match.

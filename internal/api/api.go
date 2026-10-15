@@ -97,6 +97,9 @@ type Deps struct {
 	// nil ⇒ 501.
 	Resources   func(ctx context.Context) any
 	ReapOrphans func(ctx context.Context) (any, error)
+	// ResourceHistory returns the meter's kept samples after a unix-ms
+	// time for GET /v1/resources/history. nil ⇒ 501.
+	ResourceHistory func(sinceMs int64) any
 	// Footprint returns what Caprock costs this machine for GET
 	// /v1/footprint; orphans is ?orphans=1, which takes the orphan list now.
 	// StopOrphans stops processes from that list for POST
@@ -173,6 +176,11 @@ type Deps struct {
 	// Update reports whether a newer release exists. nil ⇒ 501. It is only
 	// ever consulted when the user enabled checks.
 	Update UpdateController
+	// UpdateBusy counts the sessions an app restart would interrupt — an
+	// agent mid-turn or waiting on a permission prompt — for GET
+	// /v1/update/busy, which the desktop app reads before it installs an
+	// update on its own (ADR-042 as amended). nil ⇒ 501.
+	UpdateBusy func(ctx context.Context) (int, error)
 	// Terminals opens a session in the user's own terminal application. nil ⇒
 	// the open-terminal endpoints return 501 and no session offers it.
 	Terminals TerminalController
@@ -358,6 +366,14 @@ type Settings struct {
 	// plan windows; "off" removes Caprock's own statusLine entry from
 	// Claude Code's settings (never the user's own).
 	StatuslineMode string `json:"statusline_mode"`
+	// QuickReplies are the one-click replies under a session Caprock
+	// started (config.QuickReply). GET returns the list in use, the defaults
+	// until changed; PUT replaces the whole list (config.NormalizeQuickReplies).
+	QuickReplies []config.QuickReply `json:"quick_replies"`
+	// AppUpdate is what the desktop app does when a newer release is found:
+	// one of config.AppUpdateModes. GET returns the effective mode, "ask"
+	// when never chosen.
+	AppUpdate string `json:"app_update"`
 }
 
 // ReportSender sends one weekly report immediately.
@@ -574,6 +590,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/pair/remote", s.handleSetRemote)
 	m.HandleFunc("POST /v1/pair/send-link", s.handlePairSendLink)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
+	m.HandleFunc("GET /v1/update/busy", s.handleUpdateBusy)
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
 	m.HandleFunc("POST /v1/claude/bypass-consent", s.handleBypassConsent)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
@@ -603,6 +620,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/status", s.handleStatus)
 	m.HandleFunc("GET /v1/storage", s.handleStorage)
 	m.HandleFunc("GET /v1/resources", s.handleResources)
+	m.HandleFunc("GET /v1/resources/history", s.handleResourceHistory)
 	m.HandleFunc("POST /v1/resources/reap", s.handleReapOrphans)
 	m.HandleFunc("GET /v1/footprint", s.handleFootprint)
 	m.HandleFunc("POST /v1/footprint/orphans/stop", s.handleStopOrphans)
@@ -661,6 +679,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/team-signal", s.handleTeamSignal)
 	m.HandleFunc("GET /v1/repos/activity", s.handleReposActivity)
 	m.HandleFunc("GET /v1/repos/ci", s.handleReposCI)
+	m.HandleFunc("GET /v1/repos/remotes", s.handleReposRemotes)
 	m.HandleFunc("POST /v1/projects", s.handleAddProject)
 	m.HandleFunc("GET /v1/projects/ops", s.handleProjectOps)
 	// New project from a template (ADR-065, templates.go); the machine's only.
@@ -714,6 +733,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/github/repos", s.handleGitHubRepos)
 	m.HandleFunc("GET /v1/github/prs", s.handleGitHubPRs)
 	m.HandleFunc("GET /v1/github/actions-usage", s.handleGitHubActionsUsage)
+	m.HandleFunc("GET /v1/github/statuspage", s.handleGitHubStatusPage)
 	m.HandleFunc("GET /v1/projects/{id}/github", s.handleWorktreeGitHub)
 	m.HandleFunc("POST /v1/projects/{id}/github/refresh", s.handleWorktreeGitHubRefresh)
 	m.HandleFunc("GET /v1/projects/{id}/github/items", s.handleGitHubItems)
@@ -1378,6 +1398,24 @@ func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.d.Update.Status(true, s.d.Version))
 }
 
+// handleUpdateBusy is GET /v1/update/busy: how many sessions are working now
+// (mid-turn, subagents still running, or waiting on a permission prompt), the
+// same count the keep-awake hold uses. The desktop app set to update
+// automatically installs only while this is 0. A read of the local database:
+// no network I/O, and nothing about the sessions but the count.
+func (s *Server) handleUpdateBusy(w http.ResponseWriter, r *http.Request) {
+	if s.d.UpdateBusy == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("not available"))
+		return
+	}
+	n, err := s.d.UpdateBusy(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"working": n})
+}
+
 // handleGetSettings returns the user-stated settings. Absent settings are not
 // an error — they mean "not stated", and the UI simply omits the comparison.
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
@@ -1426,6 +1464,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		KeepAwake       *string  `json:"keep_awake"`
 		WorktreeCleanup *string  `json:"worktree_cleanup"`
 		StatuslineMode  *string  `json:"statusline_mode"`
+		// The whole list, replaced; absent or null leaves it as it is.
+		QuickReplies *[]config.QuickReply `json:"quick_replies"`
+		AppUpdate    *string              `json:"app_update"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
@@ -1443,11 +1484,20 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		// prompts not named keep their answer.
 		Prompts map[string]int64 `json:"prompts"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
+	// 16 KiB: the quick replies are the largest field, ten of 300 bytes.
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
 		return
 	}
 	in := s.d.Settings.Get()
+	if patch.QuickReplies != nil {
+		q, err := config.NormalizeQuickReplies(*patch.QuickReplies)
+		if err != nil {
+			s.failCode(w, http.StatusBadRequest, err)
+			return
+		}
+		in.QuickReplies = q
+	}
 	if patch.UpdateChecks != nil {
 		in.UpdateChecks = *patch.UpdateChecks
 	}
@@ -1549,6 +1599,14 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.StatuslineMode = v
+	}
+	if patch.AppUpdate != nil {
+		v := strings.TrimSpace(*patch.AppUpdate)
+		if !config.ValidAppUpdate(v) {
+			s.failCode(w, http.StatusBadRequest, fmt.Errorf("app_update must be one of %s", strings.Join(config.AppUpdateModes, ", ")))
+			return
+		}
+		in.AppUpdate = v
 	}
 	// Only touched when the caller named it. GET never returns the token, so a
 	// UI that reads settings and writes them back always omits it — treating

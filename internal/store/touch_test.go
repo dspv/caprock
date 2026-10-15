@@ -647,11 +647,7 @@ func TestTouchDirIgnoresPathlessAndMalformedInputs(t *testing.T) {
 	}
 }
 
-// TestTouchMigrationAddsColumnsAndIndex guards migration 0012 the way
-// TestModelMixIndexLeadsOnTs guards its index: without the columns there is
-// nothing to attribute by, and without the index the attribution query falls
-// back to reading the payload of every tool call on a polled endpoint.
-func TestTouchMigrationAddsColumnsAndIndex(t *testing.T) {
+func TestTouchMigrationAddsColumns(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
 	// The columns the linkage and the directory live in.
@@ -675,18 +671,6 @@ func TestTouchMigrationAddsColumnsAndIndex(t *testing.T) {
 		if !cols[c] {
 			t.Fatalf("events.%s is missing; per-directory attribution has nothing to read (migration 0012 did not run)", c)
 		}
-	}
-	// The index the attribution query runs on.
-	var idx string
-	err = s.db.QueryRowContext(ctx,
-		`SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_events_touch'`).Scan(&idx)
-	if err != nil {
-		t.Fatalf("idx_events_touch is missing; every summary would scan tool.pre rows instead of seeking them: %v", err)
-	}
-	flat := strings.ReplaceAll(idx, " ", "")
-	// touch_dir must be IN the index, or the query still reads the table per row.
-	if !strings.Contains(flat, "touch_dir") || !strings.Contains(flat, "msg_id") {
-		t.Errorf("index must carry msg_id and touch_dir to answer the attribution join, got: %s", idx)
 	}
 }
 

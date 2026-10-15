@@ -1,6 +1,7 @@
 // Typed client for the daemon API (.ai/03-contracts.md § HTTP API). snake_case
 // on the wire, kept as-is in the types so the contract is visible in the code.
 import type { ReapResult, ResourceReport } from './resources'
+import type { ResourceHistory } from './resourceHistory'
 import type { Footprint, OrphanStopResult, OrphanTarget } from './footprint'
 import type { PullRequest } from './github'
 import type { Usual } from './usual'
@@ -609,6 +610,21 @@ export interface RepoActivity {
   }
 }
 
+/** One folder asked of `GET /v1/repos/remotes`. */
+export interface RepoRemote {
+  dir: string
+  /** The repository's top level; absent when the folder is not in a git repository. */
+  root?: string
+  /** owner/name on GitHub; absent without a GitHub remote. */
+  repo?: string
+  /** A folder macOS guards (Documents, Downloads…): never read, so not known either way. */
+  guarded?: boolean
+}
+
+export interface RepoRemotes {
+  repos: RepoRemote[]
+}
+
 export interface ReposActivity {
   repos: RepoActivity[]
   github_connected: boolean
@@ -857,6 +873,12 @@ export interface KeepAwakeStatus {
   error?: string
 }
 
+/** One quick reply: the chip's label and the text it sends (config.QuickReply). */
+export interface QuickReply {
+  label: string
+  text: string
+}
+
 /** Settings → Status line (config.json statusline_mode). */
 export type StatuslineMode = 'full' | 'short' | 'hidden' | 'off'
 
@@ -879,8 +901,12 @@ export interface Settings {
   keep_awake?: KeepAwakeMode
   /** What happens to finished copies (lib/copies CleanupMode). The daemon returns "ask" when never chosen. */
   worktree_cleanup?: 'off' | 'ask' | 'auto'
+  /** What the desktop app does when a newer release is found (ADR-042): show the card, or install it once nothing is busy. The daemon returns "ask" when never chosen. */
+  app_update?: AppUpdateMode
   /** What Caprock's Claude Code status line shows. The daemon returns "full" when never chosen; "hidden" prints nothing but keeps relaying plan limits; "off" removes Caprock's own statusLine entry. */
   statusline_mode?: StatuslineMode
+  /** The one-click replies under a session Caprock started (lib/quickReplies.ts); the defaults until changed. */
+  quick_replies?: QuickReply[]
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
   /** The share of a Claude plan window (50–99) at which Premium pauses the
@@ -943,6 +969,11 @@ export interface Settings {
 
 /** GET /v1/team-signal: distinct commit authors across the listed repositories. */
 export interface TeamSignal { authors: number; repos: number; window_days: number; checked_ms: number }
+
+export type AppUpdateMode = 'ask' | 'auto'
+
+/** GET /v1/update/busy: sessions an app restart would interrupt (mid-turn, or waiting on a permission prompt). */
+export interface UpdateBusy { working: number }
 
 export interface UpdateStatus {
   enabled: boolean
@@ -1364,6 +1395,36 @@ export interface BrainAutoStatus {
   next_wake?: number
   last_error?: string
   recent: BrainRun[]
+  /** The session being read right now, while a read runs. */
+  reading?: BrainReading
+  /** The progress through every session in reach, while on. */
+  build?: BrainBuild
+}
+
+/** The session the extraction is asking claude about (03-contracts.md § Second Brain). */
+export interface BrainReading {
+  session_id: string
+  /** Its own name, else its first prompt, clipped. */
+  title?: string
+  agent?: string
+  project?: string
+  /** When the session last did something, and when this read began; unix ms. */
+  last_event_at?: number
+  started_at: number
+}
+
+/** How far the extraction has got through the sessions in reach. */
+export interface BrainBuild {
+  /** The start of what is in reach, unix ms. */
+  from: number
+  /** Read plus waiting. */
+  sessions: number
+  read: number
+  /** What the reads of those sessions kept. */
+  memories: number
+  truncated?: boolean
+  /** Per project, most sessions first, at most 12. */
+  sources: { project: string; read: number; pending: number; memories: number }[]
 }
 
 /** One read of one session. */
@@ -1379,6 +1440,9 @@ export interface BrainRun {
   error?: string
   finished_at: number
   project?: string
+  /** The session's own name (or first stored prompt) and agent. */
+  title?: string
+  agent?: string
 }
 
 /** What a backfill would read: an estimate, from the transcript's length. */
@@ -1828,6 +1892,8 @@ export const api = {
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */
   /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */
   reposActivity: () => get<ReposActivity>('/v1/repos/activity'),
+  /** Which folders are git repositories with a GitHub remote (the Pipeline's picker). */
+  repoRemotes: (dirs: readonly string[]) => get<RepoRemotes>(`/v1/repos/remotes?${dirs.map((d) => `dir=${encodeURIComponent(d)}`).join('&')}`),
   /** The Now screen's CI/CD section (.ai/04-ui.md § CI/CD on Now). */
   reposCI: (q: { older?: boolean; hide?: readonly string[] } = {}) => {
     const p = new URLSearchParams()
@@ -1889,6 +1955,7 @@ export const api = {
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),
+  updateBusy: () => get<UpdateBusy>('/v1/update/busy'),
   saveSettings: (s: Settings) => post<Settings>('/v1/settings', s, 'PUT'),
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
@@ -1933,6 +2000,8 @@ export const api = {
   storage: () => get<StorageReport>('/v1/storage'),
   /** What each live session's process tree and Caprock itself cost (lib/resources.ts). */
   resources: () => get<ResourceReport>('/v1/resources'),
+  /** The meter's kept samples after `since` (unix ms), as series: the status bar's popover (lib/resourceHistory.ts). */
+  resourceHistory: (since = 0) => get<ResourceHistory>(`/v1/resources/history${since > 0 ? `?since=${since}` : ''}`),
   /** Stop the orphaned pty-hosts nothing runs in. Machine only. */
   reapOrphans: () => post<ReapResult>('/v1/resources/reap', {}),
   /**
@@ -2372,8 +2441,10 @@ export interface WorkRepo {
   /** The session the repository's Pipeline answer is read through. */
   via_session: string
   live: number
-  /** CHANGELOG's [Unreleased] section on `ref`, as of the last fetch. */
-  unreleased?: { ref: string; items: string[]; count: number; more?: boolean }
+  /** CHANGELOG's [Unreleased] section on `ref`, as of the last fetch; `kinds`
+   *  counts its entries by Keep a Changelog kind (Added, Fixed, …), absent from
+   *  an older daemon or when no entry has a kind. */
+  unreleased?: { ref: string; items: string[]; count: number; more?: boolean; kinds?: Partial<Record<string, number>> }
   tags?: { last?: { name: string; at: number }; gap_median_ms?: number; gaps: number }
   /** Commits on the default branch since the last tag. */
   ahead_of_tag?: number

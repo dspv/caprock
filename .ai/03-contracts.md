@@ -549,6 +549,7 @@ GET  /v1/sessions/{id}/ci/stats        → SessionCIStats — the Pipeline: the 
 GET  /v1/sessions/{id}/branches        → SessionBranches — the repository's branches with PRs and Caprock spend (§ Session branches)
 GET  /v1/repos/activity                → ReposActivity — Now's Repos section: each listed repository with a live session, from git and kept GitHub answers
 GET  /v1/repos/ci                      → ReposCI — Now's CI/CD section: runs, stuck runs, releases, cost per PR and who, GitHub's status
+GET  /v1/repos/remotes?dir=…&dir=…     → ReposRemotes — the Pipeline's picker: which folders are git repositories on GitHub
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
@@ -557,6 +558,7 @@ PUT  /v1/settings                      → store them
 POST /v1/offer                         → {status: "sent"} — forward one offer-survey answer to caprock.dev on the user's click (§ Offer survey, ADR-062)
 GET  /v1/update                        → cached release status (no network I/O)
 POST /v1/update/check                  → check now (403 unless enabled)
+GET  /v1/update/busy                   → {working} — sessions an app restart would interrupt (Update automatically, ADR-042)
 POST /v1/hooks/install                 → {hooks: HooksStatus, backup?} — `caprock hooks install`, from the dashboard
 POST /v1/claude/bypass-consent         → {accepted: true} — the user accepted Caprock's copy of Claude Code's bypass warning (ADR-041)
 GET  /v1/stats/daily?days=30           → DailyStat[]
@@ -793,7 +795,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes, or {op: progress} when an automatic read begins or ends (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -848,11 +850,11 @@ Extended thinking is never stored at all — only `type: "text"` blocks are read
 
 **Codex prompts and tool results are `turn.user` and `tool.post` in Claude Code's shape** (`source = codex`). A prompt: key `codex:user:<line>`, payload `{prompt, cwd}`, from the `item_completed` `UserMessage` item (else the `user_message` event), clipped to 16000 runes; none for imported or subagent threads. A result: key `codex:result:<line>` (`codex:sub:<thread>:result:<line>` in a subagent file, with `agent_id` and `sidechain`), `tool` the call's name, payload `{session_id, cwd, tool_name, tool_use_id, tool_response, is_error, exit_code?}`, `tool_response` text clipped to 8000 runes, `exit_code` only where Codex recorded one (`shell`). A call whose request ended (`task_complete`, `turn_aborted`, or the next `task_started`) with no output record gets one too, key `codex:interrupted:<call line>` (`codex:sub:<thread>:interrupted:<call line>`), `tool_response` empty and `interrupted: true`; the chat shows it as interrupted, not running. Every Codex `tool.pre` carries `tool_use_id` = Codex's `call_id`, and its `tool_input` is the call's argument object (a `function_call`'s JSON-string arguments unwrapped; `shell`'s argv `command` turned into its command line, the array kept as `argv`). Rows stored before carry neither; a one-time pass (`meta.codex_chat_backfilled`) stores the missing prompts and results from the rollouts still on disk and rewrites only `tool_use_id` and `tool_input` on the call whose key and timestamp match. See [19-codex.md § Chat](19-codex.md#chat).
 
-Five indexes exist purely for read speed, created by migrations 0006 to 0010: `idx_events_kind_ts` (kind, ts) and `idx_events_cost_cover`, which additionally carries `model`, `session_id`, the token/cost columns and (since migration 0026) `internal` so the summary aggregates are answered from the index without touching the table. Together they take `/v1/stats/summary?range=all` from ~820ms to ~340ms and `/v1/history` from ~830ms to ~470ms on a 184k-event database, for roughly 30MB of index on a 306MB file. `idx_events_session_id` (session_id, id) serves the per-session event lookup behind Now, and `idx_events_kind_id` (kind, id) serves the Memory screen — both order by id, which the ts-ordered indexes cannot satisfy, so without them SQLite read every matching row and sorted it in a temp B-tree to return the newest few. Migration 0026 rebuilt `idx_events_cost_cover`, `idx_events_tool_dist` and `idx_events_attr_work` with `internal` as their last column: every aggregate filters on `internal = 0` since migration 0024, and without the column none of them covered any more — each query fetched every full row to test one flag, which put `/v1/history?range=all` at 9s on a 300k-event database. It also added `idx_events_ts_cover` (ts, internal, kind, session_id, token/cost columns) for the two range aggregates that group by kind or count distinct sessions; both pin it with `INDEXED BY`, because without ANALYZE statistics SQLite picked `idx_events_kind_id` or `idx_events_session_id` and walked the whole table — 4.8s for today's 772 events. `idx_events_ts_model` (ts, model, cost_usd) serves the model mix, which every summary computes: `idx_events_cost_cover` carries `model` but leads on `kind`, so a ts-only filter cannot use it — 146ms against 56ms over 30 days on a 190k-event database. `idx_events_user_turn` (migration 0033) finds a session's first prompts for the sessions list's descriptions; see § First-prompt DDL.
+Five indexes were added purely for read speed by migrations 0006 to 0010: `idx_events_kind_ts` (kind, ts) and `idx_events_cost_cover`, which additionally carries `model`, `session_id`, the token/cost columns and (since migration 0026) `internal` so the summary aggregates are answered from the index without touching the table. Together they take `/v1/stats/summary?range=all` from ~820ms to ~340ms and `/v1/history` from ~830ms to ~470ms on a 184k-event database, for roughly 30MB of index on a 306MB file. `idx_events_session_id` (session_id, id) serves the per-session event lookup behind Now, and `idx_events_kind_id` (kind, id) serves the Memory screen — both order by id, which the ts-ordered indexes cannot satisfy, so without them SQLite read every matching row and sorted it in a temp B-tree to return the newest few. Migration 0026 rebuilt `idx_events_cost_cover`, `idx_events_tool_dist` and `idx_events_attr_work` with `internal` as their last column: every aggregate filters on `internal = 0` since migration 0024, and without the column none of them covered any more — each query fetched every full row to test one flag, which put `/v1/history?range=all` at 9s on a 300k-event database. It also added `idx_events_ts_cover` (ts, internal, kind, session_id, token/cost columns) for the two range aggregates that group by kind or count distinct sessions; both pin it with `INDEXED BY`, because without ANALYZE statistics SQLite picked `idx_events_kind_id` or `idx_events_session_id` and walked the whole table — 4.8s for today's 772 events. `idx_events_ts_model` (ts, model, cost_usd) served the model mix, which every summary computes: `idx_events_cost_cover` carries `model` but leads on `kind`, so a ts-only filter could not use it — 146ms against 56ms over 30 days on a 190k-event database. Migration 0057 dropped both once later indexes had taken over their queries; see § Superseded indexes DDL. `idx_events_user_turn` (migration 0033) finds a session's first prompts for the sessions list's descriptions; see § First-prompt DDL.
 
 Note-**search** deliberately still scans: an FTS5 index answers in 6ms against ~165ms, but it matches whole words, so searching `chestr` finds 394 rows with LIKE and 0 with FTS. People search their own sessions for fragments — half an error message, part of a path — and a faster search that misses them is not the same feature.
 
-Anything added to the summary aggregates should either use these columns or extend the covering index — a column outside it costs the Go driver a table fetch per row, which is far more expensive than the same SQL timed in the sqlite3 shell suggests.
+Anything added to the summary aggregates should either use these columns or extend the covering index it reads (`idx_events_turn_agent`, `idx_events_ts_cover`) — a column outside it costs the Go driver a table fetch per row, which is far more expensive than the same SQL timed in the sqlite3 shell suggests.
 
 `ListEvents`, `EventsAfter`, `SessionNotes` and `SearchNotes` all clamp `limit` to `MaxEventPage` (5000) instead of falling back to a small default, which made a caller asking for everything receive a fraction of it — `notes?limit=5001` returned 200 rows where `limit=5000` returned 2372.
 
@@ -1003,6 +1005,37 @@ own memory as below). Only reads: nothing is signalled except by the reap below.
   `{type:"resources", seq, data:<the object above>}` frame on `/v1/live`. A
   `GET` answers the last sample when it is under 5 s old, otherwise takes one.
 - **A paired device may read it**; it may not reap.
+
+`GET /v1/resources/history[?since=<unix ms>]` (2026-10-15) is the same
+figures over the last hour, for the status bar's resource popover
+([04-ui.md § Status strip](04-ui.md)). Code: `internal/daemon/reshistory.go`.
+
+```json
+{"interval_s": 5, "capacity": 720,
+ "at": [1791400000000, 1791400005000],
+ "caprock": {"cpu": [3.8, 4.1], "mem": [450887680, 451000320]},
+ "all": {"cpu": [0, 112.3], "mem": [1048576, 5242880]},
+ "sessions": {"<session id>": {"cpu": [null, 12.3], "mem": [1048576, 2097152]}}}
+```
+
+- **What is kept.** Every sample the meter takes (§ When it samples above),
+  in a ring of `capacity` slots — an hour at `interval_s` — oldest dropped
+  first. It takes no sample of its own and does not keep the meter sampling,
+  so the history has gaps where no window was open; asking it is a read.
+  `since` answers only samples taken after that time (the popover asks after
+  the newest it has, so the hour is fetched once).
+- **Series.** Each array lines up with `at`, oldest first. `caprock` is the
+  daemon, the terminal holders, the app and its web view summed; `all` is
+  every session's tree summed (a CPU before its first rate counts as none);
+  `sessions` has one series per session that appears in the window, `null`
+  where it was not running or where its CPU had no rate yet. CPU is rounded
+  to 0.1; memory is kept in KiB and answered in bytes.
+- **Cost** (measured 2026-10-15, Apple M1 Pro under load, ten sessions — more
+  than the owner runs at once, `BenchmarkResourceHistory`): a full hour holds
+  157 KB of heap; keeping a sample takes 0.15 µs and allocates nothing; the
+  full hour answered as JSON is 135 KB and 1.8 ms. A preview daemon with two
+  sessions answered its first 20 minutes in 15 KB and 2.5 ms.
+- **A paired device may read it**, as it reads `GET /v1/resources`.
 
 `POST /v1/resources/reap` → `{reaped[], failed[]?, kept[]}` (verdicts as in
 `hosts.list`; `failed` is `{pid, error}`): stops every holder whose verdict is
@@ -1237,6 +1270,15 @@ effective mode, `full` when never chosen; stored as `statusline_mode` in
 `config.json` the same way as `keep_awake`. A change applies Caprock's own
 `statusLine` entry to match (§ Statusline, *Settings → Status line*).
 
+`GET`/`PUT /v1/settings` carry **`app_update`**: what the desktop app does
+when the release check finds a newer version, one of `ask` (the update card;
+nothing installs until a click) or `auto` (download and verify in the
+background, install once it is safe to restart), else `400` (an empty string
+included). `GET` returns the effective mode, `ask` when never chosen; stored
+as `app_update` in `config.json` the same way as `keep_awake`. Only the app's
+page acts on it; the daemon never installs anything (ADR-042 as amended
+2026-10-15). Choosing `auto` in the app also sends `update_checks: true`.
+
 `PUT /v1/settings` also accepts `gemini_api_key`, write-only and stored in `config.json` (unlike the two credentials below, which the secret store keeps). `GET` reports `gemini_key_set` and `gemini_key_from_env` instead of the value; `GEMINI_API_KEY` in the daemon's environment takes precedence over the stored key when both exist ([ADR-025](08-decisions.md)).
 
 `PUT /v1/settings` also accepts `deepseek_api_key`, the user's DeepSeek key for Claude Code on DeepSeek (see **Subscriptions** below), write-only and kept in the secret store (below), never in `config.json`. `GET` reports `deepseek_key_set`, `deepseek_key_where` and `deepseek_key_hint` — the first three and last four characters (`sk-…1a2b`), or `…` for a key under 16 characters — never the value. Trimmed on the way in; `""` clears it; `400` for a value with a line break or a NUL, or over 512 bytes, because it becomes one environment variable of a child process. Caprock never sends it anywhere and never logs it.
@@ -1268,6 +1310,8 @@ GitHub token is (§ GitHub, "Where the token lives"):
 
 `PUT /v1/settings` accepts `default_folder` (2026-10-09): where the app's Add project sheet starts — its folder field, a new project's parent, a clone's destination and the folder browser. Empty is the home folder; otherwise an absolute path or one led by `~`, one line, at most 1024 bytes (`400` otherwise). Stored as `default_folder` in `config.json` and returned by `GET`. It changes no boundary: `/v1/browse` and `/v1/browse/stat` stay rooted at `browse_root`.
 
+`GET`/`PUT /v1/settings` carry `quick_replies` (2026-10-15): `[{label, text}]`, the one-click replies under a session Caprock started ([21-app.md § Quick replies](21-app.md#quick-replies)). `GET` returns the list in use — `config.DefaultQuickReplies` until changed. `PUT` replaces the whole list; absent or `null` leaves it. Each label and text is trimmed; at most 10 replies, a label of 1–24 characters on one line, a text of 1–300 bytes with no control character but a newline; anything else is a `400` and nothing changes. Stored in `config.json` only once it differs from the list in use, so writing back what was read never freezes the defaults; an empty list is kept as empty. A paired device does not write it. The `PUT` body may be up to 16 KiB (4 KiB before).
+
 `GET`/`PUT /v1/settings` carry `prompts` (2026-10-09): when each of the dashboard's own offers was last answered, a map of prompt id → Unix ms, stored in `config.json` so an answer given in the desktop app holds in a browser tab too ([04-ui.md § Product-led surfaces](04-ui.md#product-led-surfaces)). Ids in use: `star-done`, `star-dismissed`, `premium-limit`, `premium-cap`, `premium-hint`, `premium-banner`, `teams-nudge`, `share-week`, `share-month`, and the offer survey's (`offer-variant-ads`, `offer-variant-youtube`, `offer-last`, and `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2` per offer; ADR-062). `PUT` **merges**: each named id keeps the later of its stored time and the new one, `0` removes it, ids not named are untouched. An id must be `a-z`, `0-9` and `-`, at most 40 bytes; a negative time or more than 64 ids is a `400`. Absent from `GET` when empty. A paired device does not write it; its answers stay in its own browser.
 
 `GET /v1/team-signal` (2026-10-09) → `{authors, repos, window_days, checked_ms}`: how many distinct people committed to the listed repositories in the last 30 days, for the Caprock for Teams card (shown at `authors ≥ 2`). Read with `git log --all --no-merges --since=30.days.ago --format=%an%x09%ae` in at most 25 repositories, 2000 commits each, under the projects' git timeout; people are counted by lower-cased author name (one person, two addresses is one), bot authors left out; a repository whose git fails is skipped. Cached for six hours in the projects service. Counts only — no name or address leaves `internal/projects/authors.go` — and nothing leaves the machine. Not on a paired device's read list. `501` without the projects service.
@@ -1287,6 +1331,8 @@ On a paired device's read list (counts only). `501` without the projects service
 - **GitHub's status** — `status` `{indicator, description, components[{name, status}], incidents[{name, impact?, status?, url?}], at, error?}` from `GET https://www.githubstatus.com/api/v2/summary.json` (`github.StatusPage`), only while GitHub is connected, kept 5 minutes, sent with no token, cookie or anything about the user. `components` are those not `operational` plus Actions, Pull Requests, API Requests and Git Operations whatever their state; `incidents` the unresolved ones. A failed read keeps the last answer with `error` set and is not retried for 5 minutes. `Service.StatusURL` replaces the address (tests).
 
 On a paired device's read list. `501` without the projects service.
+
+`GET /v1/repos/remotes?dir=…&dir=…` (2026-10-15) → `ReposRemotes` `{repos[]}`: the Pipeline's repository picker ([04-ui.md § CI in the session deck, and Investigate](04-ui.md#ci-in-the-session-deck-and-investigate)) asks which of the folders agent sessions worked in are git repositories with a GitHub remote. One `RepoRemote` `{dir, root?, repo?, guarded?}` per distinct non-empty `dir`, in the order asked, at most 100 (`reposRemotesMax`): `root` is the repository's top level (absent outside git), `repo` is owner/name when its remote is on GitHub (`github.ParseRemote`; absent with no remote or another host). A folder macOS guards (`tcc.Guarded`: Documents, Downloads, Desktop…) is never read here and answers `guarded: true` alone, so opening the Pipeline asks for no folder access. Read through the session page's `repoCache` (one minute per folder), at most 8 folders at once; nothing is sent anywhere. Nothing asked answers `{"repos":[]}`. On a paired device's read list.
 
 **Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole, unless it opened or merged more than one pull request (`session_prs` rows with `opened_at` or `merged_at`): `git_branch` is the branch a session was on last, and a long session that drove hundreds of pull requests and ended on a release branch was charged whole to the release's pull request (#601 read as $1,884.29, the session's entire spend; cut as below it is $2.12, measured on the owner's database 2026-10-14). Where two pull requests share a head branch the open one owns it, else the most recently updated. A session not charged by its branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice, shared?, tokens_in, tokens_out, cache_read, cache_write}`: the tokens are the same work's (`session_stats` for a whole session, the slice's `events` sums for a cut one), `shared` counts the cut sessions: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and one sum per slice over a session's events (`(session_id, ts)` index). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them.
 
@@ -1415,7 +1461,9 @@ token stays in `config.json`.
 
 **Offer survey** ([ADR-062](08-decisions.md)). `POST /v1/offer {offer, answers, email?}` is the one route that sends what the user chose to Caprock, and the dashboard calls it only from the survey card's **Send** button. `offer` is one of the dashboard's surveys, and `answers` is exactly `{q1, q2}`, each one allowed value: `ads` and `youtube` — `q1` `under-4`, `4-8`, `8-12`, `12+`; `q2` `under-30`, `30-70`, `over-70`. `local-models` — `q1` `coding`, `chat`, `search`, `trying`; `q2` `mac-16`, `mac-24-64`, `mac-96`, `pc-nvidia`, `other`. `email`, when present, is one plain address of at most 254 characters. Anything else is `400` and nothing is sent. The daemon rebuilds the body from those fields alone and POSTs `{offer, answers, email?}` — no version, no identifier — to `https://caprock.dev/api/offer` with a 10 s limit; `CAPROCK_OFFER_URL` replaces the address for a preview stand or a test, which must never reach the real site. `200 {status: "sent"}` when the site took it, `502 {error}` when it did not — the error never carries the email or the address. Machine-only: a paired device gets `403` like every write. The enums live in `internal/api/offer.go`, `ui/src/lib/offer.ts` and the site's `functions/api/offer.ts`, and change together. What keeps a card away is ordinary `settings.prompts` entries: the draw (`offer-variant-ads` or `offer-variant-youtube`), the day any offer last showed (`offer-last`), and per offer `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2`.
 
-`GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once every 6 hours unless forced — at startup, when the switch is turned on, and on an hourly tick that asks whether one is due (so a daemon that runs for weeks still hears of a release) — and each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. Caprock does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open.
+`GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once an hour unless forced (`update.Interval`; releases ship several times a day) — at startup, when the switch is turned on, and on a five-minute tick that asks whether one is due (so a daemon that runs for weeks still hears of a release). The hour is measured on the wall clock, because macOS stops the monotonic clock while the machine sleeps: a check that fell due overnight runs within five minutes of waking. After a failed check the next unforced one waits 15 minutes (`update.FailRetry`), so an offline laptop does not try on every tick. Each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. The daemon does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open. The desktop app replaces its own bundle, which carries the daemon (ADR-042).
+
+`GET /v1/update/busy` returns `{working}`: how many sessions are working now — mid-turn, with subagents still running, or waiting on a permission prompt — the count the keep-awake hold uses (ADR-049). The desktop app set to `app_update: auto` installs a downloaded update only while it is `0`. A read of the local database, no network I/O, nothing about the sessions but the count; a failed count is an error status, never a `0`. Not on a paired device's allowlist.
 
 **`PUT /v1/settings` is a patch, not a replace.** Fields are decoded as pointers, so a body changes only the keys it names and leaves the rest as they were; `PUT {}` is a no-op. An explicit `false` is still honoured, so nothing here is write-only. This is not a convenience: decoding into a plain struct made an absent field indistinguishable from a cleared one, so a short body — or a retry that dropped fields — answered 200 while resetting the stated plan *and* switching the release-check opt-in off. The plan decides what every cost figure on the dashboard claims to be, and `update_checks` gates rule 4's single outbound call; neither may be toggled by omission.
 
@@ -3100,23 +3148,46 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   settings and backfill included, is the machine's (a device gets `403`).
 - **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
   "added" | "changed" | "deleted", kind?, title?, auto?}` (`kind` and `title`
-  absent on a delete).
+  absent on a delete). The automatic extraction also publishes `{op:
+  "progress"}` (no id) as each read begins and ends, so a screen showing
+  the build reads the status again; a screen showing memories ignores it.
 - **The automatic extraction** (`internal/brain`, free). `auto` in the
   status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
   daily_tokens, spent, running, pending, since?, backfill_since?,
-  last_wake?, next_wake?, last_error?, recent: [BrainRun]}`: `chosen` once
+  last_wake?, next_wake?, last_error?, recent: [BrainRun], reading?,
+  build?}`: `chosen` once
   the user has answered, `enabled` when on (only then does it read; no
   licence is looked at), `last_wake` and `next_wake` unix ms — `next_wake`
   absent while off, at or before now just after turning on or while a wake
   runs, so a screen can say when the first memories may come — `spent`
   the tokens of the reads in the last 24 hours, `pending` the sessions
-  waiting, `recent` the last reads that were not skipped. `BrainRun` is
-  `{id, session_id, from_event_id, through_event_id, status: ok | failed |
-  skipped, model?, tokens_in, tokens_out, cost_usd, nodes, error?,
-  started_at, finished_at, project?}`.
+  waiting (counted up to 200), `recent` the last reads that were not
+  skipped. `BrainRun` is `{id, session_id, from_event_id,
+  through_event_id, status: ok | failed | skipped, model?, tokens_in,
+  tokens_out, cost_usd, nodes, error?, started_at, finished_at, project?,
+  title?, agent?}`; `title` is the session's own name, else its first
+  stored prompt, and `agent` its agent, joined in.
+- **What it reads now, and how far it is.** `reading` is present while a
+  read is asking `claude` about a session: `{session_id, title?, agent?,
+  project?, last_event_at?, started_at}` — `title` the session's own name,
+  else its first prompt, flattened and clipped to 80 runes; `last_event_at`
+  when the session last did something and `started_at` when this read
+  began (unix ms). `build` is present while it is on: `{from, sessions,
+  read, memories, truncated?, sources: [{project, read, pending,
+  memories}]}` — `from` the start of what is in reach (the earlier of
+  `since` and `backfill_since`); `read` the sessions active since `from`
+  that a read has gone through without failing and that have nothing new
+  since; `sessions` that plus the sessions waiting (`pending`), so a
+  session read before and waiting again counts once, as waiting; a live
+  session joins once it has been quiet ten minutes, and one waiting out a
+  failure is in neither; `memories` what the reads of those sessions kept
+  (as recorded per read); `truncated` when the waiting were counted only
+  to 200; `sources` the same per project, most sessions first, at most 12.
 - **Settings.** `auto: true` starts reading from that moment and wakes the
   reader at once, not at the next five-minute wake — on the daemon's own
-  loop, never under the request; a second `true` while on does not wake it
+  loop, never under the request; a wake that read a full four is followed
+  by the next after three seconds rather than five minutes, so a build
+  reads one session after another within the daily limit; a second `true` while on does not wake it
   again, and a wake never runs beside another; `false` stops it. Neither needs a licence. `daily_tokens`
   is 20,000–5,000,000 (the screen offers 100k, 300k and 1M; the default is
   300,000) and `model` is `""`, `haiku` (the default) or `sonnet`; anything
@@ -3346,7 +3417,8 @@ GET /v1/work → Work
   sessions first), then those any session recorded something in within 24
   hours (newest first), at most 8. `remote` is `owner/name` from origin's
   web address; `via_session` the newest session that brought it; `live`
-  how many live sessions it has. `unreleased` `{ref, items, count, more?}`
+  how many live sessions it has. `unreleased` `{ref, items, count, more?,
+  kinds?}`
   is the `CHANGELOG.md` `[Unreleased]` section at the remote's default
   branch as the clone knows it (`ref`, `origin/<default>`, from
   `refs/remotes/origin/HEAD`): `items` the first lines of its top-level
@@ -3354,7 +3426,14 @@ GET /v1/work → Work
   repository that keeps one file per change (`changes/unreleased/*.md` at
   that branch, front matter skipped; Caprock's own since 2026-10-15) has
   those files' top-level bullets added after the section's, in file-name
-  order, and `count` covers both. Absent when neither the section nor the
+  order, and `count` covers both. `kinds` (since 2026-10-15) counts the
+  entries by Keep a Changelog kind — `Added`, `Changed`, `Deprecated`,
+  `Removed`, `Fixed`, `Security`, as `{"Added": 2, "Fixed": 3}` — from the
+  `### ` heading an entry sits under in the section and a fragment's
+  `kind:`, case ignored; an entry under no such heading, or a fragment
+  without front matter, counts in `count` only; absent when no entry has a
+  kind. The release plan predicts the next version from it (04-ui.md §
+  Release plan). Absent when neither the section nor the
   directory is there. `tags` `{last?: {name, at},
   gap_median_ms?, gaps}` reads the newest 11 tags by creation date;
   `gap_median_ms` is the median time between them, absent with fewer than
@@ -3624,6 +3703,7 @@ GET    /v1/github/owners                   → {owners: [{login, avatar_url?, or
 GET    /v1/github/repos?owner=&q=&page=    → RepoPage
 GET    /v1/github/prs                      → {prs: [PR]}
 GET    /v1/github/actions-usage?owner=     → ActionsUsage (§ Runner cost, under Phase 1 additions)
+GET    /v1/github/statuspage               → GitHubStatusPage (409 not_connected while GitHub is not connected)
 GET    /v1/projects/{id}/github[?worktree=]          → WorktreeInfo
 POST   /v1/projects/{id}/github/refresh[?worktree=]  → WorktreeInfo (read now)
 GET    /v1/projects/{id}/github/items[?q=]           → Items (open issues and pull requests)
@@ -3631,6 +3711,11 @@ POST   /v1/projects/{id}/github/pr[?worktree=]  {title, body, base?, draft} → 
 POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, protocol?, push?} → CreateRepoResult
 ```
 
+- **`GitHubStatusPage`** — `{indicator, description, components, incidents,
+  at, error?}`, the same shape and the same read as `status` in `GET
+  /v1/repos/ci` (`github.StatusPage`, kept 5 minutes, sent no token, cookie
+  or anything about the user). Every paired device may ask; nothing is sent
+  while GitHub is not connected.
 - **`Status`** — `{connected, source?, user?: {login, name?, avatar_url?,
   html_url?}, scopes, scopes_known, token_kind?, checked_at?, sources: {gh,
   stored, store, store_note?, oauth, client?}, health: {last_ok_at?, error?:
@@ -3749,7 +3834,10 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
   connected and only for what is on screen, neither sent the token or
   anything about the user: `www.githubstatus.com`'s public summary, by the
   daemon while Now's CI/CD section is open (§ `GET /v1/repos/ci`, kept 5
-  minutes); and `avatars.githubusercontent.com`, the pull request authors'
+  minutes), and through `GET /v1/github/statuspage` — the same read, the
+  same keep — which the dashboard asks only after a GitHub read failed on
+  the network or with a 5xx, or every 5 minutes while the viewer has ticked
+  *Watch GitHub Status* ([ADR-066](08-decisions.md)); and `avatars.githubusercontent.com`, the pull request authors'
   pictures GitHub named, loaded by the page itself (no referrer) on the PRs
   & CI Board and the CI/CD section — any other address draws initials.
   Settings → GitHub says so.
@@ -3952,7 +4040,7 @@ measured and is quietly skewed is worse than one that is not there;
 
 **`create` makes the working directory, one level, under a parent that already exists.** Starting a new project otherwise meant leaving the dashboard, creating the folder in a terminal, and returning to type its path — a path the user had already typed. It is opt-in and defaults to false: this endpoint executes a command from its body, so a missing directory stays an error unless the caller explicitly asked for it to be made. Deliberately `Mkdir`, never `MkdirAll` — the parent must exist, so a typo in an absolute path fails loudly instead of materialising a chain of directories somewhere the user has never been. The path is cleaned before the parent is checked, so a path that climbs out with `..` is verified against where it actually lands. An existing directory is not an error.
 
-Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one, and `LANG` set to a UTF-8 locale when none of `LC_ALL`, `LC_CTYPE` or `LANG` is (`agents.withUTF8Locale`; not on Windows). Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501) only when no agent's binary is found; Caprock then stays observe-only. Codex, OpenCode and Gemini get their own argv and are never written into `~/.claude.json` ([ADR-031](08-decisions.md)). The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
+Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one, and `LANG` set to a UTF-8 locale when none of `LC_ALL`, `LC_CTYPE` or `LANG` is (`userenv.WithUTF8Locale`; not on Windows). Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501) only when no agent's binary is found; Caprock then stays observe-only. Codex, OpenCode and Gemini get their own argv and are never written into `~/.claude.json` ([ADR-031](08-decisions.md)). The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
 
 ### Phase 2 additions
 
@@ -4495,7 +4583,7 @@ CREATE INDEX IF NOT EXISTS idx_events_turn_msg
 Finds an assistant turn by message id across sessions — the per-turn
 `store.TurnPaidElsewhere` lookup on the write path and the GROUP BY in
 `rollup.RepairForkedTurns` (see **A turn is paid once across sessions** under
-Hook shim). `idx_events_msg` leads on `session_id` and cannot answer either.
+Hook shim). An index leading on `session_id` cannot answer either.
 On the owner's database (2026-10-03) the repair found 827 copied turns from
 one fork and took $212.93 and 381M tokens out of the totals.
 
@@ -4658,6 +4746,7 @@ ALTER TABLE events ADD COLUMN msg_id TEXT;      -- assistant message id; links a
 ALTER TABLE events ADD COLUMN touch_dir TEXT;   -- directory the tool touched, slash-normalized; NULL when none
 CREATE INDEX IF NOT EXISTS idx_events_touch ON events(kind, ts, session_id, msg_id, touch_dir);
 CREATE INDEX IF NOT EXISTS idx_events_msg ON events(session_id, msg_id) WHERE msg_id IS NOT NULL;
+-- both dropped by migration 0057 (§ Superseded indexes DDL)
 
 -- migration 0013, widened by 0014: the carry-forward scan's order, covering
 -- every column it reads — including `tool`, which the work-kind breakdown
@@ -4698,6 +4787,23 @@ The per-directory breakdown is charged by **which files Claude touched**, not by
 - **No query of its own.** The rows the breakdown needs are exactly the rows the carry-forward scan already reads, so the classification rides along in that scan. Measured through the Go driver on the owner's 191k-event database (2026-08-23, 30d, best of fifteen): the summary answers in **249 ms** before and **279 ms** after (+30 ms). A separate aggregate over the same events cost **292 ms** on its own — nearly ten times as much for the same seven numbers.
 - **Codex's `exec` is classified by the tool its script ran (migration 0038).** `exec` wraps a JavaScript script that calls the real tools (`tools.exec_command(…)`, `tools.apply_patch(…)`); of 13,086 calls on the owner's machine 63% ran a command and 14% applied a patch, so counting every `exec` as a command read 30-day editing as 0.4% of spend instead of 4.8% (2026-10-05). `store.innerTool` names the tool when the event is written — of several, the one whose kind wins the precedence; `exec` when the script names none — into `events.inner_tool`, and the scan classifies `COALESCE(inner_tool, tool)`. Stored, not read from the payload in the scan, because that broke the covering index: 30-day summary ~270 ms → ~760 ms. Migration 0038 adds the column to `idx_events_attr_work`; `Store.backfillInnerTool` fills rows already stored (Go, so the script is read by one regex), gated by the `inner_tool_backfilled` meta key.
 - **Why `tool` had to enter the index.** The scan reads it per row, and it was carried by no existing index, so the plan fell off the covering path onto the table: **~578 ms** against **~80 ms** covering. Migration 0014 widens `idx_events_attr` into `idx_events_attr_work` and drops the original; SQLite cannot add a column to an index in place, and a stale duplicate would cost write throughput on every ingested event for nothing.
+
+### Superseded indexes DDL (migration 0057)
+
+```sql
+DROP INDEX IF EXISTS idx_events_touch;
+DROP INDEX IF EXISTS idx_events_ts_model;
+DROP INDEX IF EXISTS idx_events_cost_cover;
+DROP INDEX IF EXISTS idx_events_msg;
+```
+
+Four indexes whose queries later indexes took over, dropped for the space they took: 125 MiB of a 1041 MiB database of 519,000 events, measured after a full VACUUM (2026-10-15). Which index each query uses was read from `EXPLAIN QUERY PLAN` of every statement the Go test suite runs, against a copy of that database; nothing else changed plan.
+
+- **`idx_events_touch`** served the attribution scan, which has run on `idx_events_attr_work` since migrations 0013 and 0014 (§ Touch attribution DDL).
+- **`idx_events_ts_model`** served a model mix filtered on `ts` alone. The model mix now also filters on `kind = 'turn.assistant'` and is answered from `idx_events_turn_agent`, which covers it.
+- **`idx_events_cost_cover`** had one reader left, `store.WhereWeLeftOff`, which pinned it for its (kind, ts, session_id) prefix. It pins `idx_events_turn_agent` now, which leads on the same columns for assistant turns: 0.42 ms on a hit either way, 37.4 ms against 37.7 ms for a project with no passage.
+- **`idx_events_msg`** had one reader left, OpenCode's `refreshText`, which now pins `idx_events_session_id`: 0.52 ms against 0.54 ms for a 401-event session. Unpinned, SQLite falls to `idx_events_kind_id` and takes 441 ms.
+- **The space comes back the usual way:** by incremental vacuum, or by the one-time idle VACUUM on a database not yet switched to it (§ Payload compaction and auto-vacuum).
 
 ### Rate-limit snapshots DDL (migration 0005)
 

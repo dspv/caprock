@@ -1136,6 +1136,33 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 }
 @media (prefers-reduced-motion: reduce) { [data-app] .app-composer { transition: none; } }
 
+/* Quick replies (components/QuickReplies.tsx): small chips in the slab's own
+ * ink, like the composer's box, so they read on a dark or a light terminal
+ * palette; the reply just sent gets a tick for a moment. Outside [data-app]
+ * too: the chat on a phone or a dashboard tab draws the same row. */
+.app-quick {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--color-fg-muted);
+  background: color-mix(in srgb, var(--color-fg) 5%, var(--color-term-bg, var(--color-panel)));
+  box-shadow: inset 0 0 0 1px var(--app-hairline-strong, var(--color-border-strong));
+  transition: color 120ms ease, box-shadow 120ms ease;
+}
+.app-quick:hover:not(:disabled) { color: var(--color-fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 60%, transparent); }
+.app-quick:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--color-accent), 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent); }
+.app-quick:disabled { opacity: 0.6; }
+.app-quick[data-state="sent"] { color: var(--color-fg); }
+.app-quick[data-state="failed"] { color: var(--color-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-danger) 55%, transparent); }
+@media (prefers-reduced-motion: reduce) { .app-quick { transition: none; } }
+
 /* Every terminal (xterm.js): one rasterisation for every glyph, no ligatures.
  *
  * The WebGL renderer draws each glyph once onto a scratch canvas and keeps it.

@@ -118,12 +118,16 @@ profile sees `CAPROCK_RESOLVING_ENVIRONMENT=1` and can skip interactive-only
 work. `CAPROCK_DATA_DIR` stays pinned to the daemon's value. Spawned sessions
 (`internal/agents`) and verification commands (`internal/board`) both use it;
 Windows keeps the daemon's environment, which the registry already built.
-A session or shell with no locale of its own (none of `LC_ALL`, `LC_CTYPE`,
-`LANG` set) is given `LANG=en_US.UTF-8` on macOS and `LANG=C.UTF-8` on
-Linux (`agents.withUTF8Locale`), as Terminal.app and iTerm2 do before they
+Every process Caprock starts with no locale of its own (none of `LC_ALL`,
+`LC_CTYPE`, `LANG` set) is given `LANG=en_US.UTF-8` on macOS and
+`LANG=C.UTF-8` on Linux (`userenv.WithUTF8Locale`, applied by `Environ`;
+`userenv.EnsureProcessLocale` sets it on the daemon itself at start, so a
+child built from `os.Environ()` inherits it too), as Terminal.app and iTerm2 do before they
 start a shell: launchd sets none, a profile seldom does, and in the C locale
 bash showed a pasted "καλημέρα" as `\316\272…` while its bytes arrived
-intact (user report, 2026-10-11, a Russian paste). A locale the user set is
+intact (user report, 2026-10-11, a Russian paste), and an agent's `pbcopy`
+put a Russian line on the clipboard as Mac Roman garble (user report,
+2026-10-15). A locale the user set is
 left alone; Windows gets nothing, ConPTY being UTF-8 already.
 
 ### Native terminals

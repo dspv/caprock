@@ -55,4 +55,21 @@ describe('force layout', () => {
     const b = bounds(nodes)
     expect(Number.isFinite(b.x0) && Number.isFinite(b.x1)).toBe(true)
   })
+
+  it('pulls a node towards its own anchor, so a project reads as a cluster', () => {
+    const mk = (id: number, ax: number) => ({ id, x: id * 3, y: 0, vx: 0, vy: 0, r: 3, ax, ay: 0, pull: 0.1 })
+    const nodes = [mk(1, -200), mk(2, -200), mk(3, 200), mk(4, 200)]
+    const sim = new Simulation(nodes, [], { charge: -5 })
+    settle(sim)
+    expect(nodes[0]!.x).toBeLessThan(-120)
+    expect(nodes[2]!.x).toBeGreaterThan(120)
+    expect(dist(nodes[0]!, nodes[1]!)).toBeLessThan(dist(nodes[0]!, nodes[2]!) / 4)
+  })
+
+  it('keeps collision circles apart, room for a hub and its label', () => {
+    const nodes = [0, 1, 2].map((i) => ({ id: i, x: i * 0.5, y: 0, vx: 0, vy: 0, r: 4, cr: 20 }))
+    const sim = new Simulation(nodes, [], { charge: 0, gravity: 0.05 })
+    settle(sim)
+    for (const [a, b] of [[0, 1], [1, 2], [0, 2]] as const) expect(dist(nodes[a]!, nodes[b]!)).toBeGreaterThan(36)
+  })
 })

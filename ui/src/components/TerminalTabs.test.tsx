@@ -15,11 +15,12 @@ import { setComposerEnabled } from '@/lib/composer'
 Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
 
 // A pane that counts its renders: xterm is beside the point here.
-const panes = vi.hoisted(() => ({ renders: new Map<string, number>(), composer: new Map<string, unknown>() }))
+const panes = vi.hoisted(() => ({ renders: new Map<string, number>(), composer: new Map<string, unknown>(), quick: new Map<string, boolean>() }))
 vi.mock('./TerminalPane', () => ({
-  TerminalPane: ({ sessionId, composer }: { sessionId: string; composer?: unknown }) => {
+  TerminalPane: ({ sessionId, composer, quickReplies }: { sessionId: string; composer?: unknown; quickReplies?: boolean }) => {
     panes.renders.set(sessionId, (panes.renders.get(sessionId) ?? 0) + 1)
     panes.composer.set(sessionId, composer)
+    panes.quick.set(sessionId, !!quickReplies)
     return null
   },
 }))
@@ -401,6 +402,16 @@ describe('TerminalStack composer', () => {
     expect(panes.composer.get('theirs')).toBeUndefined()
     expect(panes.composer.get('sh')).toBeUndefined()
     expect(panes.composer.get('gone')).toBeUndefined()
+  })
+
+  it('gives quick replies to a live agent Caprock started, composer or not, and to no session it only watches (rule 7)', () => {
+    for (const on of [false, true]) {
+      setComposerEnabled(on)
+      panes.quick.clear()
+      const { unmount } = render(stack())
+      expect(Object.fromEntries(panes.quick)).toEqual({ mine: true, theirs: false, sh: false, gone: false })
+      unmount()
+    }
   })
 })
 

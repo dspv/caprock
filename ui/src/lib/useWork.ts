@@ -42,8 +42,22 @@ export interface WorkRead {
   refresh: () => void
 }
 
-export function useWork(): WorkRead {
-  const shown = useContext(ScreenShown)
+/** Only release news: a pull request moved (GitHub), or the link was reset. */
+export function changesRelease(f: Frame): boolean {
+  return f.type === 'github' || f.type === 'reset'
+}
+
+/**
+ * The Work answer, read as described above. `on` false asks nothing (a
+ * folded section); `changes` narrows the frames that read it again — the
+ * right panel's Release section, always on screen beside an agent, reads it
+ * again only on release news (changesRelease), never on every turn.
+ */
+export function useWork(opts: { on?: boolean; changes?: (f: Frame) => boolean } = {}): WorkRead {
+  const shown = useContext(ScreenShown) && (opts.on ?? true)
+  const changes = opts.changes ?? changesWork
+  const changesRef = useRef(changes)
+  changesRef.current = changes
   const [state, setState] = useState<{ data?: Work; error?: Error; fetchedAt: number }>({ fetchedAt: 0 })
   const shownRef = useRef(shown)
   shownRef.current = shown
@@ -73,7 +87,7 @@ export function useWork(): WorkRead {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
     const off = live.onFrame((f) => {
-      if (!changesWork(f)) return
+      if (!changesRef.current(f)) return
       if (!shownRef.current || pageHidden()) { missed.current = true; return }
       if (timer) return
       timer = setTimeout(() => { timer = undefined; read() }, WORK_READ_MS)

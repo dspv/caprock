@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { UpdateCheckBanner } from './UpdateCheckBanner'
 import { CloseButton, DialogBackdrop } from '@/components/Dialog'
 import type { ReactNode } from 'react'
 import { live as liveStore, useLiveLink } from '@/lib/live'
@@ -38,6 +39,7 @@ import { Prose } from './Prose'
 import { ConnectionState } from './ConnectionState'
 import { PhoneBar } from './PhoneBar'
 import { StaleUiPill } from './StaleUiPill'
+import { GitHubStatusDot } from './GitHubOutage'
 import { isAppMode } from '@/lib/appmode'
 import { useNarrowScreen } from '@/lib/phone'
 
@@ -102,6 +104,8 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const phoneHome = !app && narrow && route.name === 'now' && !route.full
   return (
     <div className="min-h-screen flex flex-col">
+      {/* The answer to a check by hand; the app draws its own (AppShell). */}
+      {!app && <UpdateCheckBanner />}
       {/* Wraps on a phone. One fixed-height row was 882px wide at 390, so
         * every screen on a paired phone scrolled sideways before it showed
         * anything. On a desktop it is still one row. */}
@@ -157,6 +161,8 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
             * being done about it (components/ConnectionState.tsx). */}
           {!app && <ConnectionState link={link} heardAt={liveStore.heardAt} onReconnect={() => liveStore.reconnectNow()} />}
           {/* Inside the app the status strip carries it (StatusStrip). */}
+          {/* The browser's status bar is this header: the GitHub Status dot, opt-in. */}
+          {!app && <span className="text-[12px] text-fg-muted"><GitHubStatusDot /></span>}
           {!app && <StaleUiPill />}
           {/* Setting the plan is a settings change: on the machine only (ADR-029). */}
           {!isPairedDevice() && <PlanChip plan={plan} onSave={savePlan} />}

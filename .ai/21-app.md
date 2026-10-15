@@ -941,7 +941,10 @@ One window, three regions:
   runs; this is the way back to what ended.
 - **Status strip (bottom).** Connection state, plan limits (5-hour and 7-day)
   and today's spend while the sidebar is hidden (its Today strip carries
-  them otherwise), what Caprock itself costs this computer — *caprock
+  them otherwise), with an agent in front what its processes use (*agent
+  cpu 8.1% ram 413 MB*, which opens the last hour's CPU and memory charts
+  and who uses the most, [04-ui.md § Status strip](04-ui.md)), what Caprock
+  itself costs this computer — *caprock
   1.1 GB · 2.2 GB*, memory and disk, memory alone in a window under
   1,250 px, the warning colour with a dot when the doctor flags something,
   and a click (or the palette's *Caprock doctor*) opens `caprock doctor` as
@@ -1075,7 +1078,7 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   The notice was built on 2026-10-06: the status
   strip names the release and the command for each part Homebrew installed
   (the `caprock-app` cask, the `caprock` formula), dismissed per version; the
-  check runs at most every 6 hours, conditionally
+  check runs at most hourly (every 6 hours until 2026-10-15), conditionally
   ([04-ui.md § Update notice](04-ui.md#update-notice)).
   The `.dmg` opens on a branded window (`bundle.macOS.dmg` in
   `tauri.conf.json`, 2026-10-10): 660×400, caprock.dev's paper ground, the
@@ -1448,7 +1451,8 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   (with `hotkey_status`; built in WP-10, app/README.md),
   `open_external` (https and the editors' schemes only), `daemon_status`, and
   the updater's `app_update_status`, `app_update_check`,
-  `app_update_install` and `app_update_asked` (F20). No
+  `app_update_download` (Update automatically, ADR-042 as amended
+  2026-10-15), `app_update_install` and `app_update_asked` (F20). No
   shell, filesystem or HTTP plugin is exposed to the page. The bundled
   fallback page, on the app's own origin, alone gets `start_daemon`,
   `update_daemon` and `set_background` (built in WP-02; the others arrive
@@ -1700,6 +1704,41 @@ and `ui/src/lib/composer.ts`.
 - **Look.** `.app-composer` in `tokens.css`: the slab's own ink at 5% over
   the terminal's ground, a hairline at rest, the accent edge and a 3px
   accent halo when it has the keyboard, in every terminal palette.
+
+## Quick replies
+
+One-click replies to a running session (owner, 2026-10-15: "one-click quick
+replies to a running session: Continue, Shorter and the like"). Built in
+`ui/src/components/QuickReplies.tsx`, `ui/src/lib/quickReplies.ts` and
+`internal/config/quickreply.go`.
+
+- **Where.** A row of small chips under the terminal of a session Caprock
+  started — live, not detached, not a shell (`composerFits`, rule 7) — above
+  the composer when it is on, and whether or not it is; and above the chat's
+  field while the chat can type (`ChatView`, the phone's chat included). A
+  session Caprock only watches never gets the row, and the daemon refuses
+  its queue whatever the page draws. A sibling after the terminal's box, so
+  it never remounts the host.
+- **Sending** is the composer's path, `POST /v1/agents/{id}/queue`
+  (ADR-053): the reply's fixed text, typed in at once at the prompt,
+  otherwise held and typed when the turn ends; the daemon types a line
+  break as ESC CR and submits with Enter after a pause. The chip clicked
+  shows a tick for a moment; a refusal says *Not sent: <why>* beside the row.
+  A click keeps the keyboard where it was (the terminal or the box).
+- **The list.** *Continue* (`Continue.`), *Shorter* (`Shorter, please: say
+  it in fewer words.`), *Explain* (`Explain what you just did and why.`),
+  *Run tests* (`Run the tests and fix what fails.`), *Commit* (`Commit the
+  changes with a clear message.`) — `config.DefaultQuickReplies`, until the
+  user changes them in Settings → Terminal → *Quick replies*: add, remove,
+  reorder (↑ ↓), rename; at most 10, a label of 24 characters, a text of 300
+  bytes. Kept by the daemon (`settings.quick_replies`, 03-contracts § Settings),
+  so the app, a browser tab and a paired phone draw the same row; an empty
+  list draws no row.
+- **Keys.** None: no new global shortcut (rule 12); the chips take Tab
+  focus like any button.
+- **Look.** `.app-quick` in `tokens.css`: 22px pills in the slab's own ink
+  over the terminal's background, like the composer's box, so they read on
+  a dark or a light terminal palette.
 
 ## Shell tabs
 
