@@ -124,6 +124,18 @@ describe('workspace tabs', () => {
     expect(ws.tabs).toHaveLength(1)
   })
 
+  it('holds a pinned Pipeline tab beside the Dashboard tab, kept and closed on its own', () => {
+    let ws = run(open('a'), { type: 'dashboard', open: true }, { type: 'pipeline', open: true }, { type: 'mail', open: true })
+    expect(ws.pipeline).toBe(true)
+    expect(workspaceReducer(ws, { type: 'pipeline', open: true })).toBe(ws)
+    expect(parseWorkspace(JSON.stringify(ws))).toEqual(ws)
+    ws = workspaceReducer(ws, { type: 'pipeline', open: false })
+    expect(ws.pipeline).toBeUndefined()
+    expect(ws.dashboard).toBe(true)
+    expect(ws.mail).toBe(true)
+    expect(ws.tabs).toHaveLength(1)
+  })
+
   it('loads a workspace stored by the per-project strips as it was', () => {
     const pane = (id: string, sessionId: string) => ({ type: 'pane', id, target: { kind: 'session', sessionId } })
     const stored = {
@@ -349,16 +361,17 @@ describe('watched session tabs', () => {
 })
 
 describe('a stored Pipeline tab', () => {
-  // The Pipeline is a page of the dashboard since 2026-10-15; a workspace
-  // stored with one as a tab restores it as that page, not a dead tab.
-  it('is not restored as a tab: the Dashboard tab opens at the Pipeline instead', () => {
+  // The Pipeline is a pinned system tab since 2026-10-15; a workspace stored
+  // with one as a pane tab restores it as that tab, not a dead pane.
+  it('is not restored as a pane: the pinned Pipeline tab opens at it instead', () => {
     const ws = run(open('a'), open('b'))
     const stored = JSON.parse(JSON.stringify(ws)) as { tabs: unknown[] }
     stored.tabs.splice(1, 0, { id: 'tab-p', projectId: 'p1', root: { type: 'pane', id: 'pane-p', target: { kind: 'prs', sessionId: 'prs:a', of: 'a' } }, focusedPaneId: 'pane-p', title: 'Pipeline · a' })
     const raw = JSON.stringify(stored)
     const back = parseWorkspace(raw)
     expect(back.tabs.map((t) => focusedLeaf(t).target.sessionId)).toEqual(['a', 'b'])
-    expect(back.dashboard).toBe(true)
+    expect(back.pipeline).toBe(true)
+    expect(back.dashboard).toBeUndefined()
     expect(pipelineInStore(raw)).toBe('#/pipeline?of=a')
     expect(pipelineInStore(JSON.stringify(ws))).toBeUndefined()
     expect(pipelineInStore(null)).toBeUndefined()

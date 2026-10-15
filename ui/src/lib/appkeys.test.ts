@@ -280,8 +280,11 @@ describe('every listed shortcut, on every OS', () => {
   // does changed with it.
   // Owner, 2026-10-14: Expand needs a key. ⌘B is the deck, so off macOS
   // Ctrl+Shift+B is taken by it and Expand takes Alt as well.
-  it('makes ⌘P the Pipeline on the dashboard and back, Ctrl+Shift+P off macOS, and keeps ⇧⌘B as a silent alias', () => {
-    expect(SHORTCUTS.find(([k]) => k === '⌘P')?.[1]).toMatch(/^Pipeline on the dashboard; there, back to where you were/)
+  it('makes ⌘P the Pipeline tab and back, Ctrl+Shift+P off macOS, and keeps ⇧⌘B as a silent alias', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⌘P')?.[1]).toMatch(/^Pipeline, in a tab of its own; there, back to where you were/)
+    // The pinned Pipeline tab's chip is the same chord, as the strip spells it.
+    expect(stripKey('P', true)).toBe('⌘P')
+    expect(stripKey('P', false).replace('⇧', '+Shift+')).toBe(keys('⌘P', false))
     expect(SHORTCUTS.some(([k]) => k.split(', ').includes('⇧⌘B'))).toBe(false)
     expect(keys('⌘P', false)).toBe('Ctrl+Shift+P')
     expect(matchAppShortcut(event('KeyP', 'p', { metaKey: true }), true)).toEqual({ kind: 'pipeline' })

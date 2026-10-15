@@ -141,11 +141,11 @@ others. Installing it: [install-app.md](install-app.md).
   shows where it fits beside the name and is in the tooltip either way. On
   Windows and Linux each takes a row: *Pipeline Ctrl+Shift+P*, the theme
   Ctrl+Alt+Shift+T.
-  A click on *Pipeline* opens the Pipeline page on the Dashboard; from it,
-  a click goes back to where you were. The button is in the accent while
-  the page is in front.
+  A click on *Pipeline* opens the Pipeline in its own tab, right after the
+  Dashboard tab; from it, a click goes back to where you were. The button
+  is in the accent while the Pipeline is in front.
   **Mail** sits above *Dashboard*, with its key, ⇧⌘M. It opens Mail in a
-  tab of its own beside the Dashboard tab (the envelope and ⇧⌘M); pressed
+  tab of its own after the Dashboard and Pipeline tabs (the envelope and ⇧⌘M); pressed
   again it brings that tab to the front, and its × closes it. With no mail
   account yet it opens straight on a sample inbox — two made-up accounts on a
   server inside Caprock, nothing real read or sent — with a line on top and
@@ -597,11 +597,15 @@ others. Installing it: [install-app.md](install-app.md).
   OS, switched in its label.
   ⌘P, *Pipeline* at the foot of the sidebar, *Pipeline* in the deck's
   header, *Open Pipeline* in the palette or *Pipeline ↗* in the cockpit
-  opens the **Pipeline**, a page of the Dashboard (in its menu beside
-  *Week*, and in the Dashboard tab in the app): one repository's pull
-  requests, the agent in front's, else the one you looked at last — switch
-  repository with the buttons beside its title. A Pipeline tab saved by an
-  earlier version opens as this page instead. Above, how fast work flows,
+  opens the **Pipeline** in a tab of its own, pinned right after the
+  Dashboard tab and drawn like it — its glyph and ⌘P (Ctrl⇧P on Windows
+  and Linux), its × while it is in front. It stays in the Dashboard too:
+  *Pipeline* in its menu beside *Week* and *Open Pipeline →* on Home take
+  you to that tab, so it is one page, never two. In a browser it is a page
+  of the Dashboard. It shows one repository's pull requests, the agent in
+  front's, else the one you looked at last — switch repository with the
+  buttons beside its title. The tab is still there after a restart, and a
+  Pipeline tab saved by an earlier version opens as this tab. Above, how fast work flows,
   in the Dashboard's figure tiles: in flight, needing a fix, ready, merges a
   day, the CI median, opened → merged, merged → released as an estimate,
   agent cost; hover a figure (or focus it) for what it means, in a card
@@ -629,7 +633,8 @@ others. Installing it: [install-app.md](install-app.md).
   the Pipeline's first five figures at its top with *Open Pipeline →*.
   **Back** in its top-right corner, ⌘P again or *Pipeline* in the sidebar
   go back to where you were. It reads GitHub only while it is in front.
-  ⇧⌘B, its key before, still works.
+  ⇧⌘B, its key before, still works; ⌘B is the Pipeline bar under the
+  agent's terminal.
 - **Work.** *Work*, second in the Dashboard's menu, or ⇧⌘W, lists every
   piece of work on your machine on its way to a release: a row per branch
   at its furthest step — agent, pull request, CI, merged, released — with
@@ -758,7 +763,7 @@ On macOS:
 | ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                 |
 | ⌘I          | Agent cockpit (the inspector)                                            |
 | ⌘B          | Pipeline bar under the agent's terminal, shown or hidden                 |
-| ⌘P          | Pipeline on the dashboard; there, back to where you were                 |
+| ⌘P          | Pipeline, in a tab of its own; there, back to where you were             |
 | ⇧⌘W         | Work on the dashboard; there, back to where you were                     |
 | ⌘\          | Hide or show the sidebar                                                 |
 | ⌘D, ⌘0      | Dashboard tab, where you left it; again: Home, at its top                |

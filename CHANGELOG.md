@@ -59,6 +59,15 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Changed
 
+- **app:** the Pipeline has its own tab again, pinned with the system tabs
+  right after the Dashboard tab and before Mail, drawn like them: its glyph
+  and ⌘P (Ctrl⇧P on Windows and Linux), its × while it is in front. ⌘P,
+  *Pipeline* at the foot of the sidebar and *Open Pipeline* in the palette
+  bring it to the front, and again go back to where you were; ⇧⌘B still
+  works and ⌘B stays the Pipeline bar. It stays in the Dashboard too:
+  *Pipeline* in its menu and *Open Pipeline →* on Home take you to that
+  tab, so the page is drawn once and, behind other tabs, reads nothing. The
+  tab is kept across restarts.
 - **app:** keys named after what they open. ⌘D opens the Dashboard (⌘0
   still does), ⌘P the Pipeline (⇧⌘B still works), ⇧⌘T the theme picker,
   and ⇧⌘W Work; ⌘F stays Find and ⌘T New shell. On Windows and Linux they
@@ -66,10 +75,8 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   never Ctrl+D, which stays the shell's end of input. The sidebar's footer
   shows *Dashboard ⌘D*, *Pipeline ⌘P* and the theme's ⇧⌘T, folded or not,
   and the palette, the shortcuts list and the tooltips say the new keys.
-- **dashboard:** The Pipeline is a page of the Dashboard now, beside *Week*
-  in its menu, instead of a tab of its own: ⌘P and *Pipeline* in the
-  sidebar open the Dashboard tab there (Ctrl+Shift+P on Windows and
-  Linux), and again go back to where you were. It shows one repository —
+- **dashboard:** The Pipeline is in the Dashboard's menu, beside *Week*
+  (in the app it opens in its own tab, above). It shows one repository —
   the agent in front's, else the one you looked at last — with buttons
   beside its title to switch. It is drawn as the Dashboard is: its figures
   are the Dashboard's tiles, larger and readable, each explained in a card
@@ -79,8 +86,7 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   (outlined) apart by shape as well as colour. A pull request's detail
   opens beside the list. Home's CI/CD section shows the Pipeline's first
   five figures at its top — in flight, needing a fix, ready, throughput,
-  CI median — with *Open Pipeline →*. A Pipeline tab saved by an earlier
-  version opens as the page.
+  CI median — with *Open Pipeline →*.
 - **ui:** Get premium in the header is a quiet tinted button, not a bright
   block: the same height, radius and type as Feedback and Settings beside
   it, a faint premium tint with a hairline border and premium-coloured text,

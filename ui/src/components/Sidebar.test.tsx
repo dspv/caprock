@@ -550,7 +550,7 @@ describe('the sidebar', () => {
   })
 
   it('names the Pipeline button’s key as each OS spells it', () => {
-    expect(pipelineLabel(false, true)).toBe('Pipeline: every pull request on its way — open, CI, merged, released — on the dashboard (⌘P)')
+    expect(pipelineLabel(false, true)).toBe('Pipeline: every pull request on its way — open, CI, merged, released — in its own tab (⌘P)')
     expect(pipelineLabel(true, false)).toBe('Pipeline is in front — click to go back to where you were (Ctrl+Shift+P)')
   })
 
