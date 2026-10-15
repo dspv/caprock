@@ -139,7 +139,7 @@ func (s *Server) handleAddProject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": `send one of {"path"}, {"create":{parent,name,git_init}} or {"clone":{url,parent}}`})
 		return
 	}
-	if deviceFrom(r) != nil {
+	if phoneLimited(r) {
 		dir := req.Path
 		switch {
 		case req.Create != nil:
@@ -219,14 +219,15 @@ func (s *Server) handlePatchProject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body is {name?, pinned?, sort?, defaults?, repos?}"})
 		return
 	}
-	if p.Repos != nil && s.fromPairedDevice(r) && !allUnderHome(*p.Repos) {
+	if p.Repos != nil && phoneLimited(r) && !allUnderHome(*p.Repos) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "a phone adds repositories under your home directory"})
 		return
 	}
 	// A setup command is a command this machine will run (ADR-050). A
 	// controller may start agents, but not decide what runs before them:
-	// that is set on the machine, like a shell (ADR-034).
-	if p.Defaults != nil && s.fromPairedDevice(r) {
+	// that is set on the machine, like a shell (ADR-034). A computer
+	// (ADR-067) starts any command anyway, so it may set one.
+	if p.Defaults != nil && phoneLimited(r) {
 		cur, _ := s.d.Projects.Project(id)
 		if strings.TrimSpace(projects.SetupCommandOf(string(*p.Defaults))) != projects.SetupCommandOf(cur.Defaults) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "a project's setup command is set on the computer Caprock runs on"})
@@ -305,7 +306,7 @@ func (s *Server) handleBranches(w http.ResponseWriter, r *http.Request) {
 // deviceMayTouchProject refuses a device a project whose folder is outside
 // home, and says so. True when the request may go on.
 func (s *Server) deviceMayTouchProject(w http.ResponseWriter, r *http.Request, id int64) bool {
-	if deviceFrom(r) == nil {
+	if !phoneLimited(r) {
 		return true
 	}
 	v, err := s.d.Projects.Get(r.Context(), id)
@@ -497,7 +498,7 @@ func (s *Server) withProject(sh ShellInfo) ShellInfo {
 // terminal, input or signal: shells from the phone are P1. True when it
 // refused.
 func (s *Server) refuseShellToDevice(w http.ResponseWriter, r *http.Request, id string) bool {
-	if deviceFrom(r) == nil || s.d.Shells == nil || !s.d.Shells.IsShell(id) {
+	if !phoneLimited(r) || s.d.Shells == nil || !s.d.Shells.IsShell(id) {
 		return false
 	}
 	writeJSON(w, http.StatusForbidden, map[string]string{"error": "shells are used on the machine Caprock runs on"})

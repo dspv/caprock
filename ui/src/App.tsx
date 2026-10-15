@@ -18,6 +18,7 @@ import { WorkScreen } from '@/screens/Work'
 import { NewProjectScreen } from '@/components/NewProject'
 import { PhoneHome } from '@/components/PhoneHome'
 import { LanOnlyNotice } from '@/components/LanOnlyNotice'
+import { ComputerAsks } from '@/components/ComputerAsks'
 import { useNarrowScreen } from '@/lib/phone'
 import { BrainCaptureHost } from '@/components/BrainCapture'
 import { ScreenShown } from '@/lib/refresh'
@@ -100,6 +101,8 @@ export default function App() {
       <Dashboard route={route} />
       {/* The quick capture, opened from anywhere on the page (lib/brain.ts). */}
       <BrainCaptureHost />
+      {/* Another computer asking to control this one (ADR-067). */}
+      <ComputerAsks />
     </>
   )
 }

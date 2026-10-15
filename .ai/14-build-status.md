@@ -73,6 +73,35 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-15 — unreleased: computers in the daemon (ADR-067, Phase 1 PR2)
+
+The second of Phase 1's three pull requests. **The target:** a code *for a
+computer* (`POST /v1/pair/code {kind: "machine"}`, `caprock pair
+--computer`, which turns access from anywhere on and prints the link)
+pairs a device stored with `kind: "machine"` that waits, `pending`, until
+the owner allows it by name — the dashboard's card (`ComputerAsks`, the one
+piece of UI in this PR), the prompt of `caprock pair --computer`, or
+`caprock machines allow <name>` over SSH (`pending`, `deny`, `revoke` too).
+Allowed, it passes the gate on `computerRoutes`, and the phone limits
+(`phoneLimited`) are lifted for it; settings, pairing, the doctor's stop,
+shutdown, update, hooks install and window-opening routes stay the
+machine's. `DELETE /v1/pair/me` lets a device withdraw itself, and a
+device's sockets — `/v1/live` included — close with 1008 the moment it is
+removed or its role changes. **The controller:** `internal/daemon` opens
+`internal/peers` on first use; `GET/POST /v1/machines`, `PATCH/DELETE
+/v1/machines/{id}` and the `/v1/m/{id}/{path…}` proxy (ReverseProxy on the
+channel, sockets bridged, the device subprotocol never echoed) are
+loopback-only and on no device allowlist; `caprock machines ls|add|forget`.
+On Linux, `caprock service install` and `pair --computer` say when
+lingering is off. Tested by unit tests on every route for an allowed and a
+waiting computer, the proxy against a stand-in, and
+`internal/smoke/machines_daemons_test.go`: two real daemons in their own
+homes, data directories and ports, a relay in the test on loopback, the
+controller pairing by link, the target allowing it from its CLI, the fake
+claude started, typed into and echoed through `/v1/m/{id}/…`, then a revoke
+on the target closing the terminal with 1008 and the proxy answering
+`revoked`. PR3 (the app) follows.
+
 ### 2026-10-15 — unreleased: one computer reaches another through the relay (ADR-067, Phase 1 PR1)
 
 The first of Phase 1's three pull requests for *Caprock on every machine*:
@@ -549,7 +578,7 @@ session started that outlived it — each with why, never anything with a
 terminal, in a live session, of another user, younger than two minutes or
 in an app bundle (a framework Python's `Python.app` is not one). Taken on
 demand (`?orphans=1`, the open panel, `caprock doctor`); the 10-minute sweep
-keeps the count. The panel's Advanced mode and `caprock doctor --stop <pid>`
+keeps the count. The panel's Clean up (since 2026-10-15; Advanced mode before) and `caprock doctor --stop <pid>`
 stop one listed process on a confirmed click, pid and start time checked
 before SIGTERM and SIGKILL; rule 7 now names this as its one exception. On
 the owner's Mac (read-only, 2026-10-14) the doctor listed a Python

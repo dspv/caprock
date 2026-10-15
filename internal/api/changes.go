@@ -68,7 +68,7 @@ func (s *Server) changeTarget(w http.ResponseWriter, r *http.Request, write bool
 		return 0, "", false
 	}
 	worktree = r.URL.Query().Get("worktree")
-	if !write || deviceFrom(r) == nil {
+	if !write || !phoneLimited(r) {
 		return id, worktree, true
 	}
 	if !s.deviceMayTouchProject(w, r, id) {

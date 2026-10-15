@@ -451,3 +451,73 @@ func TestSetAppIsRecordedAndListed(t *testing.T) {
 		t.Errorf("not listed as installed: %+v", l)
 	}
 }
+
+// A code for a computer pairs one that waits: a controller only once the
+// owner allows it by id, and the kind comes from the code, never the device
+// (ADR-067).
+func TestAComputerCodePairsAPendingMachine(t *testing.T) {
+	s := New()
+	code, err := s.NewCodeFor(RoleViewer, KindMachine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.CodeKind() != KindMachine || s.CodeRole() != RoleController {
+		t.Fatalf("code kind %q role %q", s.CodeKind(), s.CodeRole())
+	}
+	d, err := s.Redeem(code, "MacBook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Kind != KindMachine || !d.Pending {
+		t.Fatalf("redeemed %+v", d)
+	}
+	if s.CodeKind() != KindPhone {
+		t.Fatal("the spent code still names a kind")
+	}
+	// Pending holds no role: a terminal asking per keystroke is refused.
+	if got := s.RoleOf(d.Token); got != RoleViewer {
+		t.Fatalf("a pending computer's role reads %q", got)
+	}
+	got, err := s.Check(d.Token)
+	if err != nil || !got.Pending || got.Role != RoleViewer {
+		t.Fatalf("check: %+v %v", got, err)
+	}
+	if s.Allow("nope") {
+		t.Fatal("allowed an unknown id")
+	}
+	if !s.Allow(d.ID) {
+		t.Fatal("could not allow")
+	}
+	if s.Allow(d.ID) {
+		t.Fatal("allowed twice")
+	}
+	if got := s.RoleOf(d.Token); got != RoleController {
+		t.Fatalf("an allowed computer's role reads %q", got)
+	}
+	ds := s.Devices()
+	if len(ds) != 1 || ds[0].Kind != KindMachine || ds[0].Pending || ds[0].Role != RoleController {
+		t.Fatalf("listed %+v", ds)
+	}
+	// Kept across a restart.
+	s2 := New()
+	s2.Load(s.Snapshot())
+	if p := s2.Devices(); p[0].Kind != KindMachine || p[0].Pending {
+		t.Fatalf("after load %+v", p)
+	}
+}
+
+// A phone's code pairs a phone, whatever the device says it is.
+func TestAPhoneCodeNeverPairsAMachine(t *testing.T) {
+	s := New()
+	code, _ := s.NewCodeFor(RoleController, "something")
+	d, err := s.Redeem(code, "machine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Kind != KindPhone || d.Pending || d.Role != RoleController {
+		t.Fatalf("redeemed %+v", d)
+	}
+	if s.Allow(d.ID) {
+		t.Fatal("a phone was 'allowed' as if it waited")
+	}
+}

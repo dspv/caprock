@@ -8,7 +8,7 @@
  * a narrow desktop window keeps the desktop's terminal, and a tablet held
  * wide still gets the light one.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const NARROW = '(max-width: 639px)'
 const TOUCH = '(pointer: coarse)'
@@ -129,4 +129,56 @@ export function useHideOnScroll(el: HTMLElement | null, on: boolean, top = 44): 
     }
   }, [el, on, top])
   return [hidden, () => setHidden(false)]
+}
+
+/** How far a pull at the top of the page must travel to ask again. */
+export const PULL_PX = 64
+
+/**
+ * Pull to refresh, for the home-screen app only: a finger that starts at the
+ * very top of the page and pulls down by PULL_PX calls `onPull` once on
+ * release. The browser's own pull reloads the whole page, which reads
+ * everything anyway, so this listens only where there is none — an installed
+ * app (`standalone`) — and never twice. Passive listeners: the page scrolls
+ * as it always did. Returns how far the finger has pulled, 0 at rest, for
+ * the screen to draw its hint.
+ */
+export function usePullToRefresh(onPull: () => void, on: boolean): number {
+  const [pulled, setPulled] = useState(0)
+  const fn = useRef(onPull)
+  fn.current = onPull
+  useEffect(() => {
+    if (!on) return
+    let start = -1
+    let dist = 0
+    const top = () => (document.scrollingElement?.scrollTop ?? window.scrollY) <= 0
+    const down = (e: TouchEvent) => {
+      start = e.touches.length === 1 && top() ? e.touches[0]!.clientY : -1
+      dist = 0
+    }
+    const move = (e: TouchEvent) => {
+      if (start < 0) return
+      // Resistance: the hint moves at half the finger's speed.
+      dist = Math.max(0, (e.touches[0]!.clientY - start) / 2)
+      if (!top()) { start = -1; dist = 0 }
+      setPulled(dist)
+    }
+    const up = () => {
+      if (start >= 0 && dist >= PULL_PX) fn.current()
+      start = -1
+      dist = 0
+      setPulled(0)
+    }
+    window.addEventListener('touchstart', down, { passive: true })
+    window.addEventListener('touchmove', move, { passive: true })
+    window.addEventListener('touchend', up)
+    window.addEventListener('touchcancel', up)
+    return () => {
+      window.removeEventListener('touchstart', down)
+      window.removeEventListener('touchmove', move)
+      window.removeEventListener('touchend', up)
+      window.removeEventListener('touchcancel', up)
+    }
+  }, [on])
+  return pulled
 }
