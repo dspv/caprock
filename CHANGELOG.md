@@ -7,6 +7,14 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Changed
+
+- **ui:** Get premium in the header is a quiet tinted button, not a bright
+  block: the same height, radius and type as Feedback and Settings beside
+  it, a faint premium tint with a hairline border and premium-coloured text,
+  the price a step fainter, a little stronger on hover. Its text reads at
+  4.5:1 or more in every palette.
+
 ## [0.117.5] - 2026-10-15
 
 ### Added

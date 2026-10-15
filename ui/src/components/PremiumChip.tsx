@@ -7,10 +7,11 @@
  * while looking straight at it. A product that is difficult to pay for is not
  * being modest, it is losing the people who already decided.
  *
- * It is a chip rather than a button, in the header's own type size, because it
- * must not become the loudest thing on a dashboard someone opened to read
- * their own figures. The ultramarine is what makes it findable without making
- * it shout — it is the only element in the header that is not amber, so the
+ * It is framed like the header's other buttons, in a faint tint rather than a
+ * solid fill, because it must not become the loudest thing on a dashboard
+ * someone opened to read their own figures. The ultramarine is what makes it
+ * findable without making it shout — it is the only element in the header
+ * that is not amber, so the
  * eye lands on it exactly when it is looking for the thing about money.
  *
  * **It buys directly.** The first version opened the dialog, which meant
@@ -92,10 +93,14 @@ export function PremiumChip() {
       <button
         onClick={() => setOpen(true)}
         title="What Premium includes"
-        className="inline-flex items-center gap-1.5 rounded-sm border border-premium/60 bg-premium px-2 py-0.5 text-white hover:brightness-110"
+        // Framed like Feedback and Settings beside it — same height, radius
+        // and type — in a faint premium tint (.premium-cta, tokens.css). It
+        // was a solid violet block with white text, the loudest thing in the
+        // header (owner, 2026-10-15: "too bright", translated).
+        className="premium-cta inline-flex h-[24px] items-center gap-1.5 rounded-[6px] px-2 text-[12px] font-medium transition-colors motion-reduce:transition-none"
       >
         <span>Get premium</span>
-        <span className="opacity-75">${p.yearly.charged_usd}/yr</span>
+        <span data-price>${p.yearly.charged_usd}/yr</span>
       </button>
       {/* The cap, not the report: it is the feature people arrive worried
         * about, and the one a runaway session makes them want. */}
