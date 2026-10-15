@@ -1,6 +1,7 @@
 // Typed client for the daemon API (.ai/03-contracts.md § HTTP API). snake_case
 // on the wire, kept as-is in the types so the contract is visible in the code.
 import type { ReapResult, ResourceReport } from './resources'
+import type { ResourceHistory } from './resourceHistory'
 import type { Footprint, OrphanStopResult, OrphanTarget } from './footprint'
 import type { PullRequest } from './github'
 import type { Usual } from './usual'
@@ -1933,6 +1934,8 @@ export const api = {
   storage: () => get<StorageReport>('/v1/storage'),
   /** What each live session's process tree and Caprock itself cost (lib/resources.ts). */
   resources: () => get<ResourceReport>('/v1/resources'),
+  /** The meter's kept samples after `since` (unix ms), as series: the status bar's popover (lib/resourceHistory.ts). */
+  resourceHistory: (since = 0) => get<ResourceHistory>(`/v1/resources/history${since > 0 ? `?since=${since}` : ''}`),
   /** Stop the orphaned pty-hosts nothing runs in. Machine only. */
   reapOrphans: () => post<ReapResult>('/v1/resources/reap', {}),
   /**

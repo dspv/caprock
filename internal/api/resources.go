@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 )
 
 // handleResources answers GET /v1/resources: what each live session's
@@ -17,6 +18,27 @@ func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.d.Resources(r.Context()))
+}
+
+// handleResourceHistory answers GET /v1/resources/history[?since=<unix ms>]:
+// the resource meter's samples of the last hour, as series (03-contracts.md
+// § Resources). A read of what is kept; it takes no sample and does not keep
+// the meter sampling.
+func (s *Server) handleResourceHistory(w http.ResponseWriter, r *http.Request) {
+	if s.d.ResourceHistory == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("resource history not available"))
+		return
+	}
+	var since int64
+	if v := r.URL.Query().Get("since"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 0 {
+			s.failCode(w, http.StatusBadRequest, errors.New("since: a unix time in milliseconds"))
+			return
+		}
+		since = n
+	}
+	writeJSON(w, http.StatusOK, s.d.ResourceHistory(since))
 }
 
 // handleFootprint answers GET /v1/footprint: what Caprock itself costs this
