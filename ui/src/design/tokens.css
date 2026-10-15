@@ -463,6 +463,27 @@ body {
   background-color: #f2a955;
 }
 
+/* Get premium in the header (components/PremiumChip.tsx): a quiet tinted
+ * button, not a bright block (owner, 2026-10-15: the solid violet fill was
+ * "too bright", translated). The premium colour at an eighth of its strength
+ * behind, a hairline of it around, and the label in the premium ink pulled
+ * two fifths towards the palette's own text: premium-strong alone is 4.1:1
+ * on this tint in Dark Warm and Dark Cold, under 4.5:1. The price is the
+ * label at 85%, a step fainter. Measured on every palette: label 5.8:1 or
+ * more, price 4.6:1 or more, at rest and on hover. */
+.premium-cta {
+  --premium-ink: color-mix(in srgb, var(--color-premium-strong) 60%, var(--color-fg));
+  background: color-mix(in srgb, var(--color-premium) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-premium) 45%, transparent);
+  color: var(--premium-ink);
+}
+.premium-cta:hover, .premium-cta:focus-visible {
+  background: color-mix(in srgb, var(--color-premium) 20%, transparent);
+  border-color: color-mix(in srgb, var(--color-premium) 70%, transparent);
+}
+.premium-cta:focus-visible { outline: 2px solid color-mix(in srgb, var(--color-premium) 70%, transparent); outline-offset: 1px; }
+.premium-cta [data-price] { color: color-mix(in srgb, var(--premium-ink) 85%, transparent); }
+
 /* Every number, cost, id, and terminal string is monospace with tabular numerals. */
 .num, .mono {
   font-family: var(--font-mono);

@@ -36,6 +36,19 @@ describe('PremiumChip', () => {
     expect(screen.getByText('$30/yr')).toBeInTheDocument()
   })
 
+  // Owner, 2026-10-15 (translated): the solid violet block was "too bright".
+  // It is a tinted button framed like Feedback beside it, never a fill.
+  it('is a quiet tinted button the size of its neighbours, not a bright block', async () => {
+    state.value = pricing({ active: false } as PremiumPricing['license'])
+    render(<PremiumChip />)
+    const btn = await screen.findByRole('button', { name: /get premium/i })
+    expect(btn.className).toContain('premium-cta')
+    expect(btn.className).toContain('h-[24px]')
+    expect(btn.className).toContain('rounded-[6px]')
+    expect(btn.className).not.toMatch(/\bbg-premium\b|\btext-white\b/)
+    expect(screen.getByText('$30/yr')).toHaveAttribute('data-price')
+  })
+
   it('never puts a checkout one stray click away', async () => {
     state.value = pricing({ active: false } as PremiumPricing['license'])
     render(<PremiumChip />)

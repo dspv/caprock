@@ -105,6 +105,12 @@ type BoardFlow struct {
 	// than two.
 	ReleaseLagMedianMS int64 `json:"release_lag_median_ms,omitempty"`
 	ReleaseLagCount    int   `json:"release_lag_count"`
+	// ReleaseGapMedianMS is the median time between consecutive published
+	// releases among those already read (the newest ten): how often the
+	// repository ships, measured, never a date for the next one (ADR-064).
+	// Absent with fewer than three gaps.
+	ReleaseGapMedianMS int64 `json:"release_gap_median_ms,omitempty"`
+	ReleaseGapCount    int   `json:"release_gap_count"`
 	// CIMedianMS is the busiest workflow's median successful run.
 	CIMedianMS int64 `json:"ci_median_ms,omitempty"`
 	// CostUSD sums the cards' agent cost.
@@ -231,6 +237,7 @@ func buildBoard(in boardInput) PRBoard {
 	out.Flow.Merged = sumInts(github.MergesPerDay(in.prs, in.now, in.days))
 	out.Flow.TTMMedianMS, out.Flow.TTMCount = github.TimeToMerge(in.prs, in.now, in.days)
 	out.Flow.ReleaseLagMedianMS, out.Flow.ReleaseLagCount = medianMS(lags), len(lags)
+	out.Flow.ReleaseGapMedianMS, out.Flow.ReleaseGapCount = releaseGap(rels)
 	if st := github.RunStats(in.runs, in.now, in.days); len(st.Workflows) > 0 {
 		out.Flow.CIMedianMS = st.Workflows[0].MedianMS
 	}
@@ -346,6 +353,30 @@ func medianMS(xs []int64) int64 {
 		return s[n/2]
 	}
 	return (s[len(s)/2-1] + s[len(s)/2]) / 2
+}
+
+// releaseGapMin is how many gaps between releases a median needs (rule 6).
+const releaseGapMin = 3
+
+// releaseGap is the median gap between consecutive releases (rels oldest
+// first) and how many gaps there are; the median is 0 with fewer than
+// releaseGapMin. Releases without a publish stamp are skipped.
+func releaseGap(rels []github.RepoRelease) (int64, int) {
+	var gaps []int64
+	var prev int64
+	for _, r := range rels {
+		if r.PublishedAt <= 0 {
+			continue
+		}
+		if prev > 0 && r.PublishedAt > prev {
+			gaps = append(gaps, r.PublishedAt-prev)
+		}
+		prev = r.PublishedAt
+	}
+	if len(gaps) < releaseGapMin {
+		return 0, len(gaps)
+	}
+	return medianMS(gaps), len(gaps)
 }
 
 // prRefs is the pull requests as SpendByPR takes them: for a head branch two

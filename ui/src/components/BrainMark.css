@@ -1,0 +1,66 @@
+/* BrainMark (components/BrainMark.tsx): a brain made of a graph. Colours are
+ * theme tokens only, so every palette — dark, light, Book — draws its own.
+ * Motion is CSS alone and stops under prefers-reduced-motion, where the
+ * defaults below are the settled picture (the new nodes in place). */
+.brain-mark { overflow: visible; }
+.brain-mark-shape {
+  fill: color-mix(in srgb, var(--color-accent) 9%, transparent);
+  stroke: color-mix(in srgb, var(--color-fg-muted) 45%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.brain-mark-links line, .brain-mark-links path {
+  stroke: color-mix(in srgb, var(--color-fg-muted) 55%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.brain-mark-pulse {
+  animation: brainMarkPulse 3.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes brainMarkPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.4); }
+}
+
+/* Every ten seconds: the node drops in from above, overshoots a little,
+ * settles, stays, and fades before the next one. Its links draw after it
+ * lands (pathLength=1, so one dash is the whole line); the ring spreads. */
+.brain-mark-new {
+  animation: brainMarkDrop 10s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes brainMarkDrop {
+  0%, 6%   { opacity: 0; transform: translateY(-18px) scale(0.6); }
+  14%      { opacity: 1; transform: translateY(0) scale(1.35); }
+  20%, 86% { opacity: 1; transform: translateY(0) scale(1); }
+  96%, 100% { opacity: 0; transform: translateY(0) scale(1); }
+}
+.brain-mark-links .brain-mark-link-new {
+  stroke-dasharray: 1;
+  animation: brainMarkLink 10s ease-out infinite;
+}
+@keyframes brainMarkLink {
+  0%, 14%  { stroke-dashoffset: 1; opacity: 1; }
+  26%, 86% { stroke-dashoffset: 0; opacity: 1; }
+  96%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+.brain-mark-ring {
+  opacity: 0;
+  animation: brainMarkRing 10s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes brainMarkRing {
+  0%, 13%   { opacity: 0; transform: scale(1); }
+  14%       { opacity: 0.9; transform: scale(1); }
+  32%, 100% { opacity: 0; transform: scale(3.4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brain-mark-pulse, .brain-mark-new, .brain-mark-ring,
+  .brain-mark-links .brain-mark-link-new { animation: none; }
+}
