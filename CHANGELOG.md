@@ -7,11 +7,59 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **brain:** Second Brain's status says when the reader wakes next
+  (`next_wake`), so a screen can tell you when the first memories may come
+  instead of leaving you at 0. Turning building on still wakes the reader
+  at once, and a double click or a second yes never starts a second read
+  beside the first.
+
+### Changed
+
+- **brain:** the sidebar's Second Brain block is a small banner while it is
+  empty, instead of a bare 0 and two faint lines: a faint graph breathing
+  (still with reduced motion), *Remembers what your agents learn — so the
+  next one starts smarter.*, **Start building** and *How it works*, and
+  *Local · your own Claude · free*. **Start building** asks in place —
+  your own `claude` and its model, on this computer, the daily token
+  limit, where the prose goes, and that Settings turns it off — and only
+  **Turn on** switches it on and starts on your last 30 days of sessions,
+  within that limit; without Claude Code it says so and offers no
+  button. Once on and still empty it says what it is doing: *Reading your
+  recent sessions…*, or how many sessions are waiting, and the last
+  problem if there was one. The same line replaces *your personal Jarvis*
+  under the Second Brain screen's title.
+- **brain:** Second Brain's *How it works* now explains it in ten
+  seconds. *Remembers what your agents learn — so the next one starts
+  smarter*: it keeps the decisions, findings, ideas and open questions
+  your sessions arrive at and hands the relevant ones to the next agent
+  you start — over time, your personal Jarvis, an assistant that knows
+  your projects. Three steps say how (a session ends → your own `claude`
+  reads it on this computer, Haiku and 300k tokens a day by default →
+  up to five memories go into the next session's handoff), and one line
+  says that nothing leaves the computer except that call and where to
+  turn it off.
+
 ### Fixed
 
 - **picker:** an arrow key pressed in the folder picker the moment a
   folder's entries appear is no longer lost; the selection used to be
   cleared just after it was made.
+- **windows:** Caprock no longer flashes console windows that steal the
+  keyboard focus. The daemon ran without a console, so every git, gh or
+  `claude -p` it started opened a window of its own for a fraction of a
+  second, every few seconds, and typing in other windows came out ragged
+  (user report on Windows 10). Every child now starts with a hidden
+  console, and a test keeps it that way.
+
+- **mail:** adding an account can no longer sit on *Checking…* forever. A
+  server that goes quiet while Mail connects or signs in — IMAP had no limit
+  and SMTP waited five minutes per command — now ends the check within 30
+  seconds with what happened: which server stopped answering, and that
+  another mail app open on the same account can count against the server's
+  connection limit. A synced mailbox still waits in IDLE as long as it
+  needs; the limit is lifted once signed in.
 
 ## [0.117.4] - 2026-10-15
 

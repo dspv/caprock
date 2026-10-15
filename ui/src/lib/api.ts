@@ -1333,7 +1333,7 @@ export interface BrainAutoStatus {
   chosen: boolean
   /** Turned on. */
   on: boolean
-  /** On, and a licence is active: it reads. */
+  /** On, so it reads; no licence is needed (Second Brain is free). */
   enabled: boolean
   claude_found: boolean
   model: string
@@ -1346,6 +1346,9 @@ export interface BrainAutoStatus {
   since?: number
   backfill_since?: number
   last_wake?: number
+  /** When the next wake is due, unix ms; absent while off. At or before now
+   * just after turning on (the first wake starts at once) or while one runs. */
+  next_wake?: number
   last_error?: string
   recent: BrainRun[]
 }
@@ -1972,9 +1975,9 @@ export const api = {
   removeBrain: (id: number) => post<void>(`/v1/brain/nodes/${id}`, {}, 'DELETE'),
   linkBrain: (from: number, to: number, kind: BrainEdgeKind = 'relates') => post<void>('/v1/brain/links', { from, to, kind }),
   unlinkBrain: (from: number, to: number) => post<void>('/v1/brain/links', { from, to }, 'DELETE'),
-  /** The automatic extraction: on or off and its limits (machine only; on needs Premium). */
+  /** The automatic extraction: on or off and its limits (machine only). Turning it on wakes the reader at once. */
   brainSettings: (b: BrainSettings) => post<BrainAutoStatus>('/v1/brain/settings', b, 'PUT'),
-  /** What reading the last `days` would take; with run, starts it (Premium). */
+  /** What reading the last `days` would take; with run, starts it (needs building on). */
   brainBackfill: (days: number, run = false) => post<BrainEstimate>('/v1/brain/backfill', { days, dry_run: !run }),
   /** The Inbox (03-contracts.md § Inbox). Saving and deleting: the machine and a controller. */
   inbox: () => get<{ items: InboxItem[]; max: number }>('/v1/inbox'),

@@ -31,6 +31,7 @@ import (
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/daemon"
 	"github.com/dspv/caprock/internal/disclaim"
+	"github.com/dspv/caprock/internal/hidewin"
 	"github.com/dspv/caprock/internal/hooks"
 	"github.com/dspv/caprock/internal/keepawake"
 	"github.com/dspv/caprock/internal/shim"
@@ -914,7 +915,7 @@ func openBrowser(url string) {
 	case "darwin":
 		c = exec.Command("open", url)
 	case "windows":
-		c = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+		c = hidewin.Command("rundll32", "url.dll,FileProtocolHandler", url)
 	default:
 		c = exec.Command("xdg-open", url)
 	}
