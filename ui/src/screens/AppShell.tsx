@@ -22,6 +22,7 @@ import { NotSupportedError, projectsApi, type Project } from '@/lib/projects'
 import { buildSidebar, dotOf, groupProjects, numberedProjects, OTHER_FOLDERS_ID, sessionTitle, type InboxItem, type ProjectNode, type WorktreeNode } from '@/lib/sidebar'
 import {
   activeTab,
+  findTabBySession,
   focusedLeaf,
   leaves,
   loadWorkspace,
@@ -1477,6 +1478,16 @@ export function AppShell() {
     if (!s) { goHash(`#/session/${encodeURIComponent(id)}`); return }
     openSession(s, placeOf(id)?.node.project.id ?? activeProjectId)
   }, [sessionsById, openSession, placeOf, activeProjectId, goHash])
+  // *End* on a Home row (lib/sessionJump.ts): what *Close and end the agent*
+  // does — the cockpit's `kill` — and a tab that shows only this session
+  // closes with it. Only a session Caprock started is ever offered (rule 7).
+  const endSessionFromRow = useCallback((id: string) => {
+    const s = sessionsById.get(id)
+    if (!s?.owned) return
+    const t = findTabBySession(wsRef.current, id)
+    if (t && leaves(t.root).length === 1) dispatch({ type: 'close', tabId: t.id })
+    stopChats([id])
+  }, [sessionsById, stopChats])
   // What the page gets from the app (lib/pipelineHost): the sessions already
   // held, an agent's worktrees for its fix actions, a toast, and the way back.
   const pipelineHost = useMemo<PipelineHost>(() => ({
@@ -1490,7 +1501,12 @@ export function AppShell() {
     onToast: setToast,
     onBack: pipelineBack,
     onOpenSession: openSessionById,
-  }), [data, projectOfSession, openTab, activeProjectId, pipelineBack, openSessionById])
+    tabDigitOf: (id) => {
+      const t = findTabBySession(ws, id)
+      return t ? stripDigits.get(t.id) ?? null : undefined
+    },
+    onEndSession: endSessionFromRow,
+  }), [data, projectOfSession, openTab, activeProjectId, pipelineBack, openSessionById, ws, stripDigits, endSessionFromRow])
 
   return (
     <div className="flex h-dvh flex-col text-fg">

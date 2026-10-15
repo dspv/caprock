@@ -18,6 +18,16 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ### Added
 
+- **app:** a live session's row on Home takes you into the running session.
+  Click anywhere on the row (or Enter on it) and the session's tab comes to
+  the front, as its ⌘N does, or opens if it has none; *Go to session ↗* with
+  the tab's key shows on hover, and *details* still opens the session page.
+  A session started in your own terminal says *in your terminal* and offers
+  *Continue in Caprock*: a new process on a copy of the conversation, in a
+  new tab, leaving the one in your terminal untouched. An idle session
+  Caprock started gets a small **× End**, which asks first only when
+  messages wait in its queue; a working session and one your terminal
+  started never do. In a browser the row keeps its *open* link.
 - **work:** the Work page — every piece of work on the machine on its way to
   a release, one row per branch at its furthest stage, grouped Next release,
   In review, In work, Planned and Released, or as Kanban columns. Each row
