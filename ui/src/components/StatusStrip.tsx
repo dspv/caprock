@@ -50,7 +50,7 @@ export function StatusStrip({ summary, pane, session, version, figures = true }:
   ].filter(Boolean).join('\n')
   return (
     <footer className="flex h-[26px] shrink-0 items-center gap-4 border-t border-[var(--app-hairline)] bg-[var(--app-chrome-bg)] px-3 text-[11.5px] text-fg-muted">
-      <ConnectionState link={link} heardAt={live.heardAt} />
+      <ConnectionState link={link} heardAt={live.heardAt} onReconnect={() => live.reconnectNow()} />
       {five && <Limit label="5h" pct={five.used_percentage} />}
       {seven && <Limit label="7d" pct={seven.used_percentage} />}
       {figures && summary && (

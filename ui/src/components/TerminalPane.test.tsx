@@ -15,7 +15,8 @@ const h = vi.hoisted(() => ({
   results: [] as ((r: { resultIndex: number; resultCount: number }) => void)[],
   clears: 0,
   steps: [] as string[],
-  clients: [] as { callbacks: { write: (d: Uint8Array, done: () => void) => void; reset: () => void } }[],
+  clients: [] as { callbacks: { write: (d: Uint8Array, done: () => void) => void; reset: () => void; state: (s: string) => void; status: (l: unknown) => void } }[],
+  reconnects: 0,
   writes: [] as unknown[],
   suspends: 0,
   claims: 0,
@@ -97,7 +98,8 @@ vi.mock('@/lib/termv2', () => ({
   TermClient: class {
     state = 'connecting'
     protocol = 'v2'
-    constructor(opts: { callbacks: { write: (d: Uint8Array, done: () => void) => void; reset: () => void } }) { h.clients.push(opts) }
+    constructor(opts: (typeof h.clients)[number]) { h.clients.push(opts) }
+    reconnectNow() { h.reconnects++ }
     start() {}
     wake() { h.wakes++ }
     suspend() { h.suspends++ }
@@ -134,6 +136,7 @@ beforeEach(() => {
   h.merges.length = 0
   h.resizes.length = 0
   h.wakes = 0
+  h.reconnects = 0
   h.fitSize = { cols: 120, rows: 40 }
   localStorage.clear()
   setTerminalPrefs(DEFAULT_PREFS)
@@ -697,5 +700,46 @@ describe('switching tabs shows the terminal as it was', () => {
     expect(count('upload')).toBe(1)
     expect(count('refresh')).toBe(1)
     expect(count('atlas')).toBe(0)
+  })
+})
+
+// Vova, 2026-10-15: after a Wi-Fi drop every tab sat at "Reconnecting…" and
+// the only way out was closing it. The badge says how it stands, and offers a
+// retry by hand once the automatic ones have failed a few times.
+describe('a terminal that is reconnecting says how it stands', () => {
+  const ready = () => act(() => { h.clients[0]!.callbacks.write(new TextEncoder().encode('ready'), () => {}) })
+  const down = (attempt: number, inMs: number) => act(() => {
+    const c = h.clients[0]!.callbacks
+    c.state('reconnecting')
+    c.status({ phase: 'reconnecting', attempt, nextAt: Date.now() + inMs, downSince: Date.now() - 1_000 })
+  })
+
+  it('with the attempt and the next try, and Reconnect now once the retries keep failing', () => {
+    render(<TerminalPane sessionId="a" active />)
+    ready()
+    down(1, 4_000)
+    expect(screen.getByText(/Reconnecting \(2\) · next try in 4 s/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Reconnect now' })).toBeNull()
+    down(3, 9_000)
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect now' }))
+    expect(h.reconnects).toBe(1)
+    act(() => { h.clients[0]!.callbacks.state('live') })
+    expect(screen.queryByText(/Reconnecting/)).toBeNull()
+  })
+
+  it('before its first output too', () => {
+    render(<TerminalPane sessionId="a" active />)
+    down(4, 2_000)
+    expect(screen.getByText('Connecting to the session…')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect now' }))
+    expect(h.reconnects).toBe(1)
+  })
+
+  it('checks its socket when the window gets focus, as on visibility and online', () => {
+    render(<TerminalPane sessionId="a" active />)
+    const before = h.wakes
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    act(() => { window.dispatchEvent(new Event('online')) })
+    expect(h.wakes).toBe(before + 2)
   })
 })

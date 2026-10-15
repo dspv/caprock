@@ -7,7 +7,7 @@ import { takeDraft } from '@/lib/draft'
 import { PermissionPrompt } from './PermissionPrompt'
 import { downscalePhoto } from '@/lib/downscale'
 import { TermClient, type TermState } from '@/lib/termv2'
-import { onNetworkWake, type LinkStatus } from '@/lib/reconnect'
+import { offersManualRetry, onNetworkWake, type LinkStatus } from '@/lib/reconnect'
 import { ConnectionState } from './ConnectionState'
 import { attachTerminalInput } from '@/lib/xtermInput'
 import { registerBenchTerminal } from '@/lib/benchhook'
@@ -154,6 +154,8 @@ export function TerminalView({
   // The same, with the attempt and the next try, for the state indicator.
   const [link, setLink] = useState<LinkStatus>({ phase: 'connecting', attempt: 0, nextAt: null, downSince: null })
   const heardRef = useRef<() => number>(() => 0)
+  // "Reconnect now", by hand, once the retries have failed a few times.
+  const reconnectRef = useRef<() => void>(() => {})
   // Typed while offline past the queue's limit: those keys were not kept.
   const [refused, setRefused] = useState(false)
   // The keys bar types through the same socket as the keyboard. Set while a
@@ -380,6 +382,7 @@ export function TerminalView({
     // Back from sleep, the network, the back/forward cache or a network
     // change: reconnect now rather than at the end of a backoff.
     const unwake = onNetworkWake(() => client.wake())
+    reconnectRef.current = () => client.reconnectNow()
 
     // Keys, copy, paste and dropped files: lib/xtermInput.ts, shared with the
     // app's terminal tabs so the two can never type differently.
@@ -427,6 +430,7 @@ export function TerminalView({
       window.clearTimeout(webglTimer)
       inputSub.dispose()
       unwake()
+      reconnectRef.current = () => {}
       sendRef.current = () => {}
       attachRef.current = async () => {}
       window.removeEventListener('focus', claim)
@@ -532,7 +536,7 @@ export function TerminalView({
         )}
         {(conn === 'reconnecting' || conn === 'catching-up' || conn === 'revoked' || refused) && (
           <div
-            className="pointer-events-none absolute left-3 right-3 top-3 ml-auto grid w-fit max-w-full gap-0.5 rounded-lg border px-2.5 py-1 text-[11px]"
+            className="pointer-events-none absolute left-3 right-3 top-3 z-20 ml-auto grid w-fit max-w-full gap-0.5 rounded-lg border px-2.5 py-1 text-[11px]"
             style={{ background: TERMINAL_THEME.background, borderColor: TERMINAL_THEME.cursor, color: TERMINAL_THEME.cursor }}
           >
             {/* Not the phase alone: how many tries, and when the next one is. */}
@@ -540,6 +544,11 @@ export function TerminalView({
             {refused
               ? <span>Offline — keys past the first 4 KB were not kept</span>
               : conn === 'reconnecting' && <span>Typed keys will be sent</span>}
+            {offersManualRetry(link, Date.now()) && (
+              <button type="button" className="pointer-events-auto justify-self-start underline" onClick={() => reconnectRef.current()}>
+                Reconnect now
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -1,4 +1,4 @@
-import { isSilent, type LinkStatus } from '@/lib/reconnect'
+import { isSilent, offersManualRetry, type LinkStatus } from '@/lib/reconnect'
 import { useNow } from '@/lib/useNow'
 
 export type Tone = 'ok' | 'warn' | 'danger' | 'muted'
@@ -68,9 +68,10 @@ export function readLink(link: LinkStatus, heardAt: number, now: number): Readin
  * The honest connection indicator (.ai/21-app.md § Phone v2): live, catching
  * up, reconnecting with the attempt and the next try, offline since when, or
  * revoked with the reason. Re-read every second, because the facts it reports
- * change with time when nothing arrives.
+ * change with time when nothing arrives. With `onReconnect`, a link that has
+ * failed a few times, or been down a while, offers "Reconnect now".
  */
-export function ConnectionState({ link, heardAt, className = '' }: { link: LinkStatus; heardAt: () => number; className?: string }) {
+export function ConnectionState({ link, heardAt, className = '', onReconnect }: { link: LinkStatus; heardAt: () => number; className?: string; onReconnect?: () => void }) {
   // Live, only the tooltip's "heard N s ago" moves: a slower clock (WP-16,
   // CPU of an idle window); every other phase counts down by the second.
   const now = useNow(link.phase === 'live' ? 5000 : 1000)
@@ -79,6 +80,9 @@ export function ConnectionState({ link, heardAt, className = '' }: { link: LinkS
     <span role="status" aria-live="polite" title={reading.title} data-link={link.phase} className={`inline-flex items-center gap-1.5 ${className}`}>
       <span aria-hidden className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${DOT[reading.tone]}`} />
       <span className="num">{reading.label}</span>
+      {onReconnect && offersManualRetry(link, now) && (
+        <button type="button" className="underline hover:text-fg" onClick={onReconnect}>Reconnect now</button>
+      )}
     </span>
   )
 }

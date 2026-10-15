@@ -62,6 +62,9 @@ import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { deviceToken } from '@/lib/api'
 import { TermClient, type TermState } from '@/lib/termv2'
+import { offersManualRetry, type LinkStatus } from '@/lib/reconnect'
+import { useNow } from '@/lib/useNow'
+import { readLink } from './ConnectionState'
 import { attachTerminalInput } from '@/lib/xtermInput'
 import { FIND_EVENT, ownsTerminalKey, watchChordArrows } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
@@ -207,6 +210,9 @@ export function TerminalPane({
   focusedRef.current = focused
   const [phase, setPhase] = useState<'waiting' | 'ready'>('waiting')
   const [status, setStatus] = useState<TermState>('connecting')
+  // The retry status behind `status`, for the honest badge (ReconnectBadge).
+  const [link, setLink] = useState<LinkStatus>({ phase: 'connecting', attempt: 0, nextAt: null, downSince: null })
+  const connRef = useRef<TermClient | null>(null)
   const [newLines, setNewLines] = useState(0)
   const [foreground, setForeground] = useState(() => terminalTheme(getTerminalPrefs().theme).colors.foreground)
   // The find bar: open or not, the token that refocuses it, the addon's count.
@@ -398,6 +404,7 @@ export function TerminalPane({
           heldBytes = 0
         },
         state: report,
+        status: setLink,
         open: () => {
           if (fitNow()) conn.resize(term.cols, term.rows)
           report(conn.state)
@@ -554,6 +561,7 @@ export function TerminalPane({
     }
     watchDpr()
 
+    connRef.current = conn
     const onWake = (e: Event) => {
       if (document.visibilityState !== 'visible') return
       // A suspended background tab stays let go until it is shown; a window
@@ -569,6 +577,14 @@ export function TerminalPane({
     }
     document.addEventListener('visibilitychange', onWake)
     window.addEventListener('online', onWake)
+    // The window clicked or restored after a sleep or a network change need
+    // not change its visibility: the socket is checked (one ping) and a
+    // waiting retry goes now. Nothing is redrawn for it.
+    const onFocusWake = () => {
+      if (visible && document.visibilityState === 'visible') conn.wake()
+    }
+    window.addEventListener('focus', onFocusWake)
+    window.addEventListener('pageshow', onFocusWake)
 
     // The window back in front after a while in the background (another app
     // on top, never hidden, so no visibilitychange): the pane in front sends
@@ -720,6 +736,9 @@ export function TerminalPane({
       window.removeEventListener('focus', onFocusBack)
       dprQuery?.removeEventListener('change', onDpr)
       window.removeEventListener('online', onWake)
+      window.removeEventListener('focus', onFocusWake)
+      window.removeEventListener('pageshow', onFocusWake)
+      connRef.current = null
       window.removeEventListener('focus', claim)
       document.removeEventListener('visibilitychange', claim)
       el.removeEventListener('pointerdown', claim)
@@ -768,17 +787,23 @@ export function TerminalPane({
         <div ref={host} data-term-host data-term-session={sessionId} className="h-full w-full" />
       </div>
       {phase === 'waiting' && status !== 'ended' && (
-        <div role="status" className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div role="status" className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2">
           <p className="mono text-[12px]" style={{ color: foreground, opacity: 0.6 }}>
             {status === 'reconnecting' ? 'Connecting to the session…' : 'Starting…'}
           </p>
+          {status === 'reconnecting' && <ReconnectBadge link={link} onReconnect={() => connRef.current?.reconnectNow()} />}
         </div>
       )}
-      {(status === 'reconnecting' || status === 'revoked') && phase === 'ready' && (
-        <div className="pointer-events-none absolute right-3 top-2 app-fade-in">
+      {status === 'revoked' && phase === 'ready' && (
+        <div className="pointer-events-none absolute right-3 top-2 z-20 app-fade-in">
           <span className="mono rounded-full border border-white/10 bg-black/40 px-2.5 py-1 text-[11px] text-[#e7bb63] backdrop-blur-sm">
-            {status === 'revoked' ? 'This device can no longer type here' : 'Reconnecting…'}
+            This device can no longer type here
           </span>
+        </div>
+      )}
+      {status === 'reconnecting' && phase === 'ready' && (
+        <div className="pointer-events-none absolute right-3 top-2 z-20 app-fade-in">
+          <ReconnectBadge link={link} onReconnect={() => connRef.current?.reconnectNow()} />
         </div>
       )}
       {find.open && searchRef.current && (
@@ -807,5 +832,29 @@ export function TerminalPane({
       />
     )}
     </div>
+  )
+}
+
+/**
+ * The terminal's connection while it is down, as it is: the attempt, when the
+ * next one goes, and — once it has failed a few times or for a while — a
+ * "Reconnect now" that tries at once. The retries never stop by themselves
+ * (lib/reconnect.ts); the button is for not waiting out the backoff, and it
+ * reconnects the same session: no new process (Vova, 2026-10-15: after a
+ * Wi-Fi drop every tab hung at "Reconnecting…" until it was closed). Mounted
+ * only while reconnecting, so its one-second clock runs only then.
+ */
+function ReconnectBadge({ link, onReconnect }: { link: LinkStatus; onReconnect: () => void }) {
+  const now = useNow(1000)
+  const reading = readLink(link, 0, now)
+  return (
+    <span data-reconnect className="mono inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-2.5 py-1 text-[11px] text-[#e7bb63] backdrop-blur-sm" title={reading.title}>
+      <span>{reading.label}</span>
+      {offersManualRetry(link, now) && (
+        <button type="button" className="pointer-events-auto rounded-full border border-current px-2 leading-[18px] hover:bg-white/10" onClick={onReconnect}>
+          Reconnect now
+        </button>
+      )}
+    </span>
   )
 }
