@@ -4,11 +4,39 @@
  * keeps it (owner, 2026-10-11: "not just poking — you open it, move across,
  * it changes, and you pick what you like", translated). Used by the theme
  * buttons' popover and by Settings → Appearance, larger there.
+ *
+ * The arrows walk the swatches as they are laid out — left, right, and up
+ * and down across the two groups — and each one the focus lands on is shown
+ * on the page, as hovering does; Enter or Space keeps it (owner, 2026-10-15:
+ * "I can't move across the themes with the keyboard", translated).
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { THEME_MODE_NAME, THEME_SWATCH, endThemePreview, previewThemeMode, useThemeMode, type ThemeMode } from '@/lib/theme'
 import { THEMES } from '@/lib/themes'
+
+const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
+
+/**
+ * The swatch to go to from `from` with arrow `key`, by where they sit: the
+ * nearest one in that direction, the cross-axis distance weighing more, so
+ * Down from a right-hand swatch stays in the right-hand column. Null at the
+ * edge. Pure on rectangles, for the tests.
+ */
+export function nextSwatch(from: DOMRect, rects: DOMRect[], key: string): number | null {
+  const d = ARROWS[key]
+  if (!d) return null
+  const cx = from.left + from.width / 2, cy = from.top + from.height / 2
+  let best: number | null = null, score = Infinity
+  rects.forEach((r, i) => {
+    const dx = r.left + r.width / 2 - cx, dy = r.top + r.height / 2 - cy
+    const along = d[0] ? dx * d[0] : dy * d[1]
+    if (along <= 1) return
+    const s = along + 3 * Math.abs(d[0] ? dy : dx)
+    if (s < score) { score = s; best = i }
+  })
+  return best
+}
 
 const GROUPS = [
   { label: 'Dark', modes: THEMES.filter((t) => t.theme === 'dark').map((t) => t.id) },
@@ -21,8 +49,17 @@ export function ThemePicker({ size = 'menu', onPicked }: { size?: 'menu' | 'card
   // pointer) would leave the page in a palette nobody chose.
   useEffect(() => () => endThemePreview(), [])
   const big = size === 'cards'
+  const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!ARROWS[e.key] || e.metaKey || e.ctrlKey || e.altKey) return
+    const radios = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'))
+    const from = radios.find((r) => r === document.activeElement)
+    if (!from) return
+    e.preventDefault()
+    const i = nextSwatch(from.getBoundingClientRect(), radios.map((r) => r.getBoundingClientRect()), e.key)
+    if (i !== null) radios[i]?.focus()
+  }
   return (
-    <div role="radiogroup" aria-label="Theme" onMouseLeave={endThemePreview} className={`grid ${big ? 'gap-4' : 'gap-2.5'}`}>
+    <div role="radiogroup" aria-label="Theme" onMouseLeave={endThemePreview} onKeyDown={onKey} className={`grid ${big ? 'gap-4' : 'gap-2.5'}`}>
       {GROUPS.map((g) => (
         <div key={g.label} role="group" aria-label={g.label} className="grid gap-1.5">
           <div className={`px-0.5 uppercase tracking-[0.1em] text-fg-faint ${big ? 'text-[11.5px]' : 'text-[10.5px]'}`}>{g.label}</div>
@@ -108,8 +145,8 @@ export function placeThemeMenu(btn: MenuRect, height: number, view: { w: number;
  * rest. It now sits above everything and is kept inside the window on every
  * edge, whatever the sidebar's width or fold.
  *
- * Keyboard: opening it puts the focus on the palette in use; Tab and ⇧Tab
- * walk the palettes, and past either end, or Esc, close it and give the
+ * Keyboard: opening it puts the focus on the palette in use; the arrows,
+ * Tab and ⇧Tab walk the palettes, and past either end, or Esc, close it and give the
  * focus back to the button. `openOn` (⇧⌘T) opens it the same way from the
  * keyboard, or closes it when open.
  */
@@ -183,7 +220,7 @@ export function ThemeMenu({ children, label, placement = 'up', align = 'right', 
         <div ref={menu} role="dialog" aria-label="Theme" data-theme-menu onKeyDown={onMenuKey}
           style={pos ? { left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight } : { left: 0, top: 0, width: THEME_MENU_W, visibility: 'hidden' }}
           className="app-fade-in fixed z-[100] overflow-y-auto overscroll-contain rounded-[12px] border border-[var(--app-hairline-strong,var(--color-border-strong))] bg-panel p-2.5 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)]">
-          <div className="mb-2 px-0.5 text-[11px] uppercase tracking-[0.1em] text-fg-faint">Theme · hover to try</div>
+          <div className="mb-2 px-0.5 text-[11px] uppercase tracking-[0.1em] text-fg-faint">Theme · hover or arrows to try</div>
           <ThemePicker onPicked={() => close(true)} />
         </div>,
         document.body,
