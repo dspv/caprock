@@ -467,10 +467,12 @@ export function Sidebar(props: SidebarProps) {
         </button>
       </div>
 
-      {/* The list scrolls here and ends above the footer, its sibling below:
-        * nothing is drawn under the footer, and the bottom padding leaves the
-        * last line (Second Brain's caption) whole when scrolled to the end. */}
-      <div data-sidebar-scroll className="app-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4" onKeyDown={onKeyDown}>
+      {/* The list scrolls here and ends above Second Brain and the footer,
+        * its siblings below: nothing is drawn under either, and the bottom
+        * padding leaves the last row whole when scrolled to the end. Sized
+        * by its content (flex-auto), so a long list presses on Second Brain,
+        * which shrinks its orb first (components/BrainSidebar.tsx). */}
+      <div data-sidebar-scroll className="app-scroll min-h-0 flex-auto overflow-y-auto px-2 pb-4" onKeyDown={onKeyDown}>
         {props.onRoute && !todayCard.hidden && (
           <TodayStrip
             today={today}
@@ -556,9 +558,12 @@ export function Sidebar(props: SidebarProps) {
             Listed from where your sessions ran. Git state and clone arrive with the projects API.
           </p>
         )}
-        {/* Second Brain below the projects (ADR-063): folds, remembers it. */}
-        {props.onRoute && <BrainSidebar onOpen={props.onRoute} />}
       </div>
+
+      {/* Second Brain under the list (ADR-063), never in its scroll, so its
+        * status line is never cut off by the footer; folds, remembers it.
+        * Its orb sparks for the sessions working now, from this model. */}
+      {props.onRoute && <BrainSidebar onOpen={props.onRoute} working={today.working} />}
 
       <SidebarFooter
         folded={folds.has('footer')}

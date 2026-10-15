@@ -1369,6 +1369,8 @@ export interface BrainStatus {
   manual: number
   projects: { project: string; count: number }[]
   auto?: BrainAutoStatus
+  /** The database file, resolved by the daemon from its data directory; absent without one. */
+  db_path?: string
 }
 
 /** The automatic extraction's state; absent from a daemon without it (03-contracts.md § Second Brain). */

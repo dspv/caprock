@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -153,6 +154,22 @@ func TestBrainQuickCaptureEditAndDelete(t *testing.T) {
 // Second Brain is free (owner decision, 2026-10-14): without a licence the
 // twenty-first memory dropped by hand is kept like the first, and the status
 // carries no allowance.
+func TestBrainStatusNamesTheDatabaseFile(t *testing.T) {
+	e := newEnv(t)
+	var st map[string]any
+	if code := e.get(t, "/v1/brain/status", &st); code != 200 {
+		t.Fatalf("status: %d", code)
+	}
+	if _, ok := st["db_path"]; ok {
+		t.Fatalf("no data dir, yet a db_path: %+v", st)
+	}
+	dir := t.TempDir()
+	e.api.d.DataDir = dir
+	if code := e.get(t, "/v1/brain/status", &st); code != 200 || st["db_path"] != filepath.Join(dir, "caprock.db") {
+		t.Fatalf("db_path: %d %+v", code, st)
+	}
+}
+
 func TestBrainHasNoCapWithoutALicence(t *testing.T) {
 	e := newEnv(t)
 	for i := 0; i < 25; i++ {

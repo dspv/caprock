@@ -16,40 +16,42 @@ daemon or a real subprocess are exercised by suites the default run skips.
 Numbers are from the default run. Where that understates a package, the "real"
 column says what it is when the suite that actually covers it is included.
 
-| Package            | Default | Real  | Notes                                                                           |
-| ------------------ | ------- | ----- | ------------------------------------------------------------------------------- |
-| `update`           | 91.4%   |       |                                                                                 |
-| `bus`              | 90.9%   |       |                                                                                 |
-| `opencode`         | 89.1%   |       | Fixtures from the real schema; live checks skip without it                      |
-| `cost`             | 88.9%   |       |                                                                                 |
-| `shim`             | 88.7%   |       | Failure paths pinned; see below                                                 |
-| `gitdiff`          | 84.6%   |       |                                                                                 |
-| `loop`             | 84.3%   |       |                                                                                 |
-| `rollup`           | 82.6%   |       |                                                                                 |
-| `hooks`            | 82.3%   |       |                                                                                 |
-| `hookd`            | 81.9%   |       |                                                                                 |
-| `ptyman`           | 81.4%   |       | Windows path covered by the `ptyspike` job, not here                            |
-| `termbuf`          | 97.0%   |       | Measured 2026-10-04                                                             |
-| `ptyhost`          | 76.2%   |       | Measured 2026-10-04; the test binary plays holder and child, all three OSes     |
-| `templates`        | 81.2%   |       | Measured 2026-10-15; a fake `gh` (`testdata/fakegh`), never the real one        |
-| `relplan`          | 95.0%   |       | Measured 2026-10-15; a real clone in a temp dir, so all three OSes run git      |
-| `hive`             | 81.2%   |       |                                                                                 |
-| `board`            | 81.0%   |       |                                                                                 |
-| `statusline`       | 80.6%   |       |                                                                                 |
-| `store`            | 80.3%   |       |                                                                                 |
-| `desktop`          | 78.9%   |       |                                                                                 |
-| `orchestrator`     | 78.1%   |       |                                                                                 |
-| `agents`           | 75.0%   |       |                                                                                 |
-| `narrate`          | 74.6%   |       |                                                                                 |
-| `api`              | 72.9%   |       |                                                                                 |
-| `config`           | 72.3%   |       |                                                                                 |
-| `ingest`           | 68.5%   |       |                                                                                 |
-| `service`          | 65.4%   |       | Pure file generation; the launchctl/systemctl layer is not shelled out in tests |
-| `daemon`           | 22.8%   | 58.7% | `Run`/`newDaemon` are driven by the smoke suite on three OSes                   |
-| `event`            | 0%      | —     | Type declarations only; no functions to test                                    |
-| `version`          | 0%      | —     | A single version string                                                         |
-| `cmd/caprock-hook` | 0%      | —     | Has its own suite that runs the built binary as a subprocess                    |
-| `cmd/caprock`      | 27.9%   |       | CLI wiring; the commands it calls are covered in their packages                 |
+| Package            | Default | Real  | Notes                                                                                         |
+| ------------------ | ------- | ----- | --------------------------------------------------------------------------------------------- |
+| `update`           | 91.4%   |       |                                                                                               |
+| `bus`              | 90.9%   |       |                                                                                               |
+| `opencode`         | 89.1%   |       | Fixtures from the real schema; live checks skip without it                                    |
+| `cost`             | 88.9%   |       |                                                                                               |
+| `shim`             | 88.7%   |       | Failure paths pinned; see below                                                               |
+| `gitdiff`          | 84.6%   |       |                                                                                               |
+| `loop`             | 84.3%   |       |                                                                                               |
+| `rollup`           | 82.6%   |       |                                                                                               |
+| `hooks`            | 82.3%   |       |                                                                                               |
+| `hookd`            | 81.9%   |       |                                                                                               |
+| `ptyman`           | 81.4%   |       | Windows path covered by the `ptyspike` job, not here                                          |
+| `termbuf`          | 97.0%   |       | Measured 2026-10-04                                                                           |
+| `ptyhost`          | 76.2%   |       | Measured 2026-10-04; the test binary plays holder and child, all three OSes                   |
+| `templates`        | 81.2%   |       | Measured 2026-10-15; a fake `gh` (`testdata/fakegh`), never the real one                      |
+| `relplan`          | 95.0%   |       | Measured 2026-10-15; a real clone in a temp dir, so all three OSes run git                    |
+| `remote`           | 80.8%   |       | Measured 2026-10-15; a real relay (`relaysrv`) and Host on loopback, phone and computer sides |
+| `peers`            | 83.1%   |       | Measured 2026-10-15; a stand-in target behind a real Host; the real binary in the smoke       |
+| `hive`             | 81.2%   |       |                                                                                               |
+| `board`            | 81.0%   |       |                                                                                               |
+| `statusline`       | 80.6%   |       |                                                                                               |
+| `store`            | 80.3%   |       |                                                                                               |
+| `desktop`          | 78.9%   |       |                                                                                               |
+| `orchestrator`     | 78.1%   |       |                                                                                               |
+| `agents`           | 75.0%   |       |                                                                                               |
+| `narrate`          | 74.6%   |       |                                                                                               |
+| `api`              | 72.9%   |       |                                                                                               |
+| `config`           | 72.3%   |       |                                                                                               |
+| `ingest`           | 68.5%   |       |                                                                                               |
+| `service`          | 65.4%   |       | Pure file generation; the launchctl/systemctl layer is not shelled out in tests               |
+| `daemon`           | 22.8%   | 58.7% | `Run`/`newDaemon` are driven by the smoke suite on three OSes                                 |
+| `event`            | 0%      | —     | Type declarations only; no functions to test                                                  |
+| `version`          | 0%      | —     | A single version string                                                                       |
+| `cmd/caprock-hook` | 0%      | —     | Has its own suite that runs the built binary as a subprocess                                  |
+| `cmd/caprock`      | 27.9%   |       | CLI wiring; the commands it calls are covered in their packages                               |
 
 ## What the number does not mean
 

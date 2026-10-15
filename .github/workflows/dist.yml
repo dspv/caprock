@@ -1,0 +1,73 @@
+name: dist
+
+# The one writer of internal/api/dist (ADR-068).
+#
+# The built dashboard is committed so `go install github.com/dspv/caprock/
+# cmd/caprock@...` embeds a real UI without Node. It used to travel in every
+# pull request that touched ui/, and its file names are content hashes, so any
+# two such PRs conflicted there whatever else they changed. Now a PR never
+# carries it (ci.yml's no-dist job) and this workflow rebuilds it on master
+# after each merge that touches ui/, committing the result when it differs.
+#
+# No loop: the commit touches only internal/api/dist, outside `paths`; a push
+# made with GITHUB_TOKEN starts no workflow anyway; and the job skips the
+# Actions bot as an actor. master has no branch protection (checked
+# 2026-10-15); if it gets some, this push needs an allowance there, or the
+# rebuild has to arrive as a PR instead.
+on:
+  push:
+    branches: [master]
+    paths:
+      - "ui/**"
+      - ".github/workflows/dist.yml"
+  workflow_dispatch:
+
+# One rebuild at a time, never cancelled mid-push; each run builds master as
+# it is when it starts, so a queued run catches up with every merge before it.
+concurrency:
+  group: dist-master
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    name: rebuild the dashboard on master
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: master
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      # A push loses the race when another merge lands meanwhile: start again
+      # from the new master, which may have changed ui/ too.
+      - name: build, commit and push when dist differs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898280+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            make ui
+            git add -A internal/api/dist
+            if git diff --cached --quiet; then
+              echo "internal/api/dist already matches ui/ at $(git rev-parse --short HEAD)"; exit 0
+            fi
+            short=$(git rev-parse --short HEAD)
+            git commit -q -m "chore(dist): rebuild the dashboard for ${short}"
+            if git push origin HEAD:master; then
+              echo "pushed $(git rev-parse --short HEAD), the dashboard of ${short}"; exit 0
+            fi
+            echo "master moved (attempt ${attempt}); rebuilding from the new master"
+            git fetch -q origin master
+            git reset -q --hard origin/master
+            git clean -qfd -- internal/api/dist
+          done
+          echo "::error::could not push the rebuilt dashboard after 3 attempts"
+          exit 1

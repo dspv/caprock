@@ -131,6 +131,12 @@ pub fn build(
         .min_inner_size(720.0, 480.0)
         .visible(false)
         .focused(focus)
+        // The first click on a window that is not in front reaches the page
+        // (macOS; the other systems already do). Without it macOS spends
+        // that click on bringing the window forward, and a tab's × in the
+        // title-bar strip took two clicks. Dragging is untouched: the strip's
+        // `data-tauri-drag-region` still moves the window on press-and-drag.
+        .accept_first_mouse(true)
         // A hidden or covered window still hears the live socket, or a
         // notification would wait for the app to come forward (WP-09).
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
