@@ -1994,6 +1994,8 @@ export const api = {
   telegramCancelPair: () => post<TelegramStatus>('/v1/telegram/pair', {}, 'DELETE'),
   /** Forget the bot, the chat and what was learned about them. */
   telegramDisconnect: () => post<TelegramStatus>('/v1/telegram', {}, 'DELETE'),
+  /** A share card to the owner's own paired chat, on their click: `png` is base64, `caption` plain text. */
+  telegramPhoto: (png: string, caption: string) => post<{ sent: boolean }>('/v1/telegram/photo', { png, caption }),
   /** Runs `caprock hooks install` in the daemon; answers with what is registered after. */
   installHooks: () => post<{ hooks: HooksStatus; backup?: string }>('/v1/hooks/install', {}),
   /** The user accepted Caprock's copy of Claude Code's bypass warning (ADR-041). */

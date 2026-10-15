@@ -838,7 +838,7 @@ GET  /v1/keepawake                     → whether the computer is kept awake no
 POST /v1/report/test                   → sends this week's report now → {sent:"ok"}; 502 with Telegram's error, 501 when reporting is unavailable
 POST /v1/alerts/test                   → sends a test phone alert now, no licence needed → {sent:"ok"}; 502 with Telegram's error or "no bot configured"
 POST /v1/pair/send-link                → sends the phone's page address to the owner's Telegram chat → {sent:"telegram", link}; loopback-only, 409 with no bot (§ Pairing endpoints)
-GET/PUT/POST/DELETE /v1/telegram…      → the Telegram bridge's setup and pairing (§ Telegram bridge)
+GET/PUT/POST/DELETE /v1/telegram…      → the Telegram bridge's setup and pairing, and a share card to the paired chat (§ Telegram bridge)
 POST /v1/shutdown                      → 200 (bearer-token gated; `caprock down`)
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
@@ -1450,7 +1450,17 @@ PUT    /v1/telegram/token     {token} → checked with getMe, stored only when T
 POST   /v1/telegram/pair      → a new one-time code (10 minutes); 409 with no bot
 DELETE /v1/telegram/pair      → the code withdrawn
 DELETE /v1/telegram           → token, chat and telegram.json forgotten (the weekly report and alerts stop too)
+POST   /v1/telegram/photo     {png, caption} → {sent:true}; 409 with no bot or chat, 400 when png is not one base64 PNG ≤ 10 MB, 502 with Telegram's words
 ```
+
+`POST /v1/telegram/photo` is the Share sheet's **To me** (§ Share in
+04-ui.md): `png` is a share card, base64 (JSON, not multipart, because every
+state-changing route is `application/json`, csrf.go), and `caption` plain
+text, cut to Telegram's 1024 characters. It is sent at once with `sendPhoto`
+to the paired chat — not through the alert outbox, and needing no alert kind
+or two-way chat on, only a bot and a chat — and only because the person
+clicked. Nothing is stored. The card and the caption are anonymous unless the
+person ticked **Show repo name** for that one share (04-ui.md § Share).
 
 `TelegramStatus` = `{bot_set, token_masked?, bot_username?, chat_set,
 chat_name?, manual_chat?, pairing?: {code, link?, expires_ms}, polling,

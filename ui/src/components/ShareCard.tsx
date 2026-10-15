@@ -51,7 +51,7 @@ export const PERIOD_LABEL: Record<SharePeriod, string> = {
  */
 export type CardLook = 'dark' | 'paper'
 
-interface Palette {
+export interface Palette {
   bg: string
   raise: string
   line: string
@@ -63,7 +63,7 @@ interface Palette {
   glow: string
 }
 
-const PALETTE: Record<CardLook, Palette> = {
+export const PALETTE: Record<CardLook, Palette> = {
   dark: { bg: '#1b1b1a', raise: '#262422', line: '#3a3835', ink: '#ece9e4', muted: '#a9a59e', faint: '#837f78', accent: '#feb157', glow: '#feb157' },
   paper: { bg: '#efe7d6', raise: '#f4ecdd', line: '#c2b293', ink: '#2b251c', muted: '#4f473b', faint: '#665d4f', accent: '#8a4f0c', glow: '#eb9a3e' },
 }
@@ -238,11 +238,11 @@ export function rangeWords(d: CardData): string {
   return `${fmt(start, start.getFullYear() !== end.getFullYear())} – ${fmt(end, true)}`
 }
 
-const SANS = '"Hanken Grotesk Variable", "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif'
-const MONO = '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace'
+export const SANS = '"Hanken Grotesk Variable", "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif'
+export const MONO = '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace'
 
 /** The bundled faces, loaded before a draw: a canvas does not wait for them and falls back silently. */
-async function fontsReady(): Promise<void> {
+export async function fontsReady(): Promise<void> {
   try {
     const f = document.fonts
     if (!f?.load) return
@@ -382,6 +382,28 @@ function paintCard(g: CanvasRenderingContext2D, d: CardData, look: CardLook) {
   text(W - pad, footY, domain, df, p.accent, 'right')
   text(W - pad - width(domain, df) - 14, footY, "What's yours?", `600 20px ${SANS}`, p.ink, 'right')
   g.textAlign = 'left'
+}
+
+/** The brand — the triangle and "caprock" — with its baseline at y. */
+export function drawBrand(g: CanvasRenderingContext2D, x: number, y: number, look: CardLook) {
+  const p = PALETTE[look]
+  g.strokeStyle = p.accent
+  g.lineWidth = 3.4
+  g.lineJoin = 'round'
+  g.beginPath()
+  g.moveTo(x + 15, y - 24)
+  g.lineTo(x + 30, y + 2)
+  g.lineTo(x, y + 2)
+  g.closePath()
+  g.stroke()
+  const f = `700 27px ${MONO}`
+  g.font = f
+  g.textAlign = 'left'
+  g.fillStyle = p.ink
+  g.fillText('cap', x + 44, y)
+  const w = g.measureText('cap').width
+  g.fillStyle = p.accent
+  g.fillText('rock', x + 44 + w, y)
 }
 
 /** An agent's mark at (x, y), `s` pixels square. */

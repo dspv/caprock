@@ -125,6 +125,8 @@ describe('the Pipeline page', () => {
     // The flow strip on top, the releases below; no pull request's CI asked until one is opened.
     expect(document.querySelector('[data-stat="throughput"]')).toHaveTextContent('0.5/day')
     expect(document.querySelector('[data-stat="lag"]')).toHaveTextContent('estimate')
+    // The head's Share pill, once the figures are read.
+    expect(document.querySelector('[data-pipeline-share]')).toHaveTextContent('Share')
     // The dashboard's figure tiles: needing a fix is red, and each says what
     // it means in a card under it, never a native tooltip over the figure.
     const fix = document.querySelector('[data-stat="fix"]')!
@@ -254,6 +256,7 @@ describe('the Pipeline page', () => {
     render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     expect(await screen.findByRole('button', { name: 'Connect GitHub' })).toBeInTheDocument()
     expect(document.querySelector('[data-prs-list]')).toBeNull()
+    expect(document.querySelector('[data-pipeline-share]')).toBeNull()
     expect(h.asked).not.toContain('usage')
   })
 

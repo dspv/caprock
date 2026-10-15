@@ -5,7 +5,8 @@
 // It speaks plain HTTPS to one documented host and nothing else: getMe to
 // check a token, getUpdates (long polling, so nothing listens for inbound
 // connections) to hear the pairing code, replies and button presses,
-// sendMessage, editMessageReplyMarkup, setMessageReaction, setMyCommands and
+// sendMessage, sendPhoto (a share card, only on the user's click),
+// editMessageReplyMarkup, setMessageReaction, setMyCommands and
 // answerCallbackQuery. No webhook, no relay of ours.
 //
 // The token is in every request URL, so it is in every transport error's
@@ -20,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	neturl "net/url"
 	"strings"
@@ -101,8 +103,13 @@ func (c *Client) retryWait() time.Duration {
 // the result into out (which may be nil). A 429 is waited out and retried
 // while Telegram's retry_after fits in the client's limit and ctx allows it.
 func (c *Client) Call(ctx context.Context, method string, params, out any) error {
+	return c.retrying(ctx, func() error { return c.call(ctx, method, params, out, sendTimeout) })
+}
+
+// retrying runs one request, waiting out a 429 as Call describes.
+func (c *Client) retrying(ctx context.Context, do func() error) error {
 	for attempt := 0; ; attempt++ {
-		err := c.call(ctx, method, params, out, sendTimeout)
+		err := do()
 		var ae *APIError
 		if !errors.As(err, &ae) || ae.Code != http.StatusTooManyRequests || attempt >= 2 {
 			return err
@@ -132,6 +139,12 @@ func (c *Client) call(ctx context.Context, method string, params, out any, timeo
 	if err != nil {
 		return err
 	}
+	return c.post(ctx, method, "application/json", body, out, timeout)
+}
+
+// post sends one request body of the given type and decodes Telegram's
+// envelope; call (JSON) and SendPhoto (multipart) share it.
+func (c *Client) post(ctx context.Context, method, contentType string, body []byte, out any, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	url := c.base() + "/bot" + c.Token + "/" + method
@@ -139,7 +152,7 @@ func (c *Client) call(ctx context.Context, method string, params, out any, timeo
 	if err != nil {
 		return c.scrub(err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("User-Agent", "caprock")
 
 	res, err := c.http().Do(req)
@@ -357,6 +370,49 @@ func (c *Client) SetCommands(ctx context.Context, cmds []Command) error {
 // AnswerCallbackQuery stops a pressed button's spinner, with an optional toast.
 func (c *Client) AnswerCallbackQuery(ctx context.Context, id, text string) error {
 	return c.Call(ctx, "answerCallbackQuery", map[string]any{"callback_query_id": id, "text": text}, nil)
+}
+
+// MaxCaption is the longest photo caption Telegram takes, in characters.
+const MaxCaption = 1024
+
+// photoTimeout bounds a photo upload: a 2x card is a few hundred kilobytes,
+// and a slow uplink should not be cut off at a text message's deadline.
+const photoTimeout = 60 * time.Second
+
+// SendPhoto posts one PNG with a plain-text caption to a chat
+// (multipart/form-data, as the Bot API takes a file upload). The caption is
+// cut to MaxCaption characters rather than refused.
+func (c *Client) SendPhoto(ctx context.Context, chatID string, png []byte, caption string) (Message, error) {
+	if strings.TrimSpace(c.Token) == "" {
+		return Message{}, ErrNoToken
+	}
+	if strings.TrimSpace(chatID) == "" {
+		return Message{}, errors.New("telegram: no chat")
+	}
+	if r := []rune(caption); len(r) > MaxCaption {
+		caption = string(r[:MaxCaption])
+	}
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("chat_id", chatID)
+	if caption != "" {
+		_ = mw.WriteField("caption", caption)
+	}
+	fw, err := mw.CreateFormFile("photo", "caprock.png")
+	if err != nil {
+		return Message{}, err
+	}
+	if _, err := fw.Write(png); err != nil {
+		return Message{}, err
+	}
+	if err := mw.Close(); err != nil {
+		return Message{}, err
+	}
+	var m Message
+	err = c.retrying(ctx, func() error {
+		return c.post(ctx, "sendPhoto", mw.FormDataContentType(), buf.Bytes(), &m, photoTimeout)
+	})
+	return m, err
 }
 
 // GetUpdates long-polls for up to wait (whole seconds) for updates after
