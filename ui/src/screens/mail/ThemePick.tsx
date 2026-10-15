@@ -56,9 +56,9 @@ export function ThemeButton({ onOpen }: { onOpen: () => void }) {
   const { mode } = useThemeMode()
   const t = THEMES.find((r) => r.id === mode)
   return (
-    <button className="icon withkey themebtn" title="Theme" onClick={onOpen}>
+    <button className="nav themebtn" onClick={onOpen}>
       <span className="swatch" style={{ background: t?.swatch.bg, borderColor: t?.swatch.panel }}><i style={{ background: t?.swatch.accent }} /></span>
-      <K k="theme" />
+      <span>Theme{t ? `: ${t.name}` : ''}</span> <K k="theme" />
     </button>
   )
 }

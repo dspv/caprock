@@ -51,6 +51,7 @@ export function KeySheet({ onClose }: { onClose: () => void }) {
     <div className="keysheet" role="dialog" aria-label="Keyboard shortcuts" onClick={onClose}>
       <div className="keybox" onClick={(e) => e.stopPropagation()}>
         <div className="keyhead">Keyboard shortcuts <span className="grow" /><K k="close" /></div>
+        <p className="keyhint">Two keys with a space, like <kbd className="k">g i</kbd>: press g, let go, then i. Every button shows its key too.</p>
         <div className="keycols">
           {SHEET.map((g) => (
             <section key={g.title}>

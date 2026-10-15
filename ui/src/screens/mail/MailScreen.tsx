@@ -380,13 +380,12 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
           ))}
         </nav>
         <div className="sidefoot">
-          <button className="icon withkey" title="Check mail" onClick={checkMail}>
-            <Icon name="sync" className={syncing ? 'spin' : ''} /> <K k="sync" />
+          <button className="nav" onClick={checkMail}>
+            <Icon name="sync" className={syncing ? 'spin' : ''} /> <span>{syncing ? 'Checking…' : 'Check mail'}</span> <K k="sync" />
           </button>
-          <button className="icon withkey" title="Settings" onClick={() => setShowSettings(true)}><Icon name="gear" /> <K k="settings" /></button>
+          <button className="nav" onClick={() => setShowSettings(true)}><Icon name="gear" /> <span>Settings</span> <K k="settings" /></button>
           <ThemeButton onOpen={() => setThemes(true)} />
-          <span className="grow" />
-          <button className="link small keyshelp" onClick={() => setHelp(true)}>Shortcuts <K k="help" /></button>
+          <button className="nav" onClick={() => setHelp(true)}><Icon name="keyboard" /> <span>All shortcuts</span> <K k="help" /></button>
         </div>
       </aside>
 
