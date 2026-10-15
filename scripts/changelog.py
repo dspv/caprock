@@ -31,7 +31,7 @@ import sys
 KINDS = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
 FRAGMENTS = os.path.join("changes", "unreleased")
 CHANGELOG = "CHANGELOG.md"
-CYRILLIC = re.compile("[Ѐ-ӿԀ-ԯᲀ-᲏ⷠ-ⷿꙀ-ꚟ]")
+CYRILLIC = re.compile("[\u0400-\u04ff\u0500-\u052f\u1c80-\u1c8f\u2de0-\u2dff\ua640-\ua69f]")
 VERSION = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
 
 

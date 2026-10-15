@@ -81,7 +81,7 @@ class Parse(unittest.TestCase):
             "empty": frag("Added", ""),
             "not a scoped bullet": frag("Added", "Some prose."),
             "heading": frag("Added", "- **a:** b.\n### Fixed"),
-            "cyrillic": frag("Added", "- **a:** привет."),
+            "cyrillic": frag("Added", "- **a:** \u043f\u0440\u0438\u0432\u0435\u0442."),
         }
         for what, text in cases.items():
             with self.subTest(what):
