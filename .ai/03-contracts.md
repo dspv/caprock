@@ -549,6 +549,7 @@ GET  /v1/sessions/{id}/ci/stats        → SessionCIStats — the Pipeline: the 
 GET  /v1/sessions/{id}/branches        → SessionBranches — the repository's branches with PRs and Caprock spend (§ Session branches)
 GET  /v1/repos/activity                → ReposActivity — Now's Repos section: each listed repository with a live session, from git and kept GitHub answers
 GET  /v1/repos/ci                      → ReposCI — Now's CI/CD section: runs, stuck runs, releases, cost per PR and who, GitHub's status
+GET  /v1/repos/remotes?dir=…&dir=…     → ReposRemotes — the Pipeline's picker: which folders are git repositories on GitHub
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
@@ -1005,6 +1006,37 @@ own memory as below). Only reads: nothing is signalled except by the reap below.
   `GET` answers the last sample when it is under 5 s old, otherwise takes one.
 - **A paired device may read it**; it may not reap.
 
+`GET /v1/resources/history[?since=<unix ms>]` (2026-10-15) is the same
+figures over the last hour, for the status bar's resource popover
+([04-ui.md § Status strip](04-ui.md)). Code: `internal/daemon/reshistory.go`.
+
+```json
+{"interval_s": 5, "capacity": 720,
+ "at": [1791400000000, 1791400005000],
+ "caprock": {"cpu": [3.8, 4.1], "mem": [450887680, 451000320]},
+ "all": {"cpu": [0, 112.3], "mem": [1048576, 5242880]},
+ "sessions": {"<session id>": {"cpu": [null, 12.3], "mem": [1048576, 2097152]}}}
+```
+
+- **What is kept.** Every sample the meter takes (§ When it samples above),
+  in a ring of `capacity` slots — an hour at `interval_s` — oldest dropped
+  first. It takes no sample of its own and does not keep the meter sampling,
+  so the history has gaps where no window was open; asking it is a read.
+  `since` answers only samples taken after that time (the popover asks after
+  the newest it has, so the hour is fetched once).
+- **Series.** Each array lines up with `at`, oldest first. `caprock` is the
+  daemon, the terminal holders, the app and its web view summed; `all` is
+  every session's tree summed (a CPU before its first rate counts as none);
+  `sessions` has one series per session that appears in the window, `null`
+  where it was not running or where its CPU had no rate yet. CPU is rounded
+  to 0.1; memory is kept in KiB and answered in bytes.
+- **Cost** (measured 2026-10-15, Apple M1 Pro under load, ten sessions — more
+  than the owner runs at once, `BenchmarkResourceHistory`): a full hour holds
+  157 KB of heap; keeping a sample takes 0.15 µs and allocates nothing; the
+  full hour answered as JSON is 135 KB and 1.8 ms. A preview daemon with two
+  sessions answered its first 20 minutes in 15 KB and 2.5 ms.
+- **A paired device may read it**, as it reads `GET /v1/resources`.
+
 `POST /v1/resources/reap` → `{reaped[], failed[]?, kept[]}` (verdicts as in
 `hosts.list`; `failed` is `{pid, error}`): stops every holder whose verdict is
 `reap`, and lists in `kept` the orphans left running because something still
@@ -1299,6 +1331,8 @@ On a paired device's read list (counts only). `501` without the projects service
 - **GitHub's status** — `status` `{indicator, description, components[{name, status}], incidents[{name, impact?, status?, url?}], at, error?}` from `GET https://www.githubstatus.com/api/v2/summary.json` (`github.StatusPage`), only while GitHub is connected, kept 5 minutes, sent with no token, cookie or anything about the user. `components` are those not `operational` plus Actions, Pull Requests, API Requests and Git Operations whatever their state; `incidents` the unresolved ones. A failed read keeps the last answer with `error` set and is not retried for 5 minutes. `Service.StatusURL` replaces the address (tests).
 
 On a paired device's read list. `501` without the projects service.
+
+`GET /v1/repos/remotes?dir=…&dir=…` (2026-10-15) → `ReposRemotes` `{repos[]}`: the Pipeline's repository picker ([04-ui.md § CI in the session deck, and Investigate](04-ui.md#ci-in-the-session-deck-and-investigate)) asks which of the folders agent sessions worked in are git repositories with a GitHub remote. One `RepoRemote` `{dir, root?, repo?, guarded?}` per distinct non-empty `dir`, in the order asked, at most 100 (`reposRemotesMax`): `root` is the repository's top level (absent outside git), `repo` is owner/name when its remote is on GitHub (`github.ParseRemote`; absent with no remote or another host). A folder macOS guards (`tcc.Guarded`: Documents, Downloads, Desktop…) is never read here and answers `guarded: true` alone, so opening the Pipeline asks for no folder access. Read through the session page's `repoCache` (one minute per folder), at most 8 folders at once; nothing is sent anywhere. Nothing asked answers `{"repos":[]}`. On a paired device's read list.
 
 **Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole, unless it opened or merged more than one pull request (`session_prs` rows with `opened_at` or `merged_at`): `git_branch` is the branch a session was on last, and a long session that drove hundreds of pull requests and ended on a release branch was charged whole to the release's pull request (#601 read as $1,884.29, the session's entire spend; cut as below it is $2.12, measured on the owner's database 2026-10-14). Where two pull requests share a head branch the open one owns it, else the most recently updated. A session not charged by its branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice, shared?, tokens_in, tokens_out, cache_read, cache_write}`: the tokens are the same work's (`session_stats` for a whole session, the slice's `events` sums for a cut one), `shared` counts the cut sessions: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and one sum per slice over a session's events (`(session_id, ts)` index). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them.
 
