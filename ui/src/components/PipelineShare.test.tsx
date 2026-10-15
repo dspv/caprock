@@ -119,17 +119,25 @@ describe('the Pipeline share sheet', () => {
     expect(words$()).not.toContain(REPO)
   })
 
-  it('without a paired chat, To me is a way to Settings', async () => {
+  it('without a paired chat, Send to my Telegram is Set up Telegram — and Telegram is still a choice', async () => {
     telegram.mockResolvedValue({ bot_set: true, chat_set: false, polling: false })
     render(<PipelineShareDialog board={fixture()} repo={REPO} onClose={() => {}} />)
-    expect(await screen.findByRole('button', { name: 'Connect Telegram in Settings' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'To me' })).toBeNull()
+    expect(await screen.findByRole('button', { name: 'Set up Telegram' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Send to my Telegram' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Send to someone in Telegram' })).toBeTruthy()
   })
 
-  it('To me sends the card with the anonymous words as the caption', async () => {
+  it('shows Telegram even when the bridge cannot be read at all', async () => {
+    telegram.mockRejectedValue(new Error('down'))
+    render(<PipelineShareDialog board={fixture()} repo={REPO} onClose={() => {}} />)
+    expect(await screen.findByRole('button', { name: 'Set up Telegram' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Send to someone in Telegram' })).toBeTruthy()
+  })
+
+  it('Send to my Telegram sends the card with the anonymous words as the caption', async () => {
     telegram.mockResolvedValue({ bot_set: true, chat_set: true, chat_name: 'Me', polling: false })
     render(<PipelineShareDialog board={fixture()} repo={REPO} onClose={() => {}} />)
-    fireEvent.click(await screen.findByRole('button', { name: 'To me' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Send to my Telegram' }))
     await waitFor(() => expect(telegramPhoto).toHaveBeenCalledTimes(1))
     const [png, caption] = telegramPhoto.mock.calls[0]!
     expect(png).toBe(btoa(String.fromCharCode(0x89, 0x50, 0x4e, 0x47)))
@@ -138,13 +146,14 @@ describe('the Pipeline share sheet', () => {
     expect(await screen.findByText('Sent to your Telegram (Me).')).toBeTruthy()
   })
 
-  it('To someone else copies the card and opens Telegram’s share link with the words', async () => {
+  it('Send to someone in Telegram copies the card and opens Telegram’s share link with the words', async () => {
     telegram.mockResolvedValue({ bot_set: false, chat_set: false, polling: false })
     const open = vi.spyOn(window, 'open').mockReturnValue(null)
     render(<PipelineShareDialog board={fixture()} repo={REPO} onClose={() => {}} />)
     await screen.findByAltText("The Pipeline's figures, as they will be shared")
-    fireEvent.click(screen.getByRole('button', { name: 'To someone else' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send to someone in Telegram' }))
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText(/^Image copied — paste it in the chat\./)).toBeTruthy()
     expect(write).toHaveBeenCalledTimes(1)
     const url = new URL(open.mock.calls[0]![0] as string)
     expect(url.origin + url.pathname).toBe('https://t.me/share/url')

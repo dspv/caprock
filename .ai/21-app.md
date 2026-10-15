@@ -1455,7 +1455,7 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
 - **The shell talks to the page through Tauri commands**, allowlisted for the
   daemon's origin only: `notify`, `set_badge`, `set_tray`, `register_hotkey`
   (with `hotkey_status`; built in WP-10, app/README.md),
-  `open_external` (https and the editors' schemes only), `daemon_status`, and
+  `open_external` (https and the editors' schemes, and `tg:` only when an app handles it), `daemon_status`, and
   the updater's `app_update_status`, `app_update_check`,
   `app_update_download` (Update automatically, ADR-042 as amended
   2026-10-15), `app_update_install` and `app_update_asked` (F20). No

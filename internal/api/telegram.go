@@ -108,9 +108,9 @@ var pngMagic = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 
 // handleTelegramPhoto is POST /v1/telegram/photo {"png": "<base64>",
 // "caption": "…"}: a share card sent to the owner's own paired chat, on
-// their click (the Share sheet's "To me"). JSON with the bytes in base64, not
-// multipart, because every state-changing route must be application/json
-// (csrf.go) — the same reason paste.go takes its files that way. 409 when no
+// their click (the Share sheet's "Send to my Telegram"). JSON with the bytes
+// in base64, not multipart, because every state-changing route must be
+// application/json (csrf.go) — the same reason paste.go takes its files that way. 409 when no
 // bot or chat is set up, 400 for a body that is not one PNG, 502 with
 // Telegram's words when it refuses. Nothing is kept.
 func (s *Server) handleTelegramPhoto(w http.ResponseWriter, r *http.Request) {

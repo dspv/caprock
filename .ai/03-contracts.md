@@ -1560,7 +1560,7 @@ DELETE /v1/telegram           → token, chat and telegram.json forgotten (the w
 POST   /v1/telegram/photo     {png, caption} → {sent:true}; 409 with no bot or chat, 400 when png is not one base64 PNG ≤ 10 MB, 502 with Telegram's words
 ```
 
-`POST /v1/telegram/photo` is the Share sheet's **To me** (§ Share in
+`POST /v1/telegram/photo` is the Share sheet's **Send to my Telegram** (§ Share in
 04-ui.md): `png` is a share card, base64 (JSON, not multipart, because every
 state-changing route is `application/json`, csrf.go), and `caption` plain
 text, cut to Telegram's 1024 characters. It is sent at once with `sendPhoto`
