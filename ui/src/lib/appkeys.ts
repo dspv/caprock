@@ -35,7 +35,7 @@ export type AppCommand =
   | { kind: 'palette' }
   | { kind: 'inspector' }
   | { kind: 'deck' }
-  /** ⌘P (⇧⌘B, its older key): the Pipeline page on the dashboard, or, from it, back to where it was pressed. */
+  /** ⌘P (⇧⌘B, its older key): the Pipeline tab, or, from it, back to where it was pressed. */
   | { kind: 'pipeline' }
   /** ⇧⌘W: the Work page on the dashboard, or, from it, back to where it was pressed. */
   | { kind: 'work' }
@@ -444,7 +444,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘F', 'Find in the terminal'],
   ['⌘I', 'Inspector'],
   ['⌘B', 'Pipeline bar under the agent’s terminal, shown or hidden'],
-  ['⌘P', 'Pipeline on the dashboard; there, back to where you were'],
+  ['⌘P', 'Pipeline, in a tab of its own; there, back to where you were'],
   ['⇧⌘W', 'Work on the dashboard: every piece of work on its way to a release; there, back'],
   ['⇧⌘G', 'Changes: the diff of the session in front'],
   ['⌘\\', 'Hide or show the sidebar'],

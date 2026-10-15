@@ -4,8 +4,9 @@
  * Pipeline view's mode and the theme — then Settings.
  *
  * The Pipeline button (owner, 2026-10-14, translated: "it feels like quick
- * access to the CI/CD page is missing"): a click opens the Pipeline page — on
- * the dashboard since 2026-10-15 — and from it, back — as ⌘P does. Until
+ * access to the CI/CD page is missing"): a click opens the Pipeline — its own
+ * pinned tab beside the Dashboard tab since 2026-10-15 — and from it, back —
+ * as ⌘P does. Until
  * then the button cycled the bar's modes (Hidden, Bar, Full page); the bar
  * now has its own × and ⌘B.
  *
@@ -274,7 +275,7 @@ function KeySlot({ keyLabel, chips, edge, fits, line, children }: { keyLabel?: s
 export function pipelineLabel(active?: boolean, isMac?: boolean): string {
   return active
     ? `Pipeline is in front — click to go back to where you were (${keys(PIPELINE_KEY, isMac)})`
-    : `Pipeline: every pull request on its way — open, CI, merged, released — on the dashboard (${keys(PIPELINE_KEY, isMac)})`
+    : `Pipeline: every pull request on its way — open, CI, merged, released — in its own tab (${keys(PIPELINE_KEY, isMac)})`
 }
 
 /**

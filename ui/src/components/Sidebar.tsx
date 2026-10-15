@@ -542,7 +542,7 @@ export function Sidebar(props: SidebarProps) {
       <SidebarFooter
         folded={folds.has('footer')}
         onToggleFold={() => toggleFold('footer')}
-        dashboardActive={props.dashboardActive && !props.mailActive}
+        dashboardActive={props.dashboardActive && !props.mailActive && !props.pipelineActive}
         onDashboard={props.onDashboard}
         mailActive={props.mailActive}
         onMail={props.onMail}
