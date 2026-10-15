@@ -50,11 +50,12 @@ var viewerMay = map[string]bool{
 	"GET /v1/brain": true, "GET /v1/brain/status": true, "GET /v1/brain/nodes/{id}": true, // Second Brain, read-only (ADR-063)
 	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true, "GET /v1/projects/{id}/repos": true,
 	"GET /v1/projects/{id}/changes": true, "GET /v1/projects/{id}/changes/diff": true,
-	"GET /v1/repos/activity":     true, // Now's Repos section: counts from git and from GitHub answers already kept
-	"GET /v1/repos/ci":           true, // Now's CI/CD section: the kept GitHub reads the PRs & CI tab makes
-	"GET /v1/repos/remotes":      true, // the Pipeline's repository picker: which folders are on GitHub, from git
-	"GET /v1/pipeline/agents":    true, // the Pipeline's agent figures: cost per agent-hour and the agent team, from the events
-	"GET /v1/projects/{id}/file": true, "GET /v1/projects/{id}/files": true,
+	"GET /v1/repos/activity":         true, // Now's Repos section: counts from git and from GitHub answers already kept
+	"GET /v1/repos/ci":               true, // Now's CI/CD section: the kept GitHub reads the PRs & CI tab makes
+	"GET /v1/repos/remotes":          true, // the Pipeline's repository picker: which folders are on GitHub, from git
+	"GET /v1/pipeline/agents":        true, // the Pipeline's agent figures: cost per agent-hour and the agent team, from the events
+	"GET /v1/sessions/{id}/ci/stats": true, // the Pipeline's pull requests and figures: the phone's release bars
+	"GET /v1/projects/{id}/file":     true, "GET /v1/projects/{id}/files": true,
 	// GitHub (WP-19): the connection, the clone picker, pull requests, and
 	// New agent's list of open issues and pull requests.
 	"GET /v1/github": true, "GET /v1/github/owners": true, "GET /v1/github/repos": true,

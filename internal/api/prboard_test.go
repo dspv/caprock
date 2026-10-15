@@ -1,6 +1,7 @@
 package api
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -30,7 +31,7 @@ func TestBuildBoard(t *testing.T) {
 	}
 	live := map[int]github.PR{
 		// #2: a check failed an hour ago.
-		2: {Number: 2, Checks: github.Checks{State: "fail", Items: []github.Check{{StartedAt: at(80 * time.Minute), CompletedAt: at(time.Hour)}}}},
+		2: {Number: 2, Checks: github.Checks{State: "fail", Items: []github.Check{{Name: "test (windows)", State: "fail", StartedAt: at(80 * time.Minute), CompletedAt: at(time.Hour)}, {Name: "lint", State: "pass"}}}},
 		// #3: green, but GitHub says it conflicts.
 		3: {Number: 3, Mergeable: &no, Checks: github.Checks{State: "pass"}},
 		// #4: running since 10 minutes ago.
@@ -62,6 +63,9 @@ func TestBuildBoard(t *testing.T) {
 	}
 	if got[2].Why != "ci" || got[2].StageAt != at(time.Hour) || got[3].Why != "conflict" {
 		t.Errorf("fix: %+v %+v", got[2], got[3])
+	}
+	if !slices.Equal(got[2].Failed, []string{"test (windows)"}) || got[3].Failed != nil {
+		t.Errorf("failed checks: %v %v", got[2].Failed, got[3].Failed)
 	}
 	if got[4].CI != "running" || got[4].StageAt != at(10*time.Minute) || got[4].Spend.Live != 1 || got[6].CI != "running" {
 		t.Errorf("running: %+v %+v", got[4], got[6])

@@ -2184,7 +2184,7 @@ export const api = {
   removeSubscription: (id: string) => post<void>(`/v1/subscriptions/${encodeURIComponent(id)}`, {}, 'DELETE'),
   agentModels: (agent: string) =>
     get<{ agent: string; default?: string; models: { id: string; label: string }[] }>(`/v1/agents/models?agent=${encodeURIComponent(agent)}`),
-  signal: (id: string, action: 'pause' | 'resume' | 'kill') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),
+  signal: (id: string, action: 'pause' | 'resume' | 'kill' | 'end') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),
   /**
    * Write a pasted or dropped file and get back the path Claude Code can read.
    * `name` is the file's own name: the daemon keeps a sanitised copy of it and

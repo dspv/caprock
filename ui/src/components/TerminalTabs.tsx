@@ -102,8 +102,16 @@ export interface TabStripProps {
   onToggleDeck?: () => void
 }
 
-/** What a tab's edge says, in its tooltip: the only states a tab shows. */
-const ALERT_WORD = { waiting: 'waiting on you', error: 'failed' } as const
+/** What a tab's dot says, in its tooltip: the only states a tab shows. */
+const ALERT_WORD = { waiting: 'waiting on you', looping: 'looping', error: 'failed' } as const
+
+/**
+ * A tab's state dot, before its title: amber with a halo (and a slow pulse,
+ * still under reduced motion) while the session waits on you, red when it
+ * loops or failed — the sidebar's dot colours. Never a bar and never a fill:
+ * those say which tab you are in, and only the tab in front has them.
+ */
+const ALERT_DOT = { waiting: 'bg-warn app-dot-waiting app-tab-dot-pulse', looping: 'bg-danger', error: 'bg-danger' } as const
 
 /** How fast a cut project name scrolls on hover, in px per second. */
 const PROJECT_SCROLL_PX_S = 40
@@ -121,6 +129,7 @@ export function TabProject({ name, hue }: { name: string; hue: number }) {
   const box = useRef<HTMLSpanElement>(null)
   const text = useRef<HTMLSpanElement>(null)
   const [hidden, setHidden] = useState(0)
+  const [gone, setGone] = useState(false)
   useLayoutEffect(() => {
     const el = box.current
     if (!el) return
@@ -129,6 +138,9 @@ export function TabProject({ name, hue }: { name: string; hue: number }) {
     const measure = () => {
       const over = Math.ceil((text.current?.offsetWidth ?? 0) - el.clientWidth)
       setHidden(over > 1 ? over : 0)
+      // Squeezed below a few letters, it goes rather than read as "c…":
+      // the project is the first thing a narrow tab drops.
+      setGone((text.current?.offsetWidth ?? 0) > 0 && el.clientWidth < 28)
     }
     measure()
     const ro = new ResizeObserver(measure)
@@ -141,7 +153,7 @@ export function TabProject({ name, hue }: { name: string; hue: number }) {
     '--tab-project-time': `${Math.max(1.2, hidden / PROJECT_SCROLL_PX_S).toFixed(2)}s`,
   } as CSSProperties
   return (
-    <span ref={box} data-tab-project data-overflow={hidden > 0 || undefined} aria-hidden className="min-w-0 shrink truncate text-[11px]" style={style}>
+    <span ref={box} data-tab-project data-overflow={hidden > 0 || undefined} data-gone={gone || undefined} aria-hidden className={`min-w-0 shrink-[4] truncate text-[11px] ${gone ? 'invisible' : ''}`} style={style}>
       <span ref={text}>{name}</span>
     </span>
   )
@@ -204,7 +216,7 @@ export function TabStrip(props: TabStripProps) {
             aria-label={props.dashboard.label}
             aria-keyshortcuts={props.dashboard.label === 'Settings' ? undefined : (isMacPlatform() ? 'Meta+0' : 'Control+Shift+0')}
             className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-1 rounded-t-[9px] px-2 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
-              props.dashboard.active ? 'app-tab-front app-tab-dash bg-bg font-medium text-fg' : 'app-tab-dash text-fg hover:text-fg'
+              props.dashboard.active ? 'app-tab-front app-tab-dash bg-bg font-semibold text-fg' : 'app-tab-dash text-fg hover:text-fg'
             }`}
           >
             {/* Folded to its icon and its key, so the session tabs keep
@@ -245,7 +257,7 @@ export function TabStrip(props: TabStripProps) {
             aria-label="Pipeline"
             aria-keyshortcuts={isMacPlatform() ? 'Meta+P' : 'Control+Shift+P'}
             className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-1 rounded-t-[9px] px-2 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
-              props.pipeline.active ? 'app-tab-front app-tab-dash bg-bg font-medium text-fg' : 'app-tab-dash text-fg hover:text-fg'
+              props.pipeline.active ? 'app-tab-front app-tab-dash bg-bg font-semibold text-fg' : 'app-tab-dash text-fg hover:text-fg'
             }`}
           >
             <PipelineIcon size={15} className="text-accent" />
@@ -277,7 +289,7 @@ export function TabStrip(props: TabStripProps) {
             aria-label="Mail"
             aria-keyshortcuts={isMacPlatform() ? 'Shift+Meta+M' : 'Control+Shift+M'}
             className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-1 rounded-t-[9px] px-2 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
-              props.mail.active ? 'app-tab-front app-tab-dash bg-bg font-medium text-fg' : 'app-tab-dash text-fg hover:text-fg'
+              props.mail.active ? 'app-tab-front app-tab-dash bg-bg font-semibold text-fg' : 'app-tab-dash text-fg hover:text-fg'
             }`}
           >
             <MailIcon size={15} className="text-accent" />
@@ -308,13 +320,15 @@ export function TabStrip(props: TabStripProps) {
           // don't care which agent it is"). The project is its short name
           // after the title, in the project's colour; the agent is in the
           // tooltip only. A file tab keeps the file name; a quick chat has
-          // no project. No dots (2026-10-14, translated: "the indicators
-          // tell me nothing at all, literally zero"): state shows only when
-          // it asks something of you — an amber edge while the session
-          // waits on you, a red one when it failed; working and idle show
-          // nothing.
+          // no project. State shows only when it asks something of you
+          // (2026-10-14, translated: "the indicators tell me nothing at
+          // all, literally zero"): an amber dot before the title while the
+          // session waits on you, a red one when it loops or failed;
+          // working and idle show nothing. Never a top bar: the bar, the
+          // fill and the bold title belong to the tab in front alone
+          // (2026-10-15, translated: "I don't understand where I am").
           const named = file === undefined && !label?.chat && project !== undefined
-          const alert = file !== undefined || !s ? undefined : label?.dot === 'waiting' ? 'waiting' : sessionHealth(s) === 'error' ? 'error' : undefined
+          const alert = file !== undefined || !s ? undefined : label?.dot === 'waiting' ? 'waiting' : sessionHealth(s) === 'error' ? 'error' : label?.dot === 'looping' ? 'looping' : undefined
           const agent = file === undefined ? agentGlyphLabel(s?.agent, isShell) : undefined
           const tip = [file ?? title, agent, label?.branch, project].filter(Boolean).join(' · ') + (alert ? ` — ${ALERT_WORD[alert]}` : '') + (digit ? ` — ${keys(`⌘${digit}`)}` : '')
           return (
@@ -337,15 +351,15 @@ export function TabStrip(props: TabStripProps) {
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
               title={tip}
               data-project={t.projectId}
-              className={`group relative flex h-[32px] min-w-[112px] max-w-[340px] flex-1 basis-[220px] cursor-default select-none items-center gap-1 rounded-t-[9px] pl-2 pr-1 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
-                active ? (file !== undefined ? 'app-tab-front bg-bg font-medium text-fg' : 'app-tab-front app-slab font-medium text-fg') : 'app-tab-back text-fg-muted hover:text-fg'
+              className={`group relative flex h-[32px] max-w-[340px] flex-1 basis-[220px] cursor-default select-none items-center gap-1 rounded-t-[9px] pl-2 pr-1 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
+                active ? (file !== undefined ? 'app-tab-front min-w-[232px] bg-bg font-semibold text-fg' : 'app-tab-front min-w-[232px] app-slab font-semibold text-fg') : 'app-tab-back min-w-[92px] text-fg-muted hover:text-fg'
               } ${dragging === t.id ? 'opacity-60' : ''}`}
             >
               {file !== undefined && <FileIcon size={13} className="text-fg-faint" />}
-              {alert && <span data-tab-alert={alert} aria-hidden className={`pointer-events-none absolute inset-x-2 top-0 h-[3px] rounded-b-full ${alert === 'waiting' ? 'bg-accent' : 'bg-danger'}`} />}
+              {alert && <span data-tab-alert={alert} aria-hidden className={`mx-0.5 inline-block h-[8px] w-[8px] shrink-0 rounded-full ${ALERT_DOT[alert]}`} />}
               {renaming === t.id && renamable(s, isShell)
                 ? <InlineRename sessionId={s.session_id} initial={s.name?.trim() || sessionAbout(s)} current={s.name ?? ''} onDone={() => setRenaming(null)} />
-                : <span data-row-title className="min-w-[4ch] flex-1 truncate">{title}</span>}
+                : <span data-row-title className={`flex-1 truncate ${active ? 'min-w-[16ch]' : 'min-w-[4ch]'}`}>{title}</span>}
               {/* Its project, faint after the name: fixed, never edited
                 * (owner, 2026-10-14). Whole while the tab has room — the
                 * title is cut first, down to a few letters — and it scrolls
