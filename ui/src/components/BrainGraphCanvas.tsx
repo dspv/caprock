@@ -9,6 +9,23 @@
  * most linked topics and projects, the one hovered, the one opened and its
  * neighbours), and frames only while something moves.
  *
+ * Read at a glance (owner, 2026-10-15: "it must look perfect"; the old
+ * picture piled labels onto the hubs and flung dots across an empty
+ * canvas):
+ *
+ * - **Clusters.** Each memory is pulled towards its project, and the
+ *   projects sit on a ring around the middle, so a project reads as one
+ *   cluster; the view fits itself to the graph until it is moved by hand.
+ * - **Size is links, colour is kind.** A dot's size follows its degree; a
+ *   memory is filled in its kind's colour, a topic is an open ring, a
+ *   project a larger ring in the text colour.
+ * - **Few labels.** Only the hubs are named at rest — every project and the
+ *   most linked topics — with room kept for their labels (a collision
+ *   radius). A memory is named on hover (the tooltip) or when it, or a
+ *   neighbour, is opened.
+ * - **Focus.** Edges are faint at rest. Hovering or opening a node lights
+ *   its links and neighbours and dims the rest to about a quarter.
+ *
  * The Pensieve (the owner's picture, translated: "memories drawn out with a
  * wand and laid in the Pensieve"): a memory that arrives while the graph is
  * on screen drops in from above, and a ring spreads where it lands. With
@@ -21,9 +38,14 @@ import { bounds, seed, Simulation, type SimLink, type SimNode } from '@/lib/forc
 
 const DROP_MS = 900
 const RIPPLE_MS = 900
-/** Labels drawn at the zoom the view opens at; more as one zooms in. */
-const LABELS_BASE = 40
-const LABEL_FONT = '11px ui-sans-serif, system-ui, -apple-system, sans-serif'
+/** Topics named at the zoom the view opens at, besides every project; more as one zooms in. */
+const LABELS_BASE = 8
+/** A focus names its neighbouring memories only when it has at most this many. */
+const FEW = 6
+/** How much of the rest stays visible while a node has the focus. */
+const DIM = 0.22
+const LABEL_FONT = '11.5px ui-sans-serif, system-ui, -apple-system, sans-serif'
+const LABEL_FONT_HUB = '600 12.5px ui-sans-serif, system-ui, -apple-system, sans-serif'
 
 interface View { k: number; tx: number; ty: number }
 
@@ -32,7 +54,7 @@ function reducedMotion(): boolean {
 }
 
 /** Resolves the kind colours (CSS variables built with color-mix) to strings a canvas takes. */
-function readColors(el: HTMLElement): Record<string, string> & { edge: string; label: string; ring: string; halo: string } {
+export function readColors(el: HTMLElement): Record<string, string> & { edge: string; label: string; fg: string; ring: string; halo: string } {
   const probe = document.createElement('span')
   probe.style.display = 'none'
   el.appendChild(probe)
@@ -48,6 +70,7 @@ function readColors(el: HTMLElement): Record<string, string> & { edge: string; l
     ...out,
     edge: read('var(--color-border-strong, var(--color-border))', '#999'),
     label: read('var(--color-fg-muted)', '#666'),
+    fg: read('var(--color-fg)', '#222'),
     ring: read('var(--color-accent)', '#e90'),
     halo: read('var(--color-panel)', '#fff'),
   }
@@ -97,10 +120,36 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
     }
     const radius = (i: number) => {
       const n = graph.nodes[i]!
-      if (isEntity(n.kind)) return Math.min(3 + Math.sqrt(n.degree ?? 0) * 1.3, mini ? 6 : 14)
-      return n.pinned ? 4.5 : 3.2
+      const deg = Math.sqrt(n.degree ?? 0)
+      if (n.kind === 'project') return Math.min(6 + deg * 1.2, mini ? 7 : 16)
+      if (isEntity(n.kind)) return Math.min(3 + deg * 1.1, mini ? 5 : 11)
+      return Math.min(3 + deg * 0.8 + (n.pinned ? 1 : 0), mini ? 4 : 7)
     }
     const nodes = seed(ids, radius, links, places.current)
+    // Projects on a ring, most linked first; each memory pulled to its own.
+    const projects = graph.nodes
+      .map((n, i) => ({ n, i }))
+      .filter((x) => x.n.kind === 'project')
+      .sort((a, b) => (b.n.degree ?? 0) - (a.n.degree ?? 0))
+    const ringR = projects.length > 1 ? (mini ? 30 : 90) + (mini ? 6 : 26) * projects.length : 0
+    const anchor = new Map<number, { x: number; y: number }>()
+    projects.forEach(({ i }, k) => {
+      const a = (k / projects.length) * Math.PI * 2 - Math.PI / 2
+      const at = { x: Math.cos(a) * ringR, y: Math.sin(a) * ringR }
+      anchor.set(i, at)
+      Object.assign(nodes[i]!, { ax: at.x, ay: at.y, pull: 0.25 })
+    })
+    for (const l of links) {
+      for (const [m, pj] of [[l.s, l.t], [l.t, l.s]] as const) {
+        const at = anchor.get(pj)
+        if (at && !isEntity(graph.nodes[m]!.kind)) Object.assign(nodes[m]!, { ax: at.x, ay: at.y, pull: 0.06 })
+      }
+    }
+    // Room for a hub's label; a little air around everything else.
+    nodes.forEach((n, i) => {
+      const kind = graph.nodes[i]!.kind
+      n.cr = n.r + (mini ? 1 : kind === 'project' ? 16 : kind === 'topic' ? 8 : 3)
+    })
     const s = new Simulation(nodes, links, mini ? { charge: -18, distance: 14, gravity: 0.12 } : { charge: -45, distance: 28, gravity: 0.03 })
     if (nodes.every((n) => places.current.has(n.id))) s.alpha = 0.3
     // A first look settles off screen briefly, so it opens on a shape rather
@@ -146,14 +195,22 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       const k = Math.min((w - pad * 2) / Math.max(b.x1 - b.x0, 1), (h - pad * 2) / Math.max(b.y1 - b.y0, 1), mini ? 4 : 2)
       view.current = { k, tx: w / 2 - ((b.x0 + b.x1) / 2) * k, ty: h / 2 - ((b.y0 + b.y1) / 2) * k }
     }
+    // The focus: the hovered node, else the opened one. Its links and
+    // neighbours are lit; the rest dims.
+    const hoveredId = () => (hover.current >= 0 ? sim.nodes[hover.current]?.id : undefined)
+    let focus: number | undefined
     const neighbours = new Set<number>()
-    if (selected !== undefined) {
-      neighbours.add(selected)
+    const setFocus = (id: number | undefined) => {
+      focus = id
+      neighbours.clear()
+      if (id === undefined) return
+      neighbours.add(id)
       for (const e of graph.edges) {
-        if (e.from === selected) neighbours.add(e.to)
-        if (e.to === selected) neighbours.add(e.from)
+        if (e.from === id) neighbours.add(e.to)
+        if (e.to === id) neighbours.add(e.from)
       }
     }
+    setFocus(hoveredId() ?? selected)
     // The labelled: the most linked entities, more as one zooms in.
     const ranked = sim.nodes
       .map((n, i) => ({ n, i, node: graph.nodes[i]! }))
@@ -185,11 +242,14 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       if (x < -200 || x > w + 10 || y < -10 || y > h + 10) return
       const title = graph.nodes[i]!.title
       const text = title.length > 42 ? title.slice(0, 41) + '…' : title
-      c.globalAlpha = strong ? 1 : 0.85
-      c.lineWidth = 3
+      const project = graph.nodes[i]!.kind === 'project'
+      c.font = project ? LABEL_FONT_HUB : LABEL_FONT
+      c.globalAlpha = 1
+      c.lineWidth = 3.5
+      c.lineJoin = 'round'
       c.strokeStyle = colors.halo
       c.strokeText(text, x, y)
-      c.fillStyle = strong ? colors.ring : colors.label
+      c.fillStyle = project ? colors.fg : strong ? colors.ring : colors.label
       c.fillText(text, x, y)
     }
     const ring = (c: CanvasRenderingContext2D, v: View, n: SimNode) => {
@@ -207,8 +267,11 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       c.clearRect(0, 0, base.width, base.height)
       c.setTransform(d * v.k, 0, 0, d * v.k, d * v.tx, d * v.ty)
       const nodes = sim.nodes
+      const lit = focus !== undefined
       if (edges) {
-        c.globalAlpha = mini ? 0.35 : nodes.length > 1500 ? 0.18 : 0.3
+        // Faint at rest (each project's spokes would otherwise be a fan of
+        // solid lines); fainter still behind a focus.
+        c.globalAlpha = (mini ? 0.3 : nodes.length > 1500 ? 0.1 : 0.16) * (lit ? 0.6 : 1)
         c.strokeStyle = colors.edge
         c.lineWidth = 1 / v.k
         c.beginPath()
@@ -220,22 +283,23 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         }
         c.stroke()
       }
-      if (selected !== undefined) {
-        c.globalAlpha = 0.9
+      if (lit) {
+        c.globalAlpha = 0.85
         c.strokeStyle = colors.ring
         c.lineWidth = 1.4 / v.k
         c.beginPath()
         for (const l of sim.links) {
           const s = nodes[l.s]!
           const t = nodes[l.t]!
-          if (s.id === selected || t.id === selected) {
+          if (s.id === focus || t.id === focus) {
             c.moveTo(s.x, s.y)
             c.lineTo(t.x, t.y)
           }
         }
         c.stroke()
       }
-      // Nodes, one path per kind; the opened node's neighbours at full strength.
+      // Memories filled in their kind's colour, one path per kind; topics
+      // and projects as rings. Behind a focus, all but its neighbourhood dim.
       const groups = new Map<string, number[]>()
       nodes.forEach((_, i) => {
         const kind = graph.nodes[i]!.kind
@@ -244,18 +308,28 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         else groups.set(kind, [i])
       })
       for (const [kind, list] of groups) {
-        c.fillStyle = colors[kind as BrainKind] ?? '#888'
-        for (const strong of selected !== undefined ? [false, true] : [false]) {
-          c.globalAlpha = strong ? 1 : selected !== undefined ? 0.55 : 0.92
+        const color = colors[kind as BrainKind] ?? '#888'
+        const entity = isEntity(kind as BrainKind)
+        for (const strong of lit ? [false, true] : [true]) {
+          c.globalAlpha = lit && !strong ? DIM : 1
           c.beginPath()
           for (const i of list) {
             const n = nodes[i]!
-            if (born.current.has(n.id) || (strong && !neighbours.has(n.id))) continue
+            if (born.current.has(n.id) || (lit && strong !== neighbours.has(n.id))) continue
             const r = rad(n, v)
             c.moveTo(n.x + r, n.y)
             c.arc(n.x, n.y, r, 0, Math.PI * 2)
           }
-          c.fill()
+          if (entity) {
+            c.fillStyle = colors.halo
+            c.fill()
+            c.strokeStyle = color
+            c.lineWidth = (kind === 'project' ? 2.2 : 1.4) / v.k
+            c.stroke()
+          } else {
+            c.fillStyle = color
+            c.fill()
+          }
         }
       }
       const sel = selected === undefined ? -1 : nodes.findIndex((n) => n.id === selected)
@@ -265,13 +339,25 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         c.setTransform(d, 0, 0, d, 0, 0)
         c.font = LABEL_FONT
         c.textBaseline = 'middle'
+        // The hubs only: every project, the most linked topics (more as one
+        // zooms in); behind a focus, its neighbourhood instead.
         const limit = Math.round(LABELS_BASE * Math.max(1, v.k * v.k))
         const done = new Set<number>()
         const put = (i: number, strong = false) => { if (!done.has(i)) { done.add(i); label(c, v, i, strong) } }
-        for (const r of ranked.slice(0, limit)) put(r.i)
-        if (v.k >= 1.6) nodes.forEach((_, i) => { if (done.size < limit * 2) put(i) })
-        if (selected !== undefined) nodes.forEach((n, i) => { if (neighbours.has(n.id) && n.id !== selected) put(i) })
-        if (sel >= 0) { done.delete(sel); put(sel, true) }
+        if (lit) {
+          // A hub's memories would pile up: name its entities, and its
+          // memories only when there are a few.
+          const near = nodes.map((_, i) => i).filter((i) => neighbours.has(nodes[i]!.id) && nodes[i]!.id !== focus)
+          const mems = near.filter((i) => !isEntity(graph.nodes[i]!.kind))
+          for (const i of near) if (isEntity(graph.nodes[i]!.kind) || mems.length <= FEW) put(i)
+          const fi = nodes.findIndex((n) => n.id === focus)
+          // The hovered memory is named by its tooltip; an opened one, or a hub, here.
+          if (fi >= 0 && (focus === selected || isEntity(graph.nodes[fi]!.kind))) { done.delete(fi); put(fi, true) }
+        } else {
+          for (const r of ranked) if (r.node.kind === 'project') put(r.i, true)
+          for (const r of ranked.filter((x) => x.node.kind !== 'project').slice(0, limit)) put(r.i)
+        }
+        if (sel >= 0 && !lit) { done.delete(sel); put(sel, true) }
       }
       c.globalAlpha = 1
     }
@@ -307,15 +393,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         }
       }
       const hv = hover.current >= 0 ? sim.nodes[hover.current] : undefined
-      if (hv) {
-        ring(ctx, v, hv)
-        if (!mini) {
-          ctx.setTransform(d, 0, 0, d, 0, 0)
-          ctx.font = LABEL_FONT
-          ctx.textBaseline = 'middle'
-          label(ctx, v, hover.current, true)
-        }
-      }
+      if (hv) ring(ctx, v, hv)
       ctx.globalAlpha = 1
       return animating
     }
@@ -326,6 +404,10 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
     const loop = (now: number) => {
       frame.current = 0
       let moving = false
+      // The focus follows the pointer; a big graph keeps its base (the
+      // relight would redraw thousands of edges per move).
+      const want = (sim.links.length <= 3000 ? hoveredId() : undefined) ?? selected
+      if (want !== focus && !mini) { setFocus(want); baseDirty = true }
       if (!sim.done) {
         // Big graphs take one tick a frame; small ones settle faster.
         const ticks = sim.nodes.length > 2000 ? 1 : sim.nodes.length > 500 ? 2 : 4

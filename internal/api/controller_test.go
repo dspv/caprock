@@ -52,6 +52,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/projects/{id}/changes": true, "GET /v1/projects/{id}/changes/diff": true,
 	"GET /v1/repos/activity":     true, // Now's Repos section: counts from git and from GitHub answers already kept
 	"GET /v1/repos/ci":           true, // Now's CI/CD section: the kept GitHub reads the PRs & CI tab makes
+	"GET /v1/repos/remotes":      true, // the Pipeline's repository picker: which folders are on GitHub, from git
 	"GET /v1/projects/{id}/file": true, "GET /v1/projects/{id}/files": true,
 	// GitHub (WP-19): the connection, the clone picker, pull requests, and
 	// New agent's list of open issues and pull requests.

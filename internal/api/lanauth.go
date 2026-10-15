@@ -350,6 +350,8 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/repos/activity": true,
 	// Now's CI/CD section: the kept GitHub reads the PRs & CI tab makes.
 	"GET /v1/repos/ci": true,
+	// The Pipeline's repository picker: which folders are on GitHub, from git.
+	"GET /v1/repos/remotes": true,
 	// A multi-repo project's repositories with their branches (ADR-055).
 	"GET /v1/projects/{id}/repos": true,
 

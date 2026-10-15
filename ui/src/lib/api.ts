@@ -610,6 +610,21 @@ export interface RepoActivity {
   }
 }
 
+/** One folder asked of `GET /v1/repos/remotes`. */
+export interface RepoRemote {
+  dir: string
+  /** The repository's top level; absent when the folder is not in a git repository. */
+  root?: string
+  /** owner/name on GitHub; absent without a GitHub remote. */
+  repo?: string
+  /** A folder macOS guards (Documents, Downloads…): never read, so not known either way. */
+  guarded?: boolean
+}
+
+export interface RepoRemotes {
+  repos: RepoRemote[]
+}
+
 export interface ReposActivity {
   repos: RepoActivity[]
   github_connected: boolean
@@ -1372,6 +1387,36 @@ export interface BrainAutoStatus {
   next_wake?: number
   last_error?: string
   recent: BrainRun[]
+  /** The session being read right now, while a read runs. */
+  reading?: BrainReading
+  /** The progress through every session in reach, while on. */
+  build?: BrainBuild
+}
+
+/** The session the extraction is asking claude about (03-contracts.md § Second Brain). */
+export interface BrainReading {
+  session_id: string
+  /** Its own name, else its first prompt, clipped. */
+  title?: string
+  agent?: string
+  project?: string
+  /** When the session last did something, and when this read began; unix ms. */
+  last_event_at?: number
+  started_at: number
+}
+
+/** How far the extraction has got through the sessions in reach. */
+export interface BrainBuild {
+  /** The start of what is in reach, unix ms. */
+  from: number
+  /** Read plus waiting. */
+  sessions: number
+  read: number
+  /** What the reads of those sessions kept. */
+  memories: number
+  truncated?: boolean
+  /** Per project, most sessions first, at most 12. */
+  sources: { project: string; read: number; pending: number; memories: number }[]
 }
 
 /** One read of one session. */
@@ -1387,6 +1432,9 @@ export interface BrainRun {
   error?: string
   finished_at: number
   project?: string
+  /** The session's own name (or first stored prompt) and agent. */
+  title?: string
+  agent?: string
 }
 
 /** What a backfill would read: an estimate, from the transcript's length. */
@@ -1836,6 +1884,8 @@ export const api = {
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */
   /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */
   reposActivity: () => get<ReposActivity>('/v1/repos/activity'),
+  /** Which folders are git repositories with a GitHub remote (the Pipeline's picker). */
+  repoRemotes: (dirs: readonly string[]) => get<RepoRemotes>(`/v1/repos/remotes?${dirs.map((d) => `dir=${encodeURIComponent(d)}`).join('&')}`),
   /** The Now screen's CI/CD section (.ai/04-ui.md § CI/CD on Now). */
   reposCI: (q: { older?: boolean; hide?: readonly string[] } = {}) => {
     const p = new URLSearchParams()

@@ -549,6 +549,7 @@ GET  /v1/sessions/{id}/ci/stats        → SessionCIStats — the Pipeline: the 
 GET  /v1/sessions/{id}/branches        → SessionBranches — the repository's branches with PRs and Caprock spend (§ Session branches)
 GET  /v1/repos/activity                → ReposActivity — Now's Repos section: each listed repository with a live session, from git and kept GitHub answers
 GET  /v1/repos/ci                      → ReposCI — Now's CI/CD section: runs, stuck runs, releases, cost per PR and who, GitHub's status
+GET  /v1/repos/remotes?dir=…&dir=…     → ReposRemotes — the Pipeline's picker: which folders are git repositories on GitHub
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
@@ -794,7 +795,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes, or {op: progress} when an automatic read begins or ends (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -1328,6 +1329,8 @@ On a paired device's read list (counts only). `501` without the projects service
 - **GitHub's status** — `status` `{indicator, description, components[{name, status}], incidents[{name, impact?, status?, url?}], at, error?}` from `GET https://www.githubstatus.com/api/v2/summary.json` (`github.StatusPage`), only while GitHub is connected, kept 5 minutes, sent with no token, cookie or anything about the user. `components` are those not `operational` plus Actions, Pull Requests, API Requests and Git Operations whatever their state; `incidents` the unresolved ones. A failed read keeps the last answer with `error` set and is not retried for 5 minutes. `Service.StatusURL` replaces the address (tests).
 
 On a paired device's read list. `501` without the projects service.
+
+`GET /v1/repos/remotes?dir=…&dir=…` (2026-10-15) → `ReposRemotes` `{repos[]}`: the Pipeline's repository picker ([04-ui.md § CI in the session deck, and Investigate](04-ui.md#ci-in-the-session-deck-and-investigate)) asks which of the folders agent sessions worked in are git repositories with a GitHub remote. One `RepoRemote` `{dir, root?, repo?, guarded?}` per distinct non-empty `dir`, in the order asked, at most 100 (`reposRemotesMax`): `root` is the repository's top level (absent outside git), `repo` is owner/name when its remote is on GitHub (`github.ParseRemote`; absent with no remote or another host). A folder macOS guards (`tcc.Guarded`: Documents, Downloads, Desktop…) is never read here and answers `guarded: true` alone, so opening the Pipeline asks for no folder access. Read through the session page's `repoCache` (one minute per folder), at most 8 folders at once; nothing is sent anywhere. Nothing asked answers `{"repos":[]}`. On a paired device's read list.
 
 **Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole, unless it opened or merged more than one pull request (`session_prs` rows with `opened_at` or `merged_at`): `git_branch` is the branch a session was on last, and a long session that drove hundreds of pull requests and ended on a release branch was charged whole to the release's pull request (#601 read as $1,884.29, the session's entire spend; cut as below it is $2.12, measured on the owner's database 2026-10-14). Where two pull requests share a head branch the open one owns it, else the most recently updated. A session not charged by its branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice, shared?, tokens_in, tokens_out, cache_read, cache_write}`: the tokens are the same work's (`session_stats` for a whole session, the slice's `events` sums for a cut one), `shared` counts the cut sessions: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and one sum per slice over a session's events (`(session_id, ts)` index). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them.
 
@@ -3143,23 +3146,46 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   settings and backfill included, is the machine's (a device gets `403`).
 - **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
   "added" | "changed" | "deleted", kind?, title?, auto?}` (`kind` and `title`
-  absent on a delete).
+  absent on a delete). The automatic extraction also publishes `{op:
+  "progress"}` (no id) as each read begins and ends, so a screen showing
+  the build reads the status again; a screen showing memories ignores it.
 - **The automatic extraction** (`internal/brain`, free). `auto` in the
   status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
   daily_tokens, spent, running, pending, since?, backfill_since?,
-  last_wake?, next_wake?, last_error?, recent: [BrainRun]}`: `chosen` once
+  last_wake?, next_wake?, last_error?, recent: [BrainRun], reading?,
+  build?}`: `chosen` once
   the user has answered, `enabled` when on (only then does it read; no
   licence is looked at), `last_wake` and `next_wake` unix ms — `next_wake`
   absent while off, at or before now just after turning on or while a wake
   runs, so a screen can say when the first memories may come — `spent`
   the tokens of the reads in the last 24 hours, `pending` the sessions
-  waiting, `recent` the last reads that were not skipped. `BrainRun` is
-  `{id, session_id, from_event_id, through_event_id, status: ok | failed |
-  skipped, model?, tokens_in, tokens_out, cost_usd, nodes, error?,
-  started_at, finished_at, project?}`.
+  waiting (counted up to 200), `recent` the last reads that were not
+  skipped. `BrainRun` is `{id, session_id, from_event_id,
+  through_event_id, status: ok | failed | skipped, model?, tokens_in,
+  tokens_out, cost_usd, nodes, error?, started_at, finished_at, project?,
+  title?, agent?}`; `title` is the session's own name, else its first
+  stored prompt, and `agent` its agent, joined in.
+- **What it reads now, and how far it is.** `reading` is present while a
+  read is asking `claude` about a session: `{session_id, title?, agent?,
+  project?, last_event_at?, started_at}` — `title` the session's own name,
+  else its first prompt, flattened and clipped to 80 runes; `last_event_at`
+  when the session last did something and `started_at` when this read
+  began (unix ms). `build` is present while it is on: `{from, sessions,
+  read, memories, truncated?, sources: [{project, read, pending,
+  memories}]}` — `from` the start of what is in reach (the earlier of
+  `since` and `backfill_since`); `read` the sessions active since `from`
+  that a read has gone through without failing and that have nothing new
+  since; `sessions` that plus the sessions waiting (`pending`), so a
+  session read before and waiting again counts once, as waiting; a live
+  session joins once it has been quiet ten minutes, and one waiting out a
+  failure is in neither; `memories` what the reads of those sessions kept
+  (as recorded per read); `truncated` when the waiting were counted only
+  to 200; `sources` the same per project, most sessions first, at most 12.
 - **Settings.** `auto: true` starts reading from that moment and wakes the
   reader at once, not at the next five-minute wake — on the daemon's own
-  loop, never under the request; a second `true` while on does not wake it
+  loop, never under the request; a wake that read a full four is followed
+  by the next after three seconds rather than five minutes, so a build
+  reads one session after another within the daily limit; a second `true` while on does not wake it
   again, and a wake never runs beside another; `false` stops it. Neither needs a licence. `daily_tokens`
   is 20,000–5,000,000 (the screen offers 100k, 300k and 1M; the default is
   300,000) and `model` is `""`, `haiku` (the default) or `sonnet`; anything
