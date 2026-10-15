@@ -15,6 +15,19 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
   at once, and a double click or a second yes never starts a second read
   beside the first.
 
+### Changed
+
+- **brain:** Second Brain's *How it works* now explains it in ten
+  seconds. *Remembers what your agents learn — so the next one starts
+  smarter*: it keeps the decisions, findings, ideas and open questions
+  your sessions arrive at and hands the relevant ones to the next agent
+  you start — over time, your personal Jarvis, an assistant that knows
+  your projects. Three steps say how (a session ends → your own `claude`
+  reads it on this computer, Haiku and 300k tokens a day by default →
+  up to five memories go into the next session's handoff), and one line
+  says that nothing leaves the computer except that call and where to
+  turn it off.
+
 ## [0.117.4] - 2026-10-15
 
 ### Changed
