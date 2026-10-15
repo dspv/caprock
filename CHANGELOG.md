@@ -7,6 +7,22 @@ polish (plan-limit windows, orchestrator-lifecycle fixes, Homebrew formula, firs
 
 ## [Unreleased]
 
+### Added
+
+- **work:** The Work board's daemon answer, `GET /v1/work` (ADR-064): every
+  live session on the machine — started by Caprock or by hand — with its
+  state, its running turn's rough range (Claude Code only, never while it
+  waits on you), its own task list, what it cost today and the pull
+  requests it recorded; the task runner's tasks and the queued messages;
+  and each repository's `[Unreleased]` CHANGELOG entries, newest tags and
+  commits past the last one, read from local git as of your last fetch.
+  Nothing is written, nothing is polled, GitHub is not asked and git never
+  fetches. The screen comes next.
+- **pipeline:** The PRs & CI board's flow strip carries how often the
+  repository ships: the median gap between its releases already read
+  (`release_gap_median_ms`, with three gaps or more), never a date for the
+  next one.
+
 ## [0.117.5] - 2026-10-15
 
 ### Added

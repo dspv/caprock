@@ -3904,3 +3904,69 @@ kept.
 read returns at most 5,000 and the screen would need clustering on the
 daemon); or the brain's cost to the machine — the database, the reads —
 turns out to need a limit of its own.
+
+---
+
+## ADR-064 — The Work board: a branch is the unit of work, columns derived and never stored, estimates only with a measured basis
+
+**Date:** 2026-10-15 · **Status:** accepted (owner ask, 2026-10-15)
+
+*Number note: taken as the next free one on 2026-10-15. If another ADR
+lands as 064 first, this one is renumbered in the same PR that merges
+second.*
+
+**Context.** The owner asked (translated): "I'm missing project vision in
+Caprock — something like a kanban: what is in work, release plans, roughly
+the time until done, who works on what and what it costs." Caprock already
+records everything such a board needs except a plan: every session, its
+turns and their lengths (the Queue's estimates, RISK-08), the agent's own
+task list, the pull requests a session's own commands opened or merged
+(`session_prs`), the task runner's tasks, the queued messages, and — from
+the Pipeline (PRs & CI) — each pull request's stage, CI and the releases.
+What is missing is one view that puts them side by side per piece of work.
+
+**Decision.**
+
+- **A branch is the unit of work.** A card is a repository and a branch, in
+  the furthest stage it has reached (planned → in work → pull request →
+  merged → released); the live sessions on that branch attach to it. A
+  session on the default branch is its own card.
+- **Columns are derived, never stored.** They are computed on each read
+  from what Caprock already records — sessions, turns, todos,
+  `session_prs`, the task runner's tasks, queued messages — and the
+  Pipeline's pull request board. Nothing is written; there is no new task
+  store and no DDL. *Planned* is only the task runner's tasks and queued
+  messages: things someone actually asked an agent to do.
+- **One local answer.** `GET /v1/work` (03-contracts.md § Work) answers the
+  sessions, tasks, queue, repositories and totals; it never calls GitHub.
+  The pull request stages come from the Pipeline's own board, whose reads
+  are already kept; the page joins the two by branch.
+- **An estimate appears only with a measured basis, and its basis is
+  stated.** Allowed: the running turn's range from the project's finished
+  turns (`internal/eta`, RISK-08); the medians the Pipeline measures — CI,
+  open → merge, merge → release — and the median gap between releases
+  (`release_gap_median_ms`, from the releases already read, at least three
+  gaps); the median gap between local tags; a lane clearing at its recent
+  pace, only above stated thresholds of history. Never: a task's
+  completion time, a per-PR merge countdown, or a clock time for the next
+  release.
+- **Release plans are read locally.** The `[Unreleased]` section of
+  `CHANGELOG.md` at the remote's default branch, the newest tags and the
+  commits past the last one come from `git show`, `git for-each-ref` and
+  `git rev-list` against refs the clone already has. Caprock never runs
+  `git fetch` for this; the board labels it "as of your last fetch". Every
+  git spawn goes through `internal/hidewin`.
+- **A session is tied to a pull request two ways only:** the pull requests
+  its own commands recorded, or its branch when that is not the default.
+
+**Rules out:** a local free-text task list (a second, unsynced backlog
+beside the issues and the task runner); predicting release times; guessing
+which session made which pull request by title similarity; polling GitHub
+beyond what the Pipeline already keeps; running `git fetch` in the
+background.
+
+**Revisit if:** a per-PR merge range is shown — only after a backtest says
+it is calibrated (12-risks.md); people want a plan item that no agent was
+asked to do yet (then the task runner's inbox is the place, not a new
+store); or the board's reads stop being cheap (measured 9 ms warm on the
+owner's database, 2026-10-15).
