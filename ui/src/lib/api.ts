@@ -1146,6 +1146,52 @@ export interface Trends {
   burn?: { median_usd_per_hour: number; windows: number; days: number }
 }
 
+/** A stretch of hours of one repository's agent work (/v1/pipeline/agents). */
+export interface RateSpan {
+  cost_usd: number
+  /** Active agent-hours: a session's clock hour with five or more priced calls (the burn's rule). */
+  active_hours: number
+  active_cost_usd: number
+  /** Input, output, cache reads and writes; `active_tokens` the active hours' share. */
+  tokens: number
+  active_tokens: number
+  /** Clock hours with any priced turn, however many agents ran in them. */
+  wall_hours: number
+  /** Local days with an active hour (the usual only). */
+  days?: number
+}
+
+/** One local day of an agent team: distinct main sessions and subagents, by agent kind. */
+export interface TeamDay {
+  day: string
+  sessions: number
+  subagents: number
+  by_kind?: Record<string, { sessions: number; subagents: number }>
+  /** The most agents with a turn in one five-minute bucket. */
+  peak: number
+}
+
+/** The Pipeline's agent figures for one repository (GET /v1/pipeline/agents). */
+export interface RepoAgents {
+  /** The window the usuals are set against, today excluded. */
+  days: number
+  rate: {
+    /** The last 24 clock hours, the current one included. */
+    last24: RateSpan
+    /** The `days`×24 hours before them; absent with no active hour. */
+    usual?: RateSpan
+    /** The previous `days` local days, oldest first, then today so far. */
+    series: (RateSpan & { day: string })[]
+  }
+  team: {
+    /** Agents with a turn in the last ten minutes. */
+    now: { sessions: number; subagents: number }
+    peak_today: number
+    /** The previous 30 local days, oldest first, then today so far. */
+    series: TeamDay[]
+  }
+}
+
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary; tax?: ContextTax }
 
 export interface Status {
@@ -1964,6 +2010,8 @@ export const api = {
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
+  /** A repository's cost per agent-hour and agent team, for its folders (clones of one repository are several). */
+  pipelineAgents: (roots: string[]) => get<RepoAgents>(`/v1/pipeline/agents?${roots.map((r) => `repo=${encodeURIComponent(r)}`).join('&')}`),
   trends: (agent?: string) => get<Trends>(`/v1/stats/trends${agent && agent !== 'all' ? `?agent=${agent}` : ''}`),
   premium: () => get<PremiumPricing>('/v1/premium'),
   /** How many people committed to the listed repositories in 30 days (counts only). */
