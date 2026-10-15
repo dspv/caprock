@@ -1,7 +1,7 @@
 /**
  * The share sheet: the card itself is on screen before any button is
- * pressed, and the three ways out — copy, save, post to X — each do what
- * their label says.
+ * pressed, and the ways out — copy, save, post to X, Telegram — each do
+ * what their label says.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -69,6 +69,21 @@ describe('ShareDialog', () => {
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
     expect(open.mock.calls[0]![0]).toBe(xIntent('7d'))
     expect(write).toHaveBeenCalledTimes(1)
+  })
+
+  // The owner's "I can't share to Telegram" (2026-10-15) was this sheet: it
+  // offered the OS share sheet, Copy, Save and Post to X, and no Telegram.
+  it('always offers Telegram: set up for mine, copy-and-open for someone', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ bot_set: false, chat_set: false, polling: false }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    render(<ShareDialog onClose={() => {}} />)
+    await screen.findByAltText('Your figures, as they will be shared')
+    expect(await screen.findByRole('button', { name: 'Set up Telegram' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Send to someone in Telegram' }))
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(String(open.mock.calls[0]![0])).toMatch(/^https:\/\/t\.me\/share\/url\?/)
+    expect(await screen.findByText(/^Image copied — paste it in the chat\./)).toBeTruthy()
   })
 
   it('puts no figure into the post text — the card carries them with their caveat', () => {
