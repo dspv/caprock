@@ -15,12 +15,13 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 )
 
 // Repo is where a working directory's repository lives.
@@ -337,7 +338,7 @@ const gitTimeout = 2 * time.Second
 func git(ctx context.Context, dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := hidewin.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
