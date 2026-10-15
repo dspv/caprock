@@ -97,7 +97,7 @@ describe('Second Brain', () => {
     // Its name in full, with its mark and the one line on what it is.
     const title = screen.getByRole('heading', { level: 1, name: 'Second Brain' })
     expect(title.querySelector('svg')).not.toBeNull()
-    expect(screen.getByText('All your agents build your personal Jarvis over time.')).toBeTruthy()
+    expect(screen.getByText('Remembers what your agents learn — so the next one starts smarter.')).toBeTruthy()
     // The graph first; the list a click away, and remembered.
     await waitFor(() => expect(document.querySelector('[data-brain-graph="full"]')).not.toBeNull())
     expect(screen.getByRole('img', { name: /Second Brain graph: 3 nodes/ })).toBeTruthy()
@@ -155,7 +155,7 @@ describe('Second Brain', () => {
     // Named in full, with its mark and the one line on what it is.
     const heading = screen.getByRole('heading', { name: 'Second Brain' })
     expect(heading.querySelector('svg')).not.toBeNull()
-    expect(screen.getByText('All your agents build your personal Jarvis over time.')).toBeTruthy()
+    expect(screen.getByText('Remembers what your agents learn — so the next one starts smarter.')).toBeTruthy()
     // The three newest, newest first; topics are not titles here.
     expect(screen.getAllByRole('button').map((b) => b.textContent).filter((t) => t?.startsWith('Memory'))).toEqual(['Memory 4', 'Memory 3', 'Memory 2'])
     fireEvent.click(screen.getByRole('button', { name: 'Memory 3' }))
@@ -180,5 +180,68 @@ describe('Second Brain', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Second Brain' }))
     expect(onOpen).toHaveBeenCalledWith('#/brain')
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('is a banner while empty and off: the line, Start building, How it works, no bare zero, nothing sent', async () => {
+    m.status.mockResolvedValue(status({ memories: 0, manual: 0, auto: auto({ chosen: false, on: false, enabled: false, pending: 0 }) }))
+    m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
+    render(<BrainSidebar onOpen={vi.fn()} />)
+    await screen.findByRole('button', { name: 'Start building' })
+    expect(document.querySelector('[data-brain-banner="off"]')).not.toBeNull()
+    expect(document.querySelector('[data-brain-ghost]')).not.toBeNull()
+    expect(screen.getByText('Remembers what your agents learn — so the next one starts smarter.')).toBeTruthy()
+    expect(screen.getByText('Local · your own Claude · free')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'How it works' })).toBeTruthy()
+    expect(screen.queryByText(/Jarvis/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /memories — open Second Brain/ })).toBeNull()
+    expect(m.settings).not.toHaveBeenCalled()
+  })
+
+  it('asks in place before it turns on, naming the model, the limit and where it goes; Turn on is the one call', async () => {
+    m.status.mockResolvedValue(status({ memories: 0, manual: 0, auto: auto({ chosen: false, on: false, enabled: false, pending: 0 }) }))
+    m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
+    m.settings.mockResolvedValue(auto())
+    m.backfill.mockResolvedValue({ sessions: 12, tokens_estimate: 90_000, days_estimate: 1, daily_tokens: 300_000 })
+    render(<BrainSidebar onOpen={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Start building' }))
+    const consent = document.querySelector('[data-brain-sidebar-consent]')!
+    expect(consent.textContent).toMatch(/haiku/)
+    expect(consent.textContent).toMatch(/300k/)
+    expect(consent.textContent).toMatch(/Nothing is sent to Caprock/)
+    expect(consent.textContent).toMatch(/Settings → Second Brain/)
+    expect(consent.textContent).toMatch(/starting with your last 30 days/)
+    expect(m.settings).not.toHaveBeenCalled()
+    expect(m.backfill).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }))
+    expect(document.querySelector('[data-brain-sidebar-consent]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Start building' }))
+    m.status.mockResolvedValue(status({ memories: 0, manual: 0, auto: auto({ running: true }) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+    await waitFor(() => expect(m.settings).toHaveBeenCalledWith({ auto: true }))
+    expect(m.settings).toHaveBeenCalledTimes(1)
+    // The yes reads from now on; the past month follows it, as the consent said.
+    await waitFor(() => expect(m.backfill).toHaveBeenCalledWith(30, true))
+    expect(m.settings.mock.invocationCallOrder[0]).toBeLessThan(m.backfill.mock.invocationCallOrder[0]!)
+    await screen.findByText('Reading your recent sessions…')
+  })
+
+  it('offers no Turn on without claude, and says why', async () => {
+    m.status.mockResolvedValue(status({ memories: 0, manual: 0, auto: auto({ chosen: false, on: false, enabled: false, claude_found: false }) }))
+    m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
+    render(<BrainSidebar onOpen={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Start building' }))
+    expect(screen.getByText(/Claude Code was not found/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Turn on' })).toBeNull()
+  })
+
+  it('says what it is doing while on and still empty: sessions waiting, and the last problem', async () => {
+    m.status.mockResolvedValue(status({ memories: 0, manual: 0, auto: auto({ pending: 3, last_error: 'claude exited 1' }) }))
+    m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
+    render(<BrainSidebar onOpen={vi.fn()} />)
+    await screen.findByText('3 sessions waiting · first memories in a few minutes')
+    expect(document.querySelector('[data-brain-banner="on"]')).not.toBeNull()
+    expect(screen.getByText('Last problem: claude exited 1')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Start building' })).toBeNull()
+    expect(screen.getByText('· building')).toBeTruthy()
   })
 })

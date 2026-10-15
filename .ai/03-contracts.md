@@ -2872,15 +2872,20 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 - **The automatic extraction** (`internal/brain`, free). `auto` in the
   status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
   daily_tokens, spent, running, pending, since?, backfill_since?,
-  last_wake?, last_error?, recent: [BrainRun]}`: `chosen` once the user has
-  answered, `enabled` when on (only then does it read), `spent`
+  last_wake?, next_wake?, last_error?, recent: [BrainRun]}`: `chosen` once
+  the user has answered, `enabled` when on (only then does it read; no
+  licence is looked at), `last_wake` and `next_wake` unix ms — `next_wake`
+  absent while off, at or before now just after turning on or while a wake
+  runs, so a screen can say when the first memories may come — `spent`
   the tokens of the reads in the last 24 hours, `pending` the sessions
   waiting, `recent` the last reads that were not skipped. `BrainRun` is
   `{id, session_id, from_event_id, through_event_id, status: ok | failed |
   skipped, model?, tokens_in, tokens_out, cost_usd, nodes, error?,
   started_at, finished_at, project?}`.
-- **Settings.** `auto: true` starts reading from that moment; `false`
-  stops it. Neither needs a licence. `daily_tokens`
+- **Settings.** `auto: true` starts reading from that moment and wakes the
+  reader at once, not at the next five-minute wake — on the daemon's own
+  loop, never under the request; a second `true` while on does not wake it
+  again, and a wake never runs beside another; `false` stops it. Neither needs a licence. `daily_tokens`
   is 20,000–5,000,000 (the screen offers 100k, 300k and 1M; the default is
   300,000) and `model` is `""`, `haiku` (the default) or `sonnet`; anything
   else is `400`. Kept in `config.json` as `brain: {auto?, since?,

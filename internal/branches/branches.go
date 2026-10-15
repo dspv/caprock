@@ -11,12 +11,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 
 	"github.com/dspv/caprock/internal/tcc"
 )
@@ -286,7 +287,7 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 	if err := tcc.Check(dir); err != nil {
 		return "", err
 	}
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := hidewin.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {

@@ -58,6 +58,9 @@ type Engine struct {
 	lastWake  time.Time
 	lastError string
 	kick      chan struct{}
+	// nextWake is when the loop wakes next: a minute after Start, Interval
+	// after each wake, at once after a Kick. Zero until Start.
+	nextWake time.Time
 }
 
 func (e *Engine) now() time.Time {
@@ -89,6 +92,7 @@ func (e *Engine) Start(ctx context.Context) {
 		e.kick = make(chan struct{}, 1)
 	}
 	kick := e.kick
+	e.nextWake = e.now().Add(time.Minute)
 	e.mu.Unlock()
 	go func() {
 		t := time.NewTimer(time.Minute)
@@ -110,22 +114,33 @@ func (e *Engine) Start(ctx context.Context) {
 				}
 			}
 			t.Reset(Interval)
+			e.mu.Lock()
+			e.nextWake = e.now().Add(Interval)
+			if len(kick) > 0 {
+				// A Kick arrived during the wake: the next one is now.
+				e.nextWake = e.now()
+			}
+			e.mu.Unlock()
 		}
 	}()
 }
 
-// Kick asks for a wake now (a setting turned on, a backfill asked for).
+// Kick asks for a wake now (a setting turned on, a backfill asked for). It
+// never blocks and never runs the wake itself: the wake runs on Start's
+// goroutine, under the daemon's context rather than a request's. Kicks that
+// arrive together make one wake, and a wake already running is not doubled
+// (Wake runs one at a time).
 func (e *Engine) Kick() {
 	e.mu.Lock()
-	k := e.kick
-	e.mu.Unlock()
-	if k == nil {
+	defer e.mu.Unlock()
+	if e.kick == nil {
 		return
 	}
 	select {
-	case k <- struct{}{}:
+	case e.kick <- struct{}{}:
 	default:
 	}
+	e.nextWake = e.now()
 }
 
 // Wake reads up to Batch sessions, if the extraction may run, and returns
@@ -412,11 +427,14 @@ type Status struct {
 	Spent   int64 `json:"spent"`
 	Running bool  `json:"running"`
 	// Pending is how many sessions wait to be read (counted up to 200).
-	Pending       int    `json:"pending"`
-	Since         int64  `json:"since,omitempty"`
-	BackfillSince int64  `json:"backfill_since,omitempty"`
-	LastWake      int64  `json:"last_wake,omitempty"`
-	LastError     string `json:"last_error,omitempty"`
+	Pending       int   `json:"pending"`
+	Since         int64 `json:"since,omitempty"`
+	BackfillSince int64 `json:"backfill_since,omitempty"`
+	LastWake      int64 `json:"last_wake,omitempty"`
+	// NextWake is when the next wake is due, unix ms; absent while it is off.
+	// At or before now when one was just asked for or is running.
+	NextWake  int64  `json:"next_wake,omitempty"`
+	LastError string `json:"last_error,omitempty"`
 	// Recent is the newest reads that did something.
 	Recent []store.BrainRun `json:"recent"`
 }
@@ -436,6 +454,9 @@ func (e *Engine) Status(ctx context.Context) Status {
 	st.Running, st.LastError = e.running, e.lastError
 	if !e.lastWake.IsZero() {
 		st.LastWake = e.lastWake.UnixMilli()
+	}
+	if st.Enabled && !e.nextWake.IsZero() {
+		st.NextWake = e.nextWake.UnixMilli()
 	}
 	e.mu.Unlock()
 	if st.On {

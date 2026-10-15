@@ -7,10 +7,11 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dspv/caprock/internal/hidewin"
 
 	"github.com/dspv/caprock/internal/tcc"
 )
@@ -194,7 +195,7 @@ func git(ctx context.Context, cwd string, args ...string) (string, error) {
 	if err := tcc.Check(cwd); err != nil {
 		return "", err
 	}
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", cwd}, args...)...)
+	cmd := hidewin.CommandContext(ctx, "git", append([]string{"-C", cwd}, args...)...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
@@ -214,7 +215,7 @@ func gitOut(ctx context.Context, cwd string, args ...string) string {
 	if tcc.OffLimits(cwd) {
 		return ""
 	}
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", cwd}, args...)...)
+	cmd := hidewin.CommandContext(ctx, "git", append([]string{"-C", cwd}, args...)...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, nil
 	_ = cmd.Run()
