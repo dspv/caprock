@@ -1836,6 +1836,10 @@ export interface PairedDevice {
   via?: PairedVia
   /** The phone last said it runs as the installed app. A label only. */
   app?: boolean
+  /** `machine` for another computer's Caprock (ADR-067); absent for a phone. */
+  kind?: 'machine'
+  /** A computer that took a code and waits for the owner's Allow here. */
+  pending?: boolean
 }
 
 export type PairedVia = 'lan' | 'tailscale' | 'relay'
@@ -1853,6 +1857,10 @@ export interface PairMe {
   app?: string
   /** The machine has this device down as running the installed app. */
   installed?: boolean
+  /** `machine` for another computer's Caprock (ADR-067). */
+  kind?: 'machine'
+  /** Waiting for the owner's Allow on the machine. */
+  pending?: boolean
 }
 
 /** What the owner sees on the pairing panel. */
@@ -1865,6 +1873,8 @@ export interface PairState {
   code?: string
   /** The role a phone pairing with `code` gets. */
   code_role?: PairedDevice['role']
+  /** `machine` when the live code pairs a computer (ADR-067). */
+  code_kind?: 'machine'
   expires_in_sec?: number
   /** The address reaches other networks (a tunnel), not just this one. */
   tunnelled?: boolean
@@ -2018,6 +2028,8 @@ export const api = {
   /** Sends the phone's page address (no code, no key) to the owner's Telegram chat. */
   pairSendLink: () => post<{ sent: string; link: string }>('/v1/pair/send-link', {}),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
+  /** Let a computer that waits control this one (ADR-067). Machine only; deny is pairRevoke. */
+  pairAllow: (id: string) => post<{ id: string; role: string }>(`/v1/pair/devices/${encodeURIComponent(id)}/allow`, {}),
   /** Give a paired device control of sessions, or take it away. Machine only. */
   pairSetRole: (id: string, role: PairedDevice['role']) =>
     post<{ id: string; role: string }>(`/v1/pair/devices/${encodeURIComponent(id)}/role`, { role }, 'PUT'),

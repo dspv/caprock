@@ -29,9 +29,12 @@ type target struct {
 	code   string
 	tokens map[string]string // token → role
 	seen   http.Header       // the last /v1/echo request's headers
-	set    *remote.Settings
-	keys   *remote.Keys
-	relay  *httptest.Server
+	// pending answers GET /v1/pair/me as a computer that waits for the
+	// owner's Allow (ADR-067).
+	pending bool
+	set     *remote.Settings
+	keys    *remote.Keys
+	relay   *httptest.Server
 }
 
 func newTarget(t *testing.T) *target {
@@ -71,7 +74,20 @@ func newTarget(t *testing.T) *target {
 			http.Error(w, `{"error":"not paired"}`, http.StatusUnauthorized)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"role": role, "id": "dev-1"})
+		tg.mu.Lock()
+		pending := tg.pending
+		tg.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{"role": role, "id": "dev-1", "kind": "machine", "pending": pending})
+	})
+	mux.HandleFunc("DELETE /v1/pair/me", func(w http.ResponseWriter, r *http.Request) {
+		if auth(r) == "" {
+			http.Error(w, `{"error":"not paired"}`, http.StatusUnauthorized)
+			return
+		}
+		tg.mu.Lock()
+		tg.tokens = map[string]string{}
+		tg.mu.Unlock()
+		_, _ = io.WriteString(w, `{"revoked":1}`)
 	})
 	mux.HandleFunc("/v1/echo", func(w http.ResponseWriter, r *http.Request) {
 		if auth(r) == "" {
@@ -351,5 +367,49 @@ func TestACorruptListIsEmptyNotFatal(t *testing.T) {
 	defer m.Close()
 	if len(m.List()) != 0 {
 		t.Fatal("a corrupt list listed something")
+	}
+}
+
+// A computer that took the code waits for its owner's Allow, and the list
+// says so; once allowed it is online as a computer. Leave asks it to drop
+// this machine, after which it is revoked here.
+func TestPendingThenAllowedThenLeft(t *testing.T) {
+	tg := newTarget(t)
+	tg.mu.Lock()
+	tg.pending = true
+	tg.mu.Unlock()
+	m := open(t, t.TempDir())
+	st, err := m.Pair(ctx5(t), tg.link("123456"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Status != peers.StatusPending || st.Kind != "machine" || st.Error == "" {
+		t.Fatalf("while waiting: %+v", st)
+	}
+	tg.mu.Lock()
+	tg.pending = false
+	tg.mu.Unlock()
+	if st, _ = m.Check(ctx5(t), st.ID); st.Status != "online" || st.Role != "controller" || st.Kind != "machine" {
+		t.Fatalf("after allow: %+v", st)
+	}
+	if err := m.Leave(ctx5(t), st.ID); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ = m.Check(ctx5(t), st.ID); st.Status != peers.StatusRevoked {
+		t.Fatalf("after leaving: %+v", st)
+	}
+	if err := m.Leave(ctx5(t), st.ID); err == nil {
+		t.Fatal("leaving twice succeeded")
+	}
+	if err := m.Leave(ctx5(t), "nope"); !errors.Is(err, peers.ErrUnknown) {
+		t.Fatalf("leave an unknown one: %v", err)
+	}
+}
+
+func TestABadLinkSaysWhy(t *testing.T) {
+	m := open(t, t.TempDir())
+	_, err := m.Pair(ctx5(t), "hello")
+	if !errors.Is(err, peers.ErrBadLink) || !strings.Contains(err.Error(), "pairing link") {
+		t.Fatalf("err = %v", err)
 	}
 }

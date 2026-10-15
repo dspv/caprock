@@ -282,6 +282,8 @@ type Daemon struct {
 	// the connection while it is on, and how to stop it.
 	remoteSet  *remote.Settings
 	remoteHost *remote.Host
+	// machines are the other computers this one reaches (ADR-067).
+	machines   *machinesAdapter
 	remoteStop context.CancelFunc
 	// ingestErr is the terminal error from the tailer goroutine, if it died.
 	// Ingest is the whole product on Phase 0, so its death is not a log line:
@@ -665,6 +667,8 @@ func (d *Daemon) run(ctx context.Context) error {
 		tpls.Env = func() []string { return userenv.Environ(d.log) }
 		tpls.Ctx = ctx
 	}
+	d.machines = &machinesAdapter{d: d}
+	defer d.machines.close()
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, PhoneLink: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, WindowStop: d.windowStopStatus,
@@ -695,7 +699,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			Env:       func() []string { return userenv.Environ(d.log) },
 			Preferred: func() string { return d.config().Editor },
 		},
-		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d,
+		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines,
 		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
 		Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 	})

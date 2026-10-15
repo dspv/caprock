@@ -786,6 +786,31 @@ wss://your.relay`. The phone's page can be yours too: build it with
 and add `--app https://your.page`. `relay/` holds the hosted relay, a
 Cloudflare Worker, and `relay/m/` the hosted page at m.caprock.dev.
 
+### From another of your computers
+
+One Caprock can work on another's sessions — a MacBook on the agents running
+on a Mac mini — through the same encrypted relay, chosen by the computer
+being reached. From a terminal on each:
+
+1. On the computer to be reached (over SSH is fine): `caprock pair
+   --computer`. It turns access from anywhere on if it is off and prints a
+   link, valid five minutes, once.
+2. On the other computer: `caprock machines add '<that link>'`.
+3. Back on the first, allow it by name: answer the question in the terminal
+   that printed the link, press **Allow** on the card its screen shows, or
+   run `caprock machines allow <name>`. Until then it reaches nothing.
+
+An allowed computer can start, type into and stop sessions there, open shells
+and run tasks — never that computer's settings, pairing, updates or the
+doctor's stop, and only the sessions that computer's Caprock started. Pairing
+is one way: reaching back is a second pairing. `caprock machines` lists both
+directions; `caprock machines revoke <name>` on the reached computer, or
+**Remove** in its Settings, ends it at once, open terminals included;
+`caprock machines forget <name>` on the other drops it from both. On Linux, a
+computer that should stay reachable with nobody logged in needs `loginctl
+enable-linger <user>` once; `caprock service install` and `caprock pair
+--computer` say so when it is off.
+
 ### Without internet: on the same network (advanced)
 
 The app no longer offers this — a link that works on one Wi-Fi only left a

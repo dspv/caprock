@@ -808,7 +808,13 @@ function Devices({
                   <span className="mono shrink-0 text-[11px] text-fg-faint" title={`device id ${d.id}`}>#{d.id.slice(0, 4)}</span>
                 </span>
                 <span className="block text-[11px] text-fg-faint">
-                  {d.role === 'controller' ? <span className="text-accent">can control sessions</span> : 'view only'}
+                  {/* Another computer's Caprock (ADR-067): Allow is the card
+                    * it asks with, and Remove ends it. */}
+                  {d.kind === 'machine'
+                    ? (d.pending
+                      ? <span data-testid="device-computer" className="text-warn">a computer, waiting for Allow</span>
+                      : <span data-testid="device-computer" className="text-accent">a computer that controls this one</span>)
+                    : d.role === 'controller' ? <span className="text-accent">can control sessions</span> : 'view only'}
                   {d.via && (
                     <>
                       {' · '}
@@ -830,7 +836,7 @@ function Devices({
                     </button>
                   </span>
                 )}
-                {openAgain && !repair && offersOpenAgain(d) && (
+                {openAgain && !repair && d.kind !== 'machine' && offersOpenAgain(d) && (
                   <span data-testid="device-open-again" className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-fg-muted">
                     <span>
                       Already paired — just open <b className="mono font-medium text-fg select-all">{phonePage(openAgain.app).host}</b> on that phone.
@@ -845,7 +851,7 @@ function Devices({
                   </span>
                 )}
               </span>
-              {d.role === 'controller' ? (
+              {d.kind === 'machine' ? null : d.role === 'controller' ? (
                 <button
                   onClick={() => onRole(d.id, 'viewer')}
                   title="It goes back to view only on its next request, and an open terminal stops taking keys"
@@ -869,7 +875,7 @@ function Devices({
               >
                 Remove
               </button>
-              {openAgain && expanded === d.id && offersOpenAgain(d) && <OpenAgain {...openAgain} name={d.name} busy={busy} />}
+              {openAgain && expanded === d.id && d.kind !== 'machine' && offersOpenAgain(d) && <OpenAgain {...openAgain} name={d.name} busy={busy} />}
             </li>
           )
         })}

@@ -173,8 +173,13 @@ func TestAComputerWorksOnAnotherThroughTheRelay(t *testing.T) {
 	}
 	_ = res.Body.Close()
 	term2.sendQuiet("x")
-	if code := term2.waitClosed(t); code != websocket.StatusPolicyViolation {
-		t.Fatalf("after revoke the terminal closed with %d, want 1008", code)
+	select {
+	case code := <-term2.closed:
+		if code != websocket.StatusPolicyViolation {
+			t.Fatalf("after revoke the terminal closed with %d, want 1008", code)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatalf("after revoke the terminal through the relay stayed open\ntarget log:\n%s", target.log())
 	}
 	if got, _ := m.Check(ctx, st.ID); got.Status != peers.StatusRevoked {
 		t.Fatalf("after revoke: %+v", got)

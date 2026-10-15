@@ -150,18 +150,33 @@ left alone; Windows gets nothing, ConPTY being UTF-8 already.
 talks to its own** ([ADR-067](08-decisions.md)). The path of one request:
 
 ```
-dashboard ── loopback ──▶ daemon A ── internal/peers ── remote.Client
+dashboard ── loopback /v1/m/{B}/v1/… ──▶ daemon A (api.handleMachineProxy)
+   ── internal/peers ── remote.Client
    ── Noise NK inside one WebSocket ──▶ relay ──▶ daemon B's remote.Host
    ── B's own loopback, Via: 1.1 caprock-remote ──▶ B's API, gated as A's device token
 ```
 
-B needs nothing it does not already run for a phone: A is one more client of
-its Host, with a device token and a role B's owner gave it. A keeps the
-computers it reaches in `machines.json` (0600) and opens a channel to one
-only while something needs it, closing it after 90 s with nothing open.
-Built so far: the client, the stream layer and the store (`internal/remote`,
-`internal/peers`); the daemon's routes, the target's computer pairing and the
-app follow in the next two pull requests of ADR-067's Phase 1.
+B runs nothing for A that it does not run for a phone: A is one more client
+of its Host, with a device token. What is new on B is the kind of that
+device. A code *for a computer* (`caprock pair --computer`, `POST
+/v1/pair/code {kind: "machine"}`) pairs a device stored with `kind:
+"machine"` that waits, `pending`, until B's owner allows it by name — the
+dashboard's card (`ComputerAsks`), the prompt of `caprock pair --computer`,
+or `caprock machines allow` over SSH. Allowed, it passes the gate on
+`computerRoutes` (`internal/api/lanauth.go`), a superset of a phone
+controller's, and the handlers' phone limits (`phoneLimited`) do not apply
+to it; B's settings, pairing, doctor's stop, shutdown and update stay B's.
+Every socket a device opens is held by its id (`devsockets.go`) and closed
+with 1008 when it is removed or its role changes.
+
+On A, `internal/daemon/machines.go` opens the `peers.Manager` on first use;
+`machines.json` (0600) holds the computers A reaches, and a channel to one
+is open only while something needs it, closing after 90 s with nothing
+open. `/v1/machines` and the `/v1/m/{id}/{path…}` proxy (HTTP through
+`httputil.ReverseProxy` on the channel, WebSockets bridged message by
+message) are loopback-only and on no device's allowlist, so a phone paired
+with A never reaches B through it. The app's side is PR3 of ADR-067's
+Phase 1.
 
 ### Native terminals
 
@@ -399,7 +414,7 @@ internal/alerts/      # when the phone hears about a session, and the message it
 internal/brain/       # Second Brain's automatic extraction: finished sessions read by the user's own `claude -p`, memories kept with provenance (ADR-063)
 internal/templates/   # new project from a template: the user's own list, their gh or a local copy, the brief committed (ADR-065)
 internal/remote/      # access from anywhere (ADR-058): Noise NK, the frame protocol, the Host phones and computers reach, the Client this daemon reaches other computers with (ADR-067); relaysrv/ is `caprock remote relay`
-internal/peers/       # the computers this machine reaches (ADR-067): machines.json (0600), pairing by link, requests and sockets carried as the paired device
+internal/peers/       # the computers this machine reaches (ADR-067): machines.json (0600), pairing by link, requests and sockets carried as the paired device, Leave
 internal/telegram/    # the owner's own bot: Bot API client, long-poll reader, paced outbox, the two-way bridge (ADR-047) — Control
 internal/ptyhost/     # `caprock pty-host`: one process per owned session holding its PTY, so it outlives the daemon (ADR-033); orphan verdicts — Control
 internal/keepawake/   # keeps the computer from idle-sleeping while agents work: modes, keeper, per-OS holders (ADR-049)

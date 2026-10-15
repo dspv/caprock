@@ -107,12 +107,26 @@ const (
 	ViaRelay = "relay"
 )
 
+// The kinds of paired device (ADR-067). A phone or a tablet is the default and
+// is stored without a kind; a computer — another Caprock daemon that reaches
+// this one through the relay — is KindMachine. The kind is the owner's choice
+// when showing the code (NewCodeFor), never the redeeming device's: a device
+// cannot call itself a computer to get a computer's rights, exactly as it
+// cannot name its own role.
+const (
+	// KindPhone is a phone, a tablet or a browser: ADR-034's limits.
+	KindPhone = ""
+	// KindMachine is another computer's Caprock: full controller scope, but
+	// only after the owner allows it by name on this machine (Pending).
+	KindMachine = "machine"
+)
+
 // ValidRole reports whether r names a role a device may be given.
 func ValidRole(r string) bool { return r == RoleViewer || r == RoleController }
 
 // roleOf is the role a stored device holds, with "" read as a viewer.
 func roleOf(d *Device) string {
-	if d.Role == RoleController {
+	if d.Role == RoleController && !d.Pending {
 		return RoleController
 	}
 	return RoleViewer
@@ -142,6 +156,12 @@ type Device struct {
 	// (display-mode standalone, or Chrome's record that it is installed).
 	// A label for the owner's checklist, never an authorisation.
 	App bool `json:"app,omitempty"`
+	// Kind is KindPhone (empty) or KindMachine, from the code it redeemed.
+	Kind string `json:"kind,omitempty"`
+	// Pending is a computer that redeemed a code and waits for the owner to
+	// allow it by name (ADR-067). Until then its token reaches nothing but
+	// GET /v1/pair/me, and it holds no role (roleOf reads it as a viewer).
+	Pending bool `json:"pending,omitempty"`
 }
 
 // Public is a Device without its token, for listing in the dashboard.
@@ -156,6 +176,10 @@ type Public struct {
 	Via string `json:"via,omitempty"`
 	// App is Device.App.
 	App bool `json:"app,omitempty"`
+	// Kind is Device.Kind: "machine" for a computer, absent for a phone.
+	Kind string `json:"kind,omitempty"`
+	// Pending is Device.Pending.
+	Pending bool `json:"pending,omitempty"`
 }
 
 // Store holds the pairing state. The zero value is not usable; call New.
@@ -166,6 +190,7 @@ type Store struct {
 	mu       sync.Mutex
 	code     string
 	codeRole string // the role a device pairing with code gets
+	codeKind string // the kind it pairs as: KindPhone or KindMachine
 	codeAt   time.Time
 	attempts int
 	devices  map[string]*Device // by token
@@ -191,8 +216,20 @@ func (s *Store) NewCode() (string, error) {
 // the decision is still theirs and still made there; the phone only carries
 // it out by redeeming. An invalid role is a viewer.
 func (s *Store) NewCodeAs(role string) (string, error) {
+	return s.NewCodeFor(role, KindPhone)
+}
+
+// NewCodeFor issues a code that pairs a device of kind with role. A code for
+// KindMachine pairs a computer (ADR-067): always as a controller, and pending
+// until the owner allows it by name (Allow). An unknown kind is a phone.
+func (s *Store) NewCodeFor(role, kind string) (string, error) {
 	if !ValidRole(role) {
 		role = RoleViewer
+	}
+	if kind != KindMachine {
+		kind = KindPhone
+	} else {
+		role = RoleController
 	}
 	code, err := randomDigits(6)
 	if err != nil {
@@ -200,8 +237,19 @@ func (s *Store) NewCodeAs(role string) (string, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.code, s.codeRole, s.codeAt, s.attempts = code, role, s.Now(), 0
+	s.code, s.codeRole, s.codeKind, s.codeAt, s.attempts = code, role, kind, s.Now(), 0
 	return code, nil
+}
+
+// CodeKind is the kind the outstanding code pairs as — KindMachine for a
+// computer, KindPhone (empty) otherwise and when there is no live code.
+func (s *Store) CodeKind() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.code == "" || s.Now().Sub(s.codeAt) > CodeTTL {
+		return KindPhone
+	}
+	return s.codeKind
 }
 
 // CodeRole is the role the outstanding code pairs as, or "" when there is no
@@ -301,10 +349,17 @@ func (s *Store) Redeem(code, name string) (*Device, error) {
 		role = RoleController
 	}
 	d := &Device{ID: id, Name: cleanName(name), Token: tok, PairedAt: now, LastSeen: now, Role: role}
+	// A code for a computer pairs one that waits for the owner's Allow, by
+	// its name, on this machine (ADR-067): knowing the code proves only that
+	// someone saw it.
+	if s.codeKind == KindMachine {
+		d.Kind, d.Pending = KindMachine, true
+	}
 	s.devices[tok] = d
 	// Single use: the code is spent whether or not another device is waiting.
-	s.code, s.attempts = "", 0
-	return d, nil
+	s.code, s.codeKind, s.attempts = "", KindPhone, 0
+	cp := *d
+	return &cp, nil
 }
 
 // Check validates a device token and records that the device was seen.
@@ -398,7 +453,7 @@ func (s *Store) Devices() []Public {
 	defer s.mu.Unlock()
 	out := make([]Public, 0, len(s.devices))
 	for _, d := range s.devices {
-		out = append(out, Public{ID: d.ID, Name: d.Name, PairedAt: d.PairedAt, LastSeen: d.LastSeen, Role: roleOf(d), Via: d.Via, App: d.App})
+		out = append(out, Public{ID: d.ID, Name: d.Name, PairedAt: d.PairedAt, LastSeen: d.LastSeen, Role: roleOf(d), Via: d.Via, App: d.App, Kind: d.Kind, Pending: d.Pending})
 	}
 	// Stable order so the list does not shuffle between polls.
 	for i := 1; i < len(out); i++ {
@@ -407,6 +462,22 @@ func (s *Store) Devices() []Public {
 		}
 	}
 	return out
+}
+
+// Allow lets a pending computer in, by id: the owner's Allow on this machine
+// (ADR-067) — the button, the prompt of `caprock pair --computer`, or
+// `caprock machines allow` over SSH. It reports false when there is no such
+// device or it is not waiting.
+func (s *Store) Allow(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, d := range s.devices {
+		if d.ID == id && d.Pending {
+			d.Pending, d.Role = false, RoleController
+			return true
+		}
+	}
+	return false
 }
 
 // Revoke removes one device by id. Its token stops working immediately.
