@@ -335,6 +335,9 @@ var pairedDeviceRoutes = map[string]bool{
 	// The Work board (ADR-064): the same reads across every live session,
 	// plus the release state the clone holds locally; nothing on it writes.
 	"GET /v1/work": true,
+	// The Pipeline's agent figures: what an hour of agent work costs and
+	// how many agents worked, per repository; read-only.
+	"GET /v1/pipeline/agents": true,
 	// The chat field's pickers: the session's slash commands (names and
 	// descriptions from its .claude folders) and its folder's file list,
 	// as a project's file list is a read.
