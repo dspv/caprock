@@ -35,21 +35,27 @@ others. Installing it: [install-app.md](install-app.md).
   is not shown at all (they stay on the Dashboard). Then the projects, one line each: the
   name, a green dot with how many sessions and shells run in it, and how
   many wait on you. Under each project is every agent session in it —
-  working, waiting or idle — one 28-pixel row each, and nothing hides
+  working, waiting or idle — one 38-pixel row each, and nothing hides
   behind a *+N more* line. Shells and open files have no rows (they are
   in the tab strip), an ended session drops off, and a row you hide is
   gone until you show it again from *More…*. A row reads the session's
   title (the agent is in its tooltip; a branch shows only when it is not
   the project's own). Click another project to make it
   current: its last tab comes to the front, or its own page when it has
-  none. The one highlighted row in the
-  sidebar is the tab you are looking at; the current project's name is
-  bold, with a faint edge at its left; a session row with a tab shows that
+  none. The one selected row in the sidebar — tinted, with a solid edge
+  at its left and a bold title — is the tab you are looking at; the
+  current project's name is bold; a session row with a tab shows that
   tab's key (⌘1, ⌘2 …), and a click on a project opens its page. Muted, come the sessions Caprock started
   in the project that still run with no tab; click one to open it as a tab.
   Sessions started in another terminal come last. Each row says its
-  state in one word at its right: *working* (green), *waiting* (amber — it
-  needs you, and nothing else in the list is amber), *idle* or *done*.
+  state with a dot and a word at its right: *working* (green, the dot
+  breathing), *waiting* (amber — it needs you), *idle* (faint) or *done*.
+  On a narrow row the word for *working* and *idle* gives its room to the
+  title; *waiting* always says it. In the *Tabs* list a row does not draw
+  its project's name — hover it to see it. The *Today* card above the list
+  folds to one line with its chevron; right-click it to hide it, and turn
+  it back on in Settings → Appearance (while it is hidden, the list's
+  heading counts what waits on you).
   **Rows keep their places**: in the order the
   sessions started, so picking a row, opening it as a tab, bringing it to
   the front or a change of state never moves it, and
