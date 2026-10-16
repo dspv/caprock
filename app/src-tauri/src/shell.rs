@@ -18,18 +18,6 @@ use tauri_plugin_opener::OpenerExt;
 
 pub const MAIN: &str = "main";
 
-/// The main window. Never `get_webview_window(MAIN)`: once a Page tab adds a
-/// child webview to the window (page.rs, ADR-070), Tauri no longer counts it
-/// as a webview window and that lookup finds nothing.
-pub fn main_window<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<tauri::Window<R>> {
-    app.get_window(MAIN)
-}
-
-/// The dashboard's own webview in the main window (`main`, as the window).
-pub fn main_webview<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<tauri::Webview<R>> {
-    app.get_webview(MAIN)
-}
-
 /// The main window has finished loading a page at least once.
 static MAIN_LOADED: AtomicBool = AtomicBool::new(false);
 
@@ -172,9 +160,6 @@ pub fn build(
         .on_download(save_download)
         .on_page_load(move |w, p| {
             if !matches!(p.event(), tauri::webview::PageLoadEvent::Finished) {
-                // A new dashboard page (a reload, a daemon swap, the
-                // fallback page) starts with no Page tab's page over it.
-                crate::page::close_all(w.app_handle());
                 return;
             }
             #[cfg(all(feature = "snapshot", target_os = "macos"))]
@@ -243,23 +228,35 @@ pub fn build(
 
 /// Hands a native drop on the window's dashboard to the page.
 ///
-/// A webview event, not a window one: with the `unstable` feature a Page tab
-/// needs (page.rs, ADR-070), the dashboard is a child webview of the window
-/// too, and Tauri reports its drops as WebviewEvent::DragDrop. A
-/// WindowEvent::DragDrop listener heard nothing from 0.123.0 on, so no
-/// dropped file reached a terminal. `on_drop` takes a `WebviewEvent`, so it
-/// cannot be registered as a window listener again by mistake; main.rs's
-/// tests drive it and check the registration.
+/// A drop arrives as the window's event while the dashboard is the window's
+/// own content (WindowEvent::DragDrop), and as the webview's when it is a
+/// child of the window (WebviewEvent::DragDrop, as with the `unstable`
+/// feature 0.123.0 turned on for a Page tab, since removed). Only one of the
+/// two ever fires; both are heard, through the one `on_drop`, so neither
+/// build drops a file on the floor, which 0.123.0 did. main.rs's tests drive
+/// `on_drop` and check both registrations.
 pub fn listen_for_drops<R: tauri::Runtime>(w: &WebviewWindow<R>) {
-    let dropped = w.clone();
-    w.on_webview_event(move |e| on_drop(&dropped, e));
+    let from_window = w.clone();
+    w.on_window_event(move |e| {
+        if let tauri::WindowEvent::DragDrop(d) = e {
+            on_drop(&from_window, d);
+        }
+    });
+    let from_webview = w.clone();
+    w.on_webview_event(move |e| {
+        if let tauri::WebviewEvent::DragDrop(d) = e {
+            on_drop(&from_webview, d);
+        }
+    });
 }
 
-/// One webview event on the main window: a drop records its paths (the only
-/// files the feedback form may read, capture.rs) and types them into the
-/// terminal under the point (DROP_EVENT). Anything else is not ours.
-pub fn on_drop<R: tauri::Runtime>(w: &WebviewWindow<R>, e: &tauri::WebviewEvent) {
-    let tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Drop { paths, position }) = e else {
+/// One drag event on the main window, from either listener: a drop records
+/// its paths (the only files the feedback form may read, capture.rs) and
+/// hands them to the page (DROP_EVENT), which types them into the terminal
+/// under the point or the one used last. A drag that enters, moves or
+/// leaves is not ours.
+pub fn on_drop<R: tauri::Runtime>(w: &WebviewWindow<R>, e: &tauri::DragDropEvent) {
+    let tauri::DragDropEvent::Drop { paths, position } = e else {
         return;
     };
     let scale = w.scale_factor().unwrap_or(1.0);
@@ -460,7 +457,8 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
                 state = sup.state();
                 // A page already loaded from that daemon is its UI; it is
                 // reloaded once the new daemon answers.
-                swapped_under_page = main_webview(&app)
+                swapped_under_page = app
+                    .get_webview_window(MAIN)
                     .and_then(|w| w.url().ok())
                     .is_some_and(|u| is_daemon(&u, None));
             }
@@ -479,11 +477,12 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
                 crate::popover::ensure(&app, *port);
             }
             was_connected = connected;
-            if let Some(w) = main_webview(&app) {
-                follow(&w, &sup, &state, &mut resume);
+            let main = app.get_webview_window(MAIN);
+            if let Some(w) = &main {
+                follow(w, &sup, &state, &mut resume);
             }
             let fast = matches!(state, State::Searching | State::Starting { .. });
-            let visible = || main_window(&app).is_none_or(|w| w.is_visible().unwrap_or(true));
+            let visible = || main.as_ref().is_none_or(|w| w.is_visible().unwrap_or(true));
             // A hidden window with a daemon in hand asks every 5 s, and at
             // once when it is shown again (WP-16: hidden CPU).
             let wait = if fast {
@@ -516,7 +515,7 @@ const HIDDEN_CHECK: Duration = Duration::from_secs(5);
 /// URL, hash included). A terminal's half-typed line lives in its pty-host,
 /// not in the page, so nothing typed is lost.
 fn reload_after_swap(app: &AppHandle, port: u16) {
-    if let Some(w) = main_webview(app) {
+    if let Some(w) = app.get_webview_window(MAIN) {
         if w.url().is_ok_and(|u| reloads_after_swap(&u, port)) {
             let _ = w.reload();
         }
@@ -530,12 +529,12 @@ fn reload_after_swap(app: &AppHandle, port: u16) {
 /// Only the macOS menu has it; F5 elsewhere is the page's own.
 #[cfg(target_os = "macos")]
 pub fn reload_main(app: &AppHandle) {
-    if let Some(w) = main_webview(app) {
+    if let Some(w) = app.get_webview_window(MAIN) {
         let _ = w.reload();
     }
 }
 
-fn follow(w: &tauri::Webview, sup: &Arc<Supervisor>, state: &State, resume: &mut Option<Url>) {
+fn follow(w: &WebviewWindow, sup: &Arc<Supervisor>, state: &State, resume: &mut Option<Url>) {
     let Ok(current) = w.url() else { return };
     match state {
         State::Connected { port, .. } => {

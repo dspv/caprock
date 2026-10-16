@@ -325,7 +325,8 @@ export const FOLD_ABOVE = 8
  * by hand is in view. Above that, in view is what is in play: a live or
  * waiting session, a tab open (`tabbed`), pinned, or the project in front. A
  * project hidden by hand stays under Hidden whatever runs in it, the one in
- * front included, until it needs you again (`projectHidden`). Other folders
+ * front included, until it needs you again (`projectHidden`) or a tab shows
+ * it: every open tab has a row in the sidebar. Other folders
  * holds only what is live or open, so it is always in view, and last.
  *
  * Inside each group the order is stable: pinned first, then the order set by
@@ -342,22 +343,34 @@ export function groupProjects(
   for (const n of nodes) {
     const id = n.project.id
     if (id === OTHER_FOLDERS_ID) { other = n; continue }
-    const busy = n.live > 0 || n.waiting > 0 || !!tabbed?.has(id) || n.worktrees.some((w) => w.sessions.some((s) => s.open))
+    const tabOpen = hasTab(n, tabbed)
+    const busy = n.live > 0 || n.waiting > 0 || tabOpen
     // Hidden by hand wins over running (owner, 2026-10-11: "hide a project
     // with one button"): its sessions keep running under Hidden, dot and
     // count included. It wins over being in front and over a turn that had
     // already ended too: forcing those back out made Hide do nothing on the
-    // very projects it is pressed on (owner, 2026-10-13).
-    if (projectHidden(n, hidden)) out.hidden.push(n)
+    // very projects it is pressed on (owner, 2026-10-13). It never wins over
+    // an open tab: every tab in the strip has a row in the sidebar (owner,
+    // 2026-10-16, translated: "the tabs in the top strip don't match what's
+    // on the left"). Hide closes the project's tabs, so this only shows a
+    // project hidden earlier and opened again (from More…, a restored
+    // workspace); the mark is kept, and it goes back under Hidden when its
+    // last tab closes.
+    if (!tabOpen && projectHidden(n, hidden)) out.hidden.push(n)
     else if (busy || id === activeProjectId) out.shown.push(n)
     else if (!fold || n.project.pinned) out.shown.push(n)
     else out.more.push(n)
   }
   for (const g of [out.shown, out.more, out.hidden]) g.sort(stableOrder)
   // Outside projects stays last, unless hidden by hand; then it waits under
-  // Hidden too, unless something there waits on you.
-  if (other) (projectHidden(other, hidden) ? out.hidden : out.shown).push(other)
+  // Hidden too, unless something there waits on you or has a tab.
+  if (other) (!hasTab(other, tabbed) && projectHidden(other, hidden) ? out.hidden : out.shown).push(other)
   return out
+}
+
+/** Whether a tab in the strip shows the project or one of its sessions. */
+function hasTab(n: ProjectNode, tabbed: ReadonlySet<string> | undefined): boolean {
+  return !!tabbed?.has(n.project.id) || n.worktrees.some((w) => w.sessions.some((s) => s.open))
 }
 
 /**
@@ -410,10 +423,13 @@ export type HiddenSessions = ReadonlyMap<string, number>
  * turn that ended after the row was hidden. A waiting session is the one
  * thing the sidebar must never lose; the Waiting on you block that used to
  * list them separately is gone (owner, 2026-10-11), so its rows carry it.
+ * A row with a tab open (`open`) is never hidden either: every tab in the
+ * strip has a row in the sidebar (owner, 2026-10-16). The mark is kept, so
+ * the row goes back out of the list when its tab closes.
  */
-export function rowHidden(x: Pick<SessionNode, 'session' | 'asks' | 'waiting' | 'waitingSince'>, hidden: HiddenSessions | undefined): boolean {
+export function rowHidden(x: Pick<SessionNode, 'session' | 'asks' | 'waiting' | 'waitingSince'> & { open?: boolean }, hidden: HiddenSessions | undefined): boolean {
   const at = hidden?.get(x.session.session_id)
   if (at === undefined) return false
-  if (x.asks) return false
+  if (x.asks || x.open) return false
   return !(x.waiting && (x.waitingSince ?? 0) > at)
 }

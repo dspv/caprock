@@ -32,9 +32,13 @@ type target struct {
 	// pending answers GET /v1/pair/me as a computer that waits for the
 	// owner's Allow (ADR-067).
 	pending bool
-	set     *remote.Settings
-	keys    *remote.Keys
-	relay   *httptest.Server
+	// meHeld, when set, is told of each GET /v1/pair/me and holds it until
+	// meRelease is closed: a check that is in flight, on demand.
+	meHeld    chan struct{}
+	meRelease chan struct{}
+	set       *remote.Settings
+	keys      *remote.Keys
+	relay     *httptest.Server
 }
 
 func newTarget(t *testing.T) *target {
@@ -69,6 +73,13 @@ func newTarget(t *testing.T) *target {
 		return tg.tokens[tok]
 	}
 	mux.HandleFunc("GET /v1/pair/me", func(w http.ResponseWriter, r *http.Request) {
+		tg.mu.Lock()
+		held, release := tg.meHeld, tg.meRelease
+		tg.mu.Unlock()
+		if held != nil {
+			held <- struct{}{}
+			<-release
+		}
 		role := auth(r)
 		if role == "" {
 			http.Error(w, `{"error":"not paired"}`, http.StatusUnauthorized)
@@ -310,6 +321,59 @@ func TestARevokedComputerIsSaidSo(t *testing.T) {
 	tg.mu.Unlock()
 	if got, err := m.Check(ctx5(t), st.ID); err != nil || got.Status == peers.StatusRevoked || got.Role != "viewer" {
 		t.Fatalf("after the computer knew it again: %+v %v", got, err)
+	}
+}
+
+// A check asked for while another is in flight answers with that check's
+// result, not the state from before it: the proxy asks right after Do's 401
+// started one, and must hear "revoked" at once.
+func TestACheckDuringACheckWaitsForItsAnswer(t *testing.T) {
+	tg := newTarget(t)
+	m := open(t, t.TempDir())
+	st, err := m.Pair(ctx5(t), tg.link("333333"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, release := make(chan struct{}, 4), make(chan struct{})
+	var once sync.Once
+	free := func() { once.Do(func() { close(release) }) }
+	t.Cleanup(free) // a failed test must not leave the target's handler held
+	tg.mu.Lock()
+	tg.meHeld, tg.meRelease = held, release
+	tg.mu.Unlock()
+	tg.revoke()
+	req, _ := http.NewRequestWithContext(ctx5(t), "GET", "http://machine/v1/echo", nil)
+	res, err := m.Do(st.ID, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	select {
+	case <-held: // Do's own check is at the target now
+	case <-time.After(5 * time.Second):
+		t.Fatal("a 401 started no check")
+	}
+	got := make(chan peers.Status, 1)
+	go func() {
+		s, _ := m.Check(ctx5(t), st.ID)
+		got <- s
+	}()
+	select {
+	case s := <-got:
+		t.Fatalf("answered before the check in flight did: %+v", s)
+	case <-time.After(100 * time.Millisecond):
+	}
+	free()
+	select {
+	case s := <-got:
+		if s.Status != peers.StatusRevoked {
+			t.Fatalf("after the check in flight: %+v, want revoked", s)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the second check never answered")
 	}
 }
 

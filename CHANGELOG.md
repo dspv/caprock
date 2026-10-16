@@ -12,6 +12,55 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.124.1] - 2026-10-16
+
+### Changed
+
+- **brain:** the wheel scrolls the page past the Second Brain graph instead of
+  zooming it. Click the graph (or press Enter on it) to zoom and move it; an
+  accent ring shows it is in hand, and Escape, a click outside or the mouse
+  leaving lets it go. A click on a dot still opens it, and Fit works either way.
+
+### Removed
+
+- **app:** the Page tab is gone for now: with it the app crashed on macOS 27 and drops went missing. ⌘-click opens a link in your browser again (ADR-070, withdrawn).
+
+### Fixed
+
+- **phone:** quick replies under a session's chat take the page's own surface
+  in a light theme (Light, Light Cold, Book and the rest) instead of drawing as
+  dark pills; under an agent's terminal in the app they still sit on the
+  terminal's ground.
+- **app:** a file dropped beside a terminal — on the tab strip, a margin, the composer — goes to the terminal you used last instead of vanishing, and a drop with nowhere to go says so.
+
+## [0.124.0] - 2026-10-16
+
+### Changed
+
+- **app:** the sidebar's Today card has three states, kept per viewer: the
+  full card, one line (`$33.79 · 11 running · 5h 6% · 7d 74%`, plus what
+  waits when anything does) by its chevron, or hidden by the × that shows on
+  hover. Right-click offers Full card, One line and Hide; Settings →
+  Appearance → *Today card in the sidebar* brings it back. Its Share button
+  is gone: sharing stays in ⌘K and on Pipeline.
+
+### Fixed
+
+- **app:** every tab in the strip has a row in the sidebar, in Projects and
+  in Tabs view. A project or session hidden by hand and then opened again
+  (from More…, a link or a restored workspace) had a ⌘N tab and no row; it
+  is now listed while its tab is open, and goes back behind More… when the
+  last tab closes. Hiding a project from its menu also closes its tabs.
+- **ci:** a computer that removed this one is said so at once: a second check
+  of a machine, asked while one is in flight, waits for its answer instead of
+  returning the state from before it, so the proxy answers 403 "revoked" right
+  after a revoke rather than passing the other computer's 401 on (the
+  two-daemon smoke test's Windows failure). In New project from a template, a
+  card clicked before the sheet had settled is the one chosen; the first card
+  is chosen by default without an effect that could overwrite the click.
+  `make pr-check` runs the whole UI suite when `ui/` changed, not only the
+  changed test files.
+
 ## [0.123.1] - 2026-10-16
 
 ### Fixed

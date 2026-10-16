@@ -45,7 +45,9 @@ changed (against `origin/master`, uncommitted files included) it runs `go vet`,
 `go test -race` once, and the tests in your changed `_test.go` files three
 more times; then `GOOS=windows go vet ./...` and your packages' tests compiled
 for Windows; the smoke tests your change defines; and, when `ui/` changed, the
-typecheck and vitest on your changed test files; and, when `ui/` or
+typecheck and the whole vitest suite — all of it, because a change to one
+component breaks the tests of the screens that render it (about two and a
+half minutes on a 10-core Mac, measured 2026-10-16); and, when `ui/` or
 `internal/api/` changed, `make e2e`. A one-package change takes
 about two minutes; touching `internal/daemon`, `internal/api` or
 `internal/projects` takes longer, because their suites are the largest. It

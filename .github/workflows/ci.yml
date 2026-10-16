@@ -209,7 +209,9 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: latest
+          # Pinned: `latest` moved to v2.15.0 on 2026-10-16 and turned every PR red
+          # over untouched code. Bump on purpose, with the fixes, in one PR.
+          version: v2.14.0
       - name: go test
         run: go test -v -count=1 ./...
       - name: build

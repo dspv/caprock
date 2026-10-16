@@ -63,24 +63,29 @@ test('pasted text reaches the pty, line by line', async ({ app, page }) => {
   await app.waitTerm(s.id, 'you-said:pasted two')
 })
 
-test('a file dropped by the native shell types its path into the terminal under the point', async ({ app, page }) => {
+test('a file dropped by the native shell types its path into the terminal under the point, or the one used last', async ({ app, page }) => {
   await app.open()
   const s = await app.openSession('alpha')
-  const box = await page.locator('.xterm').first().boundingBox()
+  const term = page.locator('.xterm').first()
+  const box = await term.boundingBox()
   const side = await app.sidebar.boundingBox()
   if (!box || !side) throw new Error('no terminal or sidebar box')
-  // What the app's shell sends on a drop (app/src-tauri/src/main.rs, the
-  // webview's DragDrop): paths and the point, as lib/xtermInput reads them.
+  // What the app's shell sends on a drop (app/src-tauri/src/shell.rs,
+  // on_drop): paths and the point, as lib/xtermInput's routeDrop reads them.
   const drop = (paths: string[], x: number, y: number) => page.evaluate(({ paths, x, y }) => {
     window.dispatchEvent(new CustomEvent('caprock:drop-paths', { detail: { paths, x, y } }))
   }, { paths, x, y })
-  // On the sidebar: not this terminal's drop, so nothing is typed.
-  await drop(['/tmp/not-here.txt'], side.x + side.width / 2, side.y + side.height / 2)
+  // Beside any terminal (here the sidebar): the terminal used last takes it.
+  await term.click()
+  await drop(['/tmp/e2e side/beside.txt'], side.x + side.width / 2, side.y + side.height / 2)
+  await app.waitTerm(s.id, '"/tmp/e2e side/beside.txt"')
+  await page.keyboard.press('Enter')
+  await app.waitTerm(s.id, 'you-said:"/tmp/e2e side/beside.txt"')
+  // On a terminal: that terminal.
   await drop(['/tmp/e2e drop/notes.txt'], box.x + box.width / 2, box.y + box.height / 2)
   await app.waitTerm(s.id, '"/tmp/e2e drop/notes.txt"')
   await page.keyboard.press('Enter')
   await app.waitTerm(s.id, 'you-said:"/tmp/e2e drop/notes.txt"')
-  expect(await app.termText(s.id)).not.toContain('not-here')
 })
 
 test('the command palette opens and runs a command', async ({ app, page }) => {

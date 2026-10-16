@@ -44,7 +44,7 @@ make e2e         # the app's golden paths in Playwright's headless shell against
 make docs-fmt    # tight-align markdown tables
 make docs-check  # fail on unaligned tables
 make docs-links  # fail on broken relative links
-make pr-check    # before a PR: changed Go packages vet + test -race, changed tests -count=3, Windows vet + test compile, changed UI tests, make e2e when ui/ or internal/api changed
+make pr-check    # before a PR: changed Go packages vet + test -race, changed tests -count=3, Windows vet + test compile, the whole UI suite, make e2e when ui/ or internal/api changed
 make check       # docs gates + lint + test (what CI runs, minus the OS matrix)
 make app         # the desktop app, debug build (app/README.md)
 make app-test    # cargo fmt --check, clippy -D warnings, cargo test
@@ -89,7 +89,11 @@ data races, which CI does not look for (it runs no `-race`); Windows-only
 semantics (`filepath.IsAbs("/a/b")` is false there), caught by
 `GOOS=windows go vet ./...` and compiling the changed packages' tests for
 Windows; and tests that fail one run in three, caught by running the changed
-tests `-count=3`. `PR_CHECK_COUNT` and `PR_CHECK_BASE` override the count and
+tests `-count=3`. The dashboard is the exception to "only what changed": when
+`ui/` changed it runs the typecheck and the whole vitest suite, because a
+change to one component breaks tests it never touched (#705 broke
+`SidebarClose.test.tsx` that way, 2026-10-16). The suite took 2 min 16 s
+on a 10-core Mac (2026-10-16). `PR_CHECK_COUNT` and `PR_CHECK_BASE` override the count and
 the base.
 
 When `ui/` or `internal/api/` changed, `make pr-check` also runs `make e2e`;
@@ -127,7 +131,8 @@ appears in the sidebar and its tab opens on its terminal; every open tab has a
 sidebar row in Tree and in Flat; typing reaches the pty (the fake claude
 answers `you-said:<line>`); pasted text reaches it line by line; a native drop
 (`caprock:drop-paths`, as the app's shell sends it) types the quoted path into
-the terminal under the point and not into one elsewhere; the command palette
+the terminal under the point, and a drop on the sidebar into the terminal
+used last; the command palette
 opens and runs a command; Settings opens and closes; Second Brain and Pipeline
 render; the share dialog draws its card and closes. Terminal text is read
 from xterm's buffer through the bench hook (`ui/src/lib/benchhook.ts`). The
@@ -138,8 +143,9 @@ keeps the stand's directory for its logs.
 
 What it cannot reach is the native shell itself: the drop the app's window
 receives is checked in `app/src-tauri/src/main.rs`'s tests instead (the mock
-runtime keeps no webview listeners, so those tests call the handler and check
-that it is registered on the webview, not the window).
+runtime keeps no listeners, so those tests call the handler and check that
+both the window's and the webview's drop events are registered and reach
+it).
 
 Data dir and `CAPROCK_DATA_DIR` override: [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions). To develop against a throw-away data dir: `CAPROCK_DATA_DIR=$(mktemp -d) make dev`.
 

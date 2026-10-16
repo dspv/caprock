@@ -8,5 +8,5 @@ kind: Added
   a native file drop reach the terminal, and the palette, Settings, Second
   Brain, Pipeline and the share dialog open. `make pr-check` runs it when
   `ui/` or `internal/api/` changed, and CI runs it on Ubuntu. The app's own
-  tests now check that a drop on its window is heard on the dashboard's
-  webview, the 0.123.0 bug.
+  tests now check that a drop is heard as both the window's and the
+  webview's event, through one handler (the 0.123.0 bug).

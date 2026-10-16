@@ -21,7 +21,6 @@ mod notify;
 mod notify_linux;
 #[cfg(target_os = "macos")]
 mod notify_macos;
-mod page;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod popover;
 mod shell;
@@ -66,8 +65,7 @@ macro_rules! handler {
             capture::clipboard_image,
             capture::capture_webview,
             capture::read_dropped_image,
-            capture::read_dropped_text,
-            page::page_tab
+            capture::read_dropped_text
         ]
     };
 }
@@ -85,7 +83,6 @@ fn configure<R: tauri::Runtime>(b: tauri::Builder<R>, sup: commands::Sup) -> tau
         .manage(capture::Dropped::default())
         .manage(sup)
         .manage(shell::Downloads::default())
-        .manage(page::Saving::default())
         .manage(tray::Tray::default())
         .manage(popover::Popover::default())
         .manage(badge::Badge::default())
@@ -447,111 +444,6 @@ mod tests {
         }
     }
 
-    /// A command from a Page tab's page: a child webview of the main window
-    /// (page.rs), on `url`, beside the dashboard at DAEMON.
-    fn invoke_from_page(
-        url: &str,
-        cmd: &str,
-        body: serde_json::Value,
-    ) -> Result<serde_json::Value, serde_json::Value> {
-        let dir = std::env::temp_dir().join(format!("caprock-acl-page-{}", std::process::id()));
-        let app = configure(mock_builder(), Supervisor::new(dir))
-            .build(tauri::generate_context!(test = true))
-            .expect("mock app");
-        WebviewWindowBuilder::new(&app, "main", WebviewUrl::External(DAEMON.parse().unwrap()))
-            .build()
-            .unwrap();
-        let page: tauri::Url = url.parse().unwrap();
-        let child = app
-            .get_window("main")
-            .unwrap()
-            .add_child(
-                tauri::webview::WebviewBuilder::new("page-t1", WebviewUrl::External(page.clone())),
-                tauri::LogicalPosition::new(0.0, 40.0),
-                tauri::LogicalSize::new(800.0, 600.0),
-            )
-            .unwrap();
-        // `get_ipc_response` takes a webview by AsRef, which Webview itself lacks.
-        struct Child(tauri::Webview<tauri::test::MockRuntime>);
-        impl AsRef<tauri::Webview<tauri::test::MockRuntime>> for Child {
-            fn as_ref(&self) -> &tauri::Webview<tauri::test::MockRuntime> {
-                &self.0
-            }
-        }
-        get_ipc_response(
-            &Child(child),
-            InvokeRequest {
-                cmd: cmd.into(),
-                callback: CallbackFn(0),
-                error: CallbackFn(1),
-                url: page,
-                body: InvokeBody::Json(body),
-                headers: Default::default(),
-                invoke_key: INVOKE_KEY.to_string(),
-            },
-        )
-        .map(|b| b.deserialize::<serde_json::Value>().unwrap())
-    }
-
-    #[test]
-    fn a_page_tab_gets_no_command_even_on_the_daemons_own_address() {
-        // It sits in the main window, on loopback: the capabilities grant by
-        // webview, so being in that window or on 127.0.0.1 earns it nothing.
-        for url in [DAEMON, "http://127.0.0.1:5173/", "https://example.com/"] {
-            for (cmd, body) in [
-                ("daemon_status", serde_json::json!({})),
-                ("open_external", serde_json::json!({"url": "https://a.b/"})),
-                ("notify", serde_json::json!({"title": "x", "body": ""})),
-                ("set_badge", serde_json::json!({"count": 1})),
-                ("pick_folder", serde_json::json!({"start": null})),
-                ("app_update_install", serde_json::json!({})),
-                (
-                    "page_tab",
-                    serde_json::json!({"id": "t1", "act": {"do": "hide"}}),
-                ),
-                ("plugin:updater|check", serde_json::json!({})),
-            ] {
-                let err = invoke_from_page(url, cmd, body).expect_err(&format!("{url} {cmd}"));
-                assert!(
-                    err.to_string().contains("not allowed"),
-                    "{url} {cmd}: {err}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn only_the_dashboard_drives_its_pages() {
-        // A page that is not there (closed, or never opened) is no error.
-        invoke(
-            DAEMON,
-            "page_tab",
-            serde_json::json!({"id": "t1", "act": {"do": "hide"}}),
-        )
-        .expect("allowed");
-        let err = invoke(
-            DAEMON,
-            "page_tab",
-            serde_json::json!({"id": "../main", "act": {"do": "close"}}),
-        )
-        .expect_err("bad id");
-        assert!(err.to_string().contains("not a page id"), "{err}");
-        let err = invoke(
-            DAEMON,
-            "page_tab",
-            serde_json::json!({"id": "t1", "act": {"do": "open", "url": "file:///etc/hosts", "rect": {"x": 0, "y": 0, "width": 10, "height": 10}}}),
-        )
-        .expect_err("file URL");
-        assert!(err.to_string().contains("only http and https"), "{err}");
-        let page = serde_json::json!({"id": "t1", "act": {"do": "hide"}});
-        let err = invoke_in("tray", POPOVER, "page_tab", page.clone()).expect_err("popover");
-        assert!(err.to_string().contains("not allowed"), "{err}");
-        for url in ["https://example.com/", "http://localhost:4391/"] {
-            let err = invoke(url, "page_tab", page.clone()).expect_err(url);
-            assert!(err.to_string().contains("not allowed"), "{url}: {err}");
-        }
-    }
-
     const POPOVER: &str = "http://127.0.0.1:4391/?app=1#/tray";
 
     #[test]
@@ -642,14 +534,16 @@ mod tests {
 
     // The 0.123.0 drop bug: the dashboard became a child webview of the
     // window, its drops arrived as WebviewEvent::DragDrop, and the window
-    // listener the app had heard nothing. Tauri's mock runtime keeps no
-    // listeners (MockWebviewDispatcher::on_webview_event drops the closure),
-    // so a test cannot emit an event through it. The closest it can do: build
-    // the main window and register the listener as the app does, hand the
-    // handler the event Tauri would, and check in the source that the
-    // registration is a webview one.
+    // listener the app had heard nothing. Since the Page tab was withdrawn
+    // the dashboard is the window's content again and drops come as
+    // WindowEvent::DragDrop; the app hears both, through one handler.
+    // Tauri's mock runtime keeps no listeners (MockWebviewDispatcher drops
+    // the closure), so a test cannot emit an event through it. The closest
+    // it can do: build the main window and register the listeners as the
+    // app does, hand the handler the event Tauri would, and check in the
+    // source that both registrations reach it.
     #[test]
-    fn a_drop_on_the_main_webview_reaches_the_drop_handler() {
+    fn a_drop_on_the_main_window_reaches_the_drop_handler() {
         let dir = std::env::temp_dir().join(format!("caprock-drop-{}", std::process::id()));
         let app = configure(mock_builder(), Supervisor::new(dir))
             .build(tauri::generate_context!(test = true))
@@ -664,19 +558,18 @@ mod tests {
             paths: vec![p.clone()],
             position: tauri::PhysicalPosition::new(10.0, 20.0),
         };
-        shell::on_drop(&w, &tauri::WebviewEvent::DragDrop(drop));
+        shell::on_drop(&w, &drop);
         assert!(
             app.state::<capture::Dropped>().contains(&p),
             "the drop's path was not recorded"
         );
         // A drag that leaves is not a drop: the last drop's paths stay.
-        let leave = tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Leave);
-        shell::on_drop(&w, &leave);
+        shell::on_drop(&w, &tauri::DragDropEvent::Leave);
         assert!(app.state::<capture::Dropped>().contains(&p));
     }
 
     #[test]
-    fn the_drop_listener_is_on_the_webview_not_the_window() {
+    fn a_drop_is_heard_on_the_window_and_the_webview_by_one_handler() {
         // A Windows checkout may carry CRLF line ends.
         let src = include_str!("shell.rs").replace("\r\n", "\n");
         let code = |s: &str| -> String {
@@ -690,15 +583,26 @@ mod tests {
             code(rest.split("\n}\n").next().unwrap_or(rest))
         };
         let listen = body("pub fn listen_for_drops");
-        assert!(listen.contains(".on_webview_event("), "{listen}");
-        assert!(!listen.contains("on_window_event"), "{listen}");
-        assert!(
-            body("pub fn build(").contains("listen_for_drops(&w)"),
-            "the main window is built without its drop listener"
+        for (listener, event) in [
+            (".on_window_event(", "tauri::WindowEvent::DragDrop("),
+            (".on_webview_event(", "tauri::WebviewEvent::DragDrop("),
+        ] {
+            assert!(listen.contains(listener), "no {listener}: {listen}");
+            assert!(listen.contains(event), "no {event}: {listen}");
+        }
+        assert_eq!(
+            listen.matches("on_drop(").count(),
+            2,
+            "each listener hands its drop to the one on_drop: {listen}"
         );
         assert!(
-            !code(&src).contains("WindowEvent::DragDrop"),
-            "a window drop listener hears nothing from the dashboard's webview"
+            body("pub fn build(").contains("listen_for_drops(&w)"),
+            "the main window is built without its drop listeners"
+        );
+        assert_eq!(
+            code(&src).matches("DragDrop(").count(),
+            2,
+            "a drop is handled somewhere other than listen_for_drops"
         );
     }
 }
