@@ -44,7 +44,7 @@ import { AGENT_SAVED_TOAST, isShellLeaf, liveShells, planAgentClose, planChatClo
 import { baseName, fileKey } from '@/lib/files'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
 import { useShellTray } from '@/lib/tray'
-import { OPEN_SESSION_EVENT } from '@/lib/shell'
+import { CLOSE_TAB_EVENT, OPEN_SESSION_EVENT } from '@/lib/shell'
 import { openMailBrowserWindow, openMailOutside } from '@/lib/mailwindow'
 import { MailWindowBanner } from '@/screens/mail/MailWindowBanner'
 import { useOsNotifications } from '@/lib/notify'
@@ -1156,8 +1156,16 @@ export function AppShell() {
       e.stopPropagation()
       run(c)
     }
+    // ⌘W in the desktop app on macOS: its menu's Close Tab holds the key
+    // and tells the page, which closes as the tab's × does (the same
+    // confirm for a running agent or shell). With a sheet up, as for the key.
+    const onCloseTab = () => { if (!sheet) run({ kind: 'detach-tab' }) }
     window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
+    window.addEventListener(CLOSE_TAB_EVENT, onCloseTab)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener(CLOSE_TAB_EVENT, onCloseTab)
+    }
   }, [isMac, run, sheet])
 
   // The dashboard's "open the terminal" links land on a tab here instead.

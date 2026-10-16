@@ -10,6 +10,7 @@ import type { SessionSummary } from '@/lib/api'
 import { WORKSPACE_KEY } from '@/lib/tabs'
 import { saveSidebarMode } from '@/lib/sidebarMode'
 import { FIND_EVENT } from '@/lib/appkeys'
+import { CLOSE_TAB_EVENT } from '@/lib/shell'
 // Imported here rather than inside each test: the first dynamic import
 // transformed the whole app inside the first test's 5 s budget, and on a busy
 // machine that alone timed it out. vi.mock is hoisted above this.
@@ -195,6 +196,26 @@ describe('the app workspace', () => {
     await act(async () => { await Promise.resolve() })
     expect(spawned.signals).toEqual([])
     expect(localStorage.getItem('caprock.app.agent-close')).toBeNull()
+  })
+
+  // Owner, 2026-10-16 (translated): "Cmd+W must close tabs." In the macOS
+  // app the menu's Close Tab holds ⌘W, so the page never sees the key: it
+  // hears CLOSE_TAB_EVENT, and closes exactly as the key and the × do.
+  it('closes the tab in front, with the same confirm, when the app menu’s Close Tab asks; on the Dashboard nothing', async () => {
+    await renderApp()
+    await openFromPalette('Fix the login bug')
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    act(() => { window.dispatchEvent(new Event(CLOSE_TAB_EVENT)) })
+    const sheet = await screen.findByRole('dialog', { name: "Close an agent's tab" })
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Close tab' }))
+    await waitFor(() => expect(screen.queryByRole('tab')).not.toBeInTheDocument())
+    // No tab left, the Dashboard in front: Close Tab closes nothing and asks nothing.
+    const hash = location.hash
+    act(() => { window.dispatchEvent(new Event(CLOSE_TAB_EVENT)) })
+    await act(async () => { await Promise.resolve() })
+    expect(screen.queryByRole('dialog', { name: "Close an agent's tab" })).toBeNull()
+    expect(location.hash).toBe(hash)
+    expect(spawned.signals).toEqual([])
   })
 
   // Owner, 2026-10-15 (translated): "I never understand whether data is

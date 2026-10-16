@@ -834,7 +834,7 @@ On macOS:
 | ⌥⌘→, ⌥⌘←    | Next and previous project                                                           |
 | ⌥⇧↑, ⌥⇧↓    | Move the focused sidebar or Live pulse row, or right panel section grip, up or down |
 | ⌃Tab, ⇧⌘[ ] | Next and previous tab                                                               |
-| ⌘W          | Close the tab (the session keeps going)                                             |
+| ⌘W          | Close the tab or pane (the session keeps going); on the Dashboard, nothing          |
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                                    |
 | ⌘[ ]        | Previous and next pane                                                              |
 | ⌘J          | Next session waiting on you                                                         |
@@ -868,6 +868,13 @@ and Ctrl+Shift+V stay the terminal's copy and paste. Reload is F5 there:
 Ctrl+R stays the shell's history search, and F5 in a focused terminal goes
 to the program running in it. The terminal's own keys (Ctrl+C, Ctrl+W,
 Option as Meta) always reach the terminal.
+
+⌘W closes the tab in front, never the window: the macOS menu's File →
+Close Tab holds it, and asks first about a running agent or shell just as
+the tab's × does. With the Dashboard in front it does nothing. Window →
+Close Window (no key), the window's red button, ⌘H and ⌘M still put the
+window away. Off macOS Close is Ctrl+Shift+W, since Ctrl+W is the shell's
+delete-word.
 
 **Composer (optional).** Settings → Terminal → *Composer: type in a box
 under the agent* puts a message box under the terminal of every agent
