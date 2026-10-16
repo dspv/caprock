@@ -26,6 +26,7 @@
  */
 import { Fragment, useState, type ReactNode } from 'react'
 import { mdPathsIn, slugOf, type OutlineItem } from '@/lib/mdreader'
+import { extTitle } from '@/lib/externalLinks'
 
 /** One rendered block. */
 type Block =
@@ -527,7 +528,7 @@ function renderDocInline(parts: DocInline[], link?: DocLink, image?: DocImage) {
     if (p.href !== undefined) {
       const to = link?.(p.href)
       const cls = 'text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent'
-      if (to && 'href' in to) return <a key={i} href={to.href} target="_blank" rel="noreferrer noopener" className={cls} style={{ textDecorationLine: 'underline' }} title={to.href}>{p.text}</a>
+      if (to && 'href' in to) return <a key={i} href={to.href} target="_blank" rel="noreferrer noopener" className={cls} style={{ textDecorationLine: 'underline' }} title={extTitle(to.href)}>{p.text}</a>
       if (to) return <button key={i} type="button" onClick={to.onOpen} className={`${cls} cursor-pointer text-left`} title={p.href}>{p.text}</button>
       return <span key={i}>{p.text}</span>
     }

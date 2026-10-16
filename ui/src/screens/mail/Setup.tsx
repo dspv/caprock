@@ -4,6 +4,7 @@ import { api } from './mailApi'
 import { Icon } from './icons'
 import type { Provider } from './Onboarding'
 import { AddFlow } from './Onboarding'
+import { extTitle } from '@/lib/externalLinks'
 
 // Adding an account: address and password; servers are filled in from the
 // address and only shown when the guess is unknown or the user asks. A
@@ -61,7 +62,7 @@ export function AddAccount({ onDone, onCancel, provider }: { onDone: () => void;
       {provider?.steps ? (
         <div className="hint steps">
           {provider.why && <div className="muted">{provider.why}</div>}
-          <div>{provider.steps} {provider.help && <a href={provider.help} target="_blank" rel="noreferrer">Open {provider.helpLabel}</a>}</div>
+          <div>{provider.steps} {provider.help && <a href={provider.help} target="_blank" title={extTitle()} rel="noreferrer">Open {provider.helpLabel}</a>}</div>
         </div>
       ) : (
         <p className="muted">Any IMAP account works. Caprock connects only to the mail servers you enter here; the password goes to your system keychain and your mail is kept on this computer. Nothing is sent to Caprock. Remove the account to stop.</p>
@@ -72,7 +73,7 @@ export function AddAccount({ onDone, onCancel, provider }: { onDone: () => void;
       {guess && (
         <div className="hint">
           <b>{guess.provider}</b>{guess.known ? ' — settings found.' : ' — settings guessed; check them below.'}
-          {guess.note && !provider?.steps && <div>{guess.note} {guess.help_url && <a href={guess.help_url} target="_blank" rel="noreferrer">Make one</a>}</div>}
+          {guess.note && !provider?.steps && <div>{guess.note} {guess.help_url && <a href={guess.help_url} target="_blank" title={extTitle()} rel="noreferrer">Make one</a>}</div>}
         </div>
       )}
       {!adv && guess && <button type="button" className="link small" onClick={() => setAdv(true)}>Server settings</button>}
@@ -269,7 +270,7 @@ function AISettings({ settings, set }: { settings: Settings; set: (k: string, v:
       <div className="small">
         {st === null ? '…' : st.available
           ? <span className="ok">● {st.label}. Mail text goes to {st.sends_to}.</span>
-          : <span className="muted">○ {st.error}{p && p.kind !== 'local' && <>. Once set up, mail text goes to {p.sends_to}.</>}{p?.kind === 'local' && <> Install <a href="https://ollama.com" target="_blank" rel="noreferrer">Ollama</a>, then run <code>ollama pull qwen3:8b</code>.</>}</span>}
+          : <span className="muted">○ {st.error}{p && p.kind !== 'local' && <>. Once set up, mail text goes to {p.sends_to}.</>}{p?.kind === 'local' && <> Install <a href="https://ollama.com" target="_blank" title={extTitle()} rel="noreferrer">Ollama</a>, then run <code>ollama pull qwen3:8b</code>.</>}</span>}
       </div>
     </>
   )

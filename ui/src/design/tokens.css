@@ -515,6 +515,23 @@ a { text-decoration: none; }
  * to be an <a> (which used to underline every label and number inside it). A
  * card opts out with .no-underline; inline links opt in with .link. */
 a.link:hover { text-decoration: underline; }
+/* Leaves the dashboard: a link that opens a new tab, or the system browser
+ * in the app, says so with ↗ (owner, 2026-10-16, translated: "pages that open
+ * in a new window should be marked somehow"). An `<a target="_blank">` draws
+ * it by itself; a button that calls openExternal carries `data-ext`
+ * (lib/externalLinks extProps). `data-ext="none"` opts out: an icon-only link
+ * whose glyph already is the arrow. Inside base, so a utility can still hide it. */
+@layer base {
+  a[target="_blank"]:not([data-ext="none"])::after,
+  [data-ext=""]::after {
+    content: "\2197";
+    display: inline-block;
+    margin-left: 0.25em;
+    font-size: 0.85em;
+    opacity: 0.75;
+    text-decoration: none;
+  }
+}
 /* Selected text keeps its own colour on a 20% wash of the accent: each
  * palette's `--color-selection`, written out as rgba rather than a
  * color-mix() of the accent, so no engine has to resolve a mix inside a

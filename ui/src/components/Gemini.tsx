@@ -27,6 +27,7 @@ import { useApi } from '@/lib/useApi'
 import { Panel } from '@/components/ui'
 import { fmtTokens } from '@/lib/format'
 import { keys } from '@/lib/appkeys'
+import { extTitle } from '@/lib/externalLinks'
 
 /** Prices below a cent, which is most of them, without rounding them to
  *  nothing: fmtUSD renders $0.002 as "$0.00", and a reader who believes a
@@ -105,7 +106,7 @@ export function GeminiPanel() {
         <div className="px-3 py-3 text-[12px] text-fg-muted grid gap-2.5">
           <p className="m-0">
             Ask Google&apos;s Gemini about your own sessions, on your own key. Get one from{' '}
-            <a className="link" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+            <a className="link" href="https://aistudio.google.com/apikey" target="_blank" title={extTitle()} rel="noreferrer">
               Google AI Studio
             </a>{' '}
             and paste it here — you pay Google directly, and Caprock counts what it spends

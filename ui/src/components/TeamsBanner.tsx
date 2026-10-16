@@ -20,6 +20,7 @@ import { markAnswered, usePromptDue, type PromptKind } from '@/lib/prompts'
 import { openExternal, teamEligible, TEAMS_URL, useNudgeSlot } from '@/lib/nudges'
 import { TeamsModal, type TeamsFact } from './TeamsModal'
 import { Banner, BannerButton, BannerDismiss, Fig } from './Banner'
+import { extTitle } from '@/lib/externalLinks'
 
 const KIND: PromptKind = 'teams-nudge'
 
@@ -41,7 +42,7 @@ export function TeamsBanner({ fact, now }: { fact: TeamsFact; now: number }) {
         <Fig title={fmtUSD(fact.costUSD)}>{fmtUSDShort(fact.costUSD)}</Fig> {fact.window}.
       </>}
       actions={<>
-        <BannerButton onClick={() => openExternal(TEAMS_URL)}>Caprock for Teams →</BannerButton>
+        <BannerButton onClick={() => openExternal(TEAMS_URL)} title={extTitle()}>Caprock for Teams ↗</BannerButton>
         <button type="button" onClick={() => setOpen(true)} className="bn-link">What teams get</button>
         <BannerDismiss onClick={() => markAnswered(KIND, now)} title="Hide this for a month">Not now</BannerDismiss>
       </>}

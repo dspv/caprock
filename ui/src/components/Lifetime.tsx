@@ -20,6 +20,7 @@ import { fmtUSD } from '@/lib/format'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
 import type { Settings } from '@/lib/api'
 import { useLicensed, useNudgeSlot } from '@/lib/nudges'
+import { extTitle } from '@/lib/externalLinks'
 
 export function LifetimeStrip({ plan }: { plan?: Settings }) {
   // Lifetime totals move slowly; a minute is far more often than they change,
@@ -107,9 +108,9 @@ function CapHint() {
       target="_blank"
       rel="noreferrer"
       className="text-[11px] text-warn hover:text-accent no-underline"
-      title="Caprock pauses the sessions it started once the day's cost passes a number you choose"
+      title={extTitle("Caprock pauses the sessions it started once the day's cost passes a number you choose")}
     >
-      today is {(cost / median).toFixed(1)}× a normal day — set a limit →
+      today is {(cost / median).toFixed(1)}× a normal day — set a limit
     </a>
   )
 }

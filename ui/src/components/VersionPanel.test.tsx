@@ -21,7 +21,7 @@ describe('the version panel', () => {
     expect(dlg.textContent).toMatch(/0\.105\.0 is out/)
     expect(dlg.querySelector('[data-checked]')?.textContent).toMatch(/Checked 37m ago/)
     expect(dlg.textContent).not.toMatch(/The session deck/)
-    expect(screen.getByRole('button', { name: 'Release notes →' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Release notes' })).toBeTruthy()
   })
 
   it('marks the page while open, so the update card in the same corner steps aside', () => {

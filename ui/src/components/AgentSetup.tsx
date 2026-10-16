@@ -10,6 +10,7 @@
  */
 import type { CatalogEntry } from '@/lib/api'
 import { Copyable } from './ui'
+import { extTitle } from '@/lib/externalLinks'
 
 export function AgentSetupNote({
   entry,
@@ -37,7 +38,7 @@ export function AgentSetupNote({
           </button>
         )}
         {s.docs && (
-          <a href={s.docs} target="_blank" rel="noreferrer" className="text-[12px] text-fg-muted underline-offset-2 hover:text-fg hover:underline">
+          <a href={s.docs} target="_blank" title={extTitle()} rel="noreferrer" className="text-[12px] text-fg-muted underline-offset-2 hover:text-fg hover:underline">
             {entry.label} docs
           </a>
         )}

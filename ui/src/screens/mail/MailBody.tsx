@@ -3,6 +3,7 @@ import type { Message } from './mailApi'
 import { partURL } from './mailApi'
 import { isTauri } from '@/lib/appmode'
 import { openExternal } from '@/lib/nudges'
+import { extTitle } from '@/lib/externalLinks'
 
 const remoteImg = /<img[^>]+src\s*=\s*["']?\s*https?:/i
 const remoteBg = /url\(\s*["']?\s*https?:/i
@@ -36,7 +37,7 @@ function Linkified({ text, onMailto }: { text: string; onMailto?: (addr: string)
         const parts = l.split(urlRe)
         return (
           <div key={i} className={l.startsWith('>') ? 'q' : undefined}>
-            {parts.map((p, j) => (j % 2 === 1 ? <a key={j} href={p} target="_blank" rel="noreferrer noopener" onClick={(e) => { e.preventDefault(); openMailLink(p, onMailto) }}>{p}</a> : p))}
+            {parts.map((p, j) => (j % 2 === 1 ? <a key={j} href={p} target="_blank" title={extTitle()} rel="noreferrer noopener" onClick={(e) => { e.preventDefault(); openMailLink(p, onMailto) }}>{p}</a> : p))}
             {l === '' ? ' ' : null}
           </div>
         )

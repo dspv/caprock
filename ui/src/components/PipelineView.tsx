@@ -45,6 +45,7 @@ import { JourneyPills } from './Journey'
 import { GitHubPerson } from './GitHubAvatar'
 import { Panel } from './ui'
 import { CI_IDLE_MS, CI_RUNNING_MS, CIMark, DeckSkeleton, ExpandToggle, Freshness, PRS_PENDING_MS, connectGitHub, usePoll } from './SessionDeck'
+import { extTitle } from '@/lib/externalLinks'
 
 export interface PipelineViewProps {
   /** The agent session the page reads through: its repository, its pull requests. */
@@ -446,7 +447,7 @@ function Detail({ p, row, ci, runs, now, sessionId, kit, connected, why, onInves
           <Pill tone={state === 'merged' ? 'merged' : state === 'open' ? (live?.draft ? 'muted' : 'ok') : 'faint'} data="state">{live?.draft && state === 'open' ? 'Draft' : state[0]!.toUpperCase() + state.slice(1)}</Pill>
           <span className="num shrink-0 text-[13px] text-fg-muted">#{p.number}</span>
           <h3 className="min-w-0 flex-1 text-[15px] font-semibold leading-snug [overflow-wrap:anywhere]">{live?.title ?? row.title}</h3>
-          <button type="button" onClick={() => openExternal(live?.url || row.url)} className="ml-auto shrink-0 text-[12px] text-accent hover:underline">GitHub ↗</button>
+          <button type="button" onClick={() => openExternal(live?.url || row.url)} className="ml-auto shrink-0 text-[12px] text-accent hover:underline" title={extTitle('Open the pull request on GitHub')}>GitHub ↗</button>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {v && <Pill tone={v.tone} title={v.title} data="ci">{v.text}</Pill>}
@@ -616,7 +617,7 @@ function JobPart({ job, runs, sessionId, pr, why, onInvestigated, sessionName }:
     }
   }
   return (
-    <Part title={`${job.name}${step ? ` › ${step.name}` : ''}`} right={job.html_url ? <button type="button" onClick={() => openExternal(job.html_url!)} className="hover:text-fg-muted hover:underline">open on GitHub ↗</button> : undefined}>
+    <Part title={`${job.name}${step ? ` › ${step.name}` : ''}`} right={job.html_url ? <button type="button" onClick={() => openExternal(job.html_url!)} className="hover:text-fg-muted hover:underline" title={extTitle()}>open on GitHub ↗</button> : undefined}>
       <ol data-prs-steps className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-x-6">
         {job.steps.map((st) => (
           <li key={st.number} className={`flex min-w-0 items-center gap-1.5 rounded-[4px] px-1 text-[11.5px] leading-[20px] ${ciTone(st) === 'fail' ? 'bg-danger/10 text-danger' : 'text-fg-muted'}`}>

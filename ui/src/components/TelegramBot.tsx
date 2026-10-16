@@ -20,6 +20,7 @@ import { useNow } from '@/lib/useNow'
 import { openExternal } from '@/lib/nudges'
 import { BigStep } from './Pairing'
 import { SecretInfo, SecretInput, SecretNote, SecretPill, type SecretProvider } from './SecretField'
+import { extProps, extTitle } from '@/lib/externalLinks'
 
 export const TELEGRAM_PROVIDER: SecretProvider = {
   name: 'Telegram',
@@ -116,6 +117,7 @@ export function TelegramBotFields({ s, onSaved }: { s?: Settings; onSaved: () =>
           <button
             type="button"
             onClick={() => openExternal('https://t.me/BotFather')}
+                {...extProps()}
             className="h-11 rounded-[10px] border border-[var(--app-hairline-strong)] px-5 text-[15px] font-medium text-fg hover:border-accent hover:text-accent"
           >
             Open @BotFather
@@ -184,7 +186,7 @@ export function TelegramBotFields({ s, onSaved }: { s?: Settings; onSaved: () =>
           {pairing.link && (
             <a
               href={pairing.link}
-              target="_blank"
+              target="_blank" title={extTitle()}
               rel="noreferrer"
               className="inline-flex h-11 items-center rounded-[10px] bg-accent px-6 text-[15px] font-semibold text-panel hover:brightness-110"
             >

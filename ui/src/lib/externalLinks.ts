@@ -31,3 +31,26 @@ export function installExternalLinks(): () => void {
   document.addEventListener('click', onClick)
   return () => document.removeEventListener('click', onClick)
 }
+
+/**
+ * What a link that leaves the dashboard says on hover (owner, 2026-10-16,
+ * translated: "pages that open in a new window should be marked somehow,
+ * because sometimes it's unclear where you went"). In the desktop app such a
+ * link opens the system browser; in a browser tab, a new tab. Each one also
+ * draws the ↗ mark: an `<a target="_blank">` by itself, a button that calls
+ * openExternal through `data-ext` (design/tokens.css, "Leaves the dashboard").
+ */
+export function opensElsewhere(app: boolean = isTauri()): string {
+  return app ? 'Opens in your browser' : 'Opens in a new tab'
+}
+
+/** A link's own title, if it has one, then where it opens. */
+export function extTitle(what?: string, app?: boolean): string {
+  const where = opensElsewhere(app)
+  return what ? `${what}\n${where}` : where
+}
+
+/** What a button that calls openExternal carries: the ↗ mark and where it opens. */
+export function extProps(what?: string): { 'data-ext': ''; title: string } {
+  return { 'data-ext': '', title: extTitle(what) }
+}

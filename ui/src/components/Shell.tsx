@@ -42,6 +42,9 @@ import { StaleUiPill } from './StaleUiPill'
 import { GitHubStatusDot } from './GitHubOutage'
 import { isAppMode } from '@/lib/appmode'
 import { useNarrowScreen } from '@/lib/phone'
+import { documentTitle, isHome, pageTitle, useDocumentTitle } from '@/lib/pagetitle'
+import { BackHome } from './WhereAmI'
+import { extTitle } from '@/lib/externalLinks'
 
 const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] = [
   // "Home", not "Now" (owner, 2026-10-14, translated: "'Now' as the name of
@@ -102,6 +105,10 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   // The phone home is an app's first screen: one compact bar, no offers and
   // no site footer (components/PhoneBar, PhoneHome).
   const phoneHome = !app && narrow && route.name === 'now' && !route.full
+  const home = isHome(route)
+  const title = pageTitle(route)
+  // The browser tab says it too ("Pipeline · caprock"); the app's window is not a tab.
+  useDocumentTitle(documentTitle(route), !app)
   return (
     <div className="min-h-screen flex flex-col">
       {/* The answer to a check by hand; the app draws its own (AppShell). */}
@@ -111,10 +118,20 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         * anything. On a desktop it is still one row. */}
       {phoneHome && <PhoneBar link={link} heardAt={liveStore.heardAt} />}
       <header data-shell-header className={`${immersive || phoneHome ? 'hidden' : 'flex'} min-h-10 border-b border-border bg-panel flex-wrap items-center px-3 pb-1 pt-[max(0.25rem,env(safe-area-inset-top))] gap-x-4 gap-y-1 sticky top-0 z-10`}>
-        <a href="#/" className="flex items-center gap-2 text-fg no-underline hover:no-underline">
-          <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden><path d="M6 22 L16 8 L26 22 Z" fill="none" stroke="var(--color-accent)" strokeWidth="3" strokeLinejoin="round" /><rect x="6" y="22" width="20" height="3" fill="var(--color-accent)" /></svg>
-          <span className="font-medium tracking-wide text-[13px]">caprock</span>
-        </a>
+        {/* Where you are (.ai/04-ui.md § Where am I): off Home, the way back
+          * first, where a back button is looked for; then the wordmark and
+          * the page's name beside it. */}
+        <span className="flex min-w-0 items-center gap-2">
+          {!home && <BackHome />}
+          <a href="#/" title="Home" className="flex items-center gap-2 text-fg no-underline hover:no-underline">
+            <svg width="16" height="16" viewBox="0 0 32 32" aria-hidden><path d="M6 22 L16 8 L26 22 Z" fill="none" stroke="var(--color-accent)" strokeWidth="3" strokeLinejoin="round" /><rect x="6" y="22" width="20" height="3" fill="var(--color-accent)" /></svg>
+            {/* Off Home the page's name takes the wordmark's place: the row
+              * is one line at 1280px, and the tab's title keeps the product's
+              * name ("Pipeline · caprock"). */}
+            <span className={`font-medium tracking-wide text-[13px] ${home ? '' : 'sr-only'}`}>caprock</span>
+          </a>
+          {!home && <span data-page-title className="min-w-0 truncate text-[13px] font-semibold text-fg">{title}</span>}
+        </span>
         {/* A filled pill for the current screen — the same control the agent
           * filter on Now uses, and it works for the same reason: a solid
           * accent block is read before any text is. The previous state was
@@ -170,9 +187,16 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           {!app && <VersionChip />}
           {/* A button with a gear, framed like Feedback beside it (owner,
             * 2026-10-12: "settings" in grey text was not noticeable). */}
+          {/* Settings is not in the nav, so on its page this button is the one
+            * item drawn as current: the same filled accent as a nav pill. */}
           <a href="#/settings" data-settings-button title="Settings"
-            className="inline-flex h-[24px] items-center gap-1.5 rounded-[6px] border border-border-strong bg-panel-2/60 px-2 text-[12px] font-medium text-fg no-underline transition-colors hover:border-accent/60 hover:text-accent motion-reduce:transition-none">
-            <SettingsIcon size={14} className="text-fg-muted" />
+            aria-current={route.name === 'settings' ? 'page' : undefined}
+            className={`inline-flex h-[24px] items-center gap-1.5 rounded-[6px] border px-2 text-[12px] font-medium no-underline transition-colors motion-reduce:transition-none ${
+              route.name === 'settings'
+                ? 'border-accent bg-accent text-panel'
+                : 'border-border-strong bg-panel-2/60 text-fg hover:border-accent/60 hover:text-accent'
+            }`}>
+            <SettingsIcon size={14} className={route.name === 'settings' ? 'text-panel' : 'text-fg-muted'} />
             <span>Settings</span>
           </a>
         </div>
@@ -312,12 +336,12 @@ export function NotesDialog({ u, onClose }: { u: UpdateStatus; onClose: () => vo
             * a product they already paid for is an odd thing to do. */}
           <a
             href="https://caprock.dev/changelog"
-            target="_blank"
+            target="_blank" title={extTitle()}
             rel="noopener noreferrer"
             onClick={(e) => { e.preventDefault(); openExternal('https://caprock.dev/changelog') }}
             className="text-[12px] text-fg-faint no-underline hover:text-accent"
           >
-            every release →
+            every release
           </a>
         </div>
       </div>
@@ -407,7 +431,7 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
           {u?.enabled === false ? (
             <div className="text-[13px] text-fg-muted">
               Release checks are off, so this copy never asks GitHub what the latest version is. Turn them on in{' '}
-              <a href="#/status" onClick={onClose} className="text-accent no-underline hover:text-accent-strong">status</a>.
+              <a href="#/settings" onClick={onClose} className="text-accent no-underline hover:text-accent-strong">Settings</a>.
             </div>
           ) : !u?.update_available ? (
             <div className="text-[13px] text-fg-muted">
@@ -471,11 +495,11 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
                     ) : (
                       <a
                         href={u?.url ?? 'https://github.com/dspv/caprock/releases/latest'}
-                        target="_blank"
+                        target="_blank" title={extTitle()}
                         rel="noopener noreferrer"
                         className="flex-1 rounded-sm border border-border bg-bg px-2 py-1.5 text-[13px] text-accent no-underline hover:text-accent-strong"
                       >
-                        Open the release page →
+                        Open the release page
                       </a>
                     )}
                   </div>
@@ -507,11 +531,11 @@ function UpdateDialog({ onClose }: { onClose: () => void }) {
             </button>
             <a
               href={u?.url ?? 'https://github.com/dspv/caprock/releases/latest'}
-              target="_blank"
+              target="_blank" title={extTitle()}
               rel="noopener noreferrer"
               className="text-[12px] text-fg-faint no-underline hover:text-accent"
             >
-              release notes →
+              release notes
             </a>
           </div>
         </div>

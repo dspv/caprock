@@ -189,6 +189,30 @@ describe('the session deck in the app', () => {
     expect(pipelineTab()).toHaveAttribute('aria-selected', 'false')
   })
 
+  // Owner, 2026-10-16, translated: "there must be a button to return to the
+  // dashboard". The Pipeline and Mail tabs have no dashboard header, so each
+  // carries a bar with ← Dashboard and the page's name (components/WhereAmI).
+  it('leads back to the Dashboard tab from the Pipeline and Mail tabs, and says which page each is', async () => {
+    await openAgent()
+    act(() => { fireEvent.keyDown(window, { key: 'd', code: 'KeyD', metaKey: true }) })
+    const nav = await screen.findByRole('link', { name: 'Pipeline' }, { timeout: 5000 })
+    act(() => { location.hash = nav.getAttribute('href')! })
+    await pipelinePage()
+    const bar = document.querySelector('[data-pipeline-view]:not([hidden]) [data-tab-page-bar]')!
+    expect(bar.querySelector('[data-page-title]')).toHaveTextContent('Pipeline')
+    fireEvent.click(bar.querySelector('[data-back-dashboard]')!)
+    await waitFor(() => expect(screen.getByRole('tab', { name: /^Dashboard/ })).toHaveAttribute('aria-selected', 'true'))
+    expect(pipelineTab()).toHaveAttribute('aria-selected', 'false')
+
+    act(() => { fireEvent.keyDown(window, { key: 'M', code: 'KeyM', metaKey: true, shiftKey: true }) })
+    await screen.findByRole('tab', { name: 'Mail' })
+    const mailBar = await waitFor(() => document.querySelector('[data-mail-view] [data-tab-page-bar]')!)
+    expect(mailBar.querySelector('[data-page-title]')).toHaveTextContent('Mail')
+    fireEvent.click(mailBar.querySelector('[data-back-dashboard]')!)
+    await waitFor(() => expect(screen.getByRole('tab', { name: /^Dashboard/ })).toHaveAttribute('aria-selected', 'true'))
+    expect(document.querySelector('[data-mail-view]')).toBeNull()
+  })
+
   it('opens the Pipeline from the sidebar footer’s button and from the bar’s own control, and hides the bar with its ×', async () => {
     await openAgent()
     expect(pipelineButton()).toHaveAccessibleName('Pipeline: every pull request on its way — open, CI, merged, released — in its own tab (⌘P)')

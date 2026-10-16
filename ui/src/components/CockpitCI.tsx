@@ -8,7 +8,7 @@
  * step it is on coloured — its CI's colour on the CI step — and how long it
  * has been there; the same steps the Pipeline page's rows draw (lib/journey).
  * The list scrolls inside the block; *Expand* makes it taller (remembered),
- * *Pipeline ↗* opens the page. It reads the Pipeline's own answer
+ * *Pipeline →* opens the page (→, not ↗: it stays in Caprock). It reads the Pipeline's own answer
  * (…/ci/stats, kept by the daemon), asked while the block is unfolded and
  * the window shown, and draws the copy last kept at once.
  *
@@ -186,7 +186,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
             {listed.length > 4 ? (
               <button type="button" data-cockpit-ci-tall aria-expanded={tall} onClick={() => setTall(!tall)} className="text-fg-faint hover:text-fg-muted">{tall ? 'Less' : 'Expand'}</button>
             ) : <span />}
-            {onOpen && <button type="button" data-cockpit-ci-open onClick={onOpen} title="Open the Pipeline page in a tab" className="text-accent hover:underline">Pipeline ↗</button>}
+            {onOpen && <button type="button" data-cockpit-ci-open onClick={onOpen} title="Open the Pipeline: its own tab, beside the Dashboard" className="text-accent hover:underline">Pipeline →</button>}
           </span>
         </>
       ) : (

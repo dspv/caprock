@@ -30,6 +30,7 @@ import { pipelineHref, STEPS } from '@/lib/work'
 import { SectionLabel, useFolded } from './Cockpit'
 import { useDeckAnswer } from './CockpitCI'
 import { Panel } from './ui'
+import { extTitle } from '@/lib/externalLinks'
 
 export interface ReleasePlanProps {
   plan: ReleasePlanData
@@ -173,7 +174,7 @@ function PhoneRows({ plan }: { plan: ReleasePlanData }) {
     return (
       <li key={r.key} data-release-row={r.number ?? r.key} data-stage={r.stage} className="min-w-0 border-b border-border last:border-b-0">
         {r.url
-          ? <a href={r.url} target="_blank" rel="noopener noreferrer" title={r.title} className={`${cls} text-fg no-underline active:bg-panel-2`}>{body}</a>
+          ? <a href={r.url} target="_blank" rel="noopener noreferrer" title={extTitle(r.title)} className={`${cls} text-fg no-underline active:bg-panel-2`}>{body}</a>
           : <div title={r.title} className={cls}>{body}</div>}
       </li>
     )

@@ -80,7 +80,7 @@ describe('the cockpit’s CI block', () => {
     // It scrolls inside the block; Expand only past a few rows; the page one click away.
     expect(document.querySelector('[data-cockpit-journey]')).toHaveClass('overflow-y-auto', 'max-h-[176px]')
     expect(document.querySelector('[data-cockpit-ci-tall]')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Pipeline ↗' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Pipeline →' }))
     expect(onOpen).toHaveBeenCalledTimes(1)
   })
 
@@ -119,7 +119,7 @@ describe('the cockpit’s CI block', () => {
     expect(document.querySelector('[data-cockpit-ci-quiet]')).toHaveTextContent('Nothing in flight · no release published')
     expect([...document.querySelectorAll('[data-cockpit-ci-pr]')].map((e) => e.getAttribute('data-cockpit-ci-pr'))).toEqual(['5', '4', '3'])
     expect(document.querySelector('[data-cockpit-ci-tall]')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Pipeline ↗' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pipeline →' })).toBeInTheDocument()
   })
 
   it('names the last release when everything shipped', async () => {

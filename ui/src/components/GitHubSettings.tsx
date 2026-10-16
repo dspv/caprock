@@ -19,6 +19,7 @@ import {
 } from '@/lib/github'
 import { Section, Toggle } from './SettingsParts'
 import { SecretInfo, SecretInput, type SecretProvider } from './SecretField'
+import { extTitle } from '@/lib/externalLinks'
 
 const GITHUB_PROVIDER: SecretProvider = {
   name: 'GitHub',
@@ -126,7 +127,7 @@ function Connect({ s, onStatus }: { s: GitHubStatus; onStatus: (s: GitHubStatus)
           <span className="text-fg-muted">Pull requests</span> read and write, and <span className="text-fg-muted">Commit statuses</span>,{' '}
           <span className="text-fg-muted">Checks</span> and <span className="text-fg-muted">Metadata</span> read — or a classic one with{' '}
           <span className="mono">repo</span> and <span className="mono">read:org</span>.{' '}
-          <a className="text-accent underline-offset-2 hover:underline" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noreferrer">Make one on github.com</a>.
+          <a className="text-accent underline-offset-2 hover:underline" href="https://github.com/settings/personal-access-tokens/new" target="_blank" title={extTitle()} rel="noreferrer">Make one on github.com</a>.
           {' '}Kept in the {s.sources.store === 'keychain' ? 'macOS Keychain' : 'data directory, readable by you only'}, never in Caprock's database or logs.
         </p>
       </form>
@@ -174,7 +175,7 @@ function DeviceCode({ d: first, onDone, onCancel }: { d: GitHubDevice; onDone: (
       <div className="flex flex-wrap items-center gap-3">
         <span className="mono select-all text-[22px] font-semibold tracking-[0.12em] text-fg" aria-label="Your code">{d.user_code}</span>
         <button type="button" className={BUTTON} onClick={() => { void navigator.clipboard?.writeText(d.user_code ?? '').then(() => setCopied(true)) }}>{copied ? 'Copied' : 'Copy'}</button>
-        <a className={`${PRIMARY} inline-flex items-center`} href={d.verification_uri} target="_blank" rel="noreferrer">Open github.com/login/device</a>
+        <a className={`${PRIMARY} inline-flex items-center`} href={d.verification_uri} target="_blank" title={extTitle()} rel="noreferrer">Open github.com/login/device</a>
       </div>
       <p className="text-[12px] text-fg-faint">
         Waiting for you to approve{d.expires_at ? ` — the code works until ${clockText(d.expires_at)}` : ''}.{' '}
@@ -212,7 +213,7 @@ function Connected({ s, owner, onStatus }: { s: GitHubStatus; owner: boolean; on
       <div className="grid gap-0.5">
         <p className="text-fg">
           {s.user ? (
-            <>Connected as <a className="font-medium text-accent hover:underline" href={s.user.html_url ?? `https://github.com/${s.user.login}`} target="_blank" rel="noreferrer">@{s.user.login}</a>{s.user.name ? <span className="text-fg-muted"> ({s.user.name})</span> : null}</>
+            <>Connected as <a className="font-medium text-accent hover:underline" href={s.user.html_url ?? `https://github.com/${s.user.login}`} target="_blank" title={extTitle()} rel="noreferrer">@{s.user.login}</a>{s.user.name ? <span className="text-fg-muted"> ({s.user.name})</span> : null}</>
           ) : 'Connected'}
           <span className="text-fg-muted"> · through {sourceLabel(s.source)}</span>
         </p>

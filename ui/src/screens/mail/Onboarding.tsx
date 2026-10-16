@@ -5,6 +5,7 @@ import { AddAccount } from './Setup'
 import { ImportAll } from './ImportAll'
 import { Icon } from './icons'
 import { openExternal } from '@/lib/nudges'
+import { extTitle } from '@/lib/externalLinks'
 
 // How Mail starts: try it on sample mail, import the accounts another mail
 // app already knows, or add one — by signing in where the provider allows it,
@@ -216,7 +217,7 @@ function OAuthSignIn({ p, onDone, onBack }: { p: Provider; onDone: () => void; o
       {url ? (
         <div className="waiting">
           <div><span className="pulse" /> Waiting for you to approve in the browser…</div>
-          <p className="muted small">Approve Caprock on the {p.name} page; your mailbox appears here by itself. <a href={url} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openExternal(url) }}>Open the page again</a></p>
+          <p className="muted small">Approve Caprock on the {p.name} page; your mailbox appears here by itself. <a href={url} target="_blank" title={extTitle()} rel="noreferrer" onClick={(e) => { e.preventDefault(); openExternal(url) }}>Open the page again</a></p>
         </div>
       ) : (
         <p className="muted">Sign in with {p.name} in your browser and approve Caprock. Caprock gets a token for your mail only, kept in the system keychain; no password is typed here.</p>

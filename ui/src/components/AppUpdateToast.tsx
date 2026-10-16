@@ -20,6 +20,7 @@ import { openExternal } from '@/lib/nudges'
 import { NotesDialog } from './Shell'
 import { useUpdateStatus } from './AppUpdateNotice'
 import { usePlan } from './PlanPicker'
+import { extProps } from '@/lib/externalLinks'
 
 /** The version whose card was put away; the strip's offer is separate. */
 export const TOAST_KEY = 'caprock.update.toastSeen'
@@ -73,7 +74,7 @@ export function AppUpdateToast() {
             {st?.notes && st.notes_for && v(st.notes_for) === next ? (
               <button type="button" className="link text-[13px]" onClick={() => setNotes(true)}>What’s new</button>
             ) : (
-              <button type="button" className="link text-[13px]" onClick={() => openExternal(st?.url ?? 'https://caprock.dev/changelog')}>What’s new</button>
+              <button type="button" className="link text-[13px]" {...extProps()} onClick={() => openExternal(st?.url ?? 'https://caprock.dev/changelog')}>What’s new</button>
             )}
             <button type="button" onClick={later} className="ml-auto rounded-[7px] px-2.5 py-1.5 text-[13px] text-fg-muted hover:text-fg">Later</button>
             <button

@@ -27,6 +27,7 @@ import { useSetupShell } from '@/lib/setupShell'
 import { PremiumModal } from './PremiumModal'
 import { Section } from './SettingsParts'
 import { SecretField, type SecretProvider } from './SecretField'
+import { extTitle } from '@/lib/externalLinks'
 
 const AGENT_LABEL: Record<SubscriptionAgentId, string> = { claude: 'Claude Code', codex: 'Codex' }
 
@@ -127,7 +128,7 @@ export function DeepSeekKey({ entry, refresh }: { entry?: Subscription; refresh:
       </p>
       <p className="text-[12px] leading-snug text-fg-muted">
         Pick <span className="text-fg">DeepSeek</span> under Subscription in New agent or Quick chat. DeepSeek bills your key; the session does not use your Claude plan or its limits, and the key goes only into that session&rsquo;s environment. Get a key at{' '}
-        <a className="link" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">platform.deepseek.com</a>.
+        <a className="link" href="https://platform.deepseek.com/api_keys" target="_blank" title={extTitle()} rel="noreferrer">platform.deepseek.com</a>.
       </p>
       <SecretField
         label="DeepSeek API key"

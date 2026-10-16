@@ -15,6 +15,7 @@
 import { useEffect, useState } from 'react'
 import { api, type PremiumPricing, type Settings } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
+import { extTitle } from '@/lib/externalLinks'
 
 export function LicenseField({ plan, save }: { plan: Settings; save: (patch: Partial<Settings>) => void }) {
   const [draft, setDraft] = useState(plan.license_key ?? '')
@@ -65,7 +66,7 @@ export function LicenseField({ plan, save }: { plan: Settings; save: (patch: Par
         {lic && !lic.active && (
           <span className="text-fg-muted">
             {plan.license_key ? lic.reason : 'No key — the free product is unaffected.'}{' '}
-            <a href="https://caprock.dev/premium/" target="_blank" rel="noreferrer" className="link">
+            <a href="https://caprock.dev/premium/" target="_blank" title={extTitle()} rel="noreferrer" className="link">
               what Premium does
             </a>
           </span>
