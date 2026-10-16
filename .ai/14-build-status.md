@@ -168,6 +168,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-16 — 0.123.1: a dropped file reaches the terminal again
+
+A patch release. 0.123.0 turned on Tauri's `unstable` feature for the Page tab, which makes the dashboard a child webview of its window; Tauri then reports a drop to the webview, not the window, and the app listened on the window, so no file dragged onto a terminal arrived (#707).
+
 ### 2026-10-16 — 0.123.0: a Page tab, and CI that stops failing on its own
 
 A minor release because it carries a feature. A web page opens inside Caprock in a Page tab, apart from the agents, in its own webview with no access to Caprock's commands; a hidden page is unloaded after five minutes; memory measured and recorded in ADR-070 (#702). The dashboard's commands are now granted to the dashboard's own view only, not to the whole window. Four flaky tests were fixed at the root — the daemon now waits for its background work before closing the database, a running clone stops on close, and a revoke reaches a relayed terminal while someone types — and `make pr-check` runs the race detector and a Windows build on what a branch changed (#701).
