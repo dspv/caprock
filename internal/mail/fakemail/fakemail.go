@@ -10,6 +10,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
@@ -251,6 +252,9 @@ type Msg struct {
 	ReplyTo string
 }
 
+// msgSeq numbers the Message-IDs Raw makes up.
+var msgSeq atomic.Int64
+
 // Raw renders the message.
 func (m Msg) Raw() []byte {
 	var b bytes.Buffer
@@ -258,7 +262,10 @@ func (m Msg) Raw() []byte {
 		m.Date = time.Now()
 	}
 	if m.MessageID == "" {
-		m.MessageID = fmt.Sprintf("%d.%d@fake.test", m.Date.UnixNano(), len(m.Subject))
+		// The sequence number keeps two messages rendered in a row apart:
+		// Windows' clock can return the same time.Now() for both, and one
+		// Message-ID makes them one conversation.
+		m.MessageID = fmt.Sprintf("%d.%d.%d@fake.test", m.Date.UnixNano(), msgSeq.Add(1), len(m.Subject))
 	}
 	b.WriteString(m.Headers)
 	if m.ReplyTo != "" {
