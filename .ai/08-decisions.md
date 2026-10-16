@@ -4007,7 +4007,10 @@ searching prose.
 - **Drawn, and in the sidebar.** The `#/brain` screen opens on the graph —
   memories and the topics and projects they hang off, laid out by a
   force simulation written for it (`ui/src/lib/forcegraph.ts`: Barnes–Hut
-  repulsion, springs, a pull to the centre), the list one click away. The
+  repulsion, springs, a pull to the centre), the list one click away
+  (amended 2026-10-16, owner: the screen now leads with what a new session
+  is handed and the recent memories, and the graph is a card that opens in
+  a near-full-screen dialog; 04-ui.md § Second Brain). The
   edges, nodes and labels are drawn into a cached layer only when they
   change; panning and zooming scale that layer and redraw it when the
   view rests. On a preview stand with 3,011 memories, in the headless

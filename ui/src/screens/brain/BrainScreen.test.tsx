@@ -6,13 +6,15 @@ const m = vi.hoisted(() => ({
   brain: vi.fn(),
   settings: vi.fn(),
   backfill: vi.fn(),
+  handoff: vi.fn(),
+  node: vi.fn(),
   glance: vi.fn((): Promise<unknown> => Promise.resolve({ agents: [], display: {} })),
 }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
     ...actual,
-    api: { ...actual.api, brainStatus: m.status, brain: m.brain, brainSettings: m.settings, brainBackfill: m.backfill, glance: m.glance },
+    api: { ...actual.api, brainStatus: m.status, brain: m.brain, brainSettings: m.settings, brainBackfill: m.backfill, brainHandoff: m.handoff, brainNode: m.node, glance: m.glance },
   }
 })
 
@@ -96,38 +98,35 @@ describe('the Second Brain screen', () => {
     expect(m.settings.mock.invocationCallOrder[0]).toBeLessThan(m.backfill.mock.invocationCallOrder[0]!)
     await waitFor(() => expect(document.querySelector('[data-brain-phase="building"]')).not.toBeNull())
     expect(screen.getByRole('heading', { name: 'Building' })).toBeTruthy()
-    expect(document.querySelector('[data-brain-state-detail]')!.textContent).toBe('· 0 of 41 read · opening the next session')
-    expect(document.querySelector('[data-brain-graph-waiting]')!.textContent).toMatch(/Memories land here/)
+    expect(document.querySelector('[data-brain-state-detail]')!.textContent).toBe(' · 0 of 41 read · opening the next session · 0% · 0 memories')
+    expect(document.querySelector('[data-brain-list-waiting]')!.textContent).toMatch(/Memories land here/)
+    // Before the first memory the card is the living brain, not a graph to open.
+    expect(document.querySelector('[data-brain-graph-card="waiting"] [data-brain-live-orb]')).not.toBeNull()
   })
 
-  it('building: what it reads now, how far, the memories found, today’s tokens, and where it comes from', async () => {
+  it('building: one line with N of M over a bar; what it reads, the steps, tokens and sources under Details', async () => {
     m.status.mockResolvedValue(status({ memories: 8, auto: building() }))
     m.brain.mockResolvedValue({ nodes: [node({ id: 1 }), node({ id: 2, title: 'Use a queue' })], edges: [], total: 2 })
+    m.handoff.mockResolvedValue({ project: '', memories: [], max: 5, budget: 700 })
     render(<BrainScreen />)
     await screen.findByRole('heading', { name: 'Building' })
-    // The strip: the state with N of M over a bar, the step lit, the session under it.
-    expect(document.querySelector('[data-brain-state-detail]')!.textContent).toBe('· reading session 13 of 41')
+    // One line: the state, N of M, the share and the memories so far, over a bar.
+    expect(document.querySelector('[data-brain-state-detail]')!.textContent).toBe(' · reading session 13 of 41 · 29% · 8 memories')
     expect(screen.getByRole('progressbar', { name: 'Build progress' }).getAttribute('aria-valuenow')).toBe('29')
-    expect(document.querySelector('[data-brain-pct]')!.textContent).toBe('29%')
+    // No step blocks or tiles on the page until Details is opened.
+    expect(document.querySelector('[data-brain-steps], [data-brain-figures]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }))
     expect([...document.querySelectorAll('[data-brain-step]')].map((s) => s.getAttribute('data-brain-step-state'))).toEqual(['done', 'now', 'idle'])
-    expect(document.querySelector('[data-brain-step="find"]')!.textContent).toMatch(/41 in reach · from the last 30 days/)
     expect(document.querySelector('[data-brain-step-reading]')!.textContent).toMatch(/Fix the flaky cache test.*Claude Code · acme-api · 14 passages · 4s/)
-    expect(document.querySelector('[data-brain-gives]')!.textContent).toBe(
-      'What it gives: a new session in a repository starts with up to 5 of its memories — 2 sessions got 9 memories in the last 24 h, 6 in all.')
     const figures = [...document.querySelectorAll('[data-brain-figures] dd')].map((d) => d.textContent)
-    expect(figures).toEqual(['8', '3', '5', '17', '84k of 300k', '$0.42 API list price'])
-    // Each figure once: no card below repeats the strip's.
-    expect(document.querySelector('[data-brain-reading], [data-brain-sessions]')).toBeNull()
-    expect(screen.getAllByRole('progressbar').filter((b) => !b.getAttribute('aria-label')!.includes(':'))).toHaveLength(1)
-    expect(screen.getAllByText(/Fix the flaky cache test/)).toHaveLength(1)
-    expect(document.querySelector('[data-brain-live-orb]')).not.toBeNull()
-    // Sources: each project, read of all, memories kept.
+    expect(figures).toEqual(['12 of 41 read · last 30 days', '17', '84k of 300k', '$0.42 API list price'])
     const sources = [...document.querySelectorAll('[data-brain-source]')].map((li) => li.textContent)
     expect(sources).toEqual(['acme-api9 of 29 read · 6 memories', 'web3 of 12 read · 2 memories'])
     expect(document.querySelector('[data-brain-recent]')!.textContent).toMatch(/Pick a queue.*acme-api · 3 memories/)
-    // The graph fills in beside it; search waits until it is built.
-    await waitFor(() => expect(document.querySelector('[data-brain-graph="full"]')).not.toBeNull())
-    expect(screen.queryByRole('textbox', { name: 'Search memories' })).toBeNull()
+    // With memories, the graph is a card that opens, and the list is there.
+    await waitFor(() => expect(document.querySelector('[data-brain-graph="mini"]')).not.toBeNull())
+    expect(document.querySelector('[data-brain-graph="full"]')).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Search memories' })).toBeTruthy()
   })
 
   it('pauses with a small secondary control, and resumes', async () => {
@@ -158,21 +157,25 @@ describe('the Second Brain screen', () => {
     await waitFor(() => expect(m.status.mock.calls.length).toBeGreaterThan(calls))
   })
 
-  it('with memories: the graph and the list with search, one quiet line, and a gear with three settings', async () => {
-    m.status.mockResolvedValue({ ...status({ memories: 2, projects: [{ project: 'acme-api', count: 2 }], auto: auto({ stage: 'up_to_date', last_read: Date.now() - 60_000, handoff: { on: false, sessions_24h: 0, memories_24h: 0, sessions: 0, memories: 0 } }) }), db_path: 'C:\\Users\\me\\AppData\\Roaming\\caprock\\caprock.db' })
-    m.brain.mockResolvedValue({ nodes: [node({ id: 1 }), node({ id: 2, title: 'Use a queue' })], edges: [], total: 2 })
+  it('with memories: one status line, what the next session gets, the recent list, and a gear with three settings', async () => {
+    m.status.mockResolvedValue({ ...status({ memories: 2, projects: [{ project: 'acme-api', count: 2 }], auto: auto({ stage: 'up_to_date', last_read: Date.now() - 60_000, new_today: 1, topics: 3, spent_usd: 0.15, handoff: { on: false, sessions_24h: 0, memories_24h: 0, sessions: 0, memories: 0 } }) }), db_path: 'C:\\Users\\me\\AppData\\Roaming\\caprock\\caprock.db' })
+    m.brain.mockResolvedValue({ nodes: [node({ id: 1, source: { project: 'acme-api' } }), node({ id: 2, title: 'Use a queue' })], edges: [], total: 2 })
+    m.handoff.mockResolvedValue({ project: 'acme-api', memories: [node({ id: 1, summary: 'WAL is enough.', source: { project: 'acme-api' } })], max: 5, budget: 700, served: { on: false, holdout_pct: 25 } })
     m.settings.mockResolvedValue(auto())
     render(<BrainScreen />)
     await screen.findByRole('textbox', { name: 'Search memories' })
     expect(document.querySelector('[data-brain-phase="memories"]')).not.toBeNull()
     expect(document.querySelector('[data-brain-state]')!.textContent).toBe('Up to date')
-    expect(document.querySelector('[data-brain-state-detail]')!.textContent).toMatch(/^· last built \d\d:\d\d$/)
+    expect(document.querySelector('[data-brain-state]')!.getAttribute('title')).toMatch(/^Last built \d\d:\d\d$/)
+    expect(document.querySelector('[data-brain-state-detail]')!.textContent).toBe(' · 2 memories · 1 new today · 3 topics · $0.15 in 24 h')
     expect(document.querySelector('[data-brain-strip]')!.getAttribute('data-brain-stage')).toBe('up_to_date')
-    expect([...document.querySelectorAll('[data-brain-step]')].every((s) => s.getAttribute('data-brain-step-state') === 'done')).toBe(true)
-    // Memory between sessions off: it says agents get nothing, and why.
-    expect(document.querySelector('[data-brain-gives]')!.textContent).toMatch(/nothing reaches your agents yet — Memory between sessions is off/)
+    // What the next session gets: the project with the newest memory, the pick, and why none goes now.
+    await waitFor(() => expect(m.handoff).toHaveBeenCalledWith('acme-api'))
+    const next = await screen.findByRole('list', { name: 'What a new session in acme-api gets' })
+    expect(next.textContent).toMatch(/Keep SQLite.*WAL is enough/)
+    expect(document.querySelector('[data-brain-gives]')!.textContent).toMatch(/Memory between sessions is off in Settings/)
     expect(document.querySelector('[data-brain-start]')).toBeNull()
-    expect(document.querySelector('[data-brain-live]')).toBeNull()
+    expect(screen.queryByRole('radiogroup', { name: 'View' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /Settings/ }))
     const pop = screen.getByRole('dialog', { name: 'Second Brain settings' })
     expect(pop.textContent).toMatch(/Build automatically/)
@@ -188,5 +191,37 @@ describe('the Second Brain screen', () => {
     await waitFor(() => expect(m.settings).toHaveBeenCalledWith({ auto: false }))
     act(() => { fireEvent.keyDown(document, { key: 'Escape' }) })
     expect(screen.queryByRole('dialog', { name: 'Second Brain settings' })).toBeNull()
+  })
+
+  it('opens a memory from what the next session gets, and the graph card opens the graph full-screen; Escape closes it', async () => {
+    m.status.mockResolvedValue(status({ memories: 2, projects: [{ project: 'web', count: 1 }, { project: 'acme-api', count: 1 }], auto: auto({ stage: 'up_to_date', handoff: { on: true, sessions_24h: 2, memories_24h: 9, sessions: 6, memories: 27 } }) }))
+    m.brain.mockResolvedValue({ nodes: [node({ id: 1, source: { project: 'acme-api' }, created_at: 5 }), node({ id: 2, title: 'Use a queue', source: { project: 'web' }, created_at: 9 }), node({ id: 3, kind: 'topic', title: 'queues' })], edges: [], total: 2 })
+    m.handoff.mockImplementation(async (p: string) => ({ project: p, memories: [node({ id: p === 'web' ? 2 : 1, title: p === 'web' ? 'Use a queue' : 'Keep SQLite' })], max: 5, budget: 700, served: { on: true, left_off_at: Date.now() - 3_600_000, holdout_pct: 25 } }))
+    m.node.mockResolvedValue({ node: node({ id: 2, title: 'Use a queue', summary: 'Retries stay simple.' }), links: [] })
+    render(<BrainScreen />)
+    // The newest memory's project first.
+    await waitFor(() => expect(m.handoff).toHaveBeenCalledWith('web'))
+    await screen.findByRole('list', { name: 'What a new session in web gets' })
+    expect(document.querySelector('[data-brain-gives]')!.textContent).toBe(
+      'A session opening there now gets these, with the passage from 1h ago. 25% of new sessions are held back at random, to measure whether it helps. 2 sessions got 9 memories in the last 24 h, 6 in all.')
+    fireEvent.change(screen.getByRole('combobox', { name: 'Repository' }), { target: { value: 'acme-api' } })
+    await screen.findByRole('list', { name: 'What a new session in acme-api gets' })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Repository' }), { target: { value: 'web' } })
+    await screen.findByRole('list', { name: 'What a new session in web gets' })
+    fireEvent.click(document.querySelector<HTMLElement>('[data-brain-next-row="2"]')!)
+    await screen.findByText('Retries stay simple.')
+    // The card is a picture and a button, not a graph to work in place.
+    const card = await screen.findByRole('button', { name: /Open the graph — 2 memories · 1 topic/ })
+    expect(card.querySelector('[data-brain-graph="mini"]')).not.toBeNull()
+    expect(document.querySelector('[data-brain-graph="full"]')).toBeNull()
+    fireEvent.click(card)
+    const dialog = screen.getByRole('dialog', { name: 'Second Brain graph' })
+    expect(dialog.querySelector('[data-brain-graph="full"]')).not.toBeNull()
+    expect(dialog.querySelector('[data-brain-legend]')).not.toBeNull()
+    act(() => { fireEvent.keyDown(document, { key: 'Escape' }) })
+    expect(screen.queryByRole('dialog', { name: 'Second Brain graph' })).toBeNull()
+    fireEvent.click(card)
+    fireEvent.click(screen.getByRole('button', { name: 'Close the graph' }))
+    expect(screen.queryByRole('dialog', { name: 'Second Brain graph' })).toBeNull()
   })
 })

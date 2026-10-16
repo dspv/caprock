@@ -207,6 +207,57 @@ func (s *Server) handleBrainStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, st)
 }
 
+// BrainHandoffState is whether a new session in a repository would be served
+// a handoff, which is what carries Second Brain's memories to it.
+type BrainHandoffState struct {
+	// On is Settings → Memory between sessions: off, no session is handed
+	// anything.
+	On bool `json:"on"`
+	// LeftOffAt is when the passage a new session would be handed was
+	// written, unix ms; 0 when none is recent enough, and then nothing goes.
+	LeftOffAt int64 `json:"left_off_at,omitempty"`
+	// HoldoutPct is the share of new sessions held back at random to
+	// measure whether the handoff helps.
+	HoldoutPct int `json:"holdout_pct"`
+}
+
+// BrainHandoffView is GET /v1/brain/handoff: the memories a new session in
+// the project is handed, picked by the same code the SessionStart handoff
+// uses (store.BrainHandoff), and whether one would be served now.
+type BrainHandoffView struct {
+	Project  string            `json:"project"`
+	Memories []store.BrainNode `json:"memories"`
+	// Max is how many it may carry; Budget the runes they share.
+	Max    int `json:"max"`
+	Budget int `json:"budget"`
+	// Served is BrainHandoffState, when the daemon wires it.
+	Served *BrainHandoffState `json:"served,omitempty"`
+}
+
+// handleBrainHandoff reads what Second Brain would hand a new session in a
+// project. It writes nothing.
+func (s *Server) handleBrainHandoff(w http.ResponseWriter, r *http.Request) {
+	project := strings.TrimSpace(r.URL.Query().Get("project"))
+	if project == "" {
+		s.failCode(w, http.StatusBadRequest, errors.New("project is required"))
+		return
+	}
+	mems, _, err := store.BrainHandoff(r.Context(), s.d.Store.DB(), project)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	v := BrainHandoffView{Project: project, Memories: mems, Max: store.BrainHandoffMax, Budget: store.BrainHandoffRunes}
+	if v.Memories == nil {
+		v.Memories = []store.BrainNode{}
+	}
+	if s.d.BrainHandoffState != nil {
+		st := s.d.BrainHandoffState(r.Context(), project)
+		v.Served = &st
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
 // brainID reads {id}; ok is false once it has answered.
 func brainID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)

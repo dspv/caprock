@@ -1779,6 +1779,7 @@ DELETE /v1/inbox/{id}                → 204; with its files (§ Inbox)
 GET    /v1/inbox/{id}/files/{n}      → an item's image, for its thumbnail (§ Inbox)
 GET    /v1/brain                     ?q=&project=&since=&until=&limit=&summaries=1 → BrainGraph (§ Second Brain)
 GET    /v1/brain/status              → BrainStatus: counts, projects (§ Second Brain)
+GET    /v1/brain/handoff             ?project= → {project, memories, max, budget, served?}; what a new session there is handed (§ Second Brain)
 POST   /v1/brain/nodes               {text | title, summary?, kind?, event_id?, session_id?, project?, topics?, pinned?} → {node, created}; no cap
 GET    /v1/brain/nodes/{id}          → {node, links}
 PATCH  /v1/brain/nodes/{id}          {kind?, title?, summary?, pinned?} → {node}
@@ -3280,6 +3281,7 @@ Brain DDL (migrations 0055, 0056).
 ```
 GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total, terms?, close?}
 GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?, db_path?}
+GET    /v1/brain/handoff        ?project= → {project, memories: [BrainNode], max, budget, served?: {on, left_off_at?, holdout_pct}}
 POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
 GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
 PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
@@ -3290,6 +3292,21 @@ PUT    /v1/brain/settings       {auto?, daily_tokens?, model?} → BrainAutoStat
 POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 ```
 
+- **`/v1/brain/handoff`** — what a new session in `project` (required,
+  exact; else `400`) is handed from Second Brain with a served handoff
+  (§ SessionStart handoff): the memories, with their summaries, picked by
+  the code the handoff itself runs (`store.BrainHandoff`) — pinned first,
+  then newest, at most `max` (5), each line `- kind: title — summary` (the
+  summary clipped to 160 runes) counted against `budget` (700 runes), and
+  the first that does not fit ends the list. `served` is whether a session
+  opening there now would be served a handoff at all, which is what carries
+  them: `on` is Memory between sessions, `left_off_at` when the passage it
+  would be handed was written (unix ms; absent when none of 400 runes or
+  more is within 14 days, and then nothing goes), `holdout_pct` the share
+  of new sessions held back at random (§ SessionStart handoff, *Measuring
+  it*). `served` is absent from a daemon that does not wire it (tests). A
+  read: it writes nothing, rolls no holdout and records nothing on a
+  session.
 - **`db_path`** on `/v1/brain/status` — the database the memories live in, `caprock.db` in the daemon's data directory (`config.DBPath`), resolved by the daemon rather than guessed per OS by the page; the screen's *Where it's kept* shows it. Omitted when the daemon has no data directory (tests).
 - **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
   event_id?, ts?, project?}, manual, pinned, run_id?, created_at, updated_at,
@@ -3359,7 +3376,7 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 - **Errors.** `404` for an unknown node; `409` when a rename would give an
   entity the normalised title of another of its kind; `400` for an unknown
   kind, an empty title, a self-link.
-- **Who.** The three `GET`s are open to every paired device; every write,
+- **Who.** The four `GET`s are open to every paired device; every write,
   settings and backfill included, is the machine's (a device gets `403`).
 - **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
   "added" | "changed" | "deleted", kind?, title?, auto?}` (`kind` and `title`

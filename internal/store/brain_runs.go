@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
+	"unicode/utf8"
 )
 
 // Second Brain's automatic extraction reads (migration 0055, ADR-063): which
@@ -241,6 +243,58 @@ func BrainProjectMemories(ctx context.Context, q Querier, project string, limit 
 		return nil, err
 	}
 	return scanBrainRows(rows)
+}
+
+// BrainHandoffMax and BrainHandoffRunes bound what Second Brain adds to a
+// served handoff (ADR-063): the repository's pinned memories first, then the
+// newest, titles with a clipped summary, in a budget of their own so the
+// passage before them is never cut to make room. BrainHandoffSummary is how
+// far each summary is clipped.
+const (
+	BrainHandoffMax     = 5
+	BrainHandoffRunes   = 700
+	BrainHandoffSummary = 160
+)
+
+// BrainHandoff is what a new session in a repository is handed from Second
+// Brain: the memories that fit, in order, and the line each is given as. The
+// SessionStart handoff appends the lines; GET /v1/brain/handoff shows the
+// memories, so the screen names exactly what a session gets.
+func BrainHandoff(ctx context.Context, q Querier, project string) ([]BrainNode, []string, error) {
+	mems, err := BrainProjectMemories(ctx, q, project, BrainHandoffMax)
+	if err != nil || len(mems) == 0 {
+		return nil, nil, err
+	}
+	var picked []BrainNode
+	var lines []string
+	left := BrainHandoffRunes
+	for _, m := range mems {
+		line := "\n- " + m.Kind + ": " + m.Title
+		if m.Summary != "" {
+			line += " — " + ClipSentence(m.Summary, BrainHandoffSummary)
+		}
+		n := utf8.RuneCountInString(line)
+		if n > left {
+			break
+		}
+		left -= n
+		picked = append(picked, m)
+		lines = append(lines, line)
+	}
+	return picked, lines, nil
+}
+
+// ClipSentence cuts to n runes at a sentence boundary where one is near the
+// end, so a passage does not stop mid-word (relay.Clip is this).
+func ClipSentence(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	cut := string([]rune(s)[:n])
+	if i := strings.LastIndexAny(cut, ".!?\n"); i > len(cut)*3/4 {
+		return strings.TrimSpace(cut[:i+1])
+	}
+	return strings.TrimSpace(cut) + "…"
 }
 
 // BrainCostSince is what the extraction's reads cost since a moment, in US

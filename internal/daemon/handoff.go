@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/hookd"
 	"github.com/dspv/caprock/internal/relay"
 	"github.com/dspv/caprock/internal/store"
@@ -44,12 +45,6 @@ const (
 	// thing said is usually not what you are returning to, and presenting it as
 	// context is worse than silence.
 	handoffMaxAge = 14 * 24 * time.Hour
-	// handoffBrainMax and handoffBrainRunes bound what Second Brain adds to
-	// a served handoff (ADR-063): the repository's pinned memories first,
-	// then the newest, titles with a clipped summary, in a budget of its own
-	// so the passage above is never cut to make room.
-	handoffBrainMax   = 5
-	handoffBrainRunes = 700
 )
 
 // handoff answers a SessionStart hook. An empty reply means "say nothing", and
@@ -182,33 +177,29 @@ func (d *Daemon) memoryStatus() MemoryStatus {
 	return ms
 }
 
+// brainHandoffState is whether a new session in the project would be served
+// a handoff now, by the rules handoff applies: Memory between sessions on,
+// and a passage of the repository's within handoffMaxAge. The holdout is
+// reported, not rolled.
+func (d *Daemon) brainHandoffState(ctx context.Context, project string) api.BrainHandoffState {
+	d.cfgMu.RLock()
+	st := api.BrainHandoffState{On: d.opt.Config.MemoryOn(), HoldoutPct: d.opt.Config.MemoryHoldoutPct}
+	d.cfgMu.RUnlock()
+	now := d.rec.Now()
+	if note, err := store.WhereWeLeftOff(ctx, d.store.DB(), project, now.UnixMilli(), handoffMinRunes); err == nil &&
+		now.Sub(time.UnixMilli(note.Ts)) <= handoffMaxAge && strings.TrimSpace(note.Text) != "" {
+		st.LeftOffAt = note.Ts
+	}
+	return st
+}
+
 // brainHandoff is what Second Brain keeps for a repository, as a paragraph
 // to append to a served handoff, and how many memories it holds; "" and 0
-// when it keeps nothing there.
+// when it keeps nothing there (store.BrainHandoff picks them).
 func (d *Daemon) brainHandoff(ctx context.Context, project string) (string, int) {
-	mems, err := store.BrainProjectMemories(ctx, d.store.DB(), project, handoffBrainMax)
-	if err != nil || len(mems) == 0 {
+	_, lines, err := store.BrainHandoff(ctx, d.store.DB(), project)
+	if err != nil || len(lines) == 0 {
 		return "", 0
 	}
-	given := 0
-	var b strings.Builder
-	b.WriteString("\n\nKept in the user's Second Brain for this repository (decisions and findings from earlier sessions; they may be stale):")
-	left := handoffBrainRunes
-	for _, m := range mems {
-		line := "\n- " + m.Kind + ": " + m.Title
-		if m.Summary != "" {
-			line += " — " + relay.Clip(m.Summary, 160)
-		}
-		n := len([]rune(line))
-		if n > left {
-			break
-		}
-		left -= n
-		given++
-		b.WriteString(line)
-	}
-	if given == 0 {
-		return "", 0
-	}
-	return b.String(), given
+	return "\n\nKept in the user's Second Brain for this repository (decisions and findings from earlier sessions; they may be stale):" + strings.Join(lines, ""), len(lines)
 }

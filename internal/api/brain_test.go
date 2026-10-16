@@ -273,3 +273,54 @@ func TestBrainAutomaticNeedsOnlyAYes(t *testing.T) {
 		t.Errorf("status: %d %+v", code, st)
 	}
 }
+
+// GET /v1/brain/handoff names what a new session in a repository is handed:
+// the project's memories, pinned first then newest, as many as fit the
+// handoff's own budget — the same pick the SessionStart handoff makes.
+func TestBrainHandoffListsWhatANewSessionGets(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	if code, _ := brainDo(t, e, "GET", "/v1/brain/handoff", nil); code != 400 {
+		t.Errorf("no project: %d, want 400", code)
+	}
+	var v BrainHandoffView
+	if code := e.get(t, "/v1/brain/handoff?project=caprock", &v); code != 200 || len(v.Memories) != 0 || v.Memories == nil || v.Max != 5 || v.Served != nil {
+		t.Fatalf("empty: %d %+v", code, v)
+	}
+	keep := func(title, project string, pinned bool, at int64) {
+		t.Helper()
+		if _, _, err := store.InsertBrainNode(ctx, e.st.DB(), store.BrainNode{Kind: "decision", Title: title, Summary: strings.Repeat("why ", 100),
+			Source: store.BrainSource{Project: project}, Manual: true, Pinned: pinned}, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keep("Keep SQLite in WAL mode", "caprock", true, 1)
+	for i := range 8 {
+		keep(fmt.Sprintf("Finding %d", i), "caprock", false, int64(10+i))
+	}
+	keep("Somebody else's", "other", false, 100)
+	if code := e.get(t, "/v1/brain/handoff?project=caprock", &v); code != 200 {
+		t.Fatalf("handoff: %d", code)
+	}
+	_, lines, err := store.BrainHandoff(ctx, e.st.DB(), "caprock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Memories) == 0 || len(v.Memories) != len(lines) || len(v.Memories) >= 5 {
+		t.Fatalf("%d memories, the handoff carries %d; the budget keeps it under 5 with these summaries", len(v.Memories), len(lines))
+	}
+	if v.Memories[0].Title != "Keep SQLite in WAL mode" || v.Memories[1].Title != "Finding 7" {
+		t.Errorf("pinned first, then newest: %q, %q", v.Memories[0].Title, v.Memories[1].Title)
+	}
+	for _, m := range v.Memories {
+		if m.Source.Project != "caprock" {
+			t.Errorf("another repository's: %+v", m)
+		}
+	}
+	e.api.d.BrainHandoffState = func(context.Context, string) BrainHandoffState {
+		return BrainHandoffState{On: true, LeftOffAt: 42, HoldoutPct: 25}
+	}
+	if code := e.get(t, "/v1/brain/handoff?project=caprock", &v); code != 200 || v.Served == nil || !v.Served.On || v.Served.LeftOffAt != 42 || v.Served.HoldoutPct != 25 {
+		t.Errorf("served: %d %+v", code, v.Served)
+	}
+}
