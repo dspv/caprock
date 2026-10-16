@@ -12,6 +12,12 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.123.1] - 2026-10-16
+
+### Fixed
+
+- **app:** a file dragged onto a terminal (a screenshot's thumbnail, a Finder file) types its path again; 0.123.0 heard no drop at all.
+
 ## [0.123.0] - 2026-10-16
 
 ### Added
