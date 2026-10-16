@@ -28,6 +28,7 @@ fn main() {
             "read_dropped_image",
             "read_dropped_text",
             "set_zoom",
+            "page_tab",
         ]),
     ))
     .expect("tauri build");

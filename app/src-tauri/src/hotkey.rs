@@ -3,7 +3,6 @@
 //! `<data_dir>/app-hotkey.json` (`{"accelerator": "..."}`, `null` for off);
 //! without the file the default applies.
 
-use crate::shell::MAIN;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -159,7 +158,7 @@ fn register<R: Runtime>(app: &AppHandle<R>, accelerator: &str) -> Result<String,
 
 /// The hotkey's action: hide the window when it is in front, else bring it up.
 pub fn toggle<R: Runtime>(app: &AppHandle<R>) {
-    let Some(w) = app.get_webview_window(MAIN) else {
+    let Some(w) = crate::shell::main_window(app) else {
         return;
     };
     if w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false) {
@@ -177,12 +176,12 @@ pub fn toggle<R: Runtime>(app: &AppHandle<R>) {
 /// (`caprock:shown`), so a show the user asked for is not taken for a click
 /// on a notification (ui/src/lib/notify.ts).
 pub fn show<R: Runtime>(app: &AppHandle<R>) {
-    if let Some(w) = app.get_webview_window(MAIN) {
+    if let Some(w) = crate::shell::main_webview(app) {
         let _ = w.eval("window.dispatchEvent(new Event('caprock:shown'))");
     }
     #[cfg(target_os = "macos")]
     let _ = app.show();
-    if let Some(w) = app.get_webview_window(MAIN) {
+    if let Some(w) = crate::shell::main_window(app) {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();

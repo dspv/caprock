@@ -3,7 +3,6 @@
 //! a dot overlay; Linux shows the count where the desktop supports the Unity
 //! launcher API.
 
-use crate::shell::MAIN;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, Runtime};
 
@@ -22,7 +21,7 @@ pub fn set<R: Runtime>(app: &AppHandle<R>, count: u32) {
     }
     #[cfg(all(feature = "snapshot", target_os = "macos"))]
     crate::snapshot::record("badge.txt", count.to_string());
-    let Some(w) = app.get_webview_window(MAIN) else {
+    let Some(w) = crate::shell::main_window(app) else {
         return;
     };
     #[cfg(not(target_os = "windows"))]

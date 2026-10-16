@@ -1120,6 +1120,21 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
   content: ""; position: absolute; right: -6px; top: 7px; bottom: 7px; width: 1px;
   background: var(--app-hairline-strong); pointer-events: none;
 }
+/* A Page tab, a web page inside Caprock (ADR-070): outlined with a dashed
+ * hairline and never filled while behind, after a divider that keeps the
+ * pages apart from the agents, so it never reads as one of them. */
+[data-app] .app-tab-page:not(.app-tab-front) {
+  background: transparent;
+  box-shadow: none;
+  border: 1px dashed var(--app-hairline-strong);
+  border-bottom: 0;
+}
+[data-app] .app-tab-page:not(.app-tab-front):hover { background: color-mix(in srgb, var(--color-fg) 5%, transparent); }
+[data-app] .app-tab-page-first { margin-left: 9px; }
+[data-app] .app-tab-page-first::before {
+  content: ""; position: absolute; left: -6px; top: 7px; bottom: 7px; width: 1px;
+  background: var(--app-hairline-strong); pointer-events: none;
+}
 /* A named light terminal palette (Book, Light Cold, Light Side): the slab takes the Light palette's ink. */
 [data-app][data-term-tone="light"]:not([data-term-match]) .app-slab {
   --color-fg: #24211c;

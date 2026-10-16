@@ -26,8 +26,10 @@ import {
   activeTab,
   findTabBySession,
   focusedLeaf,
+  isPageTab,
   leaves,
   loadWorkspace,
+  numberedTabs,
   pipelineInStore,
   saveWorkspace,
   WORKSPACE_KEY,
@@ -77,6 +79,9 @@ import { ChatView } from '@/components/ChatView'
 import { ChangesView } from '@/components/ChangesView'
 import { AttemptsCompare } from '@/components/AttemptsCompare'
 import { FileView } from '@/components/FileView'
+import { OpenPageSheet, PageView } from '@/components/PageView'
+import { canShowInTab, looksLikeAddress, newPageKey, OPEN_PAGE_EVENT, pageTitle, pageUrl, type OpenPageDetail } from '@/lib/pagetab'
+import { openableUrl, openLink, opensLink } from '@/lib/termlinks'
 import { attachable, ObservePane } from '@/components/ObservePane'
 import { PipelineHostContext, type PipelineHost } from '@/lib/pipelineHost'
 import { ScreenShown } from '@/lib/refresh'
@@ -94,7 +99,7 @@ import type { ChatPane } from '@/components/QuickChatPane'
 import { useSpawnableAgents } from '@/components/AgentPicker'
 import { AddProjectSheet } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
-import { BranchIcon, ChatIcon, DashboardIcon, DeckIcon, MailIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
+import { BranchIcon, ChatIcon, DashboardIcon, DeckIcon, GlobeIcon, MailIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
 import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { joinPath, preferredName, useEditors } from '@/lib/editors'
@@ -199,6 +204,8 @@ type SheetState =
   | { kind: 'quick-chat' }
   /** *Run saved…*: the palette narrowed to the saved prompts and commands (ADR-051). */
   | { kind: 'saved' }
+  /** *Open a page…*: an address for a Page tab (components/PageView.tsx, ADR-070). */
+  | { kind: 'page' }
   /** The palette's "Open file…": the files of one worktree. */
   | { kind: 'files'; projectId: string; worktree: string; title: string }
   /** *Clean up copies…*: a project's worktrees, their state and size (components/CopiesSheet). */
@@ -451,6 +458,81 @@ export function AppShell() {
   }, [openTab])
 
   /**
+   * Page tabs (ADR-070). A page loads only on a click (rule 4): one opened
+   * by hand is armed at once, a restored one when it is brought to the front
+   * — except the tab that was in front when the window loaded, which waits
+   * on its *Load the page* button.
+   */
+  const pageCtx = useRef({ tabs: ws.tabs, activeProjectId, projects: model.projects, focused })
+  pageCtx.current = { tabs: ws.tabs, activeProjectId, projects: model.projects, focused }
+  const [armedPages, setArmedPages] = useState<ReadonlySet<string>>(() => new Set())
+  const armPage = useCallback((key: string) => {
+    setArmedPages((cur) => (cur.has(key) ? cur : new Set(cur).add(key)))
+  }, [])
+  /**
+   * A web page in a tab: the one already showing the address, else a new
+   * tab after every other, in the project of the session it came from. One
+   * that cannot show here (a browser, an address not on this machine) opens
+   * in the browser instead.
+   */
+  const openPage = useCallback((raw: string, sessionId?: string) => {
+    const url = pageUrl(raw)
+    if (!url) { setToast(`“${raw}” is not a web address.`); return }
+    if (!canShowInTab(url, isTauri())) { openLink(url); return }
+    const { tabs, activeProjectId: pid, projects } = pageCtx.current
+    const open = tabs.find((t) => isPageTab(t) && t.root.type === 'pane' && t.root.target.url === url)
+    if (open) {
+      const key = focusedLeaf(open).target.sessionId
+      armPage(key)
+      setChangesView(null)
+      setCompare(null)
+      dispatch({ type: 'activate', tabId: open.id })
+      showWorkspace()
+      return
+    }
+    const key = newPageKey()
+    armPage(key)
+    const from = sessionId ? projects.find((n) => n.worktrees.some((w) => w.sessions.some((y) => y.session.session_id === sessionId)))?.project.id : undefined
+    openTab({ kind: 'page', sessionId: key, url, ...(sessionId ? { of: sessionId } : {}) }, from ?? pid, pageTitle(url))
+  }, [armPage, openTab, showWorkspace])
+  // The tab in front when the window loaded is the one not armed by coming
+  // to the front: everything after that is a click or a key.
+  const loadedFront = useRef<string | undefined>(current?.id)
+  useEffect(() => {
+    if (!current || current.id === loadedFront.current) return
+    loadedFront.current = undefined
+    if (isPageTab(current)) armPage(focusedLeaf(current).target.sessionId)
+  }, [current, armPage])
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<OpenPageDetail>).detail
+      if (d?.url) openPage(d.url, d.sessionId)
+    }
+    window.addEventListener(OPEN_PAGE_EVENT, on)
+    return () => window.removeEventListener(OPEN_PAGE_EVENT, on)
+  }, [openPage])
+  // ⌘-click (Ctrl-click off macOS) on a web link in the window — a chat, a
+  // file, a PR — opens a Page tab; a plain click and ⇧ keep the browser.
+  // Capture phase, ahead of the browser-link handler (lib/externalLinks).
+  useEffect(() => {
+    const mac = isMacPlatform()
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.shiftKey || !opensLink(e, mac)) return
+      const a = (e.target as Element | null)?.closest?.('a[href]')
+      if (!a || a.closest('[data-page-view]')) return
+      const url = openableUrl((a as HTMLAnchorElement).href)
+      if (!url || !/^https?:/.test(url) || new URL(url).origin === location.origin) return
+      if (!canShowInTab(url, isTauri())) return
+      e.preventDefault()
+      e.stopPropagation()
+      const f = pageCtx.current.focused
+      openPage(url, f && f.kind !== 'page' && f.kind !== 'file' ? f.sessionId : undefined)
+    }
+    document.addEventListener('click', onClick, true)
+    return () => document.removeEventListener('click', onClick, true)
+  }, [openPage])
+
+  /**
    * A session in a tab: its terminal when Caprock holds one; otherwise — one
    * started in another terminal, or one that ended — its conversation,
    * read-only, in a tab of its own (components/ObservePane.tsx; rule 7). It
@@ -535,10 +617,12 @@ export function AppShell() {
     return node ? projectRows(node, tabsOf(ws, pid), labels, sidebarState.orders[pid], sidebarState.hiddenRows) : []
   }, [model.projects, ws, labels, sidebarState])
   // Every tab's ⌘N, by its place in the strip: 1–8, and 9 on the last.
+  // Pages take no digit: they are not among the agents (ADR-070).
   const stripDigits = useMemo(() => {
     const m = new Map<string, number>()
-    ws.tabs.forEach((t, i) => {
-      const d = tabDigit(i, ws.tabs.length)
+    const numbered = numberedTabs(ws.tabs)
+    numbered.forEach((t, i) => {
+      const d = tabDigit(i, numbered.length)
       if (d) m.set(t.id, d)
     })
     return m
@@ -550,7 +634,8 @@ export function AppShell() {
   }, [onActivateTab, openSession])
   /** ⌘1–⌘9: the strip's tab at that place, ⌘9 the last; nothing past the end. */
   const focusTab = useCallback((index: number) => {
-    const t = index === 8 ? ws.tabs[ws.tabs.length - 1] : ws.tabs[index]
+    const list = numberedTabs(ws.tabs)
+    const t = index === 8 ? list[list.length - 1] : list[index]
     if (t) onActivateTab(t.id)
   }, [ws.tabs, onActivateTab])
   /** ⌥⌘← ⌥⌘→: the project before or after the one in front, round the end. */
@@ -790,6 +875,7 @@ export function AppShell() {
     { id: 'quick-chat', label: 'Quick chat…', hint: keys('⌥⌘N'), icon: <ChatIcon size={13} />, run: onQuickChatChooser },
     { id: 'shell', label: 'New shell', hint: keys('⌘T'), icon: <TerminalIcon size={13} />, run: () => onNewShell() },
     { id: 'saved', label: 'Run saved…', icon: <SparkIcon size={13} />, run: () => setSheet({ kind: 'saved' }) },
+    { id: 'page', label: 'Open a page…', icon: <GlobeIcon size={13} />, run: () => setSheet({ kind: 'page' }) },
     { id: 'file', label: 'Open file…', icon: <FileIcon size={13} />, run: () => { const f = fileScopeRef.current; if (f) setSheet({ kind: 'files', ...f }); else setToast('Open a project first: files are opened from one.') } },
     { id: 'project', label: 'Add project', hint: keys('⌘O'), icon: <FolderPlusIcon size={13} />, run: onAddProject },
   ], [onNewAgent, onQuickChatChooser, onNewShell, onAddProject])
@@ -971,6 +1057,8 @@ export function AppShell() {
     const { tabs, sessionsById, endedChats } = closeCtx.current
     const tab = tabs.find((t) => t.id === tabId)
     if (!tab) return
+    // A page has nothing running to ask about: it goes with its tab.
+    if (isPageTab(tab)) { dispatch({ type: 'close', tabId }); return }
     // A chat whose agent already exited (its tab says so) has nothing to stop.
     const chat = planChatClose(tab, paneId, sessionsById, (s) => !endedChats.has(s.session_id) && (isQuickChat(s) || !!startedChat(s.session_id)), (id) => !endedChats.has(id) && !!startedChat(id))
     if (chat.busy.length > 0) { setClosing({ kind: 'chat', tabId, paneId, chat }); return }
@@ -1220,6 +1308,7 @@ export function AppShell() {
       { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'in its own tab: every pull request on its way — open, CI, merged, released', hint: keys(PIPELINE_KEY), icon: <DeckIcon size={14} />, run: () => run({ kind: 'pipeline' }) },
       { id: 'a-deck', group: 'Actions', label: deck.open ? 'Pipeline bar: Off' : 'Pipeline bar: On', detail: deck.open ? 'hide the bar under the agent’s terminal' : 'show the bar under the agent’s terminal', hint: keys('⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck' }) },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
+      { id: 'a-open-page', group: 'Actions', label: 'Open a page…', detail: isTauri() ? 'a web page or localhost:5173, in a tab of its own after your agents' : 'a localhost page in a tab; any other in your browser', icon: <GlobeIcon size={14} />, run: () => setSheet({ kind: 'page' }) },
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
       ...(source === 'api' && activeProject?.kind === 'repo'
         ? [{ id: 'a-copies', group: 'Actions' as const, label: 'Clean up copies…', detail: `${activeProject.name}: worktrees, sizes, merged`, icon: <BranchIcon size={14} />, run: () => onCleanCopies(activeProject.id) }]
@@ -1244,7 +1333,7 @@ export function AppShell() {
     )
     // F20: the app's own updater; the answer shows in the status strip.
     if (isTauri()) items.push({ id: 'a-update', group: 'Actions', label: 'Check for updates', icon: <SparkIcon size={14} />, run: () => { void checkByHand() } })
-    if (current) {
+    if (current && focused?.kind !== 'page') {
       items.push(
         { id: 'a-find', group: 'Actions', label: focused?.kind === 'file' ? 'Find in the file' : 'Find in the terminal', hint: keys('⌘F'), icon: <SearchIcon size={14} />, run: () => window.dispatchEvent(new Event(FIND_EVENT)) },
         { id: 'a-split-right', group: 'Actions', label: 'Split right: a new shell beside', hint: keys('⌘E'), icon: <TerminalIcon size={14} />, run: () => splitShell('row') },
@@ -1276,7 +1365,8 @@ export function AppShell() {
       const leaf = focusedLeaf(t)
       const s = sessionsById.get(leaf.target.sessionId)
       const file = leaf.target.kind === 'file' ? leaf.target.path : undefined
-      items.push({ id: `t-${t.id}`, group: 'Tabs', label: s ? sessionTitle(s) : t.title, detail: file ?? projectsById.get(t.projectId)?.name, icon: file ? <FileIcon size={14} /> : <TerminalIcon size={14} />, run: () => { dispatch({ type: 'activate', tabId: t.id }); showWorkspace() } })
+      const page = leaf.target.kind === 'page' ? leaf.target.url : undefined
+      items.push({ id: `t-${t.id}`, group: 'Tabs', label: s ? sessionTitle(s) : page !== undefined ? pageTitle(page, t.title) : t.title, detail: page ?? file ?? projectsById.get(t.projectId)?.name, icon: page !== undefined ? <GlobeIcon size={14} /> : file ? <FileIcon size={14} /> : <TerminalIcon size={14} />, run: () => { dispatch({ type: 'activate', tabId: t.id }); showWorkspace() } })
     }
     for (const n of model.projects) {
       for (const w of n.worktrees) {
@@ -1333,6 +1423,9 @@ export function AppShell() {
 
   // Orca's "new task": text that matches nothing starts an agent on it, in a worktree named after it.
   const paletteFallback = useCallback((q: string): PaletteItem | undefined => {
+    // An address typed into ⌘K opens it (ADR-070): `localhost:5173`, `example.com`.
+    const url = looksLikeAddress(q) ? pageUrl(q) : null
+    if (url) return { id: 'open-page', group: 'Actions', label: `Open page ${url}`, detail: canShowInTab(url, isTauri()) ? 'in a tab of its own' : 'in your browser', icon: <GlobeIcon size={14} />, run: () => openPage(url) }
     const project = projectsById.get(activeProjectId)
     if (!project?.root) return undefined
     const worktree = worktreeSlug(q)
@@ -1342,7 +1435,7 @@ export function AppShell() {
       icon: <PlusIcon size={14} />,
       run: () => setSheet({ kind: 'agent', projectId: project.id, prompt: q, worktree: worktree || undefined }),
     }
-  }, [projectsById, activeProjectId])
+  }, [projectsById, activeProjectId, openPage])
 
   // The worktree the focused session runs in, for the inspector's "Review and commit".
   const focusedWorktree = useMemo(() => {
@@ -1478,6 +1571,28 @@ export function AppShell() {
     return () => window.removeEventListener(OPEN_PATH_EVENT, onOpenPath)
   }, [openFile])
   const focusedFile = focused?.kind === 'file'
+  const focusedPage = focused?.kind === 'page'
+  // A page's *from* chip brings its session forward; that is known further down.
+  const openSessionRef = useRef<(id: string) => void>(() => {})
+  /** A page tab's content (components/PageView.tsx, ADR-070). */
+  const renderPage = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
+    const key = leaf.target.sessionId
+    const of = leaf.target.of
+    const src = of ? sessionsById.get(of) : undefined
+    return (
+      <PageView
+        pageKey={key}
+        url={leaf.target.url ?? ''}
+        visible={visible}
+        armed={armedPages.has(key)}
+        onArm={() => armPage(key)}
+        onNav={(url, title) => dispatch({ type: 'page-nav', sessionId: key, ...(url !== undefined ? { url } : {}), ...(title !== undefined ? { title } : {}) })}
+        onOpenPage={(url) => openPage(url, of)}
+        onClose={() => dispatch({ type: 'close', tabId: tab.id })}
+        from={src && of ? { title: sessionTitle(src), show: () => openSessionRef.current(of) } : undefined}
+      />
+    )
+  }, [armedPages, armPage, openPage, sessionsById])
 
   // A watched session that Caprock now holds a terminal for — continued here
   // under its own id — becomes an ordinary session tab, in the same place.
@@ -1594,6 +1709,7 @@ export function AppShell() {
     if (!s) { goHash(`#/session/${encodeURIComponent(id)}`); return }
     openSession(s, placeOf(id)?.node.project.id ?? activeProjectId)
   }, [sessionsById, openSession, placeOf, activeProjectId, goHash])
+  openSessionRef.current = openSessionById
   // *End* on a Home row (lib/sessionJump.ts): what *Close and end the agent*
   // does — the cockpit's `kill` — and a tab that shows only this session
   // closes with it. Only a session Caprock started is ever offered (rule 7).
@@ -1687,7 +1803,7 @@ export function AppShell() {
               } : undefined}
               pipeline={ws.pipeline || pipelineShown ? { active: pipelineShown, onActivate: () => { if (!pipelineShown) goHash(lastPipeline.current || '#/pipeline') }, onClose: closePipeline } : undefined}
               mail={ws.mail || mailShown ? { active: mailShown, onActivate: onMail, onClose: closeMail } : undefined}
-              paneTools={workspaceShown}
+              paneTools={workspaceShown && !focusedPage}
               sessions={sessionsById}
               permissions={data.permissions}
               inspectorOpen={prefs.inspector}
@@ -1722,6 +1838,7 @@ export function AppShell() {
                     onResize={onResizePanes}
                     renderFile={renderFile}
                     renderObserve={renderObserve}
+                    renderPage={renderPage}
                     chats={chatPanes}
                     onChatClose={onClosePane}
                     onChatRestart={onChatRestart}
@@ -1896,7 +2013,7 @@ export function AppShell() {
                 </div>
               )}
             </div>
-            {workspaceShown && prefs.inspector && (
+            {workspaceShown && prefs.inspector && !focusedPage && (
               <div className="h-full shrink-0" style={{ width: 'var(--app-inspector-w)' }}>
                 <Inspector
                   session={inspectedSession}
@@ -1924,7 +2041,7 @@ export function AppShell() {
         * terminal; the share toast floats (lib/nudges.ts, one at a time). */}
       {/* How to move around, once, while tabs are open: a line in the flow
         * above the strips, so it covers neither a terminal nor a banner. */}
-      {workspaceShown && ws.tabs.length > 0 && <KeysHint isMac={isMac} onAllKeys={() => setSheet({ kind: 'keys' })} />}
+      {workspaceShown && numberedTabs(ws.tabs).length > 0 && <KeysHint isMac={isMac} onAllKeys={() => setSheet({ kind: 'keys' })} />}
       <SetupStrip app />
       <MailStrip />
       {/* A survey question, never while a session waits on a permission prompt (ADR-062). */}
@@ -2007,6 +2124,7 @@ export function AppShell() {
       {sheet?.kind === 'copies' && <CopiesSheet key={sheet.projectId} projectId={sheet.projectId} name={sheet.name} preselect={sheet.preselect} onClose={closeSheet} onChanged={refresh} />}
       {sheet?.kind === 'keys' && <ShortcutsSheet isMac={isMac} onClose={closeSheet} />}
       {sheet?.kind === 'share' && <ShareDialog onClose={closeSheet} />}
+      {sheet?.kind === 'page' && <OpenPageSheet onClose={closeSheet} />}
       {sheet?.kind === 'files' && (
         <FilePicker
           target={sheet}

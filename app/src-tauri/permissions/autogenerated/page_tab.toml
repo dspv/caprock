@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-page-tab"
+description = "Enables the page_tab command without any pre-configured scope."
+commands.allow = ["page_tab"]
+
+[[permission]]
+identifier = "deny-page-tab"
+description = "Denies the page_tab command without any pre-configured scope."
+commands.deny = ["page_tab"]

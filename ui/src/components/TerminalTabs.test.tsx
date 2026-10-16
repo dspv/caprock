@@ -519,3 +519,53 @@ describe("a tab's project name", () => {
     expect(whole.style.getPropertyValue('--tab-project-shift')).toBe('0px')
   })
 })
+
+// ADR-070: a page tab sits in the strip apart from the agents: a globe, its
+// title, no key, no project; and its panel is the page view, not a terminal.
+describe('a page tab', () => {
+  const pageTab = (id: string, url: string, title: string): Tab => ({
+    id,
+    projectId: 'p',
+    root: { type: 'pane', id: `${id}-pane`, target: { kind: 'page', sessionId: `page:${id}`, url } },
+    focusedPaneId: `${id}-pane`,
+    title,
+  })
+
+  it('reads as a page, never an agent, after a divider', () => {
+    const onDetach = vi.fn()
+    render(
+      <TabStrip
+        tabs={[tab('one'), pageTab('w', 'http://localhost:5173/', 'Vite App')]}
+        activeTabId="one"
+        projectName={() => 'caprock'}
+        digits={new Map([['one', 1]])}
+        sessions={new Map()}
+        permissions={new Set()}
+        inspectorOpen={false}
+        sidebarOpen
+        onActivate={() => {}}
+        onDetach={onDetach}
+        onMove={() => {}}
+        onNewAgent={() => {}}
+        onNewShell={() => {}}
+        onToggleInspector={() => {}}
+      />,
+    )
+    const page = screen.getByRole('tab', { name: 'Page · Vite App' })
+    expect(page.hasAttribute('data-page-tab')).toBe(true)
+    expect(page.className).toContain('app-tab-page-first')
+    expect(page.getAttribute('title')).toContain('http://localhost:5173/')
+    expect(page.querySelector('[data-tab-key]')).toBeNull()
+    expect(page.querySelector('[data-tab-project]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Close page Vite App' }))
+    expect(onDetach).toHaveBeenCalledWith('w')
+  })
+
+  it('shows the page view in its panel, never a terminal', () => {
+    const renderPage = vi.fn(() => <div data-testid="page" />)
+    render(<TerminalStack tabs={[pageTab('w', 'https://example.com/', 'Example')]} visibleTabId="w" renderPage={renderPage} />)
+    expect(screen.getByTestId('page')).toBeTruthy()
+    expect(renderPage).toHaveBeenCalledWith(expect.objectContaining({ id: 'w' }), expect.objectContaining({ id: 'w-pane' }), true)
+    expect(panes.renders.has('page:w')).toBe(false)
+  })
+})

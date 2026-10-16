@@ -308,7 +308,8 @@ One window, three regions:
   while it is behind, and a hairline divider after it. The + is an amber outline (`.app-primary`, like the sidebar's New
   agent) that opens a menu (`components/NewMenu.tsx`, portalled): *New
   agent* ⇧⌘N, *Quick chat…* ⌥⌘N (the chooser, as the key opens it),
-  *New shell* ⌘T, *Open file…*, *Add project* ⌘O, each with its key; ↑ ↓,
+  *New shell* ⌘T, *Run saved…*, *Open a page…* (a Page tab, § Page tabs),
+  *Open file…*, *Add project* ⌘O, each with its key; ↑ ↓,
   Enter, Esc. The separate >_ new-shell button is gone: it is the menu's
   third row and ⌘T, and two lone icons side by side read as one ambiguous
   control.
@@ -1819,6 +1820,43 @@ with ⌘W and is restored on relaunch like them
 - **A phone may read** what a paired viewer may already read in a diff; it
   cannot write anything here.
 
+## Page tabs
+
+The owner approved it on 2026-10-16 (translated): open a page quickly
+inside Caprock, conveniently, and never mix page tabs with agent tabs — a
+quick viewer, not a Chrome replacement. Decided in
+[ADR-070](08-decisions.md); what the user sees is in
+[04-ui.md § The app workspace](04-ui.md#the-app-workspace), *Page tabs*.
+
+- **A tab kind, apart.** `page` in `ui/src/lib/tabs.ts`: after every other
+  tab behind a divider, a globe and the page's title, no ⌘1–⌘9, no sidebar
+  row, never split, never counted as an agent.
+- **The system's own engine, in the same window.** A native child webview
+  of the main window (`app/src-tauri/src/page.rs`, Tauri's multi-webview
+  `Window::add_child`, behind its `unstable` feature): WKWebView on macOS,
+  WebView2 on Windows, WebKitGTK on Linux. The dashboard places it over the
+  tab's content box and shows, hides and closes it with the tab through one
+  command, `page_tab` (`{id, act}`; app/README.md § What a page may call).
+  Hidden while the tab is behind or a sheet or menu lies over it; closed
+  after five minutes behind and opened again from its address on return.
+  In a browser only a localhost page shows, in a sandboxed iframe; any other
+  address goes to the browser, since most sites refuse to be framed.
+- **A stranger to Caprock.** The capabilities grant by webview label, not
+  window, so the page's webview (`page-<id>`) is refused every command even
+  on `127.0.0.1`; it gets no init script and so no token; its data store is
+  non-persistent and its own (cookies shared with nothing, nothing on disk).
+  It follows only http, https and the documents a page makes for itself; a
+  new window becomes another Page tab; a download goes into Downloads and
+  is never opened.
+- **Nothing loads without a click** (rule 4): a restored tab waits on *Load
+  the page*; a dashboard reload closes every page.
+- **Light.** One child webview per open page, its WebContent process gone
+  when the tab is closed or has sat behind for five minutes; measured in
+  ADR-070.
+- **Later, not now.** Reloading a localhost page when its session's agent
+  edits a file (the session is remembered, `of`; the toolbar's *from …*
+  brings it forward). Keys while the page has the focus stay the page's.
+
 ## Feedback screenshots
 
 The feedback form (`.ai/04-ui.md` § Feedback) carries its screenshots to
@@ -2199,6 +2237,11 @@ guide [docs/app.md § GitHub](../docs/app.md#github).
   grant the command list in [§ Architecture](#architecture) to the daemon's
   exact origin and nothing else; no remote origin, no shell plugin, no
   filesystem plugin. A strict CSP; no remote scripts.
+- **A Page tab's web page gets nothing at all** (ADR-070): the
+  capabilities name the dashboard's webview, not the window, so a page in
+  a child webview of that window — even one on `127.0.0.1` — is refused
+  every command; its store is non-persistent and its own; no script of
+  Caprock's runs in it.
 - **The sidecar runs one binary** — the bundled `caprock`, with fixed
   arguments.
 - **Tokens never in URLs.** The device token stays a header or WebSocket

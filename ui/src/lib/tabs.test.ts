@@ -4,7 +4,9 @@ import {
   EMPTY_WORKSPACE,
   findTabBySession,
   focusedLeaf,
+  isPageTab,
   leaves,
+  numberedTabs,
   MAX_PANES,
   namingLeaf,
   parseWorkspace,
@@ -376,5 +378,62 @@ describe('a stored Pipeline tab', () => {
     expect(pipelineInStore(JSON.stringify(ws))).toBeUndefined()
     expect(pipelineInStore(null)).toBeUndefined()
     expect(pipelineInStore('{')).toBeUndefined()
+  })
+})
+
+// ADR-070: a web page is a tab of its own, after every other tab, never an agent.
+describe('page tabs', () => {
+  const page = (key: string, url = `https://${key}.example.com/`, of?: string): WorkspaceAction =>
+    ({ type: 'open', target: { kind: 'page', sessionId: `page:${key}`, url, ...(of ? { of } : {}) }, projectId: 'p1', title: key })
+  const titles = (ws: Workspace) => ws.tabs.map((t) => t.title)
+
+  it('keeps every page after every other tab, however they were opened', () => {
+    let ws = run(open('a'), page('x'), open('b'), page('y'), open('c'))
+    expect(titles(ws)).toEqual(['a', 'b', 'c', 'x', 'y'])
+    expect(activeTab(ws)?.title).toBe('c')
+    // A drag keeps each in its own group.
+    ws = workspaceReducer(ws, { type: 'move', tabId: ws.tabs[4]!.id, toIndex: 0 })
+    expect(titles(ws)).toEqual(['a', 'b', 'c', 'y', 'x'])
+    ws = workspaceReducer(ws, { type: 'move', tabId: ws.tabs[0]!.id, toIndex: 9 })
+    expect(titles(ws)).toEqual(['b', 'c', 'a', 'y', 'x'])
+    // The flat sidebar's order names agents only; the pages stay last.
+    ws = workspaceReducer(ws, { type: 'order', ids: [ws.tabs[3]!.id, ws.tabs[2]!.id] })
+    expect(titles(ws)).toEqual(['a', 'b', 'c', 'y', 'x'])
+  })
+
+  it('takes no digit: ⌘1–⌘9 count the agents, shells and files', () => {
+    let ws = run(open('a'), open('b'), page('x'))
+    expect(numberedTabs(ws.tabs).map((t) => t.title)).toEqual(['a', 'b'])
+    ws = workspaceReducer(ws, { type: 'activate-index', index: 8 })
+    expect(activeTab(ws)?.title).toBe('b')
+    expect(isPageTab(ws.tabs[2]!)).toBe(true)
+  })
+
+  it('opens once per tab, is never split, and follows its page', () => {
+    let ws = run(open('a'), page('x', 'http://localhost:5173/', 'a'))
+    // A split from a page opens a tab of its own instead.
+    ws = workspaceReducer(ws, { type: 'split', target: { kind: 'shell', sessionId: 'sh' }, direction: 'row', projectId: 'p1', title: 'sh' })
+    expect(ws.tabs.every((t) => t.root.type === 'pane')).toBe(true)
+    const key = 'page:x'
+    ws = workspaceReducer(ws, { type: 'page-nav', sessionId: key, url: 'http://localhost:5173/about', title: 'About' })
+    const t = findTabBySession(ws, key)!
+    expect(t.title).toBe('About')
+    expect(focusedLeaf(t).target).toEqual({ kind: 'page', sessionId: key, url: 'http://localhost:5173/about', of: 'a' })
+    // Not a web address: kept where it was.
+    const same = workspaceReducer(ws, { type: 'page-nav', sessionId: key, url: 'file:///etc/hosts' })
+    expect(focusedLeaf(findTabBySession(same, key)!).target.url).toBe('http://localhost:5173/about')
+  })
+
+  it('comes back after a restart at the address it was on, and a bad one is dropped', () => {
+    const ws = run(open('a'), page('x', 'http://localhost:5173/'))
+    const back = parseWorkspace(JSON.stringify(ws))
+    expect(back.tabs.map((t) => t.title)).toEqual(['a', 'x'])
+    expect(focusedLeaf(back.tabs[1]!).target.url).toBe('http://localhost:5173/')
+    const raw = JSON.parse(JSON.stringify(ws)) as Workspace
+    ;(raw.tabs[1]!.root as { target: { url: string } }).target.url = 'javascript:alert(1)'
+    expect(parseWorkspace(JSON.stringify(raw)).tabs.map((t) => t.title)).toEqual(['a'])
+    // A hand-edited store with a page before an agent reads back in order.
+    const swapped = { ...ws, tabs: [ws.tabs[1], ws.tabs[0]] }
+    expect(parseWorkspace(JSON.stringify(swapped)).tabs.map((t) => t.title)).toEqual(['a', 'x'])
   })
 })

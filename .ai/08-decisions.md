@@ -4625,3 +4625,124 @@ total.
 can go); Hermes gets a flag that names a session's id (the link becomes
 exact); a user runs several Hermes profiles (read each profile's database); or
 a figure is found where Caprock's and Hermes's own `insights` disagree.
+
+## ADR-070 — A Page tab shows a web page inside Caprock, apart from the agents: a child webview with no commands, a store of its own, loaded only on a click
+
+**Date:** 2026-10-16 · **Status:** accepted (owner, 2026-10-16, translated:
+open a page quickly inside Caprock, conveniently, and never mix page tabs with
+agent tabs; a quick viewer, not a Chrome replacement). What the user sees:
+[04-ui.md § The app workspace](04-ui.md#the-app-workspace), *Page tabs*; the
+app's side: [21-app.md § Page tabs](21-app.md#page-tabs).
+
+**Context.** Agents print `http://localhost:5173` and pull-request links all
+day; following one left Caprock for the browser. An iframe in the dashboard
+cannot be the answer: most sites forbid being framed (`X-Frame-Options`, CSP
+`frame-ancestors`). The desktop app is a Tauri v2 shell (ADR-038), and Tauri
+2 can put a second native webview in a window (`Window::add_child`, behind its
+`unstable` Cargo feature).
+
+**Decisions.**
+
+- **A tab kind of its own, after the agents.** `page` in `ui/src/lib/tabs.ts`,
+  keyed `page:…`, holding its address and the session whose link opened it
+  (`of`). The reducer keeps every page after every other tab, through opens,
+  drags and the flat sidebar's order; a divider stands before the first. A
+  page tab is a globe and the page's title, outlined and never filled while
+  behind; it has no ⌘1–⌘9 (they count the other tabs), no project, no state,
+  no sidebar row, is never split, and closes with no question.
+- **Engine: the system's own, in the same window, on every OS.** A native
+  child webview of the main window (`app/src-tauri/src/page.rs`): WKWebView on
+  macOS, WebView2 on Windows, WebKitGTK on Linux. The dashboard sends one
+  command, `page_tab {id, act}` — open at a rectangle (the content box's CSS
+  rectangle times the interface zoom, in logical pixels), place, show, hide,
+  close, go, back, forward, reload — and hears `caprock:page` events back
+  (address, loading, title, new window, refused scheme, download). The page is
+  hidden while its tab is behind or a sheet, dialog or menu lies over it, since
+  a native view always draws above the dashboard's elements. The fallback the
+  owner allowed — a borderless window glued to the content rectangle — was not
+  needed: the child webview placed, resized, hid and closed cleanly in the
+  macOS check below.
+- **In a browser, only this machine.** The plain web dashboard shows a page on
+  localhost, 127.x or ::1 (never its own origin) in a sandboxed iframe, with no
+  back or forward; any other address opens in a browser tab, as before.
+- **The page is a stranger to Caprock.** The capabilities now grant by webview
+  label (`"webviews": ["main"]`), not by window: while they named the window, a
+  child webview inside `main` on `http://127.0.0.1:*` — any local dev server —
+  matched the dashboard's capability and would have been granted every one of
+  its commands. `cargo test` pins the refusal from inside the window, on the
+  daemon's own address too, and a live probe page on `127.0.0.1` in a Page tab
+  found `__TAURI_INTERNALS__` present but had `daemon_status` and `page_tab`
+  refused (2026-10-16). The page gets no init script (no `__CAPROCK_SHELL__`,
+  no token) and runs in a non-persistent data store of its own
+  (WKWebsiteDataStore `nonPersistent`, WebView2 InPrivate, WebKitGTK
+  ephemeral): no cookie or storage shared with the dashboard or with another
+  page, nothing written to disk, so a sign-in lasts as long as its tab.
+- **Rule 4: nothing loads without a click.** A page opens only from a
+  ⌘-click (Ctrl-click off macOS) on a web link in a terminal or the window, ⌘K
+  (*Open a page…*, or an address typed there), the + menu or the address
+  field. A tab restored after a restart — and the one in front when the window
+  loaded — waits on *Load the page* until brought to the front by hand; a
+  dashboard reload closes every page. Inside the page only http, https and the
+  `about`, `data` and `blob` documents pages make for themselves are followed:
+  a link to another app's scheme, `file:` or `mailto:` is refused and said in
+  the toolbar. A new-window request becomes another Page tab, never a popup. A
+  download goes straight into the Downloads folder under a free name and is
+  never opened.
+- **No new key.** ⌘-click is a pointer gesture already used for links, and
+  ⇧⌘-click keeps the browser; nothing is added to `SHORTCUTS`, so rule 12 has
+  no new chord to check.
+- **Resources: a page behind is freed.** Each page tab is one WebContent
+  process (four tabs, four processes in the check below). Behind other tabs it
+  is hidden at once and closed after five minutes (`UNLOAD_AFTER_MS`), its
+  process with it, and opened again from its address when it comes back; a
+  closed tab or a dashboard reload frees it at once.
+- **The main window is found by label.** Once a child webview is added, Tauri
+  no longer counts the window as a "webview window" and
+  `get_webview_window("main")` returns nothing, which would have cut the
+  monitor, the hotkey, the badge and the updater off the window while a page
+  was open. The shell finds the window and the dashboard's webview by label
+  (`shell::main_window`, `shell::main_webview`).
+
+**Measured** (2026-10-16, MacBook Pro M1 Pro, 16 GB, macOS 27.0.1; a debug
+build of the app against a preview daemon; the machine was under heavy load
+from other work, load average 30 to 130, so take resident sizes as one
+sample). Per page, the WebKit WebContent process that appeared when its tab
+opened and was gone within five seconds of closing it; `footprint` is macOS's
+physical footprint (what Activity Monitor shows), RSS from `ps`:
+
+| Page                          | When           | Footprint | RSS        |
+| ----------------------------- | -------------- | --------- | ---------- |
+| example.com                   | in front, 26 s | 17 MB     | 29,168 KB  |
+| example.com                   | behind, 58 s   | 17 MB     | 17,744 KB  |
+| example.com, reopened         | in front, 25 s | 16 MB     | 32,448 KB  |
+| a local page on 127.0.0.1     | behind, 52 s   | 14 MB     | 15,936 KB  |
+| github.com (signed out, home) | in front, 25 s | 237 MB    | 163,696 KB |
+| github.com, second tab        | in front, 30 s | 236 MB    | 177,680 KB |
+| github.com, second tab        | in front, 60 s | 239 MB    | 33,744 KB  |
+| github.com                    | behind, 2 min  | 221 MB    | 24,528 KB  |
+
+Behind, a page's resident size falls but its footprint barely moves (memory
+compressed, still owned), which is why a page behind is closed rather than
+only hidden. In the same run a page hidden at 09:23:33 had its process gone
+at 09:28:37, and reopening it started a new one at its address. Windows and
+Linux were not measured.
+
+**Rules out:** an iframe for sites not on this machine; sharing cookies,
+storage or a profile with the dashboard; granting the page any command or
+plugin, or injecting any script of Caprock's into it; loading a restored page
+by itself; popups; opening a download; a browser's chrome (bookmarks,
+history, extensions, several windows).
+
+**Known limits.** While the page has the keyboard, Caprock's keys are the
+page's (a click on the strip or the toolbar gives them back). A toast is drawn
+under the page. WebView2's InPrivate needs runtime 101 or later; on an older
+one the page shares the app's WebView2 profile, which still holds no
+dashboard cookie (the daemon sets none: its own client is known by loopback
+origin, ADR-011, and a device by a header, ADR-029).
+
+**Revisit if:** people want sign-ins to outlast a tab (a persistent store per
+page profile: `data_store_identifier` on macOS 14+, `data_directory` on
+Windows and Linux); Caprock's keys are wanted while a page has the focus;
+Tauri's multi-webview leaves `unstable`; a measurement on Windows or Linux
+disagrees; or reloading a localhost page when its session's agent edits a file
+is asked for (the session is already remembered).

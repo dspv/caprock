@@ -106,7 +106,7 @@ describe('openLink', () => {
 // sequence becomes a link through the terminal's own provider, and both go
 // through the same modifier and scheme checks.
 describe('attachTerminalLinks', () => {
-  const setup = async (text: string, onPath?: (p: string) => void) => {
+  const setup = async (text: string, onPath?: (p: string) => void, extra: { onPage?: (u: string) => void; pageable?: (u: string) => boolean } = {}) => {
     // jsdom has no matchMedia; xterm asks it for the device pixel ratio.
     if (!window.matchMedia) {
       Object.defineProperty(window, 'matchMedia', {
@@ -125,7 +125,7 @@ describe('attachTerminalLinks', () => {
     })
     term.open(host)
     const opened: string[] = []
-    const links = attachTerminalLinks(term, { mac: true, open: (u) => opened.push(u), onPath })
+    const links = attachTerminalLinks(term, { mac: true, open: (u) => opened.push(u), onPath, ...extra })
     await new Promise<void>((r) => term.write(text, r))
     const linksOn = (y: number, n = 0) =>
       new Promise<ILink[]>((r) => providers[n]!.provideLinks(y, (l) => r(l ?? [])))
@@ -147,6 +147,27 @@ describe('attachTerminalLinks', () => {
     expect(t.opened).toEqual([])
     link.activate(click({ metaKey: true }), link.text)
     expect(t.opened).toEqual(['https://github.com/dspv/caprock/actions/runs/1'])
+    t.teardown()
+  })
+
+  // ADR-070: in the app's terminals a web link opens in a Page tab; with
+  // Shift, or where no tab can show it, it still goes to the browser.
+  it('opens a web link in a Page tab on Cmd+click, and in the browser with Shift', async () => {
+    const pages: string[] = []
+    const t = await setup('dev server at http://localhost:5173/ and https://example.com/x\r\n', undefined, {
+      onPage: (u) => pages.push(u),
+      pageable: (u) => u.includes('localhost'),
+    })
+    const [local, remote] = await t.linksOn(1)
+    local!.activate(click(), local!.text)
+    expect(pages).toEqual([])
+    local!.activate(click({ metaKey: true }), local!.text)
+    expect(pages).toEqual(['http://localhost:5173/'])
+    local!.activate(click({ metaKey: true, shiftKey: true }), local!.text)
+    expect(t.opened).toEqual(['http://localhost:5173/'])
+    remote!.activate(click({ metaKey: true }), remote!.text)
+    expect(t.opened).toEqual(['http://localhost:5173/', 'https://example.com/x'])
+    expect(pages).toEqual(['http://localhost:5173/'])
     t.teardown()
   })
 

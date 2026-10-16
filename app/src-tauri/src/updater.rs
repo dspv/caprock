@@ -228,7 +228,7 @@ pub fn info<R: Runtime>(app: &AppHandle<R>) -> Info {
 
 /// Tells the page where the updater stands.
 fn announce<R: Runtime>(app: &AppHandle<R>) {
-    let Some(w) = app.get_webview_window(crate::shell::MAIN) else {
+    let Some(w) = crate::shell::main_webview(app) else {
         return;
     };
     let Ok(detail) = serde_json::to_string(&info(app)) else {

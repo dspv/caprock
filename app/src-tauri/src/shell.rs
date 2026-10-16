@@ -18,6 +18,18 @@ use tauri_plugin_opener::OpenerExt;
 
 pub const MAIN: &str = "main";
 
+/// The main window. Never `get_webview_window(MAIN)`: once a Page tab adds a
+/// child webview to the window (page.rs, ADR-070), Tauri no longer counts it
+/// as a webview window and that lookup finds nothing.
+pub fn main_window<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<tauri::Window<R>> {
+    app.get_window(MAIN)
+}
+
+/// The dashboard's own webview in the main window (`main`, as the window).
+pub fn main_webview<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<tauri::Webview<R>> {
+    app.get_webview(MAIN)
+}
+
 /// The main window has finished loading a page at least once.
 static MAIN_LOADED: AtomicBool = AtomicBool::new(false);
 
@@ -160,6 +172,9 @@ pub fn build(
         .on_download(save_download)
         .on_page_load(move |w, p| {
             if !matches!(p.event(), tauri::webview::PageLoadEvent::Finished) {
+                // A new dashboard page (a reload, a daemon swap, the
+                // fallback page) starts with no Page tab's page over it.
+                crate::page::close_all(w.app_handle());
                 return;
             }
             #[cfg(all(feature = "snapshot", target_os = "macos"))]
@@ -427,8 +442,7 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
                 state = sup.state();
                 // A page already loaded from that daemon is its UI; it is
                 // reloaded once the new daemon answers.
-                swapped_under_page = app
-                    .get_webview_window(MAIN)
+                swapped_under_page = main_webview(&app)
                     .and_then(|w| w.url().ok())
                     .is_some_and(|u| is_daemon(&u, None));
             }
@@ -447,12 +461,11 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
                 crate::popover::ensure(&app, *port);
             }
             was_connected = connected;
-            let main = app.get_webview_window(MAIN);
-            if let Some(w) = &main {
-                follow(w, &sup, &state, &mut resume);
+            if let Some(w) = main_webview(&app) {
+                follow(&w, &sup, &state, &mut resume);
             }
             let fast = matches!(state, State::Searching | State::Starting { .. });
-            let visible = || main.as_ref().is_none_or(|w| w.is_visible().unwrap_or(true));
+            let visible = || main_window(&app).is_none_or(|w| w.is_visible().unwrap_or(true));
             // A hidden window with a daemon in hand asks every 5 s, and at
             // once when it is shown again (WP-16: hidden CPU).
             let wait = if fast {
@@ -485,7 +498,7 @@ const HIDDEN_CHECK: Duration = Duration::from_secs(5);
 /// URL, hash included). A terminal's half-typed line lives in its pty-host,
 /// not in the page, so nothing typed is lost.
 fn reload_after_swap(app: &AppHandle, port: u16) {
-    if let Some(w) = app.get_webview_window(MAIN) {
+    if let Some(w) = main_webview(app) {
         if w.url().is_ok_and(|u| reloads_after_swap(&u, port)) {
             let _ = w.reload();
         }
@@ -499,12 +512,12 @@ fn reload_after_swap(app: &AppHandle, port: u16) {
 /// Only the macOS menu has it; F5 elsewhere is the page's own.
 #[cfg(target_os = "macos")]
 pub fn reload_main(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(MAIN) {
+    if let Some(w) = main_webview(app) {
         let _ = w.reload();
     }
 }
 
-fn follow(w: &WebviewWindow, sup: &Arc<Supervisor>, state: &State, resume: &mut Option<Url>) {
+fn follow(w: &tauri::Webview, sup: &Arc<Supervisor>, state: &State, resume: &mut Option<Url>) {
     let Ok(current) = w.url() else { return };
     match state {
         State::Connected { port, .. } => {

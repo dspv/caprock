@@ -14,6 +14,11 @@
  * javascript:, a custom scheme that launches an app) is ignored: the text in a
  * terminal comes from whatever ran there, not from the user.
  *
+ * In the app's terminals (the caller passes `onPage`) Cmd/Ctrl+click on a web
+ * address opens it in a Page tab instead, apart from the agents (ADR-070,
+ * lib/pagetab); with Shift as well it still goes to the browser. mailto
+ * always goes to the mail app.
+ *
  * A `.md` path an agent prints (`docs/PLAN.md`, `/Users/…/NOTES.md:12`) is a
  * link too, on the same Cmd/Ctrl+click, when the caller passes `onPath`: the
  * app's terminal does, and the workspace opens the file in a file tab if it
@@ -76,7 +81,7 @@ export function openLink(url: string): void {
  */
 export function attachTerminalLinks(
   term: Xterm,
-  opts: { mac?: boolean; open?: (url: string) => void; onPath?: (path: string) => void } = {},
+  opts: { mac?: boolean; open?: (url: string) => void; onPath?: (path: string) => void; onPage?: (url: string) => void; pageable?: (url: string) => boolean } = {},
 ): IDisposable {
   const mac = opts.mac ?? isMacPlatform()
   const open = opts.open ?? openLink
@@ -102,21 +107,26 @@ export function attachTerminalLinks(
       'overflow:hidden', 'text-overflow:ellipsis',
     ].join(';')
     // An OSC 8 link can put any text over any address: name the address.
-    el.textContent = says ?? (label !== undefined && label !== url ? `${linkHint(mac)} · ${url}` : linkHint(mac))
+    el.textContent = says ?? (label !== undefined && label !== url ? `${hint(url)} · ${url}` : hint(url))
     const r = host.getBoundingClientRect()
     el.style.left = `${Math.max(0, e.clientX - r.left + 8)}px`
     el.style.top = `${Math.max(0, e.clientY - r.top + 14)}px`
     host.append(el)
     tip = el
   }
+  const onPage = opts.onPage
+  const inTab = (url: string, e?: Pick<MouseEvent, 'shiftKey'>) => !!onPage && !e?.shiftKey && /^https?:/.test(url) && (opts.pageable?.(url) ?? true)
   const activate = (e: MouseEvent, url: string) => {
     if (!opensLink(e, mac)) return
     const safe = openableUrl(url)
     if (!safe) return
     e.preventDefault()
     hide()
-    open(safe)
+    if (inTab(safe, e)) onPage!(safe)
+    else open(safe)
   }
+  // The hover hint says where the link goes: a tab, with Shift the browser.
+  const hint = (url: string) => (inTab(url) ? `${linkHint(mac)} in a tab · ${mac ? '⇧⌘' : 'Ctrl+Shift+'}-click in the browser` : linkHint(mac))
 
   // OSC 8: `text` is the link's URI. Non-http schemes reach us (mailto) and
   // activate filters them.
