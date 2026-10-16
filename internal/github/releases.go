@@ -30,6 +30,10 @@ type RepoRelease struct {
 	// PublishedAt is GitHub's stamp (unix ms).
 	PublishedAt int64 `json:"published_at"`
 	Prerelease  bool  `json:"prerelease,omitempty"`
+	// Assets is how many files are uploaded to it (GitHub's state
+	// "uploaded"; one still being sent is not counted), from the same list:
+	// the release plan's builds count (.ai/04-ui.md § Release plan).
+	Assets int `json:"assets"`
 }
 
 type releasesEntry struct {
@@ -102,6 +106,9 @@ type apiRelease struct {
 	PublishedAt string `json:"published_at"`
 	Draft       bool   `json:"draft"`
 	Prerelease  bool   `json:"prerelease"`
+	Assets      []struct {
+		State string `json:"state"`
+	} `json:"assets"`
 }
 
 // releasesFrom keeps the published releases, in GitHub's order (newest first).
@@ -113,6 +120,11 @@ func releasesFrom(raw []apiRelease) []RepoRelease {
 			continue
 		}
 		rel := RepoRelease{Tag: r.TagName, URL: r.HTMLURL, PublishedAt: at, Prerelease: r.Prerelease}
+		for _, a := range r.Assets {
+			if a.State == "uploaded" {
+				rel.Assets++
+			}
+		}
 		if r.Name != r.TagName {
 			rel.Name = r.Name
 		}

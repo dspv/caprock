@@ -28,7 +28,21 @@ export interface JourneyStep {
   title: string
 }
 
-export const STEP_NAME: Record<StepKey, string> = { open: 'Open', ci: 'CI', merged: 'Merged', released: 'Released' }
+/**
+ * A pill as components/Journey JourneyPills draws it, of any step line: a
+ * pull request's four steps, or a release's stages (lib/releasestatus).
+ * `unknown`: nothing read says where the step is; drawn neutral with a "?".
+ */
+export interface JourneyPillStep {
+  key: string
+  text: string
+  state: StepState
+  tone: StepTone
+  title: string
+  unknown?: boolean
+}
+
+export const STEP_NAME: Record<StepKey, string> ={ open: 'Open', ci: 'CI', merged: 'Merged', released: 'Released' }
 
 /** What a row knows: its card, if the board has one, and its own state. */
 export interface JourneyInput {

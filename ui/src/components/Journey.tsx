@@ -4,7 +4,7 @@
  * on is coloured — its CI's colour on the CI step — the ones behind it are
  * checked, the ones ahead outlined.
  */
-import { STEP_NAME, type JourneyStep, type StepKey, type StepTone } from '@/lib/journey'
+import { STEP_NAME, type JourneyPillStep, type JourneyStep, type StepKey, type StepTone } from '@/lib/journey'
 
 const PILL: Record<StepTone, string> = {
   ok: 'border-ok/55 bg-ok/15 text-ok',
@@ -25,23 +25,26 @@ const BAR: Record<StepTone, string> = {
  * colour (owner, 2026-10-15: the stages must read at a glance — done,
  * current, waiting, failed): a step passed is plain text with a green ✓; the
  * step it is on is a filled pill in its colour, a ✗ when it failed, a turning
- * ring while CI runs; a step still ahead is a dashed outline.
+ * ring while CI runs; a step still ahead is a dashed outline, and one
+ * nothing read can place (`unknown`) a dotted outline with a "?". Also draws
+ * a release's stages (components/ReleaseStatus), with `label` naming the list.
  */
-export function JourneyPills({ steps }: { steps: JourneyStep[] }) {
+export function JourneyPills({ steps, label }: { steps: readonly JourneyPillStep[]; label?: string }) {
   return (
-    <span data-journey className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 text-[12px]">
+    <span data-journey role={label ? 'list' : undefined} aria-label={label} className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 text-[12px]">
       {steps.map((s, i) => {
         const now = s.state === 'current' || s.state === 'closed'
         return (
-          <span key={s.key} className="flex items-center gap-1">
+          <span key={s.key} className="flex items-center gap-1" role={label ? 'listitem' : undefined}>
             {i > 0 && <span aria-hidden className={`text-[11px] ${s.state === 'todo' ? 'text-fg-faint' : 'text-fg-muted'}`}>→</span>}
-            <span data-journey-step={s.key} data-step-state={s.state} title={s.title}
+            <span data-journey-step={s.key} data-step-state={s.state} data-step-unknown={s.unknown ? '' : undefined} title={s.title}
               className={`inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-full border px-2 ${
-                now ? `${PILL[s.tone]} font-semibold` : s.state === 'done' ? 'border-transparent px-1 text-fg-muted' : 'border-dashed border-border-strong text-fg-faint'}`}>
+                now ? `${PILL[s.tone]} font-semibold` : s.state === 'done' ? 'border-transparent px-1 text-fg-muted' : s.unknown ? 'border-dotted border-border-strong text-fg-faint' : 'border-dashed border-border-strong text-fg-faint'}`}>
               {s.state === 'done' && <span aria-hidden className="text-[11px] text-ok">✓</span>}
               {now && s.tone === 'fail' && <span aria-hidden className="text-[11px]">✗</span>}
               {now && s.tone === 'pending' && <span aria-hidden className="ci-spin inline-block h-[8px] w-[8px] rounded-full" />}
               {s.text}
+              {s.unknown && <span aria-hidden className="text-[11px]">?</span>}
             </span>
           </span>
         )

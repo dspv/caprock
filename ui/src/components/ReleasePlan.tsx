@@ -22,7 +22,10 @@
  * PhoneReleases). It reads nothing itself.
  */
 import { useMemo, type ReactNode } from 'react'
-import type { SessionCIStats } from '@/lib/api'
+import type { ReleaseCI, SessionCIStats } from '@/lib/api'
+import { asBoard } from '@/lib/prboard'
+import { releaseStatus, type ReleaseStatus } from '@/lib/releasestatus'
+import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseWhy } from './ReleaseStatus'
 import { BLOCKS, planEmpty, planForRepo, type OSDot, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { changesRelease, useWork } from '@/lib/useWork'
 import { useNow } from '@/lib/useNow'
@@ -49,25 +52,38 @@ export interface ReleasePlanProps {
    * on GitHub. Takes over `compact` and `onOpen`.
    */
   phone?: boolean
+  /**
+   * The release's own status (lib/releasestatus; the Pipeline page): its
+   * bump and why beside the version, its stages as pills under it, a tag
+   * already under way above it, and the last release under the rows.
+   */
+  status?: ReleaseStatus
+  /** The clock the last release's age is said against; with `status`. */
+  now?: number
 }
 
-export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, empty, phone = false }: ReleasePlanProps) {
+export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, empty, phone = false, status, now = Date.now() }: ReleasePlanProps) {
   const nothing = plan.rows.length === 0 && plan.later.length === 0
   if (nothing && !plan.next && !empty) return null
-  const v = plan.next?.version
+  // A release pull request names the version; else the rule's prediction.
+  const pre = status?.phase === 'pre' ? status : undefined
+  const v = pre?.version ?? plan.next?.version
   return (
     <section data-release-plan={plan.name} aria-label={`${plan.name}: next release`} className="grid min-w-0 gap-1.5">
+      {status?.phase === 'tagged' && <ReleaseInFlight status={status} phone={phone} />}
       <header className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-        <h3 data-release-version={v ?? ''} title={plan.next?.title ?? 'No changelog entries read for this repository, so no version is predicted.'}
+        <h3 data-release-version={v ?? ''} title={pre?.why?.title ?? plan.next?.title ?? 'No changelog entries read for this repository, so no version is predicted.'}
           className={`num font-semibold text-fg ${phone ? 'text-[17px] tracking-[-0.01em]' : compact ? 'cursor-help text-[13px]' : 'cursor-help text-[16px] tracking-[-0.01em]'}`}>
           {v ?? 'Next release'}
         </h3>
         {v && <span className={`text-fg-faint ${compact && !phone ? 'text-[10.5px]' : 'text-[11px] uppercase tracking-[0.1em]'}`}>{compact && !phone ? 'next' : 'next release'}</span>}
+        {pre && <ReleaseWhy status={pre} />}
         {showRepo && <span className="min-w-0 truncate text-[13px] font-medium text-fg-muted" title={plan.root}>{plan.name}</span>}
         {plan.since && (
           <span data-release-since title={plan.since.title} className={`num min-w-0 text-fg-muted [overflow-wrap:anywhere] ${phone ? 'basis-full text-[12.5px]' : compact ? 'basis-full text-[11px]' : 'text-[12.5px]'}`}>{plan.since.text}</span>
         )}
       </header>
+      {pre && <ReleaseStages status={pre} />}
       {nothing ? (
         <p className={`text-fg-muted ${phone ? 'text-[14px]' : compact ? 'text-[11.5px]' : 'text-[12.5px]'}`}>{empty ?? 'Nothing waiting for a release.'}</p>
       ) : phone ? (
@@ -75,6 +91,7 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
       ) : (
         <Rows plan={plan} compact={compact} onOpen={onOpen} />
       )}
+      {status?.last && <LastRelease last={status.last} now={now} />}
     </section>
   )
 }
@@ -261,15 +278,23 @@ export function Blocks({ row: r, compact = false, phone = false }: { row: PlanRo
  * while the page is in front, again on GitHub news only). A row opens its
  * pull request beside the list, as the list's rows do.
  */
-export function PipelineRelease({ root, stats, visible, now, onOpen }: { root: string; stats?: SessionCIStats; visible: boolean; now: number; onOpen?: (n: number) => void }) {
+export function PipelineRelease({ root, stats, run, visible, now, onOpen }: { root: string; stats?: SessionCIStats; run?: ReleaseCI; visible: boolean; now: number; onOpen?: (n: number) => void }) {
   const work = useWork({ on: visible, changes: changesRelease })
   const plan = useMemo(() => planForRepo(work.data, root, stats, now), [work.data, root, stats, now])
-  const ref = work.data?.repos?.find((r) => r.root === root)?.unreleased?.ref
+  const repo = work.data?.repos?.find((r) => r.root === root)
+  const ref = repo?.unreleased?.ref
+  const status = useMemo(() => {
+    const board = asBoard(stats?.board)
+    return releaseStatus({
+      lastTag: repo?.tags?.last, unreleased: repo?.unreleased, merged: plan.rows.filter((r) => r.stage === 'merged').length,
+      prs: stats?.prs ?? [], cards: board?.cards, releases: board?.releases ?? [], run,
+    })
+  }, [repo, plan.rows, stats, run])
   return (
     <Panel title="Next release" fold="pipeline-next-release"
       right={<span title="Pull requests from GitHub; agents, tags and changelog entries from this machine, as of your last fetch">{ref ? `changelog on ${ref}` : 'this machine'}</span>}>
       <div data-pipeline-release className="px-3 py-2.5">
-        <ReleasePlan plan={plan} onOpen={onOpen} empty="Nothing merged since the last tag, no pull request open and no agent at work here." />
+        <ReleasePlan plan={plan} onOpen={onOpen} status={status} now={now} empty="Nothing merged since the last tag, no pull request open and no agent at work here." />
       </div>
     </Panel>
   )

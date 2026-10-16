@@ -60,6 +60,8 @@ export interface BoardRelease {
   url?: string
   published_at: number
   prerelease?: boolean
+  /** How many files are uploaded to it; absent from an older daemon. */
+  assets?: number
   /** Pull requests merged into the default branch after the release before it, up to this one. */
   prs: number[]
   cost_usd: number
@@ -155,7 +157,7 @@ export function asBoard(v: unknown): PRBoard | undefined {
     default_branch: typeof o.default_branch === 'string' ? o.default_branch : undefined,
     cards: o.cards.filter((c) => c && typeof c === 'object' && STAGE_KEYS.has((c as BoardCard).stage)).map((c) => ({ ...c, spend: asSpend(c.spend) })),
     releases: (Array.isArray(o.releases) ? o.releases : []).filter((r) => r && typeof r === 'object' && typeof r.tag === 'string')
-      .map((r) => ({ ...r, prs: Array.isArray(r.prs) ? r.prs : [], cost_usd: num(r.cost_usd), sessions: num(r.sessions), published_at: num(r.published_at) })),
+      .map((r) => ({ ...r, prs: Array.isArray(r.prs) ? r.prs : [], cost_usd: num(r.cost_usd), sessions: num(r.sessions), published_at: num(r.published_at), assets: fin(r.assets) })),
     flow: {
       counts, days: num(f.days) || 14, merged: num(f.merged), ttm_median_ms: f.ttm_median_ms || undefined, ttm_count: num(f.ttm_count),
       release_lag_median_ms: f.release_lag_median_ms || undefined, release_lag_count: num(f.release_lag_count),

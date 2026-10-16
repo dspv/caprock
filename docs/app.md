@@ -684,14 +684,19 @@ others. Installing it: [install-app.md](install-app.md).
   agent cost; hover a figure (or focus it) for what it means, in a card
   under it. Under them, **Next release**: the version this repository's
   changelog entries call for (a feature makes a minor release, fixes a
-  patch), then a progress bar per pull request merged since the last tag,
+  patch) with the bump and why beside it, the release's stages as pills —
+  *merged → release PR → CI → tag → builds → published → site*, done ones
+  ticked, the current one filled, one nothing read can place (the site,
+  always) dotted with a *?*; a tag already pushed and still building sits
+  above as *releasing* — then a progress bar per pull request merged since the last tag,
   open, or agent still at work — a segment per step, named on hover, the
   bar growing with the panel — with its step in a word (a landing-queue
   label such as *landing: queued* when it has one) and, as the width
   allows, what it waits for now (*CI on Windows · 6m*, *needs a rebase*,
   *fix: go (windows-latest)*), the agent cost recorded on it (at API list
   price; *—* where no session was), a dot per OS its checks ran on, how
-  long its CI took against the usual, and how long ago it was opened. Then one list, a row per pull request: its number, its whole
+  long its CI took against the usual, and how long ago it was opened; under
+  them, the last release, when, its file count and a link. Then one list, a row per pull request: its number, its whole
   title, its labels, and the four steps as pills — *Open → CI → Merged →
   Released* — a step done ticked, the step it is on filled in its colour (a
   ✗ on *CI red*, a turning ring on *CI running*; *Conflict*, *Changes
