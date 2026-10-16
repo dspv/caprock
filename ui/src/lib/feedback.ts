@@ -10,8 +10,9 @@
  * There is deliberately no rewriting of what the user typed. Making prose out
  * of "button is crooked" needs a model, and Caprock has no API calls; adding
  * one would mean either asking for a key or posting their words to a server,
- * which is the thing we are avoiding. Structure does the same job: a chosen
- * kind, their words verbatim, and a diagnostics block underneath.
+ * which is the thing we are avoiding. Structure does the same job: their
+ * words verbatim (the first line as the title), a kind, and a diagnostics
+ * block underneath.
  *
  * Screenshots cannot travel in a URL, and uploading them anywhere would be
  * the thing we are avoiding, so they go the way a person would carry them:
@@ -25,31 +26,18 @@ import { parseHash, type Route } from './router'
 export type FeedbackKind = 'bug' | 'idea' | 'question'
 
 /**
- * Three, one word each, as three large cards picked with a click or the keys
- * 1, 2, 3 (`kindForCode`). Each maps to a label that exists on dspv/caprock
- * (`gh label list`): a label that does not exist is dropped by GitHub without
- * a word, so the mapping is pinned by a test. "Unclear" and "other" were
- * folded into Question: both already went out with the `question` label, and
- * four near-identical buttons made people stop to choose.
- *
- * `blurb` is the card's one line; `title` and `hint` are the placeholders of
- * the title and the description, a question per kind rather than an example.
+ * Bug, Idea or Question, chosen under *Details* in the one-box form; Bug
+ * unless changed, because that is what most reports are. Each maps to a
+ * label that exists on dspv/caprock (`gh label list`): a label that does not
+ * exist is dropped by GitHub without a word, so the mapping is pinned by a
+ * test. "Unclear" and "other" were folded into Question: both already went
+ * out with the `question` label.
  */
-export const KINDS: { id: FeedbackKind; label: string; blurb: string; title: string; hint: string; gh: string }[] = [
-  { id: 'bug', label: 'Bug', blurb: 'Something broke', title: 'What broke?', hint: 'What did you do, what did you expect, what happened instead?', gh: 'bug' },
-  { id: 'idea', label: 'Idea', blurb: 'Make it better', title: 'What would make it better?', hint: 'What would you like, and what would it help you do?', gh: 'enhancement' },
-  { id: 'question', label: 'Question', blurb: 'How do I…', title: 'What do you want to know?', hint: 'What were you trying to find out?', gh: 'question' },
+export const KINDS: { id: FeedbackKind; label: string; gh: string }[] = [
+  { id: 'bug', label: 'Bug', gh: 'bug' },
+  { id: 'idea', label: 'Idea', gh: 'enhancement' },
+  { id: 'question', label: 'Question', gh: 'question' },
 ]
-
-/**
- * The kind a key picks: 1, 2, 3 on the digit row or the numpad. By `code`,
- * the physical key, so it is the same key on any layout — on AZERTY the
- * unshifted 2 is é, and a Greek or Japanese input method changes `key` too.
- */
-export function kindForCode(code: string): FeedbackKind | null {
-  const m = /^(?:Digit|Numpad)([1-3])$/.exec(code)
-  return m ? KINDS[Number(m[1]) - 1]!.id : null
-}
 
 /** Where issues go. */
 const REPO = 'dspv/caprock'
@@ -151,9 +139,23 @@ export function issueURL(r: Report): string {
  */
 const maxText = 6000
 
-/** A title worth filing: a few characters, not whitespace. */
-export function isSendable(titleText: string): boolean {
-  return titleText.trim().length >= 3
+/**
+ * The one box split into an issue: its first line is the title, the rest the
+ * description. A first line too long for a title goes into the description
+ * whole, so nothing typed is lost to the cut. A report that is only a
+ * screenshot is titled after the screen it came from.
+ */
+export function fromBox(box: string, screen: string): { title: string; text: string } {
+  const lines = box.trim().split('\n')
+  const first = lines[0]?.trim() ?? ''
+  if (!first) return { title: `Screenshot from ${screen}`, text: '' }
+  const rest = lines.slice(1).join('\n').trim()
+  return { title: title(first), text: first.length > maxTitle ? box.trim() : rest }
+}
+
+/** Worth filing: a few characters of text, or a screenshot with none. */
+export function isSendable(box: string, shots = 0): boolean {
+  return box.trim().length >= 3 || (shots > 0 && box.trim() === '')
 }
 
 /** A human name for a dashboard screen, for a report's title and context. */

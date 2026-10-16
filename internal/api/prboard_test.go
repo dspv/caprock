@@ -1,6 +1,7 @@
 package api
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -30,7 +31,7 @@ func TestBuildBoard(t *testing.T) {
 	}
 	live := map[int]github.PR{
 		// #2: a check failed an hour ago.
-		2: {Number: 2, Checks: github.Checks{State: "fail", Items: []github.Check{{StartedAt: at(80 * time.Minute), CompletedAt: at(time.Hour)}}}},
+		2: {Number: 2, Checks: github.Checks{State: "fail", Items: []github.Check{{Name: "test (windows)", State: "fail", StartedAt: at(80 * time.Minute), CompletedAt: at(time.Hour)}, {Name: "lint", State: "pass"}}}},
 		// #3: green, but GitHub says it conflicts.
 		3: {Number: 3, Mergeable: &no, Checks: github.Checks{State: "pass"}},
 		// #4: running since 10 minutes ago.
@@ -62,6 +63,15 @@ func TestBuildBoard(t *testing.T) {
 	}
 	if got[2].Why != "ci" || got[2].StageAt != at(time.Hour) || got[3].Why != "conflict" {
 		t.Errorf("fix: %+v %+v", got[2], got[3])
+	}
+	if !slices.Equal(got[2].Failed, []string{"test (windows)"}) || got[3].Failed != nil {
+		t.Errorf("failed checks: %v %v", got[2].Failed, got[3].Failed)
+	}
+	if got[2].CIMS != (20*time.Minute).Milliseconds() || got[5].CIMS != (10*time.Minute).Milliseconds() || got[4].CIMS != 0 {
+		t.Errorf("CI time: %d %d %d", got[2].CIMS, got[5].CIMS, got[4].CIMS)
+	}
+	if len(got[2].OS) != 1 || got[2].OS[0] != (BoardOS{OS: "windows", State: "fail", Checks: 1}) || got[3].OS != nil {
+		t.Errorf("checks by OS: %+v %+v", got[2].OS, got[3].OS)
 	}
 	if got[4].CI != "running" || got[4].StageAt != at(10*time.Minute) || got[4].Spend.Live != 1 || got[6].CI != "running" {
 		t.Errorf("running: %+v %+v", got[4], got[6])
@@ -108,5 +118,31 @@ func TestBoardReleaseGap(t *testing.T) {
 	b = buildBoard(boardInput{releases: rels, now: now, days: 14})
 	if b.Flow.ReleaseGapCount != 4 || b.Flow.ReleaseGapMedianMS != (3*day).Milliseconds() {
 		t.Fatalf("four gaps: %+v", b.Flow)
+	}
+}
+
+// A check's OS is read from its name as a matrix job names it; each OS is
+// failed, running since its earliest unfinished check, or passed.
+func TestChecksByOS(t *testing.T) {
+	got := checksByOS([]github.Check{
+		{Name: "go (ubuntu-latest)", State: "pass"},
+		{Name: "go (macos-14)", State: "pending", StartedAt: 20},
+		{Name: "ui (macos-14)", State: "pending", StartedAt: 10},
+		{Name: "go (windows-latest)", State: "fail"},
+		{Name: "e2e (windows-latest)", State: "pending", StartedAt: 5},
+		{Name: "lint", State: "pass"},
+		{Name: "darwin build (macos)", State: "skipped"},
+		{Name: "winget manifest", State: "pass"},
+	})
+	want := []BoardOS{
+		{OS: "linux", State: "pass", Checks: 1},
+		{OS: "macos", State: "running", Since: 10, Checks: 2},
+		{OS: "windows", State: "fail", Checks: 2},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("by OS:\n got %+v\nwant %+v", got, want)
+	}
+	if checksByOS([]github.Check{{Name: "lint", State: "pass"}}) != nil {
+		t.Error("checks naming no OS give OS entries")
 	}
 }

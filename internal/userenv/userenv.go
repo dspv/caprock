@@ -147,7 +147,7 @@ func Environ(log *slog.Logger) []string {
 		}
 		env := append([]string(nil), cached...)
 		mu.Unlock()
-		return env
+		return WithUTF8Locale(env, runtime.GOOS)
 	}
 	done := startLocked(log)
 	mu.Unlock()
@@ -158,7 +158,7 @@ func Environ(log *slog.Logger) []string {
 	mu.Lock()
 	defer mu.Unlock()
 	if cached != nil {
-		return append([]string(nil), cached...)
+		return WithUTF8Locale(append([]string(nil), cached...), runtime.GOOS)
 	}
 	// Nothing resolved yet. The session starts with the daemon's environment
 	// rather than not at all, the failure is logged, and a retry is already
@@ -167,7 +167,7 @@ func Environ(log *slog.Logger) []string {
 		log.Warn("starting with the daemon's environment; the login shell's is not available yet",
 			"component", "userenv", "err", lastErr)
 	}
-	return os.Environ()
+	return WithUTF8Locale(os.Environ(), runtime.GOOS)
 }
 
 // Cached returns the login-shell environment if one has been resolved, and nil

@@ -75,6 +75,10 @@ export type Frame = (
   // An owned session's status moved on input it has not answered with an
   // event yet — Enter at its prompt, a permission menu answered (§ Nudges).
   | { type: 'status'; data: { session_id: string; kind: string; at: number } }
+  // The paired devices changed: one paired, removed, given a role, or a
+  // computer waiting to be allowed (ADR-067). Carries nothing; the machine's
+  // own screen re-reads GET /v1/pair/state.
+  | { type: 'devices'; data: Record<string, never> }
 ) & { seq?: number }
 
 /**

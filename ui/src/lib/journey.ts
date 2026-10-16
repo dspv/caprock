@@ -32,7 +32,7 @@ export const STEP_NAME: Record<StepKey, string> = { open: 'Open', ci: 'CI', merg
 
 /** What a row knows: its card, if the board has one, and its own state. */
 export interface JourneyInput {
-  card?: Pick<BoardCard, 'stage' | 'ci' | 'why' | 'release' | 'stage_at'>
+  card?: Pick<BoardCard, 'stage' | 'ci' | 'why' | 'release' | 'stage_at' | 'failed'>
   state: 'open' | 'closed' | 'merged'
   draft?: boolean
   merged_at?: number
@@ -46,12 +46,18 @@ export function stageOf(p: JourneyInput): Stage | 'closed' {
   return p.draft ? 'draft' : 'open'
 }
 
+/** What a red pull request's CI pill says on hover: the failed checks by name, when the daemon named them. */
+export function failedTitle(failed: readonly string[] | undefined): string {
+  if (!failed?.length) return 'A check on its head commit failed'
+  return `${failed.length === 1 ? 'Failed' : 'Failed checks'}: ${failed.join(', ')}`
+}
+
 function ciStep(card: JourneyInput['card'], stage: Stage | 'closed'): Pick<JourneyStep, 'text' | 'tone' | 'title'> {
   if (card?.why === 'conflict') return { text: 'Conflict', tone: 'fail', title: 'GitHub says it conflicts with its base branch' }
   if (card?.why === 'changes_requested') return { text: 'Changes requested', tone: 'fail', title: 'A reviewer asked for changes' }
   switch (card?.ci) {
     case 'running': return { text: 'CI running', tone: 'pending', title: 'Its head commit’s checks are running' }
-    case 'fail': return { text: 'CI red', tone: 'fail', title: 'A check on its head commit failed' }
+    case 'fail': return { text: 'CI red', tone: 'fail', title: failedTitle(card.failed) }
     case 'pass': return { text: 'CI green', tone: 'ok', title: 'Every check on its head commit passed' }
     case 'none': return { text: 'No checks', tone: 'muted', title: 'No check ran on its head commit' }
   }
@@ -144,4 +150,46 @@ export function pipelineRows(rows: TabPR[], board: PRBoard | undefined, repo: Br
     const b = listed.get(r.number)
     return { ...r, card: cards.get(r.number), labels: b?.labels, author: b?.author, author_avatar: b?.author_avatar }
   }))
+}
+
+/** What the cockpit's PRs view lists (owner, 2026-10-16, translated: "on the right it sometimes shows too many PRs"). */
+export interface Flight {
+  /** In flight, in journey order: open, and merged since the newest release. */
+  rows: PipelineRow[]
+  /** With nothing in flight, the newest merges (at most three), as context. */
+  recent: PipelineRow[]
+  /** The newest published release, when the board lists one. */
+  release?: { tag: string; published_at: number }
+}
+
+const OPEN_STAGES = new Set<Stage | 'closed'>(['draft', 'open', 'fix', 'ready'])
+
+/**
+ * What is in flight: the open pull requests, and the ones merged since the
+ * newest release (still heading to one). Released and closed-unmerged ones
+ * are dropped. A repository that publishes no release (a site that pushes
+ * straight to its default branch, like caprock-web) has nothing heading to
+ * one, so only its open pull requests are in flight. Pure.
+ */
+export function inFlight(rows: PipelineRow[], board: PRBoard | undefined): Flight {
+  let release: Flight['release']
+  for (const r of board?.releases ?? []) {
+    if (r.published_at && (!release || r.published_at > release.published_at)) release = { tag: r.tag, published_at: r.published_at }
+  }
+  const flying = rows.filter((r) => {
+    const s = stageOf(r)
+    if (OPEN_STAGES.has(s)) return true
+    return s === 'merged' && !!release && (r.merged_at ?? 0) > release.published_at
+  })
+  const recent = flying.length > 0 ? [] : rows.filter((r) => r.state === 'merged' && !!r.merged_at)
+    .sort((a, b) => (b.merged_at ?? 0) - (a.merged_at ?? 0)).slice(0, 3)
+  return { rows: flying, recent, release }
+}
+
+/** The in-flight pull request the Ring and By OS views draw: the newest open one, else the newest merge. */
+export function flightLead(f: Flight): PipelineRow | undefined {
+  const open = f.rows.filter((r) => OPEN_STAGES.has(stageOf(r)))
+  const pool = open.length > 0 ? open : f.rows
+  const at = (r: PipelineRow) => (open.length > 0 ? r.created_at : r.merged_at) ?? 0
+  return pool.reduce<PipelineRow | undefined>((best, r) => (!best || at(r) > at(best) ? r : best), undefined)
 }

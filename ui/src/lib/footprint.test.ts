@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { fmtBytes, footprintText, goBytes, verdictSummary, type Footprint } from './footprint'
+import { cleanupList, doctorHeadline, doctorRows, fmtBytes, footprintText, goBytes, isTestCopy, safeToStop, startedFrom, type Footprint, type Orphan } from './footprint'
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const fixture = (name: string) => readFileSync(join(repo, 'testdata', 'footprint', name), 'utf8')
@@ -44,11 +44,49 @@ describe('sizes', () => {
   })
 })
 
-describe('the one-line verdict', () => {
-  it('is All good with no warning, else how many things to look at', () => {
-    const f = JSON.parse(fixture('doctor.json')) as Footprint
-    expect(verdictSummary(f)).toBe('4 things to look at')
-    expect(verdictSummary({ ...f, verdicts: [{ level: 'ok', code: 'ok', text: 'Nothing here looks wrong.' }] })).toBe('All good')
-    expect(verdictSummary({ ...f, verdicts: [f.verdicts![0]!] })).toBe('1 thing to look at')
+describe('the doctor in plain words', () => {
+  const f = () => JSON.parse(fixture('doctor.json')) as Footprint
+
+  it('says one line: all good with the memory, else that Caprock uses more than it should', () => {
+    expect(doctorHeadline(f())).toEqual({ ok: false, text: 'Caprock is using more than it should' })
+    expect(doctorHeadline({ ...f(), verdicts: [{ level: 'ok', code: 'ok', text: 'Nothing here looks wrong.' }] })).toEqual({ ok: true, text: 'All good — Caprock uses 1.1 GB' })
+    expect(doctorHeadline({ ...f(), verdicts: [{ level: 'warn', code: 'daemon_not_running', text: 'x' }] }).text).toBe('Caprock is not running')
+  })
+
+  it('groups the problems into rows a person reads, problems first', () => {
+    const rows = doctorRows(f())
+    expect(rows.map((r) => [r.key, r.title, r.count, r.warn])).toEqual([
+      ['copies', 'Test copies of Caprock', 1, true],
+      ['terminals', 'Unused Caprock terminals', 1, true],
+      ['claude', 'Finished Claude sessions still running', 1, true],
+      ['helpers', 'Leftover helpers', 1, true],
+      ['reads', 'Disk reads', undefined, true],
+    ])
+    expect(rows.find((r) => r.key === 'reads')!.reason).toBe('More than usual for Caprock (over 500 MB an hour).')
+    expect(rows.find((r) => r.key === 'reads')!.value).toBe('1.6 GB / hour')
+    // The daemon's own sentence goes to Details, not up front.
+    expect(rows[0]!.said).toContain('beside this one')
+  })
+
+  it('names agent work: worktrees, scratchpads, temporary folders', () => {
+    expect(startedFrom('/Users/me/dev/caprock/.claude/worktrees/phone-end/bin/caprock')).toBe('worktree phone-end')
+    expect(startedFrom(undefined, '/private/tmp/claude-501/x/scratchpad/caprock-triage/data')).toBe('agent scratchpad caprock-triage')
+    expect(startedFrom('/private/var/folders/7h/xt/T/caprock-rich.0uYO/bin/caprock')).toBe('a temporary folder')
+    expect(startedFrom('/opt/homebrew/bin/caprock')).toBeUndefined()
+    expect(isTestCopy({ exe: '/opt/homebrew/bin/caprock', data_dir: '/Users/me/.caprock' })).toBe(false)
+  })
+
+  it('ticks only what is safe to stop', () => {
+    const o = (x: Partial<Orphan>): Orphan => ({ pid: 1, started_at: 1, kind: 'claude', label: 'x', mem_bytes: 1, why: '', ...x })
+    expect(safeToStop(o({ kind: 'caprock_daemon', data_dir: '/tmp/stand' }))).toBe(true)
+    expect(safeToStop(o({ kind: 'caprock_daemon', data_dir: '/Users/me/.caprock-work', exe: '/opt/homebrew/bin/caprock' }))).toBe(false)
+    expect(safeToStop(o({ kind: 'caprock_holder', auto: true }))).toBe(true)
+    expect(safeToStop(o({ kind: 'caprock_holder' }))).toBe(false)
+    expect(safeToStop(o({ kind: 'caprock_other', exe: '/Applications/Caprock Mail.app/Contents/MacOS/caprock-mail' }))).toBe(false)
+    expect(safeToStop(o({ kind: 'claude_child' }))).toBe(true)
+    // The fixture's holder runs claude: listed for Clean up, not ticked.
+    const all = cleanupList(doctorRows(f()))
+    expect(all.map((x) => x.pid)).toEqual([34399, 48120, 48133])
+    expect(all.filter(safeToStop).map((x) => x.pid)).toEqual([48120, 48133])
   })
 })

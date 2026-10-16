@@ -188,7 +188,7 @@ export function crew(w: Week): CrewMember[] {
     }
   }
   const out: CrewMember[] = []
-  const order = ['claude', 'codex', 'opencode', 'gemini', 'deepseek']
+  const order = ['claude', 'codex', 'opencode', 'gemini', 'deepseek', 'hermes']
   const agents = [...by.keys()].sort((a, b) => (order.indexOf(a) + 99 * +(order.indexOf(a) < 0)) - (order.indexOf(b) + 99 * +(order.indexOf(b) < 0)))
   for (const agent of agents) {
     const a = by.get(agent)!

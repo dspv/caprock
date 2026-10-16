@@ -113,6 +113,10 @@ async function toBrief(card = /Corpus/) {
   fireEvent.click(await screen.findByRole('button', { name: card }))
   fireEvent.click(screen.getByRole('button', { name: /Continue/ }))
   await screen.findByRole('heading', { name: 'Name it' })
+  // The parent folder comes from Settings and home from the repo scan, both
+  // answered apart from the templates: wait for them, or the plan and Create
+  // read the bare fallback.
+  await waitFor(() => expect(screen.getByLabelText('Path')).toHaveTextContent(/^~\/dev\/new-/))
   fireEvent.click(screen.getByRole('button', { name: /Continue/ }))
   return screen.findByRole('textbox', { name: 'Brief' })
 }
@@ -179,7 +183,7 @@ describe('new project from a template', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Corpus/ }))
     fireEvent.click(screen.getByRole('button', { name: /Continue/ }))
     expect(await screen.findByRole('textbox', { name: 'Name' })).toHaveValue('new-corpus-2')
-    expect(screen.getByLabelText('Path')).toHaveTextContent('~/dev/new-corpus-2')
+    await waitFor(() => expect(screen.getByLabelText('Path')).toHaveTextContent('~/dev/new-corpus-2'))
     expect(screen.getByRole('radio', { name: 'Private' })).toBeChecked()
     expect(screen.getByLabelText('How it will be made')).toHaveTextContent('On GitHub as dspv/new-corpus-2, from dspv/corpus, then cloned to ~/dev/new-corpus-2.')
     fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'bad name' } })
@@ -343,5 +347,30 @@ describe('new project from a template', () => {
     act(() => { window.dispatchEvent(new CustomEvent('caprock:drop-paths', { detail: { paths: ['/Users/me/Desktop/a.pdf'], x: 10, y: 10 } })) })
     expect(await screen.findByText('Only a .md or .txt file can be the brief.')).toBeInTheDocument()
     expect(m.readText).toHaveBeenCalledTimes(1)
+  })
+
+  it('a click on another card before the sheet has settled is the one chosen', async () => {
+    // The cards can be on screen before React has run the sheet's effects; a
+    // click in that gap once lost to "choose the first card".
+    let release: () => void = () => {}
+    m.templates.mockImplementation(() => new Promise((r) => { release = () => r({ templates: [CORPUS, SITE], gh: READY }) }))
+    render(<Host />)
+    await act(async () => {})
+    const g = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    g.IS_REACT_ACT_ENVIRONMENT = false // outside act, as a real answer arrives
+    try {
+      release()
+      let site: HTMLElement | null = null
+      for (let i = 0; i < 500 && !site; i++) {
+        await new Promise((r) => (i < 200 ? queueMicrotask(() => r(null)) : setTimeout(r, 0)))
+        site = screen.queryByRole('button', { name: /Site/ })
+      }
+      expect(site).not.toBeNull()
+      site!.click()
+    } finally {
+      g.IS_REACT_ACT_ENVIRONMENT = true
+    }
+    await waitFor(() => expect(screen.getByRole('button', { name: /Site/ })).toHaveAttribute('aria-pressed', 'true'))
+    expect(screen.getByRole('button', { name: /Corpus/ })).toHaveAttribute('aria-pressed', 'false')
   })
 })

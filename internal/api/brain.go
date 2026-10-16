@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/bus"
+	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -38,6 +39,10 @@ type BrainStatus struct {
 	Projects []store.BrainProjectCount `json:"projects"`
 	// Auto is the automatic extraction's state, when it is wired.
 	Auto any `json:"auto,omitempty"`
+	// DBPath is the database the memories live in, resolved from the
+	// daemon's data directory (config.DBPath), so the screen's "Where it's
+	// kept" names the real file, not a guess per OS. Omitted without one.
+	DBPath string `json:"db_path,omitempty"`
 }
 
 // BrainAuto is the automatic extraction (internal/brain), wired by the
@@ -195,6 +200,9 @@ func (s *Server) handleBrainStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.d.BrainAuto != nil {
 		st.Auto = s.d.BrainAuto.Status(ctx)
+	}
+	if s.d.DataDir != "" {
+		st.DBPath = config.DBPath(s.d.DataDir)
 	}
 	writeJSON(w, http.StatusOK, st)
 }

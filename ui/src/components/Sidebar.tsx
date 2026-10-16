@@ -34,6 +34,14 @@
  * one or a hidden session comes back. Hidden wins over running; the project
  * in front stays listed even while hidden, and one comes back by itself
  * when it needs you again (lib/sidebar.ts projectHidden).
+ *
+ * Every open tab has a row, in Tree and in Flat (owner, 2026-10-16,
+ * translated: "the tabs in the top strip don't match what's on the left"):
+ * a tab beats hidden by hand, for a project and for a session row alike.
+ * Hiding a project closes its tabs, and "Close tab and hide" a session's, so
+ * that only shows what was hidden earlier and opened again — from More…, a
+ * link or a restored workspace. The hidden mark is kept, not cleared: when
+ * the last tab closes, the row goes back under More… by itself.
  * A project's × closes it: its tabs close and it moves under More…,
  * unless something still runs in it (components/ProjectRow.tsx). Each
  * project's ⋯ menu (or a right-click, or Shift+F10 on its row) hides it,
@@ -54,6 +62,7 @@ import { FLAT_ORDER, flatRows, keepsProject, leadKey, ProjectRow, SessionList } 
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { MenuBox, MenuItem, MenuSeparator, type MenuAt } from './RowMenu'
 import { TodayStrip } from './TodayStrip'
+import { useTodayCard } from '@/lib/todayCard'
 import { SidebarFooter } from './SidebarFooter'
 import { CaprockMark, ChatIcon, EyeIcon, FolderIcon, FolderPlusIcon, PlusIcon, SearchIcon } from './AppIcons'
 import { BrainSidebar } from './BrainSidebar'
@@ -221,6 +230,7 @@ export function Sidebar(props: SidebarProps) {
   const { model, activeProjectId } = props
   const [hidden, setHidden] = useState<HiddenProjects>(() => loadHiddenProjects())
   const [folds, setFolds] = useState<Set<string>>(() => loadIds(FOLDS_KEY))
+  const [todayCard, setTodayCard] = useTodayCard()
   const [hiddenSessions, setHiddenSessions] = useState<HiddenSessions>(() => loadHiddenSessions())
   // Hiding a row unlists it here and nowhere else: nothing is signalled, so
   // it is safe on a session another terminal started (rule 7).
@@ -320,7 +330,13 @@ export function Sidebar(props: SidebarProps) {
     })
   }, [])
   const menuNode = menuAt ? model.projects.find((n) => n.project.id === menuAt.projectId) : undefined
-  const onHide = useCallback((id: string, hide: boolean) => {
+  // Hide closes the project's tabs: every open tab has a row in the sidebar,
+  // so a hidden project with a tab would stay listed (lib/sidebar.ts
+  // groupProjects). Its sessions keep running, as with ⌘W.
+  // markHidden only sets the mark: the project's × has closed the tabs
+  // already, and closing them twice would run ⌘W's work twice.
+  const closeTabsOf = props.onCloseProjectTabs
+  const markHidden = useCallback((id: string, hide: boolean) => {
     setHidden((cur) => {
       const next = new Map(cur)
       if (hide) next.set(id, Date.now())
@@ -329,6 +345,10 @@ export function Sidebar(props: SidebarProps) {
       return next
     })
   }, [])
+  const onHide = useCallback((id: string, hide: boolean) => {
+    if (hide) closeTabsOf?.(id)
+    markHidden(id, hide)
+  }, [closeTabsOf, markHidden])
   const toggleFold = (f: Fold) => {
     setFolds((cur) => {
       const next = new Set(cur)
@@ -354,7 +374,7 @@ export function Sidebar(props: SidebarProps) {
     const close = (stopped: number) => {
       onCloseProjectTabs?.(id)
       if (keepsProject(node, stopped)) return
-      onHide(id, true)
+      markHidden(id, true)
       if (id !== activeProjectId || dashboardActive) return
       const nextTab = (allTabs ?? []).find((t) => t.projectId !== id)
       if (nextTab && onActivateTab) { onActivateTab(nextTab.id); return }
@@ -363,7 +383,7 @@ export function Sidebar(props: SidebarProps) {
     }
     if (!onStopProjectShells) { close(0); return }
     void onStopProjectShells(id).then((o) => { if (!o.cancelled) close(o.stopped) })
-  }, [model.projects, onCloseProjectTabs, onStopProjectShells, onHide, activeProjectId, dashboardActive, allTabs, onActivateTab, groups.shown, onSelectProject])
+  }, [model.projects, onCloseProjectTabs, onStopProjectShells, markHidden, activeProjectId, dashboardActive, allTabs, onActivateTab, groups.shown, onSelectProject])
   const row = (n: ProjectNode) => {
     const current = n.project.id === activeProjectId
     return (
@@ -465,11 +485,13 @@ export function Sidebar(props: SidebarProps) {
         </button>
       </div>
 
-      {/* The list scrolls here and ends above the footer, its sibling below:
-        * nothing is drawn under the footer, and the bottom padding leaves the
-        * last line (Second Brain's caption) whole when scrolled to the end. */}
-      <div data-sidebar-scroll className="app-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-4" onKeyDown={onKeyDown}>
-        {props.onRoute && (
+      {/* The list scrolls here and ends above Second Brain and the footer,
+        * its siblings below: nothing is drawn under either, and the bottom
+        * padding leaves the last row whole when scrolled to the end. Sized
+        * by its content (flex-auto), so a long list presses on Second Brain,
+        * which shrinks its orb first (components/BrainSidebar.tsx). */}
+      <div data-sidebar-scroll className="app-scroll min-h-0 flex-auto overflow-y-auto px-2 pb-4" onKeyDown={onKeyDown}>
+        {props.onRoute && !todayCard.hidden && (
           <TodayStrip
             today={today}
             loaded={props.loaded ?? true}
@@ -477,6 +499,9 @@ export function Sidebar(props: SidebarProps) {
             onWindows={() => props.onRoute!('#/cost?section=limits')}
             onRunning={() => props.onRoute!('#/home')}
             onWaiting={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
+            folded={todayCard.folded}
+            onFold={(folded) => setTodayCard({ folded })}
+            onHide={() => setTodayCard({ hidden: true })}
           />
         )}
 
@@ -484,7 +509,20 @@ export function Sidebar(props: SidebarProps) {
           * says something (owner, 2026-10-11: "nothing on the right"). */}
         <SectionHead label={grouped ? 'Projects' : 'Sessions'} action={projectCount > 0 ? (
           <span className="flex items-center gap-1">
-            <span className="num text-[11.5px] text-fg-faint" title={`${projectCount} ${projectCount === 1 ? 'project' : 'projects'}, ${busyCount} with something running`}>
+            {/* The Today card hidden, what waits on you is still counted here. */}
+            {props.onRoute && todayCard.hidden && today.waiting > 0 && (
+              <button
+                type="button"
+                data-head-waiting
+                onClick={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
+                title={`${today.waiting} waiting on you. Opens the one that has waited longest.`}
+                aria-label={`${today.waiting} waiting on you`}
+                className="num inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-warn px-1 text-[10.5px] font-semibold text-panel"
+              >
+                {today.waiting}
+              </button>
+            )}
+            <span className="num whitespace-nowrap text-[11.5px] text-fg-faint" title={`${projectCount} ${projectCount === 1 ? 'project' : 'projects'}, ${busyCount} with something running`}>
               {busyCount > 0 && <><span aria-hidden className="mr-1 inline-block h-[6px] w-[6px] rounded-full bg-ok align-middle" />{busyCount} of </>}{projectCount}
             </span>
             {props.onGroupedChange && <ListSwitch grouped={grouped} onChange={props.onGroupedChange} />}
@@ -538,9 +576,12 @@ export function Sidebar(props: SidebarProps) {
             Listed from where your sessions ran. Git state and clone arrive with the projects API.
           </p>
         )}
-        {/* Second Brain below the projects (ADR-063): folds, remembers it. */}
-        {props.onRoute && <BrainSidebar onOpen={props.onRoute} />}
       </div>
+
+      {/* Second Brain under the list (ADR-063), never in its scroll, so its
+        * status line is never cut off by the footer; folds, remembers it.
+        * Its orb sparks for the sessions working now, from this model. */}
+      {props.onRoute && <BrainSidebar onOpen={props.onRoute} working={today.working} />}
 
       <SidebarFooter
         folded={folds.has('footer')}

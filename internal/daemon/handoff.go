@@ -118,7 +118,15 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 		"Where this repository was left, %s ago (from Caprock's record of the previous session — "+
 			"the user has not said this to you, and it may be stale):\n\n%s",
 		relay.HumanAge(age), text)
-	body += d.brainHandoff(ctx, project)
+	mem, n := d.brainHandoff(ctx, project)
+	body += mem
+	if n > 0 {
+		// Counted, so the Second Brain screen can say how often agents start
+		// with its memories (migration 0058).
+		if err := store.SetHandoffBrain(ctx, d.store.DB(), p.SessionID, n); err != nil {
+			d.log.Warn("could not record the handoff's memories", "component", "daemon", "err", err)
+		}
+	}
 
 	reply, err := json.Marshal(map[string]any{
 		"hookSpecificOutput": map[string]any{
@@ -175,12 +183,14 @@ func (d *Daemon) memoryStatus() MemoryStatus {
 }
 
 // brainHandoff is what Second Brain keeps for a repository, as a paragraph
-// to append to a served handoff; "" when it keeps nothing there.
-func (d *Daemon) brainHandoff(ctx context.Context, project string) string {
+// to append to a served handoff, and how many memories it holds; "" and 0
+// when it keeps nothing there.
+func (d *Daemon) brainHandoff(ctx context.Context, project string) (string, int) {
 	mems, err := store.BrainProjectMemories(ctx, d.store.DB(), project, handoffBrainMax)
 	if err != nil || len(mems) == 0 {
-		return ""
+		return "", 0
 	}
+	given := 0
 	var b strings.Builder
 	b.WriteString("\n\nKept in the user's Second Brain for this repository (decisions and findings from earlier sessions; they may be stale):")
 	left := handoffBrainRunes
@@ -194,10 +204,11 @@ func (d *Daemon) brainHandoff(ctx context.Context, project string) string {
 			break
 		}
 		left -= n
+		given++
 		b.WriteString(line)
 	}
-	if left == handoffBrainRunes {
-		return ""
+	if given == 0 {
+		return "", 0
 	}
-	return b.String()
+	return b.String(), given
 }

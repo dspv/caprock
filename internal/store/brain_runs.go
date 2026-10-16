@@ -242,3 +242,52 @@ func BrainProjectMemories(ctx context.Context, q Querier, project string, limit 
 	}
 	return scanBrainRows(rows)
 }
+
+// BrainCostSince is what the extraction's reads cost since a moment, in US
+// dollars, as claude reported each (its `total_cost_usd`, at API list price).
+func BrainCostSince(ctx context.Context, q Querier, since int64) (float64, error) {
+	var n float64
+	err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(cost_usd), 0) FROM brain_runs WHERE finished_at >= ?`, since).Scan(&n)
+	return n, err
+}
+
+// BrainLastRead is when the newest read that kept something finished, unix
+// ms; 0 before the first.
+func BrainLastRead(ctx context.Context, q Querier) (int64, error) {
+	var n int64
+	err := q.QueryRowContext(ctx, `SELECT COALESCE(MAX(finished_at), 0) FROM brain_runs WHERE status = 'ok'`).Scan(&n)
+	return n, err
+}
+
+// CountBrainMemoriesSince counts the memories (not entities) added since a
+// moment, by hand or by a read.
+func CountBrainMemoriesSince(ctx context.Context, q Querier, since int64) (int, error) {
+	var n int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM brain_nodes
+		WHERE kind NOT IN ('topic','person','project') AND created_at >= ?`, since).Scan(&n)
+	return n, err
+}
+
+// BrainGraphCounts is how many topics the graph holds and how many links
+// join its nodes.
+func BrainGraphCounts(ctx context.Context, q Querier) (topics, links int, err error) {
+	err = q.QueryRowContext(ctx, `SELECT
+		(SELECT COUNT(*) FROM brain_nodes WHERE kind = 'topic'),
+		(SELECT COUNT(*) FROM brain_edges)`).Scan(&topics, &links)
+	return topics, links, err
+}
+
+// SetHandoffBrain records how many Second Brain memories a new session was
+// handed with its handoff (migration 0058).
+func SetHandoffBrain(ctx context.Context, q Querier, sessionID string, n int) error {
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET handoff_brain = ? WHERE session_id = ?`, n, sessionID)
+	return err
+}
+
+// BrainHandedSince counts the sessions started since a moment that were
+// handed Second Brain memories, and how many memories that was in all.
+func BrainHandedSince(ctx context.Context, q Querier, since int64) (sessions, memories int, err error) {
+	err = q.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(handoff_brain), 0) FROM sessions
+		WHERE handoff_brain > 0 AND started_at >= ?`, since).Scan(&sessions, &memories)
+	return sessions, memories, err
+}

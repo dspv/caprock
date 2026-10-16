@@ -6,7 +6,7 @@ The running log: what is done, what is not, what is next. **Update this file and
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
-Since Orchestrate closed, the product has grown one observation surface across five agents (Claude Code, OpenCode, Gemini CLI, Codex and DeepSeek Harness), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, the ability to pick up a session Caprock did not start, or continue one that has ended, and a memory handoff that tells a new session what the last one left in its folder ([ADR-030](08-decisions.md)) — measurable since 2026-09-30 with an opt-in holdout. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
+Since Orchestrate closed, the product has grown one observation surface across six agents (Claude Code, OpenCode, Gemini CLI, Codex, DeepSeek Harness and Hermes Agent), paid plans on an offline licence key ([ADR-022](08-decisions.md)), a daily spend cap, the ability to pick up a session Caprock did not start, or continue one that has ended, and a memory handoff that tells a new session what the last one left in its folder ([ADR-030](08-decisions.md)) — measurable since 2026-09-30 with an opt-in holdout. Next: the consolidated open-work list in [09-execution-plan.md § Open work](09-execution-plan.md#open-work). The orchestration graph shipped but did not earn a nav slot; see [04-ui.md § Graph](04-ui.md).
 
 ## Progress by track
 
@@ -44,15 +44,17 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 - **All three phases are built and green.** The Go module + `ui/` exist and are exercised by `make check` (Go tests, `go vet`, `golangci-lint`, docs gates, and the UI typecheck/vitest/build) on the 3-OS CI matrix. Phase 2's orchestration loop has been driven end to end by a real `claude` orchestrator (see the Phase 2 log entry). **every phase is tagged and published** (Homebrew formula in `dspv/homebrew-tap`).
 - The Python measurer (`~/dev/caprock-legacy`, PyPI `caprock` 0.3.0) is frozen ([ADR-007](08-decisions.md#adr-007--the-harness-is-caprock-new-go-codebase-in-dspvcaprock-python-measurer-frozen)); the Go binary shipped its first release as **v0.1.0** on 2026-08-19.
-- **Five agent sources share the observation screens.** Claude Code remains the
+- **Six agent sources share the observation screens.** Claude Code remains the
   full Observe → Control → Orchestrate path. Caprock can also start, type into,
   continue and stop Codex and OpenCode TUIs, linked to the record their own
-  files keep ([ADR-031](08-decisions.md)); DeepSeek Harness is observation-only,
-  and the task runner works with Claude Code only. Gemini sessions started by
-  Caprock are observed through OpenTelemetry, prompts included. The Now
-  filter is `all / claude / opencode / gemini / codex / deepseek`. See
-  [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md) and
-  [20-deepseek.md](20-deepseek.md).
+  files keep ([ADR-031](08-decisions.md)), and Hermes Agent's chat, linked to
+  its row in Hermes's database ([ADR-069](08-decisions.md)); DeepSeek Harness
+  is observation-only, and the task runner works with Claude Code only. Gemini
+  sessions started by Caprock are observed through OpenTelemetry, prompts
+  included. Hermes's cron and gateway runs are shown apart on the Cost screen.
+  The Now filter is `all / claude / opencode / gemini / codex / deepseek /
+  hermes`. See [16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md),
+  [20-deepseek.md](20-deepseek.md) and [24-hermes.md](24-hermes.md).
 - **The paid tier is live.** The daily spend cap (`internal/cap`) pauses the
   sessions Caprock started when the day crosses a limit; the weekly report and
   Gemini on the user's own key are paid surfaces too. Payment is a licence key
@@ -73,6 +75,96 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-16 — unreleased: feedback is one box
+
+The owner (translated): "I want the feedback button as short as humanly
+possible: just type what's wrong, maybe drop a screenshot, and send." The
+form's three kind cards, required title and description became one focused
+*What's wrong?* box whose first line is the title; the whole sheet takes a
+dropped or pasted image (and the app's dropped paths); **Send** (⌘↩). The
+kind, diagnostics, *Choose image…* and *Capture window* moved behind
+*Details*. The draft is kept per viewer until sent; a sent report says
+*Opened on GitHub — thanks* and closes; a browser that cannot be opened
+keeps the words and offers Retry. The destination is unchanged — a
+prefilled GitHub issue the user submits — because rule 4 allows a send to
+caprock.dev only for a survey answer (ADR-062). Verified by the component
+tests (type and send, ⌘↩ and Ctrl+Enter, paste, drop, the drop-paths event,
+the draft after Esc, Retry); not yet opened in the real app.
+
+### 2026-10-15 — unreleased: computers in the daemon (ADR-067, Phase 1 PR2)
+
+The second of Phase 1's three pull requests. **The target:** a code *for a
+computer* (`POST /v1/pair/code {kind: "machine"}`, `caprock pair
+--computer`, which turns access from anywhere on and prints the link)
+pairs a device stored with `kind: "machine"` that waits, `pending`, until
+the owner allows it by name — the dashboard's card (`ComputerAsks`, the one
+piece of UI in this PR), the prompt of `caprock pair --computer`, or
+`caprock machines allow <name>` over SSH (`pending`, `deny`, `revoke` too).
+Allowed, it passes the gate on `computerRoutes`, and the phone limits
+(`phoneLimited`) are lifted for it; settings, pairing, the doctor's stop,
+shutdown, update, hooks install and window-opening routes stay the
+machine's. `DELETE /v1/pair/me` lets a device withdraw itself, and a
+device's sockets — `/v1/live` included — close with 1008 the moment it is
+removed or its role changes. **The controller:** `internal/daemon` opens
+`internal/peers` on first use; `GET/POST /v1/machines`, `PATCH/DELETE
+/v1/machines/{id}` and the `/v1/m/{id}/{path…}` proxy (ReverseProxy on the
+channel, sockets bridged, the device subprotocol never echoed) are
+loopback-only and on no device allowlist; `caprock machines ls|add|forget`.
+On Linux, `caprock service install` and `pair --computer` say when
+lingering is off. Tested by unit tests on every route for an allowed and a
+waiting computer, the proxy against a stand-in, and
+`internal/smoke/machines_daemons_test.go`: two real daemons in their own
+homes, data directories and ports, a relay in the test on loopback, the
+controller pairing by link, the target allowing it from its CLI, the fake
+claude started, typed into and echoed through `/v1/m/{id}/…`, then a revoke
+on the target closing the terminal with 1008 and the proxy answering
+`revoked`. PR3 (the app) follows.
+
+### 2026-10-15 — unreleased: Hermes Agent, observed and started (ADR-069)
+
+A user asked for Hermes Agent. `internal/hermes` reads Hermes's
+`state.db` read-only (`mode=ro`, busy timeout, never `immutable`), every five
+seconds: sessions, prompts, replies and tool calls, and Hermes's own cost —
+the provider's figure when Hermes says it is real, its estimate otherwise,
+labelled by `cost_basis`, never re-priced. Hermes keeps usage on the session
+row, so each pass records the difference from what Caprock holds; totals
+equal Hermes's and a re-read adds nothing. Delegated subagents are filed in
+their parent; branches, resets and compression continuations are sessions of
+their own. Cron and gateway runs are marked background and split out on the
+Cost screen's new Hermes panel. *New agent → Hermes* starts `hermes chat`
+(argv from the real `hermes chat --help`, 0.21.6), linked to its row by folder
+and the start time Hermes's id carries; `hermes model` is shown as the user's
+own step when no model is set. Hermes gets its own glyph and teal, drawn here.
+Tested on a fixture built from Hermes's own CREATE statements — mapping, cost
+bases, subagents, background sources, linking, a missing and a locked
+database; no real Hermes conversation was run and no real `state.db` row was
+read (the owner's machine has none yet). Not read: a second Hermes profile,
+per-model splits. See [24-hermes.md](24-hermes.md).
+
+### 2026-10-15 — unreleased: one computer reaches another through the relay (ADR-067, Phase 1 PR1)
+
+The first of Phase 1's three pull requests for *Caprock on every machine*:
+the Go side of the phone's channel, so a daemon can be a relay client to
+another daemon. `internal/remote/client.go` (`Client`: `RoundTrip`,
+`OpenWS`, on demand with a 90 s idle close, backoff, states, relay counters;
+`ParsePairLink`) and `internal/peers` (`machines.json` at 0600, a `Manager`
+that pairs by link, carries requests and sockets as the paired device,
+notices a revoke). The Host counts relay messages and bytes too (OQ-14).
+Tested on a real relay and Host in-process, and by
+`internal/smoke/machines_test.go`: the real binary as the target in its own
+home and data directory, a relay in the test on loopback, the fake claude
+started and typed into through the channel, the relay restarted under an
+open terminal, and a revoke closing it with 1008. Nothing user-visible yet:
+no route, no CLI, no UI, no daemon wiring — PR2 (computers in the daemon,
+the target's computer pairing) and PR3 (the app) follow.
+ADR-067 also records, from the parallel design in #677: a headless target
+allows a computer with `caprock machines allow <name>` over SSH (and needs
+`loginctl enable-linger` on Linux); PR3's install hook (*+ Add a machine*,
+and "This Mac is busy — run it on …" once, from machine-wide figures in
+`/v1/resources`); OQ-17–OQ-20, measured before any public claim, with the
+pitch "this Mac stays responsive", not "faster"; and linking is free with no
+machine limit, a hosted machine of ours parked.
+
 ### 2026-10-15 — unreleased: one changelog fragment per change
 
 With eight to ten pull requests in flight, every one edited CHANGELOG.md's
@@ -92,6 +184,34 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-16 — 0.124.1: no more crashes, drops always land, links in your browser
+
+A patch release. On macOS 27 the app crashed twice in eight minutes: WebKit killed a page process at its pasteboard check and the app faulted shutting it down — both since 0.123.0's Page tab made the dashboard a child webview. The Page tab is withdrawn (ADR-070), so ⌘-click opens a link in the default browser again; the shell hears a drop as both the window's and the webview's event; a drop beside a terminal goes to the one used last, and one with nowhere to go says so (#715).
+
+### 2026-10-16 — 0.124.0: every tab has a row, a Today card that folds away, and two more flakes gone
+
+A minor release because it carries a change in behaviour. Every open tab now has a row in the sidebar, in Tree and Flat: a project or session hidden by hand shows while its tab is open, and hiding a project closes its tabs (#705). The sidebar's Today card has no Share button, folds to one line or hides from its × (#706). Two flaky tests turned out to be product bugs and were fixed at the root — a second machine check now waits for the one in flight, so a revoked computer is told so at once, and the template sheet keeps the card clicked before it finished loading — and `make pr-check` runs the whole UI suite (#709).
+
+### 2026-10-16 — 0.123.1: a dropped file reaches the terminal again
+
+A patch release. 0.123.0 turned on Tauri's `unstable` feature for the Page tab, which makes the dashboard a child webview of its window; Tauri then reports a drop to the webview, not the window, and the app listened on the window, so no file dragged onto a terminal arrived (#707).
+
+### 2026-10-16 — 0.123.0: a Page tab, and CI that stops failing on its own
+
+A minor release because it carries a feature. A web page opens inside Caprock in a Page tab, apart from the agents, in its own webview with no access to Caprock's commands; a hidden page is unloaded after five minutes; memory measured and recorded in ADR-070 (#702). The dashboard's commands are now granted to the dashboard's own view only, not to the whole window. Four flaky tests were fixed at the root — the daemon now waits for its background work before closing the database, a running clone stops on close, and a revoke reaches a relayed terminal while someone types — and `make pr-check` runs the race detector and a Windows build on what a branch changed (#701).
+
+### 2026-10-16 — 0.122.0: Hermes Agent, a Markdown reader, Second Brain's progress, and a doctor in plain words
+
+A minor release because it carries features. Hermes Agent is observed and started (ADR-069, #691). Markdown files read comfortably, with contents, copy-path and `@path` for another agent (#697). Second Brain shows its stage, N of M with a bar and what it gives (#698). "Caprock on this computer" says what is wrong in one line with one Clean up (ADR-059 amended, #695). The Pipeline shares its figures (#686), shows cost per agent-hour and team size (#687) and its count tiles open their pull requests with the reason (#694); the Second Brain graph looks like a knowledge graph (#688). One selected tab in the strip, and closing a tab asks only when an agent is working (#689). Live Pulse keeps money in one column and Telegram is always a share choice (#696). The phone shows release bars (#692) and can end a session under a pinned header (#693). Computers in the daemon, ADR-067 Phase 1 PR2 (#690); the dashboard bundle is built on master (ADR-068, #679).
+
+### 2026-10-15 — 0.121.0: one selected row in the sidebar, a quiet Second Brain card
+
+A minor release because it carries features. The sidebar's session rows are bigger, and only the tab in front looks selected — a waiting session is an amber dot and word, never a bar or a fill (a user report: "which tab am I working in?"); the Today card folds to one line or hides (#684). Second Brain's sidebar card is folded and quiet by default and says where its data is kept; the right panel's CI bars name their stages; a subagent's edits no longer raise a loop alert on its parent; the first click on an unfocused macOS window reaches the page (#682). The groundwork for reaching your other computers, ADR-067 Phase 1 PR1, ships with nothing user-visible (#678).
+
+### 2026-10-15 — 0.120.0: Second Brain you watch being built, release plan, updates on their own
+
+A minor release because it carries features. Second Brain starts in one click and shows its build live, with the living brain in the sidebar card (#656, #658, #668); the release plan with progress bars on the Pipeline, in the right panel and on Work, and right-panel sections that move (#664); hourly update checks, *Update automatically* in the desktop app and a *You're up to date* answer (#666, ADR-042 amended); the resource popover (#663); quick replies under owned sessions (#670); *Couldn't reach GitHub* in words plus a GitHub Status check (#669, ADR-066); the setup strip cut to two buttons (#665); the Pipeline picker lists only GitHub repositories (#667); the theme picker walks with the arrows (#671); a UTF-8 locale for every child process, so an agent's pbcopy keeps non-Latin text (#673); four superseded indexes dropped, 125 MiB on a contributor's 1 GB database, a first external contribution (#675); flaky UI tests fixed at their causes (#674). The first release assembled from `changes/unreleased/` fragments (#654); one entry merged before fragments existed (#656) had stayed under *Unreleased* and is moved into 0.120.0.
+
 ### 2026-10-15 — 0.119.0: Mail's assistant on your own subscription, projects from a template
 
 Mail's AI assistant works with what you already have: your Claude Code,
@@ -517,7 +637,7 @@ session started that outlived it — each with why, never anything with a
 terminal, in a live session, of another user, younger than two minutes or
 in an app bundle (a framework Python's `Python.app` is not one). Taken on
 demand (`?orphans=1`, the open panel, `caprock doctor`); the 10-minute sweep
-keeps the count. The panel's Advanced mode and `caprock doctor --stop <pid>`
+keeps the count. The panel's Clean up (since 2026-10-15; Advanced mode before) and `caprock doctor --stop <pid>`
 stop one listed process on a confirmed click, pid and start time checked
 before SIGTERM and SIGKILL; rule 7 now names this as its one exception. On
 the owner's Mac (read-only, 2026-10-14) the doctor listed a Python

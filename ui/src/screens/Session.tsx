@@ -270,6 +270,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           overlay={overlay}
           hidden={barHidden}
           onReveal={showBar}
+          end={!detail.stale && s.owned && s.status !== 'ended' && !s.detached && !reader ? { sessionId: s.session_id } : undefined}
         >
           <div className="grid grid-cols-1 gap-2.5">
             <div className="min-w-0">

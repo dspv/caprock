@@ -12,6 +12,7 @@ import (
 
 type fixtureEvent struct {
 	SessionID string          `json:"session_id"`
+	AgentID   string          `json:"agent_id"`
 	Kind      string          `json:"kind"`
 	Tool      string          `json:"tool"`
 	TsOffsetS int             `json:"ts_offset_s"`
@@ -31,7 +32,7 @@ func replay(t *testing.T, d *Detector, name string) []*Alert {
 	base := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	var alerts []*Alert
 	for _, fe := range evs {
-		ev := event.Event{SessionID: fe.SessionID, Kind: event.Kind(fe.Kind), Tool: fe.Tool, Payload: fe.Payload, Ts: base.Add(time.Duration(fe.TsOffsetS) * time.Second)}
+		ev := event.Event{SessionID: fe.SessionID, AgentID: fe.AgentID, Kind: event.Kind(fe.Kind), Tool: fe.Tool, Payload: fe.Payload, Ts: base.Add(time.Duration(fe.TsOffsetS) * time.Second)}
 		if a := d.Observe(ev); a != nil {
 			alerts = append(alerts, a)
 		}
@@ -55,6 +56,48 @@ func TestNonLoopingFixtureTriggersNone(t *testing.T) {
 	d := New(5, 3*time.Minute)
 	if alerts := replay(t, d, "non_looping.json"); len(alerts) != 0 {
 		t.Fatalf("false positive: %+v", alerts)
+	}
+}
+
+// A parent and its subagents making the same edit, interleaved: nine calls on
+// one signature inside the window, three per thread. The subagents' calls
+// come under the parent's session id (one by agent id, one marked sidechain
+// only); counted as one window they read as the parent looping.
+func TestSubagentEditsDoNotRaiseTheParentsLoop(t *testing.T) {
+	d := New(5, 3*time.Minute)
+	if alerts := replay(t, d, "subagents_interleaved.json"); len(alerts) != 0 {
+		t.Fatalf("subagent edits counted toward the parent: %+v", alerts)
+	}
+	// Each thread still counts its own: two more edits by the agent-id
+	// subagent make five of its own, and that is a loop -- on the session it
+	// works for.
+	base := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	payload := json.RawMessage(`{"tool_input":{"file_path":"/repo/ui/src/App.tsx","old_string":"import { a } from './a'","new_string":"import { a, b } from './a'"}}`)
+	var got *Alert
+	for i := range 2 {
+		ev := event.Event{SessionID: "parent-session", AgentID: "a1b2c3", Kind: event.KindToolPre, Tool: "Edit", Payload: payload, Ts: base.Add(time.Duration(140+i*5) * time.Second)}
+		if a := d.Observe(ev); a != nil {
+			got = a
+		}
+	}
+	if got == nil || got.SessionID != "parent-session" || got.Count != 5 {
+		t.Fatalf("a looping subagent must still alert, with its own count: %+v", got)
+	}
+	// And the parent's own window was never touched by it: two more of the
+	// parent's make five, and that alerts separately.
+	got = nil
+	for i := range 2 {
+		ev := event.Event{SessionID: "parent-session", Kind: event.KindToolPre, Tool: "Edit", Payload: payload, Ts: base.Add(time.Duration(150+i*5) * time.Second)}
+		if a := d.Observe(ev); a != nil {
+			got = a
+		}
+	}
+	if got == nil || got.Count != 5 {
+		t.Fatalf("the parent's own five edits: %+v", got)
+	}
+	d.Forget("parent-session")
+	if len(d.sessions) != 0 {
+		t.Fatalf("Forget left %d windows", len(d.sessions))
 	}
 }
 

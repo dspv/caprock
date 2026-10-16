@@ -1,7 +1,8 @@
 /**
  * A project's menu in the app's sidebar: its row's ⋯ button, a right-click
  * on the row, or Shift+F10 / the context-menu key on it. Hide it from the
- * list (or show it again), close every tab of it, open its folder in an
+ * list (which closes its tabs: every open tab has a row in the sidebar), or
+ * show it again, close every tab of it, open its folder in an
  * editor, clean up its copies (worktrees), or remove it from Caprock.
  *
  * Closing tabs never stops anything: the sessions and shells in them keep
@@ -92,7 +93,7 @@ export function ProjectMenu(props: ProjectMenuProps) {
           {props.onHide && (hidden ? (
             <Item icon={<EyeIcon size={14} />} label="Show in the sidebar again" onClick={pick(() => props.onHide!(false))} />
           ) : (
-            <Item icon={<EyeOffIcon size={14} />} label="Hide from the sidebar" hint="under More…" onClick={pick(() => props.onHide!(true))} />
+            <Item icon={<EyeOffIcon size={14} />} label="Hide from the sidebar" hint={tabs > 0 ? 'closes its tabs' : 'under More…'} onClick={pick(() => props.onHide!(true))} />
           ))}
           <Item
             icon={<CloseIcon size={14} />}

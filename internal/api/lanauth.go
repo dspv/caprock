@@ -193,6 +193,8 @@ func (s *Server) gate(r *http.Request) (status int, reason string) {
 const (
 	viewerRefusal     = "this device can read Caprock, not control it"
 	controllerRefusal = "this is done on the machine Caprock runs on"
+	// pendingRefusal is a computer the owner has not allowed yet (ADR-067).
+	pendingRefusal = "this computer is waiting to be allowed on the machine Caprock runs on"
 )
 
 // gateDevice is gate, plus the device that is asking when the request came
@@ -238,7 +240,16 @@ func (s *Server) gateDevice(r *http.Request) (status int, reason string, dev *pa
 		// apart tells a stranger which of their guesses was once real.
 		return http.StatusUnauthorized, "this device is not paired with Caprock", nil
 	}
-	switch s.deviceMay(r, dev.Role) {
+	if dev.Pending {
+		// A computer that redeemed a code and waits for the owner's Allow
+		// (ADR-067): nothing is read before the owner has seen its name. It
+		// may ask where it stands, and withdraw.
+		if r.URL.Path == "/v1/pair/me" && (r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodDelete) {
+			return 0, "", dev
+		}
+		return http.StatusForbidden, pendingRefusal, dev
+	}
+	switch s.deviceMay(r, dev) {
 	case mayServe:
 		return 0, "", dev
 	case mayIfController:
@@ -335,6 +346,14 @@ var pairedDeviceRoutes = map[string]bool{
 	// The Work board (ADR-064): the same reads across every live session,
 	// plus the release state the clone holds locally; nothing on it writes.
 	"GET /v1/work": true,
+	// The Pipeline's agent figures: what an hour of agent work costs and
+	// how many agents worked, per repository; read-only.
+	"GET /v1/pipeline/agents": true,
+	// The Pipeline's one answer — the repository's pull requests and its
+	// figures — which the phone's Releases section draws its bars from
+	// (04-ui.md § The phone home). Composed from the GitHub reads the daemon
+	// keeps, with the daemon's own token; nothing on it writes.
+	"GET /v1/sessions/{id}/ci/stats": true,
 	// The chat field's pickers: the session's slash commands (names and
 	// descriptions from its .claude folders) and its folder's file list,
 	// as a project's file list is a read.
@@ -364,6 +383,8 @@ var pairedDeviceRoutes = map[string]bool{
 	// what a session's diff already shows, read whole. Never a write.
 	"GET /v1/projects/{id}/file":  true,
 	"GET /v1/projects/{id}/files": true,
+	// A picture a Markdown file shows, from the same folder, by the same rules.
+	"GET /v1/projects/{id}/image": true,
 
 	// GitHub (WP-19): the connection's state (never the token), the clone
 	// picker's lists, and each worktree's pull request with its checks and
@@ -468,6 +489,81 @@ var controllerRoutes = map[string]bool{
 	"POST /v1/projects/{id}/github/refresh": true,
 }
 
+// What a computer may do on top of a controller (ADR-067): the work surface
+// of the machine itself, not a phone's limits. A computer is another Caprock
+// daemon its owner paired with a code *for a computer* and then allowed by
+// name on this machine; it reaches this API only through the relay channel,
+// as a paired device. computerRoutes is a superset of controllerRoutes (the
+// lookup reads both), still an allowlist: a route added later is closed to a
+// computer until it is named here.
+//
+// On top of a controller's routes a computer may start a session with any
+// folder, `command`, `args` or `chat` (handleSpawn skips
+// controllerSpawnRefusal for it; the other "under home" narrowings are
+// lifted too, phoneLimited), open shell tabs and their terminals, run the
+// task board, the hive and the orchestrator, and read what the session deck
+// reads (pull requests, CI, branches, a project's copies).
+//
+// What stays the machine's own, whatever the role — named here because the
+// code decides, not taste (ADR-067):
+//
+//   - pairing, roles, codes, access from anywhere and the LAN switch
+//     (/v1/pair/*, which the handlers also refuse off loopback): a computer
+//     that could mint itself a second token would survive its own revocation;
+//   - settings writes (PUT /v1/settings, Telegram, GitHub connect, custom
+//     agents, subscriptions, Second Brain's settings): they hold the licence
+//     key and the tokens of the integrations the owner turned on, and
+//     repointing them would send this machine's data where its owner never
+//     chose (rule 4, ADR-047);
+//   - the doctor's stop (POST /v1/footprint/orphans/stop, ADR-059), the reap,
+//     shutdown, the update check, hooks install, and the routes that open a
+//     window on this machine's own screen (open-terminal, the editors);
+//   - the machine's own controller routes (/v1/machines, /v1/m/…): access is
+//     not transitive.
+//
+// Rule 7 holds below this, in the agent manager: a computer starts, types into
+// or signals only what this daemon started.
+var computerRoutes = map[string]bool{
+	// Shell tabs and their terminals (handleStartShell; the agent routes a
+	// controller has then reach a shell too, refuseShellToDevice).
+	"POST /v1/shells": true,
+	"GET /v1/shells":  true,
+	// The task board, the hive and the orchestrator.
+	"GET /v1/hive/starter":         true,
+	"POST /v1/hive":                true,
+	"POST /v1/tasks":               true,
+	"POST /v1/tasks/{id}/verify":   true,
+	"POST /v1/orchestrator/start":  true,
+	"POST /v1/orchestrator/stop":   true,
+	"GET /v1/agents/custom":        true, // the start form lists them; setting them is the machine's
+	"GET /v1/activity":             true,
+	"GET /v1/overlap":              true,
+	"GET /v1/update/busy":          true,
+	"GET /v1/github/actions-usage": true,
+	"GET /v1/github/statuspage":    true,
+	// The session deck: a session's pull requests, CI and branches, and the
+	// two buttons on them.
+	"GET /v1/sessions/{id}/prs":                         true,
+	"POST /v1/sessions/{id}/prs/{number}/rerun":         true,
+	"POST /v1/sessions/{id}/prs/{number}/update-branch": true,
+	"GET /v1/sessions/{id}/ci":                          true,
+	"GET /v1/sessions/{id}/branches":                    true,
+	"GET /v1/sessions/{id}/ci/jobs/{job}/log":           true,
+	"GET /v1/sessions/{id}/ci/release":                  true,
+	"GET /v1/sessions/{id}/ci/main":                     true,
+	"GET /v1/sessions/{id}/ci/stats":                    true,
+	// A project's branches, copies and their clean-up, and its repositories.
+	"GET /v1/projects/{id}/branches":         true,
+	"GET /v1/projects/{id}/copies":           true,
+	"POST /v1/projects/{id}/copies/remove":   true,
+	"GET /v1/projects/{id}/cleanup":          true,
+	"POST /v1/projects/{id}/cleanup":         true,
+	"POST /v1/projects/{id}/cleanup/restore": true,
+	"GET /v1/projects/scan":                  true,
+	"POST /v1/projects/merge":                true,
+	"POST /v1/projects/{id}/split":           true,
+}
+
 // deviceVerdict is what a role may do with one request.
 type deviceVerdict int
 
@@ -477,8 +573,9 @@ const (
 	mayServe                             // this device may
 )
 
-// deviceMay decides one request from a paired device holding role.
-func (s *Server) deviceMay(r *http.Request, role string) deviceVerdict {
+// deviceMay decides one request from a paired device, by its role and kind.
+func (s *Server) deviceMay(r *http.Request, dev *pairing.Device) deviceVerdict {
+	role := dev.Role
 	if !strings.HasPrefix(r.URL.Path, "/v1/") {
 		// The dashboard's own files and /healthz, open even before pairing.
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
@@ -489,6 +586,17 @@ func (s *Server) deviceMay(r *http.Request, role string) deviceVerdict {
 	_, pattern := s.mux.Handler(r)
 	if (r.Method == http.MethodGet || r.Method == http.MethodHead) && pairedDeviceRoutes[pattern] {
 		return mayServe
+	}
+	// Any paired device may withdraw itself (ADR-067): what a computer's
+	// Forget asks, and nothing a device could widen.
+	if r.Method == http.MethodDelete && pattern == "DELETE /v1/pair/me" {
+		return mayServe
+	}
+	if dev.Kind == pairing.KindMachine && computerRoutes[pattern] && controllerMethod(r.Method, pattern) {
+		if role == pairing.RoleController {
+			return mayServe
+		}
+		return mayIfController
 	}
 	if !controllerRoutes[pattern] || !controllerMethod(r.Method, pattern) {
 		return mayNot
@@ -538,14 +646,26 @@ func (s *Server) pairingGate(w http.ResponseWriter, r *http.Request) (*http.Requ
 	}
 	detail := "Open the Caprock app on your computer: Settings \u2192 Use on your phone \u2192 Show a code, and scan it with this device."
 	if status == http.StatusForbidden {
-		if reason == viewerRefusal {
+		switch reason {
+		case pendingRefusal:
+			detail = "On the machine Caprock runs on, press Allow beside this computer's name, or run `caprock machines allow <name>` there."
+		case viewerRefusal:
 			detail = "To start, type into or stop sessions from here, open the Caprock app on your computer: Settings \u2192 Use on your phone, then press \u201cLet it control sessions\u201d next to this device."
-		} else {
+		default:
 			detail = "Settings, pairing, the task runner and opening a terminal window happen on the machine Caprock runs on."
 		}
 	}
 	writeJSON(w, status, map[string]string{"error": reason, "detail": detail})
 	return r, false
+}
+
+// phoneLimited reports whether r came from a paired device held to a phone's
+// limits (ADR-034): folders under home, no command or shell of its own. A
+// computer the owner allowed (ADR-067) is not — it has the machine's work
+// surface — and neither is the machine itself.
+func phoneLimited(r *http.Request) bool {
+	d := deviceFrom(r)
+	return d != nil && d.Kind != pairing.KindMachine
 }
 
 // deviceKey carries the paired device that made a request, in its context.

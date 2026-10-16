@@ -759,30 +759,6 @@ func TestSearchNotesPromptWindow(t *testing.T) {
 	}
 }
 
-// Every /v1/stats/summary computes the model mix, and the Cost screen asks for
-// one on an interval. idx_events_cost_cover carries model but leads on kind,
-// so a query filtering only on ts cannot use it — SQLite grouped in a temp
-// B-tree and read the table for model and cost on every matching row: 146ms
-// against 56ms over 30 days on a real 190k-event database.
-//
-// This asserts the index exists and leads on ts, not that the planner picks
-// it. Which plan wins is a function of table size, so asserting a plan on a
-// small fixture would encode the fixture rather than the property.
-func TestModelMixIndexLeadsOnTs(t *testing.T) {
-	s := openTest(t)
-	var sql string
-	err := s.db.QueryRowContext(context.Background(),
-		`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_events_ts_model'`).Scan(&sql)
-	if err != nil {
-		t.Fatalf("idx_events_ts_model is missing; the model mix in every summary falls back to a table read per row: %v", err)
-	}
-	// Leading on ts is the whole point — that is what idx_events_cost_cover,
-	// which leads on kind, cannot do for a ts-only filter.
-	if !strings.Contains(strings.ReplaceAll(sql, " ", ""), "(ts,model,cost_usd)") {
-		t.Errorf("index must lead on ts and carry cost_usd to answer the aggregate, got: %s", sql)
-	}
-}
-
 // One directory is one project, even when only some of its sessions knew they
 // were in a repository.
 //

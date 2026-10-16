@@ -40,6 +40,7 @@ import (
 	"github.com/dspv/caprock/internal/gemini"
 	"github.com/dspv/caprock/internal/github"
 	"github.com/dspv/caprock/internal/gitremote"
+	"github.com/dspv/caprock/internal/hermes"
 	"github.com/dspv/caprock/internal/hive"
 	"github.com/dspv/caprock/internal/hookd"
 	"github.com/dspv/caprock/internal/hooks"
@@ -108,6 +109,10 @@ type Options struct {
 	// DeepseekDir overrides where DeepSeek Harness session transcripts are
 	// looked for. Empty means the default (~/.dsh/sessions); "off" disables it.
 	DeepseekDir string
+	// HermesDB overrides where Hermes Agent's state database is looked for.
+	// Empty means Hermes's own (state.db under $HERMES_HOME, else ~/.hermes);
+	// "off" disables the import (ADR-069).
+	HermesDB string
 	// IdleAfter is the silence threshold before a session is marked idle.
 	IdleAfter time.Duration
 	// EndAfter is the silence threshold before a session is marked ended
@@ -139,7 +144,12 @@ type Options struct {
 
 // Daemon is a running instance.
 type Daemon struct {
-	opt     Options
+	opt Options
+	// bg counts the background goroutines run starts (goBg). run cancels
+	// their context and waits for them before the database closes: one still
+	// reading after Close logged "sql: database is closed", and on Windows
+	// its open handle kept caprock.db from being deleted.
+	bg      sync.WaitGroup
 	secrets secretStores
 	// slow holds the status figures that read the event table in bulk.
 	slowMu sync.Mutex
@@ -179,6 +189,9 @@ type Daemon struct {
 	// read-only file import — DSH writes a zstd JSONL transcript per session and
 	// Caprock reads it, so there is nothing to install and no config to rewrite.
 	dsIn *deepseek.Ingester
+	// hmIn reads Hermes Agent's state database (ADR-069), read-only. Guarded
+	// by ingMu: it starts whenever the database first appears.
+	hmIn *hermes.Ingester
 	// gemIn reads the telemetry files spawned Gemini sessions write. Gemini has
 	// no hooks and no transcript, so without this Caprock starts a session and
 	// then observes nothing about it — which is what 0.44.x shipped.
@@ -274,6 +287,8 @@ type Daemon struct {
 	// the connection while it is on, and how to stop it.
 	remoteSet  *remote.Settings
 	remoteHost *remote.Host
+	// machines are the other computers this one reaches (ADR-067).
+	machines   *machinesAdapter
 	remoteStop context.CancelFunc
 	// ingestErr is the terminal error from the tailer goroutine, if it died.
 	// Ingest is the whole product on Phase 0, so its death is not a log line:
@@ -414,6 +429,12 @@ func (d *Daemon) run(ctx context.Context) error {
 	defer d.store.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// Runs before the database closes, on every return: everything started
+	// in the background is stopped and waited for (goBg).
+	defer func() {
+		cancel()
+		d.waitBackground(bgStopWithin)
+	}()
 	d.baseCtx = ctx
 	startPprof(ctx, d.log)
 	// Before anything reads a credential: a key an older release left in
@@ -445,7 +466,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// Turns stored before their model had a row in the pricing table are
 	// priced now that it may have one. Background, best-effort, idempotent:
 	// what is still missing stays unpriced and is counted as such.
-	go func() {
+	d.goBg(func() {
 		// Once: daily_stats' Codex rows carried the pre-0022/0023 imports as
 		// well as the re-imports. Days retention may have pruned are left as
 		// they are — rebuilding them from missing events would erase history.
@@ -473,27 +494,29 @@ func (d *Daemon) run(ctx context.Context) error {
 		if _, err := d.rec.PriceUnpriced(ctx); err != nil && ctx.Err() == nil {
 			d.log.Warn("could not price previously unpriced turns", "component", "rollup", "err", err)
 		}
-	}()
+	})
 
 	// Live-plane subscriber: loop detector over stored events.
 	sub := d.bus.Subscribe(4096)
-	go d.observeLoops(ctx, sub)
+	d.goBg(func() { d.observeLoops(ctx, sub) })
 	// Phone alerts (ADR-036), subscribed before any producer starts so the
 	// first Stop is not missed.
 	d.tg = d.newTelegram()
 	d.queueDoneC = make(chan queuedDoneMsg, 16)
-	go d.alertLoop(ctx, d.bus.Subscribe(1024))
+	alerts := d.bus.Subscribe(1024)
+	d.goBg(func() { d.alertLoop(ctx, alerts) })
 
 	// Owned-session manager (Phase 1).
 	d.mgr = agents.NewManager(d.store, d.opt.DataDir, "", d.log)
 	d.link = sessionlink.New(d.store, d.log)
 	// Resolve the login-shell environment sessions are started with now, so
 	// the first one the user starts does not wait on their shell profile.
+	userenv.EnsureProcessLocale()
 	userenv.Warm(d.log)
 	// The log file, whichever of the two the daemon was started with, is
 	// kept to a bounded size.
 	logcap.Watch(config.LogPath(d.opt.DataDir), config.ServiceLogPath(d.opt.DataDir))
-	go logcap.Run(ctx, d.log)
+	d.goBg(func() { logcap.Run(ctx, d.log) })
 	d.queue = newMsgQueue(d)
 	d.queue.onDone = d.queuedDone
 	d.mgr.OnExit = func(id string, code int) {
@@ -553,6 +576,10 @@ func (d *Daemon) run(ctx context.Context) error {
 	if err := d.projs.Start(ctx); err != nil {
 		d.log.Warn("projects list unavailable", "component", "daemon", "err", err)
 		d.projs = nil
+	} else {
+		// Before the database closes (defers run last first): its refreshes
+		// and clones are waited for.
+		defer d.projs.Close()
 	}
 	d.startGitHub(ctx)
 
@@ -656,6 +683,8 @@ func (d *Daemon) run(ctx context.Context) error {
 		tpls.Env = func() []string { return userenv.Environ(d.log) }
 		tpls.Ctx = ctx
 	}
+	d.machines = &machinesAdapter{d: d}
+	defer d.machines.close()
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, PhoneLink: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, WindowStop: d.windowStopStatus,
@@ -686,7 +715,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			Env:       func() []string { return userenv.Environ(d.log) },
 			Preferred: func() string { return d.config().Editor },
 		},
-		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d,
+		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines,
 		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
 		Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 	})
@@ -699,7 +728,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.mu.Unlock()
 	// The Telegram bridge calls the agent manager and the API, so it starts
 	// once both exist (ADR-047).
-	go d.tg.Run(ctx)
+	d.goBg(func() { d.tg.Run(ctx) })
 
 	// Ingest.
 	if !d.opt.DisableIngest {
@@ -712,7 +741,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			root = r
 		}
 		d.tail = ingest.New(root, d.rec, d.store, d.log)
-		go func() {
+		d.goBg(func() {
 			if err := d.tail.Run(ctx); err != nil {
 				d.log.Error("ingest stopped", "component", "ingest", "err", err)
 				// Logging alone made a fatal ingest failure invisible: with a
@@ -724,7 +753,7 @@ func (d *Daemon) run(ctx context.Context) error {
 					d.setIngestErr(err)
 				}
 			}
-		}()
+		})
 	}
 
 	// OpenCode, when this machine has it. A second coding agent keeps its own
@@ -734,7 +763,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// installed or first run after the daemon started creates the database
 	// later, so its absence is looked at again until it appears.
 	if !d.startOpenCode(ctx) && !d.opt.DisableIngest {
-		go d.awaitOpenCode(ctx, openCodeAwaitEvery)
+		d.goBg(func() { d.awaitOpenCode(ctx, openCodeAwaitEvery) })
 	}
 
 	// Codex, when this machine has it. Easier to observe than either of the
@@ -764,14 +793,22 @@ func (d *Daemon) run(ctx context.Context) error {
 				d.log.Warn("deepseek transcripts found but not readable", "component", "deepseek", "dir", dir, "err", err)
 			} else if len(ts) > 0 {
 				d.dsIn = deepseek.NewIngester(dir, d.rec, d.log, 5*time.Second)
-				go func() {
+				d.goBg(func() {
 					if err := d.dsIn.Run(ctx); err != nil && ctx.Err() == nil {
 						d.log.Error("deepseek ingest stopped", "component", "deepseek", "err", err)
 					}
-				}()
+				})
 				d.log.Info("deepseek sessions are being read", "component", "deepseek", "dir", dir, "transcripts", len(ts))
 			}
 		}
+	}
+
+	// Hermes Agent, when this machine has it: one SQLite database with its
+	// own per-session cost, read-only, as OpenCode's is (ADR-069). Hermes
+	// creates it on its first conversation, so its absence is looked at again
+	// until it appears.
+	if !d.startHermes(ctx) && !d.opt.DisableIngest {
+		go d.awaitHermes(ctx, openCodeAwaitEvery)
 	}
 
 	// When the last run stopped, and what was running then — read before the
@@ -784,7 +821,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			d.log.Warn("could not read what was running at the last stop", "component", "daemon", "err", err)
 		}
 	}
-	go d.heartbeat(ctx)
+	d.goBg(func() { d.heartbeat(ctx) })
 
 	// Idle sweeper (also runs once at start so backfilled history settles immediately).
 	_ = d.rec.MarkIdle(ctx, d.opt.IdleAfter, d.opt.EndAfter)
@@ -794,49 +831,49 @@ func (d *Daemon) run(ctx context.Context) error {
 	// best-effort: a network failure must never delay or break startup.
 	checks := d.config().UpdateChecks
 	if checks {
-		go func() {
+		d.goBg(func() {
 			cctx, ccancel := context.WithTimeout(ctx, 10*time.Second)
 			defer ccancel()
 			if err := d.upd.Check(cctx, false); err != nil {
 				d.log.Debug("release check failed", "component", "update", "err", err)
 			}
-		}()
+		})
 	}
-	go d.updateLoop(ctx)
+	d.goBg(func() { d.updateLoop(ctx) })
 	// Telemetry from spawned Gemini sessions. Started unconditionally: the
 	// directory appears when the first Gemini session is spawned, and a sweep
 	// over a directory that does not exist is a no-op rather than an error.
 	d.gemIn = gemini.NewIngester(filepath.Join(d.opt.DataDir, "gemini"), d.rec, d.log)
-	go d.gemIn.Run(ctx)
+	d.goBg(func() { d.gemIn.Run(ctx) })
 	// Sessions reattached above are watched again the way a spawn starts
 	// watching them; here, once the Gemini ingester exists.
 	d.relink(ctx, reattached)
 
-	go d.sweep(ctx)
+	d.goBg(func() { d.sweep(ctx) })
 	d.startKeepAwake(ctx)
 	d.loadReportState(ctx)
-	go d.weeklyLoop(ctx)
-	go d.backfillToolLinks(ctx)
-	go d.repairEmptyText(ctx)
-	go d.backfillPRs(ctx)
+	d.goBg(func() { d.weeklyLoop(ctx) })
+	d.goBg(func() { d.backfillToolLinks(ctx) })
+	d.goBg(func() { d.repairEmptyText(ctx) })
+	d.goBg(func() { d.backfillPRs(ctx) })
 	// Idle-time housekeeping: the data-directory sweep and the daily storage
 	// measurement (cleanup.go). Nothing on a fixed timer reads the whole file.
 	d.activity.Store(time.Now().UnixMilli())
-	go d.idleLoop(ctx)
-	go d.resourceLoop(ctx)
-	go d.ioLoop(ctx)
+	d.goBg(func() { d.idleLoop(ctx) })
+	d.goBg(func() { d.resourceLoop(ctx) })
+	d.goBg(func() { d.ioLoop(ctx) })
 	if d.config().RetentionDays > 0 {
-		go d.pruneLoop(ctx)
+		d.goBg(func() { d.pruneLoop(ctx) })
 	}
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	// The all-time aggregates take a second or more on a large database; work
 	// them out now so the first screen opened finds them cached.
-	go func() {
+	d.goBg(func() {
 		d.events.get(ctx, d.store)
 		d.api.Warm(ctx)
-	}()
+	})
 
 	// The second listener, when the user asked for one.
 	//
@@ -901,6 +938,38 @@ func (d *Daemon) run(ctx context.Context) error {
 	_ = srv.Shutdown(shutdownCtx)
 	sub.Unsubscribe()
 	return nil
+}
+
+// bgStopWithin bounds how long shutdown waits for the background goroutines.
+// They all stop on their context; the bound only keeps a stuck one from
+// holding the process open, and it is logged when it is reached.
+const bgStopWithin = 15 * time.Second
+
+// goBg runs f on a goroutine run waits for before closing the database.
+func (d *Daemon) goBg(f func()) {
+	d.bg.Add(1)
+	go func() {
+		defer d.bg.Done()
+		f()
+	}()
+}
+
+// waitBackground waits for goBg's goroutines and Second Brain's loop.
+func (d *Daemon) waitBackground(within time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		d.bg.Wait()
+		if d.brain != nil {
+			d.brain.Wait()
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(within):
+		d.log.Warn("background work still running at shutdown; closing the database anyway",
+			"component", "daemon", "waited", within.String())
+	}
 }
 
 func (d *Daemon) repoCwd() string {
@@ -1346,9 +1415,14 @@ type Status struct {
 	Codex *codex.Stats `json:"codex,omitempty"`
 	// Deepseek reports the DeepSeek Harness reader on the same terms, and is
 	// absent when the machine has no DSH transcripts.
-	Deepseek      *deepseek.Stats `json:"deepseek,omitempty"`
-	OwnedActive   int             `json:"owned_active"`
-	Orchestration bool            `json:"orchestration"`
+	Deepseek *deepseek.Stats `json:"deepseek,omitempty"`
+	// Hermes reports the Hermes Agent reader on the same terms, and is absent
+	// when the machine has no Hermes database (ADR-069).
+	Hermes *hermes.Stats `json:"hermes,omitempty"`
+	// HermesAvailable says the hermes CLI is installed, so New agent offers it.
+	HermesAvailable bool `json:"hermes_available"`
+	OwnedActive     int  `json:"owned_active"`
+	Orchestration   bool `json:"orchestration"`
 	// Memory reports how many repositories have enough history to hand a new
 	// session what was left there. A feature that acts before you type is one
 	// nobody can see working, so the status screen says whether it can.
@@ -1419,6 +1493,8 @@ func (d *Daemon) status(_ context.Context) any {
 		OpenCode:        d.openCodeStats(),
 		Codex:           d.codexStats(),
 		Deepseek:        d.deepseekStats(),
+		Hermes:          d.hermesStats(),
+		HermesAvailable: d.mgr.AgentAvailable(agents.AgentHermes),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), GeminiAvailable: d.mgr.GeminiAvailable(), OwnedActive: len(d.mgr.OwnedRunning()),
 		CodexAvailable: d.mgr.AgentAvailable(agents.AgentCodex), OpenCodeAvailable: d.mgr.AgentAvailable(agents.AgentOpenCode),
 		OpenCodeVersion: d.mgr.OpenCodeVersion(),
@@ -1596,6 +1672,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		KeepAwake:        keepawake.Normalize(c.KeepAwake),
 		WorktreeCleanup:  projects.NormalizeCleanup(c.WorktreeCleanup),
 		StatuslineMode:   config.NormalizeStatusline(c.StatuslineMode),
+		QuickReplies:     config.EffectiveQuickReplies(c.QuickReplies),
 		AppUpdate:        config.NormalizeAppUpdate(c.AppUpdate),
 	}
 }
@@ -1667,6 +1744,13 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.NotifyApproval = &notifyApproval
 	a.d.opt.Config.NotifyFinished = &notifyFinished
 	a.d.opt.Config.Prompts = maps.Clone(in.Prompts)
+	// The quick replies: stored only when they differ from the list in use,
+	// so an install that never changed them keeps the defaults as they
+	// change, rather than having them written down by an unrelated save.
+	if in.QuickReplies != nil && !slices.Equal(in.QuickReplies, config.EffectiveQuickReplies(a.d.opt.Config.QuickReplies)) {
+		q := slices.Clone(in.QuickReplies)
+		a.d.opt.Config.QuickReplies = &q
+	}
 	// Stored only when it changes, so an install that never chose keeps
 	// following the default rather than having it written down by the next
 	// unrelated save (GET returns the effective mode, and a screen writes
@@ -1866,6 +1950,11 @@ func (a *agentAdapter) Spawn(ctx context.Context, req any) (string, string, erro
 		// Codex names its own thread; the importer matches the rollout to
 		// this spawn when it appears (sessionlink, heuristic).
 		a.d.link.Expect(agents.AgentCodex, ag.SessionID, ag.Cwd, ag.StartedAt, true)
+	case sr.Agent == agents.AgentHermes && sr.Resume == "":
+		// Hermes names its session itself, stamped with the moment the CLI
+		// started, and writes the row on the first message; the importer
+		// matches it to this spawn by folder and that stamp (ADR-069).
+		a.d.link.Expect(agents.AgentHermes, ag.SessionID, ag.Cwd, ag.StartedAt, true)
 	case sr.Agent == agents.AgentOpenCode && ag.Port > 0:
 		go a.d.linkOpenCode(ag)
 	case sr.Agent == agents.AgentOpenCode && ag.NativeID != "":
@@ -1889,7 +1978,13 @@ func (a *agentAdapter) Write(id string, data []byte) error     { return a.m.Inpu
 func (a *agentAdapter) Resize(id string, cols, rows int) error { return a.m.Resize(id, cols, rows) }
 
 func (a *agentAdapter) Signal(id, action string) error {
-	if err := a.m.Signal(id, ptyman.Signal(action)); err != nil {
+	var err error
+	if action == "end" {
+		err = a.m.End(id)
+	} else {
+		err = a.m.Signal(id, ptyman.Signal(action))
+	}
+	if err != nil {
 		return err
 	}
 	// Signalled by hand: the plan-window stop no longer resumes it later.
@@ -2420,6 +2515,8 @@ func (d *Daemon) relink(ctx context.Context, back []*agents.Agent) {
 			}
 		case ag.Kind == agents.AgentCodex && native == "":
 			d.link.Expect(agents.AgentCodex, ag.SessionID, ag.Cwd, ag.StartedAt, true)
+		case ag.Kind == agents.AgentHermes && native == "":
+			d.link.Expect(agents.AgentHermes, ag.SessionID, ag.Cwd, ag.StartedAt, true)
 		case ag.Kind == agents.AgentGemini && d.gemIn != nil:
 			d.gemIn.Track(ag.SessionID, ag.Cwd)
 		}
@@ -2474,6 +2571,100 @@ func (d *Daemon) streamOpenCode(ctx context.Context, url, nativeID string) {
 	in := d.openCodeIngester()
 	in.Touch(ctx, nativeID)
 	opencode.NewStreamer(url, d.log).Run(ctx, func(id string) { in.Touch(ctx, id) })
+}
+
+// hermesStats reports the Hermes Agent reader, or nil when it is not running.
+func (d *Daemon) hermesStats() *hermes.Stats {
+	d.ingMu.Lock()
+	in := d.hmIn
+	d.ingMu.Unlock()
+	if in == nil {
+		return nil
+	}
+	st := in.Stats()
+	return &st
+}
+
+// hermesDBPath is the database the Hermes reader would open: the configured
+// path, "off", or Hermes's own, "" while there is none.
+func (d *Daemon) hermesDBPath() string {
+	if p := d.opt.HermesDB; p != "" {
+		return p
+	}
+	return hermes.DBPath()
+}
+
+// startHermes starts reading Hermes Agent's database when this machine has
+// one and the reader is not running yet, and reports whether it is running.
+// Like OpenCode's, the read is a convenience: a database that cannot be read
+// is warned about and skipped, never a reason to fail startup.
+func (d *Daemon) startHermes(ctx context.Context) bool {
+	if d.opt.DisableIngest {
+		return false
+	}
+	d.ingMu.Lock()
+	defer d.ingMu.Unlock()
+	if d.hmIn != nil {
+		return true
+	}
+	p := d.hermesDBPath()
+	if p == "off" || p == "" {
+		return false
+	}
+	db, err := hermes.Open(p)
+	if err != nil {
+		d.log.Warn("hermes found but not readable", "component", "hermes", "path", p, "err", err)
+		return false
+	}
+	// Announced only after a read succeeds: SQLite opens lazily, and a file
+	// that is not a database opens without complaint.
+	if _, err := hermes.Sessions(ctx, db); err != nil {
+		d.log.Warn("hermes database found but not readable; skipping", "component", "hermes", "path", p, "err", err)
+		_ = db.Close()
+		return false
+	}
+	in := hermes.NewIngester(db, d.rec, d.log, 5*time.Second)
+	in.Link = d.link
+	d.hmIn = in
+	go func() {
+		defer db.Close()
+		if err := in.Run(ctx); err != nil {
+			d.log.Error("hermes ingest stopped", "component", "hermes", "err", err)
+		}
+	}()
+	d.log.Info("hermes sessions are being read", "component", "hermes", "db", p)
+	return true
+}
+
+// awaitHermes starts the Hermes reader once Hermes's database appears, as
+// awaitOpenCode does for OpenCode's: on a machine where Hermes was installed
+// but never run, the first conversation creates it.
+func (d *Daemon) awaitHermes(ctx context.Context, every time.Duration) {
+	wait := every
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		p := d.hermesDBPath()
+		if p == "off" {
+			return
+		}
+		if p != "" {
+			if _, err := os.Stat(p); err == nil {
+				if d.startHermes(ctx) {
+					return
+				}
+				if wait < 5*time.Minute {
+					wait *= 2
+				}
+			}
+		}
+		t.Reset(wait)
+	}
 }
 
 // deepseekStats reports the DeepSeek Harness reader, or nil when it is not

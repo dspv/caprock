@@ -13,11 +13,18 @@
  * Only http, https and mailto open. Anything else a program prints (file:,
  * javascript:, a custom scheme that launches an app) is ignored: the text in a
  * terminal comes from whatever ran there, not from the user.
+ *
+ * A `.md` path an agent prints (`docs/PLAN.md`, `/Users/…/NOTES.md:12`) is a
+ * link too, on the same Cmd/Ctrl+click, when the caller passes `onPath`: the
+ * app's terminal does, and the workspace opens the file in a file tab if it
+ * lies inside a project Caprock knows (lib/mdreader). It never leaves the
+ * machine.
  */
-import type { IBufferRange, IDisposable, ILinkHandler, Terminal as Xterm } from '@xterm/xterm'
+import type { IBufferRange, IDisposable, ILink, ILinkHandler, Terminal as Xterm } from '@xterm/xterm'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { isMacPlatform, isTauri } from './appmode'
 import { shell } from './shell'
+import { mdPathsIn } from './mdreader'
 
 const SCHEMES = new Set(['http:', 'https:', 'mailto:'])
 
@@ -69,7 +76,7 @@ export function openLink(url: string): void {
  */
 export function attachTerminalLinks(
   term: Xterm,
-  opts: { mac?: boolean; open?: (url: string) => void } = {},
+  opts: { mac?: boolean; open?: (url: string) => void; onPath?: (path: string) => void } = {},
 ): IDisposable {
   const mac = opts.mac ?? isMacPlatform()
   const open = opts.open ?? openLink
@@ -79,7 +86,7 @@ export function attachTerminalLinks(
     tip?.remove()
     tip = null
   }
-  const show = (e: MouseEvent, url: string, label?: string) => {
+  const show = (e: MouseEvent, url: string, label?: string, says?: string) => {
     hide()
     const host = term.element
     if (!host) return
@@ -95,7 +102,7 @@ export function attachTerminalLinks(
       'overflow:hidden', 'text-overflow:ellipsis',
     ].join(';')
     // An OSC 8 link can put any text over any address: name the address.
-    el.textContent = label !== undefined && label !== url ? `${linkHint(mac)} · ${url}` : linkHint(mac)
+    el.textContent = says ?? (label !== undefined && label !== url ? `${linkHint(mac)} · ${url}` : linkHint(mac))
     const r = host.getBoundingClientRect()
     el.style.left = `${Math.max(0, e.clientX - r.left + 8)}px`
     el.style.top = `${Math.max(0, e.clientY - r.top + 14)}px`
@@ -128,9 +135,33 @@ export function attachTerminalLinks(
   })
   term.loadAddon(addon)
 
+  const onPath = opts.onPath
+  const paths = onPath ? term.registerLinkProvider({
+    provideLinks: (y, done) => {
+      const line = term.buffer.active.getLine(y - 1)
+      const text = line?.translateToString(true) ?? ''
+      const hits = mdPathsIn(text)
+      if (hits.length === 0) { done(undefined); return }
+      done(hits.map((h): ILink => ({
+        range: { start: { x: h.start + 1, y }, end: { x: h.end, y } },
+        text: h.path,
+        decorations: { underline: true, pointerCursor: false },
+        activate: (e) => {
+          if (!opensLink(e, mac)) return
+          e.preventDefault()
+          hide()
+          onPath(h.path)
+        },
+        hover: (e) => show(e, h.path, undefined, `${linkHint(mac)} in a tab · ${h.path}`),
+        leave: hide,
+      })))
+    },
+  }) : null
+
   return {
     dispose: () => {
       hide()
+      paths?.dispose()
       addon.dispose()
       if (term.options.linkHandler === handler) term.options.linkHandler = null
     },

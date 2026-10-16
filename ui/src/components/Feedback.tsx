@@ -1,91 +1,67 @@
 /**
- * The feedback button, and the form behind it: what it is, a title, a few
- * words, screenshots — and out comes a GitHub issue the user submits.
+ * The feedback button, and the one box behind it: say what is wrong, drop a
+ * screenshot, send (owner, 2026-10-16, translated: "as short as humanly
+ * possible: just type what's wrong, maybe drop a screenshot, and send").
  *
- * **The form.** Bug / Idea / Question as three large cards, each with its key
- * (1, 2, 3) and a label that exists on the repo, a required title that
- * becomes the issue's title, an optional description, screenshots pasted (⌘V anywhere in the
- * dialog), dropped or chosen — up to four, a thumbnail each with a × — and a
- * one-line "Included: version, OS…" that opens to show exactly what the
- * diagnostics say, with a box to leave them out.
+ * **The sheet.** One autofocused box, *What's wrong?*; the whole sheet is the
+ * drop zone (an image dropped anywhere on it, or ⌘V of one anywhere while it
+ * is up — a text paste is left alone); a thumbnail with a × per image, up to
+ * four; **Send** (⌘↩, Ctrl+Enter off macOS). Under them one quiet line says
+ * what goes where, and a small *Details* opens the rest: the kind (Bug unless
+ * changed), the diagnostics with a box to leave them out, *Choose image…*
+ * and, in the app on macOS and Windows, *Capture window*. Nothing is
+ * required but a few words, or a screenshot on its own. The first line of
+ * the box becomes the issue's title (`fromBox`, lib/feedback.ts).
  *
- * **Quick from the keyboard** (owner, 2026-10-11: "big options, quick choice,
- * choosable with keys, quick to write"). The title has focus on open. 1, 2, 3
- * pick the kind by physical key (`kindForCode`, so any layout) wherever a
- * keystroke would not be text — outside a field, or in the title while it is
- * still empty — and focus lands in the title; arrows move between the cards.
- * Enter in the title goes on to the description, ⌘↩ (Ctrl+Enter off macOS)
- * creates the issue from anywhere, Esc closes.
+ * **The draft is kept** per viewer in localStorage until it is sent: Escape,
+ * the × or a click outside close the sheet and the words are there next time.
  *
- * **Nothing is transmitted from here.** *Create issue* opens a prefilled
- * GitHub issue in the browser; the user reads it, edits it, submits it. A
- * URL cannot carry a file and Caprock uploads nothing (CLAUDE.md rule 4), so
- * screenshots go by clipboard: the first is put there as the issue opens,
- * the dialog turns into a small *Attach your screenshots* step — "Screenshot
- * 1 is on your clipboard — press ⌘V in the GitHub comment box" — and *Copy
- * next* puts the next one there. GitHub uploads what is pasted into its own
- * page. `lib/attachments.ts` has the why of each detail.
+ * **Nothing is transmitted from here.** *Send* opens a prefilled GitHub issue
+ * in the browser; the user submits it there. A URL cannot carry a file and
+ * Caprock uploads nothing (CLAUDE.md rule 4), so screenshots go by
+ * clipboard: the first is put there as the issue opens, and the sheet turns
+ * into a small *Attach your screenshots* step — "Screenshot 1 is on your
+ * clipboard — press ⌘V in the GitHub comment box" — with *Copy next*.
+ * Without screenshots the sheet says *Opened on GitHub — thanks* and closes.
+ * If the browser cannot be reached, the words stay and *Retry* is offered.
+ * `lib/attachments.ts` has the why of each detail.
  *
- * **Where it is.** A labelled button with a megaphone in the dashboard's
- * header, and in the desktop app also an icon beside Settings in the
- * sidebar's bottom bar, which is on screen whatever tab is in front. It was
- * an 11px grey word among the header's chips, and the owner never noticed
- * it (2026-10-10). ⇧⌘F (Ctrl+Alt+Shift+F off macOS) opens the form from
- * anywhere in the app, AppShell holding that dialog; the sidebar row draws
- * the key (owner, 2026-10-14).
+ * **Where it is.** A labelled button in the dashboard's header, and in the
+ * desktop app the *Send feedback* row (or icon) in the sidebar's bottom
+ * block. ⇧⌘F (Ctrl+Alt+Shift+F off macOS) opens it from anywhere in the app,
+ * AppShell holding that dialog; the phone bar opens it too.
  *
  * **How the issue opens.** Through `openExternal` (lib/nudges.ts): the desktop
  * app's `open_external` command, which hands the URL to the default browser,
  * and `window.open` in a browser tab.
  *
  * **In the desktop app** three things go through the shell
- * (app/src-tauri/src/capture.rs) rather than the webview: the clipboard
- * (`clipboard_image`), **Capture window** — the app's own page drawn by its
- * webview, never the screen, so no Screen Recording permission; on macOS and
- * Windows, hidden on Linux and in a browser — and a file dropped on the
- * window, which reaches the page as a path and is read by the shell only if
- * it is an image of at most 10 MB from that very drop.
+ * (app/src-tauri/src/capture.rs): the clipboard (`clipboard_image`), Capture
+ * window (the app's own page drawn by its webview, never the screen, so no
+ * Screen Recording permission; hidden on Linux and in a browser), and a file
+ * dropped on the window, which reaches the page as a path
+ * (`DROP_PATHS_EVENT`, lib/xtermInput.ts) and is read by the shell only if it
+ * is an image of at most 10 MB from that very drop.
  */
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { openExternal } from '@/lib/nudges'
 import { isAppMode, isMacPlatform } from '@/lib/appmode'
-import { context, currentScreen, isSendable, issueURL, kindForCode, KINDS, type FeedbackKind } from '@/lib/feedback'
+import { context, currentScreen, fromBox, isSendable, issueURL, KINDS, type FeedbackKind } from '@/lib/feedback'
 import { keys } from '@/lib/appkeys'
 import { useChipFit } from '@/lib/keyChipFit'
 import { accept, baseName, copyImage, imageTypeOfPath, imagesIn, MAX_SHOTS, nextShot, stepLine, toPNG, type Shot } from '@/lib/attachments'
 import { captureSupported, shell } from '@/lib/shell'
 import { DROP_PATHS_EVENT } from '@/lib/xtermInput'
-import { BugIcon, LightbulbIcon, QuestionIcon } from './AppIcons'
+import { BugIcon } from './AppIcons'
 import { CloseButton, DialogBackdrop } from './Dialog'
 import { KeyChip } from './Sheet'
 
-const TIP = 'Report a bug, suggest an idea, or ask a question'
+const TIP = 'Say what’s wrong, drop a screenshot, send'
 /** The form's key from anywhere in the app (AppShell, lib/appkeys), in macOS spelling. */
 export const FEEDBACK_KEY = '⇧⌘F'
 const KEY = FEEDBACK_KEY
-
-/** Each kind's card glyph and its colour, from the theme's tokens: the bug is
- *  the warning hue (graphite's amber, Slate's cool yellow), the idea the green
- *  of "working", the question the plain ink. */
-const GLYPHS: Record<FeedbackKind, { Glyph: typeof BugIcon; tone: string }> = {
-  bug: { Glyph: BugIcon, tone: 'text-warn' },
-  idea: { Glyph: LightbulbIcon, tone: 'text-ok' },
-  question: { Glyph: QuestionIcon, tone: 'text-fg' },
-}
-
-/** Whether a keystroke on `el` is text being written, so 1 2 3 must type
- *  rather than pick a kind. An empty title is not writing yet: that is where
- *  focus sits when the dialog opens, and the first thing a person does there
- *  is choose. */
-function isWriting(el: EventTarget | null, title: HTMLInputElement | null): boolean {
-  if (!(el instanceof HTMLElement)) return false
-  if (el instanceof HTMLTextAreaElement || el.isContentEditable) return true
-  if (!(el instanceof HTMLInputElement)) return false
-  if (el.type === 'checkbox' || el.type === 'file') return false
-  return !(el === title && el.value === '')
-}
 
 /**
  * The labelled row in the app sidebar's footer. The hint ("bug, idea,
@@ -161,17 +137,34 @@ function ariaKeys(): string {
   return isMacPlatform() ? 'Meta+Shift+F' : 'Control+Alt+Shift+F'
 }
 
+/** Where the draft waits between openings, per viewer. */
+export const DRAFT_KEY = 'caprock.feedback.draft'
+
+function readDraft(): string {
+  try { return localStorage.getItem(DRAFT_KEY) ?? '' } catch { return '' }
+}
+function writeDraft(text: string) {
+  try {
+    if (text) localStorage.setItem(DRAFT_KEY, text)
+    else localStorage.removeItem(DRAFT_KEY)
+  } catch { /* storage refused: the draft lives as long as the sheet */ }
+}
+
+/** How long *Opened on GitHub — thanks* stays before the sheet closes. */
+export const THANKS_MS = 1200
+
 let shotSeq = 0
 
 export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: () => void }) {
+  const [box, setBox] = useState(readDraft)
   const [kind, setKind] = useState<FeedbackKind>('bug')
-  const [titleText, setTitleText] = useState('')
-  const [text, setText] = useState('')
   const [shots, setShots] = useState<Shot[]>([])
   const [note, setNote] = useState('')
   const [withDiag, setWithDiag] = useState(true)
-  const [showDiag, setShowDiag] = useState(false)
+  const [details, setDetails] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const [thanks, setThanks] = useState(false)
   /** While the window is being captured the dialog is hidden, so the shot shows the app. */
   const [capturing, setCapturing] = useState(false)
   const canCapture = captureSupported()
@@ -179,14 +172,10 @@ export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: (
   const [step, setStep] = useState<{ i: number; copied: boolean; saved?: boolean } | null>(null)
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 0 })
   const ctx = context(status.data, screen)
-  const ready = isSendable(titleText)
-  const active = KINDS.find((k) => k.id === kind) ?? KINDS[0]!
+  const ready = isSendable(box, shots.length)
   const isMac = isMacPlatform()
   const pasteKey = isMac ? '⌘V' : 'Ctrl+V'
   const picker = useRef<HTMLInputElement>(null)
-  const titleRef = useRef<HTMLInputElement>(null)
-  const descRef = useRef<HTMLTextAreaElement>(null)
-  const cards = useRef<(HTMLButtonElement | null)[]>([])
   const submitKey = keys('⌘↩', isMac)
   // Pending conversions count against the cap too, so a fast double paste
   // cannot slip a fifth image in while the first four are being drawn.
@@ -221,10 +210,19 @@ export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: (
   shotsRef.current = shots
   useEffect(() => () => { for (const s of shotsRef.current) URL.revokeObjectURL(s.url) }, [])
 
-  // ⌘V anywhere while the form is up: in the title, the description, or
-  // with nothing focused at all. Text pastes are left alone.
+  // The sheet closes itself a moment after the thanks.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
   useEffect(() => {
-    if (step) return
+    if (!thanks) return
+    const t = setTimeout(() => closeRef.current(), THANKS_MS)
+    return () => clearTimeout(t)
+  }, [thanks])
+
+  // ⌘V anywhere while the sheet is up: in the box or with nothing focused.
+  // Text pastes are left alone.
+  useEffect(() => {
+    if (step || thanks) return
     const onPaste = (e: ClipboardEvent) => {
       const imgs = imagesIn(e.clipboardData)
       if (imgs.length === 0) return
@@ -233,13 +231,13 @@ export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: (
     }
     document.addEventListener('paste', onPaste)
     return () => document.removeEventListener('paste', onPaste)
-  }, [add, step])
+  }, [add, step, thanks])
 
   // In the desktop app a file dropped from Finder reaches the page as a path
   // (lib/xtermInput.ts), not bytes; the shell reads it for us if it is an
   // image from that drop. Anything else gets the same short note as a paste.
   useEffect(() => {
-    if (step) return
+    if (step || thanks) return
     const onPaths = (e: Event) => {
       const d = (e as CustomEvent<{ paths?: unknown } | undefined>).detail
       const paths = Array.isArray(d?.paths) ? d.paths.filter((p): p is string => typeof p === 'string') : []
@@ -262,7 +260,7 @@ export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: (
     }
     window.addEventListener(DROP_PATHS_EVENT, onPaths)
     return () => window.removeEventListener(DROP_PATHS_EVENT, onPaths)
-  }, [add, step])
+  }, [add, step, thanks])
 
   // The dialog steps aside for a frame or two so the capture shows the app,
   // then comes back with the shot attached.
@@ -292,45 +290,35 @@ export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: (
     void add(imgs)
   }
 
+  const edit = (text: string) => {
+    setBox(text)
+    setFailed(false)
+    writeDraft(text)
+  }
+
   const send = () => {
-    if (!ready) return
-    const url = issueURL({ kind, title: titleText, text, ctx: withDiag ? ctx : null, shots: shots.length, pasteKey })
-    if (shots.length === 0) {
+    if (!ready || thanks) return
+    const { title, text } = fromBox(box, screen)
+    const url = issueURL({ kind, title, text, ctx: withDiag ? ctx : null, shots: shots.length, pasteKey })
+    // The copy starts first, inside the click (WebKit allows a clipboard
+    // write only there); then the browser opens.
+    const copying = shots.length > 0 ? copyImage(shots[0]!.png) : null
+    try {
       openExternal(url)
-      onClose()
+    } catch {
+      setFailed(true)
       return
     }
-    // The copy starts first, inside the click; then the browser opens.
-    const copying = copyImage(shots[0]!.png)
-    openExternal(url)
+    setFailed(false)
+    writeDraft('')
+    if (!copying) { setThanks(true); return }
     setStep({ i: 0, copied: true })
     void copying.then((ok) => setStep((s) => (s && s.i === 0 ? { ...s, copied: ok } : s)))
   }
 
-  /** A kind chosen by click or key: focus goes straight to the title. */
-  const pick = (k: FeedbackKind) => {
-    setKind(k)
-    titleRef.current?.focus()
-  }
-
-  // ⌘↩ / Ctrl+Enter creates the issue from anywhere in the form; 1 2 3 pick
-  // the kind wherever the key would not be typed text. Modified digits are
-  // left alone: ⌘1 is a tab, Shift+1 a "!".
-  const onFormKey = (e: ReactKeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); send(); return }
-    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.nativeEvent.isComposing) return
-    const k = kindForCode(e.code)
-    if (k && !isWriting(e.target, titleRef.current)) { e.preventDefault(); pick(k) }
-  }
-
-  // Arrows move between the cards, as in any radio group; the choice follows.
-  const onCardsKey = (e: ReactKeyboardEvent) => {
-    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0
-    if (step === 0) return
-    e.preventDefault()
-    const i = (KINDS.findIndex((k) => k.id === kind) + step + KINDS.length) % KINDS.length
-    setKind(KINDS[i]!.id)
-    cards.current[i]?.focus()
+  // ⌘↩ / Ctrl+Enter sends from anywhere on the sheet; a bare Enter is a new line.
+  const onKey = (e: ReactKeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); send() }
   }
 
   const copyAt = (i: number) => {
@@ -354,30 +342,40 @@ export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: (
     setStep((st) => (st ? { ...st, saved: true } : st))
   }
 
+  const quiet = 'rounded-[6px] border border-border-strong px-3 py-1 text-[13.5px] text-fg hover:border-accent/60 hover:text-accent'
+  const live = !step && !thanks
+
   return (
     <DialogBackdrop
       onClose={onClose}
-      className={`fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[10vh] px-4 ${capturing ? 'invisible' : ''}`}
+      className={`fixed inset-0 z-30 bg-black/50 flex items-start justify-center pt-[12vh] px-4 ${capturing ? 'invisible' : ''}`}
       aria-busy={capturing || undefined}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Feedback"
-        onDragOver={step ? undefined : onDragOver}
-        onDragLeave={(e) => { if (e.currentTarget === e.target) setDragging(false) }}
-        onDrop={step ? undefined : onDrop}
-        className={`w-full max-w-[680px] border bg-panel rounded-[var(--radius-panel)] shadow-lg ${
+        data-feedback-sheet=""
+        onDragOver={live ? onDragOver : undefined}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false) }}
+        onDrop={live ? onDrop : undefined}
+        onKeyDown={live ? onKey : undefined}
+        className={`relative w-full max-w-[560px] border bg-panel rounded-[var(--radius-panel)] shadow-lg ${
           dragging ? 'border-accent' : 'border-border-strong'
         }`}
       >
-        <div className="pl-5 pr-2.5 py-2.5 border-b border-border flex items-center">
-          <span className="text-[17px] font-medium">{step ? 'Attach your screenshots' : 'Send feedback'}</span>
-          <CloseButton onClick={onClose} className="ml-auto" />
-        </div>
+        {dragging && (
+          <div aria-hidden className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[var(--radius-panel)] bg-accent/10 text-[15px] font-medium text-accent">
+            Drop to attach
+          </div>
+        )}
 
         {step ? (
           <div className="p-5 grid gap-4">
+            <div className="flex items-center">
+              <span className="text-[16px] font-medium">Attach your screenshots</span>
+              <CloseButton onClick={onClose} className="ml-auto -mr-2" />
+            </div>
             <p className="text-[14.5px] leading-relaxed" role="status">
               {stepLine(step.i, shots.length, step.copied, pasteKey, !!step.saved)}
             </p>
@@ -395,20 +393,12 @@ export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: (
             </div>
             <div className="flex items-center gap-2">
               {step.copied && shots.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => copyAt(nextShot(step.i, shots.length))}
-                  className="rounded-[6px] border border-border-strong px-3 py-1 text-[14px] text-fg hover:border-accent/60 hover:text-accent"
-                >
+                <button type="button" onClick={() => copyAt(nextShot(step.i, shots.length))} className={quiet}>
                   Copy next ({nextShot(step.i, shots.length) + 1} of {shots.length})
                 </button>
               )}
               {!step.copied && (
-                <button
-                  type="button"
-                  onClick={saveAll}
-                  className="rounded-[6px] border border-border-strong px-3 py-1 text-[14px] text-fg hover:border-accent/60 hover:text-accent"
-                >
+                <button type="button" onClick={saveAll} className={quiet}>
                   {step.saved ? 'Saved — save again' : shots.length > 1 ? 'Save screenshots' : 'Save screenshot'}
                 </button>
               )}
@@ -420,90 +410,31 @@ export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: (
                 Done
               </button>
             </div>
-            <p className="text-[13px] text-fg-faint leading-relaxed">
-              The issue is open in your browser. GitHub uploads what you paste
-              there; Caprock sends nothing.
-            </p>
           </div>
+        ) : thanks ? (
+          <p className="px-5 py-6 text-center text-[15px] font-medium" role="status">Opened on GitHub — thanks</p>
         ) : (
-          <form
-            className="px-5 pt-4 pb-4 grid gap-3.5"
-            onSubmit={(e) => { e.preventDefault(); send() }}
-            onKeyDown={onFormKey}
-          >
-            {/* Three big cards, one row (owner, 2026-10-11: "big options,
-              * with icons, quick choice, choosable with keys"). A segmented
-              * control of three small words until then. The key is drawn as
-              * every key in the app is (.app-kbd-key, tokens.css). */}
-            <div className="grid grid-cols-3 gap-2.5 max-sm:gap-1.5" role="radiogroup" aria-label="What is it" data-feedback-kinds="" onKeyDown={onCardsKey}>
-              {KINDS.map((k, i) => {
-                const { Glyph, tone } = GLYPHS[k.id]
-                const on = k.id === kind
-                return (
-                  <button
-                    key={k.id}
-                    ref={(el) => { cards.current[i] = el }}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    aria-label={k.label}
-                    aria-keyshortcuts={String(i + 1)}
-                    tabIndex={on ? 0 : -1}
-                    onClick={() => pick(k.id)}
-                    className={`relative flex items-center gap-3 rounded-[9px] border px-3.5 py-3 text-left transition-colors motion-reduce:transition-none max-sm:flex-col max-sm:items-start max-sm:gap-1.5 max-sm:px-2.5 ${
-                      on ? 'border-accent bg-accent/10' : 'border-border-strong bg-panel-2/40 hover:border-fg-muted'
-                    }`}
-                  >
-                    <Glyph size={30} className={tone} />
-                    <span className="grid min-w-0 flex-1 gap-0.5">
-                      <span className={`text-[17px] font-semibold leading-tight ${on ? 'text-fg' : 'text-fg-muted'}`}>{k.label}</span>
-                      <span className="truncate text-[12.5px] text-fg-muted max-sm:hidden">{k.blurb}</span>
-                    </span>
-                    <kbd aria-hidden className="app-kbd-key absolute right-2.5 top-2.5">{i + 1}</kbd>
-                  </button>
-                )
-              })}
-            </div>
-
-            <label className="grid gap-1">
-              <span className="text-[13px] font-medium text-fg-muted">Title</span>
+          <form className="p-3 grid gap-2.5" onSubmit={(e) => { e.preventDefault(); send() }}>
+            <div className="relative">
               {/* Autofocused: the fewer deliberate actions between "I noticed
                 * something" and typing it, the more reports get written.
-                * Enter goes on to the description rather than submitting a
-                * half-written report. Prose, so the sans face: `.input` sets
-                * mono outside any layer, where a font utility cannot reach it. */}
-              <input
-                ref={titleRef}
-                autoFocus
-                value={titleText}
-                onChange={(e) => setTitleText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.nativeEvent.isComposing) return
-                  e.preventDefault()
-                  descRef.current?.focus()
-                }}
-                placeholder={active.title}
-                maxLength={256}
-                className="input w-full text-[15.5px] py-1.5"
-                style={{ fontFamily: 'var(--font-sans)' }}
-              />
-            </label>
-
-            <label className="grid gap-1">
-              <span className="text-[13px] font-medium text-fg-muted">Description <span className="text-fg-faint">— optional</span></span>
+                * Prose, so the sans face: `.input` sets mono outside any
+                * layer, where a font utility cannot reach it. */}
               <textarea
-                ref={descRef}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={active.hint}
-                rows={3}
-                className="input w-full resize-y text-[15px] leading-relaxed"
+                autoFocus
+                aria-label="What's wrong?"
+                value={box}
+                onChange={(e) => edit(e.target.value)}
+                placeholder={`What's wrong? Drop or paste (${pasteKey}) a screenshot anywhere here.`}
+                rows={4}
+                className="input w-full resize-y pr-10 text-[15.5px] leading-relaxed"
                 style={{ fontFamily: 'var(--font-sans)' }}
               />
-            </label>
+              <CloseButton onClick={onClose} className="absolute right-0.5 top-0.5" />
+            </div>
 
-            <div className="grid gap-1.5">
-              <div className="flex flex-wrap items-center gap-2">
+            {shots.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 px-0.5 pt-1">
                 {shots.map((s, i) => (
                   <div key={s.id} className="relative">
                     <img src={s.url} alt={`Screenshot ${i + 1}`} className="h-14 w-20 rounded-[5px] border border-border object-cover" />
@@ -518,70 +449,79 @@ export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: (
                     </button>
                   </div>
                 ))}
-                {shots.length < MAX_SHOTS && (
-                  <button
-                    type="button"
-                    onClick={() => picker.current?.click()}
-                    className={`flex h-14 items-center gap-1.5 rounded-[5px] border border-dashed px-3 text-[13.5px] ${
-                      dragging ? 'border-accent text-accent' : 'border-border-strong text-fg-muted hover:text-fg hover:border-fg-muted'
-                    } ${shots.length === 0 ? 'flex-1 justify-center' : 'w-20 justify-center'}`}
-                  >
-                    {shots.length === 0
-                      ? <>Add screenshots — paste ({pasteKey}), drop, or <span className="underline underline-offset-2">choose</span></>
-                      : '+ Add'}
-                  </button>
-                )}
-                {canCapture && shots.length < MAX_SHOTS && (
-                  <button
-                    type="button"
-                    onClick={() => void capture()}
-                    title="Attach a picture of this window — the app only, not your screen"
-                    className="flex h-14 shrink-0 items-center justify-center rounded-[5px] border border-dashed border-border-strong px-3 text-[13.5px] text-fg-muted hover:text-fg hover:border-fg-muted"
-                  >
-                    Capture window
-                  </button>
-                )}
-                <input
-                  ref={picker}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  aria-label="Choose screenshots"
-                  onChange={(e) => {
-                    void add(Array.from(e.target.files ?? []))
-                    e.target.value = ''
-                  }}
-                />
               </div>
-              {note && <p className="text-[13px] text-warn" role="status">{note}</p>}
-            </div>
+            )}
+            {note && <p className="px-0.5 text-[13px] text-warn" role="status">{note}</p>}
 
-            <div className="text-[13px] text-fg-muted">
-              <div className="flex items-center gap-2">
+            {details && (
+              <div className="grid gap-2 rounded-[7px] border border-border px-3 py-2.5 text-[13px] text-fg-muted" data-feedback-details="">
+                <div className="flex items-center gap-1" role="radiogroup" aria-label="What is it">
+                  {KINDS.map((k) => (
+                    <button
+                      key={k.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={k.id === kind}
+                      onClick={() => setKind(k.id)}
+                      className={`rounded-[5px] border px-2 py-0.5 ${k.id === kind ? 'border-accent bg-accent/10 text-fg' : 'border-border-strong hover:text-fg'}`}
+                    >
+                      {k.label}
+                    </button>
+                  ))}
+                </div>
                 <label className="inline-flex items-center gap-1.5">
                   <input type="checkbox" checked={withDiag} onChange={(e) => setWithDiag(e.target.checked)} className="accent-[var(--color-accent)]" />
                   Include diagnostics
                 </label>
-                <button
-                  type="button"
-                  aria-expanded={showDiag}
-                  onClick={() => setShowDiag((v) => !v)}
-                  className={`text-fg-faint hover:text-fg ${withDiag ? '' : 'line-through'}`}
-                >
-                  {showDiag ? '▾' : '▸'} version, OS, screen, scale, hooks
-                </button>
-              </div>
-              {showDiag && (
-                <ul className="mt-1.5 ml-5 grid gap-0.5 text-[13px] text-fg-faint num">
+                <ul className={`ml-5 grid gap-0.5 text-fg-faint num ${withDiag ? '' : 'line-through'}`}>
                   {ctx.map((c) => <li key={c}>{c}</li>)}
                 </ul>
-              )}
-            </div>
+                {shots.length < MAX_SHOTS && (
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => picker.current?.click()} className={quiet}>Choose image…</button>
+                    {canCapture && (
+                      <button
+                        type="button"
+                        onClick={() => void capture()}
+                        title="Attach a picture of this window — the app only, not your screen"
+                        className={quiet}
+                      >
+                        Capture window
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            <input
+              ref={picker}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              aria-label="Choose screenshots"
+              onChange={(e) => {
+                void add(Array.from(e.target.files ?? []))
+                e.target.value = ''
+              }}
+            />
 
-            <div className="flex items-center gap-3 border-t border-border pt-3">
-              <span className="text-[13px] text-fg-muted leading-snug">
-                Opens a prefilled issue in your browser. Nothing is sent from here.
+            <div className="flex items-center gap-3 px-0.5">
+              <span className="min-w-0 text-[12.5px] leading-snug text-fg-faint">
+                {failed ? (
+                  <span className="text-warn" role="alert">Could not open the browser. Your words are kept.</span>
+                ) : (
+                  <>Opens a GitHub issue in your browser{withDiag ? ', with version and OS' : ''}; you submit it there.</>
+                )}
+                {' '}
+                <button
+                  type="button"
+                  aria-expanded={details}
+                  onClick={() => setDetails((v) => !v)}
+                  className="whitespace-nowrap text-fg-muted underline-offset-2 hover:text-fg hover:underline"
+                >
+                  {details ? 'Hide details' : 'Details'}
+                </button>
               </span>
               <button
                 type="submit"
@@ -590,7 +530,7 @@ export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: (
                 aria-keyshortcuts={isMac ? 'Meta+Enter' : 'Control+Enter'}
                 className="ml-auto inline-flex h-[34px] shrink-0 items-center gap-2 rounded-[7px] bg-accent px-4 text-[14px] font-medium text-panel hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Create issue
+                {failed ? 'Retry' : 'Send'}
                 <KeyChip primary>{submitKey}</KeyChip>
               </button>
             </div>

@@ -15,7 +15,7 @@
 import { useId } from 'react'
 import { isDuck, type ClaudeFace, type Duck, type Face } from '@/lib/faces'
 
-export type Character = 'lead' | 'crowd' | 'codex' | 'opencode' | 'gemini' | 'deepseek'
+export type Character = 'lead' | 'crowd' | 'codex' | 'opencode' | 'gemini' | 'deepseek' | 'hermes'
 
 const INK = '#201c16'
 const AMBER = '#f3a553'
@@ -27,7 +27,7 @@ const STONE = '#bbb4a7'
 /** Which character stands for an agent's main threads or its subagents. */
 export function characterFor(agent: string, subagent = false): Character {
   if (agent === 'claude') return subagent ? 'crowd' : 'lead'
-  if (agent === 'codex' || agent === 'opencode' || agent === 'gemini' || agent === 'deepseek') return agent
+  if (agent === 'codex' || agent === 'opencode' || agent === 'gemini' || agent === 'deepseek' || agent === 'hermes') return agent
   return 'lead'
 }
 
@@ -372,6 +372,20 @@ export function Body({ who, face = 'cap' }: { who: Character; face?: Face }) {
           <path d="M30 18c0-4 3-6 3-9M36 20c1-4 4-5 5-8" stroke="#7fa7c9" strokeWidth="2.4" fill="none" strokeLinecap="round" />
         </>
       )
+    case 'hermes':
+      // Hermes Agent: a teal messenger with two small wings. Drawn here, not
+      // Nous Research's mark.
+      return (
+        <>
+          <Shadow rx={20} />
+          <path d="M20 26c-7-1-13-6-15-13 6 1 12 4 16 9z" fill="#e9f0f6" {...outline} />
+          <path d="M60 26c7-1 13-6 15-13-6 1-12 4-16 9z" fill="#e9f0f6" {...outline} />
+          <rect x="18" y="20" width="44" height="50" rx="20" fill="#5fb8a3" {...outline} />
+          <circle cx="32" cy="42" r="3.6" fill={INK} /><circle cx="48" cy="42" r="3.6" fill={INK} />
+          <circle cx="33.2" cy="40.8" r="1.2" fill="#fff" /><circle cx="49.2" cy="40.8" r="1.2" fill="#fff" />
+          <path d="M34 52c3.5 2.6 8.5 2.6 12 0" stroke={INK} strokeWidth="2.4" fill="none" strokeLinecap="round" />
+        </>
+      )
   }
 }
 
@@ -406,6 +420,7 @@ export function agentName(agent: string): string {
     case 'gemini': return 'Gemini CLI'
     case 'deepseek': return 'DeepSeek'
     case 'grok': return 'Grok'
+    case 'hermes': return 'Hermes'
     // A custom agent's session carries its id (ADR-046); its name lives in
     // the config, so the id stands in where only the session is at hand.
     default: return agent.replace(/^custom:/, '')

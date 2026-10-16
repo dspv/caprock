@@ -15,11 +15,12 @@ import { setComposerEnabled } from '@/lib/composer'
 Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
 
 // A pane that counts its renders: xterm is beside the point here.
-const panes = vi.hoisted(() => ({ renders: new Map<string, number>(), composer: new Map<string, unknown>() }))
+const panes = vi.hoisted(() => ({ renders: new Map<string, number>(), composer: new Map<string, unknown>(), quick: new Map<string, boolean>() }))
 vi.mock('./TerminalPane', () => ({
-  TerminalPane: ({ sessionId, composer }: { sessionId: string; composer?: unknown }) => {
+  TerminalPane: ({ sessionId, composer, quickReplies }: { sessionId: string; composer?: unknown; quickReplies?: boolean }) => {
     panes.renders.set(sessionId, (panes.renders.get(sessionId) ?? 0) + 1)
     panes.composer.set(sessionId, composer)
+    panes.quick.set(sessionId, !!quickReplies)
     return null
   },
 }))
@@ -191,7 +192,7 @@ describe('a file tab', () => {
 
   // Owner, 2026-10-14 (translated): "The indicators tell me nothing at all,
   // literally zero." A tab shows state only when it asks something of you.
-  it('marks a tab only when its session waits on you (amber) or failed (red); working and idle show nothing', () => {
+  it('marks a tab with a dot only when its session waits on you (amber) or failed (red); working and idle show nothing', () => {
     const agentTab = (id: string): Tab => ({ ...tab(id), root: { type: 'pane', id: `${id}-pane`, target: { kind: 'session', sessionId: id } } })
     const sess = (id: string, health?: string): SessionSummary =>
       ({ session_id: id, owned: true, status: 'active', kind: 'agent', agent: 'claude', title: id, ...(health ? { activity: { phrase: '', at: '', health } } : {}) }) as SessionSummary
@@ -214,11 +215,57 @@ describe('a file tab', () => {
     )
     const alertOf = (i: number) => screen.getAllByRole('tab')[i]!.querySelector('[data-tab-alert]')?.getAttribute('data-tab-alert') ?? null
     expect([0, 1, 2, 3, 4].map(alertOf)).toEqual(['waiting', 'waiting', 'error', null, null])
-    expect(screen.getAllByRole('tab')[0]!.querySelector('[data-tab-alert]')!.className).toContain('bg-accent')
+    expect(screen.getAllByRole('tab')[0]!.querySelector('[data-tab-alert]')!.className).toContain('bg-warn')
     expect(screen.getAllByRole('tab')[2]!.querySelector('[data-tab-alert]')!.className).toContain('bg-danger')
     expect(screen.getAllByRole('tab')[1]!.getAttribute('title')).toContain('— waiting on you')
     expect(screen.getAllByRole('tab')[2]!.getAttribute('aria-description')).toBe('failed')
     expect(document.querySelectorAll('[role="tab"] [role="img"]')).toHaveLength(0)
+  })
+
+  // Owner, 2026-10-15 (translated): "I don't understand where I am, it's
+  // impossible" — waiting tabs wore the front tab's accent bar.
+  it('looks selected on the tab in front alone: a waiting or looping tab is a dot, never the bar', () => {
+    const agentTab = (id: string): Tab => ({ ...tab(id), root: { type: 'pane', id: `${id}-pane`, target: { kind: 'session', sessionId: id } } })
+    const sess = (id: string, health?: string): SessionSummary =>
+      ({ session_id: id, owned: true, status: 'active', kind: 'agent', agent: 'claude', title: id, ...(health ? { activity: { phrase: '', at: '', health } } : {}) }) as SessionSummary
+    render(
+      <TabStrip
+        tabs={['front', 'w1', 'w2', 'w3', 'loops'].map(agentTab)}
+        activeTabId="front"
+        digits={new Map([['front', 1], ['w1', 2], ['w2', 3], ['w3', 4], ['loops', 5]])}
+        sessions={new Map([['front', sess('front', 'working')], ['w1', sess('w1', 'waiting-on-you')], ['w2', sess('w2', 'waiting-on-you')], ['w3', sess('w3', 'waiting-on-you')], ['loops', sess('loops', 'looping')]])}
+        permissions={new Set()}
+        projectName={() => 'caprock'}
+        inspectorOpen={false}
+        sidebarOpen
+        onActivate={() => {}}
+        onDetach={() => {}}
+        onMove={() => {}}
+        onNewAgent={() => {}}
+        onNewShell={() => {}}
+        onToggleInspector={() => {}}
+      />,
+    )
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs.map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false', 'false'])
+    expect(tabs.map((t) => t.classList.contains('app-tab-front'))).toEqual([true, false, false, false, false])
+    expect(document.querySelectorAll('.app-tab-front')).toHaveLength(1)
+    expect(tabs[0]!.className).toContain('font-semibold')
+    expect(tabs[0]!.className).toContain('min-w-[232px]')
+    expect(tabs[0]!.querySelector('[data-row-title]')!.className).toContain('min-w-[16ch]')
+    for (const t of tabs.slice(1)) {
+      expect(t.className).toContain('app-tab-back')
+      expect(t.className).not.toContain('font-semibold')
+    }
+    // Waiting is an amber dot before the title; looping a red one. No bar.
+    expect(tabs.slice(1, 4).map((t) => t.querySelector('[data-tab-alert]')!.className)).toEqual(Array(3).fill(expect.stringContaining('bg-warn')))
+    expect(tabs[4]!.querySelector('[data-tab-alert="looping"]')!.className).toContain('bg-danger')
+    expect(tabs[4]!.getAttribute('aria-description')).toBe('looping')
+    for (const t of tabs) {
+      const dot = t.querySelector('[data-tab-alert]')
+      if (dot) expect(dot.className).not.toMatch(/absolute|top-0|h-\[3px\]|bg-accent/)
+      if (dot) expect(dot.compareDocumentPosition(t.querySelector('[data-row-title]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
   })
 
   // Owner, 2026-10-14 (translated): "not every tab shows the key combination".
@@ -402,6 +449,16 @@ describe('TerminalStack composer', () => {
     expect(panes.composer.get('sh')).toBeUndefined()
     expect(panes.composer.get('gone')).toBeUndefined()
   })
+
+  it('gives quick replies to a live agent Caprock started, composer or not, and to no session it only watches (rule 7)', () => {
+    for (const on of [false, true]) {
+      setComposerEnabled(on)
+      panes.quick.clear()
+      const { unmount } = render(stack())
+      expect(Object.fromEntries(panes.quick)).toEqual({ mine: true, theirs: false, sh: false, gone: false })
+      unmount()
+    }
+  })
 })
 
 // Owner, 2026-10-14 (translated): "The repo name on the right doesn't fit — it
@@ -410,11 +467,11 @@ describe('TerminalStack composer', () => {
 describe("a tab's project name", () => {
   afterEach(() => { vi.restoreAllMocks() })
 
-  it('is never capped short: the title gives way first, and the tooltip names both in full', () => {
+  it('is never capped short: on a tab behind, the title gives way first, and the tooltip names both in full', () => {
     render(
       <TabStrip
-        tabs={[tab('one')]}
-        activeTabId="one"
+        tabs={[tab('one'), tab('two')]}
+        activeTabId="two"
         sessions={new Map()}
         permissions={new Set()}
         projectName={() => 'uncensored-chat-app'}
@@ -428,13 +485,16 @@ describe("a tab's project name", () => {
         onToggleInspector={() => {}}
       />,
     )
-    const one = screen.getByRole('tab')
+    const [one, two] = screen.getAllByRole('tab') as [HTMLElement, HTMLElement]
     const project = one.querySelector('[data-tab-project]') as HTMLElement
     expect(project.textContent).toBe('uncensored-chat-app')
+    // The tab in front keeps 16 characters of its title; its project is
+    // what gives way there (2026-10-15: its title read "ca…").
+    expect(two.querySelector('[data-row-title]')!.className).toMatch(/min-w-\[16ch\]/)
     // No cap of its own (it was max-w-[9ch]): it shrinks only once the title
     // is down to its few letters.
     expect(project.className).not.toMatch(/max-w/)
-    expect(project.className).toMatch(/\bshrink\b/)
+    expect(project.className).toMatch(/\bshrink-\[4\]/)
     const title = one.querySelector('[data-row-title]') as HTMLElement
     expect(title.className).toMatch(/min-w-\[4ch\]/)
     expect(title.className).toMatch(/flex-1/)

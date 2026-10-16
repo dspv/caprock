@@ -1,10 +1,14 @@
 /**
  * A project's file, read-only, in a tab of its own (.ai/04-ui.md § The app
  * workspace, File tabs). Markdown is rendered with the chat's renderer read
- * as a document (Prose.tsx ProseDoc), with a Source switch; anything else is
- * monospace with line numbers and a soft-wrap switch — no highlighting, so
- * the bundle stays as it was. A binary or an over-large file gets one calm
- * line and "Open in editor".
+ * as a document (Prose.tsx ProseDoc) at a reading measure, with its contents
+ * beside it on a wide window (a dropdown on a narrow one), a reading
+ * progress line, anchors, and its relative pictures read through the
+ * daemon; a Source switch shows the text. Anything else is monospace with
+ * line numbers and a soft-wrap switch — no highlighting, so the bundle stays
+ * as it was. A binary or an over-large file gets one calm line and "Open in
+ * editor". The header's toolbar (FileTools.tsx) hands the file on: its path,
+ * an agent's `@` reference, its contents, a download, a running session.
  *
  * Kept current without a timer: read when the tab comes to the front, when
  * the window regains focus while it is in front, and when the live socket
@@ -16,17 +20,24 @@ import { FIND_EVENT } from '@/lib/appkeys'
 import { failureOf } from '@/lib/changes'
 import { baseName, filesApi, fmtBytes, isMarkdown, resolveLink, type FileContent } from '@/lib/files'
 import { live } from '@/lib/live'
-import { ProseDoc, type DocLink } from './Prose'
-import { CloseIcon, ExternalIcon, SearchIcon } from './AppIcons'
+import { imageUrl, outlineOf, type OutlineItem } from '@/lib/mdreader'
+import { docHeadings, parseDoc, ProseDoc, type DocImage, type DocLink } from './Prose'
+import { CloseIcon, ExternalIcon, ListIcon, SearchIcon } from './AppIcons'
+import { FileToolbar, IconButton, MENU_ROW, Popover, type SendTarget } from './FileTools'
 
 const WRAP_KEY = 'caprock.file.wrap'
+const TOC_KEY = 'caprock.file.toc'
 /** Frames come in bursts while an agent edits; one read per burst. */
 const FRAME_DEBOUNCE_MS = 400
 /** Lines per block that the browser may skip laying out while off screen. */
 const CHUNK = 400
+/** From this body width the contents sit beside the text; below it, a dropdown. */
+export const RAIL_MIN_WIDTH = 960
+/** A document needs this many headings before it gets contents at all. */
+const MIN_OUTLINE = 3
 
-function loadWrap(): boolean {
-  try { return localStorage.getItem(WRAP_KEY) !== '0' } catch { return true }
+function loadFlag(key: string): boolean {
+  try { return localStorage.getItem(key) !== '0' } catch { return true }
 }
 
 export interface FileViewProps {
@@ -40,6 +51,12 @@ export interface FileViewProps {
   onOpenFile?: (path: string) => void
   /** The editor's name and its open, when an editor is found on this machine and the folder is known. */
   editor?: { name: string; open: () => void }
+  /** The file's path on this machine, when its folder is known. */
+  absPath?: string
+  /** Running sessions Caprock started, that the file's reference may be typed into. */
+  sendTargets?: readonly SendTarget[]
+  /** A reference was typed into this session. */
+  onSent?: (sessionId: string) => void
 }
 
 /** Does a live frame say this file may have changed? */
@@ -53,12 +70,20 @@ function touches(frame: unknown, projectId: string, path: string): boolean {
   return typeof p === 'string' && p.replace(/\\/g, '/').endsWith(`/${path}`)
 }
 
-export const FileView = memo(function FileView({ projectId, worktree, path, visible, onOpenFile, editor }: FileViewProps) {
+const NO_TARGETS: readonly SendTarget[] = []
+
+export const FileView = memo(function FileView({ projectId, worktree, path, visible, onOpenFile, editor, absPath, sendTargets = NO_TARGETS, onSent }: FileViewProps) {
   const [file, setFile] = useState<FileContent | null>(null)
   const [error, setError] = useState<{ message: string; status?: number } | null>(null)
   const [source, setSource] = useState(false)
-  const [wrap, setWrap] = useState(loadWrap)
+  const [wrap, setWrap] = useState(() => loadFlag(WRAP_KEY))
+  const [rail, setRail] = useState(() => loadFlag(TOC_KEY))
   const [find, setFind] = useState<{ open: boolean; token: number }>({ open: false, token: 0 })
+  const [width, setWidth] = useState(0)
+  const [progress, setProgress] = useState(0)
+  const [current, setCurrent] = useState('')
+  const [contentsMenu, setContentsMenu] = useState(false)
+  const contentsButton = useRef<HTMLButtonElement>(null)
   const body = useRef<HTMLDivElement>(null)
   const seq = useRef(0)
 
@@ -101,6 +126,7 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
   }, [visible, projectId, path, load])
 
   useEffect(() => { try { localStorage.setItem(WRAP_KEY, wrap ? '1' : '0') } catch { /* not kept */ } }, [wrap])
+  useEffect(() => { try { localStorage.setItem(TOC_KEY, rail ? '1' : '0') } catch { /* not kept */ } }, [rail])
 
   useEffect(() => {
     if (!visible) return
@@ -109,19 +135,82 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
     return () => window.removeEventListener(FIND_EVENT, onFind)
   }, [visible])
 
+  // The body's width decides where the contents go.
+  useEffect(() => {
+    const el = body.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth))
+    ro.observe(el)
+    setWidth(el.clientWidth)
+    return () => ro.disconnect()
+  }, [])
+
   const md = isMarkdown(path, file?.lang)
   const rendered = md && !source
+  const blocks = useMemo(() => (rendered && file && !file.binary ? parseDoc(file.text) : null), [rendered, file])
+  const outline = useMemo<OutlineItem[]>(() => {
+    const h = blocks ? docHeadings(blocks) : []
+    return h.length >= MIN_OUTLINE ? outlineOf(h) : []
+  }, [blocks])
+  const wide = width >= RAIL_MIN_WIDTH
+  const showRail = wide && rail && outline.length > 0
+
+  /** Scrolls the heading with this anchor to the top of the body. */
+  const jump = useCallback((slug: string) => {
+    const el = body.current?.querySelector<HTMLElement>(`[data-anchor="${CSS.escape(slug)}"]`)
+    el?.scrollIntoView?.({ block: 'start' })
+    if (el) setCurrent(slug)
+  }, [])
+
+  // Reading progress and the heading being read, from one scroll handler.
+  useEffect(() => {
+    const el = body.current
+    if (!el || !blocks) { setProgress(0); return }
+    let frame = 0
+    const measure = () => {
+      frame = 0
+      const room = el.scrollHeight - el.clientHeight
+      setProgress(room > 0 ? Math.min(1, el.scrollTop / room) : 0)
+      if (outline.length === 0) return
+      const top = el.getBoundingClientRect().top + 96
+      let at = ''
+      for (const h of el.querySelectorAll<HTMLElement>('[data-anchor]')) {
+        if (h.getBoundingClientRect().top > top) break
+        at = h.dataset.anchor ?? ''
+      }
+      setCurrent(at)
+    }
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(measure) }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    measure()
+    return () => { el.removeEventListener('scroll', onScroll); cancelAnimationFrame(frame) }
+  }, [blocks, outline])
+
   // Through a ref, so a parent's new callback does not parse the document again.
   const openFile = useRef(onOpenFile)
   openFile.current = onOpenFile
   const canOpen = !!onOpenFile
   const link = useCallback<DocLink>((href) => {
+    const h = href.trim()
+    if (h.startsWith('#') && h.length > 1) {
+      let slug = h.slice(1)
+      try { slug = decodeURIComponent(slug) } catch { /* as written */ }
+      return { onOpen: () => jump(slug.toLowerCase()) }
+    }
     const to = resolveLink(path, href)
     if (!to) return null
     if ('external' in to) return { href: to.external }
     return canOpen ? { onOpen: () => openFile.current?.(to.file) } : null
-  }, [path, canOpen])
-  const doc = useMemo(() => (rendered && file && !file.binary ? <ProseDoc text={file.text} link={link} /> : null), [rendered, file, link])
+  }, [path, canOpen, jump])
+  const image = useCallback<DocImage>((src, alt) => {
+    // A picture on the web stays its alt text: reading a file fetches
+    // nothing from outside the machine.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith('//')) return null
+    const to = resolveLink(path, src)
+    if (!to || 'external' in to) return null
+    return <LocalImage projectId={projectId} worktree={worktree} path={to.file} alt={alt} />
+  }, [projectId, worktree, path])
+  const doc = useMemo(() => (blocks && file ? <ProseDoc text={file.text} blocks={blocks} link={link} image={image} /> : null), [blocks, file, link, image])
 
   const lines = useMemo(() => {
     const out = file && !file.binary ? file.text.split('\n') : []
@@ -132,15 +221,36 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
 
   return (
     <div className="flex h-full w-full flex-col bg-bg text-fg" data-file-view={path}>
-      <div className="flex h-[36px] shrink-0 items-center gap-3 border-b border-[var(--app-hairline)] px-4">
-        <span className="mono flex min-w-0 flex-1 text-[12px]" title={path}>
+      <div className="flex h-[36px] shrink-0 items-center gap-2.5 border-b border-[var(--app-hairline)] px-4">
+        <span className="mono flex min-w-0 flex-1 text-[12px]" title={absPath ?? path}>
           {slash >= 0 && <span className="min-w-0 truncate text-fg-faint">{path.slice(0, slash + 1)}</span>}
           <span className="shrink-0 text-fg">{baseName(path)}</span>
         </span>
         {file && !file.binary && (
-          <span className="num shrink-0 text-[11px] text-fg-faint">
+          <span className="num hidden shrink-0 text-[11px] text-fg-faint min-[900px]:inline">
             {`${lines.length.toLocaleString()} ${lines.length === 1 ? 'line' : 'lines'} · ${fmtBytes(file.size)}`}
           </span>
+        )}
+        {rendered && outline.length > 0 && (
+          <IconButton
+            label="Contents"
+            tip={wide ? (rail ? 'Hide the contents' : 'Show the contents') : 'Contents'}
+            pressed={wide ? rail : contentsMenu}
+            popup={!wide}
+            buttonRef={contentsButton}
+            onClick={() => (wide ? setRail((r) => !r) : setContentsMenu((m) => !m))}
+          >
+            <ListIcon size={14} />
+          </IconButton>
+        )}
+        {contentsMenu && !wide && (
+          <Popover anchor={contentsButton.current} label="Contents" onClose={() => setContentsMenu(false)} width={300}>
+            {outline.map((o) => (
+              <button key={o.slug} type="button" role="menuitem" tabIndex={-1} onClick={() => { setContentsMenu(false); jump(o.slug) }} className={`${MENU_ROW} min-h-[28px] py-1 ${o.slug === current ? 'text-accent' : ''}`} style={{ paddingLeft: `${0.625 + (o.level - 1) * 0.875}rem` }}>
+                <span className="line-clamp-2">{o.text}</span>
+              </button>
+            ))}
+          </Popover>
         )}
         {md && file && !file.binary && (
           <Segmented label="Show" value={source ? 'source' : 'rendered'} onChange={(v) => setSource(v === 'source')} options={[['rendered', 'Rendered'], ['source', 'Source']]} />
@@ -156,6 +266,16 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
             Wrap
           </button>
         )}
+        <span aria-hidden className="h-[16px] w-px shrink-0 bg-[var(--app-hairline)]" />
+        <FileToolbar
+          path={path}
+          absPath={absPath}
+          text={file && !file.binary ? file.text : undefined}
+          truncated={file?.truncated}
+          md={md}
+          targets={sendTargets}
+          onSent={onSent}
+        />
         {editor && (
           <button type="button" onClick={editor.open} title={`Open ${path} in ${editor.name}`} className="flex h-[24px] shrink-0 items-center gap-1.5 rounded-[6px] px-2 text-[11.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">
             <ExternalIcon size={13} /> {editor.name}
@@ -170,24 +290,82 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
           The first {fmtBytes(file.text.length)} of {fmtBytes(file.size)}{editor ? `; the rest is in ${editor.name}` : ''}.
         </p>
       )}
-      <div ref={body} className="app-scroll relative min-h-0 flex-1 overflow-auto" tabIndex={-1}>
-        {error && !file ? (
-          <Calm text={error.status === 404 ? 'This file is not there any more.' : error.message} editor={error.status === 404 ? undefined : editor} />
-        ) : !file ? (
-          <p className="px-4 py-3 text-[12px] text-fg-faint">Reading…</p>
-        ) : file.binary ? (
-          <Calm text={`${file.truncated ? 'A large' : 'A'} binary file of ${fmtBytes(file.size)}; it is not shown here.`} editor={editor} />
-        ) : rendered ? (
-          <div className="mx-auto w-full max-w-[820px] px-8 py-7">
-            {doc}
+      <div className="relative min-h-0 flex-1">
+        {doc && (
+          <div aria-hidden data-read-progress className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[2px]">
+            <div className="h-full origin-left bg-accent/70" style={{ transform: `scaleX(${progress})` }} />
           </div>
-        ) : (
-          <Lines lines={lines} wrap={wrap} />
         )}
+        <div ref={body} className="app-scroll absolute inset-0 overflow-auto" tabIndex={-1}>
+          {error && !file ? (
+            <Calm text={error.status === 404 ? 'This file is not there any more.' : error.message} editor={error.status === 404 ? undefined : editor} />
+          ) : !file ? (
+            <p className="px-4 py-3 text-[12px] text-fg-faint">Reading…</p>
+          ) : file.binary ? (
+            <Calm text={`${file.truncated ? 'A large' : 'A'} binary file of ${fmtBytes(file.size)}; it is not shown here.`} editor={editor} />
+          ) : doc ? (
+            <div className="flex w-full justify-center gap-10 px-8 pb-24 pt-9">
+              <article data-doc className="min-w-0 max-w-[72ch] flex-1 text-[15px]">
+                {doc}
+              </article>
+              {showRail && <Contents outline={outline} current={current} onJump={jump} />}
+            </div>
+          ) : (
+            <Lines lines={lines} wrap={wrap} />
+          )}
+        </div>
       </div>
     </div>
   )
 })
+
+/** The contents beside a wide document: sticky, the heading being read marked. */
+function Contents({ outline, current, onJump }: { outline: OutlineItem[]; current: string; onJump: (slug: string) => void }) {
+  return (
+    <nav aria-label="Contents" data-contents className="sticky top-6 max-h-[calc(100vh-120px)] w-[220px] shrink-0 self-start overflow-y-auto pt-1">
+      <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-fg-faint">Contents</p>
+      <ul className="grid gap-px border-l border-[var(--app-hairline)]">
+        {outline.map((o) => {
+          const on = o.slug === current
+          return (
+            <li key={o.slug}>
+              <button
+                type="button"
+                onClick={() => onJump(o.slug)}
+                aria-current={on ? 'location' : undefined}
+                className={`-ml-px block w-full border-l py-[3px] pr-1 text-left text-[12.5px] leading-[1.4] ${on ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg'}`}
+                style={{ paddingLeft: `${0.75 + (o.level - 1) * 0.75}rem` }}
+              >
+                <span className="line-clamp-2">{o.text}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </nav>
+  )
+}
+
+/**
+ * A picture inside the project, read through the daemon (`GET
+ * /v1/projects/{id}/image`) with the device's token, and shown from an
+ * object URL; its alt text until it arrives, and if it never does.
+ */
+function LocalImage({ projectId, worktree, path, alt }: { projectId: string; worktree: string; path: string; alt: string }) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let alive = true
+    let url = ''
+    setFailed(false)
+    imageUrl({ projectId, worktree }, path)
+      .then((u) => { if (alive) { url = u; setSrc(u) } else URL.revokeObjectURL(u) })
+      .catch(() => { if (alive) setFailed(true) })
+    return () => { alive = false; if (url) URL.revokeObjectURL(url) }
+  }, [projectId, worktree, path])
+  if (!src) return <span className="italic text-fg-muted" title={failed ? `${path} could not be read` : path}>[{alt}]</span>
+  return <img src={src} alt={alt} title={alt || path} className="inline-block h-auto max-w-full rounded-[6px] align-middle" />
+}
 
 function Calm({ text, editor }: { text: string; editor?: { name: string; open: () => void } }) {
   return (

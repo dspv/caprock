@@ -34,7 +34,7 @@ export interface Session {
   name?: string
   /** Which coding agent produced this session. Absent means Claude Code,
    *  which is what every session was before OpenCode support. */
-  agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek'
+  agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek' | 'hermes'
   /** The agent's own id for a Codex or OpenCode session Caprock started under
    *  an id of its own — the thread or session its importer files under this
    *  one. Absent until the first message is sent, and for every other session. */
@@ -737,8 +737,25 @@ export interface Summary {
   unpriced?: Unpriced
   /** Known internal model work, measured but excluded from user-work totals. */
   background?: BackgroundUsage
+  /** Hermes Agent's share of the total, split by what kind of figure it is
+   *  and by background work (ADR-069). Absent without Hermes turns. */
+  hermes?: HermesCost
   /** The viewer's own usual over the last 30 days (lib/usual.ts); absent with too little history. */
   usual?: Usual
+}
+
+/** Hermes Agent's spend in a range (store.HermesCost). Every figure is
+ *  Hermes's own: the provider's billing where Hermes recorded it, Hermes's
+ *  estimate otherwise; Caprock's table never prices it. */
+export interface HermesCost {
+  total_usd: number
+  actual_usd: number
+  estimated_usd: number
+  included_turns?: number
+  unpriced_turns?: number
+  /** Spend nobody watched as it ran: cron jobs, gateway chats, one-shot runs. */
+  background_usd: number
+  sources?: { source: string; cost_usd: number }[]
 }
 
 export interface RateWindow {
@@ -873,6 +890,12 @@ export interface KeepAwakeStatus {
   error?: string
 }
 
+/** One quick reply: the chip's label and the text it sends (config.QuickReply). */
+export interface QuickReply {
+  label: string
+  text: string
+}
+
 /** Settings → Status line (config.json statusline_mode). */
 export type StatuslineMode = 'full' | 'short' | 'hidden' | 'off'
 
@@ -899,6 +922,8 @@ export interface Settings {
   app_update?: AppUpdateMode
   /** What Caprock's Claude Code status line shows. The daemon returns "full" when never chosen; "hidden" prints nothing but keeps relaying plan limits; "off" removes Caprock's own statusLine entry. */
   statusline_mode?: StatuslineMode
+  /** The one-click replies under a session Caprock started (lib/quickReplies.ts); the defaults until changed. */
+  quick_replies?: QuickReply[]
   /** The daily spend ceiling in USD; 0 is off. See internal/cap. */
   cap_usd_per_day?: number
   /** The share of a Claude plan window (50–99) at which Premium pauses the
@@ -1138,6 +1163,52 @@ export interface Trends {
   burn?: { median_usd_per_hour: number; windows: number; days: number }
 }
 
+/** A stretch of hours of one repository's agent work (/v1/pipeline/agents). */
+export interface RateSpan {
+  cost_usd: number
+  /** Active agent-hours: a session's clock hour with five or more priced calls (the burn's rule). */
+  active_hours: number
+  active_cost_usd: number
+  /** Input, output, cache reads and writes; `active_tokens` the active hours' share. */
+  tokens: number
+  active_tokens: number
+  /** Clock hours with any priced turn, however many agents ran in them. */
+  wall_hours: number
+  /** Local days with an active hour (the usual only). */
+  days?: number
+}
+
+/** One local day of an agent team: distinct main sessions and subagents, by agent kind. */
+export interface TeamDay {
+  day: string
+  sessions: number
+  subagents: number
+  by_kind?: Record<string, { sessions: number; subagents: number }>
+  /** The most agents with a turn in one five-minute bucket. */
+  peak: number
+}
+
+/** The Pipeline's agent figures for one repository (GET /v1/pipeline/agents). */
+export interface RepoAgents {
+  /** The window the usuals are set against, today excluded. */
+  days: number
+  rate: {
+    /** The last 24 clock hours, the current one included. */
+    last24: RateSpan
+    /** The `days`×24 hours before them; absent with no active hour. */
+    usual?: RateSpan
+    /** The previous `days` local days, oldest first, then today so far. */
+    series: (RateSpan & { day: string })[]
+  }
+  team: {
+    /** Agents with a turn in the last ten minutes. */
+    now: { sessions: number; subagents: number }
+    peak_today: number
+    /** The previous 30 local days, oldest first, then today so far. */
+    series: TeamDay[]
+  }
+}
+
 export interface History { range: string; totals: HistoryTotals; tools: ToolCount[]; daily: DailyStat[]; savings: Savings; summary: Summary; tax?: ContextTax }
 
 export interface Status {
@@ -1151,6 +1222,10 @@ export interface Status {
   codex?: { sessions: number; events: number; unpriced?: number; last_poll_ms?: number }
   /** DeepSeek Harness reports the same terms; absent when DSH has no sessions. */
   deepseek?: { sessions: number; events: number; unpriced?: number; last_poll_ms?: number }
+  /** Hermes Agent's reader (ADR-069): sessions read, events stored, turns
+   *  Hermes could not price, and how many sessions ran in the background
+   *  (cron, a gateway chat). Absent when there is no Hermes database. */
+  hermes?: { sessions: number; events: number; unpriced?: number; background?: number; last_poll_ms?: number }
   version: string
   /** GOOS/GOARCH — what a bug report needs and nobody remembers to include. */
   platform?: string
@@ -1183,6 +1258,8 @@ export interface Status {
   opencode_available?: boolean
   /** xAI's Grok Build CLI (ADR-046). Absent on older daemons. */
   grok_available?: boolean
+  /** Nous Research's Hermes Agent CLI (ADR-069). Absent on older daemons. */
+  hermes_available?: boolean
   /** The version of the OpenCode a new session would start ("2.0.26"),
    *  absent while the daemon has not asked it. OpenCode 1 and 2 take
    *  different flags, so a mode can become something different in each. */
@@ -1361,6 +1438,8 @@ export interface BrainStatus {
   manual: number
   projects: { project: string; count: number }[]
   auto?: BrainAutoStatus
+  /** The database file, resolved by the daemon from its data directory; absent without one. */
+  db_path?: string
 }
 
 /** The automatic extraction's state; absent from a daemon without it (03-contracts.md § Second Brain). */
@@ -1391,6 +1470,32 @@ export interface BrainAutoStatus {
   reading?: BrainReading
   /** The progress through every session in reach, while on. */
   build?: BrainBuild
+  /** What claude reported the reads in the last 24 hours cost, in US dollars at API list price. */
+  spent_usd?: number
+  /** Where the build is. */
+  stage?: BrainStage
+  /** When the newest read that kept something finished, unix ms. */
+  last_read?: number
+  /** Memories added since the daemon's local midnight, by hand or read. */
+  new_today?: number
+  /** The graph's topics, and the links between its nodes. */
+  topics?: number
+  links?: number
+  /** How the memories reach agents: new sessions handed some with the handoff. */
+  handoff?: BrainHandoff
+}
+
+/** Where a build is (03-contracts.md § Second Brain). */
+export type BrainStage = 'off' | 'no_claude' | 'limit' | 'extracting' | 'linking' | 'waiting' | 'up_to_date'
+
+/** New sessions handed Second Brain memories with their handoff, last 24 hours and in all. */
+export interface BrainHandoff {
+  /** Settings → Memory between sessions is on: new sessions are handed anything at all. */
+  on: boolean
+  sessions_24h: number
+  memories_24h: number
+  sessions: number
+  memories: number
 }
 
 /** The session the extraction is asking claude about (03-contracts.md § Second Brain). */
@@ -1403,6 +1508,10 @@ export interface BrainReading {
   /** When the session last did something, and when this read began; unix ms. */
   last_event_at?: number
   started_at: number
+  /** claude is asked for memories (extracting), then they are stored and linked (linking). */
+  phase?: 'extracting' | 'linking'
+  /** Passages of the session's prose sent. */
+  passages?: number
 }
 
 /** How far the extraction has got through the sessions in reach. */
@@ -1757,6 +1866,10 @@ export interface PairedDevice {
   via?: PairedVia
   /** The phone last said it runs as the installed app. A label only. */
   app?: boolean
+  /** `machine` for another computer's Caprock (ADR-067); absent for a phone. */
+  kind?: 'machine'
+  /** A computer that took a code and waits for the owner's Allow here. */
+  pending?: boolean
 }
 
 export type PairedVia = 'lan' | 'tailscale' | 'relay'
@@ -1774,6 +1887,10 @@ export interface PairMe {
   app?: string
   /** The machine has this device down as running the installed app. */
   installed?: boolean
+  /** `machine` for another computer's Caprock (ADR-067). */
+  kind?: 'machine'
+  /** Waiting for the owner's Allow on the machine. */
+  pending?: boolean
 }
 
 /** What the owner sees on the pairing panel. */
@@ -1786,6 +1903,8 @@ export interface PairState {
   code?: string
   /** The role a phone pairing with `code` gets. */
   code_role?: PairedDevice['role']
+  /** `machine` when the live code pairs a computer (ADR-067). */
+  code_kind?: 'machine'
   expires_in_sec?: number
   /** The address reaches other networks (a tunnel), not just this one. */
   tunnelled?: boolean
@@ -1915,6 +2034,8 @@ export const api = {
   telegramCancelPair: () => post<TelegramStatus>('/v1/telegram/pair', {}, 'DELETE'),
   /** Forget the bot, the chat and what was learned about them. */
   telegramDisconnect: () => post<TelegramStatus>('/v1/telegram', {}, 'DELETE'),
+  /** A share card to the owner's own paired chat, on their click: `png` is base64, `caption` plain text. */
+  telegramPhoto: (png: string, caption: string) => post<{ sent: boolean }>('/v1/telegram/photo', { png, caption }),
   /** Runs `caprock hooks install` in the daemon; answers with what is registered after. */
   installHooks: () => post<{ hooks: HooksStatus; backup?: string }>('/v1/hooks/install', {}),
   /** The user accepted Caprock's copy of Claude Code's bypass warning (ADR-041). */
@@ -1937,6 +2058,8 @@ export const api = {
   /** Sends the phone's page address (no code, no key) to the owner's Telegram chat. */
   pairSendLink: () => post<{ sent: string; link: string }>('/v1/pair/send-link', {}),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
+  /** Let a computer that waits control this one (ADR-067). Machine only; deny is pairRevoke. */
+  pairAllow: (id: string) => post<{ id: string; role: string }>(`/v1/pair/devices/${encodeURIComponent(id)}/allow`, {}),
   /** Give a paired device control of sessions, or take it away. Machine only. */
   pairSetRole: (id: string, role: PairedDevice['role']) =>
     post<{ id: string; role: string }>(`/v1/pair/devices/${encodeURIComponent(id)}/role`, { role }, 'PUT'),
@@ -1952,6 +2075,8 @@ export const api = {
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
+  /** A repository's cost per agent-hour and agent team, for its folders (clones of one repository are several). */
+  pipelineAgents: (roots: string[]) => get<RepoAgents>(`/v1/pipeline/agents?${roots.map((r) => `repo=${encodeURIComponent(r)}`).join('&')}`),
   trends: (agent?: string) => get<Trends>(`/v1/stats/trends${agent && agent !== 'all' ? `?agent=${agent}` : ''}`),
   premium: () => get<PremiumPricing>('/v1/premium'),
   /** How many people committed to the listed repositories in 30 days (counts only). */
@@ -2089,7 +2214,7 @@ export const api = {
   removeSubscription: (id: string) => post<void>(`/v1/subscriptions/${encodeURIComponent(id)}`, {}, 'DELETE'),
   agentModels: (agent: string) =>
     get<{ agent: string; default?: string; models: { id: string; label: string }[] }>(`/v1/agents/models?agent=${encodeURIComponent(agent)}`),
-  signal: (id: string, action: 'pause' | 'resume' | 'kill') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),
+  signal: (id: string, action: 'pause' | 'resume' | 'kill' | 'end') => post<void>(`/v1/agents/${encodeURIComponent(id)}/signal`, { action }),
   /**
    * Write a pasted or dropped file and get back the path Claude Code can read.
    * `name` is the file's own name: the daemon keeps a sanitised copy of it and

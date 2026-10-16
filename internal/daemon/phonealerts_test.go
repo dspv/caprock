@@ -62,8 +62,17 @@ func TestADialogReachesThePhoneWithoutALicence(t *testing.T) {
 	if tg.modes[0] != "HTML" {
 		t.Fatalf("parse_mode = %q", tg.modes[0])
 	}
-	if errText, sent := d.phone.get(); errText != "" || sent == 0 {
-		t.Errorf("outcome not recorded: err=%q sent=%d", errText, sent)
+	// The stub has the message once the request arrives; the outcome is
+	// recorded after the answer is read, a moment later (seen under -race).
+	for {
+		errText, sent := d.phone.get()
+		if errText == "" && sent > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("outcome not recorded: err=%q sent=%d", errText, sent)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
