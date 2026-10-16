@@ -34,11 +34,19 @@
  * path per kind, and the picture kept in a base layer redrawn only when it
  * changes (a pan or zoom scales the cached layer until it comes to rest).
  *
+ * **Click to interact.** At rest the graph is part of the page: the wheel
+ * and a trackpad scroll the page past it (the owner, 2026-10-16,
+ * translated: "when I scroll the page, the graph zooms instead"). A click
+ * on it (Enter or Space from the keyboard) takes it in hand: then the wheel
+ * zooms, a drag pans or moves a dot, and a ring says so. Escape, a click
+ * outside, the mouse leaving it or the focus moving away lets it go. A click
+ * on a dot opens it whether or not the graph was in hand; Fit works in both.
+ *
  * The Pensieve (the owner's picture, translated: "memories drawn out with a
  * wand and laid in the Pensieve"): a memory that arrives while the graph is
  * on screen drops in from above, and a faint ring spreads where it lands.
  */
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { BrainGraph, BrainNode } from '@/lib/api'
 import { isEntity, KIND_COLOR } from '@/lib/brain'
 import { bounds, seed, Simulation, type SimLink } from '@/lib/forcegraph'
@@ -169,6 +177,15 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
   const radiusAt = useRef<(i: number) => number>(() => 2)
   // When the view last moved by hand: while it moves the base layer is scaled, not redrawn.
   const lastMove = useRef(0)
+  // In hand (see "Click to interact" above): the wheel zooms and a drag moves
+  // the picture only while this is on. The ref is what the handlers read.
+  const [active, setActive] = useState(false)
+  const activeRef = useRef(false)
+  const activate = (on: boolean) => {
+    if (activeRef.current === on) return
+    activeRef.current = on
+    setActive(on)
+  }
 
   const sim = useMemo(() => {
     const ids = graph.nodes.map((n) => n.id)
@@ -712,6 +729,78 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
     view.current = { k, tx: x - ((x - v.tx) * k) / v.k, ty: y - ((y - v.ty) * k) / v.k }
     kick.current()
   }
+  // The wheel, as a native listener: React's is passive, so it could not keep
+  // the page from scrolling while the graph zooms. Out of hand it does
+  // nothing at all and the page scrolls past.
+  const onWheel = useRef<(e: WheelEvent) => void>(() => {})
+  onWheel.current = (e) => {
+    if (mini || !activeRef.current) return
+    e.preventDefault()
+    const p = local(e)
+    zoomAt(p.x, p.y, view.current.k * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)))
+  }
+  useEffect(() => {
+    const cv = canvas.current
+    if (!cv) return
+    const wheel = (e: WheelEvent) => onWheel.current(e)
+    cv.addEventListener('wheel', wheel, { passive: false })
+    return () => cv.removeEventListener('wheel', wheel)
+  }, [])
+  // A click anywhere outside lets it go.
+  useEffect(() => {
+    if (!active) return
+    const down = (e: PointerEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) activate(false)
+    }
+    document.addEventListener('pointerdown', down, true)
+    return () => document.removeEventListener('pointerdown', down, true)
+  }, [active])
+  const panBy = (dx: number, dy: number) => {
+    touched.current = true
+    lastMove.current = performance.now()
+    view.current = { ...view.current, tx: view.current.tx + dx, ty: view.current.ty + dy }
+    kick.current()
+  }
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (mini) return
+    if (!activeRef.current) {
+      if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault()
+        activate(true)
+      }
+      return
+    }
+    const cv = canvas.current
+    const cx = (cv?.clientWidth ?? 0) / 2
+    const cy = (cv?.clientHeight ?? 0) / 2
+    const step = 48
+    switch (e.key) {
+      case 'Escape':
+        // Only the graph lets go; whatever else Escape closes stays open.
+        e.stopPropagation()
+        activate(false)
+        break
+      case '+':
+      case '=':
+        zoomAt(cx, cy, view.current.k * 1.25)
+        break
+      case '-':
+      case '_':
+        zoomAt(cx, cy, view.current.k / 1.25)
+        break
+      case '0':
+        fitNow.current()
+        break
+      case 'ArrowLeft': panBy(step, 0); break
+      case 'ArrowRight': panBy(-step, 0); break
+      case 'ArrowUp': panBy(0, step); break
+      case 'ArrowDown': panBy(0, -step); break
+      default:
+        return
+    }
+    e.preventDefault()
+  }
+
   const release = () => {
     const g = gesture.current
     if (g?.kind === 'node') {
@@ -721,18 +810,37 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
   }
 
   return (
-    <div ref={wrap} className={`relative min-h-0 overflow-hidden ${className}`} data-brain-graph={mini ? 'mini' : 'full'}>
+    <div
+      ref={wrap}
+      className={`group relative min-h-0 overflow-hidden outline-none ${mini ? '' : active ? 'ring-2 ring-accent/60' : 'focus-visible:ring-2 focus-visible:ring-accent/40'} ${className}`}
+      data-brain-graph={mini ? 'mini' : 'full'}
+      data-brain-active={mini ? undefined : active ? 'true' : 'false'}
+      tabIndex={mini ? undefined : 0}
+      role={mini ? undefined : 'group'}
+      aria-label={mini ? undefined : active
+        ? 'Second Brain graph, in hand: arrows pan, plus and minus zoom, 0 fits, Escape lets go'
+        : 'Second Brain graph: press Enter to zoom and move it'}
+      onKeyDown={onKey}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) activate(false)
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType === 'mouse' && !gesture.current) activate(false)
+      }}
+    >
       <canvas
         ref={canvas}
         role="img"
         aria-label={ariaLabel ?? `Second Brain graph: ${graph.nodes.length} nodes`}
-        className={`absolute left-0 top-0 block ${onSelect ? 'cursor-pointer' : ''} ${mini ? '' : 'touch-none'}`}
+        className={`absolute left-0 top-0 block ${onSelect ? 'cursor-pointer' : ''} ${mini || !active ? '' : 'touch-none'}`}
         onPointerDown={(e) => {
           if (mini) return
+          wrap.current?.focus({ preventScroll: true })
           const p = local(e)
           pointers.current.set(e.pointerId, p)
           e.currentTarget.setPointerCapture?.(e.pointerId)
           if (pointers.current.size === 2) {
+            if (!activeRef.current) return
             // Two fingers: a pinch, whatever the first one was doing.
             release()
             const [a, b] = [...pointers.current.values()] as [{ x: number; y: number }, { x: number; y: number }]
@@ -764,6 +872,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
           if (g?.kind === 'pan') {
             if (Math.hypot(p.x - g.x, p.y - g.y) > 3) g.moved = true
             if (g.moved) {
+              if (!activeRef.current) return
               touched.current = true
               lastMove.current = performance.now()
               view.current = { ...view.current, tx: g.tx + p.x - g.x, ty: g.ty + p.y - g.y }
@@ -774,6 +883,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
           if (g?.kind === 'node') {
             if (Math.hypot(p.x - g.x, p.y - g.y) > 3) g.moved = true
             if (g.moved) {
+              if (!activeRef.current) return
               // Hold the dot under the pointer; its neighbours follow on
               // their links, and the rest barely stir.
               const v = view.current
@@ -815,6 +925,8 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
           }
           release()
           gesture.current = null
+          // A click (no drag) takes the graph in hand; a dot under it opens too.
+          if (g && !g.moved && !mini) activate(true)
           if (g?.kind === 'node') {
             if (g.moved) { sim.s.alpha = Math.max(sim.s.alpha, 0.08); kick.current(); return }
             onSelect?.(sim.s.nodes[g.i]!.id)
@@ -825,13 +937,17 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
           const i = pick(p.x, p.y)
           if (i >= 0) onSelect?.(sim.s.nodes[i]!.id)
         }}
-        onWheel={(e) => {
-          if (mini) return
-          const p = local(e)
-          zoomAt(p.x, p.y, view.current.k * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)))
-        }}
         onDoubleClick={() => fitNow.current()}
       />
+      {!mini && !active && (
+        <span
+          aria-hidden
+          data-brain-hint
+          className="pointer-events-none absolute left-2 top-2 rounded-[6px] bg-panel/80 px-1.5 py-0.5 text-[11px] text-fg-muted opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        >
+          Click to zoom and move
+        </span>
+      )}
       {!mini && (
         <button
           type="button"
