@@ -34,6 +34,14 @@
  * one or a hidden session comes back. Hidden wins over running; the project
  * in front stays listed even while hidden, and one comes back by itself
  * when it needs you again (lib/sidebar.ts projectHidden).
+ *
+ * Every open tab has a row, in Tree and in Flat (owner, 2026-10-16,
+ * translated: "the tabs in the top strip don't match what's on the left"):
+ * a tab beats hidden by hand, for a project and for a session row alike.
+ * Hiding a project closes its tabs, and "Close tab and hide" a session's, so
+ * that only shows what was hidden earlier and opened again — from More…, a
+ * link or a restored workspace. The hidden mark is kept, not cleared: when
+ * the last tab closes, the row goes back under More… by itself.
  * A project's × closes it: its tabs close and it moves under More…,
  * unless something still runs in it (components/ProjectRow.tsx). Each
  * project's ⋯ menu (or a right-click, or Shift+F10 on its row) hides it,
@@ -322,7 +330,12 @@ export function Sidebar(props: SidebarProps) {
     })
   }, [])
   const menuNode = menuAt ? model.projects.find((n) => n.project.id === menuAt.projectId) : undefined
+  // Hide closes the project's tabs: every open tab has a row in the sidebar,
+  // so a hidden project with a tab would stay listed (lib/sidebar.ts
+  // groupProjects). Its sessions keep running, as with ⌘W.
+  const closeTabsOf = props.onCloseProjectTabs
   const onHide = useCallback((id: string, hide: boolean) => {
+    if (hide) closeTabsOf?.(id)
     setHidden((cur) => {
       const next = new Map(cur)
       if (hide) next.set(id, Date.now())
@@ -330,7 +343,7 @@ export function Sidebar(props: SidebarProps) {
       saveHiddenProjects(next)
       return next
     })
-  }, [])
+  }, [closeTabsOf])
   const toggleFold = (f: Fold) => {
     setFolds((cur) => {
       const next = new Set(cur)

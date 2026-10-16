@@ -111,6 +111,29 @@ describe('the sessions under a project', () => {
   })
 })
 
+// The owner's bug on 2026-10-16 (translated): "the tabs in the top strip
+// don't match what's on the left". Every open tab has a row, Tree and Flat.
+describe('every open tab has a row', () => {
+  const tabs: Tab[] = [
+    { id: 'ti', projectId: 'alpha', root: pane('pi', 'session', 'i1'), focusedPaneId: 'pi', title: 'Idle one' },
+    { id: 'tb', projectId: 'beta', root: pane('pb', 'session', 'b1'), focusedPaneId: 'pb', title: 'Beta work' },
+  ]
+  for (const grouped of [true, false]) {
+    it(`lists a hidden session and a hidden project that have a tab (${grouped ? 'Tree' : 'Flat'})`, () => {
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify({ beta: Date.now() }))
+      localStorage.setItem(HIDDEN_SESSIONS_KEY, JSON.stringify({ i1: Date.now(), w1: Date.now() }))
+      setup(mix(), tabs, { grouped })
+      expect(document.querySelector('[data-tab-row="ti"]')).not.toBeNull()
+      expect(document.querySelector('[data-tab-row="tb"]')).not.toBeNull()
+      if (grouped) expect(document.querySelector('[data-project-row="beta"]')).not.toBeNull()
+      // A hidden row with no tab stays hidden, under More… alone.
+      expect(document.querySelector('[data-live-row="w1"]')).toBeNull()
+      fireEvent.click(document.querySelector('[data-sidebar-more]')!)
+      expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map((b) => b.textContent)).toEqual(['Busy · alphashow'])
+    })
+  }
+})
+
 describe('group by project, off', () => {
   it('lists every session in one flat list; a row names its project only in its tooltip and accessible name', () => {
     const onGroupedChange = vi.fn()
