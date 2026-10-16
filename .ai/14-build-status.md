@@ -184,6 +184,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-16 — 0.124.0: every tab has a row, a Today card that folds away, and two more flakes gone
+
+A minor release because it carries a change in behaviour. Every open tab now has a row in the sidebar, in Tree and Flat: a project or session hidden by hand shows while its tab is open, and hiding a project closes its tabs (#705). The sidebar's Today card has no Share button, folds to one line or hides from its × (#706). Two flaky tests turned out to be product bugs and were fixed at the root — a second machine check now waits for the one in flight, so a revoked computer is told so at once, and the template sheet keeps the card clicked before it finished loading — and `make pr-check` runs the whole UI suite (#709).
+
 ### 2026-10-16 — 0.123.1: a dropped file reaches the terminal again
 
 A patch release. 0.123.0 turned on Tauri's `unstable` feature for the Page tab, which makes the dashboard a child webview of its window; Tauri then reports a drop to the webview, not the window, and the app listened on the window, so no file dragged onto a terminal arrived (#707).

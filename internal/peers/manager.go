@@ -114,7 +114,8 @@ type peer struct {
 	pending  bool
 	lastSeen time.Time
 	revoked  bool
-	checking bool
+	// checking is closed when the check in flight ends; nil when none is.
+	checking chan struct{}
 }
 
 // Open loads machines.json. The Manager is usable even when that fails: the
@@ -462,16 +463,26 @@ func (m *Manager) Check(ctx context.Context, id string) (Status, error) {
 		return Status{}, err
 	}
 	m.mu.Lock()
-	if p.checking {
+	if wait := p.checking; wait != nil {
+		// One check at a time, and a second caller gets its answer rather
+		// than the state from before it: Do's 401 starts a check, and the
+		// proxy asking right after must hear "revoked", not the stale
+		// "online" (the smoke test's 401 on Windows, 2026-10-16).
 		m.mu.Unlock()
+		select {
+		case <-wait:
+		case <-ctx.Done():
+		}
 		return m.Get(id)
 	}
-	p.checking = true
+	done := make(chan struct{})
+	p.checking = done
 	m.mu.Unlock()
 	defer func() {
 		m.mu.Lock()
-		p.checking = false
+		p.checking = nil
 		m.mu.Unlock()
+		close(done)
 	}()
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://machine/v1/pair/me", nil)

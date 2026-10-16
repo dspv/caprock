@@ -279,8 +279,11 @@ describe('the sidebar', () => {
     expect(onCloseProjectTabs).toHaveBeenCalledWith('alpha')
     expect(screen.queryByRole('menu')).toBeNull()
 
+    onCloseProjectTabs.mockClear()
     fireEvent.contextMenu(document.querySelector('[data-project-row="alpha"]')!)
-    fireEvent.click(screen.getByRole('menuitem', { name: /Hide from the sidebar/ }))
+    // Hiding closes the tabs too: every open tab has a row in the sidebar.
+    fireEvent.click(screen.getByRole('menuitem', { name: /Hide from the sidebar.*closes its tabs/ }))
+    expect(onCloseProjectTabs).toHaveBeenCalledWith('alpha')
     expect(listed()).toEqual(['beta', 'stale'])
     expect(hiddenIds()).toEqual(['alpha'])
     // More… shows it again.
