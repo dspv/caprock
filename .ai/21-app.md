@@ -454,10 +454,12 @@ One window, three regions:
   *Running* → `#/now`, *Waiting* → the first Inbox item. Code:
   `components/TodayStrip.tsx`, `lib/today.ts`. While the sidebar is open
   the status strip drops its plan windows and spend, so the same figures
-  are never on screen twice. It folds to one line by its chevron and hides
-  from its right-click menu; Settings → Appearance shows it again, and
-  while hidden the list's heading counts what waits (a user, 2026-10-15;
-  `lib/todayCard.ts`, [04-ui.md](04-ui.md) § Sidebar).
+  are never on screen twice. It folds to one line (spend, running, what
+  waits, the 5h and 7d percentages) by its chevron and hides by a hover ×;
+  its right-click menu offers Full card, One line and Hide; Settings →
+  Appearance shows it again, and while hidden the list's heading counts
+  what waits (a user, 2026-10-15; `lib/todayCard.ts`, [04-ui.md](04-ui.md)
+  § Sidebar). No Share button since 2026-10-16.
 - **Project menu** (owner, same day: "a way to hide or close projects";
   the hover-only eye was not found). The row's ⋯ — on hover or focus — a
   right-click on the row, or
