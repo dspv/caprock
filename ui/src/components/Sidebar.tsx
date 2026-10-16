@@ -333,9 +333,10 @@ export function Sidebar(props: SidebarProps) {
   // Hide closes the project's tabs: every open tab has a row in the sidebar,
   // so a hidden project with a tab would stay listed (lib/sidebar.ts
   // groupProjects). Its sessions keep running, as with ⌘W.
+  // markHidden only sets the mark: the project's × has closed the tabs
+  // already, and closing them twice would run ⌘W's work twice.
   const closeTabsOf = props.onCloseProjectTabs
-  const onHide = useCallback((id: string, hide: boolean) => {
-    if (hide) closeTabsOf?.(id)
+  const markHidden = useCallback((id: string, hide: boolean) => {
     setHidden((cur) => {
       const next = new Map(cur)
       if (hide) next.set(id, Date.now())
@@ -343,7 +344,11 @@ export function Sidebar(props: SidebarProps) {
       saveHiddenProjects(next)
       return next
     })
-  }, [closeTabsOf])
+  }, [])
+  const onHide = useCallback((id: string, hide: boolean) => {
+    if (hide) closeTabsOf?.(id)
+    markHidden(id, hide)
+  }, [closeTabsOf, markHidden])
   const toggleFold = (f: Fold) => {
     setFolds((cur) => {
       const next = new Set(cur)
@@ -369,7 +374,7 @@ export function Sidebar(props: SidebarProps) {
     const close = (stopped: number) => {
       onCloseProjectTabs?.(id)
       if (keepsProject(node, stopped)) return
-      onHide(id, true)
+      markHidden(id, true)
       if (id !== activeProjectId || dashboardActive) return
       const nextTab = (allTabs ?? []).find((t) => t.projectId !== id)
       if (nextTab && onActivateTab) { onActivateTab(nextTab.id); return }
@@ -378,7 +383,7 @@ export function Sidebar(props: SidebarProps) {
     }
     if (!onStopProjectShells) { close(0); return }
     void onStopProjectShells(id).then((o) => { if (!o.cancelled) close(o.stopped) })
-  }, [model.projects, onCloseProjectTabs, onStopProjectShells, onHide, activeProjectId, dashboardActive, allTabs, onActivateTab, groups.shown, onSelectProject])
+  }, [model.projects, onCloseProjectTabs, onStopProjectShells, markHidden, activeProjectId, dashboardActive, allTabs, onActivateTab, groups.shown, onSelectProject])
   const row = (n: ProjectNode) => {
     const current = n.project.id === activeProjectId
     return (
