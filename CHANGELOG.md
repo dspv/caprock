@@ -12,6 +12,39 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.126.0] - 2026-10-16
+
+### Added
+
+- **chats:** Chats are their own kind of session. Start one in one tap on the
+  phone home, the new Chats screen, or ⌥⌘N in the app, on the model you used
+  last (a compact model chip changes it). Chats are listed apart from your
+  projects, newest first, with search, rename, archive and delete, and a count;
+  a chat reads as a conversation, never a terminal, and can be continued after
+  it ends. The files a chat writes open in a viewer — Markdown rendered, HTML
+  sandboxed with no scripts, PDF in the browser's viewer, images — and can be
+  downloaded, on a phone too. A paired phone that may control can now start,
+  continue, archive and delete chats. *Quick chat with…* keeps the model
+  chooser (ADR-071).
+
+### Changed
+
+- **app:** ⌘W closes the tab in front, not the window. The macOS menu's
+  Close Window held ⌘W, so the key hid the whole window; File → Close Tab
+  holds it now and closes the tab as its × does, asking first about a
+  running agent or shell. With the Dashboard in front it does nothing;
+  Window → Close Window (no key), the red button, ⌘H and ⌘M still put the
+  window away, and in the Mail window ⌘W still closes it. Windows and Linux
+  keep Ctrl+Shift+W, since Ctrl+W is the shell's delete-word.
+- **app:** the Premium dialog's *Also in Premium* chips are bigger, so the row is seen at first glance.
+- **app:** the version panel says *You're on the latest version* in a sentence and shows one button — what's new right after a check, Check now otherwise.
+- **app:** a *Waiting for you* row on Home is one big way back into that
+  session: a click anywhere on it, Enter, or its amber *Open terminal →* opens
+  the session's tab in the desktop app (opening one if needed), or its
+  terminal in a browser. *what did it ask?* still opens the answer in place,
+  and the row now names the session after the project, so two waiting rows in
+  one project say which is which.
+
 ## [0.125.0] - 2026-10-16
 
 ### Added

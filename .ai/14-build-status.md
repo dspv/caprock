@@ -210,6 +210,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-16 — 0.126.0: Chats, ⌘W closes the tab, and Waiting rows jump to the terminal
+
+A minor release because it carries features, landed as one batch PR (#723). Chats are a kind of session (ADR-071): a list of their own with search, rename, archive and delete, one tap to start on the phone and the desktop, and the files a chat made shown beside it — kept out of the work lists. ⌘W closes the tab in front, not the window. A Waiting for you row opens that session's terminal in one click and names the session. The version panel says you are on the latest version and shows one button; the Premium chips are big enough to see.
+
 ### 2026-10-16 — 0.125.0: Premium shows the whole plan, Second Brain leads with what your next session gets, and Mail grows up
 
 A minor release because it carries features, landed as one batch PR (#720). The Premium dialog shows the feature clicked, then the other seven as chips. Second Brain opens on what a new session in a repository would be handed, then recent memories; the graph is a card that opens full-screen. Update checks run every 15 minutes and when the window comes to the front, and their result shows beside the version. Every dashboard page names itself and leads back; every link that leaves is marked. The right panel's CI lists what is in flight, and the release plan uses its width with cost, CI per OS and what each PR waits for. Mail: the keyboard, AI sorting, a local junk filter, and a window of its own. `make e2e` runs the golden paths in a headless browser against a sandboxed daemon.
