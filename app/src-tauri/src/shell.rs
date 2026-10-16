@@ -217,8 +217,13 @@ pub fn build(
     // .ai/21-app.md § Dropping a file.
     let w = b.build()?;
     let dropped = w.clone();
-    w.on_window_event(move |e| {
-        if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, position }) = e {
+    // A webview event, not a window one: with the `unstable` feature a Page
+    // tab needs (page.rs, ADR-070), the dashboard is a child webview of the
+    // window too, and Tauri reports its drops as WebviewEvent::DragDrop. A
+    // WindowEvent::DragDrop listener heard nothing from 0.123.0 on, so no
+    // dropped file reached a terminal.
+    w.on_webview_event(move |e| {
+        if let tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Drop { paths, position }) = e {
             let scale = dropped.scale_factor().unwrap_or(1.0);
             let paste = discovery::data_dir().map(|d| d.join("paste"));
             let paths: Vec<PathBuf> = paths
