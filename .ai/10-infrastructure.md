@@ -43,7 +43,7 @@ make smoke       # the DoD scenario with the fake claude (what CI runs per OS)
 make docs-fmt    # tight-align markdown tables
 make docs-check  # fail on unaligned tables
 make docs-links  # fail on broken relative links
-make pr-check    # before a PR: changed Go packages vet + test -race, changed tests -count=3, Windows vet + test compile, changed UI tests
+make pr-check    # before a PR: changed Go packages vet + test -race, changed tests -count=3, Windows vet + test compile, the whole UI suite
 make check       # docs gates + lint + test (what CI runs, minus the OS matrix)
 make app         # the desktop app, debug build (app/README.md)
 make app-test    # cargo fmt --check, clippy -D warnings, cargo test
@@ -87,7 +87,11 @@ data races, which CI does not look for (it runs no `-race`); Windows-only
 semantics (`filepath.IsAbs("/a/b")` is false there), caught by
 `GOOS=windows go vet ./...` and compiling the changed packages' tests for
 Windows; and tests that fail one run in three, caught by running the changed
-tests `-count=3`. `PR_CHECK_COUNT` and `PR_CHECK_BASE` override the count and
+tests `-count=3`. The dashboard is the exception to "only what changed": when
+`ui/` changed it runs the typecheck and the whole vitest suite, because a
+change to one component breaks tests it never touched (#705 broke
+`SidebarClose.test.tsx` that way, 2026-10-16). The suite took 2 min 16 s
+on a 10-core Mac (2026-10-16). `PR_CHECK_COUNT` and `PR_CHECK_BASE` override the count and
 the base.
 
 Data dir and `CAPROCK_DATA_DIR` override: [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions). To develop against a throw-away data dir: `CAPROCK_DATA_DIR=$(mktemp -d) make dev`.

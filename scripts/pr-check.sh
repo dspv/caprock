@@ -10,11 +10,12 @@
 #     CI does not run -race at all);
 #   - Windows: GOOS=windows go vet ./..., and the changed packages' tests
 #     compiled for Windows (a path or syscall that only builds on Unix);
-#   - the dashboard, when ui/ changed: typecheck, and vitest on the changed
-#     test files;
+#   - the dashboard, when ui/ changed: typecheck, and the whole vitest suite
+#     (#705 changed the sidebar and broke SidebarClose.test.tsx, a test it
+#     never touched, and only CI saw it);
 #   - the language gate (no Cyrillic), which costs a second.
 #
-# It is not `make check`: no smoke, no golangci-lint, no full suites. `make
+# It is not `make check`: no smoke, no golangci-lint, no full Go suite. `make
 # check` stays the full gate; CI runs both halves on three OSes.
 #
 # Environment: PR_CHECK_BASE overrides the base (default: the merge base with
@@ -121,17 +122,12 @@ if echo "$changed" | grep -q '^ui/'; then
 	fi
 	step "ui: typecheck"
 	(cd "$root/ui" && npm run -s typecheck) || fail "ui typecheck"
-	tests=$(echo "$changed" | grep -E '^ui/.*\.test\.tsx?$' | sed 's#^ui/##' || true)
-	existing=""
-	for f in $tests; do
-		[ -f "$root/ui/$f" ] && existing="$existing $f"
-	done
-	if [ -n "$existing" ]; then
-		step "ui: vitest$existing"
-		(cd "$root/ui" && npx vitest run $existing) || fail "vitest"
-	else
-		step "ui: no test file changed (make test-ui runs them all)"
-	fi
+	# All of it, not the changed test files: a component's change breaks the
+	# tests of whatever renders it. vitest's --changed follows imports, and
+	# a test can depend on what it does not import (a stylesheet, a fixture
+	# read from disk, a module mocked away); the whole suite costs minutes.
+	step "ui: vitest, the whole suite"
+	(cd "$root/ui" && npx vitest run) || fail "vitest"
 fi
 
 # --- language -------------------------------------------------------------

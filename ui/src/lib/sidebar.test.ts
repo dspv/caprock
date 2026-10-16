@@ -111,9 +111,33 @@ describe('grouping the sidebar projects', () => {
       ],
     )
     expect(nodes.find((n) => n.project.id === 'done')!.waiting).toBe(1)
-    const g = groupProjects(nodes, { hidden: hid(['done', 'front'], now), activeProjectId: 'front', tabbed: new Set(['front']) })
+    // Hide closes the project's tabs (Sidebar), so nothing is tabbed here.
+    const g = groupProjects(nodes, { hidden: hid(['done', 'front'], now), activeProjectId: 'front' })
     expect(ids(g.hidden)).toEqual(['done', 'front'])
     expect(ids(g.shown)).toEqual([])
+  })
+
+  // The owner's bug on 2026-10-16 (translated): "the tabs in the top strip
+  // don't match what's on the left" — a hidden project opened again from
+  // More… had ⌘3 in the strip and no row in the sidebar.
+  it('lists a hidden project while a tab shows it, and hides it again when the last tab closes', () => {
+    const nodes = model(
+      [proj('bloq', 1), proj('file', 1), proj('quiet', 1)],
+      [sess({ session_id: 'b', cwd: '/bloq', activity: { phrase: '', at: new Date(now - 60_000).toISOString(), health: 'working' } })],
+      new Set(['b']),
+    )
+    // A session tab, and a tab that holds no session (a file): both count.
+    const g = groupProjects(nodes, { hidden: hid(['bloq', 'file', 'quiet'], now), tabbed: new Set(['bloq', 'file']) })
+    expect(ids(g.shown)).toEqual(['bloq', 'file'])
+    expect(ids(g.hidden)).toEqual(['quiet'])
+    // The mark is kept: with no tab left it is under Hidden again.
+    const closed = model([proj('bloq', 1)], [sess({ session_id: 'b', cwd: '/bloq', activity: { phrase: '', at: new Date(now - 60_000).toISOString(), health: 'working' } })])
+    expect(ids(groupProjects(closed, { hidden: hid(['bloq'], now) }).hidden)).toEqual(['bloq'])
+  })
+
+  it('lists hidden Outside projects while one of its sessions has a tab', () => {
+    const nodes = model([], [sess({ session_id: 'x', cwd: '/elsewhere' })], new Set(['x']))
+    expect(ids(groupProjects(nodes, { hidden: hid([OTHER_FOLDERS_ID]) }).shown)).toEqual([OTHER_FOLDERS_ID])
   })
 
   it('brings a hidden project out for a permission prompt, whenever it was hidden', () => {
@@ -126,7 +150,9 @@ describe('grouping the sidebar projects', () => {
   it('never folds Other folders into More, but hides it when asked (owner, 2026-10-11)', () => {
     const nodes = model([], [sess({ session_id: 'x', cwd: '/elsewhere', status: 'ended', last_event_at: 1 })], new Set(['x']))
     expect(ids(groupProjects(nodes, { hidden: new Map() }).shown)).toEqual([OTHER_FOLDERS_ID])
-    const g = groupProjects(nodes, { hidden: hid([OTHER_FOLDERS_ID]) })
+    // With its tab closed (hiding closes it): under Hidden.
+    const closed = model([], [sess({ session_id: 'x', cwd: '/elsewhere' })])
+    const g = groupProjects(closed, { hidden: hid([OTHER_FOLDERS_ID]) })
     expect(ids(g.shown)).toEqual([])
     expect(ids(g.hidden)).toEqual([OTHER_FOLDERS_ID])
   })
@@ -165,5 +191,11 @@ describe('a session row: what waits, and hiding it', () => {
     expect(rowHidden(r.get('turn')!, new Map([['turn', now - 1000]]))).toBe(true)
     expect(rowHidden(r.get('turn')!, new Map([['turn', now - 10 * 60_000]]))).toBe(false)
     expect(rowHidden(r.get('ask')!, new Map([['ask', now]]))).toBe(false)
+  })
+
+  it('never hides a row with a tab open: every tab in the strip has a row (owner, 2026-10-16)', () => {
+    const busy = rows(build()).get('busy')!
+    expect(rowHidden({ ...busy, open: true }, new Map([['busy', now]]))).toBe(false)
+    expect(rowHidden({ ...busy, open: false }, new Map([['busy', now]]))).toBe(true)
   })
 })
