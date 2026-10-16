@@ -43,6 +43,17 @@ describe('the version panel', () => {
     expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull()
   })
 
+  it('still checks again from the checked line when just checked', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ ...base, current: '0.105.0', latest: '0.105.0', checked_at: Date.now() }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    vi.stubGlobal('fetch', fetchMock)
+    const onStatus = vi.fn()
+    render(<VersionPanel shown="0.105.0" title="" onStatus={onStatus} status={{ ...base, current: '0.105.0', latest: '0.105.0', checked_at: Date.now() - 4 * 60_000 }} />)
+    fireEvent.click(screen.getByText('0.105.0'))
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    await waitFor(() => expect(onStatus).toHaveBeenCalled())
+    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toMatch(/\/v1\/update\/check/)
+  })
+
   it('offers Check now instead once the last check is old', () => {
     render(<VersionPanel shown="0.105.0" title="" onStatus={() => {}} status={{ ...base, current: '0.105.0', latest: '0.105.0', checked_at: Date.now() - 60 * 60_000 }} />)
     fireEvent.click(screen.getByText('0.105.0'))

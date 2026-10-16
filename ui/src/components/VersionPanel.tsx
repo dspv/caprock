@@ -115,6 +115,17 @@ export function VersionPanel({ shown, title, status, onStatus }: {
             {st?.enabled === false
               ? 'Release checks are off in Settings → Updates.'
               : st?.checked_at ? `Checked ${fmtAgo(st.checked_at, now)}` : 'Not checked yet'}
+            {/* With What's new as the button, checking again is still one
+              * click away (owner, 2026-10-16: "I can't check"). */}
+            {upToDate && freshCheck && (
+              <>
+                {' · '}
+                <button type="button" data-check-again onClick={() => void check()} disabled={checking}
+                  className="text-fg-muted underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-50">
+                  {checking ? 'Checking…' : 'Check again'}
+                </button>
+              </>
+            )}
           </p>
           {apart && (
             <p data-apart className="rounded-[7px] border border-warn/40 bg-warn/10 px-2.5 py-2 text-[13px] text-fg">
