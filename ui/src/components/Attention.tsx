@@ -7,11 +7,14 @@
  * one day appear.
  */
 import type { AttentionItem } from '@/lib/attention'
-import { useState } from 'react'
+import { useContext, useState } from 'react'
 import { fmtAgo, fmtUSD, shortId } from '@/lib/format'
 import { LastWord } from '@/components/LastWord'
 import type { SessionSummary } from '@/lib/api'
-import { href } from '@/lib/router'
+import { href, navigate } from '@/lib/router'
+import { PipelineHostContext } from '@/lib/pipelineHost'
+import { typeable } from '@/lib/sessionJump'
+import { sessionTitle } from '@/lib/sidebar'
 import { PremiumHint } from './PremiumHint'
 import { LoopAlertCard } from './LoopAlertCard'
 import { useLoopHidden } from '@/lib/loopalert'
@@ -59,25 +62,60 @@ function Row({ it, now, session }: {
   session?: SessionSummary
 }) {
   const [asking, setAsking] = useState(false)
+  const host = useContext(PipelineHostContext)
   const high = it.severity === 'high'
   const frame = high
     ? 'border-danger/50 bg-danger/10'
     : 'border-warn/50 bg-warn/10'
+  // A waiting row is one big way back into the session (owner, 2026-10-16,
+  // translated: "from here I want to go straight to the right terminal with
+  // one big button"). In the desktop app: its tab, brought forward or opened
+  // (AppShell's openSessionById — a terminal for Caprock's own, a read-only
+  // tab otherwise, rule 7). In a browser: the session's terminal when
+  // Caprock holds one, else its timeline at the moment it stopped. Either
+  // way the bottom of it is the prompt that is waiting.
+  const waiting = it.id.startsWith('waiting-') && !!it.sessionId
+  const terminal = !!host.onOpenSession || (!!session && typeable(session))
+  const go = waiting
+    ? () => {
+        if (host.onOpenSession) host.onOpenSession(it.sessionId)
+        else navigate(session && typeable(session)
+          ? { name: 'session', id: it.sessionId, tab: 'terminal' }
+          : { name: 'session', id: it.sessionId, tab: 'timeline', at: it.at })
+      }
+    : undefined
+  const goLabel = terminal ? 'Open terminal' : 'Open session'
+  // Two waiting rows both read "caprock-web": the project says where, the
+  // session's own name says which.
+  const name = waiting && session ? sessionTitle(session) : ''
   return (
     <>
-    <div className={`border rounded-[var(--radius-panel)] px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 ${frame}`}>
+    <div
+      data-attention={it.id}
+      role={go ? 'link' : undefined}
+      tabIndex={go ? 0 : undefined}
+      aria-label={go ? `${goLabel}: ${it.project || shortId(it.sessionId)}${name ? ` · ${name}` : ''}` : undefined}
+      title={go ? `${goLabel} — where it is waiting for you` : undefined}
+      onClick={go ? (e) => { if (!(e.target as Element).closest('a, button')) go() } : undefined}
+      onKeyDown={go ? (e) => { if (e.key === 'Enter' && e.target === e.currentTarget) { e.preventDefault(); go() } } : undefined}
+      className={`border rounded-[var(--radius-panel)] px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 ${frame} ${go ? 'cursor-pointer hover:bg-warn/15 focus-visible:outline focus-visible:outline-1 focus-visible:outline-warn' : ''}`}
+    >
       <span className={`font-medium text-[13px] shrink-0 ${high ? 'text-danger' : 'text-warn'}`}>
         {it.title}
       </span>
       <span className="min-w-0 text-[12px] text-fg-muted truncate">
         {/* Not every item is about a session. A plan window is about the whole
           * account, and linking it to `#/session/` with an empty id produced a
-          * dead link labelled with nothing. */}
-        {it.sessionId && (
+          * dead link labelled with nothing. A waiting row is itself the way
+          * in, so its project is plain text rather than a second link. */}
+        {it.sessionId && (waiting ? (
+          <span className="mono text-fg">{it.project || shortId(it.sessionId)}</span>
+        ) : (
           <a href={href({ name: 'session', id: it.sessionId })} className="link mono text-fg">
             {it.project || shortId(it.sessionId)}
           </a>
-        )}
+        ))}
+        {name && <span className="ml-2 text-fg" data-session-name title={name}>{name}</span>}
         {/* Rendered only when there is something to say. A row whose detail is
           * empty — the waiting one, whose title already says it — would
           * otherwise carry an indented empty span after the project name. */}
@@ -104,7 +142,7 @@ function Row({ it, now, session }: {
         {session && it.id.startsWith('waiting-') && (
           <button
             className="text-[11px] border border-border px-1.5 py-0.5 rounded-sm hover:border-border-strong text-fg-muted hover:text-fg"
-            onClick={() => setAsking(true)}
+            onClick={(e) => { e.stopPropagation(); setAsking(true) }}
           >
             what did it ask?
           </button>
@@ -113,6 +151,16 @@ function Row({ it, now, session }: {
           * land on the session's default view, which for a three-hour-old loop
           * is the wrong end of a long list — the banner named a problem and
           * then handed over a haystack. */}
+        {go ? (
+          <button
+            type="button"
+            data-open-terminal
+            onClick={(e) => { e.stopPropagation(); go() }}
+            className="text-[13px] font-medium px-3 py-1 rounded-sm bg-warn text-panel hover:brightness-110 whitespace-nowrap"
+          >
+            {goLabel} →
+          </button>
+        ) : (
         <a
           href={
             it.sessionId
@@ -125,6 +173,7 @@ function Row({ it, now, session }: {
         >
           {it.sessionId ? 'open' : 'details'}
         </a>
+        )}
         {/* The plan-window stop is the thing that does act here: it pauses
           * Caprock's own sessions before the limit and resumes them after the
           * reset. Offered only on an install known to be without it. */}
