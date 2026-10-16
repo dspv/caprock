@@ -83,7 +83,7 @@ export function Fig({ children, title }: { children: ReactNode; title?: string }
   return <span className="bn-fig" title={title}>{children}</span>
 }
 
-export type Scene = 'team' | 'cap' | 'window' | 'phone' | 'star' | 'update' | 'hooks' | 'done' | 'lock' | 'plan' | 'ask' | 'graph'
+export type Scene = 'team' | 'cap' | 'window' | 'phone' | 'star' | 'update' | 'hooks' | 'done' | 'lock' | 'plan' | 'ask' | 'graph' | 'mail'
 
 /** A character at (x, y) in the 120x84 scene, `s` times its 80px size. */
 function Who({ who, x, y, s }: { who: Character; x: number; y: number; s: number }) {
@@ -218,6 +218,18 @@ function SceneBody({ scene }: { scene: Scene }) {
           {[[80, 22], [110, 26], [108, 58], [78, 60]].map(([x, y]) => (
             <circle key={`${x}-${y}`} cx={x} cy={y} r="3.6" fill="var(--color-panel)" stroke="var(--bn-tone)" strokeWidth="1.6" />
           ))}
+        </>
+      )
+    case 'mail':
+      // A letter on its way to a window of its own.
+      return (
+        <>
+          <Who who="lead" x={-2} y={4} s={1} />
+          <g transform="translate(74 22)">
+            <rect width="38" height="28" rx="4" fill="var(--color-panel)" stroke="var(--bn-tone)" strokeWidth="2.2" />
+            <path d="M3 4L19 16L35 4" fill="none" stroke="var(--bn-tone)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </g>
+          <path d="M100 58l8 -8M108 50h-6M108 50v6" stroke="var(--bn-ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </>
       )
     case 'lock':

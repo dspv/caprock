@@ -34,7 +34,7 @@ describe('Banner', () => {
   })
 
   it('draws every scene', () => {
-    const scenes: Scene[] = ['team', 'cap', 'window', 'phone', 'star', 'update', 'hooks', 'done', 'lock', 'plan']
+    const scenes: Scene[] = ['team', 'cap', 'window', 'phone', 'star', 'update', 'hooks', 'done', 'lock', 'plan', 'mail']
     for (const s of scenes) {
       const { container, unmount } = render(<BannerArt scene={s} />)
       expect(container.querySelector('svg')!.children.length, s).toBeGreaterThan(0)

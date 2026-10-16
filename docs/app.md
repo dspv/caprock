@@ -154,8 +154,12 @@ others. Installing it: [install-app.md](install-app.md).
   Dashboard tab; from it, a click goes back to where you were. The button
   is in the accent while the Pipeline is in front.
   **Mail** sits above *Dashboard*, with its key, ⇧⌘M. It opens Mail in a
-  tab of its own after the Dashboard and Pipeline tabs (the envelope and ⇧⌘M); pressed
-  again it brings that tab to the front, and its × closes it. With no mail
+  window of its own, with nothing of Caprock around it: on a Mac with the
+  Caprock Mail preview app (`app/mail-mac`) in Applications, that app; otherwise a second
+  Caprock window titled *Caprock Mail*, brought to the front when it is
+  already open. In a browser it opens a Mail tab after the Dashboard and
+  Pipeline tabs, under a banner, *Mail works best in its own window*, whose
+  button (or ⇧⌘M again) opens Mail alone in a browser window. With no mail
   account yet it opens straight on a sample inbox — two made-up accounts on a
   server inside Caprock, nothing real read or sent — with a line on top and
   *Add account*: Google, Microsoft, iCloud, Other, or import from Apple Mail
@@ -835,7 +839,7 @@ On macOS:
 | ⌘K          | Command palette                                                                     |
 | ⌘,          | Settings                                                                            |
 | ⇧⌘F         | Send feedback                                                                       |
-| ⇧⌘M         | Mail, in a tab of its own                                                           |
+| ⇧⌘M         | Mail, in a window of its own                                                        |
 | ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                            |
 | ⌘I          | Agent cockpit (the inspector)                                                       |
 | ⌘B          | Pipeline bar under the agent's terminal, shown or hidden                            |

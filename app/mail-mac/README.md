@@ -3,7 +3,15 @@
 A separate Mac app for trying Caprock Mail on its own: one window with the
 inbox and nothing else of Caprock — no sidebar, no tabs. It opens the running
 Caprock daemon's `<daemon>/?mail=1` page in a WebKit window, so the accounts
-and the mail are the same as in Caprock's Mail tab ([ADR-057](../../.ai/08-decisions.md)).
+and the mail are the same as in Caprock's Mail ([ADR-057](../../.ai/08-decisions.md)).
+
+The Caprock desktop app opens it: installed in `/Applications` or
+`~/Applications`, the sidebar's *Mail*, ⇧⌘M and the palette's *Open Mail*
+launch this app or bring it forward instead of opening Mail inside Caprock's
+window (the app's `open_mail_app`, [app/README.md](../README.md) § What a page
+may call). Without it the desktop app opens its own *Caprock Mail* window on
+the same page. The app is recognised by its bundle id,
+`dev.caprock.mail.preview`, so keep it when rebuilding.
 
 It starts nothing and stores nothing of its own. Without a running Caprock it
 says so and fills in when Caprock starts; a Caprock updated or restarted, on

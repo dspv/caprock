@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-mail-app"
+description = "Enables the open_mail_app command without any pre-configured scope."
+commands.allow = ["open_mail_app"]
+
+[[permission]]
+identifier = "deny-open-mail-app"
+description = "Denies the open_mail_app command without any pre-configured scope."
+commands.deny = ["open_mail_app"]

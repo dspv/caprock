@@ -177,7 +177,7 @@ export interface SidebarProps {
   onFolderMenu?: (e: React.MouseEvent, path: string, label: string) => void
   onAddProject: () => void
   onDashboard: () => void
-  /** Opens Mail in its own tab (⇧⌘M); absent, the footer has no Mail row. */
+  /** Opens Mail in its own window (⇧⌘M; lib/mailwindow.ts); absent, the footer has no Mail row. */
   onMail?: () => void
   /** The Mail tab is in front (then `dashboardActive` is true too: no terminal is). */
   mailActive?: boolean

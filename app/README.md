@@ -161,32 +161,34 @@ size and place are saved and the daemon keeps running.
 
 Commands are granted per origin (`src-tauri/capabilities/`):
 
-| Command                  | Daemon page | Bundled page | Popover |
-| ------------------------ | ----------- | ------------ | ------- |
-| `daemon_status`          | yes         | yes          | no      |
-| `open_external`          | yes         | yes          | no      |
-| `pick_folder`            | yes         | no           | no      |
-| `notify`                 | yes         | no           | no      |
-| `withdraw_notifications` | yes         | no           | no      |
-| `start_daemon`           | no          | yes          | no      |
-| `update_daemon`          | no          | yes          | no      |
-| `set_background`         | no          | yes          | no      |
-| `set_tray`               | yes         | no           | no      |
-| `set_badge`              | yes         | no           | no      |
-| `set_zoom`               | yes         | no           | no      |
-| `hotkey_status`          | yes         | no           | yes     |
-| `register_hotkey`        | yes         | no           | no      |
-| `tray_open`              | no          | no           | yes     |
-| `tray_hide`              | no          | no           | yes     |
-| `tray_fit`               | no          | no           | yes     |
-| `app_update_status`      | yes         | no           | no      |
-| `app_update_check`       | yes         | no           | no      |
-| `app_update_install`     | yes         | no           | no      |
-| `app_update_asked`       | yes         | no           | no      |
-| `clipboard_image`        | yes         | no           | no      |
-| `capture_webview`        | yes         | no           | no      |
-| `read_dropped_image`     | yes         | no           | no      |
-| `read_dropped_text`      | yes         | no           | no      |
+| Command                  | Daemon page | Bundled page | Popover | Mail window |
+| ------------------------ | ----------- | ------------ | ------- | ----------- |
+| `daemon_status`          | yes         | yes          | no      | no          |
+| `open_external`          | yes         | yes          | no      | yes         |
+| `pick_folder`            | yes         | no           | no      | no          |
+| `notify`                 | yes         | no           | no      | no          |
+| `withdraw_notifications` | yes         | no           | no      | no          |
+| `start_daemon`           | no          | yes          | no      | no          |
+| `update_daemon`          | no          | yes          | no      | no          |
+| `set_background`         | no          | yes          | no      | no          |
+| `set_tray`               | yes         | no           | no      | no          |
+| `set_badge`              | yes         | no           | no      | no          |
+| `set_zoom`               | yes         | no           | no      | no          |
+| `hotkey_status`          | yes         | no           | yes     | no          |
+| `register_hotkey`        | yes         | no           | no      | no          |
+| `tray_open`              | no          | no           | yes     | no          |
+| `tray_hide`              | no          | no           | yes     | no          |
+| `tray_fit`               | no          | no           | yes     | no          |
+| `app_update_status`      | yes         | no           | no      | no          |
+| `app_update_check`       | yes         | no           | no      | no          |
+| `app_update_install`     | yes         | no           | no      | no          |
+| `app_update_asked`       | yes         | no           | no      | no          |
+| `clipboard_image`        | yes         | no           | no      | no          |
+| `capture_webview`        | yes         | no           | no      | no          |
+| `read_dropped_image`     | yes         | no           | no      | no          |
+| `read_dropped_text`      | yes         | no           | no      | no          |
+| `open_mail_app`          | yes         | no           | no      | no          |
+| `open_mail_window`       | yes         | no           | no      | no          |
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
 The `app_update_*` commands are the app's updater (F20, `src-tauri/src/updater.rs`,
@@ -205,6 +207,21 @@ app on the machine is registered for it (`open` on macOS, the registry on
 Windows, `xdg-mime` on Linux), else it refuses so the page falls back to
 t.me (the share sheet's *Send to someone in Telegram*); a Cmd/Ctrl+click on
 a link in a terminal goes through it (`ui/src/lib/termlinks.ts`).
+`open_mail_app` and `open_mail_window` open Mail in a window of its own, never
+as a tab in the workspace (`src-tauri/src/mail.rs`, `ui/src/lib/mailwindow.ts`).
+The page asks `open_mail_app` first: on macOS it launches or brings forward
+the installed Caprock Mail preview ([`mail-mac/`](mail-mac/README.md)) —
+`/Applications/Caprock Mail.app` or `~/Applications/Caprock Mail.app`, only a
+bundle whose Info.plist names `dev.caprock.mail.preview` — with `open`, off
+the main thread, and answers `true`; elsewhere, or with no such app, `false`.
+Then `open_mail_window`: a second window of the app, labelled `mail` and
+titled *Caprock Mail*, on the daemon's `/?mail=1`, focused when it is already
+open; `false` with no daemon to load it from. That window has the main
+window's link rule (`shell::allow_navigation`: the daemon's own pages stay,
+any other link opens in the browser), saves downloads the same way, follows
+a daemon that moved port or was replaced, and may call `open_external` alone
+(`capabilities/mail.json`). Only when both answer `false`, or the shell is
+older than these commands, does the page open its Mail tab.
 `notify` shows one OS notification (`{title, body, id?, sessionId?,
 promptId?, actions?}`); the page decides when (`ui/src/lib/notify.ts`,
 WP-09). On macOS, inside the `.app`, it goes through UNUserNotificationCenter

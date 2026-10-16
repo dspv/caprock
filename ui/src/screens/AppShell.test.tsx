@@ -440,6 +440,81 @@ describe('the app workspace', () => {
     expect(screen.getByRole('tab', { name: /Dashboard/ })).toBeInTheDocument()
   })
 
+  // Owner, 2026-10-15 (translated): "Mail still launches in a crappy way; it
+  // should be native — either call the installed app, or show a big banner
+  // to go there."
+  it('puts a banner over the browser’s Mail tab that opens Mail alone in a window, as ⇧⌘M there does', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    await renderApp()
+    fireEvent.click(screen.getByRole('button', { name: /^Mail/ }))
+    const banner = await waitFor(() => {
+      const b = document.querySelector<HTMLElement>('[data-banner="mail-window"]')
+      expect(b).toBeTruthy()
+      return b!
+    })
+    expect(banner.textContent).toContain('Mail works best in its own window')
+    expect(banner.textContent).toContain('⇧⌘M')
+    fireEvent.click(within(banner).getByRole('button', { name: /Open in its own window/ }))
+    expect(open).toHaveBeenLastCalledWith(`${location.origin}/?mail=1`, 'caprock-mail', expect.any(String))
+    await cmd('m', { shiftKey: true })
+    expect(open).toHaveBeenCalledTimes(2)
+    expect(screen.getAllByRole('tab', { name: 'Mail' })).toHaveLength(1)
+  })
+
+  describe('in the desktop app', () => {
+    const calls: string[] = []
+    let answers: Record<string, boolean | Error> = {}
+    beforeEach(() => {
+      calls.length = 0
+      ;(window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
+        invoke: async (c: string) => {
+          if (c === 'open_mail_app' || c === 'open_mail_window') {
+            calls.push(c)
+            const a = answers[c]
+            if (a instanceof Error) throw a
+            return a
+          }
+          throw new Error(c)
+        },
+      }
+    })
+    afterEach(() => { delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ })
+
+    it('opens the installed Caprock Mail and no tab', async () => {
+      answers = { open_mail_app: true, open_mail_window: true }
+      await renderApp()
+      fireEvent.click(screen.getByRole('button', { name: /^Mail/ }))
+      await waitFor(() => expect(calls).toEqual(['open_mail_app']))
+      await cmd('m', { shiftKey: true })
+      await waitFor(() => expect(calls).toEqual(['open_mail_app', 'open_mail_app']))
+      expect(location.hash).toBe('#/app')
+      expect(screen.queryByRole('tab', { name: 'Mail' })).not.toBeInTheDocument()
+      expect(document.querySelector('[data-banner="mail-window"]')).toBeNull()
+    })
+
+    it('opens its own Mail window when the preview is not installed, and goes back from #/mail', async () => {
+      answers = { open_mail_app: false, open_mail_window: true }
+      await renderApp()
+      fireEvent.click(screen.getByRole('button', { name: /^Mail/ }))
+      await waitFor(() => expect(calls).toEqual(['open_mail_app', 'open_mail_window']))
+      expect(screen.queryByRole('tab', { name: 'Mail' })).not.toBeInTheDocument()
+      // A link to #/mail (the dashboard's Mail) does the same and returns.
+      act(() => { location.hash = '#/mail' })
+      await waitFor(() => expect(calls).toHaveLength(4))
+      await waitFor(() => expect(location.hash).toBe('#/app'))
+      expect(screen.queryByRole('tab', { name: 'Mail' })).not.toBeInTheDocument()
+    })
+
+    it('falls back to the Mail tab in a shell without the commands', async () => {
+      answers = { open_mail_app: new Error('unknown command'), open_mail_window: new Error('unknown command') }
+      await renderApp()
+      fireEvent.click(screen.getByRole('button', { name: /^Mail/ }))
+      expect(await screen.findByRole('tab', { name: 'Mail' })).toHaveAttribute('aria-selected', 'true')
+      expect(location.hash).toBe('#/mail')
+      expect(document.querySelector('[data-banner="mail-window"]')).toBeNull()
+    })
+  })
+
   // Owner, 2026-10-10: Settings had no way out on the page. Its × closes the
   // tab, as the strip's × does, and the tab stays closed (it used to reopen
   // in the render before the hash change arrived).

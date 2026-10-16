@@ -28,6 +28,8 @@ fn main() {
             "read_dropped_image",
             "read_dropped_text",
             "set_zoom",
+            "open_mail_app",
+            "open_mail_window",
         ]),
     ))
     .expect("tauri build");

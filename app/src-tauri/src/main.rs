@@ -12,6 +12,9 @@ mod discovery;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod dock_icon;
 mod hotkey;
+// Looking for the Caprock Mail preview is macOS's; the lookup is tested on every OS.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod mail;
 // Actionable notifications and the popover are macOS's (notify_macos, the
 // menu bar); elsewhere most of both modules is unused, not dead.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -52,6 +55,8 @@ macro_rules! handler {
             commands::set_zoom,
             commands::hotkey_status,
             commands::register_hotkey,
+            mail::open_mail_app,
+            mail::open_mail_window,
             notify::notify,
             notify::withdraw_notifications,
             popover::tray_open,
@@ -394,6 +399,47 @@ mod tests {
                     "{url} {cmd}: {err}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn the_daemon_page_may_open_the_mail_window_and_no_other_page_may() {
+        // No daemon is running in the mock: nothing to load, so no window
+        // is made and the page is told to fall back to its tab.
+        let got = invoke(DAEMON, "open_mail_window", serde_json::json!({})).expect("allowed");
+        assert_eq!(got, serde_json::json!(false));
+        // open_mail_app is not called from the daemon's page here: on a Mac
+        // with the preview installed it would launch it.
+        for url in ["https://example.com/", "http://localhost:4391/"] {
+            for cmd in ["open_mail_app", "open_mail_window"] {
+                let err = invoke(url, cmd, serde_json::json!({})).expect_err(url);
+                assert!(
+                    err.to_string().contains("not allowed"),
+                    "{url} {cmd}: {err}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_mail_window_may_open_links_and_nothing_else() {
+        const MAIL: &str = "http://127.0.0.1:4391/?mail=1";
+        let err = invoke_in(
+            "mail",
+            MAIL,
+            "open_external",
+            serde_json::json!({"url": "file:///etc/hosts"}),
+        )
+        .expect_err("a file URL");
+        assert!(err.to_string().contains("refused"), "{err}");
+        for (cmd, body) in [
+            ("open_mail_app", serde_json::json!({})),
+            ("open_mail_window", serde_json::json!({})),
+            ("set_badge", serde_json::json!({"count": 1})),
+            ("daemon_status", serde_json::json!({})),
+        ] {
+            let err = invoke_in("mail", MAIL, cmd, body).expect_err(cmd);
+            assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
         }
     }
 
