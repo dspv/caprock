@@ -18,6 +18,7 @@ import { useState } from 'react'
 import { TeamsModal } from './TeamsModal'
 import { usePromptDue } from '@/lib/prompts'
 import { SetupChip } from './SetupStrip'
+import { extTitle } from '@/lib/externalLinks'
 
 const REPO = 'https://github.com/dspv/caprock'
 const PREMIUM = 'https://caprock.dev/premium'
@@ -64,7 +65,7 @@ export function SiteFooter() {
             target="_blank"
             rel="noreferrer"
             className="text-fg-muted hover:text-fg no-underline"
-            title="A daily spend cap — Caprock pauses its own sessions when the day passes a limit you set"
+            title={extTitle('A daily spend cap — Caprock pauses its own sessions when the day passes a limit you set')}
           >
             premium
           </a>
@@ -74,14 +75,14 @@ export function SiteFooter() {
               target="_blank"
               rel="noreferrer"
               className="text-fg-faint hover:text-fg no-underline"
-              title="Opens GitHub in a new tab"
+              title={extTitle('Star Caprock on GitHub')}
             >
               ★ star on GitHub
             </a>
           )}
           <a
             href="https://caprock.dev/blog"
-            target="_blank"
+            target="_blank" title={extTitle()}
             rel="noreferrer"
             className="text-fg-faint hover:text-fg no-underline"
           >
@@ -89,7 +90,7 @@ export function SiteFooter() {
           </a>
           <a
             href="https://caprock.dev/docs"
-            target="_blank"
+            target="_blank" title={extTitle()}
             rel="noreferrer"
             className="text-fg-faint hover:text-fg no-underline"
           >

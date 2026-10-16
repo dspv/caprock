@@ -24,6 +24,7 @@
 import { fmtUSD } from '@/lib/format'
 import { AgentCharacter, type Character } from './Characters'
 import { Benefit, Icon, MiniCard, UpsellDialog } from './UpsellDialog'
+import { extTitle } from '@/lib/externalLinks'
 
 const TEAMS = 'https://caprock.dev/teams'
 const BOOK = 'https://caprock.dev/book/'
@@ -100,11 +101,11 @@ export function TeamsModal({ fact, onClose }: { fact?: TeamsFact; onClose: () =>
       picture={<TeamPicture />}
       actions={
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <a href={BOOK} target="_blank" rel="noreferrer" onClick={onClose}
+          <a href={BOOK} target="_blank" title={extTitle()} rel="noreferrer" onClick={onClose}
             className="rounded-md bg-accent px-3 py-2.5 text-center text-[14px] font-semibold text-panel no-underline hover:bg-accent-strong">
             Book a demo
           </a>
-          <a href={TEAMS} target="_blank" rel="noreferrer"
+          <a href={TEAMS} target="_blank" title={extTitle()} rel="noreferrer"
             className="rounded-md border border-border-strong px-3 py-2.5 text-center text-[14px] text-fg no-underline hover:border-accent hover:text-accent">
             See the team page
           </a>
@@ -112,7 +113,7 @@ export function TeamsModal({ fact, onClose }: { fact?: TeamsFact; onClose: () =>
       }
       footer={
         <div className="flex items-center gap-3">
-          <a href={PRICING} target="_blank" rel="noreferrer" className="whitespace-nowrap text-fg-muted no-underline hover:text-fg">Pricing</a>
+          <a href={PRICING} target="_blank" title={extTitle()} rel="noreferrer" className="whitespace-nowrap text-fg-muted no-underline hover:text-fg">Pricing</a>
           <span className="whitespace-nowrap text-fg-faint">links open a new tab</span>
           <button type="button" onClick={onClose} className="ml-auto text-fg-muted hover:text-fg">Close</button>
         </div>

@@ -15,6 +15,7 @@ import { useApi } from '@/lib/useApi'
 import { markAnswered, usePromptDue } from '@/lib/prompts'
 import { openExternal, REPO_URL, starEligible, useNudgeSlot } from '@/lib/nudges'
 import { Banner, BannerButton, BannerDismiss } from './Banner'
+import { extTitle } from '@/lib/externalLinks'
 
 /** `app`: kept for the callers; the strip draws the same in the app and the dashboard. */
 export function StarStrip({ now = Date.now() }: { now?: number; app?: boolean }) {
@@ -45,7 +46,7 @@ export function StarStrip({ now = Date.now() }: { now?: number; app?: boolean })
       title="Enjoying Caprock?"
       line="A star on GitHub helps others find it."
       actions={<>
-        <BannerButton onClick={() => openExternal(REPO_URL)}><span aria-hidden>★</span> Star on GitHub</BannerButton>
+        <BannerButton onClick={() => openExternal(REPO_URL)} title={extTitle()}><span aria-hidden>★</span> Star on GitHub ↗</BannerButton>
         <button type="button" onClick={() => { markAnswered('star-done', now); setThanks(true) }} className="bn-link">I starred it</button>
         <BannerDismiss icon onClick={() => markAnswered('star-dismissed', now)} aria-label="Hide for a month" title="Hide for a month" />
       </>}

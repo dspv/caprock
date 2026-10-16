@@ -4,6 +4,7 @@ import { api } from './mailApi'
 import { connected, finished, plan, step, type Flow, type FlowEvent, type Row } from './importFlow'
 import { Icon } from './icons'
 import { openExternal } from '@/lib/nudges'
+import { extTitle } from '@/lib/externalLinks'
 
 // "Import everything" (owner, 2026-10-14, translated): Caprock finds every
 // mail account on the computer, the user ticks them and presses Import, and
@@ -262,7 +263,7 @@ function ActiveStep({ r, oauth, dispatch, connect, others }: {
       <div className="stephead"><b>{r.email}</b> <span className="muted small">{name || r.imapHost}</span></div>
       {unconfigured && <p className="small">{notSetUp(r.provider)}</p>}
       {app ? (
-        <p className="small">Make {app.kind} at <a href={app.url} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openExternal(app.url) }}>{app.label}</a>. {app.how}</p>
+        <p className="small">Make {app.kind} at <a href={app.url} target="_blank" title={extTitle()} rel="noreferrer" onClick={(e) => { e.preventDefault(); openExternal(app.url) }}>{app.label}</a>. {app.how}</p>
       ) : (
         <p className="small muted">The password you sign in to {r.imapHost} with. It goes to that server and the system keychain, nowhere else.</p>
       )}
@@ -330,7 +331,7 @@ function OAuthStep({ r, dispatch, others, skip }: { r: Row; dispatch: (e: FlowEv
       {waiting ? (
         <div className="waiting">
           <div><span className="pulse" /> Waiting for you to approve in the browser…</div>
-          <p className="muted small">Approve Caprock on the {name} page; this step finishes by itself. <a href={url} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openExternal(url) }}>Open the page again</a></p>
+          <p className="muted small">Approve Caprock on the {name} page; this step finishes by itself. <a href={url} target="_blank" title={extTitle()} rel="noreferrer" onClick={(e) => { e.preventDefault(); openExternal(url) }}>Open the page again</a></p>
         </div>
       ) : (
         <p className="small muted">Sign in with {name} in your browser and approve Caprock. It gets a token for mail only, kept in the system keychain; no password is typed here.</p>

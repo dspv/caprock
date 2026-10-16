@@ -40,6 +40,7 @@ import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 import { EyeOffIcon } from './AppIcons'
 import { Bars, Trend } from './DayBars'
 import { GitHubAvatar, GitHubPerson } from './GitHubAvatar'
+import { extTitle, extProps } from '@/lib/externalLinks'
 
 /** How often the open section asks the daemon (its GitHub reads are kept 2 to 30 minutes). */
 const CICD_POLL_MS = 120_000
@@ -186,7 +187,7 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
           <span aria-hidden className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${st.tone === 'fail' ? 'bg-danger' : st.tone === 'warn' ? 'bg-warn' : st.tone === 'ok' ? 'bg-ok' : 'bg-fg-faint'}`} />
           <span className="min-w-0">{st.text}</span>
           {data.status?.incidents[0] && <span className="min-w-0 text-fg-muted">· {data.status.incidents[0].name}</span>}
-          <button type="button" onClick={() => openExternal(data.status?.incidents[0]?.url || STATUS_PAGE)} className="ml-auto shrink-0 text-[11.5px] text-fg-faint hover:text-fg-muted hover:underline">githubstatus.com ↗</button>
+          <button type="button" onClick={() => openExternal(data.status?.incidents[0]?.url || STATUS_PAGE)} className="ml-auto shrink-0 text-[11.5px] text-fg-faint hover:text-fg-muted hover:underline" title={extTitle()}>githubstatus.com ↗</button>
         </div>
       )}
       {calm && (
@@ -264,7 +265,7 @@ function RepoBlock({ r, now, usage, calm, onHide }: { r: RepoCIRow; now: number;
         {r.pending && <span className="text-[11.5px] text-fg-faint">reading GitHub…</span>}
         {bare && err && !calm && <span data-cicd-error={r.slow ? 'slow' : r.error?.kind} className={`min-w-0 truncate text-[11.5px] ${errCls}`} title={r.error?.message}>· {err}</span>}
         {r.release && (
-          <button type="button" onClick={() => r.release?.url && openExternal(r.release.url)} title={`The newest published release${r.release.name ? `: ${r.release.name}` : ''}\n${new Date(r.release.published_at).toLocaleString()}`}
+          <button type="button" onClick={() => r.release?.url && openExternal(r.release.url)} {...extProps(`The newest published release${r.release.name ? `: ${r.release.name}` : ''}\n${new Date(r.release.published_at).toLocaleString()}`)}
             className="ml-auto shrink-0 text-[11.5px] text-fg-muted hover:text-fg">
             released <span className="mono text-fg">{r.release.tag}</span> {fmtAgo(r.release.published_at, now)}
           </button>
@@ -284,7 +285,7 @@ function RepoBlock({ r, now, usage, calm, onHide }: { r: RepoCIRow; now: number;
       <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-x-5 gap-y-3">
         <Cell label="Actions this month" data="usage" title={u?.title}
           note={!u ? (usage ? '' : 'reading…') : u.kind === 'available' ? 'billed, GitHub’s report' : u.kind === 'permission'
-            ? <button type="button" onClick={() => openExternal(u.url)} className="text-left text-accent hover:underline">grant {usage?.org ? 'Administration' : 'Plan'} (read) to see it ↗</button> : u.text}>
+            ? <button type="button" onClick={() => openExternal(u.url)} className="text-left text-accent hover:underline" title={extTitle()}>grant {usage?.org ? 'Administration' : 'Plan'} (read) to see it ↗</button> : u.text}>
           <span className={BIG}>{u?.kind === 'available' ? u.text.replace(/^Actions this month: /, '').split(' · ')[0] : '–'}</span>
           {u?.kind === 'available' && <span className="num shrink-0 text-[12px] text-fg-muted">{u.text.split(' · ')[1]}</span>}
         </Cell>
@@ -301,7 +302,7 @@ function RepoBlock({ r, now, usage, calm, onHide }: { r: RepoCIRow; now: number;
         <Cell label="Stuck" data="stuck" title="A run going on more than twice its workflow's median (and 10 minutes over it), or waiting for a runner over 15 minutes"
           note={r.stuck.length === 0 ? 'nothing past its median' : stuckText(r.stuck[0]!, now, spanText)}>
           <span className={`${BIG} ${r.stuck.length > 0 ? 'text-danger' : ''}`}>{r.stuck.length}</span>
-          {r.stuck[0]?.url && <button type="button" onClick={() => openExternal(r.stuck[0]!.url!)} className="shrink-0 text-[11.5px] text-accent hover:underline">open ↗</button>}
+          {r.stuck[0]?.url && <button type="button" onClick={() => openExternal(r.stuck[0]!.url!)} className="shrink-0 text-[11.5px] text-accent hover:underline" title={extTitle()}>open ↗</button>}
         </Cell>
         <Cell label="Pull requests" data="prs" note={`${r.merged_7d} merged in 7 days`} title="Open now, and merged in the last 7 days, among the newest 50 listed">
           <span className={BIG}>{r.open}<span className="ml-1 text-[12px] font-normal text-fg-muted">open</span></span>
@@ -316,7 +317,7 @@ function RepoBlock({ r, now, usage, calm, onHide }: { r: RepoCIRow; now: number;
                 {r.top_prs.map((p) => (
                   <li key={p.number} className="flex min-w-0 items-center gap-2 border-b border-border/60 py-1 text-[12px] last:border-b-0">
                     <span aria-hidden className="pr-dot" data-state={p.draft && p.state === 'open' ? 'draft' : p.state} />
-                    <button type="button" onClick={() => openExternal(p.url)} className="num shrink-0 text-fg-muted hover:underline">#{p.number}</button>
+                    <button type="button" onClick={() => openExternal(p.url)} className="num shrink-0 text-fg-muted hover:underline" {...extProps()}>#{p.number}</button>
                     <span className="min-w-0 flex-1 truncate text-fg" title={p.title}>{p.title}</span>
                     {p.author && <GitHubAvatar login={p.author} url={p.author_avatar} size={16} />}
                     {p.live > 0 && <span className="shrink-0 text-[11px] text-ok" title={`${p.live} agent session${p.live === 1 ? '' : 's'} running on it`}>● {p.live}</span>}

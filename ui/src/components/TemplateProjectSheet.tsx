@@ -40,6 +40,7 @@ import {
 import { AgentPicker, agentLabel, startable, useAgentCatalog, useAgentChoice, type SpawnAgent } from './AgentPicker'
 import { StepsHeader } from './ProjectWizard'
 import { Sheet, SheetButton } from './Sheet'
+import { extTitle } from '@/lib/externalLinks'
 
 type Step = 'template' | 'project' | 'brief'
 const STEPS: { key: Step; label: string }[] = [
@@ -756,7 +757,7 @@ function JobView({
           {retryErr && <p className="text-[12.5px] text-danger">{retryErr}</p>}
         </div>
         <SheetButton onClick={onReset}>Start over</SheetButton>
-        {fail.repoUrl && <a href={fail.repoUrl} target="_blank" rel="noreferrer" className="inline-flex h-[34px] items-center rounded-[7px] border border-[var(--app-hairline-strong)] px-4 text-[14px] font-medium text-fg hover:bg-[var(--app-row-hover)]">Open on GitHub</a>}
+        {fail.repoUrl && <a href={fail.repoUrl} target="_blank" title={extTitle()} rel="noreferrer" className="inline-flex h-[34px] items-center rounded-[7px] border border-[var(--app-hairline-strong)] px-4 text-[14px] font-medium text-fg hover:bg-[var(--app-row-hover)]">Open on GitHub</a>}
         {fail.retry && (
           <SheetButton primary disabled={busy} onClick={() => void retry()}>
             {op?.step === 'clone' ? 'Try the clone again' : 'Try again'}

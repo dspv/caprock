@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { githubApi, githubErrorText, type CreateRepoResult, type GitHubOwner } from '@/lib/github'
 import { Sheet, SheetButton, SheetField } from './Sheet'
+import { extTitle } from '@/lib/externalLinks'
 
 /** A folder name made into a repository name GitHub keeps as typed. */
 export function repoNameFrom(folder: string): string {
@@ -60,7 +61,7 @@ export function CreateRepoSheet({ projectId, defaultName, onClose, onDone }: { p
     >
       {done ? (
         <div className="grid gap-2 px-5 py-4 text-[12.5px]">
-          <p className="text-fg"><span className="text-ok">✓</span> Created <a href={done.repo.html_url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">{done.repo.full_name}</a>{done.repo.private ? ' (private)' : ''}, set as <span className="mono">{done.remote}</span>.</p>
+          <p className="text-fg"><span className="text-ok">✓</span> Created <a href={done.repo.html_url} target="_blank" title={extTitle()} rel="noopener noreferrer" className="text-accent hover:underline">{done.repo.full_name}</a>{done.repo.private ? ' (private)' : ''}, set as <span className="mono">{done.remote}</span>.</p>
           {done.pushed && <p className="text-fg"><span className="text-ok">✓</span> Pushed.</p>}
           {done.push_error && (
             <div role="alert" className="grid gap-1 rounded-[8px] border border-danger/40 bg-danger/[0.06] px-2.5 py-2">

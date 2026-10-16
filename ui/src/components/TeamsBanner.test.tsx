@@ -32,7 +32,7 @@ describe('TeamsBanner', () => {
     expect(document.body.textContent).toMatch(/Your team runs agents too3 people committed/)
     expect((document.body.textContent ?? '').replace('$2.5k', '')).not.toMatch(/\$\d/)
     expect(document.body.textContent).not.toMatch(/pilot|coming soon|not built|beta/i)
-    fireEvent.click(screen.getByText('Caprock for Teams →'))
+    fireEvent.click(screen.getByText('Caprock for Teams ↗'))
     expect(open).toHaveBeenCalledWith('https://caprock.dev/teams/?ref=app', '_blank', 'noopener')
   })
 

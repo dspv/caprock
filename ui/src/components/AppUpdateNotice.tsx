@@ -21,6 +21,7 @@ import { appUpdate, offerFor, useAppUpdate, v } from '@/lib/appupdate'
 import { Copyable } from './ui'
 import { everyWhileVisible } from '@/lib/visible'
 import { checkingByHand } from '@/lib/checkbanner'
+import { extTitle } from '@/lib/externalLinks'
 
 /** UpdateBanner's key: "not now" in either place hides that version in both. */
 export const DISMISS_KEY = 'caprock.update.dismissed'
@@ -202,7 +203,7 @@ export function AppUpdateNotice() {
             !info?.blocked && offer.kind === 'commands' && <p className="text-fg-muted">Download it from the release page.</p>
           ))}
           <div className="flex items-center gap-2">
-            <a className="link text-[12px]" href={st?.url ?? 'https://github.com/dspv/caprock/releases/latest'} target="_blank" rel="noreferrer">
+            <a className="link text-[12px]" href={st?.url ?? 'https://github.com/dspv/caprock/releases/latest'} target="_blank" title={extTitle()} rel="noreferrer">
               {offer.kind === 'failed' ? 'release page' : 'what’s new'}
             </a>
             {offer.kind === 'failed' && (

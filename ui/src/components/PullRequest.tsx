@@ -21,6 +21,7 @@ import { CreateRepoSheet } from './CreateRepoSheet'
 import { FixWithAgent, type HandoffTarget } from './AgentHandoff'
 import { checksFixPrompt, prConflictsFixPrompt } from '@/lib/fixPrompts'
 import { Sheet } from './Sheet'
+import { extTitle } from '@/lib/externalLinks'
 
 const TONE_DOT: Record<PRTone, string> = {
   ok: 'bg-ok',
@@ -142,7 +143,7 @@ export function PRStatus({ pr, compact = false, onRefresh, fix }: {
   return (
     <div className="grid min-w-0 gap-1.5" aria-label={`Pull request #${pr.number}`}>
       <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px]">
-        <a href={pr.url} target="_blank" rel="noopener noreferrer" className={`flex min-w-0 items-center gap-1.5 font-medium text-fg hover:text-accent ${target}`} title="Open on GitHub">
+        <a href={pr.url} target="_blank" rel="noopener noreferrer" className={`flex min-w-0 items-center gap-1.5 font-medium text-fg hover:text-accent ${target}`} title={extTitle('Open on GitHub')}>
           <span className={TONE_TEXT[tone]}><PullRequestIcon size={13} /></span>
           <span className="num shrink-0">#{pr.number}</span>
           <span className="min-w-0 truncate">{pr.title}</span>
@@ -179,7 +180,7 @@ export function PRStatus({ pr, compact = false, onRefresh, fix }: {
           {shown.map((c, i) => (
             <li key={`${c.name}-${i}`} className="flex min-w-0 items-center gap-2 text-[11.5px]">
               <span aria-label={c.state} className={`inline-block h-[6px] w-[6px] shrink-0 rounded-full ${c.state === 'pass' ? 'bg-ok' : c.state === 'fail' ? 'bg-danger' : c.state === 'skipped' ? 'bg-fg-faint' : 'bg-warn'}`} />
-              {c.url ? <a href={c.url} target="_blank" rel="noopener noreferrer" className="min-w-0 truncate text-fg hover:text-accent">{c.name}</a> : <span className="min-w-0 truncate text-fg">{c.name}</span>}
+              {c.url ? <a href={c.url} target="_blank" title={extTitle()} rel="noopener noreferrer" className="min-w-0 truncate text-fg hover:text-accent">{c.name}</a> : <span className="min-w-0 truncate text-fg">{c.name}</span>}
               <span className="shrink-0 text-fg-faint">{c.state === 'pass' ? 'passed' : c.state === 'fail' ? 'failed' : c.state === 'skipped' ? 'skipped' : 'running'}</span>
             </li>
           ))}
@@ -279,7 +280,7 @@ export function CreatePRForm({ target, info, sessionId, compact = false, onCreat
       {error && (
         <div role="alert" className="grid gap-1 rounded-[8px] border border-danger/40 bg-danger/[0.06] px-2.5 py-2 text-[12.5px] leading-snug text-fg [overflow-wrap:anywhere]">
           <span>{error}</span>
-          {existing && <a href={existing.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Open #{existing.number} on GitHub</a>}
+          {existing && <a href={existing.url} target="_blank" title={extTitle()} rel="noopener noreferrer" className="text-accent hover:underline">Open #{existing.number} on GitHub</a>}
         </div>
       )}
       <div className="flex flex-wrap justify-end gap-2">

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { RepoLink, SessionPR } from '@/lib/api'
 import { PRIMARY, QUIET, SECONDARY } from '@/components/ProjectTerminal'
+import { extTitle } from '@/lib/externalLinks'
 
 /**
  * The repository a session works in, and the pull requests it opened, one
@@ -61,9 +62,10 @@ export function RepoButtons({ repo, prs = [], cwd, className = '', quiet = false
         <a
           href={href}
           target="_blank"
+          data-ext="none"
           rel="noopener noreferrer"
           className={quiet ? QUIET : COMPACT(PRIMARY)}
-          title={repo?.branch_url ? `${repo.url} — branch ${repo.branch}` : repo?.url}
+          title={extTitle(repo?.branch_url ? `${repo.url} — branch ${repo.branch}` : repo?.url)}
         >
           Open repo ↗
         </a>
@@ -83,7 +85,7 @@ export function RepoButtons({ repo, prs = [], cwd, className = '', quiet = false
         )
       )}
       {pr && (
-        <a href={pr.url} target="_blank" rel="noopener noreferrer" className={quiet ? QUIET : COMPACT(SECONDARY)} title={prLabel(pr)}>
+        <a href={pr.url} target="_blank" data-ext="none" rel="noopener noreferrer" className={quiet ? QUIET : COMPACT(SECONDARY)} title={extTitle(prLabel(pr))}>
           Open PR #{pr.number} ↗
         </a>
       )}
@@ -103,9 +105,10 @@ export function RecentPRs({ prs = [], className = '' }: { prs?: SessionPR[]; cla
           key={p.url}
           href={p.url}
           target="_blank"
+          data-ext="none"
           rel="noopener noreferrer"
           className="inline-flex items-baseline gap-1 max-w-[22rem] min-w-0 text-fg-muted hover:text-accent"
-          title={prLabel(p)}
+          title={extTitle(prLabel(p))}
         >
           <span className="truncate">{prLabel(p)}</span>
           {p.merged_at ? <span className="shrink-0 text-[10px] uppercase tracking-[0.06em] text-ok">merged</span> : null}
@@ -138,7 +141,7 @@ export function ProjectRepoLinks({ url, pr }: { url?: string; pr?: SessionPR }) 
   return (
     <>
       {url && (
-        <a href={url} target="_blank" rel="noopener noreferrer" className={SECONDARY} title={url}>
+        <a href={url} target="_blank" data-ext="none" rel="noopener noreferrer" className={SECONDARY} title={extTitle(url)}>
           Open repo ↗
         </a>
       )}
@@ -146,9 +149,10 @@ export function ProjectRepoLinks({ url, pr }: { url?: string; pr?: SessionPR }) 
         <a
           href={pr.url}
           target="_blank"
+          data-ext="none"
           rel="noopener noreferrer"
           className="inline-flex items-center min-h-[36px] text-[12px] text-fg-muted hover:text-accent whitespace-nowrap"
-          title={prLabel(pr)}
+          title={extTitle(prLabel(pr))}
         >
           last PR #{pr.number}
           {pr.merged_at ? ' · merged' : ''} ↗

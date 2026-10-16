@@ -41,6 +41,7 @@ import { worktreeSlug } from '@/lib/slug'
 import { OverlapLine } from '@/components/OverlapLine'
 import { PipelineHostContext } from '@/lib/pipelineHost'
 import { endable, sessionJump, type SessionJump } from '@/lib/sessionJump'
+import { extTitle } from '@/lib/externalLinks'
 
 /** How many tracks to show. More than this and no single one is readable. */
 const MAX_TRACKS = 6
@@ -645,7 +646,7 @@ function LiveSession({ x, now, hourCost }: { x: SessionSummary; now: number; hou
               </span>
             )}
             {pr && (
-              <a href={pr.url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-fg-muted hover:text-fg" title={pr.title ? `#${pr.number} ${pr.title}` : `#${pr.number}`}>
+              <a href={pr.url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-fg-muted hover:text-fg" title={extTitle(pr.title ? `#${pr.number} ${pr.title}` : `#${pr.number}`)}>
                 · PR #{pr.number}{pr.state === 'merged' ? ' merged' : ''}
               </a>
             )}
@@ -705,7 +706,7 @@ function SessionWays({ x, jump }: { x: SessionSummary; jump: SessionJump }) {
     <>
       {jump.kind !== 'away' && (
         <span aria-hidden className={`${small} text-accent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100`} data-go-hint>
-          Go to session ↗{jump.kind === 'tab' && jump.digit ? <span className="ml-1 mono text-fg-faint">{keys(`⌘${jump.digit}`)}</span> : null}
+          Go to session →{jump.kind === 'tab' && jump.digit ? <span className="ml-1 mono text-fg-faint">{keys(`⌘${jump.digit}`)}</span> : null}
         </span>
       )}
       {away && (

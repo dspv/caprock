@@ -17,6 +17,7 @@ import { useRoute } from '@/lib/router'
 import { useNarrowScreen } from '@/lib/phone'
 import { provideMachineSwitch } from '@/lib/machineswitch'
 import { ReadyGate } from './ReadyCard'
+import { extTitle } from '@/lib/externalLinks'
 
 const App = lazy(() => import('../App'))
 
@@ -654,10 +655,10 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
             </Question>
           </div>
           <p className="mt-6 flex gap-5 text-[15px]">
-            <a href={HOW_IT_WORKS} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-4">
+            <a href={HOW_IT_WORKS} target="_blank" title={extTitle()} rel="noreferrer" className="text-accent underline underline-offset-4">
               How it works
             </a>
-            <a href={RELAY_SOURCE} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-4">
+            <a href={RELAY_SOURCE} target="_blank" title={extTitle()} rel="noreferrer" className="text-accent underline underline-offset-4">
               The relay&apos;s source
             </a>
           </p>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { BackgroundUsage, Unpriced } from '@/lib/api'
 import { fmtTokens } from '@/lib/format'
+import { extTitle } from '@/lib/externalLinks'
 
 const INTERNAL_NAMES: Record<string, string> = {
   'codex-auto-review': 'Codex Auto Review',
@@ -68,7 +69,7 @@ export function UnpricedNote({
               <a
                 className="text-[11px] text-fg-muted hover:text-fg border border-border px-1.5 py-0.5 rounded-sm no-underline"
                 href={unpricedIssueURL(u.models)}
-                target="_blank"
+                target="_blank" title={extTitle()}
                 rel="noreferrer"
               >
                 report

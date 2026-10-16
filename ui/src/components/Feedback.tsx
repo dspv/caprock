@@ -47,6 +47,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, type Keyboard
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { openExternal } from '@/lib/nudges'
+import { extTitle } from '@/lib/externalLinks'
 import { isAppMode, isMacPlatform } from '@/lib/appmode'
 import { context, currentScreen, fromBox, isSendable, issueURL, KINDS, type FeedbackKind } from '@/lib/feedback'
 import { keys } from '@/lib/appkeys'
@@ -526,11 +527,11 @@ export function FeedbackDialog({ screen, onClose }: { screen: string; onClose: (
               <button
                 type="submit"
                 disabled={!ready}
-                title={submitKey}
+                title={extTitle(`A prefilled GitHub issue (${submitKey})`)}
                 aria-keyshortcuts={isMac ? 'Meta+Enter' : 'Control+Enter'}
                 className="ml-auto inline-flex h-[34px] shrink-0 items-center gap-2 rounded-[7px] bg-accent px-4 text-[14px] font-medium text-panel hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {failed ? 'Retry' : 'Send'}
+                <span>{failed ? 'Retry' : 'Send'}<span aria-hidden className="ml-1 opacity-75">↗</span></span>
                 <KeyChip primary>{submitKey}</KeyChip>
               </button>
             </div>

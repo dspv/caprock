@@ -9,6 +9,7 @@ import { openExternal } from '@/lib/nudges'
 import {
   STATUS_PAGE_URL, hasIncident, outageText, readStatusPage, setWatching, useWatchedStatus, useWatching, type StatusPage,
 } from '@/lib/githubOutage'
+import { extTitle } from '@/lib/externalLinks'
 
 /**
  * "Checking GitHub Status…", then what the status page says. Asked once per
@@ -44,8 +45,8 @@ export function GitHubStatusCheck({ reason, compact }: { reason?: string; compac
   const tone = said.kind === 'outage' ? 'text-warn' : 'text-fg-muted'
   const link = (
     <button type="button" data-gh-status-open onClick={() => openExternal(said.url)}
-      className="shrink-0 text-accent hover:underline" title={said.url}>
-      {compact ? 'githubstatus.com ↗' : 'Open githubstatus.com'}
+      className="shrink-0 text-accent hover:underline" title={extTitle(said.url)}>
+      {compact ? 'githubstatus.com ↗' : 'Open githubstatus.com ↗'}
     </button>
   )
   if (compact) {
@@ -89,7 +90,7 @@ export function GitHubStatusDot() {
   const major = s.indicator === 'major' || s.indicator === 'critical'
   return (
     <button type="button" data-gh-status-dot onClick={() => openExternal(said.url)}
-      title={`${said.text}\nFrom githubstatus.com, read every 5 minutes. Click to open it.`}
+      title={extTitle(`${said.text}\nFrom githubstatus.com, read every 5 minutes. Click to open it.`)}
       className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap hover:text-fg">
       <span aria-hidden className={`inline-block h-[7px] w-[7px] rounded-full ${major ? 'bg-danger' : 'bg-warn'}`} />
       GitHub

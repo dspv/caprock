@@ -38,6 +38,7 @@ import { api, type PremiumPricing } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { AgentCharacter } from './Characters'
 import { Benefit, Icon, MiniCard, UpsellDialog } from './UpsellDialog'
+import { extTitle } from '@/lib/externalLinks'
 
 export type PaidFeature = 'cap' | 'window' | 'report' | 'gemini' | 'drill' | 'agents' | 'telegram' | 'subscriptions'
 
@@ -325,7 +326,7 @@ export function Price({ p, feature, onClose }: { p: PremiumPricing | undefined; 
         <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-fg-muted">Yearly</p>
         <a
           href={fromFeature(p.yearly.url, feature, 'buy')}
-          target="_blank"
+          target="_blank" title={extTitle()}
           rel="noreferrer"
           onClick={onClose}
           className="mt-2 rounded-md border border-border-strong px-3 py-2 text-center text-[14px] font-medium text-fg no-underline hover:border-accent hover:text-accent"
@@ -341,7 +342,7 @@ export function Price({ p, feature, onClose }: { p: PremiumPricing | undefined; 
         </p>
         <a
           href={p.lifetime?.url && fromFeature(p.lifetime.url, feature, 'buy')}
-          target="_blank"
+          target="_blank" title={extTitle()}
           rel="noreferrer"
           onClick={onClose}
           className="mt-2 rounded-md bg-accent px-3 py-2 text-center text-[14px] font-semibold text-panel no-underline hover:bg-accent-strong"
@@ -369,7 +370,7 @@ export function PremiumModal({ feature, onClose }: { feature: PaidFeature; onClo
       footer={
         <>
           <div className="flex items-center gap-3">
-            <a href={fromFeature(p?.info_url ?? 'https://caprock.dev/premium/', feature, 'info')} target="_blank" rel="noreferrer"
+            <a href={fromFeature(p?.info_url ?? 'https://caprock.dev/premium/', feature, 'info')} target="_blank" title={extTitle()} rel="noreferrer"
               className="whitespace-nowrap text-fg-muted no-underline hover:text-fg">
               Read more
             </a>

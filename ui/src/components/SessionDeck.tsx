@@ -44,6 +44,7 @@ import { openExternal } from '@/lib/nudges'
 import { PIPELINE_KEY, keys } from '@/lib/appkeys'
 import { hasConflict, isBehind, prAgents, prStatus, queuedFor, quickActions, QUICK_LABEL, topChip, typeable, type DeckWorktree, type PRAgent, type PRChip, type PRStatus } from '@/lib/prforce'
 import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
+import { extTitle, extProps } from '@/lib/externalLinks'
 
 /** How long arrow keys on the divider rest before the terminal is fitted to the new height. */
 export const KEY_SETTLE_MS = 250
@@ -902,7 +903,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
         <li key={run.id} data-deck-ci-run={run.id}>
           {manyRuns && (
             <div data-deck-ci-run-head className="flex min-w-0 items-center gap-2 px-1 pt-0.5">
-              <button type="button" onClick={() => run.html_url && openExternal(run.html_url)} title={`Open the ${run.name} run on GitHub`}
+              <button type="button" onClick={() => run.html_url && openExternal(run.html_url)} title={extTitle(`Open the ${run.name} run on GitHub`)}
                 className="flex min-w-0 items-center gap-1.5 truncate text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-fg-faint hover:text-fg-muted">
                 {view === 'main' && <CIMark tone={ciTone(run)} />}<span className="truncate">{run.name}</span>
               </button>
@@ -942,7 +943,7 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
           <span data-deck-ci-runner className="num shrink-0" title={runnerTitle}>runner <span className="text-fg">{fmtRun(total)}</span></span>
           {ciCost && <><span aria-hidden>·</span><CostText c={ciCost} data="ci" /></>}
           {ci.by_os.length > 1 && <span className="num truncate" title="The finished jobs’ runner time per OS, measured">{byOSLine(ci)}</span>}
-          <button type="button" onClick={() => openExternal(`${url}/checks`)} className="ml-auto shrink-0 hover:text-fg-muted hover:underline">checks ↗</button>
+          <button type="button" onClick={() => openExternal(`${url}/checks`)} className="ml-auto shrink-0 hover:text-fg-muted hover:underline" title={extTitle()}>checks ↗</button>
         </div>
         {runList(runs.length > 1, false)}
         {ci.error && <p className="truncate text-[10.5px] text-warn" title={ci.error.message}>The last read failed; this is the one before.</p>}
@@ -1016,17 +1017,17 @@ function PullsCI({ sessionId, s, onToast, branch, changed, ahead, onReview, work
             <CIMark tone={relRunning ? 'running' : rel.state === 'fail' ? 'fail' : rel.state === 'pass' ? 'pass' : 'skipped'} />
             {relRunning
               ? <>
-                  <button type="button" onClick={() => run.html_url && openExternal(run.html_url)} title={`Open the ${run.name} run on GitHub`} className="mono shrink-0 font-medium text-fg hover:underline">{rel.tag ?? run.name}</button>
+                  <button type="button" onClick={() => run.html_url && openExternal(run.html_url)} {...extProps(`Open the ${run.name} run on GitHub`)} className="mono shrink-0 font-medium text-fg hover:underline">{rel.tag ?? run.name}</button>
                   <span className="num shrink-0 text-warn">{fmtRun(releaseElapsed(rel, now))}</span>
                   <MiniPipeline nodes={jobNodes([run], now)} label={`${rel.tag ?? run.name}: its jobs`} onPick={pick} />
                   {est && <span data-deck-ci-estimate className="truncate text-[11px] text-fg-faint" title={`${est}\nAn estimate: the median time of this workflow’s last successful release runs, from GitHub’s own run times`}>{est}</span>}
                 </>
               : <>
-                  <button type="button" onClick={() => openExternal(rel.release?.url ?? run.html_url ?? '')} title={rel.release ? 'Open the release on GitHub' : `Open the ${run.name} run on GitHub`}
+                  <button type="button" onClick={() => openExternal(rel.release?.url ?? run.html_url ?? '')} {...extProps(rel.release ? 'Open the release on GitHub' : `Open the ${run.name} run on GitHub`)}
                     className={`truncate hover:underline ${rel.state === 'fail' ? 'text-danger' : 'text-fg'}`}>{releaseDoneText(rel, now)}</button>
                   <MiniPipeline nodes={jobNodes([run], now)} label={`${rel.tag ?? run.name}: its jobs`} onPick={pick} />
                   {relCost && <CostText c={relCost} data="run" />}
-                  {rel.release && run.html_url && <button type="button" onClick={() => openExternal(run.html_url!)} className="shrink-0 text-[11px] text-fg-faint hover:text-fg-muted hover:underline">run ↗</button>}
+                  {rel.release && run.html_url && <button type="button" onClick={() => openExternal(run.html_url!)} className="shrink-0 text-[11px] text-fg-faint hover:text-fg-muted hover:underline" title={extTitle()}>run ↗</button>}
                 </>}
           </div>
           {runList(false, true)}
@@ -1180,7 +1181,7 @@ function PRRow({ p, now, checks = 'circles', runs, cost, open, onToggle, onPick,
           ? <button type="button" data-deck-pr-menu onClick={(e) => { e.stopPropagation(); onMenu() }} aria-label={`Actions on #${p.number}`} title="Fix with an agent, re-run checks, update the branch"
               className="grid h-[16px] w-[18px] place-items-center rounded-[4px] text-[13px] font-semibold leading-none text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">⋯</button>
           : <span />}
-        <button type="button" onClick={(e) => { e.stopPropagation(); openExternal(url) }} aria-label={`Open #${p.number} on GitHub`} title="Open the pull request on GitHub"
+        <button type="button" onClick={(e) => { e.stopPropagation(); openExternal(url) }} aria-label={`Open #${p.number} on GitHub`} title={extTitle('Open the pull request on GitHub')}
           className="text-[11px] text-fg-faint hover:text-fg">↗</button>
       </div>
       {actions}
@@ -1217,7 +1218,7 @@ function UsageText({ line }: { line?: ReturnType<typeof usageLine> }) {
         ? <span className="num truncate text-fg-muted">{line.text}</span>
         : <span className="truncate text-fg-faint">{line.text}</span>}
       {line.kind === 'permission' && (
-        <button type="button" onClick={() => openExternal(line.url)} className="shrink-0 text-accent hover:underline">token settings ↗</button>
+        <button type="button" onClick={() => openExternal(line.url)} className="shrink-0 text-accent hover:underline" title={extTitle()}>token settings ↗</button>
       )}
     </p>
   )
@@ -1440,7 +1441,7 @@ function CILogTail({ sessionId, job }: { sessionId: string; job: CIJob }) {
       <div className="flex items-center gap-3 border-t border-[var(--app-hairline)] px-2 py-0.5 text-[11px]">
         {log?.truncated && <span className="text-fg-faint">the end of a long log</span>}
         <InvestigateButton job={job} />
-        {job.html_url && <button type="button" onClick={() => openExternal(job.html_url!)} className="ml-auto text-accent hover:underline">Open on GitHub ↗</button>}
+        {job.html_url && <button type="button" onClick={() => openExternal(job.html_url!)} className="ml-auto text-accent hover:underline" title={extTitle()}>Open on GitHub ↗</button>}
       </div>
     </div>
   )

@@ -22,6 +22,7 @@ import { useNow } from '@/lib/useNow'
 import { upgradeCommands } from './AppUpdateNotice'
 import { Copyable } from './ui'
 import { CloseIcon } from './AppIcons'
+import { extProps } from '@/lib/externalLinks'
 
 export function VersionPanel({ shown, title, status, onStatus }: {
   /** The version on screen: the app's own, else the daemon's. */
@@ -131,8 +132,8 @@ export function VersionPanel({ shown, title, status, onStatus }: {
               className="rounded-[7px] border border-[var(--app-hairline-strong)] px-3 py-1.5 text-fg hover:border-accent disabled:opacity-50">
               {checking ? 'Checking…' : 'Check now'}
             </button>
-            <button type="button" onClick={() => openExternal('https://caprock.dev/changelog')} className="text-fg-muted hover:text-accent">
-              Release notes →
+            <button type="button" onClick={() => openExternal('https://caprock.dev/changelog')} className="text-fg-muted hover:text-accent" {...extProps()}>
+              Release notes
             </button>
           </div>
         </div>

@@ -64,6 +64,7 @@ import { chosenId, preferredId, rememberedSubscription, rememberSubscription } f
 import { useGitHubStatus } from '@/lib/github'
 import { githubRepoOf, itemBranchName, itemPrompt, type GitHubItem } from '@/lib/fromGitHub'
 import { GitHubItemPicker } from './GitHubItemPicker'
+import { extTitle } from '@/lib/externalLinks'
 
 const NEW_WORKTREE = '__new__'
 
@@ -330,7 +331,7 @@ export function NewAgentSheet({
           {project && ghItem ? (
             <div className="flex min-w-0 items-center gap-2 rounded-[8px] border border-border px-2.5 py-1.5 text-[12.5px]" aria-label="Started from GitHub">
               <span className="shrink-0 text-fg-muted">{ghItem.pr ? 'Pull request' : 'Issue'} <span className="mono">#{ghItem.number}</span></span>
-              <a href={ghItem.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-fg hover:underline" title={ghItem.title}>{ghItem.title}</a>
+              <a href={ghItem.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-fg hover:underline" title={extTitle(ghItem.title)}>{ghItem.title}</a>
               <button type="button" className="shrink-0 text-[12px] text-accent hover:underline" onClick={() => setGhOpen(true)}>Change</button>
               <button type="button" className="shrink-0 text-[12px] text-fg-muted hover:text-fg" aria-label="Not from GitHub" title="Not from GitHub: keep the fields as they are" onClick={() => { setGhItem(null); setGhOpen(false) }}>×</button>
             </div>

@@ -18,6 +18,7 @@ import { Copyable } from '@/components/ui'
 import { everyWhileVisible } from '@/lib/visible'
 import { isTauri } from '@/lib/appmode'
 import { Banner, BannerButton, BannerDismiss } from './Banner'
+import { extTitle } from '@/lib/externalLinks'
 
 const DISMISS_KEY = 'caprock.update.dismissed'
 
@@ -87,9 +88,9 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
         {st.command ? (
           <Copyable command={st.command} className="max-w-full truncate" />
         ) : (
-          <a className="bn-btn bg-accent text-bg no-underline" href={st.url} target="_blank" rel="noreferrer">Download it</a>
+          <a className="bn-btn bg-accent text-bg no-underline" href={st.url} target="_blank" title={extTitle()} rel="noreferrer">Download it</a>
         )}
-        <a className="bn-link no-underline" href={st.url} target="_blank" rel="noreferrer">What&apos;s new</a>
+        <a className="bn-link no-underline" href={st.url} target="_blank" title={extTitle()} rel="noreferrer">What&apos;s new</a>
         <BannerDismiss onClick={() => { localStorage.setItem(DISMISS_KEY, st.latest!); setDismissed(st.latest!) }}>Not now</BannerDismiss>
       </>}
     />

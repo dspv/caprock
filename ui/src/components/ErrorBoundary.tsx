@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { crashIssueURL, crashMailURL, crashText, describeCrash, resetViewState, type Crash } from '@/lib/crashreport'
 import { openExternal } from '@/lib/nudges'
+import { extProps } from '@/lib/externalLinks'
 
 interface Props {
   children: ReactNode
@@ -36,8 +37,8 @@ export class ErrorBoundary extends Component<Props, State> {
       : 'rounded-sm border border-border px-2.5 py-1 text-fg-muted hover:text-fg'
     return (
       <>
-        <button type="button" data-crash-issue className={link} onClick={() => openExternal(crashIssueURL(c))}>Report on GitHub</button>
-        <button type="button" data-crash-mail className={link} onClick={() => openExternal(crashMailURL(c))}>Email us</button>
+        <button type="button" data-crash-issue className={link} {...extProps()} onClick={() => openExternal(crashIssueURL(c))}>Report on GitHub</button>
+        <button type="button" data-crash-mail className={link} {...extProps()} onClick={() => openExternal(crashMailURL(c))}>Email us</button>
         <button type="button" data-crash-copy className={link} onClick={this.copy}>{this.state.copied ? 'Copied' : 'Copy details'}</button>
       </>
     )

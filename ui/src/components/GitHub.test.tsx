@@ -220,7 +220,7 @@ describe('a worktree’s pull request', () => {
     fireEvent.click(screen.getByText('Open draft pull request'))
     expect(await screen.findByText(/Pushed feat\/x and opened #12/)).toBeTruthy()
     expect(calls.find((c) => c.url.endsWith('/github/pr?worktree=feat-x'))?.body).toEqual({ title: 'feat: x', body: '- first\n- second', base: 'main', draft: true })
-    expect(screen.getByTitle('Open on GitHub').getAttribute('href')).toBe('https://github.com/ada/caprock/pull/12')
+    expect(screen.getByTitle(/^Open on GitHub\b/).getAttribute('href')).toBe('https://github.com/ada/caprock/pull/12')
   })
 
   it('shows 422 already-open with a link, a missing scope, and a failed push', async () => {

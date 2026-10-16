@@ -14,6 +14,8 @@ import { useApi } from '@/lib/useApi'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
+import { pageTitle } from '@/lib/pagetitle'
+import { TabPageBar } from '@/components/WhereAmI'
 import { DASHBOARD_KEY, FIND_EVENT, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { href, parseHash, type SettingsSection } from '@/lib/router'
@@ -1845,13 +1847,18 @@ export function AppShell() {
                 )}
               </div>
               {mailShown && (
-                /* Mail fills its tab: no dashboard header, its own three columns. */
-                <div data-mail-view className="absolute inset-0 bg-bg">
-                  <ErrorBoundary label="Mail">
-                    <Suspense fallback={null}>
-                      <MailScreen fill />
-                    </Suspense>
-                  </ErrorBoundary>
+                /* Mail fills its tab: no dashboard header, its own three
+                  * columns, under the bar that says where this is and leads
+                  * back (components/WhereAmI.tsx). */
+                <div data-mail-view className="absolute inset-0 flex flex-col bg-bg">
+                  <TabPageBar title="Mail" onDashboard={onDashboard} />
+                  <div className="relative min-h-0 flex-1">
+                    <ErrorBoundary label="Mail">
+                      <Suspense fallback={null}>
+                        <MailScreen fill />
+                      </Suspense>
+                    </ErrorBoundary>
+                  </div>
                 </div>
               )}
               {/* The Pipeline fills its tab: no dashboard header, the page
@@ -1860,6 +1867,8 @@ export function AppShell() {
                 * asks nothing (ScreenShown, PipelineView's visible). */}
               {(ws.pipeline || pipelineShown) && (
                 <div data-pipeline-view className="app-scroll absolute inset-0 overflow-y-auto bg-bg" hidden={!pipelineShown}>
+                  {/* No dashboard header here: the bar says where this is and leads back. */}
+                  <TabPageBar title={pageTitle(pipelineRoute)} onDashboard={onDashboard} />
                   <ErrorBoundary label="Pipeline">
                     <ScreenShown.Provider value={pipelineShown}>
                       <PipelineHostContext.Provider value={pipelineHost}>

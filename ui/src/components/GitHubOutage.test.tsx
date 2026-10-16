@@ -61,7 +61,7 @@ describe('Freshness on a GitHub failure', () => {
     expect(ask).toHaveBeenCalledTimes(1)
     await act(async () => { answer(DOWN) })
     expect(line).toHaveTextContent('GitHub reports: Partial outage — Elevated API error rates')
-    fireEvent.click(screen.getByText('Open githubstatus.com'))
+    fireEvent.click(screen.getByText('Open githubstatus.com ↗'))
     expect(open).toHaveBeenCalledWith('https://stspg.io/abc')
     fireEvent.click(screen.getByText('Retry'))
     expect(retry).toHaveBeenCalled()
