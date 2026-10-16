@@ -1965,6 +1965,14 @@ tells a page where a file lives.
   terminal's routing and quoting). A real Finder drag needs a person: OS
   automation is not used from tests.
 
+Where it goes (`routeDrop`, lib/xtermInput.ts): a dialog on screen takes
+it (Feedback, a sheet); else the terminal under the point; else the
+terminal used last that is on screen; else the only terminal on screen;
+else a short note says to drop it onto a terminal. A drop is never dropped
+without a word — it used to reach only a terminal whose box held the point,
+and a drop on the tab strip or a margin read as "drag and drop is broken
+again" (owner, 2026-10-16).
+
 The drop is heard as the dashboard **webview's** event
 (`WebviewEvent::DragDrop`), not the window's: the `unstable` feature a Page
 tab needs makes the dashboard a child webview of its window, and Tauri then
