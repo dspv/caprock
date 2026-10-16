@@ -24,7 +24,7 @@
  * it shows what was last known at once.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { api, errText, type CIJob, type CIRun, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary, type SpawnRequest } from '@/lib/api'
+import { api, errText, type CIJob, type CIRun, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest } from '@/lib/api'
 import { ciActive, ciTone, fmtRun, investigateMessage, jobVsMedian, keyStep, prReviewText, prVerdict, type CITone } from '@/lib/ci'
 import { hasConflict, isBehind, topChip, type DeckWorktree } from '@/lib/prforce'
 import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
@@ -124,6 +124,13 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
   const [teamOpen, setTeamOpen] = useState(false)
   const [prs] = usePoll<SessionPRs>(visible, `${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`)
   const sessionPRs = useMemo(() => prs?.prs ?? [], [prs])
+  // The repository's newest release run, for the Next release panel's
+  // stages: the deck's own answer (`release:<repo>`), read while the page is
+  // in front, every 12 s while it runs; the daemon keeps it, so an idle
+  // poll costs GitHub nothing new.
+  const relScope = s.repo_root || s.cwd || sessionId
+  const [relCI] = usePoll<SessionRepoCI>(visible, `${sessionId}:${n}`, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running', CI_RUNNING_MS, `release:${relScope}`,
+    (prev, next) => !!next.error && !!prev.release && !next.release)
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
   // A count tile clicked: the list shows only the pull requests it counts
   // (owner, 2026-10-15, translated: "I see the red 'NEEDS A FIX 4' figure,
@@ -256,7 +263,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
       {ready && teamOpen && agents && <TeamChart a={agents} onClose={() => setTeamOpen(false)} />}
       {/* The next release, by the page's own answer (owner, 2026-10-15,
         * translated: "I'm missing progress bars to the release here"). */}
-      {ready && (s.repo_root || s.cwd) && <PipelineRelease root={(s.repo_root || s.cwd)!} stats={stats} visible={visible} now={now} onOpen={(num) => setChosen(num)} />}
+      {ready && (s.repo_root || s.cwd) && <PipelineRelease root={(s.repo_root || s.cwd)!} stats={stats} run={relCI?.release} visible={visible} now={now} onOpen={(num) => setChosen(num)} />}
       {ready && (
         <div className={`grid min-w-0 items-start gap-3 ${p && row ? '@min-[1100px]/pipe:grid-cols-[minmax(0,1fr)_minmax(440px,600px)]' : ''}`}>
           <div ref={listRef} className="min-w-0 scroll-mt-14"><PipelineList rows={rows} scope={scope} onScope={onScopePick} pick={pick} onPick={(num) => setChosen(num === pick ? undefined : num)} now={now}

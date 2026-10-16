@@ -2146,8 +2146,10 @@ over the 14 local calendar days ending today:
   GitHub read), absent with fewer than three gaps; `release_gap_count` is
   how many gaps there were (2026-10-15, ADR-064). It is how often the
   repository ships, never a date for the next release. The releases are `GET …/releases?per_page=10`
-  (`github.RepoReleases`): `{tag, name?, url?, published_at, prerelease?}`,
-  drafts and unpublished ones left out, kept 2 minutes (10 before
+  (`github.RepoReleases`): `{tag, name?, url?, published_at, prerelease?,
+  assets}`, `assets` the count of its files GitHub says are `uploaded`
+  (one still being sent is not counted; 2026-10-16, the release plan's
+  builds count), drafts and unpublished ones left out, kept 2 minutes (10 before
   2026-10-14: a new release missed the board that long); a failed list
   keeps the last one, and with none is no releases, not an error.
 - **The figures day by day** (2026-10-15) — `flow.series` is

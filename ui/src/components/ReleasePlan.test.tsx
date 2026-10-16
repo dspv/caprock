@@ -15,6 +15,7 @@ import { CockpitRelease, ReleasePlan } from './ReleasePlan'
 import { WorkView } from '@/screens/Work'
 import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 import { planForRepo, type ReleasePlanData } from '@/lib/releaseplan'
+import { releaseStatus } from '@/lib/releasestatus'
 import { live } from '@/lib/live'
 
 afterEach(() => { h.work = 0; h.data = undefined; forgetDeckAnswers(); localStorage.clear() })
@@ -175,5 +176,34 @@ describe('where it is drawn', () => {
     const { container } = render(<CockpitRelease sessionId="s1" />)
     expect(container).toBeEmptyDOMElement()
     expect(h.work).toBe(0)
+  })
+})
+
+// Owner, 2026-10-16, translated: "it's not clear how releases go and where".
+describe('the release status on the plan', () => {
+  it('draws the bump and why beside the version, the stages as pills, and the last release', () => {
+    const status = releaseStatus({ lastTag: { name: 'v0.117.4', at: NOW - 7_500_000 }, unreleased: withKinds().repos[0]!.unreleased, merged: 1,
+      prs: [], releases: [{ tag: 'v0.117.4', url: 'https://github.com/o/r/releases/tag/v0.117.4', published_at: NOW - 7_500_000, prs: [], cost_usd: 0, sessions: 0, assets: 14 }] })
+    render(<ReleasePlan plan={plan()} status={status} now={NOW} />)
+    expect(screen.getByRole('heading', { name: '0.118.0' })).toBeInTheDocument()
+    expect(document.querySelector('[data-release-why]')).toHaveTextContent('minora feature since v0.117.4 (1 feature, 1 other)')
+    const stages = screen.getByRole('list', { name: 'Release 0.118.0: stages' })
+    expect([...stages.querySelectorAll('[data-journey-step]')].map((e) => e.getAttribute('data-journey-step'))).toEqual(['merged', 'pr', 'ci', 'tag', 'builds', 'published', 'site'])
+    expect(stages.querySelector('[data-journey-step="pr"]')).toHaveAttribute('data-step-state', 'current')
+    expect(stages.querySelector('[data-journey-step="site"]')).toHaveAttribute('data-step-unknown')
+    expect(document.querySelector('[data-release-last]')).toHaveTextContent('Last releasev0.117.4·2h ago·14 files·GitHub ↗')
+    // The pull request rows stay as they were.
+    expect(document.querySelectorAll('[data-release-row]').length).toBe(plan().rows.length)
+  })
+
+  it('puts a tag under way above the next release', () => {
+    const status = releaseStatus({ lastTag: { name: 'v0.118.0', at: NOW - 600_000 }, unreleased: { ref: 'origin/master', items: [], count: 0 }, merged: 0, prs: [],
+      releases: [{ tag: 'v0.117.4', published_at: NOW - 7_500_000, prs: [], cost_usd: 0, sessions: 0, assets: 14 }],
+      run: { repo: 'o/r', tag: 'v0.118.0', state: 'running', at: NOW } })
+    render(<ReleasePlan plan={plan()} status={status} now={NOW} />)
+    const box = document.querySelector<HTMLElement>('[data-release-status="tagged"]')!
+    expect(box).toHaveTextContent('0.118.0releasing')
+    expect(within(box).getByRole('list')).toBeInTheDocument()
+    expect(box.querySelector('[data-journey-step="builds"]')).toHaveAttribute('data-step-state', 'current')
   })
 })

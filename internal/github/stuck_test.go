@@ -47,13 +47,14 @@ func TestRepoReleases(t *testing.T) {
 	x.connect(t)
 	x.f.failWith("GET /repos/ada/caprock/releases", func(w http.ResponseWriter, r *http.Request) {
 		answer(w, r, 200, []any{
-			map[string]any{"tag_name": "v2", "name": "Two", "html_url": "https://github.com/ada/caprock/releases/tag/v2", "published_at": "2026-10-05T10:00:00Z"},
+			map[string]any{"tag_name": "v2", "name": "Two", "html_url": "https://github.com/ada/caprock/releases/tag/v2", "published_at": "2026-10-05T10:00:00Z",
+				"assets": []any{map[string]any{"state": "uploaded"}, map[string]any{"state": "uploaded"}, map[string]any{"state": "open"}}},
 			map[string]any{"tag_name": "v3", "draft": true},
 			map[string]any{"tag_name": "v1", "name": "v1", "published_at": "2026-10-01T10:00:00Z", "prerelease": true},
 		})
 	})
 	got, e := x.s.RepoReleases(context.Background(), repo)
-	if e != nil || len(got) != 2 || got[0].Tag != "v2" || got[0].Name != "Two" || got[1].Name != "" || !got[1].Prerelease || got[0].PublishedAt == 0 {
+	if e != nil || len(got) != 2 || got[0].Tag != "v2" || got[0].Name != "Two" || got[1].Name != "" || !got[1].Prerelease || got[0].PublishedAt == 0 || got[0].Assets != 2 || got[1].Assets != 0 {
 		t.Fatalf("releases = %+v, %v", got, e)
 	}
 	n := len(x.f.requests())
