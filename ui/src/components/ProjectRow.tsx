@@ -24,11 +24,21 @@
  * have no digit); a click on the project row opens its page; ⌥⌘↑ ⌥⌘↓
  * walk its rows (sessionStops). The chevron folds a project by hand.
  *
- * What waits on you is marked on its own row — an amber edge and tint, and
- * the word "waiting" (or "asks", at a permission prompt) — since the
- * separate Waiting on you block is gone (owner, 2026-10-11, translated:
- * "not needed at all, everything is already visible in Projects"). A
- * project folded by hand still lists what waits in it.
+ * What waits on you is marked on its own row — an amber dot with a halo and
+ * the word "waiting" (or "asks", at a permission prompt) in amber, bold —
+ * since the separate Waiting on you block is gone (owner, 2026-10-11,
+ * translated: "not needed at all, everything is already visible in
+ * Projects"). Never with a fill or an edge: those are the tab in front's,
+ * the one selected row (a user, 2026-10-15, translated: "which tab am I
+ * working in?" — the waiting row and the front tab both looked selected).
+ * A project folded by hand still lists what waits in it.
+ *
+ * A session row is 38px, its title 14px (a user, 2026-10-15: the 28px rows
+ * at 12.5px could not be read). It says its state as a dot and a word —
+ * green and breathing while it works (still under reduced motion), amber
+ * while it waits, faint when idle — and, on a tab's row, the tab's key as
+ * the footer's readable chip. The flat list's rows no longer name their
+ * project: it is in the tooltip and the accessible name.
  *
  * Every nested row can be got rid of (owner, 2026-10-11, translated: "in the
  * project list with nested items nothing can be done … I can't close it or
@@ -58,7 +68,6 @@ import type { TabLabel } from '@/lib/tablabels'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { fmtUSD } from '@/lib/format'
 import { agentGlyphLabel } from './AgentMarks'
-import { projectHue } from './TerminalTabs'
 import { CloseIcon, EyeIcon, EyeOffIcon, FileIcon, MoreIcon, PencilIcon, PlusIcon, StopIcon, TerminalIcon } from './AppIcons'
 import { InlineRename } from './InlineRename'
 import { renamable } from '@/lib/sessionNames'
@@ -74,7 +83,7 @@ import { instructionsSummary } from '@/lib/projectWizard'
 
 const DOT_CLASS: Record<Dot, string> = {
   working: 'bg-ok',
-  waiting: 'bg-accent app-ring',
+  waiting: 'bg-warn app-ring',
   looping: 'bg-danger',
   idle: 'bg-fg-faint/70',
   ended: 'border border-fg-faint/70 bg-transparent',
@@ -92,6 +101,19 @@ export function StatusDot({ dot }: { dot: Dot }) {
   return <span role="img" aria-label={DOT_LABEL[dot]} className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${DOT_CLASS[dot]}`} />
 }
 
+/** A session row's dot: 8px, working breathes, waiting carries an amber halo (design/tokens.css). */
+const ROW_DOT_CLASS: Record<Dot, string> = {
+  working: 'bg-ok app-dot-working',
+  waiting: 'bg-warn app-dot-waiting',
+  looping: 'bg-danger',
+  idle: 'bg-fg-faint/60',
+  ended: 'border border-fg-faint/70 bg-transparent',
+}
+
+function RowDot({ dot, asks }: { dot: Dot; asks?: boolean }) {
+  return <span role="img" data-row-dot={dot} aria-label={dot === 'waiting' && asks ? 'asks permission' : DOT_LABEL[dot]} className={`inline-block h-[8px] w-[8px] shrink-0 rounded-full ${ROW_DOT_CLASS[dot]}`} />
+}
+
 /** The one word a row says about its state. */
 const STATE_WORD: Record<Dot, string> = {
   working: 'working',
@@ -103,7 +125,7 @@ const STATE_WORD: Record<Dot, string> = {
 
 const STATE_CLASS: Record<Dot, string> = {
   working: 'text-ok',
-  waiting: 'font-semibold text-accent',
+  waiting: 'font-semibold text-warn',
   looping: 'text-danger',
   idle: 'text-fg-faint',
   ended: 'text-fg-faint',
@@ -273,7 +295,7 @@ export const ProjectRow = memo(function ProjectRow({
           )}
           {node.waiting > 0 && (
             <span
-              className="num inline-flex h-[17px] min-w-[17px] shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[10.5px] font-semibold text-panel group-hover:invisible"
+              className="num inline-flex h-[17px] min-w-[17px] shrink-0 items-center justify-center rounded-full bg-warn px-1 text-[10.5px] font-semibold text-panel group-hover:invisible"
               aria-label={`${node.waiting} waiting on you`}
             >
               {node.waiting}
@@ -356,12 +378,12 @@ export type SidebarRow = LeadItem & {
   projectId: string
   /** The project's own branch: a row names its branch only when it differs. */
   ownBranch?: string
-  /** Drawn after the title in the flat list (a dot in the project's hue and its name). */
+  /** The flat list's: not drawn on the row, said in its tooltip and accessible name. */
   projectName?: string
 }
 
 /**
- * Session rows, one line each (28px), in their fixed order: under a
+ * Session rows, one line each (38px), in their fixed order: under a
  * project, or every project's in one flat list (the sidebar's *Group by
  * project* off). A row opens on a click, closes its tab or hides itself
  * from its ×, has a menu (right-click, Shift+F10) with Stop…, and moves by
@@ -450,7 +472,7 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
   // The session whose name is being typed in place of its row.
   const [renaming, setRenaming] = useState<string | null>(null)
   const renameRow = (s: SessionSummary) => (
-    <li className="flex h-[28px] items-center pl-[22px] pr-1">
+    <li className="flex h-[38px] items-center pl-[22px] pr-1">
       <InlineRename sessionId={s.session_id} initial={s.name?.trim() || sessionAbout(s)} current={s.name ?? ''} onDone={() => setRenaming(null)} />
     </li>
   )
@@ -458,6 +480,7 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
     const k = leadKey(it)
     const drag: RowDrag = { rowKey: k, projectId: orderId, dragging: dragKey === k, onPress: onReorder ? pressRow(k) : undefined }
     const proj = it.projectName !== undefined ? { name: it.projectName, id: it.projectId } : undefined
+    const flat = proj !== undefined
     const digit = it.tab ? digits?.get(it.tab.id) : undefined
     if (!it.tab) {
       const x = it.node!
@@ -468,6 +491,7 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
           <LiveRow
             onRename={named ? () => setRenaming(x.session.session_id) : undefined}
             item={x}
+            flat={flat}
             drag={drag}
             project={proj}
             ownBranch={it.ownBranch}
@@ -490,6 +514,7 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
           onRename={named ? () => setRenaming(named.session_id) : undefined}
           drag={drag}
           project={proj}
+          flat={flat}
           digit={digit}
           tab={t}
           label={l}
@@ -558,14 +583,13 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
   )
 }
 
-/** A flat row's project: a dot in its hue and its name, dimmed, after the title. */
-function ProjectMark({ project }: { project: { name: string; id: string } }) {
-  return (
-    <span data-row-project-mark className="min-w-0 max-w-[9ch] shrink truncate text-[11px]" title={project.name} style={{ color: `hsl(${projectHue(project.id)} 42% 50%)` }}>
-      {project.name}
-    </span>
-  )
+/** A flat row's project, for a screen reader only: the row has no room to draw it, its tooltip says it too. */
+function ProjectName({ project }: { project: { name: string; id: string } }) {
+  return <span data-row-project className="sr-only">{`, ${project.name}`}</span>
 }
+
+/** A row's left padding: under a project it sits in from the chevron; the flat list has none to clear. */
+const rowPad = (flat?: boolean) => (flat ? 'pl-[10px]' : 'pl-[22px]')
 
 /** What a tab's Stop… would stop: its session, when Caprock started it and it still runs (rule 7). */
 function stoppable(l?: TabLabel): { sessionId: string; what: StopWhat } | undefined {
@@ -574,10 +598,18 @@ function stoppable(l?: TabLabel): { sessionId: string; what: StopWhat } | undefi
   return { sessionId: s.session_id, what: l!.isShell ? 'shell' : 'session' }
 }
 
-/** The state word at a row's right: none for a shell or a file. "asks" for a permission prompt. */
-function StateWord({ dot, asks }: { dot: Dot; asks?: boolean }) {
+/**
+ * The state word at a row's right: none for a shell or a file. "asks" for a
+ * permission prompt. Waiting and looping always say it: they need you. The
+ * rest give their room to the title on a narrow row, where the dot says it
+ * alone — "working" below 300px (its dot is green and breathes), "idle"
+ * below 220px — and on the tab in front, which carries its key and its ×.
+ */
+function StateWord({ dot, asks, front }: { dot: Dot; asks?: boolean; front?: boolean }) {
+  const attention = dot === 'waiting' || dot === 'looping'
+  const drop = attention ? '' : front || dot === 'working' ? '@max-[300px]/srow:hidden' : '@max-[220px]/srow:hidden'
   return (
-    <span data-state={dot} className={`shrink-0 text-[11.5px] ${STATE_CLASS[dot]}`}
+    <span data-state={dot} className={`shrink-0 text-[12px] ${drop} ${STATE_CLASS[dot]}`}
       title={dot === 'waiting' ? (asks ? 'Waiting on you: it asks permission' : 'Waiting on you: your turn') : undefined}>
       {dot === 'waiting' && asks ? 'asks' : STATE_WORD[dot]}
     </span>
@@ -618,8 +650,10 @@ function dragProps(drag?: RowDrag) {
   }
 }
 
-function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, onRename, drag, project, digit }: {
+function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, onRename, drag, project, flat, digit }: {
   tab: Tab
+  /** In the flat list: no indent under a project. */
+  flat?: boolean
   /** Double-click names it: an agent's tab only. */
   onRename?: () => void
   label?: TabLabel
@@ -640,28 +674,29 @@ function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, on
   const closeTip = closeTitle(isFile, !!label?.isShell, !!label?.chat, !!label?.session?.owned && label.session.status !== 'ended')
   const n = onClose ? 1 : 0
   return (
-    <li className={`group/row relative ${drag?.dragging ? 'opacity-60' : ''}`} {...dragProps(drag)}>
+    <li className={`@container/srow group/row relative ${drag?.dragging ? 'opacity-60' : ''}`} {...dragProps(drag)}>
       <button
         type="button"
         data-nav-row
         data-tab-row={tab.id}
         data-waiting={waiting || undefined}
+        data-selected={active || undefined}
         aria-current={active ? 'true' : undefined}
         aria-haspopup="menu"
         aria-keyshortcuts="Shift+F10"
         onClick={onOpen}
         onDoubleClick={onRename}
         {...menuHandlers(onMenu)}
-        className={`app-row flex h-[28px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] text-left ${active ? PAD_ALWAYS[n] : PAD_ON_HOVER[n]}`}
+        className={`app-row flex h-[38px] w-full min-w-0 items-center gap-2 rounded-[7px] text-left ${rowPad(flat)} ${active ? `app-row-selected ${PAD_ALWAYS[n]}` : PAD_ON_HOVER[n]}`}
         title={[label?.file ?? title, label?.session ? agentGlyphLabel(label.session.agent, label.isShell) : '', label?.branch, project?.name].filter(Boolean).join(' · ')}
       >
-        {isFile ? <FileIcon size={12} className="text-fg-faint" /> : !project && <StatusDot dot={label?.dot ?? 'idle'} />}
-        <TitleAndBranch title={title} branch={project ? undefined : label?.branch} className={active || waiting ? 'text-fg' : 'text-fg-muted'} />
-        {project && <ProjectMark project={project} />}
+        {isFile ? <FileIcon size={12} className="text-fg-faint" /> : <RowDot dot={label?.dot ?? 'idle'} asks={asks} />}
+        <TitleAndBranch title={title} branch={project ? undefined : label?.branch} className={active ? 'font-semibold text-fg' : 'text-fg'} />
+        {project && <ProjectName project={project} />}
         {!isFile && <HotMark sessionId={label?.session?.session_id} />}
-        {word && <StateWord dot={word} asks={asks} />}
-        {/* Every tab's key, the one in front included (owner, 2026-10-14). */}
-        {digit && <kbd data-row-key-digit aria-hidden className={`app-kbd-sm shrink-0 ${onClose && !active ? 'group-hover/row:hidden group-focus-within/row:hidden' : ''}`}>{tabKey(digit)}</kbd>}
+        {word && <StateWord dot={word} asks={asks} front={active} />}
+        {/* Every tab's key, the one in front included (owner, 2026-10-14), as the footer's readable chip. */}
+        {digit && <kbd data-row-key-digit aria-hidden className={`app-kbd-key shrink-0 ${onClose && !active ? 'group-hover/row:hidden group-focus-within/row:hidden' : ''}`}>{tabKey(digit)}</kbd>}
       </button>
       {onClose && (
         <span data-row-actions className={`absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 ${active ? 'flex' : ACTIONS_ON_HOVER}`}>
@@ -712,8 +747,10 @@ export function liveWithoutTab(node: ProjectNode, hiddenSessions?: HiddenSession
  * × hides it from the list, ■ stops it when Caprock started it, and a hidden
  * one shown on demand has the open eye that brings it back.
  */
-function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onShow, onMenu, onRename, drag, project }: {
+function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onShow, onMenu, onRename, drag, project, flat }: {
   item: SessionNode
+  /** In the flat list: no indent under a project. */
+  flat?: boolean
   /** Double-click names it: an agent's session only. */
   onRename?: () => void
   drag?: RowDrag
@@ -735,7 +772,7 @@ function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onSh
   const canStop = !!onStop && s.owned && s.status !== 'ended'
   const n = (onHide || onShow ? 1 : 0) + (canStop ? 1 : 0)
   return (
-    <li className={`group/row relative ${drag?.dragging ? 'opacity-60' : ''}`} {...dragProps(drag)}>
+    <li className={`@container/srow group/row relative ${drag?.dragging ? 'opacity-60' : ''}`} {...dragProps(drag)}>
       <button
         type="button"
         data-nav-row
@@ -747,12 +784,13 @@ function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onSh
         onClick={onOpen}
         onDoubleClick={onRename}
         {...menuHandlers(onMenu)}
-        className={`app-row flex h-[28px] w-full min-w-0 items-center gap-1.5 rounded-[7px] pl-[22px] text-left ${item.waiting ? '' : hidden ? 'opacity-55' : 'opacity-75'} ${PAD_ON_HOVER[n]}`}
+        className={`app-row flex h-[38px] w-full min-w-0 items-center gap-2 rounded-[7px] text-left ${rowPad(flat)} ${hidden ? 'opacity-55' : ''} ${PAD_ON_HOVER[n]}`}
         title={`${[title, agentGlyphLabel(s.agent, item.isShell), branch, project?.name].filter(Boolean).join(' · ')}: ${s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}`}
       >
-        {!project && <StatusDot dot={item.dot} />}
-        <TitleAndBranch title={title} branch={project ? undefined : branch} className={item.waiting ? 'text-fg' : 'text-fg-faint'} />
-        {project && <ProjectMark project={project} />}
+        <RowDot dot={item.dot} asks={item.asks} />
+        {/* No tab: muted, so it reads as not open; while it waits, as plain as a tab's. */}
+        <TitleAndBranch title={title} branch={project ? undefined : branch} className={item.waiting ? 'text-fg' : 'text-fg-muted'} />
+        {project && <ProjectName project={project} />}
         <HotMark sessionId={s.session_id} />
         {!item.isShell && <StateWord dot={item.dot} asks={item.asks} />}
       </button>
@@ -789,7 +827,7 @@ function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onSh
 export function TitleAndBranch({ title, branch, className }: { title: string; branch?: string; className: string }) {
   return (
     <span className="flex min-w-0 flex-1 items-center overflow-hidden">
-      <span data-row-title className={`max-w-full shrink-0 truncate text-[12.5px] ${className}`}>{title}</span>
+      <span data-row-title className={`max-w-full shrink-0 truncate text-[14px] font-medium ${className}`}>{title}</span>
       {branch && <span data-row-branch className="mono ml-2 min-w-0 max-w-[10ch] shrink truncate text-[11px] text-fg-faint">{branch}</span>}
     </span>
   )

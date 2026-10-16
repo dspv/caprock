@@ -296,6 +296,20 @@ describe('pulse row order', () => {
     await waitFor(() => expect(names()).toEqual(['a', 'b', 'c']))
   })
 
+  // Every row is its own grid: an `auto` track sized per row put the
+  // dollars at a different x on each (owner's screenshot, 2026-10-15).
+  it('gives every row the same fixed tracks, so the money is one column', async () => {
+    localStorage.clear()
+    const [b, a] = three()
+    render(<PulsePanel sessions={[b!, a!]} now={NOW} />)
+    await waitFor(() => expect(names()).toEqual(['a', 'b']))
+    const grids = [...document.querySelectorAll('[data-pulse-cost]')].map((c) => c.parentElement!.className)
+    expect(grids).toHaveLength(2)
+    expect(new Set(grids).size).toBe(1)
+    for (const track of grids[0]!.match(/grid-cols-\[[^\]]+\]/g)!) expect(track).not.toMatch(/auto/)
+    for (const c of document.querySelectorAll('[data-pulse-cost]')) expect(c.className).toMatch(/text-right/)
+  })
+
   for (const [os, platform, mods] of [
     ['macOS', 'MacIntel', { altKey: true, shiftKey: true }],
     ['Windows', 'Win32', { ctrlKey: true, shiftKey: true }],

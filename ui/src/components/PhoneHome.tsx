@@ -22,6 +22,7 @@ import { href, navigate } from '@/lib/router'
 import { useApi } from '@/lib/useApi'
 import { useCanControl } from '@/lib/useCanControl'
 import { useNow } from '@/lib/useNow'
+import { PULL_PX, usePullToRefresh } from '@/lib/phone'
 import { fmtAgo } from '@/lib/format'
 import { projectLabels } from '@/lib/sessionLabels'
 import { projectsApi, type Project } from '@/lib/projects'
@@ -35,6 +36,8 @@ import { AgentGlyph } from './AgentMarks'
 import { agentLabel, isCustomAgent, startable, useAgentCatalog, type SpawnAgent } from './AgentPicker'
 import { CaprockMark, ChatIcon, ChevronIcon, CloseIcon, InboxIcon } from './AppIcons'
 import { PermissionPrompt } from './PermissionPrompt'
+import { ChipSelect, SectionLabel } from './PhoneParts'
+import { PhoneReleases } from './PhoneReleases'
 import { subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
 import { chosenId, hasSubscriptions, roomText } from '@/lib/subscriptions'
 
@@ -153,6 +156,11 @@ export function PhoneHome() {
   const now = useNow(15000)
   const waiting = waitingOnYou(list)
   const rows = continueList(list, now)
+  // A pull at the top of the home-screen app reads Releases and the Inbox
+  // again (the sessions are read every few seconds anyway).
+  const [pull, setPull] = useState(0)
+  const reloadInbox = inbox.refresh
+  const pulled = usePullToRefresh(() => { setPull((n) => n + 1); reloadInbox() }, useMemo(isStandalone, []))
 
   // A home-screen shortcut (#/?open=…) or another app's share (/?share=1…)
   // opens its sheet once, and the address is put back so a reload does not.
@@ -186,8 +194,15 @@ export function PhoneHome() {
 
   return (
     <div className="grid gap-4 pb-[236px]">
+      {pulled > 0 && (
+        <div data-pull-hint aria-hidden style={{ height: Math.min(pulled, PULL_PX) }}
+          className="-mb-4 flex items-end justify-center overflow-hidden text-[12px] text-fg-faint">
+          {pulled >= PULL_PX ? 'Release to refresh' : 'Pull to refresh'}
+        </div>
+      )}
       {waiting[0] && <Waiting session={waiting[0]} more={waiting.length - 1} now={now} />}
       <Continue rows={rows} now={now} loading={!sessions.data && !sessions.error} />
+      <PhoneReleases pull={pull} />
       <Saved items={inbox.items} now={now} canDelete={canControl} />
       <a href="#/home" className="flex min-h-11 items-center justify-center gap-1 text-[14px] text-fg-muted no-underline">
         Full dashboard <ChevronIcon size={14} />
@@ -204,15 +219,6 @@ export function PhoneHome() {
         <SaveSheet projects={projects} text={sheet.text} photos={sheet.photos} canSave={canControl} onClose={() => setSheet(null)} onSaved={() => { setSheet(null); setSaved((n) => n + 1); inbox.refresh() }} />
       )}
       <InstallHint />
-    </div>
-  )
-}
-
-function SectionLabel({ children, right }: { children: ReactNode; right?: ReactNode }) {
-  return (
-    <div className="flex items-baseline px-1 pb-1.5 text-[12px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-      <span>{children}</span>
-      {right && <span className="ml-auto text-[13px] normal-case tracking-normal">{right}</span>}
     </div>
   )
 }
@@ -489,28 +495,6 @@ function subText(s: Subscription): string {
   if (s.provider) return s.label
   const room = roomText(s)
   return room ? `${s.label} · ${room}` : s.label
-}
-
-/** A chip that is a native select: the phone's own picker, at the size of a thumb. */
-function ChipSelect({ label, value, onChange, options, icon, empty }: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  options: { value: string; label: string }[]
-  icon?: ReactNode
-  empty?: string
-}) {
-  const shown = options.find((o) => o.value === value)?.label ?? empty ?? ''
-  return (
-    <label className="relative inline-flex min-h-9 max-w-[44%] shrink-0 items-center gap-1.5 rounded-full border border-border-strong bg-bg px-3 text-[14px] text-fg">
-      {icon}
-      <span className="truncate">{shown}</span>
-      <ChevronIcon size={12} className="rotate-90 shrink-0" />
-      <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0">
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </label>
-  )
 }
 
 function BottomSheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode }) {

@@ -20,9 +20,10 @@ import { CaprockFootprint } from './FootprintPanel'
 import { isPairedDevice } from '@/lib/api'
 import { useAppUpdate } from '@/lib/appupdate'
 import { VersionPanel } from './VersionPanel'
+import { GitHubStatusDot } from './GitHubOutage'
 import { SetupChip } from './SetupStrip'
 
-export function StatusStrip({ summary, pane, session, version, figures = true }: {
+export function StatusStrip({ summary, pane, session, version, figures = true, sessions, onOpenSession }: {
   summary?: Summary
   pane?: PaneStatus
   /** The agent session in the focused pane; absent for a shell or a file. */
@@ -30,6 +31,9 @@ export function StatusStrip({ summary, pane, session, version, figures = true }:
   version?: string
   /** The plan limits and today's spend; false while the sidebar shows them. */
   figures?: boolean
+  /** Every session, for the resource popover's names; and how one's tab is brought forward. */
+  sessions?: SessionSummary[]
+  onOpenSession?: (id: string) => void
 }) {
   const link = useLiveLink()
   // In the app, its own version: the one an update changes at once. The
@@ -62,7 +66,7 @@ export function StatusStrip({ summary, pane, session, version, figures = true }:
       {/* The session in front, the figures you check while you work in its
         * terminal: the strip stood empty beside an open sidebar, and the
         * cockpit that carries them is often closed (owner, 2026-10-10). */}
-      {session && <SessionFigures s={session} />}
+      {session && <SessionFigures s={session} sessions={sessions} onOpenSession={onOpenSession} />}
       <span className="ml-auto flex items-center gap-4">
         {/* Caprock's own memory and disk, always: whether a slow machine
           * is Caprock is a question with or without a session in front. */}
@@ -70,6 +74,8 @@ export function StatusStrip({ summary, pane, session, version, figures = true }:
         {pane && pane.status !== 'live' && (
           <span title="The terminal in front">{pane.status}</span>
         )}
+        {/* Only while Watch GitHub Status is ticked and GitHub reports an incident. */}
+        <GitHubStatusDot />
         {/* The setup strip folded by its ×: "0 of 2", a click unfolds it. */}
         <SetupChip />
         {/* Only while the daemon holds the machine awake (ADR-049). */}
@@ -98,7 +104,7 @@ function Limit({ label, pct }: { label: string; pct: number }) {
 }
 
 /** Model, how full the context is, what the next call costs, what the session has cost, and what its processes use. */
-function SessionFigures({ s }: { s: SessionSummary }) {
+function SessionFigures({ s, sessions, onOpenSession }: { s: SessionSummary; sessions?: SessionSummary[]; onOpenSession?: (id: string) => void }) {
   const ctx = s.context
   const pct = ctx ? Math.max(0, Math.min(100, ctx.pct)) : 0
   const tone = pct >= 85 ? 'bg-danger' : pct >= 65 ? 'bg-warn' : 'bg-fg-muted'
@@ -124,7 +130,7 @@ function SessionFigures({ s }: { s: SessionSummary }) {
       </span>
       {/* Its processes' CPU and memory, from the resource meter: absent
         * until the daemon has measured them, and for a daemon without one. */}
-      <SessionLoad sessionId={s.session_id} />
+      <SessionLoad sessionId={s.session_id} sessions={sessions} onOpenSession={onOpenSession} />
     </span>
   )
 }

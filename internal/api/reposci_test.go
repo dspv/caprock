@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dspv/caprock/internal/github"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -167,5 +168,28 @@ func TestReposCIRecentHiddenSlow(t *testing.T) {
 	defer mu.Unlock()
 	if asked["old"] == 0 || asked["hid"] != 0 {
 		t.Fatalf("asked: %v", asked)
+	}
+}
+
+// GET /v1/github/statuspage: refused while GitHub is not connected, with
+// nothing sent; once connected, GitHub's status page, read without the token.
+func TestGitHubStatusPage(t *testing.T) {
+	now := time.Now()
+	s, _, _, _, _, _ := githubServer(t, statsRoutes(now))
+	s.d.GitHub.StatusURL = s.d.GitHub.API + "/status"
+	if w := call(t, s, machine, "", "GET", "/v1/github/statuspage", ""); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "not_connected") {
+		t.Fatalf("not connected: %d %s", w.Code, w.Body.String())
+	}
+	if w := call(t, s, machine, "", "POST", "/v1/github/connect", `{"source":"token","token":"ghp_good"}`); w.Code != http.StatusOK {
+		t.Fatalf("connect: %d %s", w.Code, w.Body.String())
+	}
+	w := call(t, s, machine, "", "GET", "/v1/github/statuspage", "")
+	var got github.GitHubStatus
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	// statsRoutes answers 400 to a request that carries the token.
+	if got.Indicator != "minor" || got.Error != "" || len(got.Incidents) != 1 {
+		t.Fatalf("status page = %+v", got)
 	}
 }

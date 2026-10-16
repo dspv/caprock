@@ -696,7 +696,7 @@ func MarkIdleSessions(ctx context.Context, q Querier, before int64) ([]string, e
 // One fact is still available for those: the disk. A watched session with no
 // pid whose transcript file is gone, or whose directory is gone, ends now
 // rather than a day from now (see goneFromDisk). Imported history (OpenCode,
-// Codex, DeepSeek) stays on the clock alone.
+// Codex, DeepSeek, Hermes) stays on the clock alone.
 func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, error) {
 	rows, err := q.QueryContext(ctx,
 		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude'), COALESCE(owned, 0),
@@ -777,9 +777,11 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 // so the rows describe work that happened, possibly months ago, with no process
 // to ask about. They are history, and history is never live. Without this a
 // hundred imported Codex transcripts would every one of them claim to be
-// running.
+// running. Hermes Agent's rows are read out of its database the same way
+// (ADR-069); Hermes records no process per session, so an observed one goes
+// by the clock — and by its own ended_at, which the importer applies.
 func ownsItsProcess(agent string) bool {
-	return agent != "opencode" && agent != "codex" && agent != "deepseek"
+	return agent != "opencode" && agent != "codex" && agent != "deepseek" && agent != "hermes"
 }
 
 // updateStatusByID sets one status on a known set of sessions, in chunks that
@@ -1628,6 +1630,11 @@ type Summary struct {
 	// kept outside user session/turn/cost totals. It is not an error and carries
 	// no invented dollar value when its vendor publishes none.
 	Background *BackgroundUsage `json:"background,omitempty"`
+	// Hermes is Hermes Agent's spend in the range, split by what kind of
+	// figure it is and by background work (ADR-069). Already inside CostUSD;
+	// omitted when the range has no Hermes turns or another agent is
+	// filtered for.
+	Hermes *HermesCost `json:"hermes,omitempty"`
 }
 
 // Unpriced is the volume that could not be priced, and which models caused it.
@@ -2186,6 +2193,13 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	} else {
 		s.Background = b
 	}
+	if agent == "" || agent == "hermes" {
+		h, err := HermesSpend(ctx, q, fromMs)
+		if err != nil {
+			return s, err
+		}
+		s.Hermes = h
+	}
 	// Both levels of the projects roll-up come from ONE pass. Grouping by
 	// (project, first segment of repo_path) and summing the segments back up
 	// into the repository row costs a single scan; asking the database twice —
@@ -2210,7 +2224,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	//
 	// Grouping in SQL meant joining sessions on every one of ~90k assistant
 	// events and grouping on a wide text key; grouping on the integer-ish
-	// session_id alone runs off idx_events_cost_cover and needs no join and no
+	// session_id alone runs off idx_events_turn_agent and needs no join and no
 	// COUNT(DISTINCT) — a session's row IS one distinct session. The mapping
 	// from session to (repository, segment) is then applied to tens of rows
 	// instead of tens of thousands. Measured on the owner's 190k-event
@@ -3121,7 +3135,7 @@ func SpendSince(ctx context.Context, q Querier, fromMs int64) (float64, error) {
 // passage long enough — every session from "/" — walked all of history: 4-6 s
 // on the owner's 1.2 GB database (2026-10-05), longer than the SessionStart
 // hook waits, and the lookup died cancelled every time. The session ids are
-// on idx_events_cost_cover, so rows of other projects are skipped without
+// on idx_events_turn_agent, so rows of other projects are skipped without
 // touching their payloads: under 0.1 s for any project, same answers.
 func WhereWeLeftOff(ctx context.Context, q Querier, project string, before int64, minLen int) (AssistantNote, error) {
 	if minLen <= 0 {
@@ -3130,7 +3144,7 @@ func WhereWeLeftOff(ctx context.Context, q Querier, project string, before int64
 	row := q.QueryRowContext(ctx, `
 		SELECT e.id, e.session_id, ?, e.ts, COALESCE(e.model,''),
 		       COALESCE(json_extract(e.payload, '$.text'), '')
-		FROM events e INDEXED BY idx_events_cost_cover
+		FROM events e INDEXED BY idx_events_turn_agent
 		WHERE e.session_id IN (SELECT session_id FROM sessions WHERE project = ?)
 		  AND `+assistantTextWhere+`
 		  AND e.ts < ?

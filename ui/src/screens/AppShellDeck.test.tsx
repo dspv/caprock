@@ -9,6 +9,12 @@ import type { SessionSummary } from '@/lib/api'
 import { heldSessions } from '@/lib/sessionEvents'
 import { DECK_KEY } from '@/lib/deck'
 import { AppShell } from './AppShell'
+// The screens AppShell loads lazily, loaded with this file instead. The first
+// ⌘D here transformed the whole dashboard inside its test's 5 s budget, and
+// on a busy machine that alone timed the test out (6.1 s under load).
+import '@/App'
+import '@/screens/Pipeline'
+import '@/screens/mail/MailScreen'
 
 vi.mock('@/components/TerminalPane', () => ({
   TerminalPane: ({ sessionId, active }: { sessionId: string; active: boolean }) => (
@@ -42,7 +48,7 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       status: async () => ({ version: 'v0.0.0', claude_available: true }),
       sessions: async () => sessions,
-      summary: async () => ({ cost_usd: 0, projects: [] }),
+      summary: async () => ({ cost_usd: 0, savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 }, projects: [] }),
       permission: async () => ({ permission: null }),
       diff: async () => ({ root: '/w/app', branch: 'main', files: [], stat: '' }),
       editors: async () => ({ editors: [], preferred: '' }),
@@ -292,7 +298,8 @@ describe('keys named after what they open', () => {
     press('w', { shiftKey: true })
     expect(location.hash).toBe('#/work')
     await waitFor(() => expect(dashboardTab()).toHaveAttribute('aria-selected', 'true'))
-    const work = screen.getByRole('link', { name: 'Work' })
+    // The tab is selected a render before the dashboard behind it has drawn.
+    const work = await screen.findByRole('link', { name: 'Work' })
     expect(work).toHaveAttribute('aria-current', 'page')
     expect([...work.parentElement!.querySelectorAll('a')].map((a) => a.textContent)).toEqual(expect.arrayContaining(['Home', 'Work']))
     expect(work.parentElement!.querySelectorAll('a')[1]).toBe(work)

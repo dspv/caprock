@@ -72,4 +72,61 @@ describe('force layout', () => {
     settle(sim)
     for (const [a, b] of [[0, 1], [1, 2], [0, 2]] as const) expect(dist(nodes[a]!, nodes[b]!)).toBeGreaterThan(36)
   })
+
+  it('settles unlinked nodes into an even, round disc whose radius grows with the square root of the count', () => {
+    const disc = (n: number) => {
+      const nodes = seed(Array.from({ length: n }, (_, i) => i + 1), () => 2, [], new Map())
+      const sim = new Simulation(nodes, [], { charge: -48, gravity: 0.36 })
+      settle(sim)
+      const cx = nodes.reduce((a, m) => a + m.x, 0) / n
+      const cy = nodes.reduce((a, m) => a + m.y, 0) / n
+      const r = nodes.map((m) => Math.hypot(m.x - cx, m.y - cy))
+      const b = bounds(nodes)
+      return { max: Math.max(...r), mean: r.reduce((a, x) => a + x, 0) / n, aspect: (b.x1 - b.x0) / (b.y1 - b.y0) }
+    }
+    const small = disc(100)
+    const big = disc(400)
+    // An evenly filled disc: the mean distance from the middle is two thirds
+    // of the radius (a ring would be near 1, a clump near 0.5 or less).
+    for (const d of [small, big]) {
+      expect(d.mean / d.max).toBeGreaterThan(0.58)
+      expect(d.mean / d.max).toBeLessThan(0.76)
+      expect(d.aspect).toBeGreaterThan(0.85)
+      expect(d.aspect).toBeLessThan(1.18)
+    }
+    // Four times the nodes, about twice the radius.
+    expect(big.max / small.max).toBeGreaterThan(1.6)
+    expect(big.max / small.max).toBeLessThan(2.4)
+  })
+
+  it("gives a link its own length and strength", () => {
+    const pair = (d: number) => {
+      const nodes = seed([1, 2], () => 2, [], new Map())
+      const sim = new Simulation(nodes, [{ s: 0, t: 1, d, w: 1 }], { charge: 0, gravity: 0 })
+      settle(sim)
+      return dist(nodes[0]!, nodes[1]!)
+    }
+    expect(pair(60)).toBeGreaterThan(pair(10) * 3)
+    // A loose tie (w well under 1) lets the push win: the pair ends further apart.
+    const loose = (w: number) => {
+      const nodes = seed([1, 2], () => 2, [], new Map())
+      const sim = new Simulation(nodes, [{ s: 0, t: 1, d: 5, w }], { charge: -30, gravity: 0 })
+      settle(sim)
+      return dist(nodes[0]!, nodes[1]!)
+    }
+    expect(loose(0.05)).toBeGreaterThan(loose(1))
+  })
+
+  it('keeps a held node where it is held, and its neighbour follows', () => {
+    const nodes = seed([1, 2, 3], () => 2, [{ s: 0, t: 1 }], new Map())
+    const sim = new Simulation(nodes, [{ s: 0, t: 1, d: 10 }], { charge: -5, gravity: 0.02 })
+    settle(sim)
+    Object.assign(nodes[0]!, { fx: 200, fy: -80 })
+    sim.reheat(0.3)
+    settle(sim)
+    expect(nodes[0]).toMatchObject({ x: 200, y: -80 })
+    expect(dist(nodes[1]!, nodes[0]!)).toBeLessThan(30)
+    // The unlinked one stays near the middle.
+    expect(Math.hypot(nodes[2]!.x, nodes[2]!.y)).toBeLessThan(100)
+  })
 })

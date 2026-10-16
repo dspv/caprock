@@ -200,7 +200,10 @@ app's own page as a PNG, and an image file from the last drop on the window;
 the clipboard manager plugin's own commands are granted to no page.
 `read_dropped_text` reads a `.md` or `.txt` file (at most 1 MiB, UTF-8) from
 the last drop the same way, for the brief of New project from a template.
-`open_external` opens `http`, `https` and `mailto` only; a Cmd/Ctrl+click on
+`open_external` opens `http`, `https` and `mailto`, plus `tg:` only when an
+app on the machine is registered for it (`open` on macOS, the registry on
+Windows, `xdg-mime` on Linux), else it refuses so the page falls back to
+t.me (the share sheet's *Send to someone in Telegram*); a Cmd/Ctrl+click on
 a link in a terminal goes through it (`ui/src/lib/termlinks.ts`).
 `notify` shows one OS notification (`{title, body, id?, sessionId?,
 promptId?, actions?}`); the page decides when (`ui/src/lib/notify.ts`,

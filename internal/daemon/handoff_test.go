@@ -378,4 +378,16 @@ func TestAHandoffCarriesTheRepositorysSecondBrain(t *testing.T) {
 	if n := utf8.RuneCountInString(tail); n > handoffBrainRunes+120 {
 		t.Errorf("%d runes", n)
 	}
+
+	// The session handed them records how many, so the screen can count
+	// how often agents start with the brain's memories.
+	if err := store.UpsertSession(ctx, d.store.DB(), "s-new", store.SessionPatch{Project: "caprock", StartedAt: now.UnixMilli(), LastEventAt: now.UnixMilli(), FromHook: true}); err != nil {
+		t.Fatal(err)
+	}
+	start.SessionID = "s-new"
+	contextOf(t, d.handoff(ctx, start))
+	sessions, memories, err := store.BrainHandedSince(ctx, d.store.DB(), now.Add(-time.Hour).UnixMilli())
+	if err != nil || sessions != 1 || memories != strings.Count(tail, "\n- ") {
+		t.Errorf("handed: %d sessions, %d memories (%v); the tail lists %d", sessions, memories, err, strings.Count(tail, "\n- "))
+	}
 }

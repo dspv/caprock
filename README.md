@@ -162,38 +162,33 @@ is embedded, so it works with no Node build. No package manager? Grab a binary
 from [Releases](https://github.com/dspv/caprock/releases).
 
 <details>
-<summary><b>Or let Claude Code install it</b> — paste one prompt into a fresh Claude Code message.</summary>
+<summary><b>Or let your coding agent install it</b> — paste one short prompt as a new message.</summary>
 
-It picks the right command for your machine, so there is nothing to choose. The
-`--yes` is load-bearing: consent for the hook is refused rather than assumed
-when stdin is not a terminal, which is what an agent's shell gives it, so
-without the flag you would get a dashboard that never sees a session.
-
-The wording was tested against five agents given no other context. An earlier
-draft was refused outright by one of them, and the two lines it objected to
-were both ours meaning well: "do not start or type into any claude session"
-(our Rule 7, which reads as *do not tell the user*) and "show me the error
-instead of trying another source" (meant to stop a lookalike package being
-installed, which reads as *stop verifying*). Both are gone. It now asks the
-agent to check whatever it wants and to show you the settings diff — the same
-scepticism, invited rather than forbidden.
+The agent runs the same install script as the button on
+[caprock.dev](https://caprock.dev) and leaves Claude Code's settings alone: the
+app asks you itself whether to connect it. What the script does, where things
+live and how to remove them is in [docs/install-agent.md](docs/install-agent.md),
+on master, beside the code it describes. Judged by
+five fresh agents with no other context (2026-10-16, two Sonnet, two Haiku, one
+Opus; none ran anything): four would go ahead and one would ask first, all
+rating it 1–2 of 10 for looking like an injection, as the longer prompt it
+replaces did. Each said it would read the script before running it, which the
+prompt invites.
 
 ```text
-Please install Caprock for me. It is an open-source local dashboard that shows
-what my Claude Code sessions are doing and what they cost — Apache-2.0, runs on
-my machine: https://github.com/dspv/caprock
+Install the Caprock desktop app for me. It is open source (Apache-2.0), a local
+app for my Claude Code sessions: https://github.com/dspv/caprock
 
-  macOS/Linux:  brew install dspv/tap/caprock
-  Windows:      scoop bucket add dspv https://github.com/dspv/scoop-bucket
-                scoop install caprock
+What the install does and how to remove it:
+https://github.com/dspv/caprock/blob/master/docs/install-agent.md
 
-Then run `caprock up --yes`. That flag lets it add its own hook to my Claude
-Code settings, which is how it sees sessions live. Show me the change it makes
-to ~/.claude/settings.json so I can see it myself.
-
-Check anything you want to check first, and ask me if something does not add
-up. When it is running, tell me the URL it prints and stop there.
+I'm on macOS, so it's `curl -fsSL https://caprock.dev/mac.sh | sh` — read the
+script before you run it if you like. Leave my Claude Code settings alone; the
+app asks me itself. Tell me when it's open.
 ```
+
+On Windows the command is `irm https://caprock.dev/win.ps1 | iex`, on Linux
+`curl -fsSL https://caprock.dev/linux.sh | sh`.
 
 </details>
 
@@ -223,16 +218,17 @@ settings). Say no and it still reads your history from transcripts.
 
 Run [OpenCode](https://github.com/anomalyco/opencode),
 [Codex](https://developers.openai.com/codex),
-[DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) or
+[DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness),
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) or
 [Gemini CLI](https://github.com/google-gemini/gemini-cli) too? All are shown on
-the same screens — OpenCode from its own database, Codex and DeepSeek Harness
-from the transcripts they write, Gemini through the telemetry it writes when
-Caprock starts it. See
-[OpenCode, Codex and DeepSeek Harness](#opencode-codex-and-deepseek-harness) for
-what that covers and what it does not.
+the same screens — OpenCode and Hermes Agent from their own databases, Codex
+and DeepSeek Harness from the transcripts they write, Gemini through the
+telemetry it writes when Caprock starts it. See
+[OpenCode, Codex and DeepSeek Harness](#opencode-codex-and-deepseek-harness) and
+[Hermes Agent](#hermes-agent) for what that covers and what it does not.
 
 Caprock starts Codex, OpenCode (1 or 2, whichever `opencode --version`
-says is installed) and Gemini CLI sessions too: whichever of them
+says is installed), Gemini CLI and Hermes Agent sessions too: whichever of them
 is installed appears next to Claude Code in the New Session dialog — same
 terminal, same directory picker, its own filter chip — and the dialog remembers
 the one you picked last. A Codex or OpenCode session started here shows its
@@ -323,7 +319,7 @@ report says when. Details: [docs/doctor.md](docs/doctor.md).
 
 ## Take the record out
 
-Every agent Caprock reads — Claude Code, Codex, OpenCode, Gemini CLI, DeepSeek —
+Every agent Caprock reads — Claude Code, Codex, OpenCode, Gemini CLI, DeepSeek, Hermes —
 lands in the same tables with the same columns. `caprock export` writes one of
 them out, for a spreadsheet, a notebook or your own warehouse:
 
@@ -391,7 +387,7 @@ and the cost add up over all of them, and the rows carry each agent's own mark
 so you can still tell them apart.
 
 **Or see one at a time.** The Home screen carries
-`all / claude / opencode / gemini / codex / deepseek` in the middle of its
+`all / claude / opencode / gemini / codex / deepseek / hermes` in the middle of its
 header, and it applies to the whole screen — today's totals, the live pulse, the
 activity feed, the projects list and the session cards all answer the same
 question. It appears only on a machine that runs more than one.
@@ -436,6 +432,18 @@ and the task runner works with Claude Code alone. A session started outside
 Caprock refreshes every few seconds rather than instantly, so the Home screen
 lags a little behind it — the Cost and Lifetime screens are unaffected. Verified on macOS; it builds and its tests pass on Linux and
 Windows, but it has not been run on either.
+
+### Hermes Agent
+
+Caprock reads [Hermes Agent](https://github.com/NousResearch/hermes-agent)'s
+own database (`~/.hermes/state.db`), read-only, and starts Hermes in a
+terminal tab from **New agent**. Every Hermes session — its CLI and TUI, and
+the cron jobs and gateway chats that run with nobody watching — is on the same
+screens, with Hermes's own cost figures, never re-priced: the Cost screen says
+which part the provider reported and which part is Hermes's estimate, and
+shows background runs apart, by source. Delegated subagents sit inside the
+session that delegated them, counted once. Nothing is installed into Hermes.
+Only Hermes's default profile is read. See [docs/hermes.md](docs/hermes.md).
 
 ### Claude Code on DeepSeek
 
@@ -772,6 +780,31 @@ wss://your.relay`. The phone's page can be yours too: build it with
 `cd ui && npx vite build --mode remote`, serve `ui/dist-remote/` over https,
 and add `--app https://your.page`. `relay/` holds the hosted relay, a
 Cloudflare Worker, and `relay/m/` the hosted page at m.caprock.dev.
+
+### From another of your computers
+
+One Caprock can work on another's sessions — a MacBook on the agents running
+on a Mac mini — through the same encrypted relay, chosen by the computer
+being reached. From a terminal on each:
+
+1. On the computer to be reached (over SSH is fine): `caprock pair
+   --computer`. It turns access from anywhere on if it is off and prints a
+   link, valid five minutes, once.
+2. On the other computer: `caprock machines add '<that link>'`.
+3. Back on the first, allow it by name: answer the question in the terminal
+   that printed the link, press **Allow** on the card its screen shows, or
+   run `caprock machines allow <name>`. Until then it reaches nothing.
+
+An allowed computer can start, type into and stop sessions there, open shells
+and run tasks — never that computer's settings, pairing, updates or the
+doctor's stop, and only the sessions that computer's Caprock started. Pairing
+is one way: reaching back is a second pairing. `caprock machines` lists both
+directions; `caprock machines revoke <name>` on the reached computer, or
+**Remove** in its Settings, ends it at once, open terminals included;
+`caprock machines forget <name>` on the other drops it from both. On Linux, a
+computer that should stay reachable with nobody logged in needs `loginctl
+enable-linger <user>` once; `caprock service install` and `caprock pair
+--computer` say so when it is off.
 
 ### Without internet: on the same network (advanced)
 

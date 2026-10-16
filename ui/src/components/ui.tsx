@@ -97,7 +97,7 @@ export function Panel({ title, center, right, children, className = '', onMouseE
   )
 }
 
-export function Stat({ label, value, sub, tone, size = 'default', trend, hint, data }: {
+export function Stat({ label, value, sub, tone, size = 'default', trend, hint, data, onClick, pressed, wideHint }: {
   label: string
   value: ReactNode
   sub?: ReactNode
@@ -117,6 +117,12 @@ export function Stat({ label, value, sub, tone, size = 'default', trend, hint, d
    *  a screen is about. Sized uniformly, a row of six is a list, not a
    *  hierarchy — the eye needs somewhere to land. */
   size?: 'hero' | 'default' | 'compact'
+  /** A tile that opens what it counts (the Pipeline's In flight, Needs a fix,
+   *  Ready): a toggle button, `pressed` while its filter is on. */
+  onClick?: () => void
+  pressed?: boolean
+  /** The hint card as wide as a short list, not the tile. */
+  wideHint?: boolean
 }) {
   const toneCls = tone === 'ok' ? 'text-ok' : tone === 'warn' ? 'text-warn' : tone === 'danger' ? 'text-danger' : tone === 'info' ? 'text-info' : 'text-fg'
   const valueCls = size === 'hero' ? 'text-[34px] leading-[1.05]' : size === 'compact' ? 'text-[22px] leading-tight' : 'text-[28px] leading-[1.1]'
@@ -127,8 +133,11 @@ export function Stat({ label, value, sub, tone, size = 'default', trend, hint, d
     // as text stuck to the underside of a number rather than as a row.
     //
     // A size container, so the figure can shrink to the tile (statFit).
-    <div data-stat={data} tabIndex={hint ? 0 : undefined}
-      className={`@container flex h-full flex-col px-3 py-2.5 min-w-0 ${hint ? 'group/stat relative outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent' : ''}`}>
+    <div data-stat={data} tabIndex={hint || onClick ? 0 : undefined}
+      role={onClick ? 'button' : undefined} aria-pressed={onClick ? !!pressed : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } } : undefined}
+      className={`@container flex h-full flex-col px-3 py-2.5 min-w-0 ${hint || onClick ? 'group/stat relative outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent' : ''} ${onClick ? `cursor-pointer transition-colors hover:bg-[var(--app-row-hover)] motion-reduce:transition-none ${pressed ? 'bg-[var(--app-row-active)] shadow-[inset_0_-2px_0_var(--color-accent)]' : ''}` : ''}`}>
       <div className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">{label}</div>
       {/* Semibold, not just larger: weight separates a figure from its
        * neighbours without spending a pixel of density, which is what a dense
@@ -140,7 +149,7 @@ export function Stat({ label, value, sub, tone, size = 'default', trend, hint, d
       {sub && <div className="mt-auto pt-1 text-[11px] leading-snug text-fg-muted num [overflow-wrap:anywhere]">{sub}</div>}
       {hint && (
         <span role="tooltip" data-stat-hint
-          className="pointer-events-none absolute inset-x-1 top-full z-30 mt-1 hidden rounded-lg border border-border-strong bg-panel px-3 py-2 text-[12.5px] leading-snug text-fg shadow-lg group-hover/stat:block group-focus-visible/stat:block">
+          className={`pointer-events-none absolute ${wideHint ? 'left-1 w-[min(340px,90vw)]' : 'inset-x-1'} top-full z-30 mt-1 hidden rounded-lg border border-border-strong bg-panel px-3 py-2 text-[12.5px] leading-snug text-fg shadow-lg group-hover/stat:block group-focus-visible/stat:block`}>
           {hint}
         </span>
       )}

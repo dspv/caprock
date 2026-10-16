@@ -81,6 +81,35 @@ func TestKeepAwakeSettingDefaultsAndPersists(t *testing.T) {
 	}
 }
 
+// The quick replies are the defaults until changed, and writing back what
+// was read never writes the defaults down; an emptied list stays empty.
+func TestQuickRepliesDefaultsAndPersist(t *testing.T) {
+	dir := t.TempDir()
+	d := &Daemon{log: quietLog(), opt: Options{DataDir: dir}, baseCtx: context.Background()}
+	a := &settingsAdapter{d: d}
+	if got := a.Get().QuickReplies; len(got) != len(config.DefaultQuickReplies) {
+		t.Fatalf("defaults = %+v", got)
+	}
+	if err := a.Set(a.Get()); err != nil {
+		t.Fatal(err)
+	}
+	if d.opt.Config.QuickReplies != nil {
+		t.Fatal("unchanged defaults were stored")
+	}
+	in := a.Get()
+	in.QuickReplies = []config.QuickReply{}
+	if err := a.Set(in); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := config.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.QuickReplies == nil || len(*saved.QuickReplies) != 0 || len(a.Get().QuickReplies) != 0 {
+		t.Fatalf("an emptied list did not persist: %+v", saved.QuickReplies)
+	}
+}
+
 func TestKeepAwakeStatusWithoutAHolder(t *testing.T) {
 	now := time.Now()
 	d := handoffDaemon(t, now)

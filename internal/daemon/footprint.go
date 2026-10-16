@@ -330,7 +330,7 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 		for _, p := range others {
 			parts = append(parts, describeProc(p))
 		}
-		w("duplicate_daemon", "%s running beside this one (%s), using %s. Caprock never stops another daemon on its own; stop the ones you do not use (the doctor's Advanced mode can).",
+		w("duplicate_daemon", "%s running beside this one (%s), using %s. Caprock never stops another daemon on its own; stop the ones you do not use (the doctor's Clean up can).",
 			plural(len(others), "other Caprock daemon"), strings.Join(parts, "; "), Bytes(f.Memory.OtherDaemonsMemBytes))
 	}
 	if n := len(f.Duplicates.Apps); n > 1 {
@@ -369,7 +369,7 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 	if o := f.Orphans; o != nil {
 		stray := o.ByKind[OrphanClaude] + o.ByKind[OrphanMCP] + o.ByKind[OrphanCaprockOther]
 		children := o.ByKind[OrphanClaudeChild]
-		const how = "Caprock never stops them on its own; the doctor's Advanced mode or `caprock doctor --stop <pid>` can."
+		const how = "Caprock never stops them on its own; the doctor's Clean up or `caprock doctor --stop <pid>` can."
 		switch {
 		case stray > 0:
 			n := stray + children

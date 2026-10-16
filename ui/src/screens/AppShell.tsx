@@ -38,7 +38,7 @@ import {
   type TabTarget,
 } from '@/lib/tabs'
 import { tabLabels } from '@/lib/tablabels'
-import { isShellLeaf, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, shellNames, type AgentClosePlan, type ChatClosePlan, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
+import { AGENT_SAVED_TOAST, isShellLeaf, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, shellNames, type AgentClosePlan, type ChatClosePlan, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
 import { baseName, fileKey } from '@/lib/files'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
 import { useShellTray } from '@/lib/tray'
@@ -67,6 +67,7 @@ import { ShareMoment } from '@/components/Nudges'
 import { ShareDialog } from '@/components/Share'
 import { usePromptSync } from '@/lib/nudges'
 import { AppUpdateToast } from '@/components/AppUpdateToast'
+import { ComputerAsks } from '@/components/ComputerAsks'
 import { AppUpdateAsk } from '@/components/AppUpdateAsk'
 import { AppAutoUpdate } from '@/components/AppAutoUpdate'
 import { UpdateCheckBanner } from '@/components/UpdateCheckBanner'
@@ -83,6 +84,8 @@ import { FilePicker } from '@/components/FilePicker'
 import { NewAgentSheet } from '@/components/NewAgentSheet'
 import type { HandoffTarget } from '@/components/AgentHandoff'
 import { liveOwnedSession } from '@/lib/handoff'
+import { locateFile, OPEN_PATH_EVENT, type FileRoot, type OpenPathDetail } from '@/lib/mdreader'
+import type { SendTarget } from '@/components/FileTools'
 import { CloseSettingsContext } from '@/lib/settingsClose'
 import { SetupShellContext } from '@/lib/setupShell'
 import { QuickChatSheet, quickChatRequest, quickChoiceLabel, rememberQuickChoice, rememberedQuickChoice, type QuickChoice } from '@/components/QuickChat'
@@ -107,7 +110,7 @@ import { isMultiRepo } from '@/lib/multirepo'
 import { CloseAgentChoice, CloseChatConfirm, CloseShellConfirm } from '@/components/CloseShellConfirm'
 import { ShortcutsSheet } from '@/components/ShortcutsSheet'
 import { KeysHint } from '@/components/KeysHint'
-import { loadAgentClose, saveAgentClose } from '@/lib/agentClose'
+import { loadAgentClose } from '@/lib/agentClose'
 import { useSidebarMode } from '@/lib/sidebarMode'
 import { CopiesSheet } from '@/components/CopiesSheet'
 import { CleanupLine } from '@/components/CleanupLine'
@@ -882,10 +885,14 @@ export function AppShell() {
     void Promise.all(stop.map((sh) => api.signal(sh.sessionId, 'kill').catch((e) => setToast(`Could not stop the shell: ${errText(e)}`))))
       .then(() => refresh())
   }, [refresh])
-  /** End quick chats whose tab closed: the cockpit's *Stop the session* (`kill`), never asked twice. */
+  /**
+   * End the quick chats and agents whose tab closed: `end`, a SIGTERM first,
+   * so Claude Code writes its transcript and the conversation can be
+   * continued (--resume); killed only if it will not stop. Never asked twice.
+   */
   const stopChats = useCallback((ids: readonly string[]) => {
     if (ids.length === 0) return
-    void Promise.all(ids.map((id) => api.signal(id, 'kill').catch((e) => setToast(`Could not stop the session: ${errText(e)}`))))
+    void Promise.all(ids.map((id) => api.signal(id, 'end').catch((e) => setToast(`Could not stop the session: ${errText(e)}`))))
       .then(() => refresh())
   }, [refresh])
   const finishClose = useCallback((tabId: string, paneId: string | undefined, stop: readonly ClosingShell[], chats: readonly string[] = []) => {
@@ -895,8 +902,8 @@ export function AppShell() {
   }, [stopShells, stopChats])
   // What requestClose reads, kept current without making it, and so every
   // close button, a new function on each poll.
-  const closeCtx = useRef({ tabs: ws.tabs, sessionsById, sessions: data.sessions, labels, model, endedChats })
-  closeCtx.current = { tabs: ws.tabs, sessionsById, sessions: data.sessions, labels, model, endedChats }
+  const closeCtx = useRef({ tabs: ws.tabs, sessionsById, sessions: data.sessions, labels, model, endedChats, permissions: data.permissions })
+  closeCtx.current = { tabs: ws.tabs, sessionsById, sessions: data.sessions, labels, model, endedChats, permissions: data.permissions }
   /** The daemon's shells now, id to program; the last poll's when it cannot answer. */
   const liveNow = useCallback(async () => {
     try {
@@ -916,27 +923,38 @@ export function AppShell() {
     if (plan.busy.length === 0) finishClose(tabId, paneId, plan.stop, chats)
     else setClosing({ kind: 'tab', tabId, paneId, plan, chats })
   }, [finishClose, liveNow])
-  /** Ends the chosen agents with their tab: one more question when any is still answering. */
+  /** Closes the tab and ends `ended` of its agents, saying the conversation is kept. */
+  const closeEnding = useCallback(async (tabId: string, paneId: string | undefined, chats: readonly string[], ended: readonly string[]) => {
+    await closeShells(tabId, paneId, [...chats, ...ended])
+    if (ended.length > 0) setToast(AGENT_SAVED_TOAST)
+  }, [closeShells])
+  /** Ends the chosen agents with their tab (*End the agent* in Settings): one more question when any is still answering. */
   const endAgents = useCallback((tabId: string, paneId: string | undefined, chats: readonly string[], agents: AgentClosePlan) => {
     if (agents.busy.length > 0) setClosing({ kind: 'agent-busy', tabId, paneId, chats, agents })
-    else void closeShells(tabId, paneId, [...chats, ...agents.all])
-  }, [closeShells])
+    else void closeEnding(tabId, paneId, chats, agents.all)
+  }, [closeEnding])
   /**
    * The agents' half of a close, once the quick chats' is decided
-   * (lib/agentClose.ts): an agent Caprock started is asked about — close the
-   * tab, or close and end it — unless the viewer said not to ask again.
-   * Nothing else is: an agent another terminal started only loses its tab.
+   * (lib/agentClose.ts). One decision at most (owner, 2026-10-15,
+   * translated: "I never understand whether data is kept and which button
+   * to pick — one button"): an agent Caprock started that is idle ends with
+   * its tab, no question, and a toast says the conversation is saved; one
+   * working or waiting on you gets one sentence and *Close tab* (it keeps
+   * working) or *Stop it instead*. Settings → Closing a tab can make it
+   * always keep or always end. An agent another terminal started only
+   * loses its tab (rule 7).
    */
   const closeAgents = useCallback(async (tabId: string, paneId: string | undefined, chats: readonly string[]) => {
-    const { tabs, sessionsById, endedChats, labels } = closeCtx.current
+    const { tabs, sessionsById, endedChats, labels, permissions } = closeCtx.current
     const tab = tabs.find((t) => t.id === tabId)
     if (!tab) return
-    const agents = planAgentClose(tab, paneId, sessionsById, (s) => endedChats.has(s.session_id) || isQuickChat(s) || !!startedChat(s.session_id))
+    const agents = planAgentClose(tab, paneId, sessionsById, (s) => endedChats.has(s.session_id) || isQuickChat(s) || !!startedChat(s.session_id), (id) => permissions.has(id))
     const how = agents.all.length > 0 ? loadAgentClose() : 'keep'
     if (how === 'keep') { await closeShells(tabId, paneId, chats); return }
     if (how === 'end') { endAgents(tabId, paneId, chats, agents); return }
+    if (agents.active.length === 0) { await closeEnding(tabId, paneId, chats, agents.all); return }
     setClosing({ kind: 'agent', tabId, paneId, chats, agents, title: labels.get(tabId)?.title ?? tab.title })
-  }, [closeShells, endAgents])
+  }, [closeShells, closeEnding, endAgents])
   /**
    * Close a tab, or one pane of it (.ai/21-app.md § Shell tabs, § Quick
    * chat). An agent Caprock started is asked about (closeAgents): *Close
@@ -1394,6 +1412,31 @@ export function AppShell() {
     const w = n.worktrees.find((x) => (worktree ? !x.isMain && x.key === worktree : x.isMain))
     return w?.path || (worktree ? undefined : n.project.root || undefined)
   }, [model.projects])
+  /**
+   * The sessions a file's reference may be typed into from its tab: agents
+   * Caprock started that still run (rule 7), newest first. The same array
+   * until what it lists changes, as the session list answers often.
+   */
+  const sendRows: { t: SendTarget; at: number }[] = []
+  for (const n of model.projects) {
+    for (const w of n.worktrees) {
+      for (const x of w.sessions) {
+        if (x.isShell || !attachable(x.session)) continue
+        sendRows.push({ t: { id: x.session.session_id, title: x.title, where: w.isMain ? n.project.name : `${n.project.name} · ${w.branch || w.key}` }, at: x.session.worked_at ?? 0 })
+      }
+    }
+  }
+  sendRows.sort((a, b) => b.at - a.at)
+  const sendKey = JSON.stringify(sendRows.map(({ t }) => [t.id, t.title, t.where]))
+  const sendTargetsRef = useRef<{ key: string; list: readonly SendTarget[] }>({ key: '', list: [] })
+  if (sendTargetsRef.current.key !== sendKey) sendTargetsRef.current = { key: sendKey, list: sendRows.map(({ t }) => t) }
+  const sendTargets = sendTargetsRef.current.list
+  /** A reference typed into a session from a file tab: that session comes to the front, its prompt waiting. */
+  const onSentRef = useCallback((sessionId: string) => {
+    const s = sessionsById.get(sessionId)
+    const pid = model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((x) => x.session.session_id === sessionId)))?.project.id
+    if (s && pid) openSession(s, pid)
+  }, [sessionsById, model.projects, openSession])
   const renderFile = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
     const wt = leaf.target.worktree ?? ''
     const path = leaf.target.path ?? ''
@@ -1406,9 +1449,34 @@ export function AppShell() {
         visible={visible}
         onOpenFile={(p) => openFile(tab.projectId, wt, p)}
         editor={editors && folder ? { name: preferredName(editors), open: () => openInEditor(joinPath(folder, path), path) } : undefined}
+        absPath={folder ? joinPath(folder, path) : undefined}
+        sendTargets={sendTargets}
+        onSent={onSentRef}
       />
     )
-  }, [folderOf, openFile, editors, openInEditor])
+  }, [folderOf, openFile, editors, openInEditor, sendTargets, onSentRef])
+
+  // A `.md` path an agent printed, clicked in its chat or terminal: open it
+  // in a file tab when it lies inside a project Caprock knows (lib/mdreader).
+  const openPathCtx = useRef({ projects: model.projects, sessionsById })
+  openPathCtx.current = { projects: model.projects, sessionsById }
+  useEffect(() => {
+    const onOpenPath = (e: Event) => {
+      const d = (e as CustomEvent<OpenPathDetail>).detail
+      if (!d?.path) return
+      const { projects, sessionsById: byId } = openPathCtx.current
+      const roots: FileRoot[] = []
+      for (const n of projects) {
+        if (n.project.root) roots.push({ projectId: n.project.id, worktree: '', folder: n.project.root })
+        for (const w of n.worktrees) if (w.path) roots.push({ projectId: n.project.id, worktree: w.isMain ? '' : w.key, folder: w.path })
+      }
+      const hit = locateFile(d.path, byId.get(d.sessionId)?.cwd ?? '', roots)
+      if (hit) openFile(hit.projectId, hit.worktree, hit.path)
+      else setToast(`${d.path} is not inside a project Caprock knows, so it cannot open in a tab.`)
+    }
+    window.addEventListener(OPEN_PATH_EVENT, onOpenPath)
+    return () => window.removeEventListener(OPEN_PATH_EVENT, onOpenPath)
+  }, [openFile])
   const focusedFile = focused?.kind === 'file'
 
   // A watched session that Caprock now holds a terminal for — continued here
@@ -1864,8 +1932,10 @@ export function AppShell() {
       <StarStrip app />
       <BrainCaptureHost />
       <ShareMoment />
-      <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} session={focused?.kind === 'session' && workspaceShown ? focusedSession : undefined} version={version} figures={!prefs.sidebar} />
+      <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} session={focused?.kind === 'session' && workspaceShown ? focusedSession : undefined} version={version} figures={!prefs.sidebar} sessions={data.sessions} onOpenSession={openSessionById} />
       <AppUpdateToast />
+      {/* Another computer asking to control this one (ADR-067). */}
+      <ComputerAsks />
       {isTauri() && <AppUpdateAsk />}
       {isTauri() && <AppAutoUpdate />}
       <UpdateCheckBanner />
@@ -1963,22 +2033,19 @@ export function AppShell() {
       {closing?.kind === 'agent' && (
         <CloseAgentChoice
           title={closing.title}
-          many={closing.agents.all.length > 1}
-          onKeep={(remember) => {
-            if (remember) saveAgentClose('keep')
-            setClosing(null); void closeShells(closing.tabId, closing.paneId, closing.chats)
+          many={closing.agents.active.length > 1}
+          onKeep={() => {
+            // The ones working or waiting keep on; an idle one beside them in a split ends.
+            setClosing(null); void closeEnding(closing.tabId, closing.paneId, closing.chats, closing.agents.all.filter((id) => !closing.agents.active.includes(id)))
           }}
-          onEnd={(remember) => {
-            if (remember) saveAgentClose('end')
-            setClosing(null); endAgents(closing.tabId, closing.paneId, closing.chats, closing.agents)
-          }}
+          onEnd={() => { setClosing(null); void closeEnding(closing.tabId, closing.paneId, closing.chats, closing.agents.all) }}
           onCancel={() => setClosing(null)}
         />
       )}
       {closing?.kind === 'agent-busy' && (
         <CloseChatConfirm
           agent
-          onStop={() => { setClosing(null); void closeShells(closing.tabId, closing.paneId, [...closing.chats, ...closing.agents.all]) }}
+          onStop={() => { setClosing(null); void closeEnding(closing.tabId, closing.paneId, closing.chats, closing.agents.all) }}
           onKeep={() => { setClosing(null); void closeShells(closing.tabId, closing.paneId, closing.chats) }}
           onCancel={() => setClosing(null)}
         />

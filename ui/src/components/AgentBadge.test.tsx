@@ -11,7 +11,7 @@ import { render, screen } from '@testing-library/react'
 import { AGENTS, agentName, showsAgentMark } from './Projects'
 import { AgentGlyph } from './AgentMarks'
 
-const OTHERS = ['opencode', 'gemini', 'codex', 'deepseek']
+const OTHERS = ['opencode', 'gemini', 'codex', 'deepseek', 'hermes']
 
 describe('an agent that is not Claude is marked as itself', () => {
   it('marks every non-Claude agent in a list row', () => {
@@ -38,6 +38,7 @@ describe('the agent glyph is a mark that says its name', () => {
     ['gemini', false, 'Gemini CLI'],
     ['opencode', false, 'OpenCode'],
     ['deepseek', false, 'DeepSeek'],
+    ['hermes', false, 'Hermes'],
     ['claude', true, 'Shell'],
     ['someday-agent', false, 'someday-agent'],
   ]

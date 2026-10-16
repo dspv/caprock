@@ -25,15 +25,25 @@ import (
 // startRemoteFromSettings turns remote access on at startup when it was on
 // before. Called once, after the server listens.
 func (d *Daemon) startRemoteFromSettings(ctx context.Context) {
-	set, err := remote.Load(d.opt.DataDir)
-	if err != nil {
-		d.log.Warn("could not read the remote access settings", "component", "remote", "err", err)
-		return
-	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.remoteSet = set
-	if !set.Enabled {
+	// The server already listens, so a request may have read or switched
+	// access first (RemoteState, SetRemote, both of which load remote.json
+	// under this lock). What it holds is as new or newer. Reading the file
+	// outside the lock and storing it here afterwards left a host online
+	// with a stale "off", and every pairing link came back empty (seen on
+	// Windows, where the first request beat this); with no remote.json yet,
+	// two loads could also each write different keys. startRemoteLocked does
+	// nothing when a host already runs.
+	if d.remoteSet == nil {
+		set, err := remote.Load(d.opt.DataDir)
+		if err != nil {
+			d.log.Warn("could not read the remote access settings", "component", "remote", "err", err)
+			return
+		}
+		d.remoteSet = set
+	}
+	if !d.remoteSet.Enabled {
 		return
 	}
 	if err := d.startRemoteLocked(ctx); err != nil {

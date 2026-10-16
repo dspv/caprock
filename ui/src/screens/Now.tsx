@@ -158,6 +158,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
       (a.key === 'opencode' && !!status.data?.opencode) ||
       (a.key === 'codex' && !!status.data?.codex) ||
       (a.key === 'deepseek' && !!status.data?.deepseek) ||
+      (a.key === 'hermes' && !!status.data?.hermes) ||
       (a.key === 'gemini' && everySession.some((s) => s.agent === 'gemini')),
   )
   const hasBoth = agentsHere.length > 2

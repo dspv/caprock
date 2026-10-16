@@ -38,7 +38,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/sessions/{id}/calls":             true, // the priced model calls; the events already say them
 	"GET /v1/sessions/{id}/todos":             true, // the agent's own task list; the events already say it
 	"GET /v1/stats/summary":                   true, "GET /v1/stats/daily": true, "GET /v1/stats/trends": true, "GET /v1/events": true,
-	"GET /v1/history": true, "GET /v1/status": true, "GET /v1/storage": true, "GET /v1/resources": true, "GET /v1/footprint": true, "GET /v1/update": true,
+	"GET /v1/history": true, "GET /v1/status": true, "GET /v1/storage": true, "GET /v1/resources": true, "GET /v1/resources/history": true, "GET /v1/footprint": true, "GET /v1/update": true,
 	"GET /v1/settings": true, "GET /v1/premium": true, "GET /v1/gemini": true, "GET /v1/pricing": true,
 	"GET /v1/window-stop": true, "GET /v1/live": true, "GET /v1/tasks": true, "GET /v1/tasks/{id}": true, "GET /v1/approvals": true,
 	"GET /v1/statusline/{id}": true, "GET /v1/pair/me": true, "GET /healthz": true,
@@ -50,10 +50,12 @@ var viewerMay = map[string]bool{
 	"GET /v1/brain": true, "GET /v1/brain/status": true, "GET /v1/brain/nodes/{id}": true, // Second Brain, read-only (ADR-063)
 	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true, "GET /v1/projects/{id}/repos": true,
 	"GET /v1/projects/{id}/changes": true, "GET /v1/projects/{id}/changes/diff": true,
-	"GET /v1/repos/activity":     true, // Now's Repos section: counts from git and from GitHub answers already kept
-	"GET /v1/repos/ci":           true, // Now's CI/CD section: the kept GitHub reads the PRs & CI tab makes
-	"GET /v1/repos/remotes":      true, // the Pipeline's repository picker: which folders are on GitHub, from git
-	"GET /v1/projects/{id}/file": true, "GET /v1/projects/{id}/files": true,
+	"GET /v1/repos/activity":         true, // Now's Repos section: counts from git and from GitHub answers already kept
+	"GET /v1/repos/ci":               true, // Now's CI/CD section: the kept GitHub reads the PRs & CI tab makes
+	"GET /v1/repos/remotes":          true, // the Pipeline's repository picker: which folders are on GitHub, from git
+	"GET /v1/pipeline/agents":        true, // the Pipeline's agent figures: cost per agent-hour and the agent team, from the events
+	"GET /v1/sessions/{id}/ci/stats": true, // the Pipeline's pull requests and figures: the phone's release bars
+	"GET /v1/projects/{id}/file":     true, "GET /v1/projects/{id}/files": true, "GET /v1/projects/{id}/image": true,
 	// GitHub (WP-19): the connection, the clone picker, pull requests, and
 	// New agent's list of open issues and pull requests.
 	"GET /v1/github": true, "GET /v1/github/owners": true, "GET /v1/github/repos": true,
@@ -158,8 +160,9 @@ func TestEveryEndpointForEveryRole(t *testing.T) {
 			}
 
 			// The pairing endpoint is open to every device, paired or not; it
-			// only exchanges a code for a token.
-			open := pattern == "POST /v1/pair"
+			// only exchanges a code for a token. Withdrawing itself is open to
+			// every paired device (ADR-067).
+			open := pattern == "POST /v1/pair" || pattern == "DELETE /v1/pair/me"
 			wantViewer := 0
 			if !viewerMay[pattern] && !open {
 				wantViewer = http.StatusForbidden

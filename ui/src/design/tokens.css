@@ -401,6 +401,9 @@
   --agent-claude: color-mix(in srgb, #d97757 70%, var(--color-fg-muted));
   --agent-gemini: color-mix(in srgb, #8e75b2 70%, var(--color-fg-muted));
   --agent-deepseek: color-mix(in srgb, #5786fe 70%, var(--color-fg-muted));
+  /* Hermes Agent: a teal of our own — no brand colour of Nous Research's is
+   * used here, as no mark of theirs is (AgentMarks.tsx). */
+  --agent-hermes: color-mix(in srgb, #2f9e86 70%, var(--color-fg-muted));
 }
 
 /* Second Brain's kinds (lib/brain.ts KIND_COLOR): the same 70/30-style mix
@@ -626,6 +629,18 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
   .skeleton-pulse { animation: none; opacity: 0.6; }
 }
 
+/* The release plan's step under way (components/ReleasePlan.tsx: CI
+ * running, an agent at work) and a running OS's CI dot: a slow, shallow
+ * breath, so the one moving row is found without drawing the eye. */
+.release-step-pulse { animation: releaseStepPulse 2.4s ease-in-out infinite; }
+@keyframes releaseStepPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .release-step-pulse { animation: none; }
+}
+
 /* ── The app workspace (WP-04, WP-06) ─────────────────────────────────
  * Only under <html data-app>, set by screens/AppShell.tsx, so the browser
  * dashboard and the phone never see any of it. The chrome around the
@@ -660,22 +675,30 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 }
 [data-app] .app-row { transition: background-color 120ms var(--app-ease), color 120ms var(--app-ease); }
 [data-app] .app-row:hover { background: var(--app-row-hover); }
-/* A row that waits on you: an amber edge and tint, on the row itself. The
- * separate Waiting on you block is gone (owner, 2026-10-11: "everything is
- * already visible in Projects", translated), so the row says it. Before the
- * current-row rules: the tab in front keeps its own fill and edge. */
-[data-app] .app-row[data-waiting] { background: color-mix(in srgb, var(--color-accent) 11%, transparent); box-shadow: inset 2px 0 0 var(--color-accent); }
-[data-app] .app-row[data-waiting]:hover { background: color-mix(in srgb, var(--color-accent) 17%, transparent); }
+/* A row that waits on you has no fill and no edge: it says so with its amber
+ * dot and word (components/ProjectRow.tsx). A fill and an edge are the tab in
+ * front's alone — with both on a waiting row too, a user could not tell which
+ * tab she was in (2026-10-15, translated: "which tab am I working in?"). */
 [data-app] .app-row[aria-current="true"] { background: var(--app-row-active); }
-/* The tab in front, in the sidebar's list under the current project: the one
- * highlighted row in the sidebar, its fill plus an edge in the text colour —
- * "what am I on" at a glance (owner, 2026-10-09). Not amber: in the sidebar
- * amber means one thing, waiting on you. */
-[data-app] .app-row[data-tab-row][aria-current="true"] { box-shadow: inset 2px 0 0 var(--color-fg); }
-/* The project in front (⌃⌘1–⌃⌘9 land on it): its edge, faint, with no fill,
- * so the tab in front stays the one highlighted row and the eye still
- * finds which project it is in among the others (owner, 2026-10-13). */
-[data-app] .app-row[data-project-row][data-current] { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-fg) 40%, transparent); }
+/* The tab in front: the one selected row in the sidebar — an accent tint, a
+ * solid 3px accent edge and a bold title, "what am I on" at a glance (owner,
+ * 2026-10-09). The project in front has no edge any more, only its bold name. */
+[data-app] .app-row.app-row-selected,
+[data-app] .app-row.app-row-selected:hover {
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+/* A session row's dot (components/ProjectRow.tsx RowDot): working breathes,
+ * slowly; waiting wears an amber halo. Both still under reduced motion. */
+[data-app] .app-dot-working { animation: appDotBreathe 2.4s ease-in-out infinite; }
+@keyframes appDotBreathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+[data-app] .app-dot-waiting { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warn) 30%, transparent); }
+/* A tab's waiting dot (components/TerminalTabs.tsx) pulses, slowly, so a
+ * tab that waits on you is found without a bar of its own; still under
+ * reduced motion. */
+[data-app] .app-tab-dot-pulse { animation: appTabDotPulse 2.8s ease-in-out infinite; }
+@keyframes appTabDotPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) { [data-app] .app-tab-dot-pulse { animation: none; } }
 [data-app] :focus-visible:not(input, textarea, select) { outline: 2px solid var(--app-focus); outline-offset: -2px; border-radius: 6px; }
 [data-app] .xterm :focus-visible { outline: none; }
 [data-app] .app-chevron { transition: transform 120ms var(--app-ease); }
@@ -702,7 +725,7 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 }
 @media (prefers-reduced-motion: reduce) {
   [data-app] .app-row, [data-app] .app-chevron { transition: none; }
-  [data-app] .app-fade-in, [data-app] .app-ring { animation: none; }
+  [data-app] .app-fade-in, [data-app] .app-ring, [data-app] .app-dot-working { animation: none; }
 }
 /* The sidebar's primary action: the accent as a border and label on the
  * panel, not a fill (owner, 2026-10-09). Still the one accent-framed control. */
@@ -792,26 +815,6 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   [data-app] [role="tab"]:hover [data-tab-project][data-overflow] > span { display: inline; animation: none; }
 }
 [data-app] .app-primary .app-kbd {
-  color: var(--color-accent);
-  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-}
-/* The feedback form's kind cards (components/Feedback.tsx) draw 1 2 3 as the
- * same key, a size up, in the browser dashboard too, where there is no
- * [data-app]; the chosen card's key takes the accent like .app-primary's. */
-[data-feedback-kinds] .app-kbd-key {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--color-fg);
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid color-mix(in srgb, var(--color-fg) 28%, transparent);
-  border-bottom-width: 2px;
-  background: color-mix(in srgb, var(--color-fg) 10%, transparent);
-}
-[data-feedback-kinds] [aria-checked="true"] .app-kbd-key {
   color: var(--color-accent);
   border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
@@ -1080,14 +1083,16 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
  * app), a fill alone no longer tells the tab in front from the rest. */
 [data-app] .app-strip { background-image: linear-gradient(to top, var(--app-hairline) 1px, transparent 1px); }
 /* Tabs that can be told apart at a glance (owner, 2026-10-09: "tabs are
- * barely noticeable", translated): the tab in front carries a 2px amber top
- * edge over its hairline frame and a medium label; the others are filled
- * surfaces of their own with a hairline frame, so each reads as a tab and the
- * gaps between them as separators, in both themes. */
-[data-app] .app-tab-front { box-shadow: inset 0 2px 0 var(--color-accent), inset 1px 0 0 var(--app-hairline-strong), inset -1px 0 0 var(--app-hairline-strong); }
+ * barely noticeable", translated): the tab in front carries a 3px accent top
+ * edge over its hairline frame, the panel's fill and a bold label; the others
+ * are filled surfaces of their own with a hairline frame, so each reads as a
+ * tab and the gaps between them as separators, in both themes. The edge is
+ * the front tab's alone (2026-10-15, translated: "I don't understand where I
+ * am"): a tab waiting on you says so with an amber dot, never a bar. */
+[data-app] .app-tab-front { box-shadow: inset 0 3px 0 var(--color-accent), inset 1px 0 0 var(--app-hairline-strong), inset -1px 0 0 var(--app-hairline-strong); }
 /* The glowing palettes: the tab in front's edge throws a little light down
  * into the tab, and the sidebar's primary action glows (see [data-glow]). */
-[data-app][data-glow] .app-tab-front { box-shadow: inset 0 2px 0 var(--color-accent), inset 0 6px 8px -6px var(--glow-color), inset 1px 0 0 var(--app-hairline-strong), inset -1px 0 0 var(--app-hairline-strong); }
+[data-app][data-glow] .app-tab-front { box-shadow: inset 0 3px 0 var(--color-accent), inset 0 6px 8px -6px var(--glow-color), inset 1px 0 0 var(--app-hairline-strong), inset -1px 0 0 var(--app-hairline-strong); }
 [data-app][data-glow] .app-primary { box-shadow: 0 0 12px -3px var(--glow-color); }
 [data-app] .app-tab-back {
   background: color-mix(in srgb, var(--color-fg) 5%, transparent);
@@ -1135,6 +1140,37 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
   box-shadow: inset 0 0 0 1px var(--color-accent), 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 @media (prefers-reduced-motion: reduce) { [data-app] .app-composer { transition: none; } }
+
+/* Quick replies (components/QuickReplies.tsx): small chips in the slab's own
+ * ink, like the composer's box, so they read on a dark or a light terminal
+ * palette; the reply just sent gets a tick for a moment. Outside [data-app]
+ * too: the chat on a phone or a dashboard tab draws the same row, on the
+ * page's own panel. Only on the slab do they take the terminal's ground:
+ * --color-term-bg is dark in every theme outside it, and drew dark pills on
+ * the phone's light chat (2026-10-16). */
+.app-quick {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--color-fg-muted);
+  background: color-mix(in srgb, var(--color-fg) 5%, var(--color-panel));
+  box-shadow: inset 0 0 0 1px var(--app-hairline-strong, var(--color-border-strong));
+  transition: color 120ms ease, box-shadow 120ms ease;
+}
+.app-slab .app-quick { background: color-mix(in srgb, var(--color-fg) 5%, var(--color-term-bg)); }
+.app-quick:hover:not(:disabled) { color: var(--color-fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 60%, transparent); }
+.app-quick:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--color-accent), 0 0 0 2px color-mix(in srgb, var(--color-accent) 30%, transparent); }
+.app-quick:disabled { opacity: 0.6; }
+.app-quick[data-state="sent"] { color: var(--color-fg); }
+.app-quick[data-state="failed"] { color: var(--color-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-danger) 55%, transparent); }
+@media (prefers-reduced-motion: reduce) { .app-quick { transition: none; } }
 
 /* Every terminal (xterm.js): one rasterisation for every glyph, no ligatures.
  *

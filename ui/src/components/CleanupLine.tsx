@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { errText } from '@/lib/api'
 import { copiesText, dueText, freedOf, type CleanupView } from '@/lib/copies'
 import { fmtBytes } from '@/lib/format'
-import { projectsApi } from '@/lib/projects'
+import { isDerivedProjectId, projectsApi } from '@/lib/projects'
 
 const POLL_MS = 1500
 const DISMISS_KEY = 'caprock.cleanup.dismissed.'
@@ -61,6 +61,8 @@ export function CleanupLine({ projectId, refreshKey, onReview, onRemoved, compac
   removedRef.current = onRemoved
 
   const load = useCallback(async () => {
+    // A project the daemon has not listed yet has nothing to clean up there.
+    if (isDerivedProjectId(projectId)) { setView(null); return }
     try {
       const v = await projectsApi.cleanup(projectId)
       if (!alive.current) return

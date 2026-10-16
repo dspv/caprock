@@ -66,7 +66,7 @@ func clean(s string) (string, error) {
 
 // builtinIDs may not be reused as a custom id, so `custom:claude` never
 // reads as Claude Code anywhere an id is shown bare.
-var builtinIDs = map[string]bool{"claude": true, "codex": true, "opencode": true, "gemini": true, "grok": true, "deepseek": true, "shell": true}
+var builtinIDs = map[string]bool{"claude": true, "codex": true, "opencode": true, "gemini": true, "grok": true, "deepseek": true, "hermes": true, "shell": true}
 
 // ValidateCustom checks and normalises a list for storing: names and commands
 // present, ids made from names when absent and unique, fields single-line and

@@ -1,6 +1,6 @@
 # The Caprock record — export schema
 
-Five coding agents write their history in five formats. None of them
+Six coding agents write their history in six formats. None of them
 promises a stable format, and each changes with the agent's releases. Caprock reads all of them and
 stores one record with one set of columns, whichever agent wrote the source.
 `caprock export` writes that record out:
@@ -16,13 +16,14 @@ never writes. Formats are `tsv` (the default), `csv` and `jsonl`.
 
 ## Where the rows come from
 
-| Agent       | `agent`    | `source`             | Read from                                                         |
-| ----------- | ---------- | -------------------- | ----------------------------------------------------------------- |
-| Claude Code | `claude`   | `hook`, `transcript` | Hooks via the shim, and `~/.claude/projects/**/*.jsonl`           |
-| Codex       | `codex`    | `codex`              | `$CODEX_HOME/{sessions,archived_sessions}` rollouts (`~/.codex`)  |
-| OpenCode    | `opencode` | `opencode`           | OpenCode's own SQLite database, read-only                         |
-| Gemini CLI  | `gemini`   | `gemini`             | The telemetry file Caprock asks Gemini to write when it starts it |
-| DeepSeek    | `deepseek` | `deepseek`           | `<dsh-home>/sessions/**/session*.jsonl.zstd`                      |
+| Agent        | `agent`    | `source`             | Read from                                                         |
+| ------------ | ---------- | -------------------- | ----------------------------------------------------------------- |
+| Claude Code  | `claude`   | `hook`, `transcript` | Hooks via the shim, and `~/.claude/projects/**/*.jsonl`           |
+| Codex        | `codex`    | `codex`              | `$CODEX_HOME/{sessions,archived_sessions}` rollouts (`~/.codex`)  |
+| OpenCode     | `opencode` | `opencode`           | OpenCode's own SQLite database, read-only                         |
+| Gemini CLI   | `gemini`   | `gemini`             | The telemetry file Caprock asks Gemini to write when it starts it |
+| DeepSeek     | `deepseek` | `deepseek`           | `<dsh-home>/sessions/**/session*.jsonl.zstd`                      |
+| Hermes Agent | `hermes`   | `hermes`             | Hermes's own SQLite database (`~/.hermes/state.db`), read-only    |
 
 A Claude Code session is seen twice, live through hooks and again in its
 transcript. The two planes share dedupe keys, so a turn or tool call is one row
@@ -30,28 +31,28 @@ whichever arrived first.
 
 ## `events` — one row per turn, tool call or lifecycle event
 
-| Column           | Type    | Meaning                                                    |
-| ---------------- | ------- | ---------------------------------------------------------- |
-| `ts`             | time    | When it happened, RFC 3339 UTC with milliseconds           |
-| `session_id`     | text    | The agent's own session id                                 |
-| `agent`          | text    | `claude`, `codex`, `opencode`, `gemini` or `deepseek`      |
-| `subagent_id`    | text    | Set on a subagent's events; empty for the main agent       |
-| `source`         | text    | Which reader produced the row (table above)                |
-| `kind`           | text    | See the kinds below                                        |
-| `tool`           | text    | For `tool.*`: `Bash`, `Edit`, `Read`, `mcp__…`             |
-| `model`          | text    | The model that answered, as the agent named it             |
-| `tokens_in`      | integer | Fresh input tokens on an assistant turn                    |
-| `tokens_out`     | integer | Output tokens                                              |
-| `cache_read`     | integer | Input tokens read from the prompt cache                    |
-| `cache_write`    | integer | Tokens written to the cache, both lifetimes                |
-| `cache_write_1h` | integer | The part of `cache_write` with a 1-hour lifetime           |
-| `cost_usd`       | real    | The turn at list price; OpenCode's own figure for OpenCode |
-| `tool_bytes`     | integer | Size of what a tool call returned (on `tool.post`)         |
-| `touch_dir`      | text    | Directory of the file a tool touched, slash-separated      |
-| `project`        | text    | The session's project name                                 |
-| `repo_root`      | text    | The session's repository root                              |
-| `msg_id`         | text    | The provider's message id on an assistant turn             |
-| `payload`        | JSON    | Only with `--payload`, jsonl only: the raw source record   |
+| Column           | Type    | Meaning                                                         |
+| ---------------- | ------- | --------------------------------------------------------------- |
+| `ts`             | time    | When it happened, RFC 3339 UTC with milliseconds                |
+| `session_id`     | text    | The agent's own session id                                      |
+| `agent`          | text    | `claude`, `codex`, `opencode`, `gemini`, `deepseek` or `hermes` |
+| `subagent_id`    | text    | Set on a subagent's events; empty for the main agent            |
+| `source`         | text    | Which reader produced the row (table above)                     |
+| `kind`           | text    | See the kinds below                                             |
+| `tool`           | text    | For `tool.*`: `Bash`, `Edit`, `Read`, `mcp__…`                  |
+| `model`          | text    | The model that answered, as the agent named it                  |
+| `tokens_in`      | integer | Fresh input tokens on an assistant turn                         |
+| `tokens_out`     | integer | Output tokens                                                   |
+| `cache_read`     | integer | Input tokens read from the prompt cache                         |
+| `cache_write`    | integer | Tokens written to the cache, both lifetimes                     |
+| `cache_write_1h` | integer | The part of `cache_write` with a 1-hour lifetime                |
+| `cost_usd`       | real    | The turn at list price; OpenCode's own figure for OpenCode      |
+| `tool_bytes`     | integer | Size of what a tool call returned (on `tool.post`)              |
+| `touch_dir`      | text    | Directory of the file a tool touched, slash-separated           |
+| `project`        | text    | The session's project name                                      |
+| `repo_root`      | text    | The session's repository root                                   |
+| `msg_id`         | text    | The provider's message id on an assistant turn                  |
+| `payload`        | JSON    | Only with `--payload`, jsonl only: the raw source record        |
 
 Kinds:
 
@@ -70,14 +71,19 @@ Rules that hold for every row:
 
 - **Cost is at list price, and `source` says who priced it.** Claude Code,
   Codex, Gemini and DeepSeek report tokens and no cost, so Caprock prices them
-  from `pricing/pricing.json`. OpenCode reports its own cost, and that figure is
-  carried through unchanged — pricing the same tokens a second way would give
-  one session two totals. A flat-plan user pays the plan, not this figure; it is
+  from `pricing/pricing.json`. OpenCode and Hermes Agent report their own
+  cost, and that figure is carried through unchanged — pricing the same tokens
+  a second way would give one session two totals. A Hermes row that carries
+  usage says in `payload.cost_basis` whether the figure is the provider's
+  (`actual`), Hermes's `estimated` one, `included` in a subscription, or
+  `unknown`; Hermes keeps usage per session, so it arrives on the newest reply
+  or on a row marked `payload.usage_only`, and `payload.background` marks a
+  cron or gateway run. A flat-plan user pays the plan, not this figure; it is
   what the work is worth at list price.
 - **Empty means unknown, not zero.** A missing token count is an empty cell in
   TSV and CSV and `null` in jsonl.
 - **What an agent wrote is `payload.text` on `turn.assistant`**, for Claude
-  Code, OpenCode and DeepSeek Harness alike: visible prose only, never the
+  Code, OpenCode, DeepSeek Harness and Hermes Agent alike: visible prose only, never the
   model's reasoning, at most 16000 characters. A subagent's turn carries
   `payload.sidechain: true`.
 - **Hidden product machinery is left out.** Codex's automatic review turns

@@ -116,3 +116,68 @@ func TestTheBuildCountsWhatIsReadAndWhatWaitsPerProject(t *testing.T) {
 		t.Errorf("off, a build: %+v", st.Build)
 	}
 }
+
+// The status says where the build is and what it has given, from counts
+// only: the read's phase and passages while claude is asked, the stage,
+// the cost claude reported, today's new memories, the graph's topics and
+// links, the last read, and how many sessions were handed memories.
+func TestTheStatusSaysTheStageAndWhatTheBrainGives(t *testing.T) {
+	ctx := context.Background()
+	var during Status
+	var e *env
+	e = newEnv(t, func(r Request) (Result, error) {
+		during = e.eng.Status(ctx)
+		return twoMemories(r)
+	})
+	handoff := true
+	e.eng.HandoffOn = func() bool { return handoff }
+	e.eng.ClaudeFound = func() bool { return true }
+	if st := e.eng.Status(ctx); st.Stage != StageUpToDate || st.LastRead != 0 || st.NewToday != 0 {
+		t.Fatalf("empty: %+v", st)
+	}
+	e.session(t, "s1", "acme-api", 20*time.Minute, [2]string{"q", long}, [2]string{"q2", long})
+	e.session(t, "s2", "web", 30*time.Minute, [2]string{"q", long})
+	if st := e.eng.Status(ctx); st.Stage != StageWaiting || st.Pending != 2 {
+		t.Fatalf("waiting: stage %q, pending %d", st.Stage, st.Pending)
+	}
+	if _, err := e.eng.Wake(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if during.Stage != StageExtracting || during.Reading == nil || during.Reading.Phase != PhaseExtracting || during.Reading.Passages != 2 {
+		t.Fatalf("during the read of s2 (the last): stage %q, reading %+v", during.Stage, during.Reading)
+	}
+	st := e.eng.Status(ctx)
+	if st.Stage != StageUpToDate || st.LastRead != t0.UnixMilli() || st.NewToday != 4 || st.Topics != 3 || st.Links == 0 {
+		t.Errorf("after: stage %q, last %d, today %d, topics %d, links %d", st.Stage, st.LastRead, st.NewToday, st.Topics, st.Links)
+	}
+	if st.SpentUSD < 0.0079 || st.SpentUSD > 0.0081 || st.Spent != 8400 {
+		t.Errorf("spent %d tokens, $%v", st.Spent, st.SpentUSD)
+	}
+	if !st.Handoff.On || st.Handoff.Sessions != 0 {
+		t.Errorf("handoff: %+v", st.Handoff)
+	}
+	if err := store.SetHandoffBrain(ctx, e.st.DB(), "s1", 3); err != nil {
+		t.Fatal(err)
+	}
+	handoff = false
+	if h := e.eng.Status(ctx).Handoff; h.On || h.Sessions != 1 || h.Memories != 3 || h.Sessions24h != 1 || h.Memories24h != 3 {
+		t.Errorf("handed once: %+v", h)
+	}
+
+	// Waiting with today's tokens used is the limit; no claude says so; off is off.
+	e.cfg.DailyTokens = 1000
+	e.now = e.now.Add(time.Hour)
+	e.session(t, "s3", "web", 15*time.Minute, [2]string{"q", long})
+	if st := e.eng.Status(ctx); st.Stage != StageLimit {
+		t.Errorf("over the limit: %q", st.Stage)
+	}
+	e.eng.ClaudeFound = func() bool { return false }
+	if st := e.eng.Status(ctx); st.Stage != StageNoClaude {
+		t.Errorf("no claude: %q", st.Stage)
+	}
+	off := false
+	e.cfg.Auto = &off
+	if st := e.eng.Status(ctx); st.Stage != StageOff {
+		t.Errorf("off: %q", st.Stage)
+	}
+}

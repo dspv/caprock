@@ -1,0 +1,158 @@
+[
+ {
+  "session_id": "parent-session",
+  "kind": "tool.pre",
+  "tool": "Edit",
+  "ts_offset_s": 0,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "parent-session",
+   "tool_name": "Edit",
+   "tool_input": {
+    "file_path": "/repo/ui/src/App.tsx",
+    "old_string": "import { a } from './a'",
+    "new_string": "import { a, b } from './a'"
+   }
+  }
+ },
+ {
+  "session_id": "parent-session",
+  "kind": "tool.pre",
+  "tool": "Edit",
+  "ts_offset_s": 15,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "parent-session",
+   "tool_name": "Edit",
+   "tool_input": {
+    "file_path": "/repo/ui/src/App.tsx",
+    "old_string": "import { a } from './a'",
+    "new_string": "import { a, b } from './a'"
+   },
+   "agent_id": "a1b2c3",
+   "transcript_path": "/home/me/.claude/projects/-repo/parent-session/subagents/agent-a1b2c3.jsonl"
+  },
+  "agent_id": "a1b2c3"
+ },
+ {
+  "session_id": "parent-session",
+  "kind": "tool.pre",
+  "tool": "Edit",
+  "ts_offset_s": 30,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "parent-session",
+   "tool_name": "Edit",
+   "tool_input": {
+    "file_path": "/repo/ui/src/App.tsx",
+    "old_string": "import { a } from './a'",
+    "new_string": "import { a, b } from './a'"
+   },
+   "sidechain": true
+  }
+ },
+ {
+  "session_id": "parent-session",
+  "kind": "tool.pre",
+  "tool": "Edit",
+  "ts_offset_s": 45,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "parent-session",
+   "tool_name": "Edit",
+   "tool_input": {
+    "file_path": "/repo/ui/src/App.tsx",
+    "old_string": "import { a } from './a'",
+    "new_string": "import { a, b } from './a'"
+   }
+  }
+ },
+ {
+  "session_id": "parent-session",
+  "kind": "tool.pre",
+  "tool": "Edit",
+  "ts_offset_s": 60,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "parent-session",
+   "tool_name": "Edit",
+   "tool_input": {
+    "file_path": "/repo/ui/src/App.tsx",
+    "old_string": "import { a } from './a'",
+    "new_string": "import { a, b } from './a'"
+   },
+   "agent_id": "a1b2c3",
+   "transcript_path": "/home/me/.claude/projects/-repo/parent-session/subagents/agent-a1b2c3.jsonl"
+  },
+  "agent_id": "a1b2c3"
+ },
+ {
+  "session_id": "parent-session",
+  "kind": "tool.pre",
+  "tool": "Edit",
+  "ts_offset_s": 75,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "parent-session",
+   "tool_name": "Edit",
+   "tool_input": {
+    "file_path": "/repo/ui/src/App.tsx",
+    "old_string": "import { a } from './a'",
+    "new_string": "import { a, b } from './a'"
+   },
+   "sidechain": true
+  }
+ },
+ {
+  "session_id": "parent-session",
+  "kind": "tool.pre",
+  "tool": "Edit",
+  "ts_offset_s": 90,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "parent-session",
+   "tool_name": "Edit",
+   "tool_input": {
+    "file_path": "/repo/ui/src/App.tsx",
+    "old_string": "import { a } from './a'",
+    "new_string": "import { a, b } from './a'"
+   }
+  }
+ },
+ {
+  "session_id": "parent-session",
+  "kind": "tool.pre",
+  "tool": "Edit",
+  "ts_offset_s": 105,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "parent-session",
+   "tool_name": "Edit",
+   "tool_input": {
+    "file_path": "/repo/ui/src/App.tsx",
+    "old_string": "import { a } from './a'",
+    "new_string": "import { a, b } from './a'"
+   },
+   "agent_id": "a1b2c3",
+   "transcript_path": "/home/me/.claude/projects/-repo/parent-session/subagents/agent-a1b2c3.jsonl"
+  },
+  "agent_id": "a1b2c3"
+ },
+ {
+  "session_id": "parent-session",
+  "kind": "tool.pre",
+  "tool": "Edit",
+  "ts_offset_s": 120,
+  "payload": {
+   "hook_event_name": "PreToolUse",
+   "session_id": "parent-session",
+   "tool_name": "Edit",
+   "tool_input": {
+    "file_path": "/repo/ui/src/App.tsx",
+    "old_string": "import { a } from './a'",
+    "new_string": "import { a, b } from './a'"
+   },
+   "sidechain": true
+  }
+ }
+]

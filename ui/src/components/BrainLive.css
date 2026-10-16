@@ -12,6 +12,7 @@
 }
 
 [data-brain-live="building"] .brain-live-bar,
+[data-brain-strip="building"] .brain-live-bar,
 [data-brain-sidebar-live] .brain-live-bar {
   background-image: linear-gradient(90deg, transparent 0%, color-mix(in srgb, white 35%, transparent) 50%, transparent 100%);
   background-size: 60px 100%;
@@ -36,8 +37,17 @@
   .brain-live-fix:hover { background: color-mix(in srgb, var(--color-warn) 25%, transparent); }
 }
 
+/* The folded sidebar row's glyph while a read runs: slow, and nothing else moves. */
+.brain-glyph-reading { animation: brainGlyphReading 2.8s ease-in-out infinite; }
+@keyframes brainGlyphReading {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; color: var(--color-accent); }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .brain-glyph-reading,
   .brain-live-dot,
   [data-brain-live="building"] .brain-live-bar,
+  [data-brain-strip="building"] .brain-live-bar,
   [data-brain-sidebar-live] .brain-live-bar { animation: none; }
 }

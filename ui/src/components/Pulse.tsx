@@ -401,9 +401,15 @@ function Track({
   // opens the session at that minute (PulseCanvas stops the event).
   return (
     <div data-pulse-key={s.session_id} onPointerDown={onPress} className={`border-t border-border first:border-t-0 ${dragging ? 'opacity-60' : ''}`}>
+      {/* Every row is its own grid, so every track after the name is a fixed
+        * width: with `auto` for the agents (a model name, a crowd icon) each
+        * row sized its own last column, the chart took what was left, and the
+        * dollars sat at a different x on every row (owner's screenshot,
+        * 2026-10-15). Fixed tracks make the charts one width and the money and
+        * the agents one column down the panel. */}
       <div
         onClick={onToggle}
-        className="grid cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] sm:grid-cols-[190px_1fr_92px_minmax(150px,auto)] items-center gap-x-3 gap-y-1.5 px-3 py-2 hover:bg-panel-2 text-fg"
+        className="grid cursor-pointer grid-cols-[minmax(0,1fr)_76px_128px] sm:grid-cols-[190px_minmax(0,1fr)_84px_216px] items-center gap-x-3 gap-y-1.5 px-3 py-2 hover:bg-panel-2 text-fg"
       >
         {/* Working all day in one repository used to draw six rows all labelled
           * "caprock", told apart only by a phrase like "was responding" that
@@ -448,7 +454,8 @@ function Track({
           * lifetime figure beside them invited the reader to add a number to a
           * picture it does not belong to. */}
         <div
-          className="num text-[13px] font-semibold text-right"
+          data-pulse-cost
+          className="num text-[13px] font-semibold text-right tabular-nums whitespace-nowrap"
           title={`${fmtUSD(s.stats?.cost_usd)} for the whole session`}
         >
           {fmtUSD(windowCost(pulse))}
@@ -918,15 +925,15 @@ export function WorkingNow({ s, state, repeatSample }: { s: SessionSummary; stat
   const agents = subs + 1
   const title = `${model ? `${model}${working ? '' : ' (last turn)'}` : 'model unknown'} · ${subs > 0 ? `main thread and ${subs} live subagent${subs === 1 ? '' : 's'}` : 'main thread only'}`
   return (
-    <div className="min-w-0 flex flex-col items-end gap-1">
+    <div data-pulse-agents className="min-w-0 w-full flex flex-col items-end gap-1">
       <StatePill state={state} title={repeatSample} />
-      <div className="flex items-center justify-end gap-1.5 text-[11.5px] leading-none" title={title}>
+      <div className="flex max-w-full min-w-0 items-center justify-end gap-1.5 text-[11.5px] leading-none" title={title}>
         <span className="inline-flex items-center -space-x-2" aria-hidden>
           <SessionCharacter agent={s.agent} sessionId={s.session_id} size={26} />
           {subs > 0 && <AgentCharacter who="crowd" size={26} />}
         </span>
         <span className="num text-fg whitespace-nowrap">{agents} agent{agents === 1 ? '' : 's'}</span>
-        {model && <span className="hidden sm:inline mono truncate max-w-[96px] text-fg">{model}</span>}
+        {model && <span className="hidden sm:inline mono truncate min-w-0 max-w-[96px] text-fg">{model}</span>}
         <span className="sr-only">{title}</span>
       </div>
     </div>

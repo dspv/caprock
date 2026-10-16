@@ -793,7 +793,7 @@ type loopHit struct {
 	msg string
 }
 
-// loopSeries is every call of one signature in one session.
+// loopSeries is every call of one signature in one thread of one session.
 type loopSeries struct {
 	session, agent, tool string
 	kind                 string // loopKind of the first call
@@ -806,12 +806,18 @@ type loopScan struct {
 	order  []string
 }
 
-// scanLoopSeries groups the non-read-only tool calls in [from, to) by session
-// and signature.
+// scanLoopSeries groups the non-read-only tool calls in [from, to) by thread
+// and signature: a session's main thread, and each of its subagents apart, as
+// the live detector counts them (loop.Detector) — a subagent's edits are not
+// the parent repeating itself. The sidechain test reads the compact
+// `"sidechain":true` the transcript parser writes before parsing anything,
+// so the scan's cost stays where it was.
 func scanLoopSeries(ctx context.Context, q Querier, from, to int64) (loopScan, error) {
 	out := loopScan{series: map[string]*loopSeries{}}
 	rows, err := q.QueryContext(ctx, `
 		SELECT e.session_id, COALESCE(s.agent,'claude'), COALESCE(e.tool,''), e.ts, COALESCE(e.msg_id,''),
+		       CASE WHEN COALESCE(e.agent_id,'') != '' THEN e.agent_id
+		            WHEN instr(e.payload, '"sidechain":true') > 0 THEN 'sidechain' ELSE '' END,
 		       COALESCE(CASE WHEN json_valid(e.payload) THEN e.payload -> '$.tool_input' END, '')
 		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
 		WHERE e.kind = 'tool.pre' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
@@ -821,10 +827,10 @@ func scanLoopSeries(ctx context.Context, q Querier, from, to int64) (loopScan, e
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var sess, agent, tool, msg string
+		var sess, agent, tool, msg, sub string
 		var ts int64
 		var input sql.RawBytes
-		if err := rows.Scan(&sess, &agent, &tool, &ts, &msg, &input); err != nil {
+		if err := rows.Scan(&sess, &agent, &tool, &ts, &msg, &sub, &input); err != nil {
 			return out, err
 		}
 		if tool == "" || loop.ReadOnly(tool) {
@@ -834,7 +840,7 @@ func scanLoopSeries(ctx context.Context, q Querier, from, to int64) (loopScan, e
 		if sig == "" {
 			continue
 		}
-		key := sess + "\x00" + sig
+		key := sess + "\x00" + sub + "\x00" + sig
 		s := out.series[key]
 		if s == nil {
 			// The kind is read now, while the input is at hand: keeping the

@@ -138,7 +138,7 @@ Promises enforced by code, each with the test that proves it:
 ## Out of scope (v0.x — deliberately skipped)
 
 - Pixel-art office, avatars, animations — later, as a render mode of the event stream (and only with cleanly licensed assets; Munder Difflin's LimeZu art is non-commercial).
-- Driving non-Claude agents (start, steer, stop, the task runner) — OpenCode, Codex and DeepSeek Harness are observed only, and Gemini can be started and observed; control for the rest is open work.
+- Driving non-Claude agents (start, steer, stop, the task runner) — DeepSeek Harness is observed only; Codex, OpenCode, Gemini and Hermes Agent can be started in a terminal tab and observed, and the task runner is Claude Code's alone.
 - Cloud anything, permanently: a hosted tier would mean shipping prompts,
   replies and tool output off the machine, which is the one thing this product
   exists not to do. Team features are no longer "out of scope" but "specified,

@@ -162,6 +162,8 @@ func Mark(agent string) string {
 		return "🐋"
 	case "grok":
 		return "⬛"
+	case "hermes":
+		return "🪽"
 	}
 	return "🔹"
 }

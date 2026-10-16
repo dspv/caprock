@@ -93,8 +93,10 @@ function Connect({ s, onStatus }: { s: GitHubStatus; onStatus: (s: GitHubStatus)
       <p className="text-[12.5px] leading-relaxed text-fg-muted">
         Clone from your repositories, open pull requests from a worktree, and see their checks and reviews. Caprock
         talks to GitHub only once you connect, and only to api.github.com; the token stays in Caprock's daemon. While
-        connected it also reads githubstatus.com's public status for Home's CI/CD section, and pages show pull request
-        authors' pictures from avatars.githubusercontent.com; neither is sent the token.
+        connected it also reads githubstatus.com's public status for Home's CI/CD section; when GitHub can't be
+        reached, Caprock also checks githubstatus.com to say whether GitHub or your connection is at fault, and with
+        “Watch GitHub Status” ticked it checks every 5 minutes. Pages show pull request authors' pictures from
+        avatars.githubusercontent.com. Neither site is sent the token or anything about you.
       </p>
       <div className="grid gap-1.5">
         <div className="flex flex-wrap items-center gap-2">

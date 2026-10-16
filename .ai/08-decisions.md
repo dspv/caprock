@@ -3706,6 +3706,24 @@ paired device's route list.
 heuristics cannot tell it apart — narrow the heuristics before widening
 anything.
 
+**Amended 2026-10-15 (owner: the doctor must say what is wrong in one line
+and fix it with one button).** The Advanced checkbox is gone: on the machine
+itself the doctor shows **Clean up** and a **Stop** per row by default. Each
+opens one confirmation that lists every process it would stop on its own line
+with its own checkbox, the safe ones ticked (test copies of Caprock in a
+temporary folder or worktree, terminals the daemon reaps itself, ended
+claudes, MCP servers, Claude Code leftovers, caprock commands outside an app
+bundle) and the rest shown unticked with why. One click on *Stop N* then
+stops the ticked ones. This is read as satisfying "a direct, per-item,
+confirmed user action": the person sees each item, can untick each, and
+nothing is signalled before that click; a stop-all that does not show the
+items stays ruled out. Unchanged: never automatic, never from a paired
+device, never the orchestrator or an agent, pid and start time re-checked by
+a fresh scan. Considered and not done: stopping test copies on their own
+after N minutes without a client (a Settings toggle, off by default) — that
+is an automatic stop of a process Caprock did not start and needs its own
+ADR.
+
 ## ADR-060 — Phone access may stay on across restarts, when the owner ticks it
 
 **Date:** 2026-10-14 · **Status:** accepted
@@ -4175,3 +4193,472 @@ ever; pushing the brief; creating a project from a phone.
 (GitLab, a plain git URL), which would need a path that is not gh; or
 operations lost to a daemon restart mid-way (`RISK-09`) turn out to matter
 in practice.
+
+## ADR-066 — When GitHub cannot be read, the daemon asks GitHub's status page whose fault it is; watching it is opt-in
+
+**Date:** 2026-10-15 · **Status:** accepted (owner, 2026-10-15)
+
+**Context.** A GitHub read that timed out said *Couldn't refresh: could not
+reach GitHub (api.github.com): context deadline exceeded. Check the
+connection; Caprock tries again later · showing data from 17:27*. The owner
+could not tell from it whether GitHub was down or his connection was, and
+asked for a shorter line that answers that, plus an optional informer while
+GitHub has an incident. Caprock already reads `www.githubstatus.com`'s
+public summary for Now's CI/CD section, under the GitHub integration.
+
+**Decision.**
+
+- **Same destination, same integration, one more moment.** After a GitHub
+  read fails on the network or with a 5xx (`isReachFailure`), the dashboard
+  asks `GET /v1/github/statuspage` and the daemon reads the status page —
+  the existing `github.StatusPage`: a plain GET of the public summary, no
+  token, no cookie, nothing about the user, kept five minutes, and nothing
+  while GitHub is not connected. A refused token, a spent rate limit or a
+  missing repository asks nothing: the status page cannot explain them.
+- **The summary, not `status.json`.** It carries the indicator and
+  description `status.json` has, plus the incident's name and link the line
+  shows, and it is already the one read and kept; a second URL would be a
+  second request for less.
+- **Watching is opt-in and the viewer's.** *Watch GitHub Status*, ticked in
+  that line, asks every five minutes while GitHub is connected and shows a
+  status-bar dot only while GitHub reports an incident. Off by default,
+  kept in the viewer's browser storage; the daemon's five-minute keep bounds
+  the outbound reads whatever the number of windows.
+- **Said where it is switched on** (rule 4, ADR-047): Settings → GitHub
+  says that Caprock also checks githubstatus.com when GitHub can't be
+  reached, and every five minutes with the tick; `docs/app.md` and
+  `03-contracts.md` § GitHub list it with the other destinations.
+
+**Rules out:** the browser calling githubstatus.com itself; asking it while
+GitHub is not connected; polling it without the tick.
+
+**Revisit if:** GitHub's status page moves or changes its API, or a user
+wants the watch to drive a notification rather than a dot.
+
+## ADR-067 — Your computers reach each other through the same relay; the local daemon speaks for the others
+
+**Date:** 2026-10-15 · **Status:** accepted (owner, 2026-10-15, translated:
+"yes, let's go", on the plan's defaults). Amends
+[ADR-058](#adr-058--a-phone-reaches-the-machine-from-anywhere-through-a-relay-that-carries-only-ciphertext)
+(a daemon is now a relay client as well as a host) and
+[ADR-034](#adr-034--a-phone-the-owner-chooses-can-work-on-sessions-and-nothing-else)
+(a third kind of paired device, a computer, with its own scope).
+
+**Context.** The owner works on a MacBook and keeps agents running on a Mac
+mini, and wants to see and type into the Mac mini's sessions from the MacBook
+the way a phone already can (ADR-058). Later the same should reach a Windows
+box, a Linux VM, or a hosted machine. Two shapes were weighed. *A*: the
+dashboard or app opens a relay channel to each machine itself. It was
+rejected: the UI is built for one daemon and switches machines by reloading,
+tokens and pinned keys would sit in each window's browser storage, every
+window would open its own channels, and nothing outside the page (the CLI,
+Telegram, the app's notifications, cost totals) could see another machine.
+*B*, chosen: **federation** — each daemon is a relay client to the user's
+other daemons, and the dashboard and app only ever talk to their own daemon.
+
+**What a machine is.** One Caprock daemon with its own identity:
+`remote.json` (0600) holds its Ed25519 key, which is its id on a relay, and
+its X25519 static key, which every handshake pins (ADR-058). A future hosted
+box is just another machine. To be reached, a machine has *access from
+anywhere* on — the one switch that exists today. Its relay is its own choice
+and travels in its pairing link, so two machines may use different relays.
+
+**Decisions on the plan's open questions** (the plan's defaults, as approved):
+
+- **Pairing is one-way per link.** Pairing the MacBook to the Mac mini lets
+  the MacBook reach the Mac mini and nothing back; the reverse is a separate
+  pairing. Three computers that all reach each other are six pairings, each
+  revocable on its own. A "my computers" group was rejected: it widens what
+  one stolen machine reaches.
+- **Control is granted at pairing time, on the target, with the computer's
+  name shown.** The target's owner shows a code *for a computer* (Settings,
+  or `caprock pair --computer` over SSH on a machine with no screen). The
+  controller redeems it, and the target then shows *"MacBook wants to
+  control this computer"* with **Allow** / **Deny** — on its screen, or as a
+  prompt in the terminal that ran `caprock pair --computer`. **On a headless
+  target the command line is the screen:** `caprock machines allow <name>`
+  (and `caprock machines deny <name>`), run on the target over SSH, counts
+  as Allow, exactly as the button does; `caprock machines pending` lists
+  what waits. Run on the target, by whoever holds a shell there, it is the
+  owner's decision on the machine. Until the owner
+  allows it the token reaches nothing but `GET /v1/pair/me`, which answers
+  `pending`; nothing is read before the owner has seen the name. The kind
+  travels with the code, never with the redeeming request: a device cannot
+  call itself a computer to get a computer's rights, exactly as it cannot
+  name its own role (ADR-034, amended 2026-10-14).
+- **A computer has full controller scope** — the work surface of the
+  machine itself, not the phone's limits: any folder (not only under home),
+  `command`, `args` and `chat` on `POST /v1/agents`, shell tabs and their
+  terminals, tasks, the hive and the orchestrator. It is still an allowlist
+  (`computerRoutes`, a superset of `controllerRoutes`), so a route added later
+  is closed until named. **What stays the machine's own**, whatever the
+  role — and here the code decides, not taste:
+  - *Pairing, roles, codes, access from anywhere and the LAN switch.* A
+    computer that could mint itself a second token would survive its own
+    revocation; revoke on the target has to be final.
+  - *Settings writes.* They hold the licence key and the tokens of the
+    integrations the owner turned on (Telegram, GitHub, Gemini); a paired
+    computer that could repoint them could send the target's data somewhere
+    its owner never chose (rule 4, ADR-047).
+  - *The doctor's stop* (ADR-059 rules it out for any paired device),
+    shutdown, update and restart, hooks install, and the routes that open a
+    window on the target's own screen (`open-terminal`, the editor).
+  Rule 7 is unchanged: a computer starts, types into or signals only what
+  Caprock started **on that machine, through that machine's daemon** — the
+  agent manager there enforces it as it does for the dashboard.
+- **Revocable from the target at any time.** Devices → **Remove** there kills
+  the token on the next request, and from PR2 also closes that device's open
+  sockets (`/v1/live` kept streaming to a revoked device until it reconnected;
+  the terminal already re-read the role per frame and closed with 1008).
+  On the controller, **Forget** deletes the token here and asks the target,
+  best effort, to drop it too (`DELETE /v1/pair/me`).
+- **Connected on demand.** A channel opens when a view, a request or a
+  command needs that computer, stays up while anything is open on it (a
+  terminal can be open for hours), and closes after 90 s with nothing open.
+  A computer added and never looked at costs the relay nothing. Phase 3's
+  merged session list holds one channel per computer only while a dashboard
+  is open.
+- **Pairing input is the link.** The target shows a link (and the QR the
+  phone uses); `caprock pair` prints it for a headless box. The controller
+  pastes the whole link or only the part after `?`. A six-digit code alone
+  is not enough — it cannot say which relay, which machine or which key to
+  pin — and making it enough would need a password-authenticated
+  rendezvous on the relay: new cryptography and a relay change, so not in
+  this decision.
+
+**The pairing flow.**
+
+1. On the target: *Let another computer in* (or `caprock pair --computer`)
+   turns access from anywhere on if it is off — pressing it is that decision
+   on the machine (ADR-058, amended 2026-10-14) — and shows the link, valid
+   five minutes, once.
+2. On the controller: Settings → Computers → *Add a computer*, paste.
+   Its daemon parses the link, dials the target's relay, runs Noise NK
+   against the pinned key, and redeems the code through the channel with
+   `POST /v1/pair` and its own name.
+3. On the target: the owner allows it, by name — the button, the prompt,
+   or `caprock machines allow <name>` over SSH. The device is stored with
+   `kind: "machine"` and the controller role.
+4. The controller keeps `{id, key, relay, name, token, device_id,
+   added_at}` in `machines.json`, 0600, beside `remote.json` and
+   `devices.json`. The token never leaves that file except inside the
+   channel to that one computer.
+
+**Trust model.**
+
+- *The target's owner decides everything about the target*: whether it can
+  be reached, which computer, with what role, and for how long.
+- *Not transitive.* A phone paired with the MacBook never reaches the Mac
+  mini through it: the controller's computer routes (`/v1/machines`,
+  `/v1/m/{id}/…`) are loopback-only and on no device allowlist, and a test
+  asserts that a device gets 401/403 there.
+- *A compromised relay* — ours or self-hosted — sees machine ids, IP
+  addresses, timing and sizes (keystroke cadence included), and that a
+  long-lived daemon-to-daemon link exists. It can drop, delay or refuse
+  connections. It cannot read or alter traffic (AES-GCM under Noise,
+  nonce-ordered), impersonate the target (pinned key), impersonate the
+  controller (the token is inside the ciphertext), or register the
+  target's id (challenge and Ed25519 proof).
+- *A compromised controller* holds its tokens to every target that let it
+  in, with full scope there. The cure is **Remove** on each target. Binding
+  the token to the controller's own key (a signature over the handshake hash
+  in the first frame) is Phase 4 hardening; Go-only, phones unaffected.
+- *No hosted code in the path.* Federation runs inside the two daemons; the
+  desktop window still loads only `127.0.0.1`, and `m.caprock.dev` is a
+  phone-only concern.
+
+**What crosses the relay.** Exactly what crosses it for a phone (ADR-058):
+one WebSocket per controller, Noise ciphertext inside, the frame protocol of
+`internal/remote/proto.go`. Nothing new is sent anywhere (rule 4): the relay
+is the one the target chose; the controller dials it only after the user
+pasted that target's link, which is the switch, off until then and undone by
+Forget; and the Computers panel says what it sends and to which relay
+(ADR-047). Both sides count relay messages and bytes each way (`Host.State`,
+`Client.State`), so what a computer costs the relay is measured (OQ-14), not
+guessed.
+
+**Failure modes.**
+
+- *The target is offline* (asleep, off the internet, Caprock not running,
+  access from anywhere off): the relay closes the controller with 4404, and
+  the computer reads *offline* with the reason. A failed attempt backs off
+  from 1 s to 30 s, during which a request is answered at once with the last
+  failure; a user's retry skips the wait. The target's sessions keep running
+  there (pty-host, ADR-033); an open terminal closes (1006) and reopens on a
+  new channel, resuming from its byte offset with term v2 (PR3).
+- *The relay is down or unreachable:* the same, worded as the relay.
+- *The target reset its keys or is another machine:* it hangs up on the
+  handshake; the computer reads *refused* and has to be paired again.
+- *The controller was removed there:* `GET /v1/pair/me` answers 401 through
+  a channel only that machine can speak on, so it is the target's word, not
+  a relay's; the computer reads *revoked*, stays listed until forgotten, and
+  comes back by itself if a later check is answered.
+- *A slow reader:* each stream has its own queue of 512 frames; a reader
+  that falls that far behind loses its stream, never the channel.
+- *Version skew:* the Welcome carries the target's version. A target from
+  before PR2 pairs as an ordinary device with a phone's limits — the link it
+  shows is a phone's — which still works; the Computers panel says *update
+  Mac mini for full control*.
+- *Clock skew:* nothing depends on two clocks agreeing. Codes expire on the
+  target's clock, tokens do not expire, Noise carries no timestamps, and
+  `last_seen` is the clock of whichever machine records it. Times from
+  another computer are shown as that computer stated them; the merged list
+  (Phase 3) orders by them and does not correct them.
+
+**A headless target.** A Mac mini in a cupboard, a Linux VM or a box at a
+provider has no screen: everything the target's owner does goes through
+SSH — `caprock remote on`, `caprock pair --computer` (prints the link),
+`caprock machines allow|deny <name>`, and **Remove** as `caprock
+machines revoke <name>` (all new in PR2). It must keep running with
+nobody logged in. On macOS the launchd
+agent (`caprock service install`) runs while the user's session exists,
+which on a Mac mini with automatic login is always. On Linux the systemd
+**user** unit stops when the user's last session ends unless lingering is
+on: `loginctl enable-linger <user>` (once, as root or with polkit). From
+PR2, `caprock service install` and `caprock pair --computer` on Linux say
+so when lingering is off; they never run it. Without it the target goes
+offline the moment the SSH session that set it up closes.
+
+**The Windows host.** A Windows machine is a target like any other: the
+Host, the relay client and Noise are plain Go, and sessions run under
+ConPTY in the pty-host. `machines.json`'s 0600 is not enforced there; the
+file lives in the user's own profile directory, as `devices.json` does. A
+daemon started from the Startup folder runs only while that user is logged
+in, so such a target is offline when nobody is. Paths on a target are its
+own (`C:\Users\…`) and are passed through as strings, never interpreted by
+the controller; the folder picker reads them from the target (Phase 2).
+Phase 2's smoke adds a Windows target to the matrix.
+
+**Phases.**
+
+- **Phase 1 — from the MacBook, see and type into the Mac mini's sessions.**
+  Three pull requests:
+  - *PR1 — the Go relay client, the stream layer and the peers store* (this
+    ADR's pull request). `internal/remote/client.go`: `Client` with
+    `RoundTrip` (an `http.RoundTripper` over streams) and `OpenWS`,
+    on-demand with idle close, backoff, state and counters; `ParsePairLink`,
+    `PairLink`'s inverse. `internal/peers`: `machines.json` and a `Manager`
+    that pairs by link, carries requests and sockets as the paired device,
+    checks `GET /v1/pair/me`, renames and forgets. Relay message counters
+    on `Host`. Unit tests on a real relay (`relaysrv`) and Host, and a
+    smoke in which the real binary is the target in its own home and data
+    directory, on a relay in the test on loopback. No route, no UI, no
+    daemon wiring.
+  - *PR2 — computers in the daemon.* The target side: codes for a computer
+    (`kind` on the code, `kind: "machine"` in `devices.json`), the pending
+    state and **Allow** / **Deny** (the screen, the prompt of `caprock pair
+    --computer`, and `caprock machines pending|allow|deny|revoke <name>` for
+    the computers that reach this one),
+    `computerRoutes` and the lifted spawn limits, `DELETE /v1/pair/me`, and
+    sockets closed on revoke and demotion. The controller side:
+    `internal/daemon` wiring, `GET/POST /v1/machines`, `PATCH/DELETE
+    /v1/machines/{id}`, the `/v1/m/{id}/{path…}` proxy (HTTP through
+    `httputil.ReverseProxy` on the peer's channel, WebSockets bridged, the
+    device subprotocol never echoed, `503 offline`, `404` unknown), all
+    loopback-only, and `caprock machines ls|add|forget` for the computers
+    this one reaches. The smoke grows to
+    two real daemons, the controller's routes included.
+  - *PR3 — other computers in the app.* Sessions tagged by computer in the
+    sidebar, the Session view and terminal through `/v1/m/{id}/…`,
+    Settings → Computers, offline and revoked states, and `bench/peer.mjs`
+    measuring keystroke-to-echo through the local relay and the hosted one,
+    recorded with a date (no latency figure is stated before that, rule 6).
+    And the **install hook** — the owner's goal (2026-10-15, translated):
+    "encourage installing Caprock on their other computers":
+    - *With no computer linked*, one quiet sidebar row, **+ Add a machine**,
+      opening Settings → Computers with the steps for the other machine
+      (install, `caprock remote on`, show the link). No badge, no modal.
+    - *When this machine is loaded and a linked one is not*, the New-agent
+      sheet says once — *"This Mac is busy — run it on Mac mini (12 GB
+      free)?"* (figures here are examples) — with the machine picked by one
+      click (the picker itself is Phase 2; until then the line opens that
+      computer's sessions). Shown once per load episode, dismissible, never
+      when the other machine is offline. "Loaded" and "free" are read, not
+      guessed: `/v1/resources` gains machine-wide `cpus`, `load1`,
+      `mem_total` and `mem_available` (a contract change in that PR, with
+      `.ai/03-contracts.md`), read on each machine and fetched from the
+      other through `/v1/m/{id}/v1/resources`. The thresholds are set from
+      OQ-19's measurement, not before.
+- **Phase 2 — start and finish work on another computer:** a Machine picker
+  in New agent (projects, folders, models and agents read from the target;
+  offline ones disabled); permission buttons, the queue, Changes, diff and
+  PR for a remote session; a Windows target in the smoke. A shortcut, if
+  any, goes through `keys()` and is checked on Windows and Linux (rule 12).
+- **Phase 3 — one view across computers:** one upstream `/v1/live` per
+  computer, re-published locally with `machine`; `?machines=all` on the
+  session list and the cost summary, summing what answered and naming what
+  did not (never counting it as $0, rule 6), each computer priced by its own
+  `pricing_version`; notifications and Approve/Deny for remote sessions.
+- **Phase 4 — capacity and hardening:** frame coalescing, the token bound to
+  the controller's key, and whatever OQ-14's measurements call for (a relay
+  of one's own is already `caprock remote relay`).
+
+**What is claimed, and what it costs.**
+
+- **Measure before any public claim** (rule 6). Four open questions in
+  `.ai/12-risks.md` gate the copy: the round trip over the relay (OQ-17),
+  terminal echo through a link (OQ-18), the memory and CPU a real task
+  frees on this machine when it runs elsewhere (OQ-19), and whether the
+  other machine is actually quicker at `go test` and the UI build (OQ-20).
+  **The pitch is not "faster".** It is *this Mac stays responsive*, *more
+  agents at once*, *work goes on with the lid closed* — and each of those is
+  said with a measured figure or not at all.
+- **Free, with no limit on machines, for now.** Linking computers is not a
+  paid feature and is not counted. A hosted or resold machine (a VPS we run
+  for the user) is **parked**: it would put the user's code and sessions on
+  a server of ours, which rule 4 does not allow as things stand, and its
+  only selling point would be speed nobody has measured (OQ-20).
+
+No migration in Phases 1–3: nothing about another computer is stored in
+SQLite.
+
+**Rules out:** the dashboard or app holding relay channels or tokens; access
+that is transitive or symmetric by default; a computer naming its own kind
+or role; a computer managing the target's pairing, settings or the doctor's
+stop; typing into or signalling anything the target's Caprock did not start;
+a change to the relay for this; stating a latency, capacity or speed figure
+before it is measured; selling "faster"; a limit on linked machines or a
+hosted machine of ours, for now.
+
+**Revisit if:** the hosted relay's limits (OQ-14) are reached by computers
+rather than phones; a user needs a computer that may manage the target's
+pairing (a fleet); or a short typed code turns out to be needed — that is a
+PAKE on the relay and its own decision.
+
+## ADR-068 — The dashboard bundle is rebuilt on master, never carried by a pull request
+
+**Date:** 2026-10-15 · **Status:** accepted (owner, 2026-10-15)
+
+**Context.** `internal/api/dist`, the built dashboard, is committed so `go
+install github.com/dspv/caprock/cmd/caprock@latest` embeds a real UI without
+Node, and CI failed every pull request whose copy differed from a fresh
+build. So every PR that touched `ui/` carried a rebuilt bundle, and the
+bundle's file names are content hashes: two such PRs always conflicted in
+`dist` (a modified `index.html`, one deleted and one added asset each),
+whatever else they changed. Of the last 30 merged PRs on 2026-10-15, 23
+carried `dist` (429 file changes between them); #663, #667, #669 and #670
+were hand-merged that day, some twice, only to rebuild it, and the CI panel
+was a column of red *Conflict*.
+
+**Decision.**
+
+- **A pull request never changes `internal/api/dist`.** `ci.yml`'s `no dist
+  in the PR` job diffs the PR's merge commit against its first parent and
+  fails with the command that drops the change (`make dist-reset`, or
+  `git checkout origin/master -- internal/api/dist` after a rebase).
+  `make check` runs the same test locally (`dist-untouched`, against the
+  branch's merge base with `origin/master`).
+- **Master rebuilds it.** `.github/workflows/dist.yml` runs on every push to
+  `master` that touches `ui/`: `make ui`, and when the output differs, a
+  `chore(dist): rebuild the dashboard for <sha>` commit pushed to `master`
+  with `GITHUB_TOKEN`. A lost push race rebuilds from the new head (three
+  tries). It cannot loop: the commit is outside the workflow's `paths`, a
+  `GITHUB_TOKEN` push starts no workflow, and the job skips the Actions bot.
+  `master` has no branch protection and no rulesets (checked 2026-10-15), and
+  `contents: write` is granted per job, so the push is allowed as is.
+- **Go CI keeps building against the committed copy.** It may be one merge
+  behind `ui/`, but no Go test reads the dashboard's bytes; the `ui` job
+  still proves the bundle builds, and `make build (windows-latest)` builds it
+  on Windows. Adding `make ui` to the three go legs would cost an `npm ci` on
+  each for nothing a Go test can see.
+- **A tag holds its own UI, built.** Release `verify (ui)` and `make
+  release-ready` run `dist-check` (fresh build equals the committed copy), so
+  `go install …@vX.Y.Z` and `@latest`, which read the tag's tree, embed the
+  tag's dashboard. The releaser tags after master's rebuild commit lands.
+  goreleaser keeps building the UI from the tag's `ui/` before it compiles.
+
+**Rules out:** carrying `dist` in PRs with a merge driver (`.gitattributes`
+drivers are not run by GitHub's merge, so the panel stays red); not
+committing `dist` at all (`go install` would embed the placeholder page);
+letting a release build its UI and ship with a stale committed copy (the
+release binaries would be right and `go install @latest` silently wrong);
+a bot opening a rebuild PR per merge (a second queue to land, for a commit
+nobody reviews).
+
+**Revisit if:** `master` gets branch protection that blocks the Actions push
+(then the rebuild needs a bypass allowance, or arrives as an auto-merged PR),
+the Vite build stops being deterministic across machines (then `dist-check`
+cannot gate a tag), or `go install` stops being a supported install path.
+
+---
+
+## ADR-069 — Hermes Agent is read from its own database, priced by Hermes, with its background runs shown apart; Caprock can start it
+
+**Date:** 2026-10-15 · **Status:** accepted (owner, 2026-10-11, translated:
+install Hermes, test it, and ship Hermes support in Caprock if it works; a
+user asked for it). Details and the source lines it rests on:
+[24-hermes.md](24-hermes.md).
+
+**Context.** Hermes Agent (Nous Research) keeps every conversation — its CLI
+and TUI, its cron jobs, chats through its gateway — in one SQLite database,
+`<hermes home>/state.db`, with per-session token counters and its own cost.
+It also has shell hooks and signed outbound webhooks, but cost is only in the
+database. Read from Hermes 0.21.6's source and `--help`, not from a session
+run against an API.
+
+**Decisions.**
+
+- **Observe by reading the database, read-only, as OpenCode's is.** Opened
+  `mode=ro` with a busy timeout and one connection; never `immutable=1`, which
+  in WAL mode misses the WAL. Polled every five seconds; a locked or missing
+  database skips a pass and never fails startup. A column an older Hermes
+  lacks reads as NULL. No hook or webhook is installed into Hermes.
+- **Hermes's figure, never ours.** Its turns are not priced from Caprock's
+  table (`event.SourceHermes`, like `SourceOpenCode`). The provider's figure
+  when Hermes says it is real (`cost_status = 'actual'` or a provider billing
+  `cost_source`), its estimate otherwise, $0 on a subscription route, and no
+  cost — unpriced — when Hermes has none (rule 6). Each usage event says which
+  in `cost_basis`, and the Cost screen labels the two kinds separately.
+- **Usage is reconciled per session.** Hermes stores usage on the session
+  row, not on messages, so each pass records the difference between Hermes's
+  counters and what Caprock holds — on the newest new reply, or on a
+  `usage_only` turn keyed by the counters — so totals equal Hermes's and a
+  re-read adds nothing.
+- **Subagents by Hermes's own markers.** A child with `_delegate_from` is a
+  subagent filed in its parent (`agent_id`, `sidechain`); a branch, a reset
+  and a compression continuation are sessions of their own. Rows are summed,
+  not rolled up: Hermes folds a child's cost into its parent in memory only.
+- **Background is Hermes's definition.** Every source outside Hermes's
+  `ATTENDED_SOURCES` (`cli`, `tui`, `desktop`, `acp`) — cron, gateway chats,
+  one-shot runs — is background, shown as its own figure, by source, inside
+  the total.
+- **Liveness.** Hermes records no process per session: an observed session
+  goes by the clock, like the other imported agents, and ends when Hermes
+  writes `ended_at`.
+- **Launch.** `New agent → Hermes` runs `hermes chat` (`-m`, `--yolo` for
+  Bypass, `-q` for the first message, `chat --resume <id>` to continue; no
+  fork). Hermes cannot be told a session id, so the row is linked to the
+  spawn by folder and the start time Hermes's id carries (`sessionlink`'s
+  heuristic match, as Codex's). Caprock-started sessions are controllable;
+  observed ones are not (rule 7). When no model is configured the catalog
+  offers the user's own `hermes model` as the step, typed in a shell tab,
+  never run; Caprock only checks whether the key is set and never enters a
+  credential.
+- **The mark is ours.** No Nous Research logo is licensed for use here, so
+  Hermes gets a glyph drawn in the repo (a winged H) and a teal of our own.
+
+**Rules out:** installing Hermes shell hooks or webhooks for cost (the
+database is the only place it is); pricing Hermes's tokens with Caprock's
+table; writing to `state.db` in any way; folding background runs out of the
+total.
+
+**Revisit if:** Hermes starts writing usage per message (the reconciliation
+can go); Hermes gets a flag that names a session's id (the link becomes
+exact); a user runs several Hermes profiles (read each profile's database); or
+a figure is found where Caprock's and Hermes's own `insights` disagree.
+
+## ADR-070: A Page tab — withdrawn (2026-10-16)
+
+**Status: withdrawn.** 0.123.0 shipped a Page tab: a web page in a native
+child webview of the main window, which needed Tauri's `unstable` feature.
+On macOS 27 the app then crashed twice in eight minutes (0.124.0, the
+owner's machine): a WebContent process was killed by WebKit's pasteboard
+check (`WebPasteboardProxy::determineDataOwner`, an `EXC_GUARD` in namespace
+WEBKIT) and the UI process faulted in `WebProcessProxy::shutDown`. Drops also
+stopped arriving once the dashboard became a child webview, and ⌘-click
+opened links inside instead of in the user's browser, which the owner
+rejected: the default browser stays the default (owner, 2026-10-16). 0.124.1
+removes the Page tab and the `unstable` feature. A return needs the crash
+understood first, and links stay in the default browser unless the user
+chooses otherwise.
+

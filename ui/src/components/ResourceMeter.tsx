@@ -7,30 +7,99 @@
  * Figures are the daemon's, sampled every 5 s while a dashboard is open. CPU
  * is summed over the session's process tree, so 250% is two and a half cores.
  */
-import { memo, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import type { SessionSummary } from '@/lib/api'
 import { api, errText } from '@/lib/api'
 import { fmtCPU, fmtMem, refreshResources, useResources, useSessionHot, useSessionResources, type ReapResult, type SessionResources } from '@/lib/resources'
 import { SectionLabel } from './Cockpit'
+import { ResourcePopover } from './ResourcePopover'
 
 function topLines(r: SessionResources): string {
   return r.top.map((p) => `${p.name} · ${fmtCPU(p.cpu_pct, r.warm)} · ${fmtMem(p.mem_bytes)}`).join('\n')
 }
 
-/** The status bar's "agent cpu 182% ram 1.2 GB" for the session in front: its processes, not Caprock's. */
-export function SessionLoad({ sessionId }: { sessionId: string }) {
+/** How long the pointer rests on the figures before the popover opens, and how long it may leave before it closes. */
+export const OPEN_DELAY_MS = 250
+const CLOSE_GRACE_MS = 200
+
+/**
+ * The status bar's "agent cpu 182% ram 1.2 GB" for the session in front: its
+ * processes, not Caprock's. Hovering, focusing or clicking it opens the
+ * resource popover (ResourcePopover.tsx): a click keeps it open until Escape,
+ * the close button or a click outside.
+ */
+export function SessionLoad({ sessionId, sessions, onOpenSession }: {
+  sessionId: string
+  /** For the popover's names of the sessions using the most. */
+  sessions?: SessionSummary[]
+  /** Brings a session's tab forward: the popover's rows. */
+  onOpenSession?: (id: string) => void
+}) {
   const r = useSessionResources(sessionId)
+  const anchor = useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  const timer = useRef<number | undefined>(undefined)
+  const refocus = useRef(false)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const show = (delay: number) => {
+    window.clearTimeout(timer.current)
+    if (delay) timer.current = window.setTimeout(() => setOpen(true), delay)
+    else setOpen(true)
+  }
+  const hide = () => {
+    window.clearTimeout(timer.current)
+    if (!pinned) timer.current = window.setTimeout(() => setOpen(false), CLOSE_GRACE_MS)
+  }
+  const close = useCallback(() => {
+    window.clearTimeout(timer.current)
+    setOpen(false)
+    setPinned(false)
+  }, [])
+  // A pinned popover closes on a click anywhere but it and its figures.
+  useEffect(() => {
+    if (!pinned) return
+    const onDown = (e: globalThis.MouseEvent) => {
+      const t = e.target as Element | null
+      if (anchor.current?.contains(t) || t?.closest?.('[data-resource-popover]')) return
+      close()
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [pinned, close])
   if (!r) return null
-  const title = [
+  const title = open ? undefined : [
     `This session's own processes — the agent and everything it runs, not Caprock: ${r.procs} ${r.procs === 1 ? 'process' : 'processes'}, CPU summed (100% is one core), memory resident`,
     topLines(r),
+    'Hover or click for the last hour.',
   ].filter(Boolean).join('\n')
   return (
-    <span data-session-load className="inline-flex items-center gap-1.5 whitespace-nowrap" title={title}>
-      {/* Said in words (owner, 2026-10-12: "is the second one memory, and is
-        * it Caprock's or everything?"): it is the session's, and it is RAM. */}
-      agent cpu <span className={`num ${r.hot ? 'text-warn' : 'text-fg'}`}>{fmtCPU(r.cpu_pct, r.warm)}</span>
-      {' '}ram <span className="num text-fg">{fmtMem(r.mem_bytes)}</span>
-    </span>
+    <>
+      <button ref={anchor} type="button" data-session-load aria-haspopup="dialog" aria-expanded={open}
+        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-[4px] outline-none hover:text-fg focus-visible:ring-1 focus-visible:ring-accent"
+        title={title}
+        onMouseEnter={() => show(OPEN_DELAY_MS)} onMouseLeave={hide}
+        onFocus={() => { if (!refocus.current) show(0) }}
+        onBlur={(e) => { if (!pinned && !(e.relatedTarget as Element | null)?.closest?.('[data-resource-popover]')) hide() }}
+        onClick={() => { if (pinned) close(); else { setPinned(true); show(0) } }}>
+        {/* Said in words (owner, 2026-10-12: "is the second one memory, and is
+          * it Caprock's or everything?"): it is the session's, and it is RAM. */}
+        agent cpu <span className={`num ${r.hot ? 'text-warn' : 'text-fg'}`}>{fmtCPU(r.cpu_pct, r.warm)}</span>
+        {' '}ram <span className="num text-fg">{fmtMem(r.mem_bytes)}</span>
+      </button>
+      {open && (
+        <ResourcePopover sessionId={sessionId} sessions={sessions} anchor={anchor} onOpenSession={onOpenSession}
+          onClose={(back) => {
+            close()
+            // Escape and the close button hand the focus back, which must not open it again.
+            if (!back) return
+            refocus.current = true
+            anchor.current?.focus({ preventScroll: true })
+            refocus.current = false
+          }}
+          onEnter={() => window.clearTimeout(timer.current)} onLeave={hide} />
+      )}
+    </>
   )
 }
 

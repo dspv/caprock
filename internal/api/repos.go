@@ -184,7 +184,7 @@ func (s *Server) repoRoot(root string) string {
 // the background.
 func (s *Server) handleLocalRepos(w http.ResponseWriter, r *http.Request) {
 	root := s.browseRoot()
-	if deviceFrom(r) != nil {
+	if phoneLimited(r) {
 		root = s.deviceBrowseRoot()
 	}
 	dir := s.repoRoot(root)

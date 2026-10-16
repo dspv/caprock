@@ -90,6 +90,16 @@ function subscribe(fn: () => void) {
   return () => { subs.delete(fn) }
 }
 
+/** Every report as it lands (the popover's history appends them); returns the unsubscribe. */
+export function onResources(fn: (r: ResourceReport) => void): () => void {
+  return subscribe(() => { if (report) fn(report) })
+}
+
+/** The latest report, outside React. */
+export function latestResources(): ResourceReport | undefined {
+  return report
+}
+
 /** Ask the daemon now, outside the frame cadence (Settings' reap, a first mount). */
 export function refreshResources(): Promise<void> {
   return api.resources().then(set).catch(() => { /* an older daemon: no meter */ })

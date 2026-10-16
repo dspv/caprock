@@ -75,3 +75,12 @@ export const CaprockMark = ({ size = 16 }: { size?: number }) => (
     <rect x="6" y="22" width="20" height="3" fill="var(--color-accent)" />
   </svg>
 )
+/** Two sheets, one over the other: copy. */
+export const CopyIcon = (p: P) => <Icon {...p}><rect x="8.5" y="8.5" width="12" height="12" rx="2" /><path d="M15.5 8.5V5.5a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3" /></Icon>
+/** An at sign: a file reference an agent reads (`@path`). */
+export const AtIcon = (p: P) => <Icon {...p}><circle cx="12" cy="12" r="3.75" /><path d="M15.75 8.5v4.75a2.5 2.5 0 0 0 5 0V12a8.75 8.75 0 1 0-3.5 7" /></Icon>
+export const DownloadIcon = (p: P) => <Icon {...p}><path d="M12 4v11M7 10.5l5 5 5-5M5 19.5h14" /></Icon>
+/** A paper plane: hand something to a session. */
+export const SendIcon = (p: P) => <Icon {...p}><path d="M20.5 3.5 10 14M20.5 3.5 14 20.5l-4-6.5-6.5-4z" /></Icon>
+/** Lines of differing length: a document's contents. */
+export const ListIcon = (p: P) => <Icon {...p}><path d="M4 6h16M7 12h13M10 18h10" /></Icon>
