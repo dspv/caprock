@@ -1965,6 +1965,12 @@ tells a page where a file lives.
   terminal's routing and quoting). A real Finder drag needs a person: OS
   automation is not used from tests.
 
+The drop is heard as the dashboard **webview's** event
+(`WebviewEvent::DragDrop`), not the window's: the `unstable` feature a Page
+tab needs makes the dashboard a child webview of its window, and Tauri then
+reports drops only to the webview. 0.123.0 listened on the window and so
+dropped every file on the floor.
+
 ## Notifications
 
 - **One source.** `internal/alerts` already decides when the phone hears about
