@@ -12,6 +12,48 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.127.0] - 2026-10-16
+
+### Added
+
+- **ui:** Halloween pumpkins for Claude's portrait: eight of them (a
+  jack-o'-lantern, a witch, a vampire, a ghost, a black cat, a mummy, a
+  monster and a lantern) on a new *Pumpkins* tab of the face menu, and
+  *A pumpkin per session* in Settings → Appearance. Nobody's current face
+  changes.
+  Through October the quiet *try a duck?* line beside an idle portrait
+  says *try a pumpkin?* instead and opens the pumpkins.
+- **ui:** the Pipeline's *Next release* panel says where the release itself
+  is: the next version's bump and why (*minor · a feature since …*,
+  *patch · fixes only*), then its stages as the pull request rows' pills —
+  merged → release PR → CI → tag → builds → published → site — the current
+  one filled, done ones ticked, and any stage Caprock cannot read (the
+  site's deploy) left neutral with a *?* rather than guessed. A tag already
+  pushed and still building shows above as *releasing*, its builds counted
+  as files on the release against the release before it. Under the rows,
+  one line for the last release: when, how many files, and a link.
+- **github:** the releases the board lists carry their uploaded file count
+  (`assets`), from the same request.
+
+### Changed
+
+- **phone:** a session or chat can be ended from wherever the phone lists it,
+  not only from inside it (owner: trial chats could not be ended). Each live
+  row Caprock started — the home's Chats and Continue, All sessions, the Chats
+  screen — has *End session…* in its ⋯ (a swipe left opens it too), one
+  confirm, then the polite stop that keeps the conversation; the row then
+  reads *ended*, and an ended chat stays in Chats to be continued. A chat's
+  own ⋯ has *End this chat…* first. Where End is not offered the row and the
+  session's sheet say why in one line: a session started in your own terminal
+  is never stopped by Caprock, and a phone that can only watch is told where
+  to allow control (Settings → Use on your phone → Let it control sessions).
+
+### Fixed
+
+- **ui:** the version panel can check again right after a check. When you are
+  on the latest version and the last check is recent, the "Checked 4m ago"
+  line carries a *Check again* link beside the What's new button.
+
 ## [0.126.0] - 2026-10-16
 
 ### Added

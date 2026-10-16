@@ -210,6 +210,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-16 — 0.127.0: end sessions from the phone, a release status on Pipeline
+
+A minor release because it carries features, landed as one batch PR (#725). Every live row Caprock started can be ended from the phone (menu or swipe), and a chat from its sheet; when ending is not allowed the row says why. Pipeline's Next release panel opens with the release's own status: the version and why, its stages from merged PRs to published, unknown stages left neutral, and the last release. The version panel can check again right after a check.
+
 ### 2026-10-16 — 0.126.0: Chats, ⌘W closes the tab, and Waiting rows jump to the terminal
 
 A minor release because it carries features, landed as one batch PR (#723). Chats are a kind of session (ADR-071): a list of their own with search, rename, archive and delete, one tap to start on the phone and the desktop, and the files a chat made shown beside it — kept out of the work lists. ⌘W closes the tab in front, not the window. A Waiting for you row opens that session's terminal in one click and names the session. The version panel says you are on the latest version and shows one button; the Premium chips are big enough to see.
