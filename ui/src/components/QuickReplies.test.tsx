@@ -4,6 +4,9 @@
  * nothing is drawn while it is empty. Which panes get the row (only sessions
  * Caprock started) is TerminalTabs.test.tsx's.
  */
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { QuickReplies } from './QuickReplies'
@@ -49,6 +52,21 @@ describe('QuickReplies', () => {
     await act(async () => { fireEvent.click(screen.getByText('Run tests')) })
     expect(onSend).toHaveBeenCalledWith('Run the tests and fix what fails.')
     expect(queue).not.toHaveBeenCalled()
+  })
+
+  it('sits on the page’s own panel, and on the terminal’s ground only on the slab', () => {
+    // --color-term-bg is dark in every theme outside the slab: a chip that
+    // took it drew dark pills on the phone's light chat (2026-10-16).
+    const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'design', 'tokens.css'), 'utf8')
+    const rule = (head: string) => {
+      const at = css.indexOf(`\n${head} {`)
+      expect(at, head).toBeGreaterThan(-1)
+      return css.slice(at, css.indexOf('}', at))
+    }
+    const base = rule('.app-quick')
+    expect(base).toContain('var(--color-panel)')
+    expect(base).not.toContain('--color-term-bg')
+    expect(rule('.app-slab .app-quick')).toContain('var(--color-term-bg)')
   })
 
   it('draws nothing while the list is empty', () => {
