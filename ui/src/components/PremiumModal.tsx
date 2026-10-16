@@ -450,9 +450,9 @@ function AlsoIn({ opened, shown, onShow, now }: { opened: PaidFeature; shown: Pa
       aria-label="Also in Premium"
       data-dialog-later
       onKeyDown={onKeyDown}
-      className="mt-3 flex flex-wrap items-center gap-[2px] sm:gap-1"
+      className="mt-4 flex flex-wrap items-center gap-1.5 sm:gap-2"
     >
-      <span aria-hidden className="text-[10.5px] text-fg-faint sm:mr-0.5 sm:text-[11px]">Also in Premium:</span>
+      <span aria-hidden className="mr-0.5 text-[12.5px] font-medium text-fg-muted sm:text-[13px]">Also in Premium:</span>
       {others.map((k) => {
         const f = FEATURES[k]
         const on = k === shown
@@ -463,14 +463,14 @@ function AlsoIn({ opened, shown, onShow, now }: { opened: PaidFeature; shown: Pa
             aria-pressed={on}
             tabIndex={k === tabStop ? 0 : -1}
             onClick={() => onShow(on ? opened : k)}
-            className={`inline-flex items-center gap-[2px] whitespace-nowrap sm:gap-[3px] rounded-full border px-[4px] py-[1px] text-[10.5px] leading-[16px] sm:px-[6px] sm:text-[11px] ${
+            className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-[3px] text-[12px] leading-[18px] sm:gap-1.5 sm:px-2.5 sm:py-1 sm:text-[13px] ${
               on ? 'border-accent bg-accent/10 text-fg' : 'border-border text-fg-muted hover:border-border-strong hover:text-fg'
             }`}
           >
-            <span aria-hidden className="hidden text-accent sm:inline-flex [&>svg]:h-[11px] [&>svg]:w-[11px]">{Icon[f.icon]}</span>
+            <span aria-hidden className="hidden text-accent sm:inline-flex [&>svg]:h-[13px] [&>svg]:w-[13px]">{Icon[f.icon]}</span>
             {f.short}
             {isNew(k, now) && (
-              <span className="font-mono text-[8.5px] font-semibold uppercase tracking-[0.04em] text-accent">New</span>
+              <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.04em] text-accent">New</span>
             )}
           </button>
         )
