@@ -44,6 +44,19 @@ function load() {
   )
 }
 
+/** The defaults that act on a repository (config.DefaultQuickReplies), by
+ *  their text: a chat (ADR-071) has no tests to run and nothing to commit. */
+const CODING_DEFAULTS = new Set([
+  'Run the tests and fix what fails.',
+  'Commit the changes with a clear message.',
+])
+
+/** The replies offered in a chat: every one but the coding defaults. A reply
+ *  the user wrote or reworded is theirs and stays. */
+export function forChat(items: QuickReply[]): QuickReply[] {
+  return items.filter((q) => !CODING_DEFAULTS.has(q.text.trim()))
+}
+
 /** The list in use; empty until the daemon has answered. */
 export function useQuickReplies(): QuickReply[] {
   useEffect(load, [])

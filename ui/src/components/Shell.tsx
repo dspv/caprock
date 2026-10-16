@@ -55,6 +55,9 @@ const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] =
   // because it is what Home's Work strip opens and the page the owner asked
   // to see as a project manager. ⇧⌘W opens it.
   { route: { name: 'work' }, label: 'Work' },
+  // Chats (ADR-071): conversations started to ask something, kept, counted
+  // and searchable apart from the work sessions.
+  { route: { name: 'chats' }, label: 'Chats', phase: 'new' },
   { route: { name: 'cost' }, label: 'Cost' },
   // 'History' read as a log of past sessions. The screen is the opposite: one
   // set of lifetime totals — every session, every day, what it all cost —
@@ -89,7 +92,7 @@ const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] =
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
   const link = useLiveLink()
   const [plan, savePlan] = usePlan()
-  const active = (r: Route) => (r.name === route.name) || (r.name === 'now' && route.name === 'session')
+  const active = (r: Route) => (r.name === route.name) || (r.name === 'now' && route.name === 'session') || (r.name === 'chats' && route.name === 'chat')
   // Inside the desktop app the window already carries the link state, the
   // version and the theme (status strip, sidebar), and the website's footer
   // is the website's: a second set in the dashboard read as another app.
@@ -101,10 +104,12 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   // the offers and the site footer are not drawn there. Its own header has
   // the way back to Now and the connection's state.
   const narrow = useNarrowScreen()
-  const immersive = !app && narrow && route.name === 'session'
+  // A chat is the same: a conversation, the whole screen (screens/Chat.tsx).
+  const immersive = !app && narrow && (route.name === 'session' || route.name === 'chat')
   // The phone home is an app's first screen: one compact bar, no offers and
-  // no site footer (components/PhoneBar, PhoneHome).
-  const phoneHome = !app && narrow && route.name === 'now' && !route.full
+  // no site footer (components/PhoneBar, PhoneHome). The Chats list is one
+  // of its screens, a messenger's list, under the same bar.
+  const phoneHome = !app && narrow && ((route.name === 'now' && !route.full) || route.name === 'chats')
   const home = isHome(route)
   const title = pageTitle(route)
   // The browser tab says it too ("Pipeline · caprock"); the app's window is not a tab.

@@ -72,7 +72,14 @@ export const test = base.extend<{ app: App; stand: StandState }>({
     const problems: string[] = []
     // The console says only "Failed to load resource" for a 4xx/5xx; the
     // URL comes from its location.
-    page.on('console', (m) => { if (m.type() === 'error') problems.push(`console.error: ${m.text()} (${m.location().url})`) })
+    page.on('console', (m) => {
+      if (m.type() !== 'error') return
+      // A chat's HTML file is shown in a frame with no scripts (ADR-071);
+      // the init script below is offered to every frame, and the sandbox
+      // refusing it is the sandbox working.
+      if (/^Blocked script execution in 'about:srcdoc' because the document's frame is sandboxed/.test(m.text())) return
+      problems.push(`console.error: ${m.text()} (${m.location().url})`)
+    })
     page.on('pageerror', (e) => problems.push(`uncaught: ${e.message}`))
     // Nothing leaves the machine (CLAUDE.md rule 4): every request goes to
     // the stand, or is the page's own data.

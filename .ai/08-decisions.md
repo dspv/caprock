@@ -4698,3 +4698,90 @@ removes the Page tab and the `unstable` feature. A return needs the crash
 understood first, and links stay in the default browser unless the user
 chooses otherwise.
 
+
+---
+
+## ADR-071 — Chats are a kind of session: marked, listed apart, started in one tap, read as a conversation
+
+**Date:** 2026-10-16 · **Status:** accepted (owner, 2026-10-16, translated:
+"everyone asked for it, me too" — plain chats on the phone that are stored,
+with the files they produce viewable; Quick chat is one button with at most a model choice; chats stored
+separately, marked, counted, hideable and searchable; sync with Claude and
+ChatGPT later). Screens: [04-ui.md § Chats](04-ui.md#chats); routes and DDL:
+[03-contracts.md § Chats](03-contracts.md#chats-http).
+
+**Context (the audit, before this change).**
+
+- **Quick chat** (⌥⌘N, the sidebar, the + menu, the palette in the app; the
+  Now screen's button in the browser) sent `POST /v1/agents {chat: true}`. The
+  daemon made one folder per chat, `<data_dir>/chats/<YYYY-MM-DD-HHMMSS>[-N]`
+  (`agents.newChatDir`), and passed `chats/` as `--add-dir`. In the app it
+  opened a vendor/model chooser first (QuickChatSheet, last choice in
+  `caprock.quickchat`); the chat then opened as a **terminal** tab under
+  "Outside projects", titled "Quick chat · <model>".
+- **The `chats/` folder** was swept of empty folders after 24 hours with no
+  session. Nothing in the database said a session was a chat: the store
+  labelled the project `chat · <date>` and the UI recognised one by its path
+  (`isQuickChat`).
+- **The phone home's composer** ("Ask, or jot something down… / Start chat")
+  always started in a project; an empty field opened the New chat sheet, which
+  required one. A controller was refused `chat` (ADR-034's spawn rule), so a
+  phone could not start a plain chat at all.
+- **ChatView** (WP-14) was the conversation view of any session: the Session
+  screen's Chat tab, the app's Chat toggle, an observed pane.
+- **Session lists** (`GET /v1/sessions`: Now, the sidebar, the phone's
+  Continue) mixed chats in with work. There was no list of chats, no count,
+  search or archive, and removal was machine-only (ADR-037).
+
+**Decisions.**
+
+- **A flag on the session, and an archive time.** Migration 0059 adds
+  `sessions.chat` and `sessions.archived_at` and backfills `chat` from the
+  folder name, so chats from before the change are chats. `Spawn` marks a
+  session whose folder is one of Caprock's chat folders (`IsChatDir`: a direct
+  child of `chats/`), including a chat resumed in place. The path check stays
+  in the UI for a row the daemon has not marked yet.
+- **Listed apart.** `GET /v1/chats` lists chats newest first, with a search,
+  an archived view and the counts; `GET /v1/sessions?chats=exclude` is the
+  work list (Now, the phone's Continue), and the sidebar shows a chat only
+  while it has a tab or waits on the user. A chat is titled by its name, else
+  its first message.
+- **One tap.** Quick chat starts at once on the remembered model (or the
+  default), wherever it is offered: ⌥⌘N, the sidebar, the phone home's empty
+  field, the Chats screen. A compact model chip (vendor · model) changes the
+  remembered choice; the app keeps "Quick chat with…" for the full chooser.
+  This replaces the 2026-10-12 decision that Quick chat opens the chooser first.
+- **A chat is read as a conversation, never a terminal.** `#/chats/<id>` is
+  ChatView with a messenger's field; in the app a chat tab opens on ChatView
+  (the Terminal toggle stays). An ended chat can be continued in place
+  (`--resume` in its own folder).
+- **Files.** `GET /v1/chats/{id}/files` lists the chat folder (no dot names,
+  no `node_modules`, no symlinks, at most 500); `GET /v1/chats/{id}/file`
+  serves one, at most 50 MB, only inside the folder after symlinks are
+  resolved. Everything but PDF is served with `nosniff` and a CSP of
+  `default-src 'none'` plus `sandbox`; the viewer renders Markdown with the
+  dashboard's reader, HTML in an iframe with `sandbox=""` (no scripts, no
+  same origin) and the same CSP in its `srcdoc`, PDF in the browser's own
+  viewer, images as images. Every file can be downloaded.
+- **Amends ADR-034 (the phone).** A controller may start a chat (`chat: true`
+  with no folder: the daemon picks it) and continue one in its own chat
+  folder. `command` and `args` stay refused, and a chat with any other folder
+  is refused.
+- **Amends ADR-037 (removal).** For chats only, a controller may archive
+  (`PUT /v1/chats/{id}/archived`) and delete (`DELETE /v1/chats/{id}`).
+  Delete is confirmed in the UI, stops the chat's process only when Caprock
+  started it (rule 7: a live chat Caprock does not hold is a 409), tombstones
+  the row as ADR-037 does, and removes the chat's folder when no other session
+  uses it. Work sessions stay machine-only.
+
+**Rules out:** a separate table for chats (a chat is a session, and every
+screen that reads sessions keeps working); telling a chat by its path alone
+(a moved data dir or a renamed folder would lose it); serving a chat's HTML
+with scripts or the dashboard's origin; deleting a chat folder another
+session still uses; syncing with Claude.ai or ChatGPT now (an open question,
+[OQ-22](12-risks.md)).
+
+**Revisit if:** users want chats in a project folder of their choosing (then
+the flag is set on spawn, not derived from the folder); a chat's files need
+scripts to be useful (an opt-in per file, never by default); or the sync in
+OQ-22 is decided.

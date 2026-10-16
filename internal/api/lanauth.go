@@ -361,6 +361,13 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/sessions/{id}/commands": true,
 	"GET /v1/sessions/{id}/files":    true,
 
+	// Chats (ADR-071): the list, and the files a chat wrote in its own
+	// folder, for its viewer. A chat is a session, and its session is a
+	// read; the files are served under a sandboxing policy (chats.go).
+	"GET /v1/chats":            true,
+	"GET /v1/chats/{id}/files": true,
+	"GET /v1/chats/{id}/file":  true,
+
 	// The projects list, a project's worktrees and the clones in flight
 	// (WP-05, WP-08): what the sidebar shows, as the session list is.
 	"GET /v1/projects":                true,
@@ -447,6 +454,14 @@ var controllerRoutes = map[string]bool{
 	// Rename a session, as its tab and sidebar row do on the machine: a
 	// label in Caprock's own database, which runs nothing.
 	"PUT /v1/sessions/{id}/name": true,
+
+	// Archive a chat, and delete one (ADR-071, amending ADR-037 for chats
+	// only): a chat is the user's own conversation, started from the phone
+	// as often as not, and kept or thrown away there too. Its session is
+	// removed with a tombstone as on the machine; a work session is not
+	// removable from a phone.
+	"PUT /v1/chats/{id}/archived": true,
+	"DELETE /v1/chats/{id}":       true,
 
 	// Change an owned session's permission mode (ADR-054): Shift+Tab typed
 	// in, which a controller can already type, or the same conversation

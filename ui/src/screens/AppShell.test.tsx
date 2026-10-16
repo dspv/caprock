@@ -104,6 +104,7 @@ beforeEach(() => {
   spawned.shells = 0
   spawned.health = 'idle'
   spawned.signals = []
+  spawned.reqs = []
   sessions.splice(3)
   localStorage.clear()
   // Most of these were written for the Tree sidebar; Flat, a new viewer's default, has its own tests.
@@ -532,51 +533,53 @@ describe('the app workspace', () => {
     }
   }, 20_000)
 
-  // A click asks which vendor and model, and so does ⌥⌘N since 2026-10-12
-  // (owner: "Quick chat opened a terminal without asking with whom"); the
-  // last one used is picked, so Enter alone starts it.
-  it('starts a quick chat in a tab from the sidebar’s chooser, without leaving the workspace', async () => {
+  // One keystroke, one chat (ADR-071; owner, 2026-10-16): the sidebar's
+  // Quick chat and ⌥⌘N start one at once on the vendor and model used last,
+  // and its tab opens on the conversation, not on a terminal. The chooser
+  // of 2026-10-12 stays one step away, as Quick chat with….
+  it('starts a quick chat at once from the sidebar, on its conversation, without leaving the workspace', async () => {
     await renderApp()
     fireEvent.click(screen.getByRole('button', { name: 'Quick chat' }))
-    const chooser = await screen.findByRole('dialog', { name: 'Quick chat' })
-    fireEvent.keyDown(within(chooser).getByRole('listbox'), { key: 'Enter' })
     const tab = await screen.findByRole('tab', { name: /Quick chat/ })
+    expect(screen.queryByRole('dialog', { name: 'Quick chat' })).toBeNull()
     expect(tab).toHaveAttribute('aria-selected', 'true')
     expect(location.hash).toBe('#/app')
     expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
+    expect(spawned.reqs[0]).toMatchObject({ chat: true })
+    await waitFor(() => expect(document.querySelector('[data-chat-view]')).toBeTruthy())
   })
 
-  it('asks on ⌥⌘N, the last agent and model picked and focused, so Enter starts it', async () => {
+  it('starts on ⌥⌘N at once, on the agent and model picked last', async () => {
     localStorage.setItem('caprock.quickchat', JSON.stringify({ agent: 'claude', model: 'claude-sonnet-5-5' }))
     await renderApp()
     await cmd('n', { altKey: true })
+    const tab = await screen.findByRole('tab', { name: /Quick chat/ })
+    expect(tab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryByRole('dialog', { name: 'Quick chat' })).toBeNull()
+    expect(spawned.reqs[0]).toMatchObject({ chat: true, model: 'claude-sonnet-5-5' })
+    expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
+  })
+
+  it('asks which agent and model from Quick chat with…, and Esc starts nothing', async () => {
+    localStorage.setItem('caprock.quickchat', JSON.stringify({ agent: 'claude', model: 'claude-sonnet-5-5' }))
+    await renderApp()
+    fireEvent.click(screen.getAllByRole('button', { name: 'New' })[0]!)
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Quick chat with/ }))
     const chooser = await screen.findByRole('dialog', { name: 'Quick chat' })
     const list = within(chooser).getByRole('listbox')
     expect(list).toHaveFocus()
     expect(within(list).getByRole('option', { selected: true })).toHaveTextContent(/Sonnet 5\.5/)
-    expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
-    fireEvent.keyDown(list, { key: 'Enter' })
-    const tab = await screen.findByRole('tab', { name: /Quick chat/ })
-    expect(tab).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
-  })
-
-  it('cancels the ⌥⌘N chooser on Esc, starting nothing', async () => {
-    await renderApp()
-    await cmd('n', { altKey: true })
-    const chooser = await screen.findByRole('dialog', { name: 'Quick chat' })
-    fireEvent.keyDown(within(chooser).getByRole('listbox'), { key: 'Escape' })
+    fireEvent.keyDown(list, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Quick chat' })).toBeNull())
     expect(spawned.n).toBe(0)
     expect(screen.queryByRole('tab')).toBeNull()
   })
 
-  /** Starts a quick chat on Opus 5.5 the way the owner did, and waits for its tab. */
+  /** Starts a quick chat on Opus 5.5 the way the owner does, and waits for its tab. */
   async function startChat() {
     localStorage.setItem('caprock.quickchat', JSON.stringify({ agent: 'claude', model: 'claude-opus-5-5' }))
     await renderApp()
     await cmd('n', { altKey: true })
-    fireEvent.keyDown(within(await screen.findByRole('dialog', { name: 'Quick chat' })).getByRole('listbox'), { key: 'Enter' })
     return screen.findByRole('tab', { name: /Quick chat/ })
   }
 

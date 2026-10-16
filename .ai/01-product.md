@@ -81,6 +81,9 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
 9. **"I create a new repository from my template, feed it to an agent with a brief, and it builds it."**
    - Evidence: the owner, 2026-10-15 (translated): "I have a public template repo on GitHub, Corpus. I create a new repository from it, feed it to an agent with a brief of the project, and it builds it — docs and research first, as the template says. Build this harmoniously into Caprock so I use it and it doesn't get in other people's way." Today that is GitHub's button, a terminal, an editor and Caprock.
    - Feature: **New project from a template** — the user's own templates (none built in), made through their own `gh` or as a local copy, the brief written and committed, then the agent started with the template's prompt ([ADR-065](08-decisions.md), [03-contracts.md § Project templates](03-contracts.md#project-templates)). The daemon side and the dialog (`TemplateProjectSheet.tsx`, [04-ui.md](04-ui.md)) are built.
+10. **"I want plain chats on my phone, kept, with the files they make viewable."**
+   - Evidence: the owner, 2026-10-16 (translated): plain stored chats on mobile, file results that can be opened; Quick chat as one button with at most a model choice; chats stored separately, marked, counted, hideable and searchable. Before this a phone could not start a chat without a project, and a chat was a terminal tab mixed in with the work.
+   - Feature: **Chats** — a session kind started in one tap on the remembered model, listed apart (search, rename, archive, delete), read as a conversation, with its folder's files in a sandboxed viewer ([ADR-071](08-decisions.md), [04-ui.md § Chats](04-ui.md#chats)). Sync with Claude.ai and ChatGPT is an open question ([OQ-22](12-risks.md)).
 
 ## Product principles
 

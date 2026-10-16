@@ -57,6 +57,27 @@ export interface Session {
   attempt_group?: string
   attempt?: number
   attempts?: number
+  /** A chat (ADR-071): started in Caprock's chats workspace to ask something,
+   *  not to work on a repository. Listed on the Chats screen, left out of the work lists. */
+  chat?: boolean
+  /** When the chat was archived out of the Chats list (unix ms); absent when it is not. */
+  archived_at?: number
+}
+
+/** `GET /v1/chats`: a page of chats, newest first, with how many match and how many there are. */
+export interface ChatList {
+  items: SessionSummary[]
+  total: number
+  chats: number
+  archived: number
+}
+
+/** One file a chat wrote in its folder (`GET /v1/chats/{id}/files`). */
+export interface ChatFile {
+  path: string
+  size: number
+  modified: number
+  kind: 'markdown' | 'html' | 'pdf' | 'image' | 'text' | 'other'
 }
 
 export interface Stats {
@@ -1848,11 +1869,14 @@ async function get<T>(path: string): Promise<T> {
  * this one call does its own fetch rather than teaching every call to carry a
  * total it does not have.
  */
-async function sessionsWithTotal(activeOnly: boolean, search = '', limit = 0): Promise<{ items: SessionSummary[]; total: number }> {
+async function sessionsWithTotal(activeOnly: boolean, search = '', limit = 0, chats?: 'exclude' | 'only'): Promise<{ items: SessionSummary[]; total: number }> {
   const qs = new URLSearchParams()
   if (activeOnly) qs.set('active', 'true')
   if (search.trim()) qs.set('q', search.trim())
   if (limit > 0) qs.set('limit', String(limit))
+  // The work lists leave the chats out (ADR-071); a daemon from before
+  // ignores the parameter, and the caller filters by `chat` too.
+  if (chats) qs.set('chats', chats)
   const query = qs.toString()
   const res = await fetch(`/v1/sessions${query ? `?${query}` : ''}`, {
     headers: withDevice({ Accept: 'application/json' }),
@@ -1974,6 +1998,29 @@ export const api = {
   /** Send one offer-survey answer to caprock.dev, through the daemon (ADR-062). Only on the user's click. */
   sendOffer: (a: { offer: string; answers: Record<string, string>; email?: string }) => post<{ status: string }>('/v1/offer', a),
   renameSession: (id: string, name: string) => post<{ session_id: string; name: string }>(`/v1/sessions/${encodeURIComponent(id)}/name`, { name }, 'PUT'),
+  /** Chats (ADR-071, 03-contracts.md § Chats): newest first; `q` searches every prompt. */
+  chats: (o: { q?: string; archived?: boolean; limit?: number } = {}) => {
+    const qs = new URLSearchParams()
+    if (o.q?.trim()) qs.set('q', o.q.trim())
+    if (o.archived) qs.set('archived', '1')
+    if (o.limit) qs.set('limit', String(o.limit))
+    const s = qs.toString()
+    return get<ChatList>(`/v1/chats${s ? `?${s}` : ''}`)
+  },
+  archiveChat: (id: string, archived: boolean) => post<{ session_id: string; archived_at: number }>(`/v1/chats/${encodeURIComponent(id)}/archived`, { archived }, 'PUT'),
+  /** Deletes a chat for good: its session (with a tombstone) and the files in its folder. */
+  deleteChat: (id: string) => post<{ session_id: string; folder_removed: boolean }>(`/v1/chats/${encodeURIComponent(id)}`, {}, 'DELETE'),
+  chatFiles: (id: string) => get<{ files: ChatFile[]; truncated?: boolean }>(`/v1/chats/${encodeURIComponent(id)}/files`),
+  /** One file of a chat, as a blob: an iframe or <img> cannot carry a paired device's token. */
+  chatFile: async (id: string, path: string): Promise<Blob> => {
+    const res = await fetch(`/v1/chats/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`, { headers: withDevice() })
+    if (!res.ok) {
+      let body: unknown
+      try { body = await res.json() } catch { /* not JSON */ }
+      throw new ApiError(res.status, `${res.status} ${res.statusText}`, body)
+    }
+    return res.blob()
+  },
   /** Live sessions sharing a checkout with another, and the files both edited lately (lib/overlap.ts). */
   overlap: () => get<Overlap>('/v1/overlap'),
   events: (id: string, after = 0, limit = 500) => get<Event[]>(`/v1/sessions/${encodeURIComponent(id)}/events?after=${after}&limit=${limit}`),

@@ -15,6 +15,8 @@ import { NotesScreen } from '@/screens/Notes'
 import { PairScreen } from '@/screens/Pair'
 import { PipelineScreen } from '@/screens/Pipeline'
 import { WorkScreen } from '@/screens/Work'
+import { ChatsScreen } from '@/screens/Chats'
+import { ChatScreen } from '@/screens/Chat'
 import { NewProjectScreen } from '@/components/NewProject'
 import { PhoneHome } from '@/components/PhoneHome'
 import { LanOnlyNotice } from '@/components/LanOnlyNotice'
@@ -137,6 +139,8 @@ export function Dashboard({ route, inApp = false, shown = true, scroller = pageS
       case 'brain': return <Suspense fallback={null}><BrainScreen node={r.node} /></Suspense>
       case 'pipeline': return <PipelineScreen repo={r.repo} of={r.of} pr={r.pr} />
       case 'work': return <WorkScreenHosted />
+      case 'chats': return <ChatsScreen key={r.archived ? 'archived' : 'open'} archived={r.archived} />
+      case 'chat': return <ChatScreen key={r.id} id={r.id} />
     }
   }
   // The kept screens opened so far, each with the route it last showed.

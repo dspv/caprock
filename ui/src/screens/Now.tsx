@@ -38,6 +38,8 @@ import { useContext, useEffect, useState } from 'react'
 import { WorkHomeCard } from '@/components/WorkHomeCard'
 import { PipelineHostContext } from '@/lib/pipelineHost'
 import { useNow, useNowFor } from '@/lib/useNow'
+import { startChat } from '@/lib/chats'
+import { rememberedQuickChoice } from '@/components/QuickChat'
 import { LivePace, NOW_LIVE_MS, SLOW_LIVE_MS } from '@/lib/refresh'
 import { useNarrowScreen } from '@/lib/phone'
 
@@ -103,7 +105,8 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
     return () => window.clearTimeout(t)
   }, [search])
   const sessions = useApi(
-    () => api.sessionsWithTotal(!showEnded, showEnded ? query : '', showEnded ? pageSize : 0),
+    // The work: chats are listed on their own screen (ADR-071).
+    () => api.sessionsWithTotal(!showEnded, showEnded ? query : '', showEnded ? pageSize : 0, 'exclude'),
     [showEnded, query, pageSize],
     { intervalMs: 5000, liveMs: NOW_LIVE_MS },
   )
@@ -516,11 +519,13 @@ function QuickChatButton({ available }: { available: boolean | undefined }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   if (available === false) return null
+  // A chat (ADR-071): on the vendor and model picked last, opened as a
+  // conversation on the Chats screen, not in a terminal.
   const start = async () => {
     setBusy(true); setError('')
     try {
-      const { session_id } = await api.spawn({ chat: true })
-      navigate({ name: 'session', id: session_id, tab: 'terminal' })
+      const id = await startChat(rememberedQuickChoice([]))
+      navigate({ name: 'chat', id })
     } catch (e) {
       setError(errText(e))
     } finally { setBusy(false) }

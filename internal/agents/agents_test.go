@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/ptyman"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -405,6 +406,43 @@ func TestSpawnDoesNotCreateUnlessAsked(t *testing.T) {
 	}
 	if _, err := os.Stat(dir); err == nil {
 		t.Fatal("spawn created the directory without being asked")
+	}
+}
+
+// A chat is a session kind (ADR-071): one started in a folder of the chats
+// workspace is marked a chat — a new one, and one carried on there — and a
+// session anywhere else is not.
+func TestSpawnMarksChats(t *testing.T) {
+	m, st, _ := newMgr(t)
+	defer m.Shutdown()
+	ctx := context.Background()
+	ids := []string{"chat-new", "chat-continued", "work"}
+	n := 0
+	m.NewSessionID = func() string { n++; return ids[n-1] }
+	a, err := m.Spawn(ctx, SpawnRequest{Chat: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Spawn(ctx, SpawnRequest{Cwd: a.Cwd}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Spawn(ctx, SpawnRequest{Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]bool{"chat-new": true, "chat-continued": true, "work": false} {
+		s, err := store.GetSession(ctx, st.DB(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Chat != want {
+			t.Errorf("%s: chat = %v, want %v (cwd %s)", id, s.Chat, want, s.Cwd)
+		}
+	}
+	if m.IsChatDir(config.ChatsDir(m.dataDir)) {
+		t.Error("the chats workspace itself is not a chat")
+	}
+	if m.IsChatDir(filepath.Join(config.ChatsDir(m.dataDir), ".hidden")) {
+		t.Error("a dot-folder is not a chat")
 	}
 }
 

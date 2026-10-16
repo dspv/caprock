@@ -174,6 +174,9 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
 
   for (const s of sessions) {
     if (!s) continue
+    // A chat (ADR-071) is listed on the Chats screen, not with the work:
+    // here only while it has a tab, or waits on you.
+    if ((s.chat || isQuickChat(s)) && !openSessions.has(s.session_id) && !permissions.has(s.session_id) && s.activity?.health !== 'waiting-on-you') continue
     const shown = s.status !== 'ended' || openSessions.has(s.session_id)
     const listed = closest(s)
     // Only what is live or open goes to Other folders: it is not a history.

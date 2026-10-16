@@ -73,7 +73,7 @@ function saveHeld(sessionId: string | undefined, held: readonly Held[]): void {
  * keys are buttons, and the text goes in a field big enough to read what is
  * being sent before sending it, rather than letter by letter into a canvas.
  */
-export function TerminalKeys({ send, attach, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, foldKeys = false }: {
+export function TerminalKeys({ send, attach, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, foldKeys = false, placeholder }: {
   send: (bytes: string) => void
   /** Attaches photos; the paths it returns, if any, go into the field (the chat). */
   attach?: (files: File[]) => Promise<void | readonly string[]>
@@ -96,6 +96,8 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
   /** The six raw keys behind a Keys button: the phone's chat, where a message
    *  is the common case and Esc or an arrow the rare one. */
   foldKeys?: boolean
+  /** The field's hint, in place of the terminal's *Type · / commands · @ files*. */
+  placeholder?: string
 }) {
   const [text, setText] = useState(initial)
   const [keysOpen, setKeysOpen] = useState(!foldKeys)
@@ -370,7 +372,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
             }
           }}
           rows={1}
-          placeholder={pickers ? 'Type · / commands · @ files' : 'Type to the session…'}
+          placeholder={placeholder ?? (pickers ? 'Type · / commands · @ files' : 'Type to the session…')}
           aria-label="Type to the session"
           {...(pickers ? {
             'aria-autocomplete': 'list' as const,
