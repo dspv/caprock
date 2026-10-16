@@ -227,7 +227,7 @@ lang-check: ## Fail if any tracked text file holds Cyrillic (generated dist and 
 	@python3 scripts/check-no-cyrillic.py
 
 .PHONY: pr-check
-pr-check: ## Before opening a PR: changed Go packages vet + test -race -count=3, Windows vet + test compile, changed UI tests (~2 min)
+pr-check: ## Before opening a PR: changed Go packages vet + test -race -count=3, Windows vet + test compile, the whole UI suite when ui/ changed
 	@./scripts/pr-check.sh
 
 .PHONY: check

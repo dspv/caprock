@@ -143,11 +143,12 @@ function TemplateForm({
   const [busy, setBusy] = useState(false)
 
   // Step 1: a saved template, or another one being added.
-  const [pickedId, setPickedId] = useState<string | null>(null)
+  const [clickedId, setPickedId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
-  useEffect(() => {
-    if (pickedId === null && !adding && templates[0]) setPickedId(templates[0].id)
-  }, [templates, pickedId, adding])
+  // Until a card is clicked the first one is chosen. Derived, not set from an
+  // effect: an effect that picked the first card could run after a click that
+  // landed before it, and overwrite the card the user chose.
+  const pickedId = clickedId ?? templates[0]?.id ?? null
   const showForm = adding || (loaded && templates.length === 0)
   // The list arrives after the sheet took focus (its footer's Cancel, then):
   // once it is here, focus the chosen card, or the field of an empty list,
