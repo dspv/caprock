@@ -75,6 +75,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-16 — unreleased: feedback is one box
+
+The owner (translated): "I want the feedback button as short as humanly
+possible: just type what's wrong, maybe drop a screenshot, and send." The
+form's three kind cards, required title and description became one focused
+*What's wrong?* box whose first line is the title; the whole sheet takes a
+dropped or pasted image (and the app's dropped paths); **Send** (⌘↩). The
+kind, diagnostics, *Choose image…* and *Capture window* moved behind
+*Details*. The draft is kept per viewer until sent; a sent report says
+*Opened on GitHub — thanks* and closes; a browser that cannot be opened
+keeps the words and offers Retry. The destination is unchanged — a
+prefilled GitHub issue the user submits — because rule 4 allows a send to
+caprock.dev only for a survey answer (ADR-062). Verified by the component
+tests (type and send, ⌘↩ and Ctrl+Enter, paste, drop, the drop-paths event,
+the draft after Esc, Retry); not yet opened in the real app.
+
 ### 2026-10-15 — unreleased: computers in the daemon (ADR-067, Phase 1 PR2)
 
 The second of Phase 1's three pull requests. **The target:** a code *for a
@@ -168,6 +184,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-16 — 0.124.1: no more crashes, drops always land, links in your browser
+
+A patch release. On macOS 27 the app crashed twice in eight minutes: WebKit killed a page process at its pasteboard check and the app faulted shutting it down — both since 0.123.0's Page tab made the dashboard a child webview. The Page tab is withdrawn (ADR-070), so ⌘-click opens a link in the default browser again; the shell hears a drop as both the window's and the webview's event; a drop beside a terminal goes to the one used last, and one with nowhere to go says so (#715).
+
 ### 2026-10-16 — 0.124.0: every tab has a row, a Today card that folds away, and two more flakes gone
 
 A minor release because it carries a change in behaviour. Every open tab now has a row in the sidebar, in Tree and Flat: a project or session hidden by hand shows while its tab is open, and hiding a project closes its tabs (#705). The sidebar's Today card has no Share button, folds to one line or hides from its × (#706). Two flaky tests turned out to be product bugs and were fixed at the root — a second machine check now waits for the one in flight, so a revoked computer is told so at once, and the template sheet keeps the card clicked before it finished loading — and `make pr-check` runs the whole UI suite (#709).

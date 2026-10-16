@@ -12,6 +12,27 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.124.1] - 2026-10-16
+
+### Changed
+
+- **brain:** the wheel scrolls the page past the Second Brain graph instead of
+  zooming it. Click the graph (or press Enter on it) to zoom and move it; an
+  accent ring shows it is in hand, and Escape, a click outside or the mouse
+  leaving lets it go. A click on a dot still opens it, and Fit works either way.
+
+### Removed
+
+- **app:** the Page tab is gone for now: with it the app crashed on macOS 27 and drops went missing. ⌘-click opens a link in your browser again (ADR-070, withdrawn).
+
+### Fixed
+
+- **phone:** quick replies under a session's chat take the page's own surface
+  in a light theme (Light, Light Cold, Book and the rest) instead of drawing as
+  dark pills; under an agent's terminal in the app they still sit on the
+  terminal's ground.
+- **app:** a file dropped beside a terminal — on the tab strip, a margin, the composer — goes to the terminal you used last instead of vanishing, and a drop with nowhere to go says so.
+
 ## [0.124.0] - 2026-10-16
 
 ### Changed

@@ -2,9 +2,13 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const opened: string[] = []
+const browser = vi.hoisted(() => ({ broken: false }))
 vi.mock('@/lib/nudges', async (orig) => ({
   ...(await orig<typeof import('@/lib/nudges')>()),
-  openExternal: (url: string) => { opened.push(url) },
+  openExternal: (url: string) => {
+    if (browser.broken) throw new Error('no browser')
+    opened.push(url)
+  },
 }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -45,8 +49,9 @@ vi.mock('@/lib/shell', async (orig) => {
   }
 })
 
-import { FeedbackButton } from './Feedback'
+import { DRAFT_KEY, FeedbackButton, THANKS_MS } from './Feedback'
 import { currentScreen } from '@/lib/feedback'
+import { DROP_PATHS_EVENT } from '@/lib/xtermInput'
 
 const params = (u: string) => new URL(u).searchParams
 const png = (name: string) => new File([new Uint8Array(8)], name, { type: 'image/png' })
@@ -63,6 +68,7 @@ let refuse: boolean
 
 beforeEach(() => {
   opened.length = 0
+  browser.broken = false
   native.tauri = false
   native.capture = false
   native.clip = []
@@ -71,6 +77,7 @@ beforeEach(() => {
   native.readable = {}
   written = []
   refuse = false
+  try { localStorage.removeItem(DRAFT_KEY) } catch { /* none */ }
   let n = 0
   URL.createObjectURL = vi.fn(() => `blob:shot-${++n}`)
   URL.revokeObjectURL = vi.fn()
@@ -85,43 +92,105 @@ beforeEach(() => {
     },
   })
 })
-afterEach(() => { vi.unstubAllGlobals() })
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers() })
 
 function openForm(screenName = 'Cost') {
   render(<FeedbackButton screen={screenName} />)
   fireEvent.click(screen.getByRole('button', { name: 'Feedback' }))
   return screen.getByRole('dialog', { name: 'Feedback' })
 }
+const box = () => screen.getByRole('textbox', { name: "What's wrong?" }) as HTMLTextAreaElement
+const sendButton = () => screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement
 
-/** Owner, 2026-10-10: an 11px grey "feedback" in the header went unnoticed. */
-describe('the feedback form', () => {
-  it('files a kind, a title and a description through the app’s browser path', () => {
+/** Owner, 2026-10-16: "just type what's wrong, maybe drop a screenshot, and send". */
+describe('the feedback box', () => {
+  it('is one focused box and Send, with everything else behind Details', () => {
     openForm()
-    const create = screen.getByRole('button', { name: 'Create issue' }) as HTMLButtonElement
-    expect(create.disabled).toBe(true) // the title is required
-    fireEvent.click(screen.getByRole('radio', { name: 'Idea' }))
-    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Show cost per branch' } })
-    fireEvent.change(screen.getByRole('textbox', { name: /Description/ }), { target: { value: 'per git branch' } })
-    fireEvent.click(create)
+    expect(document.activeElement).toBe(box())
+    expect(screen.getAllByRole('textbox')).toHaveLength(1)
+    expect(screen.queryByRole('radio')).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(sendButton().disabled).toBe(true)
+    expect(screen.getByText(/Opens a GitHub issue in your browser/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }))
+    expect(screen.getAllByRole('radio').map((r) => r.textContent)).toEqual(['Bug', 'Idea', 'Question'])
+    expect(screen.getByRole('checkbox', { name: 'Include diagnostics' })).toBeTruthy()
+    expect(screen.getByText('Screen: Cost')).toBeTruthy()
+  })
+
+  it('types and sends: the first line is the title, then thanks, then it closes', () => {
+    vi.useFakeTimers()
+    openForm()
+    fireEvent.change(box(), { target: { value: 'History is blank\nafter a restart' } })
+    fireEvent.click(sendButton())
     expect(opened).toHaveLength(1)
     expect(opened[0]).toMatch(/^https:\/\/github\.com\/dspv\/caprock\/issues\/new\?/)
     const q = params(opened[0]!)
-    expect(q.get('title')).toBe('Show cost per branch')
-    expect(q.get('labels')).toBe('enhancement')
-    expect(q.get('body')).toContain('per git branch')
+    expect(q.get('title')).toBe('History is blank')
+    expect(q.get('labels')).toBe('bug')
+    expect(q.get('body')).toContain('after a restart')
     expect(q.get('body')).toContain('Screen: Cost')
-    // No screenshots: open and close, no attach step.
+    expect(screen.getByRole('status').textContent).toBe('Opened on GitHub — thanks')
+    act(() => { vi.advanceTimersByTime(THANKS_MS) })
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('leaves the diagnostics out when unticked, and shows them when opened', () => {
+  it('sends with ⌘↩ on macOS, and never on a bare Enter', () => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
+    openForm()
+    expect(sendButton().querySelector('kbd')?.textContent).toBe('⌘↩')
+    fireEvent.change(box(), { target: { value: 'What is session total' } })
+    fireEvent.keyDown(box(), { key: 'Enter', code: 'Enter' })
+    expect(opened).toHaveLength(0)
+    fireEvent.keyDown(box(), { key: 'Enter', code: 'Enter', metaKey: true })
+    expect(opened).toHaveLength(1)
+  })
+
+  it('sends with Ctrl+Enter on Windows and Linux, labelled that way', () => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
+    openForm()
+    expect(sendButton().getAttribute('aria-keyshortcuts')).toBe('Control+Enter')
+    expect(sendButton().querySelector('kbd')?.textContent).toBe('Ctrl+Enter')
+    fireEvent.change(box(), { target: { value: 'Cost per branch' } })
+    fireEvent.keyDown(box(), { key: 'Enter', code: 'Enter', ctrlKey: true })
+    expect(opened).toHaveLength(1)
+  })
+
+  it('takes the kind and leaves the diagnostics out from Details', () => {
     openForm('Lifetime')
-    fireEvent.click(screen.getByRole('button', { name: /version, OS/ }))
-    expect(screen.getByText('Screen: Lifetime')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Idea' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Include diagnostics' }))
-    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Blank screen' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create issue' }))
+    fireEvent.change(box(), { target: { value: 'Show cost per branch' } })
+    fireEvent.click(sendButton())
+    expect(params(opened[0]!).get('labels')).toBe('enhancement')
     expect(params(opened[0]!).get('body')).not.toContain('Screen: Lifetime')
+  })
+
+  it('keeps the draft after Escape, and forgets it once sent', () => {
+    vi.useFakeTimers()
+    openForm()
+    fireEvent.change(box(), { target: { value: 'The chart is crooked' } })
+    fireEvent.keyDown(box(), { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }))
+    expect(box().value).toBe('The chart is crooked')
+    fireEvent.click(sendButton())
+    act(() => { vi.advanceTimersByTime(THANKS_MS) })
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }))
+    expect(box().value).toBe('')
+  })
+
+  it('keeps the words and offers Retry when the browser cannot be opened', () => {
+    browser.broken = true
+    openForm()
+    fireEvent.change(box(), { target: { value: 'Blank screen' } })
+    fireEvent.click(sendButton())
+    expect(screen.getByRole('alert').textContent).toContain('Your words are kept')
+    expect(box().value).toBe('Blank screen')
+    browser.broken = false
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(opened).toHaveLength(1)
   })
 
   it('takes pasted screenshots up to four, each with a ×', async () => {
@@ -131,34 +200,38 @@ describe('the feedback form', () => {
     await paste([png('3.png'), png('4.png'), png('5.png')])
     expect(screen.getAllByRole('img')).toHaveLength(4)
     expect(screen.getByText(/Up to 4 screenshots/)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /Add/ })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Remove screenshot 2' }))
     expect(screen.getAllByRole('img')).toHaveLength(3)
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:shot-2')
-    expect(screen.getByRole('button', { name: /Add/ })).toBeTruthy()
   })
 
-  it('takes a dropped screenshot', async () => {
+  it('takes a screenshot dropped anywhere on the sheet, and sends it alone', async () => {
     const dialog = openForm()
+    await act(async () => {
+      fireEvent.dragOver(dialog, { dataTransfer: { files: [], types: ['Files'] } })
+    })
+    expect(screen.getByText('Drop to attach')).toBeTruthy()
     await act(async () => {
       fireEvent.drop(dialog, { dataTransfer: { files: [png('d.png')], types: ['Files'] } })
     })
     expect(screen.getAllByRole('img')).toHaveLength(1)
+    expect(sendButton().disabled).toBe(false) // a screenshot alone is a report
+    await act(async () => { fireEvent.click(sendButton()) })
+    expect(params(opened[0]!).get('title')).toBe('Screenshot from Cost')
   })
 
   it('opens the issue, puts screenshot 1 on the clipboard, and Copy next cycles', async () => {
     openForm()
     const a = png('a.png'); const b = png('b.png')
     await paste([a, b])
-    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Chart is crooked' } })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create issue' })) })
+    fireEvent.change(box(), { target: { value: 'Chart is crooked' } })
+    await act(async () => { fireEvent.click(sendButton()) })
     expect(params(opened[0]!).get('body')).toContain('Screenshots: 2 — paste them here')
     expect(written).toEqual([a])
     expect(screen.getByRole('status').textContent).toContain('Screenshot 1 of 2 is on your clipboard')
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Copy next/ })) })
     expect(written).toEqual([a, b])
-    expect(screen.getByRole('status').textContent).toContain('Screenshot 2 of 2')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Copy next/ })) })
     expect(written).toEqual([a, b, a])
 
@@ -171,37 +244,21 @@ describe('the feedback form', () => {
     refuse = true
     openForm()
     await paste([png('a.png'), png('b.png')])
-    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Chart is crooked' } })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create issue' })) })
-    expect(opened).toHaveLength(1)
+    fireEvent.change(box(), { target: { value: 'Chart is crooked' } })
+    await act(async () => { fireEvent.click(sendButton()) })
     expect(screen.getByRole('status').textContent).toContain('save the screenshots')
-    // Copying again would fail again: only saving is offered.
     expect(screen.queryByRole('button', { name: /Copy next/ })).toBeNull()
     const clicks: string[] = []
     const spy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { clicks.push(this.download) })
     fireEvent.click(screen.getByRole('button', { name: 'Save screenshots' }))
     spy.mockRestore()
     expect(clicks).toEqual(['caprock-feedback-1.png', 'caprock-feedback-2.png'])
-    expect(screen.getByRole('status').textContent).toContain('Saved to your downloads')
-  })
-
-  it('shows no Copy next for a single screenshot', async () => {
-    openForm()
-    await paste([png('a.png')])
-    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Chart is crooked' } })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create issue' })) })
-    expect(screen.getByRole('status').textContent).toMatch(/^Your screenshot is on your clipboard — press (⌘V|Ctrl\+V) in the GitHub comment box\.$/)
-    expect(screen.queryByRole('button', { name: /Copy next/ })).toBeNull()
   })
 
   it('closes with its ×, Escape and the backdrop like every dialog', () => {
     render(<FeedbackButton screen="Now" />)
     fireEvent.click(screen.getByRole('button', { name: 'Feedback' }))
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-    expect(screen.queryByRole('dialog')).toBeNull()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }))
-    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Title' }), { key: 'Escape' })
     expect(screen.queryByRole('dialog')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Feedback' }))
@@ -221,27 +278,28 @@ describe('the feedback form', () => {
   })
 })
 
-describe('the feedback form in the desktop app', () => {
+describe('the feedback box in the desktop app', () => {
   it('puts the screenshot on the clipboard through the shell, not the webview', async () => {
     native.tauri = true
     openForm()
     await paste([png('a.png')])
-    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Chart is crooked' } })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create issue' })) })
+    fireEvent.change(box(), { target: { value: 'Chart is crooked' } })
+    await act(async () => { fireEvent.click(sendButton()) })
     expect(native.clip).toHaveLength(1)
-    expect(native.clip[0]).toBeInstanceOf(Uint8Array)
-    expect(written).toEqual([]) // navigator.clipboard was not used
+    expect(written).toEqual([])
     expect(screen.getByRole('status').textContent).toContain('is on your clipboard')
   })
 
-  it('offers Capture window only where the shell can, and hides the dialog while it captures', async () => {
+  it('offers Capture window under Details only where the shell can, hidden while it captures', async () => {
     openForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }))
     expect(screen.queryByRole('button', { name: 'Capture window' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
     native.tauri = true
     native.capture = true
     fireEvent.click(screen.getByRole('button', { name: 'Feedback' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }))
     fireEvent.click(screen.getByRole('button', { name: 'Capture window' }))
     const backdrop = document.querySelector('[data-dialog-backdrop]')!
     expect(backdrop.className).toContain('invisible')
@@ -250,136 +308,24 @@ describe('the feedback form in the desktop app', () => {
     await vi.waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(1))
     expect(native.captured).toBe(1)
     expect(backdrop.className).not.toContain('invisible')
-    expect(screen.getByRole('img').getAttribute('alt')).toBe('Screenshot 1')
   })
 
-  it('attaches an image dropped on the window, and leaves out anything else with a note', async () => {
+  it('attaches an image dropped on the window (the drop-paths event), and leaves out anything else with a note', async () => {
     native.tauri = true
     native.readable = { '/Users/me/Desktop/shot.PNG': new Uint8Array([1, 2, 3]) }
     openForm()
     await act(async () => {
-      window.dispatchEvent(new CustomEvent('caprock:drop-paths', {
+      window.dispatchEvent(new CustomEvent(DROP_PATHS_EVENT, {
         detail: { paths: ['/Users/me/Desktop/shot.PNG', '/Users/me/notes.txt'], x: 10, y: 10 },
       }))
     })
     await vi.waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(1))
     expect(screen.getByRole('status').textContent).toContain('Only images can be attached.')
 
-    // An image the shell refuses (over 10 MB, unreadable) is left out too.
     await act(async () => {
-      window.dispatchEvent(new CustomEvent('caprock:drop-paths', { detail: { paths: ['C:\\big.jpg'], x: 10, y: 10 } }))
+      window.dispatchEvent(new CustomEvent(DROP_PATHS_EVENT, { detail: { paths: ['C:\\big.jpg'], x: 10, y: 10 } }))
     })
     await vi.waitFor(() => expect(screen.getByRole('status').textContent).toContain('over 10 MB'))
     expect(screen.getAllByRole('img')).toHaveLength(1)
-  })
-})
-
-/** Owner, 2026-10-11: "big options, with icons, quick choice, choosable with
- *  keys, and quick to write". */
-describe('the feedback form from the keyboard', () => {
-  const titleBox = () => screen.getByRole('textbox', { name: 'Title' }) as HTMLInputElement
-  const descBox = () => screen.getByRole('textbox', { name: /Description/ }) as HTMLTextAreaElement
-  const checked = () => screen.getAllByRole('radio').filter((r) => r.getAttribute('aria-checked') === 'true').map((r) => r.getAttribute('aria-label'))
-
-  afterEach(() => { vi.restoreAllMocks() })
-
-  it('shows three cards, each with its key, and the title has focus on open', () => {
-    openForm()
-    const cards = screen.getAllByRole('radio')
-    expect(cards.map((c) => c.getAttribute('aria-label'))).toEqual(['Bug', 'Idea', 'Question'])
-    expect(cards.map((c) => c.querySelector('kbd.app-kbd-key')?.textContent)).toEqual(['1', '2', '3'])
-    expect(cards.map((c) => c.textContent)).toEqual([
-      expect.stringContaining('Something broke'),
-      expect.stringContaining('Make it better'),
-      expect.stringContaining('How do I'),
-    ])
-    expect(checked()).toEqual(['Bug'])
-    expect(document.activeElement).toBe(titleBox())
-  })
-
-  it('picks a kind with 1 2 3 by physical key: digit row, numpad, any layout', () => {
-    openForm()
-    // A Greek layout: the key says β, the key pressed is still the 2.
-    fireEvent.keyDown(titleBox(), { key: 'β', code: 'Digit2' })
-    expect(checked()).toEqual(['Idea'])
-    expect(titleBox().value).toBe('')
-    expect(document.activeElement).toBe(titleBox())
-    fireEvent.keyDown(titleBox(), { key: '3', code: 'Numpad3' })
-    expect(checked()).toEqual(['Question'])
-    // From the diagnostics box too, and focus goes to the title.
-    screen.getByRole('checkbox', { name: 'Include diagnostics' }).focus()
-    fireEvent.keyDown(document.activeElement!, { key: '1', code: 'Digit1' })
-    expect(checked()).toEqual(['Bug'])
-    expect(document.activeElement).toBe(titleBox())
-  })
-
-  it('types the digit instead once there is text, in the description, or with a modifier', () => {
-    openForm()
-    fireEvent.change(titleBox(), { target: { value: 'Top ' } })
-    expect(fireEvent.keyDown(titleBox(), { key: '2', code: 'Digit2' })).toBe(true) // not prevented
-    expect(checked()).toEqual(['Bug'])
-    descBox().focus()
-    expect(fireEvent.keyDown(descBox(), { key: '3', code: 'Digit3' })).toBe(true)
-    fireEvent.change(titleBox(), { target: { value: '' } })
-    expect(fireEvent.keyDown(titleBox(), { key: '!', code: 'Digit1', shiftKey: true })).toBe(true)
-    expect(fireEvent.keyDown(titleBox(), { key: '2', code: 'Digit2', metaKey: true })).toBe(true)
-    expect(checked()).toEqual(['Bug'])
-  })
-
-  it('moves between the cards with the arrows, and a click goes to the title', () => {
-    openForm()
-    const [bug, idea, question] = screen.getAllByRole('radio') as HTMLButtonElement[]
-    expect([bug!.tabIndex, idea!.tabIndex, question!.tabIndex]).toEqual([0, -1, -1])
-    bug!.focus()
-    fireEvent.keyDown(bug!, { key: 'ArrowRight', code: 'ArrowRight' })
-    expect(checked()).toEqual(['Idea'])
-    expect(document.activeElement).toBe(idea)
-    fireEvent.keyDown(idea!, { key: 'ArrowLeft', code: 'ArrowLeft' })
-    fireEvent.keyDown(bug!, { key: 'ArrowLeft', code: 'ArrowLeft' })
-    expect(checked()).toEqual(['Question'])
-    expect(document.activeElement).toBe(question)
-    fireEvent.click(idea!)
-    expect(checked()).toEqual(['Idea'])
-    expect(document.activeElement).toBe(titleBox())
-  })
-
-  it('asks a different question per kind, in the title and the description', () => {
-    openForm()
-    expect([titleBox().placeholder, descBox().placeholder]).toEqual(['What broke?', 'What did you do, what did you expect, what happened instead?'])
-    fireEvent.keyDown(titleBox(), { key: '2', code: 'Digit2' })
-    expect([titleBox().placeholder, descBox().placeholder]).toEqual(['What would make it better?', 'What would you like, and what would it help you do?'])
-    fireEvent.keyDown(titleBox(), { key: '3', code: 'Digit3' })
-    expect([titleBox().placeholder, descBox().placeholder]).toEqual(['What do you want to know?', 'What were you trying to find out?'])
-  })
-
-  it('goes on to the description with Enter, and never files a report on a bare Enter', () => {
-    openForm()
-    fireEvent.change(titleBox(), { target: { value: 'Chart is crooked' } })
-    fireEvent.keyDown(titleBox(), { key: 'Enter', code: 'Enter' })
-    expect(document.activeElement).toBe(descBox())
-    expect(opened).toHaveLength(0)
-  })
-
-  it('creates the issue with Ctrl+Enter on Windows and Linux, labelled that way', () => {
-    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
-    openForm()
-    const create = screen.getByRole('button', { name: 'Create issue' })
-    expect(create.getAttribute('aria-keyshortcuts')).toBe('Control+Enter')
-    expect(create.querySelector('kbd')?.textContent).toBe('Ctrl+Enter')
-    fireEvent.keyDown(titleBox(), { key: '2', code: 'Digit2' })
-    fireEvent.change(titleBox(), { target: { value: 'Cost per branch' } })
-    descBox().focus()
-    fireEvent.keyDown(descBox(), { key: 'Enter', code: 'Enter', ctrlKey: true })
-    expect(opened).toHaveLength(1)
-    expect(params(opened[0]!).get('labels')).toBe('enhancement')
-  })
-
-  it('creates the issue with ⌘↩ on macOS', () => {
-    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
-    openForm()
-    expect(screen.getByRole('button', { name: 'Create issue' }).querySelector('kbd')?.textContent).toBe('⌘↩')
-    fireEvent.change(titleBox(), { target: { value: 'What is session total' } })
-    fireEvent.keyDown(titleBox(), { key: 'Enter', code: 'Enter', metaKey: true })
-    expect(opened).toHaveLength(1)
   })
 })

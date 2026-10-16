@@ -151,3 +151,45 @@ export function pipelineRows(rows: TabPR[], board: PRBoard | undefined, repo: Br
     return { ...r, card: cards.get(r.number), labels: b?.labels, author: b?.author, author_avatar: b?.author_avatar }
   }))
 }
+
+/** What the cockpit's PRs view lists (owner, 2026-10-16, translated: "on the right it sometimes shows too many PRs"). */
+export interface Flight {
+  /** In flight, in journey order: open, and merged since the newest release. */
+  rows: PipelineRow[]
+  /** With nothing in flight, the newest merges (at most three), as context. */
+  recent: PipelineRow[]
+  /** The newest published release, when the board lists one. */
+  release?: { tag: string; published_at: number }
+}
+
+const OPEN_STAGES = new Set<Stage | 'closed'>(['draft', 'open', 'fix', 'ready'])
+
+/**
+ * What is in flight: the open pull requests, and the ones merged since the
+ * newest release (still heading to one). Released and closed-unmerged ones
+ * are dropped. A repository that publishes no release (a site that pushes
+ * straight to its default branch, like caprock-web) has nothing heading to
+ * one, so only its open pull requests are in flight. Pure.
+ */
+export function inFlight(rows: PipelineRow[], board: PRBoard | undefined): Flight {
+  let release: Flight['release']
+  for (const r of board?.releases ?? []) {
+    if (r.published_at && (!release || r.published_at > release.published_at)) release = { tag: r.tag, published_at: r.published_at }
+  }
+  const flying = rows.filter((r) => {
+    const s = stageOf(r)
+    if (OPEN_STAGES.has(s)) return true
+    return s === 'merged' && !!release && (r.merged_at ?? 0) > release.published_at
+  })
+  const recent = flying.length > 0 ? [] : rows.filter((r) => r.state === 'merged' && !!r.merged_at)
+    .sort((a, b) => (b.merged_at ?? 0) - (a.merged_at ?? 0)).slice(0, 3)
+  return { rows: flying, recent, release }
+}
+
+/** The in-flight pull request the Ring and By OS views draw: the newest open one, else the newest merge. */
+export function flightLead(f: Flight): PipelineRow | undefined {
+  const open = f.rows.filter((r) => OPEN_STAGES.has(stageOf(r)))
+  const pool = open.length > 0 ? open : f.rows
+  const at = (r: PipelineRow) => (open.length > 0 ? r.created_at : r.merged_at) ?? 0
+  return pool.reduce<PipelineRow | undefined>((best, r) => (!best || at(r) > at(best) ? r : best), undefined)
+}

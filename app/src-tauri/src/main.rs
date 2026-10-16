@@ -21,7 +21,6 @@ mod notify;
 mod notify_linux;
 #[cfg(target_os = "macos")]
 mod notify_macos;
-mod page;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod popover;
 mod shell;
@@ -66,8 +65,7 @@ macro_rules! handler {
             capture::clipboard_image,
             capture::capture_webview,
             capture::read_dropped_image,
-            capture::read_dropped_text,
-            page::page_tab
+            capture::read_dropped_text
         ]
     };
 }
@@ -85,7 +83,6 @@ fn configure<R: tauri::Runtime>(b: tauri::Builder<R>, sup: commands::Sup) -> tau
         .manage(capture::Dropped::default())
         .manage(sup)
         .manage(shell::Downloads::default())
-        .manage(page::Saving::default())
         .manage(tray::Tray::default())
         .manage(popover::Popover::default())
         .manage(badge::Badge::default())
@@ -253,7 +250,7 @@ mod tests {
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
     use tauri::webview::InvokeRequest;
-    use tauri::{Manager, WebviewWindowBuilder};
+    use tauri::WebviewWindowBuilder;
 
     fn invoke(
         url: &str,
@@ -444,111 +441,6 @@ mod tests {
         ] {
             let err = invoke(DAEMON, cmd, serde_json::json!({})).expect_err(cmd);
             assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
-        }
-    }
-
-    /// A command from a Page tab's page: a child webview of the main window
-    /// (page.rs), on `url`, beside the dashboard at DAEMON.
-    fn invoke_from_page(
-        url: &str,
-        cmd: &str,
-        body: serde_json::Value,
-    ) -> Result<serde_json::Value, serde_json::Value> {
-        let dir = std::env::temp_dir().join(format!("caprock-acl-page-{}", std::process::id()));
-        let app = configure(mock_builder(), Supervisor::new(dir))
-            .build(tauri::generate_context!(test = true))
-            .expect("mock app");
-        WebviewWindowBuilder::new(&app, "main", WebviewUrl::External(DAEMON.parse().unwrap()))
-            .build()
-            .unwrap();
-        let page: tauri::Url = url.parse().unwrap();
-        let child = app
-            .get_window("main")
-            .unwrap()
-            .add_child(
-                tauri::webview::WebviewBuilder::new("page-t1", WebviewUrl::External(page.clone())),
-                tauri::LogicalPosition::new(0.0, 40.0),
-                tauri::LogicalSize::new(800.0, 600.0),
-            )
-            .unwrap();
-        // `get_ipc_response` takes a webview by AsRef, which Webview itself lacks.
-        struct Child(tauri::Webview<tauri::test::MockRuntime>);
-        impl AsRef<tauri::Webview<tauri::test::MockRuntime>> for Child {
-            fn as_ref(&self) -> &tauri::Webview<tauri::test::MockRuntime> {
-                &self.0
-            }
-        }
-        get_ipc_response(
-            &Child(child),
-            InvokeRequest {
-                cmd: cmd.into(),
-                callback: CallbackFn(0),
-                error: CallbackFn(1),
-                url: page,
-                body: InvokeBody::Json(body),
-                headers: Default::default(),
-                invoke_key: INVOKE_KEY.to_string(),
-            },
-        )
-        .map(|b| b.deserialize::<serde_json::Value>().unwrap())
-    }
-
-    #[test]
-    fn a_page_tab_gets_no_command_even_on_the_daemons_own_address() {
-        // It sits in the main window, on loopback: the capabilities grant by
-        // webview, so being in that window or on 127.0.0.1 earns it nothing.
-        for url in [DAEMON, "http://127.0.0.1:5173/", "https://example.com/"] {
-            for (cmd, body) in [
-                ("daemon_status", serde_json::json!({})),
-                ("open_external", serde_json::json!({"url": "https://a.b/"})),
-                ("notify", serde_json::json!({"title": "x", "body": ""})),
-                ("set_badge", serde_json::json!({"count": 1})),
-                ("pick_folder", serde_json::json!({"start": null})),
-                ("app_update_install", serde_json::json!({})),
-                (
-                    "page_tab",
-                    serde_json::json!({"id": "t1", "act": {"do": "hide"}}),
-                ),
-                ("plugin:updater|check", serde_json::json!({})),
-            ] {
-                let err = invoke_from_page(url, cmd, body).expect_err(&format!("{url} {cmd}"));
-                assert!(
-                    err.to_string().contains("not allowed"),
-                    "{url} {cmd}: {err}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn only_the_dashboard_drives_its_pages() {
-        // A page that is not there (closed, or never opened) is no error.
-        invoke(
-            DAEMON,
-            "page_tab",
-            serde_json::json!({"id": "t1", "act": {"do": "hide"}}),
-        )
-        .expect("allowed");
-        let err = invoke(
-            DAEMON,
-            "page_tab",
-            serde_json::json!({"id": "../main", "act": {"do": "close"}}),
-        )
-        .expect_err("bad id");
-        assert!(err.to_string().contains("not a page id"), "{err}");
-        let err = invoke(
-            DAEMON,
-            "page_tab",
-            serde_json::json!({"id": "t1", "act": {"do": "open", "url": "file:///etc/hosts", "rect": {"x": 0, "y": 0, "width": 10, "height": 10}}}),
-        )
-        .expect_err("file URL");
-        assert!(err.to_string().contains("only http and https"), "{err}");
-        let page = serde_json::json!({"id": "t1", "act": {"do": "hide"}});
-        let err = invoke_in("tray", POPOVER, "page_tab", page.clone()).expect_err("popover");
-        assert!(err.to_string().contains("not allowed"), "{err}");
-        for url in ["https://example.com/", "http://localhost:4391/"] {
-            let err = invoke(url, "page_tab", page.clone()).expect_err(url);
-            assert!(err.to_string().contains("not allowed"), "{url}: {err}");
         }
     }
 
