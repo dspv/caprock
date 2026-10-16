@@ -33,11 +33,25 @@ export interface BoardCard {
   why?: 'ci' | 'conflict' | 'changes_requested'
   /** With `why` ci: the failed checks' names (or workflows'), at most three; absent from an older daemon. */
   failed?: string[]
+  /** Its checks by the OS their names say ("go (windows-latest)"), linux, macos, windows in that order; absent without a live read or when no check names an OS. */
+  os?: BoardOS[]
+  /** How long its head commit's checks took, first start to last finish, once all are done (ms). */
+  ci_ms?: number
   review?: string
   release?: string
   spend: PRSpend
   /** Its checks are from an earlier read: not re-confirmed this time. */
   stale?: boolean
+}
+
+/** One OS's checks on a pull request's head commit (internal/api/prboard.go BoardOS). */
+export interface BoardOS {
+  os: 'linux' | 'macos' | 'windows'
+  /** fail when any failed, else running while any is unfinished, else pass. */
+  state: 'pass' | 'fail' | 'running'
+  /** While running: the earliest start of its unfinished checks (unix ms). */
+  since?: number
+  checks: number
 }
 
 export interface BoardRelease {

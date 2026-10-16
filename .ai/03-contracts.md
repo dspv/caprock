@@ -2098,14 +2098,23 @@ over the 14 local calendar days ending today:
 
 - **Board** (2026-10-14) — `board` `{cards[], releases[], flow,
   default_branch?}`, the tab's Board view (`internal/api/prboard.go`). Each
-  `BoardCard` `{number, stage, stage_at?, ci?, why?, failed[]?, review?, release?,
+  `BoardCard` `{number, stage, stage_at?, ci?, why?, failed[]?, os[]?, ci_ms?, review?, release?,
   spend, stale?}` is a pull request of `prs` (its title, `author`, `author_avatar`
   and link are that entry's); closed unmerged ones and merges before the 14
   days are left out. `stage` is `draft`, `open` (checks running, or not
   read), `fix` (`why`: `ci` a failed check, `conflict` GitHub's `mergeable`
   false or `mergeable_state` `dirty`, `changes_requested`; with `ci`,
   `failed` names up to 3 failed checks, or failed workflows when read from
-  the runs list), `ready` (checks
+  the runs list), `os` its live-read checks by the OS their names say (*go
+  (windows-latest)*, *test (ubuntu-24.04)*; skipped ones left out), each
+  `{os, state, since?, checks}` — `os` `linux`, `macos` or `windows` in that
+  order, `state` `fail` when any failed, else `running` while any is
+  unfinished (`since` its unfinished checks' earliest start), else `pass`;
+  absent with no live read or when no check names an OS (2026-10-16, the
+  release plan's dots), `ci_ms` the span of its live-read (else
+  runs-list) checks from the first start to the last finish once they
+  passed or failed, absent while running or without the stamps (2026-10-16,
+  the release plan's CI time), `ready` (checks
   passed, or none ran), `merged` or `released`. An open pull request's
   checks are the deck's kept read (`github.PullByURL`) for the newest 12
   open ones, read 4 at once (`boardLiveParallel`), else the runs list by
