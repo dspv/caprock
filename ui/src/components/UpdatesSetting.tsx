@@ -4,8 +4,9 @@
  * the user").
  *
  * - **The release check** (`update_checks`, rule 4's one standing outbound
- *   call): off until switched on; once an hour while Caprock runs and on
- *   waking, a conditional request to GitHub. Moved here from Privacy, which
+ *   call): off until switched on; every 15 minutes while Caprock runs, on
+ *   waking, and when the window comes to the front if the last check is ten
+ *   minutes old — a conditional request to GitHub. Moved here from Privacy, which
  *   still names it.
  * - **When it was last asked, and Check now** — the daemon's check and, in
  *   the app, the app's own updater, as the version panel's button does.
@@ -80,7 +81,7 @@ export function UpdatesSetting() {
         checked={checks}
         onChange={(on) => savePlan({ update_checks: on })}
         label="Tell me when a new version is out"
-        hint="Once an hour while Caprock runs, and when the computer wakes, it asks GitHub for the latest version number. Nothing about you is sent, and nothing goes to us."
+        hint="Every 15 minutes while Caprock runs, and when you come back to the window or the computer wakes, it asks GitHub for the latest version number. Nothing about you is sent, and nothing goes to us."
       />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12.5px]">
         <span className="text-fg-muted" data-update-checked>

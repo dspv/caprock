@@ -240,12 +240,12 @@ func TestConditionalCheckKeepsTheCachedRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Within the interval: no request at all.
-	now = now.Add(59 * time.Minute)
+	now = now.Add(Interval - time.Minute)
 	if err := c.Check(context.Background(), false); err != nil {
 		t.Fatal(err)
 	}
 	if len(seen) != 1 {
-		t.Fatalf("checked %d times within an hour, want once", len(seen))
+		t.Fatalf("checked %d times within the interval, want once", len(seen))
 	}
 	// Past it: a conditional request, answered 304.
 	now = now.Add(2 * time.Minute)
@@ -286,11 +286,11 @@ func TestAppCommandFromTheCask(t *testing.T) {
 	}
 }
 
-// Releases ship several times a day: a check is due every hour, and the
-// default says so.
-func TestAReleaseCheckIsDueHourly(t *testing.T) {
-	if c := New(); c.MinInterval != time.Hour || Interval != time.Hour {
-		t.Fatalf("interval %v, want an hour", c.MinInterval)
+// Releases ship several times a day: a background check is due every 15
+// minutes, and the default says so.
+func TestAReleaseCheckIsDueEveryFifteenMinutes(t *testing.T) {
+	if c := New(); c.MinInterval != 15*time.Minute || Interval != 15*time.Minute {
+		t.Fatalf("interval %v, want 15 minutes", c.MinInterval)
 	}
 	var hits int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -305,13 +305,105 @@ func TestAReleaseCheckIsDueHourly(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	c := New()
 	c.Now = func() time.Time { return now }
-	// Ticks every five minutes for three hours: one request an hour.
+	// Ticks every five minutes for three hours: one request per 15 minutes.
 	for i := 0; i <= 36; i++ {
 		_ = c.Check(context.Background(), false)
 		now = now.Add(5 * time.Minute)
 	}
-	if hits != 4 {
-		t.Fatalf("%d requests in three hours of 5-minute ticks, want 4 (start + hourly)", hits)
+	if hits != 13 {
+		t.Fatalf("%d requests in three hours of 5-minute ticks, want 13 (start + every 15 minutes)", hits)
+	}
+}
+
+// fakeRelease serves one release and counts the requests.
+func fakeRelease(t *testing.T) *int {
+	t.Helper()
+	hits := new(int)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		*hits++
+		_, _ = w.Write([]byte(`{"tag_name":"v0.9.0"}`))
+	}))
+	t.Cleanup(srv.Close)
+	old := LatestURL
+	LatestURL = srv.URL
+	t.Cleanup(func() { LatestURL = old })
+	return hits
+}
+
+// A window brought to the front asks for a check: it runs when the last one
+// is ten minutes old, and not sooner, however often the window is focused.
+func TestACheckOnFocusRunsOncePerTenMinutes(t *testing.T) {
+	hits := fakeRelease(t)
+	now := time.Unix(1_800_000_000, 0)
+	c := New()
+	c.Now = func() time.Time { return now }
+	if c.SoonAfter != 10*time.Minute || SoonInterval != 10*time.Minute {
+		t.Fatalf("focus floor %v, want 10 minutes", c.SoonAfter)
+	}
+	_ = c.CheckSoon(context.Background()) // never checked: due at once
+	for i := 0; i < 9; i++ {              // focused every minute
+		now = now.Add(time.Minute)
+		_ = c.CheckSoon(context.Background())
+	}
+	if *hits != 1 {
+		t.Fatalf("%d requests in nine minutes of focus, want 1", *hits)
+	}
+	now = now.Add(time.Minute)
+	_ = c.CheckSoon(context.Background())
+	if *hits != 2 {
+		t.Fatalf("%d requests at ten minutes, want 2", *hits)
+	}
+}
+
+// Focus checks and the background tick share one clock: together they never
+// send more than one unforced request per ten minutes.
+func TestFocusAndTickTogetherStayUnderOnePerTenMinutes(t *testing.T) {
+	hits := fakeRelease(t)
+	start := time.Unix(1_800_000_000, 0)
+	now := start
+	c := New()
+	c.Now = func() time.Time { return now }
+	// Two hours, one minute at a time: a tick every five minutes and a
+	// focus every minute.
+	for m := 0; m <= 120; m++ {
+		if m%5 == 0 {
+			_ = c.Check(context.Background(), false)
+		}
+		_ = c.CheckSoon(context.Background())
+		now = now.Add(time.Minute)
+	}
+	if *hits > 13 { // start + one per 10 minutes over 120 minutes
+		t.Fatalf("%d requests in two hours, want at most 13", *hits)
+	}
+	if *hits < 12 {
+		t.Fatalf("%d requests in two hours of focus, want a check every ten minutes", *hits)
+	}
+}
+
+// A failed check is not retried on focus before FailRetry; Check now
+// (forced) still goes through.
+func TestAFocusCheckWaitsOutAFailure(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	old := LatestURL
+	LatestURL = srv.URL
+	defer func() { LatestURL = old }()
+	now := time.Unix(1_800_000_000, 0)
+	c := New()
+	c.Now = func() time.Time { return now }
+	_ = c.CheckSoon(context.Background())
+	now = now.Add(SoonInterval + time.Minute) // past the focus floor, inside FailRetry
+	_ = c.CheckSoon(context.Background())
+	if hits != 1 {
+		t.Fatalf("%d requests, want the failure waited out", hits)
+	}
+	_ = c.Check(context.Background(), true)
+	if hits != 2 {
+		t.Fatalf("a forced check was held back: %d requests", hits)
 	}
 }
 

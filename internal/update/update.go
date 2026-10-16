@@ -82,11 +82,17 @@ type Checker struct {
 	Now func() time.Time
 	// HTTPClient is injectable for tests.
 	HTTPClient *http.Client
-	// MinInterval throttles checks (default Interval, an hour). Releases
-	// ship several times a day, and the request is a conditional one
-	// (ETag): an unchanged answer is a 304 with no body, which GitHub does
-	// not count against the rate limit.
+	// MinInterval throttles the background checks (default Interval, 15
+	// minutes). Releases ship several times a day, and the request is a
+	// conditional one (ETag): an unchanged answer is a 304 with no body,
+	// which GitHub does not count against the rate limit.
 	MinInterval time.Duration
+	// SoonAfter is the floor for a check asked for because the app's window
+	// came to the front (default SoonInterval, 10 minutes): CheckSoon runs
+	// only when the last check is at least this old. Both kinds share one
+	// last-checked time, so unforced checks never run more than once per
+	// SoonAfter between them.
+	SoonAfter time.Duration
 	// RetryAfter is how long a failed check waits before the next one that
 	// was not asked for (default FailRetry): a laptop offline for a day
 	// tries every quarter hour, not on every tick.
@@ -104,12 +110,22 @@ type Checker struct {
 	checkedAt time.Time
 	failedAt  time.Time
 	lastErr   string
+	// running is set while an unforced check is out, so a focus check and a
+	// tick landing together send one request, not two.
+	running bool
 }
 
-// Interval is how often a release check is due: hourly, since releases ship
-// several times a day. The daemon asks on a shorter tick (its updateTick)
-// so a check due during sleep runs within minutes of waking.
-const Interval = time.Hour
+// Interval is how often a background release check is due: every 15
+// minutes, so a release published while someone works shows within minutes
+// rather than within the hour (owner, 2026-10-16: 0.124.0 was out for twelve
+// minutes and nothing said so). The daemon asks on a shorter tick (its
+// updateTick) so a check due during sleep runs within minutes of waking.
+const Interval = 15 * time.Minute
+
+// SoonInterval is the floor for a check the page asks for when its window is
+// focused or shown (CheckSoon): never more than one unforced check per ten
+// minutes, however often the window is switched to.
+const SoonInterval = 10 * time.Minute
 
 // FailRetry spaces the checks after a failed one.
 const FailRetry = 15 * time.Minute
@@ -134,6 +150,7 @@ func New() *Checker {
 		Now:         time.Now,
 		HTTPClient:  &http.Client{Timeout: 5 * time.Second},
 		MinInterval: Interval,
+		SoonAfter:   SoonInterval,
 		RetryAfter:  FailRetry,
 		CaskRoots:   []string{"/opt/homebrew/Caskroom", "/usr/local/Caskroom"},
 		IsDir: func(p string) bool {
@@ -188,15 +205,38 @@ func (c *Checker) Status(enabled bool, current string) Status {
 // forced. A failure is recorded and returned but never escalated: not knowing
 // about an update must not degrade a working dashboard.
 func (c *Checker) Check(ctx context.Context, force bool) error {
+	return c.check(ctx, force, c.MinInterval)
+}
+
+// CheckSoon is the check asked for when the app's window comes to the front:
+// unforced, but due once the last check is SoonAfter old rather than
+// MinInterval, so a release published since shows when the user looks. A
+// failed check still waits RetryAfter.
+func (c *Checker) CheckSoon(ctx context.Context) error {
+	floor := c.SoonAfter
+	if floor <= 0 || floor > c.MinInterval {
+		floor = c.MinInterval
+	}
+	return c.check(ctx, false, floor)
+}
+
+func (c *Checker) check(ctx context.Context, force bool, floor time.Duration) error {
 	c.mu.Lock()
 	now := c.Now()
-	if !force && !c.checkedAt.IsZero() && since(now, c.checkedAt) < c.MinInterval {
+	if !force && !c.checkedAt.IsZero() && since(now, c.checkedAt) < floor {
 		c.mu.Unlock()
 		return nil
 	}
 	if !force && !c.failedAt.IsZero() && since(now, c.failedAt) < c.RetryAfter {
 		c.mu.Unlock()
 		return nil
+	}
+	if !force {
+		if c.running {
+			c.mu.Unlock()
+			return nil
+		}
+		c.running = true
 	}
 	etag := c.etag
 	if c.latest == "" {
@@ -208,6 +248,9 @@ func (c *Checker) Check(ctx context.Context, force bool) error {
 	rel, err := fetchLatestRelease(ctx, c.HTTPClient, LatestURL, etag)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if !force {
+		c.running = false
+	}
 	if err != nil {
 		c.lastErr, c.failedAt = err.Error(), c.Now()
 		return err

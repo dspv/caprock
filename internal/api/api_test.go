@@ -619,15 +619,22 @@ func TestSettingsValidation(t *testing.T) {
 
 // fakeUpdate records whether the checker was consulted.
 type fakeUpdate struct {
-	checks int
-	st     update.Status
+	checks, forced, soon int
+	st                   update.Status
 }
 
 func (f *fakeUpdate) Status(enabled bool, current string) update.Status {
 	f.st.Enabled, f.st.Current = enabled, current
 	return f.st
 }
-func (f *fakeUpdate) Check(context.Context, bool) error { f.checks++; return nil }
+func (f *fakeUpdate) Check(_ context.Context, force bool) error {
+	f.checks++
+	if force {
+		f.forced++
+	}
+	return nil
+}
+func (f *fakeUpdate) CheckSoon(context.Context) error { f.checks++; f.soon++; return nil }
 
 // The opt-in for the one outbound call Caprock makes must be enforced by the
 // server, not merely hidden in the UI: no page and no local script may cause a
@@ -681,8 +688,29 @@ func TestUpdateCheckRequiresOptIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = r3.Body.Close()
-	if r3.StatusCode != http.StatusOK || upd.checks != 1 {
-		t.Fatalf("enabled check: status=%d checks=%d", r3.StatusCode, upd.checks)
+	if r3.StatusCode != http.StatusOK || upd.checks != 1 || upd.forced != 1 {
+		t.Fatalf("enabled check: status=%d checks=%d forced=%d", r3.StatusCode, upd.checks, upd.forced)
+	}
+
+	// A focus check is the throttled one, never forced.
+	r4, err := http.Post(srv.URL+"/v1/update/check?soon=1", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = r4.Body.Close()
+	if r4.StatusCode != http.StatusOK || upd.soon != 1 || upd.forced != 1 {
+		t.Fatalf("focus check: status=%d soon=%d forced=%d", r4.StatusCode, upd.soon, upd.forced)
+	}
+
+	// And refused like any other while checks are off.
+	set.cur.UpdateChecks = false
+	r5, err := http.Post(srv.URL+"/v1/update/check?soon=1", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = r5.Body.Close()
+	if r5.StatusCode != http.StatusForbidden || upd.soon != 1 {
+		t.Fatalf("focus check while off: status=%d soon=%d", r5.StatusCode, upd.soon)
 	}
 }
 

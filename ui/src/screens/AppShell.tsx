@@ -70,7 +70,6 @@ import { AppUpdateToast } from '@/components/AppUpdateToast'
 import { ComputerAsks } from '@/components/ComputerAsks'
 import { AppUpdateAsk } from '@/components/AppUpdateAsk'
 import { AppAutoUpdate } from '@/components/AppAutoUpdate'
-import { UpdateCheckBanner } from '@/components/UpdateCheckBanner'
 import { checkByHand } from '@/lib/checkbanner'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { ChatView } from '@/components/ChatView'
@@ -1938,7 +1937,6 @@ export function AppShell() {
       <ComputerAsks />
       {isTauri() && <AppUpdateAsk />}
       {isTauri() && <AppAutoUpdate />}
-      <UpdateCheckBanner />
 
       {feedbackAt !== null && <FeedbackDialog screen={feedbackAt} onClose={() => setFeedbackAt(null)} />}
       {toast && (

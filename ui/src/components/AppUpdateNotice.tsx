@@ -1,5 +1,10 @@
 /**
- * The app's update notice (F12, F20): a quiet line in the status strip.
+ * The app's update notice (F12, F20): a line in the status strip, beside the
+ * version — where the owner looks for it (2026-10-16, translated: "I expect
+ * the update result at the bottom right, near the version"). Every check's
+ * answer is said here: *Checking for updates…*, *Caprock is up to date* for
+ * a few seconds after a check that was asked for, *Couldn't check for
+ * updates* with **Retry**, and an update on offer as an amber pill.
  *
  * In the desktop app, when this install can replace itself, a newer release
  * is one click — **Update to vX.Y.Z — Restart** downloads it with progress,
@@ -11,20 +16,22 @@
  * dashboard's banner (UpdateBanner).
  *
  * Reading `/v1/update` never touches the network; the daemon's own check
- * (due hourly, conditional, only while Settings → Updates allows it)
- * is what finds a release. The app fetches `latest.json` on a click, or by
+ * (due every 15 minutes, and when the window comes to the front if the last
+ * one is ten minutes old — lib/updatesoon; conditional, only while
+ * Settings → Updates allows it) is what finds a release. The app fetches `latest.json` on a click, or by
  * itself with Update automatically chosen (AppAutoUpdate).
  */
 import { useEffect, useRef, useState } from 'react'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
-import { appUpdate, offerFor, useAppUpdate, v } from '@/lib/appupdate'
+import { appUpdate, inBackground, offerFor, useAppUpdate, v } from '@/lib/appupdate'
 import { Copyable } from './ui'
 import { everyWhileVisible } from '@/lib/visible'
-import { checkingByHand } from '@/lib/checkbanner'
+import { askSoon, onWindowFront } from '@/lib/updatesoon'
+import { checkByHand, checkingByHand, reportCheck, useCheckResult } from '@/lib/checkbanner'
 
 /** UpdateBanner's key: "not now" in either place hides that version in both. */
 export const DISMISS_KEY = 'caprock.update.dismissed'
-const POLL_MS = 10 * 60_000
+const POLL_MS = 5 * 60_000
 /** How long "up to date" stays after a check the user asked for. */
 export const UP_TO_DATE_MS = 6000
 
@@ -41,17 +48,22 @@ function readDismissed(): string {
 }
 
 /** The daemon's release check as this page sees it: `/v1/update`, read on
- *  mount and every ten minutes while visible (no network I/O there). Not on a
- *  paired device, which cannot update the computer. */
+ *  mount and every five minutes while visible (no network I/O there). When
+ *  the window gains focus or is shown and the last check is ten minutes old,
+ *  it asks the daemon for a fresh one (lib/updatesoon). Not on a paired
+ *  device, which cannot update the computer. */
 export function useUpdateStatus(): UpdateStatus | undefined {
   const [st, setSt] = useState<UpdateStatus>()
+  const last = useRef<UpdateStatus | undefined>(undefined)
   useEffect(() => {
     if (isPairedDevice()) return
     let alive = true
-    const load = () => { api.update().then((s) => { if (alive) setSt(s) }).catch(() => { /* an older daemon: nothing to say */ }) }
+    const take = (s: UpdateStatus | undefined) => { if (alive && s) { last.current = s; setSt(s) } }
+    const load = () => { api.update().then(take).catch(() => { /* an older daemon: nothing to say */ }) }
     load()
     const stop = everyWhileVisible(load, POLL_MS)
-    return () => { alive = false; stop() }
+    const offFront = onWindowFront(() => { void askSoon(last.current)?.then(take) })
+    return () => { alive = false; stop(); offFront() }
   }, [])
   return st
 }
@@ -64,6 +76,14 @@ export function AppUpdateNotice() {
   // "Up to date" and a failure the user waved away stay hidden until the
   // updater moves again.
   const [settled, setSettled] = useState(false)
+  // The app's own check failed (the phase went checking → failed): said as
+  // a failed check with Retry, not as a failed install. Not for Update
+  // automatically's background fetch, which retries by itself.
+  const [checkFailed, setCheckFailed] = useState(false)
+  // A check by hand where the app cannot replace itself answers through
+  // lib/checkbanner: checking, up to date or failed.
+  const byHand = useCheckResult()
+  const [retrying, setRetrying] = useState(false)
   const box = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
@@ -83,18 +103,50 @@ export function AppUpdateNotice() {
     const was = prevPhase.current
     prevPhase.current = phase
     setSettled(false)
+    setCheckFailed(phase === 'failed' && was === 'checking' && !inBackground())
     // A check the user asked for is answered even for a version they said
     // "not now" to.
     if (phase === 'checking') setDismissed('')
-    // A failed install opens its own explanation. A failed check is the
-    // check banner's to say (UpdateCheckBanner), with Retry.
+    // A failed install opens its own explanation; a failed check says so
+    // in the strip, with Retry.
     if (phase === 'failed' && was !== 'checking' && !checkingByHand()) setOpen(true)
     if (phase !== 'up_to_date') return
     const t = window.setTimeout(() => setSettled(true), UP_TO_DATE_MS)
     return () => window.clearTimeout(t)
   }, [phase])
 
-  const offer = offerFor(info, st, dismissed)
+  // *Up to date* from a check by hand goes after a few seconds; a failure
+  // stays until Retry or ×.
+  useEffect(() => {
+    if (byHand) setSettled(false)
+    if (byHand?.kind !== 'up_to_date') return
+    const t = window.setTimeout(() => reportCheck(null), UP_TO_DATE_MS)
+    return () => window.clearTimeout(t)
+  }, [byHand])
+
+  const retry = async () => {
+    setRetrying(true)
+    setCheckFailed(false)
+    try { await checkByHand() } finally { setRetrying(false) }
+  }
+  const failedCheck = (msg: string) => (
+    <span role="alert" className="inline-flex items-center gap-1.5" title={msg}>
+      <span className="text-warn">Couldn&apos;t check for updates</span>
+      <button type="button" onClick={() => void retry()} disabled={retrying} className="text-accent hover:underline disabled:opacity-50">
+        {retrying ? 'Checking…' : 'Retry'}
+      </button>
+      <button type="button" aria-label="Close" onClick={() => { setCheckFailed(false); setSettled(true); reportCheck(null) }} className="px-0.5 text-fg-faint hover:text-fg">×</button>
+    </span>
+  )
+
+  let offer = offerFor(info, st, dismissed)
+  // An update on offer, a download or an install outranks a check's answer.
+  if (offer.kind === 'none' || offer.kind === 'up_to_date' || offer.kind === 'failed') {
+    if (offer.kind === 'failed' && checkFailed) return settled ? null : failedCheck(offer.error)
+    if (byHand?.kind === 'checking') offer = { kind: 'checking' }
+    else if (byHand?.kind === 'failed') return failedCheck(byHand.error)
+    else if (byHand?.kind === 'up_to_date' && offer.kind !== 'failed') offer = { kind: 'up_to_date', version: byHand.version }
+  }
   if (offer.kind === 'none' || (settled && (offer.kind === 'up_to_date' || offer.kind === 'failed'))) return null
 
   const dismiss = (version?: string) => {
@@ -138,7 +190,8 @@ export function AppUpdateNotice() {
           <button
             type="button"
             onClick={() => { setOpen(false); void appUpdate.install() }}
-            className="text-accent hover:underline"
+            data-update-offer
+            className="rounded-full border border-accent/60 bg-accent/15 px-2 leading-[18px] font-medium text-accent hover:bg-accent/25"
             title={`Download Caprock ${offer.next}, check its signature, install it and restart. Sessions keep running.`}
           >
             Update to {offer.next} — Restart
@@ -159,7 +212,8 @@ export function AppUpdateNotice() {
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="text-accent hover:underline"
+          data-update-offer
+          className="rounded-full border border-accent/60 bg-accent/15 px-2 leading-[18px] font-medium text-accent hover:bg-accent/25"
           title={`Caprock ${offer.latest} is available — you are on ${current}`}
         >
           {offer.latest} is out

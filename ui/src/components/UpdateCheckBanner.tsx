@@ -3,7 +3,11 @@
  * seen (lib/checkbanner): *You're up to date — Caprock X is the latest*,
  * checked just now, with Close; it goes by itself after 8 seconds unless
  * the pointer is on it. A failed check stays, with the error and Retry.
- * The hourly background check never shows it.
+ * The background check (every 15 minutes, and on focus) never shows it.
+ *
+ * The browser dashboard's only: the desktop app answers in its status strip,
+ * beside the version (AppUpdateNotice; owner 2026-10-16, translated: "I
+ * expect the update result at the bottom right, near the version").
  */
 import { useEffect, useRef, useState } from 'react'
 import { inBackground, useAppUpdate } from '@/lib/appupdate'
@@ -34,7 +38,7 @@ export function UpdateCheckBanner() {
     return () => window.clearTimeout(t)
   }, [result, hover])
 
-  if (!result) return null
+  if (!result || result.kind === 'checking') return null
   const close = () => reportCheck(null)
   const retry = async () => {
     setRetrying(true)
