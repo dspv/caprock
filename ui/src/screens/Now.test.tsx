@@ -15,10 +15,10 @@
  *    healthy while capturing nothing, and this screen told the user to start
  *    `claude` and wait for sessions that could never arrive.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { NowScreen } from './Now'
-import type { SessionSummary, Status, Summary, Trends } from '@/lib/api'
+import { api, type SessionSummary, type Status, type Summary, type Trends } from '@/lib/api'
 
 const state = vi.hoisted(() => ({
   status: {} as Partial<Status>,
@@ -443,4 +443,31 @@ it('keeps the trend rows in place before the trends arrive, and asks through the
   // The word row exists, empty, so nothing moves when the answer lands.
   await waitFor(() => expect(document.querySelector('[data-trend="cost"] [data-compare]')).not.toBeNull())
   expect(document.querySelector('[data-trend="cost"] [data-compare]')?.textContent).toBe('')
+})
+
+it('on a phone, All sessions: End from a row Caprock started, one confirm, then the row stays, ended; a terminal’s own says why (rule 7)', async () => {
+  const mq = (q: string) => ({ matches: q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList
+  vi.stubGlobal('matchMedia', mq)
+  state.summary = emptySummary({ sessions: 2 })
+  state.status = { claude_available: true }
+  state.sessions = [
+    sess({ session_id: 'mine', project: 'alpha', owned: true }),
+    sess({ session_id: 'theirs', project: 'beta', owned: false }),
+  ]
+  const signal = vi.spyOn(api, 'signal').mockResolvedValue(undefined)
+  render(<NowScreen />)
+  const list = await screen.findByRole('region', { name: 'Running sessions' })
+  fireEvent.click(within(list).getByRole('button', { name: 'More for beta' }))
+  const why = screen.getByRole('menu', { name: 'More for beta' })
+  expect(why).toHaveTextContent('Started in your own terminal — Caprock never stops it (rule 7).')
+  expect(within(why).queryByRole('menuitem')).toBeNull()
+  fireEvent.click(within(list).getByRole('button', { name: 'More for alpha' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'End session…' }))
+  // The list then answers without it: it holds live sessions only.
+  state.sessions = [state.sessions[1]!]
+  fireEvent.click(screen.getByRole('button', { name: 'End session' }))
+  await waitFor(() => expect(signal).toHaveBeenCalledWith('mine', 'end'))
+  expect(signal).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(within(list).getByRole('link', { name: /alpha/ })).toHaveTextContent(/ended/i))
+  vi.unstubAllGlobals()
 })

@@ -22,9 +22,11 @@
  * Caprock started and still holds, on a device allowed to control it — rule
  * 7, and `POST /v1/agents/{id}/signal` is a controller's route only. One
  * confirm sheet, then the polite stop (`end`): SIGTERM, a kill after the grace.
+ * Where a live session cannot be ended here, the sheet's first line says why
+ * (owner, 2026-10-16: never silently unavailable; components/PhoneEnd).
  */
 import { useState, type ReactNode } from 'react'
-import { api, errText } from '@/lib/api'
+import { EndSheet } from './PhoneEnd'
 import { HealthDot } from './ui'
 import { machineSwitch } from '@/lib/machineswitch'
 import type { Health } from '@/lib/api'
@@ -37,7 +39,7 @@ const LABEL: Record<PhoneView, string> = { chat: 'Chat', terminal: 'Terminal', c
 export const PHONE_BAR_PX = 44
 
 export function PhoneSessionBar({
-  backHref, title, health, alert, views, active, onPick, overlay = false, hidden = false, onReveal, end, children,
+  backHref, title, health, alert, views, active, onPick, overlay = false, hidden = false, onReveal, end, endWhy, onEnded, children,
 }: {
   backHref: string
   title: string
@@ -55,6 +57,10 @@ export function PhoneSessionBar({
   onReveal?: () => void
   /** The session to offer to end; absent, no End (not ours, ended, or a reader). */
   end?: { sessionId: string }
+  /** Why a live session cannot be ended here: the sheet's first line. */
+  endWhy?: string
+  /** Told once the end was sent. */
+  onEnded?: () => void
   /** The sheet: what the bar does not say. */
   children?: ReactNode
 }) {
@@ -119,7 +125,7 @@ export function PhoneSessionBar({
           )}
         </div>
       </div>
-      {end && ending && <EndSheet sessionId={end.sessionId} title={title} onClose={() => setEnding(false)} />}
+      {end && ending && <EndSheet sessionId={end.sessionId} title={title} onClose={() => setEnding(false)} onEnded={onEnded} />}
       {away && (
         <button
           type="button"
@@ -148,52 +154,17 @@ export function PhoneSessionBar({
             </div>
           ) : (
             <div data-phone-sheet className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+2.75rem)] z-40 max-h-[75dvh] overflow-y-auto overflow-x-hidden border-b border-border bg-panel px-3 pb-3 pt-2.5 shadow-lg">
+              {endWhy && (
+                <p data-phone-end-why className="mb-2.5 border-b border-border pb-2.5 text-[13px] leading-snug text-fg-muted">
+                  <span className="font-medium text-fg">End</span> · {endWhy}
+                </p>
+              )}
               {children}
               <MachineList />
             </div>
           )}
         </>
       )}
-    </>
-  )
-}
-
-/**
- * End's one confirmation, at the bottom where the thumb is. It sends `end`,
- * as closing a tab on the desktop does: SIGTERM, so Claude Code writes its
- * transcript out and `--resume` works, and a kill only if the process is
- * still running after the grace period. That is what makes "the
- * conversation is saved and can be continued" true; `kill` would not.
- */
-function EndSheet({ sessionId, title, onClose }: { sessionId: string; title: string; onClose: () => void }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  const end = async () => {
-    setBusy(true)
-    setError('')
-    try {
-      await api.signal(sessionId, 'end')
-      onClose()
-    } catch (e) {
-      setBusy(false)
-      setError(errText(e))
-    }
-  }
-  return (
-    <>
-      <div aria-hidden className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
-      <div role="alertdialog" aria-modal="true" aria-label="End the session" data-phone-end-sheet
-        className="fixed inset-x-0 bottom-0 z-50 grid gap-3 rounded-t-[16px] border-t border-border-strong bg-panel px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-lg">
-        <p className="min-w-0 text-[16px] font-medium leading-snug text-fg [overflow-wrap:anywhere]">End {title}?</p>
-        <p className="text-[14px] text-fg-muted">The conversation is saved and can be continued.</p>
-        {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
-        <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={onClose} className="min-h-11 rounded-[10px] border border-border-strong text-[15px] text-fg">Keep it</button>
-          <button type="button" autoFocus disabled={busy} onClick={() => void end()} className="min-h-11 rounded-[10px] bg-danger text-[15px] font-medium text-panel disabled:opacity-50">
-            {busy ? 'Ending…' : 'End session'}
-          </button>
-        </div>
-      </div>
     </>
   )
 }

@@ -8,9 +8,11 @@
  * first message), when it was last active, the model, and what it is doing
  * now. **New chat** starts one at once on the remembered vendor and model;
  * the chip beside it changes that. Search reads every message the user
- * typed. A row's ⋯ renames, archives (hides it from this list, deleting
- * nothing) or deletes it for good after a second, explicit tap. Archived
- * chats are one link away.
+ * typed. A row's ⋯ ends a live chat (or says why it cannot be ended here;
+ * a swipe left opens the same End — components/PhoneEnd), renames, archives
+ * (hides it from this list, deleting nothing) or deletes it for good after a
+ * second, explicit tap. An ended chat stays listed, *ended*, and can be
+ * continued. Archived chats are one link away.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText, type SessionSummary } from '@/lib/api'
@@ -23,7 +25,8 @@ import { useNarrowScreen } from '@/lib/phone'
 import { useNow } from '@/lib/useNow'
 import { ModelChip, useChatChoice } from '@/components/ChatStart'
 import { AgentGlyph } from '@/components/AgentMarks'
-import { ChatIcon, MoreIcon, PlusIcon, SearchIcon } from '@/components/AppIcons'
+import { ChatIcon, PlusIcon, SearchIcon } from '@/components/AppIcons'
+import { EndableRow, ROW_MENU_ITEM as MENU_ITEM, useEndedHere } from '@/components/PhoneEnd'
 
 /** How many chats one page lists; the count says how many there are. */
 const PAGE = 100
@@ -39,7 +42,7 @@ function dot(s: SessionSummary): string {
 
 /** What a chat is doing, when it is doing something: open and idle says nothing. */
 function stateWord(s: SessionSummary): string {
-  if (s.status === 'ended') return ''
+  if (s.status === 'ended') return 'ended'
   const h = s.activity?.health
   return h === 'working' ? 'answering…' : h === 'waiting-on-you' ? 'waiting for you' : ''
 }
@@ -79,7 +82,8 @@ export function ChatsScreen({ archived = false }: { archived?: boolean }) {
   }, [query])
   const list = useApi(() => api.chats({ q, archived, limit: PAGE }), [q, archived], { intervalMs: 5000, cache: q ? undefined : `chats:${archived ? 'archived' : 'open'}` })
   const [gone, setGone] = useState<string[]>([])
-  const items = (list.data?.items ?? []).filter((s) => !gone.includes(s.session_id))
+  const endedHere = useEndedHere()
+  const items = (list.data?.items ?? []).filter((s) => !gone.includes(s.session_id)).map(endedHere.view)
   const fresh = useNewChat()
   const counts = list.data
 
@@ -145,7 +149,7 @@ export function ChatsScreen({ archived = false }: { archived?: boolean }) {
       ) : (
         <ul aria-label="Chats" className="overflow-hidden rounded-[12px] border border-border bg-panel">
           {items.map((s) => (
-            <ChatRow key={s.session_id} s={s} now={now} canControl={canControl} onGone={() => setGone((g) => [...g, s.session_id])} onChanged={list.refresh} />
+            <ChatRow key={s.session_id} s={s} now={now} canControl={canControl} onGone={() => setGone((g) => [...g, s.session_id])} onChanged={list.refresh} onEnded={() => { endedHere.mark(s.session_id); list.refresh() }} />
           ))}
         </ul>
       )}
@@ -157,21 +161,13 @@ export function ChatsScreen({ archived = false }: { archived?: boolean }) {
   )
 }
 
-function ChatRow({ s, now, canControl, onGone, onChanged }: { s: SessionSummary; now: number; canControl: boolean; onGone: () => void; onChanged: () => void }) {
-  const [menu, setMenu] = useState(false)
+function ChatRow({ s, now, canControl, onGone, onChanged, onEnded }: { s: SessionSummary; now: number; canControl: boolean; onGone: () => void; onChanged: () => void; onEnded: () => void }) {
   const [renaming, setRenaming] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [error, setError] = useState('')
   const title = chatTitle(s)
   const when = s.worked_at || s.last_event_at
   const word = stateWord(s)
-  const box = useRef<HTMLLIElement>(null)
-  useEffect(() => {
-    if (!menu) return
-    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) { setMenu(false); setConfirm(false) } }
-    document.addEventListener('pointerdown', away)
-    return () => document.removeEventListener('pointerdown', away)
-  }, [menu])
   const act = async (fn: () => Promise<unknown>, after: () => void) => {
     setError('')
     try { await fn(); after() } catch (e) { setError(errText(e)) }
@@ -188,49 +184,50 @@ function ChatRow({ s, now, canControl, onGone, onChanged }: { s: SessionSummary;
       </li>
     )
   }
-  return (
-    <li ref={box} className="relative border-b border-border last:border-b-0">
-      <div className="flex items-center">
-        <a href={href({ name: 'chat', id: s.session_id })} className={`flex min-h-[64px] min-w-0 flex-1 items-center gap-3 px-3 py-2 text-fg no-underline hover:no-underline active:bg-panel-2 ${s.status === 'ended' ? '' : ''}`}>
-          <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-panel-2 text-fg-muted">
-            <AgentGlyph agent={s.agent} size={16} />
-            <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2 ring-panel ${dot(s)}`} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="flex min-w-0 items-baseline gap-2">
-              <span className="truncate text-[15.5px] font-medium">{title}</span>
-              <span className="ml-auto shrink-0 text-[12px] text-fg-faint">{fmtAgo(when, now)}</span>
-            </span>
-            <span className="block truncate text-[13px] text-fg-muted">{sub}</span>
-          </span>
-        </a>
-        {canControl && (
-          <button type="button" aria-label={`More for ${title}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => { setMenu((v) => !v); setConfirm(false) }} className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-fg-faint hover:text-fg">
-            <MoreIcon size={18} />
-          </button>
-        )}
-      </div>
-      {error && <p role="alert" className="px-3 pb-2 text-[13px] text-danger">{error}</p>}
-      {menu && (
-        <div role="menu" aria-label={`More for ${title}`} className="absolute right-2 top-[calc(100%-6px)] z-20 w-[240px] overflow-hidden rounded-[12px] border border-border-strong bg-panel py-1 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.6)]">
-          <button type="button" role="menuitem" className={MENU_ITEM} onClick={() => { setMenu(false); setRenaming(true) }}>Rename</button>
-          <button type="button" role="menuitem" className={MENU_ITEM} onClick={() => { setMenu(false); void act(() => api.archiveChat(s.session_id, !s.archived_at), onGone) }}>
-            {s.archived_at ? 'Move back to Chats' : 'Archive'}
-          </button>
-          {!confirm ? (
-            <button type="button" role="menuitem" className={`${MENU_ITEM} text-danger`} onClick={() => setConfirm(true)}>Delete…</button>
-          ) : (
-            <button type="button" role="menuitem" className={`${MENU_ITEM} font-semibold text-danger`} onClick={() => { setMenu(false); void act(() => api.deleteChat(s.session_id), onGone) }}>
-              Delete for good — and its files
-            </button>
-          )}
-        </div>
+  // End comes first in the ⋯ (components/PhoneEnd): for a live chat Caprock
+  // holds, or the line that says why not. An ended chat stays listed and can
+  // be continued.
+  const items = canControl ? (close: () => void) => (
+    <>
+      <button type="button" role="menuitem" className={MENU_ITEM} onClick={() => { close(); setRenaming(true) }}>Rename</button>
+      <button type="button" role="menuitem" className={MENU_ITEM} onClick={() => { close(); void act(() => api.archiveChat(s.session_id, !s.archived_at), onGone) }}>
+        {s.archived_at ? 'Move back to Chats' : 'Archive'}
+      </button>
+      {!confirm ? (
+        <button type="button" role="menuitem" className={`${MENU_ITEM} text-danger`} onClick={() => setConfirm(true)}>Delete…</button>
+      ) : (
+        <button type="button" role="menuitem" className={`${MENU_ITEM} font-semibold text-danger`} onClick={() => { close(); void act(() => api.deleteChat(s.session_id), onGone) }}>
+          Delete for good — and its files
+        </button>
       )}
-    </li>
+    </>
+  ) : undefined
+  return (
+    <EndableRow
+      s={s}
+      title={title}
+      canControl={canControl}
+      onEnded={onEnded}
+      items={items}
+      onMenu={() => setConfirm(false)}
+      after={error && <p role="alert" className="px-3 pb-2 text-[13px] text-danger">{error}</p>}
+    >
+      <a href={href({ name: 'chat', id: s.session_id })} className="flex min-h-[64px] min-w-0 items-center gap-3 px-3 py-2 text-fg no-underline hover:no-underline active:bg-panel-2">
+        <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-panel-2 text-fg-muted">
+          <AgentGlyph agent={s.agent} size={16} />
+          <span className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2 ring-panel ${dot(s)}`} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="truncate text-[15.5px] font-medium">{title}</span>
+            <span className="ml-auto shrink-0 text-[12px] text-fg-faint">{fmtAgo(when, now)}</span>
+          </span>
+          <span className="block truncate text-[13px] text-fg-muted">{sub}</span>
+        </span>
+      </a>
+    </EndableRow>
   )
 }
-
-const MENU_ITEM = 'flex min-h-11 w-full items-center px-4 text-left text-[15px] text-fg active:bg-panel-2 hover:bg-panel-2'
 
 /** A one-line name field: Enter keeps it, Esc leaves it; '' clears the name. */
 export function RenameField({ initial, placeholder, onDone }: { initial: string; placeholder: string; onDone: (name: string | null) => void }) {

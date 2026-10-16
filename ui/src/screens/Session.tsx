@@ -35,6 +35,7 @@ import { SubscriptionTag } from '@/components/SubscriptionPicker'
 import { ConnectionState, readLink } from '@/components/ConnectionState'
 import { narrowScreen, useFillViewport, useHideOnScroll, useNarrowScreen } from '@/lib/phone'
 import { PHONE_BAR_PX, PhoneSessionBar } from '@/components/PhoneSessionBar'
+import { endState } from '@/components/PhoneEnd'
 
 type Tab = 'chat' | 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -167,6 +168,8 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // each second), so turning the phone follows.
   const talking = active === 'chat' || active === 'terminal'
   const compact = phone
+  // End on the bar, or the one line that says why not (components/PhoneEnd).
+  const ending = endState(s, !reader)
   const controls = (
     <>
       {/* The permission mode: changeable here for a session Caprock started,
@@ -270,7 +273,9 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           overlay={overlay}
           hidden={barHidden}
           onReveal={showBar}
-          end={!detail.stale && s.owned && s.status !== 'ended' && !s.detached && !reader ? { sessionId: s.session_id } : undefined}
+          end={!detail.stale && ending?.can ? { sessionId: s.session_id } : undefined}
+          endWhy={!detail.stale && ending && !ending.can ? ending.why : undefined}
+          onEnded={detail.refresh}
         >
           <div className="grid grid-cols-1 gap-2.5">
             <div className="min-w-0">
