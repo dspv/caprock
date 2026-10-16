@@ -222,7 +222,11 @@ func TestASocketClosedWhileTypingSaysWhy(t *testing.T) {
 	typed := make(chan struct{})
 	go func() {
 		defer close(typed)
-		for {
+		// A burst of keystrokes as the socket closes: enough to land writes
+		// on the closing socket, fewer than the host's queue holds. An
+		// unbounded loop outran the host on one or two CPUs and was hung up
+		// as a flood, which is that guard working, not this bug.
+		for i := 0; i < 128; i++ {
 			select {
 			case <-stop:
 				return
