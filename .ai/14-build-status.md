@@ -184,6 +184,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-16 — 0.125.0: Premium shows the whole plan, Second Brain leads with what your next session gets, and Mail grows up
+
+A minor release because it carries features, landed as one batch PR (#720). The Premium dialog shows the feature clicked, then the other seven as chips. Second Brain opens on what a new session in a repository would be handed, then recent memories; the graph is a card that opens full-screen. Update checks run every 15 minutes and when the window comes to the front, and their result shows beside the version. Every dashboard page names itself and leads back; every link that leaves is marked. The right panel's CI lists what is in flight, and the release plan uses its width with cost, CI per OS and what each PR waits for. Mail: the keyboard, AI sorting, a local junk filter, and a window of its own. `make e2e` runs the golden paths in a headless browser against a sandboxed daemon.
+
 ### 2026-10-16 — 0.124.1: no more crashes, drops always land, links in your browser
 
 A patch release. On macOS 27 the app crashed twice in eight minutes: WebKit killed a page process at its pasteboard check and the app faulted shutting it down — both since 0.123.0's Page tab made the dashboard a child webview. The Page tab is withdrawn (ADR-070), so ⌘-click opens a link in the default browser again; the shell hears a drop as both the window's and the webview's event; a drop beside a terminal goes to the one used last, and one with nowhere to go says so (#715).

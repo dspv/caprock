@@ -12,6 +12,152 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.125.0] - 2026-10-16
+
+### Added
+
+- **docs:** `docs/install-agent.md` says what the install does, where it lives and how to remove it; the agent install prompt is now five lines, runs the same script as the site, and leaves Claude Code's settings to the app.
+- **ci:** `make e2e` drives the app's golden paths in Playwright's own
+  headless shell against a sandboxed daemon (temp home and data directory, a
+  free port, the fake `claude`): the workspace loads with no console errors,
+  sessions open as tabs with a sidebar row in Tree and Flat, typing, paste and
+  a native file drop reach the terminal, and the palette, Settings, Second
+  Brain, Pipeline and the share dialog open. `make pr-check` runs it when
+  `ui/` or `internal/api/` changed, and CI runs it on Ubuntu. The app's own
+  tests now check that a drop is heard as both the window's and the
+  webview's event, through one handler (the 0.123.0 bug).
+- **mail:** AI sorts the inbox. With AI on, Mail labels your newest 200
+  conversations, then new mail as it arrives, as Important, Updates,
+  Newsletters or Spam, with a one-line summary in place of the snippet and
+  a *Reply* mark on mail that waits on your answer. Filters along the top
+  of the inbox — `1` All (everything but spam), `2` Important, `3` Updates,
+  `4` Newsletters, `5` Spam with its count. Nothing moves on the server by
+  itself: `!` sends a conversation to Junk, `n` says it is not spam, and
+  Mail remembers that for the sender too. While it works the list says
+  *Sorting 37 conversations…*; with AI off one line offers *Let AI sort
+  your inbox — Turn on* and says where the text goes. Sorting uses the
+  provider you picked in Mail's settings, a batch of conversations per
+  call, in the background. The sample inbox shows the labels without any
+  AI call.
+- **mail:** Who does the AI work is named wherever it acts — under the
+  inbox filters, under every summary and on the composer's AI bar — with
+  *change* opening Settings at the AI section, and the reader shows a
+  conversation's stored one-liner at once. A new *Language* setting
+  (same as the email, English, Russian, Spanish, German) sets what
+  summaries are written in; a drafted reply keeps the language of the mail
+  it answers.
+- **mail:** junk stays out of the Inbox, even when your mail provider
+  leaves it there (owner request, translated: "there's a lot of spam in my
+  inbox — every mail client filters this"). Caprock's own filter runs on the
+  machine, with no AI and nothing sent anywhere, and is on from the start. It
+  reads what the receiving server wrote into each message — SPF, DKIM and
+  DMARC results and the server's own spam verdict — plus a few cheap checks
+  (a brand name on an unrelated domain, replies sent to a free mail address,
+  URL shorteners, image-only mail), and a small learning classifier taught by
+  your Spam folder and by every *Spam* (`!`) and *Not spam* (`n`, new) you
+  press. Anyone you have written to, or said *Not spam* for, is never junk.
+  Hidden mail is listed under *Caprock thinks these are junk* in Spam
+  (`g !`), whose count the sidebar shows, and the reader says why; nothing is
+  moved or deleted on the server unless you press Spam yourself.
+- **mail:** with AI sorting on, Spam is one list and one count whoever
+  found it: the inbox's Spam filter (`5`) and the Spam folder view show the
+  junk filter's catch first, then the AI's, each with a single *Spam* label,
+  and `n` clears both at once — the filter learns, the AI's label is taken
+  back, and the sender is never spam again. Mail the filter caught is never
+  sent to the AI.
+- **mail:** Mail from the keyboard, with the key on every action. Each
+  button shows its key as a small chip — `e` archive, `#` delete, `v` move
+  (a numbered folder list), `s` star, `u` unread, `i` summarise, `r`/`a`/`f`
+  reply, reply all, forward, `c` compose — the folders show `g i`, `g u`,
+  `g s` and the rest, `/` search, `,` settings, `g r` check mail, and `?`
+  lists every shortcut. `t` opens the theme list: `j`/`k` show each palette
+  at once, Enter keeps it, Esc goes back, a digit picks — Sunlight outside,
+  Dark Pastel at night. *Summarise* is there even with AI off: the first
+  press says which provider would answer and where the mail goes, and
+  *Turn on and summarise* switches it on. In the composer ⌘↩ sends and ⌘J
+  drafts the reply with AI.
+
+### Changed
+
+- **app:** feedback is one box: type what's wrong, drop or paste a
+  screenshot anywhere on it, and press Send (⌘↩, Ctrl+Enter off macOS). The
+  first line becomes the issue's title. Bug / Idea / Question, the
+  diagnostics, *Choose image…* and *Capture window* are under *Details*;
+  nothing else is required. What you typed is kept until it is sent, so Esc
+  loses nothing. Send still opens a prefilled GitHub issue in your browser
+  for you to submit; Caprock sends nothing itself.
+- **pipeline:** The *Next release* plan uses its width. Its bar grows with
+  the panel, one taller segment per step (agent, PR, CI, merged, released),
+  each named on hover, and the step under way breathes softly. Beside the
+  stage word, as the width allows, each row says what it waits for now
+  (*CI on Windows · 6m*, *needs a rebase*, *fix: go (windows-latest)*,
+  *a release*), the agent cost recorded on it at API list price (*—* where
+  no session was), a dot per OS its checks ran on, how long its CI took
+  against the usual (*14m +27%*, *6m / ~11m* while running), and how long
+  ago it was opened. In a narrow panel these columns drop first, and the plan never
+  scrolls sideways. On the phone each row also says what it waits for.
+- **brain:** Second Brain leads with what it is for. One status line on top
+  (*Up to date · 278 memories · 137 new today · 91 topics · $0.15 in 24 h*,
+  or the stage and N of M over the progress bar while it builds) replaces
+  the three step blocks and six tiles, with the rest under *Details*. The
+  middle is **What your next session gets** — pick a repository and see the
+  up-to-five memories a new session there is handed, in order, and whether
+  one opening now would get them — then **Recent memories** with search, a
+  project and a span. The graph is a small card on the side; a click opens
+  it in a near-full-screen dialog to zoom, pan and explore (Esc, × or the
+  backdrop close it). The *Graph* | *List* switch is gone. New read-only
+  `GET /v1/brain/handoff?project=` names the memories with the same pick
+  the handoff makes.
+- **app:** every dashboard page says where you are and how to get back. Off
+  Home the header reads *caprock / Pipeline* (the browser tab too:
+  *Pipeline · caprock*), one item is highlighted — Settings included — and a
+  *← Home* button returns to Home in the same tab. In the app the Pipeline and
+  Mail tabs carry *← Dashboard*, which brings the Dashboard tab back. Links
+  that leave Caprock are marked ↗ and say *Opens in a new tab* (or *Opens in
+  your browser* in the app); links that stay inside use → instead. The
+  version dialog's link to turn release checks on now opens Settings rather
+  than falling through to Home.
+- **app:** Mail opens in a window of its own, not as a tab inside Caprock's
+  window with the sidebar beside it. In the desktop app the sidebar's *Mail*,
+  ⇧⌘M and the palette's *Open Mail* launch or bring forward the Caprock Mail
+  preview when it is installed (macOS, in Applications); without it they open
+  a second Caprock window, *Caprock Mail*, with Mail alone, brought to the
+  front when it is already open. In a browser the Mail tab stays, under a
+  banner, *Mail works best in its own window*, whose button — or ⇧⌘M on the
+  Mail tab — opens Mail alone in a browser window.
+- **app:** the Premium dialog shows the whole plan, not only the feature you
+  clicked. Its header counts the plan and states the yearly price ("Premium ·
+  8 features · $30 a year"), and under the feature one row of chips names the
+  other seven; a chip shows that feature in place, and the ones added in the
+  last 30 days are marked New.
+
+### Fixed
+
+- **app:** the right panel's CI block lists only what is in flight: open pull
+  requests, and the ones merged since the latest release. Released and
+  closed ones are gone, so a repository that publishes no releases (a site
+  that pushes straight to master) no longer fills the block with every merge.
+  With nothing in flight it says so in one line, with the last release and how
+  long ago it was, over the three newest merges. Ring and By OS are never
+  blank: without the session deck's own PR they draw the newest pull request
+  in flight, read its checks themselves, and say "Nothing in flight" when
+  nothing is.
+- **ui:** a freshly opened window no longer logs a 404 for
+  `/v1/projects/dir:…/cleanup`: the finished-copies line waits for the
+  daemon's own project list instead of asking about a project the window
+  derived while that list was loading. Found by `make e2e`.
+- **app:** a new release shows within minutes. The release check is due
+  every 15 minutes (it was hourly, so a release could sit unannounced for
+  most of an hour), and when you come back to the window Caprock checks
+  again if the last check is ten minutes old. Never more than one check per
+  ten minutes unless you ask; still one conditional request to GitHub, and
+  only while Settings → Updates allows it.
+- **app:** the answer to a check is at the bottom right, beside the
+  version, where you look for it: *Checking for updates…*, *Caprock is up
+  to date* for a few seconds, *Couldn't check for updates* with **Retry**,
+  or **Update to vX — Restart** as an amber pill. The banner at the top
+  centre is gone from the app.
+
 ## [0.124.1] - 2026-10-16
 
 ### Changed
