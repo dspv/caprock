@@ -189,23 +189,99 @@ fn main() {
 mod menu {
     use super::*;
     use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
+    use tauri::Manager;
 
     const BACKGROUND: &str = "background";
     const RELOAD: &str = "reload";
     const CHECK_UPDATES: &str = "check-updates";
+    const CLOSE_TAB: &str = "close-tab";
+    const CLOSE_WINDOW: &str = "close-window";
 
-    pub fn install(app: &tauri::AppHandle, sup: &commands::Sup) -> tauri::Result<()> {
-        let menu = Menu::default(app)?;
+    /// What the page does on File -> Close Tab: the same as ⌘W pressed in it
+    /// (`CLOSE_TAB_EVENT`, ui/src/lib/shell.ts).
+    const CLOSE_TAB_JS: &str = "window.dispatchEvent(new Event('caprock:close-tab'))";
+
+    /// What ⌘W does in the window in front.
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum CloseTarget {
+        /// The main window: its tab in front, as the tab's × does (the page decides).
+        Tab,
+        /// Any other window (Mail, the popover): the window, as ⌘W always did.
+        Window(String),
+        /// No window of ours in front.
+        Nothing,
+    }
+
+    /// ⌘W closes the tab in front, never the main window (owner, 2026-10-16,
+    /// translated: "Cmd+W must close tabs").
+    pub fn close_target(focused: Option<&str>) -> CloseTarget {
+        match focused {
+            Some(shell::MAIN) => CloseTarget::Tab,
+            Some(label) => CloseTarget::Window(label.to_string()),
+            None => CloseTarget::Nothing,
+        }
+    }
+
+    fn focused_label(app: &tauri::AppHandle) -> Option<String> {
+        app.webview_windows()
+            .into_iter()
+            .find(|(_, w)| w.is_focused().unwrap_or(false))
+            .map(|(label, _)| label)
+    }
+
+    fn close_window(app: &tauri::AppHandle, label: &str) {
+        if let Some(w) = app.get_webview_window(label) {
+            // The main window's own CloseRequested hides it (shell::build).
+            let _ = w.close();
+        }
+    }
+
+    /// Tauri's default menu, rearranged: View -> Reload, and ⌘W on Close Tab.
+    pub fn arrange<R: tauri::Runtime>(
+        app: &tauri::AppHandle<R>,
+        menu: &Menu<R>,
+    ) -> tauri::Result<()> {
         // View -> Reload: the page again from the daemon, as a browser's Cmd+R.
         let reload = MenuItem::with_id(app, RELOAD, "Reload", true, Some("CmdOrCtrl+R"))?;
+        // Tauri's default menu puts Close Window on ⌘W twice (File and
+        // Window), and a menu's key equivalent is taken before the page sees
+        // the key, so ⌘W hid the window instead of closing the tab. File ->
+        // Close Tab holds ⌘W now; Window -> Close Window stays, with no key.
+        let close_tab = MenuItem::with_id(app, CLOSE_TAB, "Close Tab", true, Some("CmdOrCtrl+W"))?;
+        let close_win = MenuItem::with_id(app, CLOSE_WINDOW, "Close Window", true, None::<&str>)?;
         for kind in menu.items()? {
             if let MenuItemKind::Submenu(sub) = kind {
-                if sub.text()? == "View" {
+                let text = sub.text()?;
+                if text == "View" {
                     sub.insert(&reload, 0)?;
                     sub.insert(&PredefinedMenuItem::separator(app)?, 1)?;
                 }
+                if text == "File" || text == "Window" {
+                    for (i, item) in sub.items()?.iter().enumerate() {
+                        let MenuItemKind::Predefined(p) = item else {
+                            continue;
+                        };
+                        // The title, or before the menu is built the default with its &mnemonic.
+                        if p.text()?.replace('&', "") != "Close Window" {
+                            continue;
+                        }
+                        sub.remove(p)?;
+                        if text == "File" {
+                            sub.insert(&close_tab, i)?;
+                        } else {
+                            sub.insert(&close_win, i)?;
+                        }
+                        break;
+                    }
+                }
             }
         }
+        Ok(())
+    }
+
+    pub fn install(app: &tauri::AppHandle, sup: &commands::Sup) -> tauri::Result<()> {
+        let menu = Menu::default(app)?;
+        arrange(app, &menu)?;
         let on = sup.settings().is_none_or(|s| s.background);
         let item = CheckMenuItem::with_id(
             app,
@@ -232,6 +308,24 @@ mod menu {
             }
             if event.id() == CHECK_UPDATES {
                 crate::updater::check_from_menu(app);
+                return;
+            }
+            if event.id() == CLOSE_TAB {
+                match close_target(focused_label(app).as_deref()) {
+                    CloseTarget::Tab => {
+                        if let Some(w) = app.get_webview_window(shell::MAIN) {
+                            let _ = w.eval(CLOSE_TAB_JS);
+                        }
+                    }
+                    CloseTarget::Window(label) => close_window(app, &label),
+                    CloseTarget::Nothing => {}
+                }
+                return;
+            }
+            if event.id() == CLOSE_WINDOW {
+                if let Some(label) = focused_label(app) {
+                    close_window(app, &label);
+                }
                 return;
             }
             if event.id() != BACKGROUND {
@@ -649,6 +743,50 @@ mod tests {
             code(&src).matches("DragDrop(").count(),
             2,
             "a drop is handled somewhere other than listen_for_drops"
+        );
+    }
+
+    /// ⌘W closes the tab in front of the main window and any other window
+    /// whole (owner, 2026-10-16); the menu holds the key, so the page would
+    /// never see it otherwise.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cmd_w_closes_the_tab_not_the_main_window() {
+        use menu::{close_target, CloseTarget};
+        assert_eq!(close_target(Some(shell::MAIN)), CloseTarget::Tab);
+        assert_eq!(
+            close_target(Some(mail::MAIL)),
+            CloseTarget::Window(mail::MAIL.into())
+        );
+        assert_eq!(
+            close_target(Some(popover::POPOVER)),
+            CloseTarget::Window(popover::POPOVER.into())
+        );
+        assert_eq!(close_target(None), CloseTarget::Nothing);
+        // The menu itself cannot be built here (muda makes its items on the
+        // main thread only), so what `arrange` puts in it is read from source.
+        let src = include_str!("main.rs");
+        let menu = src.split("mod menu {").nth(1).expect("mod menu");
+        let menu = menu.split("#[cfg(test)]").next().unwrap_or(menu);
+        assert!(
+            menu.contains(r#""Close Tab", true, Some("CmdOrCtrl+W")"#),
+            "File -> Close Tab no longer holds ⌘W"
+        );
+        assert!(
+            menu.contains(r#""Close Window", true, None::<&str>"#),
+            "Window -> Close Window took a key back"
+        );
+        assert!(
+            menu.contains(r#"p.text()?.replace('&', "") != "Close Window""#),
+            "the default Close Window is no longer looked for"
+        );
+        assert!(
+            menu.contains("arrange(app, &menu)?"),
+            "install no longer rearranges the menu"
+        );
+        assert!(
+            menu.contains("caprock:close-tab"),
+            "Close Tab no longer tells the page"
         );
     }
 }

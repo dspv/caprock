@@ -1069,7 +1069,22 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   Ctrl+Shift+P, Ctrl+Alt+Shift+W, Ctrl+Alt+Shift+T, Ctrl+Alt+Shift+F — the
   three ⇧⌘ chords take Alt because their ⌘ twin (⌘W Close, ⌘T New shell,
   ⌘F Find) is Ctrl+Shift there (`OFF_MAC_ALT`). None is an item of Tauri's
-  default macOS menu (Close Window is ⌘W; there is no Print). The full list
+  default macOS menu (there is no Print). **⌘W closes the tab, not the
+  window** (owner, 2026-10-16, translated: "Cmd+W must close tabs"). Tauri's
+  default menu put Close Window on ⌘W in File and in Window, and a menu's
+  key equivalent is taken before the page sees the key, so ⌘W hid the
+  window and the page's own ⌘W (the `detach-tab` command, the tab's ×
+  with its confirm) never ran. `menu::install` swaps both: File → **Close
+  Tab** holds ⌘W and, with the main window in front, dispatches
+  `caprock:close-tab` (`CLOSE_TAB_EVENT`, `ui/src/lib/shell.ts`) to the
+  page, which runs the same command the key would; with another window in
+  front (Mail, the popover) it closes that window, as ⌘W always did
+  (`menu::close_target`). Window → **Close Window** stays, with no key.
+  With the Dashboard in front ⌘W does nothing: the window is put away by
+  Close Window, its red button, ⌘H or ⌘M, never by a key that closes tabs
+  everywhere else. Windows and Linux have no app menu, so Ctrl+Shift+W
+  reaches the page directly; bare Ctrl+W stays the shell's delete-word.
+  The full list
   is `SHORTCUTS` in `ui/src/lib/appkeys.ts` and docs/app.md § Keyboard.
 - **F10 — Badge.** The dock (macOS) or taskbar (Windows) badge is the number
   of sessions waiting on you — the sidebar's marked rows: a permission prompt or
@@ -2478,6 +2493,8 @@ user turns it on; the app asks once on its first launch (§ Updates).
   Linux measured in CI on every release.
 - **Shortcuts swallowed by the WebView** (Cmd+W, Cmd+Q, Ctrl+Tab).
   *Mitigation:* the keyboard map is defined in the shell's menu, tested per OS.
+  The reverse happened too: the default menu's Close Window took ⌘W before
+  the page could close a tab with it, fixed by File → Close Tab (F09).
 - **IME and dead keys** in xterm.js inside WKWebView and WebView2.
   *Mitigation:* a test matrix for Japanese, Chinese and accented input.
 - **GPU context loss on sleep and wake** (the reference app logged 89 atlas

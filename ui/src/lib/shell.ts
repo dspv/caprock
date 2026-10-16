@@ -40,6 +40,13 @@ export const OPEN_SESSION_EVENT = 'caprock:open-session'
 /** The event the shell dispatches before it brings the window up from the tray or the hotkey. */
 export const SHOWN_EVENT = 'caprock:shown'
 
+/**
+ * The event the macOS shell dispatches for File -> Close Tab, the menu item
+ * that holds ⌘W: the menu takes the key before the page sees it, so the page
+ * hears it as this instead (app/src-tauri/src/main.rs, `menu`).
+ */
+export const CLOSE_TAB_EVENT = 'caprock:close-tab'
+
 /** A command's arguments, or for the screenshot commands the raw bytes of an image. */
 type Args = Record<string, unknown> | Uint8Array
 
