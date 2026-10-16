@@ -37,7 +37,17 @@ describe('the version panel', () => {
   it('says up to date when the latest is the one running', () => {
     render(<VersionPanel shown="0.105.0" title="" onStatus={() => {}} status={{ ...base, current: '0.105.0', latest: '0.105.0', checked_at: Date.now() }} />)
     fireEvent.click(screen.getByText('0.105.0'))
-    expect(screen.getByRole('dialog').textContent).toMatch(/up to date/)
+    expect(screen.getByRole('dialog').textContent).toMatch(/You’re on the latest version/)
+    // One button, the useful one: just checked, so what is new — no Check now.
+    expect(screen.getByRole('button', { name: /What’s new in 0\.105\.0/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull()
+  })
+
+  it('offers Check now instead once the last check is old', () => {
+    render(<VersionPanel shown="0.105.0" title="" onStatus={() => {}} status={{ ...base, current: '0.105.0', latest: '0.105.0', checked_at: Date.now() - 60 * 60_000 }} />)
+    fireEvent.click(screen.getByText('0.105.0'))
+    expect(screen.getByRole('button', { name: 'Check now' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /What’s new/ })).toBeNull()
   })
 
   it('asks the daemon to look on Check now', async () => {

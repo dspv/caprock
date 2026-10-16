@@ -63,6 +63,10 @@ export function VersionPanel({ shown, title, status, onStatus }: {
   // its own daemon on launch (ADR-040). When they still differ, say so.
   const daemon = st?.current ? v(st.current) : undefined
   const apart = Boolean(info?.version && daemon && v(info.version) !== daemon)
+  // Up to date: checks on, an answer in, nothing newer. Fresh: under 10 minutes
+  // old, when a second check would only say the same.
+  const upToDate = !available && st?.enabled !== false && Boolean(latest)
+  const freshCheck = Boolean(st?.checked_at) && now - st!.checked_at! < 10 * 60_000
   const check = async () => {
     setChecking(true)
     setError('')
@@ -93,7 +97,7 @@ export function VersionPanel({ shown, title, status, onStatus }: {
               ? <span className="font-medium text-accent">{latest} is out</span>
               : st?.enabled === false
                 ? <span className="text-fg-faint">checks are off</span>
-                : latest ? <span className="font-medium text-ok">✓ up to date</span> : null}
+                : null}
             {/* A close button too: clicking outside or Esc closed it, but
                 nothing said so (owner, 2026-10-14). */}
             <button type="button" aria-label="Close" title="Close (Esc)" onClick={() => setOpen(false)}
@@ -101,6 +105,12 @@ export function VersionPanel({ shown, title, status, onStatus }: {
               <CloseIcon size={14} />
             </button>
           </div>
+          {/* Up to date says so in a sentence, not a small green tag beside
+            * the title (owner, 2026-10-16: "still no clear message that it's
+            * up to date, all good"). */}
+          {upToDate
+            ? <p data-up-to-date className="text-[15px] font-medium text-ok">✓ You’re on the latest version</p>
+            : null}
           <p className="text-fg-muted" data-checked>
             {st?.enabled === false
               ? 'Release checks are off in Settings → Updates.'
@@ -127,15 +137,27 @@ export function VersionPanel({ shown, title, status, onStatus }: {
             </div>
           )}
           {error && <p className="break-words text-warn">{error}</p>}
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => void check()} disabled={checking || st?.enabled === false}
-              className="rounded-[7px] border border-[var(--app-hairline-strong)] px-3 py-1.5 text-fg hover:border-accent disabled:opacity-50">
-              {checking ? 'Checking…' : 'Check now'}
-            </button>
-            <button type="button" onClick={() => openExternal('https://caprock.dev/changelog')} className="text-fg-muted hover:text-accent" {...extProps()}>
+          {/* One button, the useful one (owner, 2026-10-16): an update to
+            * install has its own above; just checked and up to date, what is
+            * new in this version; otherwise, check. */}
+          {available && (
+            <button type="button" onClick={() => openExternal('https://caprock.dev/changelog')} className="justify-self-start text-fg-muted hover:text-accent" {...extProps()}>
               Release notes
             </button>
-          </div>
+          )}
+          {!available && (
+            <div className="flex items-center gap-3">
+              {upToDate && freshCheck
+                ? <button type="button" data-whats-new onClick={() => openExternal('https://caprock.dev/changelog')} {...extProps()}
+                    className="rounded-[7px] border border-[var(--app-hairline-strong)] px-3 py-1.5 text-fg hover:border-accent">
+                    What’s new in {shown}
+                  </button>
+                : <button type="button" onClick={() => void check()} disabled={checking || st?.enabled === false}
+                    className="rounded-[7px] border border-[var(--app-hairline-strong)] px-3 py-1.5 text-fg hover:border-accent disabled:opacity-50">
+                    {checking ? 'Checking…' : 'Check now'}
+                  </button>}
+            </div>
+          )}
         </div>
       )}
     </span>
