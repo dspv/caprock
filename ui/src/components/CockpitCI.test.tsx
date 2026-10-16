@@ -35,16 +35,18 @@ describe('the cockpit’s CI block', () => {
       connected: true, repo: 'a/b', fetched_at: now, read_at: now,
       prs: [
         { number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fix the login', state: 'open', created_at: now - 3_600_000, labels: [{ name: 'landing: queued' }] },
-        { number: 8, url: 'https://github.com/a/b/pull/8', title: 'Release notes', state: 'merged', created_at: now - 7_200_000, merged_at: now - 5_000_000 },
+        { number: 8, url: 'https://github.com/a/b/pull/8', title: 'Release notes', state: 'merged', created_at: now - 7_200_000, merged_at: now - 3_000_000 },
         { number: 7, url: 'https://github.com/a/b/pull/7', title: 'Old one', state: 'merged', created_at: now - 9_000_000, merged_at: now - 8_000_000 },
+        { number: 6, url: 'https://github.com/a/b/pull/6', title: 'Dropped', state: 'closed', created_at: now - 9_500_000 },
       ],
       board: {
         cards: [
           { number: 9, stage: 'fix', ci: 'fail', why: 'ci', stage_at: now - 600_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } },
-          { number: 8, stage: 'merged', stage_at: now - 5_000_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } },
+          { number: 8, stage: 'merged', stage_at: now - 3_000_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } },
           { number: 7, stage: 'released', release: 'v1.2.0', stage_at: now - 4_000_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } },
         ],
-        releases: [], flow: { counts: {}, days: 14, merged: 2, ttm_count: 0, release_lag_count: 0, cost_usd: 0 },
+        releases: [{ tag: 'v1.2.0', published_at: now - 4_000_000, prs: [7], cost_usd: 0, sessions: 0 }],
+        flow: { counts: {}, days: 14, merged: 2, ttm_count: 0, release_lag_count: 0, cost_usd: 0 },
       },
     }
     const fetch = vi.fn(async () => new Response(JSON.stringify(stats), { status: 200, headers: { 'Content-Type': 'application/json' } }))
@@ -53,14 +55,16 @@ describe('the cockpit’s CI block', () => {
     render(<CockpitCI sessionId="s1" repoScope="/w" onOpen={onOpen} />)
     await waitFor(() => expect(document.querySelector('[data-cockpit-ci-pr="9"]')).not.toBeNull())
     expect(fetch).toHaveBeenCalledWith('/v1/sessions/s1/ci/stats', expect.anything())
-    // In flight first, then merged, then released.
-    expect([...document.querySelectorAll('[data-cockpit-ci-pr]')].map((e) => e.getAttribute('data-cockpit-ci-pr'))).toEqual(['9', '8', '7'])
+    // Owner, 2026-10-16, translated: "on the right it sometimes shows too
+    // many PRs". Only what is in flight: open first, then merged since the
+    // last release; #7 shipped in v1.2.0 and #6 closed unmerged.
+    expect([...document.querySelectorAll('[data-cockpit-ci-pr]')].map((e) => e.getAttribute('data-cockpit-ci-pr'))).toEqual(['9', '8'])
+    expect(document.querySelector('[data-cockpit-ci-quiet]')).toBeNull()
     const ci = document.querySelector('[data-cockpit-ci-pr="9"] [data-journey-seg="ci"]')!
     expect(ci).toHaveAttribute('data-step-state', 'current')
     expect(ci).toHaveClass('bg-danger')
     expect(document.querySelector('[data-cockpit-ci-pr="9"]')).toHaveTextContent('Fix the login')
     expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-journey-seg="merged"]')).toHaveAttribute('data-step-state', 'current')
-    expect(document.querySelector('[data-cockpit-ci-pr="7"] [data-journey-bar]')).toHaveAttribute('aria-label', expect.stringContaining('Released done (v1.2.0)'))
     // Owner, 2026-10-15, translated: "it's not clear what the stages are".
     // One legend over the bars' columns, and every segment says its step and
     // state, the landing label on the step it is on; the rows do not grow.
@@ -90,6 +94,75 @@ describe('the cockpit’s CI block', () => {
     first.unmount()
     render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
     await waitFor(() => expect(document.querySelector('[data-cockpit-journey]')).toHaveClass('max-h-[440px]'))
+  })
+
+  const SPEND = { cost_usd: 0, sessions: 0, live: 0, agents: [] }
+  const FLOW = { counts: {}, days: 14, merged: 0, ttm_count: 0, release_lag_count: 0, cost_usd: 0 }
+  const merged = (n: number, at: number, release?: string) => ({
+    pr: { number: n, url: `https://github.com/a/b/pull/${n}`, title: `Merge ${n}`, state: 'merged', base: 'master', created_at: at - 60_000, merged_at: at },
+    card: { number: n, stage: release ? 'released' : 'merged', release, stage_at: at, spend: SPEND },
+  })
+  const answer = (body: object) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  // Answers …/ci/stats with stats and …/ci?pr= with that PR's checks.
+  const route = (stats: object, checks: Record<number, object> = {}) => vi.fn(async (url: string) => {
+    const m = /\/ci\?pr=(\d+)$/.exec(url)
+    if (m) return answer({ connected: true, fetched_at: now, pr: { number: Number(m[1]), url: '', repo: 'a/b', live: live(Number(m[1]), checks[Number(m[1])] ?? PASSED) } })
+    return answer(stats)
+  })
+
+  // caprock-web's shape on 2026-10-16: every PR merged, no release ever published.
+  it('says nothing is in flight in one line, over the three newest merges, where no release is published', async () => {
+    const rows = [5, 4, 3, 2, 1].map((n) => merged(n, now - (6 - n) * 3_600_000))
+    vi.stubGlobal('fetch', route({ connected: true, fetched_at: now, prs: rows.map((r) => r.pr), board: { cards: rows.map((r) => r.card), releases: [], flow: FLOW } }))
+    render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-quiet]')).not.toBeNull())
+    expect(document.querySelector('[data-cockpit-ci-quiet]')).toHaveTextContent('Nothing in flight · no release published')
+    expect([...document.querySelectorAll('[data-cockpit-ci-pr]')].map((e) => e.getAttribute('data-cockpit-ci-pr'))).toEqual(['5', '4', '3'])
+    expect(document.querySelector('[data-cockpit-ci-tall]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Pipeline ↗' })).toBeInTheDocument()
+  })
+
+  it('names the last release when everything shipped', async () => {
+    const rows = [merged(3, now - 7_200_000, 'v1.4.0'), merged(2, now - 9_000_000, 'v1.4.0')]
+    vi.stubGlobal('fetch', route({ connected: true, fetched_at: now, prs: rows.map((r) => r.pr),
+      board: { cards: rows.map((r) => r.card), releases: [{ tag: 'v1.4.0', published_at: now - 3_600_000, prs: [3, 2], cost_usd: 0, sessions: 0 }], flow: FLOW } }))
+    render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-quiet]')).toHaveTextContent('Nothing in flight · last release v1.4.0, 1h ago'))
+    expect(document.querySelector('[data-cockpit-ci-pr="3"] [data-journey-bar]')).toHaveAttribute('aria-label', expect.stringContaining('Released done (v1.4.0)'))
+  })
+
+  // Owner, 2026-10-16, translated: "in CI/CD on the right, the Ring mode is empty".
+  it('draws Ring and By OS from the newest PR in flight when the deck read none, asking its checks itself', async () => {
+    const stats = { connected: true, fetched_at: now, prs: [
+      { number: 12, url: 'https://github.com/a/b/pull/12', title: 'New', state: 'open', created_at: now - 600_000 },
+      { number: 11, url: 'https://github.com/a/b/pull/11', title: 'Older', state: 'open', created_at: now - 7_200_000 },
+    ], board: { cards: [], releases: [], flow: FLOW } }
+    const fetch = route(stats, { 12: RUNNING })
+    vi.stubGlobal('fetch', fetch)
+    localStorage.setItem('caprock.cockpit.ciView', 'ring')
+    // The session's own PR has no checks yet: that is no ring to draw.
+    writeDeck('prs:s1', { connected: true, prs: [row(9, live(9, { state: '', passed: 0, failed: 0, pending: 0, items: [] }))] })
+    render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-ring]')).not.toBeNull())
+    expect(document.querySelector('[data-cockpit-ci-ring]')).toHaveTextContent('2/3 · 4m 00s')
+    expect(document.querySelector('[data-cockpit-ci-ring]')).toHaveTextContent('#12')
+    expect(fetch).toHaveBeenCalledWith('/v1/sessions/s1/ci?pr=12', expect.anything())
+    fireEvent.click(document.querySelector('[data-cockpit-ci-view="grid"]')!)
+    const byOS = document.querySelector('[data-cockpit-ci-os]')!
+    expect(byOS.querySelector('[data-os="windows"]')).toHaveAttribute('data-tone', 'running')
+  })
+
+  it('says nothing is in flight in Ring and By OS rather than an empty box', async () => {
+    const rows = [merged(3, now - 7_200_000, 'v1.4.0')]
+    const fetch = route({ connected: true, fetched_at: now, prs: rows.map((r) => r.pr),
+      board: { cards: rows.map((r) => r.card), releases: [{ tag: 'v1.4.0', published_at: now - 3_600_000, prs: [3], cost_usd: 0, sessions: 0 }], flow: FLOW } })
+    vi.stubGlobal('fetch', fetch)
+    localStorage.setItem('caprock.cockpit.ciView', 'ring')
+    render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-quiet]')).toHaveTextContent('Nothing in flight · last release v1.4.0, 1h ago'))
+    fireEvent.click(document.querySelector('[data-cockpit-ci-view="grid"]')!)
+    expect(document.querySelector('[data-cockpit-ci-quiet]')).toHaveTextContent('Nothing in flight')
+    expect(fetch.mock.calls.some(([u]) => String(u).includes('?pr='))).toBe(false)
   })
 
   it('asks nothing with no page to open, and draws nothing with nothing to say', () => {
