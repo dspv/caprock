@@ -43,6 +43,7 @@ make smoke       # the DoD scenario with the fake claude (what CI runs per OS)
 make docs-fmt    # tight-align markdown tables
 make docs-check  # fail on unaligned tables
 make docs-links  # fail on broken relative links
+make pr-check    # before a PR: changed Go packages vet + test -race, changed tests -count=3, Windows vet + test compile, changed UI tests
 make check       # docs gates + lint + test (what CI runs, minus the OS matrix)
 make app         # the desktop app, debug build (app/README.md)
 make app-test    # cargo fmt --check, clippy -D warnings, cargo test
@@ -75,8 +76,19 @@ make app-local   # macOS: this checkout's app (host arch) over /Applications/Cap
 git clone git@github.com:dspv/caprock.git && cd caprock
 go mod download && (cd ui && npm ci)
 make dev                 # http://localhost:22776
+make pr-check            # before opening a pull request (scripts/pr-check.sh)
 make test lint check     # before every push
 ```
+
+`make pr-check` is cheap on purpose: it covers only what the branch changed
+against `origin/master` and catches the three failure classes CI kept finding
+in fresh agent pull requests (2026-10-14/15: 17 failed of about 118 runs) —
+data races, which CI does not look for (it runs no `-race`); Windows-only
+semantics (`filepath.IsAbs("/a/b")` is false there), caught by
+`GOOS=windows go vet ./...` and compiling the changed packages' tests for
+Windows; and tests that fail one run in three, caught by running the changed
+tests `-count=3`. `PR_CHECK_COUNT` and `PR_CHECK_BASE` override the count and
+the base.
 
 Data dir and `CAPROCK_DATA_DIR` override: [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions). To develop against a throw-away data dir: `CAPROCK_DATA_DIR=$(mktemp -d) make dev`.
 

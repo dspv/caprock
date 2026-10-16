@@ -248,7 +248,7 @@ tests that pass by skipping the interesting case.
 | Suite                      | Command                        | Where                              |
 | -------------------------- | ------------------------------ | ---------------------------------- |
 | Unit                       | `go test ./...`                | `make test`, CI on 3 OSes          |
-| Race detector              | `go test -race ./...`          | CI                                 |
+| Race detector              | `make pr-check`                | Before a PR, changed packages only |
 | Smoke (real daemon)        | `go test -tags smoke ./...`    | `make smoke`, `make check`         |
 | PTY spike (real processes) | `go test -tags ptyspike ./...` | CI, informational job              |
 | UI                         | `npm test` in `ui/`            | `make test`, CI                    |
