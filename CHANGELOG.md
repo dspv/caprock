@@ -12,6 +12,36 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.123.0] - 2026-10-16
+
+### Added
+
+- **app:** a Page tab — open a web page inside Caprock, apart from your
+  agents. ⌘-click (Ctrl-click on Windows and Linux) a web link in an agent's
+  terminal or chat, pick *Open a page…* in ⌘K or the + menu, or type an
+  address such as `localhost:5173` into ⌘K. The page gets its own tab after
+  every agent's, with a globe, back, forward, reload, an address field, copy
+  and *Open in browser*; it takes no ⌘1–⌘9 and no sidebar row. In the
+  desktop app it is the system's own web view with no access to Caprock and
+  no cookies shared with it, loaded only when you ask, and freed after five
+  minutes behind other tabs; in a browser, only a page on this machine opens
+  in a tab and any other goes to the browser.
+
+### Fixed
+
+- **remote:** revoking a device closes its terminal opened through the relay
+  at once, with "this device was removed". A keystroke arriving as the socket
+  closed used to drop the stream without telling the other computer, and its
+  terminal stayed open.
+- **daemon:** stopping the daemon waits for its background work (history
+  backfills, pruning, Second Brain's loop, the projects list and any clone
+  still running) before the database closes, instead of leaving it to read a
+  closed database; a clone in progress is stopped rather than left writing.
+- **ci:** `make pr-check`, the step before a pull request: the changed Go
+  packages with `-race`, their changed tests three times, a Windows vet and
+  test build, and the changed dashboard tests. Four flaky tests were fixed at
+  the root.
+
 ## [0.122.0] - 2026-10-16
 
 ### Added

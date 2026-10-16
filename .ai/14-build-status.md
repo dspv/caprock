@@ -168,6 +168,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-16 — 0.123.0: a Page tab, and CI that stops failing on its own
+
+A minor release because it carries a feature. A web page opens inside Caprock in a Page tab, apart from the agents, in its own webview with no access to Caprock's commands; a hidden page is unloaded after five minutes; memory measured and recorded in ADR-070 (#702). The dashboard's commands are now granted to the dashboard's own view only, not to the whole window. Four flaky tests were fixed at the root — the daemon now waits for its background work before closing the database, a running clone stops on close, and a revoke reaches a relayed terminal while someone types — and `make pr-check` runs the race detector and a Windows build on what a branch changed (#701).
+
 ### 2026-10-16 — 0.122.0: Hermes Agent, a Markdown reader, Second Brain's progress, and a doctor in plain words
 
 A minor release because it carries features. Hermes Agent is observed and started (ADR-069, #691). Markdown files read comfortably, with contents, copy-path and `@path` for another agent (#697). Second Brain shows its stage, N of M with a bar and what it gives (#698). "Caprock on this computer" says what is wrong in one line with one Clean up (ADR-059 amended, #695). The Pipeline shares its figures (#686), shows cost per agent-hour and team size (#687) and its count tiles open their pull requests with the reason (#694); the Second Brain graph looks like a knowledge graph (#688). One selected tab in the strip, and closing a tab asks only when an agent is working (#689). Live Pulse keeps money in one column and Telegram is always a share choice (#696). The phone shows release bars (#692) and can end a session under a pinned header (#693). Computers in the daemon, ADR-067 Phase 1 PR2 (#690); the dashboard bundle is built on master (ADR-068, #679).
