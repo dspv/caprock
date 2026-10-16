@@ -159,11 +159,7 @@ size and place are saved and the daemon keeps running.
 
 ## What a page may call
 
-Commands are granted per origin and per webview (`src-tauri/capabilities/`):
-each capability names the webview it is for (`main`, `tray`), never the
-window, so a Page tab's web page — a child webview inside the main window
-(`page-<id>`, ADR-070) — matches none and is refused every command, even on
-`127.0.0.1`.
+Commands are granted per origin (`src-tauri/capabilities/`):
 
 | Command                  | Daemon page | Bundled page | Popover |
 | ------------------------ | ----------- | ------------ | ------- |
@@ -191,7 +187,6 @@ window, so a Page tab's web page — a child webview inside the main window
 | `capture_webview`        | yes         | no           | no      |
 | `read_dropped_image`     | yes         | no           | no      |
 | `read_dropped_text`      | yes         | no           | no      |
-| `page_tab`               | yes         | no           | no      |
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
 The `app_update_*` commands are the app's updater (F20, `src-tauri/src/updater.rs`,
@@ -203,19 +198,6 @@ updater plugin's own commands are granted to no page. `clipboard_image`,
 screenshots (`src-tauri/src/capture.rs`): a PNG onto the OS clipboard, the
 app's own page as a PNG, and an image file from the last drop on the window;
 the clipboard manager plugin's own commands are granted to no page.
-`page_tab` (`{id, act}`, `src-tauri/src/page.rs`) drives a Page tab's web
-page: `open` (create it on an http(s) address at a rectangle in the window's
-logical pixels, or show the one there), `place`, `show`, `hide`, `close`,
-`go`, `back`, `forward`, `reload`. It is async (creating a webview from a
-synchronous command deadlocks on Windows). The page reports back as
-`caprock:page` events in the dashboard (`{id, url, loading}`, `{id, title}`,
-`{id, open}` for a new window, `{id, refused}` for a scheme it was not let
-follow, `{id, saved, ok}` for a download, written straight into Downloads
-and never opened). Every page is closed when the dashboard loads a page of
-its own. Because a window with a child webview is no longer a "webview
-window" to Tauri, the shell finds the main window and the dashboard's
-webview by label (`shell::main_window`, `shell::main_webview`), never with
-`get_webview_window`.
 `read_dropped_text` reads a `.md` or `.txt` file (at most 1 MiB, UTF-8) from
 the last drop the same way, for the brief of New project from a template.
 `open_external` opens `http`, `https` and `mailto`, plus `tg:` only when an
@@ -266,8 +248,7 @@ in the page, so it is not taken for a click on a notification.
   `CustomEvent('caprock:open-session', {detail: <session id>})` on `window`.
 - **Links and files.** `target="_blank"`, `window.open` and any navigation off
   the daemon's origin open in the system browser; a download asks where to
-  save. A ⌘-click (Ctrl-click) on a web link opens it in a Page tab instead
-  (`page_tab`, ADR-070).
+  save.
 
 ## Menu bar, badge and global hotkey
 

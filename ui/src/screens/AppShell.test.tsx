@@ -847,40 +847,6 @@ describe('the app workspace', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(1)
   })
 
-  // ADR-070: an address typed into ⌘K opens a Page tab, after the agents,
-  // with no key of its own; ⌘W closes it with nothing to ask.
-  it('opens a page from ⌘K in a tab of its own, apart from the agents', async () => {
-    await renderApp()
-    await openFromPalette('Fix the login bug')
-    await cmd('k')
-    const input = screen.getByRole('combobox', { name: 'Search' })
-    fireEvent.change(input, { target: { value: 'open a page' } })
-    expect(screen.getAllByRole('option')[0]).toHaveTextContent('Open a page…')
-    fireEvent.change(input, { target: { value: 'localhost:5173' } })
-    expect(screen.getByRole('option')).toHaveTextContent('Open page http://localhost:5173/')
-    fireEvent.keyDown(input, { key: 'Enter' })
-    const page = await screen.findByRole('tab', { name: 'Page · localhost:5173' })
-    expect(page).toHaveAttribute('aria-selected', 'true')
-    expect(page.querySelector('[data-tab-key]')).toBeNull()
-    const tabs = screen.getAllByRole('tab')
-    expect(tabs.at(-1)).toBe(page)
-    // In a browser a page on this machine is framed, and loads since it was asked for.
-    await waitFor(() => expect(document.querySelector('iframe')?.getAttribute('src')).toBe('http://localhost:5173/'))
-    // Opening the same address again brings that tab, not a second one.
-    act(() => { window.dispatchEvent(new CustomEvent('caprock:open-page', { detail: { url: 'http://localhost:5173/' } })) })
-    expect(screen.getAllByRole('tab', { name: /^Page · / })).toHaveLength(1)
-    await cmd('w')
-    await waitFor(() => expect(screen.queryByRole('tab', { name: 'Page · localhost:5173' })).toBeNull())
-  })
-
-  it('sends an address not on this machine to the browser when the window is a browser tab', async () => {
-    const open = vi.spyOn(window, 'open').mockReturnValue(null)
-    await renderApp()
-    act(() => { window.dispatchEvent(new CustomEvent('caprock:open-page', { detail: { url: 'https://example.com/' } })) })
-    expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener')
-    expect(screen.queryByRole('tab', { name: /^Page · / })).toBeNull()
-  })
-
   it('text the palette cannot match starts an agent on it, in a worktree named after it', async () => {
     await renderApp()
     await cmd('k')
