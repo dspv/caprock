@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/pairing"
 )
 
@@ -26,9 +27,8 @@ import (
 // owner's own network.
 
 // spawnFieldsAControllerMayNotSet are the request fields that turn "start an
-// agent" into "run something": an arbitrary binary, arbitrary flags, or a
-// scratch folder outside every project.
-var spawnFieldsAControllerMayNotSet = []string{"command", "args", "chat"}
+// agent" into "run something": an arbitrary binary or arbitrary flags.
+var spawnFieldsAControllerMayNotSet = []string{"command", "args"}
 
 // controllerSpawnRefusal returns why a paired controller may not make this
 // spawn request, or "" when it may.
@@ -44,6 +44,20 @@ func (s *Server) controllerSpawnRefusal(req map[string]any) string {
 		return "a phone starts one of the coding agents Caprock knows, not a custom one — start it on the machine Caprock runs on"
 	}
 	cwd, _ := req["cwd"].(string)
+	// A chat (ADR-071): the daemon picks its folder, a new one in its own
+	// chats workspace, so a phone names none. Carrying a chat on names the
+	// chat's folder, which is Caprock's, wherever the data directory is.
+	if chat, _ := req["chat"].(bool); chat {
+		if cwd != "" {
+			return "a chat's folder is Caprock's to pick — start it without one"
+		}
+		return ""
+	}
+	if cwd != "" && agents.IsChatDirIn(s.d.DataDir, cwd) {
+		if fi, err := os.Stat(cwd); err == nil && fi.IsDir() {
+			return ""
+		}
+	}
 	if cwd == "" || !filepath.IsAbs(cwd) {
 		return "pick a folder to start the session in"
 	}

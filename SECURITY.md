@@ -59,7 +59,7 @@ The rest of `<data_dir>`:
   revoked (see below).
 - `paste/` — images and files you paste or drop into a terminal on the
   dashboard.
-- `chats/` — working folders for quick chats, sessions started to ask something rather than to work on a repository.
+- `chats/` — working folders for chats, sessions started to ask something rather than to work on a repository, and the files they write. The dashboard lists those files and serves them only from inside the chat's folder (symlinks resolved), with `nosniff` and a `sandbox` Content-Security-Policy, so a chat's HTML runs no script and has no origin; it is drawn in an iframe with `sandbox=""`. Deleting a chat deletes its folder.
 - the log.
 
 Where `<data_dir>` is per OS is documented in

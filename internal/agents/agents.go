@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -442,6 +443,23 @@ func (m *Manager) newChatDir() (string, error) {
 	}
 }
 
+// IsChatDir reports whether dir is one chat's own folder, directly inside the
+// chats workspace: `<data_dir>/chats/<name>` (ADR-071). The workspace itself
+// is not a chat.
+func (m *Manager) IsChatDir(dir string) bool {
+	return IsChatDirIn(m.dataDir, dir)
+}
+
+// IsChatDirIn is IsChatDir for a data directory the caller names.
+func IsChatDirIn(dataDir, dir string) bool {
+	if dataDir == "" || dir == "" {
+		return false
+	}
+	dir = filepath.Clean(dir)
+	name := filepath.Base(dir)
+	return filepath.Dir(dir) == filepath.Clean(config.ChatsDir(dataDir)) && name != "." && !strings.HasPrefix(name, ".")
+}
+
 // makeProjectDir creates a directory for a new project, one level deep.
 //
 // This runs on a POST that already executes a command from its body, so it is
@@ -714,6 +732,13 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		}
 		if err := store.MarkOwned(ctx, q, sessionID, worktree, a.Command, sess.PID()); err != nil {
 			return err
+		}
+		// A chat is a session started in a folder of the chats workspace:
+		// a new chat, or one carried on there (ADR-071).
+		if m.IsChatDir(cwd) {
+			if err := store.MarkChat(ctx, q, sessionID); err != nil {
+				return err
+			}
 		}
 		if req.Fork && agent == AgentClaude {
 			// A fork is a new session id continuing req.Resume's conversation.

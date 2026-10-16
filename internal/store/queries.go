@@ -75,6 +75,12 @@ type Session struct {
 	// named. Never omitted: a live frame patches the held copy, and a frame
 	// without the key would leave a cleared name standing.
 	Name string `json:"name"`
+	// Chat marks a session Caprock started in its chats workspace
+	// (<data_dir>/chats/<stamp>/) to ask something rather than to work on a
+	// repository (migration 0059, ADR-071). ArchivedAt (unix ms) hides one
+	// from the Chats list; 0 when it is not archived.
+	Chat       bool  `json:"chat,omitempty"`
+	ArchivedAt int64 `json:"archived_at,omitempty"`
 }
 
 // Stats mirrors session_stats.
@@ -946,16 +952,16 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), ` + attemptCol
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), COALESCE(sessions.chat,0), COALESCE(sessions.archived_at,0), ` + attemptCol
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
-	var hh, ht, owned int
+	var hh, ht, owned, chat int
 	var exit sql.NullInt64
 	var attempt string
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &attempt)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &chat, &s.ArchivedAt, &attempt)
 	s.setAttempt(attempt)
-	s.HasHooks, s.HasTranscript, s.Owned = hh != 0, ht != 0, owned != 0
+	s.HasHooks, s.HasTranscript, s.Owned, s.Chat = hh != 0, ht != 0, owned != 0, chat != 0
 	if exit.Valid {
 		v := int(exit.Int64)
 		s.ExitCode = &v
@@ -988,22 +994,34 @@ const MaxSessionsPage = 2000
 // CountSessionsMatching counts what ListSessionsMatching would return
 // without a limit.
 func CountSessionsMatching(ctx context.Context, q Querier, activeOnly bool, search string) (int, error) {
-	where, args := sessionFilter(activeOnly, search)
+	return CountSessionsQuery(ctx, q, SessionQuery{Active: activeOnly, Search: search})
+}
+
+// CountSessionsQuery counts what ListSessionsQuery would return without a
+// limit.
+func CountSessionsQuery(ctx context.Context, q Querier, f SessionQuery) (int, error) {
+	where, args := sessionQueryFilter(f)
 	var n int
 	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions`+where, args...).Scan(&n)
 	return n, err
 }
 
 // ListSessionsMatching returns sessions newest-first, optionally only those
-// matching a search — see sessionFilter for what a search looks at.
+// matching a search — see sessionQueryFilter for what a search looks at.
 func ListSessionsMatching(ctx context.Context, q Querier, activeOnly bool, search string, limit int) ([]Session, error) {
+	return ListSessionsQuery(ctx, q, SessionQuery{Active: activeOnly, Search: search}, limit)
+}
+
+// ListSessionsQuery returns sessions newest-first under a SessionQuery: the
+// session list's filter plus which of the chats it holds (ADR-071).
+func ListSessionsQuery(ctx context.Context, q Querier, f SessionQuery, limit int) ([]Session, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	if limit > MaxSessionsPage {
 		limit = MaxSessionsPage
 	}
-	where, args := sessionFilter(activeOnly, search)
+	where, args := sessionQueryFilter(f)
 	// An ended session sorts by when it was worked in. By last_event_at, a
 	// restart that closed several at one minute left them in arbitrary order
 	// (FB-037); an open one keeps sorting by its latest event, which is live.
@@ -1054,7 +1072,7 @@ func ListSessionsInDir(ctx context.Context, q Querier, dir string, limit int) ([
 	return out, rows.Err()
 }
 
-// sessionFilter is the WHERE clause for the session list.
+// sessionQueryFilter is the WHERE clause for the session list.
 //
 // A search looks at everything that tells one session from another on the
 // screen — project, directory, branch, the agent's title, a stored first
@@ -1066,11 +1084,26 @@ func ListSessionsInDir(ctx context.Context, q Querier, dir string, limit int) ([
 // SQLite's LIKE folds case for ASCII only, so a Cyrillic search is tried as
 // typed, lowercased, and with its first letter capitalised — which covers how
 // a prompt is actually written without pulling every payload into Go.
-func sessionFilter(activeOnly bool, search string) (string, []any) {
+//
+// The chat scope (ADR-071) picks every session, none of the chats, or only
+// the chats — those archived or those not.
+func sessionQueryFilter(f SessionQuery) (string, []any) {
+	activeOnly, search := f.Active, f.Search
 	var conds []string
 	var args []any
 	if activeOnly {
 		conds = append(conds, `status != 'ended'`)
+	}
+	switch f.Chats {
+	case ChatsExcluded:
+		conds = append(conds, `chat = 0`)
+	case ChatsOnly:
+		conds = append(conds, `chat = 1`)
+		if f.Archived {
+			conds = append(conds, `archived_at > 0`)
+		} else {
+			conds = append(conds, `archived_at = 0`)
+		}
 	}
 	if search = strings.TrimSpace(search); search != "" {
 		var alts []string

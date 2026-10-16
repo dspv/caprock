@@ -47,6 +47,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/agents/{id}/queue": true, "GET /v1/queue": true, "GET /v1/work": true, "GET /v1/sessions/{id}/commands": true, "GET /v1/sessions/{id}/files": true,
 	"GET /v1/glance": true, "GET /v1/week": true, "GET /v1/tools/drill": true, "GET /v1/saved-prompts": true, "GET /v1/attempts/{group}": true,
 	"GET /v1/inbox": true, "GET /v1/inbox/{id}/files/{n}": true, // the Inbox and its thumbnails
+	"GET /v1/chats": true, "GET /v1/chats/{id}/files": true, "GET /v1/chats/{id}/file": true, // Chats and their files (ADR-071)
 	"GET /v1/brain": true, "GET /v1/brain/status": true, "GET /v1/brain/handoff": true, "GET /v1/brain/nodes/{id}": true, // Second Brain, read-only (ADR-063)
 	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true, "GET /v1/projects/{id}/repos": true,
 	"GET /v1/projects/{id}/changes": true, "GET /v1/projects/{id}/changes/diff": true,
@@ -69,7 +70,8 @@ var controllerMayAlso = map[string]bool{
 	"GET /v1/sessions/{id}/relay": true, "GET /v1/agents/{id}/term": true,
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
 	"POST /v1/agents/{id}/permission": true, "POST /v1/agents/{id}/permission-mode": true,
-	"PUT /v1/sessions/{id}/name": true,
+	"PUT /v1/sessions/{id}/name":  true,
+	"PUT /v1/chats/{id}/archived": true, "DELETE /v1/chats/{id}": true, // archive and delete a chat (ADR-071)
 	"POST /v1/agents/{id}/queue": true, "PATCH /v1/agents/{id}/queue/{qid}": true, "DELETE /v1/agents/{id}/queue/{qid}": true, "POST /v1/agents/{id}/queue/{qid}/send": true,
 	"POST /v1/tasks/{id}/approve": true, "POST /v1/tasks/{id}/reject": true,
 	// Save to the Inbox from the phone, and delete from it.
@@ -401,7 +403,10 @@ func TestAControllerStartsAgentsUnderHome(t *testing.T) {
 		{"controller, relative path", testPhone, controller.Token, `{"cwd":"dev/x"}`, 403},
 		{"controller, any binary", testPhone, controller.Token, `{"cwd":"` + fresh + `","command":"sh"}`, 403},
 		{"controller, any flags", testPhone, controller.Token, `{"cwd":"` + fresh + `","args":["--x"]}`, 403},
-		{"controller, a scratch chat", testPhone, controller.Token, `{"chat":true}`, 403},
+		// A chat (ADR-071): the daemon picks its folder, so a phone names none.
+		{"controller, a chat", testPhone, controller.Token, `{"chat":true}`, 200},
+		{"controller, a chat in a folder of its own choosing", testPhone, controller.Token, `{"chat":true,"cwd":"` + outside + `"}`, 403},
+		{"controller, a chat with a binary", testPhone, controller.Token, `{"chat":true,"command":"sh"}`, 403},
 		{"controller, bypass mode", testPhone, controller.Token, `{"cwd":"` + fresh + `","permission_mode":"bypassPermissions"}`, 200},
 		{"controller, codex in bypass mode", testPhone, controller.Token, `{"cwd":"` + fresh + `","agent":"codex","permission_mode":"bypassPermissions"}`, 200},
 		{"controller, plan mode", testPhone, controller.Token, `{"cwd":"` + fresh + `","permission_mode":"plan"}`, 200},

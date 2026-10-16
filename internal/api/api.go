@@ -570,6 +570,12 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions", s.handleSessions)
 	m.HandleFunc("GET /v1/sessions/{id}", s.handleSession)
 	m.HandleFunc("PUT /v1/sessions/{id}/name", s.handleRenameSession)
+	// Chats (ADR-071): the list, archive, delete, and the files each wrote.
+	m.HandleFunc("GET /v1/chats", s.handleChats)
+	m.HandleFunc("PUT /v1/chats/{id}/archived", s.handleChatArchive)
+	m.HandleFunc("DELETE /v1/chats/{id}", s.handleChatDelete)
+	m.HandleFunc("GET /v1/chats/{id}/files", s.handleChatFiles)
+	m.HandleFunc("GET /v1/chats/{id}/file", s.handleChatFile)
 	m.HandleFunc("GET /v1/sessions/{id}/events", s.handleSessionEvents)
 	m.HandleFunc("GET /v1/sessions/{id}/subagents", s.handleSessionSubagents)
 	m.HandleFunc("GET /v1/sessions/{id}/subagents/{agent}", s.handleSubagentDetail)
@@ -1134,7 +1140,16 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
-	sessions, err := store.ListSessionsMatching(ctx, s.d.Store.DB(), active, search, limit)
+	// ?chats=exclude leaves the chats out (the work lists), ?chats=only lists
+	// them alone (ADR-071); absent, every session, as before.
+	f := store.SessionQuery{Active: active, Search: search}
+	switch r.URL.Query().Get("chats") {
+	case "exclude":
+		f.Chats = store.ChatsExcluded
+	case "only":
+		f.Chats = store.ChatsOnly
+	}
+	sessions, err := store.ListSessionsQuery(ctx, s.d.Store.DB(), f, limit)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -1152,7 +1167,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	// 200, and a screen that labels a truncated array "Ended · 200" states a
 	// count of what it fetched as though it were a count of what there is —
 	// while the lifetime strip on the same screen says otherwise.
-	if total, err := store.CountSessionsMatching(ctx, s.d.Store.DB(), active, search); err == nil {
+	if total, err := store.CountSessionsQuery(ctx, s.d.Store.DB(), f); err == nil {
 		w.Header().Set("X-Total-Count", strconv.Itoa(total))
 	}
 	writeJSON(w, http.StatusOK, out)

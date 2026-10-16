@@ -200,6 +200,24 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   tell. Decided by: a measured sample of the owner's sessions — how many
   touch more than one repository and how much of their cost is at stake —
   before any code, then an ADR.
+- `OQ-22` — **Syncing chats with Claude.ai and ChatGPT (plan only, nothing
+  built).** The owner wants Caprock's chats (ADR-071) and his Claude.ai and
+  ChatGPT conversations in one place, later (2026-10-16, translated). What
+  is not known, and none of it is verified: whether either service offers a
+  supported API that reads or writes a consumer account's conversations (the
+  developer APIs bill per token and have no history of the chat apps), and
+  whether their terms allow a third-party client to read them. The data
+  exports both services offer (a downloadable archive) are a one-way import
+  that needs no network call from Caprock. Constraints already fixed: rule 4
+  — any sync is an integration the user turns on, off by default, revocable,
+  to the destination they chose, saying what it sends; nothing leaves the
+  machine before that, and an import from a file the user downloaded sends
+  nothing. A Caprock chat runs a local agent (Claude Code, Codex) in a folder,
+  so its history is a transcript; a Claude.ai conversation has no folder and
+  no tool calls, so the two are not the same shape. Decided by: reading each
+  service's current API documentation and terms, with a date, then a spike
+  importing one real export into the Chats list, then an ADR. Until then the
+  answer is "import an export" at most, never "sync".
 
 ## What would falsify the whole plan
 

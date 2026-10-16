@@ -174,6 +174,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
   `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/queue`,
+  `/v1/chats`, `/v1/chats/{id}/files` and `/v1/chats/{id}/file` (§ Chats),
   `/v1/work` and `/v1/sessions/{id}/ci/stats` (the phone home's Releases:
   the board and one repository's Pipeline answer, composed by the daemon
   from the GitHub reads it keeps with its own token — the token never
@@ -231,7 +232,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `PATCH` and `DELETE /v1/agents/{id}/queue/{qid}`, `POST /v1/agents/{id}/queue/{qid}/send`),
   `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`, saving to
   and deleting from the Inbox (`POST /v1/inbox`, `DELETE /v1/inbox/{id}`,
-  § Inbox), and — to
+  § Inbox), archiving and deleting a chat (`PUT /v1/chats/{id}/archived`,
+  `DELETE /v1/chats/{id}`: chats only, ADR-071 amending ADR-037), and — to
   start work from the phone (2026-10-05, [21-app.md](21-app.md) decision 8) —
   `POST /v1/projects`, `PATCH` and `DELETE /v1/projects/{id}`, and `POST` and
   `DELETE /v1/projects/{id}/worktrees…` (see § Projects and shells for the
@@ -248,8 +250,11 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
 - **What a controller's `POST /v1/agents` may say** (`controllerSpawnRefusal`):
   `cwd` must be absolute and, after `filepath.EvalSymlinks`, the home directory
   or below it — a project outside home is refused even where sessions have run. With `create: true` a missing `cwd` passes when its
-  parent resolves inside home (the agent manager makes one level). `command`,
-  `args` and `chat` are refused unless empty or false. Every
+  parent resolves inside home (the agent manager makes one level). `command`
+  and `args` are refused unless empty. `chat: true` is allowed with no `cwd`
+  (the daemon picks the chat's folder) and refused with one; a `cwd` that is
+  one of Caprock's chat folders passes, so a phone can continue a chat in
+  place (ADR-071, amending ADR-034). Every
   `permission_mode` is allowed, `bypassPermissions` included (ADR-034).
   Refusal is `403` with `{error}`. A session started from a device is logged
   with the device's id and name.
@@ -2565,7 +2570,55 @@ only the first); SQLite's `LIKE` folds ASCII only, so the term is also tried
 lowercased and with its first letter capitalised, which covers Cyrillic as it
 is actually typed. `limit` defaults to 200 and is capped at 2000;
 `X-Total-Count` counts what matches, so the Now screen can offer "show N more"
-instead of leaving everything past the first page unreachable.
+instead of leaving everything past the first page unreachable. `chats=exclude`
+leaves chats out (the Now list, the phone's Continue) and `chats=only` lists
+nothing else; absent, both are listed. `X-Total-Count` follows the same scope.
+
+### Chats (HTTP)
+
+A chat is a session Caprock started in one of its own chat folders,
+`<data_dir>/chats/<YYYY-MM-DD-HHMMSS>[-N]` ([ADR-071](08-decisions.md)).
+`Session` carries `chat: true` and `archived_at` (unix ms, omitted while 0);
+both are omitted on any other session. `Spawn` marks a session whose `cwd` is
+such a folder (`agents.IsChatDir`: a direct child of `chats/`, not a dot name).
+
+```
+GET    /v1/chats?q=&archived=1&limit=     → ChatList {items: [SessionSummary], total, chats, archived}
+PUT    /v1/chats/{id}/archived            {archived: bool} → {session_id, archived_at}
+DELETE /v1/chats/{id}                     → {session_id, cost_usd, folder_removed}
+GET    /v1/chats/{id}/files               → {files: [ChatFile], truncated?}
+GET    /v1/chats/{id}/file?path=&download=1 → the file's bytes
+```
+
+- **The list.** Newest activity first; `archived=1` lists the archived ones
+  instead. `q` searches as `GET /v1/sessions?q=` does. `limit` defaults to 100,
+  at most 500. `total` counts what matches; `chats` and `archived` count all
+  open and all archived chats, whatever `q` says, for the screen's counts.
+- **Archive** sets or clears `archived_at` and publishes a `session` frame.
+  `404` when the id is no chat, `400` without `archived`.
+- **Delete** is for chats only (`404` otherwise). When the daemon holds the
+  chat's terminal it is stopped first (`kill`, waited for up to four seconds);
+  a chat still held, or `active` and not Caprock's, is `409` (rule 7). The row
+  is then removed and tombstoned in one transaction, as `POST
+  /v1/sessions/remove` does (§ Removing sessions), and the chat's folder is
+  deleted when it is a chat folder no other session uses (`folder_removed`).
+- **Files** lists the chat's folder: regular files only, no dot names, no
+  `node_modules`, no symlinks, at most 500, newest first. A `ChatFile` is
+  `{path, size, modified, kind}` — `path` relative with `/`, `modified` unix
+  ms, `kind` one of `markdown`, `html`, `pdf`, `image`, `text`, `other`.
+- **One file.** `path` must be a valid relative path with no `.` or `..`
+  segment (`400`); after symlinks are resolved it must still be inside the
+  folder (`403`); a missing file is `404`, anything but a regular file `400`,
+  and one over 50 MB `413`. Headers: `X-Content-Type-Options: nosniff`, `Cache-Control:
+  no-store`, the type from the extension, `Content-Disposition` inline or,
+  with `download=1`, attachment. Every type but PDF also carries
+  `Content-Security-Policy: default-src 'none'; img-src data: blob:;
+  style-src 'unsafe-inline' data:; font-src data:; media-src data: blob:;
+  sandbox`, so a chat's HTML opened directly runs no script and has no origin.
+  PDF is left to the browser's own viewer. The dashboard draws HTML in an
+  iframe with `sandbox=""` and the same policy as a `<meta>` in its `srcdoc`.
+- **Who.** A paired viewer may list chats and read their files; a controller
+  may also archive and delete them (§ Who may connect).
 
 **`resume`** — `{ok, reason?, command?, permission_mode?}`. `permission_mode`
 is present only with `ok`: the mode `POST /v1/agents` will fill in for a
@@ -4601,6 +4654,23 @@ carries it as `name`, never omitted — a live `session` frame patches the
 client's copy, and a frame without the key would leave a cleared name
 standing. A rename publishes that frame, so every window shows it without a
 refetch. A controller device may rename; a viewer may not.
+
+### Chats DDL (migration 0059)
+
+```sql
+ALTER TABLE sessions ADD COLUMN chat INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN archived_at INTEGER NOT NULL DEFAULT 0;
+UPDATE sessions SET chat = 1
+WHERE cwd GLOB '*[/\]chats[/\][0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]'
+   OR cwd GLOB '*[/\]chats[/\][0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-[0-9]*';
+CREATE INDEX IF NOT EXISTS idx_sessions_chat ON sessions(last_event_at) WHERE chat = 1;
+```
+
+`chat` marks a session as a chat ([ADR-071](08-decisions.md), § Chats);
+`archived_at` is when it was archived, 0 while it is not. The backfill marks
+every session already in a chat folder by its name, so chats from before the
+column are chats. The partial index serves the Chats list; the work list's
+`chat = 0` reads the table as before.
 
 ### Worked-at and parent DDL (migration 0027)
 
