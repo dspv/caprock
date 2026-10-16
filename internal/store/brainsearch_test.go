@@ -252,6 +252,11 @@ func TestBrainSearchFiveThousandMemoriesQuickly(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds a large brain")
 	}
+	if raceOn {
+		// make pr-check runs -race on changed packages: a time budget is
+		// not a time budget under the race detector (raceOn).
+		t.Skip("times a query; meaningless under -race")
+	}
 	ctx := context.Background()
 	s := openTest(t)
 	queries, err := fillBigBrain(ctx, s, 5000)

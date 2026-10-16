@@ -251,6 +251,11 @@ func TestBrainGraphReadsFiveThousandNodesQuickly(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds a large graph")
 	}
+	if raceOn {
+		// make pr-check runs -race on changed packages: a time budget is
+		// not a time budget under the race detector (raceOn).
+		t.Skip("times a query; meaningless under -race")
+	}
 	ctx := context.Background()
 	s := openTest(t)
 	err := s.WithTx(ctx, func(q Querier) error {
