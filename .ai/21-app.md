@@ -1826,7 +1826,7 @@ with ⌘W and is restored on relaunch like them
 
 ## Feedback screenshots
 
-The feedback form (`.ai/04-ui.md` § Feedback) carries its screenshots to
+The feedback box (`.ai/04-ui.md` § Feedback) carries its screenshots to
 GitHub by clipboard. In the app three commands do the native parts
 (`src-tauri/src/capture.rs`), granted to the daemon's page alone:
 
