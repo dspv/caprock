@@ -490,11 +490,14 @@ func (p *phone) dispatch(kind byte, id uint32, body []byte) {
 		msg := append([]byte(nil), s.part.Bytes()...)
 		s.part.Reset()
 		wctx, cancel := context.WithTimeout(p.ctx, 30*time.Second)
-		err := ws.Write(wctx, typ, msg)
+		_ = ws.Write(wctx, typ, msg)
 		cancel()
-		if err != nil {
-			p.finish(id)
-		}
+		// A failed write does not end the stream here. The socket is closing
+		// (the daemon closed it: a revoke is 1008) or the write timed out,
+		// which closes it; either way openWS's reader ends next and tells the
+		// other end the real code. Finishing here cancelled that reader
+		// first, and the close was never sent: a revoked device's terminal
+		// stayed open (TestASocketClosedWhileTypingSaysWhy).
 	case KindWSClose:
 		if ws := p.socket(s); ws != nil {
 			var cl wsClose

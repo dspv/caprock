@@ -205,6 +205,42 @@ func TestAWebSocketIsCarriedForAComputer(t *testing.T) {
 	}
 }
 
+// A socket the computer closes reaches the other end with its code, even
+// when keystrokes keep arriving as it closes. A write that failed on the
+// closing socket used to drop the stream without a word, and the reader that
+// held the 1008 then said nothing either: the terminal stayed open after a
+// revoke (TestAComputerWorksOnAnotherThroughTheRelay, macOS CI).
+func TestASocketClosedWhileTypingSaysWhy(t *testing.T) {
+	c := newRig(t).client(t, 0)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ws, err := c.OpenWS(ctx, "/v1/ws-revoke", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	typed := make(chan struct{})
+	go func() {
+		defer close(typed)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if ws.Write(ctx, websocket.MessageBinary, []byte("x")) != nil {
+				return
+			}
+		}
+	}()
+	_, _, err = ws.Read(ctx)
+	close(stop)
+	<-typed
+	if websocket.CloseStatus(err) != websocket.StatusPolicyViolation {
+		t.Fatalf("the socket ended with %v, want 1008", err)
+	}
+}
+
 func TestARefusedSocketSaysWhy(t *testing.T) {
 	c := newRig(t).client(t, 0)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

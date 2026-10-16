@@ -21,6 +21,7 @@ Prereqs: **Go 1.26**, **Node 22**.
 git clone git@github.com:dspv/caprock.git && cd caprock
 make build         # builds the UI (installs its deps on first run) + the binaries
 ./bin/caprock up   # http://127.0.0.1:22776
+make pr-check      # before opening a PR: what you changed, with -race, and compiled for Windows
 make check         # docs + lint + tests + smoke — the full CI gate, minus the OS matrix
 ```
 
@@ -36,6 +37,19 @@ against a throw-away data directory: [app/README.md](app/README.md#trying-a-chan
 is almost always green — the exception is a platform-specific bug on Windows or
 Linux, which only the CI matrix can catch. Run a single package's tests with
 `go test ./internal/<pkg>/...`.
+
+`make pr-check` is the step before opening a pull request, and catches most of
+what a targeted test run on a Mac misses. On the Go packages your branch
+changed (against `origin/master`, uncommitted files included) it runs `go vet`,
+`go test -race` once, and the tests in your changed `_test.go` files three
+more times; then `GOOS=windows go vet ./...` and your packages' tests compiled
+for Windows; the smoke tests your change defines; and, when `ui/` changed, the
+typecheck and vitest on your changed test files. A one-package change takes
+about two minutes; touching `internal/daemon`, `internal/api` or
+`internal/projects` takes longer, because their suites are the largest. It
+exists because the failures CI keeps finding in fresh pull requests are data
+races (CI runs no `-race`), Windows path and build differences, and tests that
+pass once and fail one run in three. It does not replace `make check`.
 
 On a pull request the desktop app's three CI builds run only when it touches
 `app/`, the `Makefile`, `scripts/check-app-mic.sh` or `.github/workflows/ci.yml`;
@@ -58,7 +72,8 @@ otherwise they show as skipped. Every push to `master` builds them.
    `make ui` leave it modified locally; leave that out of your commits. CI's
    *no dist in the PR* check (and `make check`) fails a PR that changes it;
    `make dist-reset` and a commit drop the change.
-7. `make check` must pass. **No red Windows CI — no exceptions.**
+7. `make pr-check` before you open the pull request, and `make check` must
+   pass. **No red Windows CI — no exceptions.**
 8. Reference the issue in the PR body: `Closes #<n>`.
 9. Fill in the PR checklist.
 10. **Iterate as a draft; CI runs when it is ready.** Draft pull requests run no

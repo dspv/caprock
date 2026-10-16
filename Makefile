@@ -226,6 +226,10 @@ docs-links: ## Fail if any relative markdown link does not resolve
 lang-check: ## Fail if any tracked text file holds Cyrillic (generated dist and binaries skipped)
 	@python3 scripts/check-no-cyrillic.py
 
+.PHONY: pr-check
+pr-check: ## Before opening a PR: changed Go packages vet + test -race -count=3, Windows vet + test compile, changed UI tests (~2 min)
+	@./scripts/pr-check.sh
+
 .PHONY: check
 check: check-go check-ui ## Docs gates + lint + test + dist untouched + smoke (what CI runs, minus the OS matrix)
 
