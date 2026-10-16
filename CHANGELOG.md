@@ -32,7 +32,8 @@ cut; `scripts/changelog.py preview` prints that section now. The format is in
 - **remote:** revoking a device closes its terminal opened through the relay
   at once, with "this device was removed". A keystroke arriving as the socket
   closed used to drop the stream without telling the other computer, and its
-  terminal stayed open.
+  terminal stayed open. After one failed write the stream now drops what is
+  typed next at once instead of writing it into the closing socket.
 - **daemon:** stopping the daemon waits for its background work (history
   backfills, pruning, Second Brain's loop, the projects list and any clone
   still running) before the database closes, instead of leaving it to read a
