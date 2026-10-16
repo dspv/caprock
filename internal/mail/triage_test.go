@@ -194,3 +194,51 @@ func TestTriageRealMailOnlyWhenAIOn(t *testing.T) {
 		t.Fatalf("language not validated: %q", set["ai_language"])
 	}
 }
+
+// A kick that lands while a run is on is not lost when that run returns
+// without looking again: a run that read the settings just before AI was
+// turned on ends on what it read, and the turn-on's kick must start the next.
+func TestTriageKickDuringARunStartsTheNext(t *testing.T) {
+	srv, err := fakemail.Start("me@fake.test", "pw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	_ = srv.Deliver("INBOX", fakemail.Msg{From: "p@example.com", To: "me@fake.test", Subject: "hello", Body: "hi"}.Raw())
+	s := newTestService(t)
+	sorter := &fakeSorter{}
+	s.tri.chatter = sorter
+	s.SetAI(AIDeps{Binary: func(c string) string {
+		if c == "claude" {
+			return "/opt/claude"
+		}
+		return ""
+	}})
+	h := s.Handler()
+	ih, ip, _ := net.SplitHostPort(srv.IMAPAddr)
+	sh, sp, _ := net.SplitHostPort(srv.SMTPAddr)
+	ipn, _ := strconv.Atoi(ip)
+	spn, _ := strconv.Atoi(sp)
+	if w := do(t, h, "POST", "/v1/mail/accounts", map[string]any{"email": "me@fake.test", "password": "pw",
+		"imap_host": ih, "imap_port": ipn, "imap_tls": "none", "smtp_host": sh, "smtp_port": spn, "smtp_tls": "none"}); w.Code != 200 {
+		t.Fatalf("add: %d %s", w.Code, w.Body)
+	}
+	waitFor(t, "inbox", func() bool { return len(listOf(t, h, "/v1/mail/messages?view=inbox")) == 1 })
+	// Once the runs the first syncs kicked are over, stand in for one in flight.
+	waitFor(t, "an idle sorter", func() bool {
+		s.tri.mu.Lock()
+		defer s.tri.mu.Unlock()
+		if s.tri.running {
+			return false
+		}
+		s.tri.running = true
+		return true
+	})
+	do(t, h, "PUT", "/v1/mail/settings", map[string]string{"ai_enabled": "1"})
+	time.Sleep(200 * time.Millisecond)
+	if calls, _, _ := sorter.seen(); calls != 0 {
+		t.Fatalf("a second run started beside the first: %d calls", calls)
+	}
+	s.endTriage() // the stand-in run returns on the settings it read
+	waitFor(t, "sorting after the run ended", func() bool { return triageCounts(t, h)["updates"] == 1 })
+}

@@ -63,9 +63,30 @@ func (s *Service) kickTriage() {
 		t.again = true
 		return
 	}
+	s.startTriageLocked()
+}
+
+// startTriageLocked starts a run; t.mu is held.
+func (s *Service) startTriageLocked() {
+	t := &s.tri
 	t.running = true
 	t.wg.Add(1)
 	go func() { defer t.wg.Done(); s.runTriage() }()
+}
+
+// endTriage ends a run. A kick that came in while it ran starts the next
+// one: the run may have read the settings before AI was turned on, and
+// returned on what it read, so the kick must not be dropped with it.
+func (s *Service) endTriage() {
+	t := &s.tri
+	t.mu.Lock()
+	again := t.again && t.ctx.Err() == nil && !time.Now().Before(t.failUntil)
+	t.running, t.again, t.pending = false, false, 0
+	if again {
+		s.startTriageLocked()
+	}
+	t.mu.Unlock()
+	s.version.Add(1)
 }
 
 // retryTriage forgets past failures (AI just turned on, provider changed,
@@ -151,12 +172,7 @@ func todoKey(td store.TriageTodo) string {
 func (s *Service) runTriage() {
 	t := &s.tri
 	ctx := t.ctx
-	defer func() {
-		t.mu.Lock()
-		t.running, t.again, t.pending = false, false, 0
-		t.mu.Unlock()
-		s.version.Add(1)
-	}()
+	defer s.endTriage()
 	for ctx.Err() == nil {
 		st, sample := s.current()
 		if st == nil {
