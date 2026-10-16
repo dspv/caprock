@@ -14,6 +14,11 @@
  * default says so: FACES keeps its eight, in their order, so the hash still
  * lands every session on the face it had before the ducks came.
  *
+ * Pumpkins (owner, 2026-10-16: "a collection of pumpkins for Halloween",
+ * translated) are a third group, kept the same way: their own tab, their own
+ * pool, and never in FACES or in the faces-and-ducks pool, so nobody's
+ * hashed face moves.
+ *
  * Kept per viewer, in this browser's storage. Storage that throws or holds
  * garbage reads as nothing chosen, so the hashed face still shows.
  */
@@ -23,14 +28,19 @@ import { useEffect, useState } from 'react'
 export const FACES = ['cap', 'beanie', 'headphones', 'crown', 'wizard', 'tuft', 'bandana', 'propeller'] as const
 /** The rubber ducks: a group of their own, and a pool only when the default asks for one. */
 export const DUCKS = ['duck', 'duck-glasses', 'duck-headset', 'duck-party', 'duck-pirate', 'duck-hoodie', 'duck-sleepy', 'duck-rainbow'] as const
-export const ALL_FACES = [...FACES, ...DUCKS] as const
+/** The Halloween pumpkins: a group and a pool of their own, like the ducks. */
+export const PUMPKINS = ['pumpkin', 'pumpkin-witch', 'pumpkin-vampire', 'pumpkin-ghost', 'pumpkin-cat', 'pumpkin-mummy', 'pumpkin-monster', 'pumpkin-lantern'] as const
+/** The faces-and-ducks pool: fixed at the sixteen it had, so the pumpkins moved nobody in it. */
+const FACES_AND_DUCKS = [...FACES, ...DUCKS] as const
+export const ALL_FACES = [...FACES, ...DUCKS, ...PUMPKINS] as const
 export type ClaudeFace = (typeof FACES)[number]
 export type Duck = (typeof DUCKS)[number]
-export type Face = ClaudeFace | Duck
-/** A random pool — faces only (the default), ducks only, or both — or one fixed face for all. */
-export type FacePool = 'random' | 'random-ducks' | 'random-all'
+export type Pumpkin = (typeof PUMPKINS)[number]
+export type Face = ClaudeFace | Duck | Pumpkin
+/** A random pool — faces only (the default), ducks only, pumpkins only, or faces and ducks — or one fixed face for all. */
+export type FacePool = 'random' | 'random-ducks' | 'random-pumpkins' | 'random-all'
 export type FaceDefault = FacePool | Face
-export const FACE_POOLS: readonly FacePool[] = ['random', 'random-ducks', 'random-all']
+export const FACE_POOLS: readonly FacePool[] = ['random', 'random-ducks', 'random-pumpkins', 'random-all']
 
 export const FACE_NAME: Record<Face, string> = {
   cap: 'Hard hat',
@@ -49,11 +59,20 @@ export const FACE_NAME: Record<Face, string> = {
   'duck-hoodie': 'Hacker duck',
   'duck-sleepy': 'Sleepy duck',
   'duck-rainbow': 'Rainbow duck',
+  pumpkin: "Jack-o'-lantern",
+  'pumpkin-witch': 'Witch pumpkin',
+  'pumpkin-vampire': 'Vampire pumpkin',
+  'pumpkin-ghost': 'Ghost pumpkin',
+  'pumpkin-cat': 'Black cat pumpkin',
+  'pumpkin-mummy': 'Mummy pumpkin',
+  'pumpkin-monster': 'Monster pumpkin',
+  'pumpkin-lantern': 'Lantern pumpkin',
 }
 
 export const POOL_NAME: Record<FacePool, string> = {
   random: 'A face per session',
   'random-ducks': 'A duck per session',
+  'random-pumpkins': 'A pumpkin per session',
   'random-all': 'Faces and ducks',
 }
 
@@ -74,12 +93,21 @@ export function isDuck(v: unknown): v is Duck {
   return typeof v === 'string' && (DUCKS as readonly string[]).includes(v)
 }
 
+export function isPumpkin(v: unknown): v is Pumpkin {
+  return typeof v === 'string' && (PUMPKINS as readonly string[]).includes(v)
+}
+
 export function isPool(v: unknown): v is FacePool {
   return typeof v === 'string' && (FACE_POOLS as readonly string[]).includes(v)
 }
 
 function poolOf(pool: FacePool): readonly Face[] {
-  return pool === 'random-ducks' ? DUCKS : pool === 'random-all' ? ALL_FACES : FACES
+  switch (pool) {
+    case 'random-ducks': return DUCKS
+    case 'random-pumpkins': return PUMPKINS
+    case 'random-all': return FACES_AND_DUCKS
+    default: return FACES
+  }
 }
 
 /**
@@ -117,7 +145,7 @@ export function loadFaceDefault(): FaceDefault {
 /** The face a session wears: its own pick, else the fixed default, else its hash in the default's pool. */
 export function faceFor(sessionId: string | undefined): Face {
   const d = loadFaceDefault()
-  if (!sessionId) return isPool(d) ? (d === 'random-ducks' ? 'duck' : 'cap') : d
+  if (!sessionId) return isPool(d) ? (d === 'random-ducks' ? 'duck' : d === 'random-pumpkins' ? 'pumpkin' : 'cap') : d
   const pick = readPicks()[sessionId]
   if (pick) return pick
   return isPool(d) ? hashedFace(sessionId, d) : d

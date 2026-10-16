@@ -13,7 +13,7 @@
  */
 
 import { useId } from 'react'
-import { isDuck, type ClaudeFace, type Duck, type Face } from '@/lib/faces'
+import { isDuck, isPumpkin, type ClaudeFace, type Duck, type Face, type Pumpkin } from '@/lib/faces'
 
 export type Character = 'lead' | 'crowd' | 'codex' | 'opencode' | 'gemini' | 'deepseek' | 'hermes'
 
@@ -285,11 +285,149 @@ function DuckBody({ duck, outline }: { duck: Duck; outline: { stroke: string; st
   }
 }
 
+/*
+ * The Halloween pumpkins (lib/faces.ts): one ribbed pumpkin, three lobes and
+ * a curled stem, in the same 80x80 box and on the same shadow, the eyes where
+ * the pebble's are so a pumpkin reads as the same little guy. What each one
+ * wears, and how its face is carved, is drawn over it.
+ */
+const PUMPKIN = '#f08a2e'
+const PUMPKIN_DEEP = '#d4701c'
+const STEM = '#6b7f45'
+
+function PumpkinBody({ pumpkin, outline }: { pumpkin: Pumpkin; outline: { stroke: string; strokeWidth: number } }) {
+  const id = useId()
+  // A hat leaves the stem out (stem null): it would poke through the brim.
+  const body = (fill = PUMPKIN, deep = PUMPKIN_DEEP, stem: string | null = STEM) => (
+    <>
+      {stem && <path d="M37.5 30c-.5-4.5.5-9 3.5-12l3.5 2c-2 2.5-2.6 6-2 10z" fill={stem} {...outline} />}
+      {stem && <path d="M44 21c3.5-3 8.5-3 11 .5" stroke={stem} strokeWidth="2" fill="none" strokeLinecap="round" />}
+      <ellipse cx="27" cy="50" rx="15" ry="19" fill={deep} {...outline} />
+      <ellipse cx="53" cy="50" rx="15" ry="19" fill={deep} {...outline} />
+      <ellipse cx="40" cy="49" rx="16" ry="21" fill={fill} {...outline} />
+    </>
+  )
+  const eyes = (r = 4) => (<><circle cx="31" cy="46" r={r} fill={INK} /><circle cx="49" cy="46" r={r} fill={INK} /><circle cx="32.3" cy="44.6" r="1.3" fill="#fff" /><circle cx="50.3" cy="44.6" r="1.3" fill="#fff" /></>)
+  const carved = (fill: string) => (
+    <>
+      <path d="M26 48l5-8.5 5 8.5zM44 48l5-8.5 5 8.5z" fill={fill} strokeLinejoin="round" />
+      <path d="M26 54c3 6.5 8 9 14 9s11-2.5 14-9c-2 .8-4 1.2-6 1.2l-1.5 3-2-3h-9l-2 3-1.5-3c-2 0-4-.4-6-1.2z" fill={fill} />
+    </>
+  )
+  switch (pumpkin) {
+    case 'pumpkin':
+      // The classic jack-o'-lantern: triangle eyes, a toothy grin.
+      return (<><Shadow rx={26} />{body()}{carved(INK)}</>)
+    case 'pumpkin-witch':
+      // A witch: a crooked purple hat with a green band, a sly smile.
+      return (
+        <>
+          <Shadow rx={26} />{body(PUMPKIN, PUMPKIN_DEEP, null)}
+          <path d="M26 30c5-9 9-17 20-25-2 6-1 15 8 25z" fill="#4a3d63" strokeLinejoin="round" {...outline} />
+          <rect x="27" y="25" width="26" height="5" rx="1.5" fill="#8fbc98" />
+          <rect x="37" y="24.5" width="6" height="6" rx="1" fill="none" stroke="#f2c94c" strokeWidth="1.6" />
+          <ellipse cx="40" cy="31" rx="25" ry="4.5" fill="#3d3352" {...outline} />
+          {eyes()}
+          <path d="M33 56c4 3 9 3 13-1" stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round" />
+        </>
+      )
+    case 'pumpkin-vampire':
+      // A vampire: a high red-lined collar, a widow's peak, two small fangs.
+      return (
+        <>
+          <Shadow rx={26} />
+          <path d="M14 70L4 30l20 20zM66 70l10-40-20 20z" fill="#2f2b26" {...outline} />
+          <path d="M14 66L7 37l15 15zM66 66l7-29-15 15z" fill="#b8423a" />
+          {body()}
+          <path d="M26 33c4-3 9-4.5 14-4.5s10 1.5 14 4.5c-4 0-7.5.5-10 2.5L40 40l-4-4.5c-2.5-2-6-2.5-10-2.5z" fill="#2f2b26" />
+          <path d="M26 42l8.5 2M54 42l-8.5 2" stroke={INK} strokeWidth="2.4" strokeLinecap="round" />
+          {eyes(3.6)}
+          <path d="M32 55c5 3 11 3 16 0" stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round" />
+          <path d="M35 56.5l1.6 4 1.6-3.5zM41.8 57l1.6 3.5 1.6-4z" fill="#fff" />
+        </>
+      )
+    case 'pumpkin-ghost':
+      // A ghost: a white pumpkin, startled, with a small ghost over its shoulder.
+      return (
+        <>
+          <Shadow rx={26} />{body('#ece7dc', '#cfc7b8', '#8a8f6a')}
+          <ellipse cx="31" cy="45.5" rx="3.8" ry="5" fill={INK} /><ellipse cx="49" cy="45.5" rx="3.8" ry="5" fill={INK} />
+          <circle cx="32.3" cy="43.5" r="1.3" fill="#fff" /><circle cx="50.3" cy="43.5" r="1.3" fill="#fff" />
+          <ellipse cx="40" cy="58" rx="3.4" ry="4.2" fill={INK} />
+          <circle cx="23" cy="53" r="3.2" fill="#9db7e8" opacity=".6" /><circle cx="57" cy="53" r="3.2" fill="#9db7e8" opacity=".6" />
+          <path d="M60 22c0-7 3.5-11 8-11s8 4 8 11v8l-2.7-2.2-2.6 2.2-2.7-2.2-2.7 2.2-2.6-2.2L60 30z" fill="#fff" {...outline} stroke="var(--character-outline, #cfc7b8)" />
+          <circle cx="65.5" cy="19.5" r="1.3" fill={INK} /><circle cx="70.5" cy="19.5" r="1.3" fill={INK} />
+        </>
+      )
+    case 'pumpkin-cat':
+      // A black cat: ears, a pink nose and whiskers.
+      return (
+        <>
+          <Shadow rx={26} />
+          <path d="M17 38l1-17 13 9zM63 38l-1-17-13 9z" fill="#2f2b26" strokeLinejoin="round" {...outline} />
+          <path d="M20 33l.6-8.5 6.5 4.5zM60 33l-.6-8.5-6.5 4.5z" fill="#e3a0a0" />
+          {body()}
+          <ellipse cx="31" cy="46" rx="4" ry="4.6" fill="#f2c94c" /><ellipse cx="49" cy="46" rx="4" ry="4.6" fill="#f2c94c" />
+          <ellipse cx="31" cy="46" rx="1.4" ry="3.8" fill={INK} /><ellipse cx="49" cy="46" rx="1.4" ry="3.8" fill={INK} />
+          <path d="M37.5 52.5h5L40 55.5z" fill="#e3807f" />
+          <path d="M40 55.5c-1 2.5-4 3-5.5 1M40 55.5c1 2.5 4 3 5.5 1" stroke={INK} strokeWidth="2" fill="none" strokeLinecap="round" />
+          <path d="M28 54.5l-11-1.5M28 57.5l-10 2.5M52 54.5l11-1.5M52 57.5l10 2.5" stroke={INK} strokeWidth="1.4" strokeLinecap="round" />
+        </>
+      )
+    case 'pumpkin-mummy':
+      // A mummy: wrapped in bandages, one eye peeking out.
+      return (
+        <>
+          <Shadow rx={26} />
+          <clipPath id={`${id}-mm`}><ellipse cx="27" cy="50" rx="15" ry="19" /><ellipse cx="53" cy="50" rx="15" ry="19" /><ellipse cx="40" cy="49" rx="16" ry="21" /></clipPath>
+          {body()}
+          <g clipPath={`url(#${id}-mm)`} opacity=".95">
+            <path d="M8 34l64 6M8 41l64-7M8 53l64 4M8 62l64-5M8 68l64 2" stroke="#ebe6dc" strokeWidth="5.5" />
+            <path d="M8 34l64 6M8 53l64 4M8 68l64 2" stroke="#cfc7b8" strokeWidth="1" />
+          </g>
+          <rect x="24" y="44" width="32" height="6.5" rx="3" fill={PUMPKIN} />
+          <circle cx="31" cy="47.2" r="3" fill={INK} /><circle cx="32" cy="46.2" r="1" fill="#fff" />
+          <path d="M45.5 47.5h7" stroke={INK} strokeWidth="2.4" strokeLinecap="round" />
+        </>
+      )
+    case 'pumpkin-monster':
+      // A monster: green, a flat black top, stitches and two bolts.
+      return (
+        <>
+          <Shadow rx={26} />
+          <rect x="5" y="49" width="9" height="5" rx="1.5" fill="#8a8f96" {...outline} />
+          <rect x="66" y="49" width="9" height="5" rx="1.5" fill="#8a8f96" {...outline} />
+          {body('#9cc48a', '#7aa36a', '#5a4632')}
+          <path d="M25 37c0-5 6-8 15-8s15 3 15 8l-3-1.5-2.5 2-2.5-2-2.5 2-2.5-2-2.5 2-2.5-2-2.5 2-2.5-2z" fill="#2f2b26" />
+          <path d="M35 39.5h10M37 37.5v4M40 37.5v4M43 37.5v4" stroke="#3d5a35" strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M27 45h8M45 45h8" stroke={INK} strokeWidth="2.4" strokeLinecap="round" />
+          <circle cx="31" cy="48" r="3" fill={INK} /><circle cx="49" cy="48" r="3" fill={INK} />
+          <path d="M32 57h16" stroke={INK} strokeWidth="3" strokeLinecap="round" />
+          <path d="M35 55v4M40 55v4M45 55v4" stroke={INK} strokeWidth="1.4" strokeLinecap="round" />
+        </>
+      )
+    case 'pumpkin-lantern':
+      // A lantern: a deep-orange pumpkin with a candle's glow inside its carved face.
+      return (
+        <>
+          <Shadow rx={26} />
+          <radialGradient id={`${id}-gl`} cx="40" cy="50" r="22" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="#ffe08a" /><stop offset="1" stopColor="#f3a553" />
+          </radialGradient>
+          {body('#c8601e', '#9e4814')}
+          {carved(`url(#${id}-gl)`)}
+          <circle cx="40" cy="50" r="24" fill="#ffd25e" opacity=".08" />
+        </>
+      )
+  }
+}
+
 /** A character's drawing in its 80x80 box, for composing several into one scene (BannerArt). */
 export function Body({ who, face = 'cap' }: { who: Character; face?: Face }) {
   const outline = { stroke: 'var(--character-outline, transparent)', strokeWidth: 1.5 }
   if (who === 'lead' && isDuck(face)) return <DuckBody duck={face} outline={outline} />
-  if (who === 'lead' && !isDuck(face) && face !== 'cap') return <FaceBody face={face} outline={outline} />
+  if (who === 'lead' && isPumpkin(face)) return <PumpkinBody pumpkin={face} outline={outline} />
+  if (who === 'lead' && !isDuck(face) && !isPumpkin(face) && face !== 'cap') return <FaceBody face={face} outline={outline} />
   switch (who) {
     case 'lead':
       // Claude Code: an amber pebble in a hard hat.

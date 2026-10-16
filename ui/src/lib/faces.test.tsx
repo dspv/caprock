@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { DUCKS, DUCK_HINT_EVERY, FACES, FACES_KEY, FACE_DEFAULT_KEY, FACE_NAME, MAX_PICKS, duckHintDue, faceFor, hashedFace, hasOwnFace, isDuck, saveFaceDefault, setSessionFace } from './faces'
+import { DUCKS, DUCK_HINT_EVERY, FACES, PUMPKINS, FACES_KEY, FACE_DEFAULT_KEY, FACE_NAME, MAX_PICKS, duckHintDue, faceFor, hashedFace, hasOwnFace, isDuck, isPumpkin, saveFaceDefault, setSessionFace } from './faces'
 import { DUCK_HINT_LINGER, DUCK_HINT_QUIET, FaceDefaultSetting, PickableFace, SessionCharacter } from '@/components/SessionFace'
 
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
@@ -148,6 +148,50 @@ describe('rubber ducks', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Rainbow duck' }))
     expect(faceFor('x')).toBe('duck-rainbow')
     expect(screen.getByRole('radio', { name: 'Faces and ducks' })).toHaveAttribute('aria-checked', 'false')
+  })
+})
+
+describe('pumpkins', () => {
+  it('move nobody: the faces pool and the faces-and-ducks pool keep their hashes', () => {
+    for (let i = 0; i < 100; i++) expect(FACES).toContain(hashedFace(`p-${i}`))
+    saveFaceDefault('random-all')
+    for (let i = 0; i < 300; i++) expect(isPumpkin(faceFor(`p-${i}`))).toBe(false)
+  })
+  it('a pumpkin per session draws from all eight, and a picked one is kept', () => {
+    saveFaceDefault('random-pumpkins')
+    const seen = new Set(Array.from({ length: 300 }, (_, i) => faceFor(`p-${i}`)))
+    expect([...seen].sort()).toEqual([...PUMPKINS].sort())
+    expect(faceFor(undefined)).toBe('pumpkin')
+    setSessionFace('p1', 'pumpkin-witch')
+    expect(faceFor('p1')).toBe('pumpkin-witch')
+  })
+  it('the picker has a Pumpkins tab, reached by key, and opens on it for a pumpkin', () => {
+    render(<PickableFace agent="claude" sessionId="p2"><SessionCharacter agent="claude" sessionId="p2" /></PickableFace>)
+    fireEvent.click(screen.getByRole('button', { name: "Change this session's face" }))
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Faces' }), { code: 'ArrowLeft' })
+    expect(screen.getByRole('tab', { name: 'Pumpkins' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getAllByRole('menuitemradio').map((b) => b.getAttribute('aria-label'))).toEqual(PUMPKINS.map((p) => FACE_NAME[p]))
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Pumpkins' }), { code: 'ArrowRight' })
+    expect(screen.getByRole('tab', { name: 'Faces' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Faces' }), { code: 'ArrowLeft' })
+    act(() => { fireEvent.click(screen.getByRole('menuitemradio', { name: 'Vampire pumpkin' })) })
+    expect(faceFor('p2')).toBe('pumpkin-vampire')
+    fireEvent.click(screen.getByRole('button', { name: "Change this session's face" }))
+    expect(screen.getByRole('tab', { name: 'Pumpkins' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('menuitemradio', { name: 'Vampire pumpkin' })).toHaveFocus()
+  })
+  it('Settings offers the pumpkins and a pumpkin per session', () => {
+    render(<FaceDefaultSetting />)
+    fireEvent.click(screen.getByRole('radio', { name: 'A pumpkin per session' }))
+    expect(isPumpkin(faceFor('x'))).toBe(true)
+    fireEvent.click(screen.getByRole('radio', { name: 'Lantern pumpkin' }))
+    expect(faceFor('x')).toBe('pumpkin-lantern')
+  })
+  it('every pumpkin draws', () => {
+    const { container } = render(<>{PUMPKINS.map((p) => { setSessionFace(`d-${p}`, p); return <SessionCharacter key={p} agent="claude" sessionId={`d-${p}`} /> })}</>)
+    const svgs = Array.from(container.querySelectorAll('svg'))
+    expect(svgs.map((s) => s.getAttribute('data-face'))).toEqual([...PUMPKINS])
+    for (const s of svgs) expect(s.querySelectorAll('path, ellipse, circle').length).toBeGreaterThan(5)
   })
 })
 
