@@ -42,6 +42,7 @@ import { startChat } from '@/lib/chats'
 import { rememberedQuickChoice } from '@/components/QuickChat'
 import { LivePace, NOW_LIVE_MS, SLOW_LIVE_MS } from '@/lib/refresh'
 import { useNarrowScreen } from '@/lib/phone'
+import { EndableRow, useEndedHere } from '@/components/PhoneEnd'
 
 /** How recently a session must have spoken to belong on the Now screen.
  *
@@ -212,7 +213,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
         </div>
       )}
       {/* First on a phone: what someone opens Caprock there for. */}
-      {phone && !inApp && <PhoneSessions sessions={[...working, ...rest]} now={now} />}
+      {phone && !inApp && <PhoneSessions sessions={[...working, ...rest]} now={now} canControl={canControl} />}
       {/* Installing hooks is done on the machine; on a phone the button would only answer 403. */}
       {status.data?.hooks && !isPairedDevice() && <HooksBanner missing={status.data?.hooks?.missing ?? []} settingsPath={status.data?.hooks?.settings_path ?? ''} partial={(status.data?.hooks?.installed?.length ?? 0) > 0} />}
       {/* Only sessions Caprock spawned end with the daemon; the ones the user
@@ -589,7 +590,9 @@ function NewSessionButton({ available, onClick }: { available: boolean | undefin
  * Caprock on an iPhone to talk to a session did not find one (owner's report,
  * 2026-10-11). These rows are only the way in; the cards below still carry
  * the figures. A session Caprock did not start says it can only be read, so
- * the missing field is not a surprise on the other side of the tap.
+ * the missing field is not a surprise on the other side of the tap. A live
+ * row's ⋯ (or a swipe left) ends it, or says why it cannot be ended here
+ * (components/PhoneEnd).
  */
 /** The newest moment the screen shows, unix ms: what decides its clock's pace. */
 export function newestOf(list: SessionSummary[], alerts: { ts?: string }[]): number {
@@ -605,29 +608,36 @@ function RefreshedAgo({ at }: { at: number }) {
   return <span className="num ml-auto">refreshed {fmtAgo(at, now)}</span>
 }
 
-function PhoneSessions({ sessions, now }: { sessions: SessionSummary[]; now: number }) {
-  if (sessions.length === 0) return null
-  const labels = projectLabels(sessions)
+function PhoneSessions({ sessions, now, canControl }: { sessions: SessionSummary[]; now: number; canControl: boolean }) {
+  // A row ended from here stays, *ended*, rather than vanishing on the next
+  // read (this list holds live sessions only): the tap is seen to have worked.
+  const ended = useEndedHere()
+  const [kept, setKept] = useState<SessionSummary[]>([])
+  const rows = [...sessions, ...kept.filter((k) => !sessions.some((s) => s.session_id === k.session_id))].map(ended.view)
+  if (rows.length === 0) return null
+  const labels = projectLabels(rows)
   return (
     <section aria-label="Running sessions" className="grid gap-1.5">
       <div className="px-0.5 text-[11px] uppercase tracking-[0.08em] text-fg-faint">Sessions · tap to chat</div>
       <ul className="grid overflow-hidden rounded-[var(--radius-panel)] border border-border bg-panel">
-        {sessions.map((s) => {
-          const waiting = s.activity?.health === 'waiting-on-you'
+        {rows.map((s) => {
+          const waiting = s.status !== 'ended' && s.activity?.health === 'waiting-on-you'
           const typable = s.owned && s.status !== 'ended' && !s.detached
           // Go's zero time is what a session with no event yet reports.
           const at = [s.activity.at, s.last_event_at, s.started_at].find((t) => t && !String(t).startsWith('0001-'))
+          const title = labels.get(s.session_id) || s.project || 'unknown project'
           return (
-            <li key={s.session_id} className="border-b border-border last:border-b-0">
+            <EndableRow key={s.session_id} s={s} title={title} canControl={canControl}
+              onEnded={() => { ended.mark(s.session_id); setKept((k) => [...k.filter((x) => x.session_id !== s.session_id), s]) }}>
               <a
                 href={href({ name: 'session', id: s.session_id, tab: 'chat' })}
                 className={`flex min-h-14 items-center gap-3 px-3 py-2 text-fg no-underline hover:no-underline active:bg-panel-2 ${waiting ? 'bg-warn/10' : ''}`}
               >
                 <span className="min-w-0 flex-1">
                   <span className="flex min-w-0 items-baseline gap-2">
-                    <span className="truncate text-[15px] font-medium">{labels.get(s.session_id) || s.project || 'unknown project'}</span>
+                    <span className="truncate text-[15px] font-medium">{title}</span>
                     {s.agent && s.agent !== 'claude' && <AgentGlyph agent={s.agent} />}
-                    {!typable && <span className="shrink-0 text-[11px] text-fg-faint">read only</span>}
+                    {!typable && s.status !== 'ended' && <span className="shrink-0 text-[11px] text-fg-faint">read only</span>}
                   </span>
                   <span className={`block truncate text-[13px] ${waiting ? 'text-warn' : 'text-fg-muted'}`}>
                     {waiting ? 'waiting for you' : s.description || s.activity.phrase}
@@ -635,9 +645,10 @@ function PhoneSessions({ sessions, now }: { sessions: SessionSummary[]; now: num
                   </span>
                 </span>
                 <Badge health={sessionHealth(s)} />
-                <span aria-hidden className="text-[18px] text-fg-faint">›</span>
+                {/* A live row has its ⋯ (End) where the chevron was. */}
+                {s.status === 'ended' && <span aria-hidden className="text-[18px] text-fg-faint">›</span>}
               </a>
-            </li>
+            </EndableRow>
           )
         })}
       </ul>

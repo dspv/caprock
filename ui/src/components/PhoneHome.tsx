@@ -38,6 +38,7 @@ import { AgentGlyph } from './AgentMarks'
 import { agentLabel, isCustomAgent, startable, useAgentCatalog, type SpawnAgent } from './AgentPicker'
 import { CaprockMark, ChatIcon, ChevronIcon, CloseIcon, InboxIcon } from './AppIcons'
 import { PermissionPrompt } from './PermissionPrompt'
+import { EndableRow, useEndedHere, type EndedHere } from './PhoneEnd'
 import { ChipSelect, SectionLabel } from './PhoneParts'
 import { PhoneReleases } from './PhoneReleases'
 import { subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
@@ -176,6 +177,8 @@ export function PhoneHome() {
   // Chats have their own section and screen (ADR-071); Continue is the work.
   const rows = continueList(list.filter((s) => !isChat(s)), now)
   const chats = useApi(() => api.chats({ limit: CHATS_SHOWN }), [], { intervalMs: 5000, cache: 'chats:home' })
+  // Ended from a row here: shown ended until the next read says so (components/PhoneEnd).
+  const endedHere = useEndedHere()
   // A pull at the top of the home-screen app reads Releases and the Inbox
   // again (the sessions are read every few seconds anyway).
   const [pull, setPull] = useState(0)
@@ -221,8 +224,8 @@ export function PhoneHome() {
         </div>
       )}
       {waiting[0] && <Waiting session={waiting[0]} more={waiting.length - 1} now={now} />}
-      <RecentChats list={chats.data} now={now} />
-      <Continue rows={rows} now={now} loading={!sessions.data && !sessions.error} />
+      <RecentChats list={chats.data} now={now} canControl={canControl} ended={endedHere} />
+      <Continue rows={rows} now={now} loading={!sessions.data && !sessions.error} canControl={canControl} ended={endedHere} />
       <PhoneReleases pull={pull} />
       <Saved items={inbox.items} now={now} canDelete={canControl} />
       <a href="#/home" className="flex min-h-11 items-center justify-center gap-1 text-[14px] text-fg-muted no-underline">
@@ -263,6 +266,7 @@ function Waiting({ session, more, now }: { session: SessionSummary; more: number
 }
 
 function healthDot(s: SessionSummary): string {
+  if (s.status === 'ended') return 'bg-fg-faint'
   const h = s.activity?.health
   if (h === 'working') return 'bg-ok animate-pulse'
   if (h === 'waiting-on-you') return 'bg-warn'
@@ -279,14 +283,14 @@ function healthWord(s: SessionSummary): string {
 /** Chats on the home: the newest few, and the way to all of them. */
 const CHATS_SHOWN = 3
 
-function RecentChats({ list, now }: { list?: ChatList; now: number }) {
+function RecentChats({ list, now, canControl, ended }: { list?: ChatList; now: number; canControl: boolean; ended: EndedHere }) {
   if (!list || list.items.length === 0) return null
   return (
     <section aria-label="Chats">
       <SectionLabel right={<a href={href({ name: 'chats' })} className="text-accent no-underline">All chats · {list.chats}</a>}>Chats</SectionLabel>
       <ul className="overflow-hidden rounded-[12px] border border-border bg-panel">
-        {list.items.slice(0, CHATS_SHOWN).map((s) => (
-          <li key={s.session_id} className="border-b border-border last:border-b-0">
+        {list.items.slice(0, CHATS_SHOWN).map(ended.view).map((s) => (
+          <EndableRow key={s.session_id} s={s} title={chatTitle(s)} canControl={canControl} onEnded={() => ended.mark(s.session_id)}>
             <a href={href({ name: 'chat', id: s.session_id })} className="flex min-h-[56px] items-center gap-3 px-3 py-2 text-fg no-underline active:bg-panel-2">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-panel-2 text-fg-muted"><ChatIcon size={16} /></span>
               <span className="min-w-0 flex-1">
@@ -294,17 +298,17 @@ function RecentChats({ list, now }: { list?: ChatList; now: number }) {
                   <span className="truncate text-[15px] font-medium">{chatTitle(s)}</span>
                   <span className="ml-auto shrink-0 text-[12px] text-fg-faint">{fmtAgo(s.worked_at || s.last_event_at, now)}</span>
                 </span>
-                <span className="block truncate text-[13px] text-fg-muted">{chatModelLabel(s)}</span>
+                <span className="block truncate text-[13px] text-fg-muted">{[chatModelLabel(s), s.status === 'ended' ? 'ended' : ''].filter(Boolean).join(' · ')}</span>
               </span>
             </a>
-          </li>
+          </EndableRow>
         ))}
       </ul>
     </section>
   )
 }
 
-function Continue({ rows, now, loading }: { rows: SessionSummary[]; now: number; loading: boolean }) {
+function Continue({ rows, now, loading, canControl, ended }: { rows: SessionSummary[]; now: number; loading: boolean; canControl: boolean; ended: EndedHere }) {
   const labels = projectLabels(rows)
   return (
     <section aria-label="Continue">
@@ -315,11 +319,12 @@ function Continue({ rows, now, loading }: { rows: SessionSummary[]; now: number;
         </div>
       ) : (
         <ul className="overflow-hidden rounded-[12px] border border-border bg-panel">
-          {rows.map((s) => {
-            const waiting = s.activity?.health === 'waiting-on-you'
+          {rows.map(ended.view).map((s) => {
+            const waiting = s.status !== 'ended' && s.activity?.health === 'waiting-on-you'
             const when = s.worked_at || s.last_event_at
+            const title = labels.get(s.session_id) || s.project || 'unknown project'
             return (
-              <li key={s.session_id} className="border-b border-border last:border-b-0">
+              <EndableRow key={s.session_id} s={s} title={title} canControl={canControl} onEnded={() => ended.mark(s.session_id)}>
                 <a
                   href={href({ name: 'session', id: s.session_id, tab: 'chat' })}
                   className={`flex min-h-[60px] items-center gap-3 px-3 py-2 text-fg no-underline active:bg-panel-2 ${s.status === 'ended' ? 'opacity-75' : ''}`}
@@ -327,7 +332,7 @@ function Continue({ rows, now, loading }: { rows: SessionSummary[]; now: number;
                   <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${healthDot(s)}`} />
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate text-[15px] font-medium">{labels.get(s.session_id) || s.project || 'unknown project'}</span>
+                      <span className="truncate text-[15px] font-medium">{title}</span>
                       {s.agent && s.agent !== 'claude' && <AgentGlyph agent={s.agent} size={12} />}
                       <span className={`ml-auto shrink-0 text-[12px] ${waiting ? 'text-warn' : 'text-fg-faint'}`}>
                         {healthWord(s)}{when ? ` · ${fmtAgo(when, now)}` : ''}
@@ -335,9 +340,10 @@ function Continue({ rows, now, loading }: { rows: SessionSummary[]; now: number;
                     </span>
                     <span className="block truncate text-[13px] text-fg-muted">{s.description || s.activity?.phrase || '—'}</span>
                   </span>
-                  <span className="text-fg-faint"><ChevronIcon size={16} /></span>
+                  {/* A live row has its ⋯ (End) where the chevron was. */}
+                  {s.status === 'ended' && <span className="text-fg-faint"><ChevronIcon size={16} /></span>}
                 </a>
-              </li>
+              </EndableRow>
             )
           })}
         </ul>

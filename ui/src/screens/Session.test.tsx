@@ -160,13 +160,19 @@ d('a spawned Codex or OpenCode session', () => {
     vi.unstubAllGlobals()
   })
 
-  it('on a phone: no End on a session started outside Caprock (rule 7), nor on an ended one', async () => {
+  it('on a phone: no End on a session started outside Caprock (rule 7) — the sheet says why — nor on an ended one', async () => {
     const mq = (q: string) => ({ matches: q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList
     vi.stubGlobal('matchMedia', mq)
+    signals.value = []
     spawned({ agent: 'claude', owned: false })
     const { container, unmount } = render(<SessionScreen id="cap-1" />)
     await screen.findByRole('log', { name: 'Conversation' })
     expect(container.querySelector('[data-phone-end]')).toBeNull()
+    // Never silently unavailable (owner, 2026-10-16): the sheet's first line.
+    fireEvent.click(screen.getByRole('button', { name: /session details/ }))
+    expect(container.querySelector('[data-phone-end-why]')).toHaveTextContent('Started in your own terminal — Caprock never stops it (rule 7).')
+    expect(screen.queryByRole('button', { name: /^End/ })).not.toBeInTheDocument()
+    expect(signals.value).toEqual([])
     unmount()
     spawned({ agent: 'claude', status: 'ended' })
     const again = render(<SessionScreen id="cap-1" />)

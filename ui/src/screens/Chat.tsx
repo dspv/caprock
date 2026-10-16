@@ -4,7 +4,8 @@
  * produced one tap away.
  *
  * The bar says which chat it is (tap the title to rename it), the vendor and
- * model, and offers Files (with how many) and ⋯ (archive, delete). An ended
+ * model, and offers Files (with how many) and ⋯ (end — or why it cannot be
+ * ended here — rename, archive, delete; components/PhoneEnd). An ended
  * chat can be carried on in place: the same conversation resumed in its own
  * folder, on the phone too. A chat waiting on a permission answers it here.
  */
@@ -23,6 +24,7 @@ import { ChatFileViewer, ChatFilesSheet, useChatFiles } from '@/components/ChatF
 import { ChatSheet } from '@/components/ChatStart'
 import { ChevronIcon, FileIcon, MoreIcon } from '@/components/AppIcons'
 import { Empty } from '@/components/ui'
+import { EndSheet, endState } from '@/components/PhoneEnd'
 import { RenameField } from './Chats'
 
 export function ChatScreen({ id }: { id: string }) {
@@ -43,6 +45,7 @@ export function ChatScreen({ id }: { id: string }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState(false)
+  const [endSheet, setEndSheet] = useState(false)
   const fill = useFillViewport<HTMLDivElement>(true, phone ? 0 : 12)
   // A file the reply names (`report.md`) opens in the viewer when it is one
   // of the chat's own files (ChatView's links, lib/mdreader).
@@ -66,6 +69,8 @@ export function ChatScreen({ id }: { id: string }) {
   const ended = !!s && (s.status === 'ended' || !!s.detached)
   const canType = !!s && canControl && s.owned && !ended
   const title = s ? chatTitle(s) : 'Chat'
+  // End in the ⋯, or the one line that says why not (components/PhoneEnd).
+  const ending = s ? endState(s, canControl) : null
   const n = files?.length ?? 0
 
   const act = async (fn: () => Promise<unknown>, after: () => void) => {
@@ -125,7 +130,7 @@ export function ChatScreen({ id }: { id: string }) {
                 <FileIcon size={16} /> {phone ? '' : 'Files'}
                 {n > 0 && <span className="num grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1 text-[11px] font-semibold text-bg">{n}</span>}
               </button>
-              {canControl && s && (
+              {s && (canControl || ending) && (
                 <button type="button" aria-label="More" onClick={() => { setSheet('more'); setConfirm(false) }} className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-fg-muted hover:text-fg">
                   <MoreIcon size={18} />
                 </button>
@@ -153,24 +158,33 @@ export function ChatScreen({ id }: { id: string }) {
       {sheet === 'more' && s && (
         <ChatSheet title={title} onClose={() => setSheet(null)}>
           <div className="grid gap-2">
+            {ending?.can && (
+              <button type="button" data-chat-end className={`${SHEET_BASE} font-medium text-danger`} onClick={() => { setSheet(null); setEndSheet(true) }}>End this chat…</button>
+            )}
+            {ending && !ending.can && <p data-chat-end-why className="text-[14px] leading-snug text-fg-muted"><span className="font-medium text-fg">End</span> · {ending.why}</p>}
+            {canControl && <>
             <button type="button" className={SHEET_BTN} onClick={() => { setSheet(null); setRenaming(true) }}>Rename</button>
             <button type="button" className={SHEET_BTN} disabled={busy} onClick={() => void act(() => api.archiveChat(id, !s.archived_at), () => { setSheet(null); navigate({ name: 'chats' }) })}>
               {s.archived_at ? 'Move back to Chats' : 'Archive — hide it from Chats'}
             </button>
             {!confirm ? (
-              <button type="button" className={`${SHEET_BTN} text-danger`} onClick={() => setConfirm(true)}>Delete…</button>
+              <button type="button" className={`${SHEET_BASE} text-danger`} onClick={() => setConfirm(true)}>Delete…</button>
             ) : (
-              <button type="button" disabled={busy} className={`${SHEET_BTN} border-danger font-semibold text-danger`} onClick={() => void act(() => api.deleteChat(id), () => { setSheet(null); navigate({ name: 'chats' }) })}>
+              <button type="button" disabled={busy} className={`${SHEET_BASE} border-danger font-semibold text-danger`} onClick={() => void act(() => api.deleteChat(id), () => { setSheet(null); navigate({ name: 'chats' }) })}>
                 {busy ? 'Deleting…' : `Delete for good, with its ${n === 1 ? 'file' : `${n} files`}`}
               </button>
             )}
+            </>}
             {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
           </div>
         </ChatSheet>
       )}
+      {endSheet && s && <EndSheet sessionId={s.session_id} title={title} onClose={() => setEndSheet(false)} onEnded={detail.refresh} />}
       {open && <ChatFileViewer sessionId={id} file={open} onClose={() => setOpen(null)} />}
     </div>
   )
 }
 
-const SHEET_BTN = 'min-h-12 w-full rounded-[12px] border border-border-strong bg-bg px-4 text-left text-[16px] text-fg disabled:opacity-60'
+// The colour is apart: two text colours in one class list leave the winner to the stylesheet's order.
+const SHEET_BASE = 'min-h-12 w-full rounded-[12px] border border-border-strong bg-bg px-4 text-left text-[16px] disabled:opacity-60'
+const SHEET_BTN = `${SHEET_BASE} text-fg`
