@@ -227,16 +227,29 @@ describe('one selected row', () => {
 describe('the Today card', () => {
   const route = { onRoute: vi.fn(), loaded: true }
 
-  it('folds to one line by its chevron, with the waiting count in amber, and unfolds; the fold is remembered', () => {
-    const summary = { cost_usd: 19.99, rate_limits: { five_hour: { used_percentage: 40, resets_at: Date.now() / 1000 + 3600 } } } as unknown as Summary
+  const summary = {
+    cost_usd: 19.99,
+    rate_limits: {
+      five_hour: { used_percentage: 6, resets_at: Date.now() / 1000 + 3600 },
+      seven_day: { used_percentage: 74, resets_at: Date.now() / 1000 + 86400 },
+    },
+  } as unknown as Summary
+
+  it('has no Share button: sharing stays in ⌘K and on Pipeline', () => {
+    setup(mix(), [], { ...route, summary })
+    const card = screen.getByRole('region', { name: 'Today' })
+    expect(within(card).queryByRole('button', { name: /share/i })).toBeNull()
+  })
+
+  it('folds to one line by its chevron, with the waiting count in amber and both windows, and unfolds; the fold is remembered', () => {
     setup(mix(), [], { ...route, summary })
     fireEvent.click(document.querySelector('[data-today-fold]')!)
     const card = screen.getByRole('region', { name: 'Today' })
     expect(card).toHaveAttribute('data-today-folded')
-    expect(card.textContent).toMatch(/^\$19\.99 · 4 running · 1 waiting$/)
-    // A thin 5-hour bar under the line.
-    expect(within(card).getByRole('meter', { name: /5-hour window used/ })).toHaveAttribute('aria-valuenow', '40')
+    expect(within(card).getByRole('button', { name: /Unfold the card/ }).textContent).toBe('$19.99 · 4 running · 1 waiting · 5h 6% · 7d 74%')
     expect(card.querySelector('[data-today-waiting]')!.className).toContain('text-warn')
+    // 74% of the week is past the amber line, as the full card colours it.
+    expect(card.querySelector('[data-today-window="7d"]')!.className).toContain('text-warn')
     expect(localStorage.getItem(TODAY_FOLD_KEY)).toBe('closed')
     cleanup()
     setup(mix(), [], route)
@@ -250,7 +263,7 @@ describe('the Today card', () => {
     const { props } = setup(mix(), [], route)
     expect(document.querySelector('[data-head-waiting]')).toBeNull()
     fireEvent.contextMenu(screen.getByRole('region', { name: 'Today' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /Hide this card/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Hide/ }))
     expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
     expect(localStorage.getItem(TODAY_SHOWN_KEY)).toBe('off')
     // Nothing that needs you is lost: the count is beside the heading, and opens it.
@@ -267,5 +280,40 @@ describe('the Today card', () => {
     act(() => saveTodayCard({ hidden: false }))
     expect(screen.getByRole('region', { name: 'Today' })).toBeInTheDocument()
     expect(document.querySelector('[data-head-waiting]')).toBeNull()
+  })
+
+  it('closes by its ×, from the full card and from the line, and stays closed', () => {
+    setup(mix(), [], route)
+    fireEvent.click(screen.getByRole('button', { name: 'Hide the Today card' }))
+    expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
+    expect(localStorage.getItem(TODAY_SHOWN_KEY)).toBe('off')
+    act(() => saveTodayCard({ hidden: false, folded: true }))
+    const card = screen.getByRole('region', { name: 'Today' })
+    expect(card).toHaveAttribute('data-today-folded')
+    fireEvent.click(within(card).getByRole('button', { name: 'Hide the Today card' }))
+    expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
+    cleanup()
+    setup(mix(), [], route)
+    expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
+  })
+
+  it('offers Full card, One line and Hide on right-click, and remembers the pick', () => {
+    setup(mix(), [], { ...route, summary })
+    fireEvent.contextMenu(screen.getByRole('region', { name: 'Today' }))
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Full cardshown', 'One line', 'HideSettings shows it'])
+    fireEvent.click(screen.getByRole('menuitem', { name: /^One line/ }))
+    expect(screen.getByRole('region', { name: 'Today' })).toHaveAttribute('data-today-folded')
+    expect(localStorage.getItem(TODAY_FOLD_KEY)).toBe('closed')
+    fireEvent.contextMenu(screen.getByRole('region', { name: 'Today' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Full card/ }))
+    expect(screen.getByRole('region', { name: 'Today' })).not.toHaveAttribute('data-today-folded')
+    expect(localStorage.getItem(TODAY_FOLD_KEY)).toBe('open')
+  })
+
+  it('shows the full card to a viewer who never chose', () => {
+    localStorage.removeItem(TODAY_FOLD_KEY)
+    localStorage.removeItem(TODAY_SHOWN_KEY)
+    setup(mix(), [], route)
+    expect(screen.getByRole('region', { name: 'Today' })).not.toHaveAttribute('data-today-folded')
   })
 })

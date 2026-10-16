@@ -315,8 +315,8 @@ function TodayCardSetting() {
     <Toggle
       checked={!card.hidden}
       onChange={(v) => setCard({ hidden: !v })}
-      label="Show today's figures in the sidebar"
-      hint="Spend, running, waiting and the plan windows above the session list. Hidden, what waits on you is counted beside the list's heading."
+      label="Today card in the sidebar"
+      hint="Spend, running, waiting and the plan windows above the session list; its chevron folds it to one line. Hidden, what waits on you is counted beside the list's heading."
     />
   )
 }
