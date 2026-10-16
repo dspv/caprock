@@ -168,7 +168,7 @@ The agent runs the same install script as the button on
 [caprock.dev](https://caprock.dev) and leaves Claude Code's settings alone: the
 app asks you itself whether to connect it. What the script does, where things
 live and how to remove them is in [docs/install-agent.md](docs/install-agent.md),
-linked at a release tag so what the agent reads is what was published. Judged by
+on master, beside the code it describes. Judged by
 five fresh agents with no other context (2026-10-16, two Sonnet, two Haiku, one
 Opus; none ran anything): four would go ahead and one would ask first, all
 rating it 1–2 of 10 for looking like an injection, as the longer prompt it
@@ -180,7 +180,7 @@ Install the Caprock desktop app for me. It is open source (Apache-2.0), a local
 app for my Claude Code sessions: https://github.com/dspv/caprock
 
 What the install does and how to remove it:
-https://github.com/dspv/caprock/blob/v0.125.0/docs/install-agent.md
+https://github.com/dspv/caprock/blob/master/docs/install-agent.md
 
 I'm on macOS, so it's `curl -fsSL https://caprock.dev/mac.sh | sh` — read the
 script before you run it if you like. Leave my Claude Code settings alone; the
