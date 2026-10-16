@@ -367,10 +367,12 @@ func (in *Ingester) refreshText(ctx context.Context, sid string, s Session, msgs
 		return nil
 	}
 	db := in.rec.Store.DB()
+	// Unpinned, SQLite picks idx_events_kind_id and walks every assistant turn
+	// in the database instead of this session's rows.
 	rows, err := db.QueryContext(ctx, `
 		SELECT msg_id, COALESCE(json_extract(payload,'$.text'),''),
 		       COALESCE(json_extract(payload,'$.sidechain'),0)
-		FROM events
+		FROM events INDEXED BY idx_events_session_id
 		WHERE session_id = ? AND source = ? AND kind = 'turn.assistant'
 		  AND msg_id IS NOT NULL AND json_valid(payload)`,
 		sid, string(event.SourceOpenCode))

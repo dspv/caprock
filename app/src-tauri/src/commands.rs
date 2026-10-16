@@ -51,14 +51,88 @@ pub async fn set_background(on: bool, sup: tauri::State<'_, Sup>) -> Result<(), 
 /// Open a web or mail link in the system browser or mail app. Only http(s)
 /// and mailto, as the window's own link handling (`shell.rs`): a page must
 /// not be able to launch arbitrary URL schemes through the shell.
+///
+/// One app scheme besides: `tg:`, for the share sheet's *Send to someone in
+/// Telegram* (`ShareActions.tsx`). It opens only when an app on this machine
+/// says it handles `tg:`, and is refused otherwise, so the page falls back
+/// to t.me rather than the system asking what to open it with. Async, so
+/// the check and the launch never hold the window's thread.
 #[tauri::command]
-pub fn open_external<R: Runtime>(url: String, app: AppHandle<R>) -> Result<(), String> {
+pub async fn open_external<R: Runtime>(url: String, app: AppHandle<R>) -> Result<(), String> {
     let parsed: Url = url.parse().map_err(|_| format!("not a URL: {url}"))?;
-    if !matches!(parsed.scheme(), "http" | "https" | "mailto") {
-        return Err(format!("refused to open a {} URL", parsed.scheme()));
+    match parsed.scheme() {
+        "http" | "https" | "mailto" => app
+            .opener()
+            .open_url(parsed.as_str(), None::<&str>)
+            .map_err(|e| e.to_string()),
+        "tg" => tauri::async_runtime::spawn_blocking(move || open_app_link(parsed.as_str()))
+            .await
+            .map_err(|e| e.to_string())?,
+        other => Err(format!("refused to open a {other} URL")),
     }
-    app.opener()
-        .open_url(parsed.as_str(), None::<&str>)
+}
+
+/// An app link, opened only where an app is registered for its scheme.
+/// macOS: `open` exits non-zero when nothing handles the URL, and launches
+/// the handler otherwise.
+#[cfg(target_os = "macos")]
+fn open_app_link(url: &str) -> Result<(), String> {
+    let ok = std::process::Command::new("/usr/bin/open")
+        .arg(url)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_err(|e| e.to_string())?
+        .success();
+    if ok {
+        Ok(())
+    } else {
+        Err("no app here opens this link".into())
+    }
+}
+
+/// Windows: a scheme is handled when HKEY_CLASSES_ROOT has its key with a
+/// shell command; then `explorer` opens it as a click would.
+#[cfg(windows)]
+fn open_app_link(url: &str) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let scheme = url.split(':').next().unwrap_or_default();
+    let registered = std::process::Command::new("reg")
+        .args(["query", &format!("HKCR\\{scheme}\\shell\\open\\command")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !registered {
+        return Err("no app here opens this link".into());
+    }
+    std::process::Command::new("explorer")
+        .arg(url)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Linux: xdg-mime names the desktop entry for the scheme, or nothing.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_app_link(url: &str) -> Result<(), String> {
+    let scheme = url.split(':').next().unwrap_or_default();
+    let handler = std::process::Command::new("xdg-mime")
+        .args(["query", "default", &format!("x-scheme-handler/{scheme}")])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    if handler.is_empty() {
+        return Err("no app here opens this link".into());
+    }
+    std::process::Command::new("xdg-open")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
         .map_err(|e| e.to_string())
 }
 

@@ -50,7 +50,7 @@ impl Dropped {
         }
     }
 
-    fn contains(&self, p: &Path) -> bool {
+    pub(crate) fn contains(&self, p: &Path) -> bool {
         self.0.lock().is_ok_and(|d| d.iter().any(|x| x == p))
     }
 }

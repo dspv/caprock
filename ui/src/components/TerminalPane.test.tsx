@@ -45,6 +45,7 @@ vi.mock('@xterm/xterm', () => ({
     _core = { _renderService: { _handleIntersectionChange: () => { h.steps.push('paint') } } }
     constructor(opts: Record<string, unknown>) { this.options = { ...opts }; h.terms.push(this) }
     loadAddon(a: { term?: unknown }) { a.term = this }
+    registerLinkProvider() { return { dispose() {} } }
     resize(cols: number, rows: number) { this.cols = cols; this.rows = rows }
     open(parent: HTMLElement) { h.steps.push('open'); this.element = document.createElement('div'); parent.appendChild(this.element) }
     focus() { this.focused++ }

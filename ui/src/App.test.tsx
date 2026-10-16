@@ -38,7 +38,13 @@ describe('App', () => {
     stubApi()
     render(<App />)
     expect(await screen.findByText('caprock')).toBeInTheDocument()
-    expect(await screen.findByText('No sessions yet')).toBeInTheDocument()
+    // The shell is up; the empty state needs one more round: the sessions
+    // request answers, then the whole dashboard renders again in jsdom (the
+    // shell, the Now screen and every panel's effects). That second render
+    // passed 1 s on a contended CI runner 3 times in 60 red runs (2026-10),
+    // so this one wait gets the time a whole-dashboard render takes there;
+    // a real failure still fails, only later.
+    expect(await screen.findByText('No sessions yet', {}, { timeout: 5000 })).toBeInTheDocument()
   })
 
   // A tablet reaching the machine over the network gets the pairing page, not

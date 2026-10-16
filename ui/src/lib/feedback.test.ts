@@ -7,7 +7,7 @@
  * here rather than left to whoever edits the file next.
  */
 import { describe, expect, it } from 'vitest'
-import { body, context, isSendable, issueURL, kindForCode, KINDS, title, type Report } from './feedback'
+import { body, context, fromBox, isSendable, issueURL, KINDS, title, type Report } from './feedback'
 import type { Status } from './api'
 
 const status = {
@@ -143,12 +143,6 @@ describe('issueURL', () => {
     expect(params(issueURL(report({ kind: 'idea' }))).get('labels')).toBe('enhancement')
   })
 
-  it('picks a kind by the physical key 1, 2 or 3, on the digit row or the numpad', () => {
-    expect(['Digit1', 'Digit2', 'Digit3', 'Numpad1', 'Numpad2', 'Numpad3'].map(kindForCode))
-      .toEqual(['bug', 'idea', 'question', 'bug', 'idea', 'question'])
-    expect(['Digit0', 'Digit4', 'Numpad4', 'KeyB', 'Enter', ''].map(kindForCode)).toEqual([null, null, null, null, null, null])
-  })
-
   it('escapes text that would otherwise break the URL', () => {
     const u = issueURL(report({ title: 'crash on "quotes" & #hashes', text: 'a & b # c' }))
     expect(() => new URL(u)).not.toThrow()
@@ -158,10 +152,30 @@ describe('issueURL', () => {
 })
 
 describe('isSendable', () => {
-  it('needs a title', () => {
+  it('needs a few words, or a screenshot on its own', () => {
     // An empty issue costs a maintainer more than it costs the reporter.
     for (const empty of ['', '   ', '\n', 'ok']) expect(isSendable(empty)).toBe(false)
     expect(isSendable('History is blank')).toBe(true)
+    expect(isSendable('', 1)).toBe(true)
+    expect(isSendable('ok', 1)).toBe(false)
+  })
+})
+
+describe('fromBox', () => {
+  it('makes the first line the title and the rest the description', () => {
+    expect(fromBox('History is blank\n\nafter a restart', 'Lifetime')).toEqual({ title: 'History is blank', text: 'after a restart' })
+    expect(fromBox('  just one line  ', 'Cost')).toEqual({ title: 'just one line', text: '' })
+  })
+
+  it('keeps a first line too long for a title whole in the description', () => {
+    const long = 'x'.repeat(260)
+    const r = fromBox(long, 'Cost')
+    expect(r.title.length).toBeLessThanOrEqual(200)
+    expect(r.text).toBe(long)
+  })
+
+  it('titles a screenshot-only report after the screen', () => {
+    expect(fromBox('', 'Cost').title).toBe('Screenshot from Cost')
   })
 })
 

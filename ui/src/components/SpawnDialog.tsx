@@ -119,6 +119,14 @@ export const MODE_NOTE: Partial<Record<SpawnAgent, Record<string, string>>> = {
     plan: "Plan · OpenCode's plan agent",
     bypassPermissions: "Bypass · OpenCode's own rules",
   },
+  // Hermes (`hermes chat --help`, 0.21.6) has one switch: --yolo skips its
+  // approval prompts for dangerous commands. It has no plan or accept-edits
+  // mode, so those start Hermes as it is.
+  hermes: {
+    acceptEdits: 'Default · Hermes asks before risky commands',
+    plan: 'Default · Hermes has no plan mode',
+    bypassPermissions: 'Bypass · --yolo, never asks',
+  },
 }
 
 /** OpenCode 2 (2.0.26) has the flag OpenCode 1 lacked: `--auto`, "auto-approve
@@ -152,6 +160,7 @@ export const DEFAULT_MODELS: Record<SpawnAgent, string> = {
   codex: '',
   opencode: '',
   grok: '',
+  hermes: '',
 }
 
 export function SpawnDialog({
@@ -400,7 +409,7 @@ export function ModelField({
 
 /** An agent's name, short: "Codex", "OpenCode", a custom agent's own. */
 export function shortAgentName(agent: SpawnAgent, entry?: CatalogEntry): string {
-  return entry?.label ?? { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', gemini: 'Gemini', grok: 'Grok' }[agent as BuiltinAgent] ?? agent.replace(/^custom:/, '')
+  return entry?.label ?? { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', gemini: 'Gemini', grok: 'Grok', hermes: 'Hermes' }[agent as BuiltinAgent] ?? agent.replace(/^custom:/, '')
 }
 
 /** The models an agent's own files list, its default first, as [value, label];

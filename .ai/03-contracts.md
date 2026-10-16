@@ -15,7 +15,7 @@ Conventions that apply to every contract here: JSON casing is **snake_case**; al
 
 ### Hook payload (what the shim forwards, verbatim)
 
-Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. Event-specific fields the daemon reads:
+Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. The parent's hooks also fire for its subagents' tool calls, under the parent's `session_id`; when such a payload names no `agent_id`, hookd takes it from a `transcript_path` of the form `<session-id>/subagents/…/agent-<id>.jsonl`, so the call is the subagent's and not the main thread's. Event-specific fields the daemon reads:
 
 | Event               | Fields consumed                                              |
 | ------------------- | ------------------------------------------------------------ |
@@ -174,10 +174,14 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
   `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/queue`,
+  `/v1/work` and `/v1/sessions/{id}/ci/stats` (the phone home's Releases:
+  the board and one repository's Pipeline answer, composed by the daemon
+  from the GitHub reads it keeps with its own token — the token never
+  leaves it, and a relay phone reads both through the end-to-end channel),
   `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
   `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file`,
-  `/v1/projects/{id}/files`, `/v1/brain`, `/v1/brain/status` and
+  `/v1/projects/{id}/files`, `/v1/projects/{id}/image`, `/v1/brain`, `/v1/brain/status` and
   `/v1/brain/nodes/{id}`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
   orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
@@ -190,6 +194,11 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   anywhere?, app?, installed?}`, where `via` is how this request arrived (below),
   `anywhere` is true while access from anywhere is on, and `app` (sent with
   it) is the phone's page, so a Wi-Fi link's notice names where the app is.
+  A computer (below) also gets `kind: "machine"`, and `pending: true` while
+  its owner has not allowed it. `DELETE /v1/pair/me` is open to every
+  paired device, waiting or not: it removes the asking device itself (its
+  token stops, its sockets close) and answers `{revoked: 1}`; on loopback it
+  is `400` — the machine is no device (ADR-067).
   `?app=1` or `?app=0` reports whether the phone runs as the installed app
   (2026-10-14); the machine stores it per device as `app` in `devices.json`
   (saved when it changes), lists it in `GET /v1/pair/state`'s `devices`, and
@@ -230,7 +239,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   /v1/projects/{id}/changes/stage`, `unstage`, `discard`, `commit`, `push`,
   `pull` and `fetch`, in a worktree that resolves under home (§ Changes). From a device a clone URL must also begin `https://` or
   `git@` (`400` otherwise, before git runs). Everything
-  else stays `403` for every device: settings, pairing, hive, tasks creation
+  else stays `403` for a phone (a computer's wider list is below): settings, pairing, hive, tasks creation
   and verify, orchestrator, hooks install, shutdown, update check, report
   test, Gemini ask, `open-terminal`, the editor routes, `POST /v1/sessions/remove`, and every
   shell route — `POST`/`GET /v1/shells`, and a shell's terminal, input and
@@ -244,6 +253,40 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `permission_mode` is allowed, `bypassPermissions` included (ADR-034).
   Refusal is `403` with `{error}`. A session started from a device is logged
   with the device's id and name.
+- **A computer** ([ADR-067](08-decisions.md)) is another machine's Caprock,
+  paired with a code for a computer (`POST /v1/pair/code {kind:
+  "machine"}`, below) and stored in `devices.json` with `kind: "machine"`.
+  The kind comes from the code, never from the redeeming request. It is
+  stored `pending: true` and, until the owner allows it (`POST
+  /v1/pair/devices/{id}/allow`), its token reaches `GET /v1/pair/me` and
+  `DELETE /v1/pair/me` and nothing else: every other `/v1` request is `403`
+  with `error` *this computer is waiting to be allowed on the machine
+  Caprock runs on*; its role reads as `viewer` (`RoleOf`) and its terminal
+  frames are refused. Allowed, it is a controller that may also make the
+  requests in `computerRoutes` (`internal/api/lanauth.go`): `POST` and `GET
+  /v1/shells` (and a shell's terminal, input and signal through the agent
+  routes), `GET /v1/hive/starter`, `POST /v1/hive`, `POST /v1/tasks`, `POST
+  /v1/tasks/{id}/verify`, `POST /v1/orchestrator/start` and `/stop`, `GET
+  /v1/agents/custom`, `GET /v1/activity`, `GET /v1/overlap`, `GET
+  /v1/update/busy`, `GET /v1/github/actions-usage` and `/statuspage`, a
+  session's `prs`, `ci`, `branches`, `ci/jobs/{job}/log`, `ci/release`,
+  `ci/main` and `ci/stats`, `POST /v1/sessions/{id}/prs/{number}/rerun` and
+  `/update-branch`, `GET /v1/projects/{id}/branches`, `copies`, `cleanup`,
+  `POST /v1/projects/{id}/copies/remove`, `cleanup` and `cleanup/restore`,
+  `GET /v1/projects/scan`, `POST /v1/projects/merge` and `POST
+  /v1/projects/{id}/split`. A phone's limits do not apply to it
+  (`phoneLimited`): `POST /v1/agents` may name any folder, `command`, `args`
+  and `chat`; the folder picker, `GET /v1/browse/stat`, `GET
+  /v1/browse/repos` and `GET /v1/recent-dirs` use the machine's own root;
+  projects, worktrees and changes may be outside home; a project's setup
+  command may be set. It stays `403` on everything the machine keeps, whatever
+  the role: `/v1/pair/*` but `me`, settings writes (`PUT /v1/settings`,
+  Telegram, GitHub connect, custom agents, subscriptions, Second Brain's
+  settings), `POST /v1/footprint/orphans/stop`, `POST /v1/resources/reap`,
+  `POST /v1/shutdown`, `POST /v1/update/check`, `POST /v1/hooks/install`,
+  `open-terminal`, the editor routes, `POST /v1/sessions/remove`,
+  `/v1/machines` and `/v1/m/…`. Rule 7 is unchanged: the agent manager
+  starts, types into and signals only what this daemon started.
 - **`GET /v1/browse` from a controller** is rooted at the owner's browse root
   when that resolves inside home, else at home; a `dir` above it, outside it or
   through a symlink out of it is `404`, as on the machine, and an entry that
@@ -254,6 +297,15 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   every frame a device sends, its role is read again (`pairing.Store.RoleOf`);
   once it is not a controller — demoted, revoked, or network access turned off
   — the socket closes with `1008` and the frame is not written.
+- **A device's sockets close when it is removed or its role changes**
+  (ADR-067). Every `/v1/live` and terminal socket (v1 and v2) a device opens
+  is held by the device's id; `DELETE /v1/pair/devices/{id}` (Deny, Remove,
+  `caprock machines deny|revoke`), `DELETE /v1/pair/devices/all`, `PUT
+  /v1/pair/devices/{id}/role` and `DELETE /v1/pair/me` close them at once
+  with `1008` and the reason *this device was removed or its access changed
+  on the machine*. The device reconnects and the gate answers it as it now
+  stands. Before this, `/v1/live` kept streaming to a removed device until it
+  reconnected.
 - **Refusal is `401` with `{error, detail}`** for a device that has not paired,
   and `403` with the same shape for a paired device asking for more than its
   role allows — the `detail` tells a viewer where control is granted — not a
@@ -294,7 +346,21 @@ viewer, as `caprock pair` and `caprock remote` send; any other role, or a
 body that is not JSON, is `400`) and answers `{code, role, expires_in_sec,
 url, remote?}`; `GET /v1/pair/state` names the outstanding code's role as
 `code_role`. The device pairing with that code gets that role; nothing the
-device sends names one. `POST /v1/pair`
+device sends names one. `{kind: "machine"}` issues a code **for a computer**
+(ADR-067; any other `kind` but none or `""` is `400`): its role is
+`controller` whatever `role` says, it turns access from anywhere on first if
+it is off (`501` in a build without the relay, `409` when that fails), and
+the answer adds `kind: "machine"`; `GET /v1/pair/state` names it as
+`code_kind: "machine"` (absent for a phone's code). Each listed device
+carries `kind` (`"machine"`, absent for a phone) and `pending` (true while a
+computer waits). `POST /v1/pair/devices/{id}/allow` (loopback-only, no body)
+allows a waiting computer — `200 {id, role: "controller"}`, `404` for an
+unknown id or one not waiting; while network access is off it edits
+`devices.json`. Deny is `DELETE /v1/pair/devices/{id}`. Every change to the
+guest list (a pairing, a removal, a role, an allow) publishes a `devices`
+frame on `/v1/live` with `data: {}`: the machine's own dashboard re-reads
+`GET /v1/pair/state` and asks about a computer that waits; the frame names
+nothing, so a phone on the stream learns no name. `POST /v1/pair`
 takes `{code, name}` and returns `{token, id, name}` — the name prefixed
 `This computer · ` when the request came from the machine's own network
 address; it is the one call a device makes before it is trusted, and
@@ -316,6 +382,107 @@ device. The relay's wire is `internal/remote/wire.go`, the channel's frames
 (the daemon pings every 25 s) for 75 s as gone: a phone arriving for it, or
 sending to it, is closed with 4404 and the stale connection dropped (4408
 on the hosted relay), never spliced to a machine that went to sleep.
+
+**Other computers (ADR-067).** A daemon reaches another machine's daemon as
+that machine's paired device, over the same relay channel a phone uses —
+the target runs its ordinary Host and gate, and pairs it as a computer
+(above). The controller's side:
+
+- **`machines.json`** in the data directory, mode 0600 (written atomically;
+  on Windows the mode is not enforced and the file is in the user's
+  profile, as `devices.json` is): a JSON array of `{id, key, relay, name,
+  token, device_id, added_at}` — `id` the target's relay id (its Ed25519
+  key, base64url), `key` its X25519 static key (base64url, pinned by every
+  handshake), `relay` the `wss://` address from its link, `name` this
+  machine's label for it (40 characters, printable), `token` this machine's
+  device token there, `device_id` the target's id for this device, and
+  `added_at` unix milliseconds by this machine's clock. An entry missing
+  `id`, `key`, `relay` or `token` is skipped on read; a file that is not
+  JSON reads as no computers (logged), never as a crash. Never in
+  `config.json`.
+- **The link** a computer is paired with is `remote.PairLink`'s (above):
+  `ParsePairLink` takes the whole link, the same wrapped in `<>` or quotes,
+  or only the part after `?`. `r` must pass `CheckRelayURL`, `h` must be an
+  Ed25519 key, `k` 32 bytes, `c` digits only; `n` is optional. Pairing
+  needs `c`; it is redeemed with `POST /v1/pair` `{code, name}` through the
+  channel, and the target's `401` and `409` are told apart (wrong code;
+  pairing not open there).
+- **The client side of the channel** (`remote.Client`) speaks
+  `internal/remote/proto.go` as the phone does: the Hello is `{v: 1}`, the
+  Welcome's `version` and `name` are kept, stream ids are odd and count up
+  from 1, at most 64 open, and bodies go in frames of at most 60 KB.
+  Requests carry only the headers in `requestHeaders`; every request a
+  computer makes sets `X-Caprock-Device` to its token there, and every
+  socket offers `caprock.device.<token>` after the caller's protocols.
+  `Cookie`, `Origin`, `Referer`, `Authorization` and `Sec-*` from the local
+  caller are removed first. One attempt (relay, handshake, Welcome) is
+  bounded by 10 s; a failed one backs off 1 s doubling to 30 s, during which
+  a request is answered at once with the last failure. An open channel
+  pings the relay every 25 s, is dropped after 60 s unheard, and closes
+  after 90 s with no stream open. A stream whose reader falls 512 frames
+  behind is cancelled (`KindCancel`), never the channel. Its states are
+  `idle`, `connecting`, `online`, `offline` (4404, the relay unreachable,
+  or a drop), `refused` (the target hung up on the handshake: another key)
+  and `closed`; `internal/peers` adds `revoked` when `GET /v1/pair/me`
+  answers 401, cleared when a later check answers 200, and `pending` while
+  it answers `pending: true`.
+- **`GET /v1/machines`** answers `{machines: [{id, name, relay, added_at,
+  status, error?, version?, role?, kind?, last_seen?, streams}]}`, in the
+  order added, never a token. `?check=1` first asks each computer `GET
+  /v1/pair/me` through its channel, at once, for 12 s at most. **`POST
+  /v1/machines`** `{link}` pairs (60 s at most) and answers that computer's
+  entry: `400` for a link that does not parse, carries no code, names this
+  machine, or a code the computer refused; `409` when the computer is not
+  accepting pairings; `503` offline or relay unreachable; `502` refused
+  (another key) or anything else; `504` out of time. The name it gives the
+  target is this machine's host name without `.local`. **`PATCH
+  /v1/machines/{id}`** `{name}` renames it here (`400` empty, `404`
+  unknown) and answers the entry. **`DELETE /v1/machines/{id}`** asks the
+  computer to drop this machine (`DELETE /v1/pair/me`, 10 s at most, best
+  effort), deletes it and its token here, and answers `{forgotten: true,
+  released}`.
+- **The proxy `/v1/m/{id}/{path…}`**, any method: `path` is a path on that
+  computer's API (`v1/…` or `healthz`, else `404`), carried with the query
+  through its channel as this machine's device there. HTTP goes through
+  `httputil.ReverseProxy` on the channel and is streamed as it arrives;
+  `Cookie`, `Origin`, `Referer`, `Authorization` and `Sec-*` never travel.
+  A WebSocket (`Upgrade: websocket`) is opened there first — a refusal there
+  answers here as its HTTP status (`4000 + status`) — then accepted here and
+  bridged message by message; the caller's subprotocols are offered there
+  minus any `caprock.device.*`, and only the protocol the computer chose is
+  echoed, never a device token; a close there closes here with its code (a
+  dropped channel, 1006, drops the local socket). Errors: `404 {error: "no
+  such computer"}`; `503 {error, status: "offline"}`; `502 {error, status:
+  "refused"}`; a computer that answers `401` is asked `GET /v1/pair/me` once
+  and, when that says this machine was removed, the answer is `403 {error,
+  status: "revoked"}`; while it reads `revoked`, each request asks again
+  before forwarding and goes through once it is allowed back. A waiting
+  computer's `403` passes through.
+- **Loopback only, not transitive.** `/v1/machines` and `/v1/m/…` refuse
+  anything but this machine's own clients in the handlers (`403`, or the
+  gate's `401` for a relayed request with network access off) and are on no
+  device's allowlist, so a phone or a computer paired with this machine
+  gets `403` there. `501` in a build without them.
+- **The CLI** (`cmd/caprock/machines.go`), against the local daemon:
+  `caprock machines` / `ls` (the computers this one reaches, checked, and
+  the computers that reach this one from `GET /v1/pair/state`), `add
+  <link>` (`POST /v1/machines`), `forget <name|id>`, and for the computers
+  that reach this one `pending`, `allow <name|id>` (`POST
+  /v1/pair/devices/{id}/allow`), `deny <name|id>` (a waiting one) and
+  `revoke <name|id>` (`DELETE /v1/pair/devices/{id}`). A name matches case
+  insensitively; two of one name are refused and named by id. `caprock pair
+  --computer` issues a code for a computer, prints `caprock machines add
+  '<link>'` for the other computer, and — when stdin is a terminal and
+  without `--no-wait` — waits until the code expires (plus 30 s) for a new
+  waiting computer and asks `"<name>" wants to control this computer.
+  Allow? [y/N]`, allowing on `y`/`yes` and removing it otherwise. On Linux,
+  when `loginctl show-user <user> --property=Linger --value` answers `no`,
+  it and `caprock service install` print how to run `loginctl enable-linger
+  <user>`; neither runs it.
+- **Relay counters.** `remote.State` (the Host) and `remote.ClientState`
+  count relay messages and bytes each way (`msgs_in`, `msgs_out`,
+  `bytes_in`, `bytes_out`) since the daemon started, for OQ-14. Not in any
+  API answer yet.
 
 **The way back to a paired phone (2026-10-15).** `GET /v1/pair/state`
 carries `telegram: true` when a Telegram bot and chat are set up.
@@ -375,7 +542,12 @@ runs no lookup.
 A served handoff also carries up to five of the repository's Second Brain
 memories (§ Second Brain), pinned first then newest, each `- kind: title —
 summary` with the summary clipped to 160 runes, in a budget of 700 runes of
-their own after the passage; none when the repository has none.
+their own after the passage; none when the repository has none. How many
+went is recorded on the session (migration 0058: `ALTER TABLE sessions ADD
+COLUMN handoff_brain INTEGER NOT NULL DEFAULT 0` and `CREATE INDEX
+idx_sessions_handoff_brain ON sessions(started_at) WHERE handoff_brain >
+0`), so the Second Brain status can say how often agents start with its
+memories (§ Second Brain, `handoff`).
 
 **Measuring it.** Whenever there is a passage to hand over, the session records
 whether it got it: `sessions.handoff` is `1` (served) or `2` (held back);
@@ -563,6 +735,7 @@ POST /v1/hooks/install                 → {hooks: HooksStatus, backup?} — `ca
 POST /v1/claude/bypass-consent         → {accepted: true} — the user accepted Caprock's copy of Claude Code's bypass warning (ADR-041)
 GET  /v1/stats/daily?days=30           → DailyStat[]
 GET  /v1/stats/trends?agent=…         → Trends — Now's Today cells: 14 previous days cut at this time of day, today, the usual burn
+GET  /v1/pipeline/agents?repo=…      → RepoAgents — the Pipeline's cost per agent-hour and agent team for a repository's folders (§ Pipeline agents)
 POST /v1/hook                          → 204 (shim only, bearer-token gated; the event is written even after the shim hangs up)
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
@@ -790,12 +963,12 @@ GET  /v1/keepawake                     → whether the computer is kept awake no
 POST /v1/report/test                   → sends this week's report now → {sent:"ok"}; 502 with Telegram's error, 501 when reporting is unavailable
 POST /v1/alerts/test                   → sends a test phone alert now, no licence needed → {sent:"ok"}; 502 with Telegram's error or "no bot configured"
 POST /v1/pair/send-link                → sends the phone's page address to the owner's Telegram chat → {sent:"telegram", link}; loopback-only, 409 with no bot (§ Pairing endpoints)
-GET/PUT/POST/DELETE /v1/telegram…      → the Telegram bridge's setup and pairing (§ Telegram bridge)
+GET/PUT/POST/DELETE /v1/telegram…      → the Telegram bridge's setup and pairing, and a share card to the paired chat (§ Telegram bridge)
 POST /v1/shutdown                      → 200 (bearer-token gated; `caprock down`)
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes, or {op: progress} when an automatic read begins or ends (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?} after Second Brain changes, or {op: progress} when an automatic read begins or ends (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -844,17 +1017,26 @@ Extended thinking is never stored at all — only `type: "text"` blocks are read
 
 **OpenCode prompts are `turn.user` in Claude Code's shape** (`internal/opencode`, `PromptText`): key `oc-user:<message id>`, `ts` the message's `time.created`, payload `{prompt, cwd, sidechain}`. `prompt` is the user message's `text` parts — without those marked `synthetic` or `ignored`, and without any part that opens with `<system-reminder>` (context another program injected through OpenCode, which it does not mark) — trimmed, joined with a newline and clipped to the same 16000 runes. A message left with no text stores nothing. A child session's prompt is its parent agent's brief and carries `sidechain: true`. The first pass after a start inserts the prompts of sessions imported before they were read; the key makes every later pass a no-op. Measured on a copy of the owner's database (2026-10-01): 1,609 prompts (47 in child sessions), the pass 4.0 s, a later start 1.8–1.9 s, the database 2.9 MB larger.
 
+**Hermes Agent is read from its state database into the same shapes** (`internal/hermes`, [ADR-069](08-decisions.md), [24-hermes.md](24-hermes.md)). `<hermes home>/state.db` (`$HERMES_HOME`, else `~/.hermes`, `%LOCALAPPDATA%\hermes` on native Windows) is opened `mode=ro` with `busy_timeout(5000)` and one connection, never `immutable=1`, and polled every 5 s; columns are asked for through `pragma_table_info`, so one an older Hermes lacks reads as NULL. Events carry `source: "hermes"` and sessions `agent: "hermes"`, under Hermes's own session id (or, for a session Caprock started, the Caprock id it is linked to — `sessions.native_id`, by folder and the time Hermes's `YYYYMMDD_HHMMSS_<hex>` id carries, `sessionlink`'s match):
+- a `user` message → `turn.user`, key `hm-user:<message id>`, payload `{prompt, cwd, hermes_source, background?, sidechain?}`;
+- an `assistant` message → `turn.assistant`, key `hm-msg:<message id>`, `msg_id` `hermes/<message id>`, payload `{text, model, cwd, hermes_source, background?, sidechain?}`; Hermes's compression summaries (`_compressed_summary`) and `tool` results are not stored;
+- each call in its `tool_calls` → `tool.pre`, key `hm-tool:<message id>:<call id>`, the same `msg_id`, payload `{tool_name, tool_input, cwd, hermes_tool}`, with `terminal`/`read_file`/`write_file`/`patch`/`search_files`/`web_search`/`web_extract`/`delegate_task` named `Bash`/`Read`/`Write`/`Edit`/`Grep`/`WebSearch`/`WebFetch`/`Task` and a file tool's `path` stored as `file_path` (resolved against the session's `cwd` when relative);
+- **usage**: Hermes keeps tokens and cost on the session row only, so each pass stores `counters − SUM(what Caprock holds for that session and agent_id)`, each part clamped at zero, on the newest `turn.assistant` the pass inserts — or, with none, on a `turn.assistant` of its own, key `hm-usage:<hermes id>:<total tokens>:<api calls>:<cost in micro-USD>`, payload `{usage_only: true, …}`. Tokens map `input_tokens`/`output_tokens`/`cache_read_tokens`/`cache_write_tokens` straight (Hermes's input is fresh input); `reasoning_tokens` goes in the payload. The usage-carrying event's payload also has `cost_basis` (`actual`, `estimated`, `included`, `unknown`), `cost_source` and `provider`. `cost_usd` is Hermes's figure, never the table's: `actual_cost_usd` when Hermes says it is real (`cost_status = 'actual'` or `cost_source` `provider_cost_api`/`provider_generation_api`), else — for that same status — `estimated_cost_usd`; `estimated_cost_usd` for `estimated`; `0` for `included`/`billing_mode = 'subscription_included'`; NULL (unpriced) when Hermes has none;
+- **subagents**: a child whose `model_config._delegate_from` is its parent (or a child with no branch, reset or compression marker) is stored inside the main-thread session it descends from with `agent_id` = its own id and `sidechain: true`; a branch (`_branched_from`), a reset (`_reset_from`) and the continuation of a parent that ended on `compression` are sessions of their own;
+- **background**: `hermes_source` is the main thread's `source`; `background: true` when it is not one of Hermes's attended sources (`cli`, `tui`, `desktop`, `acp`);
+- **ended**: a main-thread session under Hermes's own id whose `ended_at` is set is marked `ended`.
+
 **DeepSeek Harness's injected context is not a prompt.** DSH writes the AGENTS.md/CLAUDE.md instructions (`source.kind: agent-instructions`) and its runtime-policy snapshot (`plugin`) as `user/message` records; only `source.kind: user` is stored as `turn.user` (a record with no `source` is kept). Rows imported before this are removed once, after the importer's first pass (`meta.deepseek_injected_removed`): each transcript is read again and a `turn.user` row is deleted only when its key `dsh:user:<seq>` names a record whose `source.kind` is set and is not `user` — never judged by its text; a session whose transcript is gone keeps its rows. A `turn.user` row added nothing to `session_stats` or `daily_stats`, so nothing moves there; `sessions.started_at`, `last_event_at` and `worked_at` are recomputed from the remaining events, in the same transaction, only where one equals a deleted row's `ts`. On a copy of the owner's database (2026-10-01) it deleted 5 of 22 DeepSeek prompts and changed no session time or total.
 
 **Codex writes `payload.text` too** (`source = codex`), under the same cap: the `output_text` of the assistant messages each sampling request produced, on that request's `turn.assistant`. Threads Codex imported from another agent store nothing at all, and subagent threads keep no text. Codex turns stored before this were given their text once from the rollouts still on disk (`meta.codex_text_backfilled`), rewriting only `payload.text` on the row whose key and timestamp match. See [19-codex.md § Prose](19-codex.md#prose).
 
 **Codex prompts and tool results are `turn.user` and `tool.post` in Claude Code's shape** (`source = codex`). A prompt: key `codex:user:<line>`, payload `{prompt, cwd}`, from the `item_completed` `UserMessage` item (else the `user_message` event), clipped to 16000 runes; none for imported or subagent threads. A result: key `codex:result:<line>` (`codex:sub:<thread>:result:<line>` in a subagent file, with `agent_id` and `sidechain`), `tool` the call's name, payload `{session_id, cwd, tool_name, tool_use_id, tool_response, is_error, exit_code?}`, `tool_response` text clipped to 8000 runes, `exit_code` only where Codex recorded one (`shell`). A call whose request ended (`task_complete`, `turn_aborted`, or the next `task_started`) with no output record gets one too, key `codex:interrupted:<call line>` (`codex:sub:<thread>:interrupted:<call line>`), `tool_response` empty and `interrupted: true`; the chat shows it as interrupted, not running. Every Codex `tool.pre` carries `tool_use_id` = Codex's `call_id`, and its `tool_input` is the call's argument object (a `function_call`'s JSON-string arguments unwrapped; `shell`'s argv `command` turned into its command line, the array kept as `argv`). Rows stored before carry neither; a one-time pass (`meta.codex_chat_backfilled`) stores the missing prompts and results from the rollouts still on disk and rewrites only `tool_use_id` and `tool_input` on the call whose key and timestamp match. See [19-codex.md § Chat](19-codex.md#chat).
 
-Five indexes exist purely for read speed, created by migrations 0006 to 0010: `idx_events_kind_ts` (kind, ts) and `idx_events_cost_cover`, which additionally carries `model`, `session_id`, the token/cost columns and (since migration 0026) `internal` so the summary aggregates are answered from the index without touching the table. Together they take `/v1/stats/summary?range=all` from ~820ms to ~340ms and `/v1/history` from ~830ms to ~470ms on a 184k-event database, for roughly 30MB of index on a 306MB file. `idx_events_session_id` (session_id, id) serves the per-session event lookup behind Now, and `idx_events_kind_id` (kind, id) serves the Memory screen — both order by id, which the ts-ordered indexes cannot satisfy, so without them SQLite read every matching row and sorted it in a temp B-tree to return the newest few. Migration 0026 rebuilt `idx_events_cost_cover`, `idx_events_tool_dist` and `idx_events_attr_work` with `internal` as their last column: every aggregate filters on `internal = 0` since migration 0024, and without the column none of them covered any more — each query fetched every full row to test one flag, which put `/v1/history?range=all` at 9s on a 300k-event database. It also added `idx_events_ts_cover` (ts, internal, kind, session_id, token/cost columns) for the two range aggregates that group by kind or count distinct sessions; both pin it with `INDEXED BY`, because without ANALYZE statistics SQLite picked `idx_events_kind_id` or `idx_events_session_id` and walked the whole table — 4.8s for today's 772 events. `idx_events_ts_model` (ts, model, cost_usd) serves the model mix, which every summary computes: `idx_events_cost_cover` carries `model` but leads on `kind`, so a ts-only filter cannot use it — 146ms against 56ms over 30 days on a 190k-event database. `idx_events_user_turn` (migration 0033) finds a session's first prompts for the sessions list's descriptions; see § First-prompt DDL.
+Five indexes were added purely for read speed by migrations 0006 to 0010: `idx_events_kind_ts` (kind, ts) and `idx_events_cost_cover`, which additionally carries `model`, `session_id`, the token/cost columns and (since migration 0026) `internal` so the summary aggregates are answered from the index without touching the table. Together they take `/v1/stats/summary?range=all` from ~820ms to ~340ms and `/v1/history` from ~830ms to ~470ms on a 184k-event database, for roughly 30MB of index on a 306MB file. `idx_events_session_id` (session_id, id) serves the per-session event lookup behind Now, and `idx_events_kind_id` (kind, id) serves the Memory screen — both order by id, which the ts-ordered indexes cannot satisfy, so without them SQLite read every matching row and sorted it in a temp B-tree to return the newest few. Migration 0026 rebuilt `idx_events_cost_cover`, `idx_events_tool_dist` and `idx_events_attr_work` with `internal` as their last column: every aggregate filters on `internal = 0` since migration 0024, and without the column none of them covered any more — each query fetched every full row to test one flag, which put `/v1/history?range=all` at 9s on a 300k-event database. It also added `idx_events_ts_cover` (ts, internal, kind, session_id, token/cost columns) for the two range aggregates that group by kind or count distinct sessions; both pin it with `INDEXED BY`, because without ANALYZE statistics SQLite picked `idx_events_kind_id` or `idx_events_session_id` and walked the whole table — 4.8s for today's 772 events. `idx_events_ts_model` (ts, model, cost_usd) served the model mix, which every summary computes: `idx_events_cost_cover` carries `model` but leads on `kind`, so a ts-only filter could not use it — 146ms against 56ms over 30 days on a 190k-event database. Migration 0057 dropped both once later indexes had taken over their queries; see § Superseded indexes DDL. `idx_events_user_turn` (migration 0033) finds a session's first prompts for the sessions list's descriptions; see § First-prompt DDL.
 
 Note-**search** deliberately still scans: an FTS5 index answers in 6ms against ~165ms, but it matches whole words, so searching `chestr` finds 394 rows with LIKE and 0 with FTS. People search their own sessions for fragments — half an error message, part of a path — and a faster search that misses them is not the same feature.
 
-Anything added to the summary aggregates should either use these columns or extend the covering index — a column outside it costs the Go driver a table fetch per row, which is far more expensive than the same SQL timed in the sqlite3 shell suggests.
+Anything added to the summary aggregates should either use these columns or extend the covering index it reads (`idx_events_turn_agent`, `idx_events_ts_cover`) — a column outside it costs the Go driver a table fetch per row, which is far more expensive than the same SQL timed in the sqlite3 shell suggests.
 
 `ListEvents`, `EventsAfter`, `SessionNotes` and `SearchNotes` all clamp `limit` to `MaxEventPage` (5000) instead of falling back to a small default, which made a caller asking for everything receive a fraction of it — `notes?limit=5001` returned 200 rows where `limit=5000` returned 2372.
 
@@ -1197,8 +1379,8 @@ scan's counts and an empty list.
   with `doctor.txt` pin the two renderings to each other.
 
 `POST /v1/footprint/orphans/stop` `{targets: [{pid, started_at}]}` (1 to 256)
-→ `{stopped: [orphan…], failed: [{pid, error}]}`: the Advanced mode's Stop
-and Stop selected ([ADR-059](08-decisions.md)). The daemon takes the orphan
+→ `{stopped: [orphan…], failed: [{pid, error}]}`: the doctor's Clean up
+and row Stop ([ADR-059](08-decisions.md)). The daemon takes the orphan
 list again and stops only a target that list holds with the same
 `started_at`; anything else fails with *not on the doctor's list now*.
 Each is sent SIGTERM, then SIGKILL after 5 s if it is still there (Windows:
@@ -1310,6 +1492,8 @@ GitHub token is (§ GitHub, "Where the token lives"):
 
 `PUT /v1/settings` accepts `default_folder` (2026-10-09): where the app's Add project sheet starts — its folder field, a new project's parent, a clone's destination and the folder browser. Empty is the home folder; otherwise an absolute path or one led by `~`, one line, at most 1024 bytes (`400` otherwise). Stored as `default_folder` in `config.json` and returned by `GET`. It changes no boundary: `/v1/browse` and `/v1/browse/stat` stay rooted at `browse_root`.
 
+`GET`/`PUT /v1/settings` carry `quick_replies` (2026-10-15): `[{label, text}]`, the one-click replies under a session Caprock started ([21-app.md § Quick replies](21-app.md#quick-replies)). `GET` returns the list in use — `config.DefaultQuickReplies` until changed. `PUT` replaces the whole list; absent or `null` leaves it. Each label and text is trimmed; at most 10 replies, a label of 1–24 characters on one line, a text of 1–300 bytes with no control character but a newline; anything else is a `400` and nothing changes. Stored in `config.json` only once it differs from the list in use, so writing back what was read never freezes the defaults; an empty list is kept as empty. A paired device does not write it. The `PUT` body may be up to 16 KiB (4 KiB before).
+
 `GET`/`PUT /v1/settings` carry `prompts` (2026-10-09): when each of the dashboard's own offers was last answered, a map of prompt id → Unix ms, stored in `config.json` so an answer given in the desktop app holds in a browser tab too ([04-ui.md § Product-led surfaces](04-ui.md#product-led-surfaces)). Ids in use: `star-done`, `star-dismissed`, `premium-limit`, `premium-cap`, `premium-hint`, `premium-banner`, `teams-nudge`, `share-week`, `share-month`, and the offer survey's (`offer-variant-ads`, `offer-variant-youtube`, `offer-last`, and `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2` per offer; ADR-062). `PUT` **merges**: each named id keeps the later of its stored time and the new one, `0` removes it, ids not named are untouched. An id must be `a-z`, `0-9` and `-`, at most 40 bytes; a negative time or more than 64 ids is a `400`. Absent from `GET` when empty. A paired device does not write it; its answers stay in its own browser.
 
 `GET /v1/team-signal` (2026-10-09) → `{authors, repos, window_days, checked_ms}`: how many distinct people committed to the listed repositories in the last 30 days, for the Caprock for Teams card (shown at `authors ≥ 2`). Read with `git log --all --no-merges --since=30.days.ago --format=%an%x09%ae` in at most 25 repositories, 2000 commits each, under the projects' git timeout; people are counted by lower-cased author name (one person, two addresses is one), bot authors left out; a repository whose git fails is skipped. Cached for six hours in the projects service. Counts only — no name or address leaves `internal/projects/authors.go` — and nothing leaves the machine. Not on a paired device's read list. `501` without the projects service.
@@ -1358,7 +1542,7 @@ The message is sent with `parse_mode: HTML`, every string from a session
 escaped (`&`, `<`, `>`). Its first line says whose it is: the agent's mark and
 name, the project and the session's name as Now shows it (`🟠 Claude Code ·
 caprock · Fix the cache test`; marks: Claude Code 🟠, Codex ⚪, OpenCode ⚫,
-Gemini CLI 🔵, DeepSeek Harness 🐋, Grok Build ⬛) ([ADR-047](08-decisions.md)).
+Gemini CLI 🔵, DeepSeek Harness 🐋, Grok Build ⬛, Hermes Agent 🪽) ([ADR-047](08-decisions.md)).
 The second is the status (`✅ Finished`, `⚠️ Stopped: <error>`, `⏳ Needs
 approval`, `❓ Needs your answer`); then the folder with home as `~` and the
 branch; for a dialog the tool and its command, file, URL or question (100
@@ -1391,7 +1575,17 @@ PUT    /v1/telegram/token     {token} → checked with getMe, stored only when T
 POST   /v1/telegram/pair      → a new one-time code (10 minutes); 409 with no bot
 DELETE /v1/telegram/pair      → the code withdrawn
 DELETE /v1/telegram           → token, chat and telegram.json forgotten (the weekly report and alerts stop too)
+POST   /v1/telegram/photo     {png, caption} → {sent:true}; 409 with no bot or chat, 400 when png is not one base64 PNG ≤ 10 MB, 502 with Telegram's words
 ```
+
+`POST /v1/telegram/photo` is the Share sheet's **Send to my Telegram** (§ Share in
+04-ui.md): `png` is a share card, base64 (JSON, not multipart, because every
+state-changing route is `application/json`, csrf.go), and `caption` plain
+text, cut to Telegram's 1024 characters. It is sent at once with `sendPhoto`
+to the paired chat — not through the alert outbox, and needing no alert kind
+or two-way chat on, only a bot and a chat — and only because the person
+clicked. Nothing is stored. The card and the caption are anonymous unless the
+person ticked **Show repo name** for that one share (04-ui.md § Share).
 
 `TelegramStatus` = `{bot_set, token_masked?, bot_username?, chat_set,
 chat_name?, manual_chat?, pairing?: {code, link?, expires_ms}, polling,
@@ -1574,7 +1768,7 @@ DELETE /v1/subscriptions/{id}        → 204; 409 while a session Caprock starte
 POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
 GET    /v1/agents/{id}/queue         → QueueView; the messages waiting for the turn to end (§ Queued messages)
 POST   /v1/agents/{id}/queue         {text} → {sent, queued?, queue: QueueView}; typed in now at the prompt, otherwise queued
-POST   /v1/agents/{id}/signal        {action: pause|resume|kill} → 204 (owned PTYs only)
+POST   /v1/agents/{id}/signal        {action: pause|resume|kill|end} → 204 (owned PTYs only; end = SIGTERM, SIGKILL after 5s)
 GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since, queued?, agent_id?, agent_type?, waiting?} | null}; the oldest prompt an owned session waits on, queued = how many more are outstanding, waiting = all of them when two or more
 POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny|dismiss} → 204; 409 when that prompt is not the oldest outstanding, or no permission menu is on screen at all (the prompt is dropped); 422 {error} when the menu on screen has no such option, or more than one prompt is outstanding (nothing typed); dismiss types nothing and drops that prompt, any of them
 WS     /v1/agents/{id}/term          bidirectional stream (xterm.js): binary = keystrokes, text = control; snapshot on connect, closes on exit; subprotocol caprock.term.v2 [?since=&client=] = protocol v2
@@ -1643,7 +1837,10 @@ next read of any total is without it. `caprock sessions rm [ids…]
 [--cwd-prefix dir] [--yes]` calls it; without `--yes` it is a dry run.
 
 **`agent`** is `claude` (default), `codex`, `opencode`, `gemini`, `grok`
-(2026-10-10, [23-grok.md](23-grok.md)) or a custom agent, `custom:<id>`
+(2026-10-10, [23-grok.md](23-grok.md)), `hermes` (2026-10-15,
+[24-hermes.md](24-hermes.md): `hermes chat`, `-m`, `--yolo` for
+`bypassPermissions`, `-q` for the first message, `chat --resume <native id>`;
+`fork` is a 400) or a custom agent, `custom:<id>`
 (below); any other value is a 400. `permission_mode` is always in Claude Code's words and each
 agent's argv builder translates or drops it (`internal/agents/argv.go`; the
 per-agent flags are in [19-codex.md](19-codex.md) and
@@ -1872,8 +2069,10 @@ error. The cached answers are never changed: the baselines are set on a copy.
 reason?, prs[], stats?, board?, error?, read_at?, fetched_at, refreshing?,
 refresh_error?, refresh_failed_at?}`: the Pipeline
 (.ai/21-app.md § Pipeline), asked only while that page is in front, or
-Home's CI/CD section is unfolded and in front (its Pipeline figures), and
-the window visible. `repo` and `reason` as `SessionRepoCI` says them. `prs`
+Home's CI/CD section is unfolded and in front (its Pipeline figures), or
+the phone home's Releases is opened, refreshed or told of release news
+(04-ui.md § The phone home), and the window visible. A paired device may
+read it (`pairedDeviceRoutes`); nothing on it writes. `repo` and `reason` as `SessionRepoCI` says them. `prs`
 is the repository's own pull requests — the `BranchPR` list the Branches
 view reads (`GET …/pulls?state=all&sort=updated&direction=desc&per_page=50`,
 kept 2 min; `github.RepoPulls` shares the read with `PullsByBranch`), most
@@ -1899,12 +2098,23 @@ over the 14 local calendar days ending today:
 
 - **Board** (2026-10-14) — `board` `{cards[], releases[], flow,
   default_branch?}`, the tab's Board view (`internal/api/prboard.go`). Each
-  `BoardCard` `{number, stage, stage_at?, ci?, why?, review?, release?,
+  `BoardCard` `{number, stage, stage_at?, ci?, why?, failed[]?, os[]?, ci_ms?, review?, release?,
   spend, stale?}` is a pull request of `prs` (its title, `author`, `author_avatar`
   and link are that entry's); closed unmerged ones and merges before the 14
   days are left out. `stage` is `draft`, `open` (checks running, or not
   read), `fix` (`why`: `ci` a failed check, `conflict` GitHub's `mergeable`
-  false or `mergeable_state` `dirty`, `changes_requested`), `ready` (checks
+  false or `mergeable_state` `dirty`, `changes_requested`; with `ci`,
+  `failed` names up to 3 failed checks, or failed workflows when read from
+  the runs list), `os` its live-read checks by the OS their names say (*go
+  (windows-latest)*, *test (ubuntu-24.04)*; skipped ones left out), each
+  `{os, state, since?, checks}` — `os` `linux`, `macos` or `windows` in that
+  order, `state` `fail` when any failed, else `running` while any is
+  unfinished (`since` its unfinished checks' earliest start), else `pass`;
+  absent with no live read or when no check names an OS (2026-10-16, the
+  release plan's dots), `ci_ms` the span of its live-read (else
+  runs-list) checks from the first start to the last finish once they
+  passed or failed, absent while running or without the stamps (2026-10-16,
+  the release plan's CI time), `ready` (checks
   passed, or none ran), `merged` or `released`. An open pull request's
   checks are the deck's kept read (`github.PullByURL`) for the newest 12
   open ones, read 4 at once (`boardLiveParallel`), else the runs list by
@@ -2161,13 +2371,17 @@ is sent anywhere by this call. Not open to paired devices.
 **`GET /v1/agents/models?agent=`** — the models an agent's own CLI lists. For
 `codex`: the `visibility: "list"` entries of `$CODEX_HOME/models_cache.json` in
 `priority` order, and `default` from the top-level `model` in `config.toml`.
-`claude`, `gemini`, `opencode` and `grok` answer an empty list; an unknown
+`claude`, `gemini`, `opencode`, `grok` and `hermes` answer an empty list; an unknown
 agent is a 400. No network I/O. Kept for older pages; the pickers read the
 catalog below.
 
 **`GET /v1/agents/catalog`** — every agent the pickers offer, installed or not
 ([ADR-046](08-decisions.md)), in their order: Claude Code, Codex, OpenCode,
-Gemini CLI, Grok, then the custom agents. A `CatalogEntry` is `{id, label,
+Gemini CLI, Grok, Hermes, then the custom agents. Hermes is `observed: true`
+and `typed_model: true`; when its `config.yaml` (under `$HERMES_HOME`, else
+`~/.hermes`) names no `model.default`, its `setup` is `no_provider` with the
+command `hermes model` — only whether the key is set is read, never its
+value ([ADR-069](08-decisions.md)). A `CatalogEntry` is `{id, label,
 installed, ready, default?, models: [{id, label}], typed_model?, observed,
 custom?, locked?, prompt, setup?: {reason, text, command?, docs?}}`:
 `installed` is the binary found (the rule under `/v1/status` below); `ready`
@@ -2325,8 +2539,10 @@ one's: Claude Code's under `<dir>/projects/`, Codex's under
 whose transcript path is under `profiles/<id>/` records `sessions.subscription
 = <id>`.
 
-**`/v1/status`** carries `codex_available`, `opencode_available` and
-`grok_available` beside `claude_available` and `gemini_available`: the binary
+**`/v1/status`** carries `hermes` — `{sessions, events, unpriced?, background?,
+last_poll_ms?}`, the Hermes Agent reader, absent while there is no Hermes
+database — and `codex_available`, `opencode_available`,
+`grok_available` and `hermes_available` beside `claude_available` and `gemini_available`: the binary
 found on the daemon's PATH, the login shell's (once resolved — never waited
 for), or the installers' directories (`~/.local/bin`, `~/bin`,
 `/opt/homebrew/bin`, `/usr/local/bin`, `~/.opencode/bin`, `~/.grok/bin`, and
@@ -3063,7 +3279,7 @@ Brain DDL (migrations 0055, 0056).
 
 ```
 GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total, terms?, close?}
-GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?}
+GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?, db_path?}
 POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
 GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
 PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
@@ -3074,6 +3290,7 @@ PUT    /v1/brain/settings       {auto?, daily_tokens?, model?} → BrainAutoStat
 POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 ```
 
+- **`db_path`** on `/v1/brain/status` — the database the memories live in, `caprock.db` in the daemon's data directory (`config.DBPath`), resolved by the daemon rather than guessed per OS by the page; the screen's *Where it's kept* shows it. Omitted when the daemon has no data directory (tests).
 - **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
   event_id?, ts?, project?}, manual, pinned, run_id?, created_at, updated_at,
   degree?, rank?, close?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or
@@ -3151,23 +3368,40 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   the build reads the status again; a screen showing memories ignores it.
 - **The automatic extraction** (`internal/brain`, free). `auto` in the
   status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
-  daily_tokens, spent, running, pending, since?, backfill_since?,
-  last_wake?, next_wake?, last_error?, recent: [BrainRun], reading?,
-  build?}`: `chosen` once
+  daily_tokens, spent, spent_usd, stage, last_read?, new_today, topics,
+  links, handoff, running, pending, since?, backfill_since?, last_wake?,
+  next_wake?, last_error?, recent: [BrainRun], reading?, build?}`: `chosen` once
   the user has answered, `enabled` when on (only then does it read; no
   licence is looked at), `last_wake` and `next_wake` unix ms — `next_wake`
   absent while off, at or before now just after turning on or while a wake
   runs, so a screen can say when the first memories may come — `spent`
   the tokens of the reads in the last 24 hours, `pending` the sessions
   waiting (counted up to 200), `recent` the last reads that were not
-  skipped. `BrainRun` is `{id, session_id, from_event_id,
+  skipped. `spent_usd` is the reads' `cost_usd` in the last 24 hours —
+  what claude reported, at API list price; `last_read` when the newest read
+  with status `ok` finished; `new_today` the memories (not entities) added
+  since the daemon's local midnight, by hand or read; `topics` the topic
+  entities and `links` the rows of `brain_edges`. `stage` is where the
+  build is: `off` (not on), `extracting` or `linking` (a read is asking
+  claude, or storing what it returned), `no_claude`, `limit` (sessions
+  wait and `spent` has reached `daily_tokens`), `waiting` (sessions wait
+  for the next wake), `up_to_date` (none waits) — in that order of
+  precedence. `handoff` is how memories reach agents: `{on, sessions_24h,
+  memories_24h, sessions, memories}` — `on` whether Memory between sessions
+  is on (without it no session is handed anything), then the sessions
+  started in the last 24 hours, and in all, that were handed Second Brain
+  memories with their handoff and how many (`sessions.handoff_brain`,
+  § SessionStart handoff). `BrainRun` is `{id, session_id, from_event_id,
   through_event_id, status: ok | failed | skipped, model?, tokens_in,
   tokens_out, cost_usd, nodes, error?, started_at, finished_at, project?,
   title?, agent?}`; `title` is the session's own name, else its first
   stored prompt, and `agent` its agent, joined in.
 - **What it reads now, and how far it is.** `reading` is present while a
   read is asking `claude` about a session: `{session_id, title?, agent?,
-  project?, last_event_at?, started_at}` — `title` the session's own name,
+  project?, last_event_at?, started_at, phase, passages}` — `phase`
+  `extracting` while claude is asked, `linking` while its memories are
+  stored and linked (no frame of its own; it lasts milliseconds),
+  `passages` how many passages of prose were sent; `title` the session's own name,
   else its first prompt, flattened and clipped to 80 runes; `last_event_at`
   when the session last did something and `started_at` when this read
   began (unix ms). `build` is present while it is on: `{from, sessions,
@@ -3458,6 +3692,67 @@ GET /v1/work → Work
 - **Who.** A read open to every paired device, as the Queue is. `501`
   without a work board (a test server).
 
+### Pipeline agents
+
+The Pipeline's two agent figures for one repository — what an hour of agent
+work costs and how many agents worked ([04-ui.md](04-ui.md) § The Pipeline,
+*The agent figures*). Measured from the events of the sessions whose
+`repo_root` is one of the folders named; nothing is stored. Code:
+`internal/store/pipelineagents.go`, `internal/api/pipelineagents.go`.
+
+```
+GET /v1/pipeline/agents?repo=<root>[&repo=<root>…] → RepoAgents
+```
+
+`repo` is required (a 400 without one, and above 32): every folder of the
+repository, as clones of one GitHub repository are several. Read-only, so a
+paired device may ask it.
+
+- **`RepoAgents`** — `{days, rate, team}`; `days` is 14, the window the
+  usuals are set against.
+- **`rate`** — `{last24, usual?, series}`, each a `RateSpan` `{cost_usd,
+  active_hours, active_cost_usd, tokens, active_tokens, wall_hours, days?}`.
+  An **active agent-hour** is `usual.burn`'s rule (`UsualMinCalls`): one
+  session's clock hour — local, counted from a local midnight — in which
+  it made at least five priced calls costing more than nothing, its
+  subagents' turns included, since they are rows of the same session. Two
+  sessions in one clock hour are two agent-hours; `wall_hours` counts that
+  hour once, as any hour with a priced turn. The rate is
+  `active_cost_usd / active_hours`; spend in an hour below the rule is in
+  `cost_usd` but not in the rate. `tokens` is input, output, cache reads and
+  writes; `active_tokens` the active hours' share. `last24` is the last 24
+  clock hours, the current one included; `usual` the 14×24 hours before
+  them, with `days` the 24-hour stretches among them that had an active
+  hour, absent when none had. `series` is the previous 14 local days,
+  oldest first, then today so far. The client withholds a comparison below
+  three `days`: "not enough history".
+- **`team`** — `{now, peak_today, series}`. An agent is a main session
+  (`agent_id` empty) or a subagent (one `agent_id` in one session — the
+  harness's agent id, which the hooks carry inside a subagent, § Subagent
+  reads DDL) with an assistant turn. `now` is `{sessions, subagents}` with
+  a turn in the last ten minutes (the five-minute bucket the ten begin in
+  counts whole). `series` is the previous 30 local days, oldest first, then
+  today: `{day, sessions, subagents, by_kind?, peak}`, distinct agents that
+  day, `by_kind` the same split by `sessions.agent` (`claude`, `codex`,
+  `opencode`, `gemini`, …), and `peak` the most agents with a turn in one
+  five-minute bucket (five minutes divides every UTC offset, so a bucket
+  never straddles a local midnight); `peak_today` is today's.
+
+One grouped scan per figure, off the covering `idx_events_turn_agent`
+(`kind, ts, session_id, agent_id, … cost_usd, tokens…, internal`): per
+(session, hour) for the rate, per (session, agent id, five-minute bucket)
+for the team, the session set a subquery off `idx_sessions_repo_branch`.
+The whole window is too slow to ask once a minute — on a 1.7 GB copy of the
+owner's database, for its busiest repository (2026-10-15, through the Go
+driver, warm): 105 ms for 16 days of the rate and 125 ms for 31 days of the
+team; 34 ms and 122 ms in the sqlite shell. So the window is cut at today's
+local midnight: the days before are scanned once and kept per folder set
+and day for 30 minutes (`pipeAgentsPastTTL`; a transcript read late still
+reaches them), as hourly sums and finished days, and a request scans only
+today — 26 ms warm for both figures together at 20:30 on that repository's
+busiest day, 5–8 ms for a quieter one, against 300 ms once a day for the
+days before. The answer itself is cached for a minute (`pipeAgentsTTL`).
+
 ### Chat field pickers
 
 The chat field's `/` and `@` pickers ([ADR-053](08-decisions.md)). Code:
@@ -3607,8 +3902,9 @@ linked worktree as in Changes; absent or empty is the project's root —
 for a plain folder project too. An unknown project or worktree is `404`.
 
 ```
-GET /v1/projects/{id}/file?path=<p>[&worktree=] → FileContent
-GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?}
+GET /v1/projects/{id}/file?path=<p>[&worktree=]  → FileContent
+GET /v1/projects/{id}/files[?worktree=]          → {files: [string], truncated?}
+GET /v1/projects/{id}/image?path=<p>[&worktree=] → the picture's bytes
 ```
 
 - **`FileContent`** — `{path, size, text, truncated?, binary?, lang}`.
@@ -3626,12 +3922,20 @@ GET /v1/projects/{id}/files[?worktree=]         → {files: [string], truncated?
   anything outside the project. Only a regular file: a folder, socket,
   device or FIFO is `400` (checked before opening, so a FIFO never blocks);
   a missing file or a dangling link is `404`.
+- **`image`** is a picture a rendered Markdown file shows, sent as bytes
+  under its own type, by the same path rules as `file`. Only `.png`,
+  `.jpg`/`.jpeg`, `.gif`, `.webp`, `.avif`, `.svg`, `.bmp` and `.ico`
+  (`415` otherwise), at most 10 MB (`413`). Sent with `X-Content-Type-Options:
+  nosniff`, `Cache-Control: no-store` and `Content-Security-Policy:
+  default-src 'none'; style-src 'unsafe-inline'; sandbox`, so an SVG opened
+  on its own runs no script. The file tab fetches it with the device token
+  and shows it from an object URL; an image on the web is never fetched.
 - **`files`** is `git ls-files -z --cached --others --exclude-standard` in
   a repository (tracked files and new ones git does not ignore), else a walk
   that skips dot-folders, `node_modules` and symlinked folders; sorted, at
   most 20,000 (`truncated`). The palette filters it in the browser.
-- **Who.** Both are reads, open to every paired device as a worktree's diff
-  is (`pairedDeviceRoutes`). Nothing here writes, and no route is added for
+- **Who.** All three are reads, open to every paired device as a worktree's
+  diff is (`pairedDeviceRoutes`). Nothing here writes, and no route is added for
   a controller. On macOS a folder behind a privacy prompt is refused as the
   Changes routes refuse it (`tcc`).
 
@@ -4038,7 +4342,7 @@ measured and is quietly skewed is worse than one that is not there;
 
 **`create` makes the working directory, one level, under a parent that already exists.** Starting a new project otherwise meant leaving the dashboard, creating the folder in a terminal, and returning to type its path — a path the user had already typed. It is opt-in and defaults to false: this endpoint executes a command from its body, so a missing directory stays an error unless the caller explicitly asked for it to be made. Deliberately `Mkdir`, never `MkdirAll` — the parent must exist, so a typo in an absolute path fails loudly instead of materialising a chain of directories somewhere the user has never been. The path is cleaned before the parent is checked, so a path that climbs out with `..` is verified against where it actually lands. An existing directory is not an error.
 
-Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one, and `LANG` set to a UTF-8 locale when none of `LC_ALL`, `LC_CTYPE` or `LANG` is (`agents.withUTF8Locale`; not on Windows). Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501) only when no agent's binary is found; Caprock then stays observe-only. Codex, OpenCode and Gemini get their own argv and are never written into `~/.claude.json` ([ADR-031](08-decisions.md)). The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
+Owned sessions are spawned as `claude --session-id <uuid> [--model …] [--permission-mode …]`, so hooks and the transcript arrive under the id Caprock generated; the spawn environment is the user's login-shell environment (`internal/userenv`, see [02-architecture.md § Components](02-architecture.md#components)) with inherited Claude Code session markers stripped (`CLAUDE_CODE_CHILD_SESSION`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_SESSION_ID`, `CLAUDE_PID`, … — `agents.childEnv`) so the session is a normal top-level one, and `LANG` set to a UTF-8 locale when none of `LC_ALL`, `LC_CTYPE` or `LANG` is (`userenv.WithUTF8Locale`; not on Windows). Before spawning, Caprock pre-accepts Claude Code's folder-trust dialog for the session's cwd by setting `projects["<cwd>"].hasTrustDialogAccepted = true` in **`~/.claude.json`** (a second user-level Claude Code file, distinct from `settings.json`) — otherwise an interactive session blocks on the trust prompt, which `--dangerously-skip-permissions` does not suppress. The write is best-effort, atomic, and skipped if the folder is already trusted; an unparsable `~/.claude.json` is never modified. It goes through the **ordered-JSON codec**, preserving the user's key order and any integer beyond 2^53 — a `map[string]any` round-trip sorted the whole 200KB file alphabetically and truncated large integers through float64. Each grant Caprock makes is recorded in `<data_dir>/trust-grants.json`, so `caprock hooks uninstall` revokes exactly the folders Caprock trusted and never one the user accepted themselves; a folder already trusted when Caprock found it is never claimed. Spawning is unavailable (endpoints return 501) only when no agent's binary is found; Caprock then stays observe-only. Codex, OpenCode and Gemini get their own argv and are never written into `~/.claude.json` ([ADR-031](08-decisions.md)). The manager resolves `claude` via PATH then `~/.local/bin`, `~/.claude/local`, `~/bin`, Homebrew and `/usr/local/bin`. Control operations are refused for sessions Caprock did not spawn.
 
 ### Phase 2 additions
 
@@ -4068,7 +4372,7 @@ POST     /v1/orchestrator/stop        → kills the orchestrator + every worker 
 
 **`budget_usd` is enforced, not decorative, and never defaults to unlimited.** The reconciler tick re-attributes each live task's cost and, when spend passes the budget, **kills the worker session** before moving the task to `needs_you`, with the reason appended to the task body (no column, no DDL — the body is already returned by `GET /v1/tasks/{id}` and rendered by the UI). Parking the file alone left the process spending. `0` or absent on create becomes `board.DefaultBudgetUSD` ($5): an unattended session with no ceiling was the unsafe default. `budget_usd: 0` in a hand-authored hive task file still means no limit — Caprock does not rewrite a user's file. See [05-orchestration.md § Approvals](05-orchestration.md).
 
-**`POST /v1/orchestrator/stop` is the emergency stop.** One call kills the orchestrator and every worker it spawned, and latches the router so it does not respawn them on the next tick; `start` clears the latch. It stops processes and leaves task files untouched. `POST /v1/agents/{id}/signal` remains the per-agent control — it takes `{"action": "pause"|"resume"|"kill"}`, and its 400 names that field, not only the accepted values.
+**`POST /v1/orchestrator/stop` is the emergency stop.** One call kills the orchestrator and every worker it spawned, and latches the router so it does not respawn them on the next tick; `start` clears the latch. It stops processes and leaves task files untouched. `POST /v1/agents/{id}/signal` remains the per-agent control — it takes `{"action": "pause"|"resume"|"kill"|"end"}`, and its 400 names that field, not only the accepted values. `end` is what closing a tab sends: it asks the process to stop (SIGTERM, resumed first if paused) so Claude Code writes its transcript out and the session can be continued with `--resume`, and kills it only if it is still running five seconds later; `kill` is immediate.
 
 **`POST /v1/tasks/{id}/verify` never strands a task.** Verification walks a legal status route rather than skipping a transition it cannot make in one hop, so a verify from any non-`verifying` status still lands the task in `done`, `in_progress` or `needs_you`. Guarding a single hop and no-opping when illegal used to leave the task where it was, after which the next verify failed with `illegal task transition`.
 
@@ -4078,7 +4382,13 @@ Live frames gained `mail.*` events (router) in Phase 2.
 
 
 **`GET /v1/stats/summary` takes `?agent=`** — `claude`, `opencode`, `gemini`,
-`codex`, `deepseek`, or omitted for every agent. An unrecognised value is a **400**: returning every agent's spend
+`codex`, `deepseek`, `grok`, `hermes`, or omitted for every agent. With no filter or
+`hermes`, the summary carries **`hermes`** when the range has Hermes turns
+(`store.HermesCost`, [ADR-069](08-decisions.md)): `{total_usd, actual_usd,
+estimated_usd, included_turns?, unpriced_turns?, background_usd,
+sources?: [{source, cost_usd}]}` — Hermes's own figures by `cost_basis`, and
+the background part by `hermes_source`, largest first; all of it already
+inside `cost_usd`. An unrecognised value is a **400**: returning every agent's spend
 under a heading that names one is worse than an error, because nothing on the
 screen would say so. The filter is a subquery on `sessions` rather than a join,
 because `events` carries no agent of its own and a join would change the row
@@ -4136,7 +4446,7 @@ closed a session while its owner was at lunch. See
 
 Two exceptions, both deliberate:
 
-- **Agents Caprock only observes** (`opencode`) are judged by the clock alone.
+- **Agents Caprock only observes** (`opencode`, `codex`, `deepseek`, `hermes`; one Caprock started is judged by its process) are judged by the clock alone. A Hermes session also ends when Hermes writes its `ended_at`.
   Their rows are read out of another tool's database, arrive months old, and
   have no process of ours to ask about.
 - **Sessions with no pid** — written by an older shim, or read from a transcript
@@ -4581,7 +4891,7 @@ CREATE INDEX IF NOT EXISTS idx_events_turn_msg
 Finds an assistant turn by message id across sessions — the per-turn
 `store.TurnPaidElsewhere` lookup on the write path and the GROUP BY in
 `rollup.RepairForkedTurns` (see **A turn is paid once across sessions** under
-Hook shim). `idx_events_msg` leads on `session_id` and cannot answer either.
+Hook shim). An index leading on `session_id` cannot answer either.
 On the owner's database (2026-10-03) the repair found 827 copied turns from
 one fork and took $212.93 and 381M tokens out of the totals.
 
@@ -4744,6 +5054,7 @@ ALTER TABLE events ADD COLUMN msg_id TEXT;      -- assistant message id; links a
 ALTER TABLE events ADD COLUMN touch_dir TEXT;   -- directory the tool touched, slash-normalized; NULL when none
 CREATE INDEX IF NOT EXISTS idx_events_touch ON events(kind, ts, session_id, msg_id, touch_dir);
 CREATE INDEX IF NOT EXISTS idx_events_msg ON events(session_id, msg_id) WHERE msg_id IS NOT NULL;
+-- both dropped by migration 0057 (§ Superseded indexes DDL)
 
 -- migration 0013, widened by 0014: the carry-forward scan's order, covering
 -- every column it reads — including `tool`, which the work-kind breakdown
@@ -4784,6 +5095,23 @@ The per-directory breakdown is charged by **which files Claude touched**, not by
 - **No query of its own.** The rows the breakdown needs are exactly the rows the carry-forward scan already reads, so the classification rides along in that scan. Measured through the Go driver on the owner's 191k-event database (2026-08-23, 30d, best of fifteen): the summary answers in **249 ms** before and **279 ms** after (+30 ms). A separate aggregate over the same events cost **292 ms** on its own — nearly ten times as much for the same seven numbers.
 - **Codex's `exec` is classified by the tool its script ran (migration 0038).** `exec` wraps a JavaScript script that calls the real tools (`tools.exec_command(…)`, `tools.apply_patch(…)`); of 13,086 calls on the owner's machine 63% ran a command and 14% applied a patch, so counting every `exec` as a command read 30-day editing as 0.4% of spend instead of 4.8% (2026-10-05). `store.innerTool` names the tool when the event is written — of several, the one whose kind wins the precedence; `exec` when the script names none — into `events.inner_tool`, and the scan classifies `COALESCE(inner_tool, tool)`. Stored, not read from the payload in the scan, because that broke the covering index: 30-day summary ~270 ms → ~760 ms. Migration 0038 adds the column to `idx_events_attr_work`; `Store.backfillInnerTool` fills rows already stored (Go, so the script is read by one regex), gated by the `inner_tool_backfilled` meta key.
 - **Why `tool` had to enter the index.** The scan reads it per row, and it was carried by no existing index, so the plan fell off the covering path onto the table: **~578 ms** against **~80 ms** covering. Migration 0014 widens `idx_events_attr` into `idx_events_attr_work` and drops the original; SQLite cannot add a column to an index in place, and a stale duplicate would cost write throughput on every ingested event for nothing.
+
+### Superseded indexes DDL (migration 0057)
+
+```sql
+DROP INDEX IF EXISTS idx_events_touch;
+DROP INDEX IF EXISTS idx_events_ts_model;
+DROP INDEX IF EXISTS idx_events_cost_cover;
+DROP INDEX IF EXISTS idx_events_msg;
+```
+
+Four indexes whose queries later indexes took over, dropped for the space they took: 125 MiB of a 1041 MiB database of 519,000 events, measured after a full VACUUM (2026-10-15). Which index each query uses was read from `EXPLAIN QUERY PLAN` of every statement the Go test suite runs, against a copy of that database; nothing else changed plan.
+
+- **`idx_events_touch`** served the attribution scan, which has run on `idx_events_attr_work` since migrations 0013 and 0014 (§ Touch attribution DDL).
+- **`idx_events_ts_model`** served a model mix filtered on `ts` alone. The model mix now also filters on `kind = 'turn.assistant'` and is answered from `idx_events_turn_agent`, which covers it.
+- **`idx_events_cost_cover`** had one reader left, `store.WhereWeLeftOff`, which pinned it for its (kind, ts, session_id) prefix. It pins `idx_events_turn_agent` now, which leads on the same columns for assistant turns: 0.42 ms on a hit either way, 37.4 ms against 37.7 ms for a project with no passage.
+- **`idx_events_msg`** had one reader left, OpenCode's `refreshText`, which now pins `idx_events_session_id`: 0.52 ms against 0.54 ms for a 401-event session. Unpinned, SQLite falls to `idx_events_kind_id` and takes 441 ms.
+- **The space comes back the usual way:** by incremental vacuum, or by the one-time idle VACUUM on a database not yet switched to it (§ Payload compaction and auto-vacuum).
 
 ### Rate-limit snapshots DDL (migration 0005)
 
@@ -4899,7 +5227,7 @@ No DDL change was needed for either fix here, only honest use of the existing co
 ## Pricing table
 
 - Embedded JSON `pricing/pricing.json` (the spec's "ported from Caprock-python" — authored from the Anthropic pricing page in practice, [ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson)); overridable by a user file (`<data_dir>/pricing.json`); `pricing_version` recorded in `meta` so historical cost is never silently recomputed — the one exception is a turn a table version lists under `corrections` (below), which is recomputed openly and logged.
-- **Who prices what.** Four of the five sources are priced by this table; one is not. Claude Code, Gemini, Codex and **DeepSeek Harness** report tokens and no cost, so the table does the arithmetic. **OpenCode** reports its own cost, which is carried through unchanged — two different arithmetics over the same tokens would give one session two totals. The `source` on an event is what tells a reader which produced a figure. Codex is why the table carries OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6` family, read from developers.openai.com on 2026-09-06; `gpt-6-sol` and `gpt-6-luna`, read 2026-09-29; `gpt-6-astra` and `gpt-6.1-sol`, read 2026-09-30 — the gpt-6 >272K-token tier is not modelled, and no observed turn reached it). `cache_write_*` is `0` on the gpt-5 rows because OpenAI did not charge for writing its cache, which is "not charged" rather than "unknown". The gpt-6 model pages bill cache writes at 1.25x input, so those rows carry it — to no effect yet: Codex reports `cache_write_input_tokens` as 0 on every gpt-6 turn observed, so written tokens arrive as plain input and the gpt-6 rows under-report by up to a quarter of that unknown share. DeepSeek Harness names `deepseek-v4-pro`, already present from the OpenCode third-party rows; its `cache_write_*` is unused because DSH reports no cache-write split.
+- **Who prices what.** Four of the six sources are priced by this table; two are not. **Hermes Agent** prices its own calls and records whether a figure is the provider's or its estimate; Caprock carries it unchanged with that basis ([ADR-069](08-decisions.md)). Claude Code, Gemini, Codex and **DeepSeek Harness** report tokens and no cost, so the table does the arithmetic. **OpenCode** reports its own cost, which is carried through unchanged — two different arithmetics over the same tokens would give one session two totals. The `source` on an event is what tells a reader which produced a figure. Codex is why the table carries OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6` family, read from developers.openai.com on 2026-09-06; `gpt-6-sol` and `gpt-6-luna`, read 2026-09-29; `gpt-6-astra` and `gpt-6.1-sol`, read 2026-09-30 — the gpt-6 >272K-token tier is not modelled, and no observed turn reached it). `cache_write_*` is `0` on the gpt-5 rows because OpenAI did not charge for writing its cache, which is "not charged" rather than "unknown". The gpt-6 model pages bill cache writes at 1.25x input, so those rows carry it — to no effect yet: Codex reports `cache_write_input_tokens` as 0 on every gpt-6 turn observed, so written tokens arrive as plain input and the gpt-6 rows under-report by up to a quarter of that unknown share. DeepSeek Harness names `deepseek-v4-pro`, already present from the OpenCode third-party rows; its `cache_write_*` is unused because DSH reports no cache-write split.
 - **A turn whose model is not in the table is priced once the table has it.**
   It is stored with no cost and sits outside every total, counted as
   unpriced; adding the model's row fixed only the turns after it. On start

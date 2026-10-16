@@ -19,7 +19,8 @@
 # - CARGO_BUILD_JOBS defaults to 4: this compiles WebKit bindings and swaps
 #   on a 16 GB machine with more.
 # - The dashboard (ui/) is rebuilt only when its files changed since the last
-#   run; a clean ui/ next to the committed internal/api/dist needs no build.
+#   run. The first run always builds it: the committed internal/api/dist is
+#   master's, rebuilt after each merge (ADR-068), so a branch's ui/ is not in it.
 #
 # The version is <last tag>-dev+<commit>, with .dirty.<time> when the tree has
 # uncommitted changes: About Caprock and the daemon both show it, and the
@@ -186,8 +187,6 @@ PRINT="$(ui_print)"
 STAMP="$CACHE/ui.print"
 if [[ -f "$STAMP" && "$(cat "$STAMP")" == "$PRINT" ]]; then
   echo "  unchanged since the last build"
-elif [[ ! -f "$STAMP" && -z "$(git status --porcelain -- ui internal/api/dist)" ]]; then
-  echo "  ui/ and internal/api/dist are as committed: no build needed"
 else
   (cd ui && { [[ -d node_modules ]] || npm ci --no-audit --no-fund; } && npm run build --silent)
 fi

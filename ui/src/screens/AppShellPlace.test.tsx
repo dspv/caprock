@@ -59,7 +59,7 @@ vi.mock('@/lib/api', async (orig) => {
       ...actual.api,
       status: async () => ({ version: 'v0.0.0', claude_available: true }),
       sessions: async () => [sess({ session_id: 'agent-1', title: 'Fix the login bug' })],
-      summary: async () => ({ cost_usd: 0, projects: [] }),
+      summary: async () => ({ cost_usd: 0, savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 }, projects: [] }),
       permission: async () => ({ permission: null }),
       diff: async () => ({ root: '/w/app', branch: 'main', files: [], stat: '' }),
       editors: async () => ({ editors: [], preferred: '' }),

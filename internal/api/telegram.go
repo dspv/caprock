@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -19,6 +21,7 @@ type TelegramController interface {
 	Disconnect() error
 	StartPairing() (telegram.Pairing, error)
 	CancelPairing()
+	SendPhoto(ctx context.Context, png []byte, caption string) error
 }
 
 func (s *Server) requireTelegram(w http.ResponseWriter) bool {
@@ -94,6 +97,49 @@ func (s *Server) handleTelegramDisconnect(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, s.d.Telegram.Status())
+}
+
+// maxPhoto is the largest card POST /v1/telegram/photo takes. Telegram's own
+// limit for a photo is 10 MB; a 2x share card is well under one.
+const maxPhoto = 10 << 20
+
+// pngMagic opens every PNG file.
+var pngMagic = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+
+// handleTelegramPhoto is POST /v1/telegram/photo {"png": "<base64>",
+// "caption": "…"}: a share card sent to the owner's own paired chat, on
+// their click (the Share sheet's "Send to my Telegram"). JSON with the bytes
+// in base64, not multipart, because every state-changing route must be
+// application/json (csrf.go) — the same reason paste.go takes its files that way. 409 when no
+// bot or chat is set up, 400 for a body that is not one PNG, 502 with
+// Telegram's words when it refuses. Nothing is kept.
+func (s *Server) handleTelegramPhoto(w http.ResponseWriter, r *http.Request) {
+	if !s.requireTelegram(w) {
+		return
+	}
+	var body struct {
+		PNG     string `json:"png"`
+		Caption string `json:"caption"`
+	}
+	// base64 is 4/3 of the bytes; the caption is at most a few kilobytes.
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxPhoto/3*4+64<<10)).Decode(&body); err != nil || body.PNG == "" {
+		s.failCode(w, http.StatusBadRequest, errors.New(`body must be {"png": "<base64 PNG>", "caption": "…"}`))
+		return
+	}
+	png, err := base64.StdEncoding.DecodeString(body.PNG)
+	if err != nil || len(png) > maxPhoto || !bytes.HasPrefix(png, pngMagic) {
+		s.failCode(w, http.StatusBadRequest, errors.New("`png` must be one base64 PNG of at most 10 MB"))
+		return
+	}
+	if err := s.d.Telegram.SendPhoto(r.Context(), png, body.Caption); err != nil {
+		if errors.Is(err, telegram.ErrNotPaired) {
+			s.failCode(w, http.StatusConflict, err)
+			return
+		}
+		s.failCode(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"sent": true})
 }
 
 // ErrBypassConsent is StartSession refusing a Bypass start before the

@@ -48,6 +48,27 @@ jobs:
           if grep -qE '^(app/|Makefile$|scripts/check-app-mic\.sh$|scripts/check-app-signature\.sh$|scripts/macos-selfsign-keychain\.sh$|\.github/workflows/ci\.yml$)' <<<"$files"; then app=true; fi
           echo "app=$app" | tee -a "$GITHUB_OUTPUT"
 
+  # A pull request never carries internal/api/dist (ADR-068). The built
+  # dashboard is content-hashed, so any two PRs that rebuilt it conflicted
+  # there whatever else they touched; master's dist workflow rebuilds it after
+  # each merge instead. The checkout is the PR's merge commit, so its first
+  # parent is master as it stands now and the diff is exactly what merging
+  # would change.
+  no-dist:
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    name: no dist in the PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - name: the PR leaves internal/api/dist alone
+        run: |
+          if git diff --quiet HEAD^1 HEAD -- internal/api/dist; then echo "dist untouched"; exit 0; fi
+          echo "::error title=internal/api/dist is in this PR::dist is rebuilt on master after merge; drop your dist changes: make dist-reset && git commit -m 'chore: drop the dist changes' (or: git checkout origin/master -- internal/api/dist after rebasing on origin/master)"
+          git --no-pager diff --stat HEAD^1 HEAD -- internal/api/dist | tail -5
+          exit 1
+
   ui:
     if: ${{ !github.event.pull_request.draft }}
     name: ui (typecheck, test, build)
@@ -67,17 +88,88 @@ jobs:
         working-directory: ui
       - name: release script tests (latest.json)
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      # The dashboard builds. Its output is thrown away: master's dist
+      # workflow commits the build (ADR-068).
       - run: npm run build
         working-directory: ui
-      - name: dist is committed and in sync (so `go install` embeds a real UI)
-        run: |
-          git diff --quiet -- internal/api/dist || {
-            echo "internal/api/dist/ is stale — run 'make ui' and commit the result";
-            git --no-pager diff --stat -- internal/api/dist; exit 1; }
 
-  # The go jobs build against the committed internal/api/dist rather than
-  # waiting for the ui job's: the ui job fails when that copy is stale, so a
-  # green run tested the same bytes either way, three minutes sooner.
+  # The app's golden paths in a headless browser (make e2e, ui/e2e): this
+  # commit's dashboard against a sandboxed daemon with the fake claude. Ubuntu
+  # only: the go matrix already runs the daemon on three OS, and what this adds
+  # is the page. The headless shell is cached by the Playwright version.
+  e2e:
+    if: ${{ !github.event.pull_request.draft }}
+    name: e2e (headless shell)
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # The Go cache the go job writes on master; read-only here.
+      - name: go cache paths
+        id: gocache
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+        working-directory: ui
+      - name: playwright version
+        id: pw
+        working-directory: ui
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      # Written from master only, as the Go cache is.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: pwcache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-shell-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: headless shell
+        if: steps.pwcache.outputs.cache-hit != 'true'
+        working-directory: ui
+        run: npx playwright install --with-deps chromium-headless-shell
+      - name: headless shell's system libraries
+        if: steps.pwcache.outputs.cache-hit == 'true'
+        working-directory: ui
+        run: npx playwright install-deps chromium-headless-shell
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name == 'push' && steps.pwcache.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-shell-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: make e2e
+        run: make e2e
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v6.0.0
+        if: failure()
+        with:
+          name: e2e-report
+          path: |
+            ui/e2e/report/
+            ui/e2e/results/
+          retention-days: 7
+
+  # The go jobs build against master's committed internal/api/dist, which can
+  # be one merge behind ui/ (ADR-068), rather than building the dashboard on
+  # three OS: no Go test reads the dashboard's bytes (they serve fakes), the
+  # ui job proves it builds, and make-windows runs `make build`, which builds
+  # it on Windows too. Building it here would add npm to every leg for nothing
+  # a Go test can see.
   go:
     if: ${{ !github.event.pull_request.draft }}
     name: go (${{ matrix.os }})
@@ -117,7 +209,9 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: latest
+          # Pinned: `latest` moved to v2.15.0 on 2026-10-16 and turned every PR red
+          # over untouched code. Bump on purpose, with the fixes, in one PR.
+          version: v2.14.0
       - name: go test
         run: go test -v -count=1 ./...
       - name: build

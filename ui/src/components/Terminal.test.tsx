@@ -844,14 +844,14 @@ describe('Shift+Enter', () => {
     expect(pasteCalls.length).toBe(0)
   })
 
-  it('leaves a native drop that landed outside it to the terminal it landed on', async () => {
+  it('takes a native drop that landed beside it when it is the terminal on screen', async () => {
+    // A drop on the tab strip, a margin or the composer used to vanish
+    // without a word (owner, 2026-10-16: "drag and drop is broken again").
     mount()
     boxHost()
     const before = sent.length
     nativeDrop(['/Users/me/elsewhere.md'], 50, 100)
-    nativeDrop(['/Users/me/elsewhere.md'], 200, 350)
-    await new Promise((r) => setTimeout(r, 10))
-    expect(sent.slice(before).some((x) => x.includes('elsewhere.md'))).toBe(false)
+    await vi.waitFor(() => expect(sent.slice(before).some((x) => x.includes('elsewhere.md'))).toBe(true))
   })
 
   it('leaves a native drop to a dialog open over it', async () => {

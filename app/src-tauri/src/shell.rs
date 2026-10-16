@@ -131,6 +131,12 @@ pub fn build(
         .min_inner_size(720.0, 480.0)
         .visible(false)
         .focused(focus)
+        // The first click on a window that is not in front reaches the page
+        // (macOS; the other systems already do). Without it macOS spends
+        // that click on bringing the window forward, and a tab's × in the
+        // title-bar strip took two clicks. Dragging is untouched: the strip's
+        // `data-tauri-drag-region` still moves the window on press-and-drag.
+        .accept_first_mouse(true)
         // A hidden or covered window still hears the live socket, or a
         // notification would wait for the app to come forward (WP-09).
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
@@ -184,27 +190,7 @@ pub fn build(
     // in it may rely on them (the tab strip reorders by pointer events).
     // .ai/21-app.md § Dropping a file.
     let w = b.build()?;
-    let dropped = w.clone();
-    w.on_window_event(move |e| {
-        if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, position }) = e {
-            let scale = dropped.scale_factor().unwrap_or(1.0);
-            let paste = discovery::data_dir().map(|d| d.join("paste"));
-            let paths: Vec<PathBuf> = paths
-                .iter()
-                .map(|p| match &paste {
-                    Some(dir) => keep_transient(p, dir),
-                    None => p.clone(),
-                })
-                .collect();
-            // The only files the feedback form may read (capture.rs).
-            if let Some(d) = dropped.try_state::<crate::capture::Dropped>() {
-                d.set(&paths);
-            }
-            if let Some(js) = drop_script(&paths, (position.x, position.y), scale) {
-                let _ = dropped.eval(js);
-            }
-        }
-    });
+    listen_for_drops(&w);
     // macOS: closing the window hides it; the app stays in the menu bar
     // with its hotkey and badge (Cmd+Q quits). Elsewhere closing quits, as
     // a tray may not be shown at all (GNOME without an indicator extension).
@@ -227,6 +213,56 @@ pub fn build(
         }
     });
     Ok(w)
+}
+
+/// Hands a native drop on the window's dashboard to the page.
+///
+/// A drop arrives as the window's event while the dashboard is the window's
+/// own content (WindowEvent::DragDrop), and as the webview's when it is a
+/// child of the window (WebviewEvent::DragDrop, as with the `unstable`
+/// feature 0.123.0 turned on for a Page tab, since removed). Only one of the
+/// two ever fires; both are heard, through the one `on_drop`, so neither
+/// build drops a file on the floor, which 0.123.0 did. main.rs's tests drive
+/// `on_drop` and check both registrations.
+pub fn listen_for_drops<R: tauri::Runtime>(w: &WebviewWindow<R>) {
+    let from_window = w.clone();
+    w.on_window_event(move |e| {
+        if let tauri::WindowEvent::DragDrop(d) = e {
+            on_drop(&from_window, d);
+        }
+    });
+    let from_webview = w.clone();
+    w.on_webview_event(move |e| {
+        if let tauri::WebviewEvent::DragDrop(d) = e {
+            on_drop(&from_webview, d);
+        }
+    });
+}
+
+/// One drag event on the main window, from either listener: a drop records
+/// its paths (the only files the feedback form may read, capture.rs) and
+/// hands them to the page (DROP_EVENT), which types them into the terminal
+/// under the point or the one used last. A drag that enters, moves or
+/// leaves is not ours.
+pub fn on_drop<R: tauri::Runtime>(w: &WebviewWindow<R>, e: &tauri::DragDropEvent) {
+    let tauri::DragDropEvent::Drop { paths, position } = e else {
+        return;
+    };
+    let scale = w.scale_factor().unwrap_or(1.0);
+    let paste = discovery::data_dir().map(|d| d.join("paste"));
+    let paths: Vec<PathBuf> = paths
+        .iter()
+        .map(|p| match &paste {
+            Some(dir) => keep_transient(p, dir),
+            None => p.clone(),
+        })
+        .collect();
+    if let Some(d) = w.try_state::<crate::capture::Dropped>() {
+        d.set(&paths);
+    }
+    if let Some(js) = drop_script(&paths, (position.x, position.y), scale) {
+        let _ = w.eval(js);
+    }
 }
 
 /// A file macOS hands over from a temporary place — the screenshot

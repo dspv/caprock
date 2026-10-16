@@ -109,6 +109,15 @@ const realRect = Element.prototype.getBoundingClientRect
 const GEOMETRY = ['clientHeight', 'scrollHeight', 'scrollTop'] as const
 const originals = GEOMETRY.map((k) => Object.getOwnPropertyDescriptor(HTMLElement.prototype, k))
 
+// The live store must not open a socket of its own here. It did: the first
+// render subscribed, jsdom dialled ws://localhost:3000/v1/live, nothing
+// answered, and the close set the phase to "reconnecting" whenever it landed —
+// mid-test on a busy machine, after beforeEach had set it live. A message
+// sent in that window was held as "Will send when connected" instead of
+// reaching the queue (CI run 38753475630). Each test sets the phase itself
+// (setPhase) and delivers frames by hand (live.handle).
+vi.spyOn(live, 'start').mockImplementation(() => {})
+
 /** The live socket's state, as the reconnect policy would set it. */
 function setPhase(phase: LinkPhase) {
   act(() => { (live as unknown as { set: (p: object) => void }).set({ link: { phase, attempt: 0, nextAt: null, downSince: null } }) })

@@ -30,7 +30,7 @@ import { BrainMark } from './BrainMark'
 export const BRAIN_HEADLINE = 'One memory for all your agents'
 
 /** The agents with a character of their own, in the order a tie falls. */
-const DRAWN = ['claude', 'codex', 'gemini', 'opencode', 'deepseek'] as const
+const DRAWN = ['claude', 'codex', 'gemini', 'opencode', 'deepseek', 'hermes'] as const
 export type DrawnAgent = (typeof DRAWN)[number]
 const MAX = 5
 /** The window "what you use" is read over. */

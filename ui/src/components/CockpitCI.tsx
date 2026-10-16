@@ -1,6 +1,6 @@
 /**
  * The cockpit's CI block. Its first view, *PRs*, is the repository's pull
- * requests as progress bars toward a release (owner, 2026-10-14, translated:
+ * requests in flight as progress bars toward a release (owner, 2026-10-14, translated:
  * "roughly the current size, showing PRs as progress bars toward release;
  * scrollable; we see PR statuses and CI statuses; from there you can expand
  * to a bigger block, and open the separate page"): each row its number, its
@@ -11,6 +11,15 @@
  * *Pipeline ↗* opens the page. It reads the Pipeline's own answer
  * (…/ci/stats, kept by the daemon), asked while the block is unfolded and
  * the window shown, and draws the copy last kept at once.
+ *
+ * In flight only (owner, 2026-10-16, translated: "on the right it sometimes
+ * shows too many PRs, e.g. for caprock-web"): the open pull requests and
+ * the ones merged since the newest release, still heading to one
+ * (lib/journey `inFlight`); released and closed-unmerged ones are dropped.
+ * A repository with no published release (caprock-web pushes its changelog
+ * syncs straight to master and tags nothing) has only its open ones in
+ * flight. With nothing in flight it says so in one quiet line — *Nothing in
+ * flight · last release v0.124.0, 2h ago* — over the three newest merges.
  *
  * (owner, 2026-10-13, translated: "I'd like to move
  * some CI/CD indicators into the right part — try making the indicator switch
@@ -23,23 +32,31 @@
  * PR's checks lists them only after the pointer rests there, beside the
  * panel rather than over it (CheckSummary `beside`).
  *
- * It asks nothing: it draws what the session deck was last told
- * (lib/deckCache, `prs:<session>` and `ci:<session>:<pr>`) and redraws when
- * the deck is told something new. With the deck closed it shows the last
- * answer and how old it is; with nothing kept it is not drawn.
+ * Ring and By OS draw the session's own newest PR when the session deck
+ * read it with its checks (lib/deckCache, `prs:<session>` and `ci:<session>:<pr>`, redrawn
+ * when the deck is told something new). Without one they draw the newest
+ * in-flight PR of the same …/ci/stats answer the PRs view reads, asking
+ * that PR's checks themselves (…/ci?pr=, kept as `ci:<session>:<pr>`) while
+ * the view is shown unfolded (owner, 2026-10-16, translated: "the Ring mode
+ * is empty"). With nothing in flight they say so in the same one line;
+ * with neither answer kept the block is not drawn.
  */
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api, type SessionCI, type SessionCIStats, type SessionPRs } from '@/lib/api'
-import type { PRCheck } from '@/lib/github'
-import { orderPRs, osName, osRollup, prChecks, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
+import type { PRCheck, PullRequest } from '@/lib/github'
+import { ciActive, orderPRs, osName, osRollup, prChecks, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
 import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
 import { asBoard } from '@/lib/prboard'
 import { tabRows, spanText } from '@/lib/prstats'
-import { journey, pipelineRows, stageOf } from '@/lib/journey'
+import { flightLead, inFlight, journey, pipelineRows, stageOf, type Flight, type PipelineRow } from '@/lib/journey'
+import { landingOf } from '@/lib/releaseplan'
 import { CheckSummary, StateMark } from './CheckSummary'
 import { SectionLabel, useFolded } from './Cockpit'
-import { JourneyBar } from './Journey'
-import { CI_IDLE_MS, usePoll } from './SessionDeck'
+import { JourneyBar, JourneyLegend } from './Journey'
+import { CI_IDLE_MS, CI_RUNNING_MS, usePoll } from './SessionDeck'
+
+/** The pull request the Ring and By OS views draw, with its checks. */
+type LeadPR = { number: number; live: PullRequest }
 
 /** The most pull requests the PRs view lists (it scrolls). */
 const LISTED = 40
@@ -53,7 +70,7 @@ function readTall(): boolean {
 // Each tab says what it shows, on hover and to a screen reader (owner,
 // 2026-10-14, translated: "OS mode is unclear").
 const VIEWS: { v: CockpitCIView; label: string; title: string }[] = [
-  { v: 'dots', label: 'PRs', title: 'PRs: the repository’s pull requests on their way to a release — open, CI, merged, released — as progress bars' },
+  { v: 'dots', label: 'PRs', title: 'PRs: the repository’s pull requests in flight — open, or merged since the last release — on their way to a release, as progress bars' },
   { v: 'ring', label: 'Ring', title: 'Ring: the newest pull request’s checks as one ring — done of all, the time, and against your usual run' },
   { v: 'grid', label: 'By OS', title: 'By OS: the newest pull request’s checks by runner — Linux, macOS, Windows — each with its state and longest time' },
 ]
@@ -91,15 +108,26 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
   const [tall, setTallState] = useState(readTall)
   const setTall = (v: boolean) => { setTallState(v); try { localStorage.setItem(TALL_KEY, v ? '1' : '0') } catch { /* this page only */ } }
   const folded = useFolded()
-  // The Pipeline's answer: asked only while this view is shown unfolded.
-  const [stats, statsAt] = usePoll<SessionCIStats>(view === 'dots' && !folded && !!onOpen, `cockpit:${sessionId}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, `stats:${repoScope || sessionId}`)
+  // The Pipeline's answer: asked only while the block is shown unfolded.
+  const [stats, statsAt] = usePoll<SessionCIStats>(!folded && !!onOpen, `cockpit:${sessionId}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, `stats:${repoScope || sessionId}`)
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
-  const journeyRows = useMemo(() => pipelineRows(tabRows('repo', [], stats?.prs ?? []), board, stats?.prs ?? []).filter((r) => stageOf(r) !== 'closed').slice(0, LISTED), [stats?.prs, board])
+  const flight = useMemo(() => {
+    const f = inFlight(pipelineRows(tabRows('repo', [], stats?.prs ?? []), board, stats?.prs ?? []), board)
+    return { ...f, rows: f.rows.slice(0, LISTED) }
+  }, [stats?.prs, board])
+  const hasStats = !!stats?.connected && (stats.prs?.length ?? 0) > 0
   const prs = useDeckAnswer<SessionPRs>(`prs:${sessionId}`)
   const rows = orderPRs(prs.d?.prs ?? []).filter((p) => !!p.live)
-  const lead = rows[0]
-  const ci = useDeckAnswer<SessionCI>(lead ? `ci:${sessionId}:${lead.number}` : '')
-  const running = rows.some((p) => p.live?.checks.state === 'pending')
+  // The session's own newest PR when the deck read it with checks, else the newest in flight.
+  const deckLead = prs.d?.connected && (rows[0]?.live?.checks.items.length ?? 0) > 0 ? rows[0] : undefined
+  const flown = deckLead ? undefined : flightLead(flight)
+  const leadNo = deckLead?.number ?? flown?.number ?? 0
+  const ci = useDeckAnswer<SessionCI>(leadNo ? `ci:${sessionId}:${leadNo}` : '')
+  // That PR's checks, asked only for Ring and By OS shown unfolded, and only when the deck has none.
+  const [, ciAt] = usePoll<SessionCI>(view !== 'dots' && !folded && !!onOpen && !deckLead && leadNo > 0, `cockpit-ci:${sessionId}:${leadNo}`, () => api.sessionCI(sessionId, leadNo), (d) => ciActive(d.ci), CI_RUNNING_MS, leadNo ? `ci:${sessionId}:${leadNo}` : undefined)
+  const lead: LeadPR | undefined = deckLead?.live ? { number: deckLead.number, live: deckLead.live }
+    : flown && ci.d?.pr?.number === flown.number && ci.d.pr.live ? { number: flown.number, live: ci.d.pr.live } : undefined
+  const running = rows.some((p) => p.live?.checks.state === 'pending') || lead?.live.checks.state === 'pending'
   // A clock only while a check runs and the window is shown: the elapsed time moves.
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -108,38 +136,32 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
     const t = window.setInterval(() => { if (!document.hidden) setNow(Date.now()) }, 1000)
     return () => window.clearInterval(t)
   }, [running, prs.at, ci.at])
-  const hasJourney = view === 'dots' && journeyRows.length > 0
-  if (!hasJourney && (!prs.d || !prs.d.connected || rows.length === 0)) return null
+  if (!hasStats && !deckLead) return null
   const leadSum = folded && lead ? prChecks(lead, now) : undefined
-  const at = view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : prs.at
+  const at = view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : deckLead ? prs.at : (ci.at || ciAt)
+  const quiet = hasStats && flight.rows.length === 0 ? <Quiet f={flight} now={now} /> : null
+  const listed = flight.rows.length > 0 ? flight.rows : flight.recent
 
-  const body = view === 'ring' && lead ? <Ring p={lead} ci={ci.d} now={now} /> : view === 'grid' && lead ? <ByOS p={lead} ci={ci.d} now={now} /> : view === 'dots' ? (
-    journeyRows.length === 0 ? <span className="text-[11.5px] text-fg-faint">Reading the repository’s pull requests…</span> : (
-      <ul data-cockpit-journey className={`app-scroll -mr-1.5 grid content-start gap-1.5 overflow-y-auto pr-1.5 ${tall ? 'max-h-[440px]' : 'max-h-[176px]'}`}>
-        {journeyRows.map((r) => {
-          const steps = journey(r)
-          const since = r.card?.stage_at ?? r.merged_at ?? r.created_at
-          return (
-            <li key={r.number} data-cockpit-ci-pr={r.number} data-stage={stageOf(r)} className="grid min-w-0 gap-1">
-              <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
-                <span className="num shrink-0 text-fg-muted">#{r.number}</span>
-                <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg" title={r.title}>{r.title}</span>
-                {since ? <span className="num shrink-0 text-[10.5px] text-fg-faint" title={new Date(since).toLocaleString()}>{spanText(Math.max(0, now - since))}</span> : null}
-              </span>
-              <JourneyBar steps={steps} />
-            </li>
-          )
-        })}
-      </ul>
+  const faint = (text: string) => <span className="text-[11.5px] text-fg-faint">{text}</span>
+  const checksOf = (draw: (p: LeadPR) => ReactNode) =>
+    lead ? draw(lead) : quiet ?? (flown ? faint(ci.d?.pr?.number === flown.number ? `#${flown.number}’s checks could not be read.` : `Reading #${flown.number}’s checks…`) : faint('Reading the repository’s pull requests…'))
+  const body = view === 'ring' ? checksOf((p) => <Ring p={p} ci={ci.d} now={now} />) : view === 'grid' ? checksOf((p) => <ByOS p={p} ci={ci.d} now={now} />) : (
+    !hasStats ? faint('Reading the repository’s pull requests…') : (
+      <div className="grid gap-1">
+      {quiet}
+      {listed.length > 0 && <JourneyLegend className="-mr-1.5 pr-1.5" />}
+      {listed.length > 0 && <ul data-cockpit-journey className={`app-scroll -mr-1.5 grid content-start gap-1.5 overflow-y-auto pr-1.5 ${tall ? 'max-h-[440px]' : 'max-h-[176px]'}`}>
+        {listed.map((r) => <JourneyRow key={r.number} r={r} now={now} />)}
+      </ul>}
+      </div>
     )
-  ) : null
-  if (!body) return null
+  )
 
   return (
     <section aria-label="CI" data-cockpit-ci={view} data-checks-edge className="grid gap-2">
       <SectionLabel right={(
         <span className="flex items-center gap-2">
-          <span className="text-[10.5px] text-fg-faint" title={view === 'dots' ? 'When GitHub was last read for the Pipeline' : 'What the session deck last read; this view asks nothing itself'}>{at ? freshText(now - at).replace('updated ', '') : ''}</span>
+          <span className="text-[10.5px] text-fg-faint" title={view === 'dots' ? 'When GitHub was last read for the Pipeline' : deckLead ? 'What the session deck last read' : 'When GitHub was last read for this pull request’s checks'}>{at ? freshText(now - at).replace('updated ', '') : ''}</span>
           {/* Folded, the newest PR's checks are its one line, in place of the view tabs. */}
           {leadSum && lead && (
             <span data-fold-only className="flex min-w-0 items-center gap-1.5">
@@ -161,7 +183,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
         <>
           {body}
           <span className="flex items-center justify-between gap-2 text-[11px]">
-            {journeyRows.length > 4 ? (
+            {listed.length > 4 ? (
               <button type="button" data-cockpit-ci-tall aria-expanded={tall} onClick={() => setTall(!tall)} className="text-fg-faint hover:text-fg-muted">{tall ? 'Less' : 'Expand'}</button>
             ) : <span />}
             {onOpen && <button type="button" data-cockpit-ci-open onClick={onOpen} title="Open the Pipeline page in a tab" className="text-accent hover:underline">Pipeline ↗</button>}
@@ -177,9 +199,34 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
   )
 }
 
+/** One pull request's row: its number, title, time on its step and the four steps as a bar. */
+function JourneyRow({ r, now }: { r: PipelineRow; now: number }) {
+  const since = r.card?.stage_at ?? r.merged_at ?? r.created_at
+  return (
+    <li data-cockpit-ci-pr={r.number} data-stage={stageOf(r)} className="grid min-w-0 gap-1">
+      <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
+        <span className="num shrink-0 text-fg-muted">#{r.number}</span>
+        <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg" title={r.title}>{r.title}</span>
+        {since ? <span className="num shrink-0 text-[10.5px] text-fg-faint" title={new Date(since).toLocaleString()}>{spanText(Math.max(0, now - since))}</span> : null}
+      </span>
+      <JourneyBar steps={journey(r)} landing={landingOf(r.labels)?.word} />
+    </li>
+  )
+}
+
+/** Nothing in flight, in one quiet line: *Nothing in flight · last release v0.124.0, 2h ago*. */
+function Quiet({ f, now }: { f: Flight; now: number }) {
+  const rel = f.release
+  return (
+    <span data-cockpit-ci-quiet className="truncate text-[11.5px] text-fg-faint" title={rel ? new Date(rel.published_at).toLocaleString() : 'GitHub lists no published release for this repository'}>
+      Nothing in flight · {rel ? `last release ${rel.tag}, ${spanText(Math.max(0, now - rel.published_at))} ago` : 'no release published'}
+    </span>
+  )
+}
+
 /** One ring for the lead PR: its checks done of all, its time, and its run against the median. */
-function Ring({ p, ci, now }: { p: NonNullable<ReturnType<typeof orderPRs>[number]>; ci?: SessionCI; now: number }) {
-  const s = checkSummary(p.live!.checks.items, now)
+function Ring({ p, ci, now }: { p: LeadPR; ci?: SessionCI; now: number }) {
+  const s = checkSummary(p.live.checks.items, now)
   const r = 15
   const c = 2 * Math.PI * r
   const arc = (n: number) => (s.total ? (n / s.total) * c : 0)
@@ -223,7 +270,7 @@ const OS_TEXT = { pass: 'text-ok', fail: 'text-danger', running: 'text-warn', qu
  * carries (with their jobs when the deck read them), so it always has
  * something to show unless no check names an OS.
  */
-function ByOS({ p, ci, now }: { p: NonNullable<ReturnType<typeof orderPRs>[number]>; ci?: SessionCI; now: number }) {
+function ByOS({ p, ci, now }: { p: LeadPR; ci?: SessionCI; now: number }) {
   const runs = ci?.pr?.number === p.number ? ci.ci?.runs : undefined
   const sum = prChecks(p, now, runs)
   const rows = sum ? osRollup(sum.nodes) : []

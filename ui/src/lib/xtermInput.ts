@@ -66,6 +66,79 @@ export interface DroppedPaths {
   y: number
 }
 
+interface DropTarget {
+  el: HTMLElement
+  /** When the user last clicked or focused it, for a drop that lands on no terminal. */
+  used: number
+  deliver: (paths: string[]) => void
+}
+
+/** Every attached terminal; one window listener routes the app's drops among them. */
+const dropTargets = new Set<DropTarget>()
+let dropListening = false
+
+/** A terminal with a box: a hidden tab has none, nor one taken off the page. */
+function shown(el: Element): boolean {
+  if (!el.isConnected) return false
+  const r = el.getBoundingClientRect()
+  return r.width > 0 && r.height > 0
+}
+
+/** A dialog on screen: mounted and not display:none (checkVisibility where the engine has it). */
+function onScreen(el: Element): boolean {
+  if (!el.isConnected) return false
+  const v = (el as Element & { checkVisibility?: () => boolean }).checkVisibility
+  return v ? v.call(el) : true
+}
+
+/**
+ * Where a native drop goes. A drop used to reach only the terminal whose box
+ * held the point, and was dropped without a word otherwise — onto the tab
+ * strip, the composer, a margin, or while any dialog was mounted at all —
+ * which read as "drag and drop is broken again" (owner, 2026-10-16). Now: a
+ * dialog that is actually on screen takes it (Feedback, a sheet: they listen
+ * themselves); else the terminal under the point; else the terminal used
+ * last that is on screen; else the one terminal on screen; else a short
+ * note says where to drop. Never silent.
+ */
+export function routeDrop(d: DroppedPaths, targets: Iterable<DropTarget>, doc: Document = document): DropTarget | 'dialog' | null {
+  const dialog = [...doc.querySelectorAll('[data-dialog-backdrop]')].some(onScreen)
+  if (dialog) return 'dialog'
+  const visible = [...targets].filter((t) => shown(t.el))
+  const under = visible.find((t) => {
+    const r = t.el.getBoundingClientRect()
+    return d.x >= r.left && d.x < r.right && d.y >= r.top && d.y < r.bottom
+  })
+  if (under) return under
+  const last = visible.filter((t) => t.used > 0).sort((a, b) => b.used - a.used)[0] ?? null
+  if (last) return last
+  return visible.length === 1 ? visible[0] ?? null : null
+}
+
+function dropNote(text: string) {
+  const n = document.createElement('div')
+  n.setAttribute('role', 'status')
+  n.textContent = text
+  n.style.cssText = 'position:fixed;left:50%;bottom:48px;transform:translateX(-50%);z-index:9999;padding:6px 12px;border-radius:8px;font-size:12px;background:var(--surface-2,#222);color:var(--text,#eee);border:1px solid var(--border,#444);pointer-events:none'
+  document.body.appendChild(n)
+  window.setTimeout(() => n.remove(), 2600)
+}
+
+function installDropListener() {
+  if (dropListening) return
+  dropListening = true
+  window.addEventListener(DROP_PATHS_EVENT, (e: Event) => {
+    const d = (e as CustomEvent<DroppedPaths | undefined>).detail
+    if (!d || !Array.isArray(d.paths) || d.paths.length === 0) return
+    const paths = d.paths.filter((p): p is string => typeof p === 'string' && p !== '')
+    if (paths.length === 0) return
+    const t = routeDrop(d, dropTargets)
+    if (t === 'dialog') return
+    if (t) t.deliver(paths)
+    else dropNote('Drop a file onto a terminal to type its path')
+  })
+}
+
 /**
  * A path as it is typed into a session: quoted, as the paste path is, so a
  * space is not two arguments. Not with JSON.stringify, which doubles every
@@ -318,37 +391,39 @@ export function attachTerminalInput(
   }
   // preventDefault on dragover, or the browser navigates away to the file.
   const onDragOver = (e: DragEvent) => { e.preventDefault() }
-  // The app's native drop: paths, not bytes. Every terminal hears it; the
-  // one the point is inside types it. A hidden tab has no box and so never
-  // matches. Queued with the uploads, so the order holds across both.
-  const onDroppedPaths = (e: Event) => {
-    const d = (e as CustomEvent<DroppedPaths | undefined>).detail
-    if (!d || !Array.isArray(d.paths) || d.paths.length === 0) return
-    // A dialog over the terminal took the drop (Feedback, a sheet): the
-    // terminal under it is not where the file was aimed.
-    if (document.querySelector('[data-dialog-backdrop]')) return
-    const r = el.getBoundingClientRect()
-    if (r.width === 0 || r.height === 0) return
-    if (d.x < r.left || d.x >= r.right || d.y < r.top || d.y >= r.bottom) return
-    const paths = d.paths.filter((p): p is string => typeof p === 'string' && p !== '')
-    queue = queue.then(async () => {
-      for (const p of paths) await sendPath(p)
-    })
-    term.focus()
+  // The app's native drop: paths, not bytes. One window listener for every
+  // terminal (dropTargets below) picks the one the point is inside, or,
+  // when the point is over none, the terminal last used. Queued with the
+  // uploads, so the order holds across both.
+  const target: DropTarget = {
+    el,
+    used: 0,
+    deliver: (paths) => {
+      queue = queue.then(async () => {
+        for (const p of paths) await sendPath(p)
+      })
+      term.focus()
+    },
   }
+  const markUsed = () => { target.used = Date.now() }
+  el.addEventListener('focusin', markUsed)
+  el.addEventListener('pointerdown', markUsed)
+  dropTargets.add(target)
+  installDropListener()
   // Capture phase: xterm's textarea handler stops the paste from bubbling,
   // so a listener on the way up never saw a keyboard paste at all.
   el.addEventListener('paste', onPaste, true)
   el.addEventListener('drop', onDrop)
   el.addEventListener('dragover', onDragOver)
-  window.addEventListener(DROP_PATHS_EVENT, onDroppedPaths)
   return {
     sendFiles,
     dispose: () => {
       el.removeEventListener('paste', onPaste, true)
       el.removeEventListener('drop', onDrop)
       el.removeEventListener('dragover', onDragOver)
-      window.removeEventListener(DROP_PATHS_EVENT, onDroppedPaths)
+      el.removeEventListener('focusin', markUsed)
+      el.removeEventListener('pointerdown', markUsed)
+      dropTargets.delete(target)
     },
   }
 }

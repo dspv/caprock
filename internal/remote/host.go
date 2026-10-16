@@ -34,6 +34,13 @@ type State struct {
 	Phones int `json:"phones"`
 	// Since is when Status last changed.
 	Since time.Time `json:"since"`
+	// Relay messages and their bytes each way since the daemon started, so
+	// what phones and computers cost the relay is measured, not guessed
+	// (OQ-14, ADR-067).
+	MsgsIn   uint64 `json:"msgs_in"`
+	MsgsOut  uint64 `json:"msgs_out"`
+	BytesIn  uint64 `json:"bytes_in"`
+	BytesOut uint64 `json:"bytes_out"`
 }
 
 // Options configure a Host.
@@ -59,6 +66,8 @@ type Host struct {
 
 	mu    sync.Mutex
 	state State
+
+	msgsIn, msgsOut, bytesIn, bytesOut atomic.Uint64
 }
 
 // NewHost makes a host; Run connects it.
@@ -75,8 +84,11 @@ func NewHost(opt Options) *Host {
 // State reports the connection's state.
 func (h *Host) State() State {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.state
+	st := h.state
+	h.mu.Unlock()
+	st.MsgsIn, st.MsgsOut = h.msgsIn.Load(), h.msgsOut.Load()
+	st.BytesIn, st.BytesOut = h.bytesIn.Load(), h.bytesOut.Load()
+	return st
 }
 
 func (h *Host) setState(status, errText string) {
@@ -127,6 +139,7 @@ func (h *Host) Run(ctx context.Context) {
 
 // relayConn is one connection to the relay, shared by every phone on it.
 type relayConn struct {
+	h *Host
 	c *websocket.Conn
 	// ctx is the connection's own: it ends when the connection does.
 	ctx context.Context
@@ -147,7 +160,12 @@ func (r *relayConn) send(ctx context.Context, kind byte, conn uint32, data []byt
 	}
 	wctx, cancel := context.WithTimeout(r.ctx, 30*time.Second)
 	defer cancel()
-	return r.c.Write(wctx, websocket.MessageBinary, Frame(kind, conn, data))
+	err := r.c.Write(wctx, websocket.MessageBinary, Frame(kind, conn, data))
+	if err == nil && r.h != nil {
+		r.h.msgsOut.Add(1)
+		r.h.bytesOut.Add(uint64(len(data) + 5))
+	}
+	return err
 }
 
 func (h *Host) session(ctx context.Context) error {
@@ -188,7 +206,7 @@ func (h *Host) session(ctx context.Context) error {
 
 	sctx, stop := context.WithCancel(ctx)
 	defer stop()
-	rc := &relayConn{c: c, ctx: sctx}
+	rc := &relayConn{h: h, c: c, ctx: sctx}
 	var heard atomic.Int64
 	heard.Store(time.Now().UnixNano())
 	go h.keepalive(sctx, rc, &heard, stop)
@@ -209,6 +227,8 @@ func (h *Host) session(ctx context.Context) error {
 			return err
 		}
 		heard.Store(time.Now().UnixNano())
+		h.msgsIn.Add(1)
+		h.bytesIn.Add(uint64(len(msg)))
 		if typ == websocket.MessageText {
 			continue // "pong"
 		}
@@ -288,6 +308,9 @@ type stream struct {
 	head   *reqHead
 	ws     *websocket.Conn
 	part   bytes.Buffer // a WebSocket message from the phone, until its last part
+	// shut is set once a write to ws failed: the socket is closing, so what
+	// the phone sends next is dropped at once rather than written into it.
+	shut bool
 }
 
 func (h *Host) newPhone(ctx context.Context, rc *relayConn, conn uint32) *phone {
@@ -451,7 +474,7 @@ func (p *phone) dispatch(kind byte, id uint32, body []byte) {
 		go p.serveHTTP(s.ctx, id, head, reqBody)
 	case KindWSPart, KindWSText, KindWSBinary:
 		ws := p.socket(s)
-		if ws == nil {
+		if ws == nil || s.shut {
 			return
 		}
 		if s.part.Len()+len(body) > maxWSMessage {
@@ -470,11 +493,19 @@ func (p *phone) dispatch(kind byte, id uint32, body []byte) {
 		msg := append([]byte(nil), s.part.Bytes()...)
 		s.part.Reset()
 		wctx, cancel := context.WithTimeout(p.ctx, 30*time.Second)
-		err := ws.Write(wctx, typ, msg)
-		cancel()
-		if err != nil {
-			p.finish(id)
+		if ws.Write(wctx, typ, msg) != nil {
+			s.shut = true
 		}
+		cancel()
+		// A failed write does not end the stream here. The socket is closing
+		// (the daemon closed it: a revoke is 1008) or the write timed out,
+		// which closes it; either way openWS's reader ends next and tells the
+		// other end the real code. Finishing here cancelled that reader
+		// first, and the close was never sent: a revoked device's terminal
+		// stayed open (TestASocketClosedWhileTypingSaysWhy). Writing every
+		// later keystroke into the closing socket instead held this loop
+		// until the phone's queue overflowed and the whole channel was hung
+		// up, so after one failure the stream only waits for its reader.
 	case KindWSClose:
 		if ws := p.socket(s); ws != nil {
 			var cl wsClose
@@ -569,6 +600,13 @@ func (p *phone) serveHTTP(ctx context.Context, id uint32, head reqHead, body []b
 		if err != nil {
 			break
 		}
+	}
+	// A body cut short because the other end cancelled is not a whole one:
+	// ending it here would tell a reader still draining its queue that the
+	// short body was complete (TestACancelledRequestLeavesTheChannelUp, seen
+	// on Windows, where the cancel's round trip beat the reader).
+	if ctx.Err() != nil {
+		return
 	}
 	_ = p.send(KindResEnd, id, nil)
 }

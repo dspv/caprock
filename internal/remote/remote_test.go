@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,6 +38,9 @@ func fakeDaemon(t *testing.T) *httptest.Server {
 			"query":  r.URL.RawQuery,
 		})
 	})
+	mux.HandleFunc("/v1/ws-deny", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not paired", http.StatusUnauthorized)
+	})
 	mux.HandleFunc("/v1/big", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(strings.Repeat("x", 300<<10)))
 	})
@@ -51,6 +55,23 @@ func fakeDaemon(t *testing.T) *httptest.Server {
 				f.Flush()
 			}
 			time.Sleep(2 * time.Millisecond)
+		}
+	})
+	// A socket the daemon closes with 1008 after its first message, from
+	// another goroutine while its handler reads on: a device revoked mid-use
+	// (api's closeDeviceSockets).
+	mux.HandleFunc("/v1/ws-revoke", func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = c.CloseNow() }()
+		var once sync.Once
+		for {
+			if _, _, err := c.Read(r.Context()); err != nil {
+				return
+			}
+			once.Do(func() { go func() { _ = c.Close(websocket.StatusPolicyViolation, "revoked") }() })
 		}
 	})
 	mux.HandleFunc("/v1/ws", func(w http.ResponseWriter, r *http.Request) {
@@ -76,9 +97,11 @@ func fakeDaemon(t *testing.T) *httptest.Server {
 }
 
 type rig struct {
-	relay *httptest.Server
-	keys  *remote.Keys
-	host  *remote.Host
+	relay  *httptest.Server
+	keys   *remote.Keys
+	host   *remote.Host
+	daemon *httptest.Server
+	stop   context.CancelFunc
 }
 
 func newRig(t *testing.T) *rig {
@@ -108,7 +131,7 @@ func newRig(t *testing.T) *rig {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	return &rig{relay: relay, keys: keys, host: h}
+	return &rig{relay: relay, keys: keys, host: h, daemon: daemon, stop: cancel}
 }
 
 // phone is a test phone: a relay connection and a Noise session.

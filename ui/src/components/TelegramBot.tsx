@@ -24,7 +24,7 @@ import { SecretInfo, SecretInput, SecretNote, SecretPill, type SecretProvider } 
 export const TELEGRAM_PROVIDER: SecretProvider = {
   name: 'Telegram',
   host: 'api.telegram.org',
-  sentWhen: 'with each message the bot sends or reads: alerts, the weekly report, chat replies.',
+  sentWhen: 'with each message the bot sends or reads: alerts, the weekly report, chat replies, and a share card you send with Share → Send to my Telegram (the card and its words, nothing else).',
   revokeAt: '@BotFather',
   revokeHow: 'send /revoke and pick the bot, or /deletebot.',
 }
@@ -215,7 +215,8 @@ export function TelegramBotFields({ s, onSaved }: { s?: Settings; onSaved: () =>
           ) : (
             <>
               <span className="text-ok">✓</span> Connected to <span className="text-fg">{state.chat_name || 'your chat'}</span>. Messages
-              from any other chat are ignored.
+              from any other chat are ignored. A share card goes there only when you press Share → Send to my Telegram: the picture and
+              the words under it, anonymous unless you ticked Show repo name.
             </>
           )}
         </p>

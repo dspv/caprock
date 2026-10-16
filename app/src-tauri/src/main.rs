@@ -255,7 +255,7 @@ mod tests {
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
     use tauri::webview::InvokeRequest;
-    use tauri::WebviewWindowBuilder;
+    use tauri::{Manager, WebviewWindowBuilder};
 
     fn invoke(
         url: &str,
@@ -576,5 +576,79 @@ mod tests {
         )
         .expect_err("file URL");
         assert!(err.to_string().contains("refused"), "{err}");
+    }
+
+    // The 0.123.0 drop bug: the dashboard became a child webview of the
+    // window, its drops arrived as WebviewEvent::DragDrop, and the window
+    // listener the app had heard nothing. Since the Page tab was withdrawn
+    // the dashboard is the window's content again and drops come as
+    // WindowEvent::DragDrop; the app hears both, through one handler.
+    // Tauri's mock runtime keeps no listeners (MockWebviewDispatcher drops
+    // the closure), so a test cannot emit an event through it. The closest
+    // it can do: build the main window and register the listeners as the
+    // app does, hand the handler the event Tauri would, and check in the
+    // source that both registrations reach it.
+    #[test]
+    fn a_drop_on_the_main_window_reaches_the_drop_handler() {
+        let dir = std::env::temp_dir().join(format!("caprock-drop-{}", std::process::id()));
+        let app = configure(mock_builder(), Supervisor::new(dir))
+            .build(tauri::generate_context!(test = true))
+            .expect("mock app");
+        let page: tauri::Url = DAEMON.parse().unwrap();
+        let w = WebviewWindowBuilder::new(&app, "main", WebviewUrl::External(page))
+            .build()
+            .unwrap();
+        shell::listen_for_drops(&w);
+        let p = PathBuf::from("/tmp/caprock e2e/notes.txt");
+        let drop = tauri::DragDropEvent::Drop {
+            paths: vec![p.clone()],
+            position: tauri::PhysicalPosition::new(10.0, 20.0),
+        };
+        shell::on_drop(&w, &drop);
+        assert!(
+            app.state::<capture::Dropped>().contains(&p),
+            "the drop's path was not recorded"
+        );
+        // A drag that leaves is not a drop: the last drop's paths stay.
+        shell::on_drop(&w, &tauri::DragDropEvent::Leave);
+        assert!(app.state::<capture::Dropped>().contains(&p));
+    }
+
+    #[test]
+    fn a_drop_is_heard_on_the_window_and_the_webview_by_one_handler() {
+        // A Windows checkout may carry CRLF line ends.
+        let src = include_str!("shell.rs").replace("\r\n", "\n");
+        let code = |s: &str| -> String {
+            s.lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let body = |head: &str| -> String {
+            let rest = src.split(head).nth(1).unwrap_or_else(|| panic!("{head}"));
+            code(rest.split("\n}\n").next().unwrap_or(rest))
+        };
+        let listen = body("pub fn listen_for_drops");
+        for (listener, event) in [
+            (".on_window_event(", "tauri::WindowEvent::DragDrop("),
+            (".on_webview_event(", "tauri::WebviewEvent::DragDrop("),
+        ] {
+            assert!(listen.contains(listener), "no {listener}: {listen}");
+            assert!(listen.contains(event), "no {event}: {listen}");
+        }
+        assert_eq!(
+            listen.matches("on_drop(").count(),
+            2,
+            "each listener hands its drop to the one on_drop: {listen}"
+        );
+        assert!(
+            body("pub fn build(").contains("listen_for_drops(&w)"),
+            "the main window is built without its drop listeners"
+        );
+        assert_eq!(
+            code(&src).matches("DragDrop(").count(),
+            2,
+            "a drop is handled somewhere other than listen_for_drops"
+        );
     }
 }

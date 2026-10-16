@@ -41,16 +41,30 @@ func TestRetentionPrunesOnStart(t *testing.T) {
 	go func() {
 		done <- daemon.Run(ctx, daemon.Options{DataDir: dataDir, Config: cfg, Version: "smoke", Listener: ln, DisableIngest: true, OnReady: func(u string) { ready <- u }})
 	}()
+	// Registered after TempDir, so it runs before the folder is removed, on
+	// a failure as well: Run returns only once the daemon has closed the
+	// database, which Windows will not delete while it is open.
+	stopped := false
+	t.Cleanup(func() {
+		cancel()
+		if !stopped {
+			<-done
+		}
+	})
 	select {
 	case <-ready:
 	case err := <-done:
+		stopped = true
 		t.Fatalf("daemon exited: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("daemon did not start")
 	}
 	// Give the prune goroutine a moment.
 	deadline := time.After(5 * time.Second)
-	st2, _ := store.Open(context.Background(), config.DBPath(dataDir), nil)
+	st2, err := store.Open(context.Background(), config.DBPath(dataDir), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer st2.Close()
 	for {
 		n, _ := store.CountEvents(context.Background(), st2.DB())
@@ -64,5 +78,8 @@ func TestRetentionPrunesOnStart(t *testing.T) {
 		}
 	}
 	cancel()
-	<-done
+	if err := <-done; err != nil {
+		t.Fatalf("daemon stopped with %v", err)
+	}
+	stopped = true
 }

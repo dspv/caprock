@@ -31,11 +31,12 @@ Two data planes, mirroring what works in Munder Difflin, but in Go:
 
 **Why not Electron:** the only thing Electron buys is bundling Chromium. A Go daemon + browser tab gives the same UI with zero ABI pain, one `go build` per platform, and the option of a TUI later. Desktop wrapper (Tauri/Wails) is a packaging decision for later, not an architecture decision now ([ADR-003](08-decisions.md#adr-003--ui-stack-react--vite-embedded-in-the-go-binary-via-goembed)).
 
-## Five agents, each by its own route
+## Six agents, each by its own route
 
 Caprock reads [OpenCode](https://github.com/anomalyco/opencode),
-[Gemini CLI](https://github.com/google-gemini/gemini-cli), OpenAI Codex and
-DeepSeek Harness as well as Claude Code. Each arrives by a different route, and the asymmetry is the
+[Gemini CLI](https://github.com/google-gemini/gemini-cli), OpenAI Codex,
+DeepSeek Harness and [Hermes Agent](https://github.com/NousResearch/hermes-agent)
+as well as Claude Code. Each arrives by a different route, and the asymmetry is the
 point — each is read the way that agent already keeps its own records, rather
 than by asking it to keep ours:
 
@@ -58,8 +59,15 @@ than by asking it to keep ours:
   ([19-codex.md](19-codex.md)).
 - **DeepSeek Harness** is read the same way from its own transcripts
   ([20-deepseek.md](20-deepseek.md)).
+- **Hermes Agent** keeps one SQLite database (`<hermes home>/state.db`) with
+  per-session token counters and its own cost, opened read-only and polled
+  like OpenCode's. Its usage lives on the session row, not on messages, so the
+  importer records the difference between Hermes's counters and Caprock's on
+  each pass; Hermes's figure is carried across, never recomputed, and its
+  cron and gateway runs are marked background ([24-hermes.md](24-hermes.md),
+  [ADR-069](08-decisions.md)).
 
-All five land in the same `events` and `sessions` tables, distinguished by
+All six land in the same `events` and `sessions` tables, distinguished by
 `events.source` and `sessions.agent`. Everything downstream — loop detection,
 narration, work-kind classification, per-directory attribution — works on all of
 them without knowing there is more than one, because each ingester shapes its
@@ -72,29 +80,35 @@ are not, which is why
 `ownsItsProcess()` gives it a clock where the others get process liveness
 ([ADR-028](08-decisions.md)).
 
+Hermes Agent is both: Caprock reads every Hermes session, and starts one in a
+terminal tab when asked; an observed one goes by the clock, one it started by
+its process.
+
 Full detail, including what is not supported, is in
-[16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md) and
-[20-deepseek.md](20-deepseek.md).
+[16-opencode.md](16-opencode.md), [19-codex.md](19-codex.md),
+[20-deepseek.md](20-deepseek.md) and [24-hermes.md](24-hermes.md).
 
 ## Components
 
-| Component  | Role                                                              | Phase |
-| ---------- | ----------------------------------------------------------------- | ----- |
-| `hookd`    | HTTP receiver for shim POSTs (`/v1/hook`), bearer-token gated     | 0     |
-| `shim`     | `caprock-hook` binary: stdin JSON → POST, silent, `exit 0`        | 0     |
-| `ingest`   | Discovers + tails transcript JSONL, parses per-turn usage         | 0     |
-| `store`    | SQLite (pure Go), embedded migrations                             | 0     |
-| `rollup`   | Event → `session_stats` / `daily_stats`; cost via pricing table   | 0     |
-| `api`      | REST + WebSocket fan-out, serves the embedded UI                  | 0     |
-| `ui`       | React + Vite SPA, `go:embed`-ded                                  | 0     |
-| `ptyman`   | Spawn / stream / write / resize / kill PTY sessions               | 1     |
-| `ptyhost`  | Per-session terminal holder that outlives the daemon (ADR-033)    | 1     |
-| `hive`     | Hive dir layout, atomic file ops, single-committer git, ledger    | 2     |
-| `router`   | Mailbox delivery outbox → inbox, ledger append, `mail.*` events   | 2     |
-| `orchestr` | Orchestrator lifecycle, Stop-loop, verification runner, approvals | 2     |
-| `service`  | Autostart: launchd agent / systemd user unit / Startup script     | —     |
-| `userenv`  | The login-shell environment spawned processes start with          | 1     |
-| `logcap`   | Keeps the daemon's log file bounded (rotate at 64MB, keep one)    | —     |
+| Component  | Role                                                               | Phase |
+| ---------- | ------------------------------------------------------------------ | ----- |
+| `hookd`    | HTTP receiver for shim POSTs (`/v1/hook`), bearer-token gated      | 0     |
+| `shim`     | `caprock-hook` binary: stdin JSON → POST, silent, `exit 0`         | 0     |
+| `ingest`   | Discovers + tails transcript JSONL, parses per-turn usage          | 0     |
+| `store`    | SQLite (pure Go), embedded migrations                              | 0     |
+| `rollup`   | Event → `session_stats` / `daily_stats`; cost via pricing table    | 0     |
+| `api`      | REST + WebSocket fan-out, serves the embedded UI                   | 0     |
+| `ui`       | React + Vite SPA, `go:embed`-ded                                   | 0     |
+| `ptyman`   | Spawn / stream / write / resize / kill PTY sessions                | 1     |
+| `ptyhost`  | Per-session terminal holder that outlives the daemon (ADR-033)     | 1     |
+| `hive`     | Hive dir layout, atomic file ops, single-committer git, ledger     | 2     |
+| `router`   | Mailbox delivery outbox → inbox, ledger append, `mail.*` events    | 2     |
+| `orchestr` | Orchestrator lifecycle, Stop-loop, verification runner, approvals  | 2     |
+| `service`  | Autostart: launchd agent / systemd user unit / Startup script      | —     |
+| `userenv`  | The login-shell environment spawned processes start with           | 1     |
+| `logcap`   | Keeps the daemon's log file bounded (rotate at 64MB, keep one)     | —     |
+| `remote`   | The relay channel: host for phones and computers, client to others | 1     |
+| `peers`    | The other computers this one reaches, and a channel to each        | 1     |
 
 **A process Caprock starts gets the user's environment, not the daemon's.** A
 daemon started at login by launchd holds ten variables and
@@ -118,13 +132,51 @@ profile sees `CAPROCK_RESOLVING_ENVIRONMENT=1` and can skip interactive-only
 work. `CAPROCK_DATA_DIR` stays pinned to the daemon's value. Spawned sessions
 (`internal/agents`) and verification commands (`internal/board`) both use it;
 Windows keeps the daemon's environment, which the registry already built.
-A session or shell with no locale of its own (none of `LC_ALL`, `LC_CTYPE`,
-`LANG` set) is given `LANG=en_US.UTF-8` on macOS and `LANG=C.UTF-8` on
-Linux (`agents.withUTF8Locale`), as Terminal.app and iTerm2 do before they
+Every process Caprock starts with no locale of its own (none of `LC_ALL`,
+`LC_CTYPE`, `LANG` set) is given `LANG=en_US.UTF-8` on macOS and
+`LANG=C.UTF-8` on Linux (`userenv.WithUTF8Locale`, applied by `Environ`;
+`userenv.EnsureProcessLocale` sets it on the daemon itself at start, so a
+child built from `os.Environ()` inherits it too), as Terminal.app and iTerm2 do before they
 start a shell: launchd sets none, a profile seldom does, and in the C locale
 bash showed a pasted "καλημέρα" as `\316\272…` while its bytes arrived
-intact (user report, 2026-10-11, a Russian paste). A locale the user set is
+intact (user report, 2026-10-11, a Russian paste), and an agent's `pbcopy`
+put a Russian line on the clipboard as Mac Roman garble (user report,
+2026-10-15). A locale the user set is
 left alone; Windows gets nothing, ConPTY being UTF-8 already.
+
+### Other computers
+
+**A daemon speaks for the user's other computers; the dashboard only ever
+talks to its own** ([ADR-067](08-decisions.md)). The path of one request:
+
+```
+dashboard ── loopback /v1/m/{B}/v1/… ──▶ daemon A (api.handleMachineProxy)
+   ── internal/peers ── remote.Client
+   ── Noise NK inside one WebSocket ──▶ relay ──▶ daemon B's remote.Host
+   ── B's own loopback, Via: 1.1 caprock-remote ──▶ B's API, gated as A's device token
+```
+
+B runs nothing for A that it does not run for a phone: A is one more client
+of its Host, with a device token. What is new on B is the kind of that
+device. A code *for a computer* (`caprock pair --computer`, `POST
+/v1/pair/code {kind: "machine"}`) pairs a device stored with `kind:
+"machine"` that waits, `pending`, until B's owner allows it by name — the
+dashboard's card (`ComputerAsks`), the prompt of `caprock pair --computer`,
+or `caprock machines allow` over SSH. Allowed, it passes the gate on
+`computerRoutes` (`internal/api/lanauth.go`), a superset of a phone
+controller's, and the handlers' phone limits (`phoneLimited`) do not apply
+to it; B's settings, pairing, doctor's stop, shutdown and update stay B's.
+Every socket a device opens is held by its id (`devsockets.go`) and closed
+with 1008 when it is removed or its role changes.
+
+On A, `internal/daemon/machines.go` opens the `peers.Manager` on first use;
+`machines.json` (0600) holds the computers A reaches, and a channel to one
+is open only while something needs it, closing after 90 s with nothing
+open. `/v1/machines` and the `/v1/m/{id}/{path…}` proxy (HTTP through
+`httputil.ReverseProxy` on the channel, WebSockets bridged message by
+message) are loopback-only and on no device's allowlist, so a phone paired
+with A never reaches B through it. The app's side is PR3 of ADR-067's
+Phase 1.
 
 ### Native terminals
 
@@ -204,6 +256,7 @@ This is where the incumbent bleeds users, so it is a hard requirement, not a nic
 - **Transcript JSONL** (`~/.claude/projects/…`). Gives the full message stream incl. per-turn token usage (input / output / cache read / cache write), model, text of assistant turns. Tailed by `ingest`. Latency: ~seconds. The observed on-disk shape (2026-08-18) is recorded in [03-contracts.md § Transcript JSONL](03-contracts.md#transcript-jsonl-observed-shape).
 - **Gemini telemetry** (`<data_dir>/gemini/<session_id>.otel.log`). Gemini CLI has no hooks Caprock can install and writes no transcript, but it writes OpenTelemetry, and `GEMINI_TELEMETRY_OUTFILE` makes it write to a file Caprock names — the counterpart of Claude Code's transcript. A spawned session gets telemetry switched on with prompts included (`GEMINI_TELEMETRY_LOG_PROMPTS=true`, ADR-027 as amended 2026-10-01); a tailer reads each file from a remembered offset and records `user_prompt` / `api_response` / `tool_call` as `turn.user` / `turn.assistant` / `tool.post`. Latency: ~seconds. Cache *writes* stay zero — Gemini reports reads and has no counterpart figure, and a column meaning "we do not know" is better empty ([ADR-027](08-decisions.md)).
 - **DeepSeek Harness transcripts** (`~/.dsh/sessions/<cwd>/<id>/session.v3.jsonl.zstd`). One append-only JSONL transcript per session, Zstandard-compressed, carrying the model, per-turn token usage (fresh input / cache read / output, reported separately), tool calls and prompts. Read by `internal/deepseek` the same way Codex's importer reads its rollouts — a poll that re-reads only changed files, keyed by the record's monotonic `seq`. Latency: poll cadence (5s), sessions are history rather than live. Cache *writes* stay zero — DSH reports reads and no write counterpart ([20-deepseek.md](20-deepseek.md)).
+- **Hermes Agent's state database** (`<hermes home>/state.db`: `$HERMES_HOME`, else `~/.hermes`, or `%LOCALAPPDATA%\hermes` on native Windows). SQLite in WAL mode; `sessions` carries cumulative tokens, Hermes's estimated and actual cost with their status and source, `source` (cli, cron, telegram…), `parent_session_id`, `cwd`, `git_branch`; `messages` carries the text and tool calls. Read by `internal/hermes`, `mode=ro`, every five seconds; see [24-hermes.md](24-hermes.md).
 - **PTY bytes.** Raw terminal for the detail view; also fallback signal when hooks aren't installed. Latency: real-time. Deliberately not parsed for figures: it is a picture of a redrawing TUI, and token counts guessed from rendered text would break on the agent's next release.
 
 Cost = token usage × pricing table (the spec says "ported from Caprock"; in practice the table is authored from the Anthropic pricing page and the cache-savings *formula* is what ports from Caprock-python — [ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson), [03-contracts.md § Pricing table](03-contracts.md#pricing-table)). Cache hit-rate math also ports from Caprock.
@@ -248,7 +301,7 @@ Every producer writes through one path — `internal/rollup.Recorder.Record` —
 
 Rule: ≥ K `tool.pre` events with the same tool + normalized-similar input within T minutes → banner + optional auto-pause. Defaults **K=5, T=3**, configurable (`config.json`: `loop_k`, `loop_t_minutes`). **Read-only tools are excluded** — `Read`, `Glob`, `Grep`, `ToolSearch`, `NotebookRead` — because repeating one is ordinary work rather than a loop: measured over 64,733 real tool calls, the detector fired 436 times and 236 of those (54%) were a repeated `Read` of a single file, from re-reading after an edit or while searching. A tool call is billed at $0, so none of those alerts could have been about the budget this feature exists to protect, and an alert that cannot be about the budget is noise competing with the ones that can. Excluding them cut the alert count on that history from 436 to 174. Emits an `alert` frame on the live WebSocket. This is the "session in a loop drains your budget" killer feature. Auto-pause is Phase 1 and applies to owned sessions only — see [09-execution-plan.md § Phase 1](09-execution-plan.md#phase-1--control).
 
-Implementation notes (`internal/loop`): "normalized-similar" = same tool + `tool_input` with numbers, hex hashes, temp paths and whitespace collapsed and free-text bodies (`content`, `old_string`, `new_string`) truncated to their first 200 chars, hashed into a signature; `description`/`timeout` are ignored. One alert per *episode*: after firing, the same signature stays silent while the loop continues and re-arms once it has been quiet for T. Backfilled history never raises alerts (events older than T are skipped). The Now card flips to `looping?` while an alert is younger than T.
+Implementation notes (`internal/loop`): "normalized-similar" = same tool + `tool_input` with numbers, hex hashes, temp paths and whitespace collapsed and free-text bodies (`content`, `old_string`, `new_string`) truncated to their first 200 chars, hashed into a signature; `description`/`timeout` are ignored. One alert per *episode*: after firing, the same signature stays silent while the loop continues and re-arms once it has been quiet for T. Backfilled history never raises alerts (events older than T are skipped). The Now card flips to `looping?` while an alert is younger than T. **Each thread counts apart**: the session's main thread, and each of its subagents (an `agent_id`, or `sidechain: true` without one — `event.Subagent`), keep separate windows. A subagent's calls arrive under the parent's session id, and until 2026-10-15 they shared its window: a parent and two subagents making the same edit, three each, read as nine repeats and flagged the parent. A subagent that repeats itself K times still raises the alert, on the session it works for. The Week card's longest loop replays history by the same lanes (`scanLoopSeries`).
 
 ## Session lifecycle
 
@@ -360,6 +413,8 @@ internal/slashcmd/    # the slash commands an agent offers in a folder, for the 
 internal/alerts/      # when the phone hears about a session, and the message it reads (ADR-036)
 internal/brain/       # Second Brain's automatic extraction: finished sessions read by the user's own `claude -p`, memories kept with provenance (ADR-063)
 internal/templates/   # new project from a template: the user's own list, their gh or a local copy, the brief committed (ADR-065)
+internal/remote/      # access from anywhere (ADR-058): Noise NK, the frame protocol, the Host phones and computers reach, the Client this daemon reaches other computers with (ADR-067); relaysrv/ is `caprock remote relay`
+internal/peers/       # the computers this machine reaches (ADR-067): machines.json (0600), pairing by link, requests and sockets carried as the paired device, Leave
 internal/telegram/    # the owner's own bot: Bot API client, long-poll reader, paced outbox, the two-way bridge (ADR-047) — Control
 internal/ptyhost/     # `caprock pty-host`: one process per owned session holding its PTY, so it outlives the daemon (ADR-033); orphan verdicts — Control
 internal/keepawake/   # keeps the computer from idle-sleeping while agents work: modes, keeper, per-OS holders (ADR-049)

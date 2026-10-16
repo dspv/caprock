@@ -1,22 +1,29 @@
 /**
  * The release plan (.ai/04-ui.md § Release plan; lib/releaseplan.ts): a
  * repository's next version as a heading — its hover says how it was
- * predicted — then a row per piece of work: its number and title, a bar of
- * ten blocks filled to its step, the stage word; then what comes later. The
- * bars sit in one aligned column, as in the text report the owner asked to
- * see as a view (2026-10-15):
+ * predicted — then a row per piece of work: its number and title, a bar of a
+ * named segment per step filled to its step, the stage word, and as width
+ * allows what it waits for, its age and its CI per OS; then what comes
+ * later. The bars sit in one aligned column, as in the text report the owner
+ * asked to see as a view (2026-10-15):
  *
  *   0.120.0
- *     #656 brain: agents → shared brain   ▓▓▓▓▓▓▓▓░░  merged
- *     #659 sidebar footer edge            ▓▓▓▓▓▓░░░░  CI
- *     Second Brain live build             ▓▓░░░░░░░░  agent
+ *     #656 brain: agents → shared brain   ▓▓▓▓░  merged  a release         5h
+ *     #659 sidebar footer edge            ▓▓▓░░  CI      CI on Windows · 6m  19h  ● ● ●
+ *     Second Brain live build             ▓░░░░  agent   the agent · 3 of 7  40m
  *
- * Drawn on the Pipeline page, in the right panel (`compact`) and as the Work
- * page's Release view. It reads nothing itself.
+ * The bar grows with the row (owner, 2026-10-16, translated: "a lot of empty
+ * space wasted — make it bigger, or add some indicator"); the extra columns
+ * drop off first as the container narrows (a container query), never a
+ * sideways scroll.
+ *
+ * Drawn on the Pipeline page, in the right panel (`compact`), as the Work
+ * page's Release view, and on the phone home (`phone`: components/
+ * PhoneReleases). It reads nothing itself.
  */
 import { useMemo, type ReactNode } from 'react'
 import type { SessionCIStats } from '@/lib/api'
-import { BLOCKS, planEmpty, planForRepo, type PlanRow, type ReleasePlanData } from '@/lib/releaseplan'
+import { BLOCKS, planEmpty, planForRepo, type OSDot, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { changesRelease, useWork } from '@/lib/useWork'
 import { useNow } from '@/lib/useNow'
 import { pipelineHref, STEPS } from '@/lib/work'
@@ -34,9 +41,16 @@ export interface ReleasePlanProps {
   onOpen?: (number: number) => void
   /** Said when there is nothing to plan; absent, nothing is drawn. */
   empty?: ReactNode
+  /**
+   * The phone's size (390px): a row is a 44px tap target with its title on
+   * one line and the bar and word under it, so every bar starts at the same
+   * left edge whatever the title; a pull request row opens the pull request
+   * on GitHub. Takes over `compact` and `onOpen`.
+   */
+  phone?: boolean
 }
 
-export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, empty }: ReleasePlanProps) {
+export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, empty, phone = false }: ReleasePlanProps) {
   const nothing = plan.rows.length === 0 && plan.later.length === 0
   if (nothing && !plan.next && !empty) return null
   const v = plan.next?.version
@@ -44,17 +58,19 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
     <section data-release-plan={plan.name} aria-label={`${plan.name}: next release`} className="grid min-w-0 gap-1.5">
       <header className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
         <h3 data-release-version={v ?? ''} title={plan.next?.title ?? 'No changelog entries read for this repository, so no version is predicted.'}
-          className={`num cursor-help font-semibold text-fg ${compact ? 'text-[13px]' : 'text-[16px] tracking-[-0.01em]'}`}>
+          className={`num font-semibold text-fg ${phone ? 'text-[17px] tracking-[-0.01em]' : compact ? 'cursor-help text-[13px]' : 'cursor-help text-[16px] tracking-[-0.01em]'}`}>
           {v ?? 'Next release'}
         </h3>
-        {v && <span className={`text-fg-faint ${compact ? 'text-[10.5px]' : 'text-[11px] uppercase tracking-[0.1em]'}`}>{compact ? 'next' : 'next release'}</span>}
+        {v && <span className={`text-fg-faint ${compact && !phone ? 'text-[10.5px]' : 'text-[11px] uppercase tracking-[0.1em]'}`}>{compact && !phone ? 'next' : 'next release'}</span>}
         {showRepo && <span className="min-w-0 truncate text-[13px] font-medium text-fg-muted" title={plan.root}>{plan.name}</span>}
         {plan.since && (
-          <span data-release-since title={plan.since.title} className={`num min-w-0 text-fg-muted [overflow-wrap:anywhere] ${compact ? 'basis-full text-[11px]' : 'text-[12.5px]'}`}>{plan.since.text}</span>
+          <span data-release-since title={plan.since.title} className={`num min-w-0 text-fg-muted [overflow-wrap:anywhere] ${phone ? 'basis-full text-[12.5px]' : compact ? 'basis-full text-[11px]' : 'text-[12.5px]'}`}>{plan.since.text}</span>
         )}
       </header>
       {nothing ? (
-        <p className={`text-fg-muted ${compact ? 'text-[11.5px]' : 'text-[12.5px]'}`}>{empty ?? 'Nothing waiting for a release.'}</p>
+        <p className={`text-fg-muted ${phone ? 'text-[14px]' : compact ? 'text-[11.5px]' : 'text-[12.5px]'}`}>{empty ?? 'Nothing waiting for a release.'}</p>
+      ) : phone ? (
+        <PhoneRows plan={plan} />
       ) : (
         <Rows plan={plan} compact={compact} onOpen={onOpen} />
       )}
@@ -64,32 +80,125 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
 
 /**
  * Every row, the next release's and later's, in one grid, so every bar and
- * word lines up whatever the title's length: the bars stand right after the
- * longest title, as in the text report, and in the narrow right panel the
- * titles take what is left and are cut.
+ * column lines up whatever the title's length. The title and the bar share
+ * the width the other columns leave (1.4 : 1, so the bar is never past ~40%
+ * of the row; the cockpit's 2.2 : 1), and the columns beside the word come
+ * in as the container widens — what it waits for at 520px, the agent cost
+ * at 600px, CI per OS at 680px, the CI time at 760px, the age at 840px — so
+ * a narrow panel drops the age first and what it waits for last. No column
+ * gap: each cell after the title carries its own left padding, so a column
+ * no row fills is zero wide.
  */
 function Rows({ plan, compact, onOpen }: { plan: ReleasePlanData; compact: boolean; onOpen?: (n: number) => void }) {
+  const size = compact ? 'text-[11px]' : 'text-[12px]'
   const row = (r: PlanRow) => (
-    <li key={r.key} data-release-row={r.number ?? r.key} data-stage={r.stage} className="col-span-3 grid min-w-0 grid-cols-subgrid items-center">
+    <li key={r.key} data-release-row={r.number ?? r.key} data-stage={r.stage} className="col-span-full grid min-w-0 grid-cols-subgrid items-center">
       <Title row={r} root={plan.root} compact={compact} onOpen={onOpen} />
-      <Blocks row={r} compact={compact} />
-      <span data-release-word title={r.wordTitle}
-        className={`whitespace-nowrap ${compact ? 'text-[11px]' : 'text-[12px]'} ${r.red ? 'font-medium text-danger' : r.warn ? 'font-medium text-warn' : r.stage === 'merged' ? 'text-merged' : 'text-fg-muted'}`}>
-        {r.word}
+      <span className="min-w-0 pl-3"><Blocks row={r} compact={compact} /></span>
+      <Word row={r} className={`whitespace-nowrap pl-3 ${size}`} />
+      <span data-release-col="wait" className="hidden min-w-0 @[520px]/plan:block">{r.wait && <WaitFor wait={r.wait} compact={compact} />}</span>
+      <span data-release-col="citime" className="hidden @[760px]/plan:block">
+        {r.ciTime && <span data-release-citime title={r.ciTime.title} className={`num block whitespace-nowrap pl-3 text-right ${size} ${r.ciTime.tone === 'warn' ? 'text-warn' : 'text-fg-muted'}`}>{r.ciTime.text}</span>}
+      </span>
+      <span data-release-col="ci" className="hidden @[680px]/plan:block">{r.ci && <OSDots dots={r.ci} />}</span>
+      <span data-release-col="cost" className="hidden @[600px]/plan:block">
+        <span data-release-cost title={r.cost.title} className={`num block whitespace-nowrap pl-3 text-right ${size} ${r.cost.known ? 'text-fg-muted' : 'text-fg-faint'}`}>{r.cost.text}</span>
+      </span>
+      <span data-release-col="age" className="hidden @[840px]/plan:block">
+        {r.age && <span data-release-age title={r.age.title} className={`num block whitespace-nowrap pl-3 text-right text-fg-faint ${size}`}>{r.age.text}</span>}
       </span>
     </li>
   )
   return (
-    <ul className={`grid min-w-0 items-center gap-x-3 ${compact ? 'grid-cols-[minmax(0,1fr)_auto_auto] gap-y-[3px] text-[12px]' : 'w-fit max-w-full grid-cols-[minmax(0,max-content)_auto_auto] gap-y-1 text-[13px]'}`}>
+    <div className="@container/plan min-w-0">
+      <ul data-release-rows className={`grid min-w-0 items-center ${compact
+        ? 'grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_auto] gap-y-[3px] text-[12px] @[520px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(2,auto)] @[600px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(3,auto)] @[680px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(4,auto)] @[760px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(5,auto)] @[840px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(6,auto)]'
+        : 'grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_auto] gap-y-1 text-[13px] @[520px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(2,auto)] @[600px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(3,auto)] @[680px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(4,auto)] @[760px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(5,auto)] @[840px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(6,auto)]'}`}>
+        {plan.rows.map(row)}
+        {plan.later.map((g) => [
+          <li key={`later:${g.key}`} data-release-later={g.key}
+            className={`col-span-full pt-1.5 font-semibold uppercase tracking-[0.08em] text-fg-faint ${compact ? 'text-[10px]' : 'text-[10.5px]'}`}>
+            Later · {g.label}
+          </li>,
+          ...g.rows.map(row),
+        ])}
+      </ul>
+    </div>
+  )
+}
+
+/** What a row waits for now, cut to its column; the whole of it and where it comes from on hover. */
+function WaitFor({ wait: w, compact }: { wait: Wait; compact: boolean }) {
+  return (
+    <span data-release-wait title={w.title}
+      className={`block max-w-[18rem] truncate pl-3 ${compact ? 'text-[11px]' : 'text-[12px]'} ${w.tone === 'danger' ? 'text-danger' : w.tone === 'warn' ? 'text-warn' : 'text-fg-muted'}`}>
+      {w.text}
+    </span>
+  )
+}
+
+const DOT_TONE: Record<OSDot['state'], string> = { pass: 'bg-ok', fail: 'bg-danger', running: 'bg-accent release-step-pulse' }
+
+/** A dot per OS its checks ran on, macOS · Linux · Windows, each named on hover. */
+function OSDots({ dots }: { dots: OSDot[] }) {
+  return (
+    <span data-release-ci role="img" aria-label={`CI: ${dots.map((d) => d.title).join('; ')}`} className="flex items-center gap-[5px] pl-3">
+      {dots.map((d) => <span key={d.os} data-os={d.os} data-os-state={d.state} title={d.title} className={`h-[7px] w-[7px] rounded-full ${DOT_TONE[d.state]}`} />)}
+    </span>
+  )
+}
+
+/**
+ * The phone's rows: one per piece of work, its title on the first line (cut,
+ * the whole of it on the second line's hover) and the bar, the stage word
+ * and what it waits for (cut) on the second, so the bars stand in one column
+ * at the left edge at any width. A pull request row is a link to it on GitHub, the whole row its target.
+ */
+function PhoneRows({ plan }: { plan: ReleasePlanData }) {
+  const row = (r: PlanRow) => {
+    const body = (
+      <>
+        <span className="flex min-w-0 items-baseline text-[14px] leading-[1.3]">
+          {r.number ? <span className="num mr-1.5 shrink-0 text-fg-muted">#{r.number}</span> : null}
+          <span className="min-w-0 truncate text-fg">{r.title}</span>
+        </span>
+        <span className="flex min-w-0 items-center gap-2.5">
+          <Blocks row={r} phone />
+          <Word row={r} className="shrink-0 whitespace-nowrap text-[12.5px]" />
+          {r.wait && <span data-release-wait title={r.wait.title} className={`min-w-0 truncate text-[12.5px] ${r.wait.tone === 'danger' ? 'text-danger' : r.wait.tone === 'warn' ? 'text-warn' : 'text-fg-faint'}`}>{r.wait.text}</span>}
+        </span>
+      </>
+    )
+    const cls = 'grid min-h-11 min-w-0 content-center gap-1 px-3 py-2'
+    return (
+      <li key={r.key} data-release-row={r.number ?? r.key} data-stage={r.stage} className="min-w-0 border-b border-border last:border-b-0">
+        {r.url
+          ? <a href={r.url} target="_blank" rel="noopener noreferrer" title={r.title} className={`${cls} text-fg no-underline active:bg-panel-2`}>{body}</a>
+          : <div title={r.title} className={cls}>{body}</div>}
+      </li>
+    )
+  }
+  return (
+    <ul data-release-phone className="-mx-3 min-w-0 border-t border-border">
       {plan.rows.map(row)}
       {plan.later.map((g) => [
         <li key={`later:${g.key}`} data-release-later={g.key}
-          className={`col-span-3 pt-1.5 font-semibold uppercase tracking-[0.08em] text-fg-faint ${compact ? 'text-[10px]' : 'text-[10.5px]'}`}>
+          className="border-b border-border px-3 pb-1.5 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-faint last:border-b-0">
           Later · {g.label}
         </li>,
         ...g.rows.map(row),
       ])}
     </ul>
+  )
+}
+
+/** The stage word, in the colour its step is drawn in. */
+function Word({ row: r, className }: { row: PlanRow; className: string }) {
+  return (
+    <span data-release-word title={r.wordTitle}
+      className={`${className} ${r.red ? 'font-medium text-danger' : r.warn ? 'font-medium text-warn' : r.stage === 'merged' ? 'text-merged' : 'text-fg-muted'}`}>
+      {r.word}
+    </span>
   )
 }
 
@@ -106,23 +215,40 @@ function Title({ row: r, root, compact, onOpen }: { row: PlanRow; root: string; 
   return <a href={pipelineHref(root, r.number)} title={r.title} className={cls}>{text}</a>
 }
 
+const STEP_NAME: Record<(typeof STEPS)[number], string> = { agent: 'Agent', PR: 'Pull request', CI: 'CI', merged: 'Merged', released: 'Released' }
+const STEP_SAYS: Record<StepState, string> = { done: 'done', now: 'under way', red: 'failed', warn: 'waits on you', off: 'to come' }
+export type StepState = 'done' | 'now' | 'red' | 'warn' | 'off'
+
+/** Each step's state on a row's bar: done up to the one it is on, that one red, amber or under way when it is. */
+export function stepStates(r: Pick<PlanRow, 'filled' | 'red' | 'warn' | 'running'>): StepState[] {
+  const on = Math.round(r.filled / (BLOCKS / STEPS.length))
+  return STEPS.map((_, i) => {
+    if (i >= on) return 'off'
+    if (i < on - 1) return 'done'
+    return r.red ? 'red' : r.warn ? 'warn' : r.running ? 'now' : 'done'
+  })
+}
+
 /**
- * Ten blocks, two per step (agent, PR, CI, merged, released): filled to the
- * step it is on, the step's two red when it failed, amber when a landing
- * label waits on the person; merged rows in the merged colour.
+ * A segment per step (agent, PR, CI, merged, released), each named on hover:
+ * filled to the step it is on, that step red when it failed, amber when a
+ * landing label waits on the person, pulsing softly while it is under way
+ * (CI running, an agent at work); merged rows in the merged colour. On a
+ * page it fills its column, so it grows with the row; on the phone it is a
+ * fixed width.
  */
-export function Blocks({ row: r, compact = false }: { row: PlanRow; compact?: boolean }) {
-  const per = BLOCKS / STEPS.length
-  const stepStart = r.filled - per
+export function Blocks({ row: r, compact = false, phone = false }: { row: PlanRow; compact?: boolean; phone?: boolean }) {
+  const states = stepStates(r)
   const tone = r.stage === 'merged' ? 'bg-merged' : 'bg-accent'
+  const on = states.filter((s) => s !== 'off').length
   return (
-    <span data-release-bar role="img" aria-label={`${r.filled / per} of ${STEPS.length} steps: ${r.word}`}
-      title={`${STEPS.join(' → ')}: ${r.word}`} className="flex shrink-0 items-center gap-[2px]">
-      {Array.from({ length: BLOCKS }, (_, i) => {
-        const on = i < r.filled
-        const last = on && i >= stepStart
-        const color = !on ? 'bg-border-strong' : last && r.red ? 'bg-danger' : last && r.warn ? 'bg-warn' : tone
-        return <span key={i} data-block={on ? (last && r.red ? 'red' : last && r.warn ? 'warn' : 'on') : 'off'} className={`${compact ? 'h-[8px] w-[5px]' : 'h-[10px] w-[7px]'} rounded-[1.5px] ${color}`} />
+    <span data-release-bar role="img" aria-label={`${on} of ${STEPS.length} steps: ${r.word}`}
+      className={`flex items-center gap-[3px] ${phone ? 'shrink-0' : 'w-full'}`}>
+      {STEPS.map((step, i) => {
+        const s = states[i]!
+        const color = s === 'off' ? 'bg-border-strong' : s === 'red' ? 'bg-danger' : s === 'warn' ? 'bg-warn' : tone
+        return <span key={step} data-step={step} data-step-state={s} title={`${STEP_NAME[step]}: ${STEP_SAYS[s]}${s === 'off' || s === 'done' ? '' : ` — ${r.word}`}`}
+          className={`${phone ? 'h-[10px] w-[16px]' : compact ? 'h-[7px] min-w-[8px] flex-1' : 'h-[9px] min-w-[12px] flex-1'} rounded-[2px] ${color}${s === 'now' ? ' release-step-pulse' : ''}`} />
       })}
     </span>
   )
