@@ -112,13 +112,15 @@ export function EndSheet({ sessionId, title, onClose, onEnded }: { sessionId: st
   )
 }
 
-export const ROW_MENU_ITEM = 'flex min-h-11 w-full items-center px-4 text-left text-[15px] text-fg active:bg-panel-2 hover:bg-panel-2'
+/** A row menu's item without its colour: two text colours in one class list leave the winner to the stylesheet's order. */
+export const ROW_MENU_BASE = 'flex min-h-11 w-full items-center px-4 text-left text-[15px] active:bg-panel-2 hover:bg-panel-2'
+export const ROW_MENU_ITEM = `${ROW_MENU_BASE} text-fg`
 
 /** End in a row's menu: the item, or the one line that says why not. */
 export function EndMenuItem({ state, onEnd }: { state: EndState; onEnd: () => void }) {
   if (!state) return null
   if (state.can) {
-    return <button type="button" role="menuitem" data-row-end className={`${ROW_MENU_ITEM} font-medium text-danger`} onClick={onEnd}>End session…</button>
+    return <button type="button" role="menuitem" data-row-end className={`${ROW_MENU_BASE} font-medium text-danger`} onClick={onEnd}>End session…</button>
   }
   return <p data-row-end-why className="px-4 py-2 text-[13px] leading-snug text-fg-muted">{state.why}</p>
 }

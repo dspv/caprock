@@ -26,7 +26,7 @@ import { useNow } from '@/lib/useNow'
 import { ModelChip, useChatChoice } from '@/components/ChatStart'
 import { AgentGlyph } from '@/components/AgentMarks'
 import { ChatIcon, PlusIcon, SearchIcon } from '@/components/AppIcons'
-import { EndableRow, ROW_MENU_ITEM as MENU_ITEM, useEndedHere } from '@/components/PhoneEnd'
+import { EndableRow, ROW_MENU_BASE, ROW_MENU_ITEM as MENU_ITEM, useEndedHere } from '@/components/PhoneEnd'
 
 /** How many chats one page lists; the count says how many there are. */
 const PAGE = 100
@@ -194,9 +194,9 @@ function ChatRow({ s, now, canControl, onGone, onChanged, onEnded }: { s: Sessio
         {s.archived_at ? 'Move back to Chats' : 'Archive'}
       </button>
       {!confirm ? (
-        <button type="button" role="menuitem" className={`${MENU_ITEM} text-danger`} onClick={() => setConfirm(true)}>Delete…</button>
+        <button type="button" role="menuitem" className={`${ROW_MENU_BASE} text-danger`} onClick={() => setConfirm(true)}>Delete…</button>
       ) : (
-        <button type="button" role="menuitem" className={`${MENU_ITEM} font-semibold text-danger`} onClick={() => { close(); void act(() => api.deleteChat(s.session_id), onGone) }}>
+        <button type="button" role="menuitem" className={`${ROW_MENU_BASE} font-semibold text-danger`} onClick={() => { close(); void act(() => api.deleteChat(s.session_id), onGone) }}>
           Delete for good — and its files
         </button>
       )}

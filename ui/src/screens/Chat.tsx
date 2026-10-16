@@ -159,7 +159,7 @@ export function ChatScreen({ id }: { id: string }) {
         <ChatSheet title={title} onClose={() => setSheet(null)}>
           <div className="grid gap-2">
             {ending?.can && (
-              <button type="button" data-chat-end className={`${SHEET_BTN} font-medium text-danger`} onClick={() => { setSheet(null); setEndSheet(true) }}>End this chat…</button>
+              <button type="button" data-chat-end className={`${SHEET_BASE} font-medium text-danger`} onClick={() => { setSheet(null); setEndSheet(true) }}>End this chat…</button>
             )}
             {ending && !ending.can && <p data-chat-end-why className="text-[14px] leading-snug text-fg-muted"><span className="font-medium text-fg">End</span> · {ending.why}</p>}
             {canControl && <>
@@ -168,9 +168,9 @@ export function ChatScreen({ id }: { id: string }) {
               {s.archived_at ? 'Move back to Chats' : 'Archive — hide it from Chats'}
             </button>
             {!confirm ? (
-              <button type="button" className={`${SHEET_BTN} text-danger`} onClick={() => setConfirm(true)}>Delete…</button>
+              <button type="button" className={`${SHEET_BASE} text-danger`} onClick={() => setConfirm(true)}>Delete…</button>
             ) : (
-              <button type="button" disabled={busy} className={`${SHEET_BTN} border-danger font-semibold text-danger`} onClick={() => void act(() => api.deleteChat(id), () => { setSheet(null); navigate({ name: 'chats' }) })}>
+              <button type="button" disabled={busy} className={`${SHEET_BASE} border-danger font-semibold text-danger`} onClick={() => void act(() => api.deleteChat(id), () => { setSheet(null); navigate({ name: 'chats' }) })}>
                 {busy ? 'Deleting…' : `Delete for good, with its ${n === 1 ? 'file' : `${n} files`}`}
               </button>
             )}
@@ -185,4 +185,6 @@ export function ChatScreen({ id }: { id: string }) {
   )
 }
 
-const SHEET_BTN = 'min-h-12 w-full rounded-[12px] border border-border-strong bg-bg px-4 text-left text-[16px] text-fg disabled:opacity-60'
+// The colour is apart: two text colours in one class list leave the winner to the stylesheet's order.
+const SHEET_BASE = 'min-h-12 w-full rounded-[12px] border border-border-strong bg-bg px-4 text-left text-[16px] disabled:opacity-60'
+const SHEET_BTN = `${SHEET_BASE} text-fg`
