@@ -308,6 +308,9 @@ type stream struct {
 	head   *reqHead
 	ws     *websocket.Conn
 	part   bytes.Buffer // a WebSocket message from the phone, until its last part
+	// shut is set once a write to ws failed: the socket is closing, so what
+	// the phone sends next is dropped at once rather than written into it.
+	shut bool
 }
 
 func (h *Host) newPhone(ctx context.Context, rc *relayConn, conn uint32) *phone {
@@ -471,7 +474,7 @@ func (p *phone) dispatch(kind byte, id uint32, body []byte) {
 		go p.serveHTTP(s.ctx, id, head, reqBody)
 	case KindWSPart, KindWSText, KindWSBinary:
 		ws := p.socket(s)
-		if ws == nil {
+		if ws == nil || s.shut {
 			return
 		}
 		if s.part.Len()+len(body) > maxWSMessage {
@@ -490,14 +493,19 @@ func (p *phone) dispatch(kind byte, id uint32, body []byte) {
 		msg := append([]byte(nil), s.part.Bytes()...)
 		s.part.Reset()
 		wctx, cancel := context.WithTimeout(p.ctx, 30*time.Second)
-		_ = ws.Write(wctx, typ, msg)
+		if ws.Write(wctx, typ, msg) != nil {
+			s.shut = true
+		}
 		cancel()
 		// A failed write does not end the stream here. The socket is closing
 		// (the daemon closed it: a revoke is 1008) or the write timed out,
 		// which closes it; either way openWS's reader ends next and tells the
 		// other end the real code. Finishing here cancelled that reader
 		// first, and the close was never sent: a revoked device's terminal
-		// stayed open (TestASocketClosedWhileTypingSaysWhy).
+		// stayed open (TestASocketClosedWhileTypingSaysWhy). Writing every
+		// later keystroke into the closing socket instead held this loop
+		// until the phone's queue overflowed and the whole channel was hung
+		// up, so after one failure the stream only waits for its reader.
 	case KindWSClose:
 		if ws := p.socket(s); ws != nil {
 			var cl wsClose
