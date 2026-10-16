@@ -2184,7 +2184,7 @@ kept by the remembered pick.
 
 **Date:** 2026-10-06 · **Status:** accepted (owner asked for it: "no
 convenient seamless app update" was what bothered him most, translated) ·
-**Amended:** 2026-10-15 (hourly checks, Update automatically; below)
+**Amended:** 2026-10-15 (hourly checks, Update automatically; below), 2026-10-16 (every 15 minutes and on focus; below)
 
 **Context.** Until now the app named the command for how it was installed
 (F12) and never replaced itself: a Homebrew user ran `brew upgrade --cask`,
@@ -2316,6 +2316,22 @@ out.
   itself, and only the app's page acts on `app_update`; a `.deb`, `.rpm`,
   development or translocated app still cannot update itself and shows no
   choice.
+
+**Amended 2026-10-16: every 15 minutes, and on focus.** The owner asked
+(translated): "why isn't the update highlighted when there is an update?"
+— 0.124.0 had been published for twelve minutes and his 0.123.1 app said
+nothing, because the hourly check had not fallen due. The background check
+is now due every 15 minutes (`update.Interval`), and when the main window
+gains focus or is shown the page asks for one more
+(`POST /v1/update/check?soon=1`), run only if the last check is ten minutes
+old (`update.SoonInterval`, held by the page and by the daemon, on one
+shared last-checked time). Unforced checks therefore never exceed one per
+ten minutes; **Check now** and **Check for Updates…** are still forced. It
+is the same conditional request (an unchanged release is a `304` with no
+body, not counted against GitHub's rate limit), still off until switched on,
+and nothing new is sent. The answer to any check is said in the status
+strip beside the version, where the owner looks for it, not in a banner at
+the top (04-ui.md § Update notice).
 
 ## ADR-044 — Sessions answer for themselves to macOS privacy prompts; background reads skip every guarded place
 

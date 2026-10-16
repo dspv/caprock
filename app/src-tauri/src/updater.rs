@@ -2,7 +2,9 @@
 //! out" to the new app running, through `tauri-plugin-updater`.
 //!
 //! - **What tells us an update exists** is the daemon's release check
-//!   (`/v1/update`, off until the user turns it on, due hourly). The app
+//!   (`/v1/update`, off until the user turns it on, due every 15 minutes
+//!   and when the window comes to the front ten minutes after the last
+//!   one, `ui/src/lib/updatesoon.ts`). The app
 //!   makes no periodic request of its own: it fetches `latest.json` when
 //!   the user clicks **Update** or **Check for Updates…**, or — with
 //!   **Update automatically** chosen in Settings → Updates — once, when the

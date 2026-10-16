@@ -3,13 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UpdateStatus } from '@/lib/api'
 import { APP_UPDATE_EVENT, resetAppUpdate, type AppUpdateInfo } from '@/lib/appupdate'
 
-const h = vi.hoisted(() => ({ st: undefined as unknown, calls: 0 }))
+const h = vi.hoisted(() => ({ st: undefined as unknown, calls: 0, check: undefined as unknown as () => Promise<unknown> }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, update: async () => { h.calls++; return h.st } } }
+  return { ...actual, api: { ...actual.api, update: async () => { h.calls++; return h.st }, checkUpdate: () => h.check(), checkUpdateSoon: async () => h.st } }
 })
 
 import { AppUpdateNotice, upgradeCommands } from './AppUpdateNotice'
+import { checkByHand, resetCheckBanner } from '@/lib/checkbanner'
 
 const base: UpdateStatus = { enabled: true, current: 'v0.77.0', latest: 'v0.78.0', update_available: true, url: 'https://github.com/dspv/caprock/releases/latest' }
 
@@ -17,6 +18,7 @@ beforeEach(() => {
   localStorage.clear()
   h.calls = 0
   resetAppUpdate()
+  resetCheckBanner()
 })
 
 describe('the app update notice (F12)', () => {
@@ -44,6 +46,39 @@ describe('the app update notice (F12)', () => {
     h.st = { ...base, latest: 'v0.79.0' }
     render(<AppUpdateNotice />)
     expect(await screen.findByRole('button', { name: 'v0.79.0 is out' })).toBeTruthy()
+  })
+
+  it('answers Check now where the app cannot replace itself: checking, up to date for a moment, or the failure with Retry', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      h.st = { ...base, update_available: false, latest: 'v0.77.0' }
+      let answer: () => Promise<unknown> = async () => h.st
+      h.check = () => answer()
+      render(<AppUpdateNotice />)
+      await act(async () => { await Promise.resolve() })
+      let done!: (v: unknown) => void
+      answer = () => new Promise((r) => { done = r })
+      let p!: Promise<unknown>
+      act(() => { p = checkByHand() })
+      expect(screen.getByRole('status')).toHaveTextContent('Checking for updates…')
+      await act(async () => { done(h.st); await p })
+      expect(screen.getByRole('status')).toHaveTextContent('Caprock is up to date')
+      act(() => { vi.advanceTimersByTime(7000) })
+      expect(screen.queryByRole('status')).toBeNull()
+
+      answer = async () => { throw new Error('could not reach GitHub') }
+      await act(async () => { await checkByHand() })
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent("Couldn't check for updates")
+      expect(alert.getAttribute('title')).toBe('could not reach GitHub')
+      act(() => { vi.advanceTimersByTime(20_000) })
+      expect(screen.getByRole('alert')).toBeTruthy()
+      answer = async () => h.st
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry' })) })
+      expect(screen.getByRole('status')).toHaveTextContent('Caprock is up to date')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('says nothing while checks are off or nothing is newer', async () => {
@@ -127,6 +162,27 @@ describe('in the desktop app, one click (F20)', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('a failed check from the menu says so beside the version, with Retry — not as a failed install', async () => {
+    h.st = { ...base, update_available: false, latest: 'v0.77.0' }
+    render(<AppUpdateNotice />)
+    await act(async () => { await Promise.resolve() })
+    emit({ phase: 'checking' })
+    emit({ phase: 'failed', error: 'Could not reach GitHub' })
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't check for updates")
+    expect(screen.queryByText('Update failed')).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Retry' })) })
+    expect(invoke).toHaveBeenCalledWith('app_update_check', {})
+  })
+
+  it('an update on offer is an amber pill beside the version', async () => {
+    h.st = base
+    render(<AppUpdateNotice />)
+    const pill = await screen.findByRole('button', { name: 'Update to v0.78.0 — Restart' })
+    expect(pill.className).toContain('bg-accent/15')
+    expect(pill.hasAttribute('data-update-offer')).toBe(true)
   })
 
   it('a dismissed version is offered again when the user checks by hand', async () => {

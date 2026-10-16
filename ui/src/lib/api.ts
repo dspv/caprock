@@ -2070,6 +2070,8 @@ export const api = {
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),
+  /** The check a focused or shown window asks for: the daemon reaches GitHub only when its last check is 10+ minutes old. */
+  checkUpdateSoon: () => post<UpdateStatus>('/v1/update/check?soon=1', {}),
   updateBusy: () => get<UpdateBusy>('/v1/update/busy'),
   saveSettings: (s: Settings) => post<Settings>('/v1/settings', s, 'PUT'),
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>

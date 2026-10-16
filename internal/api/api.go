@@ -213,6 +213,10 @@ type Deps struct {
 type UpdateController interface {
 	Status(enabled bool, current string) update.Status
 	Check(ctx context.Context, force bool) error
+	// CheckSoon is the check a page asks for when its window comes to the
+	// front: it reaches the network only when the last check is ten minutes
+	// old (update.SoonInterval).
+	CheckSoon(ctx context.Context) error
 }
 
 // SettingsController is the subset of config handling the API needs. Values are
@@ -1408,6 +1412,9 @@ func (s *Server) handleUpdate(w http.ResponseWriter, _ *http.Request) {
 // handleUpdateCheck performs the check on demand. Refused outright when the
 // user has not enabled checks — the opt-in is enforced here, not just in the
 // UI, so no page and no script can make Caprock reach the network uninvited.
+// With ?soon=1 (the window was focused or shown) it is not forced: it runs
+// only when the last check is ten minutes old, and otherwise answers with
+// the cached status.
 func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	if s.d.Update == nil || s.d.Settings == nil {
 		s.failCode(w, http.StatusNotImplemented, errors.New("update checks are not available"))
@@ -1419,7 +1426,11 @@ func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	// A failed check is reported in the payload, not as an error status: not
 	// knowing about a release must not read as a broken dashboard.
-	_ = s.d.Update.Check(r.Context(), true)
+	if r.URL.Query().Get("soon") == "1" {
+		_ = s.d.Update.CheckSoon(r.Context())
+	} else {
+		_ = s.d.Update.Check(r.Context(), true)
+	}
 	writeJSON(w, http.StatusOK, s.d.Update.Status(true, s.d.Version))
 }
 

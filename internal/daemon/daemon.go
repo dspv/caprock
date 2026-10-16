@@ -1589,7 +1589,7 @@ func (d *Daemon) config() config.Config {
 }
 
 // updateTick is how often a long-running daemon asks whether a release check
-// is due. The checker's own MinInterval (update.Interval, an hour, measured on
+// is due. The checker's own MinInterval (update.Interval, 15 minutes, measured on
 // the wall clock) decides whether one is; the short tick is what makes a
 // check that fell due while the machine slept run within minutes of waking.
 // A tick that finds nothing due costs a mutex, no request.

@@ -1091,8 +1091,9 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   The notice was built on 2026-10-06: the status
   strip names the release and the command for each part Homebrew installed
   (the `caprock-app` cask, the `caprock` formula), dismissed per version; the
-  check runs at most hourly (every 6 hours until 2026-10-15), conditionally
-  ([04-ui.md § Update notice](04-ui.md#update-notice)).
+  check runs every 15 minutes and on focus (hourly from 2026-10-15, every
+  6 hours before), conditionally
+  ([04-ui.md § Update notice](04-ui.md#update-notice); § Updates).
   The `.dmg` opens on a branded window (`bundle.macOS.dmg` in
   `tauri.conf.json`, 2026-10-10): 660×400, caprock.dev's paper ground, the
   mark and wordmark, the app icon at (170, 196) and the Applications folder
@@ -2401,11 +2402,32 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   panel with the reason, **Try again** and the release page. The ▾ beside the
   button shows what is new and **Not now**, which hides that version (the
   same key as the dashboard banner).
+- **When a release is found** (owner 2026-10-16, translated: "why isn't
+  the update highlighted when there is an update?" — 0.124.0 was out for
+  twelve minutes and 0.123.1 showed nothing; then 0.124.1, published at
+  16:21:29 local time, was still not shown by 0.124.0 at 16:59 — its
+  daemon had last checked at 16:16:48, five minutes before the release, and
+  the hourly throttle held the next check to 17:16; the page then polled
+  `/v1/update` only every ten minutes). The daemon's check is due
+  every 15 minutes (`update.Interval`, a five-minute tick on the wall
+  clock), and when the main window gains focus or is shown the page asks
+  for one more (`POST /v1/update/check?soon=1`, `ui/src/lib/updatesoon.ts`)
+  — run only if the last check is ten minutes old (`update.SoonInterval`,
+  held by the page and again by the daemon). The two share one last-checked
+  time, so unforced checks never run more than once per ten minutes; a
+  failed one still waits 15 (`update.FailRetry`). The page reads
+  `/v1/update` every five minutes while visible and takes the focus
+  check's answer at once, so a release shows within minutes of the user
+  looking. Each is one conditional request to the same endpoint, only
+  while the release check is on.
 - **Checking by hand.** **Check for Updates…** in the macOS app menu and the
   tray menu, and *Check for updates* in the palette, fetch `latest.json`
   once, with or without the release check on: *Checking for updates…*, then
-  the offer, *Caprock is up to date* for 6 seconds, or the failure. A check by
-  hand answers even for a version the user dismissed.
+  the offer, *Caprock is up to date* for 6 seconds, or *Couldn't check for
+  updates* with **Retry** — all in the status strip beside the version,
+  never in a banner at the top (owner 2026-10-16: he looks for the answer
+  bottom right; [04-ui.md § Update notice](04-ui.md#update-notice)). A
+  check by hand answers even for a version the user dismissed.
 - **The first launch** asks once, in the app (never an OS dialog): *Check for
   updates automatically?*, **Yes** focused and highlighted. Yes turns on
   `update_checks`, which makes the daemon check at once; No changes nothing.

@@ -8,8 +8,13 @@
  *   or tray menu — that finds nothing newer shows *You're up to date*; one
  *   that fails shows the error with **Retry**. A newer version is the
  *   existing offer's to announce, so it shows nothing here.
- * - The hourly background check, and Update automatically's download,
+ * - The background check (every 15 minutes, and on focus), and Update
+ *   automatically's download,
  *   never show it.
+ *
+ * Where it is said: in the desktop app, the status strip beside the version
+ * (AppUpdateNotice, owner 2026-10-16: he looks for it bottom right); in the
+ * browser dashboard, which has no strip, the banner (UpdateCheckBanner).
  *
  * `checkByHand` runs the page's own checks and reports. A check started
  * from a menu is the shell's; components/UpdateCheckBanner reads its
@@ -22,6 +27,8 @@ import { appUpdate, appUpdateNow, newerVersion, v, type AppUpdateInfo } from './
 import { isTauri } from './appmode'
 
 export type CheckResult =
+  /** A check by hand is out (the status strip says *Checking for updates…*). */
+  | { kind: 'checking'; at: number }
   | { kind: 'up_to_date'; version: string; at: number }
   | { kind: 'failed'; error: string; at: number }
 
@@ -60,7 +67,7 @@ export function answerFor(daemon: UpdateStatus | Error, app: AppUpdateInfo | und
 /** Check now, as the user asked, and show the answer. Resolves to the daemon's status when it answered. */
 export async function checkByHand(): Promise<UpdateStatus | undefined> {
   inFlight++
-  reportCheck(null)
+  reportCheck({ kind: 'checking', at: Date.now() })
   try {
     const app = isTauri() && appUpdateNow()?.supported ? appUpdate.check() : Promise.resolve(undefined)
     const [daemon, info] = await Promise.all([

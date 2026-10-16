@@ -37,7 +37,7 @@ export function AppUpdateAsk() {
     >
       <p className="font-medium">Check for updates automatically?</p>
       <p className="text-[12px] leading-relaxed text-fg-muted">
-        Once an hour Caprock asks GitHub for the newest version number. Nothing about you or your work is sent,
+        Every 15 minutes, and when you come back to the window, Caprock asks GitHub for the newest version number. Nothing about you or your work is sent,
         and nothing installs until you click Update. Change it any time in Settings → Updates.
       </p>
       <div className="flex items-center justify-end gap-2">
