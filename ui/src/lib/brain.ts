@@ -129,13 +129,16 @@ export async function startBuilding(): Promise<void> {
 /**
  * The graph for a filter, re-read when it changes on the daemon. Re-reads are
  * spaced (`gapMs`), so an extraction adding eight memories reads once.
+ * `enabled` false reads nothing (a second read the screen needs only while
+ * filtered).
  */
-export function useBrainGraph(filter: BrainFilterQuery, gapMs = 400): { graph: BrainGraph | null; error: string; reload: () => void } {
+export function useBrainGraph(filter: BrainFilterQuery, gapMs = 400, enabled = true): { graph: BrainGraph | null; error: string; reload: () => void } {
   const [graph, setGraph] = useState<BrainGraph | null>(null)
   const [error, setError] = useState('')
-  const key = JSON.stringify(filter)
+  const key = enabled ? JSON.stringify(filter) : ''
   const seq = useRef(0)
   const reload = useCallback(() => {
+    if (!key) return
     const n = ++seq.current
     api.brain(JSON.parse(key) as BrainFilterQuery).then(
       (g) => { if (n === seq.current) { setGraph(g); setError('') } },

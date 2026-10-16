@@ -375,8 +375,21 @@ func TestAHandoffCarriesTheRepositorysSecondBrain(t *testing.T) {
 	if strings.Contains(tail, "Somebody else") || strings.Contains(tail, "Finding 0") {
 		t.Errorf("another repository's, or past the budget: %q", tail)
 	}
-	if n := utf8.RuneCountInString(tail); n > handoffBrainRunes+120 {
+	if n := utf8.RuneCountInString(tail); n > store.BrainHandoffRunes+120 {
 		t.Errorf("%d runes", n)
+	}
+
+	// The screen's "What your next session gets" is this pick, and says a
+	// handoff would be served: memory on, a passage two hours old.
+	picked, _, err := store.BrainHandoff(ctx, d.store.DB(), "caprock")
+	if err != nil || len(picked) != strings.Count(tail, "\n- ") {
+		t.Errorf("the endpoint's pick: %d (%v); the handoff carried %d", len(picked), err, strings.Count(tail, "\n- "))
+	}
+	if st := d.brainHandoffState(ctx, "caprock"); !st.On || st.LeftOffAt != now.Add(-2*time.Hour).UnixMilli() {
+		t.Errorf("state: %+v", st)
+	}
+	if st := d.brainHandoffState(ctx, "nowhere"); st.LeftOffAt != 0 {
+		t.Errorf("no passage, nothing served: %+v", st)
 	}
 
 	// The session handed them records how many, so the screen can count

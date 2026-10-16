@@ -18,12 +18,14 @@ const EDGE_WORD: Record<string, [string, string]> = {
   part_of: ['part of', 'includes'],
 }
 
-export function BrainDetail({ id, onSelect, onClose, editable }: {
+export function BrainDetail({ id, onSelect, onClose, editable, className = 'grid w-[360px]' }: {
   id: number
   onSelect: (id: number) => void
   onClose: () => void
   /** Writing the brain is the machine's; a paired device only reads. */
   editable: boolean
+  /** Its display and width: beside the graph, or a column's whole width. */
+  className?: string
 }) {
   const [data, setData] = useState<{ node: BrainNode; links: BrainLink[] } | null>(null)
   const [error, setError] = useState('')
@@ -39,7 +41,7 @@ export function BrainDetail({ id, onSelect, onClose, editable }: {
 
   if (gone) return null
   return (
-    <aside aria-label="Memory" data-brain-detail className="sticky top-3 grid max-h-[calc(100vh-7rem)] w-[360px] shrink-0 content-start gap-3 [&>*]:min-w-0 overflow-y-auto rounded-[var(--radius-panel)] border border-border bg-panel p-3">
+    <aside aria-label="Memory" data-brain-detail className={`sticky top-3 ${className} max-h-[calc(100vh-7rem)] shrink-0 content-start gap-3 [&>*]:min-w-0 overflow-y-auto rounded-[var(--radius-panel)] border border-border bg-panel p-3`}>
       <div className="flex items-start gap-2">
         {data && <span aria-hidden className="mt-[7px] inline-block h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: KIND_COLOR[data.node.kind] }} />}
         <div className="min-w-0 flex-1">

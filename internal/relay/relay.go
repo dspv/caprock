@@ -274,17 +274,7 @@ func quote(s string) string {
 
 // Clip cuts to n runes at a sentence boundary where one is near the end, so a
 // passage does not stop mid-word. The SessionStart handoff uses it too.
-func Clip(s string, n int) string {
-	if utf8.RuneCountInString(s) <= n {
-		return s
-	}
-	r := []rune(s)[:n]
-	cut := string(r)
-	if i := strings.LastIndexAny(cut, ".!?\n"); i > len(cut)*3/4 {
-		return strings.TrimSpace(cut[:i+1])
-	}
-	return strings.TrimSpace(cut) + "…"
-}
+func Clip(s string, n int) string { return store.ClipSentence(s, n) }
 
 // HumanAge is the coarse form a person reads: minutes, hours, or days. The
 // SessionStart handoff uses it too.

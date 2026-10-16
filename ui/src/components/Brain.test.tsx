@@ -9,13 +9,14 @@ const m = vi.hoisted(() => ({
   premium: vi.fn(),
   settings: vi.fn(),
   backfill: vi.fn(),
+  handoff: vi.fn(async (project: string) => ({ project, memories: [], max: 5, budget: 700 })),
   glance: vi.fn((): Promise<unknown> => Promise.resolve({ agents: [], display: {} })),
 }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
     ...actual,
-    api: { ...actual.api, dropBrain: m.drop, brainStatus: m.status, brain: m.brain, brainNode: m.node, premium: m.premium, brainSettings: m.settings, brainBackfill: m.backfill, glance: m.glance },
+    api: { ...actual.api, dropBrain: m.drop, brainStatus: m.status, brain: m.brain, brainNode: m.node, premium: m.premium, brainSettings: m.settings, brainBackfill: m.backfill, brainHandoff: m.handoff, glance: m.glance },
   }
 })
 
@@ -99,14 +100,12 @@ describe('Second Brain', () => {
     const title = screen.getByRole('heading', { level: 1, name: 'Second Brain' })
     expect(title.querySelector('svg')).not.toBeNull()
     expect(screen.getByText('Remembers what your agents learn — so the next one starts smarter.')).toBeTruthy()
-    // The graph first; the list a click away, and remembered.
-    await waitFor(() => expect(document.querySelector('[data-brain-graph="full"]')).not.toBeNull())
+    // The graph is a card; opened, it has a fit button and a legend drawn as the graph is.
+    fireEvent.click(await screen.findByRole('button', { name: /Open the graph/ }))
     expect(screen.getByRole('img', { name: /Second Brain graph: 3 nodes/ })).toBeTruthy()
-    // A fit button over it, and a legend drawn as the graph is: memory, topic, project.
     expect(screen.getByRole('button', { name: 'Fit the graph' })).toBeTruthy()
     expect(document.querySelector('[data-brain-legend]')!.textContent).toMatch(/Memory.*Topic.*Project/)
-    fireEvent.click(screen.getByRole('radio', { name: 'List' }))
-    expect(localStorage.getItem('caprock-brain-view')).toBe('list')
+    fireEvent.click(screen.getByRole('button', { name: 'Close the graph' }))
     const row = await screen.findByRole('button', { name: /Keep SQLite/ })
     expect(row.textContent).toContain('storage')
     // A project is the row's own column, not a topic.
@@ -117,7 +116,6 @@ describe('Second Brain', () => {
   })
 
   it('searches as one types, marks the matched words in the list and says when close matches are in', async () => {
-    localStorage.setItem('caprock-brain-view', 'list')
     m.status.mockResolvedValue(status())
     m.brain.mockImplementation(async (f: { q?: string }) => f.q
       ? {

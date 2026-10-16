@@ -139,6 +139,11 @@ type Deps struct {
 	// BrainAuto is Second Brain's automatic extraction (ADR-063). Nil in
 	// builds or tests without it; the graph and manual drops work either way.
 	BrainAuto BrainAuto
+	// BrainHandoffState says whether a new session in a repository would be
+	// served a handoff at all — Memory between sessions on, a passage left
+	// recently enough — for GET /v1/brain/handoff. Nil in tests; the
+	// memories are listed either way.
+	BrainHandoffState func(ctx context.Context, project string) BrainHandoffState
 	// ActiveLoops reports whether a session currently has an unexpired loop alert.
 	ActiveLoops func(sessionID string) *loop.Alert
 	// LoopK and LoopWindow are the loop detector's settings, so the Week
@@ -781,6 +786,7 @@ func New(d Deps) *Server {
 	// Second Brain (brain.go, ADR-063).
 	m.HandleFunc("GET /v1/brain", s.handleBrainGraph)
 	m.HandleFunc("GET /v1/brain/status", s.handleBrainStatus)
+	m.HandleFunc("GET /v1/brain/handoff", s.handleBrainHandoff)
 	m.HandleFunc("POST /v1/brain/nodes", s.handleBrainDrop)
 	m.HandleFunc("GET /v1/brain/nodes/{id}", s.handleBrainNode)
 	m.HandleFunc("PATCH /v1/brain/nodes/{id}", s.handlePatchBrainNode)

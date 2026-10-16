@@ -718,6 +718,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines,
 		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
 		Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
+		BrainHandoffState: d.brainHandoffState,
 	})
 	srv := &http.Server{Handler: d.markWrites(d.api), ReadHeaderTimeout: 10 * time.Second}
 	// Held so LAN access can be switched on later without a restart. The
