@@ -22,6 +22,7 @@ git clone git@github.com:dspv/caprock.git && cd caprock
 make build         # builds the UI (installs its deps on first run) + the binaries
 ./bin/caprock up   # http://127.0.0.1:22776
 make pr-check      # before opening a PR: what you changed, with -race, and compiled for Windows
+make e2e           # the app's golden paths in a headless browser, against a throwaway daemon
 make check         # docs + lint + tests + smoke — the full CI gate, minus the OS matrix
 ```
 
@@ -44,12 +45,21 @@ changed (against `origin/master`, uncommitted files included) it runs `go vet`,
 `go test -race` once, and the tests in your changed `_test.go` files three
 more times; then `GOOS=windows go vet ./...` and your packages' tests compiled
 for Windows; the smoke tests your change defines; and, when `ui/` changed, the
-typecheck and vitest on your changed test files. A one-package change takes
+typecheck and vitest on your changed test files; and, when `ui/` or
+`internal/api/` changed, `make e2e`. A one-package change takes
 about two minutes; touching `internal/daemon`, `internal/api` or
 `internal/projects` takes longer, because their suites are the largest. It
 exists because the failures CI keeps finding in fresh pull requests are data
 races (CI runs no `-race`), Windows path and build differences, and tests that
 pass once and fail one run in three. It does not replace `make check`.
+
+`make e2e` drives the dashboard in Playwright's own headless shell against a
+daemon it starts for the run (temp home, temp data directory, a free port, the
+fake `claude` from `testdata/`), so it never touches your Caprock or your
+browser. Install the shell once with
+`cd ui && npx playwright install chromium-headless-shell`; without it
+`make pr-check` skips the step and prints that command. Details:
+[.ai/10-infrastructure.md § E2E](.ai/10-infrastructure.md#e2e-make-e2e).
 
 On a pull request the desktop app's three CI builds run only when it touches
 `app/`, the `Makefile`, `scripts/check-app-mic.sh` or `.github/workflows/ci.yml`;

@@ -149,6 +149,17 @@ lint-ui: ## tsc --noEmit
 smoke: build-go ## Phase 0 DoD scenario + the Phase 2 e2e (what CI's smoke step runs)
 	go test -tags smoke -count=1 ./internal/smoke/... ./internal/board/...
 
+# The app's golden paths in a headless browser (ui/e2e, .ai/10-infrastructure.md
+# § E2E): this checkout's dashboard, built into a temp directory and served by
+# `vite preview`, in front of a daemon under `env -i` with a temp HOME and data
+# dir, a free port and testdata/fakeclaude as its claude. The browser is
+# Playwright's own headless shell, never the system Chrome. About 20 s.
+.PHONY: e2e
+e2e: build-go ## The app's golden paths in Playwright's headless shell against a sandboxed daemon (ui/e2e)
+	cd ui && { [ -d node_modules ] || npm ci; }
+	cd ui && node e2e/has-browser.mjs
+	cd ui && npx playwright test -c e2e $(E2E_ARGS)
+
 # --- desktop app (app/, Tauri v2; ADR-038) ----------------------------------
 # The app bundles the daemon as a Tauri sidecar, which Tauri looks for as
 # app/src-tauri/binaries/caprock-<rust host triple>[.exe]; app-sidecar builds
@@ -227,7 +238,7 @@ lang-check: ## Fail if any tracked text file holds Cyrillic (generated dist and 
 	@python3 scripts/check-no-cyrillic.py
 
 .PHONY: pr-check
-pr-check: ## Before opening a PR: changed Go packages vet + test -race -count=3, Windows vet + test compile, changed UI tests (~2 min)
+pr-check: ## Before opening a PR: changed Go packages vet + test -race -count=3, Windows vet + test compile, changed UI tests, make e2e when ui/ or internal/api changed (~2 min)
 	@./scripts/pr-check.sh
 
 .PHONY: check

@@ -40,10 +40,11 @@ make build       # ui build + go build → ./bin/caprock, ./bin/caprock-hook, ./
 make test        # go test ./... + ui tests
 make lint        # golangci-lint + tsc --noEmit
 make smoke       # the DoD scenario with the fake claude (what CI runs per OS)
+make e2e         # the app's golden paths in Playwright's headless shell against a sandboxed daemon (§ E2E)
 make docs-fmt    # tight-align markdown tables
 make docs-check  # fail on unaligned tables
 make docs-links  # fail on broken relative links
-make pr-check    # before a PR: changed Go packages vet + test -race, changed tests -count=3, Windows vet + test compile, changed UI tests
+make pr-check    # before a PR: changed Go packages vet + test -race, changed tests -count=3, Windows vet + test compile, changed UI tests, make e2e when ui/ or internal/api changed
 make check       # docs gates + lint + test (what CI runs, minus the OS matrix)
 make app         # the desktop app, debug build (app/README.md)
 make app-test    # cargo fmt --check, clippy -D warnings, cargo test
@@ -59,10 +60,11 @@ make app-local   # macOS: this checkout's app (host arch) over /Applications/Cap
   - **`no-dist`** (PRs only): fails when the PR's merge commit changes `internal/api/dist` against its first parent, with the command that drops the change.
   - **`changes`** lists a PR's files (`gh api …/pulls/N/files`) and says whether the app jobs run: only when the PR touches `app/`, `Makefile`, `scripts/check-app-mic.sh` or `ci.yml` itself. A push to `master`, or a PR whose file list cannot be read, runs everything. The app bundles `app/` plus a daemon the `go` jobs already compile on every OS; the dashboard is not in it (the window loads it from the daemon). A skipped app job shows as skipped, not failed. No branch protection or required check exists on `master` today; if one is added, require the jobs that always run, or add an always-run summary job, because a required check on a skipped matrix job is reported under the unexpanded name and would wait forever.
   - **`ui`** (ubuntu; `npm ci`, typecheck, vitest, the release-script tests, and a build whose output is discarded).
+  - **`e2e`** (ubuntu only; `make e2e`, [§ E2E](#e2e-make-e2e)): the commit's dashboard against a sandboxed daemon in Playwright's headless shell. The go matrix already runs the daemon on three OS; what this adds is the page. On a failure it uploads the HTML report and the traces (`e2e-report`, 7 days).
   - **`go`** matrix (`ubuntu-latest`, `macos-latest`, `windows-latest`): `go vet`, `golangci-lint`, `go test`, `go build` for the OS, the smoke test, upload the binary. It builds against master's committed `internal/api/dist`, which may be one merge behind `ui/`: no Go test reads the dashboard's bytes, and `make build (windows-latest)` builds the dashboard on Windows anyway.
   - **`pty spike`** (informational, 3 OS) and **`make build (windows-latest)`**, the command a contributor runs.
   - **`app`** matrix (the same three OS; Go, Node and stable Rust, WebKitGTK 4.1 on ubuntu; `make app-test`, then `make app-bundle` — `.app` and `.dmg` on macOS, NSIS on Windows, `.deb` on Linux — and upload the bundles), gated by `changes`.
-  - **Caches.** The Go build and module cache is one key per OS and `go.mod`/`go.sum`, written only by the `go` job on a `master` push and read by every Go job (setup-go's own cache let whichever job finished first write the shared key, which left Windows with 28 MB of it). Rust uses `Swatinem/rust-cache` (registry plus compiled dependencies; the app crate always rebuilds), one key per OS, written only from `master`.
+  - **Caches.** The Go build and module cache is one key per OS and `go.mod`/`go.sum`, written only by the `go` job on a `master` push and read by every Go job (setup-go's own cache let whichever job finished first write the shared key, which left Windows with 28 MB of it). Rust uses `Swatinem/rust-cache` (registry plus compiled dependencies; the app crate always rebuilds), one key per OS, written only from `master`. The `e2e` job's headless shell (`~/.cache/ms-playwright`) is one key per `@playwright/test` version, written only from `master`; on a hit it installs just the system libraries.
   - **Concurrency.** A new push to a PR cancels the run it supersedes; a push to `master` never cancels another, so every `master` commit gets a full run and writes the caches PRs read.
   CI artifacts are disposable and retained for 3 days; release assets are published separately. Windows job red = task not done.
 - **`dist.yml`** — on a push to `master` that touches `ui/` (or by hand, `gh workflow run dist.yml`): `make ui` and, when `internal/api/dist` differs, a `chore(dist): rebuild the dashboard for <sha>` commit pushed to `master` with `GITHUB_TOKEN` (retried from the new head when another merge wins the race). It cannot loop: the commit is outside its `paths`, a `GITHUB_TOKEN` push starts no workflow, and it skips the Actions bot. `master` has no branch protection; adding some means allowing this push.
@@ -89,6 +91,55 @@ semantics (`filepath.IsAbs("/a/b")` is false there), caught by
 Windows; and tests that fail one run in three, caught by running the changed
 tests `-count=3`. `PR_CHECK_COUNT` and `PR_CHECK_BASE` override the count and
 the base.
+
+When `ui/` or `internal/api/` changed, `make pr-check` also runs `make e2e`;
+on a machine without Playwright's headless shell it skips that step and prints
+the install command, and `PR_CHECK_E2E=0` skips it by choice.
+
+### E2E (`make e2e`)
+
+The app's golden paths, driven in a real browser before CI sees them:
+`ui/e2e/` (Playwright's test runner, `@playwright/test` pinned in `ui/`). One
+stand per run, started by `ui/e2e/stand.ts`, and torn down after it:
+
+- **The daemon** is `bin/caprock` from `make build-go`, started under `env -i`
+  with a temp `HOME`, data directory and `TMPDIR`, `CAPROCK_SECRET_STORE=file`
+  (no keychain, no OS dialog), its own `CAPROCK_SERVICE_LABEL`, a free loopback
+  port, `--no-hooks --no-open`, update checks, notifications and keep-awake
+  off, and a `PATH` whose `claude` is `testdata/fakeclaude` (built into the
+  stand). Two projects under the temp `HOME`, one fake session each.
+- **The page** is this checkout's `ui/`, built with `vite build --outDir` into
+  the stand (about 3 s) and served by `vite preview`, whose proxy points at the
+  stand's daemon (`CAPROCK_DAEMON_URL`, `ui/vite.config.ts`). The binary's
+  embedded dashboard is not used: on a branch it is master's (ADR-068), and
+  `internal/api/dist` is never written.
+- **The browser** is Playwright's own `chromium-headless-shell`, launched by
+  the runner; never the system Chrome, never a running browser. Install it
+  once with `cd ui && npx playwright install chromium-headless-shell`;
+  `ui/e2e/has-browser.mjs` checks for it and prints that command.
+- **What it kills** is only what it started: the daemon, `vite preview`, and
+  the pty-hosts that daemon recorded in its own data directory.
+
+Every test gets a fresh page and fails on any console error, uncaught
+exception or request that leaves the stand. The scenarios
+(`ui/e2e/golden.spec.ts`): the dashboard and the app workspace load; a session
+appears in the sidebar and its tab opens on its terminal; every open tab has a
+sidebar row in Tree and in Flat; typing reaches the pty (the fake claude
+answers `you-said:<line>`); pasted text reaches it line by line; a native drop
+(`caprock:drop-paths`, as the app's shell sends it) types the quoted path into
+the terminal under the point and not into one elsewhere; the command palette
+opens and runs a command; Settings opens and closes; Second Brain and Pipeline
+render; the share dialog draws its card and closes. Terminal text is read
+from xterm's buffer through the bench hook (`ui/src/lib/benchhook.ts`). The
+whole `make e2e` took 21-22 s of wall time on the owner's Apple Silicon Mac
+(three runs, 2026-10-16; 37 s with the machine under heavy load). `E2E_ARGS` passes flags to
+`playwright test` (`make e2e E2E_ARGS='-g palette'`); `CAPROCK_E2E_KEEP=1`
+keeps the stand's directory for its logs.
+
+What it cannot reach is the native shell itself: the drop the app's window
+receives is checked in `app/src-tauri/src/main.rs`'s tests instead (the mock
+runtime keeps no webview listeners, so those tests call the handler and check
+that it is registered on the webview, not the window).
 
 Data dir and `CAPROCK_DATA_DIR` override: [ADR-013](08-decisions.md#adr-013--data-dir-and-config-conventions). To develop against a throw-away data dir: `CAPROCK_DATA_DIR=$(mktemp -d) make dev`.
 

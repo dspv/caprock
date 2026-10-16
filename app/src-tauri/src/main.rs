@@ -639,4 +639,66 @@ mod tests {
         .expect_err("file URL");
         assert!(err.to_string().contains("refused"), "{err}");
     }
+
+    // The 0.123.0 drop bug: the dashboard became a child webview of the
+    // window, its drops arrived as WebviewEvent::DragDrop, and the window
+    // listener the app had heard nothing. Tauri's mock runtime keeps no
+    // listeners (MockWebviewDispatcher::on_webview_event drops the closure),
+    // so a test cannot emit an event through it. The closest it can do: build
+    // the main window and register the listener as the app does, hand the
+    // handler the event Tauri would, and check in the source that the
+    // registration is a webview one.
+    #[test]
+    fn a_drop_on_the_main_webview_reaches_the_drop_handler() {
+        let dir = std::env::temp_dir().join(format!("caprock-drop-{}", std::process::id()));
+        let app = configure(mock_builder(), Supervisor::new(dir))
+            .build(tauri::generate_context!(test = true))
+            .expect("mock app");
+        let page: tauri::Url = DAEMON.parse().unwrap();
+        let w = WebviewWindowBuilder::new(&app, "main", WebviewUrl::External(page))
+            .build()
+            .unwrap();
+        shell::listen_for_drops(&w);
+        let p = PathBuf::from("/tmp/caprock e2e/notes.txt");
+        let drop = tauri::DragDropEvent::Drop {
+            paths: vec![p.clone()],
+            position: tauri::PhysicalPosition::new(10.0, 20.0),
+        };
+        shell::on_drop(&w, &tauri::WebviewEvent::DragDrop(drop));
+        assert!(
+            app.state::<capture::Dropped>().contains(&p),
+            "the drop's path was not recorded"
+        );
+        // A drag that leaves is not a drop: the last drop's paths stay.
+        let leave = tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Leave);
+        shell::on_drop(&w, &leave);
+        assert!(app.state::<capture::Dropped>().contains(&p));
+    }
+
+    #[test]
+    fn the_drop_listener_is_on_the_webview_not_the_window() {
+        // A Windows checkout may carry CRLF line ends.
+        let src = include_str!("shell.rs").replace("\r\n", "\n");
+        let code = |s: &str| -> String {
+            s.lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let body = |head: &str| -> String {
+            let rest = src.split(head).nth(1).unwrap_or_else(|| panic!("{head}"));
+            code(rest.split("\n}\n").next().unwrap_or(rest))
+        };
+        let listen = body("pub fn listen_for_drops");
+        assert!(listen.contains(".on_webview_event("), "{listen}");
+        assert!(!listen.contains("on_window_event"), "{listen}");
+        assert!(
+            body("pub fn build(").contains("listen_for_drops(&w)"),
+            "the main window is built without its drop listener"
+        );
+        assert!(
+            !code(&src).contains("WindowEvent::DragDrop"),
+            "a window drop listener hears nothing from the dashboard's webview"
+        );
+    }
 }

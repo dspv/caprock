@@ -1962,8 +1962,12 @@ tells a page where a file lives.
 - **The popover** shows no terminal and keeps the default handler, so a
   drop there does nothing.
 - **Verified** by unit tests on both halves (`shell.rs` script, the
-  terminal's routing and quoting). A real Finder drag needs a person: OS
-  automation is not used from tests.
+  terminal's routing and quoting), by `make e2e` (the page's half in a
+  browser: the event types the quoted path into the terminal under the point
+  only), and by `main.rs`'s mock-app tests (the handler records a drop on the
+  `main` webview; the listener is registered with `on_webview_event`, never
+  `on_window_event`). A real Finder drag needs a person: OS automation is not
+  used from tests.
 
 The drop is heard as the dashboard **webview's** event
 (`WebviewEvent::DragDrop`), not the window's: the `unstable` feature a Page

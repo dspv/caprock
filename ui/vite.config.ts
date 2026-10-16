@@ -10,6 +10,12 @@ import { fileURLToPath, URL } from 'node:url'
 // `--mode remote` builds the phone's page instead (ADR-058): the same
 // dashboard behind remote/RemoteRoot, which reaches its machine through a
 // relay. It is served from its own https origin, never embedded.
+//
+// CAPROCK_DAEMON_URL points the proxy at another daemon: `make e2e` serves its
+// build with `vite preview` (which uses the same proxy) in front of a
+// sandboxed daemon on a free port (ui/e2e/stand.ts).
+const daemon = process.env.CAPROCK_DAEMON_URL || 'http://127.0.0.1:22776'
+
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
@@ -23,8 +29,8 @@ export default defineConfig(({ mode }) => ({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/v1': { target: 'http://127.0.0.1:22776', ws: true },
-      '/healthz': { target: 'http://127.0.0.1:22776' },
+      '/v1': { target: daemon, ws: true },
+      '/healthz': { target: daemon },
     },
   },
   test: {
