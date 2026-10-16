@@ -75,6 +75,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-16 — unreleased: feedback is one box
+
+The owner (translated): "I want the feedback button as short as humanly
+possible: just type what's wrong, maybe drop a screenshot, and send." The
+form's three kind cards, required title and description became one focused
+*What's wrong?* box whose first line is the title; the whole sheet takes a
+dropped or pasted image (and the app's dropped paths); **Send** (⌘↩). The
+kind, diagnostics, *Choose image…* and *Capture window* moved behind
+*Details*. The draft is kept per viewer until sent; a sent report says
+*Opened on GitHub — thanks* and closes; a browser that cannot be opened
+keeps the words and offers Retry. The destination is unchanged — a
+prefilled GitHub issue the user submits — because rule 4 allows a send to
+caprock.dev only for a survey answer (ADR-062). Verified by the component
+tests (type and send, ⌘↩ and Ctrl+Enter, paste, drop, the drop-paths event,
+the draft after Esc, Retry); not yet opened in the real app.
+
 ### 2026-10-15 — unreleased: computers in the daemon (ADR-067, Phase 1 PR2)
 
 The second of Phase 1's three pull requests. **The target:** a code *for a

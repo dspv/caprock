@@ -181,12 +181,13 @@ others. Installing it: [install-app.md](install-app.md).
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
   how new agents start, appearance, terminal and editor first. The × beside
   the *Settings* heading, or Esc, closes it as the tab's × does. *Send
-  feedback*, the row above *Dashboard*, or ⇧⌘F from anywhere, opens the feedback form: pick Bug, Idea or
-  Question — click a card or press 1, 2 or 3, and the title is ready for
-  typing — write a title (Enter moves on) and a few words, and paste (⌘V) or choose up to
-  four screenshots — drop image files on the window, or on macOS and Windows
-  press *Capture window* for a picture of the app itself (not your screen; no
-  permission is asked). *Create issue* opens a prefilled GitHub issue in your
+  feedback*, the row above *Dashboard*, or ⇧⌘F from anywhere, opens one box:
+  type what's wrong, drop or paste (⌘V) up to four screenshots anywhere on it,
+  and press *Send* (⌘↩). The first line is the issue's title. *Details*
+  holds the rest — Bug, Idea or Question, the diagnostics it adds, *Choose
+  image…* and, on macOS and Windows, *Capture window* for a picture of the
+  app itself (not your screen; no permission is asked). Esc closes it and
+  keeps what you typed. *Send* opens a prefilled GitHub issue in your
   browser, which you read and submit yourself, and puts the first screenshot
   on your clipboard: press ⌘V in the issue, then *Copy next* for the rest.
   Nothing is uploaded by Caprock — GitHub takes what you paste.
