@@ -6,7 +6,6 @@
  */
 import { isTauri } from './appmode'
 import type { AppUpdateInfo } from './appupdate'
-import type { PageAct } from './pagetab'
 
 interface TauriInternals {
   invoke: <T>(cmd: string, args?: Record<string, unknown> | Uint8Array) => Promise<T>
@@ -86,8 +85,6 @@ export const shell = {
   readDroppedImage: (path: string) => shellInvoke<ArrayBuffer>('read_dropped_image', { path }),
   /** The text of a .md, .markdown or .txt file from the last drop on the window (at most 1 MiB, UTF-8): a template project's brief. */
   readDroppedText: (path: string) => shellInvoke<string>('read_dropped_text', { path }),
-  /** A Page tab's web page, a child webview the shell lays over the tab (ADR-070, app/src-tauri/src/page.rs). */
-  pageTab: (id: string, act: PageAct) => shellInvoke<void>('page_tab', { id, act }),
 }
 
 /**

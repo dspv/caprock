@@ -16,9 +16,7 @@ tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
 # >= 2.11.1: GHSA-7gmj-67g7-phm9 let remote origins call local-only commands.
-# `unstable`: Window::add_child, the child webview a Page tab shows a web page
-# in over the dashboard (src/page.rs, ADR-070).
-tauri = { version = "2.12", features = ["macos-private-api", "tray-icon", "image-png", "unstable"] }
+tauri = { version = "2.12", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-window-state = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
@@ -71,7 +69,7 @@ objc2-user-notifications = { version = "0.3", default-features = false, features
 block2 = "0.6"
 
 [dev-dependencies]
-tauri = { version = "2.12", features = ["macos-private-api", "tray-icon", "image-png", "unstable", "test"] }
+tauri = { version = "2.12", features = ["macos-private-api", "tray-icon", "image-png", "test"] }
 
 [profile.release]
 codegen-units = 1

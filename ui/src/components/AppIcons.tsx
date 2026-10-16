@@ -49,13 +49,6 @@ export const SunIcon = (p: P) => <Icon {...p}><circle cx="12" cy="12" r="4" /><p
 export const MoonIcon = (p: P) => <Icon {...p}><path d="M20.5 13.5A8.5 8.5 0 1 1 10.5 3.5a6.6 6.6 0 0 0 10 10z" /></Icon>
 export const StopIcon = (p: P) => <Icon {...p}><rect x="6" y="6" width="12" height="12" rx="2" /></Icon>
 export const FileIcon = (p: P) => <Icon {...p}><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4M9 12h6M9 16h4" /></Icon>
-/** A globe: a Page tab, a web page inside Caprock (ADR-070). */
-export const GlobeIcon = (p: P) => <Icon {...p}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3z" /></Icon>
-/** An arrow back, for a page's history (its mirror image is forward). */
-export const BackIcon = (p: P) => <Icon {...p}><path d="M19 12H5M11 18l-6-6 6-6" /></Icon>
-export const ForwardIcon = (p: P) => <Icon {...p}><path d="M5 12h14M13 18l6-6-6-6" /></Icon>
-/** A turning arrow: load the page again. */
-export const ReloadIcon = (p: P) => <Icon {...p}><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></Icon>
 export const ExternalIcon = (p: P) => <Icon {...p}><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10" /></Icon>
 /** A megaphone: feedback, set apart from Quick chat's speech bubble. */
 // A bug, drawn in amber where it stands for Feedback: the speech bubble was

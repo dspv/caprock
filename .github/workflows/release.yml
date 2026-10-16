@@ -85,6 +85,8 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           install-only: true
+          # Pinned with ci.yml: a moving `latest` fails a release over untouched code.
+          version: v2.14.0
       - name: make check-go (docs gates, vet + golangci-lint, go test, smoke)
         if: matrix.half == 'go'
         run: make check-go

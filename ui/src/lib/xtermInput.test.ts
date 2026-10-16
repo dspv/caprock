@@ -7,7 +7,7 @@ vi.mock('@/lib/api', () => ({
   errText: (e: Error) => e.message,
 }))
 
-import { DROP_PATHS_EVENT, attachTerminalInput, isImagePath, pathInput } from './xtermInput'
+import { DROP_PATHS_EVENT, routeDrop, attachTerminalInput, isImagePath, pathInput } from './xtermInput'
 
 const SPACED = '/Users/u/Library/Application Support/caprock/paste/20261011-ab/image.png'
 
@@ -122,5 +122,42 @@ describe('copy from the terminal', () => {
     const t = fakeTerm('')
     attachTerminalInput(t.term, t.el, () => {})
     expect(t.press({ key: 'c', code: 'KeyC', metaKey: true }).ret).toBe(true)
+  })
+})
+
+
+describe('routeDrop', () => {
+  const box = (left: number, top: number, w: number, h: number) => {
+    const el = document.createElement('div')
+    el.getBoundingClientRect = () => ({ left, top, right: left + w, bottom: top + h, width: w, height: h }) as DOMRect
+    document.body.appendChild(el)
+    return el
+  }
+  const t = (el: HTMLElement, used = 0) => ({ el, used, deliver: () => {} })
+
+  it('picks the terminal under the point', () => {
+    const a = t(box(0, 0, 100, 100)), b = t(box(100, 0, 100, 100))
+    expect(routeDrop({ paths: ['/x'], x: 150, y: 10 }, [a, b])).toBe(b)
+  })
+  it('off every terminal, picks the one used last, then the only one on screen', () => {
+    const a = t(box(0, 0, 100, 100), 5), b = t(box(100, 0, 100, 100), 9)
+    expect(routeDrop({ paths: ['/x'], x: 500, y: 500 }, [a, b])).toBe(b)
+    const only = t(box(0, 0, 100, 100))
+    const hidden = t(box(0, 0, 0, 0))
+    expect(routeDrop({ paths: ['/x'], x: 500, y: 500 }, [only, hidden])).toBe(only)
+  })
+  it('gives up (so a note is shown) with two unused terminals and the point on neither', () => {
+    const a = t(box(0, 0, 100, 100)), b = t(box(100, 0, 100, 100))
+    expect(routeDrop({ paths: ['/x'], x: 500, y: 500 }, [a, b])).toBeNull()
+  })
+  it('leaves it to a dialog on screen, and ignores a terminal taken off the page', () => {
+    const gone = box(0, 0, 100, 100)
+    const g = t(gone)
+    gone.remove()
+    expect(routeDrop({ paths: ['/x'], x: 10, y: 10 }, [g])).toBeNull()
+    const d = document.createElement('div')
+    d.setAttribute('data-dialog-backdrop', '')
+    document.body.appendChild(d)
+    expect(routeDrop({ paths: ['/x'], x: 10, y: 10 }, [t(box(0, 0, 100, 100))])).toBe('dialog')
   })
 })

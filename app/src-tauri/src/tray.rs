@@ -6,6 +6,7 @@
 //! right click.
 
 use crate::hotkey;
+use crate::shell::MAIN;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::image::Image;
@@ -208,7 +209,7 @@ fn on_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
 /// for `caprock:open-session`; app/README.md).
 pub fn open_session<R: Runtime>(app: &AppHandle<R>, session: &str) {
     hotkey::show(app);
-    let Some(w) = crate::shell::main_webview(app) else {
+    let Some(w) = app.get_webview_window(MAIN) else {
         return;
     };
     let Ok(id) = serde_json::to_string(session) else {
