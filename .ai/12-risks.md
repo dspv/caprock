@@ -183,6 +183,23 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   repository on both machines, timed, with a date. The pitch is "this Mac
   stays responsive / more agents / lid closed", never "faster", until this
   says otherwise for the machines named.
+- `OQ-21` — **A session's spend across several repositories (plan, not
+  built).** One agent session can work in more than one repository — it
+  `cd`s into a sibling checkout, edits the site repo beside the app repo,
+  opens pull requests in both. Today a session belongs to one repository
+  (its `repo_root`), and `store.SpendByPR` cuts its cost only across the
+  pull requests of that repository, so the release plan's cost column and
+  the Work board give the whole session to one place and nothing to the
+  other (owner, 2026-10-16). The plan: attribute a session's turns to the
+  repository their tool calls touched (the files' paths against the known
+  repository roots), then cut each repository's share across its pull
+  requests as `SpendByPR` does now, so the release plan and costs say each
+  repository's and pull request's part. Open: what a turn that touched two
+  repositories, or none, counts toward (split evenly, or to the last one
+  touched), and whether the paths recorded on tool events are enough to
+  tell. Decided by: a measured sample of the owner's sessions — how many
+  touch more than one repository and how much of their cost is at stake —
+  before any code, then an ADR.
 
 ## What would falsify the whole plan
 

@@ -629,6 +629,18 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
   .skeleton-pulse { animation: none; opacity: 0.6; }
 }
 
+/* The release plan's step under way (components/ReleasePlan.tsx: CI
+ * running, an agent at work) and a running OS's CI dot: a slow, shallow
+ * breath, so the one moving row is found without drawing the eye. */
+.release-step-pulse { animation: releaseStepPulse 2.4s ease-in-out infinite; }
+@keyframes releaseStepPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .release-step-pulse { animation: none; }
+}
+
 /* ── The app workspace (WP-04, WP-06) ─────────────────────────────────
  * Only under <html data-app>, set by screens/AppShell.tsx, so the browser
  * dashboard and the phone never see any of it. The chrome around the

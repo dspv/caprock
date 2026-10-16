@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"regexp"
 	"slices"
 	"sort"
 	"sync"
@@ -71,7 +72,16 @@ type BoardCard struct {
 	// from the runs list, workflows), at most failedNames, so the Pipeline
 	// row can say which without opening the pull request.
 	Failed []string `json:"failed,omitempty"`
-	Review string   `json:"review,omitempty"`
+	// OS is its checks by the OS their names say — "go (windows-latest)",
+	// "test (macos)" — one entry per OS named (linux, macos, windows, in that
+	// order), so the release plan can draw a dot per OS and say which one it
+	// waits for. Absent without a live read, or when no check names an OS.
+	OS []BoardOS `json:"os,omitempty"`
+	// CIMS is how long its head commit's checks took, the first one's start
+	// to the last one's finish (unix ms span), once they are all done; absent
+	// while they run or when the stamps were not read.
+	CIMS   int64  `json:"ci_ms,omitempty"`
+	Review string `json:"review,omitempty"`
 	// Release is the tag it shipped in (released only).
 	Release string `json:"release,omitempty"`
 	// Spend is the agent work Caprock recorded for it (store.SpendByPR).
@@ -80,6 +90,19 @@ type BoardCard struct {
 	// not read them again in time (or GitHub refused), so the card is drawn
 	// as not re-confirmed.
 	Stale bool `json:"stale,omitempty"`
+}
+
+// BoardOS is one OS's checks on a pull request's head commit.
+type BoardOS struct {
+	OS string `json:"os"` // linux | macos | windows
+	// State is fail when any of its checks failed, else running while any
+	// is unfinished, else pass.
+	State string `json:"state"`
+	// Since is, while running, the earliest start of its unfinished checks
+	// (unix ms); absent when none has started.
+	Since int64 `json:"since,omitempty"`
+	// Checks is how many of its checks there are (skipped ones left out).
+	Checks int `json:"checks"`
 }
 
 // BoardRelease is one published release and the merges it shipped.
@@ -285,10 +308,14 @@ func openStage(p github.BranchPR, live github.PR, runs []github.CIRun, c *BoardC
 			to = max(to, k.CompletedAt)
 		}
 		c.Review = live.Review
+		c.OS = checksByOS(live.Checks.Items)
 	} else if p.HeadSHA != "" {
 		ci, from, to = runsState(p.HeadSHA, runs)
 	}
 	c.CI = ci
+	if (ci == "pass" || ci == "fail") && from > 0 && to > from {
+		c.CIMS = to - from
+	}
 	conflict := live.Number != 0 && ((live.Mergeable != nil && !*live.Mergeable) || live.MergeableState == "dirty")
 	switch {
 	case ci == "fail":
@@ -314,6 +341,64 @@ func openStage(p github.BranchPR, live github.PR, runs []github.CIRun, c *BoardC
 		return StageReady, since(to)
 	}
 	return StageOpen, p.CreatedAt
+}
+
+// checkOS is the OS a check's name says, as a matrix job names it: "go
+// (windows-latest)", "test (ubuntu-24.04)", "build-macos".
+var checkOS = []struct {
+	os string
+	re *regexp.Regexp
+}{
+	{"linux", regexp.MustCompile(`(?i)(^|[^a-z])(ubuntu|linux)`)},
+	{"macos", regexp.MustCompile(`(?i)(^|[^a-z])(macos|mac|osx)([^a-z]|$)`)},
+	{"windows", regexp.MustCompile(`(?i)(^|[^a-z])(windows|win)([^a-z]|$)`)},
+}
+
+// osOfCheck is the OS a check's name says, "" when it says none.
+func osOfCheck(name string) string {
+	for _, o := range checkOS {
+		if o.re.MatchString(name) {
+			return o.os
+		}
+	}
+	return ""
+}
+
+// checksByOS groups a pull request's checks by the OS their names say.
+func checksByOS(items []github.Check) []BoardOS {
+	var out []BoardOS
+	for _, o := range checkOS {
+		b := BoardOS{OS: o.os}
+		fail, running := false, false
+		for _, k := range items {
+			if k.State == "skipped" || osOfCheck(k.Name) != o.os {
+				continue
+			}
+			b.Checks++
+			switch k.State {
+			case "fail":
+				fail = true
+			case "pending":
+				running = true
+				if k.StartedAt > 0 && (b.Since == 0 || k.StartedAt < b.Since) {
+					b.Since = k.StartedAt
+				}
+			}
+		}
+		if b.Checks == 0 {
+			continue
+		}
+		switch {
+		case fail:
+			b.State, b.Since = "fail", 0
+		case running:
+			b.State = "running"
+		default:
+			b.State, b.Since = "pass", 0
+		}
+		out = append(out, b)
+	}
+	return out
 }
 
 // failedNames is how many failed checks a card names.

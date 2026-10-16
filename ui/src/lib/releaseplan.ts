@@ -20,13 +20,22 @@
  *   conflict; a landing-queue label, "landing: queued", is the stage word
  *   when it is there), and agents working with no pull request yet
  *   ("agent"). Drafts and agents idle at their prompt come *later*.
- * - **The bar** is the stage's place, ten blocks for five steps: a fact, not
- *   a guess at how far the work is.
+ * - **The bar** is the stage's place, a named segment per step (two of the
+ *   ten blocks the text report draws): a fact, not a guess at how far the
+ *   work is.
+ * - **Beside the word**, each from what the board already read, never a
+ *   guess: what the row waits for now (`waitOf`: "CI on Windows · 6m",
+ *   "needs a rebase", "fix: go (windows-latest)", "a release"), its age since
+ *   opened ("19h"), its checks per OS (`card.os`) as dots, its CI time
+ *   against the usual (`card.ci_ms`, the flow's median), and the agent spend
+ *   recorded on it (`store.SpendByPR`, at list price; "—" when none was).
  */
 import type { SessionCIStats, Work, WorkRepo } from './api'
 import type { BranchPR } from './branches'
-import { asBoard } from './prboard'
-import { buildWork, gapText, MIN_GAPS, STEPS, type Stage, type WorkItem } from './work'
+import { fmtUSD } from './format'
+import { AGENT_COST_NOTE, asBoard, type BoardFlow, type BoardOS } from './prboard'
+import { spanText, vsMedianText } from './prstats'
+import { buildWork, ciVsUsual, gapText, MIN_GAPS, releaseLag, STEPS, todoSteps, type Stage, type WorkItem } from './work'
 
 /** Blocks in a bar: two per step. */
 export const BLOCKS = 10
@@ -60,6 +69,38 @@ export interface PlanRow {
   word: string
   /** What the word means, on hover. */
   wordTitle?: string
+  /** The step it is on is under way: CI running, an agent at work. */
+  running: boolean
+  /** What it waits for now, in plain words; absent when nothing read says. */
+  wait?: Wait
+  /** Since it was opened (an agent row: started), short: "19h". */
+  age?: { text: string; title: string }
+  /** Its checks per OS, macOS · Linux · Windows; absent when no check names an OS. */
+  ci?: OSDot[]
+  /** How long its CI took (or has run), against the repository's usual; absent when not read. */
+  ciTime?: { text: string; title: string; tone?: 'warn' }
+  /** The agent spend recorded on it, at API list price; "—" when none was. */
+  cost: { text: string; title: string; known: boolean }
+}
+
+export interface Wait {
+  text: string
+  title: string
+  /** danger: it waits on a fix; warn: on the person. */
+  tone?: 'danger' | 'warn'
+}
+
+export interface OSDot {
+  os: BoardOS['os']
+  label: string
+  state: BoardOS['state']
+  title: string
+}
+
+/** What a row reads beside its card: the clock and the repository's flow. */
+export interface RowContext {
+  now?: number
+  flow?: Pick<BoardFlow, 'ci_median_ms' | 'days' | 'release_lag_median_ms' | 'release_lag_count'>
 }
 
 export interface PlanGroup {
@@ -124,9 +165,128 @@ export function landingOf(labels: BranchPR['labels']): { word: string; red: bool
   return { word: l.name, red: what === 'ci red', warn: what === 'needs a hand merge' }
 }
 
-/** One board row as a plan row: its blocks, its word, a landing label over the word. */
-export function rowOf(it: WorkItem, labels?: BranchPR['labels']): PlanRow {
+const OS_LABEL: Record<BoardOS['os'], string> = { linux: 'Linux', macos: 'macOS', windows: 'Windows' }
+/** The dots' order, as the owner says them: macOS, Linux, Windows. */
+const OS_ORDER: BoardOS['os'][] = ['macos', 'linux', 'windows']
+
+/** "45m", "19h", "3d": an age, at one unit. */
+export function ageText(ms: number): string {
+  const m = Math.max(0, Math.floor(ms / 60_000))
+  if (m < 1) return 'now'
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  if (h < 48) return `${h}h`
+  return `${Math.floor(h / 24)}d`
+}
+
+/** A pull request's checks per OS as dots, macOS · Linux · Windows. */
+export function osDots(os: readonly BoardOS[] | undefined, now?: number): OSDot[] | undefined {
+  if (!os?.length) return undefined
+  const by = new Map(os.map((o) => [o.os, o]))
+  const out: OSDot[] = []
+  for (const k of OS_ORDER) {
+    const o = by.get(k)
+    if (!o) continue
+    const n = `${o.checks} check${o.checks === 1 ? '' : 's'}`
+    const what = o.state === 'fail' ? 'failed' : o.state === 'pass' ? 'passed' : `running${o.since && now ? ` ${spanText(Math.max(0, now - o.since))}` : ''}`
+    out.push({ os: k, label: OS_LABEL[k], state: o.state, title: `${OS_LABEL[k]}: ${what} (${n})` })
+  }
+  return out.length ? out : undefined
+}
+
+/**
+ * What a row waits for now, in plain words, from what the board read: the
+ * landing queue's label, a session's state, the pull request's stage, its
+ * failed checks and which OS's checks still run. Nothing when none of it says.
+ */
+export function waitOf(it: WorkItem, landing: ReturnType<typeof landingOf>, ctx: RowContext = {}): Wait | undefined {
+  const { now, flow } = ctx
+  const c = it.card
+  const lw = landing?.word.slice(LANDING_PREFIX.length).trim().toLowerCase()
+  if (lw === 'needs a hand merge') return { text: 'your merge', title: 'The landing queue could not merge it: it waits for you to merge it by hand.', tone: 'warn' }
+  if (lw === 'queued') return { text: 'its turn to land', title: 'In the landing queue: it is merged when the ones before it are.' }
+  if (lw === 'updating') return { text: 'the queue’s update', title: 'The landing queue is bringing it up to date with the default branch.' }
+  if (it.kind === 'session') {
+    const ss = it.sessions
+    if (ss.some((x) => x.state === 'permission')) return { text: 'your permission', title: 'An agent on it asks for a permission.', tone: 'warn' }
+    if (ss.some((x) => x.state === 'question')) return { text: 'your answer', title: 'An agent on it asks you a question.', tone: 'warn' }
+    const w = ss.find((x) => x.state === 'working' || x.state === 'background')
+    if (w) {
+      const t = todoSteps(w)
+      return t ? { text: `the agent · ${t.text}`, title: t.title } : { text: 'the agent', title: 'An agent is at work on it; no pull request yet.' }
+    }
+    if (ss.length) return { text: 'your next prompt', title: 'Its agent is at its prompt, waiting for you.' }
+    return undefined
+  }
+  if (it.kind !== 'pr' || it.stage === 'released') return undefined
+  if (it.stage === 'merged') {
+    const lag = releaseLag('merged', flow)
+    return { text: 'a release', title: `Merged: it ships with the next release${lag ? `, ${lag.text}. ${lag.title}` : '.'}` }
+  }
+  if (it.word === 'draft') return { text: 'marked ready', title: 'A draft: it waits to be marked ready for review.' }
+  if (c?.why === 'conflict') return { text: 'needs a rebase', title: 'GitHub says it conflicts with its base branch: rebase it, or merge the base in.', tone: 'danger' }
+  if (c?.why === 'changes_requested') return { text: 'requested changes', title: 'A reviewer asked for changes.', tone: 'danger' }
+  if (c?.why === 'ci' || landing?.red) {
+    const f = c?.failed ?? []
+    if (!f.length) return { text: 'a fix: CI red', title: 'A check failed; its name was not read.', tone: 'danger' }
+    return { text: `fix: ${f[0]}${f.length > 1 ? ` +${f.length - 1}` : ''}`, title: `Failed: ${f.join(', ')}${f.length >= 3 ? ' (the first three named)' : ''}.`, tone: 'danger' }
+  }
+  if (c?.ci === 'running') {
+    const run = (c.os ?? []).filter((o) => o.state === 'running')
+    const starts = run.map((o) => o.since ?? 0).filter((t) => t > 0)
+    const since = starts.length ? Math.min(...starts) : c.stage_at
+    const took = since && now ? ` · ${spanText(Math.max(0, now - since))}` : ''
+    const usual = now ? ciVsUsual(c, flow, now) : undefined
+    const more = usual ? ` ${usual.text}. ${usual.title}` : ''
+    if (run.length) {
+      const names = OS_ORDER.filter((k) => run.some((o) => o.os === k)).map((k) => OS_LABEL[k])
+      return { text: `CI on ${names.join(', ')}${took}`, title: `Checks still running on ${names.join(', ')}; the time is since the first of them started.${more}` }
+    }
+    return { text: `CI${took}`, title: `Its checks are running.${more}` }
+  }
+  if (c?.stage === 'ready') {
+    if (c.review === 'review_required') return { text: 'a review', title: 'Checks are done; GitHub says a review is required before it merges.' }
+    return { text: 'a merge', title: c.ci === 'none' ? 'No checks ran; nothing else holds it.' : 'Checks passed; nothing else holds it.' }
+  }
+  return undefined
+}
+
+/**
+ * Its CI time: finished, the checks' span against the usual ("12m +9%",
+ * amber past +20%); running, the time so far over the usual ("6m / ~11m").
+ * Nothing on a merged row or without the stamps.
+ */
+export function ciTimeOf(it: WorkItem, ctx: RowContext = {}): PlanRow['ciTime'] {
+  const c = it.card
+  if (!c || it.kind !== 'pr' || it.stage === 'merged' || it.stage === 'released') return undefined
+  const median = ctx.flow?.ci_median_ms
+  const usual = median ? ` Usually ${spanText(median)}: the median of this repository’s successful CI runs over the last ${ctx.flow?.days ?? 14} days.` : ''
+  if (c.ci === 'running') {
+    if (!c.stage_at || !ctx.now) return undefined
+    const so = spanText(Math.max(0, ctx.now - c.stage_at))
+    return { text: median ? `${so} / ~${spanText(median)}` : so, title: `CI running ${so} so far, since its first check started.${usual}` }
+  }
+  if (!c.ci_ms) return undefined
+  const vs = vsMedianText(c.ci_ms, median)
+  return {
+    text: vs ? `${spanText(c.ci_ms)} ${vs.text}` : spanText(c.ci_ms),
+    title: `CI took ${spanText(c.ci_ms)}, its first check’s start to its last one’s finish.${usual}`,
+    tone: vs?.tone === 'warn' ? 'warn' : undefined,
+  }
+}
+
+/** The agent spend recorded on a row, as the Work board says it; "—" when none was. */
+export function costOf(it: WorkItem): PlanRow['cost'] {
+  if (it.costUsd === undefined) return { text: '—', title: 'No Caprock session was recorded on it, so no agent cost is said.', known: false }
+  const n = it.card && it.card.spend.sessions > 0 ? it.card.spend.sessions : it.sessions.length
+  return { text: fmtUSD(it.costUsd), title: `${fmtUSD(it.costUsd)} of agent work over ${n} session${n === 1 ? '' : 's'}, at API list price, not a bill.\n${AGENT_COST_NOTE}`, known: true }
+}
+
+/** One board row as a plan row: its blocks, its word, a landing label over the word, what it waits for, its age and CI per OS. */
+export function rowOf(it: WorkItem, labels?: BranchPR['labels'], ctx: RowContext = {}): PlanRow {
   const landing = it.kind === 'pr' ? landingOf(labels) : undefined
+  // A pull request's age is since it was opened; an agent's, since its first session.
+  const started = (it.kind === 'pr' ? it.pr?.created_at : undefined) ?? it.startedAt
   return {
     key: it.key,
     number: it.pr?.number,
@@ -138,6 +298,12 @@ export function rowOf(it: WorkItem, labels?: BranchPR['labels']): PlanRow {
     warn: !landing?.red && !!landing?.warn,
     word: landing?.word ?? it.word,
     wordTitle: landing ? `Set by the landing queue; on the board: ${it.word}` : undefined,
+    running: it.running || (it.kind === 'session' && it.working),
+    wait: waitOf(it, landing, ctx),
+    age: started && ctx.now ? { text: ageText(ctx.now - started), title: `${it.kind === 'pr' ? 'Opened' : 'Started'} ${spanText(Math.max(0, ctx.now - started))} ago` } : undefined,
+    ci: it.kind === 'pr' && it.stage !== 'merged' ? osDots(it.card?.os, ctx.now) : undefined,
+    ciTime: ciTimeOf(it, ctx),
+    cost: costOf(it),
   }
 }
 
@@ -149,7 +315,7 @@ const mergedAt = (it: WorkItem) => it.pr?.merged_at ?? 0
  * and later's drafts and idle agents. Released, closed, tasks and queued
  * messages are not the release's.
  */
-export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], root: string, lastTagAt: number | undefined, prs: readonly BranchPR[] = []): { rows: PlanRow[]; later: PlanGroup[]; merged: number } {
+export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], root: string, lastTagAt: number | undefined, prs: readonly BranchPR[] = [], ctx: RowContext = {}): { rows: PlanRow[]; later: PlanGroup[]; merged: number } {
   const labels = new Map(prs.map((p) => [p.number, p.labels]))
   const mine = (it: WorkItem) => it.repo?.root === root
   const next: WorkItem[] = []
@@ -165,10 +331,10 @@ export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], 
   }
   next.sort((a, b) => b.fill - a.fill || (a.stage === 'merged' ? mergedAt(a) - mergedAt(b) : (a.pr?.number ?? Infinity) - (b.pr?.number ?? Infinity)))
   const later: PlanGroup[] = []
-  if (drafts.length) later.push({ key: 'drafts', label: 'Drafts', rows: drafts.map((it) => rowOf(it, labels.get(it.pr?.number ?? -1))) })
+  if (drafts.length) later.push({ key: 'drafts', label: 'Drafts', rows: drafts.map((it) => rowOf(it, labels.get(it.pr?.number ?? -1), ctx)) })
   const sleeping = idle.filter(mine)
-  if (sleeping.length) later.push({ key: 'idle', label: 'Agents idle over 30 min', rows: sleeping.map((it) => ({ ...rowOf(it), word: 'idle' })) })
-  return { rows: next.map((it) => rowOf(it, labels.get(it.pr?.number ?? -1))), later, merged: next.filter((it) => it.stage === 'merged').length }
+  if (sleeping.length) later.push({ key: 'idle', label: 'Agents idle over 30 min', rows: sleeping.map((it) => ({ ...rowOf(it, undefined, ctx), word: 'idle' })) })
+  return { rows: next.map((it) => rowOf(it, labels.get(it.pr?.number ?? -1), ctx)), later, merged: next.filter((it) => it.stage === 'merged').length }
 }
 
 /** "3 merged since v0.119.0 · 2h 05m ago · usual gap 2h 40m (median of 9)": the usual gap only with MIN_GAPS behind it. */
@@ -196,7 +362,7 @@ export function releasePlan(input: { root: string; name?: string; repo?: WorkRep
   const rel = board?.releases?.[0]
   // The last tag as git has it; else the newest published GitHub release.
   const last = repo?.tags?.last ?? (rel ? { name: rel.tag, at: rel.published_at } : undefined)
-  const { rows, later, merged } = planRows(input.items, input.idle ?? [], root, last?.at, stats?.prs ?? [])
+  const { rows, later, merged } = planRows(input.items, input.idle ?? [], root, last?.at, stats?.prs ?? [], { now, flow: board?.flow })
   return {
     root,
     name: input.name ?? repo?.name ?? root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? root,

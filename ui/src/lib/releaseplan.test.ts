@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { WorkRepo } from './api'
-import { BLOCKS, bumpOf, landingOf, nextVersion, parseVersion, planEmpty, planForRepo, releasePlan, rowOf } from './releaseplan'
+import { ageText, BLOCKS, bumpOf, landingOf, nextVersion, osDots, parseVersion, planEmpty, planForRepo, releasePlan, rowOf } from './releaseplan'
+import type { BoardCard } from './prboard'
 import { buildWork, type WorkItem } from './work'
 import { NOW, session, statsFixture, workFixture } from './work.fixture'
 
@@ -52,6 +53,47 @@ describe('a row’s bar and word', () => {
     expect(rowOf(pr({})).filled).toBe(6)
     expect(rowOf(pr({ stage: 'merged', fill: 4, word: 'merged' })).filled).toBe(8)
     expect(BLOCKS).toBe(10)
+  })
+
+  it('says what a row waits for from what the board read, nothing it did not', () => {
+    const card = (c: Partial<BoardCard>): BoardCard => ({ number: 7, stage: 'open', spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] }, ...c })
+    const wait = (p: Partial<WorkItem>, labels?: { name: string }[]) => rowOf(pr(p), labels, { now: NOW }).wait
+    expect(wait({ card: card({ stage: 'fix', why: 'conflict' }), red: true })).toMatchObject({ text: 'needs a rebase', tone: 'danger' })
+    expect(wait({ card: card({ stage: 'fix', why: 'ci', failed: ['go (windows-latest)', 'ui'] }), red: true })).toMatchObject({ text: 'fix: go (windows-latest) +1', tone: 'danger' })
+    expect(wait({ card: card({ stage: 'fix', why: 'ci' }), red: true })?.text).toBe('a fix: CI red')
+    expect(wait({ card: card({ stage: 'fix', why: 'changes_requested' }), red: true })?.text).toBe('requested changes')
+    expect(wait({ card: card({ stage: 'ready', ci: 'pass', review: 'review_required' }) })?.text).toBe('a review')
+    expect(wait({ card: card({ stage: 'open', ci: 'running', stage_at: NOW - 3 * MIN }), running: true })?.text).toBe('CI · 3m')
+    expect(wait({ stage: 'pr', fill: 2, word: 'draft', card: card({ stage: 'draft' }) })?.text).toBe('marked ready')
+    expect(wait({}, [{ name: 'landing: needs a hand merge' }])).toMatchObject({ text: 'your merge', tone: 'warn' })
+    expect(wait({}, [{ name: 'landing: queued' }])?.text).toBe('its turn to land')
+    // An open pull request whose checks were not read says nothing.
+    expect(wait({ stage: 'pr', fill: 2, word: 'PR open' })).toBeUndefined()
+    // An agent row: the person's turn, or the agent's own steps.
+    expect(wait({ kind: 'session', stage: 'agent', fill: 1, word: 'agent', pr: undefined, sessions: [session('a', { state: 'question' })] })).toMatchObject({ text: 'your answer', tone: 'warn' })
+    expect(wait({ kind: 'session', stage: 'agent', fill: 1, word: 'agent', pr: undefined, sessions: [session('a', { todo: { done: 3, total: 7 } })] })?.text).toBe('the agent · 3 of 7 steps')
+    expect(wait({ kind: 'session', stage: 'agent', fill: 1, word: 'agent', pr: undefined, sessions: [session('a', { state: 'at_prompt' })] })?.text).toBe('your next prompt')
+  })
+
+  it('says the age since opened at one unit, and CI per OS only when a check names one', () => {
+    expect([ageText(30_000), ageText(45 * MIN), ageText(19 * 60 * MIN + 5 * MIN), ageText(3 * 24 * 60 * MIN)]).toEqual(['now', '45m', '19h', '3d'])
+    expect(rowOf(pr({ startedAt: NOW - 19 * 60 * MIN }), undefined, { now: NOW }).age?.text).toBe('19h')
+    expect(rowOf(pr({ startedAt: NOW - MIN }), undefined, {}).age).toBeUndefined()
+    expect(osDots(undefined)).toBeUndefined()
+    expect(osDots([{ os: 'windows', state: 'fail', checks: 1 }, { os: 'macos', state: 'pass', checks: 2 }])?.map((d) => d.label)).toEqual(['macOS', 'Windows'])
+    // A merged row's checks are history: no dots.
+    expect(rowOf(pr({ stage: 'merged', fill: 4, word: 'merged', card: { number: 7, stage: 'merged', os: [{ os: 'linux', state: 'pass', checks: 1 }], spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } } })).ci).toBeUndefined()
+  })
+
+  it('says the CI time against the usual, and the agent cost only where it was recorded', () => {
+    const flow = { ci_median_ms: 10 * MIN, days: 14, release_lag_count: 0 }
+    const card = (c: Partial<BoardCard>): BoardCard => ({ number: 7, stage: 'ready', spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] }, ...c })
+    expect(rowOf(pr({ card: card({ ci: 'pass', ci_ms: 9 * MIN }) }), undefined, { now: NOW, flow }).ciTime).toMatchObject({ text: '9m -10%' })
+    expect(rowOf(pr({ card: card({ ci: 'pass', ci_ms: 9 * MIN }) }), undefined, { now: NOW }).ciTime?.text).toBe('9m')
+    expect(rowOf(pr({ card: card({ ci: 'pass' }) }), undefined, { now: NOW, flow }).ciTime).toBeUndefined()
+    expect(rowOf(pr({ stage: 'merged', fill: 4, word: 'merged', card: card({ stage: 'merged', ci_ms: MIN }) })).ciTime).toBeUndefined()
+    expect(rowOf(pr({})).cost).toMatchObject({ text: '—', known: false })
+    expect(rowOf(pr({ costUsd: 3.2, card: card({ spend: { cost_usd: 3.2, sessions: 3, live: 0, agents: [] } }) })).cost).toMatchObject({ text: '$3.20', known: true })
   })
 
   it('keeps the board’s red step', () => {

@@ -37,9 +37,9 @@ describe('PhoneReleases', () => {
     const link = document.querySelector<HTMLAnchorElement>('[data-release-row="631"] a')!
     expect(link.href).toBe('https://github.com/dspv/caprock/pull/631')
     expect(link.target).toBe('_blank')
-    // Ten blocks a row, the bar on its own line under the title.
+    // A segment per step, the bar on its own line under the title.
     for (const bar of document.querySelectorAll('[data-release-phone] [data-release-bar]')) {
-      expect(bar.querySelectorAll('[data-block]')).toHaveLength(10)
+      expect(bar.querySelectorAll('[data-step]')).toHaveLength(5)
       expect(bar.parentElement?.previousElementSibling?.textContent).toMatch(/\S/)
     }
     expect(screen.getByText(/^Pull requests from GitHub, read /)).toBeTruthy()

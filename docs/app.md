@@ -572,8 +572,8 @@ others. Installing it: [install-app.md](install-app.md).
   and the order is kept for you on this computer. **Release** shows the
   repository's next release: the version its changelog entries call for
   (a feature makes a minor release, fixes a patch; hover it for how it was
-  counted) and a ten-block progress bar per pull request and agent on its
-  way there. The permission prompt and its buttons sit
+  counted) and a progress bar per pull request and agent on its way
+  there, a segment per step. The permission prompt and its buttons sit
   at the top while one waits. Click a changed file to read it in a tab
   (in a folder that is not a git repository, it opens in your editor at
   its first change). Beside a shell tab it shows the folder and its
@@ -650,9 +650,14 @@ others. Installing it: [install-app.md](install-app.md).
   agent cost; hover a figure (or focus it) for what it means, in a card
   under it. Under them, **Next release**: the version this repository's
   changelog entries call for (a feature makes a minor release, fixes a
-  patch), then a ten-block progress bar per pull request merged since the
-  last tag, open, or agent still at work, with its step in a word — a
-  landing-queue label such as *landing: queued* when it has one. Then one list, a row per pull request: its number, its whole
+  patch), then a progress bar per pull request merged since the last tag,
+  open, or agent still at work — a segment per step, named on hover, the
+  bar growing with the panel — with its step in a word (a landing-queue
+  label such as *landing: queued* when it has one) and, as the width
+  allows, what it waits for now (*CI on Windows · 6m*, *needs a rebase*,
+  *fix: go (windows-latest)*), the agent cost recorded on it (at API list
+  price; *—* where no session was), a dot per OS its checks ran on, how
+  long its CI took against the usual, and how long ago it was opened. Then one list, a row per pull request: its number, its whole
   title, its labels, and the four steps as pills — *Open → CI → Merged →
   Released* — a step done ticked, the step it is on filled in its colour (a
   ✗ on *CI red*, a turning ring on *CI running*; *Conflict*, *Changes
