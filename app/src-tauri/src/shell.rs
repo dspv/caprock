@@ -209,24 +209,26 @@ pub fn build(
     // the floor, which 0.123.0 did.
     let on_drop = {
         let dropped = w.clone();
-        std::sync::Arc::new(move |paths: &Vec<PathBuf>, position: tauri::PhysicalPosition<f64>| {
-            let scale = dropped.scale_factor().unwrap_or(1.0);
-            let paste = discovery::data_dir().map(|d| d.join("paste"));
-            let paths: Vec<PathBuf> = paths
-                .iter()
-                .map(|p| match &paste {
-                    Some(dir) => keep_transient(p, dir),
-                    None => p.clone(),
-                })
-                .collect();
-            // The only files the feedback form may read (capture.rs).
-            if let Some(d) = dropped.try_state::<crate::capture::Dropped>() {
-                d.set(&paths);
-            }
-            if let Some(js) = drop_script(&paths, (position.x, position.y), scale) {
-                let _ = dropped.eval(js);
-            }
-        })
+        std::sync::Arc::new(
+            move |paths: &Vec<PathBuf>, position: tauri::PhysicalPosition<f64>| {
+                let scale = dropped.scale_factor().unwrap_or(1.0);
+                let paste = discovery::data_dir().map(|d| d.join("paste"));
+                let paths: Vec<PathBuf> = paths
+                    .iter()
+                    .map(|p| match &paste {
+                        Some(dir) => keep_transient(p, dir),
+                        None => p.clone(),
+                    })
+                    .collect();
+                // The only files the feedback form may read (capture.rs).
+                if let Some(d) = dropped.try_state::<crate::capture::Dropped>() {
+                    d.set(&paths);
+                }
+                if let Some(js) = drop_script(&paths, (position.x, position.y), scale) {
+                    let _ = dropped.eval(js);
+                }
+            },
+        )
     };
     let from_window = on_drop.clone();
     w.on_window_event(move |e| {
