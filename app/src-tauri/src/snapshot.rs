@@ -39,7 +39,7 @@ pub fn watch(app: AppHandle) {
         std::thread::sleep(every);
         if let Ok(js) = std::fs::read_to_string(dir.join("eval")) {
             let _ = std::fs::remove_file(dir.join("eval"));
-            if let Some(w) = crate::shell::main_webview(&app) {
+            if let Some(w) = app.get_webview_window(crate::shell::MAIN) {
                 let _ = w.eval(js);
             }
         }
@@ -67,11 +67,8 @@ pub fn watch(app: AppHandle) {
         // bench/ (WP-16): the window hidden, for the hidden-window CPU row,
         // with WebKit's occlusion detection back on as in a shipped build.
         if std::fs::remove_file(dir.join("hide")).is_ok() {
-            if let (Some(v), Some(w)) = (
-                crate::shell::main_webview(&app),
-                crate::shell::main_window(&app),
-            ) {
-                occlusion_detection(&v, true);
+            if let Some(w) = app.get_webview_window(crate::shell::MAIN) {
+                occlusion_detection(&w, true);
                 end_activity();
                 let _ = w.hide();
             }
@@ -84,7 +81,7 @@ pub fn watch(app: AppHandle) {
         let out = dir.join(format!("{}.png", name.trim()));
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || {
-            if let Some(w) = crate::shell::main_window(&handle) {
+            if let Some(w) = handle.get_webview_window(crate::shell::MAIN) {
                 let result = capture(&w, &out);
                 let _ = std::fs::write(out.with_extension("txt"), format!("{result:?}"));
             }
@@ -118,7 +115,7 @@ fn popover(app: &AppHandle, show: bool, out: PathBuf) {
             };
             let ns = NSApplication::sharedApplication(mtm);
             let key = |label: &str| {
-                h2.get_window(label)
+                h2.get_webview_window(label)
                     .and_then(|w| w.ns_window().ok())
                     .map(|p| unsafe { &*(p as *const objc2_app_kit::NSWindow) })
                     .map(|w| (w.isVisible(), w.isKeyWindow()))
@@ -141,7 +138,7 @@ fn popover(app: &AppHandle, show: bool, out: PathBuf) {
 fn keep_painting(app: &AppHandle) {
     use objc2::runtime::AnyObject;
     use objc2::{class, msg_send};
-    if let Some(w) = crate::shell::main_webview(app) {
+    if let Some(w) = app.get_webview_window(crate::shell::MAIN) {
         occlusion_detection(&w, false);
     }
     // NSActivityUserInitiatedAllowingIdleSystemSleep | NSActivityLatencyCritical
@@ -177,7 +174,7 @@ fn end_activity() {
 }
 
 /// WebKit SPI `_setWindowOcclusionDetectionEnabled:`, when this WebKit has it.
-fn occlusion_detection(w: &tauri::Webview, enabled: bool) {
+fn occlusion_detection(w: &tauri::WebviewWindow, enabled: bool) {
     use objc2::runtime::AnyObject;
     use objc2::{msg_send, sel};
     let _ = w.with_webview(move |pw| {
@@ -195,7 +192,7 @@ fn occlusion_detection(w: &tauri::Webview, enabled: bool) {
 }
 
 #[allow(deprecated)]
-fn capture(w: &tauri::Window, out: &Path) -> Result<(), String> {
+fn capture(w: &tauri::WebviewWindow, out: &Path) -> Result<(), String> {
     use objc2::AnyThread;
     use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSWindow};
     use objc2_core_foundation::{CGPoint, CGRect, CGSize};

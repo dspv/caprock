@@ -19,7 +19,7 @@ import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane'
 import { composerFits, useComposerEnabled } from '@/lib/composer'
 import { AgentGlyph, agentGlyphLabel } from './AgentMarks'
-import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, GlobeIcon, MailIcon, PipelineIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, MailIcon, PipelineIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { sessionHealth } from '@/lib/sessionLabels'
 import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
@@ -307,50 +307,6 @@ export function TabStrip(props: TabStripProps) {
         )}
         {tabs.map((t, i) => {
           const label = labels.get(t.id)
-          // A page tab (ADR-070): a globe and the page's title, in its own
-          // group after every other tab — outlined, never filled, with no
-          // key, no project and no state — so it never reads as an agent.
-          const page = label?.page
-          if (page !== undefined) {
-            const title = label?.title ?? t.title
-            const active = t.id === activeTabId
-            const first = i > 0 && labels.get(tabs[i - 1]!.id)?.page === undefined
-            return (
-              <div
-                key={t.id}
-                role="tab"
-                tabIndex={active ? 0 : -1}
-                aria-selected={active}
-                aria-label={`Page · ${title}`}
-                data-tab-index={i}
-                data-page-tab
-                data-dragging={dragging === t.id || undefined}
-                onPointerDown={press(t.id)}
-                onClick={() => {
-                  if (dragged.current) { dragged.current = false; return }
-                  props.onActivate(t.id)
-                }}
-                onAuxClick={(e) => { if (e.button === 1) props.onDetach(t.id) }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
-                title={`${title} · ${page} — a web page, not an agent`}
-                className={`group relative flex h-[32px] max-w-[240px] flex-1 basis-[160px] cursor-default select-none items-center gap-1 rounded-t-[9px] pl-2 pr-1 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none app-tab-page ${first ? 'app-tab-page-first' : ''} ${
-                  active ? 'app-tab-front min-w-[160px] bg-bg font-semibold text-fg' : 'min-w-[92px] text-fg-muted hover:text-fg'
-                } ${dragging === t.id ? 'opacity-60' : ''}`}
-              >
-                <GlobeIcon size={13} className={active ? 'text-accent' : 'text-fg-faint'} />
-                <span data-row-title className="min-w-[4ch] flex-1 truncate">{title}</span>
-                <button
-                  type="button"
-                  aria-label={`Close page ${title}`}
-                  title={`Close the page (${keys('⌘W')})`}
-                  onClick={(e) => { e.stopPropagation(); props.onDetach(t.id) }}
-                  className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${active ? '' : 'invisible group-hover:visible group-focus-within:visible'}`}
-                >
-                  <CloseIcon size={12} />
-                </button>
-              </div>
-            )
-          }
           // A file tab is named by the file; its tooltip is the whole path.
           const file = label?.file
           const s = label?.session
@@ -507,7 +463,6 @@ export const TerminalStack = memo(function TerminalStack({
   onResize,
   renderFile,
   renderObserve,
-  renderPage,
   chats,
   onChatClose,
   onChatRestart,
@@ -526,8 +481,6 @@ export const TerminalStack = memo(function TerminalStack({
   renderFile?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   /** What a watched session's tab shows (components/ObservePane.tsx): its conversation, read-only, no terminal. */
   renderObserve?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
-  /** What a page tab shows (components/PageView.tsx): a web page, apart from the agents (ADR-070). */
-  renderPage?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
   /** The session's program exited; the workspace replaces it with a shell. */
   onPaneExit?: (sessionId: string) => void
@@ -569,8 +522,7 @@ export const TerminalStack = memo(function TerminalStack({
         const shown = t.id === visibleTabId && !covered
         return (
         <div key={t.id} className={`absolute inset-0 ${t.root.type === 'pane' && ownTab(t.root.target) ? 'bg-bg' : 'app-slab'}`} hidden={!shown} data-tab-panel={t.id}>
-          {t.root.type === 'pane' && t.root.target.kind === 'page' ? renderPage?.(t, t.root, shown)
-            : t.root.type === 'pane' && t.root.target.kind === 'file' ? renderFile?.(t, t.root, shown)
+          {t.root.type === 'pane' && t.root.target.kind === 'file' ? renderFile?.(t, t.root, shown)
             : t.root.type === 'pane' && t.root.target.kind === 'observe' ? renderObserve?.(t, t.root, shown) : <PaneView
             node={t.root}
             visible={shown}
