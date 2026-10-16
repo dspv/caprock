@@ -41,6 +41,10 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("schema: %w", err)
 	}
+	if err := backfillSent(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("schema: %w", err)
+	}
 	return &Store{db: db}, nil
 }
 
@@ -49,6 +53,12 @@ func Open(path string) (*Store, error) {
 // missing: idempotent, and a fresh database already has it from schema.sql.
 var addedColumns = []struct{ table, column, ddl string }{
 	{"accounts", "auth", `ALTER TABLE accounts ADD COLUMN auth TEXT NOT NULL DEFAULT 'password'`},
+	// junk filter (internal/mail/spam), one block so a merge keeps it whole.
+	{"messages", "junk", `ALTER TABLE messages ADD COLUMN junk INTEGER NOT NULL DEFAULT 0`},
+	{"messages", "junk_score", `ALTER TABLE messages ADD COLUMN junk_score INTEGER NOT NULL DEFAULT 0`},
+	{"messages", "junk_why", `ALTER TABLE messages ADD COLUMN junk_why TEXT NOT NULL DEFAULT ''`},
+	{"messages", "junk_hdr", `ALTER TABLE messages ADD COLUMN junk_hdr TEXT NOT NULL DEFAULT ''`},
+	{"contacts", "sent", `ALTER TABLE contacts ADD COLUMN sent INTEGER NOT NULL DEFAULT 0`},
 }
 
 func addColumns(db *sql.DB) error {
@@ -319,8 +329,25 @@ func (s *Store) SetLastUID(ctx context.Context, folderID int64, uid uint32) erro
 func (s *Store) RecountFolder(ctx context.Context, folderID int64) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE folders SET
 		total=(SELECT COUNT(*) FROM messages WHERE folder_id=?),
-		unread=(SELECT COUNT(*) FROM messages WHERE folder_id=? AND seen=0) WHERE id=?`, folderID, folderID, folderID)
+		unread=(SELECT COUNT(*) FROM messages m WHERE m.folder_id=? AND m.seen=0 AND NOT `+SpamSQL+`) WHERE id=?`, folderID, folderID, folderID)
 	return err
+}
+
+// RecountInbox refreshes the counts of an account's inbox folders (a spam
+// label changed: the unread count leaves spam out).
+func (s *Store) RecountInbox(ctx context.Context, accountID int64) error {
+	fs, err := s.Folders(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	for _, f := range fs {
+		if f.Role == "inbox" {
+			if err := s.RecountFolder(ctx, f.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Address is a display name and an address.
@@ -379,6 +406,15 @@ type Message struct {
 	Structure  Structure `json:"structure"`
 	BodyState  int       `json:"body_state"`
 	ThreadSize int       `json:"thread_size,omitempty"`
+	// The local junk filter's verdict (internal/mail/spam), inbox mail only.
+	Junk      bool   `json:"junk"`
+	JunkScore int    `json:"junk_score"`
+	JunkWhy   string `json:"junk_why,omitempty"`
+	// JunkHdr is the filter's facts from the header (JSON spam.Header),
+	// written once when the header is stored.
+	JunkHdr string `json:"-"`
+	// AI is the assistant's label for the conversation (List only).
+	AI *Triage `json:"ai,omitempty"`
 }
 
 // UpsertHeader stores a message's envelope and flags. Body fields are kept.
@@ -390,12 +426,12 @@ func (s *Store) UpsertHeader(ctx context.Context, m *Message) (int64, error) {
 	var id int64
 	err := s.db.QueryRowContext(ctx, `INSERT INTO messages
 		(account_id, folder_id, uid, message_id, in_reply_to, refs, thread_key, subject, from_name, from_addr,
-		 to_json, cc_json, reply_to, date, size, seen, flagged, answered, has_attach, structure)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		 to_json, cc_json, reply_to, date, size, seen, flagged, answered, has_attach, structure, junk_hdr)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(folder_id, uid) DO UPDATE SET seen=excluded.seen, flagged=excluded.flagged, answered=excluded.answered
 		RETURNING id`,
 		m.AccountID, m.FolderID, m.UID, m.MessageID, m.InReplyTo, m.Refs, m.ThreadKey, m.Subject, m.FromName, m.FromAddr,
-		string(to), string(cc), m.ReplyTo, m.Date, m.Size, b2i(m.Seen), b2i(m.Flagged), b2i(m.Answered), b2i(m.HasAttach), string(st)).Scan(&id)
+		string(to), string(cc), m.ReplyTo, m.Date, m.Size, b2i(m.Seen), b2i(m.Flagged), b2i(m.Answered), b2i(m.HasAttach), string(st), m.JunkHdr).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -470,7 +506,7 @@ func (s *Store) PendingBodies(ctx context.Context, folderID int64, limit int) ([
 
 const msgCols = `m.id, m.account_id, m.folder_id, m.uid, m.message_id, m.in_reply_to, m.refs, m.thread_key, m.subject,
 	m.from_name, m.from_addr, m.to_json, m.cc_json, m.reply_to, m.date, m.size, m.seen, m.flagged, m.answered, m.has_attach,
-	m.snippet, m.structure, m.body_state`
+	m.snippet, m.structure, m.body_state, m.junk, m.junk_score, m.junk_why`
 
 func (s *Store) queryMessages(ctx context.Context, tail string, args ...any) ([]Message, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+msgCols+` FROM messages m `+tail, args...)
@@ -484,7 +520,7 @@ func (s *Store) queryMessages(ctx context.Context, tail string, args ...any) ([]
 		var to, cc, st string
 		if err := rows.Scan(&m.ID, &m.AccountID, &m.FolderID, &m.UID, &m.MessageID, &m.InReplyTo, &m.Refs, &m.ThreadKey, &m.Subject,
 			&m.FromName, &m.FromAddr, &to, &cc, &m.ReplyTo, &m.Date, &m.Size, &m.Seen, &m.Flagged, &m.Answered, &m.HasAttach,
-			&m.Snippet, &st, &m.BodyState); err != nil {
+			&m.Snippet, &st, &m.BodyState, &m.Junk, &m.JunkScore, &m.JunkWhy); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(to), &m.To)
@@ -528,10 +564,22 @@ type Query struct {
 	AccountID int64
 	FolderID  int64
 	Search    string
-	Before    int64 // date cursor, exclusive
-	BeforeID  int64
-	Limit     int
+	// Junk decides what happens to mail the junk filter flagged: "" leaves
+	// it out of inbox, unread and all (it shows everywhere else),
+	// "include" keeps it, "only" lists nothing else.
+	Junk string
+	// Category narrows the list to conversations the assistant labelled so:
+	// important updates newsletter spam, or "nospam" for everything not
+	// labelled spam. "" is no filter.
+	Category string
+	Before   int64 // date cursor, exclusive
+	BeforeID int64
+	Limit    int
 }
+
+// SpamSQL is true for a message (as m) that is spam in the inbox's sense:
+// the local junk filter flagged it, or the AI labelled its conversation spam.
+const SpamSQL = `(m.junk=1 OR EXISTS (SELECT 1 FROM triage t WHERE t.account_id=m.account_id AND t.thread_key=m.thread_key AND t.category='spam'))`
 
 // List runs a list query, newest first.
 func (s *Store) List(ctx context.Context, q Query) ([]Message, error) {
@@ -553,6 +601,13 @@ func (s *Store) List(ctx context.Context, q Query) ([]Message, error) {
 		where = append(where, "f.role=?")
 		args = append(args, q.View)
 	}
+	switch {
+	case q.Junk == "only":
+		where = append(where, "m.junk=1")
+	case q.Junk == "include", q.Category == "spam":
+	case q.Search == "" && (q.View == "inbox" || q.View == "unread" || q.View == "all" || q.View == ""):
+		where = append(where, "m.junk=0")
+	}
 	if q.AccountID != 0 {
 		where = append(where, "m.account_id=?")
 		args = append(args, q.AccountID)
@@ -564,6 +619,18 @@ func (s *Store) List(ctx context.Context, q Query) ([]Message, error) {
 		}
 		where = append(where, "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)")
 		args = append(args, fts)
+	}
+	// The one place "spam" in the inbox is decided: the local junk filter's
+	// flag or the AI's label, either one (SpamSQL).
+	switch q.Category {
+	case "":
+	case "nospam":
+		where = append(where, "NOT "+SpamSQL)
+	case "spam":
+		where = append(where, SpamSQL)
+	default:
+		where = append(where, "EXISTS (SELECT 1 FROM triage t WHERE t.account_id=m.account_id AND t.thread_key=m.thread_key AND t.category=?)")
+		args = append(args, q.Category)
 	}
 	if q.Before != 0 {
 		where = append(where, "(m.date < ? OR (m.date = ? AND m.id < ?))")
@@ -578,7 +645,11 @@ func (s *Store) List(ctx context.Context, q Query) ([]Message, error) {
 	}
 	tail += ` ORDER BY m.date DESC, m.id DESC LIMIT ?`
 	args = append(args, q.Limit)
-	return s.queryMessages(ctx, tail, args...)
+	ms, err := s.queryMessages(ctx, tail, args...)
+	if err != nil {
+		return nil, err
+	}
+	return ms, s.attachTriage(ctx, ms)
 }
 
 // ftsQuery turns free text into an FTS5 prefix query: every word must match.
@@ -643,16 +714,26 @@ type Counts struct {
 	Inbox   int `json:"inbox"`
 	Unread  int `json:"unread"`
 	Flagged int `json:"flagged"`
+	// Junk is the inbox conversations that are spam, by the junk filter or
+	// the AI (not the Junk folder).
+	Junk int `json:"junk"`
 }
 
-// UnifiedCounts counts across accounts.
+// UnifiedCounts counts across accounts. Inbox and unread leave out spam
+// (SpamSQL: the junk filter's flag or the AI's label); Junk counts the inbox
+// conversations that are spam either way.
 func (s *Store) UnifiedCounts(ctx context.Context) (Counts, error) {
 	var c Counts
 	err := s.db.QueryRowContext(ctx, `SELECT
-		COALESCE(SUM(CASE WHEN f.role='inbox' THEN 1 ELSE 0 END),0),
-		COALESCE(SUM(CASE WHEN f.role='inbox' AND m.seen=0 THEN 1 ELSE 0 END),0),
+		COALESCE(SUM(CASE WHEN f.role='inbox' AND NOT `+SpamSQL+` THEN 1 ELSE 0 END),0),
+		COALESCE(SUM(CASE WHEN f.role='inbox' AND m.seen=0 AND NOT `+SpamSQL+` THEN 1 ELSE 0 END),0),
 		COALESCE(SUM(CASE WHEN m.flagged=1 AND f.role NOT IN ('trash','junk') THEN 1 ELSE 0 END),0)
 		FROM messages m JOIN folders f ON f.id=m.folder_id`).Scan(&c.Inbox, &c.Unread, &c.Flagged)
+	if err != nil {
+		return c, err
+	}
+	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT DISTINCT m.account_id, m.thread_key
+		FROM messages m JOIN folders f ON f.id=m.folder_id WHERE f.role='inbox' AND `+SpamSQL+`)`).Scan(&c.Junk)
 	return c, err
 }
 
@@ -677,15 +758,23 @@ type Contact struct {
 	Name string `json:"name"`
 }
 
+// SentWeight is the NoteContact weight of an address the user wrote to.
+const SentWeight = 5
+
 // NoteContact remembers an address; sent-to weighs more than received-from.
 func (s *Store) NoteContact(ctx context.Context, a Address, weight int, when int64) error {
 	addr := strings.ToLower(strings.TrimSpace(a.Addr))
 	if addr == "" || !strings.Contains(addr, "@") {
 		return nil
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO contacts(addr, name, weight, last_seen) VALUES(?,?,?,?)
+	sent := 0
+	if weight >= SentWeight {
+		sent = 1 // the user wrote to it: the junk filter's "known sender"
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO contacts(addr, name, weight, last_seen, sent) VALUES(?,?,?,?,?)
 		ON CONFLICT(addr) DO UPDATE SET name=CASE WHEN excluded.name<>'' THEN excluded.name ELSE contacts.name END,
-		weight=contacts.weight+excluded.weight, last_seen=MAX(contacts.last_seen, excluded.last_seen)`, addr, a.Name, weight, when)
+		weight=contacts.weight+excluded.weight, last_seen=MAX(contacts.last_seen, excluded.last_seen),
+		sent=contacts.sent+excluded.sent`, addr, a.Name, weight, when, sent)
 	return err
 }
 

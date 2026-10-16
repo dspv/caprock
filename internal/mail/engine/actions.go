@@ -23,6 +23,10 @@ const (
 	ActSpam    = "spam"
 	ActNotSpam = "inbox" // move back to the inbox
 	ActMove    = "move"
+	// ActNotJunk is the user's "Not spam": a message in a Junk folder goes
+	// back to the inbox, one the local junk filter hid shows there again;
+	// either way the filter learns it and never flags the sender again.
+	ActNotJunk = "notjunk"
 )
 
 // ErrBadAction is returned for an unknown action.
@@ -31,6 +35,9 @@ var ErrBadAction = errors.New("unknown action")
 // Apply performs an action on messages, which may span accounts and folders.
 // targetFolder is used by ActMove.
 func (e *Engine) Apply(ctx context.Context, ids []int64, action string, targetFolder int64) error {
+	if action == ActNotJunk {
+		return e.notJunk(ctx, ids)
+	}
 	msgs, err := e.st.Messages(ctx, ids)
 	if err != nil {
 		return err
@@ -112,6 +119,18 @@ func (e *Engine) applyGroup(ctx context.Context, accountID, folderID int64, ms [
 				return e.expunge(ctx, w, src, ms, uids)
 			}
 			return nil
+		}
+		// The junk filter learns from the user: Spam on mail outside the
+		// Junk folder, Not spam on mail in it. Learned before the move,
+		// which removes the local rows.
+		if (action == ActSpam && src.Role != "junk") || (action == ActNotSpam && src.Role == "junk") {
+			ids := make([]int64, len(ms))
+			for i, m := range ms {
+				ids[i] = m.ID
+			}
+			if err := e.learnFromUser(ctx, ids, action == ActSpam); err != nil {
+				return err
+			}
 		}
 		err = w.do(func(c *imapclient.Client, a store.Account) error {
 			if _, err := c.Select(src.Name, nil).Wait(); err != nil {

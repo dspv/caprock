@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Account, Folder, Message, Settings, State } from './mailApi'
-import { api } from './mailApi'
+import type { Account, AIStatus, Category, Folder, Message, Settings, State } from './mailApi'
+import { api, whoText } from './mailApi'
 import type { ComposeInit } from './Composer'
 import { Composer } from './Composer'
 import { Reader } from './Reader'
@@ -10,6 +10,9 @@ import { hue, initials, quote, replySubject, sender, shortDate } from './format'
 import { Icon } from './icons'
 import './mail.css'
 import { markAnswered } from '@/lib/prompts'
+import { GO, K, KeySheet, type MailKey } from './keymap'
+import { filterFirst, isSpam } from './junk'
+import { ThemeButton, ThemePick } from './ThemePick'
 
 export type Sel = { view: string; account?: number; folder?: number }
 
@@ -37,21 +40,38 @@ export function groupThreads(ms: Message[]): Row[] {
   return rows
 }
 
-const VIEWS: { view: string; label: string; icon: string }[] = [
-  { view: 'inbox', label: 'Inbox', icon: 'inbox' },
-  { view: 'unread', label: 'Unread', icon: 'unread' },
-  { view: 'flagged', label: 'Starred', icon: 'star' },
-  { view: 'sent', label: 'Sent', icon: 'send' },
-  { view: 'drafts', label: 'Drafts', icon: 'draft' },
-  { view: 'archive', label: 'Archive', icon: 'archive' },
-  { view: 'junk', label: 'Spam', icon: 'spam' },
-  { view: 'trash', label: 'Trash', icon: 'trash' },
+const VIEWS: { view: string; label: string; icon: string; k: MailKey }[] = [
+  { view: 'inbox', label: 'Inbox', icon: 'inbox', k: 'inbox' },
+  { view: 'unread', label: 'Unread', icon: 'unread', k: 'unreadView' },
+  { view: 'flagged', label: 'Starred', icon: 'star', k: 'starred' },
+  { view: 'sent', label: 'Sent', icon: 'send', k: 'sent' },
+  { view: 'drafts', label: 'Drafts', icon: 'draft', k: 'drafts' },
+  { view: 'archive', label: 'Archive', icon: 'archive', k: 'archiveView' },
+  { view: 'junk', label: 'Spam', icon: 'spam', k: 'spamView' },
+  { view: 'trash', label: 'Trash', icon: 'trash', k: 'trashView' },
 ]
 
-const ACCOUNT_COLORS = ['#2f6fdf', '#e0702a', '#1e9e6a', '#b5479b', '#c9a227', '#5b5bd6']
+/** The inbox's AI filters. All is everything the AI did not call spam. */
+export type Cat = 'all' | Category
+export const CATS: { cat: Cat; label: string; k: MailKey }[] = [
+  { cat: 'all', label: 'All', k: 'catAll' },
+  { cat: 'important', label: 'Important', k: 'catImportant' },
+  { cat: 'updates', label: 'Updates', k: 'catUpdates' },
+  { cat: 'newsletter', label: 'News', k: 'catNewsletter' },
+  { cat: 'spam', label: 'Spam', k: 'catSpam' },
+]
+const CAT_BY_KEY: Record<string, Cat> = { 1: 'all', 2: 'important', 3: 'updates', 4: 'newsletter', 5: 'spam' }
+/** The label on a row: its category, or *Reply* when the last message waits on the user. */
+export const LABEL: Record<Category, string> = { important: 'Important', updates: 'Update', newsletter: 'Newsletter', spam: 'Spam' }
+
+/** "Let AI sort your inbox" was put away in this browser. */
+const OFFER_KEY = 'caprock.mail.triage-offer'
+const offerHidden = () => { try { return localStorage.getItem(OFFER_KEY) === 'no' } catch { return false } }
+
+const ACCOUNT_COLORS =['#2f6fdf', '#e0702a', '#1e9e6a', '#b5479b', '#c9a227', '#5b5bd6']
 export const acctColor = (accounts: Account[], id: number) => ACCOUNT_COLORS[Math.max(0, accounts.findIndex((a) => a.id === id)) % ACCOUNT_COLORS.length]
 
-const MOVES = new Set(['archive', 'trash', 'spam', 'inbox', 'move'])
+const MOVES = new Set(['archive', 'trash', 'spam', 'inbox', 'move', 'notjunk'])
 
 function folderLabel(f: Folder) {
   const parts = f.name.split(f.delim || '/')
@@ -79,10 +99,21 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
   const [sel, setSel] = useState<Sel>({ view: 'inbox' })
   const [q, setQ] = useState('')
   const [msgs, setMsgs] = useState<Message[]>([])
+  // In the Spam view: inbox mail the local junk filter hides, listed above
+  // the server's Junk folder.
+  const [localJunk, setLocalJunk] = useState<Message[]>([])
   const [more, setMore] = useState(true)
   const [cur, setCur] = useState<number | null>(null) // selected row's newest message id
   const [compose, setCompose] = useState<ComposeInit | null>(null)
-  const [showSettings, setShowSettings] = useState(false)
+  const [showSettings, setShowSettingsRaw] = useState(false)
+  // Where Settings opens: at the top, or on the AI section (the "change"
+  // links beside whoever does the AI work).
+  const [settingsAt, setSettingsAt] = useState<'top' | 'ai'>('top')
+  const setShowSettings = (on: boolean) => { setShowSettingsRaw(on); if (on) setSettingsAt('top') }
+  const openAiSettings = () => { setShowSettingsRaw(true); setSettingsAt('ai') }
+  const [cat, setCat] = useState<Cat>('all')
+  const [aiSt, setAiSt] = useState<AIStatus | null>(null)
+  const [offerOff, setOfferOff] = useState(offerHidden)
   const [toast, setToast] = useState('')
   const [syncing, setSyncing] = useState(false)
   // Where the first-run card opens: its choices, or straight at the provider
@@ -91,6 +122,12 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
   // Import everything stays on screen while it walks its sign-ins, though
   // the first account it connects would otherwise swap in the inbox.
   const [importing, setImporting] = useState(false)
+  // The `?` sheet, and the keys that act inside the reader (v opens Move,
+  // i summarises): the time of the press, which the reader watches.
+  const [help, setHelp] = useState(false)
+  const [themes, setThemes] = useState(false)
+  const [moveKick, setMoveKick] = useState(0)
+  const [sumKick, setSumKick] = useState(0)
   // The sample is being started because no account exists: say so, not a form.
   const [starting, setStarting] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -130,19 +167,32 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       setStarting(false)
     }
     setSt(s)
+    // The list below answers for this version: a change before the first
+    // poll (the sorter finishing, say) must still bring the list again.
+    version.current = s.version
     listRef2.current(false).catch(() => {})
   }, [])
 
+  // The AI filters act on the inbox only, never on a search.
+  const inboxView = sel.view === 'inbox' && !q
+  useEffect(() => { setCat('all') }, [sel.view, sel.account, sel.folder])
   const query = useMemo(() => ({
     view: q ? (sel.view === 'folder' ? 'folder' : 'all') : sel.view,
     account: sel.account,
     folder: sel.folder,
     q,
-  }), [sel, q])
+    cat: inboxView ? (cat === 'all' ? 'nospam' : cat) : undefined,
+  }), [sel, q, cat, inboxView])
 
   const loadList = useCallback(async (append = false) => {
     const last = append ? msgs[msgs.length - 1] : undefined
     const page = await api.list({ ...query, limit: 150, before: last?.date, before_id: last?.id })
+    if (!append) {
+      const hidden = query.view === 'junk' && !query.q
+        ? await api.list({ view: 'inbox', cat: 'spam', account: query.account, limit: 150 }).catch(() => [] as Message[])
+        : []
+      setLocalJunk(hidden)
+    }
     setMore(page.length === 150)
     setMsgs((old) => (append ? [...old, ...page] : page))
   }, [query, msgs])
@@ -185,13 +235,45 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       if (filling && n++ < 40) listRef2.current(false).catch(() => {})
       tick()
     }, filling ? 400 : 4000)
-    return () => clearInterval(t)
+    // A hidden tab skips its ticks; coming back asks at once, so the counts
+    // are not a poll behind.
+    const back = () => { if (!document.hidden) tick() }
+    document.addEventListener('visibilitychange', back)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', back) }
   }, [ready, filling])
 
-  const rows = useMemo(() => groupThreads(msgs), [msgs])
+  // Spam lists the junk filter's catch first, then the AI's: the inbox's
+  // Spam filter (5), and the top of the Spam folder view (g !).
+  const spamTab = inboxView && cat === 'spam'
+  const rows = useMemo(() => groupThreads(spamTab ? filterFirst(msgs) : [...filterFirst(localJunk), ...msgs]), [localJunk, msgs, spamTab])
+  const hiddenIds = useMemo(() => new Set(localJunk.map((m) => m.id)), [localJunk])
   const curRow = rows.find((r) => r.m.id === cur) ?? null
   const accounts = st?.accounts ?? []
   const aiOn = settings.ai_enabled === '1'
+  // Who does the AI work, named wherever it acts (owner, 2026-10-15: the
+  // provider and model pickers were there, but he did not find them).
+  const modelKeys = Object.keys(settings).filter((k) => k.startsWith('ai_model')).map((k) => settings[k]).join('|')
+  useEffect(() => {
+    if (!ready) return
+    let live = true
+    api.aiStatus().then((s) => live && setAiSt(s)).catch(() => {})
+    return () => { live = false }
+  }, [ready, aiOn, settings.ai_provider, settings.ai_url, modelKeys])
+  const who = st?.sample ? (st.triage?.by || 'Sample labels') : whoText(aiSt)
+  const triage = st?.triage
+  const catCount = (c: Category) => (triage?.counts ?? []).filter((x) => x.category === c && (!sel.account || x.account_id === sel.account)).reduce((n, x) => n + x.n, 0)
+  // Labels the AI gave (the spam count also holds the junk filter's catch,
+  // which alone does not bring up the AI filters).
+  const labelled = (triage?.counts ?? []).some((x) => x.category !== 'spam')
+  const showCats = inboxView && (aiOn || !!st?.sample || labelled)
+  const showOffer = inboxView && !aiOn && !st?.sample && !offerOff
+  const turnOnSorting = async () => {
+    try {
+      setSettings(await api.putSettings({ ai_enabled: '1' }))
+      loadState()
+    } catch (e) { flash('Failed: ' + (e as Error).message) }
+  }
+  const hideOffer = () => { setOfferOff(true); try { localStorage.setItem(OFFER_KEY, 'no') } catch { /* private window */ } }
 
   const select = (r: Row | null) => {
     setCur(r?.m.id ?? null)
@@ -209,6 +291,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       const i = rows.indexOf(row)
       const next = rows[i + 1] ?? rows[i - 1] ?? null
       setMsgs((ms) => ms.filter((m) => !ids.includes(m.id)))
+      setLocalJunk((ms) => ms.filter((m) => !ids.includes(m.id)))
       setCur(next ? next.m.id : null)
     } else {
       const patch: Partial<Message> =
@@ -221,11 +304,32 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       if (action === 'archive') flash('Archived')
       if (action === 'trash') flash(sel.view === 'trash' ? 'Deleted for good' : 'Moved to Trash')
       if (action === 'spam') flash('Marked as spam')
+      if (action === 'notjunk') flash('Not spam — back in the Inbox')
     } catch (e) {
       flash('Failed: ' + (e as Error).message)
       listRef2.current(false)
     }
     loadState()
+  }
+
+  /**
+   * Not spam (n), one action for every kind of spam (`notjunk`): mail in the
+   * Junk folder goes back to the inbox; mail the junk filter hid or the AI
+   * labelled spam shows in the inbox again. Either way the filter learns it,
+   * the AI's spam label is taken back, and that sender is never spam again.
+   */
+  const notSpam = async (row = curRow) => {
+    if (!row || (sel.view !== 'junk' && !isSpam(row.m))) return
+    await act('notjunk', row)
+  }
+  const pickCat = (c: Cat) => {
+    setCur(null)
+    if (sel.view === 'inbox' && !q) { setCat(c); return }
+    // From another folder: to the inbox first; the change of view resets
+    // the filter, so it is set after.
+    setSel({ view: 'inbox', account: sel.account })
+    setQ('')
+    setTimeout(() => setCat(c), 0)
   }
 
   const startReply = (m: Message, all: boolean) => {
@@ -248,12 +352,17 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       const el = e.target as HTMLElement
       if (el.closest('input, textarea, select, [contenteditable]') || compose || showSettings) return
       if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (themes) return // ThemePick holds the keys while open
+      if (help) {
+        if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); setHelp(false) }
+        return
+      }
       const i = curRow ? rows.indexOf(curRow) : -1
       const k = e.key
       if (gPending.current) {
         gPending.current = false
-        const map: Record<string, string> = { i: 'inbox', s: 'flagged', t: 'sent', a: 'archive', d: 'drafts', u: 'unread' }
-        if (map[k]) { setSel({ view: map[k]! }); setQ('') }
+        if (k === 'r') { e.preventDefault(); checkMail(); return }
+        if (GO[k]) { e.preventDefault(); setSel({ view: GO[k]! }); setQ(''); setCur(null) }
         return
       }
       const last = threadRef.current[threadRef.current.length - 1] ?? curRow?.m
@@ -263,6 +372,8 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
         case 'e': act('archive'); break
         case '#': case 'Delete': case 'Backspace': act('trash'); break
         case '!': act('spam'); break
+        case 'n': curRow && notSpam(); break
+        case '1': case '2': case '3': case '4': case '5': pickCat(CAT_BY_KEY[k]!); break
         case 's': curRow && act(curRow.flagged ? 'unflag' : 'flag'); break
         case 'u': curRow && act(curRow.unread ? 'read' : 'unread'); break
         case 'r': last && startReply(last, false); break
@@ -270,6 +381,11 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
         case 'f': last && startForward(last); break
         case 'c': startCompose(); break
         case '/': searchRef.current?.focus(); break
+        case 'v': curRow && setMoveKick(Date.now()); break
+        case 'i': curRow && setSumKick(Date.now()); break
+        case ',': setShowSettings(true); break
+        case '?': setHelp(true); break
+        case 't': setThemes(true); break
         case 'g': gPending.current = true; setTimeout(() => (gPending.current = false), 1200); break
         case 'Escape': setCur(null); break
         default: return
@@ -286,6 +402,7 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
   }, [cur])
 
   const reload = () => { loadState(); listRef2.current(false).catch(() => {}) }
+  const checkMail = () => { setSyncing(true); api.sync().finally(() => setTimeout(() => setSyncing(false), 1200)) }
   const sample = async (on: boolean, then: { step: Step; provider?: ProviderId } = { step: 'choose' }) => {
     if (!on) sampleLeft = true
     await api.sample(on)
@@ -328,15 +445,15 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
     <div className="app">
       <aside className="side">
         <div className="sidetop">
-          <button className="btn primary compose" onClick={startCompose}><Icon name="compose" /> Compose</button>
+          <button className="btn primary compose" onClick={startCompose}><Icon name="compose" /> Compose <K k="compose" /></button>
         </div>
         <nav>
           {VIEWS.map((v) => {
-            const n = v.view === 'inbox' ? st.counts.unread : v.view === 'flagged' ? st.counts.flagged : 0
+            const n = v.view === 'inbox' ? st.counts.unread : v.view === 'flagged' ? st.counts.flagged : v.view === 'junk' ? (st.counts.junk ?? 0) : 0
             return (
               <button key={v.view} className={'nav' + (!q && sel.view === v.view && !sel.account ? ' on' : '')}
                 onClick={() => { setSel({ view: v.view }); setQ(''); setCur(null) }}>
-                <Icon name={v.icon} /> <span>{v.label}</span> {n > 0 && <em>{n}</em>}
+                <Icon name={v.icon} /> <span>{v.label}</span> {n > 0 && <em>{n}</em>} <K k={v.k} />
               </button>
             )
           })}
@@ -361,10 +478,12 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
           ))}
         </nav>
         <div className="sidefoot">
-          <button className="icon" title="Check mail" onClick={() => { setSyncing(true); api.sync().finally(() => setTimeout(() => setSyncing(false), 1200)) }}>
-            <Icon name="sync" className={syncing ? 'spin' : ''} />
+          <button className="nav" onClick={checkMail}>
+            <Icon name="sync" className={syncing ? 'spin' : ''} /> <span>{syncing ? 'Checking…' : 'Check mail'}</span> <K k="sync" />
           </button>
-          <button className="icon" title="Settings" onClick={() => setShowSettings(true)}><Icon name="gear" /></button>
+          <button className="nav" onClick={() => setShowSettings(true)}><Icon name="gear" /> <span>Settings</span> <K k="settings" /></button>
+          <ThemeButton onOpen={() => setThemes(true)} />
+          <button className="nav" onClick={() => setHelp(true)}><Icon name="keyboard" /> <span>All shortcuts</span> <K k="help" /></button>
         </div>
       </aside>
 
@@ -377,10 +496,47 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
                 if (e.key === 'Escape') { setQ(''); (e.target as HTMLInputElement).blur() }
                 if (e.key === 'Enter' || e.key === 'ArrowDown') { (e.target as HTMLInputElement).blur(); select(rows[0] ?? null) }
               }} />
+            {!q && <K k="search" />}
           </div>
           <div className="listtitle">{title}</div>
         </div>
         {errAcct && <div className="banner warn">{errAcct.email}: {errAcct.last_error}</div>}
+        {showCats && (
+          <div className="cats" role="tablist" aria-label="Sort with AI">
+            {CATS.map((c) => {
+              const n = c.cat === 'spam' ? catCount('spam') : 0
+              return (
+                <button key={c.cat} role="tab" aria-selected={cat === c.cat} className={'cat ' + c.cat + (cat === c.cat ? ' on' : '')} onClick={() => pickCat(c.cat)}>
+                  {c.label}{n > 0 && <em>{n}</em>} <K k={c.k} />
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {showCats && (
+          <div className="triagebar small muted">
+            {triage?.running
+              ? <span><span className="pulse" /> Sorting {triage.pending} conversation{triage.pending === 1 ? '' : 's'}… · {triage.by || who}</span>
+              : st.sample
+                ? <span>Sample labels: made up with the sample inbox, no AI is asked.</span>
+                : aiOn
+                  ? <span>{who ? <>Sorted by {who}</> : 'No AI is set up yet'} · <button className="link" onClick={openAiSettings}>change</button></span>
+                  : <span>Sorting is off · <button className="link" onClick={openAiSettings}>AI settings</button></span>}
+          </div>
+        )}
+        {showOffer && (
+          <div className="offer small">
+            <Icon name="sparkle" size={14} />
+            {aiSt?.available
+              ? <span>Let AI sort your inbox into Important, Updates, Newsletters and Spam. Sorting sends the sender, subject and start of each conversation to {aiSt.sends_to}.</span>
+              : <span>Let AI sort your inbox — no AI is set up on this computer yet.</span>}
+            <span className="grow" />
+            {aiSt?.available
+              ? <button className="btn primary" onClick={() => turnOnSorting()}>Turn on</button>
+              : <button className="btn" onClick={openAiSettings}>Set up</button>}
+            <button className="icon tiny" title="Not now" aria-label="Not now" onClick={hideOffer}><Icon name="close" size={12} /></button>
+          </div>
+        )}
         <div className="rows" ref={listRef} onScroll={(e) => {
           const el = e.currentTarget
           if (more && el.scrollTop + el.clientHeight > el.scrollHeight - 400) {
@@ -389,11 +545,22 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
           }
         }}>
           {rows.length === 0 && <div className="empty">{q ? 'Nothing found.' : 'No messages.'}</div>}
-          {rows.map((r) => {
+          {rows.map((r, i) => {
             const m = r.m
+            // The Spam view: what Caprock hides from the inbox first (the
+            // junk filter's catch and the AI's, each once), then the
+            // server's Junk folder.
+            const hidden = hiddenIds.has(m.id)
+            const prevHidden = i > 0 && hiddenIds.has(rows[i - 1]!.m.id)
+            const head = sel.view !== 'junk' || q ? null
+              : hidden && i === 0 ? 'Caprock thinks these are junk'
+              : !hidden && (i === 0 ? localJunk.length > 0 : prevHidden) ? 'In your Spam folder' : null
+            const spam = isSpam(m)
             const name = sel.view === 'sent' ? 'To: ' + (m.to?.[0]?.name || m.to?.[0]?.addr || '') : sender(m)
             return (
-              <div key={m.id} className={'row' + (r.unread ? ' unread' : '') + (cur === m.id ? ' on' : '')} onClick={() => select(r)}>
+              <div key={m.id} className="rowwrap">
+              {head && <div className="rowhead">{head}{hidden && <span className="muted"> · hidden from the Inbox, nothing moved on the server</span>}</div>}
+              <div className={'row' + (r.unread ? ' unread' : '') + (cur === m.id ? ' on' : '')} onClick={() => select(r)}>
                 <div className="avatar" style={{ background: `hsl(${hue(m.from_addr)} 45% 55%)` }}>{initials(m.from_name || m.from_addr)}</div>
                 <div className="rowmain">
                   <div className="rowtop">
@@ -404,15 +571,23 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
                     {r.flagged && <Icon name="star" size={13} className="star" />}
                     <span className="date">{shortDate(m.date)}</span>
                   </div>
-                  <div className="subject">{m.subject || '(no subject)'}</div>
-                  <div className="snippet">{m.snippet}</div>
+                  <div className="subject">
+                    {/* One label: Spam from either source, else the AI's category. */}
+                    {spam
+                      ? <span className="tag spam" title={m.junk ? 'Caught by Caprock’s junk filter' : 'Sorted by AI'}>Spam</span>
+                      : m.ai && <span className={'tag ' + m.ai.category + (m.ai.reply ? ' reply' : '')} title={m.ai.user ? 'Your label' : 'Sorted by AI'}>{m.ai.reply ? 'Reply' : LABEL[m.ai.category]}</span>}
+                    {m.subject || '(no subject)'}
+                  </div>
+                  <div className={'snippet' + (m.ai?.summary ? ' aisum' : '')}>{m.ai?.summary || m.snippet}</div>
                 </div>
                 {accounts.length > 1 && <span className="acctbar" style={{ background: acctColor(accounts, m.account_id) }} />}
                 <div className="hoveracts" onClick={(e) => e.stopPropagation()}>
+                  {(spam || sel.view === 'junk') && <button className="btn tinybtn" title="Not spam (n)" onClick={() => notSpam(r)}>Not spam</button>}
                   <button className="icon" title="Archive (e)" onClick={() => act('archive', r)}><Icon name="archive" size={15} /></button>
                   <button className="icon" title="Delete (#)" onClick={() => act('trash', r)}><Icon name="trash" size={15} /></button>
                   <button className="icon" title={r.unread ? 'Mark read' : 'Mark unread (u)'} onClick={() => act(r.unread ? 'read' : 'unread', r)}><Icon name="unread" size={15} /></button>
                 </div>
+              </div>
               </div>
             )
           })}
@@ -422,6 +597,8 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
       <main className="reader">
         {curRow ? (
           <Reader key={curRow.m.id} row={curRow} view={sel.view} aiOn={aiOn} settings={settings}
+            who={who} onAiSettings={openAiSettings} onNotSpam={() => notSpam(curRow)}
+            moveKick={moveKick} sumKick={sumKick} onSettings={setSettings}
             folders={st.folders.filter((f) => f.account_id === curRow.m.account_id && f.role !== 'noselect')}
             onThread={(t) => (threadRef.current = t)}
             onAct={(a, folder) => act(a, curRow, folder)}
@@ -431,22 +608,24 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
           <div className="nothing">
             <Icon name="mail" size={40} />
             <div>{rows.length} conversation{rows.length === 1 ? '' : 's'}</div>
-            <div className="muted small">j / k to move, c to compose, / to search</div>
+            <div className="muted small keyline"><K k="down" /> <K k="up" /> move · <K k="compose" /> compose · <K k="search" /> search · <K k="help" /> every shortcut</div>
           </div>
         )}
       </main>
 
       {compose && (
-        <Composer init={compose} accounts={accounts} aiOn={aiOn} onClose={() => setCompose(null)}
+        <Composer init={compose} accounts={accounts} aiOn={aiOn} who={who} onAiSettings={openAiSettings} onClose={() => setCompose(null)}
           onSent={() => { setCompose(null); flash('Sent') }} />
       )}
       {showSettings && (
         <div className="overlay" onClick={(e) => e.target === e.currentTarget && setShowSettings(false)}>
-          <SettingsPanel accounts={accounts} settings={settings} onSettings={setSettings}
+          <SettingsPanel accounts={accounts} settings={settings} onSettings={setSettings} section={settingsAt}
             onClose={() => setShowSettings(false)} onChanged={() => { loadState(); listRef2.current(false) }}
             onAddAccount={st.sample ? () => { setShowSettings(false); sample(false, { step: 'add' }).catch((e) => flash(e.message)) } : undefined} />
         </div>
       )}
+      {help && <KeySheet onClose={() => setHelp(false)} />}
+      {themes && <ThemePick onClose={() => setThemes(false)} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
     </div>

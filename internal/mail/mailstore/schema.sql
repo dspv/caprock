@@ -60,6 +60,11 @@ CREATE TABLE IF NOT EXISTS messages (
     body_html    TEXT NOT NULL DEFAULT '',
     structure    TEXT NOT NULL DEFAULT '', -- JSON: text parts and attachments by IMAP part path
     body_state   INTEGER NOT NULL DEFAULT 0, -- 0 headers only, 1 body fetched
+    -- The local junk filter's verdict (inbox mail only); added to older files by addColumns.
+    junk         INTEGER NOT NULL DEFAULT 0,  -- 1: hidden from the inbox as junk
+    junk_score   INTEGER NOT NULL DEFAULT 0,  -- 0-100, 50 is the threshold
+    junk_why     TEXT NOT NULL DEFAULT '',    -- comma-separated rule codes, strongest first
+    junk_hdr     TEXT NOT NULL DEFAULT '',    -- JSON spam.Header; '' = not read yet
     UNIQUE (folder_id, uid)
 );
 CREATE INDEX IF NOT EXISTS messages_folder_date ON messages(folder_id, date DESC);
@@ -82,5 +87,61 @@ CREATE TABLE IF NOT EXISTS contacts (
     addr       TEXT PRIMARY KEY,
     name       TEXT NOT NULL DEFAULT '',
     weight     INTEGER NOT NULL DEFAULT 0,  -- sent-to counts more than received-from
-    last_seen  INTEGER NOT NULL DEFAULT 0
+    last_seen  INTEGER NOT NULL DEFAULT 0,
+    sent       INTEGER NOT NULL DEFAULT 0   -- times the user wrote to it; added by addColumns
+);
+
+-- The local junk filter (internal/mail/spam). Global, not per account: one
+-- person's idea of junk does not change with the address it reached, and a
+-- second account's mail would otherwise start from nothing.
+-- Token counts: in how many learned spam and ham messages a token appeared.
+-- Pruned to the most-seen tokens past 60,000 rows (PruneJunkTokens).
+CREATE TABLE IF NOT EXISTS junk_tokens (
+    token TEXT PRIMARY KEY,
+    spam  INTEGER NOT NULL DEFAULT 0,
+    ham   INTEGER NOT NULL DEFAULT 0
+) WITHOUT ROWID;
+
+-- Which messages were learned and as what, so one is never counted twice and
+-- a change of mind (Not spam after Spam) moves its tokens across.
+CREATE TABLE IF NOT EXISTS junk_trained (
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    msg_key    TEXT NOT NULL,    -- the Message-ID, else folder:uid
+    spam       INTEGER NOT NULL, -- 1 spam, 0 ham
+    by_user    INTEGER NOT NULL DEFAULT 0,
+    at         INTEGER NOT NULL,
+    PRIMARY KEY (account_id, msg_key)
+);
+
+-- Senders the user said "Not spam" for: never junk again.
+CREATE TABLE IF NOT EXISTS junk_allow (
+    addr TEXT PRIMARY KEY,
+    at   INTEGER NOT NULL
+);
+
+-- AI triage (added 2026-10-15): one row per inbox conversation the assistant
+-- sorted, keyed like the conversation itself. message_id is the newest
+-- message (row id) it saw, so a conversation that gains a message is sorted
+-- again; user_set marks a label the user gave, which the model never
+-- overwrites. Rows go with their account.
+CREATE TABLE IF NOT EXISTS triage (
+    account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    thread_key  TEXT NOT NULL,
+    message_id  INTEGER NOT NULL DEFAULT 0,
+    category    TEXT NOT NULL,              -- important | updates | newsletter | spam
+    reply       INTEGER NOT NULL DEFAULT 0, -- the last message waits on the user's answer
+    summary     TEXT NOT NULL DEFAULT '',
+    model       TEXT NOT NULL DEFAULT '',   -- provider[/model] that answered; "user" or "sample"
+    user_set    INTEGER NOT NULL DEFAULT 0,
+    at          INTEGER NOT NULL,           -- unix seconds
+    PRIMARY KEY (account_id, thread_key)
+);
+
+-- Senders the user said are not spam, per account: the model's spam verdict
+-- for their mail is replaced by the label the user gave.
+CREATE TABLE IF NOT EXISTS triage_senders (
+    account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    addr        TEXT NOT NULL,
+    category    TEXT NOT NULL,
+    PRIMARY KEY (account_id, addr)
 );

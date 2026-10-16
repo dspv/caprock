@@ -262,7 +262,7 @@ func (s *Service) aiStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		out := map[string]any{
 			"chosen": set["ai_provider"], "provider": cur.ID, "label": cur.Label, "sends_to": cur.SendsTo,
-			"available": ok, "models": models, "providers": rows,
+			"available": ok, "models": models, "providers": rows, "model": effectiveModel(cur, set, models),
 		}
 		if !ok {
 			if set["ai_provider"] == "" {
@@ -313,6 +313,7 @@ func (s *Service) aiKey(w http.ResponseWriter, r *http.Request) {
 type aiReq struct {
 	MessageID   int64  `json:"message_id"`
 	Instruction string `json:"instruction"`
+	lang        string // ai_language, filled in by aiRun
 }
 
 func aiThread(ctx context.Context, st *store.Store, eng *engine.Engine, id int64) ([]ai.Mail, store.Account, error) {
@@ -361,7 +362,7 @@ func (s *Service) aiRun(w http.ResponseWriter, r *http.Request, run func(ctx con
 			fail(w, 409, errors.New("AI is off; turn it on in Mail settings"))
 			return
 		}
-		ps, _, ok := s.chosen(ctx, set)
+		ps, models, ok := s.chosen(ctx, set)
 		if !ok {
 			why := ps.Why
 			if set["ai_provider"] == "" {
@@ -375,6 +376,7 @@ func (s *Service) aiRun(w http.ResponseWriter, r *http.Request, run func(ctx con
 			fail(w, 500, err)
 			return
 		}
+		req.lang = set["ai_language"]
 		th, a, err := aiThread(ctx, st, eng, req.MessageID)
 		if err != nil {
 			fail(w, 404, err)
@@ -385,13 +387,13 @@ func (s *Service) aiRun(w http.ResponseWriter, r *http.Request, run func(ctx con
 			fail(w, 502, err)
 			return
 		}
-		writeJSON(w, map[string]string{"text": out, "provider": ps.ID, "label": ps.Label})
+		writeJSON(w, map[string]string{"text": out, "provider": ps.ID, "label": ps.Label, "model": effectiveModel(ps, set, models)})
 	})
 }
 
 func (s *Service) aiSummarize(w http.ResponseWriter, r *http.Request) {
-	s.aiRun(w, r, func(ctx context.Context, c ai.Chatter, th []ai.Mail, _ store.Account, _ aiReq) (string, error) {
-		return ai.Summarize(ctx, c, th)
+	s.aiRun(w, r, func(ctx context.Context, c ai.Chatter, th []ai.Mail, _ store.Account, req aiReq) (string, error) {
+		return ai.SummarizeIn(ctx, c, th, req.lang)
 	})
 }
 

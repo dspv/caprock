@@ -3416,6 +3416,20 @@ dashboard and a desktop app on three OSes.
   stripped, and the body renders in a sandboxed iframe under a CSP with no
   script and no network; remote images (tracking pixels) load only when the
   user allows them.
+- **A local junk filter, on by default** (amended 2026-10-15; the owner,
+  translated: "there's a lot of spam in my inbox — every mail client filters
+  this"). Many IMAP hosts leave junk in INBOX and the user's previous client
+  hid it locally. `internal/mail/spam` does the same with no AI and no
+  network: the receiving server's own verdict and its SPF/DKIM/DMARC results
+  from the header, a few cheap rules, and a naive-Bayes classifier in
+  `mail.db` taught by the Junk folder and the user's Spam / Not spam. It is
+  global rather than per account — one person's idea of junk does not
+  change with the address it reached, and a newly added account starts
+  with what the others taught. The verdict only hides inbox mail; nothing
+  is moved or deleted on the server unless the user presses Spam, and
+  anyone the user wrote to or vouched for is never junk. AI triage, when
+  turned on, builds on it rather than replacing it. Details in
+  [03-contracts.md](03-contracts.md) § Mail.
 - **The screen polls a change counter** every 4 s while it is open and the
   page is visible, rather than adding frames to the live socket.
 - **Offered once.** A *Mail* item marked *new* sits last in the dashboard's
@@ -3449,6 +3463,30 @@ dashboard and a desktop app on three OSes.
   the instructions name, and no CLI is given a tool, so a message cannot
   make the model act. Turning AI off, or picking the local server, stops
   it; a key is removed from the same panel.
+
+- **AI triage in the background, while AI is on** (amended 2026-10-15; the
+  owner, translated: "there is no proper spam filtering, my inbox is a
+  mess … I want the AI connected right away and have it sort my mail").
+  This replaces "never in the background" above for one purpose: with AI
+  on, the daemon sorts inbox conversations into important, updates,
+  newsletter and spam with a one-line summary, the newest 200 once and new
+  mail after each sync, 8 conversations per call. What is sent: for each
+  conversation its newest three messages — sender, date, subject and up to
+  600 characters of stored text — to the same provider and only that one,
+  fenced as data the same way; nothing is fetched from the server for it.
+  The turn-on line above the inbox and the settings paragraph say so before
+  it starts. The answer is untrusted (validated against the four
+  categories, clipped to one line) and only labels: nothing is moved or
+  deleted on the server — spam goes to Junk only on the user's `!`, and
+  *Not spam* is remembered per conversation and per sender. Failures pause
+  it silently with a growing wait; turning AI off stops it. Results live in
+  `mail.db` (`triage`, `triage_senders`). The local junk filter (the
+  amendment above) is the always-on base: its flag and this sorter's spam
+  label are one Spam — one list, one count, one *Not spam* that clears
+  both and teaches both — and a conversation the filter caught is never
+  sent to the AI, which saves calls and keeps obvious junk away from any
+  provider. This sorter adds no header heuristics of its own. The language summaries are written in is a setting (`ai_language`,
+  a fixed set).
 
 - **Adding an account is an address and a password.** Server settings come
   from a table of about 40 consumer and hosting services, each entry citing

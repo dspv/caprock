@@ -40,6 +40,22 @@ func seedDemo(st *store.Store, sec secrets.Store) (func(), error) {
 			Body: "Hi! Three directions for the refresh are in the shared folder. My favourite is B, the calmer one. Can we walk through them on a call this week?\n\nLena", Date: ago(30 * time.Hour), MessageID: "brand@designhaus"}, true},
 		{"INBOX", fakemail.Msg{From: "Security <security@northwind.io>", Subject: "New sign-in from Safari on macOS",
 			Body: "A new sign-in to your account was detected from Safari on macOS in Lisbon, Portugal. If this was you, no action is needed.", Date: ago(52 * time.Hour)}, true},
+		// Junk the server let through, as Spacemail and many hosts do: the
+		// local junk filter hides it from the inbox (internal/mail/spam).
+		{"INBOX", fakemail.Msg{From: "PayPal Security <service@paypal-account-review.secure-login.top>", Subject: "Your account has been limited",
+			ReplyTo: "paypal.resolution.team@gmail.com",
+			Headers: "Authentication-Results: mx.northwind.io; spf=fail smtp.mailfrom=secure-login.top; dkim=none; dmarc=fail header.from=secure-login.top\r\n",
+			Body:    "We noticed unusual activity. Restore access within 24 hours: https://bit.ly/3pp-restore", Date: ago(35 * time.Minute)}, false},
+		{"INBOX", fakemail.Msg{From: "Prize Desk <desk@lucky-winners.xyz>", Subject: "CONGRATULATIONS YOU HAVE WON $5,000,000!!!",
+			Headers: "X-Spam-Flag: YES\r\nX-Spam-Status: Yes, score=14.2 required=5.0 tests=BAYES_99,LOTS_OF_MONEY\r\n",
+			Body:    "Reply with your bank details to claim your prize.", Date: ago(3 * time.Hour)}, false},
+		{"INBOX", fakemail.Msg{From: "Exclusive Deals <offers@mega-deals.click>", Subject: "Only today: 90% off",
+			Headers: "Authentication-Results: mx.northwind.io; spf=softfail smtp.mailfrom=mega-deals.click; dkim=none; dmarc=none\r\n",
+			Body:    "https://bit.ly/deal90", HTML: `<a href="https://bit.ly/deal90"><img src="https://mega-deals.click/banner.jpg" width="600"></a>`, Date: ago(7 * time.Hour)}, false},
+		{"Junk", fakemail.Msg{From: "Crypto Signals <vip@moonshot-signals.top>", Subject: "Turn $250 into $25,000 this week",
+			Body: "Our VIP crypto signals never lose. Join now, limited seats.", Date: ago(9 * time.Hour)}, false},
+		{"Junk", fakemail.Msg{From: "Pharmacy Online <rx@cheap-meds.icu>", Subject: "Cheap meds, no prescription",
+			Body: "Discount pills shipped worldwide. Order today.", Date: ago(30 * time.Hour)}, false},
 		{"Sent", fakemail.Msg{From: "Alex Morgan <alex@northwind.io>", To: "Lena Novak <lena@designhaus.studio>", Subject: "Re: Brand refresh — first concepts",
 			Body: "B is my favourite too. Thursday 3pm works.\n\nAlex", Date: ago(29 * time.Hour), InReplyTo: "brand@designhaus"}, true},
 		{"Archive", fakemail.Msg{From: "Maya Lindqvist <maya@northwind.io>", Subject: "Q3 budget wrap-up",
@@ -52,8 +68,19 @@ func seedDemo(st *store.Store, sec secrets.Store) (func(), error) {
 			Body: "Booking reference K7Q2XP\nDeparture 14 Nov, 07:25 from Lisbon (LIS)\nArrival 11:40 Berlin (BER)", Date: ago(3 * time.Hour)}, false},
 		{"INBOX", fakemail.Msg{From: "Landlord — R. Costa <rcosta@gmail.com>", Subject: "Boiler service next week",
 			Body: "Hello, the technician will come on Tuesday between 9 and 12. Will someone be home?\n\nRui", Date: ago(20 * time.Hour)}, true},
+		// A proper newsletter: signed, with an unsubscribe link. Not junk.
 		{"INBOX", fakemail.Msg{From: "Hacker Newsletter <kale@hackernewsletter.com>", Subject: "Hacker Newsletter #712",
+			Headers: "Authentication-Results: mx.fastmail.com; spf=pass smtp.mailfrom=hackernewsletter.com; dkim=pass header.d=hackernewsletter.com; dmarc=pass header.from=hackernewsletter.com\r\n" +
+				"List-Unsubscribe: <https://hackernewsletter.com/unsubscribe>\r\n",
 			Body: "This week: local-first software, SQLite in production, and why your mail client is slow.", Date: ago(60 * time.Hour)}, true},
+		{"INBOX", fakemail.Msg{From: "Apple Support <no-reply@apple-id-verify.top>", Subject: "Your Apple ID was locked",
+			Headers: "Authentication-Results: mx.fastmail.com; spf=fail smtp.mailfrom=apple-id-verify.top; dkim=none; dmarc=none\r\n",
+			HTML:    `<p>Your Apple ID has been locked for security reasons.</p><p><a href="https://apple-id-verify.top/unlock">appleid.apple.com</a></p>`,
+			Body:    "Your Apple ID has been locked for security reasons.", Date: ago(10 * time.Hour)}, false},
+		{"INBOX", fakemail.Msg{From: "ShopMart Deals <deals@shopmart-offers.biz>", Subject: "40% off everything — this weekend only",
+			Body: "Our biggest sale of the season starts now. Use code WEEKEND40 at checkout. Unsubscribe any time.", Date: ago(9 * time.Hour)}, false},
+		{"INBOX", fakemail.Msg{From: "Mailbox Support <alerts@mailbox-verify-center.info>", Subject: "Action required: your mailbox will be closed",
+			Body: "We could not verify your mailbox. Sign in within 24 hours at the link below or your messages will be deleted.", Date: ago(14 * time.Hour)}, false},
 	}
 	var servers []*fakemail.Server
 	add := func(name, email string, seeds []seed) error {

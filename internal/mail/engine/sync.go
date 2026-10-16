@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -262,6 +263,14 @@ func (w *worker) syncFolder(ctx context.Context, c *imapclient.Client, a store.A
 	if err := w.fetchBodies(ctx, c, f); err != nil {
 		return err
 	}
+	if f.Role == "inbox" {
+		if err := w.backfillJunk(ctx, c, f); err != nil {
+			if isConnErr(c) {
+				return err
+			}
+			slog.Warn("mail: junk filter: read headers", "folder", f.Name, "err", err)
+		}
+	}
 	return w.e.st.RecountFolder(ctx, f.ID)
 }
 
@@ -475,10 +484,14 @@ func (w *worker) reselect(ctx context.Context, c *imapclient.Client, f store.Fol
 
 func (w *worker) storeHeaders(ctx context.Context, a store.Account, f store.Folder, msgs []*imapclient.FetchMessageBuffer) error {
 	maxUID := uint32(0)
+	var inbox []int64
 	for _, buf := range msgs {
 		m := w.messageFromFetch(ctx, a, f, buf)
 		if _, err := w.e.st.UpsertHeader(ctx, m); err != nil {
 			return err
+		}
+		if f.Role == "inbox" {
+			inbox = append(inbox, m.ID)
 		}
 		if m.UID > maxUID {
 			maxUID = m.UID
@@ -492,6 +505,16 @@ func (w *worker) storeHeaders(ctx context.Context, a store.Account, f store.Fold
 			_ = w.e.st.NoteContact(ctx, store.Address{Name: m.FromName, Addr: m.FromAddr}, 1, m.Date)
 		}
 	}
+	// New inbox mail is judged on its header at once, so junk never flashes
+	// in the inbox while its body is on the way; judged again with the body.
+	if len(inbox) > 0 {
+		if err := w.e.judge(ctx, inbox); err != nil {
+			slog.Warn("mail: junk filter: judge", "err", err)
+		}
+	}
+	if f.Role == "sent" && len(msgs) > 0 {
+		w.e.liftKnown(ctx)
+	}
 	return w.e.st.SetLastUID(ctx, f.ID, maxUID)
 }
 
@@ -499,9 +522,11 @@ func (w *worker) messageFromFetch(ctx context.Context, a store.Account, f store.
 	m := &store.Message{AccountID: a.ID, FolderID: f.ID, UID: uint32(buf.UID), Size: buf.RFC822Size}
 	m.Seen, m.Flagged, m.Answered = flagsOf(buf.Flags)
 	var hi headerInfo
+	m.JunkHdr = "{}" // no header to read: never asked for again
 	for _, sec := range buf.BodySection {
 		if sec.Section != nil && sec.Section.Specifier == imap.PartSpecifierHeader {
 			hi = parseHeader(sec.Bytes)
+			m.JunkHdr = headerFacts(sec.Bytes)
 		}
 	}
 	m.Subject, m.MessageID, m.InReplyTo, m.ReplyTo = hi.Subject, hi.MessageID, hi.InReplyTo, hi.ReplyTo
@@ -549,6 +574,7 @@ func (w *worker) fetchBodies(ctx context.Context, c *imapclient.Client, f store.
 		if err := w.fetchBodyBatch(ctx, c, batch); err != nil {
 			return err
 		}
+		w.e.afterBodies(ctx, f, batch)
 		w.e.notify("messages", f.AccountID)
 	}
 	return nil
@@ -657,6 +683,7 @@ func (e *Engine) EnsureBody(ctx context.Context, id int64) (store.Message, error
 	if err != nil {
 		return m, err
 	}
+	e.afterBodies(ctx, f, []store.Message{m})
 	return e.st.Message(ctx, id)
 }
 
