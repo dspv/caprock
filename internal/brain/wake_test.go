@@ -48,9 +48,18 @@ func TestTurningOnWakesAtOnceAndSaysWhenTheNextWakeIs(t *testing.T) {
 	e.session(t, "s1", "acme-api", 20*time.Minute, [2]string{"Why is the cache test flaky?", long})
 	cfg := &lockedConfig{cfg: config.BrainConfig{Since: e.cfg.Since}}
 	e.eng.Config = cfg.get
+	// The kicked read is held until the test has looked: with a runner that
+	// returns at once, the loop may finish the read and schedule the next
+	// wake (Interval on) before Status is asked, and "now" is gone.
 	var calls atomic.Int32
-	e.eng.Runner = RunnerFunc(func(context.Context, Request) (Result, error) {
+	release := make(chan struct{})
+	e.eng.Runner = RunnerFunc(func(ctx context.Context, _ Request) (Result, error) {
 		calls.Add(1)
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return Result{}, ctx.Err()
+		}
 		return twoMemories(Request{})
 	})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -71,6 +80,11 @@ func TestTurningOnWakesAtOnceAndSaysWhenTheNextWakeIs(t *testing.T) {
 		t.Fatalf("just kicked: next_wake %d, want now %d", st.NextWake, t0.UnixMilli())
 	}
 	waitFor(t, "the kicked read", func() bool { return calls.Load() == 1 })
+	// While the kicked read runs, the next wake is still the one asked for.
+	if st := e.eng.Status(ctx); st.NextWake != t0.UnixMilli() {
+		t.Fatalf("reading: next_wake %d, want now %d", st.NextWake, t0.UnixMilli())
+	}
+	close(release)
 	want := t0.Add(Interval).UnixMilli()
 	waitFor(t, "the next wake to be scheduled", func() bool {
 		st := e.eng.Status(ctx)

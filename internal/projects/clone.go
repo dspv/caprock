@@ -70,9 +70,30 @@ const opKeep = time.Hour
 type opRegistry struct {
 	mu  sync.Mutex
 	ops map[string]*Op
+	// running are the clones whose git is still going, each with the cancel
+	// that stops it; wg counts their goroutines. Close cancels them all and
+	// waits, so it returns with no git writing into a folder (a test's
+	// TempDir, or a folder the user is about to delete). Both under mu: a
+	// closed service registers nothing new.
+	running map[string]context.CancelFunc
+	wg      sync.WaitGroup
 }
 
-func newOpRegistry() *opRegistry { return &opRegistry{ops: map[string]*Op{}} }
+func newOpRegistry() *opRegistry {
+	return &opRegistry{ops: map[string]*Op{}, running: map[string]context.CancelFunc{}}
+}
+
+// stopClones cancels every clone still running and waits for its git to exit.
+// Called by Close after closed is set, so no clone starts after it.
+func (r *opRegistry) stopClones() {
+	r.mu.Lock()
+	for id, cancel := range r.running {
+		cancel()
+		delete(r.running, id)
+	}
+	r.mu.Unlock()
+	r.wg.Wait()
+}
 
 // Ops lists the operations still remembered, newest first.
 func (s *Service) Ops() []Op {
@@ -192,21 +213,40 @@ func (s *Service) Clone(opID, rawURL, parent, name string) (Op, bool, error) {
 	}
 	now := s.Now().UnixMilli()
 	op := &Op{ID: opID, Kind: "clone", State: OpRunning, Phase: "Starting", URL: rawURL, Dest: dest, StartedAt: now, UpdatedAt: now}
+	parentCtx := s.ctx
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
 	s.ops.mu.Lock()
 	if o, ok := s.ops.ops[opID]; ok { // lost a race with the same id
 		cp := *o
 		s.ops.mu.Unlock()
 		return cp, true, nil
 	}
+	// Checked under ops.mu, which Close takes after setting closed: a clone
+	// either registers before Close looks, and is stopped and waited for, or
+	// sees closed here.
+	if s.closed.Load() {
+		s.ops.mu.Unlock()
+		return Op{}, false, errors.New("shutting down")
+	}
+	ctx, cancel := context.WithCancel(parentCtx)
 	s.ops.ops[opID] = op
+	s.ops.running[opID] = cancel
+	s.ops.wg.Add(1)
 	cp := *op
 	s.ops.mu.Unlock()
 	s.publishOp(cp)
-	ctx := s.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	go s.runClone(ctx, opID, rawURL, dest)
+	go func() {
+		defer s.ops.wg.Done()
+		defer func() {
+			s.ops.mu.Lock()
+			delete(s.ops.running, opID)
+			s.ops.mu.Unlock()
+			cancel()
+		}()
+		s.runClone(ctx, opID, rawURL, dest)
+	}()
 	return cp, false, nil
 }
 

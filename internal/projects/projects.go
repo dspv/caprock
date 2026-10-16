@@ -293,6 +293,9 @@ func (s *Service) Close() {
 	}
 	s.mu.Unlock()
 	s.stopCleanup()
+	if s.ops != nil {
+		s.ops.stopClones()
+	}
 	if s.watch != nil {
 		_ = s.watch.w.Close()
 	}

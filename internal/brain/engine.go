@@ -72,6 +72,20 @@ type Engine struct {
 	// nextWake is when the loop wakes next: a minute after Start, Interval
 	// after each wake, at once after a Kick. Zero until Start.
 	nextWake time.Time
+	// stopped is closed when Start's loop has returned (Wait).
+	stopped chan struct{}
+}
+
+// Wait blocks until the loop Start began has returned, after its context
+// ended; at once when Start never ran. The daemon waits here before closing
+// the database a wake reads.
+func (e *Engine) Wait() {
+	e.mu.Lock()
+	ch := e.stopped
+	e.mu.Unlock()
+	if ch != nil {
+		<-ch
+	}
 }
 
 func (e *Engine) now() time.Time {
@@ -104,8 +118,11 @@ func (e *Engine) Start(ctx context.Context) {
 	}
 	kick := e.kick
 	e.nextWake = e.now().Add(time.Minute)
+	stopped := make(chan struct{})
+	e.stopped = stopped
 	e.mu.Unlock()
 	go func() {
+		defer close(stopped)
 		t := time.NewTimer(time.Minute)
 		defer t.Stop()
 		for {

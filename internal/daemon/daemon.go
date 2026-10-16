@@ -144,7 +144,12 @@ type Options struct {
 
 // Daemon is a running instance.
 type Daemon struct {
-	opt     Options
+	opt Options
+	// bg counts the background goroutines run starts (goBg). run cancels
+	// their context and waits for them before the database closes: one still
+	// reading after Close logged "sql: database is closed", and on Windows
+	// its open handle kept caprock.db from being deleted.
+	bg      sync.WaitGroup
 	secrets secretStores
 	// slow holds the status figures that read the event table in bulk.
 	slowMu sync.Mutex
@@ -424,6 +429,12 @@ func (d *Daemon) run(ctx context.Context) error {
 	defer d.store.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	// Runs before the database closes, on every return: everything started
+	// in the background is stopped and waited for (goBg).
+	defer func() {
+		cancel()
+		d.waitBackground(bgStopWithin)
+	}()
 	d.baseCtx = ctx
 	startPprof(ctx, d.log)
 	// Before anything reads a credential: a key an older release left in
@@ -455,7 +466,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// Turns stored before their model had a row in the pricing table are
 	// priced now that it may have one. Background, best-effort, idempotent:
 	// what is still missing stays unpriced and is counted as such.
-	go func() {
+	d.goBg(func() {
 		// Once: daily_stats' Codex rows carried the pre-0022/0023 imports as
 		// well as the re-imports. Days retention may have pruned are left as
 		// they are — rebuilding them from missing events would erase history.
@@ -483,16 +494,17 @@ func (d *Daemon) run(ctx context.Context) error {
 		if _, err := d.rec.PriceUnpriced(ctx); err != nil && ctx.Err() == nil {
 			d.log.Warn("could not price previously unpriced turns", "component", "rollup", "err", err)
 		}
-	}()
+	})
 
 	// Live-plane subscriber: loop detector over stored events.
 	sub := d.bus.Subscribe(4096)
-	go d.observeLoops(ctx, sub)
+	d.goBg(func() { d.observeLoops(ctx, sub) })
 	// Phone alerts (ADR-036), subscribed before any producer starts so the
 	// first Stop is not missed.
 	d.tg = d.newTelegram()
 	d.queueDoneC = make(chan queuedDoneMsg, 16)
-	go d.alertLoop(ctx, d.bus.Subscribe(1024))
+	alerts := d.bus.Subscribe(1024)
+	d.goBg(func() { d.alertLoop(ctx, alerts) })
 
 	// Owned-session manager (Phase 1).
 	d.mgr = agents.NewManager(d.store, d.opt.DataDir, "", d.log)
@@ -504,7 +516,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// The log file, whichever of the two the daemon was started with, is
 	// kept to a bounded size.
 	logcap.Watch(config.LogPath(d.opt.DataDir), config.ServiceLogPath(d.opt.DataDir))
-	go logcap.Run(ctx, d.log)
+	d.goBg(func() { logcap.Run(ctx, d.log) })
 	d.queue = newMsgQueue(d)
 	d.queue.onDone = d.queuedDone
 	d.mgr.OnExit = func(id string, code int) {
@@ -564,6 +576,10 @@ func (d *Daemon) run(ctx context.Context) error {
 	if err := d.projs.Start(ctx); err != nil {
 		d.log.Warn("projects list unavailable", "component", "daemon", "err", err)
 		d.projs = nil
+	} else {
+		// Before the database closes (defers run last first): its refreshes
+		// and clones are waited for.
+		defer d.projs.Close()
 	}
 	d.startGitHub(ctx)
 
@@ -712,7 +728,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.mu.Unlock()
 	// The Telegram bridge calls the agent manager and the API, so it starts
 	// once both exist (ADR-047).
-	go d.tg.Run(ctx)
+	d.goBg(func() { d.tg.Run(ctx) })
 
 	// Ingest.
 	if !d.opt.DisableIngest {
@@ -725,7 +741,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			root = r
 		}
 		d.tail = ingest.New(root, d.rec, d.store, d.log)
-		go func() {
+		d.goBg(func() {
 			if err := d.tail.Run(ctx); err != nil {
 				d.log.Error("ingest stopped", "component", "ingest", "err", err)
 				// Logging alone made a fatal ingest failure invisible: with a
@@ -737,7 +753,7 @@ func (d *Daemon) run(ctx context.Context) error {
 					d.setIngestErr(err)
 				}
 			}
-		}()
+		})
 	}
 
 	// OpenCode, when this machine has it. A second coding agent keeps its own
@@ -747,7 +763,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// installed or first run after the daemon started creates the database
 	// later, so its absence is looked at again until it appears.
 	if !d.startOpenCode(ctx) && !d.opt.DisableIngest {
-		go d.awaitOpenCode(ctx, openCodeAwaitEvery)
+		d.goBg(func() { d.awaitOpenCode(ctx, openCodeAwaitEvery) })
 	}
 
 	// Codex, when this machine has it. Easier to observe than either of the
@@ -777,11 +793,11 @@ func (d *Daemon) run(ctx context.Context) error {
 				d.log.Warn("deepseek transcripts found but not readable", "component", "deepseek", "dir", dir, "err", err)
 			} else if len(ts) > 0 {
 				d.dsIn = deepseek.NewIngester(dir, d.rec, d.log, 5*time.Second)
-				go func() {
+				d.goBg(func() {
 					if err := d.dsIn.Run(ctx); err != nil && ctx.Err() == nil {
 						d.log.Error("deepseek ingest stopped", "component", "deepseek", "err", err)
 					}
-				}()
+				})
 				d.log.Info("deepseek sessions are being read", "component", "deepseek", "dir", dir, "transcripts", len(ts))
 			}
 		}
@@ -805,7 +821,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			d.log.Warn("could not read what was running at the last stop", "component", "daemon", "err", err)
 		}
 	}
-	go d.heartbeat(ctx)
+	d.goBg(func() { d.heartbeat(ctx) })
 
 	// Idle sweeper (also runs once at start so backfilled history settles immediately).
 	_ = d.rec.MarkIdle(ctx, d.opt.IdleAfter, d.opt.EndAfter)
@@ -815,49 +831,49 @@ func (d *Daemon) run(ctx context.Context) error {
 	// best-effort: a network failure must never delay or break startup.
 	checks := d.config().UpdateChecks
 	if checks {
-		go func() {
+		d.goBg(func() {
 			cctx, ccancel := context.WithTimeout(ctx, 10*time.Second)
 			defer ccancel()
 			if err := d.upd.Check(cctx, false); err != nil {
 				d.log.Debug("release check failed", "component", "update", "err", err)
 			}
-		}()
+		})
 	}
-	go d.updateLoop(ctx)
+	d.goBg(func() { d.updateLoop(ctx) })
 	// Telemetry from spawned Gemini sessions. Started unconditionally: the
 	// directory appears when the first Gemini session is spawned, and a sweep
 	// over a directory that does not exist is a no-op rather than an error.
 	d.gemIn = gemini.NewIngester(filepath.Join(d.opt.DataDir, "gemini"), d.rec, d.log)
-	go d.gemIn.Run(ctx)
+	d.goBg(func() { d.gemIn.Run(ctx) })
 	// Sessions reattached above are watched again the way a spawn starts
 	// watching them; here, once the Gemini ingester exists.
 	d.relink(ctx, reattached)
 
-	go d.sweep(ctx)
+	d.goBg(func() { d.sweep(ctx) })
 	d.startKeepAwake(ctx)
 	d.loadReportState(ctx)
-	go d.weeklyLoop(ctx)
-	go d.backfillToolLinks(ctx)
-	go d.repairEmptyText(ctx)
-	go d.backfillPRs(ctx)
+	d.goBg(func() { d.weeklyLoop(ctx) })
+	d.goBg(func() { d.backfillToolLinks(ctx) })
+	d.goBg(func() { d.repairEmptyText(ctx) })
+	d.goBg(func() { d.backfillPRs(ctx) })
 	// Idle-time housekeeping: the data-directory sweep and the daily storage
 	// measurement (cleanup.go). Nothing on a fixed timer reads the whole file.
 	d.activity.Store(time.Now().UnixMilli())
-	go d.idleLoop(ctx)
-	go d.resourceLoop(ctx)
-	go d.ioLoop(ctx)
+	d.goBg(func() { d.idleLoop(ctx) })
+	d.goBg(func() { d.resourceLoop(ctx) })
+	d.goBg(func() { d.ioLoop(ctx) })
 	if d.config().RetentionDays > 0 {
-		go d.pruneLoop(ctx)
+		d.goBg(func() { d.pruneLoop(ctx) })
 	}
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	// The all-time aggregates take a second or more on a large database; work
 	// them out now so the first screen opened finds them cached.
-	go func() {
+	d.goBg(func() {
 		d.events.get(ctx, d.store)
 		d.api.Warm(ctx)
-	}()
+	})
 
 	// The second listener, when the user asked for one.
 	//
@@ -922,6 +938,38 @@ func (d *Daemon) run(ctx context.Context) error {
 	_ = srv.Shutdown(shutdownCtx)
 	sub.Unsubscribe()
 	return nil
+}
+
+// bgStopWithin bounds how long shutdown waits for the background goroutines.
+// They all stop on their context; the bound only keeps a stuck one from
+// holding the process open, and it is logged when it is reached.
+const bgStopWithin = 15 * time.Second
+
+// goBg runs f on a goroutine run waits for before closing the database.
+func (d *Daemon) goBg(f func()) {
+	d.bg.Add(1)
+	go func() {
+		defer d.bg.Done()
+		f()
+	}()
+}
+
+// waitBackground waits for goBg's goroutines and Second Brain's loop.
+func (d *Daemon) waitBackground(within time.Duration) {
+	done := make(chan struct{})
+	go func() {
+		d.bg.Wait()
+		if d.brain != nil {
+			d.brain.Wait()
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(within):
+		d.log.Warn("background work still running at shutdown; closing the database anyway",
+			"component", "daemon", "waited", within.String())
+	}
 }
 
 func (d *Daemon) repoCwd() string {
