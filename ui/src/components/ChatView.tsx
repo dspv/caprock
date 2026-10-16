@@ -93,7 +93,7 @@ async function base64Of(file: File): Promise<string> {
 const nextFrame: (fn: () => void) => void =
   typeof requestAnimationFrame === 'function' ? (fn) => { requestAnimationFrame(fn) } : (fn) => { setTimeout(fn, 16) }
 
-export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, foldKeys, footer, boxRef, scrollRef, topInset = 0 }: {
+export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, foldKeys, chat = false, footer, boxRef, scrollRef, topInset = 0 }: {
   sessionId: string
   /** The session takes input from here: owned, live, and this device may control. */
   canType: boolean
@@ -105,6 +105,9 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   /** The raw keys folded behind a Keys button off a phone too: a chat
    *  (ADR-071) is a conversation, not a terminal. Defaults to `phone`. */
   foldKeys?: boolean
+  /** A chat (ADR-071): a messenger's field (*Message…*) and no coding
+   *  quick replies (Run tests, Commit), which mean nothing without a repo. */
+  chat?: boolean
   /** Said where the field would be, when there is none: why, and what to do. */
   footer?: ReactNode
   /** The outer element, for a caller that sizes it (useFillViewport). */
@@ -394,8 +397,8 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
         <div className="shrink-0">
           {sendError && <div role="alert" className="px-3 pt-1.5 text-[12px] text-danger">{sendError}</div>}
           {/* One click sends a reply (lib/quickReplies.ts); only while it can be typed into (rule 7). */}
-          {canType && <QuickReplies sessionId={sessionId} onSend={submitText} className="px-3" />}
-          <TerminalKeys send={send} attach={attachPhotos} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} />
+          {canType && <QuickReplies sessionId={sessionId} onSend={submitText} chat={chat} className="px-3" />}
+          <TerminalKeys send={send} attach={attachPhotos} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} placeholder={chat ? 'Message…' : undefined} />
         </div>
       )}
       {!showInput && footer && <div className="shrink-0 border-t border-border px-3 py-2.5 text-[13px] leading-snug text-fg-muted">{footer}</div>}

@@ -5,15 +5,18 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { errText } from '@/lib/api'
-import { sendQuickReply, useQuickReplies } from '@/lib/quickReplies'
+import { forChat, sendQuickReply, useQuickReplies } from '@/lib/quickReplies'
 
-export function QuickReplies({ sessionId, onSend, className = '' }: {
+export function QuickReplies({ sessionId, onSend, chat = false, className = '' }: {
   sessionId: string
+  /** A chat (ADR-071): the coding defaults are left out (lib/quickReplies forChat). */
+  chat?: boolean
   /** The caller's own send (the chat's, which also scrolls and shows the queue); the composer's path by default. */
   onSend?: (text: string) => Promise<unknown>
   className?: string
 }) {
-  const items = useQuickReplies()
+  const all = useQuickReplies()
+  const items = chat ? forChat(all) : all
   const [state, setState] = useState<{ i: number; phase: 'sending' | 'sent' | 'failed'; error?: string } | null>(null)
   const timer = useRef(0)
   useEffect(() => () => window.clearTimeout(timer.current), [])

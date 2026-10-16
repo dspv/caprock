@@ -98,8 +98,8 @@ start at once and open on the conversation (*Quick chat with…* keeps the
 chooser). Verified: Go tests (store, agents, api), the UI tests, an e2e
 golden path (start, conversation, files, sandboxed HTML, archive, delete),
 and screenshots at 390 px and desktop from a sandboxed daemon, looked at.
-Left: sync with Claude.ai / ChatGPT is OQ-22 (plan only); the quick-reply
-chips (Run tests, Commit) still show under a chat's field.
+A chat's field says *Message…* and leaves out the coding quick replies (Run
+tests, Commit). Left: sync with Claude.ai / ChatGPT is OQ-22 (plan only).
 
 ### 2026-10-16 — unreleased: feedback is one box
 

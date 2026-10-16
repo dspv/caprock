@@ -4704,8 +4704,8 @@ chooses otherwise.
 ## ADR-071 — Chats are a kind of session: marked, listed apart, started in one tap, read as a conversation
 
 **Date:** 2026-10-16 · **Status:** accepted (owner, 2026-10-16, translated:
-plain chats on the phone that are stored, with the files they produce
-viewable; Quick chat is one button with at most a model choice; chats stored
+"everyone asked for it, me too" — plain chats on the phone that are stored,
+with the files they produce viewable; Quick chat is one button with at most a model choice; chats stored
 separately, marked, counted, hideable and searchable; sync with Claude and
 ChatGPT later). Screens: [04-ui.md § Chats](04-ui.md#chats); routes and DDL:
 [03-contracts.md § Chats](03-contracts.md#chats-http).

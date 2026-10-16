@@ -1769,7 +1769,9 @@ replies to a running session: Continue, Shorter and the like"). Built in
   reorder (↑ ↓), rename; at most 10, a label of 24 characters, a text of 300
   bytes. Kept by the daemon (`settings.quick_replies`, 03-contracts § Settings),
   so the app, a browser tab and a paired phone draw the same row; an empty
-  list draws no row.
+  list draws no row. A chat (ADR-071) leaves out *Run tests* and *Commit*,
+  known by their default text (`forChat`), since a chat has no repository; a
+  reply the user wrote or reworded is kept there too.
 - **Keys.** None: no new global shortcut (rule 12); the chips take Tab
   focus like any button.
 - **Look.** `.app-quick` in `tokens.css`: 22px pills in the slab's own ink

@@ -1794,6 +1794,7 @@ export function AppShell() {
                           sessionId={focused.sessionId}
                           canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
                           foldKeys
+                          chat
                           className="absolute inset-0"
                         />
                         {chatPanes.get(focused.sessionId)?.ended && (

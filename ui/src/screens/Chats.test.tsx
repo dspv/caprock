@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, type CatalogEntry, type ChatFile, type SessionDetail, type SessionSummary } from '@/lib/api'
 import { ChatsScreen } from './Chats'
 import { ChatScreen } from './Chat'
+import { resetQuickReplies } from '@/lib/quickReplies'
 
 const NOW = Date.now()
 
@@ -128,6 +129,16 @@ describe('ChatScreen', () => {
     expect(document.querySelector('[data-chat-view]')).toBeTruthy()
     expect(await screen.findByRole('button', { name: 'Files · 2' })).toBeTruthy()
     expect(screen.getByText(/This chat has ended/)).toBeTruthy()
+  })
+
+  it('has a messenger’s field, without the coding quick replies, while the chat is live', async () => {
+    stub({ status: 'active', owned: true })
+    resetQuickReplies([{ label: 'Continue', text: 'Continue.' }, { label: 'Run tests', text: 'Run the tests and fix what fails.' }])
+    render(<ChatScreen id="c1" />)
+    expect(await screen.findByPlaceholderText('Message…')).toBeTruthy()
+    const row = screen.getByRole('group', { name: 'Quick replies' })
+    expect([...row.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Continue'])
+    resetQuickReplies()
   })
 
   it('opens an HTML file in a frame that runs no script and fetches nothing, with Download', async () => {

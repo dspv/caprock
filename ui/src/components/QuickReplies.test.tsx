@@ -44,6 +44,21 @@ describe('QuickReplies', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Not sent: not a session Caprock started')
   })
 
+  it('leaves the coding defaults out of a chat, and keeps a reply the user wrote', () => {
+    resetQuickReplies([...LIST, { label: 'Commit', text: 'Commit the changes with a clear message.' }, { label: 'Tests!', text: 'Run the tests twice.' }])
+    render(<QuickReplies sessionId="s1" chat />)
+    const row = screen.getByRole('group', { name: 'Quick replies' })
+    expect([...row.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Continue', 'Shorter', 'Tests!'])
+  })
+
+  it('knows the coding defaults by the daemon’s own text', () => {
+    // forChat matches config.DefaultQuickReplies by text: a reworded default
+    // there must be reworded here, or Run tests comes back into chats.
+    const go = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'internal', 'config', 'quickreply.go'), 'utf8')
+    expect(go).toContain('"Run the tests and fix what fails."')
+    expect(go).toContain('"Commit the changes with a clear message."')
+  })
+
   it('uses the caller’s send when given one (the chat’s)', async () => {
     resetQuickReplies(LIST)
     const queue = vi.spyOn(api, 'queueSend')

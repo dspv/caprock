@@ -142,6 +142,7 @@ export function ChatScreen({ id }: { id: string }) {
           ended={ended}
           phone={phone}
           foldKeys
+          chat
           className="min-h-0 flex-1"
           footer={footer}
         />
