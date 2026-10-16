@@ -1751,7 +1751,10 @@ replies to a running session: Continue, Shorter and the like"). Built in
   focus like any button.
 - **Look.** `.app-quick` in `tokens.css`: 22px pills in the slab's own ink
   over the terminal's background, like the composer's box, so they read on
-  a dark or a light terminal palette.
+  a dark or a light terminal palette. Off the slab (the chat, the phone's
+  included) they sit on the page's own panel instead: `--color-term-bg` is
+  dark in every theme there, and drew dark pills on a light chat until
+  2026-10-16.
 
 ## Shell tabs
 
