@@ -75,6 +75,32 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-16 — unreleased: Chats, a kind of session (ADR-071)
+
+The owner (translated): plain chats on the phone, stored, with the files they
+make viewable; Quick chat one button with at most a model choice; chats
+stored apart, marked, counted, hideable and searchable. The audit first:
+Quick chat (⌥⌘N) opened a vendor/model chooser and then a terminal tab;
+`<data_dir>/chats/<stamp>` held one folder per chat, but nothing in the
+database said a session was a chat (the UI guessed from the path); the phone
+home's composer always needed a project and a controller was refused
+`chat`, so a phone could not start a plain chat; every list mixed chats in
+with the work; there was no chat list, count, search, archive or delete.
+Built: migration 0059 (`sessions.chat`, `archived_at`, backfilled from the
+folder name); `/v1/chats` (list with counts and search, archive, delete that
+stops Caprock's own process and removes the folder, files, one file served
+sandboxed); `?chats=exclude` on the work lists; a phone may start, continue,
+archive and delete chats (ADR-034 and ADR-037 amended for chats only);
+`#/chats` and `#/chats/<id>` (ChatView, messenger layout, Files and a viewer
+for Markdown, sandboxed HTML, PDF, images, with Download); a Chats section on
+the phone home and a dock that starts a chat in one tap; ⌥⌘N and Quick chat
+start at once and open on the conversation (*Quick chat with…* keeps the
+chooser). Verified: Go tests (store, agents, api), the UI tests, an e2e
+golden path (start, conversation, files, sandboxed HTML, archive, delete),
+and screenshots at 390 px and desktop from a sandboxed daemon, looked at.
+Left: sync with Claude.ai / ChatGPT is OQ-22 (plan only); the quick-reply
+chips (Run tests, Commit) still show under a chat's field.
+
 ### 2026-10-16 — unreleased: feedback is one box
 
 The owner (translated): "I want the feedback button as short as humanly

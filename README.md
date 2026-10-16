@@ -866,7 +866,8 @@ place Caprock stops being loopback-only:
   the computer holds and goes in when the turn ends), answer approvals and
   stop it. *Start work* on Home also lets it clone a repository, make a new
   project or a worktree, and start an agent there, opening on the session's
-  chat. That is as much power as a shell in your home directory, so grant it
+  chat. It can start a plain chat in one tap, with no folder to pick, and
+  archive or delete chats. That is as much power as a shell in your home directory, so grant it
   only to your own phone. *Take control away* undoes it at once, including in a
   terminal already open on the phone. Changing settings or pairing, custom
   commands and folders outside home stay on the machine Caprock runs on — the

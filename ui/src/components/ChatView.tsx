@@ -93,7 +93,7 @@ async function base64Of(file: File): Promise<string> {
 const nextFrame: (fn: () => void) => void =
   typeof requestAnimationFrame === 'function' ? (fn) => { requestAnimationFrame(fn) } : (fn) => { setTimeout(fn, 16) }
 
-export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, footer, boxRef, scrollRef, topInset = 0 }: {
+export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, foldKeys, footer, boxRef, scrollRef, topInset = 0 }: {
   sessionId: string
   /** The session takes input from here: owned, live, and this device may control. */
   canType: boolean
@@ -102,6 +102,9 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   className?: string
   /** The phone's chat: the raw keys folded behind a Keys button. */
   phone?: boolean
+  /** The raw keys folded behind a Keys button off a phone too: a chat
+   *  (ADR-071) is a conversation, not a terminal. Defaults to `phone`. */
+  foldKeys?: boolean
   /** Said where the field would be, when there is none: why, and what to do. */
   footer?: ReactNode
   /** The outer element, for a caller that sizes it (useFillViewport). */
@@ -392,7 +395,7 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
           {sendError && <div role="alert" className="px-3 pt-1.5 text-[12px] text-danger">{sendError}</div>}
           {/* One click sends a reply (lib/quickReplies.ts); only while it can be typed into (rule 7). */}
           {canType && <QuickReplies sessionId={sessionId} onSend={submitText} className="px-3" />}
-          <TerminalKeys send={send} attach={attachPhotos} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={phone} />
+          <TerminalKeys send={send} attach={attachPhotos} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} />
         </div>
       )}
       {!showInput && footer && <div className="shrink-0 border-t border-border px-3 py-2.5 text-[13px] leading-snug text-fg-muted">{footer}</div>}

@@ -374,11 +374,11 @@ it('searches ended sessions on the server and pages past the first 200', async (
   fireEvent.click(await screen.findByLabelText(/show ended sessions/i))
 
   fireEvent.click(await screen.findByRole('button', { name: /show 200 more/ }))
-  await waitFor(() => expect(state.listCalls).toContainEqual([false, '', 400]))
+  await waitFor(() => expect(state.listCalls).toContainEqual([false, '', 400, 'exclude']))
 
   fireEvent.change(screen.getByPlaceholderText(/find a session/), { target: { value: ' bigquery ' } })
   // Debounced, trimmed, and back to the first page for a new question.
-  await waitFor(() => expect(state.listCalls).toContainEqual([false, 'bigquery', 200]))
+  await waitFor(() => expect(state.listCalls).toContainEqual([false, 'bigquery', 200, 'exclude']))
 })
 
 it('names the sessions a restart cut off, each with continue, until dismissed', async () => {

@@ -23,6 +23,7 @@ import { SubscriptionTag } from './SubscriptionPicker'
 import { RelayMenu } from './RelayDialog'
 import { branchLabel } from '@/lib/sessionLabels'
 import { dotOf, sessionTitle } from '@/lib/sidebar'
+import { isQuickChat } from '@/lib/quickchat'
 import { href } from '@/lib/router'
 import { CloseIcon, ExternalIcon, StopIcon } from './AppIcons'
 import { everyWhileVisible } from '@/lib/visible'
@@ -99,6 +100,7 @@ interface EditorAction { name: string; open: OpenInEditor }
 function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges, onOpenFile, summary, onCompare, onOpenPRs }: { session?: SessionSummary; project?: Pick<Project, 'name' | 'default_branch'>; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void; onOpenFile?: (path: string) => void; summary?: Summary; onCompare?: () => void; onOpenPRs?: () => void }) {
   const isShell = s?.kind === 'shell'
   const ended = s?.status === 'ended'
+  const chat = !!s && (!!s.chat || isQuickChat(s))
   if (s && !isShell) {
     return (
       <div className="grid grid-cols-[minmax(0,1fr)] gap-[18px] px-4 pb-4 pt-3.5">
@@ -121,9 +123,11 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
           sessionId={sessionId}
           hasPermission={hasPermission}
           summary={summary}
-          changes={<Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} onOpenFile={onOpenFile} />}
-          ci={<CockpitCI sessionId={sessionId} repoScope={s?.repo_root || s?.cwd || undefined} onOpen={onOpenPRs} />}
-          release={<CockpitRelease sessionId={sessionId} repoRoot={s?.repo_root || undefined} />}
+          // A chat's folder is Caprock's own, never a repository (ADR-071):
+          // no working tree, pull requests or release to read there.
+          changes={chat ? undefined : <Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} onOpenFile={onOpenFile} />}
+          ci={chat ? undefined : <CockpitCI sessionId={sessionId} repoScope={s?.repo_root || s?.cwd || undefined} onOpen={onOpenPRs} />}
+          release={chat ? undefined : <CockpitRelease sessionId={sessionId} repoRoot={s?.repo_root || undefined} />}
           processes={<Processes sessionId={sessionId} />}
         />
         <Actions s={s} sessionId={sessionId} isShell={false} ended={ended} editor={editor} onDetach={onDetach} />

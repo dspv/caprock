@@ -258,15 +258,23 @@ One window, three regions:
   and sent as `subscription` (ADR-048). Rejected: a header on the started tab
   that restarts the chat on another model — it starts a process only to kill
   it, and cannot change vendor once a conversation has begun.
+  **Reversed again 2026-10-16** ([ADR-071](08-decisions.md); owner: Quick
+  chat is one button, with at most a model choice, translated): ⌥⌘N, the
+  sidebar's *Quick chat*, the + menu's and the palette's *Quick chat* start
+  at once on the choice kept in `caprock.quickchat`, and the chat opens on
+  its conversation (ChatView), so there is no terminal to get lost in — the
+  2026-10-12 complaint. The chooser stays as *Quick chat with…* in the +
+  menu and the palette.
 - **A quick chat's tab** (owner, 2026-10-12, same report). It is named
   *Quick chat · Opus 5.5* — the pricing table's model name once it has
   answered, before that the model it was started on, which the window that
   started it keeps (`caprock.quickchat.started`), else the agent's name — in
   the strip, the sidebar row and the inspector's header (`lib/quickchat.ts`;
   a chat is known by its folder, `<data_dir>/chats/<stamp>`, as the daemon's
-  `chatLabel` knows it). The sidebar still groups it under *Outside
-  projects*; the tab no longer wears that group as its chip. A line above
-  its terminal says *Quick chat with Claude · Opus 5.5 — ⌘W or /exit
+  `chatLabel` knows it; since ADR-071 the session row also says `chat`). The
+  sidebar groups it under *Outside projects* only while it has a tab or waits
+  on you (every chat is on the Chats screen); the tab no longer wears that
+  group as its chip, and opens on the conversation. A line above it says *Quick chat with Claude · Opus 5.5 — ⌘W or /exit
   ends it* (keys through `keys()`; Gemini's is /quit), with a × that hides it
   for good (`caprock.quickchat.hint`). **When the agent exits** the tab stays,
   dimmed, with *The chat ended*, **Close tab** (focused, so Enter takes it)
@@ -307,7 +315,7 @@ One window, three regions:
   (`.app-tab-dash`): an amber grid icon, an amber-tinted fill and frame
   while it is behind, and a hairline divider after it. The + is an amber outline (`.app-primary`, like the sidebar's New
   agent) that opens a menu (`components/NewMenu.tsx`, portalled): *New
-  agent* ⇧⌘N, *Quick chat…* ⌥⌘N (the chooser, as the key opens it),
+  agent* ⇧⌘N, *Quick chat* ⌥⌘N (at once), *Quick chat with…* (the chooser),
   *New shell* ⌘T, *Open file…*, *Add project* ⌘O, each with its key; ↑ ↓,
   Enter, Esc. The separate >_ new-shell button is gone: it is the menu's
   third row and ⌘T, and two lone icons side by side read as one ambiguous

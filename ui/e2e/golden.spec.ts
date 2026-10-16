@@ -4,6 +4,8 @@
  * on a fresh page with nothing in its storage; the fixture fails any test
  * that logs a console error, throws, or sends a request off the stand.
  */
+import { writeFileSync } from 'node:fs'
+import path from 'node:path'
 import { expect, test } from './fixtures'
 
 test('the dashboard and the app workspace load with no console errors', async ({ app, page }) => {
@@ -135,4 +137,55 @@ test('the share dialog opens, draws its card and closes, with no network', async
   await expect(dialog.getByRole('img', { name: /Your figures/ })).toBeVisible()
   await dialog.getByRole('button', { name: 'Close' }).click()
   await expect(dialog).toHaveCount(0)
+})
+
+// Chats (ADR-071): one tap starts a chat in the daemon's chats workspace; it
+// opens as a conversation, not a terminal; the files it wrote are listed and
+// open in a viewer (HTML in a frame that runs nothing); it is counted on the
+// list, archived out of it, and deleted for good with its folder.
+test('a chat starts in one tap, opens as a conversation, shows its files, and is archived and deleted', async ({ app, page }) => {
+  await page.goto(`${app.stand.pageURL}/#/chats`)
+  await page.getByRole('button', { name: /New chat/ }).click()
+  await expect(page).toHaveURL(/#\/chats\/[^/?]+$/)
+  const id = decodeURIComponent(new URL(page.url()).hash.split('/').pop() ?? '')
+  await expect(page.locator('[data-chat-view]')).toBeVisible()
+  await expect(page.locator('.xterm')).toHaveCount(0)
+  const s = await (await fetch(`${app.stand.daemonURL}/v1/sessions/${encodeURIComponent(id)}`)).json() as { chat?: boolean; cwd: string; owned: boolean }
+  expect(s.chat).toBe(true)
+  expect(s.owned).toBe(true)
+  expect(s.cwd.startsWith(path.join(app.stand.dir, 'data', 'chats'))).toBe(true)
+
+  // What an agent would write in its folder.
+  writeFileSync(path.join(s.cwd, 'report.md'), '# Findings\n\nAll good.\n')
+  writeFileSync(path.join(s.cwd, 'page.html'), '<h1>A page</h1>')
+  await page.reload()
+  await page.getByRole('button', { name: 'Files · 2' }).click()
+  await page.getByRole('dialog', { name: 'Files · 2' }).getByText('report.md').click()
+  const md = page.getByRole('dialog', { name: 'report.md' })
+  await expect(md.getByRole('heading', { name: 'Findings' })).toBeVisible()
+  await md.getByRole('button', { name: 'Close' }).click()
+  await page.getByRole('button', { name: 'Files · 2' }).click()
+  await page.getByRole('dialog', { name: 'Files · 2' }).getByText('page.html').click()
+  const html = page.getByRole('dialog', { name: 'page.html' })
+  // A frame that runs no script and fetches nothing. Its contents are not
+  // read from here: a test's own probe is a script, and the sandbox blocks
+  // it (as it should), which the console reports as an error.
+  await expect(html.locator('iframe')).toHaveAttribute('sandbox', '')
+  await expect(html.locator('iframe')).toHaveAttribute('srcdoc', /default-src 'none'.*<h1>A page<\/h1>/)
+  await html.getByRole('button', { name: 'Close' }).click()
+
+  // The list counts it; Archive hides it; Delete removes it and its files.
+  await page.goto(`${app.stand.pageURL}/#/chats`)
+  const list = page.getByRole('list', { name: 'Chats' })
+  await expect(list.getByRole('link')).toHaveCount(1)
+  await expect(page.getByLabel('1 chats')).toBeVisible()
+  await list.getByRole('button', { name: /^More for / }).click()
+  await page.getByRole('menuitem', { name: 'Archive' }).click()
+  await expect(page.getByText('No chats yet.')).toBeVisible()
+  await page.getByRole('link', { name: 'Archived · 1' }).click()
+  await page.getByRole('list', { name: 'Chats' }).getByRole('button', { name: /^More for / }).click()
+  await page.getByRole('menuitem', { name: 'Delete…' }).click()
+  await page.getByRole('menuitem', { name: /Delete for good/ }).click()
+  await expect(page.getByText('No archived chats.')).toBeVisible()
+  await expect.poll(async () => (await fetch(`${app.stand.daemonURL}/v1/sessions/${encodeURIComponent(id)}`)).status).toBe(404)
 })

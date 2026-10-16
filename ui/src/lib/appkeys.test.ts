@@ -372,8 +372,8 @@ describe('every listed shortcut, on every OS', () => {
     expect(matchAppShortcut(event('KeyM', 'm', { ctrlKey: true }), false)).toBeNull()
   })
 
-  it('lists ⌥⌘N as asking, Ctrl+Alt+Shift+N off macOS', () => {
-    expect(SHORTCUTS.find(([k]) => k === '⌥⌘N')?.[1]).toMatch(/asks which agent and model, Enter takes the last one/)
+  it('lists ⌥⌘N as starting at once, Ctrl+Alt+Shift+N off macOS', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⌥⌘N')?.[1]).toMatch(/starts at once on the model used last/)
     expect(keys('⌥⌘N', false)).toBe('Ctrl+Alt+Shift+N')
     expect(matchAppShortcut(event('KeyN', 'n', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'quick-chat' })
     expect(matchAppShortcut(event('KeyN', 'n', { ctrlKey: true, shiftKey: true, altKey: true }), true)).toBeNull()

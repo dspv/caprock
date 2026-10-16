@@ -33,10 +33,14 @@ function stubs(inbox: InboxItem[] = []) {
   vi.spyOn(api, 'work').mockResolvedValue({ now: NOW, day_start: NOW, sessions: [], hive: 'off', queued: [], repos: [], totals: { live: 0, working: 0, waiting_you: 0, today_usd: 0, machine_today_usd: 0 } })
   vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [claude], licensed: false } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
   vi.spyOn(api, 'subscriptions').mockResolvedValue({ agents: [] } as unknown as Awaited<ReturnType<typeof api.subscriptions>>)
+  vi.spyOn(api, 'chats').mockResolvedValue({ items: chats, total: chats.length, chats: chats.length, archived: 0 })
 }
+
+let chats: SessionSummary[] = []
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  chats = []
   localStorage.clear()
   location.hash = '#/'
 })
@@ -56,23 +60,66 @@ describe('PhoneHome', () => {
     const spawn = vi.spyOn(api, 'spawn').mockResolvedValue({ session_id: 'new1', cwd: '/home/me/beta' })
     render(<PhoneHome />)
     await screen.findByText('work in alpha')
-    await waitFor(() => expect((screen.getByLabelText('Project') as HTMLSelectElement).options.length).toBe(2))
+    // No project, then the two projects.
+    await waitFor(() => expect((screen.getByLabelText('Project') as HTMLSelectElement).options.length).toBe(3))
     fireEvent.change(screen.getByLabelText('Project'), { target: { value: '/home/me/beta' } })
     fireEvent.change(screen.getByLabelText('Message or note'), { target: { value: 'fix the flaky test' } })
     fireEvent.click(screen.getByText('Start chat'))
     await waitFor(() => expect(spawn).toHaveBeenCalled())
-    expect(spawn.mock.calls[0]![0]).toEqual({ cwd: '/home/me/beta', prompt: 'fix the flaky test' })
+    expect(spawn.mock.calls[0]![0]).toMatchObject({ cwd: '/home/me/beta', prompt: 'fix the flaky test' })
+    expect(spawn.mock.calls[0]![0]).not.toHaveProperty('chat')
     await waitFor(() => expect(location.hash).toBe('#/session/new1?tab=chat'))
   })
 
-  it('opens New chat on an empty field instead of starting one', async () => {
+  // ADR-071: one tap, a plain chat — no project, the model used last.
+  it('starts a plain chat at once on an empty field, and opens it as a chat', async () => {
+    stubs()
+    localStorage.setItem('caprock.quickchat', JSON.stringify({ agent: 'claude', model: 'claude-sonnet-5-5' }))
+    const spawn = vi.spyOn(api, 'spawn').mockResolvedValue({ session_id: 'c1', cwd: '/data/chats/2026-10-16-101010' })
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    fireEvent.click(screen.getByText('New chat'))
+    await waitFor(() => expect(spawn).toHaveBeenCalled())
+    expect(spawn.mock.calls[0]![0]).toEqual({ chat: true, model: 'claude-sonnet-5-5' })
+    await waitFor(() => expect(location.hash).toBe('#/chats/c1'))
+  })
+
+  it('starts a plain chat on the typed words when no project is picked', async () => {
+    stubs()
+    const spawn = vi.spyOn(api, 'spawn').mockResolvedValue({ session_id: 'c2', cwd: '/data/chats/2026-10-16-101011' })
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    fireEvent.change(screen.getByLabelText('Message or note'), { target: { value: 'what is a monad' } })
+    fireEvent.click(screen.getByText('Start chat'))
+    await waitFor(() => expect(spawn).toHaveBeenCalled())
+    expect(spawn.mock.calls[0]![0]).toMatchObject({ chat: true, prompt: 'what is a monad' })
+    expect(spawn.mock.calls[0]![0]).not.toHaveProperty('cwd')
+  })
+
+  it('opens Start in a project on an empty field when a project is picked', async () => {
     stubs()
     const spawn = vi.spyOn(api, 'spawn')
     render(<PhoneHome />)
     await screen.findByText('work in alpha')
+    await waitFor(() => expect((screen.getByLabelText('Project') as HTMLSelectElement).options.length).toBe(3))
+    fireEvent.change(screen.getByLabelText('Project'), { target: { value: '/home/me/alpha' } })
     fireEvent.click(screen.getByText('Start chat'))
-    expect(await screen.findByRole('dialog', { name: 'New chat' })).toBeTruthy()
+    expect(await screen.findByRole('dialog', { name: 'Start in a project' })).toBeTruthy()
     expect(spawn).not.toHaveBeenCalled()
+  })
+
+  it('lists the newest chats apart from the work, with the way to all of them', async () => {
+    chats = [session('c1', 'chat · Oct 16, 10:10', 'idle', { chat: true, name: 'Monads, explained' })]
+    stubs()
+    vi.mocked(api.sessionsWithTotal).mockResolvedValue({ items: [session('s1', 'alpha', 'working'), { ...chats[0]!, description: 'chat words' }], total: 2 })
+    render(<PhoneHome />)
+    const section = await screen.findByRole('region', { name: 'Chats' })
+    expect(section.textContent).toContain('Monads, explained')
+    expect(screen.getByText('All chats · 1').closest('a')?.getAttribute('href')).toBe('#/chats')
+    expect(screen.getByText('Monads, explained').closest('a')?.getAttribute('href')).toBe('#/chats/c1')
+    // Continue is the work: the chat is not in it.
+    expect(screen.getByText('work in alpha')).toBeTruthy()
+    expect(screen.queryByText('chat words')).toBeNull()
   })
 
   it('saves what was typed to the Inbox through the Save sheet', async () => {

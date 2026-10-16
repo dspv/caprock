@@ -93,7 +93,8 @@ import { CloseSettingsContext } from '@/lib/settingsClose'
 import { SetupShellContext } from '@/lib/setupShell'
 import { QuickChatSheet, quickChatRequest, quickChoiceLabel, rememberQuickChoice, rememberedQuickChoice, type QuickChoice } from '@/components/QuickChat'
 import { dismissHint, hintDismissed, isQuickChat, quickChatHint, rememberStartedChat, startedChat } from '@/lib/quickchat'
-import type { ChatPane } from '@/components/QuickChatPane'
+import { isChat } from '@/lib/chats'
+import { ChatEnded, ChatHint, type ChatPane } from '@/components/QuickChatPane'
 import { useSpawnableAgents } from '@/components/AgentPicker'
 import { AddProjectSheet } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
@@ -794,6 +795,16 @@ export function AppShell() {
     }
   }, [openTab, refresh])
   const onQuickChatChooser = useCallback(() => setSheet({ kind: 'quick-chat' }), [])
+  /**
+   * Quick chat in one keystroke (ADR-071; owner, 2026-10-16, translated:
+   * "one button and a chat starts at once; at most a model choice"): the
+   * sidebar's Quick chat and ⌥⌘N start one on the vendor and model picked
+   * last, and its tab opens on the conversation, not on a terminal — which
+   * is what the chooser of 2026-10-12 was answering ("a terminal, without
+   * being asked with whom"). The chat's own header names the model; the
+   * chooser stays as *Quick chat with…* in the + menu and the palette.
+   */
+  const onQuickChatNow = useCallback(() => { void startQuickChat(rememberedQuickChoice(spawnable)) }, [startQuickChat, spawnable])
   // What a quick chat's pane shows around its terminal (components/QuickChatPane.tsx).
   const [hintOff, setHintOff] = useState(hintDismissed)
   const onChatHintDismiss = useCallback(() => { dismissHint(); setHintOff(true) }, [])
@@ -825,12 +836,13 @@ export function AppShell() {
   const fileScopeRef = useRef<{ projectId: string; worktree: string; title: string } | undefined>(undefined)
   const newItems = useMemo(() => [
     { id: 'agent', label: 'New agent', hint: keys('⇧⌘N'), icon: <PlusIcon size={13} />, run: () => onNewAgent() },
-    { id: 'quick-chat', label: 'Quick chat…', hint: keys('⌥⌘N'), icon: <ChatIcon size={13} />, run: onQuickChatChooser },
+    { id: 'quick-chat', label: 'Quick chat', hint: keys('⌥⌘N'), icon: <ChatIcon size={13} />, run: onQuickChatNow },
+    { id: 'quick-chat-with', label: 'Quick chat with…', icon: <ChatIcon size={13} />, run: onQuickChatChooser },
     { id: 'shell', label: 'New shell', hint: keys('⌘T'), icon: <TerminalIcon size={13} />, run: () => onNewShell() },
     { id: 'saved', label: 'Run saved…', icon: <SparkIcon size={13} />, run: () => setSheet({ kind: 'saved' }) },
     { id: 'file', label: 'Open file…', icon: <FileIcon size={13} />, run: () => { const f = fileScopeRef.current; if (f) setSheet({ kind: 'files', ...f }); else setToast('Open a project first: files are opened from one.') } },
     { id: 'project', label: 'Add project', hint: keys('⌘O'), icon: <FolderPlusIcon size={13} />, run: onAddProject },
-  ], [onNewAgent, onQuickChatChooser, onNewShell, onAddProject])
+  ], [onNewAgent, onQuickChatNow, onQuickChatChooser, onNewShell, onAddProject])
   const onSettings = useCallback(() => { location.hash = '#/settings' }, [])
   // The sidebar's "phone" shows the pairing code at once; "Telegram" only
   // scrolls (owner, 2026-10-13).
@@ -1061,7 +1073,7 @@ export function AppShell() {
       // In the folder of the session in front — its worktree, not the project's root.
       case 'new-shell': if (workspaceShown && current) onNewShell(current.projectId, focusedSession?.cwd || undefined); else onNewShell(); break
       case 'new-agent': onNewAgent(); break
-      case 'quick-chat': onQuickChatChooser(); break
+      case 'quick-chat': onQuickChatNow(); break
       case 'brain-capture': openBrainCapture(); break
       case 'add-project': onAddProject(); break
       case 'detach-tab': if (workspaceShown) detach(); break
@@ -1114,7 +1126,7 @@ export function AppShell() {
       case 'mail': onMail(); break
       case 'zoom': stepUiScale(c.step); break
     }
-  }, [onNewShell, onNewAgent, onQuickChatChooser, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession, onMail, dashboardShown, goHash, prefs.sidebar])
+  }, [onNewShell, onNewAgent, onQuickChatNow, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession, onMail, dashboardShown, goHash, prefs.sidebar])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -1249,7 +1261,9 @@ export function AppShell() {
       { id: 'a-agent', group: 'Actions', label: 'New agent', hint: keys('⇧⌘N'), icon: <PlusIcon size={14} />, run: () => onNewAgent() },
       { id: 'a-agent-issue', group: 'Actions', label: 'New agent from issue…', detail: 'an open GitHub issue or pull request: its own copy, its text as the first message', icon: <BranchIcon size={14} />, run: () => setSheet({ kind: 'agent', projectId: activeProjectId, fromGitHub: true }) },
       { id: 'a-shell', group: 'Actions', label: 'New shell', hint: keys('⌘T'), icon: <TerminalIcon size={14} />, run: () => onNewShell() },
-      { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat…', detail: 'pick the agent and model; Enter starts the last one used', hint: keys('⌥⌘N'), icon: <ChatIcon size={14} />, run: onQuickChatChooser },
+      { id: 'a-quick-chat', group: 'Actions', label: 'Quick chat', detail: 'starts at once on the agent and model used last', hint: keys('⌥⌘N'), icon: <ChatIcon size={14} />, run: onQuickChatNow },
+      { id: 'a-quick-chat-with', group: 'Actions', label: 'Quick chat with…', detail: 'pick the agent and model; Enter starts the last one used', icon: <ChatIcon size={14} />, run: onQuickChatChooser },
+      { id: 'a-chats', group: 'Actions', label: 'Chats', detail: 'every chat, searchable; archive or delete one', icon: <ChatIcon size={14} />, run: () => goHash('#/chats') },
       { id: 'a-project', group: 'Actions', label: 'Add a project', hint: keys('⌘O'), icon: <FolderPlusIcon size={14} />, run: onAddProject },
       ...(source === 'api' && !isPairedDevice()
         ? [{ id: 'a-project-template', group: 'Actions' as const, label: 'New project from a template…', detail: 'a GitHub template repository or a folder, your brief, an agent', icon: <FolderPlusIcon size={14} />, run: onFromTemplate }]
@@ -1346,7 +1360,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, deck.open, current, onNewAgent, onNewShell, onQuickChatChooser, onAddProject, onDashboard, onMail, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies, onFromTemplate])
+  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, deck.open, current, onNewAgent, onNewShell, onQuickChatNow, onQuickChatChooser, goHash, onAddProject, onDashboard, onMail, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies, onFromTemplate])
 
   // Every session the daemon knows, by what it was about; one that is open or
   // live is already in the list above under its own id.
@@ -1423,7 +1437,9 @@ export function AppShell() {
   }, [focused, inspectedId, model.projects])
 
   const focusedIsAgent = frontIsAgent
-  const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId)
+  // A chat's tab opens on the conversation (ADR-071): for a chat, being in
+  // chatOpen means its terminal was asked for instead.
+  const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId) !== (isChat(focusedSession) || !!startedChat(focused.sessionId))
   // The permission card shows for the focused agent whether or not its
   // terminal is in front. 0.78.2 hid it behind the terminal as a duplicate
   // (owner, 2026-10-06); the next day he wanted it back — it names the call
@@ -1684,7 +1700,7 @@ export function AppShell() {
               onOpenInbox={onOpenInbox}
               onNewAgent={onNewAgent}
               onNewShell={onNewShell}
-              onQuickChat={onQuickChatChooser}
+              onQuickChat={onQuickChatNow}
               onFolderMenu={editors ? onFolderMenu : undefined}
               onAddProject={onAddProject}
               onDashboard={onDashboard}
@@ -1765,14 +1781,34 @@ export function AppShell() {
                     onChatRestart={onChatRestart}
                     onChatHintDismiss={onChatHintDismiss}
                   />
-                  {showChat && focused && (
+                  {showChat && focused && (chatPanes.has(focused.sessionId) && current ? (
+                    // A chat on its conversation (ADR-071): the way out above
+                    // it, and the ended state over it, as its terminal had.
+                    <div className="app-slab absolute inset-0 z-10 flex flex-col">
+                      {chatPanes.get(focused.sessionId)?.hint && !chatPanes.get(focused.sessionId)?.ended && (
+                        <ChatHint text={chatPanes.get(focused.sessionId)!.hint!} onDismiss={onChatHintDismiss} />
+                      )}
+                      <div className="relative min-h-0 flex-1">
+                        <ChatView
+                          key={focused.sessionId}
+                          sessionId={focused.sessionId}
+                          canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
+                          foldKeys
+                          className="absolute inset-0"
+                        />
+                        {chatPanes.get(focused.sessionId)?.ended && (
+                          <ChatEnded visible onClose={() => onClosePane(current.id, focusedLeaf(current).id)} onRestart={() => onChatRestart(focused.sessionId)} />
+                        )}
+                      </div>
+                    </div>
+                  ) : (
                     <ChatView
                       key={focused.sessionId}
                       sessionId={focused.sessionId}
                       canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
                       className="app-slab absolute inset-0 z-10"
                     />
-                  )}
+                  ))}
                   {changesView && (
                     <ChangesView
                       key={`${changesView.projectId}:${changesView.worktree}`}

@@ -89,3 +89,13 @@ describe('the Work and Pipeline routes', () => {
     }
   })
 })
+
+describe('chats (ADR-071)', () => {
+  it('round-trips the list, its archived half and one chat', () => {
+    for (const r of [{ name: 'chats' }, { name: 'chats', archived: true }, { name: 'chat', id: 'a b/c' }] as const) {
+      expect(parseHash(href(r))).toEqual(r)
+    }
+    expect(href({ name: 'chat', id: 'c1' })).toBe('#/chats/c1')
+    expect(parseHash('#/chats?archived=0')).toEqual({ name: 'chats' })
+  })
+})

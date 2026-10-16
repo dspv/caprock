@@ -17,7 +17,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { api, errText, isPairedDevice, type InboxItem, type SessionSummary, type SpawnRequest, type Subscription } from '@/lib/api'
+import { api, errText, isPairedDevice, type ChatList, type InboxItem, type SessionSummary, type SpawnRequest, type Subscription } from '@/lib/api'
+import { chatModelLabel, chatTitle, isChat, startChat as startNewChat } from '@/lib/chats'
+import { ModelChip, useChatChoice } from './ChatStart'
 import { href, navigate } from '@/lib/router'
 import { useApi } from '@/lib/useApi'
 import { useCanControl } from '@/lib/useCanControl'
@@ -96,22 +98,38 @@ function useAgents() {
   return { agents, entries: catalog.entries, loaded: catalog.loaded }
 }
 
-/** Starts a session and opens its chat; the error, if any, for the caller to show. */
-async function startChat(project: Project, agent: SpawnAgent, subscription: string, text: string, photos: readonly Picked[]): Promise<void> {
+/** The photos, pasted where the agent can read them, as the paths a message names. */
+async function pastedPaths(photos: readonly Picked[]): Promise<string[]> {
   const paths: string[] = []
   for (const p of photos) {
     const f = await downscalePhoto(p.file)
     const { path } = await api.paste({ name: f.name || 'photo.jpg', type: f.type, data: await base64Of(f) })
     paths.push(path)
   }
+  return paths
+}
+
+/** Starts a session in a project and opens its chat; the error, if any, for the caller to show. */
+async function startChat(project: Project, agent: SpawnAgent, subscription: string, text: string, photos: readonly Picked[], model = ''): Promise<void> {
+  const paths = await pastedPaths(photos)
   const req: SpawnRequest = { cwd: project.root }
   if (agent !== 'claude') req.agent = agent
+  if (model) req.model = model
   if (subscription && hasSubscriptions(agent)) req.subscription = subscription
   const prompt = messageWith(text, paths)
   if (prompt) req.prompt = prompt
   const res = await api.spawn(req)
   keepChoice({ root: project.root, agent, subscription })
   navigate({ name: 'session', id: res.session_id, tab: 'chat' })
+}
+
+/** The dock's project: none — a plain chat — unless one was picked here (ADR-071). */
+const DOCK_PROJECT_KEY = 'caprock.phone.dock.project'
+function readDockProject(): string {
+  try { return localStorage.getItem(DOCK_PROJECT_KEY) ?? '' } catch { return '' }
+}
+function keepDockProject(root: string) {
+  try { localStorage.setItem(DOCK_PROJECT_KEY, root) } catch { /* not remembering is fine */ }
 }
 
 /** The picks a chat starts on, shared by the dock and the New chat sheet. */
@@ -155,7 +173,9 @@ export function PhoneHome() {
   const list = useMemo(() => sessions.data?.items ?? [], [sessions.data])
   const now = useNow(15000)
   const waiting = waitingOnYou(list)
-  const rows = continueList(list, now)
+  // Chats have their own section and screen (ADR-071); Continue is the work.
+  const rows = continueList(list.filter((s) => !isChat(s)), now)
+  const chats = useApi(() => api.chats({ limit: CHATS_SHOWN }), [], { intervalMs: 5000, cache: 'chats:home' })
   // A pull at the top of the home-screen app reads Releases and the Inbox
   // again (the sessions are read every few seconds anyway).
   const [pull, setPull] = useState(0)
@@ -201,6 +221,7 @@ export function PhoneHome() {
         </div>
       )}
       {waiting[0] && <Waiting session={waiting[0]} more={waiting.length - 1} now={now} />}
+      <RecentChats list={chats.data} now={now} />
       <Continue rows={rows} now={now} loading={!sessions.data && !sessions.error} />
       <PhoneReleases pull={pull} />
       <Saved items={inbox.items} now={now} canDelete={canControl} />
@@ -230,8 +251,8 @@ function Waiting({ session, more, now }: { session: SessionSummary; more: number
       <div className="flex items-center gap-2 text-[12px] font-medium uppercase tracking-[0.08em] text-warn">
         <span className="h-2 w-2 rounded-full bg-warn" /> Waiting on you{more > 0 ? ` · ${more + 1}` : ''}
       </div>
-      <a href={href({ name: 'session', id: session.session_id, tab: 'chat' })} className="mt-2 flex min-w-0 items-baseline gap-2 text-fg no-underline">
-        <span className="truncate text-[16px] font-medium">{session.project || 'unknown project'}</span>
+      <a href={href(isChat(session) ? { name: 'chat', id: session.session_id } : { name: 'session', id: session.session_id, tab: 'chat' })} className="mt-2 flex min-w-0 items-baseline gap-2 text-fg no-underline">
+        <span className="truncate text-[16px] font-medium">{isChat(session) ? chatTitle(session) : session.project || 'unknown project'}</span>
         <span className="shrink-0 text-[12px] text-fg-faint">{fmtAgo(session.activity?.at || session.last_event_at, now)}</span>
         <span className="ml-auto shrink-0 text-[15px] font-medium text-accent">Open</span>
       </a>
@@ -253,6 +274,34 @@ function healthWord(s: SessionSummary): string {
   if (s.status === 'ended') return 'ended'
   const h = s.activity?.health
   return h === 'waiting-on-you' ? 'waiting for you' : h === 'working' ? 'working' : h === 'looping' ? 'looping' : h === 'error' ? 'error' : 'idle'
+}
+
+/** Chats on the home: the newest few, and the way to all of them. */
+const CHATS_SHOWN = 3
+
+function RecentChats({ list, now }: { list?: ChatList; now: number }) {
+  if (!list || list.items.length === 0) return null
+  return (
+    <section aria-label="Chats">
+      <SectionLabel right={<a href={href({ name: 'chats' })} className="text-accent no-underline">All chats · {list.chats}</a>}>Chats</SectionLabel>
+      <ul className="overflow-hidden rounded-[12px] border border-border bg-panel">
+        {list.items.slice(0, CHATS_SHOWN).map((s) => (
+          <li key={s.session_id} className="border-b border-border last:border-b-0">
+            <a href={href({ name: 'chat', id: s.session_id })} className="flex min-h-[56px] items-center gap-3 px-3 py-2 text-fg no-underline active:bg-panel-2">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-panel-2 text-fg-muted"><ChatIcon size={16} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="truncate text-[15px] font-medium">{chatTitle(s)}</span>
+                  <span className="ml-auto shrink-0 text-[12px] text-fg-faint">{fmtAgo(s.worked_at || s.last_event_at, now)}</span>
+                </span>
+                <span className="block truncate text-[13px] text-fg-muted">{chatModelLabel(s)}</span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
 }
 
 function Continue({ rows, now, loading }: { rows: SessionSummary[]; now: number; loading: boolean }) {
@@ -390,7 +439,12 @@ function PhotoRow({ photos, onRemove }: { photos: Picked[]; onRemove: (i: number
   )
 }
 
-/** One field at the bottom: Start chat on it, or Save it. */
+/**
+ * One field at the bottom: start a chat on it, or Save it (ADR-071). With no
+ * project picked — the default — the chat is a plain one in Caprock's chats
+ * workspace, and an empty field starts one at once: one tap, the remembered
+ * vendor and model. Pick a project and it is a session there, as before.
+ */
 function Dock({ projects, canControl, saved, onSave, onNewChat }: {
   projects: Project[]
   canControl: boolean
@@ -399,6 +453,9 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
   onNewChat: () => void
 }) {
   const picks = useChatPicks(projects)
+  const chat = useChatChoice()
+  const [root, setRoot] = useState(readDockProject)
+  const project = root ? projects.find((p) => p.root === root) : undefined
   const [text, setText] = useState('')
   const { photos, add, remove, take } = usePhotos()
   const [busy, setBusy] = useState(false)
@@ -415,13 +472,19 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
     el.style.height = `${Math.min(el.scrollHeight, 128)}px`
   }, [text])
 
+  const empty = !text.trim() && photos.length === 0
   const start = async () => {
-    if (!text.trim() && photos.length === 0) { onNewChat(); return }
-    if (!picks.project) { onNewChat(); return }
+    if (empty && project) { onNewChat(); return }
     setBusy(true)
     setError('')
     try {
-      await startChat(picks.project, picks.agent, picks.sub, text, photos)
+      if (project) {
+        const sub = chat.choice.agent === picks.agent ? picks.sub : ''
+        await startChat(project, chat.choice.agent, sub, text, photos, chat.choice.model)
+      } else {
+        const id = await startNewChat(chat.choice, messageWith(text, await pastedPaths(photos)))
+        navigate({ name: 'chat', id })
+      }
       setText('')
       take().forEach((p) => URL.revokeObjectURL(p.url))
     } catch (e) {
@@ -430,7 +493,7 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
       setBusy(false)
     }
   }
-  const sub = picks.subs.find((s) => s.id === picks.sub)
+  const pickProject = (v: string) => { setRoot(v); keepDockProject(v) }
 
   return (
     <div
@@ -444,21 +507,14 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
       ) : (
         <>
           <div className="mb-2 flex items-center gap-2 overflow-hidden">
+            <ModelChip chat={chat} />
             <ChipSelect
               label="Project"
-              value={picks.project?.root ?? ''}
-              onChange={picks.setRoot}
-              options={projects.map((p) => ({ value: p.root, label: p.name }))}
-              empty="No projects"
+              value={project?.root ?? ''}
+              onChange={pickProject}
+              options={[{ value: '', label: 'No project' }, ...projects.map((p) => ({ value: p.root, label: p.name }))]}
+              empty="No project"
             />
-            <ChipSelect
-              label="Agent"
-              value={picks.agent}
-              onChange={(v) => picks.setAgent(v as SpawnAgent)}
-              options={picks.agents.map((a) => ({ value: a, label: agentLabel(a, picks.entries).replace(/ (Code|CLI)$/, '') }))}
-              icon={<AgentGlyph agent={picks.agent} size={12} />}
-            />
-            {sub && <span className="truncate text-[12px] text-fg-faint">{subText(sub)}</span>}
           </div>
           <PhotoRow photos={photos} onRemove={remove} />
           <div className="flex items-end gap-2">
@@ -471,7 +527,7 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
               rows={1}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Ask, or jot something down…"
+              placeholder={project ? `Ask in ${project.name}, or jot something down…` : 'Ask anything, or jot something down…'}
               aria-label="Message or note"
               className="min-h-11 min-w-0 flex-1 resize-none rounded-[22px] border border-border-strong bg-bg px-3.5 py-2.5 text-[16px] leading-[1.35] text-fg outline-none placeholder:text-fg-faint focus:border-accent"
             />
@@ -482,7 +538,7 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
               Save
             </button>
             <button type="button" disabled={busy} onClick={() => void start()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[12px] bg-accent text-[16px] font-semibold text-bg disabled:opacity-60">
-              <ChatIcon size={18} /> {busy ? 'Starting…' : 'Start chat'}
+              <ChatIcon size={18} /> {busy ? 'Starting…' : empty && !project ? 'New chat' : 'Start chat'}
             </button>
           </div>
         </>
@@ -559,7 +615,7 @@ export function NewChatSheet({ projects, onClose }: { projects: Project[]; onClo
   }
   return (
     <BottomSheet
-      title="New chat"
+      title="Start in a project"
       onClose={onClose}
       footer={
         <>
