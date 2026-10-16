@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { DUCKS, DUCK_HINT_EVERY, FACES, PUMPKINS, FACES_KEY, FACE_DEFAULT_KEY, FACE_NAME, MAX_PICKS, duckHintDue, faceFor, hashedFace, hasOwnFace, isDuck, isPumpkin, saveFaceDefault, setSessionFace } from './faces'
+import { DUCKS, DUCK_HINT_EVERY, PUMPKIN_HINT_KEY, pumpkinSeason, FACES, PUMPKINS, FACES_KEY, FACE_DEFAULT_KEY, FACE_NAME, MAX_PICKS, duckHintDone, duckHintDue, faceFor, hashedFace, hasOwnFace, isDuck, isPumpkin, saveFaceDefault, setSessionFace } from './faces'
 import { DUCK_HINT_LINGER, DUCK_HINT_QUIET, FaceDefaultSetting, PickableFace, SessionCharacter } from '@/components/SessionFace'
 
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
@@ -196,7 +196,9 @@ describe('pumpkins', () => {
 })
 
 describe('the "try a duck?" line', () => {
-  let clock = Date.UTC(2026, 9, 14, 9)
+  // June, and after any real keypress an earlier test made: outside October
+  // the line offers the ducks.
+  let clock = Date.UTC(2027, 5, 14, 9)
   beforeEach(() => { vi.useFakeTimers(); clock += 10 * DUCK_HINT_EVERY; vi.setSystemTime(clock) })
   afterEach(() => { vi.useRealTimers() })
   const portrait = (hint = true, id = 'h1') => (
@@ -265,5 +267,42 @@ describe('the "try a duck?" line', () => {
     render(portrait())
     wait(DUCK_HINT_QUIET + 1000)
     expect(line()).toBeNull()
+  })
+})
+
+describe('the "try a pumpkin?" line in October', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2027, 9, 16, 11)) })
+  afterEach(() => { vi.useRealTimers() })
+  const portrait = (id = 'k1') => (
+    <PickableFace agent="claude" sessionId={id} hint><SessionCharacter agent="claude" sessionId={id} /></PickableFace>
+  )
+  const wait = (ms: number) => act(() => { vi.advanceTimersByTime(ms) })
+
+  it('is October only', () => {
+    expect(pumpkinSeason(new Date(2026, 9, 1, 0, 5).getTime())).toBe(true)
+    expect(pumpkinSeason(new Date(2026, 9, 31, 23, 55).getTime())).toBe(true)
+    expect(pumpkinSeason(new Date(2026, 10, 1, 0, 5).getTime())).toBe(false)
+    expect(pumpkinSeason(new Date(2026, 8, 30, 23, 55).getTime())).toBe(false)
+  })
+  it('offers the pumpkins even to someone done with the ducks, and opens their tab', () => {
+    duckHintDone()
+    render(portrait())
+    wait(DUCK_HINT_QUIET + 1000)
+    expect(screen.queryByText(/try a duck\?/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /try a pumpkin/ }))
+    expect(screen.getByRole('tab', { name: 'Pumpkins' })).toHaveAttribute('aria-selected', 'true')
+    expect(JSON.parse(localStorage.getItem(PUMPKIN_HINT_KEY)!).done).toBe(true)
+    expect(duckHintDue(Date.now() + 100 * DUCK_HINT_EVERY, 'pumpkins')).toBe(false)
+  })
+  it('not on a session already in a pumpkin, but on one in a duck', () => {
+    setSessionFace('k2', 'pumpkin-cat')
+    const { unmount } = render(portrait('k2'))
+    wait(DUCK_HINT_QUIET + 1000)
+    expect(screen.queryByText(/try a pumpkin\?/)).toBeNull()
+    unmount()
+    setSessionFace('k3', 'duck-party')
+    render(portrait('k3'))
+    wait(DUCK_HINT_QUIET + 1000)
+    expect(screen.queryByText(/try a pumpkin\?/)).not.toBeNull()
   })
 })

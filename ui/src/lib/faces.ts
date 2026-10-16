@@ -207,19 +207,40 @@ export function useFaceDefault(): [FaceDefault, (d: FaceDefault) => void] {
  * once a day, and never again once the duck panel has been opened or the
  * line closed twice. Per viewer; storage that throws or holds garbage reads
  * as "already done", so a broken store never nags.
+ *
+ * In October it says "try a pumpkin?" instead (owner, 2026-10-16), with the
+ * same rules and a record of its own, so finding the ducks never hides the
+ * pumpkins, nor the other way round.
  */
 export const DUCK_HINT_KEY = 'caprock.faces.duckHint'
+export const PUMPKIN_HINT_KEY = 'caprock.faces.pumpkinHint'
 export const DUCK_HINT_EVERY = 24 * 60 * 60 * 1000
 /** Closes asked for before the line stops for good. */
 export const DUCK_HINT_CLOSES = 2
 
-type DuckHint = { shown: number; closed: number; done: boolean }
+/** What the line offers: the ducks, or in October the pumpkins. */
+export type HintKind = 'ducks' | 'pumpkins'
 
-function readDuckHint(): DuckHint {
+/** Halloween season: all of October, on this machine's calendar. */
+export function pumpkinSeason(now: number): boolean {
+  return new Date(now).getMonth() === 9
+}
+
+export function hintKindAt(now: number): HintKind {
+  return pumpkinSeason(now) ? 'pumpkins' : 'ducks'
+}
+
+type Hint = { shown: number; closed: number; done: boolean }
+
+function hintKey(kind: HintKind): string {
+  return kind === 'pumpkins' ? PUMPKIN_HINT_KEY : DUCK_HINT_KEY
+}
+
+function readHint(kind: HintKind): Hint {
   try {
-    const raw = localStorage.getItem(DUCK_HINT_KEY)
+    const raw = localStorage.getItem(hintKey(kind))
     if (raw === null) return { shown: 0, closed: 0, done: false }
-    const v = JSON.parse(raw) as Partial<DuckHint> | null
+    const v = JSON.parse(raw) as Partial<Hint> | null
     if (!v || typeof v !== 'object') return { shown: 0, closed: 0, done: true }
     return {
       shown: typeof v.shown === 'number' ? v.shown : 0,
@@ -229,29 +250,29 @@ function readDuckHint(): DuckHint {
   } catch { return { shown: 0, closed: 0, done: true } }
 }
 
-function writeDuckHint(h: DuckHint) {
-  try { localStorage.setItem(DUCK_HINT_KEY, JSON.stringify(h)) } catch { /* for this page only */ }
+function writeHint(kind: HintKind, h: Hint) {
+  try { localStorage.setItem(hintKey(kind), JSON.stringify(h)) } catch { /* for this page only */ }
 }
 
 /** Whether the line may show now: not done, closed fewer than twice, not shown in the last day. */
-export function duckHintDue(now: number): boolean {
-  const h = readDuckHint()
+export function duckHintDue(now: number, kind: HintKind = 'ducks'): boolean {
+  const h = readHint(kind)
   return !h.done && h.closed < DUCK_HINT_CLOSES && now - h.shown >= DUCK_HINT_EVERY
 }
 
 /** The line went up: the day's one showing is spent. */
-export function duckHintShown(now: number) {
-  writeDuckHint({ ...readDuckHint(), shown: now })
+export function duckHintShown(now: number, kind: HintKind = 'ducks') {
+  writeHint(kind, { ...readHint(kind), shown: now })
 }
 
 /** × on the line: twice and it is gone for good. */
-export function duckHintClosed() {
-  const h = readDuckHint()
-  writeDuckHint({ ...h, closed: h.closed + 1 })
+export function duckHintClosed(kind: HintKind = 'ducks') {
+  const h = readHint(kind)
+  writeHint(kind, { ...h, closed: h.closed + 1 })
 }
 
-/** The ducks were found (the panel opened on them, or one picked): the line never shows again. */
-export function duckHintDone() {
-  const h = readDuckHint()
-  if (!h.done) writeDuckHint({ ...h, done: true })
+/** The group was found (its tab opened, or one picked): its line never shows again. */
+export function duckHintDone(kind: HintKind = 'ducks') {
+  const h = readHint(kind)
+  if (!h.done) writeHint(kind, { ...h, done: true })
 }

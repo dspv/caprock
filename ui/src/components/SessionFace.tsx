@@ -8,8 +8,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { AgentCharacter, characterFor } from './Characters'
 import {
-  DUCKS, FACES, FACE_NAME, POOL_NAME, PUMPKINS, duckHintClosed, duckHintDone, duckHintDue, duckHintShown, hasOwnFace, isDuck,
-  isPumpkin, setSessionFace, useFaceDefault, useSessionFace, type Face, type FaceDefault, type FacePool,
+  DUCKS, FACES, FACE_NAME, POOL_NAME, PUMPKINS, duckHintClosed, duckHintDone, duckHintDue, duckHintShown, hasOwnFace, hintKindAt, isDuck,
+  isPumpkin, setSessionFace, useFaceDefault, useSessionFace, type Face, type FaceDefault, type FacePool, type HintKind,
 } from '@/lib/faces'
 
 type Group = 'faces' | 'ducks' | 'pumpkins'
@@ -40,7 +40,11 @@ export function FaceDefaultSetting() {
   const [d, setD] = useFaceDefault()
   const tile = (value: FaceDefault, label: string, art: ReactNode) => (
     <button key={value} type="button" role="radio" aria-checked={d === value} title={label} aria-label={label}
-      onClick={() => { setD(value); if (isDuck(value) || value === 'random-ducks' || value === 'random-all') duckHintDone() }}
+      onClick={() => {
+        setD(value)
+        if (isDuck(value) || value === 'random-ducks' || value === 'random-all') duckHintDone()
+        if (isPumpkin(value) || value === 'random-pumpkins') duckHintDone('pumpkins')
+      }}
       className={`grid h-[52px] min-w-[52px] place-items-center rounded-[10px] border px-1 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${d === value ? 'border-accent bg-panel-2' : 'border-border hover:bg-panel-2'}`}>
       {art}
     </button>
@@ -89,7 +93,7 @@ function listenForKeys() {
  * a duck already), shows at most once a day, goes on the first key, after
  * LINGER, or when the session stops being eligible.
  */
-export function useDuckHint(eligible: boolean): [boolean, () => void] {
+export function useDuckHint(eligible: boolean, kind: HintKind = 'ducks'): [boolean, () => void] {
   const [shown, setShown] = useState(false)
   useEffect(() => {
     listenForKeys()
@@ -101,17 +105,17 @@ export function useDuckHint(eligible: boolean): [boolean, () => void] {
       return () => { clearTimeout(t); document.removeEventListener('keydown', onKey, true) }
     }
     // Done for good: no timer at all.
-    if (!duckHintDue(Number.MAX_SAFE_INTEGER)) return
+    if (!duckHintDue(Number.MAX_SAFE_INTEGER, kind)) return
     const since = Date.now()
     const t = setInterval(() => {
       const now = Date.now()
       if (now - since < DUCK_HINT_QUIET || now - lastKey < DUCK_HINT_QUIET) return
-      if (!duckHintDue(now)) return
-      duckHintShown(now)
+      if (!duckHintDue(now, kind)) return
+      duckHintShown(now, kind)
       setShown(true)
     }, 1000)
     return () => clearInterval(t)
-  }, [eligible, shown])
+  }, [eligible, shown, kind])
   return [shown, () => setShown(false)]
 }
 
@@ -124,7 +128,10 @@ export function PickableFace({ agent, sessionId, className, children, hint = fal
   const claude = characterFor(agent ?? 'claude') === 'lead'
   const face = useSessionFace(claude ? sessionId : undefined)
   const [open, setOpen] = useState<Group | null>(null)
-  const [hinted, hideHint] = useDuckHint(claude && hint && !open && !isDuck(face))
+  // October offers the pumpkins; the rest of the year, the ducks.
+  const kind = hintKindAt(Date.now())
+  const inIt = kind === 'pumpkins' ? isPumpkin(face) : isDuck(face)
+  const [hinted, hideHint] = useDuckHint(claude && hint && !open && !inIt, kind)
   const box = useRef<HTMLDivElement>(null)
   const btn = useRef<HTMLButtonElement>(null)
   const [at, setAt] = useState<{ top: number; left: number }>()
@@ -151,21 +158,21 @@ export function PickableFace({ agent, sessionId, className, children, hint = fal
         {children}
       </button>
       {hinted && (
-        <DuckHint
-          onOpen={() => { hideHint(); duckHintDone(); setOpen('ducks') }}
-          onClose={() => { hideHint(); duckHintClosed() }} />
+        <DuckHint kind={kind}
+          onOpen={() => { hideHint(); duckHintDone(kind); setOpen(kind) }}
+          onClose={() => { hideHint(); duckHintClosed(kind) }} />
       )}
       {open && <FacePicker sessionId={sessionId} at={at} group={open} onDone={() => { setOpen(null); btn.current?.focus() }} />}
     </div>
   )
 }
 
-/** The small speech line beside the portrait: "try a duck?" opens the ducks, × closes it. */
-function DuckHint({ onOpen, onClose }: { onOpen: () => void; onClose: () => void }) {
+/** The small speech line beside the portrait: "try a duck?" (in October "try a pumpkin?") opens that tab, × closes it. */
+function DuckHint({ kind, onOpen, onClose }: { kind: HintKind; onOpen: () => void; onClose: () => void }) {
   return (
     <div data-duck-hint role="note" className="duck-hint absolute bottom-[3px] left-[calc(100%+9px)] z-10 flex items-center whitespace-nowrap rounded-[8px] border border-border bg-panel text-[11.5px] leading-[18px] text-fg-muted shadow-sm">
       <button type="button" onClick={onOpen} className="rounded-l-[8px] py-[1px] pl-2 pr-1 outline-none hover:text-fg focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]">
-        <span className="flex items-center gap-1">try a duck? <AgentCharacter who="lead" face="duck" size={18} className="-my-[2px]" /></span>
+        <span className="flex items-center gap-1">{kind === 'pumpkins' ? 'try a pumpkin?' : 'try a duck?'} <AgentCharacter who="lead" face={kind === 'pumpkins' ? 'pumpkin' : 'duck'} size={18} className="-my-[2px]" /></span>
       </button>
       <button type="button" onClick={onClose} aria-label="Not now" title="Not now"
         className="rounded-r-[8px] py-[1px] pl-0.5 pr-1.5 text-fg-faint outline-none hover:text-fg focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]">×</button>
@@ -178,13 +185,18 @@ export function FacePicker({ sessionId, at, group: initial, onDone }: { sessionI
   const own = hasOwnFace(sessionId)
   const [group, setGroup] = useState<Group>(initial ?? groupOf(face))
   const menu = useRef<HTMLDivElement>(null)
-  const show = (g: Group) => { setGroup(g); if (g === 'ducks') duckHintDone() }
-  const pick = (f: Face | null) => { setSessionFace(sessionId, f); if (isDuck(f)) duckHintDone(); onDone() }
+  const show = (g: Group) => { setGroup(g); if (g !== 'faces') duckHintDone(g) }
+  const pick = (f: Face | null) => {
+    setSessionFace(sessionId, f)
+    if (isDuck(f)) duckHintDone()
+    if (isPumpkin(f)) duckHintDone('pumpkins')
+    onDone()
+  }
   // Opening puts focus on the face worn, or the first of the tab shown.
   useEffect(() => {
     const items = menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')
     ;(menu.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]') ?? items?.[0])?.focus()
-    if (initial === 'ducks') duckHintDone()
+    if (initial && initial !== 'faces') duckHintDone(initial)
   }, [])
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const tab = (e.target as HTMLElement).getAttribute?.('role') === 'tab'

@@ -6,3 +6,5 @@ kind: Added
   monster and a lantern) on a new *Pumpkins* tab of the face menu, and
   *A pumpkin per session* in Settings → Appearance. Nobody's current face
   changes.
+  Through October the quiet *try a duck?* line beside an idle portrait
+  says *try a pumpkin?* instead and opens the pumpkins.
