@@ -22,9 +22,12 @@ export function useDialogFocus() {
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null
     const focusables = () =>
-      [...(panel.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])') ?? [])]
-    // The first control that is not the ×: Enter on an opened dialog must not close it.
-    const first = focusables().find((el) => !el.hasAttribute('data-dialog-close')) ?? focusables()[0]
+      [...(panel.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]') ?? [])]
+        .filter((el) => el.getAttribute('tabindex') !== '-1')
+    // The first control that is not the × (Enter on an opened dialog must not
+    // close it) nor inside a row marked data-dialog-later, such as Premium's
+    // other features: focus lands on what the dialog is for.
+    const first = focusables().find((el) => !el.hasAttribute('data-dialog-close') && !el.closest('[data-dialog-later]')) ?? focusables()[0]
     first?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return

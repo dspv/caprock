@@ -1,5 +1,6 @@
 /**
- * What one paid feature is, what it costs, and the two ways to buy it.
+ * What one paid feature is, what the rest of the plan holds, what it costs,
+ * and the two ways to buy it.
  *
  * It opens when someone clicks a feature marked as paid — never on its own. A
  * dialog over your work is the loudest thing an interface can do, and this
@@ -15,6 +16,20 @@
  *
  * Then three short lines, the setup it demands named before payment (unnamed
  * work is what people discover after paying), and the price.
+ *
+ * **It shows the whole plan without becoming a brochure.** Readers took the
+ * plan for the one feature they had clicked (owner, 2026-10-16, translated),
+ * so the eyebrow counts it — "Premium · N features · $30 a year", the count
+ * from FEATURES and the price from the daemon — and under the clicked feature
+ * one row of chips names the others, an icon and a word or two each. A chip
+ * swaps the picture and the lines in place (no second screen); pressing it
+ * again goes back. Arrow keys move between chips and only one is in the Tab
+ * order; the dialog does not open with focus on one. The row wraps to two
+ * lines at 520 px and at 390 px (icons from `sm` up, smaller type below it);
+ * that is all the height it adds. "New" marks a feature for 30 days from its
+ * `since` — the day it was added to PaidFeature, read from git — and there
+ * are no unbuilt or "soon" chips: the row lists what the key unlocks today
+ * (rules 6 and 11).
  *
  * **The price is the site's, exactly.** caprock.dev sells two shapes — $30 a
  * year and $100 once — and marks the lifetime as "Best value"; the monthly
@@ -34,6 +49,7 @@
  * Both links open a new tab: nobody should lose the dashboard to read about a
  * subscription.
  */
+import { useRef, useState, type KeyboardEvent } from 'react'
 import { api, type PremiumPricing } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { AgentCharacter } from './Characters'
@@ -45,11 +61,27 @@ export type PaidFeature = 'cap' | 'window' | 'report' | 'gemini' | 'drill' | 'ag
  * `body` says what the feature is in one sentence; `points` say why you would
  * want it, each next to an icon.
  */
-const FEATURES: Record<
-  PaidFeature,
-  { title: string; body: string; points: { icon: keyof typeof Icon; text: string }[]; setup?: string }
-> = {
+type Feature = {
+  /** Two or three words, for the chip in the "Also in Premium" row. */
+  short: string
+  /** The chip's icon. */
+  icon: keyof typeof Icon
+  /**
+   * The day the feature shipped as Premium: the commit that added it to
+   * `PaidFeature`, read from git, never estimated. It drives the "New" tag.
+   */
+  since: string
+  title: string
+  body: string
+  points: { icon: keyof typeof Icon; text: string }[]
+  setup?: string
+}
+
+const FEATURES: Record<PaidFeature, Feature> = {
   cap: {
+    short: 'Daily cap',
+    icon: 'stop',
+    since: '2026-08-26',
     title: 'A daily cap that pauses sessions',
     body: 'A number for the day. Cross it and Caprock stops its own sessions.',
     points: [
@@ -61,6 +93,9 @@ const FEATURES: Record<
   // The cap's sibling for people on a plan: what a Pro or Max subscriber runs
   // out of is the window, not dollars (owner decision, 2026-10-08).
   window: {
+    short: 'Plan limit',
+    icon: 'pie',
+    since: '2026-10-09',
     title: 'Stop at the plan limit, carry on after the reset',
     body: 'Claude’s 5-hour and weekly windows, not dollars. Near the line Caprock pauses the sessions it started; after the reset they carry on.',
     points: [
@@ -72,6 +107,9 @@ const FEATURES: Record<
     setup: 'Needs Caprock’s status line in Claude Code (caprock statusline install). Pro and Max only: API billing has no windows.',
   },
   gemini: {
+    short: 'Ask Gemini',
+    icon: 'chat',
+    since: '2026-09-01',
     title: 'Ask Gemini, on your own key',
     body: 'A second model inside Caprock, paid for by you, at Google’s prices.',
     points: [
@@ -83,6 +121,9 @@ const FEATURES: Record<
     setup: 'Set GEMINI_API_KEY in the daemon’s environment and restart it. Google bills you directly.',
   },
   drill: {
+    short: 'Tool output',
+    icon: 'stack',
+    since: '2026-10-04',
     title: 'What each tool returned, and where it failed',
     body: 'Open a tool and see what came back, what failed, and where it is going.',
     points: [
@@ -93,6 +134,9 @@ const FEATURES: Record<
   },
   // ADR-046: any terminal coding agent, started like the built-in ones.
   agents: {
+    short: 'Own agents',
+    icon: 'loop',
+    since: '2026-10-10',
     title: 'Your own agents, started like the built-in ones',
     body: 'Add any terminal coding agent by its command. It appears in New agent and Quick chat and opens in a Caprock tab.',
     points: [
@@ -104,6 +148,9 @@ const FEATURES: Record<
   },
   // ADR-047: the alerts are free; talking back is the paid half.
   telegram: {
+    short: 'Telegram',
+    icon: 'send',
+    since: '2026-10-10',
     title: 'Talk to your agents from Telegram',
     body: 'Reply to a session’s message and Caprock types it in. Every message says which agent, project and session it came from.',
     points: [
@@ -115,6 +162,9 @@ const FEATURES: Record<
   },
   // ADR-048: three sign-ins per agent are free; a fourth and more are Premium.
   subscriptions: {
+    short: 'Sign-ins',
+    icon: 'user',
+    since: '2026-10-10',
     title: 'More sign-ins, each a pick away',
     body: 'Three Claude Code and three Codex subscriptions are free, your own sign-in included. Premium adds as many more as you use.',
     points: [
@@ -124,6 +174,9 @@ const FEATURES: Record<
     ],
   },
   report: {
+    short: 'Weekly report',
+    icon: 'arrow',
+    since: '2026-08-26',
     title: 'A weekly report, sent where you are',
     body: 'Monday morning, before you open a terminal.',
     // What changed, not what happened: a digest of figures the dashboard
@@ -354,22 +407,96 @@ export function Price({ p, feature, onClose }: { p: PremiumPricing | undefined; 
   )
 }
 
-export function PremiumModal({ feature, onClose }: { feature: PaidFeature; onClose: () => void }) {
+/** Every paid feature, in the order the chips list them. */
+export const PAID_FEATURES = Object.keys(FEATURES) as PaidFeature[]
+
+/** How long a feature carries the "New" tag after it shipped. */
+export const NEW_FOR_DAYS = 30
+
+/** Whether a feature shipped within the last NEW_FOR_DAYS days of `now`. */
+export function isNew(feature: PaidFeature, now: number): boolean {
+  const since = Date.parse(`${FEATURES[feature].since}T00:00:00Z`)
+  return now >= since && now - since < NEW_FOR_DAYS * 86_400_000
+}
+
+/**
+ * The rest of the plan in one row: each other feature as an icon and two or
+ * three words. A chip shows its feature in place of the one on top; pressing
+ * the pressed chip again goes back to the feature that was clicked. Arrow
+ * keys, Home and End move between the chips; one of them is in the Tab order.
+ */
+function AlsoIn({ opened, shown, onShow, now }: { opened: PaidFeature; shown: PaidFeature; onShow: (f: PaidFeature) => void; now: number }) {
+  const others = PAID_FEATURES.filter((k) => k !== opened)
+  const row = useRef<HTMLDivElement>(null)
+  const tabStop = others.includes(shown) ? shown : others[0]
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const chips = [...(row.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+    const at = chips.indexOf(document.activeElement as HTMLButtonElement)
+    if (at < 0) return
+    const to = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? (at + 1) % chips.length
+      : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? (at - 1 + chips.length) % chips.length
+        : e.key === 'Home' ? 0
+          : e.key === 'End' ? chips.length - 1
+            : -1
+    if (to < 0) return
+    e.preventDefault()
+    chips[to]?.focus()
+  }
+  return (
+    <div
+      ref={row}
+      role="group"
+      aria-label="Also in Premium"
+      data-dialog-later
+      onKeyDown={onKeyDown}
+      className="mt-3 flex flex-wrap items-center gap-[2px] sm:gap-1"
+    >
+      <span aria-hidden className="text-[10.5px] text-fg-faint sm:mr-0.5 sm:text-[11px]">Also in Premium:</span>
+      {others.map((k) => {
+        const f = FEATURES[k]
+        const on = k === shown
+        return (
+          <button
+            key={k}
+            type="button"
+            aria-pressed={on}
+            tabIndex={k === tabStop ? 0 : -1}
+            onClick={() => onShow(on ? opened : k)}
+            className={`inline-flex items-center gap-[2px] whitespace-nowrap sm:gap-[3px] rounded-full border px-[4px] py-[1px] text-[10.5px] leading-[16px] sm:px-[6px] sm:text-[11px] ${
+              on ? 'border-accent bg-accent/10 text-fg' : 'border-border text-fg-muted hover:border-border-strong hover:text-fg'
+            }`}
+          >
+            <span aria-hidden className="hidden text-accent sm:inline-flex [&>svg]:h-[11px] [&>svg]:w-[11px]">{Icon[f.icon]}</span>
+            {f.short}
+            {isNew(k, now) && (
+              <span className="font-mono text-[8.5px] font-semibold uppercase tracking-[0.04em] text-accent">New</span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+export function PremiumModal({ feature, onClose, now = Date.now() }: { feature: PaidFeature; onClose: () => void; now?: number }) {
   const pricing = useApi(() => api.premium(), [])
   const p = pricing.data
-  const f = FEATURES[feature]
+  // The feature on top: the one that was clicked, until a chip swaps it.
+  const [shown, setShown] = useState<PaidFeature>(feature)
+  const f = FEATURES[shown]
+  const eyebrow = `Premium · ${PAID_FEATURES.length} features${p ? ` · $${p.yearly.charged_usd} a year` : ''}`
   return (
     <UpsellDialog
       label="Caprock Premium"
-      eyebrow="Caprock Premium"
+      eyebrow={eyebrow}
       title={f.title}
       onClose={onClose}
-      picture={<Picture feature={feature} />}
-      actions={<Price p={p} feature={feature} onClose={onClose} />}
+      picture={<Picture feature={shown} />}
+      actions={<Price p={p} feature={shown} onClose={onClose} />}
       footer={
         <>
           <div className="flex items-center gap-3">
-            <a href={fromFeature(p?.info_url ?? 'https://caprock.dev/premium/', feature, 'info')} target="_blank" rel="noreferrer"
+            <a href={fromFeature(p?.info_url ?? 'https://caprock.dev/premium/', shown, 'info')} target="_blank" rel="noreferrer"
               className="whitespace-nowrap text-fg-muted no-underline hover:text-fg">
               Read more
             </a>
@@ -387,6 +514,7 @@ export function PremiumModal({ feature, onClose }: { feature: PaidFeature; onClo
         {f.points.map((pt) => <Benefit key={pt.text} icon={Icon[pt.icon]}>{pt.text}</Benefit>)}
       </ul>
       {f.setup && <p className="mt-3 rounded-md bg-panel-2 px-3 py-2 font-mono text-[11.5px] leading-snug text-fg-muted">{f.setup}</p>}
+      <AlsoIn opened={feature} shown={shown} onShow={setShown} now={now} />
     </UpsellDialog>
   )
 }

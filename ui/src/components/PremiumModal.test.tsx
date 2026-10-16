@@ -21,7 +21,7 @@ vi.mock('@/lib/api', async (orig) => {
   return { ...actual, api: { ...actual.api, premium: async () => pricing } }
 })
 
-import { PremiumModal } from './PremiumModal'
+import { PAID_FEATURES, PremiumModal, isNew } from './PremiumModal'
 import { PremiumBanner } from './PremiumBanner'
 import { resetPrompts } from '@/lib/prompts'
 
@@ -41,8 +41,12 @@ describe('PremiumModal', () => {
   it('leads with the feature that was clicked, not a pitch for the plan', async () => {
     render(<PremiumModal feature="report" onClose={() => {}} />)
     // Someone who clicked a weekly report wants to read about a weekly report.
-    expect(screen.getByText(/weekly report/i)).toBeTruthy()
-    expect(screen.queryByText(/daily cap/i)).toBeNull()
+    // The rest of the plan is only named, in the chip row under it.
+    expect(screen.getByRole('heading', { name: /weekly report/i })).toBeTruthy()
+    expect(screen.queryByText(/A number for the day/)).toBeNull()
+    const outside = [...screen.getByRole('dialog').querySelectorAll('*')]
+      .filter((el) => el.children.length === 0 && /daily cap/i.test(el.textContent ?? '') && !el.closest('[role="group"]'))
+    expect(outside).toHaveLength(0)
   })
 
   it('states the price rather than sending someone away to find it', async () => {
@@ -192,6 +196,91 @@ describe('PremiumModal', () => {
     render(<PremiumModal feature="cap" onClose={onClose} />)
     fireEvent.click(screen.getByText(/A number for the day/))
     expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+describe('PremiumModal: the whole plan', () => {
+  // Readers took the plan for the one feature they had clicked (owner,
+  // 2026-10-16, translated). The rest of the plan is one row of chips under
+  // it, not a second screen.
+  const chips = () => [...screen.getByRole('group', { name: 'Also in Premium' }).querySelectorAll('button')]
+
+  it('counts the plan in the header, with the yearly price from the daemon', async () => {
+    render(<PremiumModal feature="cap" onClose={() => {}} />)
+    const n = PAID_FEATURES.length
+    expect(n).toBeGreaterThan(1)
+    await waitFor(() => expect(screen.getByText(`Premium · ${n} features · $30 a year`)).toBeInTheDocument())
+  })
+
+  it('lists every other feature once, and not the one on top', () => {
+    for (const f of PAID_FEATURES) {
+      const { unmount } = render(<PremiumModal feature={f} onClose={() => {}} />)
+      expect(chips(), f).toHaveLength(PAID_FEATURES.length - 1)
+      expect(chips().every((c) => c.getAttribute('aria-pressed') === 'false'), f).toBe(true)
+      unmount()
+    }
+  })
+
+  it('swaps the picture and the lines in place when a chip is pressed, and back again', async () => {
+    render(<PremiumModal feature="cap" onClose={() => {}} />)
+    const report = chips().find((c) => c.textContent?.startsWith('Weekly report'))!
+    fireEvent.click(report)
+    expect(screen.getByRole('heading', { name: /weekly report/i })).toBeInTheDocument()
+    expect(screen.getByRole('dialog').querySelector('figure[role="img"]')!.getAttribute('aria-label')).toMatch(/Monday message/)
+    expect(screen.getByText(/BotFather/)).toBeInTheDocument()
+    expect(screen.queryByText(/A number for the day/)).toBeNull()
+    expect(report.getAttribute('aria-pressed')).toBe('true')
+    // Still the same dialog, with the same number of chips.
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(chips()).toHaveLength(PAID_FEATURES.length - 1)
+    // What is bought or read about is the feature being read.
+    await waitFor(() => expect(screen.getByRole('link', { name: /year/i })).toBeInTheDocument())
+    expect(screen.getByRole('link', { name: /year/i }).getAttribute('href')).toMatch(/client_reference_id=app-report$/)
+    expect(screen.getByRole('link', { name: /read more/i }).getAttribute('href')).toMatch(/#report$/)
+
+    fireEvent.click(report)
+    expect(screen.getByText(/A number for the day/)).toBeInTheDocument()
+    expect(report.getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('moves between chips with the arrow keys, with one chip in the Tab order', () => {
+    render(<PremiumModal feature="cap" onClose={() => {}} />)
+    const c = chips()
+    expect(c.filter((b) => b.tabIndex === 0)).toHaveLength(1)
+    // Opening the dialog does not land on a chip.
+    expect(c).not.toContain(document.activeElement)
+    c[0]!.focus()
+    fireEvent.keyDown(c[0]!, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(c[1])
+    fireEvent.keyDown(c[1]!, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(c[0])
+    fireEvent.keyDown(c[0]!, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(c[c.length - 1])
+    fireEvent.keyDown(c[c.length - 1]!, { key: 'Home' })
+    expect(document.activeElement).toBe(c[0])
+    fireEvent.click(c[2]!)
+    expect(chips().filter((b) => b.tabIndex === 0)).toEqual([c[2]])
+  })
+
+  it('tags as New only what shipped in the last 30 days', () => {
+    const day = 86_400_000
+    // 2026-10-16: drill (10-04), window (10-09), agents, telegram and
+    // subscriptions (10-10) are new; cap, report (08-26) and gemini (09-01)
+    // are not.
+    const now = Date.parse('2026-10-16T12:00:00Z')
+    render(<PremiumModal feature="drill" onClose={() => {}} now={now} />)
+    const tagged = chips().filter((c) => /New$/.test(c.textContent ?? '')).map((c) => c.textContent!.replace(/New$/, ''))
+    expect(tagged.sort()).toEqual(['Own agents', 'Plan limit', 'Sign-ins', 'Telegram'])
+    expect(isNew('drill', now)).toBe(true)
+    expect(isNew('cap', now)).toBe(false)
+    expect(isNew('gemini', now)).toBe(false)
+    // The edge: 30 days after a feature shipped it is no longer new.
+    const shipped = Date.parse('2026-10-10T00:00:00Z')
+    expect(isNew('telegram', shipped + 30 * day - 1)).toBe(true)
+    expect(isNew('telegram', shipped + 30 * day)).toBe(false)
+    // Nothing is tagged before it shipped, and nothing is promised.
+    expect(isNew('telegram', shipped - day)).toBe(false)
+    for (const hedge of [/soon/i, /not built/i, /planned/i]) expect(document.body.textContent).not.toMatch(hedge)
   })
 })
 
