@@ -35,7 +35,8 @@ type Model struct {
 // Setup is what stands between an agent and a working session.
 type Setup struct {
 	// Reason is "not_installed", "no_provider" (OpenCode with nothing
-	// connected) or "signin" (an agent whose credentials Caprock found none of).
+	// connected, Hermes with no model chosen) or "signin" (an agent whose
+	// credentials Caprock found none of).
 	Reason string `json:"reason"`
 	// Text says it in one sentence, for the picker.
 	Text string `json:"text"`
@@ -112,6 +113,7 @@ func Builtins(env Env, installed func(agent string) bool) []Entry {
 		opencodeEntry(env, installed("opencode"), win),
 		geminiEntry(installed("gemini")),
 		grokEntry(env, installed("grok"), win),
+		hermesEntry(env, installed("hermes"), win),
 	}
 	return out
 }

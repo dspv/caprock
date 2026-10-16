@@ -18,7 +18,7 @@ import { useApi } from '@/lib/useApi'
  */
 
 /** The agents Caprock knows by name. */
-export type BuiltinAgent = 'claude' | 'codex' | 'opencode' | 'gemini' | 'grok'
+export type BuiltinAgent = 'claude' | 'codex' | 'opencode' | 'gemini' | 'grok' | 'hermes'
 /** A built-in agent, or one the user added in Settings → Agents. */
 export type SpawnAgent = BuiltinAgent | `custom:${string}`
 
@@ -30,6 +30,7 @@ export const SPAWN_AGENTS: { key: BuiltinAgent; label: string }[] = [
   // key, so "your own key" told most people something untrue.
   { key: 'gemini', label: 'Gemini CLI' },
   { key: 'grok', label: 'Grok' },
+  { key: 'hermes', label: 'Hermes' },
 ]
 
 export function isCustomAgent(a: string): a is `custom:${string}` {
@@ -47,6 +48,7 @@ export function spawnableAgents(s?: Partial<Status>): SpawnAgent[] {
     opencode: s.opencode_available,
     gemini: s.gemini_available,
     grok: s.grok_available,
+    hermes: s.hermes_available,
   }
   return SPAWN_AGENTS.map((a) => a.key).filter((k) => has[k])
 }

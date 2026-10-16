@@ -128,6 +128,18 @@ describe('Pairing panel: one way in, from anywhere (owner, 2026-10-14)', () => {
     await waitFor(() => expect(setRole).toHaveBeenCalledWith('b', 'viewer'))
   })
 
+  it('lists another computer as one, waiting or allowed, with Remove and no role buttons (ADR-067)', async () => {
+    const waiting = { ...phone, id: 'm1', name: 'MacBook', role: 'controller' as const, kind: 'machine' as const, pending: true }
+    const allowed = { ...tablet, id: 'm2', name: 'Mac mini', role: 'controller' as const, kind: 'machine' as const }
+    stubState([{ enabled: false, devices: [waiting, allowed], remote: remoteOn }])
+    render(<Pairing />)
+    const rows = (await screen.findAllByTestId('device-computer')).map((e) => e.textContent)
+    expect(rows).toEqual(['a computer, waiting for Allow', 'a computer that controls this one'])
+    expect(screen.queryByRole('button', { name: 'Take control away' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Let it control sessions' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(2)
+  })
+
   it('marks a phone on the Wi-Fi link and shows the code that moves it, which turns access from anywhere on', async () => {
     const wifiPhone = { ...phone, name: 'Android phone · Chrome', via: 'lan' as const }
     stubState([

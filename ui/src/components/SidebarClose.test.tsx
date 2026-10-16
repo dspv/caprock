@@ -207,9 +207,10 @@ describe('closing in the sidebar', () => {
       r.querySelector('[data-state]')?.textContent ?? '',
     ])
     expect(words()).toEqual([['Fix the login', 'working'], ['Write the docs', 'waiting'], ['Older one', 'idle']])
-    // The waiting one is the amber one.
-    expect(document.querySelector('[data-state="waiting"]')!.className).toContain('text-accent')
-    expect(document.querySelectorAll('.text-accent[data-state]')).toHaveLength(1)
+    // The waiting one is the amber one: its word and its dot.
+    expect(document.querySelector('[data-state="waiting"]')!.className).toContain('text-warn')
+    expect(document.querySelectorAll('.text-warn[data-state]')).toHaveLength(1)
+    expect(document.querySelectorAll('[data-row-dot="waiting"].bg-warn')).toHaveLength(1)
     // A state flips and a newer session starts: every row keeps its place,
     // and the new one lands last.
     const next = [

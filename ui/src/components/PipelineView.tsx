@@ -29,14 +29,18 @@ import { ciActive, ciTone, fmtRun, investigateMessage, jobVsMedian, keyStep, prR
 import { hasConflict, isBehind, topChip, type DeckWorktree } from '@/lib/prforce'
 import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
 import { GRID_OS_LABEL, SCOPE_LABEL, jobGrid, spanText, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
-import { AGENT_COST_NOTE, asBoard, costText, costTitle } from '@/lib/prboard'
+import { AGENT_COST_NOTE, asBoard, costText, costTitle, type PRBoard } from '@/lib/prboard'
+import type { BranchPR } from '@/lib/branches'
 import { journey, pipelineRows, stageOf, type PipelineRow } from '@/lib/journey'
+import { BUCKET_LABEL, bucketItems, fixedLately, inBucket, noteFixes, readFixSeen, writeFixSeen, type Bucket, type FixSeen } from '@/lib/flowbucket'
 import { useCanControl } from '@/lib/useCanControl'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
 import { FlowFigures, Releases } from './PRBoard'
+import { CostHourStat, TeamChart, TeamStat, useRepoAgents } from './AgentFigures'
 import { PipelineRelease } from './ReleasePlan'
+import { PipelineShareButton } from './PipelineShare'
 import { JourneyPills } from './Journey'
 import { GitHubPerson } from './GitHubAvatar'
 import { Panel } from './ui'
@@ -57,6 +61,8 @@ export interface PipelineViewProps {
   picker?: ReactNode
   /** A pull request whose detail opens as the page does, or as the address names another (`&pr=`). */
   pr?: number
+  /** The repository's folders (clones of one are several), for its agent figures; absent, the session's own. */
+  roots?: string[]
 }
 
 const SCOPE_KEY = 'caprock.prsTab.scope'
@@ -99,7 +105,7 @@ function BackButton({ onBack }: { onBack: () => void }) {
   return <ExpandToggle collapse onClick={onBack} />
 }
 
-function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, onStartAgent, picker, pr }: PipelineViewProps & { session: SessionSummary }) {
+function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, onStartAgent, picker, pr, roots }: PipelineViewProps & { session: SessionSummary }) {
   const canControl = useCanControl()
   const [scope, setScopeState] = useState<TabScope>(readScope)
   const setScope = (v: TabScope) => { setScopeState(v); try { localStorage.setItem(SCOPE_KEY, v) } catch { /* this page only */ } }
@@ -110,10 +116,48 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
   const [connecting, setConnecting] = useState(false)
 
   const [stats, statsAt, statsMeta] = usePipelineStats(sessionId, s, visible, n)
+  // What an hour of agent work costs and how big the agent team is, from
+  // the repository's own sessions (AgentFigures).
+  const agentRoots = useMemo(() => roots?.length ? roots : [s.repo_root || s.cwd].filter((x): x is string => !!x), [roots, s.repo_root, s.cwd])
+  const [agents] = useRepoAgents(agentRoots, visible)
+  const [teamOpen, setTeamOpen] = useState(false)
   const [prs] = usePoll<SessionPRs>(visible, `${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`)
   const sessionPRs = useMemo(() => prs?.prs ?? [], [prs])
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
-  const rows = useMemo(() => pipelineRows(tabRows(scope, sessionPRs, stats?.prs ?? []), board, stats?.prs ?? []), [scope, sessionPRs, stats?.prs, board])
+  // A count tile clicked: the list shows only the pull requests it counts
+  // (owner, 2026-10-15, translated: "I see the red 'NEEDS A FIX 4' figure,
+  // but I can't see which PRs those are"). From This session it widens to
+  // the repository, which is where the others' are, and narrows back as it
+  // clears.
+  const [bucket, setBucket] = useState<Bucket>()
+  const before = useRef<TabScope>(undefined)
+  const listRef = useRef<HTMLDivElement>(null)
+  const pickBucket = (b: Bucket) => {
+    if (bucket === b) { clearBucket(); return }
+    if (scope === 'session') { before.current ??= 'session'; setScopeState('repo') }
+    setBucket(b)
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    window.requestAnimationFrame(() => listRef.current?.scrollIntoView?.({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }))
+  }
+  const clearBucket = () => {
+    setBucket(undefined)
+    if (before.current) { setScopeState(before.current); before.current = undefined }
+  }
+  const onScopePick = (v: TabScope) => { before.current = undefined; setScope(v) }
+  useEffect(() => { setBucket(undefined); before.current = undefined }, [sessionId])
+  const rows = useMemo(() => {
+    const all = pipelineRows(tabRows(scope, sessionPRs, stats?.prs ?? []), board, stats?.prs ?? [])
+    return bucket ? all.filter((r) => inBucket(r, bucket)) : all
+  }, [scope, sessionPRs, stats?.prs, board, bucket])
+  // What left Needs a fix lately, from the answers this page already read.
+  const fixKey = stats?.repo || s.repo_root || s.cwd || sessionId
+  const [fixSeen, setFixSeen] = useState<FixSeen>(() => readFixSeen(fixKey))
+  useEffect(() => {
+    if (!board || !statsMeta.confirmed) return
+    const next = noteFixes(readFixSeen(fixKey), board.cards, Date.now())
+    writeFixSeen(fixKey, next)
+    setFixSeen(next)
+  }, [board, fixKey, statsMeta.confirmed])
   const pick = chosen ?? 0
   // Another repository picked: what was open over the old one closes.
   useEffect(() => { setChosen(undefined) }, [sessionId])
@@ -184,7 +228,8 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
       <div data-prs-head className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         {picker}
         <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[12px] text-fg-muted">
-          <Freshness at={statsShownAt} loading={statsMeta.loading} failed={statsFailed} reason={statsReason} confirmed={statsMeta.confirmed} onRetry={statsMeta.retry} />
+          {ready && board && <PipelineShareButton board={board} repo={stats?.repo} />}
+          <Freshness at={statsShownAt} loading={statsMeta.loading} failed={statsFailed} reason={statsReason} confirmed={statsMeta.confirmed} onRetry={statsMeta.retry} github />
           {onBack && <BackButton onBack={onBack} />}
         </span>
       </div>
@@ -200,19 +245,21 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
       {ready && (
         <Panel title={stats?.repo ? <>Flow · <span className="mono normal-case tracking-normal text-fg">{stats.repo}</span></> : 'Flow'}
           right={<span title="Read from GitHub: the newest pull requests listed, the runs of the last 14 days">GitHub · last {board?.flow.days ?? 14} days</span>}>
-          {board ? <FlowFigures board={board} />
+          {board ? <FlowFigures board={board} bucket={bucket} onBucket={pickBucket}
+            preview={(b) => <BucketPreview b={b} board={board} prs={stats?.prs ?? []} fixed={b === 'fix' ? fixedLately(fixSeen, now) : 0} />} extra={agents && <><CostHourStat a={agents} /><TeamStat a={agents} open={teamOpen} onToggle={() => setTeamOpen((o) => !o)} /></>} />
             : !stats ? <div className="px-3 py-2"><DeckSkeleton label="Reading the figures" /></div>
               : stats.error && (stats.prs?.length ?? 0) === 0 ? <p className="truncate px-3 py-3 text-[13px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p>
                 : <p className="px-3 py-3 text-[13px] text-fg-muted">No figures yet.</p>}
         </Panel>
       )}
+      {ready && teamOpen && agents && <TeamChart a={agents} onClose={() => setTeamOpen(false)} />}
       {/* The next release, by the page's own answer (owner, 2026-10-15,
         * translated: "I'm missing progress bars to the release here"). */}
       {ready && (s.repo_root || s.cwd) && <PipelineRelease root={(s.repo_root || s.cwd)!} stats={stats} visible={visible} now={now} onOpen={(num) => setChosen(num)} />}
       {ready && (
         <div className={`grid min-w-0 items-start gap-3 ${p && row ? '@min-[1100px]/pipe:grid-cols-[minmax(0,1fr)_minmax(440px,600px)]' : ''}`}>
-          <PipelineList rows={rows} scope={scope} onScope={setScope} pick={pick} onPick={(num) => setChosen(num === pick ? undefined : num)} now={now}
-            counts={counts} loaded={!!prs || !!stats} dim={unconfirmed} />
+          <div ref={listRef} className="min-w-0 scroll-mt-14"><PipelineList rows={rows} scope={scope} onScope={onScopePick} pick={pick} onPick={(num) => setChosen(num === pick ? undefined : num)} now={now}
+            counts={counts} loaded={!!prs || !!stats} dim={unconfirmed} bucket={bucket} onClearBucket={clearBucket} /></div>
           {/* The chosen pull request beside the list, held in view as the
             * list scrolls; under it on a narrow window. Esc or × closes it. */}
           {p && row && (
@@ -242,7 +289,7 @@ const RELEASED_SHOWN = 10
 /** The list's columns: the pull request, its journey, the time in its step, its agent cost. */
 const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_auto_64px_88px] items-center gap-x-4 @max-[820px]/list:grid-cols-[minmax(0,1fr)_auto]'
 
-function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded, dim }: { rows: PipelineRow[]; scope: TabScope; onScope: (s: TabScope) => void; pick: number; onPick: (n: number) => void; now: number; counts: Record<TabScope, number>; loaded: boolean; dim: boolean }) {
+function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded, dim, bucket, onClearBucket }: { rows: PipelineRow[]; scope: TabScope; onScope: (s: TabScope) => void; pick: number; onPick: (n: number) => void; now: number; counts: Record<TabScope, number>; loaded: boolean; dim: boolean; bucket?: Bucket; onClearBucket: () => void }) {
   const [allReleased, setAllReleased] = useState(false)
   const released = rows.filter((r) => stageOf(r) === 'released')
   const hidden = allReleased ? 0 : Math.max(0, released.length - RELEASED_SHOWN)
@@ -261,8 +308,18 @@ function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded,
       </span>
     }>
       <section data-prs-list aria-label="Pull requests" className="@container/list min-w-0">
+        {bucket && (
+          <div data-prs-filter={bucket} className="flex min-w-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-[12px] text-fg-muted">
+            <span className="inline-flex h-[24px] items-center gap-1 rounded-full border border-accent/50 bg-accent/10 pl-2.5 pr-1 font-medium text-accent">
+              {BUCKET_LABEL[bucket]} · <span className="num">{rows.length}</span>
+              <button type="button" data-prs-filter-clear onClick={onClearBucket} aria-label={`Show every pull request, not only ${BUCKET_LABEL[bucket].toLowerCase()}`} title="Clear the filter"
+                className="ml-0.5 rounded-full px-1.5 text-[14px] leading-[18px] hover:bg-accent/15">×</button>
+            </span>
+            <span>{scope === 'session' ? 'of this session' : scope === 'open' ? 'of every open one' : 'across the repository'}</span>
+          </div>
+        )}
         {!loaded ? <div className="p-3"><DeckSkeleton label="Reading the pull requests" /></div> : rows.length === 0 ? (
-          <p className="px-3 py-3 text-[13px] text-fg-muted">{scope === 'session' ? 'No pull request from this session yet.' : scope === 'open' ? 'Nothing open.' : 'No pull requests read.'}</p>
+          <p className="px-3 py-3 text-[13px] text-fg-muted">{bucket ? (bucket === 'fix' ? 'Nothing needs a fix.' : bucket === 'ready' ? 'Nothing is ready.' : 'Nothing in flight.') : scope === 'session' ? 'No pull request from this session yet.' : scope === 'open' ? 'Nothing open.' : 'No pull requests read.'}</p>
         ) : (
           <>
             <div aria-hidden className={`${ROW_GRID} border-b border-border px-3 py-1.5 text-[10.5px] uppercase tracking-[0.12em] text-fg-muted @max-[820px]/list:hidden`}>
@@ -281,6 +338,29 @@ function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded,
         )}
       </section>
     </Panel>
+  )
+}
+
+/** How many pull requests a count tile's hover names. */
+const PREVIEW_SHOWN = 5
+
+/** A count tile's hover: up to five of its pull requests with why each is there; Needs a fix, how many left it lately. */
+function BucketPreview({ b, board, prs, fixed }: { b: Bucket; board: PRBoard; prs: BranchPR[]; fixed: number }) {
+  const items = bucketItems(board, prs ?? [], b)
+  return (
+    <span data-bucket-preview={b} className="flex flex-col gap-1">
+      <span className="text-[10.5px] uppercase tracking-[0.12em] text-fg-muted">{BUCKET_LABEL[b]} · {items.length}</span>
+      {items.length === 0 ? <span className="text-fg-muted">None right now.</span> : items.slice(0, PREVIEW_SHOWN).map((x) => (
+        <span key={x.number} className="flex min-w-0 items-baseline gap-2">
+          <span className="num shrink-0 text-fg-muted">#{x.number}</span>
+          <span className="min-w-0 flex-1 truncate">{x.title}</span>
+          <span className={`shrink-0 text-[11.5px] ${x.fail ? 'text-danger' : b === 'ready' ? 'text-ok' : 'text-fg-muted'}`}>{x.reason}</span>
+        </span>
+      ))}
+      {items.length > PREVIEW_SHOWN && <span className="text-fg-muted">and {items.length - PREVIEW_SHOWN} more</span>}
+      {fixed > 0 && <span data-bucket-fixed className="text-ok">{fixed} fixed in the last 24h</span>}
+      {items.length > 0 && <span className="text-[11.5px] text-fg-muted">Click to list them below.</span>}
+    </span>
   )
 }
 

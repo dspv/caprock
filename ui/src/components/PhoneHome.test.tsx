@@ -30,6 +30,7 @@ function stubs(inbox: InboxItem[] = []) {
   vi.spyOn(api, 'sessionsWithTotal').mockResolvedValue({ items: [session('s1', 'alpha', 'working'), session('s2', 'beta', 'idle')], total: 2 })
   vi.spyOn(projectsApi, 'list').mockResolvedValue(projects)
   vi.spyOn(api, 'inbox').mockResolvedValue({ items: inbox, max: 500 })
+  vi.spyOn(api, 'work').mockResolvedValue({ now: NOW, day_start: NOW, sessions: [], hive: 'off', queued: [], repos: [], totals: { live: 0, working: 0, waiting_you: 0, today_usd: 0, machine_today_usd: 0 } })
   vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [claude], licensed: false } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
   vi.spyOn(api, 'subscriptions').mockResolvedValue({ agents: [] } as unknown as Awaited<ReturnType<typeof api.subscriptions>>)
 }

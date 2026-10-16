@@ -109,7 +109,11 @@ func serviceInstallCmd() *cobra.Command {
 				fmt.Fprintln(out, "\nWindows note: this starts Caprock at every logon. Windows has no per-user")
 				fmt.Fprintln(out, "crash supervisor without admin rights, so a mid-session crash is not auto-restarted.")
 			}
-			fmt.Fprintf(out, "\nUndo with: caprock service uninstall\n")
+			// A systemd user unit stops with the user's last session unless
+			// lingering is on: said, never switched on for them (ADR-067).
+			fmt.Fprintln(out)
+			lingerNote(out)
+			fmt.Fprintf(out, "Undo with: caprock service uninstall\n")
 			return nil
 		},
 	}

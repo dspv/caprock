@@ -125,6 +125,8 @@ describe('the Pipeline page', () => {
     // The flow strip on top, the releases below; no pull request's CI asked until one is opened.
     expect(document.querySelector('[data-stat="throughput"]')).toHaveTextContent('0.5/day')
     expect(document.querySelector('[data-stat="lag"]')).toHaveTextContent('estimate')
+    // The head's Share pill, once the figures are read.
+    expect(document.querySelector('[data-pipeline-share]')).toHaveTextContent('Share')
     // The dashboard's figure tiles: needing a fix is red, and each says what
     // it means in a card under it, never a native tooltip over the figure.
     const fix = document.querySelector('[data-stat="fix"]')!
@@ -219,6 +221,61 @@ describe('the Pipeline page', () => {
     expect(document.querySelector('[data-prs-row="21"] button')).toHaveAttribute('aria-current', 'true')
   })
 
+  // Owner, 2026-10-15, translated: "I see the red 'NEEDS A FIX 4' figure,
+  // but I can't see which PRs those are or whether they were fixed".
+  it('opens the pull requests behind a count tile across the repository, says why each needs a fix, and clears back', async () => {
+    connected()
+    const st = h.stats as { prs: Record<string, unknown>[] } & Record<string, unknown>
+    const pr = (number: number, title: string) => ({ number, url: `https://github.com/a/b/pull/${number}`, title, state: 'open' })
+    st.prs = [pr(683, 'Ship the brain graph'), pr(680, 'Teams reporter'), pr(662, 'Mail OAuth'), pr(661, 'Work board'), pr(21, live.title), pr(22, 'Bump deps')]
+    st.prs[1] = { ...st.prs[1], labels: [{ name: 'land-next', color: '0e8a16' }] }
+    st.board = {
+      default_branch: 'main',
+      cards: [
+        card(683, 'fix', { ci: 'fail', why: 'ci', failed: ['test (windows-latest)'] }),
+        card(680, 'fix', { ci: 'pass', why: 'conflict' }), card(662, 'fix', { ci: 'pass', why: 'conflict' }), card(661, 'fix', { ci: 'pass', why: 'conflict' }),
+        card(21, 'ready', { ci: 'pass' }), card(22, 'open', { ci: 'running' }),
+      ],
+      releases: [], flow: { ...FLOW, counts: { draft: 0, open: 1, fix: 4, ready: 1, merged: 0, released: 0 } },
+    }
+    // This session's one pull request is green: none of the four is in it.
+    h.prs = { connected: true, prs: [{ session_id: 's1', url: live.url, number: 21, title: live.title, last_at: now, live: { ...live, checks: { ...live.checks, state: 'pass' } } }] }
+    localStorage.setItem('caprock.prsTab.scope', 'session')
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    expect(rowOrder()).toEqual(['21'])
+    const tile = document.querySelector('[data-stat="fix"]') as HTMLElement
+    expect(tile).toHaveAttribute('role', 'button')
+    // Its hover names them with the reason.
+    const preview = tile.querySelector('[data-bucket-preview="fix"]')!
+    expect(preview).toHaveTextContent('#683')
+    expect(preview).toHaveTextContent('Ship the brain graph')
+    expect(preview).toHaveTextContent('CI red')
+    expect(preview).toHaveTextContent('Conflict')
+    fireEvent.click(tile)
+    expect(tile).toHaveAttribute('aria-pressed', 'true')
+    // The scope widened to the repository, the list holds only the four.
+    expect(screen.getByRole('tab', { name: /Repository/ })).toHaveAttribute('aria-selected', 'true')
+    expect(rowOrder().sort()).toEqual(['661', '662', '680', '683'])
+    const chip = document.querySelector('[data-prs-filter="fix"]')!
+    expect(chip).toHaveTextContent('Needs a fix · 4')
+    const red = document.querySelector('[data-prs-row="683"] [data-journey-step="ci"]')!
+    expect(red).toHaveTextContent('CI red')
+    expect(red.getAttribute('title') ?? red.querySelector('[title]')?.getAttribute('title')).toContain('test (windows-latest)')
+    expect(document.querySelector('[data-prs-row="680"] [data-journey-step="ci"]')).toHaveTextContent('Conflict')
+    expect(document.querySelector('[data-prs-row="680"] [data-prs-label="land-next"]')).toBeInTheDocument()
+    // × clears it and the list goes back to this session.
+    fireEvent.click(document.querySelector('[data-prs-filter-clear]')!)
+    expect(document.querySelector('[data-prs-filter]')).toBeNull()
+    expect(screen.getByRole('tab', { name: /This session/ })).toHaveAttribute('aria-selected', 'true')
+    expect(rowOrder()).toEqual(['21'])
+    // A second click on the tile clears it too.
+    fireEvent.click(document.querySelector('[data-stat="ready"]')!)
+    expect(rowOrder()).toEqual(['21'])
+    fireEvent.click(document.querySelector('[data-stat="ready"]')!)
+    expect(document.querySelector('[data-prs-filter]')).toBeNull()
+  })
+
   it('switches between this session’s, the repository’s and the open pull requests, remembering the choice', async () => {
     connected()
     render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
@@ -254,6 +311,7 @@ describe('the Pipeline page', () => {
     render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     expect(await screen.findByRole('button', { name: 'Connect GitHub' })).toBeInTheDocument()
     expect(document.querySelector('[data-prs-list]')).toBeNull()
+    expect(document.querySelector('[data-pipeline-share]')).toBeNull()
     expect(h.asked).not.toContain('usage')
   })
 
@@ -297,8 +355,12 @@ describe('the Pipeline page', () => {
       if (!f) throw new Error('not failed')
       return f
     })
-    expect(failed).toHaveTextContent('Couldn’t refresh: GitHub answered 502')
-    expect(failed).toHaveTextContent('showing data from')
+    // A 502 is GitHub's side: said plainly, the age in words, the raw reason
+    // in the tooltip, and GitHub's own status page asked.
+    expect(failed).toHaveTextContent('Couldn’t reach GitHub.')
+    expect(failed).toHaveTextContent(/Showing data from \d+ h ago\./)
+    expect(failed.getAttribute('title')).toContain('GitHub answered 502')
+    expect(failed.querySelector('[data-gh-status]')).toBeInTheDocument()
     expect(failed.querySelector('[data-deck-fresh-retry]')).toBeInTheDocument()
     expect(document.querySelector('[data-prs-row="22"]')).toHaveAttribute('data-prs-unconfirmed')
   })

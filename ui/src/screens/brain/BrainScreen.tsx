@@ -15,7 +15,8 @@
  *   comes from — above the graph, which fills in as memories land (the
  *   canvas drops each new one in).
  * - **With memories** — the graph or the list, search, a project and a time
- *   span; one quiet line for the extraction (BrainLiveLine) and a gear,
+ *   span; the header strip for the extraction (BrainStrip: state, step,
+ *   what it gives, figures) and a gear,
  *   *Settings* (BrainSettings), for on/off, the model and the daily limit.
  *
  * A memory opens on the right with its summary, the session it came from (a
@@ -35,7 +36,8 @@ import { BrainGlyph } from '@/components/BrainDrop'
 import { BrainGraphCanvas } from '@/components/BrainGraphCanvas'
 import { BrainDetail } from './BrainDetail'
 import { BrainStart } from './BrainStart'
-import { BrainLive, BrainLiveLine } from './BrainLive'
+import { BrainLive } from './BrainLive'
+import { BrainStrip } from './BrainStrip'
 import { BrainSettings } from './BrainSettings'
 
 type View = 'graph' | 'list'
@@ -49,17 +51,22 @@ function useView(): [View, (v: View) => void] {
 
 /** The kinds' colours, so the graph's dots can be read. */
 function Legend() {
-  const kinds = ['decision', 'finding', 'idea', 'question', 'topic', 'project'] as const
+  // As drawn (BrainGraphCanvas): dots in the text colour, a topic with a
+  // faint cool tint, a project bigger and full strength.
+  const items = [
+    { label: 'Memory', size: 4, style: { background: 'var(--color-fg)', opacity: 0.85 } },
+    { label: 'Topic', size: 6, style: { background: 'color-mix(in srgb, #7fa8e0 32%, var(--color-fg))', opacity: 0.86 } },
+    { label: 'Project', size: 8, style: { background: 'var(--color-fg)' } },
+  ]
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-1 px-0.5 pt-1.5 text-[11.5px] text-fg-muted" aria-hidden>
-      {kinds.map((k) => (
-        <span key={k} className="inline-flex items-center gap-1">
-          {/* As drawn: a memory a filled dot, a topic or project a ring. */}
-          <span className="inline-block h-[8px] w-[8px] rounded-full" style={isEntity(k) ? { boxShadow: `inset 0 0 0 1.5px ${KIND_COLOR[k]}` } : { background: KIND_COLOR[k] }} />
-          {KIND_LABEL[k]}
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-0.5 pt-1.5 text-[11.5px] text-fg-muted" aria-hidden data-brain-legend>
+      {items.map((it) => (
+        <span key={it.label} className="inline-flex items-center gap-1.5">
+          <span className="inline-block rounded-full" style={{ width: it.size, height: it.size, ...it.style }} />
+          {it.label}
         </span>
       ))}
-      <span className="ml-auto hidden sm:inline">Drag to move · scroll to zoom · double-click to fit</span>
+      <span className="ml-auto hidden sm:inline">Hover a dot to light its links · zoom in for names · drag to pan or move a dot</span>
     </div>
   )
 }
@@ -143,7 +150,7 @@ export function BrainScreen({ node }: { node?: number }) {
               className="h-[30px] rounded-[7px] px-2 text-[12.5px] text-fg-muted hover:bg-panel-2 hover:text-fg" data-brain-add-note>
               Add a note
             </button>
-            {auto && <BrainSettings auto={auto} onChanged={reloadStatus} />}
+            {auto && <BrainSettings auto={auto} dbPath={status?.db_path} onChanged={reloadStatus} />}
           </div>
         )}
       </header>
@@ -152,8 +159,8 @@ export function BrainScreen({ node }: { node?: number }) {
 
       {phase === 'start' && <BrainStart auto={auto} owner={owner} onStarted={reloadStatus} onAddNote={addNote} />}
 
-      {phase === 'building' && auto && <BrainLive auto={auto} onChanged={reloadStatus} kinds={memories.map((n) => n.kind)} count={kept} />}
-      {phase === 'memories' && auto && <BrainLiveLine auto={auto} onChanged={reloadStatus} />}
+      {phase === 'building' && auto && <BrainLive auto={auto} onChanged={reloadStatus} kinds={memories.map((n) => n.kind)} count={kept} owner={owner} />}
+      {phase === 'memories' && auto && <BrainStrip auto={auto} memories={kept} onChanged={reloadStatus} owner={owner} />}
 
       {phase === 'building' && kept === 0 && (
         <div className="grid h-[160px] place-items-center rounded-[var(--radius-panel)] border border-dashed border-border text-[14px] text-fg-muted" data-brain-graph-waiting>

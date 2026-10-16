@@ -549,6 +549,17 @@ export function derivedProjectId(root: string): string {
   return `dir:${root}`
 }
 
+/**
+ * Whether a project id is one derived here rather than the daemon's: the
+ * daemon knows nothing by that id, so asking it about one is a 404. The
+ * workspace shows derived projects while the daemon's list is still loading,
+ * which is how the copies line asked for `/v1/projects/dir:…/cleanup` on a
+ * fresh page (found by `make e2e`, 2026-10-16).
+ */
+export function isDerivedProjectId(id: string): boolean {
+  return id.startsWith('dir:')
+}
+
 /** Where a session's project lives: its repository, else its own folder. */
 export function sessionRoot(s: Pick<SessionSummary, 'repo_root' | 'cwd'>): string {
   return s.repo_root || s.cwd

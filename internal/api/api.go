@@ -133,6 +133,9 @@ type Deps struct {
 	// Remote is access from anywhere, through a relay (ADR-058): its state for
 	// the pairing panel and the switch. Nil in builds or tests without it.
 	Remote RemoteControl
+	// Machines are the other computers this machine reaches (ADR-067,
+	// machines.go); nil in a build or test without them.
+	Machines Machines
 	// BrainAuto is Second Brain's automatic extraction (ADR-063). Nil in
 	// builds or tests without it; the graph and manual drops work either way.
 	BrainAuto BrainAuto
@@ -366,6 +369,10 @@ type Settings struct {
 	// plan windows; "off" removes Caprock's own statusLine entry from
 	// Claude Code's settings (never the user's own).
 	StatuslineMode string `json:"statusline_mode"`
+	// QuickReplies are the one-click replies under a session Caprock
+	// started (config.QuickReply). GET returns the list in use, the defaults
+	// until changed; PUT replaces the whole list (config.NormalizeQuickReplies).
+	QuickReplies []config.QuickReply `json:"quick_replies"`
 	// AppUpdate is what the desktop app does when a newer release is found:
 	// one of config.AppUpdateModes. GET returns the effective mode, "ask"
 	// when never chosen.
@@ -487,6 +494,12 @@ type Server struct {
 	usual *answerCache
 	// trends holds the Today cells' 14-day trends (trendsTTL).
 	trends *answerCache
+	// pipeAgents holds the Pipeline's agent figures per repository
+	// (pipeAgentsTTL).
+	pipeAgents *answerCache
+	// pipeAgentsPast holds the part of them before today's midnight
+	// (pipeAgentsPastTTL), so a request scans only today.
+	pipeAgentsPast *answerCache
 	// drill holds the tool drill-downs (drillTTL).
 	drill *answerCache
 	// deck holds the session deck's composed Pull requests & CI answers
@@ -497,6 +510,9 @@ type Server struct {
 	// sizes decides which attached terminal a session's PTY is sized for
 	// (termsize.go).
 	sizes *ptySizes
+	// socks are the paired devices' open sockets, closed when one is
+	// removed or its role changes (devsockets.go).
+	socks deviceSockets
 }
 
 // New builds the router.
@@ -517,9 +533,10 @@ func New(d Deps) *Server {
 		}
 	}
 	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
-		trends: newAnswerCache(trendsTTL, trendsMaxStale, time.Now),
-		week:   newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
+		trends: newAnswerCache(trendsTTL, trendsMaxStale, time.Now), pipeAgents: newAnswerCache(pipeAgentsTTL, trendsMaxStale, time.Now), pipeAgentsPast: newAnswerCache(pipeAgentsPastTTL, trendsMaxStale, time.Now),
+		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache()}
+	s.ws.hold = s.holdSocket
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
 		if s.d.Agents != nil {
 			_ = s.d.Agents.Resize(id, cols, rows)
@@ -582,9 +599,18 @@ func New(d Deps) *Server {
 	m.HandleFunc("DELETE /v1/pair/devices/{id}", s.handlePairRevoke)
 	m.HandleFunc("PUT /v1/pair/devices/{id}/role", s.handlePairSetRole)
 	m.HandleFunc("GET /v1/pair/me", s.handlePairMe)
+	m.HandleFunc("DELETE /v1/pair/me", s.handlePairForgetMe)
+	m.HandleFunc("POST /v1/pair/devices/{id}/allow", s.handlePairAllow)
 	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)
 	m.HandleFunc("POST /v1/pair/remote", s.handleSetRemote)
 	m.HandleFunc("POST /v1/pair/send-link", s.handlePairSendLink)
+	// Other computers this machine reaches (ADR-067, machines.go). Loopback
+	// only, in the handlers, and on no device's allowlist: not transitive.
+	m.HandleFunc("GET /v1/machines", s.handleMachines)
+	m.HandleFunc("POST /v1/machines", s.handleAddMachine)
+	m.HandleFunc("PATCH /v1/machines/{id}", s.handlePatchMachine)
+	m.HandleFunc("DELETE /v1/machines/{id}", s.handleForgetMachine)
+	m.HandleFunc("/v1/m/{id}/{path...}", s.handleMachineProxy)
 	m.HandleFunc("POST /v1/update/check", s.handleUpdateCheck)
 	m.HandleFunc("GET /v1/update/busy", s.handleUpdateBusy)
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
@@ -600,6 +626,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/telegram/pair", s.handleTelegramPair)
 	m.HandleFunc("DELETE /v1/telegram/pair", s.handleTelegramCancelPair)
 	m.HandleFunc("DELETE /v1/telegram", s.handleTelegramDisconnect)
+	m.HandleFunc("POST /v1/telegram/photo", s.handleTelegramPhoto)
 	m.HandleFunc("GET /v1/stats/daily", s.handleDaily)
 	m.HandleFunc("GET /v1/events", s.handleEventsFeed)
 	m.HandleFunc("GET /v1/history", s.handleHistory)
@@ -657,6 +684,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("GET /v1/queue", s.handleQueueBoard)
 	m.HandleFunc("GET /v1/work", s.handleWork)
+	m.HandleFunc("GET /v1/pipeline/agents", s.handlePipelineAgents)
 	m.HandleFunc("GET /v1/agents/{id}/queue", s.handleQueue)
 	m.HandleFunc("POST /v1/agents/{id}/queue", s.handleQueueSend)
 	m.HandleFunc("PATCH /v1/agents/{id}/queue/{qid}", s.handleQueueEdit)
@@ -717,6 +745,7 @@ func New(d Deps) *Server {
 	// One file, read-only, and the list of them (files.go).
 	m.HandleFunc("GET /v1/projects/{id}/file", s.handleProjectFile)
 	m.HandleFunc("GET /v1/projects/{id}/files", s.handleProjectFiles)
+	m.HandleFunc("GET /v1/projects/{id}/image", s.handleProjectImage)
 	m.HandleFunc("/v1/mail/", s.handleMail)
 	m.HandleFunc("GET /v1/github", s.handleGitHubStatus)
 	m.HandleFunc("PATCH /v1/github", s.handleGitHubPatch)
@@ -729,6 +758,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/github/repos", s.handleGitHubRepos)
 	m.HandleFunc("GET /v1/github/prs", s.handleGitHubPRs)
 	m.HandleFunc("GET /v1/github/actions-usage", s.handleGitHubActionsUsage)
+	m.HandleFunc("GET /v1/github/statuspage", s.handleGitHubStatusPage)
 	m.HandleFunc("GET /v1/projects/{id}/github", s.handleWorktreeGitHub)
 	m.HandleFunc("POST /v1/projects/{id}/github/refresh", s.handleWorktreeGitHubRefresh)
 	m.HandleFunc("GET /v1/projects/{id}/github/items", s.handleGitHubItems)
@@ -1459,7 +1489,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		KeepAwake       *string  `json:"keep_awake"`
 		WorktreeCleanup *string  `json:"worktree_cleanup"`
 		StatuslineMode  *string  `json:"statusline_mode"`
-		AppUpdate       *string  `json:"app_update"`
+		// The whole list, replaced; absent or null leaves it as it is.
+		QuickReplies *[]config.QuickReply `json:"quick_replies"`
+		AppUpdate    *string              `json:"app_update"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
 		ReportBotToken *string `json:"report_bot_token"`
@@ -1477,11 +1509,20 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		// prompts not named keep their answer.
 		Prompts map[string]int64 `json:"prompts"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&patch); err != nil {
+	// 16 KiB: the quick replies are the largest field, ten of 300 bytes.
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&patch); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
 		return
 	}
 	in := s.d.Settings.Get()
+	if patch.QuickReplies != nil {
+		q, err := config.NormalizeQuickReplies(*patch.QuickReplies)
+		if err != nil {
+			s.failCode(w, http.StatusBadRequest, err)
+			return
+		}
+		in.QuickReplies = q
+	}
 	if patch.UpdateChecks != nil {
 		in.UpdateChecks = *patch.UpdateChecks
 	}
@@ -2531,7 +2572,9 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dev := deviceFrom(r)
-	if dev != nil {
+	// A phone starts a known agent under home (ADR-034); a computer the owner
+	// allowed starts what the machine's own dashboard may (ADR-067).
+	if phoneLimited(r) {
 		if msg := s.controllerSpawnRefusal(req); msg != "" {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": msg})
 			return
@@ -2588,9 +2631,9 @@ func (s *Server) handleAgentModels(w http.ResponseWriter, r *http.Request) {
 			out.Models = m
 		}
 		out.Default = codex.ConfiguredModel()
-	case "claude", "gemini", "opencode", "grok":
+	case "claude", "gemini", "opencode", "grok", "hermes":
 	default:
-		http.Error(w, `agent must be one of claude, codex, opencode, gemini, grok`, http.StatusBadRequest)
+		http.Error(w, `agent must be one of claude, codex, opencode, gemini, grok, hermes`, http.StatusBadRequest)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -2628,12 +2671,15 @@ func (s *Server) handleAgentSignal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	// "end" asks the process to stop and kills it only after a grace period,
+	// so Claude Code writes its transcript out and the conversation can be
+	// continued; "kill" is immediate.
 	switch body.Action {
-	case "pause", "resume", "kill":
+	case "pause", "resume", "kill", "end":
 	default:
 		// Name the field, not just the values: the old message ("action must be
 		// pause|resume|kill") left a caller who sent the wrong key guessing.
-		http.Error(w, `body must be {"action": "pause"|"resume"|"kill"}`, http.StatusBadRequest)
+		http.Error(w, `body must be {"action": "pause"|"resume"|"kill"|"end"}`, http.StatusBadRequest)
 		return
 	}
 	if s.refuseShellToDevice(w, r, r.PathValue("id")) {
@@ -2732,10 +2778,10 @@ func agentFilter(v string) (store.AgentFilter, error) {
 	switch v {
 	case "", "all":
 		return "", nil
-	case "claude", "opencode", "gemini", "codex", "deepseek", "grok":
+	case "claude", "opencode", "gemini", "codex", "deepseek", "grok", "hermes":
 		return store.AgentFilter(v), nil
 	default:
-		return "", fmt.Errorf("unknown agent %q: use claude, opencode, gemini, codex, deepseek, grok, or omit for all", v)
+		return "", fmt.Errorf("unknown agent %q: use claude, opencode, gemini, codex, deepseek, grok, hermes, or omit for all", v)
 	}
 }
 

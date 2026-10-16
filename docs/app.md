@@ -35,21 +35,27 @@ others. Installing it: [install-app.md](install-app.md).
   is not shown at all (they stay on the Dashboard). Then the projects, one line each: the
   name, a green dot with how many sessions and shells run in it, and how
   many wait on you. Under each project is every agent session in it —
-  working, waiting or idle — one 28-pixel row each, and nothing hides
+  working, waiting or idle — one 38-pixel row each, and nothing hides
   behind a *+N more* line. Shells and open files have no rows (they are
   in the tab strip), an ended session drops off, and a row you hide is
   gone until you show it again from *More…*. A row reads the session's
   title (the agent is in its tooltip; a branch shows only when it is not
   the project's own). Click another project to make it
   current: its last tab comes to the front, or its own page when it has
-  none. The one highlighted row in the
-  sidebar is the tab you are looking at; the current project's name is
-  bold, with a faint edge at its left; a session row with a tab shows that
+  none. The one selected row in the sidebar — tinted, with a solid edge
+  at its left and a bold title — is the tab you are looking at; the
+  current project's name is bold; a session row with a tab shows that
   tab's key (⌘1, ⌘2 …), and a click on a project opens its page. Muted, come the sessions Caprock started
   in the project that still run with no tab; click one to open it as a tab.
   Sessions started in another terminal come last. Each row says its
-  state in one word at its right: *working* (green), *waiting* (amber — it
-  needs you, and nothing else in the list is amber), *idle* or *done*.
+  state with a dot and a word at its right: *working* (green, the dot
+  breathing), *waiting* (amber — it needs you), *idle* (faint) or *done*.
+  On a narrow row the word for *working* and *idle* gives its room to the
+  title; *waiting* always says it. In the *Tabs* list a row does not draw
+  its project's name — hover it to see it. The *Today* card above the list
+  folds to one line with its chevron; right-click it to hide it, and turn
+  it back on in Settings → Appearance (while it is hidden, the list's
+  heading counts what waits on you).
   **Rows keep their places**: in the order the
   sessions started, so picking a row, opening it as a tab, bringing it to
   the front or a change of state never moves it, and
@@ -73,13 +79,16 @@ others. Installing it: [install-app.md](install-app.md).
   and never chose, you keep Projects; a first visit starts on Tabs.
 - **Closing things: ×.** Hover a tab under the project — or look at the
   one in front, where it always shows — for its **×**: it closes the tab
-  exactly as ⌘W and the tab strip's × do. For an agent Caprock started it
-  asks: **Close tab** (in focus, so ⌘W then Enter) leaves the agent running
-  — it moves to the muted rows, under *Running, no tab* in the Tabs list —
-  and **Close and end the agent** stops it (asking once more if it is still
-  answering); its conversation is kept and can be continued. Tick **Don't
-  ask again** to keep the answer; Settings → *Closing a tab* changes it
-  back. An agent you started in your own terminal is never ended from
+  exactly as ⌘W and the tab strip's × do. An agent Caprock started that is
+  idle ends with its tab, without a question, and Caprock says so: the
+  conversation is saved, and you reopen it from History or the sidebar.
+  One that is still working or waiting on you gets one sentence and one
+  button: **Close tab** (in focus, so ⌘W then Enter) leaves it working in
+  the background — it moves to the muted rows, under *Running, no tab* in
+  the Tabs list — and the quiet link **Stop it instead** under it ends it;
+  Escape cancels. Either way the conversation is saved and can be
+  continued. Settings → *Closing a tab* can make it always keep the agent
+  running or always end it. An agent you started in your own terminal is never ended from
   Caprock: its tab just closes. A shell closes for real, as in any
   terminal app: an idle one ends with its tab; one running a program asks
   first — *Shell 1 is running claude. Close and stop it?* — with **Stop and
@@ -198,12 +207,13 @@ others. Installing it: [install-app.md](install-app.md).
   The sliders beside it open Settings (⌘,) in the same tab, where the app puts
   how new agents start, appearance, terminal and editor first. The × beside
   the *Settings* heading, or Esc, closes it as the tab's × does. *Send
-  feedback*, the row above *Dashboard*, or ⇧⌘F from anywhere, opens the feedback form: pick Bug, Idea or
-  Question — click a card or press 1, 2 or 3, and the title is ready for
-  typing — write a title (Enter moves on) and a few words, and paste (⌘V) or choose up to
-  four screenshots — drop image files on the window, or on macOS and Windows
-  press *Capture window* for a picture of the app itself (not your screen; no
-  permission is asked). *Create issue* opens a prefilled GitHub issue in your
+  feedback*, the row above *Dashboard*, or ⇧⌘F from anywhere, opens one box:
+  type what's wrong, drop or paste (⌘V) up to four screenshots anywhere on it,
+  and press *Send* (⌘↩). The first line is the issue's title. *Details*
+  holds the rest — Bug, Idea or Question, the diagnostics it adds, *Choose
+  image…* and, on macOS and Windows, *Capture window* for a picture of the
+  app itself (not your screen; no permission is asked). Esc closes it and
+  keeps what you typed. *Send* opens a prefilled GitHub issue in your
   browser, which you read and submit yourself, and puts the first screenshot
   on your clipboard: press ⌘V in the issue, then *Copy next* for the rest.
   Nothing is uploaded by Caprock — GitHub takes what you paste.
@@ -311,8 +321,9 @@ others. Installing it: [install-app.md](install-app.md).
   nothing, and the key reaches only that session. Its card says *DeepSeek*
   and its cost is priced at DeepSeek's list price. Free. *Remove key* turns
   it off.
-- **The tab strip.** The tab in front has an amber top edge; the others are
-  shaded tabs of their own. A tab reads the session's name, then its
+- **The tab strip.** Only the tab in front looks selected: an accent top
+  edge, the panel's colour and a bold title, and room for about 16
+  characters of it; the others are shaded tabs of their own. A tab reads the session's name, then its
   project's name in the project's colour; when room runs short the
   session's name is shortened first, and a project name that still does
   not fit scrolls into view while you point at the tab. The tooltip has
@@ -440,8 +451,9 @@ others. Installing it: [install-app.md](install-app.md).
   you opened them — an agent session, a shell or a file each — and each tab
   is named by its session, with its project's short name after it in the
   project's colour; hover it for the agent and the branch. A tab has no
-  status dot: it is marked only when it needs you — an amber edge along
-  its top while the session waits on you, a red one when it failed. The Dashboard tab is its icon
+  status dot: it is marked only when it needs you — an amber dot before
+  its title while the session waits on you, a red one when it loops or
+  failed. Never a bar: that is the tab you are in. The Dashboard tab is its icon
   and ⌘0, and the inspector's button shows ⌘I beside it, as Deck shows ⌘B.
   Picking
   another project never takes a tab out of the strip: the project's own
@@ -586,8 +598,8 @@ others. Installing it: [install-app.md](install-app.md).
   and the order is kept for you on this computer. **Release** shows the
   repository's next release: the version its changelog entries call for
   (a feature makes a minor release, fixes a patch; hover it for how it was
-  counted) and a ten-block progress bar per pull request and agent on its
-  way there. The permission prompt and its buttons sit
+  counted) and a progress bar per pull request and agent on its way
+  there, a segment per step. The permission prompt and its buttons sit
   at the top while one waits. Click a changed file to read it in a tab
   (in a folder that is not a git repository, it opens in your editor at
   its first change). Beside a shell tab it shows the folder and its
@@ -664,9 +676,14 @@ others. Installing it: [install-app.md](install-app.md).
   agent cost; hover a figure (or focus it) for what it means, in a card
   under it. Under them, **Next release**: the version this repository's
   changelog entries call for (a feature makes a minor release, fixes a
-  patch), then a ten-block progress bar per pull request merged since the
-  last tag, open, or agent still at work, with its step in a word — a
-  landing-queue label such as *landing: queued* when it has one. Then one list, a row per pull request: its number, its whole
+  patch), then a progress bar per pull request merged since the last tag,
+  open, or agent still at work — a segment per step, named on hover, the
+  bar growing with the panel — with its step in a word (a landing-queue
+  label such as *landing: queued* when it has one) and, as the width
+  allows, what it waits for now (*CI on Windows · 6m*, *needs a rebase*,
+  *fix: go (windows-latest)*), the agent cost recorded on it (at API list
+  price; *—* where no session was), a dot per OS its checks ran on, how
+  long its CI took against the usual, and how long ago it was opened. Then one list, a row per pull request: its number, its whole
   title, its labels, and the four steps as pills — *Open → CI → Merged →
   Released* — a step done ticked, the step it is on filled in its colour (a
   ✗ on *CI red*, a turning ring on *CI running*; *Conflict*, *Changes
@@ -856,6 +873,14 @@ the box tells you to answer in the terminal. It is off by default, and with
 it off nothing about the terminal changes; the box's ⋯ menu turns it off
 again. Sessions started in another terminal never get one.
 
+**Quick replies.** Under the terminal of every agent Caprock started, and
+above the chat's field, a row of small buttons sends a short reply in one
+click: *Continue*, *Shorter*, *Explain*, *Run tests*, *Commit*. A reply is
+sent the way the composer sends — at once when the agent is at its prompt,
+after its turn otherwise. Change the list in Settings → Terminal → *Quick
+replies* (add, remove, reorder, rename); remove them all and the row is gone.
+Sessions started in another terminal never get the row.
+
 The interface size lives in Settings → Appearance (100, 110, 125 or 140%),
 and the app opens at 110%. It zooms the whole window natively, terminal
 included, so text stays sharp and clicks land where they should. In a
@@ -1035,7 +1060,9 @@ phone. Nothing is sent to GitHub until you connect. Besides
 in the session deck, the job's log is downloaded from the signed address
 GitHub points to on its log storage; while Home's CI/CD section is open, the
 daemon reads `www.githubstatus.com`'s public status at most every five
-minutes; and the Pipeline and the CI/CD section show pull request
+minutes; when GitHub can't be reached, it reads the same status page to say
+whether GitHub or your connection is at fault, and every five minutes if you
+tick *Watch GitHub Status* in that line; and the Pipeline and the CI/CD section show pull request
 authors' pictures from `avatars.githubusercontent.com`, loaded by the page
 with no referrer.
 

@@ -127,6 +127,7 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 	if err != nil {
 		return
 	}
+	defer h.held(r, c)()
 	var devTok string
 	if deviceFrom(r) != nil {
 		devTok = deviceTokenOf(r)

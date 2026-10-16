@@ -120,7 +120,8 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 	// from different arithmetic: one column holding two costing methods would
 	// make a session's total depend on which rows happened to be priced by
 	// whom, and nothing on screen would say so.
-	ourCosting := ev.Source != event.SourceOpenCode
+	// Hermes Agent is the same (ADR-069): its figure, or none.
+	ourCosting := ev.Source != event.SourceOpenCode && ev.Source != event.SourceHermes
 	if ourCosting && !internalModel && ev.Kind == event.KindTurnAssistant && ev.Tokens != nil && ev.CostUSD == nil && r.Table != nil && ev.Model != "" {
 		// Priced at the turn's own timestamp, not at today's rates: an
 		// introductory price that has since expired was the real price for the

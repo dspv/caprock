@@ -65,7 +65,7 @@ export function CICDPanel({ sessions = [] }: { sessions?: readonly SessionSummar
   return (
     <Panel fold="now.cicd" title="CI/CD" right={
       <span className="flex min-w-0 items-center gap-2">
-        {fresh && <Freshness at={fresh.at} loading={fresh.loading} failed={fresh.failed} reason={fresh.reason} confirmed={fresh.confirmed} onRetry={fresh.retry} compact />}
+        {fresh && <Freshness at={fresh.at} loading={fresh.loading} failed={fresh.failed} reason={fresh.reason} confirmed={fresh.confirmed} onRetry={fresh.retry} compact github />}
         <span className="truncate" title="GitHub's runs, pull requests and releases as the Pipeline page reads them, and githubstatus.com; agent cost at API list price">GitHub · agent cost at list price</span>
       </span>
     }>

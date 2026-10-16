@@ -44,6 +44,13 @@ describe('cleanup line', () => {
     expect(removed).toHaveBeenCalledWith(three.map((c) => c.path))
   })
 
+  it('never asks the daemon about a project derived here (a 404 on a fresh page)', async () => {
+    const { container } = render(<CleanupLine projectId="dir:/home/me/dev/alpha" onReview={() => {}} />)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(m.cleanup).not.toHaveBeenCalled()
+    expect(container.textContent).toBe('')
+  })
+
   it('Cancel leaves everything', async () => {
     render(<CleanupLine projectId="7" onReview={() => {}} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Clean up' }))

@@ -50,11 +50,15 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: ui/package-lock.json
-      - name: make check-ui (typecheck, vitest, release script tests, dist sync)
+      # dist-check: the tag must hold its own ui/ built, because that copy is
+      # what `go install ...@vX.Y.Z` (and @latest) embeds. Master's dist
+      # workflow commits it after a merge (ADR-068); a tag pushed before that
+      # commit landed fails here, before anything is published.
+      - name: make check-ui dist-check (typecheck, vitest, release script tests, dist sync)
         if: matrix.half == 'ui'
-        run: make ui-install check-ui
-      # The Go half builds against the committed internal/api/dist (what
-      # `go install` embeds); the ui half fails if that copy is stale.
+        run: make ui-install check-ui dist-check
+      # The Go half builds against the committed internal/api/dist, which the
+      # ui half proves is this tag's ui/ built.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: matrix.half == 'go'
         with:
@@ -81,6 +85,8 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           install-only: true
+          # Pinned with ci.yml: a moving `latest` fails a release over untouched code.
+          version: v2.14.0
       - name: make check-go (docs gates, vet + golangci-lint, go test, smoke)
         if: matrix.half == 'go'
         run: make check-go
@@ -100,6 +106,8 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: ui/package-lock.json
+      # The tag's own ui/, built here rather than taken from the committed
+      # copy; verify has already proved the two are the same bytes.
       - run: npm ci && npm run build
         working-directory: ui
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

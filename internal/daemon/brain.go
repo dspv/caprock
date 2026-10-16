@@ -20,6 +20,7 @@ func (d *Daemon) newBrain() *brain.Engine {
 		Store: d.store, Bus: d.bus, Log: d.log,
 		Config:      func() config.BrainConfig { return d.config().Brain },
 		ClaudeFound: func() bool { return d.mgr.ClaudeBinary() != "" },
+		HandoffOn:   func() bool { return d.config().MemoryOn() },
 		Runner: brain.ClaudeRunner{
 			Binary: d.mgr.ClaudeBinary,
 			Env:    func() []string { return userenv.Environ(d.log) },

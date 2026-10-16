@@ -8,6 +8,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { ApiError, deviceToken, errText } from './api'
 import { live } from './live'
 import type { GitHubItems } from './fromGitHub'
+import type { GitHubStatus as StatusPage } from './reposci'
 
 /** A GitHub failure, as the daemon says it: `error` is the whole sentence. */
 export interface GitHubError {
@@ -180,6 +181,8 @@ export const githubApi = {
     return send<RepoPage>(`/v1/github/repos?${p.toString()}`, 'GET')
   },
   prs: () => send<{ prs: PullRequest[] }>('/v1/github/prs', 'GET').then((r) => r.prs),
+  /** GitHub's own status page, read by the daemon and kept five minutes (lib/githubOutage.ts). */
+  statusPage: () => send<StatusPage>('/v1/github/statuspage', 'GET'),
   worktree: (projectId: string | number, worktree: string) => send<WorktreeGitHub>(wt(projectId, worktree), 'GET'),
   refresh: (projectId: string | number, worktree: string) => send<WorktreeGitHub>(wt(projectId, worktree, '/refresh'), 'POST'),
   createPR: (projectId: string | number, worktree: string, req: { title: string; body: string; base?: string; draft: boolean }) =>

@@ -326,6 +326,43 @@ func TestWeekLoopUsesTheDetectorsRule(t *testing.T) {
 	}
 }
 
+// A parent and its subagents making one edit, interleaved: nine calls on one
+// signature, three per thread. The card counts per thread as the live alert
+// does, so there is no loop -- until one subagent makes five of its own.
+func TestWeekLoopCountsEachSubagentApart(t *testing.T) {
+	ctx := context.Background()
+	f := &weekFixture{t: t, s: openTest(t), loc: time.UTC}
+	from := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)
+	f.session("p", "claude", "")
+	edit := `{"file_path":"/repo/a.go","old_string":"x","new_string":"y"}`
+	call := func(i int, agent string, sidechain bool) {
+		payload := `{"tool_input":` + edit + `}`
+		if sidechain {
+			payload = `{"tool_input":` + edit + `,"sidechain":true}`
+		}
+		f.put(event.Event{SessionID: "p", Source: event.SourceTranscript, Kind: event.KindToolPre, Tool: "Edit", AgentID: agent,
+			Ts: from.Add(time.Hour + time.Duration(i)*15*time.Second), Payload: json.RawMessage(payload)})
+	}
+	week := func() *WeekLoop {
+		w, err := WeekStats(ctx, f.s.DB(), WeekOptions{From: from, To: from.AddDate(0, 0, 7), Loc: time.UTC, LoopK: 5, LoopWindow: 3 * time.Minute})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return w.Loop
+	}
+	for i := 0; i < 9; i++ {
+		call(i, []string{"", "a1", ""}[i%3], i%3 == 2)
+	}
+	if l := week(); l != nil {
+		t.Fatalf("subagent edits counted toward the parent: %+v", l)
+	}
+	call(9, "a1", false)
+	call(10, "a1", false)
+	if l := week(); l == nil || l.Calls != 5 || l.SessionID != "p" {
+		t.Fatalf("a subagent's own five edits: %+v", l)
+	}
+}
+
 func TestWeekStatsEmptyWindow(t *testing.T) {
 	s := openTest(t)
 	from := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)

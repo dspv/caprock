@@ -141,7 +141,8 @@ One window, three regions:
   each project, every agent session** (owner, 2026-10-13, translated:
   "when will this *+1 more* go away … show only the agent sessions, don't
   move anything, don't add extra elements"): working, waiting and idle,
-  one 28px row each with no agent mark (the agent is in the tooltip), and
+  one 38px row each, its title 14px, its state a dot and a word, with no
+  agent mark (the agent is in the tooltip), and
   no *+N more* line. That line (FB-053, earlier the same day: only what was
   active, the rest folded behind *+N more*) hid the very rows the owner
   steered by. Shells and file tabs have no rows — they are in the strip —
@@ -151,9 +152,9 @@ One window, three regions:
   ([04-ui.md](04-ui.md) § Sidebar). Rows read the strip's names
   (`lib/tablabels.ts`; a branch only when it is not the project's). No
   worktree or branch rows, and no ended session — those are on the
-  project's page (*Recent*), in ⌘K and in the Inbox. The one highlighted
-  row in the sidebar is the tab in front; the current project's name is
-  bold, with a faint edge and no fill. **Rows keep their
+  project's page (*Recent*), in ⌘K and in the Inbox. The one selected row
+  in the sidebar is the tab in front — accent tint, 3px accent edge, bold
+  title; the current project's name is bold, with no edge or fill. **Rows keep their
   places** (owner, 2026-10-13, translated: "fixed positions, I orient
   visually by them"; `lib/rowOrder.ts`): by the order set by hand, then by
   when the session started, never by the strip, the front or a state, so a
@@ -163,8 +164,9 @@ One window, three regions:
   list's under `*`). **Group by project or one list** (owner, same day,
   translated: "top I see 1, 2, 3; on the left I see 4, 2"): a switch
   beside the heading (`caprock.app.sidebar-grouped`; *Projects* | *Tabs*
-  in words since 2026-10-14) switches to one flat list of every agent session, each row
-  with its project's dot and short name. **Tabs are the navigation**
+  in words since 2026-10-14) switches to one flat list of every agent session;
+  since 2026-10-15 a row there no longer draws its project's name (a user
+  could not read the rows) — the tooltip and the accessible name say it. **Tabs are the navigation**
   (owner, 2026-10-14, translated: "I sometimes work with 5 projects at
   once, sometimes 2. I just want to switch between them with key combos"):
   ⌘1–⌘9 (Ctrl+Shift+1–9 off macOS) is the strip's Nth tab, ⌘9 the last,
@@ -189,7 +191,8 @@ One window, three regions:
   ⌥← ⌥→ or ⌘↑ ⌘↓). There is no *Waiting on you* section
   (owner, 2026-10-11: "not needed at all — everything is already visible in
   Projects", translated): a session that waits is marked on its own row,
-  amber edge and tint and *waiting* (or *asks* at a permission prompt), and
+  an amber dot and the amber word *waiting* (or *asks* at a permission
+  prompt) — never a fill or an edge, which are the tab in front's — and
   a project folded by hand still lists what waits in it. Every row under a
   project can be got rid of (owner, same day: "nothing can be done … I
   can't close it or hide it afterwards", translated): a tab row's × closes
@@ -285,15 +288,19 @@ One window, three regions:
   folder, or one this window spawned a moment ago that the session list
   does not have yet (`planChatClose`, `lib/closeShell.ts`). One whose agent
   already exited is not signalled. Closing the tab of any other agent
-  Caprock started asks *Close tab* (focused; the agent runs on) or *Close
-  and end the agent*, with *Don't ask again* (since 2026-10-14;
-  `lib/agentClose.ts`, .ai/04-ui.md); an agent another terminal started
+  Caprock started ends it when it is idle, with a toast that the
+  conversation is saved; one working or waiting asks one sentence with
+  *Close tab* (focused; the agent runs on) and a quiet *Stop it instead*
+  (since 2026-10-15; `lib/agentClose.ts`, .ai/04-ui.md). Ending is the
+  `end` signal — SIGTERM, then SIGKILL after 5 s — so the transcript is
+  written and the session can be continued; an agent another terminal started
   only loses its tab. The tab's × says *the chat ends* on a chat, *keep
   the agent running or end it* on an agent Caprock started and *the agent
   keeps running* on the rest.
 - **Tab strip** (owner, 2026-10-09: "tabs are barely noticeable", and "the
-  + amber, or better a dropdown", translated). The tab in front has a 2px
-  amber top edge over its hairline frame and a medium-weight label
+  + amber, or better a dropdown", translated). The tab in front has a 3px
+  accent top edge over its hairline frame and a bold label, and is the only
+  tab that does (2026-10-15: a waiting tab is an amber dot, not a bar)
   (`.app-tab-front`); every other tab is a faintly filled surface with its own
   hairline frame (`.app-tab-back`), 4px apart, so each reads as a tab in both
   themes. The pinned Dashboard tab is not a session and looks it
@@ -446,7 +453,12 @@ One window, three regions:
   *Running* → `#/now`, *Waiting* → the first Inbox item. Code:
   `components/TodayStrip.tsx`, `lib/today.ts`. While the sidebar is open
   the status strip drops its plan windows and spend, so the same figures
-  are never on screen twice.
+  are never on screen twice. It folds to one line (spend, running, what
+  waits, the 5h and 7d percentages) by its chevron and hides by a hover ×;
+  its right-click menu offers Full card, One line and Hide; Settings →
+  Appearance shows it again, and while hidden the list's heading counts
+  what waits (a user, 2026-10-15; `lib/todayCard.ts`, [04-ui.md](04-ui.md)
+  § Sidebar). No Share button since 2026-10-16.
 - **Project menu** (owner, same day: "a way to hide or close projects";
   the hover-only eye was not found). The row's ⋯ — on hover or focus — a
   right-click on the row, or
@@ -1449,7 +1461,7 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
 - **The shell talks to the page through Tauri commands**, allowlisted for the
   daemon's origin only: `notify`, `set_badge`, `set_tray`, `register_hotkey`
   (with `hotkey_status`; built in WP-10, app/README.md),
-  `open_external` (https and the editors' schemes only), `daemon_status`, and
+  `open_external` (https and the editors' schemes, and `tg:` only when an app handles it), `daemon_status`, and
   the updater's `app_update_status`, `app_update_check`,
   `app_update_download` (Update automatically, ADR-042 as amended
   2026-10-15), `app_update_install` and `app_update_asked` (F20). No
@@ -1705,6 +1717,44 @@ and `ui/src/lib/composer.ts`.
   the terminal's ground, a hairline at rest, the accent edge and a 3px
   accent halo when it has the keyboard, in every terminal palette.
 
+## Quick replies
+
+One-click replies to a running session (owner, 2026-10-15: "one-click quick
+replies to a running session: Continue, Shorter and the like"). Built in
+`ui/src/components/QuickReplies.tsx`, `ui/src/lib/quickReplies.ts` and
+`internal/config/quickreply.go`.
+
+- **Where.** A row of small chips under the terminal of a session Caprock
+  started — live, not detached, not a shell (`composerFits`, rule 7) — above
+  the composer when it is on, and whether or not it is; and above the chat's
+  field while the chat can type (`ChatView`, the phone's chat included). A
+  session Caprock only watches never gets the row, and the daemon refuses
+  its queue whatever the page draws. A sibling after the terminal's box, so
+  it never remounts the host.
+- **Sending** is the composer's path, `POST /v1/agents/{id}/queue`
+  (ADR-053): the reply's fixed text, typed in at once at the prompt,
+  otherwise held and typed when the turn ends; the daemon types a line
+  break as ESC CR and submits with Enter after a pause. The chip clicked
+  shows a tick for a moment; a refusal says *Not sent: <why>* beside the row.
+  A click keeps the keyboard where it was (the terminal or the box).
+- **The list.** *Continue* (`Continue.`), *Shorter* (`Shorter, please: say
+  it in fewer words.`), *Explain* (`Explain what you just did and why.`),
+  *Run tests* (`Run the tests and fix what fails.`), *Commit* (`Commit the
+  changes with a clear message.`) — `config.DefaultQuickReplies`, until the
+  user changes them in Settings → Terminal → *Quick replies*: add, remove,
+  reorder (↑ ↓), rename; at most 10, a label of 24 characters, a text of 300
+  bytes. Kept by the daemon (`settings.quick_replies`, 03-contracts § Settings),
+  so the app, a browser tab and a paired phone draw the same row; an empty
+  list draws no row.
+- **Keys.** None: no new global shortcut (rule 12); the chips take Tab
+  focus like any button.
+- **Look.** `.app-quick` in `tokens.css`: 22px pills in the slab's own ink
+  over the terminal's background, like the composer's box, so they read on
+  a dark or a light terminal palette. Off the slab (the chat, the phone's
+  included) they sit on the page's own panel instead: `--color-term-bg` is
+  dark in every theme there, and drew dark pills on a light chat until
+  2026-10-16.
+
 ## Shell tabs
 
 - `POST /v1/shells` with `{"project_id"|"cwd", "cols", "rows"}` starts the
@@ -1776,7 +1826,7 @@ with ⌘W and is restored on relaunch like them
 
 ## Feedback screenshots
 
-The feedback form (`.ai/04-ui.md` § Feedback) carries its screenshots to
+The feedback box (`.ai/04-ui.md` § Feedback) carries its screenshots to
 GitHub by clipboard. In the app three commands do the native parts
 (`src-tauri/src/capture.rs`), granted to the daemon's page alone:
 
@@ -1813,6 +1863,19 @@ GitHub by clipboard. In the app three commands do the native parts
   `ring`'s C build). The capture and the native clipboard were not run in the
   app before they shipped: running the app on the owner's machine would have
   taken his clipboard and could have adopted his daemon.
+
+## The first click
+
+The first click on a Caprock window that is not in front reaches the page
+(2026-10-15). The main window is built with `accept_first_mouse(true)`
+(`shell.rs`): macOS otherwise spends a click on an inactive window on
+bringing it forward, and the tab strip sits in the overlay title-bar band, so
+closing a tab with its × from another app took two clicks — the first one
+only focused the window. Windows and Linux already pass that click through;
+the setting is a no-op there. Dragging the window is unchanged: the strip's
+empty space and the sidebar's top keep `data-tauri-drag-region`, and a press
+that moves still drags the window, while a press that does not lands on what
+is under it, as before. The popover and the other windows keep the default.
 
 ## Dropping a file
 
@@ -1864,8 +1927,27 @@ tells a page where a file lives.
 - **The popover** shows no terminal and keeps the default handler, so a
   drop there does nothing.
 - **Verified** by unit tests on both halves (`shell.rs` script, the
-  terminal's routing and quoting). A real Finder drag needs a person: OS
-  automation is not used from tests.
+  terminal's routing and quoting), by `make e2e` (the page's half in a
+  browser: the event types the quoted path into the terminal under the point
+  only), and by `main.rs`'s mock-app tests (the handler records a drop on the
+  `main` webview; the listener is registered with `on_webview_event`, never
+  `on_window_event`). A real Finder drag needs a person: OS automation is not
+  used from tests.
+
+Where it goes (`routeDrop`, lib/xtermInput.ts): a dialog on screen takes
+it (Feedback, a sheet); else the terminal under the point; else the
+terminal used last that is on screen; else the only terminal on screen;
+else a short note says to drop it onto a terminal. A drop is never dropped
+without a word — it used to reach only a terminal whose box held the point,
+and a drop on the tab strip or a margin read as "drag and drop is broken
+again" (owner, 2026-10-16).
+
+The shell hears a drop both as the window's event and as the dashboard
+webview's (`WindowEvent::DragDrop`, `WebviewEvent::DragDrop`): which one
+Tauri sends depends on whether the dashboard is the window's content or a
+child of it. 0.123.0 made it a child (the `unstable` feature, for the Page
+tab) while listening on the window, and no drop arrived; 0.124.1 removed the
+Page tab and listens for both.
 
 ## Notifications
 

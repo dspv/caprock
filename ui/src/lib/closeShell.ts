@@ -170,10 +170,16 @@ export function planChatClose(
 /** The one question before ending a chat that is still answering. */
 export const CHAT_CLOSE_QUESTION = 'Stop the chat? It is still answering.'
 
-/** The agents a closing tab or pane shows that Caprock started: `all` of them, `busy` the ones still answering. */
+/**
+ * The agents a closing tab or pane shows that Caprock started: `all` of
+ * them, `busy` the ones still answering, `active` the ones working or
+ * waiting on you (busy, plus a question or a permission prompt open) —
+ * what closing asks about. An agent not in `active` ends with its tab.
+ */
 export interface AgentClosePlan {
   all: string[]
   busy: string[]
+  active: string[]
 }
 
 /**
@@ -188,9 +194,10 @@ export function planAgentClose(
   paneId: string | undefined,
   sessions: ReadonlyMap<string, SessionSummary>,
   isChat: (s: SessionSummary) => boolean,
+  asks: (id: string) => boolean = () => false,
 ): AgentClosePlan {
   const closing = paneId ? leaves(tab.root).filter((l) => l.id === paneId) : leaves(tab.root)
-  const plan: AgentClosePlan = { all: [], busy: [] }
+  const plan: AgentClosePlan = { all: [], busy: [], active: [] }
   for (const leaf of closing) {
     if (leaf.target.kind !== 'session') continue
     const s = sessions.get(leaf.target.sessionId)
@@ -198,8 +205,24 @@ export function planAgentClose(
     plan.all.push(s.session_id)
     const health = s.activity?.health
     if (health === 'working' || health === 'looping') plan.busy.push(s.session_id)
+    if (health === 'working' || health === 'looping' || health === 'waiting-on-you' || asks(s.session_id)) plan.active.push(s.session_id)
   }
   return plan
+}
+
+/**
+ * What closing an agent's tab says once the agent is ended (owner,
+ * 2026-10-15, translated: "I never understand whether data is kept"). True:
+ * the end is a SIGTERM first (`end`), so Claude Code writes its transcript
+ * and the session can be continued with --resume.
+ */
+export const AGENT_SAVED_TOAST = 'Closed. The conversation is saved — reopen it from History or the sidebar.'
+
+/** The one sentence before closing the tab of an agent that is working or waiting. */
+export function agentStillWorking(title: string, many: boolean): string {
+  return many
+    ? `“${title}”: its agents are still working. They will keep working in the background — you'll find them in the sidebar. The conversations are saved.`
+    : `“${title}” is still working. It will keep working in the background — you'll find it in the sidebar. The conversation is saved.`
 }
 
 /** The one question before ending an agent that is still answering. */
