@@ -2853,6 +2853,62 @@ taught; and a model entry in the launcher's Model list: the provider
 changes the credential and the endpoint, not only the model, and a model
 list cannot say where the work goes.
 
+**Amended 2026-10-18: a folder isolates a sign-in only when nothing in the
+environment outranks it.** The owner confirmed the request again
+(2026-10-18): several sign-ins, free up to three, the user picks, never an
+automatic rotation. Re-checked read-only that day against the installed
+agents, without signing in or opening the Keychain:
+
+- **Claude Code 2.1.302.** Its bundle names the Keychain item
+  `Claude Code-credentials` with no `CLAUDE_CONFIG_DIR`, and with one
+  `Claude Code-credentials-` plus the first eight hex digits of SHA-256 of
+  the directory (NFC), account `$USER`; `.credentials.json` sits in the
+  same directory. So a profile's sign-in is its own, as the docs say — but
+  `CLAUDE_SECURESTORAGE_CONFIG_DIR`, which Claude Code sets for the
+  teammates it starts, replaces that directory for both. And the docs'
+  *Authentication precedence* ranks `ANTHROPIC_AUTH_TOKEN`,
+  `ANTHROPIC_API_KEY`, `apiKeyHelper`, `CLAUDE_CODE_OAUTH_TOKEN`, a named
+  `ANTHROPIC_PROFILE` or the federation variables, and a cloud provider
+  switch above the directory's `/login` (code.claude.com/docs/en/
+  authentication, read 2026-10-18). The same page says a Console sign-in
+  without an API key is stored outside the configuration directory.
+  `claude --help` documents none of this.
+- **Codex 0.161.0.** `compute_store_key` still keys the keyring entry
+  (service `Codex Auth`) to `cli|` and sixteen hex digits of SHA-256 of the
+  canonical `CODEX_HOME`, and `auth.json` lives under it; `CODEX_API_KEY` and
+  `CODEX_ACCESS_TOKEN` take precedence over both; `OPENAI_API_KEY` is not
+  read by its auth loading (github.com/openai/codex,
+  `codex-rs/login/src/auth/storage.rs` and `manager.rs`, read 2026-10-18).
+
+**Decided.**
+
+- **A session on an added subscription runs without those variables**
+  (`subs.CredentialEnv`), so it runs on the sign-in the user picked rather
+  than on a key the shell exports. A session on the own sign-in keeps them,
+  as the user's terminal does. `CLAUDE_SECURESTORAGE_CONFIG_DIR` is a
+  nesting marker and no session or shell tab Caprock starts inherits it.
+  `OPENAI_API_KEY` stays: tools a session runs may want it.
+- **Settings names, never shows, what is set aside** (`ignored_env`), and
+  says the Console-without-a-key case is not kept apart by folders.
+- **Removing names what stays behind.** `DELETE` removes the folder; a
+  Keychain item or keyring entry is not in it, and Caprock still never
+  touches either. The confirm names the macOS Keychain item and offers
+  **Sign out first**, which types the agent's own `claude auth logout` or
+  `codex logout`, pointed at the folder, into a shell tab for the user to
+  run.
+
+`apiKeyHelper` and managed settings are not the environment and are not
+changed: a profile's `settings.json` is Caprock's and carries none, and a
+machine's managed settings are its administrator's. A fake binary in the
+tests proves the environment handed over, not what the agent does with it;
+that rests on the sources above.
+
+**Rejected:** clearing the variables for the own sign-in too (it would
+change how a user's existing sessions authenticate); deleting the Keychain
+item on Remove (the Keychain is never Caprock's to touch); a check that
+runs `claude auth status` per profile (a process reading the Keychain, from
+the daemon, as rejected above).
+
 ## ADR-049 — Caprock keeps the computer awake while agents work; on by default
 
 **Date:** 2026-10-11 · **Status:** accepted

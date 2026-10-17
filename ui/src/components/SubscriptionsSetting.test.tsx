@@ -136,6 +136,38 @@ describe('Settings → Subscriptions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove Work' }))
     await waitFor(() => expect(m.remove).toHaveBeenCalledWith('a1'))
   })
+
+  // The Keychain is outside the folder and Caprock never touches it: removing
+  // names the item and offers the agent's own sign-out, typed, not run.
+  it('names the Keychain item before removing and types the sign-out into a shell tab', async () => {
+    const work = sub({
+      id: 'a1', label: 'Work', default: false, dir: '/d/profiles/a1',
+      login_command: "CLAUDE_CONFIG_DIR='/d/profiles/a1' claude auth login",
+      logout_command: "CLAUDE_CONFIG_DIR='/d/profiles/a1' claude auth logout",
+      keychain_item: 'Claude Code-credentials-1a2b3c4d',
+    })
+    m.list.mockResolvedValue(response([sub({}), work]))
+    m.remove.mockClear()
+    const setup = vi.fn()
+    render(<SetupShellContext.Provider value={setup}><SubscriptionsSetting /></SetupShellContext.Provider>)
+    await screen.findByText('Work')
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(screen.getByText('Claude Code-credentials-1a2b3c4d')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out first' }))
+    expect(setup).toHaveBeenCalledWith(work.logout_command, '/h')
+    expect(m.remove).not.toHaveBeenCalled()
+  })
+
+  it('says which shell credentials a session on an added subscription runs without', async () => {
+    const r = response([sub({}), sub({ id: 'a1', label: 'Work', default: false })])
+    r.agents[0]!.ignored_env = ['ANTHROPIC_API_KEY']
+    m.list.mockResolvedValue(r)
+    render(<SubscriptionsSetting />)
+    const note = await screen.findByText(/Your shell sets/)
+    expect(note).toHaveTextContent('Your shell sets ANTHROPIC_API_KEY.')
+    expect(note).toHaveTextContent('starts without it')
+    expect(note).toHaveTextContent('sessions on your own sign-in keep it')
+  })
 })
 
 // Claude Code on DeepSeek (owner, 2026-10-13, translated: "in sessions you

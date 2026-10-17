@@ -7,6 +7,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -252,7 +253,8 @@ func (a *subsAdapter) List(ctx context.Context) (api.SubscriptionsResponse, erro
 	running := a.runningBySubscription(ctx)
 	out := api.SubscriptionsResponse{Licensed: a.licensed(), FreePerAgent: subs.FreePerAgent, Home: home}
 	for _, agent := range []string{subs.AgentClaude, subs.AgentCodex} {
-		g := api.SubscriptionAgent{Agent: agent, Label: agentName(agent), Installed: d.mgr != nil && d.mgr.AgentAvailable(agent), Subscriptions: []api.Subscription{}}
+		g := api.SubscriptionAgent{Agent: agent, Label: agentName(agent), Installed: d.mgr != nil && d.mgr.AgentAvailable(agent), Subscriptions: []api.Subscription{},
+			IgnoredEnv: subs.CredentialEnvSet(agent, env)}
 		dp := subs.DefaultPaths(agent, home, getenv)
 		preferred := cfg.DefaultSubscriptionFor(agent)
 		def := a.view(ctx, config.Subscription{ID: "", Label: cfg.OwnLabel(agent), Agent: agent}, dp, spend, running)
@@ -303,6 +305,10 @@ func (a *subsAdapter) view(ctx context.Context, sub config.Subscription, p subs.
 	} else {
 		v.EnvVar = subs.EnvVar(sub.Agent)
 		v.LoginCommand = subs.LoginCommandHere(sub.Agent, p.Dir)
+		v.LogoutCommand = subs.LogoutCommandHere(sub.Agent, p.Dir)
+		if sub.Agent == subs.AgentClaude && runtime.GOOS == "darwin" {
+			v.KeychainItem = subs.KeychainService(p.Dir)
+		}
 	}
 	si := subs.Status(p)
 	v.SignedIn, v.Account = si.SignedIn, si.Account

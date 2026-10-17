@@ -2489,8 +2489,9 @@ field's name predates Make default and means "own"), and recorded on a
 session as `""`. Its name is *Own sign-in* until renamed (`own_labels:
 {agent: label}` in `config.json`). A `Subscription` in the API is `{id,
 agent, label, default, preferred, plan?, dir, env_var?, signed_in, account?,
-login_command, windows: [{window, used_percentage, resets_at, observed_at}],
-sessions_7d, cost_7d_usd, running, created_at?, provider?}`.
+login_command, logout_command?, keychain_item?, windows: [{window,
+used_percentage, resets_at, observed_at}], sessions_7d, cost_7d_usd, running,
+created_at?, provider?}`. Each agent group may carry `ignored_env: [name]`.
 
 - **`provider: "deepseek"`** marks the one entry that is not a sign-in:
   Claude Code on DeepSeek, `id: "deepseek"`, listed last under `claude`
@@ -2528,6 +2529,19 @@ sessions_7d, cost_7d_usd, running, created_at?, provider?}`.
   `CLAUDE_CONFIG_DIR='<dir>' claude auth login` or `CODEX_HOME='<dir>' codex
   login`, `$env:…='<dir>'; …` on Windows — which the page types into a shell
   tab and the user runs. Caprock never runs it.
+- **`logout_command`** is the agent's own sign-out pointed the same way
+  (`claude auth logout`, `codex logout`), on added subscriptions only: Remove
+  offers it first, because a credential in the macOS Keychain or the OS
+  keyring is outside the folder `DELETE` removes. Caprock never runs it.
+- **`keychain_item`** names, on macOS and for an added Claude Code
+  subscription only, the Keychain item its sign-in is kept in: `Claude
+  Code-credentials-` and the first eight hex digits of SHA-256 of the
+  directory (NFC) — how Claude Code 2.1.302 names it, read from its bundle
+  on 2026-10-18. A label for the user to find it by; Caprock never reads,
+  writes or deletes it.
+- **`ignored_env`** names the credential variables the login shell sets
+  (non-blank) that a session on an added subscription runs without — see
+  `POST /v1/agents` below. Names only, never values; absent when none is set.
 - **`POST`** makes the directory and, for Claude Code, writes Caprock's hooks
   and status line into its `settings.json` (the same entries `caprock hooks
   install` writes into `~/.claude/settings.json`) and, when the user's own
@@ -2560,7 +2574,18 @@ one comes from a caller with no picker (an orchestrator task, a Telegram
 request never names one — and the child gets `CLAUDE_CONFIG_DIR` or
 `CODEX_HOME` set to it, replacing any value the login shell exports; Claude
 Code's folder trust is written to that directory's `.claude.json`, not
-`~/.claude.json`. A `resume` runs on the subscription the session ran on,
+`~/.claude.json`. The variables that would make the agent use another
+credential than the directory's are removed from that child's environment:
+for Claude Code `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`,
+`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_PROFILE`,
+`ANTHROPIC_FEDERATION_RULE_ID`, the
+`CLAUDE_CODE_USE_{BEDROCK,VERTEX,FOUNDRY,ANTHROPIC_AWS}` switches and
+`CLAUDE_SECURESTORAGE_CONFIG_DIR`; for Codex `CODEX_API_KEY` and
+`CODEX_ACCESS_TOKEN` (`OPENAI_API_KEY` stays: Codex does not sign in with
+it). A session on the own sign-in keeps them, except
+`CLAUDE_SECURESTORAGE_CONFIG_DIR`, which no session or shell tab Caprock
+starts inherits (Claude Code sets it for its teammates; it moves the
+Keychain entry off the configuration directory's). A `resume` runs on the subscription the session ran on,
 whatever the request says, and is refused when that subscription has been
 removed. An unknown id, or a subscription of the other agent, is `400`.
 

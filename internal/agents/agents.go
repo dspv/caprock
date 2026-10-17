@@ -634,11 +634,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	env := childEnv(userenv.Environ(m.log))
 	env = withEnv(env, extraEnv)
 	if req.ConfigDir != "" {
-		// The subscription's sign-in: Claude Code keys its credentials,
-		// Keychain entry included, and Codex its auth.json and keyring entry,
-		// to this directory (ADR-048). It replaces any value the login shell
-		// exports, which is the user's own default.
-		env = withEnv(env, []string{subs.EnvVar(agent) + "=" + req.ConfigDir})
+		env = onSubscription(env, agent, req.ConfigDir)
 	}
 	// Claude Code on DeepSeek (provider.go): the model calls go to DeepSeek on
 	// the user's key, which reaches this child's environment and nothing else.
@@ -1186,7 +1182,12 @@ func childEnv(base []string) []string {
 		"CLAUDE_PID":                   true,
 		"CLAUDE_EFFORT":                true,
 		"AI_AGENT":                     true,
-		"CAPROCK_DATA_DIR":             false, // keep: the child's own hook shim needs it
+		// Claude Code sets it for the teammates it starts. It moves the
+		// Keychain entry and .credentials.json off CLAUDE_CONFIG_DIR's
+		// (ADR-048, amended 2026-10-18), so a session or a sign-in tab here
+		// would read or write another directory's sign-in.
+		"CLAUDE_SECURESTORAGE_CONFIG_DIR": true,
+		"CAPROCK_DATA_DIR":                false, // keep: the child's own hook shim needs it
 	}
 	var out []string
 	for _, kv := range base {
@@ -1201,6 +1202,17 @@ func childEnv(base []string) []string {
 	}
 	out = append(out, "TERM=xterm-256color", "COLORTERM=truecolor")
 	return withUTF8Locale(out, runtime.GOOS)
+}
+
+// onSubscription is env for a session on the subscription whose directory is
+// dir. Claude Code keys its credentials, Keychain entry included, and Codex
+// its auth.json and keyring entry, to this directory (ADR-048); it replaces
+// any value the login shell exports, which is the user's own default. A
+// credential the shell exports would outrank the directory's sign-in, and
+// CLAUDE_SECURESTORAGE_CONFIG_DIR would key the Keychain to another
+// directory: the session runs without them (subs.CredentialEnv).
+func onSubscription(env []string, agent, dir string) []string {
+	return withEnv(withoutEnv(env, subs.CredentialEnv(agent)), []string{subs.EnvVar(agent) + "=" + dir})
 }
 
 // withUTF8Locale is userenv.WithUTF8Locale, kept by name for the tests.

@@ -174,3 +174,42 @@ func TestDefaultPathsHonourTheEnvironment(t *testing.T) {
 		t.Fatalf("%+v", p)
 	}
 }
+
+func TestLogoutCommandIsPointedLikeLogin(t *testing.T) {
+	dir := "/Users/me/Library/Application Support/caprock/profiles/ab12"
+	if got := LogoutCommand(AgentClaude, dir, "darwin"); got != "CLAUDE_CONFIG_DIR='"+dir+"' claude auth logout" {
+		t.Fatalf("claude: %s", got)
+	}
+	if got := LogoutCommand(AgentCodex, `C:\p\ab12`, "windows"); got != `$env:CODEX_HOME='C:\p\ab12'; codex logout` {
+		t.Fatalf("codex windows: %s", got)
+	}
+}
+
+// The expected names were computed the way the Claude Code 2.1.302 bundle
+// does it (node: createHash("sha256").update(dir.normalize("NFC"))), not
+// with this code. A decomposed accent hashes as its composed form.
+func TestKeychainServiceMatchesClaudeCode(t *testing.T) {
+	for dir, want := range map[string]string{
+		"": "Claude Code-credentials",
+		"/Users/me/Library/Application Support/caprock/profiles/ab12": "Claude Code-credentials-cffcd5e3",
+		"/Users/cafe\u0301/p": "Claude Code-credentials-a18661dd",
+		"/Users/caf\u00e9/p":  "Claude Code-credentials-a18661dd",
+	} {
+		if got := KeychainService(dir); got != want {
+			t.Errorf("KeychainService(%q) = %s, want %s", dir, got, want)
+		}
+	}
+}
+
+func TestCredentialEnvSetNamesOnlyWhatIsSet(t *testing.T) {
+	env := []string{"ANTHROPIC_API_KEY=sk", "CLAUDE_CODE_OAUTH_TOKEN= ", "PATH=/bin", "CODEX_API_KEY=x", "ANTHROPIC_PROFILE=work"}
+	if got := strings.Join(CredentialEnvSet(AgentClaude, env), ","); got != "ANTHROPIC_API_KEY,ANTHROPIC_PROFILE" {
+		t.Errorf("claude: %s", got)
+	}
+	if got := strings.Join(CredentialEnvSet(AgentCodex, env), ","); got != "CODEX_API_KEY" {
+		t.Errorf("codex: %s", got)
+	}
+	if got := CredentialEnvSet(AgentCodex, []string{"OPENAI_API_KEY=sk"}); len(got) != 0 {
+		t.Errorf("OPENAI_API_KEY is not a Codex sign-in: %v", got)
+	}
+}
