@@ -5,7 +5,7 @@
  * version and its rows, each with a ten-block bar and its stage word — the
  * release plan the Pipeline, the right panel and Work → Release draw
  * (components/ReleasePlan, `phone`), not a copy of it. A row opens its pull
- * request on GitHub; a chip picks the repository when there are several.
+ * request on GitHub, an agent's row its session's chat; a chip picks the repository when there are several.
  *
  * What it reads, and when — a phone pays for every byte, so no timer:
  *

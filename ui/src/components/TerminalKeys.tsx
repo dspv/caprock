@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { INPUT_HIGHLIGHT_KEY, keys } from '@/lib/appkeys'
 import type { TermState } from '@/lib/termv2'
 import { useSavedPromptsFor } from '@/lib/saved'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
@@ -650,6 +651,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
           autoCorrect="off"
           spellCheck={false}
           data-filled={text.trim() ? '' : undefined}
+          title={`${keys(INPUT_HIGHLIGHT_KEY)} turns the highlight off or on`}
           className="input composer-field w-full min-w-0 resize-none overflow-y-auto leading-snug"
           style={{ fontSize: 16, lineHeight: '22px', paddingTop: 10, paddingBottom: 10, maxHeight: FIELD_MAX_PX }}
         />

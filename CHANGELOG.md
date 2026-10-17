@@ -12,6 +12,69 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.130.0] - 2026-10-17
+
+### Added
+
+- **brain:** the Second Brain graph card unfolds into the graph: the dialog
+  opens out of the card's rectangle with the card's picture growing into
+  it, and folds back into the card on close (a full-screen sheet on a
+  phone; a cut under reduced motion). The graph is coloured by project with
+  the projects and the busiest topics named, *Find in the graph* and a
+  project picker pick nodes out without laying it out again, and a panel
+  beside it says what the hovered or opened node holds — a project's or a
+  topic's memory count, its latest memories, the sessions they came from
+  and *Open* — else the whole graph's counts, its projects and its newest
+  memories.
+- **brain:** thoughts arriving: a memory just kept flies as a spark from
+  its session's sidebar row or tab into the sidebar's Second Brain card,
+  which pulses, and lands in its project's cluster when the graph is drawn.
+  Throttled, never under reduced motion, and off with Settings → Second
+  Brain, *Animate thoughts arriving*. The live `brain` frame of an added
+  memory now carries its `session` and `project`.
+- **app:** the link chooser (⇧⌘-click a terminal link) lists *Open in
+  Caprock* after the browsers while the in-app browser (beta) is on.
+- **app:** the in-app browser is back as a beta, off until you turn it on
+  (Settings → In-app browser). *New browser tab* (File menu, ⌘K, the +
+  menu) opens a tab after your agents with the cursor in its address box;
+  plain words search DuckDuckGo, or the engine you pick. A page stays
+  exactly where it was while you work elsewhere, a link that opens a new
+  window opens another tab, ⌥← ⌥→ (Ctrl+PageUp/PageDown on Windows and
+  Linux) step between tabs, and when an agent starts waiting on you a strip
+  names it and a playing video pauses. ⌘-click still opens your default
+  browser. Each page now runs in a window of its own rather than inside
+  Caprock's window, which is what crashed the app on macOS 27 and lost
+  drops in 0.124.0; a page is never closed while it is busy.
+- **ui:** the highlight where you type can be switched off, or made stronger.
+  Settings → Terminal → *Highlight where you type* covers both the faint band
+  on Claude Code's input box and the chat field's accent tint, with *Subtle*
+  or *Stronger*. ⌥⌘G (Ctrl+Alt+Shift+G on Windows and Linux) flips it in
+  every open terminal at once and remembers it; ⌘K has *Toggle input
+  highlight*, and pointing at the input box shows the key on its top edge.
+- **ui:** a release plan row opens its session in one click, as a *Waiting
+  for you* row does: an agent's row (in the next release or not in one yet)
+  is itself the button, and a pull request's row with an agent on it gets a
+  small *Open session* button after its title. In the app it opens the
+  session's tab, in a browser its terminal or timeline, and on the phone an
+  agent's row opens its chat.
+
+### Changed
+
+- **ui:** the release plan says itself in plain words: *Nothing new since
+  v0.129.0, released 9m ago* or *3 changes waiting for the next release ·
+  last release v0.129.0, 9m ago*, with the usual gap on hover only; idle
+  agents sit under *Not in a release yet · agents waiting for you, idle 30+
+  min*; an agent's row with no pull request says *no PR yet*, and every bar
+  segment names the steps in order on hover.
+
+### Fixed
+
+- **ui:** the session panel's Changes section stays inside the panel: a long
+  file path no longer pushes the counts, the bar and Review and commit past
+  its right edge.
+- **ui:** the "New" tag on the active top tab (Second Brain) is readable: on
+  the accent fill it takes the label's own ink on a chip instead of faint grey.
+
 ## [0.129.0] - 2026-10-17
 
 ### Added

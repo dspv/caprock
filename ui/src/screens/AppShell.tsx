@@ -16,7 +16,7 @@ import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
 import { pageTitle } from '@/lib/pagetitle'
 import { TabPageBar } from '@/components/WhereAmI'
-import { DASHBOARD_KEY, FIND_EVENT, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
+import { DASHBOARD_KEY, FIND_EVENT, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { href, parseHash, type SettingsSection } from '@/lib/router'
 import { goHomeTop, isHomeHash } from '@/lib/screenPlace'
@@ -28,8 +28,10 @@ import {
   activeTab,
   findTabBySession,
   focusedLeaf,
+  isPageTab,
   leaves,
   loadWorkspace,
+  numberedTabs,
   pipelineInStore,
   saveWorkspace,
   WORKSPACE_KEY,
@@ -81,6 +83,9 @@ import { ChatView } from '@/components/ChatView'
 import { ChangesView } from '@/components/ChangesView'
 import { AttemptsCompare } from '@/components/AttemptsCompare'
 import { FileView } from '@/components/FileView'
+import { BrowserView } from '@/components/BrowserView'
+import { browserAct, looksLikeAddress, newPageKey, OPEN_BROWSER_EVENT, pageId, pageTitle as browserTitle, pageUrl, useBrowserPrefs, type OpenBrowserDetail } from '@/lib/browsertab'
+import { openLink } from '@/lib/termlinks'
 import { attachable, ObservePane } from '@/components/ObservePane'
 import { PipelineHostContext, type PipelineHost } from '@/lib/pipelineHost'
 import { ScreenShown } from '@/lib/refresh'
@@ -99,11 +104,11 @@ import { ChatEnded, ChatHint, type ChatPane } from '@/components/QuickChatPane'
 import { useSpawnableAgents } from '@/components/AgentPicker'
 import { AddProjectSheet } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
-import { BranchIcon, ChatIcon, DashboardIcon, DeckIcon, MailIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
+import { BranchIcon, ChatIcon, DashboardIcon, DeckIcon, GlobeIcon, MailIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
 import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { joinPath, preferredName, useEditors } from '@/lib/editors'
-import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs } from '@/lib/termprefs'
+import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs, toggleInputHighlight } from '@/lib/termprefs'
 import { warmTerminal } from '@/lib/termwarm'
 import { StatusDot, fmtCostShort, leadKey, projectRows, type SidebarRow } from '@/components/ProjectRow'
 import { fmtAgo } from '@/lib/format'
@@ -493,6 +498,76 @@ export function AppShell() {
   }, [openTab])
 
   /**
+   * Browser tabs: the in-app browser, beta, off until Settings turns it on
+   * (ADR-075). A page loads only on a click (rule 4): one opened by hand is
+   * armed at once, a restored one when it is brought to the front — except
+   * the tab that was in front when the window loaded, which waits on its
+   * *Load the page* button.
+   */
+  const [browserPrefs] = useBrowserPrefs()
+  const browserEnabled = isTauri() && browserPrefs.on
+  const pageCtx = useRef({ tabs: ws.tabs, activeProjectId, projects: model.projects, enabled: browserEnabled })
+  pageCtx.current = { tabs: ws.tabs, activeProjectId, projects: model.projects, enabled: browserEnabled }
+  const [armedPages, setArmedPages] = useState<ReadonlySet<string>>(() => new Set())
+  const armPage = useCallback((key: string) => {
+    setArmedPages((cur) => (cur.has(key) ? cur : new Set(cur).add(key)))
+  }, [])
+  /**
+   * A browser tab: on `raw`, the one already showing that address, else a
+   * new tab after every other, in the project of the session it came from;
+   * with no address, a new empty tab whose address box takes the cursor.
+   * With the in-app browser off, an address goes to your browser instead.
+   */
+  const openPage = useCallback((raw?: string, sessionId?: string) => {
+    const { tabs, activeProjectId: pid, projects, enabled } = pageCtx.current
+    const url = raw === undefined ? '' : pageUrl(raw)
+    if (url === null) { setToast(`“${raw}” is not a web address.`); return }
+    if (!enabled) {
+      if (url) openLink(url)
+      else setToast('Turn on the in-app browser in Settings first.')
+      return
+    }
+    const open = url ? tabs.find((t) => isPageTab(t) && t.root.type === 'pane' && t.root.target.url === url) : undefined
+    if (open) {
+      armPage(focusedLeaf(open).target.sessionId)
+      setChangesView(null)
+      setCompare(null)
+      dispatch({ type: 'activate', tabId: open.id })
+      showWorkspace()
+      return
+    }
+    const key = newPageKey()
+    armPage(key)
+    const from = sessionId ? projects.find((n) => n.worktrees.some((w) => w.sessions.some((y) => y.session.session_id === sessionId)))?.project.id : undefined
+    openTab({ kind: 'page', sessionId: key, url, ...(sessionId ? { of: sessionId } : {}) }, from ?? pid, browserTitle(url))
+  }, [armPage, openTab, showWorkspace])
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<OpenBrowserDetail>).detail
+      openPage(d?.url, d?.sessionId)
+    }
+    window.addEventListener(OPEN_BROWSER_EVENT, on)
+    return () => window.removeEventListener(OPEN_BROWSER_EVENT, on)
+  }, [openPage])
+  // The tab in front when the window loaded is the one not armed by coming
+  // to the front: everything after that is a click or a key.
+  const loadedFront = useRef<string | undefined>(current?.id)
+  useEffect(() => {
+    if (!current || current.id === loadedFront.current) return
+    loadedFront.current = undefined
+    if (isPageTab(current)) armPage(focusedLeaf(current).target.sessionId)
+  }, [current, armPage])
+  // After a reload the shell may still hold pages from before: every one
+  // whose tab is gone is closed; the others wait, hidden, for their tab.
+  const retained = useRef(false)
+  useEffect(() => {
+    if (retained.current || !browserEnabled) return
+    retained.current = true
+    const ids = ws.tabs.filter(isPageTab).map((t) => pageId(focusedLeaf(t).target.sessionId))
+    void browserAct('page:all', { do: 'retain', ids }).catch(() => {})
+  }, [browserEnabled, ws.tabs])
+
+  /**
    * A session in a tab: its terminal when Caprock holds one; otherwise — one
    * started in another terminal, or one that ended — its conversation,
    * read-only, in a tab of its own (components/ObservePane.tsx; rule 7). It
@@ -577,10 +652,12 @@ export function AppShell() {
     return node ? projectRows(node, tabsOf(ws, pid), labels, sidebarState.orders[pid], sidebarState.hiddenRows) : []
   }, [model.projects, ws, labels, sidebarState])
   // Every tab's ⌘N, by its place in the strip: 1–8, and 9 on the last.
+  // Browser tabs take no digit: they are not among the agents (ADR-075).
   const stripDigits = useMemo(() => {
     const m = new Map<string, number>()
-    ws.tabs.forEach((t, i) => {
-      const d = tabDigit(i, ws.tabs.length)
+    const list = numberedTabs(ws.tabs)
+    list.forEach((t, i) => {
+      const d = tabDigit(i, list.length)
       if (d) m.set(t.id, d)
     })
     return m
@@ -592,7 +669,8 @@ export function AppShell() {
   }, [onActivateTab, openSession])
   /** ⌘1–⌘9: the strip's tab at that place, ⌘9 the last; nothing past the end. */
   const focusTab = useCallback((index: number) => {
-    const t = index === 8 ? ws.tabs[ws.tabs.length - 1] : ws.tabs[index]
+    const list = numberedTabs(ws.tabs)
+    const t = index === 8 ? list[list.length - 1] : list[index]
     if (t) onActivateTab(t.id)
   }, [ws.tabs, onActivateTab])
   /** ⌥⌘← ⌥⌘→: the project before or after the one in front, round the end. */
@@ -844,8 +922,9 @@ export function AppShell() {
     { id: 'shell', label: 'New shell', hint: keys('⌘T'), icon: <TerminalIcon size={13} />, run: () => onNewShell() },
     { id: 'saved', label: 'Run saved…', icon: <SparkIcon size={13} />, run: () => setSheet({ kind: 'saved' }) },
     { id: 'file', label: 'Open file…', icon: <FileIcon size={13} />, run: () => { const f = fileScopeRef.current; if (f) setSheet({ kind: 'files', ...f }); else setToast('Open a project first: files are opened from one.') } },
+    ...(browserEnabled ? [{ id: 'browser', label: 'New browser tab', icon: <GlobeIcon size={13} />, run: () => openPage() }] : []),
     { id: 'project', label: 'Add project', hint: keys('⌘O'), icon: <FolderPlusIcon size={13} />, run: onAddProject },
-  ], [onNewAgent, onQuickChatNow, onQuickChatChooser, onNewShell, onAddProject])
+  ], [onNewAgent, onQuickChatNow, onQuickChatChooser, onNewShell, onAddProject, browserEnabled, openPage])
   const onSettings = useCallback(() => { location.hash = '#/settings' }, [])
   // The sidebar's "phone" shows the pairing code at once; "Telegram" only
   // scrolls (owner, 2026-10-13).
@@ -1024,6 +1103,8 @@ export function AppShell() {
     const { tabs, sessionsById, endedChats } = closeCtx.current
     const tab = tabs.find((t) => t.id === tabId)
     if (!tab) return
+    // A browser tab has nothing running to ask about: it goes with its page.
+    if (isPageTab(tab)) { dispatch({ type: 'close', tabId }); return }
     // A chat whose agent already exited (its tab says so) has nothing to stop.
     const chat = planChatClose(tab, paneId, sessionsById, (s) => !endedChats.has(s.session_id) && (isQuickChat(s) || !!startedChat(s.session_id)), (id) => !endedChats.has(id) && !!startedChat(id))
     if (chat.busy.length > 0) { setClosing({ kind: 'chat', tabId, paneId, chat }); return }
@@ -1128,6 +1209,13 @@ export function AppShell() {
       case 'feedback': setFeedbackAt(currentScreen(location.hash, true)); break
       case 'mail': onMail(); break
       case 'zoom': stepUiScale(c.step); break
+      // Every open terminal and chat field at once, and remembered (lib/termprefs).
+      case 'input-highlight': {
+        const on = toggleInputHighlight()
+        const k = keys(INPUT_HIGHLIGHT_KEY)
+        setToast(on ? `Input highlight on · ${k} hides it` : `Input highlight off · ${k} to turn back on`)
+        break
+      }
     }
   }, [onNewShell, onNewAgent, onQuickChatNow, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession, onMail, dashboardShown, goHash, prefs.sidebar])
 
@@ -1283,6 +1371,7 @@ export function AppShell() {
       { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'in its own tab: every pull request on its way — open, CI, merged, released', hint: keys(PIPELINE_KEY), icon: <DeckIcon size={14} />, run: () => run({ kind: 'pipeline' }) },
       { id: 'a-deck', group: 'Actions', label: deck.open ? 'Pipeline bar: Off' : 'Pipeline bar: On', detail: deck.open ? 'hide the bar under the agent’s terminal' : 'show the bar under the agent’s terminal', hint: keys('⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck' }) },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
+      ...(browserEnabled ? [{ id: 'a-browser', group: 'Actions' as const, label: 'New browser tab', detail: 'an address or a search, in a tab after your agents (beta)', icon: <GlobeIcon size={14} />, run: () => openPage() }] : []),
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
       ...(source === 'api' && activeProject?.kind === 'repo'
         ? [{ id: 'a-copies', group: 'Actions' as const, label: 'Clean up copies…', detail: `${activeProject.name}: worktrees, sizes, merged`, icon: <BranchIcon size={14} />, run: () => onCleanCopies(activeProject.id) }]
@@ -1298,6 +1387,7 @@ export function AppShell() {
       { id: 'a-keys', group: 'Actions', label: 'Keyboard shortcuts', detail: 'every key the app answers to', icon: <SearchIcon size={14} />, run: () => setSheet({ kind: 'keys' }) },
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
       { id: 'a-theme-pick', group: 'Actions', label: 'Choose a theme…', detail: 'the eight palettes: hover one to try it', hint: keys(THEME_KEY), icon: <SparkIcon size={14} />, run: () => run({ kind: 'theme' }) },
+      { id: 'a-input-highlight', group: 'Actions', label: 'Toggle input highlight', detail: 'the band where you type in the terminal and the chat field’s tint, on or off', hint: keys(INPUT_HIGHLIGHT_KEY), icon: <SparkIcon size={14} />, run: () => run({ kind: 'input-highlight' }) },
       ...(isTauri() ? [{ id: 'a-zoom-reset', group: 'Actions' as const, label: 'Interface size: back to the default', hint: isMacPlatform() ? keys('⇧⌘0') : undefined, icon: <SparkIcon size={14} />, run: () => stepUiScale(0) }] : []),
       { id: 'a-share', group: 'Actions', label: 'Share my numbers', detail: 'a card of your figures: copy, save or post to X', icon: <SparkIcon size={14} />, run: () => setSheet({ kind: 'share' }) },
       ...SCREENS.map(([route, label, detail]) => ({ id: `a-screen-${route}`, group: 'Actions' as const, label, detail, ...(route === 'work' ? { hint: keys(WORK_KEY) } : {}), icon: route === 'brain' ? <BrainGlyph size={14} /> : <DashboardIcon size={14} />, run: () => { location.hash = `#/${route}` } })),
@@ -1308,7 +1398,7 @@ export function AppShell() {
     )
     // F20: the app's own updater; the answer shows in the status strip.
     if (isTauri()) items.push({ id: 'a-update', group: 'Actions', label: 'Check for updates', icon: <SparkIcon size={14} />, run: () => { void checkByHand() } })
-    if (current) {
+    if (current && focused?.kind !== 'page') {
       items.push(
         { id: 'a-find', group: 'Actions', label: focused?.kind === 'file' ? 'Find in the file' : 'Find in the terminal', hint: keys('⌘F'), icon: <SearchIcon size={14} />, run: () => window.dispatchEvent(new Event(FIND_EVENT)) },
         { id: 'a-split-right', group: 'Actions', label: 'Split right: a new shell beside', hint: keys('⌘E'), icon: <TerminalIcon size={14} />, run: () => splitShell('row') },
@@ -1340,7 +1430,8 @@ export function AppShell() {
       const leaf = focusedLeaf(t)
       const s = sessionsById.get(leaf.target.sessionId)
       const file = leaf.target.kind === 'file' ? leaf.target.path : undefined
-      items.push({ id: `t-${t.id}`, group: 'Tabs', label: s ? sessionTitle(s) : t.title, detail: file ?? projectsById.get(t.projectId)?.name, icon: file ? <FileIcon size={14} /> : <TerminalIcon size={14} />, run: () => { dispatch({ type: 'activate', tabId: t.id }); showWorkspace() } })
+      const page = leaf.target.kind === 'page' ? leaf.target.url ?? '' : undefined
+      items.push({ id: `t-${t.id}`, group: 'Tabs', label: s ? sessionTitle(s) : page !== undefined ? browserTitle(page, t.title) : t.title, detail: page || (file ?? projectsById.get(t.projectId)?.name), icon: page !== undefined ? <GlobeIcon size={14} /> : file ? <FileIcon size={14} /> : <TerminalIcon size={14} />, run: () => { dispatch({ type: 'activate', tabId: t.id }); showWorkspace() } })
     }
     for (const n of model.projects) {
       for (const w of n.worktrees) {
@@ -1397,6 +1488,9 @@ export function AppShell() {
 
   // Orca's "new task": text that matches nothing starts an agent on it, in a worktree named after it.
   const paletteFallback = useCallback((q: string): PaletteItem | undefined => {
+    // An address typed into ⌘K opens it in a browser tab while the in-app browser is on (ADR-075).
+    const url = browserEnabled && looksLikeAddress(q) ? pageUrl(q) : null
+    if (url) return { id: 'open-page', group: 'Actions', label: `Open ${url}`, detail: 'in a browser tab', icon: <GlobeIcon size={14} />, run: () => openPage(url) }
     const project = projectsById.get(activeProjectId)
     if (!project?.root) return undefined
     const worktree = worktreeSlug(q)
@@ -1406,7 +1500,7 @@ export function AppShell() {
       icon: <PlusIcon size={14} />,
       run: () => setSheet({ kind: 'agent', projectId: project.id, prompt: q, worktree: worktree || undefined }),
     }
-  }, [projectsById, activeProjectId])
+  }, [projectsById, activeProjectId, browserEnabled, openPage])
 
   // The worktree the focused session runs in, for the inspector's "Review and commit".
   const focusedWorktree = useMemo(() => {
@@ -1544,6 +1638,36 @@ export function AppShell() {
     return () => window.removeEventListener(OPEN_PATH_EVENT, onOpenPath)
   }, [openFile])
   const focusedFile = focused?.kind === 'file'
+  const focusedPage = focused?.kind === 'page'
+  // A page's *from* chip and its nudge bring a session forward; that is known further down.
+  const openSessionRef = useRef<(id: string) => void>(() => {})
+  const waitingAgents = useMemo(() => model.inbox.filter((i) => !i.stale).map((i) => ({ id: i.session.session_id, title: sessionTitle(i.session) })), [model.inbox])
+  const onStepTab = useCallback((delta: 1 | -1) => { dispatch({ type: 'cycle', delta }); showWorkspace() }, [showWorkspace])
+  /** A browser tab's content (components/BrowserView.tsx, ADR-075). */
+  const renderPage = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
+    const key = leaf.target.sessionId
+    const of = leaf.target.of
+    const src = of ? sessionsById.get(of) : undefined
+    return (
+      <BrowserView
+        pageKey={key}
+        url={leaf.target.url ?? ''}
+        visible={visible}
+        enabled={browserEnabled}
+        armed={armedPages.has(key)}
+        onArm={() => armPage(key)}
+        onNav={(url, title) => dispatch({ type: 'page-nav', sessionId: key, ...(url !== undefined ? { url } : {}), ...(title !== undefined ? { title } : {}) })}
+        onOpenPage={(url) => openPage(url, of)}
+        onClose={() => dispatch({ type: 'close', tabId: tab.id })}
+        onStep={onStepTab}
+        from={src && of ? { title: sessionTitle(src), show: () => openSessionRef.current(of) } : undefined}
+        engine={browserPrefs.engine}
+        pause={browserPrefs.pause}
+        waiting={waitingAgents}
+        onGoWaiting={(id) => openSessionRef.current(id)}
+      />
+    )
+  }, [armedPages, armPage, openPage, sessionsById, browserEnabled, browserPrefs.engine, browserPrefs.pause, waitingAgents, onStepTab])
 
   // A watched session that Caprock now holds a terminal for — continued here
   // under its own id — becomes an ordinary session tab, in the same place.
@@ -1660,6 +1784,7 @@ export function AppShell() {
     if (!s) { goHash(`#/session/${encodeURIComponent(id)}`); return }
     openSession(s, placeOf(id)?.node.project.id ?? activeProjectId)
   }, [sessionsById, openSession, placeOf, activeProjectId, goHash])
+  openSessionRef.current = openSessionById
   // *End* on a Home row (lib/sessionJump.ts): what *Close and end the agent*
   // does — the cockpit's `kill` — and a tab that shows only this session
   // closes with it. Only a session Caprock started is ever offered (rule 7).
@@ -1753,7 +1878,7 @@ export function AppShell() {
               } : undefined}
               pipeline={ws.pipeline || pipelineShown ? { active: pipelineShown, onActivate: () => { if (!pipelineShown) goHash(lastPipeline.current || '#/pipeline') }, onClose: closePipeline } : undefined}
               mail={ws.mail || (mailShown && mailTabOk) ? { active: mailShown, onActivate: showMailTab, onClose: closeMail } : undefined}
-              paneTools={workspaceShown}
+              paneTools={workspaceShown && !focusedPage}
               sessions={sessionsById}
               permissions={data.permissions}
               inspectorOpen={prefs.inspector}
@@ -1788,6 +1913,7 @@ export function AppShell() {
                     onResize={onResizePanes}
                     renderFile={renderFile}
                     renderObserve={renderObserve}
+                    renderPage={renderPage}
                     chats={chatPanes}
                     onChatClose={onClosePane}
                     onChatRestart={onChatRestart}
@@ -1991,8 +2117,10 @@ export function AppShell() {
                 </div>
               )}
             </div>
-            {workspaceShown && prefs.inspector && (
+            {workspaceShown && prefs.inspector && !focusedPage && (
               <div className="h-full shrink-0" style={{ width: 'var(--app-inspector-w)' }}>
+                {/* The cockpit's Release rows open a session's tab, as the Pipeline's do. */}
+                <PipelineHostContext.Provider value={pipelineHost}>
                 <Inspector
                   session={inspectedSession}
                   project={focusedProject}
@@ -2009,6 +2137,7 @@ export function AppShell() {
                   onCompare={inspectedSession?.attempt_group ? () => onCompare(inspectedSession) : undefined}
                   onOpenPRs={inspectedSession && inspectedSession.kind !== 'shell' ? () => openPipeline(inspectedSession) : undefined}
                 />
+                </PipelineHostContext.Provider>
               </div>
             )}
           </div>
@@ -2019,7 +2148,7 @@ export function AppShell() {
         * terminal; the share toast floats (lib/nudges.ts, one at a time). */}
       {/* How to move around, once, while tabs are open: a line in the flow
         * above the strips, so it covers neither a terminal nor a banner. */}
-      {workspaceShown && ws.tabs.length > 0 && <KeysHint isMac={isMac} onAllKeys={() => setSheet({ kind: 'keys' })} />}
+      {workspaceShown && numberedTabs(ws.tabs).length > 0 && <KeysHint isMac={isMac} onAllKeys={() => setSheet({ kind: 'keys' })} />}
       <SetupStrip app />
       <MailStrip />
       {/* A survey question, never while a session waits on a permission prompt (ADR-062). */}

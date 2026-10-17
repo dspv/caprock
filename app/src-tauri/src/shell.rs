@@ -149,6 +149,10 @@ pub fn build(
         .on_download(save_download)
         .on_page_load(move |w, p| {
             if !matches!(p.event(), tauri::webview::PageLoadEvent::Finished) {
+                // A new dashboard page (a reload, a daemon swap, the
+                // fallback page) starts with no browser tab's page over it
+                // (browser.rs, ADR-075): hidden, never closed here.
+                crate::browser::hide_all(w.app_handle());
                 return;
             }
             #[cfg(all(feature = "snapshot", target_os = "macos"))]

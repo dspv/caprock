@@ -70,7 +70,7 @@ import { offersManualRetry, type LinkStatus } from '@/lib/reconnect'
 import { useNow } from '@/lib/useNow'
 import { readLink } from './ConnectionState'
 import { attachTerminalInput } from '@/lib/xtermInput'
-import { FIND_EVENT, ownsTerminalKey, watchChordArrows } from '@/lib/appkeys'
+import { FIND_EVENT, INPUT_HIGHLIGHT_KEY, keys, ownsTerminalKey, watchChordArrows } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { registerBenchTerminal } from '@/lib/benchhook'
 import { writeSliced } from '@/lib/termwrite'
@@ -238,6 +238,11 @@ export function TerminalPane({
   const bandRef = useRef<InputBoxBand | null>(null)
   const inputBoxRef = useRef(inputBox)
   inputBoxRef.current = inputBox
+  // The highlight where you type, as the user set it (⌥⌘G), and the key's
+  // hint on the box's top rule while the pointer is over the box.
+  const [highlightOn, setHighlightOn] = useState(() => getTerminalPrefs().highlightInput)
+  const [ground, setGround] = useState(() => terminalTheme(getTerminalPrefs().theme).colors.background)
+  const [boxHint, setBoxHint] = useState<{ top: number; height: number } | null>(null)
 
   useEffect(() => {
     const el = host.current
@@ -277,7 +282,36 @@ export function TerminalPane({
     const links = attachTerminalLinks(term, { onPath: (path) => requestOpenPath({ path, sessionId }) })
     const band = attachInputBoxBand(term)
     bandRef.current = band
+    band.setLook({ shown: prefs.highlightInput, strength: prefs.highlightStrength })
     band.setEnabled(inputBoxRef.current)
+    // Pointing at Claude Code's input box shows, on its top rule, the key
+    // that hides or brings back its band: where the eye already is.
+    let pointerY: number | null = null
+    let hintRaf = 0
+    let hintKey = ''
+    const placeHint = () => {
+      hintRaf = 0
+      const box = pointerY === null ? null : band.boxRows()
+      const screen = el.querySelector<HTMLElement>('.xterm-screen')
+      let next: { top: number; height: number } | null = null
+      if (box && screen && wrapRef.current && term.rows > 0) {
+        const r = screen.getBoundingClientRect()
+        const cell = r.height / term.rows
+        const top = term.buffer.active.viewportY
+        const line = top + Math.floor((pointerY! - r.top) / cell)
+        if (cell > 0 && line >= box.first && line <= box.last) {
+          const offset = r.top - wrapRef.current.getBoundingClientRect().top
+          next = { top: Math.round(offset + Math.max(0, box.first - 1 - top) * cell), height: Math.round(cell) }
+        }
+      }
+      const k = next ? `${next.top},${next.height}` : ''
+      if (k !== hintKey) { hintKey = k; setBoxHint(next) }
+    }
+    const queueHint = () => { if (!hintRaf) hintRaf = requestAnimationFrame(placeHint) }
+    const onPointerMove = (e: MouseEvent) => { pointerY = e.clientY; queueHint() }
+    const onPointerLeave = () => { pointerY = null; queueHint() }
+    el.addEventListener('mousemove', onPointerMove)
+    el.addEventListener('mouseleave', onPointerLeave)
     const resultsSub = search.onDidChangeResults((r) => setResults({ index: r.resultIndex, count: r.resultCount }))
     const decorations = () => ({ decorations: searchColors(terminalTheme(prefs.theme)) })
     searchRef.current = {
@@ -499,6 +533,7 @@ export function TerminalPane({
       }
       lastBase = base
       band.update()
+      if (pointerY !== null) queueHint()
     })
     const scrollSub = term.onScroll(() => {
       if (atBottom() && pendingNew !== 0) {
@@ -653,6 +688,9 @@ export function TerminalPane({
       prefs = next
       Object.assign(term.options, xtermOptions(next, monoStack))
       setForeground(terminalTheme(next.theme).colors.foreground)
+      setGround(terminalTheme(next.theme).colors.background)
+      setHighlightOn(next.highlightInput)
+      band.setLook({ shown: next.highlightInput, strength: next.highlightStrength })
       band.update()
       // A new face or size is a new cell: fit again so the columns are right.
       lastGeom = ''
@@ -765,6 +803,9 @@ export function TerminalPane({
       conn.dispose()
       unbench()
       links.dispose()
+      el.removeEventListener('mousemove', onPointerMove)
+      el.removeEventListener('mouseleave', onPointerLeave)
+      if (hintRaf) cancelAnimationFrame(hintRaf)
       band.dispose()
       bandRef.current = null
       term.dispose()
@@ -827,6 +868,15 @@ export function TerminalPane({
             api.current?.focus()
           }}
         />
+      )}
+      {boxHint && inputBox && (
+        <div data-input-hint aria-hidden className="pointer-events-none absolute right-4 z-10 flex items-center" style={{ top: boxHint.top, height: boxHint.height }}>
+          <span className="mono px-1.5 text-[10.5px] leading-none" style={{ background: ground }}>
+            <span style={{ color: foreground, opacity: 0.55 }}>
+              {keys(INPUT_HIGHLIGHT_KEY)} {highlightOn ? 'hides the highlight' : 'highlights where you type'}
+            </span>
+          </span>
+        </div>
       )}
       <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
         <NewPill count={newLines} unit={newLines === 1 ? 'new line' : 'new lines'} onJump={() => api.current?.scrollToBottom()} />

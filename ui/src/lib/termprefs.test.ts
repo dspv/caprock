@@ -10,7 +10,7 @@ const load = () => import('./termprefs')
 describe('terminal preferences', () => {
   it('start on Match app, in the font and size the app terminal always had', async () => {
     const m = await load()
-    expect(m.getTerminalPrefs()).toEqual({ theme: 'match', font: 'jetbrains', fontSize: 13, lineHeight: 1.2, cursor: 'bar' })
+    expect(m.getTerminalPrefs()).toEqual({ theme: 'match', font: 'jetbrains', fontSize: 13, lineHeight: 1.2, cursor: 'bar', highlightInput: true, highlightStrength: 'subtle' })
   })
 
   it('read a pre-Match-app Caprock as the untouched default, and a choice saved since as a choice', async () => {
@@ -49,9 +49,32 @@ describe('terminal preferences', () => {
   it('repair stored values one by one instead of dropping them all', async () => {
     const m = await load()
     expect(m.normalizePrefs({ theme: 'tokyo-night', font: 'comic', fontSize: 99, lineHeight: 'x', cursor: 'block' }))
-      .toEqual({ theme: 'tokyo-night', font: 'jetbrains', fontSize: 20, lineHeight: 1.2, cursor: 'block' })
+      .toEqual({ theme: 'tokyo-night', font: 'jetbrains', fontSize: 20, lineHeight: 1.2, cursor: 'block', highlightInput: true, highlightStrength: 'subtle' })
     expect(m.normalizePrefs(null)).toEqual(m.DEFAULT_PREFS)
     expect(m.normalizePrefs({ fontSize: 3, lineHeight: 0.2 })).toMatchObject({ fontSize: 10, lineHeight: 1 })
+  })
+
+  it('flip the input highlight with ⌥⌘G, keep it, and mark <html> for the chat field', async () => {
+    let m = await load()
+    expect(document.documentElement.hasAttribute('data-input-hl')).toBe(false)
+    const heard: boolean[] = []
+    const off = m.subscribeTerminalPrefs((p) => heard.push(p.highlightInput))
+    expect(m.toggleInputHighlight()).toBe(false)
+    expect(heard).toEqual([false])
+    expect(document.documentElement.getAttribute('data-input-hl')).toBe('off')
+    off()
+    // Remembered across a reload, and applied before any shell mounts.
+    document.documentElement.removeAttribute('data-input-hl')
+    vi.resetModules()
+    m = await load()
+    expect(m.getTerminalPrefs().highlightInput).toBe(false)
+    expect(document.documentElement.getAttribute('data-input-hl')).toBe('off')
+    expect(m.toggleInputHighlight()).toBe(true)
+    expect(document.documentElement.hasAttribute('data-input-hl')).toBe(false)
+    m.setTerminalPrefs({ highlightStrength: 'stronger' })
+    expect(document.documentElement.getAttribute('data-input-hl')).toBe('stronger')
+    expect(m.normalizePrefs({ highlightInput: 'no', highlightStrength: 'loud' })).toMatchObject({ highlightInput: true, highlightStrength: 'subtle' })
+    m.setTerminalPrefs(m.DEFAULT_PREFS)
   })
 
   it('persist per browser and tell every subscriber at once', async () => {

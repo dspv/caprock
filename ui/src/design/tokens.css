@@ -608,21 +608,42 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
  * at the bottom of a long chat without pulling the eye to it; the fill goes
  * to 7% with the focus. On the terminal slab (the app's Chat view) its
  * ground is the slab's own, lifted as the composer's box is (.app-composer),
- * so it sits right on every terminal palette, light or dark. */
+ * so it sits right on every terminal palette, light or dark.
+ *
+ * The resting tint is the highlight where you type, with the terminal's band
+ * (lib/terminputbox): one switch, Settings → Terminal or ⌥⌘G (owner,
+ * 2026-10-17). `data-input-hl` on <html> (lib/termprefs) is `off` — no tint
+ * at rest, the focus glow stays, since it says where the keyboard is — or
+ * `stronger`: 8% fill, 40% edge, 12% with the focus. */
+:root {
+  --composer-tint: 4%;
+  --composer-edge: 22%;
+  --composer-focus-tint: 7%;
+}
+:root[data-input-hl="stronger"] {
+  --composer-tint: 8%;
+  --composer-edge: 40%;
+  --composer-focus-tint: 12%;
+}
+:root[data-input-hl="off"] {
+  --composer-tint: 0%;
+  --composer-edge: 0%;
+  --composer-focus-tint: 0%;
+}
 .input.composer-field {
   --composer-ground: var(--color-panel-2);
-  background: color-mix(in srgb, var(--color-accent) 4%, var(--composer-ground));
-  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--color-border-strong));
+  background: color-mix(in srgb, var(--color-accent) var(--composer-tint), var(--composer-ground));
+  border-color: color-mix(in srgb, var(--color-accent) var(--composer-edge), var(--color-border-strong));
   transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 }
 :where([data-app] .app-slab) .input.composer-field {
   --composer-ground: color-mix(in srgb, var(--color-fg) 5%, var(--color-term-bg));
-  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--app-hairline-strong));
+  border-color: color-mix(in srgb, var(--color-accent) var(--composer-edge), var(--app-hairline-strong));
 }
 .input.composer-field:focus,
 [data-glow] .input.composer-field:focus {
   outline: none;
-  background: color-mix(in srgb, var(--color-accent) 7%, var(--composer-ground));
+  background: color-mix(in srgb, var(--color-accent) var(--composer-focus-tint), var(--composer-ground));
   border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 16%, transparent);
 }
@@ -1127,6 +1148,21 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 [data-app] .app-tab-dash { margin-right: 9px; }
 [data-app] .app-tab-dash::after {
   content: ""; position: absolute; right: -6px; top: 7px; bottom: 7px; width: 1px;
+  background: var(--app-hairline-strong); pointer-events: none;
+}
+/* A browser tab, a web page inside Caprock (ADR-075): outlined with a dashed
+ * hairline and never filled while behind, after a divider that keeps the
+ * pages apart from the agents, so it never reads as one of them. */
+[data-app] .app-tab-page:not(.app-tab-front) {
+  background: transparent;
+  box-shadow: none;
+  border: 1px dashed var(--app-hairline-strong);
+  border-bottom: 0;
+}
+[data-app] .app-tab-page:not(.app-tab-front):hover { background: color-mix(in srgb, var(--color-fg) 5%, transparent); }
+[data-app] .app-tab-page-first { margin-left: 9px; }
+[data-app] .app-tab-page-first::before {
+  content: ""; position: absolute; left: -6px; top: 7px; bottom: 7px; width: 1px;
   background: var(--app-hairline-strong); pointer-events: none;
 }
 /* A named light terminal palette (Book, Light Cold, Light Side): the slab takes the Light palette's ink. */

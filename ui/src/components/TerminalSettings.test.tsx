@@ -23,6 +23,18 @@ describe('Settings → Terminal (F21)', () => {
     expect(getTerminalPrefs()).toEqual(DEFAULT_PREFS)
   })
 
+  it('switches the highlight where you type, says its key, and offers Stronger while it is on', () => {
+    render(<TerminalSettings />)
+    // macOS spelling in the test environment's platform, or Ctrl+Alt+Shift+G.
+    const box = screen.getByRole('checkbox', { name: /Highlight where you type \((⌥⌘G|Ctrl\+Alt\+Shift\+G)\)/ })
+    expect(box).toBeChecked()
+    fireEvent.click(screen.getByRole('radio', { name: 'Stronger' }))
+    expect(getTerminalPrefs().highlightStrength).toBe('stronger')
+    fireEvent.click(box)
+    expect(getTerminalPrefs().highlightInput).toBe(false)
+    expect(screen.queryByRole('radio', { name: 'Stronger' })).toBeNull()
+  })
+
   it('always offers the bundled face', () => {
     render(<TerminalSettings />)
     expect(screen.getByRole('radio', { name: 'JetBrains Mono' })).toHaveAttribute('aria-checked', 'true')

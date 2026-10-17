@@ -238,6 +238,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-17 — 0.130.0: the in-app browser returns as a beta, the Second Brain graph unfolds
+
+A minor release because it carries features, landed as one batch PR (#734). The in-app browser returns off by default, as a window of its own over the tab instead of a child webview (ADR-075 records the 0.124.0 crash analysis), with Open in Caprock in the link chooser while it is on. The Second Brain graph unfolds from its card into a project-coloured graph with a side panel, and new thoughts fly in from their session. Highlight where you type gets a switch and a key. Release-plan rows open their session, and the Next release header speaks in plain words.
+
 ### 2026-10-17 — 0.129.0: hide a CI/CD repo, choose a browser for a link, import chats
 
 A minor release because it carries features, landed as one batch PR (#731). CI/CD repositories hide in one click with Undo, and Repos rows open for more. "git could not be read" on busy repositories is gone: commits are listed without diffs and lines are diffed in kept batches under a budget. Shift-cmd-click on a terminal link chooses the browser it opens in. Closing a working agent's tab offers two equal, explained choices. Claude.ai and ChatGPT data exports import as read-only chats, on the machine only (ADR-074).

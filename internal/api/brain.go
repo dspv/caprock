@@ -526,6 +526,9 @@ func (s *Server) publishBrain(n store.BrainNode, op string) {
 	if op != "deleted" {
 		data["kind"], data["title"] = n.Kind, n.Title
 	}
+	if op == "added" {
+		n.Source.AddToFrame(data)
+	}
 	s.d.Bus.Publish(bus.Frame{Type: bus.FrameBrain, Data: data})
 }
 

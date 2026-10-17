@@ -809,6 +809,12 @@ others. Installing it: [install-app.md](install-app.md).
   own terminal colours on the window's own colour, so the terminal reads as
   part of the window; a palette you pick stays whatever the app shows. The font defaults match the JetBrains IDE terminal: JetBrains
   Mono, 13 px, line height 1.2, no ligatures.
+- **Highlight where you type.** Claude Code's input box sits on a faint band
+  in the terminal, and the chat field carries a hint of the accent. Settings
+  → *Terminal* → *Highlight where you type* turns both off or on, *Subtle*
+  (the default) or *Stronger*; ⌥⌘G (Ctrl+Alt+Shift+G on Windows and Linux)
+  does the same from anywhere, in every open terminal at once, and is
+  remembered. Point at the input box and the key shows on its top edge.
 - **Permission mode.** A new install starts sessions in *Accept edits · asks
   first*: the agent edits files on its own and asks before running a command.
   *Bypass · never asks* is one pick away in the New agent sheet, and the mode
@@ -825,6 +831,29 @@ others. Installing it: [install-app.md](install-app.md).
   sidebar hidden (`⌘\`) it also shows the 5-hour and 7-day plan windows and
   today's spend, which the sidebar's *Today* carries while it is open.
 
+### The in-app browser (beta)
+
+Off until you turn it on: Settings → *In-app browser (beta)*. Then *New
+browser tab* (File menu on macOS, ⌘K, the + menu) opens a tab after your
+agents' tabs with the cursor in its address box: type an address, or words
+to search with DuckDuckGo (or the engine you pick in the same setting). An
+address typed into ⌘K opens there too, and *Open in Caprock* appears where
+you choose how a link opens. ⌘-click on a link still opens your default
+browser.
+
+A browser tab keeps its page exactly where it was while you work in other
+tabs. ⌥← ⌥→ (Ctrl+PageUp, Ctrl+PageDown on Windows and Linux) step to the
+tab before or after, outside a text field; ⌘L puts the cursor in the
+address box; ⌘W closes the tab. Every other key goes to the page. A link
+that opens a new window opens another browser tab. When an agent starts
+waiting on you, a strip over the page names it with *Go*, and a playing
+video is paused (you can turn the pause off).
+
+Pages share no cookies with Caprock or with each other, keep nothing once
+the app quits (so you are signed out of sites each time), and can call
+nothing of Caprock's. A download goes to your Downloads folder and is never
+opened.
+
 ### Keyboard
 
 On macOS:
@@ -840,12 +869,14 @@ On macOS:
 | ⌥⌘→, ⌥⌘←    | Next and previous project                                                           |
 | ⌥⇧↑, ⌥⇧↓    | Move the focused sidebar or Live pulse row, or right panel section grip, up or down |
 | ⌃Tab, ⇧⌘[ ] | Next and previous tab                                                               |
+| ⌥←, ⌥→      | In a browser tab (beta): the tab before and after, outside a text field             |
 | ⌘W          | Close the tab or pane (the session keeps going); on the Dashboard, nothing          |
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                                    |
 | ⌘[ ]        | Previous and next pane                                                              |
 | ⌘J          | Next session waiting on you                                                         |
 | ⇧⌘H         | Add to Second Brain: keep a line of your own                                        |
 | ⌘F          | Find in the terminal or the file                                                    |
+| ⌥⌘G         | Highlight where you type: on or off, in every terminal                              |
 | ⌘-click     | A link in the terminal: open it in your default browser                             |
 | ⇧⌘-click    | A link in the terminal: choose the browser to open it in, or copy it                |
 | ⌘K          | Command palette                                                                     |
@@ -863,7 +894,7 @@ On macOS:
 | ⌘R          | Reload the window (View → Reload)                                                   |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
-(Quick chat is Ctrl+Alt+Shift+N; Send feedback Ctrl+Alt+Shift+F, Work
+(Quick chat is Ctrl+Alt+Shift+N and the input highlight Ctrl+Alt+Shift+G; Send feedback Ctrl+Alt+Shift+F, Work
 Ctrl+Alt+Shift+W and the theme Ctrl+Alt+Shift+T, since Ctrl+Shift+F, W and T
 are Find, Close and New shell; the Dashboard is Ctrl+Shift+D, never Ctrl+D,
 which stays the shell's end of input; tabs are
@@ -872,6 +903,8 @@ Ctrl+click and its browser chooser on Ctrl+Shift+click). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
+a browser tab's ⌥← ⌥→ are Ctrl+PageUp and Ctrl+PageDown, since Alt+← → are
+a browser's Back and Forward there;
 in a text field the arrow chords stay the field's. Ctrl+Shift+C
 and Ctrl+Shift+V stay the terminal's copy and paste. Reload is F5 there:
 Ctrl+R stays the shell's history search, and F5 in a focused terminal goes

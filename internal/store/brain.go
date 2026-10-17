@@ -82,6 +82,18 @@ type BrainSource struct {
 	Project   string `json:"project,omitempty"`
 }
 
+// AddToFrame puts the session and the project, each only when known, on an
+// added memory's `brain` frame, so a screen can show it arriving from that
+// session's tab (03-contracts.md § Second Brain, Live).
+func (s BrainSource) AddToFrame(data map[string]any) {
+	if s.SessionID != "" {
+		data["session"] = s.SessionID
+	}
+	if s.Project != "" {
+		data["project"] = s.Project
+	}
+}
+
 // BrainNode is one node of the graph.
 type BrainNode struct {
 	ID        int64       `json:"id"`

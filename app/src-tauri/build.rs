@@ -30,6 +30,7 @@ fn main() {
             "set_zoom",
             "open_mail_app",
             "open_mail_window",
+            "browser_tab",
         ]),
     ))
     .expect("tauri build");

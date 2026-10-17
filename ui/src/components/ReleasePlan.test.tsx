@@ -17,6 +17,7 @@ import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 import { planForRepo, type ReleasePlanData } from '@/lib/releaseplan'
 import { releaseStatus } from '@/lib/releasestatus'
 import { live } from '@/lib/live'
+import { PipelineHostContext } from '@/lib/pipelineHost'
 
 afterEach(() => { h.work = 0; h.data = undefined; forgetDeckAnswers(); localStorage.clear() })
 
@@ -37,7 +38,11 @@ describe('the release plan', () => {
     render(<ReleasePlan plan={plan()} />)
     const v = screen.getByRole('heading', { name: '0.118.0' })
     expect(v.title).toMatch(/^Next version, by the pending changes: a feature \(an Added entry\) makes a minor release/)
-    expect(document.querySelector('[data-release-since]')).toHaveTextContent('1 merged since v0.117.4 · 2h 05m ago · usual gap 2h 40m (median of 9)')
+    // Plain words; the usual gap on hover only (owner, 2026-10-17).
+    const since = document.querySelector('[data-release-since]')!
+    expect(since).toHaveTextContent('1 change waiting for the next release · last release v0.117.4, 2h 05m ago')
+    expect(since.textContent).not.toContain('median')
+    expect(since).toHaveAttribute('title', expect.stringContaining('usually come 2h 40m apart'))
     const rows = [...document.querySelectorAll<HTMLElement>('[data-release-row]')]
     expect(rows.map((r) => r.getAttribute('data-release-row'))).toEqual(['630', '631', '633', expect.stringMatching(/^s:/)])
     for (const r of rows) {
@@ -45,14 +50,15 @@ describe('the release plan', () => {
     }
     const merged = rows[0]!
     expect(merged.querySelectorAll('[data-step-state="done"]')).toHaveLength(4)
-    expect(merged.querySelector('[data-step="released"]')).toHaveAttribute('title', 'Released: to come')
+    expect(merged.querySelector('[data-step="released"]')).toHaveAttribute('title', 'Released: to come\nAgent → PR → CI → Merged → Released')
     expect(within(merged).getByText('merged')).toBeInTheDocument()
     // The landing label is the word, and its step is red.
     const red = rows[1]!
     expect(red.querySelector('[data-release-word]')).toHaveTextContent('landing: CI red')
     expect(red.querySelector('[data-step="CI"]')).toHaveAttribute('data-step-state', 'red')
-    expect(red.querySelector('[data-step="CI"]')).toHaveAttribute('title', 'CI: failed — landing: CI red')
-    expect(rows[3]!.querySelector('[data-release-word]')).toHaveTextContent('agent')
+    expect(red.querySelector('[data-step="CI"]')).toHaveAttribute('title', 'CI: failed — landing: CI red\nAgent → PR → CI → Merged → Released')
+    expect(rows[3]!.querySelector('[data-release-word]')).toHaveTextContent('no PR yet')
+    expect(rows[3]!.querySelector('[data-step="PR"]')).toHaveAttribute('title', 'Pull request: none yet — the agent has not opened one\nAgent → PR → CI → Merged → Released')
     expect([...rows[3]!.querySelectorAll('[data-step]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'off', 'off', 'off', 'off'])
     // A pull request row goes to its detail on the Pipeline.
     expect(within(merged).getByRole('link')).toHaveAttribute('href', expect.stringContaining('pipeline'))
@@ -74,7 +80,7 @@ describe('the release plan', () => {
     const ci = row(631).querySelector('[data-step="CI"]')!
     expect(ci).toHaveAttribute('data-step-state', 'now')
     expect(ci).toHaveClass('release-step-pulse')
-    expect(ci).toHaveAttribute('title', 'CI: under way — CI running')
+    expect(ci).toHaveAttribute('title', 'CI: under way — CI running\nAgent → PR → CI → Merged → Released')
     // A dot per OS, macOS · Linux · Windows, each named.
     const dots = [...row(631).querySelectorAll('[data-os]')]
     expect(dots.map((d) => [d.getAttribute('data-os'), d.getAttribute('data-os-state')])).toEqual([['macos', 'running'], ['linux', 'pass'], ['windows', 'running']])
@@ -134,6 +140,68 @@ describe('the release plan', () => {
   it('says Next release without a number when the entries say no kind', () => {
     render(<ReleasePlan plan={planForRepo(workFixture(), '/w/caprock', statsFixture(), NOW)} />)
     expect(screen.getByRole('heading', { name: 'Next release' }).title).toMatch(/No number/)
+  })
+})
+
+// Owner, 2026-10-17, translated, of an idle agent's row: "from here I want
+// to go into the session". It goes as a Waiting for you row does.
+describe('a row opens its session', () => {
+  afterEach(() => { location.hash = '' })
+
+  it('an agent row is a button: in the app it opens the session\'s tab, by click or keyboard', () => {
+    const onOpenSession = vi.fn()
+    render(
+      <PipelineHostContext.Provider value={{ onOpenSession }}>
+        <ReleasePlan plan={plan()} />
+      </PipelineHostContext.Provider>,
+    )
+    const agent = document.querySelector<HTMLElement>('[data-release-row^="s:"]')!
+    const btn = within(agent).getByRole('button', { name: /^Open the session: / })
+    expect(btn).toHaveAttribute('title', expect.stringMatching(/^Open the session: /))
+    fireEvent.click(btn)
+    expect(onOpenSession).toHaveBeenCalledWith('s2')
+    // A native button: Enter and Space press it, and it takes focus.
+    btn.focus()
+    expect(document.activeElement).toBe(btn)
+  })
+
+  it('in a browser, an agent row goes to the session\'s page: its timeline when another terminal holds it', () => {
+    render(<ReleasePlan plan={plan()} />)
+    const agent = document.querySelector<HTMLElement>('[data-release-row^="s:"]')!
+    fireEvent.click(within(agent).getByRole('button', { name: /^Open the session: / }))
+    expect(location.hash).toMatch(/^#\/session\/s2\?tab=timeline/)
+  })
+
+  it('a pull request row keeps its link and adds an Open session button when an agent is on it', () => {
+    const onOpenSession = vi.fn()
+    const onOpen = vi.fn()
+    render(
+      <PipelineHostContext.Provider value={{ onOpenSession }}>
+        <ReleasePlan plan={plan()} onOpen={onOpen} />
+      </PipelineHostContext.Provider>,
+    )
+    const row = (n: number) => document.querySelector<HTMLElement>(`[data-release-row="${n}"]`)!
+    fireEvent.click(within(row(631)).getByRole('button', { name: /^Open session: / }))
+    expect(onOpenSession).toHaveBeenCalledWith('s1')
+    expect(onOpen).not.toHaveBeenCalled()
+    fireEvent.click(within(row(631)).getByRole('button', { name: /folder search/ }))
+    expect(onOpen).toHaveBeenCalledWith(631)
+    // No agent recorded on a merged one: no button.
+    expect(within(row(630)).queryByRole('button', { name: /^Open session/ })).toBeNull()
+  })
+
+  it('in a browser, a pull request row\'s button opens the terminal of a session Caprock holds', () => {
+    render(<ReleasePlan plan={plan()} />)
+    fireEvent.click(within(document.querySelector<HTMLElement>('[data-release-row="631"]')!).getByRole('button', { name: /^Open session: / }))
+    expect(location.hash).toBe('#/session/s1?tab=terminal')
+  })
+
+  it('on the phone, an agent row is a tap target into the session\'s chat', () => {
+    render(<ReleasePlan plan={plan()} phone />)
+    const agent = document.querySelector<HTMLElement>('[data-release-row^="s:"]')!
+    const a = within(agent).getByRole('link')
+    expect(a).toHaveAttribute('href', '#/session/s2?tab=chat')
+    expect(a).toHaveAttribute('title', expect.stringMatching(/^Open the session: /))
   })
 })
 

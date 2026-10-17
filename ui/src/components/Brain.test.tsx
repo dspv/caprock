@@ -104,7 +104,9 @@ describe('Second Brain', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Open the graph/ }))
     expect(screen.getByRole('img', { name: /Second Brain graph: 3 nodes/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Fit the graph' })).toBeTruthy()
-    expect(document.querySelector('[data-brain-legend]')!.textContent).toMatch(/Memory.*Topic.*Project/)
+    expect(document.querySelector('[data-brain-legend]')!.textContent).toMatch(/a memory.*a topic.*a project/)
+    // Beside it, what the graph holds, in counts of what was read.
+    expect(document.querySelector('[data-brain-figures-graph]')!.textContent).toBe('1memory1topic1project2links')
     fireEvent.click(screen.getByRole('button', { name: 'Close the graph' }))
     const row = await screen.findByRole('button', { name: /Keep SQLite/ })
     expect(row.textContent).toContain('storage')

@@ -59,6 +59,10 @@ func TestBrainDropFromANoteReadsTheRecord(t *testing.T) {
 		if f.Type != bus.FrameBrain {
 			t.Errorf("frame %q, want brain", f.Type)
 		}
+		// Where it came from rides along, so a screen can show it arriving.
+		if d, _ := f.Data.(map[string]any); d["session"] != "s1" || d["project"] != "caprock" {
+			t.Errorf("frame data %v: want session s1, project caprock", f.Data)
+		}
 	default:
 		t.Error("no brain frame for a new memory")
 	}

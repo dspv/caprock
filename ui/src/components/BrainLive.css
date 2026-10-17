@@ -51,3 +51,30 @@
   [data-brain-strip="building"] .brain-live-bar,
   [data-brain-sidebar-live] .brain-live-bar { animation: none; }
 }
+
+/* A thought arriving (components/BrainArrivals.tsx): a spark that flies from
+ * the session's tab to the sidebar's Second Brain card. Moved by the Web
+ * Animations API on transform and opacity only; never drawn under
+ * prefers-reduced-motion (the script does not start one). */
+.brain-arrival {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-accent) 28%, transparent),
+    0 0 18px 4px color-mix(in srgb, var(--color-accent) 60%, transparent);
+  pointer-events: none;
+  z-index: 70;
+  will-change: transform, opacity;
+}
+.brain-arrival[data-tail] {
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  box-shadow: none;
+}

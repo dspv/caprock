@@ -160,7 +160,9 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
                   : 'text-fg hover:text-accent'
               }`}>
               {n.icon ? <span className="inline-flex items-center gap-1 align-middle">{n.icon}{n.label}</span> : n.label}
-              {n.phase && <span className={`ml-1 text-[9px] uppercase tracking-wider ${n.phase === 'new' && !active(n.route) ? 'text-accent font-semibold' : 'text-fg-faint'}`}>{n.phase}</span>}
+              {/* On the active tab's accent fill, faint ink vanished (owner, 2026-10-17):
+                the tag takes the label's own ink there, on a chip of its own. */}
+              {n.phase && <span data-nav-phase className={`ml-1 text-[9px] uppercase tracking-wider ${active(n.route) ? 'rounded-[3px] bg-panel/20 px-1 py-px font-semibold text-panel' : n.phase === 'new' ? 'text-accent font-semibold' : 'text-fg-faint'}`}>{n.phase}</span>}
             </a>
           ))}
         </nav>

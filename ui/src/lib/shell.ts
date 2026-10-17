@@ -6,6 +6,7 @@
  */
 import { isTauri } from './appmode'
 import type { AppUpdateInfo } from './appupdate'
+import type { BrowserAct } from './browsertab'
 
 interface TauriInternals {
   invoke: <T>(cmd: string, args?: Record<string, unknown> | Uint8Array) => Promise<T>
@@ -96,6 +97,8 @@ export const shell = {
   openMailApp: () => shellInvoke<boolean>('open_mail_app'),
   /** A second window of the app on the daemon's `/?mail=1`, focused when already open; false with no daemon to load it from. */
   openMailWindow: () => shellInvoke<boolean>('open_mail_window'),
+  /** A browser tab's page: a window of its own the shell lays over the tab (ADR-075, app/src-tauri/src/browser.rs). */
+  browserTab: (id: string, act: BrowserAct) => shellInvoke<void>('browser_tab', { id, act }),
 }
 
 /**
