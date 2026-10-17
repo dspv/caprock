@@ -18,6 +18,7 @@ import (
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/bus"
+	"github.com/dspv/caprock/internal/chatimport"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -455,4 +456,62 @@ func urlPathEscape(name string) string {
 		b.WriteByte(hex[c&15])
 	}
 	return b.String()
+}
+
+// chatImportMaxBytes is the largest export POST /v1/chats/import takes. A
+// ChatGPT archive carries the images and voice clips of every conversation,
+// which Caprock does not read, so the cap is generous; only conversations.json
+// is opened inside it.
+const chatImportMaxBytes = 4 << 30
+
+// handleChatImport imports a Claude.ai or ChatGPT export the user downloaded
+// themselves (ADR-074): the body is the archive the service emailed, or the
+// conversations.json from inside it. The file is read on this machine and
+// nothing is sent anywhere (rule 4). Each conversation becomes a read-only
+// chat; a conversation imported before gains only the messages it did not
+// have, and one the user deleted stays deleted. Machine only: an export holds
+// every conversation of an account.
+func (s *Server) handleChatImport(w http.ResponseWriter, r *http.Request) {
+	tmp, err := os.CreateTemp("", "caprock-chat-import-*")
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	n, err := io.Copy(tmp, http.MaxBytesReader(w, r.Body, chatImportMaxBytes))
+	_ = tmp.Close()
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			s.failCode(w, http.StatusRequestEntityTooLarge, errors.New("the export is larger than 4 GB; send the conversations.json from inside it instead"))
+			return
+		}
+		s.failCode(w, http.StatusBadRequest, errors.New("the upload did not arrive whole: "+err.Error()))
+		return
+	}
+	if n == 0 {
+		s.failCode(w, http.StatusBadRequest, errors.New("send the export's .zip, or the conversations.json inside it, as the body"))
+		return
+	}
+	res, err := chatimport.Import(r.Context(), s.d.Store, tmp.Name())
+	if err != nil {
+		if res.Conversations == 0 && res.Empty == 0 {
+			s.failCode(w, http.StatusBadRequest, err)
+			return
+		}
+		// Part of it was read before a broken conversation: what was
+		// imported stays, and the answer says where it stopped.
+		s.d.Log.Warn("chat import stopped part way", "component", "api", "err", err, "conversations", res.Conversations)
+		writeJSON(w, http.StatusOK, ChatImport{Result: res, Error: err.Error()})
+		return
+	}
+	s.d.Log.Info("chats imported", "component", "api", "conversations", res.Conversations, "added", res.Added, "updated", res.Updated, "messages", res.Messages)
+	writeJSON(w, http.StatusOK, ChatImport{Result: res})
+}
+
+// ChatImport is POST /v1/chats/import's answer: what was imported, and where
+// it stopped when a conversation could not be read.
+type ChatImport struct {
+	chatimport.Result
+	Error string `json:"error,omitempty"`
 }

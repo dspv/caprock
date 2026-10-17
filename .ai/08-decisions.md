@@ -4794,6 +4794,10 @@ the flag is set on spawn, not derived from the folder); a chat's files need
 scripts to be useful (an opt-in per file, never by default); or the sync in
 OQ-22 is decided.
 
+*Amended 2026-10-17 by [ADR-074](#adr-074--chats-from-claudeai-and-chatgpt-are-imported-from-an-export-the-user-downloaded-never-synced):*
+a chat may also be a conversation imported from a Claude.ai or ChatGPT
+export — a session with no folder and no process, read-only.
+
 ---
 
 ## ADR-072 — AI;DR: one answer squeezed by the user's own agent CLI, on a tap, cached
@@ -4917,3 +4921,92 @@ sent.
 each is a named line on the sheet the user can untick, as Feedback's
 *Include diagnostics* is, and a new decision); reports arrive that the site
 cannot keep private; or the limits stop fitting real screenshots.
+
+---
+
+## ADR-074 — Chats from Claude.ai and ChatGPT are imported from an export the user downloaded, never synced
+
+**Date:** 2026-10-17 · **Status:** accepted (built on the owner's ask,
+2026-10-16 and 2026-10-17, translated: Caprock's chats and his Claude.ai and
+ChatGPT conversations in one place — "try to build chat sync"). Amends
+[ADR-071](#adr-071--chats-are-a-kind-of-session-marked-listed-apart-started-in-one-tap-read-as-a-conversation).
+Research and sources: [OQ-22](12-risks.md). Contract:
+[03-contracts.md § Chats](03-contracts.md#chats-http); screen:
+[04-ui.md § Chats](04-ui.md#chats).
+
+**Context.** A sync needs something to read the conversations from. As of
+2026-10-17 neither Anthropic nor OpenAI offers a supported API that reads a
+consumer account's chat history: the Claude API is stateless, and OpenAI's
+Conversations API holds conversations made through its own Responses API.
+The only programs that read claude.ai chats use the web app's private,
+undocumented endpoints, and both companies' consumer terms forbid exactly
+that — Anthropic's any access "through automated or non-human means"
+without an API key or explicit permission, OpenAI's to "automatically or
+programmatically extract data". What both do offer is a self-service
+export: the user asks, the service emails a link, the user downloads a zip
+whose `conversations.json` holds every conversation. Neither documents that
+file; open-source readers agree on its shape.
+
+**Decisions.**
+
+- **Import, not sync.** *Import from Claude.ai or ChatGPT…* on the Chats
+  screen takes the export's .zip, or the conversations.json from inside
+  it, and `POST /v1/chats/import` reads it on this machine
+  (`internal/chatimport`). Nothing is sent anywhere and no account is
+  signed in to (rule 4); the user fetched their own data from the service
+  themselves, by the route the service offers.
+- **An imported conversation is a chat** (ADR-071: a chat is a session):
+  `chat = 1`, ended, not Caprock's, no folder, its service as `agent`
+  (`claude.ai`, `chatgpt`) — so the list shows the service's mark and
+  name, the search, archive, rename and delete work unchanged, and a
+  paired phone reads it as it reads any chat. Its messages are `turn.user`
+  and `turn.assistant` events, so the conversation view and the session
+  search read them as they read Caprock's own.
+- **Read-only.** Nothing can be typed into it and it cannot be continued
+  here: the conversation lives on the service, and the copy says to carry
+  it on there. It has no *Files*.
+- **Counted by nothing.** No tokens, no cost, no `session_stats` or daily
+  row, and its events are `internal`, the flag every aggregate already
+  leaves out. A conversation held on claude.ai is not work done on this
+  machine, and a 2024 chat must not move a 2024 day's activity.
+- **Deduplicated by the service's ids.** The session id is the source and
+  the service's conversation id; each event's key is the service's message
+  id. Importing a newer export adds only the new messages; one the user
+  deleted in Caprock keeps its tombstone and is not imported again.
+- **The branch the service shows.** Both exports keep edited and retried
+  messages as a tree; the import reads the path to the current message
+  (`current_leaf_message_uuid`, `current_node`), not the abandoned
+  versions. Thinking, tool calls, system and tool messages are left out;
+  an attachment is named, an image is `[Image]`.
+- **No migration.** `agent`, `native_id`, `chat` and `events.internal`
+  already say everything; 0061 was reserved and is not used.
+- **Machine only.** An export holds every conversation of an account; a
+  paired device reads imported chats but cannot import.
+- **Codex.** Codex CLI sessions on this machine are already observed from
+  their rollout files ([19-codex.md](19-codex.md)). A Codex session started as a chat (Quick
+  chat on Codex) is already a chat; a Codex session started in a project
+  is work, and stays in the work lists. Showing every Codex session in
+  Chats would mix work into a list for asking things, so they are not
+  copied there. Codex cloud tasks are not on this machine; whether a
+  ChatGPT export carries them is not known (OQ-22).
+
+**What a live sync would need later.** A supported, documented read API for
+consumer conversations, or written permission from the company, before any
+code; then an integration the user turns on, off by default, revocable,
+saying what it reads and where it goes (rule 4, ADR-047), with the account's
+credential kept as other integrations keep theirs. Writing a Caprock chat
+back to the service is a separate question with the same precondition.
+Until then a newer export imported again is the way to bring a list up to
+date.
+
+**Rules out:** reading claude.ai or chatgpt.com through their web apps'
+private endpoints, a browser session's cookies or a scraper (the terms
+forbid it, and it breaks without notice); sending the export anywhere;
+treating an imported conversation as spend or activity; a new table for
+imported chats.
+
+**Revisit if:** either company publishes a history API or a documented
+export format; an export's shape changes so that real exports stop
+importing (the fixtures in `testdata/chatimport` are synthetic); or users
+want an imported conversation continued in Caprock (then a new chat seeded
+with it, never a write to the service).

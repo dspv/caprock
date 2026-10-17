@@ -227,3 +227,45 @@ func TestAChatIsDeletedWithItsFolder(t *testing.T) {
 		t.Errorf("after delete: %+v", l)
 	}
 }
+
+func TestImportedChatsAreListedReadOnly(t *testing.T) {
+	e, _ := chatEnv(t)
+	body, err := os.ReadFile(filepath.Join("..", "..", "testdata", "chatimport", "chatgpt", "conversations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var res ChatImport
+	if code := e.send(t, http.MethodPost, "/v1/chats/import", string(body), &res); code != 200 || res.Added != 1 || res.Sources["chatgpt"] != 1 {
+		t.Fatalf("import: %d %+v", code, res)
+	}
+	if code := e.send(t, http.MethodPost, "/v1/chats/import", string(body), &res); code != 200 || res.Added != 0 || res.Unchanged != 1 {
+		t.Fatalf("again: %d %+v", code, res)
+	}
+	if code := e.send(t, http.MethodPost, "/v1/chats/import", `{"not":"an export"}`, nil); code != 400 {
+		t.Fatalf("not an export: %d", code)
+	}
+	if code := e.send(t, http.MethodPost, "/v1/chats/import", ``, nil); code != 400 {
+		t.Fatalf("empty: %d", code)
+	}
+	var l ChatList
+	e.get(t, "/v1/chats?q=trail", &l)
+	if len(l.Items) != 1 || l.Items[0].Agent != "chatgpt" || l.Chats != 2 {
+		t.Fatalf("list: %+v", l)
+	}
+	s := l.Items[0]
+	if s.Resume == nil || s.Resume.OK || !strings.Contains(s.Resume.Reason, "ChatGPT") {
+		t.Fatalf("resume: %+v", s.Resume)
+	}
+	if code := e.get(t, "/v1/chats/"+s.SessionID+"/files", nil); code != 404 {
+		t.Errorf("files of an imported chat: %d, want 404", code)
+	}
+	var del struct {
+		FolderRemoved bool `json:"folder_removed"`
+	}
+	if code := e.send(t, http.MethodDelete, "/v1/chats/"+s.SessionID, ``, &del); code != 200 || del.FolderRemoved {
+		t.Fatalf("delete: %d %+v", code, del)
+	}
+	if code := e.send(t, http.MethodPost, "/v1/chats/import", string(body), &res); code != 200 || res.Deleted != 1 || res.Added != 0 {
+		t.Fatalf("after delete: %d %+v", code, res)
+	}
+}

@@ -2618,6 +2618,7 @@ such a folder (`agents.IsChatDir`: a direct child of `chats/`, not a dot name).
 
 ```
 GET    /v1/chats?q=&archived=1&limit=     → ChatList {items: [SessionSummary], total, chats, archived}
+POST   /v1/chats/import                   body: an export → ChatImport (below; ADR-074)
 PUT    /v1/chats/{id}/archived            {archived: bool} → {session_id, archived_at}
 DELETE /v1/chats/{id}                     → {session_id, cost_usd, folder_removed}
 GET    /v1/chats/{id}/files               → {files: [ChatFile], truncated?}
@@ -2652,7 +2653,58 @@ GET    /v1/chats/{id}/file?path=&download=1 → the file's bytes
   PDF is left to the browser's own viewer. The dashboard draws HTML in an
   iframe with `sandbox=""` and the same policy as a `<meta>` in its `srcdoc`.
 - **Who.** A paired viewer may list chats and read their files; a controller
-  may also archive and delete them (§ Who may connect).
+  may also archive and delete them (§ Who may connect). Import is the
+  machine's only.
+
+**Imported chats** ([ADR-074](08-decisions.md)). A conversation from a
+Claude.ai or ChatGPT export the user downloaded is stored as a chat that
+nothing runs:
+
+```
+POST /v1/chats/import   body: the export's .zip, or its conversations.json → ChatImport
+ChatImport {conversations, added, updated, unchanged, deleted, empty, messages, sources: {source: n}, error?}
+```
+
+- **The body** is the file's bytes, any `Content-Type`, at most 4 GB (`413`
+  over). A zip is opened for its shallowest `conversations.json`; nothing
+  else in it is read. The file is spooled to the OS temp directory and
+  removed when the request ends. Nothing is sent anywhere (rule 4). Not an
+  export, or empty: `400` with the reason. A conversation that cannot be
+  read stops the import there; what came before it is kept, and the answer
+  is `200` with `error` saying where it stopped.
+- **The shapes.** Neither service documents its export; these are the
+  fields open-source readers agree on (OQ-22, read 2026-10-17), every one
+  optional. Claude.ai: an array of `{uuid, name, created_at, updated_at,
+  current_leaf_message_uuid, chat_messages: [{uuid, parent_message_uuid,
+  sender: human|assistant, text, content: [{type, text}], created_at,
+  attachments: [{file_name}], files: [{file_name}]}]}`; only `text` blocks
+  are prose, and the branch shown is the path from the root to
+  `current_leaf_message_uuid` (export order without one). ChatGPT: an array
+  of `{conversation_id|id, title, create_time, update_time (unix seconds),
+  current_node, mapping: {node: {parent, children, message: {id, author:
+  {role}, create_time, content: {content_type, parts}, metadata:
+  {model_slug, is_visually_hidden_from_conversation}}}}}`; the branch is
+  `current_node` back to the root, `user` and `assistant` messages only,
+  hidden ones left out, an image part written `[Image]`, private-use
+  citation markers removed. A message is clipped at 64,000 runes.
+- **Storage.** No new table or column. The session is
+  `claudeai-<uuid>` or `chatgpt-<id>`, with `agent` = `claude.ai` or
+  `chatgpt`, `native_id` = the service's id, `chat = 1`, `status =
+  'ended'`, `owned = 0`, no `cwd`, `title` = the conversation's name,
+  `prompt` = its first message, `started_at` / `last_event_at` /
+  `worked_at` from the export. Each message is a `turn.user` (`{prompt,
+  imported_from}`) or `turn.assistant` (`{text, model?, imported_from}`)
+  event with `source = 'import'`, key `imp:<message id>`, no tokens, no
+  cost and `internal = 1`, so every aggregate leaves it out; no
+  `session_stats` or `daily_stats` row is written.
+- **Re-import** of the same or a newer export adds only messages whose key
+  is new (`updated`), and leaves a conversation as it is otherwise
+  (`unchanged`). A chat the user deleted keeps its tombstone and is not
+  imported again (`deleted`). `empty` counts conversations with no message
+  to show.
+- **Read-only.** `resume` is `{ok: false, reason: "Imported from …"}`;
+  `files` is `404` (no folder); archive, rename and delete work as for any
+  chat (delete removes no folder).
 
 **`resume`** — `{ok, reason?, command?, permission_mode?}`. `permission_mode`
 is present only with `ok`: the mode `POST /v1/agents` will fill in for a

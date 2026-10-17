@@ -33,8 +33,9 @@ export interface Session {
    *  row (`PUT /v1/sessions/{id}/name`); outranks `title`. Empty: not renamed. */
   name?: string
   /** Which coding agent produced this session. Absent means Claude Code,
-   *  which is what every session was before OpenCode support. */
-  agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek' | 'hermes'
+   *  which is what every session was before OpenCode support. `claude.ai`
+   *  and `chatgpt` are conversations imported from an export (ADR-074). */
+  agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek' | 'hermes' | 'claude.ai' | 'chatgpt'
   /** The agent's own id for a Codex or OpenCode session Caprock started under
    *  an id of its own — the thread or session its importer files under this
    *  one. Absent until the first message is sent, and for every other session. */
@@ -70,6 +71,21 @@ export interface ChatList {
   total: number
   chats: number
   archived: number
+}
+
+/** What `POST /v1/chats/import` did with an export (ADR-074), counted per conversation. */
+export interface ChatImport {
+  conversations: number
+  added: number
+  updated: number
+  unchanged: number
+  /** Deleted in Caprock after an earlier import: they stay deleted. */
+  deleted: number
+  empty: number
+  messages: number
+  sources: Record<string, number>
+  /** Where the read stopped, when a conversation could not be read; what came before it is kept. */
+  error?: string
 }
 
 /** One file a chat wrote in its folder (`GET /v1/chats/{id}/files`). */
@@ -2024,6 +2040,16 @@ export const api = {
     if (o.limit) qs.set('limit', String(o.limit))
     const s = qs.toString()
     return get<ChatList>(`/v1/chats${s ? `?${s}` : ''}`)
+  },
+  /** Imports a Claude.ai or ChatGPT export the user downloaded (ADR-074): read on this machine, nothing is sent. */
+  importChats: async (file: Blob): Promise<ChatImport> => {
+    const res = await fetch('/v1/chats/import', { method: 'POST', headers: withDevice({ 'Content-Type': file.type || 'application/octet-stream' }), body: file })
+    if (!res.ok) {
+      let b: unknown
+      try { b = await res.json() } catch { /* not JSON */ }
+      throw new ApiError(res.status, `${res.status} ${res.statusText}`, b)
+    }
+    return (await res.json()) as ChatImport
   },
   archiveChat: (id: string, archived: boolean) => post<{ session_id: string; archived_at: number }>(`/v1/chats/${encodeURIComponent(id)}/archived`, { archived }, 'PUT'),
   /** Deletes a chat for good: its session (with a tombstone) and the files in its folder. */

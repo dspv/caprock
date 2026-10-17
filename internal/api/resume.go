@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/dspv/caprock/internal/agents"
+	"github.com/dspv/caprock/internal/chatimport"
 	"github.com/dspv/caprock/internal/ingest"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -111,6 +112,10 @@ func (s *Server) resumeState(sess store.Session) *ResumeInfo {
 	case "claude":
 	case "codex", "opencode":
 		return s.resumeOther(sess, agent)
+	case chatimport.SourceClaudeAI, chatimport.SourceChatGPT:
+		// An imported conversation (ADR-074): its history is a copy, and the
+		// service it lives on has no way in for a program on this machine.
+		return &ResumeInfo{Reason: "Imported from " + chatimport.SourceName(agent) + ": it can be read here, and carried on in " + chatimport.SourceName(agent) + " itself."}
 	default:
 		return &ResumeInfo{Reason: "Caprock continues Claude Code, Codex and OpenCode sessions."}
 	}

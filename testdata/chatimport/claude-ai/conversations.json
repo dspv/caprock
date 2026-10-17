@@ -1,0 +1,82 @@
+[
+  {
+    "uuid": "0b6c1d2e-0000-4000-8000-000000000001",
+    "name": "Sourdough starter schedule",
+    "created_at": "2026-03-02T09:00:00.000000Z",
+    "updated_at": "2026-03-02T09:05:00.000000Z",
+    "account": {"uuid": "00000000-0000-4000-8000-0000000000aa"},
+    "current_leaf_message_uuid": "m-0004",
+    "chat_messages": [
+      {
+        "uuid": "m-0001",
+        "parent_message_uuid": "00000000-0000-4000-8000-000000000000",
+        "sender": "human",
+        "text": "How often should I feed a <new> sourdough starter?",
+        "content": [{"type": "text", "text": "How often should I feed a <new> sourdough starter?"}],
+        "created_at": "2026-03-02T09:00:00.000000Z",
+        "attachments": [],
+        "files": []
+      },
+      {
+        "uuid": "m-0002",
+        "parent_message_uuid": "m-0001",
+        "sender": "assistant",
+        "text": "An earlier answer that was retried.",
+        "content": [{"type": "text", "text": "An earlier answer that was retried."}],
+        "created_at": "2026-03-02T09:01:00.000000Z",
+        "attachments": [],
+        "files": []
+      },
+      {
+        "uuid": "m-0003",
+        "parent_message_uuid": "m-0001",
+        "sender": "assistant",
+        "text": "Once or twice a day at room temperature.",
+        "content": [
+          {"type": "thinking", "thinking": "The user asks about feeding frequency."},
+          {"type": "text", "text": "Once or twice a day at room temperature."}
+        ],
+        "created_at": "2026-03-02T09:02:00.000000Z",
+        "attachments": [],
+        "files": []
+      },
+      {
+        "uuid": "m-0004",
+        "parent_message_uuid": "m-0003",
+        "sender": "human",
+        "text": "Thanks, here is my schedule.",
+        "content": [{"type": "text", "text": "Thanks, here is my schedule."}],
+        "created_at": "2026-03-02T09:05:00.000000Z",
+        "attachments": [{"file_name": "schedule.txt", "file_size": 42, "file_type": "text/plain", "extracted_content": "Mon 9am, Mon 9pm"}],
+        "files": []
+      }
+    ]
+  },
+  {
+    "uuid": "0b6c1d2e-0000-4000-8000-000000000002",
+    "name": "",
+    "created_at": "2026-03-03T10:00:00Z",
+    "updated_at": "2026-03-03T10:01:00Z",
+    "chat_messages": [
+      {
+        "uuid": "n-0001",
+        "sender": "human",
+        "text": "Translate 'good morning' into Greek: καλημέρα?",
+        "created_at": "2026-03-03T10:00:00Z"
+      },
+      {
+        "uuid": "n-0002",
+        "sender": "assistant",
+        "text": "Yes, καλημέρα is right.",
+        "created_at": "2026-03-03T10:01:00Z"
+      }
+    ]
+  },
+  {
+    "uuid": "0b6c1d2e-0000-4000-8000-000000000003",
+    "name": "Empty draft",
+    "created_at": "2026-03-04T10:00:00Z",
+    "updated_at": "2026-03-04T10:00:00Z",
+    "chat_messages": []
+  }
+]

@@ -12,7 +12,7 @@
 import { useEffect, useState } from 'react'
 import { OPEN_PATH_EVENT, type OpenPathDetail } from '@/lib/mdreader'
 import { api, ApiError, errText, type ChatFile, type SessionDetail } from '@/lib/api'
-import { chatModelLabel, chatTitle } from '@/lib/chats'
+import { chatModelLabel, chatTitle, importedFrom } from '@/lib/chats'
 import { href, navigate } from '@/lib/router'
 import { useApi } from '@/lib/useApi'
 import { useCanControl } from '@/lib/useCanControl'
@@ -73,6 +73,9 @@ export function ChatScreen({ id }: { id: string }) {
   // End in the ⋯, or the one line that says why not (components/PhoneEnd).
   const ending = s ? endState(s, canControl) : null
   const n = files?.length ?? 0
+  // A conversation imported from Claude.ai or ChatGPT (ADR-074): a copy,
+  // read here, with no folder and nothing to continue.
+  const source = importedFrom(s)
 
   const act = async (fn: () => Promise<unknown>, after: () => void) => {
     setBusy(true)
@@ -87,7 +90,9 @@ export function ChatScreen({ id }: { id: string }) {
   }, () => {})
 
   const footer = s && !canType ? (
-    !canControl ? (
+    source ? (
+      <>Imported from {source}. A copy to read and search here; carry the conversation on in {source} itself.</>
+    ) : !canControl ? (
       <>This device can read Caprock. To write here, open Caprock on your computer: Settings → <b className="font-medium text-fg">Use on your phone</b>, then <b className="font-medium text-fg">Let it control sessions</b>.</>
     ) : ended ? (
       <div className="grid gap-2">
@@ -127,10 +132,10 @@ export function ChatScreen({ id }: { id: string }) {
           )}
           {!renaming && (
             <>
-              <button type="button" onClick={() => setSheet('files')} aria-label={`Files · ${n}`} className="relative inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-[14px] text-fg-muted hover:text-fg">
+              {!source && <button type="button" onClick={() => setSheet('files')} aria-label={`Files · ${n}`} className="relative inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-[14px] text-fg-muted hover:text-fg">
                 <FileIcon size={16} /> {phone ? '' : 'Files'}
                 {n > 0 && <span className="num grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1 text-[11px] font-semibold text-bg">{n}</span>}
-              </button>
+              </button>}
               {s && (canControl || ending) && (
                 <button type="button" aria-label="More" onClick={() => { setSheet('more'); setConfirm(false) }} className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-fg-muted hover:text-fg">
                   <MoreIcon size={18} />
@@ -172,7 +177,7 @@ export function ChatScreen({ id }: { id: string }) {
               <button type="button" className={`${SHEET_BASE} text-danger`} onClick={() => setConfirm(true)}>Delete…</button>
             ) : (
               <button type="button" disabled={busy} className={`${SHEET_BASE} border-danger font-semibold text-danger`} onClick={() => void act(() => api.deleteChat(id), () => { setSheet(null); navigate({ name: 'chats' }) })}>
-                {busy ? 'Deleting…' : `Delete for good, with its ${n === 1 ? 'file' : `${n} files`}`}
+                {busy ? 'Deleting…' : source ? `Delete this copy (it stays in ${source})` : `Delete for good, with its ${n === 1 ? 'file' : `${n} files`}`}
               </button>
             )}
             </>}

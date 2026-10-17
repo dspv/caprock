@@ -75,6 +75,23 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-17 — unreleased: import chats from Claude.ai and ChatGPT (ADR-074)
+
+The owner (translated): his Claude.ai and ChatGPT conversations in one place
+with Caprock's chats, "try to build chat sync". Researched first (OQ-22,
+sources dated): neither service has a supported API that reads a consumer
+account's history, and both companies' terms forbid automated access, so a
+live sync is not built. Built: *Import from Claude.ai or ChatGPT…* on the
+Chats screen (machine only) and `POST /v1/chats/import`, which reads the
+export's .zip or conversations.json on this machine (`internal/chatimport`)
+and files each conversation as a read-only chat marked with its service,
+deduplicated by the service's conversation and message ids; deleted chats
+stay deleted. No migration: the session's `agent`, `native_id` and the
+events' `internal` flag carry it. Verified: Go tests on synthetic fixtures
+(`testdata/chatimport`, both formats, a zip, re-import, delete), the API
+route and the role table, the UI tests. Not yet checked against a real
+export: the owner's own, on his machine.
+
 ### 2026-10-17 — unreleased: AI;DR, the daemon side (ADR-072)
 
 The owner asked for an "AI;DR" button under an answer on the phone: the

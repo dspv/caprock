@@ -559,6 +559,9 @@ export function agentName(agent: string): string {
     case 'deepseek': return 'DeepSeek'
     case 'grok': return 'Grok'
     case 'hermes': return 'Hermes'
+    // Conversations imported from an export (ADR-074): the service is the source.
+    case 'claude.ai': return 'Claude.ai'
+    case 'chatgpt': return 'ChatGPT'
     // A custom agent's session carries its id (ADR-046); its name lives in
     // the config, so the id stands in where only the session is at hand.
     default: return agent.replace(/^custom:/, '')
