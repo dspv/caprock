@@ -9,9 +9,11 @@
  * window, whose crash and lost drops withdrew the Page tab (ADR-070). Its
  * data store is its own and kept nowhere; it gets no command of Caprock's.
  *
- * ⌘-click on a link keeps opening the default browser. "Open in Caprock" is
- * offered by whoever wants it — the link chooser (lib/linkchooser.ts) — as
- * `caprockEntry()` and `openInCaprock()`, the two names it needs from here.
+ * ⌘-click on a link keeps opening the default browser. The link chooser
+ * (components/LinkChooser.tsx) offers *Caprock browser* wherever a browser
+ * tab can exist (`browserAvailable()`), on or off, and `pickCaprock()` opens
+ * it there — turning the setting on first when it was off, since picking it
+ * is the user's consent (owner, 2026-10-17).
  *
  * Pure helpers and the setting; components/BrowserView.tsx draws the tab.
  */
@@ -112,6 +114,8 @@ export interface OpenBrowserDetail {
   url?: string
   /** The session whose terminal or chat the link was in. */
   sessionId?: string
+  /** A line the workspace shows as a toast once the tab is asked for. */
+  notice?: string
 }
 
 /** Asks the workspace for a browser tab (AppShell listens). */
@@ -132,15 +136,26 @@ export function openInCaprock(url: string, sessionId?: string): boolean {
   return true
 }
 
-/** The link chooser's row for it (lib/linkchooser.ts adds it as a `ChooserEntry`). */
-export interface CaprockEntry {
-  kind: 'caprock'
-  label: string
-}
+/** The toast after *Caprock browser* turned the in-app browser on. */
+export const TURNED_ON_NOTICE = 'In-app browser turned on · Settings → In-app browser to turn it off'
 
-/** The chooser's "Open in Caprock" row while the in-app browser is on; null while it is off. */
-export function caprockEntry(inApp = isTauri()): CaprockEntry | null {
-  return browserOn(inApp) ? { kind: 'caprock', label: 'Open in Caprock' } : null
+/**
+ * The link chooser's *Caprock browser*: `url` in a browser tab. With the
+ * in-app browser off it is turned on first — the pick is the consent — and
+ * the tab's toast says so and where to turn it off. False, and nothing done,
+ * outside the desktop app, for anything but a web address, or when the
+ * setting cannot be kept (storage refused).
+ */
+export function pickCaprock(url: string, inApp = isTauri()): boolean {
+  const u = pageUrl(url)
+  if (!browserAvailable(inApp) || !u) return false
+  const was = loadBrowserPrefs().on
+  if (!was) {
+    saveBrowserPrefs({ on: true })
+    if (!loadBrowserPrefs().on) return false
+  }
+  requestBrowserTab({ url: u, ...(was ? {} : { notice: TURNED_ON_NOTICE }) })
+  return true
 }
 
 // ---------------------------------------------------------------------------

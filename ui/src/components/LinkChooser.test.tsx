@@ -4,21 +4,23 @@ import { LinkChooser } from './LinkChooser'
 import { chooserEntries } from '@/lib/linkchooser'
 import type { InstalledBrowser } from '@/lib/api'
 
-// Nothing here opens a browser or touches the clipboard: every opener is a mock.
+// Nothing here opens a browser, a tab or touches the clipboard: every opener is a mock.
 const URL_ = 'https://github.com/dspv/caprock/pull/1'
 const LIST: InstalledBrowser[] = [
-  { id: 'firefox', name: 'Firefox', default: false },
   { id: 'chrome', name: 'Google Chrome', default: true },
+  { id: 'firefox', name: 'Firefox', default: false },
   { id: 'safari', name: 'Safari', default: false },
 ]
 
 function setup(over: Partial<Parameters<typeof LinkChooser>[0]> = {}) {
-  const calls = { openIn: [] as string[], openDefault: [] as string[], copied: [] as string[], closed: 0 }
+  const calls = { openIn: [] as string[], openDefault: [] as string[], caprock: [] as string[], copied: [] as string[], closed: 0 }
   const props = {
     url: URL_,
     at: { x: 40, y: 60 },
     onClose: () => { calls.closed++ },
     load: () => Promise.resolve(LIST),
+    caprock: true,
+    openCaprock: (u: string) => { calls.caprock.push(u); return true },
     openIn: (b: string, u: string) => { calls.openIn.push(`${b}|${u}`); return Promise.resolve() },
     openDefault: (u: string) => { calls.openDefault.push(u) },
     copy: (t: string) => { calls.copied.push(t); return Promise.resolve(true) },
@@ -29,49 +31,71 @@ function setup(over: Partial<Parameters<typeof LinkChooser>[0]> = {}) {
 }
 
 const names = () => screen.getAllByRole('menuitem').map((b) => b.textContent)
+const kinds = (l: InstalledBrowser[] | null, o?: Parameters<typeof chooserEntries>[1]) => chooserEntries(l, o).map((e) => (e.kind === 'browser' ? e.name : e.kind))
 
 afterEach(() => { vi.restoreAllMocks() })
 
 describe('chooserEntries', () => {
-  it('puts the default first, then the rest as the daemon sorted them, then Copy link', () => {
-    expect(chooserEntries(LIST).map((e) => (e.kind === 'browser' ? e.name : e.kind))).toEqual(['Google Chrome', 'Firefox', 'Safari', 'copy'])
+  it('offers the default, Caprock where it can be, Copy link, then Other browser…', () => {
+    expect(kinds(LIST, { caprock: true })).toEqual(['default', 'caprock', 'copy', 'more'])
+    expect(chooserEntries(LIST)[0]).toEqual({ kind: 'default', name: 'Google Chrome' })
   })
-  it('offers the system default when the list is unknown or names none', () => {
-    expect(chooserEntries(null).map((e) => e.kind)).toEqual(['system', 'copy'])
-    expect(chooserEntries([{ id: 'x', name: 'X', default: false }]).map((e) => e.kind)).toEqual(['system', 'browser', 'copy'])
+  it('lists the other browsers in place of Other browser… once expanded', () => {
+    expect(kinds(LIST, { caprock: true, expanded: true })).toEqual(['default', 'caprock', 'copy', 'Firefox', 'Safari'])
   })
-  it('lists Open in Caprock after the browsers only while the in-app browser is on', () => {
-    expect(chooserEntries(LIST, true).map((e) => e.kind)).toEqual(['browser', 'browser', 'browser', 'caprock', 'copy'])
-    expect(chooserEntries(LIST, false).some((e) => e.kind === 'caprock')).toBe(false)
+  it('has no Caprock row where a browser tab cannot exist, and nothing to expand without others', () => {
+    expect(kinds(LIST)).toEqual(['default', 'copy', 'more'])
+    expect(kinds(null)).toEqual(['default', 'copy'])
+    expect(kinds([{ id: 'c', name: 'Chrome', default: true }], { caprock: true })).toEqual(['default', 'caprock', 'copy'])
+    expect(chooserEntries([{ id: 'x', name: 'X', default: false }])[0]).toEqual({ kind: 'default' })
   })
 })
 
 describe('LinkChooser', () => {
-  it('offers Open in Caprock while the in-app browser is on, and says how to turn it on when it is not', async () => {
-    const calls = setup({ inCaprock: true })
-    await waitFor(() => expect(names()).toEqual(['Google Chromedefault', 'Firefox', 'Safari', 'Open in Caprocktab', 'Copy link']))
-    // The test page has no in-app browser behind it: the pick says so and stays open.
-    fireEvent.click(screen.getByRole('menuitem', { name: /Open in Caprock/ }))
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/In-app browser \(beta\)/))
+  it('shows the two choices and Copy link, the default named and focused', async () => {
+    setup()
+    await waitFor(() => expect(names()).toEqual(['Default browserGoogle Chrome', 'Caprock browser', 'Copy link', 'Other browser…']))
+    expect(screen.getByRole('menu', { name: 'Open link in' })).toBeInTheDocument()
+    expect(screen.getByText(URL_)).toBeInTheDocument()
+    expect(screen.getAllByRole('menuitem')[0]).toHaveFocus()
+  })
+
+  it('opens the default as ⌘-click does', async () => {
+    const calls = setup()
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Default browser/ }))
+    expect(calls.openDefault).toEqual([URL_])
+    expect(calls.openIn).toEqual([])
+    expect(calls.closed).toBe(1)
+  })
+
+  it('opens a Caprock tab', async () => {
+    const calls = setup()
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Caprock browser' }))
+    expect(calls.caprock).toEqual([URL_])
+    expect(calls.closed).toBe(1)
+  })
+
+  it('says so and stays open when no Caprock tab could open', async () => {
+    const calls = setup({ openCaprock: () => false })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Caprock browser' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/In-app browser \(beta\)/)
     expect(calls.closed).toBe(0)
   })
 
-  it('lists the browsers, the default first and marked, then Copy link; the first takes focus', async () => {
-    setup()
-    await waitFor(() => expect(names()).toEqual(['Google Chromedefault', 'Firefox', 'Safari', 'Copy link']))
-    expect(screen.getByRole('menu', { name: 'Open link in' })).toBeInTheDocument()
-    expect(screen.getByText(URL_)).toBeInTheDocument()
-    await waitFor(() => expect(screen.getAllByRole('menuitem')[0]).toHaveFocus())
+  it('has no Caprock row outside the desktop app', async () => {
+    setup({ caprock: false })
+    await waitFor(() => expect(names()).toEqual(['Default browserGoogle Chrome', 'Copy link', 'Other browser…']))
   })
 
-  it('opens the default as ⌘-click does, any other through the daemon', async () => {
+  it('expands Other browser… in place, focuses the first, and opens one through the daemon', async () => {
     const calls = setup()
-    fireEvent.click(await screen.findByRole('menuitem', { name: /Google Chrome/ }))
-    expect(calls.openDefault).toEqual([URL_])
-    expect(calls.openIn).toEqual([])
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Firefox' }))
-    await waitFor(() => expect(calls.openIn).toEqual([`firefox|${URL_}`]))
-    expect(calls.closed).toBe(2)
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Other browser…' }))
+    await waitFor(() => expect(names()).toEqual(['Default browserGoogle Chrome', 'Caprock browser', 'Copy link', 'Firefox', 'Safari']))
+    expect(screen.getByRole('menuitem', { name: 'Firefox' })).toHaveFocus()
+    expect(calls.closed).toBe(0)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Safari' }))
+    await waitFor(() => expect(calls.openIn).toEqual([`safari|${URL_}`]))
+    expect(calls.closed).toBe(1)
   })
 
   it('copies the link', async () => {
@@ -83,28 +107,31 @@ describe('LinkChooser', () => {
 
   it('moves by arrows, picks by Enter, and closes on Escape without opening anything', async () => {
     const calls = setup()
-    await waitFor(() => expect(screen.getAllByRole('menuitem')[0]).toHaveFocus())
+    await waitFor(() => expect(names()).toHaveLength(4))
+    expect(screen.getAllByRole('menuitem')[0]).toHaveFocus()
     const menu = screen.getByRole('menu')
     fireEvent.keyDown(menu, { key: 'ArrowDown' })
-    expect(screen.getByRole('menuitem', { name: 'Firefox' })).toHaveFocus()
+    expect(screen.getByRole('menuitem', { name: 'Caprock browser' })).toHaveFocus()
     fireEvent.keyDown(menu, { key: 'End' })
-    expect(screen.getByRole('menuitem', { name: 'Copy link' })).toHaveFocus()
+    expect(screen.getByRole('menuitem', { name: 'Other browser…' })).toHaveFocus()
     fireEvent.keyDown(menu, { key: 'Escape' })
     expect(calls.closed).toBe(1)
     expect(calls.openIn).toEqual([])
     expect(calls.openDefault).toEqual([])
+    expect(calls.caprock).toEqual([])
   })
 
   it('says so and stays open when a browser fails to open', async () => {
     const calls = setup({ openIn: () => Promise.reject(new Error('it quit')) })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Other browser…' }))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Safari' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/^Could not open it in Safari: it quit$/)
     expect(calls.closed).toBe(0)
   })
 
   it('still offers the default and Copy link when the daemon cannot list browsers', async () => {
-    const calls = setup({ load: () => Promise.resolve(null) })
-    await waitFor(() => expect(names()).toEqual(['Default browserdefault', 'Copy link']))
+    const calls = setup({ load: () => Promise.resolve(null), caprock: false })
+    await waitFor(() => expect(names()).toEqual(['Default browser', 'Copy link']))
     await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: /Default browser/ })) })
     expect(calls.openDefault).toEqual([URL_])
   })

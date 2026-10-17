@@ -4,7 +4,9 @@
 // .ai/21-app.md).
 //
 // Each OS says which apps handle web links in its own way, and the list is
-// read from there rather than from a fixed list of names:
+// read from there; then only the web browsers known here are kept, with the
+// default always (known.go), since a chat app or a terminal registers for
+// https too:
 //
 //   - macOS: LaunchServices, the apps registered for `https`
 //     (LSCopyAllHandlersForURLScheme) and the default one, each resolved to
@@ -50,6 +52,9 @@ type Browser struct {
 	Default bool `json:"default"`
 	// app is the bundle (macOS) or the executable (Windows).
 	app string
+	// bundle is the macOS bundle identifier ("com.google.Chrome"), when
+	// LaunchServices could say; IsWebBrowser reads it.
+	bundle string
 	// exec is the desktop entry's Exec line, split into words (Linux).
 	exec []string
 }
@@ -173,12 +178,12 @@ func (o *Opener) detected() []Browser {
 		if d == nil {
 			d = DetectHere
 		}
-		o.found = Sorted(d(o.env()))
+		o.found = Sorted(WebBrowsersOnly(d(o.env())))
 	})
 	return o.found
 }
 
-// List is the installed browsers, the default first.
+// List is the installed web browsers (WebBrowsersOnly), the default first.
 func (o *Opener) List() []Browser { return o.detected() }
 
 // Open opens u in the browser with this id.

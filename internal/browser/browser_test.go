@@ -189,8 +189,9 @@ func TestOpenerNeverRunsAnythingButThePlan(t *testing.T) {
 		Detect: func([]string) []Browser {
 			detected++
 			return []Browser{
-				{ID: "b", Name: "Beta", app: "/Applications/Beta.app", exec: []string{"/usr/bin/beta", "%u"}},
+				{ID: "b", Name: "Firefox", app: "/Applications/Firefox.app", exec: []string{"/usr/bin/firefox", "%u"}},
 				{ID: "a", Name: "Alpha", Default: true, app: "/Applications/Alpha.app", exec: []string{"/usr/bin/alpha", "%u"}},
+				{ID: "t", Name: "iTerm", app: "/Applications/iTerm.app", exec: []string{"/usr/bin/iterm", "%u"}},
 			}
 		},
 		Run: func(_ context.Context, p nativeterm.Plan, env []string) error {
@@ -203,8 +204,12 @@ func TestOpenerNeverRunsAnythingButThePlan(t *testing.T) {
 			return nil
 		},
 	}
-	if l := o.List(); len(l) != 2 || l[0].ID != "a" {
+	// The default stays though no list knows it; a terminal that handles https does not.
+	if l := o.List(); len(l) != 2 || l[0].ID != "a" || l[1].ID != "b" {
 		t.Fatalf("list %+v", l)
+	}
+	if _, err := o.Open(context.Background(), "t", "https://example.com"); !errors.Is(err, ErrNoBrowser) {
+		t.Errorf("a terminal is not offered, so not opened: %v", err)
 	}
 	if _, err := o.Open(context.Background(), "b", "javascript:alert(1)"); !errors.Is(err, ErrBadURL) {
 		t.Errorf("bad url: %v", err)
@@ -213,7 +218,7 @@ func TestOpenerNeverRunsAnythingButThePlan(t *testing.T) {
 		t.Errorf("unknown browser: %v", err)
 	}
 	b, err := o.Open(context.Background(), "b", "https://example.com")
-	if err != nil || b.Name != "Beta" || len(ran) != 1 {
+	if err != nil || b.Name != "Firefox" || len(ran) != 1 {
 		t.Fatalf("open: %+v %v %d", b, err, len(ran))
 	}
 	if !strings.Contains(strings.Join(ran[0].Args, " "), "https://example.com") {
@@ -221,5 +226,41 @@ func TestOpenerNeverRunsAnythingButThePlan(t *testing.T) {
 	}
 	if detected != 1 {
 		t.Errorf("detected %d times, want once", detected)
+	}
+}
+
+func TestWebBrowsersOnly(t *testing.T) {
+	in := []Browser{
+		// macOS: by bundle id or bundle name; the rest is what the owner's Mac listed beside them (2026-10-17).
+		{ID: "/Applications/Google Chrome.app", Name: "Google Chrome", Default: true, app: "/Applications/Google Chrome.app", bundle: "com.google.Chrome"},
+		{ID: "/Applications/ChatGPT.app", Name: "ChatGPT", app: "/Applications/ChatGPT.app", bundle: "com.openai.codex"},
+		{ID: "/Applications/Comet.app", Name: "Comet", app: "/Applications/Comet.app", bundle: "ai.perplexity.comet"},
+		{ID: "/Applications/Israel Discount Bank Secure Browser.app", Name: "Israel Discount Bank Secure Browser", app: "/Applications/Israel Discount Bank Secure Browser.app", bundle: "com.obs.idbny.msb.MSCB"},
+		{ID: "/Applications/iTerm.app", Name: "iTerm", app: "/Applications/iTerm.app", bundle: "com.googlecode.iterm2"},
+		{ID: "/Applications/Firefox Developer Edition.app", Name: "Firefox Developer Edition", app: "/Applications/Firefox Developer Edition.app"},
+		{ID: "/Applications/Renamed.app", Name: "Renamed", app: "/Applications/Renamed.app", bundle: "company.thebrowser.Browser"},
+		{ID: "/Applications/Visual Studio Code.app", Name: "Visual Studio Code", app: "/Applications/Visual Studio Code.app", bundle: "com.microsoft.VSCode"},
+		// Windows: by key, by executable, by a key with its install hash.
+		{ID: "OperaStable", Name: "Opera Stable", app: `C:\Users\me\AppData\Local\Programs\Opera\launcher.exe`},
+		{ID: "Firefox-308046B0AF4A39CB", Name: "Firefox", app: `C:\Program Files\Mozilla Firefox\firefox.exe`},
+		{ID: "Vivaldi.ABCDEF", Name: "Vivaldi Browser", app: `C:\Vivaldi\Application\vivaldi.exe`},
+		{ID: "Bank", Name: "Bank Secure", app: `C:\Bank\launcher.exe`},
+		// Linux: desktop ids, Flatpak's among them, and a terminal and an editor.
+		{ID: "com.brave.Browser.desktop", Name: "Brave"},
+		{ID: "org.mozilla.firefox.desktop", Name: "Firefox Web Browser"},
+		{ID: "org.gnome.Terminal.desktop", Name: "Terminal"},
+		{ID: "code.desktop", Name: "Code"},
+	}
+	var got []string
+	for _, b := range WebBrowsersOnly(in) {
+		got = append(got, b.Name)
+	}
+	want := []string{"Google Chrome", "Comet", "Firefox Developer Edition", "Renamed", "Opera Stable", "Firefox", "Vivaldi Browser", "Brave", "Firefox Web Browser"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q\nwant %q", got, want)
+	}
+	// The default is kept whatever it is: it is what a plain click opens.
+	if kept := WebBrowsersOnly([]Browser{{ID: "x", Name: "Odd Default", Default: true}, {ID: "y", Name: "ChatGPT"}}); len(kept) != 1 || kept[0].Name != "Odd Default" {
+		t.Fatalf("default dropped: %+v", kept)
 	}
 }

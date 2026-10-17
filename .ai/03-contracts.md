@@ -1838,7 +1838,7 @@ POST   /v1/brain/backfill            {days?, dry_run?} → BrainEstimate; 409 wh
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
 POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, name}}; this machine only
-GET    /v1/browsers                  → {browsers: [{id, name, default}]}; web browsers installed here, the default first; this machine only
+GET    /v1/browsers                  → {browsers: [{id, name, default}]}; known web browsers installed here and the default, the default first; this machine only
 POST   /v1/browsers/open             {browser, url} → {browser: {id, name, default}}; an http(s) url in that browser; this machine only
 POST   /v1/sessions/{id}/open-terminal {terminal?, mode?: resume|move|fork} → {terminal: {id, name}, mode, command}
 PUT    /v1/sessions/{id}/name        {name} → {session_id, name}; "" clears it; 400 without name, 404 for an unknown session (§ Session name DDL)
@@ -2846,8 +2846,13 @@ Linux the desktop entries in the XDG data dirs (plus Flatpak's and Snap's
 exports) whose `MimeType` names `x-scheme-handler/http` or `https`, shown and
 with their `TryExec` installed, `id` the desktop file id, the default from
 `mimeapps.list` (the desktop-specific one first, then the config and data
-dirs, then `defaults.list`). Every app registered for https is listed, as
-the OS's own default-browser setting lists it. `POST /v1/browsers/open`
+dirs, then `defaults.list`). Of what the OS names, only the web browsers
+`internal/browser/known.go` knows are listed — by bundle id or app name on
+macOS, executable, StartMenuInternet key or display name on Windows,
+desktop file id or `Name` on Linux — and the default always, known or not:
+an app that merely registers for https (a chat app, a terminal, an editor,
+a bank's "secure browser" wrapper) is left out, and `POST /v1/browsers/open`
+refuses its id as unknown. `POST /v1/browsers/open`
 `{browser, url}` opens an `http` or `https` `url` (a host, no spaces or
 control characters, at most 8 KiB) in that browser and answers `{browser}`;
 a bad URL or an unknown browser is `400`, a launch that fails `502`. Each

@@ -1843,15 +1843,17 @@ replies to a running session: Continue, Shorter and the like"). Built in
 - **Links in a terminal** (`ui/src/lib/termlinks.ts`, .ai/04-ui.md § Session
   Detail). ⌘-click (Ctrl+click off macOS) opens a link in the default
   browser, through the shell's `open_external`. ⇧⌘-click (Ctrl+Shift+click)
-  on an http(s) link opens a chooser at the pointer: the browsers installed
-  here, the default first and marked, then *Copy link* (owner, 2026-10-17).
-  The daemon finds them (`internal/browser`, `GET /v1/browsers`: LaunchServices
-  on macOS, the registry's StartMenuInternet on Windows, `.desktop` entries
-  for `x-scheme-handler/http(s)` on Linux) and opens a picked one
-  (`POST /v1/browsers/open`), a process Caprock starts (rule 7). The
-  chooser's rows are entry kinds (`lib/linkchooser.ts`); *Open in Caprock*
-  follows the browsers while the in-app browser (beta, ADR-075) is on, and
-  is not listed while it is off.
+  on an http(s) link opens a chooser at the pointer with two choices (owner,
+  2026-10-17): *Default browser*, named and focused, and *Caprock browser*,
+  always in the app — picked while the in-app browser (beta, ADR-075) is off,
+  it turns it on and a toast says where to turn it off — then *Copy link*,
+  and a quiet *Other browser…* that expands in place into the other web
+  browsers. The daemon finds those (`internal/browser`, `GET /v1/browsers`:
+  LaunchServices on macOS, the registry's StartMenuInternet on Windows,
+  `.desktop` entries for `x-scheme-handler/http(s)` on Linux), keeps only
+  the known web browsers and the default (`known.go`), and opens a picked
+  one (`POST /v1/browsers/open`), a process Caprock starts (rule 7). The
+  chooser's rows are entry kinds (`lib/linkchooser.ts`).
 
 ## File tabs
 
@@ -1883,7 +1885,8 @@ with ⌘W and is restored on relaunch like them
 ## Browser tabs
 
 The in-app browser, beta, off until Settings → *In-app browser (beta)* turns
-it on; with it off no page window is ever made. Decided in
+it on, or the user picks *Caprock browser* in the link chooser (which says
+so in a toast); with it off no page window is ever made. Decided in
 [ADR-075](08-decisions.md), which also records why 0.123.0's Page tab
 crashed (ADR-070); what the user sees is in
 [04-ui.md § The app workspace](04-ui.md#the-app-workspace), *Browser tabs*.
@@ -1908,8 +1911,8 @@ crashed (ADR-070); what the user sees is in
   its WebContent process is done with it first (the 0.124.0 crash, ADR-075).
   A dashboard reload hides every page; the tabs that come back show theirs.
 - **Opened from** File → *New Browser Tab* (macOS, a globe), ⌘K and the +
-  menu, an address typed into ⌘K, *Open in Caprock* in the link chooser
-  (`caprockEntry`, `openInCaprock` in `ui/src/lib/browsertab.ts`), and a
+  menu, an address typed into ⌘K, *Caprock browser* in the link chooser
+  (`pickCaprock` in `ui/src/lib/browsertab.ts`), and a
   page's own new window (target=_blank, `window.open`): another tab, never a
   popup. ⌘-click keeps opening the default browser.
 - **A new tab starts in its address box**; plain words search with the
