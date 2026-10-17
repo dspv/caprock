@@ -24,6 +24,7 @@ import { useApi } from '@/lib/useApi'
 import { useNow } from '@/lib/useNow'
 import { fmtAgo } from '@/lib/format'
 import { href } from '@/lib/router'
+import { extTitle } from '@/lib/externalLinks'
 import { COMPUTERS_SECTION } from './Pairing'
 import { Section } from './SettingsParts'
 import { Copyable } from './ui'
@@ -223,7 +224,7 @@ function OtherComputerSteps() {
         <li>
           Install Caprock there — the app, or the daemon alone on a machine with no screen:{' '}
           <Copyable command="brew install dspv/tap/caprock" /> (macOS, Linux), <Copyable command="scoop install caprock" /> (Windows), or a build from{' '}
-          <a href="https://github.com/dspv/caprock/releases" target="_blank" rel="noreferrer" className="text-accent hover:underline">Releases</a>.
+          <a href="https://github.com/dspv/caprock/releases" target="_blank" rel="noreferrer" title={extTitle()} className="text-accent hover:underline">Releases</a>.
           Then <Copyable command="caprock up" />.
         </li>
         <li>Turn on access from anywhere: <Copyable command="caprock remote on" /></li>
