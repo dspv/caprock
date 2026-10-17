@@ -38,6 +38,7 @@ import (
 	"github.com/dspv/caprock/internal/keepawake"
 	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/loop"
+	"github.com/dspv/caprock/internal/modules"
 	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/nativeterm"
 	"github.com/dspv/caprock/internal/pairing"
@@ -216,10 +217,24 @@ type Deps struct {
 	Shells ShellController
 	// Mail serves /v1/mail/* (Caprock Mail, internal/mail). nil ⇒ 501.
 	Mail http.Handler
+	// Admin keeps the admin key for private modules, which live under
+	// DataDir (ADR-075). nil ⇒ GET /v1/admin answers {admin:false} and the
+	// module routes answer 404.
+	Admin AdminController
+	// AdminVerify checks an admin key; nil ⇒ modules.ParseKey, the key
+	// compiled into the build. Tests pass a key pair of their own.
+	AdminVerify func(key string) (modules.Grant, error)
 	// DataDir is where Caprock keeps its own state. Needed so a file pasted
 	// into the terminal can be written somewhere Claude Code can read it by
 	// path. Empty ⇒ POST /v1/paste returns 501.
 	DataDir string
+}
+
+// AdminController keeps the admin key that opens private modules (ADR-075).
+// The API verifies the key; the controller only stores it.
+type AdminController interface {
+	AdminKey() string
+	SetAdminKey(string) error
 }
 
 // UpdateController is the subset of the release checker the API needs.
@@ -682,6 +697,7 @@ func New(d Deps) *Server {
 	// rather than duplicated in the UI, so one edit in Go changes every place
 	// a price appears.
 	m.HandleFunc("GET /v1/premium", s.handlePremium)
+	s.routeModules(m)
 	m.HandleFunc("GET /v1/gemini", s.handleGeminiStatus)
 	m.HandleFunc("POST /v1/gemini/ask", s.handleGeminiAsk)
 	m.HandleFunc("GET /v1/pricing", s.handlePricing)

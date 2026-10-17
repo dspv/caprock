@@ -22,6 +22,7 @@
 import type { Status } from './api'
 import { isWorkspaceHash } from './appmode'
 import { parseHash, type Route } from './router'
+import { moduleName } from './modules'
 
 export type FeedbackKind = 'bug' | 'idea' | 'question'
 
@@ -177,6 +178,7 @@ export function screenName(r: Route): string {
     case 'work': return 'Work'
     case 'chats': return 'Chats'
     case 'chat': return 'Chat'
+    case 'module': return moduleName(r.id)
   }
 }
 

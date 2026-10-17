@@ -9,6 +9,7 @@ import (
 
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/license"
+	"github.com/dspv/caprock/internal/modules"
 	"github.com/spf13/cobra"
 )
 
@@ -63,6 +64,14 @@ func showLicense(cmd *cobra.Command) error {
 	default:
 		fmt.Fprintf(out, "%s\nnot active: %s\n", cfg.LicenseKey, s.Reason)
 	}
+	// Said only to whoever stored an admin key (ADR-075).
+	if cfg.AdminKey != "" {
+		if g, err := modules.ParseKey(cfg.AdminKey); err == nil {
+			fmt.Fprintf(out, "Admin key: on, for %s\n", strings.Join(g.Modules, ", "))
+		} else {
+			fmt.Fprintf(out, "Admin key: not valid: %v\n", err)
+		}
+	}
 	return nil
 }
 
@@ -77,6 +86,19 @@ func licenseSetCmd() *cobra.Command {
 				return err
 			}
 			key := strings.TrimSpace(args[0])
+			// The same field takes an admin key, as Settings → License does
+			// (ADR-075); it is stored apart and grants nothing paid.
+			if modules.LooksLikeKey(key) {
+				if _, err := modules.ParseKey(key); err != nil {
+					return fmt.Errorf("that admin key is not valid: %w", err)
+				}
+				cfg.AdminKey = key
+				if err := config.Save(dir, cfg); err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "Admin key saved. Restart the daemon (caprock down && caprock up) to pick it up.")
+				return nil
+			}
 			// Refuse a key that does not work rather than storing it and
 			// leaving someone to wonder why nothing happened. Their next move
 			// is to email about it, and "invalid" is not an answer.
@@ -94,13 +116,22 @@ func licenseSetCmd() *cobra.Command {
 }
 
 func licenseClearCmd() *cobra.Command {
-	return &cobra.Command{
+	var admin bool
+	cmd := &cobra.Command{
 		Use:   "clear",
 		Short: "Remove the licence key",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, cfg, err := loadCfg()
 			if err != nil {
 				return err
+			}
+			if admin {
+				cfg.AdminKey = ""
+				if err := config.Save(dir, cfg); err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), "Admin key cleared. Restart the daemon to close its modules.")
+				return nil
 			}
 			cfg.LicenseKey = ""
 			if err := config.Save(dir, cfg); err != nil {
@@ -110,6 +141,9 @@ func licenseClearCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&admin, "admin", false, "clear the admin key instead")
+	_ = cmd.Flags().MarkHidden("admin")
+	return cmd
 }
 
 func licenseIssueCmd() *cobra.Command {

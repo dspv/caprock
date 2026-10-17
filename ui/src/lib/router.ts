@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/chats[?archived=1] · #/chats/:id
+// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/chats[?archived=1] · #/chats/:id · #/x/:id
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -39,6 +39,8 @@ export type Route =
   // one chat — a conversation, never a terminal.
   | { name: 'chats'; archived?: boolean }
   | { name: 'chat'; id: string }
+  // A private module the admin key opens (ADR-075): its page at /x/<id>/.
+  | { name: 'module'; id: string }
 
 export type StartMode = 'clone' | 'new' | 'worktree'
 
@@ -99,6 +101,8 @@ export function parseHash(hash: string): Route {
     case 'chats':
       if (parts[1]) return { name: 'chat', id: decodeURIComponent(parts[1]) }
       return params.get('archived') === '1' ? { name: 'chats', archived: true } : { name: 'chats' }
+    case 'x':
+      return parts[1] && /^[a-z][a-z0-9-]{0,31}$/.test(parts[1]) ? { name: 'module', id: parts[1] } : { name: 'now' }
     case 'start': {
       const mode = params.get('mode')
       return mode === 'clone' || mode === 'new' || mode === 'worktree' ? { name: 'start', mode } : { name: 'start' }
@@ -131,6 +135,7 @@ export function href(r: Route): string {
     case 'work': return '#/work'
     case 'chats': return r.archived ? '#/chats?archived=1' : '#/chats'
     case 'chat': return `#/chats/${encodeURIComponent(r.id)}`
+    case 'module': return `#/x/${r.id}`
     case 'pipeline': {
       const q = new URLSearchParams()
       if (r.repo) q.set('repo', r.repo)

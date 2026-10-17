@@ -5010,3 +5010,78 @@ export format; an export's shape changes so that real exports stop
 importing (the fixtures in `testdata/chatimport` are synthetic); or users
 want an imported conversation continued in Caprock (then a new chat seeded
 with it, never a write to the service).
+
+---
+
+## ADR-075 — Private modules: a slot opened by a signed admin key, holding nothing of its own
+
+**Date:** 2026-10-17 · **Status:** accepted (built on the owner's ask,
+2026-10-17, translated: tools of his own should run inside the Caprock app,
+open only to an admin key, and never be published or put in a public
+repository). Contract: [03-contracts.md § Private modules](03-contracts.md#private-modules-v1admin-xid-v1xiddocs);
+DDL: [§ Module documents DDL](03-contracts.md#module-documents-ddl-migration-0061);
+screen: [04-ui.md § Private modules](04-ui.md#private-modules).
+
+**Context.** The owner wants private tools inside the app: screens of his own,
+with their own data, drawn as one more Caprock screen. This repository is
+public and Apache-2.0, so whatever is in it is everybody's, and a check in
+it can be deleted by anyone who builds it. A private tool therefore cannot
+be *in* the build behind a check; the build can only carry a generic way to
+host one that is installed separately. Such a slot is also something a team
+could use to run private screens of its own.
+
+**Decisions.**
+
+- **The slot holds no module.** The public build verifies a key, installs a
+  module from a local folder, serves its pages and gives it a store. It names
+  no module, ships none and downloads none. Patching the key check out of the
+  public code opens nothing, because there is nothing to open: the key decides
+  who may install and open a module; not having the files decides the rest.
+- **An admin key is signed, unlike the Premium key.** `CRA1.<payload>.<sig>`:
+  `payload` is base64url (no padding) of `{"v":1,"sub":…,"role":"admin",
+  "modules":[…],"iat":"YYYY-MM-DD"}`, `sig` is base64url of an Ed25519
+  signature over the ASCII bytes of `payload`. The raw public key is compiled
+  in (`internal/modules`); the private key is never in this repository, its
+  CI or any file. The Premium key stays unsigned ([ADR-022](#adr-022--the-licence-key-is-an-offline-string-with-an-expiry-and-nothing-more)):
+  the two are stored apart and neither grants the other.
+- **One field takes both keys.** Settings → License, and `caprock license
+  set`, recognise the `CRA1.` prefix and store the key as `admin_key` through
+  `PUT /v1/admin`, which refuses a key that does not verify. There is no field,
+  tab, row or hint for modules anywhere until a valid key is stored; then the
+  licence field says so, with a way to remove it.
+- **Install is from a folder on this machine.** `caprock module install <dir>`
+  copies a folder holding `module.json` (`id`, `name`, optional `version`) and
+  `index.html` into `<data dir>/modules/<id>/`, replacing an older copy whole.
+  The key must name the module. Links inside the folder are refused, and the
+  daemon serves the files through `os.Root`, so nothing outside the module's
+  folder is ever served as part of it. `caprock module` is hidden from help.
+- **Shown as a screen with the app's theme.** Each installed module the key
+  names gets a sidebar row in the app and a nav pill in the browser, opening
+  `#/x/<id>`: a frame on `/x/<id>/`, served by the daemon on the dashboard's
+  origin. The host puts `data-theme`, `color-scheme` and every `--color-*` and
+  `--font-*` token on the frame's `<html>` and posts them as a
+  `caprock:theme` message, on load and on every palette change; the page's
+  URL carries `?theme=light|dark` for the first paint.
+- **A small store, refused without the key.** `/v1/x/<id>/docs/{collection}`
+  and `…/{docId}`: get, list, set, update (top-level merge, null removes) and
+  delete JSON objects up to 1 MB in `module_docs` (migration 0061). Every
+  route answers 403 unless the stored key verifies and names `<id>`.
+  Removing a module's files keeps its documents.
+- **Same origin is deliberate.** A module is the key holder's own code,
+  installed by them; on the dashboard's origin it calls the API the app
+  itself uses (for instance to start an agent in a project) with no token of
+  its own. A module is as trusted as the person who installed it.
+- **The machine's alone.** `/x/` is outside `/v1`, which the pairing gate
+  serves to anyone as the dashboard's files, so every module handler checks
+  `isLocal` itself; `/v1/admin` and the store are not paired-device routes.
+  A paired device sees no module and cannot set a key.
+- **No expiry in the key.** The issuer re-issues a key to change what it
+  names; a key is revoked on a machine by removing it there.
+
+**Rules out:** a module in the public repository or its releases; downloading
+a module from anywhere; an unsigned admin key; a locked tab or teaser shown
+without a key; a module reachable from a paired device.
+
+**Revisit if:** a module must be reachable from the phone (it would get its own
+paired-device decision), a module from someone else's hands needs isolation
+(a sandboxed, cross-origin frame and a scoped token), or keys need to expire.

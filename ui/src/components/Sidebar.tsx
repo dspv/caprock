@@ -65,6 +65,7 @@ import { TodayStrip } from './TodayStrip'
 import { useTodayCard } from '@/lib/todayCard'
 import { SidebarFooter } from './SidebarFooter'
 import { CaprockMark, ChatIcon, EyeIcon, FolderIcon, FolderPlusIcon, PlusIcon, SearchIcon } from './AppIcons'
+import { ModuleRows } from './ModuleRows'
 import { BrainSidebar } from './BrainSidebar'
 import { keys } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, saveRowOrder, type RowOrders } from '@/lib/rowOrder'
@@ -582,6 +583,9 @@ export function Sidebar(props: SidebarProps) {
         * status line is never cut off by the footer; folds, remembers it.
         * Its orb sparks for the sessions working now, from this model. */}
       {props.onRoute && <BrainSidebar onOpen={props.onRoute} working={today.working} />}
+
+      {/* Private modules an admin key opens (ADR-075); nothing without one. */}
+      {props.onRoute && <ModuleRows onOpen={props.onRoute} dashboardActive={props.dashboardActive && !props.mailActive && !props.pipelineActive} />}
 
       <SidebarFooter
         folded={folds.has('footer')}

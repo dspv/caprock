@@ -45,6 +45,7 @@ import { useNarrowScreen } from '@/lib/phone'
 import { documentTitle, isHome, pageTitle, useDocumentTitle } from '@/lib/pagetitle'
 import { BackHome } from './WhereAmI'
 import { extTitle } from '@/lib/externalLinks'
+import { useModules } from '@/lib/modules'
 
 const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] = [
   // "Home", not "Now" (owner, 2026-10-14, translated: "'Now' as the name of
@@ -92,7 +93,9 @@ const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] =
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
   const link = useLiveLink()
   const [plan, savePlan] = usePlan()
-  const active = (r: Route) => (r.name === route.name) || (r.name === 'now' && route.name === 'session') || (r.name === 'chats' && route.name === 'chat')
+  // The modules an admin key opens (ADR-075), after the fixed screens; none without one.
+  const nav = [...NAV, ...useModules().map((m) => ({ route: { name: 'module', id: m.id } as Route, label: m.name, phase: undefined, icon: undefined }))]
+  const active = (r: Route) => (r.name === 'module' ? route.name === 'module' && route.id === r.id : r.name === route.name) || (r.name === 'now' && route.name === 'session') || (r.name === 'chats' && route.name === 'chat')
   // Inside the desktop app the window already carries the link state, the
   // version and the theme (status strip, sidebar), and the website's footer
   // is the website's: a second set in the dashboard read as another app.
@@ -145,7 +148,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           * there was nothing saying which screen you were on. Inactive labels
           * move up to full `text-fg` too, since the row was uniformly dim. */}
         <nav className="inline-flex flex-wrap items-center gap-0.5 sm:ml-2 rounded-md bg-panel-2 p-0.5">
-          {NAV.map((n) => (
+          {nav.map((n) => (
             <a key={n.label} href={href(n.route)}
               aria-current={active(n.route) ? 'page' : undefined}
               // Home where it already is: its top. Elsewhere each screen opens where it was left (lib/screenPlace.ts).

@@ -4231,6 +4231,46 @@ NULL DEFAULT ''`, `messages.junk_hdr TEXT NOT NULL DEFAULT ''` and
 `contacts.sent` is filled from the Sent mail already stored). No index names a
 column added this way: `schema.sql` runs before `addedColumns`.
 
+### Private modules (`/v1/admin`, `/x/<id>/`, `/v1/x/<id>/docs`)
+
+The module slot ([ADR-075](08-decisions.md)). Code: `internal/modules` (key,
+manifest, install), `internal/api/modules.go`, `internal/store/moduledocs.go`,
+`cmd/caprock/module.go`, `ui/src/lib/modules.ts`. Every route is the
+machine's alone: a request that is not `isLocal` gets `{admin:false}`, 404 or
+403, and none is a paired-device route.
+
+- **`GET /v1/admin`** → `{admin: false}` without a valid key; with one,
+  `{admin: true, subject, modules: ["<id>", …], installed: [{id, name,
+  version?, url: "/x/<id>/"}]}` — `installed` lists only the modules that are
+  installed and named in the key. A stored key that does not verify adds
+  `key_error`, and nothing else.
+- **`PUT /v1/admin`** `{key}` verifies the key and stores it trimmed as
+  `config.json`'s `admin_key`; 400 with the reason when it does not verify;
+  an empty key clears it. Answers as `GET`. **`DELETE /v1/admin`** clears it.
+- **Key:** `CRA1.<payload>.<sig>`, `payload` base64url of `{"v":1,"sub",
+  "role":"admin","modules":[…],"iat":"YYYY-MM-DD"}`, `sig` base64url of an
+  Ed25519 signature over the ASCII `payload` part, verified with the raw
+  public key `modules.PublicKey`. Padding is accepted and not required. A
+  module id is `^[a-z][a-z0-9-]{0,31}$`.
+- **`GET /x/<id>/<path>`** serves the installed module's files when the key
+  names it; `/x/<id>` redirects to `/x/<id>/`; a folder is its `index.html`
+  or 404, never a listing. Anything else is a plain 404.
+- **Documents:** `GET /v1/x/<id>/docs/{collection}[?after=&limit=]` →
+  `{docs: [{id, data, created_at, updated_at}], next?}` by id, 100 by default,
+  at most 1000; `next` is the last id when the page is full. `GET|PUT|PATCH|DELETE
+  /v1/x/<id>/docs/{collection}/{docId}`: `PUT` writes a JSON object whole
+  (`created_at` kept), `PATCH` merges top-level fields into an existing one
+  (null removes a field; 404 when absent), `DELETE` → `{deleted}`. Bodies are
+  JSON objects of at most 1 MB. Collection and document ids are
+  `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`. 403 unless the key names `<id>`.
+- **Install:** `caprock module install <dir>` (hidden) copies a folder with
+  `module.json` (`{id, name, version?}`, name 1–40 characters) and
+  `index.html` into `<data dir>/modules/<id>/`, whole, through a staging
+  folder; links are refused; at most 5000 files and 256 MB. `caprock module
+  list`, `caprock module remove <id>` (documents are kept). `caprock license
+  set <CRA1 key>` stores the admin key; `caprock license clear --admin`
+  clears it.
+
 ### GitHub
 
 Connect GitHub, pick a repository to clone, put a local project on GitHub,
@@ -4845,6 +4885,25 @@ One kept AI;DR per assistant answer ([ADR-072](08-decisions.md), § AI;DR):
 the call, `created_at` unix ms. A row goes with its event: removing a
 session deletes its rows, and `PruneEventsBefore` deletes those whose event
 is gone, because an event id is a rowid that may be handed out again.
+
+### Module documents DDL (migration 0061)
+
+```sql
+CREATE TABLE IF NOT EXISTS module_docs (
+  module     TEXT NOT NULL,
+  collection TEXT NOT NULL,
+  doc_id     TEXT NOT NULL,
+  data       TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (module, collection, doc_id)
+) WITHOUT ROWID;
+```
+
+A private module's documents ([ADR-075](08-decisions.md), § Private modules):
+`data` is a JSON object as text, which the store never reads into;
+`created_at` and `updated_at` are unix ms. Rows stay when a module's files are
+removed, so installing it again finds them.
 
 ### Worked-at and parent DDL (migration 0027)
 

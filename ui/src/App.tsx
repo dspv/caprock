@@ -30,6 +30,8 @@ import { MailWindowBanner } from '@/screens/mail/MailWindowBanner'
 
 // Mail is its own world (internal/mail); its code loads only when opened.
 const MailScreen = lazy(() => import('@/screens/mail/MailScreen').then((m) => ({ default: m.MailScreen })))
+// A private module's screen (ADR-075); only an admin key ever opens it.
+const ModuleScreen = lazy(() => import('@/screens/ModuleScreen').then((m) => ({ default: m.ModuleScreen })))
 // Second Brain's screen draws a graph; its code loads only when opened too.
 const BrainScreen = lazy(() => import('@/screens/brain/BrainScreen').then((m) => ({ default: m.BrainScreen })))
 
@@ -141,6 +143,7 @@ export function Dashboard({ route, inApp = false, shown = true, scroller = pageS
       case 'work': return <WorkScreenHosted />
       case 'chats': return <ChatsScreen key={r.archived ? 'archived' : 'open'} archived={r.archived} />
       case 'chat': return <ChatScreen key={r.id} id={r.id} />
+      case 'module': return <Suspense fallback={null}><ModuleScreen key={r.id} id={r.id} /></Suspense>
     }
   }
   // The kept screens opened so far, each with the route it last showed.

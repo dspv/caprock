@@ -1850,6 +1850,25 @@ async function post<T>(path: string, body: unknown, method = 'POST'): Promise<T>
   return (res.status === 204 ? (undefined as T) : ((await res.json()) as T))
 }
 
+/** An installed module the admin key names (GET /v1/admin, ADR-075). */
+export interface ModuleInfo {
+  id: string
+  name: string
+  version?: string
+  /** Where the daemon serves its pages: /x/<id>/. */
+  url: string
+}
+
+/** GET /v1/admin: whether a valid admin key is stored, and what it opens. */
+export interface AdminState {
+  admin: boolean
+  /** Why a stored key does not verify; only when one was stored. */
+  key_error?: string
+  subject?: string
+  modules?: string[]
+  installed?: ModuleInfo[]
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body?: unknown) {
     super(message)
@@ -2191,6 +2210,10 @@ export const api = {
   pipelineAgents: (roots: string[]) => get<RepoAgents>(`/v1/pipeline/agents?${roots.map((r) => `repo=${encodeURIComponent(r)}`).join('&')}`),
   trends: (agent?: string) => get<Trends>(`/v1/stats/trends${agent && agent !== 'all' ? `?agent=${agent}` : ''}`),
   premium: () => get<PremiumPricing>('/v1/premium'),
+  // Private modules (ADR-075): the admin key and what it opens.
+  admin: () => get<AdminState>('/v1/admin'),
+  setAdminKey: (key: string) => post<AdminState>('/v1/admin', { key }, 'PUT'),
+  clearAdminKey: () => post<AdminState>('/v1/admin', {}, 'DELETE'),
   /** How many people committed to the listed repositories in 30 days (counts only). */
   teamSignal: () => get<TeamSignal>('/v1/team-signal'),
   windowStop: () => get<WindowStop>('/v1/window-stop'),

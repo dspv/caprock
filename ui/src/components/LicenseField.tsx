@@ -13,9 +13,13 @@
  * request either.
  */
 import { useEffect, useState } from 'react'
-import { api, type PremiumPricing, type Settings } from '@/lib/api'
+import { api, errText, type PremiumPricing, type Settings } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { extTitle } from '@/lib/externalLinks'
+import { announceAdmin, useAdmin } from '@/lib/modules'
+
+/** An admin key (ADR-075) is pasted into the same field and stored apart. */
+const ADMIN_PREFIX = 'CRA1.'
 
 export function LicenseField({ plan, save }: { plan: Settings; save: (patch: Partial<Settings>) => void }) {
   const [draft, setDraft] = useState(plan.license_key ?? '')
@@ -27,6 +31,22 @@ export function LicenseField({ plan, save }: { plan: Settings; save: (patch: Par
   useEffect(() => { setDraft(plan.license_key ?? '') }, [plan.license_key])
 
   const dirty = draft.trim() !== (plan.license_key ?? '').trim()
+  // Said only to someone holding a valid admin key, or who just pasted one.
+  const admin = useAdmin()
+  const [adminErr, setAdminErr] = useState('')
+  const submit = () => {
+    const key = draft.trim()
+    if (!key.startsWith(ADMIN_PREFIX)) {
+      save({ license_key: key })
+      return
+    }
+    setAdminErr('')
+    api.setAdminKey(key).then((st) => {
+      announceAdmin(st)
+      setDraft(plan.license_key ?? '')
+    }).catch((e) => setAdminErr(errText(e)))
+  }
+  const clearAdmin = () => { api.clearAdminKey().then(announceAdmin).catch((e) => setAdminErr(errText(e))) }
 
   // Label above the field rather than beside it: beside it, a fixed-width
   // label column left a phone about a hundred pixels for a forty-character key.
@@ -41,11 +61,11 @@ export function LicenseField({ plan, save }: { plan: Settings; save: (patch: Par
           spellCheck={false}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && dirty) save({ license_key: draft.trim() }) }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && dirty) submit() }}
         />
         <button
           disabled={!dirty}
-          onClick={() => save({ license_key: draft.trim() })}
+          onClick={submit}
           className="shrink-0 rounded-sm border border-border px-2 py-0.5 text-fg-muted hover:border-border-strong hover:text-fg disabled:opacity-40"
         >
           save
@@ -71,6 +91,14 @@ export function LicenseField({ plan, save }: { plan: Settings; save: (patch: Par
             </a>
           </span>
         )}
+        {adminErr && <span className="block text-danger">{adminErr}</span>}
+        {admin?.admin && (
+          <span data-admin-key className="block text-ok">
+            Admin key is on{admin.modules?.length ? ` — ${admin.modules.join(', ')}` : ''}.{' '}
+            <button type="button" onClick={clearAdmin} className="link">remove</button>
+          </span>
+        )}
+        {admin?.key_error && <span className="block text-warn">The stored admin key is not valid: {admin.key_error}.</span>}
         <span className="block text-fg-faint">
           Checked on this machine against the date inside the key. Caprock makes
           no call to us to verify it.
