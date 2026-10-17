@@ -34,6 +34,9 @@ import { TerminalKeys } from './TerminalKeys'
 import { ChevronIcon } from './AppIcons'
 import { touchScreen } from '@/lib/phone'
 import { QuickReplies } from './QuickReplies'
+import { canSpeak, speak, stopSpeaking, useAutoRead, useSpeaking } from '@/lib/readAloud'
+import { fetchTldr } from '@/lib/tldr'
+import { useQuickReplies } from '@/lib/quickReplies'
 
 /** Events fetched when the view opens, and per page back. */
 export const CHAT_PAGE_EVENTS = 300
@@ -100,7 +103,8 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   /** The session's process is gone: what waits to be sent becomes a draft. */
   ended?: boolean
   className?: string
-  /** The phone's chat: the raw keys folded behind a Keys button. */
+  /** The phone's chat: the one-row bar (TerminalKeys `walkie`) and the
+   *  latest answer as a card with AI;DR, Read aloud, Continue and Stop. */
   phone?: boolean
   /** The raw keys folded behind a Keys button off a phone too: a chat
    *  (ADR-071) is a conversation, not a terminal. Defaults to `phone`. */
@@ -224,6 +228,72 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   const start = startKey ? indexFrom(messages, startKey) : Math.max(0, messages.length - CHAT_WINDOW)
   const shown = messages.slice(start)
 
+  // The phone's latest answer (.ai/04-ui.md § From a phone, *The latest
+  // answer*): the last thing the agent wrote, and whether its turn has ended
+  // — a Stop or the session's end after it — which is when it is complete.
+  const latest = useMemo(() => {
+    if (!phone) return null
+    for (let i = messages.length - 1; i >= 0; i--) if (messages[i]!.kind === 'assistant') return messages[i]!
+    return null
+  }, [phone, messages])
+  const latestDone = useMemo(() => {
+    if (!latest) return false
+    if (ended) return true
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i]!
+      if (compareEvents(e, latest) <= 0) return false
+      if ((e.kind === 'agent.stop' || e.kind === 'session.end') && !e.agent_id) return true
+    }
+    return false
+  }, [latest, events, ended])
+  const [toast, setToast] = useState('')
+  const toastTimer = useRef(0)
+  const say = useCallback((msg: string) => {
+    window.clearTimeout(toastTimer.current)
+    setToast(msg)
+    toastTimer.current = window.setTimeout(() => setToast(''), 3200)
+  }, [])
+  useEffect(() => () => { window.clearTimeout(toastTimer.current); stopSpeaking() }, [sessionId])
+  // AI;DR on the latest answer: its summary, and whether it is shown.
+  const [tldr, setTldr] = useState<{ id: number; phase: 'loading' | 'shown' | 'full'; text?: string } | null>(null)
+  const tl = tldr && latest && tldr.id === latest.id ? tldr : null
+  const readAnswer = (m: ChatMessage, quiet = false) => {
+    // With the summary shown, the summary is what is read.
+    const text = tl?.phase === 'shown' && tl.text ? tl.text : m.text
+    if (!speak(String(m.id), text) && !quiet) say(canSpeak() ? 'Nothing to read aloud in this answer.' : 'This browser cannot read aloud here.')
+  }
+  const readLatest = useRef(readAnswer)
+  readLatest.current = readAnswer
+  // Auto read-aloud: a new answer is read once its turn ends, when the
+  // speaker switch is on. What was already there when the view opened is not.
+  const autoRead = useAutoRead()
+  const seenDone = useRef<{ init: boolean; id: number | null }>({ init: false, id: null })
+  useEffect(() => { seenDone.current = { init: false, id: null } }, [sessionId])
+  const doneId = latestDone && latest ? latest.id : null
+  useEffect(() => {
+    if (!loaded || !phone) return
+    const seen = seenDone.current
+    if (!seen.init) { seenDone.current = { init: true, id: doneId }; return }
+    if (doneId === null || doneId === seen.id) return
+    seen.id = doneId
+    if (autoRead && latest) readLatest.current(latest, true)
+  }, [loaded, phone, doneId, autoRead, latest])
+  const onTldr = (m: ChatMessage) => {
+    if (tl?.phase === 'shown') { setTldr({ ...tl, phase: 'full' }); return }
+    if (tl?.phase === 'full' && tl.text) { setTldr({ ...tl, phase: 'shown' }); return }
+    if (tl?.phase === 'loading') return
+    setTldr({ id: m.id, phase: 'loading' })
+    fetchTldr(m.id).then(
+      (text) => setTldr((cur) => (cur && cur.id === m.id ? { id: m.id, phase: 'shown', text } : cur)),
+      (e: unknown) => {
+        setTldr((cur) => (cur && cur.id === m.id ? null : cur))
+        say(e instanceof Error ? e.message : String(e))
+      },
+    )
+  }
+  const replies = useQuickReplies()
+  const continueText = replies.find((q) => q.label.trim().toLowerCase() === 'continue')?.text ?? 'Continue.'
+
   const busy = useRef(false)
   const revealOlder = useCallback(async () => {
     if (busy.current || !loaded) return
@@ -290,6 +360,7 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   const applyQueue = msgQueue.apply
   const jumpToEnd = stick.jump
   const submitText = useCallback(async (text: string): Promise<boolean> => {
+    stopSpeaking()
     try {
       const r = await api.queueSend(sessionId, text)
       applyQueue(r.queue)
@@ -377,7 +448,19 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
               : <button type="button" className="link" onClick={() => void revealOlder()}>load earlier</button>}
             </div>
           </div>
-          {shown.map((m) => <Message key={m.id} m={m} onPath={onPath} />)}
+          {shown.map((m) => (latest && m.id === latest.id ? (
+            <LatestAnswer
+              key={m.id}
+              m={m}
+              onPath={onPath}
+              summary={tl?.phase === 'shown' ? tl.text : undefined}
+              summarising={tl?.phase === 'loading'}
+              onTldr={() => onTldr(m)}
+              onRead={() => readAnswer(m)}
+              onContinue={canType ? () => void submitText(continueText) : undefined}
+              onStop={canType ? () => { stopSpeaking(); send('\x1b'); say('Stopped — Esc sent.') } : undefined}
+            />
+          ) : <Message key={m.id} m={m} onPath={onPath} />))}
           {showInput && msgQueue.messages.length > 0 && (
             <QueuedList
               messages={msgQueue.messages}
@@ -392,13 +475,20 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
         <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
           <NewPill count={stick.newCount} onJump={stick.jump} />
         </div>
+        {toast && (
+          <div role="status" aria-live="polite" data-chat-toast className="pointer-events-none absolute inset-x-3 bottom-14 z-20 rounded-[10px] bg-fg px-3 py-2 text-[13px] text-bg shadow-lg">
+            {toast}
+          </div>
+        )}
       </div>
       {showInput && (
         <div className="shrink-0">
           {sendError && <div role="alert" className="px-3 pt-1.5 text-[12px] text-danger">{sendError}</div>}
           {/* One click sends a reply (lib/quickReplies.ts); only while it can be typed into (rule 7). */}
-          {canType && <QuickReplies sessionId={sessionId} onSend={submitText} chat={chat} className="px-3" />}
-          <TerminalKeys send={send} attach={attachPhotos} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} placeholder={chat ? 'Message…' : undefined} />
+          {/* On a phone the latest answer's card carries Continue and Stop
+            * instead, and the bar below is one row (owner's variant D, 2026-10-17). */}
+          {canType && !phone && <QuickReplies sessionId={sessionId} onSend={submitText} chat={chat} className="px-3" />}
+          <TerminalKeys send={send} attach={attachPhotos} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} placeholder={chat || phone ? 'Message…' : undefined} walkie={phone} />
         </div>
       )}
       {!showInput && footer && <div className="shrink-0 border-t border-border px-3 py-2.5 text-[13px] leading-snug text-fg-muted">{footer}</div>}
@@ -431,6 +521,67 @@ const Message = memo(function Message({ m, onPath }: { m: ChatMessage; onPath?: 
   if (m.kind === 'notice') return <NoticeLine m={m} />
   return <ToolLine m={m} />
 }, (a, b) => a.m.id === b.m.id && a.m.text === b.m.text && a.m.result === b.m.result && a.m.failed === b.m.failed && a.m.exitCode === b.m.exitCode)
+
+/**
+ * The phone's latest answer, as a card with its four actions in the footer:
+ * AI;DR (the daemon's two-line summary in place of the body, then *Full
+ * answer*), Read aloud (*Stop reading* while it reads), Continue and Stop —
+ * the last two only where the session can be typed into (rule 7).
+ */
+function LatestAnswer({ m, onPath, summary, summarising, onTldr, onRead, onContinue, onStop }: {
+  m: ChatMessage
+  onPath?: (path: string) => void
+  summary?: string
+  summarising?: boolean
+  onTldr: () => void
+  onRead: () => void
+  onContinue?: () => void
+  onStop?: () => void
+}) {
+  const reading = useSpeaking() === String(m.id)
+  const act = 'flex h-11 min-w-0 flex-col items-center justify-center gap-px rounded-[8px] text-[11.5px] text-fg-muted active:bg-panel-2 disabled:opacity-60'
+  return (
+    <div data-msg-id={m.id} data-latest-answer className="py-1.5">
+      <div className={`rounded-[14px] border border-border bg-panel px-3 pb-1 pt-2.5 shadow-sm ${reading ? 'ring-1 ring-accent/40' : ''}`}>
+        {summary ? (
+          <div data-tldr className="line-clamp-2 border-l-[3px] border-accent py-0.5 pl-2.5 text-[15px] leading-snug text-fg">{summary}</div>
+        ) : (
+          <div className="[&_div]:text-fg [&>div]:text-[14px]"><Prose text={m.text} onPath={onPath} /></div>
+        )}
+        <div role="group" aria-label="Answer actions" className={`-mx-1.5 mt-1.5 grid border-t border-border pt-1 ${onContinue || onStop ? 'grid-cols-4' : 'grid-cols-2'}`}>
+          <button type="button" data-act="tldr" aria-pressed={!!summary} disabled={summarising} onClick={onTldr} onMouseDown={(e) => e.preventDefault()}
+            title={summary ? 'Show the whole answer' : 'Summarise this answer in two lines'} className={`${act} ${summary ? 'text-accent' : ''}`}>
+            {summarising ? <span aria-hidden className="h-[18px] w-[18px] animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" /> : <TldrIcon />}
+            <span>{summarising ? 'Summarising…' : summary ? 'Full answer' : 'AI;DR'}</span>
+          </button>
+          <button type="button" data-act="read" aria-pressed={reading} onClick={reading ? stopSpeaking : onRead} onMouseDown={(e) => e.preventDefault()}
+            className={`${act} ${reading ? 'text-accent' : ''}`}>
+            <ReadIcon />
+            <span>{reading ? 'Stop reading' : 'Read aloud'}</span>
+          </button>
+          {onContinue && (
+            <button type="button" data-act="continue" onClick={onContinue} onMouseDown={(e) => e.preventDefault()} title="Send: Continue" className={act}>
+              <ContinueIcon />
+              <span>Continue</span>
+            </button>
+          )}
+          {onStop && (
+            <button type="button" data-act="stop" onClick={onStop} onMouseDown={(e) => e.preventDefault()} title="Interrupt the agent (Esc)" className={act}>
+              <span className="text-danger"><StopIcon /></span>
+              <span>Stop</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const AICON = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true, className: 'text-fg' }
+function TldrIcon() { return <svg {...AICON}><path d="M4 7h16M4 12h10M4 17h6" /></svg> }
+function ReadIcon() { return <svg {...AICON}><path d="M4 10v4h4l5 4V6L8 10z" /><path d="M16.5 8.5a5 5 0 0 1 0 7" /></svg> }
+function ContinueIcon() { return <svg {...AICON}><path d="M5 12h14M13 6l6 6-6 6" /></svg> }
+function StopIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" /></svg> }
 
 /** What Claude Code told itself (a background task done, a reminder): one quiet line, the text behind it. */
 function NoticeLine({ m }: { m: ChatMessage }) {
