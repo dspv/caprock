@@ -2899,6 +2899,12 @@ func PruneEventsBefore(ctx context.Context, q Querier, beforeMs int64) (int64, e
 	// Offsets for transcripts whose events we dropped can stay; re-reading is
 	// deduped by key anyway. Clean orphaned session_files older than the cutoff.
 	_, _ = q.ExecContext(ctx, `DELETE FROM session_files WHERE last_ts < ?`, beforeMs)
+	// An AI;DR kept for an event that is gone (ADR-072): event ids are rowids
+	// and may be handed out again, so a kept squeeze must not outlive its
+	// answer. The table holds only what was tapped, so this is cheap.
+	if n > 0 {
+		_, _ = q.ExecContext(ctx, `DELETE FROM event_tldr WHERE NOT EXISTS (SELECT 1 FROM events e WHERE e.id = event_tldr.event_id)`)
+	}
 	return n, nil
 }
 

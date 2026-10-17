@@ -276,6 +276,13 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           end={!detail.stale && ending?.can ? { sessionId: s.session_id } : undefined}
           endWhy={!detail.stale && ending && !ending.can ? ending.why : undefined}
           onEnded={detail.refresh}
+          // The chat's bar is one row on a phone; its raw keys and the
+          // dictation language are here, in the ··· menu. Only into a
+          // session Caprock started and this device may control (rule 7).
+          keys={active === 'chat' && !reader && s.owned && s.status !== 'ended' && !s.detached
+            ? (bytes) => api.agentInput(id, bytes).then(() => true, () => false)
+            : undefined}
+          voiceLang={active === 'chat' && !reader && s.owned && s.status !== 'ended' && !s.detached}
         >
           <div className="grid grid-cols-1 gap-2.5">
             <div className="min-w-0">

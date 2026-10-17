@@ -71,11 +71,14 @@ var controllerMayAlso = map[string]bool{
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
 	"POST /v1/agents/{id}/permission": true, "POST /v1/agents/{id}/permission-mode": true,
 	"PUT /v1/sessions/{id}/name":  true,
+	"POST /v1/support":            true,
 	"PUT /v1/chats/{id}/archived": true, "DELETE /v1/chats/{id}": true, // archive and delete a chat (ADR-071)
 	"POST /v1/agents/{id}/queue": true, "PATCH /v1/agents/{id}/queue/{qid}": true, "DELETE /v1/agents/{id}/queue/{qid}": true, "POST /v1/agents/{id}/queue/{qid}/send": true,
 	"POST /v1/tasks/{id}/approve": true, "POST /v1/tasks/{id}/reject": true,
 	// Save to the Inbox from the phone, and delete from it.
 	"POST /v1/inbox": true, "DELETE /v1/inbox/{id}": true,
+	// AI;DR under an answer (ADR-072).
+	"POST /v1/events/{id}/tldr": true,
 	// Start work from the phone (21-app.md decision 8). Shells are not
 	// here: from the phone they are P1, so POST and GET /v1/shells are 403.
 	"POST /v1/projects": true, "PATCH /v1/projects/{id}": true, "DELETE /v1/projects/{id}": true,

@@ -1491,6 +1491,10 @@ case that a code admitted whoever scanned it in five minutes; the owner
 judged a phone that cannot type once he has left the house the worse
 failure, and one click removes either.
 
+*Amended 2026-10-17 by [ADR-073](#adr-073--report-a-bug-on-a-click-to-caprockdev-never-github-the-sheet-names-every-field):*
+a controller may also send a bug report (`POST /v1/support`). It acts on no
+session and changes nothing on the machine; a viewer still cannot.
+
 
 ---
 
@@ -2715,6 +2719,10 @@ their replies flow here with no change to the bridge.
 *Amended 2026-10-14 by [ADR-062](#adr-062--caprock-may-ask-a-question-and-the-user-may-send-the-answer-to-caprockdev):*
 besides the integrations the user turns on, one survey answer may go to
 caprock.dev, only on the user's click, after the card names every field.
+
+*Amended 2026-10-17 by [ADR-073](#adr-073--report-a-bug-on-a-click-to-caprockdev-never-github-the-sheet-names-every-field):*
+one bug report may go to Caprock support at caprock.dev the same way — on
+the user's click, after the sheet names every field.
 
 ---
 
@@ -4785,3 +4793,127 @@ session still uses; syncing with Claude.ai or ChatGPT now (an open question,
 the flag is set on spawn, not derived from the folder); a chat's files need
 scripts to be useful (an opt-in per file, never by default); or the sync in
 OQ-22 is decided.
+
+---
+
+## ADR-072 — AI;DR: one answer squeezed by the user's own agent CLI, on a tap, cached
+
+**Date:** 2026-10-17 · **Status:** accepted (owner, 2026-10-17). Route and
+DDL: [03-contracts.md § AI;DR](03-contracts.md#aidr).
+
+**Context.** On the phone an agent's answer is often a screen or more of
+prose, read standing up. The owner asked for a button under an answer,
+"AI;DR", that squeezes it to at most two short sentences. Caprock already
+knows which events are answers (`/v1/notes`, a brain drop) and already
+calls the user's own `claude` headlessly for Second Brain (ADR-063), with
+hooks off and no session written.
+
+**Decision.**
+
+- **A separate call, never the session.** `POST /v1/events/{id}/tldr` runs
+  Second Brain's runner (`brain.ClaudeRunner`, the flags in ADR-063) as a
+  plain-text request: no `--json-schema`, the AI;DR instructions as the
+  system prompt, the answer on stdin, Haiku (the cheapest model Second
+  Brain uses). Nothing is typed into the session, its transcript is not
+  read or written, and `--no-session-persistence` leaves no transcript of
+  the call, so ingest never sees it as a session.
+- **Only on a tap.** No answer is squeezed in the background or ahead of
+  time; the call happens when the user presses the button, and only for
+  that answer.
+- **The prompt.** The answer's own language, at most two sentences and 220
+  characters, decisions, numbers and the next action kept, no preamble. An
+  answer under 280 runes is its own TL;DR and makes no call. One over
+  12,000 runes is sent as its first 4,000 and last 8,000: an agent says
+  what it did first and its result and next step last, and the middle is
+  the detail a TL;DR drops.
+- **Kept, and called once.** The reply is kept in `event_tldr` (migration
+  0060) with the model and the cost claude reported, so a second tap makes
+  no call; taps on the same answer while its call runs share it. A failure
+  keeps nothing. A kept row goes with its event.
+- **Which agent CLI.** Claude Code, found as Second Brain finds it; without
+  it the route answers `503` and says so. Second Brain reads with claude
+  only, so AI;DR does too.
+- **The phone.** A paired controller may call it (amends ADR-034's
+  `controllerRoutes`): it reads an answer the phone already shows and
+  writes only Caprock's own cache. A viewer may not, because each tap spends
+  the user's claude.
+- **Rule 4.** The answer goes to the user's own `claude`, that is to
+  Anthropic under the user's own login, where the session that wrote it
+  already went. Nothing is sent to Caprock, and nothing leaves without the
+  user's tap.
+
+**Rules out:** typing a "summarise that" into the live session (it would
+cost the session's context and change its transcript); squeezing answers
+ahead of time (spend nobody asked for); a model of Caprock's or an API key
+of its own (the user's login is the only one); sending the answer anywhere
+but the user's own agent CLI.
+
+**Revisit if:** users want AI;DR from another agent's CLI (Codex, Gemini),
+which would mean Second Brain's runner learning it first; the two-sentence
+form proves too short for the answers people squeeze; or Claude Code's
+`-p` flags change in a way the runner's checks in ADR-063 no longer cover.
+
+---
+
+## ADR-073 — Report a bug: on a click, to caprock.dev, never GitHub; the sheet names every field
+
+**Date:** 2026-10-17 · **Status:** accepted (owner, 2026-10-17)
+
+*Amends [ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine),
+[ADR-034](#adr-034--a-phone-the-owner-chooses-can-work-on-sessions-and-nothing-else)
+and rule 4's wording; follows [ADR-062](#adr-062--caprock-may-ask-a-question-and-the-user-may-send-the-answer-to-caprockdev).*
+
+**Context.** The owner, 2026-10-17 (translated): a bug report the user can
+type or dictate with the phone keyboard, attach a few screenshots, and send
+to Caprock support — not a GitHub issue, because it may contain personal
+data; an optional email so we can reply, and those emails later make a list
+of customers. Until now the only way to report was *Send feedback*, which
+composes a GitHub issue the user submits in public (04-ui.md § Feedback), and
+a phone had no way at all. Rule 4 allowed one message to caprock.dev, a
+survey answer (ADR-062); a bug report is the second of the same kind: one
+message the user writes to us and sends with a click.
+
+**Decision.**
+
+- **A bug report goes to Caprock support at caprock.dev, never to GitHub.**
+  The sheet (`components/BugReportSheet.tsx`) sends through `POST
+  /v1/support` to `https://caprock.dev/api/support`, only when the user
+  presses **Send to support**. The site keeps it privately; nothing about it
+  is public.
+- **The sheet names every field before the button**, word for word: *Sent to
+  Caprock support (caprock.dev), not GitHub: your text, the screenshots you
+  attached, your email if given, Caprock version and OS. Nothing else — no
+  transcripts, no logs.*
+- **What is sent is fixed by the daemon** (`internal/api/support.go`): the
+  text (1–8,000 characters), up to three PNG, JPEG or WebP screenshots (each
+  at most 4 MB, 8 MB together, the type checked against the bytes), the
+  email when typed, and the two fields the sheet names that the daemon adds:
+  the version and `GOOS/GOARCH`. The body is rebuilt from those fields, so
+  nothing else the page might add rides along. No identifier, path,
+  transcript or log.
+- **Screenshots are made small on the device.** Each is drawn at most 1600 px
+  on the long side and re-encoded as JPEG at 0.85 before it is sent, so a
+  report from a phone on mobile data is hundreds of kilobytes, not
+  megabytes.
+- **Allowed for a paired phone that controls, and the machine** (amends
+  ADR-034): the phone is where a bug is often met and its keyboard is where
+  it is dictated. It acts on no session and changes nothing on the machine.
+  A viewer cannot send one.
+- **The email is optional and only what was typed.** It is how support
+  replies, and the owner keeps those addresses as a customer list; the sheet
+  says the email goes, and leaving it empty sends none.
+- **Offered** from the phone bar's **+** menu and, on a computer, from ⌘K
+  *Report a bug…* (no new shortcut). *Send feedback* stays as it is for a
+  public GitHub issue.
+
+**Rules out:** filing it as a GitHub issue (public, and a report may hold
+personal data); attaching anything the user did not pick — a transcript, a
+log, a crash dump, a session id; a background retry or an offline queue (a
+failure is shown and the form kept); logging the text, email or images on
+the daemon; reusing this route for anything but a report the user typed and
+sent.
+
+**Revisit if:** support needs diagnostics a report cannot carry today (then
+each is a named line on the sheet the user can untick, as Feedback's
+*Include diagnostics* is, and a new decision); reports arrive that the site
+cannot keep private; or the limits stop fitting real screenshots.

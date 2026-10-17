@@ -411,7 +411,7 @@ internal/wtsetup/     # a new worktree made ready: .worktreeinclude copies, the 
 internal/relay/       # the brief that carries a session on in a new one, any agent (ADR-032) — Control
 internal/slashcmd/    # the slash commands an agent offers in a folder, for the chat field's / picker (ADR-053)
 internal/alerts/      # when the phone hears about a session, and the message it reads (ADR-036)
-internal/brain/       # Second Brain's automatic extraction: finished sessions read by the user's own `claude -p`, memories kept with provenance (ADR-063)
+internal/brain/       # Second Brain's automatic extraction: finished sessions read by the user's own `claude -p`, memories kept with provenance (ADR-063); AI;DR's squeeze of one answer through the same runner (ADR-072)
 internal/templates/   # new project from a template: the user's own list, their gh or a local copy, the brief committed (ADR-065)
 internal/remote/      # access from anywhere (ADR-058): Noise NK, the frame protocol, the Host phones and computers reach, the Client this daemon reaches other computers with (ADR-067); relaysrv/ is `caprock remote relay`
 internal/peers/       # the computers this machine reaches (ADR-067): machines.json (0600), pairing by link, requests and sockets carried as the paired device, Leave

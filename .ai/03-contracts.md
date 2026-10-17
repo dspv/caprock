@@ -233,7 +233,9 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`, saving to
   and deleting from the Inbox (`POST /v1/inbox`, `DELETE /v1/inbox/{id}`,
   § Inbox), archiving and deleting a chat (`PUT /v1/chats/{id}/archived`,
-  `DELETE /v1/chats/{id}`: chats only, ADR-071 amending ADR-037), and — to
+  `DELETE /v1/chats/{id}`: chats only, ADR-071 amending ADR-037), AI;DR on
+  an answer (`POST /v1/events/{id}/tldr`, § AI;DR, ADR-072), sending a
+  bug report (`POST /v1/support`, § Report a bug, ADR-073), and — to
   start work from the phone (2026-10-05, [21-app.md](21-app.md) decision 8) —
   `POST /v1/projects`, `PATCH` and `DELETE /v1/projects/{id}`, and `POST` and
   `DELETE /v1/projects/{id}/worktrees…` (see § Projects and shells for the
@@ -733,6 +735,7 @@ GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, model
 GET  /v1/settings                      → user-stated settings (plan, update checks)
 PUT  /v1/settings                      → store them
 POST /v1/offer                         → {status: "sent"} — forward one offer-survey answer to caprock.dev on the user's click (§ Offer survey, ADR-062)
+POST /v1/support                       → {ok: true} — forward one bug report to Caprock support at caprock.dev on the user's click (§ Report a bug, ADR-073)
 GET  /v1/update                        → cached release status (no network I/O)
 POST /v1/update/check                  → check now (403 unless enabled); ?soon=1 → only if the last check is 10+ min old
 GET  /v1/update/busy                   → {working} — sessions an app restart would interrupt (Update automatically, ADR-042)
@@ -1657,6 +1660,33 @@ token stays in `config.json`.
 `POST /v1/hooks/install` runs the same install as `caprock hooks install` (`hooks.InstallFor`: copy the shim into the data dir, merge Caprock's entries into the settings file this daemon reports in `/v1/status.hooks.settings_path`, backing it up first) and answers with what is registered afterwards (`{hooks: {settings_path, shim_path, installed, missing, shim_exists}, backup?}`); an error is an error status, never a quiet 200, and a daemon without an installer answers 501. It is a mutating route, so the CSRF guard refuses a cross-site request and a paired device cannot make it. Nothing else in settings.json is touched. `/v1/status.hooks`, `caprock status` and this answer all check against the command an install writes (`hooks.StatusFor`): the shim in the data dir, or the fallback `"<exe>" hook` when none sits beside the binary. Checking against the shim path alone recognised that fallback only for an executable named `caprock`, so on a renamed or preview build the button said installed and the next status said all nine were missing.
 
 **Offer survey** ([ADR-062](08-decisions.md)). `POST /v1/offer {offer, answers, email?}` is the one route that sends what the user chose to Caprock, and the dashboard calls it only from the survey card's **Send** button. `offer` is one of the dashboard's surveys, and `answers` is exactly `{q1, q2}`, each one allowed value: `ads` and `youtube` — `q1` `under-4`, `4-8`, `8-12`, `12+`; `q2` `under-30`, `30-70`, `over-70`. `local-models` — `q1` `coding`, `chat`, `search`, `trying`; `q2` `mac-16`, `mac-24-64`, `mac-96`, `pc-nvidia`, `other`. `email`, when present, is one plain address of at most 254 characters. Anything else is `400` and nothing is sent. The daemon rebuilds the body from those fields alone and POSTs `{offer, answers, email?}` — no version, no identifier — to `https://caprock.dev/api/offer` with a 10 s limit; `CAPROCK_OFFER_URL` replaces the address for a preview stand or a test, which must never reach the real site. `200 {status: "sent"}` when the site took it, `502 {error}` when it did not — the error never carries the email or the address. Machine-only: a paired device gets `403` like every write. The enums live in `internal/api/offer.go`, `ui/src/lib/offer.ts` and the site's `functions/api/offer.ts`, and change together. What keeps a card away is ordinary `settings.prompts` entries: the draw (`offer-variant-ads` or `offer-variant-youtube`), the day any offer last showed (`offer-last`), and per offer `offer-<id>-no`, `-sent`, `-seen-1`, `-seen-2`.
+
+**Report a bug** ([ADR-073](08-decisions.md)). `POST /v1/support {text,
+email?, screenshots?}` forwards one bug report to Caprock support, and the
+dashboard calls it only from the sheet's **Send to support** button
+(`components/BugReportSheet.tsx`). `text` is 1 to 8,000 characters (Unicode
+code points, valid UTF-8, not only whitespace), forwarded as typed. `email`,
+when present, is one plain address of at most 254 characters, trimmed.
+`screenshots` is at most 3 of `{name, type, data}`: `type` is `image/png`,
+`image/jpeg` or `image/webp` and must match the data's first bytes, `data` is
+standard base64 of at most 4 MB decoded, all of them at most 8 MB together,
+and `name` is at most 200 bytes, cut to the file's own name (anything up to the
+last `/` or `\` dropped). The body is read up to 12 MB. Anything else is
+`400 {error}` and nothing is sent. The daemon rebuilds the body from those
+fields and adds two of its own, then POSTs to `https://caprock.dev/api/support`
+with a 20 s limit:
+
+```json
+{"text": "…", "email": "me@example.com", "screenshots": [{"name": "shot.jpg", "type": "image/jpeg", "data": "<base64>"}], "version": "<caprock version>", "os": "darwin/arm64"}
+```
+
+`email` and `screenshots` are left out when absent; `os` is `GOOS/GOARCH`. No
+identifier, path, transcript or log. `CAPROCK_SUPPORT_URL` replaces the
+address for a preview stand or a test, which must never reach the real site.
+`200 {ok: true}` when the site answered 2xx, `502 {error}` when it did not —
+the error never carries the text, the email or the address. Nothing is
+retried and nothing is queued; the handler logs none of the report. The
+machine and a paired controller may send one; a viewer gets `403`.
 
 `GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once every 15 minutes unless forced (`update.Interval`; releases ship several times a day, hourly until 2026-10-16) — at startup, when the switch is turned on, and on a five-minute tick that asks whether one is due (so a daemon that runs for weeks still hears of a release). `POST /v1/update/check?soon=1` is the page's ask when the window gains focus or is shown: not forced, it runs only when the last check is ten minutes old (`update.SoonInterval`) and otherwise returns the cached status; it shares the last-checked time with the tick, and an unforced check already out answers the next one, so unforced checks never run more than once per ten minutes. The interval is measured on the wall clock, because macOS stops the monotonic clock while the machine sleeps: a check that fell due overnight runs within five minutes of waking. After a failed check the next unforced one waits 15 minutes (`update.FailRetry`), so an offline laptop does not try on every tick. Each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. The daemon does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open. The desktop app replaces its own bundle, which carries the daemon (ADR-042).
 
@@ -3518,6 +3548,49 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   never sent. A failure is recorded with its error and retried after 15
   minutes, doubling; after four the session waits for new prose.
 
+### AI;DR
+
+One agent answer squeezed into at most two short sentences, on the user's
+tap ([ADR-072](08-decisions.md)). Code: `internal/api/tldr.go`,
+`internal/brain/tldr.go`, `internal/store/tldr.go`; DDL in § AI;DR DDL
+(migration 0060).
+
+```
+POST /v1/events/{id}/tldr   (no body) → 200 {tldr: string, cached: bool} | 404 {error} | 502 {error} | 503 {error}
+```
+
+- **`{id}`** is the answer's event id, the `event_id` of `/v1/notes`,
+  `/v1/sessions/{id}/notes` and a brain drop. It must be main-thread
+  assistant prose (§ Phase 0's notes rules, `store.BrainNoteSource`); any
+  other event, an unknown id or one that is not a number is `404`.
+- **A short answer is its own TL;DR.** Fewer than 280 runes after trimming:
+  `{tldr: <the answer, trimmed>, cached: false}`, no call, nothing kept.
+- **Kept.** A squeeze is kept in `event_tldr`; a later tap returns it with
+  `cached: true` and makes no call. A failed call keeps nothing, so the next
+  tap tries again.
+- **The call.** Second Brain's runner (`brain.ClaudeRunner`, flags in
+  ADR-063: `claude -p --output-format json --tools "" --no-session-persistence
+  --setting-sources local --settings <hooks off>`), with `--model haiku`,
+  `--system-prompt` the AI;DR instructions (`brain.TLDRSystem`: the answer's
+  own language, at most 2 sentences and 220 characters, decisions, numbers
+  and the next action kept, no preamble) and no `--json-schema`; the answer
+  goes on stdin and the reply is claude's `result` text. A Windows `.cmd`
+  shim gets the instructions on stdin too. An answer longer than 12,000
+  runes is sent as its first 4,000 and its last 8,000 around a marker: an
+  agent says what it did first and its result and next step last. The
+  reply is trimmed of a `TL;DR:` label and wrapping quotes, joined onto one
+  line and clipped to 300 runes. Never typed into the session; the
+  session's transcript is not touched, and the call writes none of its own.
+- **One call per answer.** Taps on the same answer while its squeeze runs
+  wait on that one call. The call runs under its own one-minute deadline,
+  not the request's: a tap that gives up does not stop it, and its result is
+  kept for the next tap.
+- **`503`** — no usable claude: the binary is not found (`brain.ErrNoClaude`)
+  or the build wires no runner. **`502`** — claude ran and failed or did not
+  answer within a minute; `error` says which.
+- **Who.** The machine, and a paired controller phone (`controllerRoutes`);
+  a viewer gets `403`.
+
 ### Queued messages
 
 What the chat field sends to a session Caprock started ([ADR-053](08-decisions.md)).
@@ -4673,6 +4746,24 @@ CREATE INDEX IF NOT EXISTS idx_sessions_chat ON sessions(last_event_at) WHERE ch
 every session already in a chat folder by its name, so chats from before the
 column are chats. The partial index serves the Chats list; the work list's
 `chat = 0` reads the table as before.
+
+### AI;DR DDL (migration 0060)
+
+```sql
+CREATE TABLE IF NOT EXISTS event_tldr (
+  event_id   INTEGER PRIMARY KEY,
+  text       TEXT NOT NULL,
+  model      TEXT NOT NULL DEFAULT '',
+  cost_usd   REAL NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+```
+
+One kept AI;DR per assistant answer ([ADR-072](08-decisions.md), § AI;DR):
+`event_id` is `events.id`, `model` and `cost_usd` what claude reported for
+the call, `created_at` unix ms. A row goes with its event: removing a
+session deletes its rows, and `PruneEventsBefore` deletes those whose event
+is gone, because an event id is a rowid that may be handed out again.
 
 ### Worked-at and parent DDL (migration 0027)
 

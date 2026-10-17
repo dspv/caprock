@@ -75,6 +75,17 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-17 — unreleased: AI;DR, the daemon side (ADR-072)
+
+The owner asked for an "AI;DR" button under an answer on the phone: the
+answer squeezed to at most two short sentences. Built the daemon side: `POST
+/v1/events/{id}/tldr` runs Second Brain's headless `claude -p` runner as a
+plain-text request (Haiku, the answer on stdin, no session written), keeps
+the reply in `event_tldr` (migration 0060) so a second tap makes no call,
+shares one call between taps on the same answer, answers a short answer
+with itself, and is open to a controller phone. The button itself is the
+UI's, on its own branch.
+
 ### 2026-10-16 — unreleased: Chats, a kind of session (ADR-071)
 
 The owner (translated): plain chats on the phone, stored, with the files they

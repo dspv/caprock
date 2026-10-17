@@ -448,6 +448,11 @@ var controllerRoutes = map[string]bool{
 	"POST /v1/tasks/{id}/approve": true,
 	"POST /v1/tasks/{id}/reject":  true,
 
+	// AI;DR on an answer the phone already shows (ADR-072): a call to the
+	// user's own claude on the tap, kept in Caprock's own database; nothing
+	// is typed into the session.
+	"POST /v1/events/{id}/tldr": true,
+
 	// Answer a permission prompt with a button (ADR-035).
 	"POST /v1/agents/{id}/permission": true,
 
@@ -503,6 +508,13 @@ var controllerRoutes = map[string]bool{
 	// Connecting GitHub and creating a repository stay on the machine.
 	"POST /v1/projects/{id}/github/pr":      true,
 	"POST /v1/projects/{id}/github/refresh": true,
+
+	// Report a bug (ADR-073): the one outbound call a phone may make, because
+	// the phone is where a bug is often met, and the report is typed or
+	// dictated on its keyboard. It sends only what the user wrote and
+	// attached, on their click, to caprock.dev support; it acts on no session
+	// and changes nothing on the machine. A viewer cannot send one.
+	"POST /v1/support": true,
 }
 
 // What a computer may do on top of a controller (ADR-067): the work surface
