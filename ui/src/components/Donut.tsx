@@ -54,6 +54,46 @@ export function sharePct(v: number, total: number): string {
   return `${Math.floor(p)}%`
 }
 
+/**
+ * A row's change in share between two equal windows ending now (the At a
+ * glance block's dynamics): the share in each window as a percentage, and
+ * the sentence its hover gives.
+ */
+export interface TrendCell { recent: number; prior: number; title: string }
+
+/** Whole points of change; the two shares are rounded first, so the arrow and the hover agree. */
+export function trendDelta(t: TrendCell): number {
+  return Math.round(t.recent) - Math.round(t.prior)
+}
+
+/** "31%", or "<1%" for a sliver, for the trend hover. */
+export function pointPct(p: number): string {
+  return p > 0 && p < 1 ? '<1%' : `${Math.round(p)}%`
+}
+
+/**
+ * The trend marker: "↑ 9" or "↓ 4" points, "·" under one point. Neutral
+ * ink, not ok or warn colours: more of a model or a tool is neither good nor
+ * bad. The words are in the hover and, for a screen reader, in the text.
+ */
+export function TrendMark({ cell, className = '' }: { cell: TrendCell; className?: string }) {
+  const d = trendDelta(cell)
+  const dir = d >= 1 ? 'up' : d <= -1 ? 'down' : 'flat'
+  const text = dir === 'up' ? `↑ ${d}` : dir === 'down' ? `↓ ${-d}` : '·'
+  return (
+    <span title={cell.title} data-trend={dir}
+      className={`num whitespace-nowrap ${dir === 'up' ? 'text-fg-muted' : 'text-fg-faint'} ${className}`}>
+      <span aria-hidden>{text}</span>
+      <span className="sr-only">{cell.title}</span>
+    </span>
+  )
+}
+
+/** A legend's trend column: the marker, or a blank of the same width. */
+function TrendSlot({ cell }: { cell?: TrendCell }) {
+  return cell ? <TrendMark cell={cell} className="w-7 shrink-0 text-right" /> : <span aria-hidden className="w-7 shrink-0" />
+}
+
 /** An arc of a circle from `from` to `to` (fractions of a turn, from 12 o'clock). */
 function Arc({ r, from, to, color, width, dashed, opacity, on }: {
   r: number; from: number; to: number; color: string; width: number; dashed?: boolean
@@ -96,6 +136,8 @@ export function Donut({
   ariaLabel,
   size = 148,
   legend = true,
+  trends,
+  note,
 }: {
   title: string
   segments: Segment[]
@@ -106,6 +148,10 @@ export function Donut({
   size?: number
   /** Off when an exact table sits beside the chart and would repeat it. */
   legend?: boolean
+  /** Each legend row's change in share, by segment key; absent, no trend column. */
+  trends?: Map<string, TrendCell>
+  /** One plain sentence under the chart, when the data says one. */
+  note?: string
 }) {
   const [active, setActive] = useState<string | null>(null)
   const total = segments.reduce((a, s) => a + s.value, 0)
@@ -143,17 +189,20 @@ export function Donut({
             {lit && <span className="num mt-0.5 leading-none text-fg" style={{ fontSize: 10.5 }}>{lit.display}</span>}
           </div>
         </div>
-        {legend && <Legend segments={segments} total={total} active={active} onActive={setActive} />}
+        {legend && <Legend segments={segments} total={total} active={active} onActive={setActive} trends={trends} />}
       </div>
+      {note && <p className="mb-0 mt-2 max-w-[560px] text-[11px] leading-snug text-fg-muted" data-donut-note>{note}</p>}
     </figure>
   )
 }
 
-export function Legend({ segments, total, active, onActive }: {
+export function Legend({ segments, total, active, onActive, trends }: {
   segments: Segment[]
   total: number
   active?: string | null
   onActive?: (key: string | null) => void
+  /** A trend column after the share; absent, the legend is as it always was. */
+  trends?: Map<string, TrendCell>
 }) {
   return (
     <ul className="m-0 p-0 list-none grid grid-cols-1 gap-0.5 min-w-0 w-full max-w-[320px] @[400px]:w-auto @[400px]:flex-1 text-[11px]">
@@ -169,6 +218,7 @@ export function Legend({ segments, total, active, onActive }: {
           </span>
           <span className="num text-fg shrink-0">{s.display}</span>
           <span className="num text-fg-faint w-9 text-right shrink-0">{sharePct(s.value, total)}</span>
+          {trends && <TrendSlot cell={trends.get(s.key)} />}
         </li>
       ))}
     </ul>

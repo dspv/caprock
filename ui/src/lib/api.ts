@@ -1109,9 +1109,15 @@ export interface ContextTax { tax_usd: number; cost_usd: number; share: number; 
  *  the Now screen's At a glance block. */
 export interface Glance {
   agents: WeekAgent[]
-  bill?: { input_usd: number; output_usd: number; cache_write_usd: number; cache_read_usd: number; unpriced_tokens?: number }
+  bill?: GlanceBill
   display: Record<string, string>
+  /** The last `days` days against the `days` before them (all time only). */
+  trend?: GlanceTrend
 }
+export interface GlanceBill { input_usd: number; output_usd: number; cache_write_usd: number; cache_read_usd: number; unpriced_tokens?: number }
+/** One trend window: stored cost by model id, the bill, tool calls by tool, the agent split. */
+export interface GlanceWindow { models: Record<string, number>; bill?: GlanceBill; tools: Record<string, number>; agents: WeekAgent[] }
+export interface GlanceTrend { days: number; prior_from_ms: number; cut_ms: number; to_ms: number; prior: GlanceWindow; recent: GlanceWindow }
 
 /** GET /v1/week — seven local days of what this machine's agents did, for the
  *  Week card. Nothing in it names a repository, a path, a prompt or a session

@@ -59,6 +59,9 @@ func TestPolledAggregatesReadOnlyFromCoveringIndexes(t *testing.T) {
 		if _, err := ToolDistribution(ctx, rec, from, 40); err != nil {
 			t.Fatal(err)
 		}
+		if _, _, err := TrendWindows(ctx, rec, from, from+7*day); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	checked := 0
