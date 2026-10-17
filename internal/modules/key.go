@@ -1,4 +1,4 @@
-// Package modules is the slot for private modules (ADR-075): a signed admin
+// Package modules is the slot for private modules (ADR-076): a signed admin
 // key that names which modules may run, a folder of static files installed
 // from this machine, and the checks that decide whether one is shown.
 //

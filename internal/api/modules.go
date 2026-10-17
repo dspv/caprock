@@ -17,7 +17,7 @@ import (
 	"github.com/dspv/caprock/internal/store"
 )
 
-// --- Private modules (ADR-075) ---
+// --- Private modules (ADR-076) ---
 //
 // A module is a folder of static files installed on this machine under a
 // signed admin key that names it. The slot gives it four things: a key check

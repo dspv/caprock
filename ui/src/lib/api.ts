@@ -1850,7 +1850,7 @@ async function post<T>(path: string, body: unknown, method = 'POST'): Promise<T>
   return (res.status === 204 ? (undefined as T) : ((await res.json()) as T))
 }
 
-/** An installed module the admin key names (GET /v1/admin, ADR-075). */
+/** An installed module the admin key names (GET /v1/admin, ADR-076). */
 export interface ModuleInfo {
   id: string
   name: string
@@ -2210,7 +2210,7 @@ export const api = {
   pipelineAgents: (roots: string[]) => get<RepoAgents>(`/v1/pipeline/agents?${roots.map((r) => `repo=${encodeURIComponent(r)}`).join('&')}`),
   trends: (agent?: string) => get<Trends>(`/v1/stats/trends${agent && agent !== 'all' ? `?agent=${agent}` : ''}`),
   premium: () => get<PremiumPricing>('/v1/premium'),
-  // Private modules (ADR-075): the admin key and what it opens.
+  // Private modules (ADR-076): the admin key and what it opens.
   admin: () => get<AdminState>('/v1/admin'),
   setAdminKey: (key: string) => post<AdminState>('/v1/admin', { key }, 'PUT'),
   clearAdminKey: () => post<AdminState>('/v1/admin', {}, 'DELETE'),

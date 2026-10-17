@@ -4233,7 +4233,7 @@ column added this way: `schema.sql` runs before `addedColumns`.
 
 ### Private modules (`/v1/admin`, `/x/<id>/`, `/v1/x/<id>/docs`)
 
-The module slot ([ADR-075](08-decisions.md)). Code: `internal/modules` (key,
+The module slot ([ADR-076](08-decisions.md)). Code: `internal/modules` (key,
 manifest, install), `internal/api/modules.go`, `internal/store/moduledocs.go`,
 `cmd/caprock/module.go`, `ui/src/lib/modules.ts`. Every route is the
 machine's alone: a request that is not `isLocal` gets `{admin:false}`, 404 or
@@ -4900,7 +4900,7 @@ CREATE TABLE IF NOT EXISTS module_docs (
 ) WITHOUT ROWID;
 ```
 
-A private module's documents ([ADR-075](08-decisions.md), § Private modules):
+A private module's documents ([ADR-076](08-decisions.md), § Private modules):
 `data` is a JSON object as text, which the store never reads into;
 `created_at` and `updated_at` are unix ms. Rows stay when a module's files are
 removed, so installing it again finds them.

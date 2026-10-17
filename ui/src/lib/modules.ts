@@ -1,5 +1,5 @@
 /**
- * Private modules (ADR-075): which ones this machine's admin key opens, and
+ * Private modules (ADR-076): which ones this machine's admin key opens, and
  * the app's theme handed to a module's page so it reads as one more screen.
  *
  * Without a valid key the list is empty and nothing anywhere draws a row, a

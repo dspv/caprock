@@ -1,5 +1,5 @@
 /**
- * The app sidebar's rows for private modules (ADR-075): one per installed
+ * The app sidebar's rows for private modules (ADR-076): one per installed
  * module the admin key opens, above the footer. Without a key there are none
  * and nothing is drawn, not even the band.
  */

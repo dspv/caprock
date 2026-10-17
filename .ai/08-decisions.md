@@ -5013,7 +5013,7 @@ with it, never a write to the service).
 
 ---
 
-## ADR-075 — Private modules: a slot opened by a signed admin key, holding nothing of its own
+## ADR-076 — Private modules: a slot opened by a signed admin key, holding nothing of its own
 
 **Date:** 2026-10-17 · **Status:** accepted (built on the owner's ask,
 2026-10-17, translated: tools of his own should run inside the Caprock app,

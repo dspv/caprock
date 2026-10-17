@@ -39,7 +39,7 @@ export type Route =
   // one chat — a conversation, never a terminal.
   | { name: 'chats'; archived?: boolean }
   | { name: 'chat'; id: string }
-  // A private module the admin key opens (ADR-075): its page at /x/<id>/.
+  // A private module the admin key opens (ADR-076): its page at /x/<id>/.
   | { name: 'module'; id: string }
 
 export type StartMode = 'clone' | 'new' | 'worktree'

@@ -1,5 +1,5 @@
 /**
- * Private modules (ADR-075): nothing is drawn without a valid admin key; with
+ * Private modules (ADR-076): nothing is drawn without a valid admin key; with
  * one, each installed module gets a sidebar row and a route; a CRA1 key pasted
  * into the licence field goes to /v1/admin and never into settings.
  */

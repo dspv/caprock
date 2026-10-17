@@ -18,7 +18,7 @@ import { useApi } from '@/lib/useApi'
 import { extTitle } from '@/lib/externalLinks'
 import { announceAdmin, useAdmin } from '@/lib/modules'
 
-/** An admin key (ADR-075) is pasted into the same field and stored apart. */
+/** An admin key (ADR-076) is pasted into the same field and stored apart. */
 const ADMIN_PREFIX = 'CRA1.'
 
 export function LicenseField({ plan, save }: { plan: Settings; save: (patch: Partial<Settings>) => void }) {

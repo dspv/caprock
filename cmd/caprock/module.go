@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// moduleCmd installs private modules from a local folder (ADR-075). Hidden:
+// moduleCmd installs private modules from a local folder (ADR-076). Hidden:
 // it does nothing without an admin key, and nothing here mentions modules to
 // anyone who has none.
 func moduleCmd() *cobra.Command {

@@ -1,5 +1,5 @@
 /**
- * A private module's screen (ADR-075): its page, served by the daemon at
+ * A private module's screen (ADR-076): its page, served by the daemon at
  * /x/<id>/, in a frame that fills the screen and wears the app's theme.
  *
  * The frame is the dashboard's own origin, so the module reaches its store

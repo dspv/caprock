@@ -93,7 +93,7 @@ const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] =
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
   const link = useLiveLink()
   const [plan, savePlan] = usePlan()
-  // The modules an admin key opens (ADR-075), after the fixed screens; none without one.
+  // The modules an admin key opens (ADR-076), after the fixed screens; none without one.
   const nav = [...NAV, ...useModules().map((m) => ({ route: { name: 'module', id: m.id } as Route, label: m.name, phase: undefined, icon: undefined }))]
   const active = (r: Route) => (r.name === 'module' ? route.name === 'module' && route.id === r.id : r.name === route.name) || (r.name === 'now' && route.name === 'session') || (r.name === 'chats' && route.name === 'chat')
   // Inside the desktop app the window already carries the link state, the

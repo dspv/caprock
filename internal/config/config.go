@@ -98,7 +98,7 @@ type Config struct {
 	// normal state: the free product is the whole product for one person.
 	LicenseKey string `json:"license_key,omitempty"`
 	// AdminKey is a signed CRA1 key naming the private modules this machine
-	// may install and open (ADR-075, internal/modules). Separate from the
+	// may install and open (ADR-076, internal/modules). Separate from the
 	// licence: neither grants the other. Empty is the ordinary state.
 	AdminKey string `json:"admin_key,omitempty"`
 	// CapUSDPerDay is the daily spend ceiling. Zero is off, which is the

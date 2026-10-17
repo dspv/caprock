@@ -6,7 +6,7 @@ import (
 	"github.com/dspv/caprock/internal/config"
 )
 
-// adminAdapter keeps the admin key that opens private modules (ADR-075).
+// adminAdapter keeps the admin key that opens private modules (ADR-076).
 // The API verifies it; this only reads and stores it.
 type adminAdapter struct{ d *Daemon }
 

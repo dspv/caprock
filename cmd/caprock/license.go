@@ -64,7 +64,7 @@ func showLicense(cmd *cobra.Command) error {
 	default:
 		fmt.Fprintf(out, "%s\nnot active: %s\n", cfg.LicenseKey, s.Reason)
 	}
-	// Said only to whoever stored an admin key (ADR-075).
+	// Said only to whoever stored an admin key (ADR-076).
 	if cfg.AdminKey != "" {
 		if g, err := modules.ParseKey(cfg.AdminKey); err == nil {
 			fmt.Fprintf(out, "Admin key: on, for %s\n", strings.Join(g.Modules, ", "))
@@ -87,7 +87,7 @@ func licenseSetCmd() *cobra.Command {
 			}
 			key := strings.TrimSpace(args[0])
 			// The same field takes an admin key, as Settings → License does
-			// (ADR-075); it is stored apart and grants nothing paid.
+			// (ADR-076); it is stored apart and grants nothing paid.
 			if modules.LooksLikeKey(key) {
 				if _, err := modules.ParseKey(key); err != nil {
 					return fmt.Errorf("that admin key is not valid: %w", err)

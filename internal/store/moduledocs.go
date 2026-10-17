@@ -7,7 +7,7 @@ import (
 	"errors"
 )
 
-// ModuleDoc is one document a private module keeps (migration 0061, ADR-075).
+// ModuleDoc is one document a private module keeps (migration 0061, ADR-076).
 // Data is a JSON object; the store never reads inside it.
 type ModuleDoc struct {
 	ID        string          `json:"id"`

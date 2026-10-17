@@ -218,7 +218,7 @@ type Deps struct {
 	// Mail serves /v1/mail/* (Caprock Mail, internal/mail). nil ⇒ 501.
 	Mail http.Handler
 	// Admin keeps the admin key for private modules, which live under
-	// DataDir (ADR-075). nil ⇒ GET /v1/admin answers {admin:false} and the
+	// DataDir (ADR-076). nil ⇒ GET /v1/admin answers {admin:false} and the
 	// module routes answer 404.
 	Admin AdminController
 	// AdminVerify checks an admin key; nil ⇒ modules.ParseKey, the key
@@ -230,7 +230,7 @@ type Deps struct {
 	DataDir string
 }
 
-// AdminController keeps the admin key that opens private modules (ADR-075).
+// AdminController keeps the admin key that opens private modules (ADR-076).
 // The API verifies the key; the controller only stores it.
 type AdminController interface {
 	AdminKey() string

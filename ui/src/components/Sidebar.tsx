@@ -584,7 +584,7 @@ export function Sidebar(props: SidebarProps) {
         * Its orb sparks for the sessions working now, from this model. */}
       {props.onRoute && <BrainSidebar onOpen={props.onRoute} working={today.working} />}
 
-      {/* Private modules an admin key opens (ADR-075); nothing without one. */}
+      {/* Private modules an admin key opens (ADR-076); nothing without one. */}
       {props.onRoute && <ModuleRows onOpen={props.onRoute} dashboardActive={props.dashboardActive && !props.mailActive && !props.pipelineActive} />}
 
       <SidebarFooter
