@@ -12,6 +12,16 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.131.0] - 2026-10-17
+
+### Added
+
+- **modules:** a slot for private modules (ADR-076). A signed admin key
+  pasted into Settings → License names the modules this machine may run;
+  `caprock module install <dir>` copies one in from a local folder; each
+  installed module gets a sidebar screen in the app's theme and a small JSON
+  document store. Without a key nothing of it is shown.
+
 ## [0.130.0] - 2026-10-17
 
 ### Added

@@ -238,6 +238,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-17 — 0.131.0: a slot for private modules
+
+A minor release because it carries a feature (#733). The public build gains a generic slot for private modules: a signed admin key (Ed25519, ADR-076) opens it, a module installed from a local folder shows as a screen of its own and gets a document store (migration 0061). Without a valid key nothing is drawn, and every module route answers this machine only.
+
 ### 2026-10-17 — 0.130.0: the in-app browser returns as a beta, the Second Brain graph unfolds
 
 A minor release because it carries features, landed as one batch PR (#734). The in-app browser returns off by default, as a window of its own over the tab instead of a child webview (ADR-075 records the 0.124.0 crash analysis), with Open in Caprock in the link chooser while it is on. The Second Brain graph unfolds from its card into a project-coloured graph with a side panel, and new thoughts fly in from their session. Highlight where you type gets a switch and a key. Release-plan rows open their session, and the Next release header speaks in plain words.
