@@ -11,7 +11,7 @@
  */
 import { useState } from 'react'
 import { api, type BrainAutoStatus, type BrainEstimate } from '@/lib/api'
-import { useBrainStatus } from '@/lib/brain'
+import { brainArrivalsSetting, setBrainArrivals, useBrainStatus } from '@/lib/brain'
 import { fmtAgo, fmtTokens } from '@/lib/format'
 import { Choice, Details, Section, Toggle } from '@/components/SettingsParts'
 
@@ -66,11 +66,25 @@ export function BrainAutoSetting() {
         options={LIMITS.map((v) => ({ value: String(v), label: limitLabel(v) }))}
         onChange={(v) => save({ daily_tokens: Number(v) })}
       />
+      <ArrivalsToggle />
       <Figures auto={auto} />
-      {err && <p className="text-[12.5px] text-danger">{err}</p>}
+      {err &&<p className="text-[12.5px] text-danger">{err}</p>}
       <Backfill on={auto.on} />
       {auto.recent.length > 0 && <Recent auto={auto} />}
     </Section>
+  )
+}
+
+/** *Animate thoughts arriving*: kept in this browser, on unless turned off (04-ui.md § Second Brain). */
+function ArrivalsToggle() {
+  const [on, setOn] = useState(brainArrivalsSetting)
+  return (
+    <Toggle
+      checked={on}
+      onChange={(v) => { setOn(v); setBrainArrivals(v) }}
+      label="Animate thoughts arriving"
+      hint="A memory just kept flies from its session’s tab into Second Brain, and lands in the graph when it is open. Never with reduced motion."
+    />
   )
 }
 

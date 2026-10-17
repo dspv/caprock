@@ -51,8 +51,12 @@
  * here: it opens the screen, where the one-click start sits with its one
  * line and Details (rule 4) — the consent in this narrow column was
  * unreadable (owner, 2026-10-15).
+ *
+ * A memory added flies in from its session's tab as a spark and the card
+ * pulses as it lands (BrainArrivals; Settings → Second Brain, *Animate
+ * thoughts arriving*).
  */
-import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { BrainAutoStatus } from '@/lib/api'
 import { brainActivity, brainMode, brainState, buildFigures, clockOrDay, isBuilding, isEntity, useBrainGraph, useBrainLanded, useBrainStatus } from '@/lib/brain'
 import { fmtAgo } from '@/lib/format'
@@ -62,6 +66,7 @@ import { BrainOrb } from './BrainOrb'
 import { ChevronIcon } from './AppIcons'
 import { BrainGlyph } from './BrainDrop'
 import { SecondBrainModal } from './SecondBrainModal'
+import { BrainArrivals } from './BrainArrivals'
 import './BrainLive.css'
 
 const FOLD_KEY = 'caprock.app.brain-fold'
@@ -85,6 +90,8 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
   const { status } = useBrainStatus()
   const [fold, setFold] = useState(readFold)
   const [how, setHow] = useState(false)
+  // Where a thought arriving lands (BrainArrivals).
+  const block = useRef<HTMLDivElement>(null)
   // Folded unless this viewer unfolded it (owner, 2026-10-15).
   const open = fold ? fold === 'open' : false
   const { graph } = useBrainGraph({ limit: NEWEST }, 600)
@@ -155,6 +162,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
       data-brain-fold={open ? 'open' : 'closed'}
     >
       <div
+        ref={block}
         role="link"
         tabIndex={0}
         aria-label={`Open Second Brain — ${mode}${metric ? `, ${metric}` : ''}`}
@@ -212,6 +220,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
         )}
       </div>
       {how && <SecondBrainModal onOpen={go} onClose={() => setHow(false)} />}
+      <BrainArrivals card={block} />
     </section>
   )
 }

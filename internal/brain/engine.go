@@ -531,7 +531,9 @@ func (e *Engine) publish(n store.BrainNode) {
 	if e.Bus == nil {
 		return
 	}
-	e.Bus.Publish(bus.Frame{Type: bus.FrameBrain, Data: map[string]any{"id": n.ID, "op": "added", "kind": n.Kind, "title": n.Title, "auto": true}})
+	data := map[string]any{"id": n.ID, "op": "added", "kind": n.Kind, "title": n.Title, "auto": true}
+	n.Source.AddToFrame(data)
+	e.Bus.Publish(bus.Frame{Type: bus.FrameBrain, Data: data})
 }
 
 // Status is the extraction's state for GET /v1/brain/status.

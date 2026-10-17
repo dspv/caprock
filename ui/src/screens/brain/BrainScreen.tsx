@@ -41,7 +41,7 @@ import { BrainStart } from './BrainStart'
 import { BrainStrip } from './BrainStrip'
 import { BrainSettings } from './BrainSettings'
 import { BrainNext, defaultProject } from './BrainNext'
-import { BrainGraphCard, BrainGraphDialog } from './BrainGraphCard'
+import { BrainGraphCard, BrainGraphDialog, type UnfoldFrom } from './BrainGraphCard'
 
 /** Text with the search's terms marked where they occur, in any case or accent. */
 function Marked({ text, terms }: { text: string; terms?: string[] }) {
@@ -71,6 +71,9 @@ export function BrainScreen({ node }: { node?: number }) {
   const [span, setSpan] = useState(0)
   const [selected, setSelected] = useState<number | undefined>(node)
   const [graphOpen, setGraphOpen] = useState(false)
+  const [unfold, setUnfold] = useState<UnfoldFrom | undefined>()
+  const cardBox = useRef<HTMLDivElement>(null)
+  const recent = useRef<HTMLElement>(null)
   const [shown, setShown] = useState(PAGE)
   useEffect(() => { if (node) setSelected(node) }, [node])
   // A pause in typing, then the search: each one reads the graph.
@@ -118,6 +121,8 @@ export function BrainScreen({ node }: { node?: number }) {
     () => defaultProject((whole.graph?.nodes ?? []).filter((n) => !isEntity(n.kind)), status?.projects ?? []),
     [whole.graph, status?.projects],
   )
+  // *Open* on a project or a topic in the graph: the list, filtered to it, in view.
+  const showRecent = () => window.setTimeout(() => recent.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 80)
   // On a narrow screen the memory opens under the list: bring it into view.
   const side = useRef<HTMLDivElement>(null)
   const select = (id: number | undefined) => {
@@ -165,7 +170,7 @@ export function BrainScreen({ node }: { node?: number }) {
                 <>
                   <BrainNext projects={status?.projects ?? []} initial={initialProject} selected={selected} onSelect={select} handoff={auto?.handoff} />
 
-                  <section className="grid min-w-0 grid-cols-1 gap-2" aria-labelledby="brain-recent-title" data-brain-recent-memories>
+                  <section ref={recent} className="grid min-w-0 grid-cols-1 gap-2 scroll-mt-3" aria-labelledby="brain-recent-title" data-brain-recent-memories>
                     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                       <h2 id="brain-recent-title" className="text-[16px] font-semibold text-fg">Recent memories</h2>
                       {graph && (
@@ -248,14 +253,17 @@ export function BrainScreen({ node }: { node?: number }) {
               {selected !== undefined && !graphOpen && (
                 <BrainDetail key={selected} id={selected} onSelect={select} onClose={() => setSelected(undefined)} editable={owner} className="grid w-full !static max-h-none lg:max-h-[calc(100vh-7rem)]" />
               )}
-              <div className={selected !== undefined && !graphOpen ? 'max-lg:hidden' : ''}>
-                <BrainGraphCard graph={whole.graph} auto={auto} kept={kept} onOpen={() => setGraphOpen(true)} />
+              <div ref={cardBox} className={selected !== undefined && !graphOpen ? 'max-lg:hidden' : ''}>
+                <BrainGraphCard graph={whole.graph} auto={auto} kept={kept} open={graphOpen} onOpen={(from) => { setUnfold(from); setGraphOpen(true) }} />
               </div>
             </div>
           </div>
 
           {graphOpen && whole.graph && (
-            <BrainGraphDialog graph={whole.graph} selected={selected} onSelect={setSelected} onClose={() => setGraphOpen(false)} editable={owner} />
+            <BrainGraphDialog graph={whole.graph} selected={selected} onSelect={setSelected} onClose={() => setGraphOpen(false)} editable={owner}
+              from={unfold} cardEl={() => cardBox.current?.querySelector<HTMLElement>('[data-brain-graph-card]') ?? null}
+              onOpenProject={(name) => { setInput(''); setQuery(''); setProject(name); setSpan(0); showRecent() }}
+              onOpenTopic={(title) => { setProject(''); setInput(title); setSpan(0); showRecent() }} />
           )}
         </>
       )}

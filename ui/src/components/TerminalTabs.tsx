@@ -395,6 +395,7 @@ export function TabStrip(props: TabStripProps) {
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
               title={tip}
               data-project={t.projectId}
+              data-session-id={s?.session_id}
               className={`group relative flex h-[32px] max-w-[340px] flex-1 basis-[220px] cursor-default select-none items-center gap-1 rounded-t-[9px] pl-2 pr-1 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
                 active ? (file !== undefined ? 'app-tab-front min-w-[232px] bg-bg font-semibold text-fg' : 'app-tab-front min-w-[232px] app-slab font-semibold text-fg') : 'app-tab-back min-w-[92px] text-fg-muted hover:text-fg'
               } ${dragging === t.id ? 'opacity-60' : ''}`}
