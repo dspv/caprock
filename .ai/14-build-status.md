@@ -221,6 +221,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-17 — 0.128.1: 0.128.0, published
+
+A patch release carrying 0.128.0 (#729). The v0.128.0 release run failed in its UI check on a phone Releases test that read a line before the data under it had arrived, so v0.128.0 was tagged but never published. The test now waits; the tag stays where it is.
+
 ### 2026-10-17 — 0.128.0: the phone walkie-talkie bar, AI;DR, report a bug, Halloween pumpkins
 
 A minor release because it carries features, landed as one batch PR (#727). The phone gets a slim walkie-talkie bar: hold to talk, answers read aloud, and AI;DR / Read aloud / Continue / Stop on the latest answer. AI;DR squeezes one answer through the user's own claude, cached (ADR-072). Report a bug sends a report the user wrote to Caprock support, only on their click after the sheet names every field (ADR-073; rule 4 amended with the owner's OK). In October Claude's portrait can wear a pumpkin.

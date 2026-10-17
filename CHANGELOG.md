@@ -12,6 +12,14 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.128.1] - 2026-10-17
+
+### Fixed
+
+- **release:** 0.128.0 was tagged but never published: a phone Releases test
+  read the "read N ago" line before the stats answer had drawn it, and failed
+  the release run. The test now waits for the line; 0.128.1 carries 0.128.0.
+
 ## [0.128.0] - 2026-10-17
 
 ### Added
