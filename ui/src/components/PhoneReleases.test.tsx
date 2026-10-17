@@ -42,7 +42,8 @@ describe('PhoneReleases', () => {
       expect(bar.querySelectorAll('[data-step]')).toHaveLength(5)
       expect(bar.parentElement?.previousElementSibling?.textContent).toMatch(/\S/)
     }
-    expect(screen.getByText(/^Pull requests from GitHub, read /)).toBeTruthy()
+    // The read line follows the stats answer, which can land after the rows.
+    expect(await screen.findByText(/^Pull requests from GitHub, read /)).toBeTruthy()
   })
 
   it('reads again on Refresh and on release news, never on a timer', async () => {
