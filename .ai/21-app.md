@@ -1772,7 +1772,10 @@ replies to a running session: Continue, Shorter and the like"). Built in
   field while the chat can type (`ChatView`, the phone's chat included). A
   session Caprock only watches never gets the row, and the daemon refuses
   its queue whatever the page draws. A sibling after the terminal's box, so
-  it never remounts the host.
+  it never remounts the host. A quiet *Reply to the agent:* leads the row,
+  and each chip's hover names the message it sends (*Sends to the agent:
+  “…”*) (owner, 2026-10-18, translated: the bare row was "not very
+  unambiguous").
 - **Sending** is the composer's path, `POST /v1/agents/{id}/queue`
   (ADR-053): the reply's fixed text, typed in at once at the prompt,
   otherwise held and typed when the turn ends; the daemon types a line
