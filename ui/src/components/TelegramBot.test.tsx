@@ -54,8 +54,12 @@ describe('TelegramBotFields', () => {
     fireEvent.change(await screen.findByLabelText('Bot token'), { target: { value: ' 123:ok ' } })
     fireEvent.click(screen.getByText('Connect'))
     expect(await screen.findByLabelText('Pairing code')).toHaveTextContent('482913')
-    expect(screen.getByText('Open @my_bot and send it').closest('a')).toHaveAttribute('href', 'https://t.me/my_bot?start=482913')
+    expect(screen.getByText('Open @my_bot').closest('a')).toHaveAttribute('href', 'https://t.me/my_bot?start=482913')
     expect(screen.getByText('/start 482913')).toBeInTheDocument()
+    // Steps 1 and 2 have ticked; 3 waits for the code.
+    expect(screen.getByLabelText('Step 1, done')).toBeInTheDocument()
+    expect(screen.getByLabelText('Step 2, done')).toBeInTheDocument()
+    expect(screen.getByLabelText('Step 3')).toBeInTheDocument()
     expect(tg.tokens).toEqual(['123:ok'])
     expect(saved).toHaveBeenCalled()
     // The token is gone from the page; only its mask is shown.
@@ -63,11 +67,36 @@ describe('TelegramBotFields', () => {
     expect(screen.getByText('••••••x9Zq')).toBeInTheDocument()
   })
 
+  it('Paste reads the clipboard and connects a whole token at once', async () => {
+    tg.refuse = ''
+    tg.tokens = []
+    tg.state = { bot_set: false, chat_set: false, polling: false }
+    // A made-up token of the right shape, never a real one.
+    const fake = '1234567:FAKEfakeFAKEfakeFAKEfakeFAKEfake_-12'
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { readText: async () => fake } })
+    try {
+      render(<TelegramBotFields onSaved={() => {}} />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Paste' }))
+      expect(await screen.findByLabelText('Pairing code')).toHaveTextContent('482913')
+      expect(tg.tokens).toEqual([fake])
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+    }
+  })
+
   it('names the paired chat, and says a hand-typed one cannot answer back', async () => {
     tg.state = { bot_set: true, bot_username: 'my_bot', chat_set: true, chat_name: 'Dima', polling: true }
     const { unmount } = render(<TelegramBotFields onSaved={() => {}} />)
     expect(await screen.findByText('Dima')).toBeInTheDocument()
-    expect(screen.getByText('Pair again')).toBeInTheDocument()
+    expect(screen.getByText('@my_bot')).toBeInTheDocument()
+    // One line, real buttons; the keychain paragraph is behind the (i).
+    for (const name of ['Change bot', 'Pair again', 'Disconnect']) expect(screen.getByRole('button', { name })).toBeInTheDocument()
+    expect(screen.queryByText(/keychain/i)).toBeNull()
+    expect(screen.getByRole('button', { name: 'How the bot token is kept' })).toBeInTheDocument()
+    // Change bot opens the card with the paste field.
+    fireEvent.click(screen.getByRole('button', { name: 'Change bot' }))
+    expect(screen.getByText('Change the bot')).toBeInTheDocument()
+    expect(screen.getByLabelText('Bot token')).toBeInTheDocument()
     unmount()
     tg.state = { bot_set: true, chat_set: true, manual_chat: true, polling: false }
     render(<TelegramBotFields onSaved={() => {}} />)

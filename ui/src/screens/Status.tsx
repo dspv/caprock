@@ -23,6 +23,7 @@ import { FaceDefaultSetting } from '@/components/SessionFace'
 import { api, isPairedDevice, type Status } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { SettingsNav } from '@/components/SettingsNav'
+import { NothingMatches, SettingsFilterContext, SettingsSearchField, useFindKey, useSettingsSearch, useShownIds } from '@/components/SettingsSearch'
 import { fmtDuration, fmtUSD } from '@/lib/format'
 import { Empty } from '@/components/ui'
 import { PlanOptions, usePlan } from '@/components/PlanPicker'
@@ -90,7 +91,7 @@ function useExplain(): [boolean, (v: boolean) => void] {
 
 function SettingsHeading({ onClose, explain, onExplain }: { onClose: () => void; explain?: boolean; onExplain?: (v: boolean) => void }) {
   return (
-    <div className="flex items-center gap-3 px-1 pt-1">
+    <div data-settings-keep="" className="flex items-center gap-3 px-1 pt-1">
       <h1 className="min-w-0 flex-1 text-[24px] font-semibold text-fg">Settings</h1>
       {onExplain && (
         <label className="flex cursor-pointer items-center gap-2 text-[13.5px] text-fg-muted">
@@ -129,6 +130,15 @@ export function StatusScreen() {
   const st = useApi(() => api.status(), [], { live: false, intervalMs: 5000 })
   const page = useRef<HTMLDivElement>(null)
   const [explain, setExplain] = useExplain()
+  const search = useSettingsSearch(page)
+  const shown = useShownIds(search)
+  // ⌘F: the search field that is drawn — the menu's from `xl`, else the one
+  // above the sections.
+  useFindKey(() => {
+    const f = [...document.querySelectorAll<HTMLInputElement>('input[data-settings-search]')].find((i) => i.getClientRects().length > 0)
+    f?.focus()
+    f?.select()
+  })
   const s = st.data
   useSectionLink(!!s)
   const head = <SettingsHeading onClose={close} explain={explain} onExplain={setExplain} />
@@ -136,10 +146,14 @@ export function StatusScreen() {
   if (!s) return <div className="mx-auto grid w-full max-w-3xl gap-3">{head}<div className="px-1 text-fg-muted">loading…</div></div>
   const owner = !isPairedDevice()
   return (
+    <SettingsFilterContext.Provider value={shown}>
     <div className="flex w-full justify-center gap-6">
-    <SettingsNav root={page} />
-    <div ref={page} data-settings-explain={explain ? 'on' : 'off'} className="grid w-full max-w-3xl gap-3">
+    <SettingsNav root={page} search={search} />
+    <div ref={page} data-settings-explain={explain ? 'on' : 'off'} data-settings-filtering={shown ? '' : undefined} className="grid w-full max-w-3xl gap-3">
       {head}
+      {/* Where the menu is not drawn, its search sits above the sections. */}
+      <SettingsSearchField search={search} className="xl:hidden" />
+      {search.query.trim() && search.matches.length === 0 && <NothingMatches query={search.query} className="px-1" />}
       {/* Problems first: each one means something is not being captured or
         * cannot be started, and none of them is a preference. */}
       <Problems s={s} />
@@ -207,6 +221,7 @@ export function StatusScreen() {
       <AboutSection s={s} />
     </div>
     </div>
+    </SettingsFilterContext.Provider>
   )
 }
 

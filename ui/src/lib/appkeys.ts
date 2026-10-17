@@ -515,7 +515,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘W', 'Close the tab or pane — the session keeps going'],
   ['⌘E, ⇧⌘E', 'Split: a new shell beside, below'],
   ['⌘[ ]', 'Previous and next pane'],
-  ['⌘F', 'Find in the terminal'],
+  ['⌘F', 'Find in the terminal; with Settings in front, search Settings'],
   [INPUT_HIGHLIGHT_KEY, 'Highlight where you type: on or off, in every terminal'],
   [LINK_OPEN_CLICK, 'A link in the terminal: open it in your default browser'],
   [LINK_CHOOSE_CLICK, 'A link in the terminal: choose the browser to open it in, or copy it'],

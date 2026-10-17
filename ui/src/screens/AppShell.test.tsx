@@ -10,6 +10,7 @@ import type { SessionSummary } from '@/lib/api'
 import { WORKSPACE_KEY } from '@/lib/tabs'
 import { saveSidebarMode } from '@/lib/sidebarMode'
 import { FIND_EVENT } from '@/lib/appkeys'
+import { SETTINGS_FIND_EVENT } from '@/lib/settingsSearch'
 import { CLOSE_TAB_EVENT } from '@/lib/shell'
 // Imported here rather than inside each test: the first dynamic import
 // transformed the whole app inside the first test's 5 s budget, and on a busy
@@ -1010,6 +1011,23 @@ describe('workspace helpers', () => {
     fireEvent.click(await screen.findByText('Find in the terminal'))
     await waitFor(() => expect(heard).toBe(2))
     window.removeEventListener(FIND_EVENT, on)
+  })
+
+  it('⌘F with Settings in front goes to its search, not to a terminal', async () => {
+    let term = 0
+    let settings = 0
+    const onTerm = () => { term++ }
+    const onSettings = () => { settings++ }
+    window.addEventListener(FIND_EVENT, onTerm)
+    window.addEventListener(SETTINGS_FIND_EVENT, onSettings)
+    await renderApp()
+    await cmd(',')
+    await waitFor(() => expect(location.hash).toMatch(/^#\/settings/))
+    await cmd('f')
+    expect(settings).toBe(1)
+    expect(term).toBe(0)
+    window.removeEventListener(FIND_EVENT, onTerm)
+    window.removeEventListener(SETTINGS_FIND_EVENT, onSettings)
   })
 
   it('opens a project in the default editor from its right-click menu and the palette', async () => {

@@ -16,6 +16,7 @@ import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
 import { pageTitle } from '@/lib/pagetitle'
 import { TabPageBar } from '@/components/WhereAmI'
+import { SETTINGS_FIND_EVENT } from '@/lib/settingsSearch'
 import { DASHBOARD_KEY, FIND_EVENT, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { href, parseHash, type SettingsSection } from '@/lib/router'
@@ -1213,7 +1214,12 @@ export function AppShell() {
       case 'next-pane': dispatch({ type: 'cycle-pane', delta: 1 }); break
       case 'prev-pane': dispatch({ type: 'cycle-pane', delta: -1 }); break
       case 'next-waiting': jumpToWaiting(); break
-      case 'find': if (workspaceShown) window.dispatchEvent(new Event(FIND_EVENT)); break
+      // ⌘F finds in the terminal in front; with Settings in front, in its
+      // search field (SettingsSearch). Other dashboard pages have no find.
+      case 'find':
+        if (workspaceShown) window.dispatchEvent(new Event(FIND_EVENT))
+        else if (parseHash(location.hash).name === 'settings') window.dispatchEvent(new Event(SETTINGS_FIND_EVENT))
+        break
       case 'settings': onSettings(); break
       case 'feedback': setFeedbackAt(currentScreen(location.hash, true)); break
       case 'mail': onMail(); break

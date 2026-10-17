@@ -8,6 +8,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react'
 import { SectionIcon } from './SettingsIcons'
+import { useFilteredOut } from './SettingsSearch'
 
 /** A section's anchor: its own id, else one made from its title. */
 export function sectionId(title: string): string {
@@ -35,6 +36,9 @@ export function Section({ id, title, aside, children, explained }: { id?: string
   const sid = id ?? sectionId(title)
   const [folded, setFolded] = useState(() => readFolds().has(sid))
   const [explain, setExplain] = useState(false)
+  // Settings search (SettingsSearch): a section the query does not find is
+  // hidden, not unmounted, so its text stays readable to the index.
+  const filteredOut = useFilteredOut(sid)
   // A link that lands here (#/settings/phone) opens a folded section: being
   // sent somewhere and finding a closed lid was the complaint.
   useEffect(() => {
@@ -59,7 +63,7 @@ export function Section({ id, title, aside, children, explained }: { id?: string
     } catch { /* private window */ }
   }
   return (
-    <section id={sid} data-settings-section={title} data-explain={explain || explained ? 'on' : undefined} className="min-w-0 scroll-mt-16 rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
+    <section id={sid} hidden={filteredOut || undefined} data-settings-section={title} data-explain={explain || explained ? 'on' : undefined} className="min-w-0 scroll-mt-16 rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
       {/* Wraps rather than squeezing: on a phone the status beside a long
         * title drops under it instead of pushing the page sideways. */}
       <header className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 ${folded ? 'py-3' : 'pt-3.5'}`}>
