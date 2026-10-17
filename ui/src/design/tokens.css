@@ -1260,6 +1260,29 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
   display: none;
 }
 
+/* Settings search (components/SettingsSearch.tsx): the words a query finds,
+ * marked through the CSS Custom Highlight API so the page's text is never
+ * rewritten, and the control a jump lands on, lit for a moment. */
+/* While a query is typed, whatever on the page is not a section and holds no
+ * section it finds (a Premium panel's glass and banner) steps aside too. */
+[data-settings-filtering] > :not([data-settings-section]):not([data-settings-keep]):not(:has([data-settings-section]:not([hidden]))) {
+  display: none;
+}
+::highlight(settings-search) {
+  background-color: rgba(214, 160, 60, 0.35);
+  color: inherit;
+}
+[data-settings-flash] {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+  animation: settings-flash 1.6s ease-out forwards;
+}
+@keyframes settings-flash {
+  0%, 60% { outline-color: var(--color-accent); }
+  100% { outline-color: transparent; }
+}
+
 /* The update card gives way to the version panel, which offers the same
  * update in the same corner (components/VersionPanel.tsx). */
 html[data-version-open] [data-update-toast] { display: none; }

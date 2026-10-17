@@ -876,7 +876,7 @@ On macOS:
 | ⌘[ ]        | Previous and next pane                                                              |
 | ⌘J          | Next session waiting on you                                                         |
 | ⇧⌘H         | Add to Second Brain: keep a line of your own                                        |
-| ⌘F          | Find in the terminal or the file                                                    |
+| ⌘F          | Find in the terminal or the file; with Settings in front, search Settings           |
 | ⌥⌘G         | Highlight where you type: on or off, in every terminal                              |
 | ⌘-click     | A link in the terminal: open it in your default browser                             |
 | ⇧⌘-click    | A link in the terminal: choose the browser to open it in, or copy it                |
