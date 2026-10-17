@@ -15,6 +15,16 @@ import (
 // Branches view (github.PullByURL, kept and shared with the PRs view).
 const branchLivePRs = 8
 
+// The release plan's pushed branches (owner, 2026-10-18: agents push
+// branches and one batch pull request ships them): a branch ahead of the
+// default branch, committed within branchRecent and with no open pull
+// request, is checked for having landed by content (branches.Landed), the
+// newest branchLandedMax of them.
+const (
+	branchRecent    = 14 * 24 * time.Hour
+	branchLandedMax = 40
+)
+
 // SessionBranch is one row of the deck's Branches view: what git knows of
 // the branch, its pull request, what Caprock's sessions on it cost.
 type SessionBranch struct {
@@ -36,6 +46,11 @@ type SessionBranch struct {
 	ActivityAt int64 `json:"activity_at"`
 	// Stale: no commit in 30 days and no open pull request.
 	Stale bool `json:"stale,omitempty"`
+	// Landed: its changes are already on the default branch by content (a
+	// squash merge, or inside another branch's batch); checked only for a
+	// branch ahead of it, committed in the last 14 days, with no open pull
+	// request. Absent: not landed, or not checked.
+	Landed bool `json:"landed,omitempty"`
 }
 
 // SessionBranches is GET /v1/sessions/{id}/branches.
@@ -71,6 +86,30 @@ func OrderBranches(bs []SessionBranch) {
 		}
 		return a.Name < b.Name
 	})
+}
+
+// markLanded sets Landed on the branches the release plan may list: ahead of
+// base, committed within branchRecent, no open pull request, the newest
+// branchLandedMax (bs is ordered newest first). A check that fails leaves the
+// branch not landed: it is listed, never hidden on a guess.
+func markLanded(ctx context.Context, dir, base string, bs []SessionBranch, now time.Time) {
+	if base == "" {
+		return
+	}
+	n := 0
+	for i := range bs {
+		b := &bs[i]
+		if b.Default || b.Ahead == nil || *b.Ahead == 0 || b.SHA == "" || now.Sub(time.UnixMilli(b.CommittedMS)) > branchRecent || (b.PR != nil && b.PR.State == "open") {
+			continue
+		}
+		if n >= branchLandedMax {
+			return
+		}
+		n++
+		if ok, err := branches.Landed(ctx, dir, base, b.SHA); err == nil {
+			b.Landed = ok
+		}
+	}
 }
 
 // handleSessionBranches is the session deck's Branches view: the branches of
@@ -111,7 +150,8 @@ func (s *Server) composeSessionBranches(ctx context.Context, id string, connecte
 	}
 	l, err := branches.List(ctx, dir, localDefault)
 	if err != nil && sess.RepoRoot != "" && sess.RepoRoot != dir {
-		l, err = branches.List(ctx, sess.RepoRoot, localDefault)
+		dir = sess.RepoRoot
+		l, err = branches.List(ctx, dir, localDefault)
 	}
 	if err != nil {
 		out.Reason = "no_repo"
@@ -140,6 +180,7 @@ func (s *Server) composeSessionBranches(ctx context.Context, id string, connecte
 		out.Branches = append(out.Branches, row)
 	}
 	OrderBranches(out.Branches)
+	markLanded(ctx, dir, l.Base, out.Branches, now)
 	// The open PRs' checks, for their mini pipelines: the newest rows first,
 	// each a read the PRs view shares.
 	n := 0

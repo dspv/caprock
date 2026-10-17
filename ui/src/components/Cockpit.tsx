@@ -97,6 +97,9 @@ export function useSubagents(sessionId: string, enabled: boolean, recent = 0): S
   return enabled ? data : undefined
 }
 
+/** The cockpit's subagent read (useSubagents), handed to the Release section so it reads nothing again. */
+export const SessionSubagents = createContext<SubagentsNow | undefined>(undefined)
+
 const STATE_LABEL: Record<CockpitState, string> = {
   working: 'Working',
   waiting: 'Waiting on you',
@@ -186,7 +189,8 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, rel
     tools: <Timeline runs={runs} total={s.stats?.tool_calls} now={now} cwd={s.cwd} />,
     changes: changes ? <Foldable id="changes">{changes}</Foldable> : null,
     ci: ci ? <Foldable id="ci">{ci}</Foldable> : null,
-    release: release ? <Foldable id="release">{release}</Foldable> : null,
+    // The Release section lists the working subagents too, from this one read.
+    release: release ? <SessionSubagents.Provider value={subs}><Foldable id="release">{release}</Foldable></SessionSubagents.Provider> : null,
     processes: processes ? <Foldable id="processes">{processes}</Foldable> : null,
   }
   return (

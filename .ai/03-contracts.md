@@ -2350,8 +2350,8 @@ view is shown.
   local one); `current` the checkout's branch. A folder that is no
   repository is `reason` `no_repo` with no rows.
 - **Each branch** — `{name, current?, default?, local, remote, ahead?,
-  behind?, committed_ms, author?, sha?, pr?, live?, cost_usd, sessions,
-  agents[], session_at?, activity_at, stale?}`. A local branch and origin's
+  behind?, committed_ms, author?, sha?, subject?, pr?, live?, cost_usd, sessions,
+  agents[], session_at?, activity_at, stale?, landed?}`. A local branch and origin's
   copy are one row (the local one's commit); other remotes and origin's
   `HEAD` are left out. `ahead` and `behind` are absent when not counted.
 - **Its PR** — `pr` `{number, url, title?, state, draft?, base?,
@@ -2371,6 +2371,16 @@ view is shown.
 - **Order and stale** — the current branch first, then `activity_at` (the
   later of the last commit and the newest session event), newest first.
   `stale`: no commit in 30 days and no open PR; never the default branch.
+- **Subject and landed** (2026-10-18, the release plan's pushed branches) —
+  `subject` is the last commit's subject line (`%(contents:subject)`, read
+  after a NUL so a tab in it is kept). `landed` is true when the branch's
+  changes are already on `base` by content: `git merge-tree --write-tree
+  <base> <sha>` (git 2.38+) gives `base`'s own tree, so a branch shipped by
+  a squash merge or inside another branch's batch — which `git cherry`
+  cannot see, the patch ids differing — is found. Checked only for a branch
+  ahead of `base`, committed in the last 14 days, with no open PR, the
+  newest 40, each pair of commits once (kept in memory); a failed check
+  (an older git, a conflict) leaves it absent, never true.
 
 **`GET /v1/github/actions-usage`** (`?owner=` optional) → `ActionsUsage`
 `{account, org, year, month, available, reason?, needs?, minutes, gross_usd,

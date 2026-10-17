@@ -12,6 +12,7 @@ vi.mock('@/lib/api', async (orig) => {
 })
 
 import { CockpitRelease, ReleasePlan } from './ReleasePlan'
+import { SessionSubagents } from './Cockpit'
 import { WorkView } from '@/screens/Work'
 import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 import { planForRepo, type ReleasePlanData } from '@/lib/releaseplan'
@@ -275,6 +276,27 @@ describe('where it is drawn', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // Owner, 2026-10-18, translated: "it shows vaguely what's going on on the
+  // way to the release". The pushed branches and the working subagents, in
+  // sections with counts, compact.
+  it('lists in the right panel the pushed branches with no pull request and the session’s working subagents, in sections', async () => {
+    h.data = withKinds()
+    writeDeck('stats:/w/caprock', statsFixture())
+    writeDeck('branches:/w/caprock', { connected: true, repo: 'dspv/caprock', default: 'master', base: 'origin/master', fetched_at: NOW,
+      branches: [{ name: 'feat/batch-1', local: false, remote: true, ahead: 2, behind: 0, committed_ms: Date.now() - 30 * 60_000, cost_usd: 0, sessions: 0, agents: [], activity_at: 0, subject: 'fix(deck): the ring' }] })
+    const subs = { working: [{ agent_id: 'a1', description: 'Port the ring', tool_calls: 3, started_at: Date.now() - 12 * 60_000, last_at: Date.now(), running: true, asking: false }], finished: 0 }
+    render(<SessionSubagents.Provider value={subs}><CockpitRelease sessionId="s1" repoRoot="/w/caprock" /></SessionSubagents.Provider>)
+    const region = await screen.findByRole('region', { name: 'Release' })
+    await within(region).findByRole('heading', { name: '0.118.0' })
+    const sections = [...region.querySelectorAll('[data-release-section]')].map((e) => e.textContent)
+    expect(sections).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Ready · 1 branch', 'In progress · 2 agents'])
+    const branch = region.querySelector('[data-release-row="b:feat/batch-1"]')!
+    expect(branch).toHaveTextContent('fix(deck): the ring')
+    expect(branch.querySelector('[data-release-word]')).toHaveTextContent('+2 · 30m')
+    expect([...branch.querySelectorAll('[data-step-state]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'off', 'off', 'off', 'off'])
+    expect(region.querySelector('[data-release-row="sa:a1"] [data-release-word]')).toHaveTextContent('working · 12m')
   })
 
   it('draws nothing in the right panel for a session outside a repository', () => {

@@ -27,11 +27,14 @@ import { asBoard, type ShipsBy } from '@/lib/prboard'
 import { RELEASED_MEANS } from '@/lib/journey'
 import { releaseStatus, type ReleaseStatus } from '@/lib/releasestatus'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseWhy } from './ReleaseStatus'
-import { BLOCKS, planEmpty, planForRepo, type OSDot, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
+import { BLOCKS, planEmpty, planForRepo, planSections, type OSDot, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
+import { api } from '@/lib/api'
+import type { SessionBranches } from '@/lib/branches'
+import { CI_IDLE_MS, usePoll } from './SessionDeck'
 import { changesRelease, useWork } from '@/lib/useWork'
 import { useNow } from '@/lib/useNow'
 import { pipelineHref, STEPS } from '@/lib/work'
-import { SectionLabel, useFolded } from './Cockpit'
+import { SectionLabel, SessionSubagents, useFolded } from './Cockpit'
 import { useDeckAnswer } from './CockpitCI'
 import { Panel } from './ui'
 import { extTitle } from '@/lib/externalLinks'
@@ -147,7 +150,13 @@ function Rows({ plan, compact, onOpen, steps }: { plan: ReleasePlanData; compact
       <ul data-release-rows className={`grid min-w-0 items-center ${compact
         ? 'grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_auto] gap-y-[3px] text-[12px] @[520px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(2,auto)] @[600px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(3,auto)] @[680px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(4,auto)] @[760px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(5,auto)] @[840px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(6,auto)]'
         : 'grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_auto] gap-y-1 text-[13px] @[520px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(2,auto)] @[600px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(3,auto)] @[680px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(4,auto)] @[760px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(5,auto)] @[840px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(6,auto)]'}`}>
-        {plan.rows.map(row)}
+        {planSections(plan.rows).map((sec, i) => [
+          <li key={`section:${sec.key}`} data-release-section={sec.key}
+            className={`col-span-full font-medium text-fg-faint ${i > 0 ? 'pt-1.5' : ''} ${compact ? 'text-[10.5px]' : 'text-[11.5px]'}`}>
+            {sec.label}
+          </li>,
+          ...sec.rows.map(row),
+        ])}
         {plan.later.map((g) => [
           <li key={`later:${g.key}`} data-release-later={g.key}
             className={`col-span-full pt-1.5 font-medium text-fg-faint ${compact ? 'text-[10.5px]' : 'text-[11.5px]'}`}>
@@ -216,7 +225,13 @@ function PhoneRows({ plan, steps }: { plan: ReleasePlanData; steps: BarSteps }) 
   }
   return (
     <ul data-release-phone className="-mx-3 min-w-0 border-t border-border">
-      {plan.rows.map(row)}
+      {planSections(plan.rows).map((sec) => [
+        <li key={`section:${sec.key}`} data-release-section={sec.key}
+          className="border-b border-border px-3 pb-1.5 pt-3 text-[12px] font-medium text-fg-faint">
+          {sec.label}
+        </li>,
+        ...sec.rows.map(row),
+      ])}
       {plan.later.map((g) => [
         <li key={`later:${g.key}`} data-release-later={g.key}
           className="border-b border-border px-3 pb-1.5 pt-3 text-[12px] font-medium text-fg-faint last:border-b-0">
@@ -267,6 +282,8 @@ function Title({ row: r, root, compact, onOpen }: { row: PlanRow; root: string; 
           className={`${cls} rounded-[3px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent`}>{text}</button>
       )
     }
+    // A pushed branch opens its comparison with the default branch on GitHub.
+    if (r.url) return <a href={r.url} target="_blank" rel="noopener noreferrer" title={extTitle(r.title)} className={cls}>{text}</a>
     return <span className={`min-w-0 ${wrap}`} title={r.title}>{text}</span>
   }
   const link = onOpen
@@ -388,8 +405,12 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   const folded = useFolded()
   const stats = useDeckAnswer<SessionCIStats>(`stats:${repoRoot || sessionId}`)
   const work = useWork({ on: !folded && !!repoRoot, changes: changesRelease })
+  // The pushed branches with no pull request: the deck's Branches answer
+  // (local git, kept by the daemon), read unfolded, once a minute.
+  const [branches] = usePoll<SessionBranches>(!folded && !!repoRoot, `release-branches:${sessionId}`, () => api.sessionBranches(sessionId), () => false, CI_IDLE_MS, `branches:${repoRoot || sessionId}`)
+  const subagents = useContext(SessionSubagents)
   const now = useNow(60_000)
-  const plan = useMemo(() => (repoRoot ? planForRepo(work.data, repoRoot, stats.d, now) : undefined), [work.data, repoRoot, stats.d, now])
+  const plan = useMemo(() => (repoRoot ? planForRepo(work.data, repoRoot, stats.d, now, { branches, subagents }) : undefined), [work.data, repoRoot, stats.d, now, branches, subagents])
   if (!plan || (!folded && planEmpty(plan))) return null
   const n = plan.rows.length
   return (

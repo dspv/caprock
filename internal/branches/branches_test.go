@@ -150,6 +150,61 @@ func TestListCountsAgainstTheDefaultBranch(t *testing.T) {
 	}
 }
 
+// A branch's last commit subject is read with it, a tab in it kept; one whose
+// work reached main by a squash merge is landed by content, one with work
+// main lacks is not (owner, 2026-10-18: pushed branches in the release plan).
+func TestSubjectAndLandedByContent(t *testing.T) {
+	dir := gitRepo(t)
+	g := func(args ...string) {
+		t.Helper()
+		mustGit(t, dir, append([]string{"-c", "user.name=Ada", "-c", "user.email=ada@example.com", "-c", "commit.gpgsign=false"}, args...)...)
+	}
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(dir+"/"+name, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	g("checkout", "-q", "main")
+	g("checkout", "-q", "-b", "feat/squashed")
+	write("a.txt", "one\n")
+	g("add", "a.txt")
+	g("commit", "-q", "-m", "add a")
+	write("a.txt", "one\ntwo\n")
+	g("commit", "-q", "-am", "grow a\twith a tab")
+	g("checkout", "-q", "-b", "feat/open", "main")
+	write("b.txt", "b\n")
+	g("add", "b.txt")
+	g("commit", "-q", "-m", "add b")
+	// main takes feat/squashed's work as one squashed commit.
+	g("checkout", "-q", "main")
+	g("merge", "-q", "--squash", "feat/squashed")
+	g("commit", "-q", "-m", "feat: a (#1)")
+
+	l, err := list(context.Background(), dir, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]Branch{}
+	for _, b := range l.Branches {
+		by[b.Name] = b
+	}
+	if s := by["feat/squashed"].Subject; s != "grow a\twith a tab" {
+		t.Fatalf("subject = %q", s)
+	}
+	ctx := context.Background()
+	if ok, err := Landed(ctx, dir, "main", by["feat/squashed"].SHA); err != nil || !ok {
+		t.Fatalf("squashed: landed %v, %v", ok, err)
+	}
+	if ok, err := Landed(ctx, dir, "main", by["feat/open"].SHA); err != nil || ok {
+		t.Fatalf("open: landed %v, %v", ok, err)
+	}
+	// Asked again, the kept answer.
+	if ok, _ := Landed(ctx, dir, "main", by["feat/squashed"].SHA); !ok {
+		t.Fatal("kept answer differs")
+	}
+}
+
 func mustGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	out, err := git(context.Background(), dir, args...)
