@@ -11,6 +11,35 @@ page is how to make them and how to put them into a build. Why and what is
 sent where: [ADR-057](../.ai/08-decisions.md). The routes:
 [03-contracts.md › Mail](../.ai/03-contracts.md).
 
+## Owner checklist
+
+What only the owner of the Caprock releases can do; the code, the build
+wiring and the tests are in place. Each step is detailed in the sections
+below.
+
+1. **Google Cloud:** a project, the Gmail API enabled, the consent screen
+   (Branding, Audience *External*, the test users), the scopes
+   `https://mail.google.com/`, `openid`, `userinfo.email`, and a client of
+   type **Desktop app**. Keep its client ID and client secret.
+2. **Google verification**, when Mail should work for anyone beyond the test
+   users: publish the app and apply for verification of the restricted scope
+   (home page, privacy policy, a demo video of the sign-in, and the security
+   assessment Google requires for restricted scopes). Until then the app stays
+   in Testing (see the limits below).
+3. **Azure:** an app registration for *any organizational directory and
+   personal Microsoft accounts*, redirect URI
+   `http://localhost/v1/mail/oauth/callback` under *Mobile and desktop
+   applications*, *Allow public client flows: Yes*, no client secret, and the
+   delegated permissions `IMAP.AccessAsUser.All`, `SMTP.Send`,
+   `offline_access`, `openid`, `email`. Keep its Application (client) ID.
+4. **GitHub:** three repository secrets on `dspv/caprock` — Settings ›
+   Secrets and variables › Actions — named exactly
+   `CAPROCK_MAIL_GOOGLE_CLIENT_ID`, `CAPROCK_MAIL_GOOGLE_CLIENT_SECRET`,
+   `CAPROCK_MAIL_MICROSOFT_CLIENT_ID`. The next tagged release compiles them
+   in; nothing in the repository changes.
+5. **Before the release:** run the [real-account test](#real-account-test)
+   on a local build with the same three values in the environment.
+
 ## Google
 
 In the [Google Cloud Console](https://console.cloud.google.com/):
@@ -110,11 +139,77 @@ with Google isn't set up in this build — use an app password*.
 
 ## What the user can revoke
 
-Removing the account in Mail deletes its refresh token from the keychain. At
-the provider: Google at
+Removing the account in Mail deletes its refresh token from the keychain and,
+for a Google account, revokes it at Google
+([token revocation](https://developers.google.com/identity/protocols/oauth2/native-app#tokenrevoke)),
+which ends the whole grant: another computer signed in to the same account
+through the same build has to sign in again. Microsoft gives apps no endpoint
+to revoke their own refresh token, so the removal confirmation says where to
+do it by hand. The user can always revoke at the provider: Google at
 [myaccount.google.com/permissions](https://myaccount.google.com/permissions);
 a personal Microsoft account at
 [account.live.com/consent/Manage](https://account.live.com/consent/Manage); a
 work or school account at [myapps.microsoft.com](https://myapps.microsoft.com)
 or through its Entra admin. After a revocation Mail's sync error says to sign
 in again.
+
+## Real-account test
+
+The Go tests cover the flow against a fake provider and fake IMAP/SMTP
+servers (`internal/mail/oauth_lifecycle_test.go`, `oauth_test.go`,
+`oauth/oauth_test.go`, `engine/oauth_test.go`). What they cannot prove is
+that Google and Microsoft accept the registrations. Run this once per
+provider before the first release that carries the IDs, and again after
+changing a registration.
+
+**Set up a throwaway daemon**, so neither your own `mail.db` nor your
+keychain is touched. From a checkout, with the three values in the
+environment of this shell only:
+
+```bash
+make build
+export CAPROCK_DATA_DIR="$(mktemp -d)" CAPROCK_SECRET_STORE=file
+export CAPROCK_MAIL_GOOGLE_CLIENT_ID=… CAPROCK_MAIL_GOOGLE_CLIENT_SECRET=… CAPROCK_MAIL_MICROSOFT_CLIENT_ID=…
+./bin/caprock up --foreground --no-open --no-hooks --port 22990
+```
+
+Open `http://127.0.0.1:22990/#/mail` in your browser. Use a test mailbox (a
+Google test user while the app is in Testing; an Outlook.com account), not
+one whose mail matters.
+
+**For Google, then for Microsoft:**
+
+1. **Buttons:** Mail's add-account screen offers *Sign in with Google* and
+   *Sign in with Microsoft*. Without the variables (restart without them) it
+   offers app passwords instead.
+2. **Add:** click *Sign in with …*. The provider's page opens in the system
+   browser and lists the mail permission. Approve. The tab ends on
+   *Connected* (*… is connected. You can close this tab*), and Mail shows the
+   account.
+3. **Sync:** the inbox fills within a minute. Settings › Accounts shows the
+   account as *synced*, with no error.
+4. **Read:** open a message with an attachment; the body and the attachment
+   load.
+5. **Send:** write to another address you own and send. It arrives, and it is
+   in the account's Sent folder (Gmail files it itself; Outlook through
+   Caprock).
+6. **Refresh:** leave the daemon running for more than an hour (an access
+   token lives an hour), then send another message and click *Sync*. Both
+   work without a browser window: the daemon refreshed the token.
+7. **Restart:** stop the daemon and start it again with the same variables.
+   The account syncs without signing in again (the refresh token was kept in
+   the secret store, here the file under `CAPROCK_DATA_DIR`).
+8. **Revoked at the provider:** remove Caprock's access at
+   myaccount.google.com/permissions (or account.live.com/consent/Manage),
+   restart the daemon. The account's error says to sign in again; signing in
+   again keeps its mail.
+9. **Remove:** Settings › Accounts › Remove. Google: the confirmation says
+   Caprock gives back its access, and afterwards Caprock is gone from
+   myaccount.google.com/permissions. Microsoft: the confirmation names
+   account.live.com/consent/Manage, where Caprock is still listed until you
+   remove it.
+10. **Clean up:** stop the daemon and delete the `CAPROCK_DATA_DIR` folder.
+
+A work Microsoft 365 mailbox is worth one more pass when one is at hand: its
+tenant may have IMAP or SMTP AUTH turned off, and step 3 or 5 then shows the
+server's refusal with that hint.

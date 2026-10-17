@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Account, AIStatus, ProviderGuess, Settings } from './mailApi'
-import { api, whoText } from './mailApi'
+import { api, removeAccountPrompt, whoText } from './mailApi'
 import { Icon } from './icons'
 import type { Provider } from './Onboarding'
 import { AddFlow } from './Onboarding'
@@ -144,7 +144,7 @@ export function SettingsPanel({ accounts, settings, onSettings, onClose, onChang
           <div className="grow" />
           <button className="btn" onClick={() => setEditing(a)}>Edit</button>
           <button className="btn danger" onClick={() => {
-            if (window.confirm(`Remove ${a.email}? Mail stays on the server.`)) api.deleteAccount(a.id).then(onChanged)
+            if (window.confirm(removeAccountPrompt(a))) api.deleteAccount(a.id).then(onChanged)
           }}>Remove</button>
         </div>
       ))}

@@ -32,9 +32,10 @@ type Server struct {
 	imap *imapserver.Server
 	smtp *smtp.Server
 
-	mu   sync.Mutex
-	tok  string   // the one OAuth access token accepted, see SetToken
-	Sent [][]byte // every message accepted over SMTP
+	mu    sync.Mutex
+	tok   string            // the one OAuth access token accepted, see SetToken
+	check func(string) bool // or every token this accepts, see SetTokenCheck
+	Sent  [][]byte          // every message accepted over SMTP
 }
 
 // Folders created for the user.
@@ -106,16 +107,16 @@ type smtpSession struct {
 }
 
 func (ss *smtpSession) AuthMechanisms() []string {
-	if ss.s.token() != "" {
+	if ss.s.oauthOn() {
 		return []string{sasl.Plain, oauth.XOAuth2Mech}
 	}
 	return []string{sasl.Plain}
 }
 
 func (ss *smtpSession) Auth(mech string) (sasl.Server, error) {
-	if mech == oauth.XOAuth2Mech && ss.s.token() != "" {
+	if mech == oauth.XOAuth2Mech && ss.s.oauthOn() {
 		return &xoauth2Server{check: func(user, token string) error {
-			if user != ss.s.User || token != ss.s.token() {
+			if user != ss.s.User || !ss.s.accepts(token) {
 				return &smtp.SMTPError{Code: 535, EnhancedCode: smtp.EnhancedCode{5, 7, 8}, Message: "Username and Password not accepted"}
 			}
 			ss.auth = true
@@ -172,10 +173,28 @@ func (s *Server) SetToken(tok string) {
 	s.mu.Unlock()
 }
 
-func (s *Server) token() string {
+// SetTokenCheck makes both servers accept SASL XOAUTH2 for User with every
+// access token ok accepts, as a real server asks its provider: tokens a fake
+// provider issued and has not revoked. nil turns it off again.
+func (s *Server) SetTokenCheck(ok func(token string) bool) {
+	s.mu.Lock()
+	s.check = ok
+	s.mu.Unlock()
+}
+
+// oauthOn reports whether XOAUTH2 is offered at all.
+func (s *Server) oauthOn() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.tok
+	return s.tok != "" || s.check != nil
+}
+
+// accepts reports whether an XOAUTH2 access token signs in.
+func (s *Server) accepts(token string) bool {
+	s.mu.Lock()
+	tok, check := s.tok, s.check
+	s.mu.Unlock()
+	return (tok != "" && token == tok) || (check != nil && check(token))
 }
 
 // imapSession adds SASL XOAUTH2 (and PLAIN) to the in-memory server's
@@ -186,7 +205,7 @@ type imapSession struct {
 }
 
 func (is *imapSession) AuthenticateMechanisms() []string {
-	if is.s.token() != "" {
+	if is.s.oauthOn() {
 		return []string{sasl.Plain, oauth.XOAuth2Mech}
 	}
 	return []string{sasl.Plain}
@@ -196,9 +215,9 @@ func (is *imapSession) Authenticate(mech string) (sasl.Server, error) {
 	switch {
 	case mech == sasl.Plain:
 		return sasl.NewPlainServer(func(_, user, pass string) error { return is.Login(user, pass) }), nil
-	case mech == oauth.XOAuth2Mech && is.s.token() != "":
+	case mech == oauth.XOAuth2Mech && is.s.oauthOn():
 		return &xoauth2Server{check: func(user, token string) error {
-			if user != is.s.User || token != is.s.token() {
+			if user != is.s.User || !is.s.accepts(token) {
 				return &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeAuthenticationFailed, Text: "Invalid credentials (Failure)"}
 			}
 			return is.Login(is.s.User, is.s.Password)

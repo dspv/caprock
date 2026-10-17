@@ -3418,7 +3418,15 @@ dashboard and a desktop app on three OSes.
   email` for the address. Revoking: remove the account in Mail (deletes the
   token here), and at the provider — Google at myaccount.google.com/permissions,
   a personal Microsoft account at account.live.com/consent/Manage, a work
-  account at myapps.microsoft.com or by its Entra admin. The client IDs are
+  account at myapps.microsoft.com or by its Entra admin. Since 2026-10-18
+  removing a Google account also sends its refresh token to Google's
+  revocation endpoint (oauth2.googleapis.com/revoke, RFC 7009) — the one more
+  call, to the provider the user chose, and on the user's own click — so the
+  grant ends there too; at Google that is the whole grant, so another install
+  of the same build signed in to that account must sign in again. Microsoft
+  offers apps no revocation endpoint (only Graph's revokeSignInSessions,
+  which would sign the user out of every app), so nothing is sent and the
+  confirmation names the page above. The client IDs are
   the Caprock owner's app registrations, compiled in or given by environment
   ([docs/mail-oauth.md](../docs/mail-oauth.md)); without one the button is not
   offered and nothing else changes. The callback is the one `/v1` route the

@@ -58,8 +58,11 @@ type Provider struct {
 	Label    string // "Google", for messages
 	AuthURL  string
 	TokenURL string
-	Scopes   []string
-	Extra    map[string]string // added to the authorization URL
+	// RevokeURL takes a token back (RFC 7009) when the account is removed;
+	// "" for a provider that offers apps no way to (Microsoft).
+	RevokeURL string
+	Scopes    []string
+	Extra     map[string]string // added to the authorization URL
 	// RedirectHost is the loopback name in the redirect URI. Google's desktop
 	// clients accept http://127.0.0.1:<any port>/<any path>; Microsoft
 	// ignores the port only for "localhost", and an http 127.0.0.1 redirect
@@ -94,10 +97,12 @@ const CallbackPath = "/v1/mail/oauth/callback"
 // IMAP and SMTP need the scope https://mail.google.com/
 // (developers.google.com/workspace/gmail/imap/xoauth2-protocol).
 var Google = Provider{
-	Name:         "google",
-	Label:        "Google",
-	AuthURL:      "https://accounts.google.com/o/oauth2/v2/auth",
-	TokenURL:     "https://oauth2.googleapis.com/token",
+	Name:     "google",
+	Label:    "Google",
+	AuthURL:  "https://accounts.google.com/o/oauth2/v2/auth",
+	TokenURL: "https://oauth2.googleapis.com/token",
+	// developers.google.com/identity/protocols/oauth2/native-app#tokenrevoke
+	RevokeURL:    "https://oauth2.googleapis.com/revoke",
 	Scopes:       []string{"https://mail.google.com/", "openid", "email"},
 	Extra:        map[string]string{"access_type": "offline", "prompt": "consent"},
 	RedirectHost: "127.0.0.1",
@@ -115,6 +120,10 @@ var Google = Provider{
 // https://outlook.office.com/IMAP.AccessAsUser.All, .../SMTP.Send, and
 // offline_access for a refresh token; outlook.office365.com:993 and
 // smtp.office365.com:587 with STARTTLS. A public client sends no secret.
+// The Microsoft identity platform has no endpoint for an app to revoke its
+// own refresh token (only Graph's revokeSignInSessions, which signs the user
+// out of every app and device), so RevokeURL stays empty and removing the
+// account says where the user takes the access back.
 var Microsoft = Provider{
 	Name:     "microsoft",
 	Label:    "Microsoft",
@@ -322,6 +331,42 @@ func (p Provider) token(ctx context.Context, v url.Values) (Token, error) {
 	}
 	t.Expiry = time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
 	return t, nil
+}
+
+// Revoke takes a refresh token back at the provider (RFC 7009), so removing
+// an account in Mail also ends Caprock's access there. ok is false when the
+// provider has no revocation endpoint. A token the provider already considers
+// invalid counts as revoked: either way it no longer works.
+//
+// At Google a refresh token stands for the whole grant: the user's other
+// Caprock installs signed in with the same build's client lose access too.
+func (p Provider) Revoke(ctx context.Context, refresh string) (ok bool, err error) {
+	if p.RevokeURL == "" || refresh == "" {
+		return false, nil
+	}
+	Forget(refresh)
+	v := url.Values{}
+	v.Set("token", refresh)
+	req, err := http.NewRequestWithContext(ctx, "POST", p.RevokeURL, strings.NewReader(v.Encode()))
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := HTTPClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("%s revocation endpoint: %w", p.Label, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode == 200 {
+		return true, nil
+	}
+	var tr tokenResp
+	_ = json.Unmarshal(body, &tr)
+	if tr.Error == "invalid_token" || tr.Error == "invalid_grant" {
+		return true, nil
+	}
+	return false, fmt.Errorf("%s did not revoke the sign-in: %s", p.Label, firstNonEmpty(tr.Description, tr.Error, http.StatusText(resp.StatusCode)))
 }
 
 // EmailFromIDToken reads the address from an ID token's claims: "email",
