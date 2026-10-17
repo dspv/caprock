@@ -82,10 +82,11 @@ others. Installing it: [install-app.md](install-app.md).
   exactly as ⌘W and the tab strip's × do. An agent Caprock started that is
   idle ends with its tab, without a question, and Caprock says so: the
   conversation is saved, and you reopen it from History or the sidebar.
-  One that is still working or waiting on you gets one sentence and one
-  button: **Close tab** (in focus, so ⌘W then Enter) leaves it working in
-  the background — it moves to the muted rows, under *Running, no tab* in
-  the Tabs list — and the quiet link **Stop it instead** under it ends it;
+  One that is still working or waiting on you gets one sentence and two
+  equal buttons, each with a line under it saying what it does: **Keep it
+  running** (in focus, so ⌘W then Enter) closes only the tab and leaves it
+  working in the background — it moves to the muted rows, under *Running,
+  no tab* in the Tabs list — and **Stop it** ends it and closes the tab;
   Escape cancels. Either way the conversation is saved and can be
   continued. Settings → *Closing a tab* can make it always keep the agent
   running or always end it. An agent you started in your own terminal is never ended from

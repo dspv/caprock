@@ -297,9 +297,11 @@ One window, three regions:
   does not have yet (`planChatClose`, `lib/closeShell.ts`). One whose agent
   already exited is not signalled. Closing the tab of any other agent
   Caprock started ends it when it is idle, with a toast that the
-  conversation is saved; one working or waiting asks one sentence with
-  *Close tab* (focused; the agent runs on) and a quiet *Stop it instead*
-  (since 2026-10-15; `lib/agentClose.ts`, .ai/04-ui.md). Ending is the
+  conversation is saved; one working or waiting asks one sentence with two
+  equal buttons, each with a line saying what it does: *Keep it running*
+  (focused; only the tab closes) and *Stop it* (since 2026-10-17; before,
+  *Close tab* and a quiet *Stop it instead*; `lib/agentClose.ts`,
+  .ai/04-ui.md). Escape cancels. Ending is the
   `end` signal — SIGTERM, then SIGKILL after 5 s — so the transcript is
   written and the session can be continued; an agent another terminal started
   only loses its tab. The tab's × says *the chat ends* on a chat, *keep
