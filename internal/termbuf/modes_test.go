@@ -9,7 +9,7 @@ import (
 func TestModeTrackerRemembersTheLastValue(t *testing.T) {
 	var m modeTracker
 	m.feed([]byte("hello\x1b[?2004h\x1b[?25l\x1b[2Jtext\x1b[?1;1004h"))
-	m.feed([]byte("\x1b[?25h more \x1b[?1049h")) // 1049 is not tracked
+	m.feed([]byte("\x1b[?25h more \x1b[?1047h")) // 1047 is not tracked
 	if got, want := string(m.prefix()), "\x1b[?1h\x1b[?25h\x1b[?1004h\x1b[?2004h"; got != want {
 		t.Fatalf("prefix = %q, want %q", got, want)
 	}
@@ -52,5 +52,20 @@ func TestRingSnapshotRestoresModesThatScrolledOut(t *testing.T) {
 	}
 	if !bytes.HasSuffix(snap, bytes.Repeat([]byte("x"), 64)) {
 		t.Fatal("scrollback lost")
+	}
+}
+
+// One mouse tracking mode at a time, as in xterm: a set replaces the others
+// and a reset of any turns reporting off. The prefix resets before it sets,
+// so a reset in it cannot undo a set.
+func TestModeTrackerMouseTrackingIsOneMode(t *testing.T) {
+	var m modeTracker
+	m.feed([]byte("\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h"))
+	if got, want := string(m.prefix()), "\x1b[?1000l\x1b[?1002l\x1b[?1003h\x1b[?1006h"; got != want {
+		t.Fatalf("prefix = %q, want %q", got, want)
+	}
+	m.feed([]byte("\x1b[?1002l"))
+	if got, want := string(m.prefix()), "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006h"; got != want {
+		t.Fatalf("after a reset, prefix = %q, want %q", got, want)
 	}
 }
