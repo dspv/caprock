@@ -8,8 +8,16 @@
  * The stage is the daemon's (internal/api/prboard.go, `BoardCard.stage`);
  * a pull request with no card (closed unmerged, or merged before the
  * board's window) is told from its own state.
+ *
+ * Whether there is a fourth step is the repository's (`board.ships_by`;
+ * owner, 2026-10-18, translated: "why isn't merged the final state — there's
+ * one more step after it"): a repository that cuts no releases (a site
+ * deployed on every merge) has three steps, merged the last and the bar
+ * full; one that does says what a merge waits for ("next release", "v0.133.0
+ * next") and what it shipped in ("in v0.132.0"); one nothing read can place
+ * keeps the step, neutral, with a "?".
  */
-import type { BoardCard, PRBoard, Stage } from './prboard'
+import type { BoardCard, PRBoard, ShipsBy, Stage } from './prboard'
 import type { BranchPR } from './branches'
 import type { TabPR } from './prstats'
 
@@ -26,7 +34,36 @@ export interface JourneyStep {
   tone: StepTone
   /** What a hover says. */
   title: string
+  /** Nothing read says whether this repository cuts releases: drawn neutral with a "?". */
+  unknown?: boolean
 }
+
+/** What a row's steps need of its repository: how it ships, and the releases around it. */
+export interface ShipsContext {
+  /** `board.ships_by`; absent: not known. */
+  ships?: ShipsBy
+  /** The newest published release's tag, "v0.132.0". */
+  lastRelease?: string
+  /** The next version when predicted (lib/releaseplan nextVersion), "0.133.0". */
+  next?: string
+}
+
+/** The context the board gives: how it ships, and its newest published release. */
+export function shipsOf(board: PRBoard | undefined, next?: string): ShipsContext {
+  let last: { tag: string; at: number } | undefined
+  for (const r of board?.releases ?? []) {
+    if (r.published_at && (!last || r.published_at > last.at)) last = { tag: r.tag, at: r.published_at }
+  }
+  return { ships: board?.ships_by, lastRelease: last?.tag, next }
+}
+
+/** The step names in order for a repository: no Released step where work ships when it merges. */
+export function stepKeys(ships: ShipsBy | undefined): StepKey[] {
+  return ships === 'merge' ? ['open', 'ci', 'merged'] : ['open', 'ci', 'merged', 'released']
+}
+
+/** What the Released step's name means, on its hover. */
+export const RELEASED_MEANS = 'Shipped in a published release'
 
 /**
  * A pill as components/Journey JourneyPills draws it, of any step line: a
@@ -79,8 +116,29 @@ function ciStep(card: JourneyInput['card'], stage: Stage | 'closed'): Pick<Journ
   return { text: 'CI', tone: 'faint', title: 'Its checks were not read: only the newest open pull requests’ are' }
 }
 
-/** The four steps of one pull request. */
-export function journey(p: JourneyInput): JourneyStep[] {
+/**
+ * The steps of one pull request: four, or three where the repository ships
+ * on merge (`ctx.ships` merge). Without `ctx.ships` the Released step ahead
+ * is neutral, "?" — nothing read says a release will come.
+ */
+export function journey(p: JourneyInput, ctx: ShipsContext = {}): JourneyStep[] {
+  const steps = journeySteps(p, ctx)
+  if (ctx.ships === 'merge' && stageOf(p) !== 'released') return steps.filter((s) => s.key !== 'released')
+  if (!ctx.ships) {
+    return steps.map((s) => (s.key === 'released' && s.state === 'todo' && stageOf(p) !== 'closed'
+      ? { ...s, unknown: true, title: 'Not known whether this repository cuts releases: its release list or its tags could not be read' }
+      : s))
+  }
+  return steps
+}
+
+/** What the Released step says while a merge waits for a release. */
+function waitsFor(ctx: ShipsContext): { text: string; title: string } {
+  if (ctx.next) return { text: `v${ctx.next} next`, title: `Waits for the next release (v${ctx.next}, predicted from the changelog entries).` }
+  return { text: 'next release', title: `Waits for the next release${ctx.lastRelease ? `, after ${ctx.lastRelease}` : ''}.` }
+}
+
+function journeySteps(p: JourneyInput, ctx: ShipsContext): JourneyStep[] {
   const stage = stageOf(p)
   const ci = ciStep(p.card, stage)
   const step = (key: StepKey, state: StepState, tone: StepTone, text: string, title: string): JourneyStep => ({ key, state, tone, text, title })
@@ -100,19 +158,28 @@ export function journey(p: JourneyInput): JourneyStep[] {
         step('merged', 'todo', 'faint', 'Merged', 'Not merged yet'),
         step('released', 'todo', 'faint', 'Released', 'In no release yet'),
       ]
-    case 'merged':
+    case 'merged': {
+      if (ctx.ships === 'merge') {
+        return [
+          step('open', 'done', 'muted', 'Open', 'Opened'),
+          step('ci', 'done', 'ok', 'CI', 'Merged, so its checks were let through'),
+          step('merged', 'current', 'merged', 'Merged', 'Merged: the last step. This repository cuts no releases (none published and no version tag in 180 days), so work ships when it merges'),
+        ]
+      }
+      const w = ctx.ships === 'release' ? waitsFor(ctx) : { text: 'Released', title: 'Not known' }
       return [
         step('open', 'done', 'muted', 'Open', 'Opened'),
         step('ci', 'done', 'ok', 'CI', 'Merged, so its checks were let through'),
-        step('merged', 'current', 'merged', 'Merged', 'Merged, in no published release yet'),
-        step('released', 'todo', 'faint', 'Released', 'Waiting for the next release'),
+        step('merged', 'current', 'merged', 'Merged', ctx.ships === 'release' ? 'Merged, in no published release yet' : 'Merged'),
+        step('released', 'todo', 'faint', w.text, w.title),
       ]
+    }
     case 'released':
       return [
         step('open', 'done', 'muted', 'Open', 'Opened'),
         step('ci', 'done', 'ok', 'CI', 'Merged, so its checks were let through'),
         step('merged', 'done', 'merged', 'Merged', 'Merged'),
-        step('released', 'current', 'accent', tag || 'Released', tag ? `Shipped in ${tag}: the first release published after the merge (matched by time)` : 'In a published release'),
+        step('released', 'current', 'accent', tag ? `in ${tag}` : 'Released', tag ? `Shipped in ${tag}: the first release published after the merge (matched by time)` : 'In a published release'),
       ]
     case 'closed':
       return [
@@ -174,6 +241,8 @@ export interface Flight {
   recent: PipelineRow[]
   /** The newest published release, when the board lists one. */
   release?: { tag: string; published_at: number }
+  /** How merged work ships here (`board.ships_by`). */
+  ships?: ShipsBy
 }
 
 const OPEN_STAGES = new Set<Stage | 'closed'>(['draft', 'open', 'fix', 'ready'])
@@ -183,7 +252,8 @@ const OPEN_STAGES = new Set<Stage | 'closed'>(['draft', 'open', 'fix', 'ready'])
  * newest release (still heading to one). Released and closed-unmerged ones
  * are dropped. A repository that publishes no release (a site that pushes
  * straight to its default branch, like caprock-web) has nothing heading to
- * one, so only its open pull requests are in flight. Pure.
+ * one, so only its open pull requests are in flight; nor has one that ships
+ * on merge (`ships_by` merge), whatever old release it once published. Pure.
  */
 export function inFlight(rows: PipelineRow[], board: PRBoard | undefined): Flight {
   let release: Flight['release']
@@ -193,11 +263,12 @@ export function inFlight(rows: PipelineRow[], board: PRBoard | undefined): Fligh
   const flying = rows.filter((r) => {
     const s = stageOf(r)
     if (OPEN_STAGES.has(s)) return true
-    return s === 'merged' && !!release && (r.merged_at ?? 0) > release.published_at
+    // Where work ships on merge, a merge is done, however old the last release.
+    return s === 'merged' && board?.ships_by !== 'merge' && !!release && (r.merged_at ?? 0) > release.published_at
   })
   const recent = flying.length > 0 ? [] : rows.filter((r) => r.state === 'merged' && !!r.merged_at)
     .sort((a, b) => (b.merged_at ?? 0) - (a.merged_at ?? 0)).slice(0, 3)
-  return { rows: flying, recent, release }
+  return { rows: flying, recent, release, ships: board?.ships_by }
 }
 
 /** The in-flight pull request the Ring and By OS views draw: the newest open one, else the newest merge. */

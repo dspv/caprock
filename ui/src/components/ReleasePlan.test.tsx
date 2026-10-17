@@ -50,7 +50,8 @@ describe('the release plan', () => {
     }
     const merged = rows[0]!
     expect(merged.querySelectorAll('[data-step-state="done"]')).toHaveLength(4)
-    expect(merged.querySelector('[data-step="released"]')).toHaveAttribute('title', 'Released: to come\nAgent → PR → CI → Merged → Released')
+    // Owner, 2026-10-18: the empty released step says what it means and what the merge waits for.
+    expect(merged.querySelector('[data-step="released"]')).toHaveAttribute('title', 'Released (shipped in a published release): waits for the next release (v0.118.0)\nAgent → PR → CI → Merged → Released')
     expect(within(merged).getByText('merged')).toBeInTheDocument()
     // The landing label is the word, and its step is red.
     const red = rows[1]!
@@ -99,7 +100,7 @@ describe('the release plan', () => {
     // Ready waits for a merge; merged for a release, the usual lag on hover; no dots without OS-named checks.
     expect(row(633).querySelector('[data-release-wait]')).toHaveTextContent('a merge')
     expect(row(633).querySelector('[data-release-ci]')).toBeNull()
-    expect(row(630).querySelector('[data-release-wait]')).toHaveTextContent('a release')
+    expect(row(630).querySelector('[data-release-wait]')).toHaveTextContent('the next release')
     expect(row(630).querySelector('[data-release-wait]')!.getAttribute('title')).toMatch(/usually released in ~2h/)
     // The agent asking for a permission waits on the person.
     const agent = document.querySelector<HTMLElement>('[data-release-row^="s:"]')!
@@ -140,6 +141,42 @@ describe('the release plan', () => {
   it('says Next release without a number when the entries say no kind', () => {
     render(<ReleasePlan plan={planForRepo(workFixture(), '/w/caprock', statsFixture(), NOW)} />)
     expect(screen.getByRole('heading', { name: 'Next release' }).title).toMatch(/No number/)
+  })
+
+  // Owner, 2026-10-18, translated, of caprock-web: eighteen merged pull
+  // requests under Next release, each waiting for a release that never comes.
+  it('has no next release where the repository ships on merge: one line, open work, and a short Merged recently', () => {
+    const stats = statsFixture()
+    stats.board!.ships_by = 'merge'
+    for (const n of [640, 641, 642, 643]) {
+      stats.prs!.push({ number: n, url: `u/${n}`, title: `site page ${n}`, state: 'merged', head: `p/${n}`, created_at: NOW - 900 * 60_000, merged_at: NOW - (700 - n) * 60_000 })
+      stats.board!.cards.push({ number: n, stage: 'merged', stage_at: NOW - (700 - n) * 60_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } })
+    }
+    const p = planForRepo(withKinds(), '/w/caprock', stats, NOW)
+    expect(p.next).toBeUndefined()
+    render(<ReleasePlan plan={p} />)
+    expect(screen.queryByRole('heading')).toBeNull()
+    expect(document.querySelector('[data-release-since]')).toHaveTextContent('No releases here: work ships when it merges')
+    expect(document.querySelector('[data-release-plan]')).toHaveAttribute('data-release-ships', 'merge')
+    // The open ones are in flight, their bars without a released step.
+    const open = document.querySelector('[data-release-row="631"]')!
+    expect([...open.querySelectorAll('[data-step]')].map((e) => e.getAttribute('data-step'))).toEqual(['agent', 'PR', 'CI', 'merged'])
+    // The merges are done: the three newest of six (#630 50m ago, then #643…), under Merged recently, the bar full.
+    expect(document.querySelector('[data-release-later="merged"]')).toHaveTextContent('Merged recently')
+    const merges = [...document.querySelectorAll('[data-release-row][data-stage="merged"]')].map((e) => e.getAttribute('data-release-row'))
+    expect(merges).toEqual(['630', '643', '642'])
+    const full = document.querySelector('[data-release-row="643"]')!
+    expect([...full.querySelectorAll('[data-step]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'done', 'done', 'done'])
+    expect(full.querySelector('[data-release-wait]')).toBeNull()
+  })
+
+  it('draws the released step neutral when nothing read says whether releases are cut', () => {
+    const stats = statsFixture()
+    delete stats.board!.ships_by
+    render(<ReleasePlan plan={planForRepo(withKinds(), '/w/caprock', stats, NOW)} />)
+    const step = document.querySelector('[data-release-row="630"] [data-step="released"]')!
+    expect(step).toHaveAttribute('data-step-state', 'unknown')
+    expect(step.getAttribute('title')).toMatch(/^Released \(shipped in a published release\): not known/)
   })
 })
 

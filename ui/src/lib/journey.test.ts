@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { flightLead, inFlight, journey, journeyOrder, pipelineRows, progressOf, stageOf } from './journey'
+import { flightLead, inFlight, journey, journeyOrder, pipelineRows, progressOf, shipsOf, stageOf } from './journey'
 
 describe('a pull request’s journey', () => {
   it('puts CI on its step while open, with its colour', () => {
@@ -14,7 +14,7 @@ describe('a pull request’s journey', () => {
   it('names the release it shipped in', () => {
     const s = journey({ state: 'merged', card: { stage: 'released', release: 'v0.117.1' } })
     expect(s.map((x) => x.state)).toEqual(['done', 'done', 'done', 'current'])
-    expect(s[3]!.text).toBe('v0.117.1')
+    expect(s[3]!.text).toBe('in v0.117.1')
     expect(progressOf(s)).toBe(4)
   })
 
@@ -23,6 +23,33 @@ describe('a pull request’s journey', () => {
     expect(stageOf({ state: 'closed' })).toBe('closed')
     expect(journey({ state: 'closed' })[2]).toMatchObject({ state: 'closed', text: 'Closed' })
     expect(stageOf({ state: 'open', draft: true })).toBe('draft')
+  })
+
+  // Owner, 2026-10-18, translated: "why isn't merged the final state".
+  it('ends at merged where the repository ships on merge, says what a merge waits for where it cuts releases, and "?" where nothing says', () => {
+    const m = { state: 'merged' as const, card: { stage: 'merged' as const } }
+    const site = journey(m, { ships: 'merge' })
+    expect(site.map((s) => s.key)).toEqual(['open', 'ci', 'merged'])
+    expect(site[2]).toMatchObject({ state: 'current', text: 'Merged' })
+    expect(progressOf(site)).toBe(site.length)
+    expect(journey({ state: 'open', card: { stage: 'open', ci: 'running' } }, { ships: 'merge' })).toHaveLength(3)
+
+    const rel = journey(m, { ships: 'release', lastRelease: 'v0.132.0' })
+    expect(rel[3]).toMatchObject({ state: 'todo', text: 'next release', title: 'Waits for the next release, after v0.132.0.' })
+    expect(rel[3]!.unknown).toBeUndefined()
+    expect(journey(m, { ships: 'release', next: '0.133.0' })[3]).toMatchObject({ text: 'v0.133.0 next', title: expect.stringContaining('(v0.133.0') })
+
+    const unknown = journey(m)
+    expect(unknown[3]).toMatchObject({ state: 'todo', unknown: true, text: 'Released' })
+    expect(unknown[3]!.title).toMatch(/^Not known/)
+    // A closed one will not ship either way: no "?".
+    expect(journey({ state: 'closed' })[3]!.unknown).toBeUndefined()
+  })
+
+  it('reads how the repository ships, and its newest release, from the board', () => {
+    const board = { cards: [], releases: [{ tag: 'v1', published_at: 1, prs: [], cost_usd: 0, sessions: 0 }, { tag: 'v2', published_at: 5, prs: [], cost_usd: 0, sessions: 0 }], flow: {} as never, ships_by: 'release' as const }
+    expect(shipsOf(board)).toEqual({ ships: 'release', lastRelease: 'v2', next: undefined })
+    expect(shipsOf(undefined)).toEqual({ ships: undefined, lastRelease: undefined, next: undefined })
   })
 
   it('lists in flight first, then merged, then released, newest merges first', () => {
@@ -84,5 +111,14 @@ describe('what is in flight', () => {
       releases: [{ tag: 'v1', published_at: 500, prs: [], cost_usd: 0, sessions: 0 }], flow }
     const f = inFlight(rowsOf([pr(4, 'merged', 800), pr(3, 'merged', 900)], board), board)
     expect(flightLead(f)?.number).toBe(3)
+  })
+
+  it('never keeps a merge in flight where the repository ships on merge, whatever old release it published', () => {
+    const board = { cards: [{ number: 4, stage: 'merged' as const, stage_at: 800, spend }],
+      releases: [{ tag: 'v0.1.0', published_at: 100, prs: [], cost_usd: 0, sessions: 0 }], flow, ships_by: 'merge' as const }
+    const f = inFlight(rowsOf([pr(4, 'merged', 800)], board), board)
+    expect(f.rows).toEqual([])
+    expect(f.recent.map((r) => r.number)).toEqual([4])
+    expect(f.ships).toBe('merge')
   })
 })

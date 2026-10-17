@@ -29,11 +29,17 @@
  *   opened ("19h"), its checks per OS (`card.os`) as dots, its CI time
  *   against the usual (`card.ci_ms`, the flow's median), and the agent spend
  *   recorded on it (`store.SpendByPR`, at list price; "—" when none was).
+ * - **A repository that cuts no releases** (`board.ships_by` merge: none
+ *   published and no version tag in 180 days — a site deployed on every
+ *   merge; owner, 2026-10-18) has no next release: no version, the line
+ *   *No releases here: work ships when it merges*, bars without the
+ *   released step, and its merges, done, under a short *Merged recently*
+ *   (MERGED_RECENT) instead of piling up as waiting for a release.
  */
 import type { SessionCIStats, Work, WorkRepo, WorkSession } from './api'
 import type { BranchPR } from './branches'
 import { fmtUSD } from './format'
-import { AGENT_COST_NOTE, asBoard, type BoardFlow, type BoardOS } from './prboard'
+import { AGENT_COST_NOTE, asBoard, type BoardFlow, type BoardOS, type ShipsBy } from './prboard'
 import { spanText, vsMedianText } from './prstats'
 import { buildWork, ciVsUsual, gapText, isIdle, MIN_GAPS, releaseLag, STEPS, todoSteps, type Stage, type WorkItem } from './work'
 
@@ -105,8 +111,14 @@ export interface RowContext {
   flow?: Pick<BoardFlow, 'ci_median_ms' | 'days' | 'release_lag_median_ms' | 'release_lag_count'>
 }
 
+/** How many merges a repository that ships on merge lists under *Merged recently*. */
+export const MERGED_RECENT = 3
+
+/** The line said where work ships on merge, in place of the release line. */
+export const SHIPS_ON_MERGE = 'No releases here: work ships when it merges'
+
 export interface PlanGroup {
-  key: 'drafts' | 'idle'
+  key: 'drafts' | 'idle' | 'merged'
   label: string
   rows: PlanRow[]
 }
@@ -119,6 +131,8 @@ export interface ReleasePlanData {
   since?: { text: string; title: string }
   rows: PlanRow[]
   later: PlanGroup[]
+  /** How merged work ships here (`board.ships_by`); absent: not known. */
+  ships?: ShipsBy
 }
 
 /** "v0.119.0" → [0, 119, 0] and its prefix; undefined for a tag that is not x.y.z. */
@@ -333,15 +347,18 @@ const mergedAt = (it: WorkItem) => it.pr?.merged_at ?? 0
  * and later's drafts and idle agents. Released, closed, tasks and queued
  * messages are not the release's.
  */
-export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], root: string, lastTagAt: number | undefined, prs: readonly BranchPR[] = [], ctx: RowContext = {}): { rows: PlanRow[]; later: PlanGroup[]; merged: number } {
+export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], root: string, lastTagAt: number | undefined, prs: readonly BranchPR[] = [], ctx: RowContext = {}, ships?: ShipsBy): { rows: PlanRow[]; later: PlanGroup[]; merged: number } {
   const labels = new Map(prs.map((p) => [p.number, p.labels]))
   const mine = (it: WorkItem) => it.repo?.root === root
   const next: WorkItem[] = []
   const drafts: WorkItem[] = []
+  const done: WorkItem[] = []
   for (const it of items) {
     if (!mine(it)) continue
     if (it.kind === 'session') { next.push(it); continue }
     if (it.kind !== 'pr' || it.stage === 'released' || it.stage === 'planned') continue
+    // Where work ships on merge, a merge is done: no release to wait for.
+    if (it.stage === 'merged' && ships === 'merge') { done.push(it); continue }
     // Merged before the last tag: in that tag, though no GitHub release says so.
     if (it.stage === 'merged' && lastTagAt && mergedAt(it) > 0 && mergedAt(it) <= lastTagAt) continue
     if (it.word === 'draft') drafts.push(it)
@@ -349,6 +366,13 @@ export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], 
   }
   next.sort((a, b) => b.fill - a.fill || (a.stage === 'merged' ? mergedAt(a) - mergedAt(b) : (a.pr?.number ?? Infinity) - (b.pr?.number ?? Infinity)))
   const later: PlanGroup[] = []
+  if (done.length) {
+    const recent = [...done].sort((a, b) => mergedAt(b) - mergedAt(a)).slice(0, MERGED_RECENT)
+    later.push({
+      key: 'merged', label: 'Merged recently · shipped when merged',
+      rows: recent.map((it) => ({ ...rowOf(it, labels.get(it.pr?.number ?? -1), ctx), wait: undefined, wordTitle: 'Merged: the last step here. This repository cuts no releases, so work ships when it merges.' })),
+    })
+  }
   if (drafts.length) later.push({ key: 'drafts', label: 'Later · drafts, not yet ready for review', rows: drafts.map((it) => rowOf(it, labels.get(it.pr?.number ?? -1), ctx)) })
   const sleeping = idle.filter(mine)
   if (sleeping.length) {
@@ -393,20 +417,44 @@ export function releasePlan(input: { root: string; name?: string; repo?: WorkRep
   const rel = board?.releases?.[0]
   // The last tag as git has it; else the newest published GitHub release.
   const last = repo?.tags?.last ?? (rel ? { name: rel.tag, at: rel.published_at } : undefined)
-  const { rows, later, merged } = planRows(input.items, input.idle ?? [], root, last?.at, stats?.prs ?? [], { now, flow: board?.flow })
+  const ships = board?.ships_by
+  const { rows, later, merged } = planRows(input.items, input.idle ?? [], root, last?.at, stats?.prs ?? [], { now, flow: board?.flow }, ships)
+  const name = input.name ?? repo?.name ?? root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? root
+  if (ships === 'merge') {
+    return {
+      root, name, rows, later, ships,
+      since: { text: SHIPS_ON_MERGE, title: 'No release is published on GitHub and no version tag was made in the last 180 days, so merged is the last step here: there is no next release to wait for.' },
+    }
+  }
+  const next = nextVersion(last?.name, repo?.unreleased)
   return {
     root,
-    name: input.name ?? repo?.name ?? root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? root,
-    next: nextVersion(last?.name, repo?.unreleased),
+    name,
+    next,
     since: sinceLine(last, merged, repo, stats, now),
-    rows,
+    rows: ships === 'release' ? rows.map((r) => waitsForRelease(r, next?.version)) : rows,
     later,
+    ships,
   }
 }
 
-/** Nothing to say: no rows, nothing later, no version. */
+/**
+ * A merged row where releases are cut says what it waits for: *the next
+ * release (v0.133.0)*, the number when the rule predicts one.
+ */
+export function waitsForRelease(r: PlanRow, version: string | undefined): PlanRow {
+  if (r.stage !== 'merged') return r
+  const what = `the next release${version ? ` (v${version})` : ''}`
+  return {
+    ...r,
+    wordTitle: r.wordTitle ?? `Merged; waits for ${what}`,
+    wait: r.wait && !r.wait.tone ? { ...r.wait, text: what, title: r.wait.title.replace(/^Merged: it ships with the next release/, `Merged: it ships with ${what}`) } : r.wait,
+  }
+}
+
+/** Nothing to say: no rows, nothing later (merges already shipped aside), no version. */
 export function planEmpty(p: ReleasePlanData): boolean {
-  return p.rows.length === 0 && p.later.length === 0 && !p.next
+  return p.rows.length === 0 && p.later.every((g) => g.key === 'merged') && !p.next
 }
 
 const NO_WORK: Work = { now: 0, day_start: 0, sessions: [], hive: 'off', queued: [], repos: [], totals: { live: 0, working: 0, waiting_you: 0, today_usd: 0, machine_today_usd: 0 } }

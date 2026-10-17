@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/github"
+	"github.com/dspv/caprock/internal/relplan"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -144,5 +145,33 @@ func TestChecksByOS(t *testing.T) {
 	}
 	if checksByOS([]github.Check{{Name: "lint", State: "pass"}}) != nil {
 		t.Error("checks naming no OS give OS entries")
+	}
+}
+
+// How merged work ships (owner, 2026-10-18): a release or a version tag in
+// the last 180 days says releases; neither, with both read, says the merge
+// is the last step; a read that failed says nothing.
+func TestBoardShipsBy(t *testing.T) {
+	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+	ago := func(days int) int64 { return now.AddDate(0, 0, -days).UnixMilli() }
+	cases := []struct {
+		name string
+		in   boardInput
+		want string
+	}{
+		{"a recent release", boardInput{releases: []github.RepoRelease{{Tag: "v0.132.0", PublishedAt: ago(1)}}, releasesRead: true}, ShipsByRelease},
+		{"a recent version tag, no GitHub release", boardInput{releasesRead: true, tags: []relplan.Tag{{Name: "v1.4.0", At: ago(30)}}, tagsRead: true}, ShipsByRelease},
+		{"a recent release, the tags unread", boardInput{releases: []github.RepoRelease{{Tag: "v2", PublishedAt: ago(10)}}, releasesRead: true}, ShipsByRelease},
+		{"nothing at all: a site deployed on merge", boardInput{releasesRead: true, tagsRead: true}, ShipsByMerge},
+		{"only old releases and tags", boardInput{releases: []github.RepoRelease{{Tag: "v1.0.0", PublishedAt: ago(400)}}, releasesRead: true, tags: []relplan.Tag{{Name: "v1.0.0", At: ago(400)}}, tagsRead: true}, ShipsByMerge},
+		{"a recent tag that names no version", boardInput{releasesRead: true, tags: []relplan.Tag{{Name: "deploy-ok", At: ago(1)}}, tagsRead: true}, ShipsByMerge},
+		{"the release list unread", boardInput{tagsRead: true}, ""},
+		{"the tags unread", boardInput{releasesRead: true}, ""},
+	}
+	for _, c := range cases {
+		c.in.now, c.in.days = now, 14
+		if got := buildBoard(c.in).ShipsBy; got != c.want {
+			t.Errorf("%s: ships_by %q, want %q", c.name, got, c.want)
+		}
 	}
 }

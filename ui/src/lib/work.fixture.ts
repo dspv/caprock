@@ -71,6 +71,7 @@ export function statsFixture(): SessionCIStats {
         { number: 625, stage: 'released', release: 'v0.117.4', stage_at: NOW - 125 * MIN, spend: { cost_usd: 2, sessions: 1, live: 0, agents: ['claude'] } },
       ],
       releases: [],
+      ships_by: 'release',
       flow: {
         counts: { draft: 0, open: 1, fix: 0, ready: 1, merged: 2, released: 1 }, days: 14, merged: 20, ttm_count: 20,
         ci_median_ms: 11 * MIN, release_lag_median_ms: 120 * MIN, release_lag_count: 7, release_gap_median_ms: 160 * MIN, release_gap_count: 9, cost_usd: 40,

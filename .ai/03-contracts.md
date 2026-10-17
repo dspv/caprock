@@ -2148,7 +2148,7 @@ over the 14 local calendar days ending today:
   workflow with the most such time first.
 
 - **Board** (2026-10-14) — `board` `{cards[], releases[], flow,
-  default_branch?}`, the tab's Board view (`internal/api/prboard.go`). Each
+  default_branch?, ships_by?}`, the tab's Board view (`internal/api/prboard.go`). Each
   `BoardCard` `{number, stage, stage_at?, ci?, why?, failed[]?, os[]?, ci_ms?, review?, release?,
   spend, stale?}` is a pull request of `prs` (its title, `author`, `author_avatar`
   and link are that entry's); closed unmerged ones and merges before the 14
@@ -2197,6 +2197,16 @@ over the 14 local calendar days ending today:
   builds count), drafts and unpublished ones left out, kept 2 minutes (10 before
   2026-10-14: a new release missed the board that long); a failed list
   keeps the last one, and with none is no releases, not an error.
+  `ships_by` (2026-10-18; owner, translated: "why isn't merged the final
+  state — there's one more step after it") is how merged work ships in
+  the repository: `release` when one of those releases was published, or
+  one of the checkout's newest tags (`relplan.Tags`, local, as of the
+  last fetch) naming a version (`v0.132.0`, `1.4`, `app-v2.0.1`) was made,
+  within the last 180 days (`shipsRecentDays`); `merge` when neither was
+  and both the release list and the tags were read — a site deployed on
+  every merge, where merged is the last step; absent when either read
+  failed (or an older daemon), and the dashboard then draws the released
+  step as not known.
 - **The figures day by day** (2026-10-15) — `flow.series` is
   `{flight?, throughput?, ci?, ttm?, lag?, cost?}`, each `[{day, value?, n,
   by_now?}]`: one point per local calendar day of the window (the daemon's
