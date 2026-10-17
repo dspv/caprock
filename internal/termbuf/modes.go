@@ -1,6 +1,8 @@
 package termbuf
 
 import (
+	"bytes"
+	"maps"
 	"strconv"
 	"strings"
 )
@@ -16,7 +18,20 @@ import (
 // paste from typing: a long paste shows in full instead of collapsing into
 // "[Pasted text]" (FB-034). The same loss hits application cursor keys (what
 // the arrows send), focus reporting and cursor visibility.
-var trackedModes = []int{1, 25, 1004, 2004}
+//
+// And the screen and the mouse. Codex (codex-cli 0.161) runs on the alternate
+// screen (1049) and owns its transcript there: it asks for mouse reports
+// (1000, 1002, 1003, SGR-encoded with 1006) and scrolls on the wheel reports
+// it gets. Once those had scrolled out of the ring, a terminal attached later
+// stayed on the normal screen with the mouse off: the wheel moved xterm's own
+// scrollback, which an alternate-screen app never fills, and Codex was never
+// told — "scrolling does not work in Codex" (owner, 2026-10-18).
+var trackedModes = []int{1, 25, 1000, 1002, 1003, 1004, 1006, 1049, 2004}
+
+// mouseTracking are the modes that pick what the mouse reports. A terminal
+// has one tracking mode at a time: setting one replaces the others, and
+// resetting any of them turns reporting off (xterm, and xterm.js after it).
+var mouseTracking = []int{1000, 1002, 1003}
 
 // modeTracker remembers the last value the output set for each tracked mode,
 // across chunk boundaries.
@@ -36,9 +51,11 @@ func (t *modeTracker) feed(p []byte) {
 		data, t.carry = t.carry, nil
 	}
 	for i := 0; i < len(data); i++ {
-		if data[i] != 0x1b {
-			continue
+		k := bytes.IndexByte(data[i:], 0x1b)
+		if k < 0 {
+			return
 		}
+		i += k
 		// ESC [ ? params h|l
 		j := i + 1
 		if j >= len(data) {
@@ -71,14 +88,23 @@ func (t *modeTracker) feed(p []byte) {
 				if err != nil || !tracked(n) {
 					continue
 				}
-				if t.set == nil {
-					t.set = map[int]bool{}
-				}
-				t.set[n] = final == 'h'
+				t.apply(n, final == 'h')
 			}
 		}
 		i = j
 	}
+}
+
+func (t *modeTracker) apply(n int, on bool) {
+	if t.set == nil {
+		t.set = map[int]bool{}
+	}
+	if isMouseTracking(n) {
+		for _, m := range mouseTracking {
+			t.set[m] = false
+		}
+	}
+	t.set[n] = on
 }
 
 func (t *modeTracker) keep(tail []byte) {
@@ -87,23 +113,30 @@ func (t *modeTracker) keep(tail []byte) {
 	}
 }
 
+// clone is a copy that can be fed without changing t.
+func (t *modeTracker) clone() modeTracker {
+	return modeTracker{set: maps.Clone(t.set), carry: append([]byte(nil), t.carry...)}
+}
+
 // prefix is the sequence that puts a fresh terminal into the modes the output
-// has set, to be sent ahead of the scrollback snapshot. The snapshot may set
-// some of them again; it comes later, so it wins, which is correct — it is
-// the more recent output.
+// has set. Every reset comes before every set: resetting any mouse tracking
+// mode turns the mouse off, so an `ESC[?1002l` after an `ESC[?1003h` would
+// undo it.
 func (t *modeTracker) prefix() []byte {
 	var b []byte
-	for _, m := range trackedModes {
-		on, ok := t.set[m]
-		if !ok {
-			continue
-		}
-		b = append(b, "\x1b[?"...)
-		b = strconv.AppendInt(b, int64(m), 10)
-		if on {
-			b = append(b, 'h')
-		} else {
-			b = append(b, 'l')
+	for _, want := range []bool{false, true} {
+		for _, m := range trackedModes {
+			on, ok := t.set[m]
+			if !ok || on != want {
+				continue
+			}
+			b = append(b, "\x1b[?"...)
+			b = strconv.AppendInt(b, int64(m), 10)
+			if on {
+				b = append(b, 'h')
+			} else {
+				b = append(b, 'l')
+			}
 		}
 	}
 	return b
@@ -111,6 +144,15 @@ func (t *modeTracker) prefix() []byte {
 
 func tracked(n int) bool {
 	for _, m := range trackedModes {
+		if m == n {
+			return true
+		}
+	}
+	return false
+}
+
+func isMouseTracking(n int) bool {
+	for _, m := range mouseTracking {
 		if m == n {
 			return true
 		}

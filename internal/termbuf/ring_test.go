@@ -2,6 +2,7 @@ package termbuf
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -123,5 +124,59 @@ func TestInputsApplyOnceAndForget(t *testing.T) {
 	now = now.Add(2 * time.Minute)
 	if in.Last("c1") != 0 {
 		t.Fatal("a client silent past the TTL must be forgotten")
+	}
+}
+
+// codexStartup is what codex-cli 0.161 writes as it takes the screen with its
+// own transcript (codex-rs/tui/src/tui/alternate_screen.rs: EnterAlternateScreen,
+// then DisableAlternateScroll, EnablePointerCapture and SGR reports).
+const codexStartup = "\x1b[?1049h\x1b[?2004h\x1b[?1004h\x1b[?1007l\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h"
+
+// The Codex scroll bug (2026-10-18): once the startup scrolled out of the
+// ring, a terminal attached later was on the normal screen with the mouse
+// off, so the wheel never reached Codex. The snapshot must open on the
+// alternate screen with SGR any-event mouse reporting on.
+func TestRingSnapshotKeepsCodexOnTheAlternateScreenWithTheMouse(t *testing.T) {
+	r := NewRing(256)
+	r.Write([]byte(codexStartup))
+	frame := []byte("\x1b[?2026h\x1b[3;1H\x1b[2Kworking\x1b[?2026l")
+	for range 100 {
+		r.Write(frame)
+	}
+	if r.Start() <= uint64(len(codexStartup)) {
+		t.Fatal("the startup is still in the ring; the test proves nothing")
+	}
+	snap := string(r.Snapshot())
+	for _, mode := range []string{"\x1b[?1049h", "\x1b[?1003h", "\x1b[?1006h", "\x1b[?2004h"} {
+		if !strings.Contains(snap[:strings.Index(snap, "\x1b[?2026h")], mode) {
+			t.Errorf("snapshot prefix lacks %q: %q", mode, snap[:64])
+		}
+	}
+	for _, mode := range []int{1049, 1003, 1006} {
+		if on, _ := r.Mode(mode); !on {
+			t.Errorf("Mode(%d) off", mode)
+		}
+	}
+}
+
+// The prefix is the modes where the held bytes start, not where they end:
+// a shell's lines printed before an app took the alternate screen replay on
+// the normal screen, and the app's own ESC[?1049h in the bytes switches.
+func TestRingSnapshotSwitchesScreensWhereTheOutputDid(t *testing.T) {
+	r := NewRing(32)
+	r.Write([]byte("\x1b[?2004h"))
+	r.Write([]byte(strings.Repeat("s", 40))) // the 2004 scrolls out
+	r.Write([]byte("$ codex\r\n\x1b[?1049hTUI"))
+	snap := string(r.Snapshot())
+	if !strings.HasPrefix(snap, "\x1b[?2004h") || strings.Count(snap, "\x1b[?1049h") != 1 {
+		t.Fatalf("snapshot %q: want the start-of-ring modes, then the bytes", snap)
+	}
+	if on, seen := r.Mode(1049); !on || !seen {
+		t.Fatal("Mode(1049) must read the held bytes too")
+	}
+	// Leaving again: the prefix follows once the switch scrolls out.
+	r.Write([]byte("\x1b[?1049l" + strings.Repeat("z", 40)))
+	if snap := string(r.Snapshot()); !strings.Contains(snap, "\x1b[?1049l") || strings.Contains(snap, "\x1b[?1049h") {
+		t.Fatalf("after leaving, snapshot %q", snap)
 	}
 }

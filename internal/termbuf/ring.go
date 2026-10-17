@@ -18,10 +18,15 @@ import "sync"
 // a terminal that connects late still sees recent scrollback — and the
 // terminal modes that output set, which may have long since scrolled out of it.
 type Ring struct {
-	mu    sync.Mutex
-	buf   []byte
-	size  int
-	modes modeTracker
+	mu   sync.Mutex
+	buf  []byte
+	size int
+	// base is the modes in force where buf starts: what the output set in
+	// the bytes the ring has already dropped. The snapshot opens with it and
+	// then replays buf, so a mode is switched where the output switched it —
+	// text printed before an app entered the alternate screen lands on the
+	// normal screen, not on the alternate one.
+	base modeTracker
 	// total is the offset one past the newest byte: every byte ever written,
 	// including those the ring has dropped.
 	total uint64
@@ -38,10 +43,11 @@ func NewRing(size int) *Ring {
 func (r *Ring) Write(p []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.modes.feed(p)
 	r.total += uint64(len(p))
 	r.wake()
 	if len(p) >= r.size {
+		r.base.feed(r.buf)
+		r.base.feed(p[:len(p)-r.size])
 		r.buf = append(r.buf[:0], p[len(p)-r.size:]...)
 		return
 	}
@@ -50,6 +56,7 @@ func (r *Ring) Write(p []byte) {
 		return
 	}
 	drop := len(r.buf) + len(p) - r.size
+	r.base.feed(r.buf[:drop])
 	r.buf = append(r.buf[drop:], p...)
 }
 
@@ -59,8 +66,8 @@ func (r *Ring) wake() {
 	r.changed = make(chan struct{})
 }
 
-// Snapshot is what a terminal attaching now should be sent: the mode prefix,
-// then the scrollback.
+// Snapshot is what a terminal attaching now should be sent: the modes in force
+// where the scrollback starts, then the scrollback.
 func (r *Ring) Snapshot() []byte {
 	b, _ := r.SnapshotAt()
 	return b
@@ -70,17 +77,20 @@ func (r *Ring) Snapshot() []byte {
 func (r *Ring) SnapshotAt() ([]byte, uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return append(r.modes.prefix(), r.buf...), r.total
+	return append(r.base.prefix(), r.buf...), r.total
 }
 
 // Mode reports the last value the output set for one of the tracked DEC
-// private modes (1, 25, 1004, 2004), and whether the output has set it at
-// all. The daemon reads 2004 before it types a message into a session: an
-// app that turned bracketed paste on is sent the message as a paste.
+// private modes (trackedModes), and whether the output has set it at all.
+// The daemon reads 2004 before it types a message into a session: an app
+// that turned bracketed paste on is sent the message as a paste. It reads
+// the held bytes on each call, which is rare, rather than every write twice.
 func (r *Ring) Mode(n int) (on, seen bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	on, seen = r.modes.set[n]
+	m := r.base.clone()
+	m.feed(r.buf)
+	on, seen = m.set[n]
 	return on, seen
 }
 
@@ -117,10 +127,10 @@ func (r *Ring) Since(offset uint64) ([]byte, bool) {
 func (r *Ring) Restore(prefix, held []byte, total uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.modes = modeTracker{}
-	r.modes.feed(prefix)
-	r.modes.feed(held)
+	r.base = modeTracker{}
+	r.base.feed(prefix)
 	if len(held) > r.size {
+		r.base.feed(held[:len(held)-r.size])
 		held = held[len(held)-r.size:]
 	}
 	if uint64(len(held)) > total {

@@ -1653,7 +1653,11 @@ and the points below say where the build settled what this plan left open.
   the phone was put away, until the session was reopened (Vova, 2026-10-13).
 - **Modes on exit and restore.** When the child exits, or a snapshot repaints,
   the client resets mouse tracking, bracketed paste and the alternate screen
-  before drawing, so a dead TUI's modes never leak into the next one.
+  before drawing, so a dead TUI's modes never leak into the next one. The
+  snapshot then opens with the modes the session's output had set where the
+  held bytes start, the alternate screen and mouse tracking among them
+  (`internal/termbuf/modes.go`), so a live full-screen app such as Codex keeps
+  its screen and its wheel after a repaint ([04-ui.md](04-ui.md)).
 
 ## Projects
 
