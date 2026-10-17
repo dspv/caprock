@@ -31,11 +31,12 @@ describe('WeeklyReport', () => {
   it('says which bot is stored without showing its token', async () => {
     settings.value = { report_bot_set: true, report_chat_id: '123' } as Settings
     render(<WeeklyReport />)
-    // GET never returns the token, so the panel names the bot and shows a
-    // mask, or an unchanged setup reads as unsaved.
+    // GET never returns the token, so the panel names the bot and its chat
+    // in one line, or an unchanged setup reads as unsaved.
     await waitFor(() => expect(screen.getByText('@my_bot')).toBeInTheDocument())
-    expect(screen.getByText('••••••x9Zq')).toBeInTheDocument()
+    expect(screen.getByText(/Connected to/)).toBeInTheDocument()
     expect(screen.getByText('Dima')).toBeInTheDocument()
+    expect(screen.queryByText(/x9Zq/)).toBeNull()
   })
 
   // The whole reason the status line exists.
