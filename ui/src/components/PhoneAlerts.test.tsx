@@ -33,6 +33,16 @@ vi.mock('@/lib/api', async (orig) => {
 })
 
 describe('PhoneAlerts', () => {
+  it('says plainly what to do when Telegram refuses the bot token, with the bot fields open', async () => {
+    settings.value = { report_bot_set: true, report_chat_id: '42', alert_approval: true, alert_last_error: 'telegram: Unauthorized' } as Settings
+    render(<PhoneAlerts />)
+    expect(await screen.findByText("Telegram no longer accepts this bot's token")).toBeInTheDocument()
+    expect(screen.getByRole('alert').textContent).toMatch(/API Token/)
+    expect(screen.getByRole('button', { name: 'Open @BotFather' })).toBeInTheDocument()
+    // The bot's fields are open, not folded under "Telegram bot".
+    expect(screen.queryByText('Telegram bot', { selector: 'summary' })).toBeNull()
+  })
+
   it('leads with the three setup steps when there is no bot, and holds the switches until there is', async () => {
     settings.value = { alert_approval: true, alert_finished: true } as Settings
     render(<PhoneAlerts />)
