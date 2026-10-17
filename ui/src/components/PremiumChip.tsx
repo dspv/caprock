@@ -31,7 +31,15 @@ import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { PremiumModal } from './PremiumModal'
 
-export function PremiumChip() {
+/**
+ * `strip`: the app's status strip, where a terminal in front hides the
+ * dashboard's header and with it the only way to buy (owner, 2026-10-17,
+ * translated: the dashboard has these, the app does not — put something in
+ * the bottom bar). The same control at the strip's size: a short word, no
+ * price, the same dialog.
+ */
+export function PremiumChip({ variant = 'header' }: { variant?: 'header' | 'strip' } = {}) {
+  const strip = variant === 'strip'
   const [open, setOpen] = useState(false)
   const premium = useApi(() => api.premium(), [], { live: false, intervalMs: 300_000 })
 
@@ -60,7 +68,8 @@ export function PremiumChip() {
     const lifetime = !!ends && ends.getFullYear() - new Date().getFullYear() > 10
     return (
       <span
-        className="text-premium-strong"
+        data-premium-chip
+        className={`text-premium-strong ${strip ? 'whitespace-nowrap' : ''}`}
         title={ends && !lifetime ? `Covers you through ${ends.toLocaleDateString()}` : 'Bought outright'}
       >
         premium <span className="opacity-70">{lifetime ? 'lifetime' : 'yearly'}</span>
@@ -91,16 +100,16 @@ export function PremiumChip() {
         * and carries the price, because a reader deciding whether to click
         * deserves to know the number before they do. */}
       <button
+        data-premium-chip
         onClick={() => setOpen(true)}
-        title="What Premium includes"
+        title={strip ? `What Premium includes — $${p.yearly.charged_usd} a year` : 'What Premium includes'}
         // Framed like Feedback and Settings beside it — same height, radius
         // and type — in a faint premium tint (.premium-cta, tokens.css). It
         // was a solid violet block with white text, the loudest thing in the
         // header (owner, 2026-10-15: "too bright", translated).
-        className="premium-cta inline-flex h-[24px] items-center gap-1.5 rounded-[6px] px-2 text-[12px] font-medium transition-colors motion-reduce:transition-none"
+        className={`premium-cta inline-flex items-center gap-1.5 font-medium transition-colors motion-reduce:transition-none ${strip ? 'h-[18px] whitespace-nowrap rounded-[5px] px-1.5 text-[11px]' : 'h-[24px] rounded-[6px] px-2 text-[12px]'}`}
       >
-        <span>Get premium</span>
-        <span data-price>${p.yearly.charged_usd}/yr</span>
+        {strip ? <span>Premium</span> : <><span>Get premium</span><span data-price>${p.yearly.charged_usd}/yr</span></>}
       </button>
       {/* The cap, not the report: it is the feature people arrive worried
         * about, and the one a runaway session makes them want. */}

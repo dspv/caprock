@@ -22,6 +22,9 @@ import { useAppUpdate } from '@/lib/appupdate'
 import { VersionPanel } from './VersionPanel'
 import { GitHubStatusDot } from './GitHubOutage'
 import { SetupChip } from './SetupStrip'
+import { PremiumChip } from './PremiumChip'
+import { PremiumModal } from './PremiumModal'
+import { useLicensed } from '@/lib/nudges'
 
 export function StatusStrip({ summary, pane, session, version, figures = true, sessions, onOpenSession }: {
   summary?: Summary
@@ -58,6 +61,9 @@ export function StatusStrip({ summary, pane, session, version, figures = true, s
       <ConnectionState link={link} heardAt={live.heardAt} onReconnect={() => live.reconnectNow()} />
       {five && <Limit label="5h" pct={five.used_percentage} />}
       {seven && <Limit label="7d" pct={seven.used_percentage} />}
+      {/* Beside the limits only while one is close (PremiumHint's rule: an
+        * offer appears beside the problem it solves, never on a quiet day). */}
+      {Math.max(five?.used_percentage ?? 0, seven?.used_percentage ?? 0) >= WINDOW_HINT_PCT && <WindowStopHint />}
       {figures && summary && (
         <span className="whitespace-nowrap" title="Spent today, every agent">
           Today <span className="num text-fg">{fmtUSD(summary.cost_usd)}</span>
@@ -82,9 +88,40 @@ export function StatusStrip({ summary, pane, session, version, figures = true, s
         <KeepAwakeIndicator />
         <StaleUiPill />
         <AppUpdateNotice />
+        {/* The header's way to buy, at the strip's size: with a terminal in
+          * front the header is not on screen (owner, 2026-10-17). */}
+        <PremiumChip variant="strip" />
         {shown && <VersionPanel shown={shown} title={versionTitle} status={status} onStatus={setStatus} />}
       </span>
     </footer>
+  )
+}
+
+/** How full a plan window is before the strip offers to pause before it: the bar's own warn tone. */
+export const WINDOW_HINT_PCT = 70
+
+/**
+ * "pause before the limit": Premium's plan-window stop, offered while a
+ * window is close and never to someone who has it. Opens the dialog on that
+ * feature; quotes no price.
+ */
+function WindowStopHint() {
+  const licensed = useLicensed()
+  const [open, setOpen] = useState(false)
+  if (licensed) return null
+  return (
+    <>
+      <button
+        type="button"
+        data-window-hint
+        onClick={() => setOpen(true)}
+        title="Premium pauses the sessions Caprock started before a plan window runs out, and resumes them after it resets"
+        className="whitespace-nowrap text-premium-strong underline-offset-2 hover:underline"
+      >
+        pause before the limit
+      </button>
+      {open && <PremiumModal feature="window" onClose={() => setOpen(false)} />}
+    </>
   )
 }
 

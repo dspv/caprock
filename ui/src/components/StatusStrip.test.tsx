@@ -4,7 +4,7 @@
  * for debugging, so they live in the version's tooltip and nowhere on the bar.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { StatusStrip } from './StatusStrip'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -39,5 +39,31 @@ describe('the status strip', () => {
     const bar = container.querySelector('footer')!
     expect(bar.textContent).toContain('reconnecting')
     expect(bar.textContent).not.toContain('100×37')
+  })
+
+  describe('Premium on the strip', () => {
+    const premium = (active: boolean) => vi.fn((url: string) => {
+      if (url !== '/v1/premium') return new Promise(() => {})
+      const body = { yearly: { url: 'https://example.test/buy', charged_usd: 30, per_month_usd: 2.5, period: 'year' }, license: active ? { active: true, expires_at: '2027-10-17T00:00:00Z' } : { active: false, reason: 'no key' } }
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+    const summary = (pct: number) => ({ cost_usd: 1, rate_limits: { five_hour: { used_percentage: pct } } }) as unknown as Parameters<typeof StatusStrip>[0]['summary']
+
+    it('carries the way to buy, and offers the window stop only while a window is close', async () => {
+      vi.stubGlobal('fetch', premium(false))
+      const { container, rerender } = render(<StatusStrip version="0.94.1" summary={summary(40)} />)
+      expect(await screen.findByRole('button', { name: 'Premium' })).toBeInTheDocument()
+      expect(container.querySelector('[data-window-hint]')).toBeNull()
+      rerender(<StatusStrip version="0.94.1" summary={summary(75)} />)
+      expect(await screen.findByText('pause before the limit')).toBeInTheDocument()
+    })
+
+    it('says which plan instead, and offers nothing, once Premium is on', async () => {
+      vi.stubGlobal('fetch', premium(true))
+      const { container } = render(<StatusStrip version="0.94.1" summary={summary(95)} />)
+      await waitFor(() => expect(container.querySelector('[data-premium-chip]')?.textContent).toBe('premium yearly'))
+      expect(screen.queryByRole('button', { name: 'Premium' })).toBeNull()
+      expect(container.querySelector('[data-window-hint]')).toBeNull()
+    })
   })
 })
