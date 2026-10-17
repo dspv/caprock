@@ -11,9 +11,9 @@ import { useContext, useState } from 'react'
 import { fmtAgo, fmtUSD, shortId } from '@/lib/format'
 import { LastWord } from '@/components/LastWord'
 import type { SessionSummary } from '@/lib/api'
-import { href, navigate } from '@/lib/router'
+import { href } from '@/lib/router'
 import { PipelineHostContext } from '@/lib/pipelineHost'
-import { typeable } from '@/lib/sessionJump'
+import { openSession, typeable } from '@/lib/sessionJump'
 import { sessionTitle } from '@/lib/sidebar'
 import { PremiumHint } from './PremiumHint'
 import { LoopAlertCard } from './LoopAlertCard'
@@ -77,12 +77,7 @@ function Row({ it, now, session }: {
   const waiting = it.id.startsWith('waiting-') && !!it.sessionId
   const terminal = !!host.onOpenSession || (!!session && typeable(session))
   const go = waiting
-    ? () => {
-        if (host.onOpenSession) host.onOpenSession(it.sessionId)
-        else navigate(session && typeable(session)
-          ? { name: 'session', id: it.sessionId, tab: 'terminal' }
-          : { name: 'session', id: it.sessionId, tab: 'timeline', at: it.at })
-      }
+    ? () => openSession(host.onOpenSession, it.sessionId, !!session && typeable(session), it.at)
     : undefined
   const goLabel = terminal ? 'Open terminal' : 'Open session'
   // Two waiting rows both read "caprock-web": the project says where, the

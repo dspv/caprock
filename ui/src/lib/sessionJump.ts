@@ -23,6 +23,7 @@
  * session at a terminal never is).
  */
 import type { SessionSummary } from './api'
+import { navigate } from './router'
 
 export type SessionJump =
   /** A tab shows it: `digit` is its ⌘N, null past ⌘9's reach. */
@@ -44,6 +45,19 @@ export function sessionJump(s: Row, tabDigit: number | null | undefined): Sessio
   if (tabDigit !== undefined) return { kind: 'tab', digit: tabDigit, typeable: typeable(s) }
   if (typeable(s)) return { kind: 'open' }
   return { kind: 'away', why: s.owned && s.detached ? 'detached' : 'terminal' }
+}
+
+/**
+ * Goes into a session in one click — a *Waiting for you* row's jump (owner,
+ * 2026-10-16) and a release plan row's (2026-10-17). In the desktop app
+ * (`onOpenSession`, AppShell's openSessionById): its tab, brought forward or
+ * opened — a terminal for Caprock's own, a read-only tab otherwise (rule 7).
+ * In a browser: the session's terminal when Caprock holds one (`terminal`),
+ * else its timeline, at `at` when given.
+ */
+export function openSession(onOpenSession: ((id: string) => void) | undefined, id: string, terminal: boolean, at?: number): void {
+  if (onOpenSession) onOpenSession(id)
+  else navigate(terminal ? { name: 'session', id, tab: 'terminal' } : { name: 'session', id, tab: 'timeline', at })
 }
 
 /** What the narrator says of a session at its prompt after a turn (internal/narrate). */

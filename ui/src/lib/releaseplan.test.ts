@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WorkRepo } from './api'
-import { ageText, BLOCKS, bumpOf, landingOf, nextVersion, osDots, parseVersion, planEmpty, planForRepo, releasePlan, rowOf } from './releaseplan'
+import { ageText, BLOCKS, bumpOf, landingOf, nextVersion, osDots, parseVersion, pickSession, planEmpty, planForRepo, releasePlan, rowOf, sinceLine } from './releaseplan'
 import type { BoardCard } from './prboard'
 import { buildWork, type WorkItem } from './work'
 import { NOW, session, statsFixture, workFixture } from './work.fixture'
@@ -111,6 +111,30 @@ describe('a row’s bar and word', () => {
   })
 })
 
+describe('the line under the version', () => {
+  const last = { name: 'v0.129.0', at: NOW - 9 * MIN }
+  it('says nothing new since the tag, in plain words', () => {
+    expect(sinceLine(last, 0, undefined, undefined, NOW)?.text).toBe('Nothing new since v0.129.0, released 9m ago')
+  })
+  it('says how many changes wait, and the last release', () => {
+    expect(sinceLine(last, 3, undefined, undefined, NOW)?.text).toBe('3 changes waiting for the next release · last release v0.129.0, 9m ago')
+  })
+  it('says nothing without a tag', () => {
+    expect(sinceLine(undefined, 2, undefined, undefined, NOW)).toBeUndefined()
+  })
+})
+
+describe('the session a row opens', () => {
+  it('is the newest one that is not idle, else the newest', () => {
+    const busy = session('a', { started_at: NOW - 60 * MIN })
+    const idleNew = session('b', { state: 'at_prompt', started_at: NOW - 50 * MIN, worked_at: NOW - 45 * MIN })
+    expect(pickSession([busy, idleNew], NOW)?.id).toBe('a')
+    const idleOld = session('c', { state: 'at_prompt', started_at: NOW - 90 * MIN, worked_at: NOW - 80 * MIN })
+    expect(pickSession([idleOld, idleNew], NOW)?.id).toBe('b')
+    expect(pickSession([], NOW)).toBeUndefined()
+  })
+})
+
 describe('one repository’s plan', () => {
   it('lists merged since the last tag, open pull requests and agents with none; drafts and idle agents later', () => {
     const work = workFixture()
@@ -131,11 +155,13 @@ describe('one repository’s plan', () => {
     // Furthest along first: merged, then the ready and running ones, then the agent with no PR.
     expect(plan.rows[0]).toMatchObject({ number: 630, word: 'merged', filled: 8 })
     expect(plan.rows.find((r) => r.number === 633)?.word).toBe('landing: queued')
-    expect(plan.rows.at(-1)).toMatchObject({ stage: 'agent', filled: 2, word: 'agent' })
+    expect(plan.rows.at(-1)).toMatchObject({ stage: 'agent', filled: 2, word: 'no PR yet', session: { id: 's2', owned: false } })
     expect(plan.later.map((g) => g.key)).toEqual(['drafts', 'idle'])
     expect(plan.later[0]!.rows[0]).toMatchObject({ number: 640, word: 'draft' })
-    expect(plan.later[1]!.rows[0]).toMatchObject({ title: 'Release plan', word: 'idle' })
-    expect(plan.since?.text).toBe('1 merged since v0.117.4 · 2h 05m ago · usual gap 2h 40m (median of 9)')
+    expect(plan.later[1]!.label).toBe('Not in a release yet · agents waiting for you, idle 30+ min')
+    expect(plan.later[1]!.rows[0]).toMatchObject({ title: 'Release plan', word: 'idle', session: { id: 's9' } })
+    expect(plan.since?.text).toBe('1 change waiting for the next release · last release v0.117.4, 2h 05m ago')
+    expect(plan.since?.title).toContain('usually come 2h 40m apart: the median gap between the last 10')
     // Another repository's rows are not this one's.
     const site = releasePlan({ root: '/w/site', repo: work.repos[1], items: board.items, idle: board.idle, now: NOW })
     expect(site.rows.every((r) => r.number === undefined)).toBe(true)

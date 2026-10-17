@@ -2119,6 +2119,8 @@ export function AppShell() {
             </div>
             {workspaceShown && prefs.inspector && !focusedPage && (
               <div className="h-full shrink-0" style={{ width: 'var(--app-inspector-w)' }}>
+                {/* The cockpit's Release rows open a session's tab, as the Pipeline's do. */}
+                <PipelineHostContext.Provider value={pipelineHost}>
                 <Inspector
                   session={inspectedSession}
                   project={focusedProject}
@@ -2135,6 +2137,7 @@ export function AppShell() {
                   onCompare={inspectedSession?.attempt_group ? () => onCompare(inspectedSession) : undefined}
                   onOpenPRs={inspectedSession && inspectedSession.kind !== 'shell' ? () => openPipeline(inspectedSession) : undefined}
                 />
+                </PipelineHostContext.Provider>
               </div>
             )}
           </div>

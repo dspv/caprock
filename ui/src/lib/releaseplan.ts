@@ -30,12 +30,12 @@
  *   against the usual (`card.ci_ms`, the flow's median), and the agent spend
  *   recorded on it (`store.SpendByPR`, at list price; "—" when none was).
  */
-import type { SessionCIStats, Work, WorkRepo } from './api'
+import type { SessionCIStats, Work, WorkRepo, WorkSession } from './api'
 import type { BranchPR } from './branches'
 import { fmtUSD } from './format'
 import { AGENT_COST_NOTE, asBoard, type BoardFlow, type BoardOS } from './prboard'
 import { spanText, vsMedianText } from './prstats'
-import { buildWork, ciVsUsual, gapText, MIN_GAPS, releaseLag, STEPS, todoSteps, type Stage, type WorkItem } from './work'
+import { buildWork, ciVsUsual, gapText, isIdle, MIN_GAPS, releaseLag, STEPS, todoSteps, type Stage, type WorkItem } from './work'
 
 /** Blocks in a bar: two per step. */
 export const BLOCKS = 10
@@ -81,6 +81,8 @@ export interface PlanRow {
   ciTime?: { text: string; title: string; tone?: 'warn' }
   /** The agent spend recorded on it, at API list price; "—" when none was. */
   cost: { text: string; title: string; known: boolean }
+  /** The agent session it opens (`pickSession`); absent when no live session is on it. */
+  session?: { id: string; owned: boolean; name: string }
 }
 
 export interface Wait {
@@ -113,7 +115,7 @@ export interface ReleasePlanData {
   root: string
   name: string
   next?: NextVersion
-  /** "3 merged since v0.119.0 · 2h 05m ago · usual gap 2h 40m (median of 9)". */
+  /** "3 changes waiting for the next release · last release v0.119.0, 2h 05m ago"; the usual gap on hover. */
   since?: { text: string; title: string }
   rows: PlanRow[]
   later: PlanGroup[]
@@ -282,6 +284,19 @@ export function costOf(it: WorkItem): PlanRow['cost'] {
   return { text: fmtUSD(it.costUsd), title: `${fmtUSD(it.costUsd)} of agent work over ${n} session${n === 1 ? '' : 's'}, at API list price, not a bill.\n${AGENT_COST_NOTE}`, known: true }
 }
 
+/**
+ * The session a row opens (owner, 2026-10-17, translated, of an idle agent's
+ * row: "from here I want to go into the session"): of the live sessions on
+ * it, the newest that is not idle, else the newest.
+ */
+export function pickSession(ss: readonly WorkSession[], now?: number): PlanRow['session'] {
+  if (!ss.length) return undefined
+  const newest = (xs: readonly WorkSession[]) => xs.reduce((a, b) => (b.started_at > a.started_at ? b : a))
+  const awake = now === undefined ? ss : ss.filter((x) => !isIdle(x, now))
+  const s = newest(awake.length ? awake : ss)
+  return { id: s.session_id, owned: s.owned, name: s.name || s.project || s.session_id.slice(0, 8) }
+}
+
 /** One board row as a plan row: its blocks, its word, a landing label over the word, what it waits for, its age and CI per OS. */
 export function rowOf(it: WorkItem, labels?: BranchPR['labels'], ctx: RowContext = {}): PlanRow {
   const landing = it.kind === 'pr' ? landingOf(labels) : undefined
@@ -296,14 +311,17 @@ export function rowOf(it: WorkItem, labels?: BranchPR['labels'], ctx: RowContext
     filled: Math.max(0, Math.min(BLOCKS, it.fill * PER_STEP)),
     red: it.red || !!landing?.red,
     warn: !landing?.red && !!landing?.warn,
-    word: landing?.word ?? it.word,
-    wordTitle: landing ? `Set by the landing queue; on the board: ${it.word}` : undefined,
+    // An agent's row says in its word that no pull request is open yet, at
+    // any width (owner, 2026-10-17: a bare bar and "agent" said nothing).
+    word: landing?.word ?? (it.kind === 'session' && it.word === 'agent' ? 'no PR yet' : it.word),
+    wordTitle: landing ? `Set by the landing queue; on the board: ${it.word}` : it.kind === 'session' && it.word === 'agent' ? 'An agent is on it; it has not opened a pull request yet.' : undefined,
     running: it.running || (it.kind === 'session' && it.working),
     wait: waitOf(it, landing, ctx),
     age: started && ctx.now ? { text: ageText(ctx.now - started), title: `${it.kind === 'pr' ? 'Opened' : 'Started'} ${spanText(Math.max(0, ctx.now - started))} ago` } : undefined,
     ci: it.kind === 'pr' && it.stage !== 'merged' ? osDots(it.card?.os, ctx.now) : undefined,
     ciTime: ciTimeOf(it, ctx),
     cost: costOf(it),
+    session: pickSession(it.sessions, ctx.now),
   }
 }
 
@@ -331,28 +349,41 @@ export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], 
   }
   next.sort((a, b) => b.fill - a.fill || (a.stage === 'merged' ? mergedAt(a) - mergedAt(b) : (a.pr?.number ?? Infinity) - (b.pr?.number ?? Infinity)))
   const later: PlanGroup[] = []
-  if (drafts.length) later.push({ key: 'drafts', label: 'Drafts', rows: drafts.map((it) => rowOf(it, labels.get(it.pr?.number ?? -1), ctx)) })
+  if (drafts.length) later.push({ key: 'drafts', label: 'Later · drafts, not yet ready for review', rows: drafts.map((it) => rowOf(it, labels.get(it.pr?.number ?? -1), ctx)) })
   const sleeping = idle.filter(mine)
-  if (sleeping.length) later.push({ key: 'idle', label: 'Agents idle over 30 min', rows: sleeping.map((it) => ({ ...rowOf(it, undefined, ctx), word: 'idle' })) })
+  if (sleeping.length) {
+    later.push({
+      key: 'idle', label: 'Not in a release yet · agents waiting for you, idle 30+ min',
+      rows: sleeping.map((it) => ({ ...rowOf(it, undefined, ctx), word: 'idle', wordTitle: 'At its prompt for over 30 minutes, waiting for you; it has not opened a pull request yet.' })),
+    })
+  }
   return { rows: next.map((it) => rowOf(it, labels.get(it.pr?.number ?? -1), ctx)), later, merged: next.filter((it) => it.stage === 'merged').length }
 }
 
-/** "3 merged since v0.119.0 · 2h 05m ago · usual gap 2h 40m (median of 9)": the usual gap only with MIN_GAPS behind it. */
+/**
+ * The line under the version, in plain words (owner, 2026-10-17: "0 merged
+ * since v0.129.0 · 9m ago · usual gap 1h 58m (median of 10)" read as
+ * nothing): *Nothing new since v0.129.0, released 9m ago*, or *3 changes
+ * waiting for the next release · last release v0.129.0, 9m ago*. The usual
+ * gap, with MIN_GAPS behind it, is on hover only.
+ */
 export function sinceLine(last: { name: string; at: number } | undefined, merged: number, repo: WorkRepo | undefined, stats: SessionCIStats | undefined, now: number): ReleasePlanData['since'] {
+  if (!last) return undefined
   const flow = asBoard(stats?.board)?.flow
   let median = repo?.tags?.gap_median_ms
   let n = repo?.tags?.gaps ?? 0
   if (!median || n < MIN_GAPS) { median = flow?.release_gap_median_ms; n = flow?.release_gap_count ?? 0 }
-  const usual = median && n >= MIN_GAPS ? `usual gap ${gapText(median)} (median of ${n})` : ''
-  const parts = last ? [`${merged} merged since ${last.name}`, `${gapText(now - last.at)} ago`] : []
-  if (usual) parts.push(usual)
-  if (!parts.length) return undefined
-  return {
-    text: parts.join(' · '),
-    title: usual
-      ? `The usual gap is the median time between this repository’s last ${n + 1} releases. When the next one comes is not said: that is your call.`
-      : 'Too few releases here to say a usual gap.',
-  }
+  const ago = `${gapText(now - last.at)} ago`
+  const text = merged > 0
+    ? `${merged} change${merged === 1 ? '' : 's'} waiting for the next release · last release ${last.name}, ${ago}`
+    : `Nothing new since ${last.name}, released ${ago}`
+  const what = merged > 0
+    ? `${merged} pull request${merged === 1 ? '' : 's'} merged since ${last.name}, not in a release yet.`
+    : `No pull request merged since ${last.name}.`
+  const usual = median && n >= MIN_GAPS
+    ? ` Releases here usually come ${gapText(median)} apart: the median gap between the last ${n + 1}. When the next one comes is your call.`
+    : ' Too few releases here to say a usual gap.'
+  return { text, title: what + usual }
 }
 
 /** The plan of one repository, from the board's rows and what is read of the repository. */
