@@ -12,6 +12,40 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.132.0] - 2026-10-17
+
+### Added
+
+- **ui:** an agent's "update available" notice in a terminal gets a small bar
+  near the bottom of that terminal — *Codex 0.162.0 available · Copy command ·
+  Open a terminal · ×*. Copy puts the printed command on the clipboard, joined
+  back across wrapped lines and without the "Run … to update." words; Open a
+  terminal opens a plain shell tab in the session's folder and types nothing
+  into it; × hides it for that agent and version. Caprock never runs the
+  command. Codex's banner and Claude Code's update notices are recognised.
+- **now:** At a glance shows which way each share is moving. Every legend
+  row, Numbers table row and agent carries a small marker, the change in its
+  share between the last 7 days and the 7 before (`↑ 9`, `↓ 4`, `·` under a
+  point), and its hover says both shares in words. When a model's share of
+  spend moved five points or more, one sentence under Where the money went
+  says so. Measured shares only, no projection; `GET /v1/glance` gained
+  `trend`.
+
+### Fixed
+
+- **queue:** a message Caprock types into a session it started is sent, not
+  left sitting in the prompt. *Tell the agent* on a loop alert could leave
+  its text typed into a Codex session's composer, unsent, because the agent
+  read the Enter as part of the fast run of text before it. The text now
+  goes as a bracketed paste wherever the session turned paste on (Claude
+  Code and Codex both do), the Enter follows on its own after a pause that
+  grows with the message, and 1.5 s later Caprock reads the screen and
+  presses Enter once more if the prompt still holds the text — never into a
+  menu, and not once the turn has started. The same path serves the chat
+  field, the phone, a delivery at the end of a turn, Send now and Telegram
+  replies. The loop card now says *Sent to the agent* or *Will send when it
+  finishes this turn*; Dismiss never sends.
+
 ## [0.131.0] - 2026-10-17
 
 ### Added

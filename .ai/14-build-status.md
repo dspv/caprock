@@ -238,6 +238,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-17 — 0.132.0: copy an agent's update command, queued messages always submit, At a glance shows trends
+
+A minor release because it carries features, landed as one batch PR (#738). An agent's update banner gets a bar to copy the command and open a terminal beside it; nothing from the terminal is run. Every message Caprock types into a session goes as a bracketed paste when the session enables it, with Enter as its own write and one checked retry (a Codex session kept a Tell the agent heads-up unsent). At a glance marks which way each share is moving, last 7 days against the 7 before.
+
 ### 2026-10-17 — 0.131.0: a slot for private modules
 
 A minor release because it carries a feature (#733). The public build gains a generic slot for private modules: a signed admin key (Ed25519, ADR-076) opens it, a module installed from a local folder shows as a screen of its own and gets a document store (migration 0061). Without a valid key nothing is drawn, and every module route answers this machine only.
