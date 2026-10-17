@@ -2182,6 +2182,11 @@ export const api = {
   /** A code that pairs a phone as `role` — the owner's tick, on the machine. */
   pairCode: (role: PairedDevice['role'] = 'viewer') =>
     post<{ code: string; role?: PairedDevice['role']; expires_in_sec: number; url: string }>('/v1/pair/code', { role }),
+  /** A code for another computer's Caprock (ADR-067): it turns access from
+   *  anywhere on if it is off — pressing it is that decision — and the link to
+   *  paste on the other computer is `remote.link`. */
+  pairComputerCode: () =>
+    post<{ code: string; kind: 'machine'; expires_in_sec: number; url: string; remote?: RemoteState }>('/v1/pair/code', { kind: 'machine' }),
   /** Withdraw the outstanding code, so it stops working before it expires. */
   pairCancelCode: () => post<{ cleared: boolean }>('/v1/pair/code', {}, 'DELETE'),
   /** Turn network access on or off without restarting the daemon. */

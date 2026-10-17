@@ -29,6 +29,7 @@ import { PlanOptions, usePlan } from '@/components/PlanPicker'
 import { AccountPlans, planText } from '@/components/AccountPlan'
 import { subscriptionsFor, useSubscriptionList } from '@/components/SubscriptionPicker'
 import { LicenseField } from '@/components/LicenseField'
+import { Computers } from '@/components/Computers'
 import { Pairing, revealWhenDrawn, settingsSectionId } from '@/components/Pairing'
 import { PhoneAlerts } from '@/components/PhoneAlerts'
 import { TelegramChat } from '@/components/TelegramChat'
@@ -149,6 +150,9 @@ export function StatusScreen() {
       {owner && <Pairing />}
       {owner && <PhoneAlerts />}
       {owner && <TelegramChatSection />}
+      {/* The other computers this one reaches (ADR-067): the sidebar's
+        * "+ Add a machine" and #/settings/computers land here. */}
+      {owner && <Computers />}
       {/* After the phone and Telegram, in the desktop app what you change
         * while working: how a new agent starts, how the window and terminal
         * look, which editor opens. */}

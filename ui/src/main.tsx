@@ -12,6 +12,7 @@ import { watchUiVersion } from '@/lib/staleui'
 import { applyUiScale } from '@/lib/uiscale'
 import { markPageVisibility } from '@/lib/visible'
 import { listenForInstall } from '@/remote/install'
+import { installMachineProxy, machinePageId } from '@/lib/machinepage'
 
 // The app opens on terminals: start fetching every subset of their face now,
 // while the workspace chunk is still loading (lib/termfont).
@@ -24,9 +25,16 @@ if (!isTrayRoute()) applyUiScale()
 // daemon: it reaches its machine through a relay (remote/, ADR-058).
 const remote = import.meta.env.VITE_CAPROCK_REMOTE === '1'
 
+// Another computer's session, in a frame of this dashboard (ADR-067): every
+// request and socket for /v1/… goes to that computer through this daemon's
+// /v1/m/<id>/… proxy, installed before anything asks (lib/machines.ts).
+const machine = remote ? '' : machinePageId()
+if (machine) installMachineProxy(machine)
+
 // A daemon updated under this page: reload onto its UI (lib/staleui). Not on
-// the remote page, which no daemon served.
-if (!remote) watchUiVersion()
+// the remote page, which no daemon served, nor on the machine page, whose
+// requests reach a daemon of another version on purpose.
+if (!remote && !machine) watchUiVersion()
 
 if (remote) {
   // Chrome's install prompt can fire before RemoteRoot's chunk has loaded;
@@ -58,6 +66,8 @@ markPageVisibility()
 // Mail on its own (`?mail=1`) is a fourth: the inbox and nothing of Caprock.
 const Root = remote
   ? lazy(() => import('./remote/RemoteRoot'))
+  : machine
+  ? lazy(() => import('./screens/MachinePage'))
   : isMailApp()
   ? lazy(() => import('./screens/mail/MailApp'))
   : isTrayRoute()

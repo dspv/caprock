@@ -34,6 +34,27 @@ load average and busiest processes before it starts: re-run when it is high.
 | `reference-orca.mjs`                              | The reference app on the same Mac. Not run: refuses unless `ORCA_BENCH_OK=1` and Orca is quit                                                                                                               |
 | `run-macos.sh`, `run-linux.sh`, `run-windows.ps1` | The one command per OS                                                                                                                                                                                      |
 | `busy-stand.sh`, `busy.mjs`                       | Typing beside busy agents: nine tabs over three projects, one printing, hook events every 200 ms; echo, main-thread share, Long Tasks, React commits                                                        |
+| `peer.mjs`                                        | Another computer's terminal (ADR-067): two throwaway daemons and a relay of their own on loopback; keystroke-to-echo on the target's own socket and through the controller's `/v1/m/{id}/…`                 |
+
+## A session on another computer
+
+```bash
+go build -o /tmp/peer/caprock ./cmd/caprock && go build -o /tmp/peer/claude ./testdata/fakeclaude
+node bench/peer.mjs --bin /tmp/peer/caprock --claude /tmp/peer/claude --out peer.json
+```
+
+Two daemons — a target and a controller, each in its own HOME, data
+directory and port, with a clean environment, the file secret store and the
+fake `claude` on PATH — and `caprock remote relay` on loopback (`--relay
+wss://…` points both at another relay instead; never the hosted one unless
+named). The controller pairs by the target's link for a computer, the target
+allows it, and the session is started on the target through the
+controller's proxy. Each leg sends `--keys` keys (default 200) twice,
+alternating, `--gap` ms apart, each timed from the send to the frame that
+echoes it. One JSON object: median, p95, max per leg, what the proxy added,
+the relay, the machine and its load. It stops the terminal holders its
+daemons started, by the pids they recorded. Results and what they say are in
+[.ai/21-app.md](../.ai/21-app.md#a-session-on-another-computer-2026-10-18).
 
 ## Typing beside busy agents
 

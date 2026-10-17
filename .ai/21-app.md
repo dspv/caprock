@@ -201,7 +201,12 @@ One window, three regions:
   confirmation. Hidden rows are listed under *More…* and come back by
   themselves when they next wait on you. The same actions are in each row's
   right-click / Shift+F10 menu; the buttons are 26px, on hover and focus,
-  and always shown on a touch screen ([04-ui.md](04-ui.md) § Sidebar). A **Dashboard** entry opens the existing
+  and always shown on a touch screen ([04-ui.md](04-ui.md) § Sidebar).
+  Under the projects, the **other computers** (ADR-067): with none linked,
+  one quiet *+ Add a machine* row opening Settings → Computers; with some, a
+  *Computers* heading, each computer and the sessions running there, tagged
+  by its name, opening in the Dashboard tab through `/v1/m/{id}/…`
+  ([04-ui.md](04-ui.md) § Other computers). A **Dashboard** entry opens the existing
   screens in a Dashboard tab pinned at the left of the tab strip (2026-10-09:
   it replaced the whole workspace, and the first tester read that as every
   terminal closing, translated); in it, Now leaves out the session cards and
@@ -1346,6 +1351,41 @@ What still fails or is close, and what to try next:
 - **Echo p50** is 12 ms in two runs and 13 ms in the third (load 5.6–6.8);
   p95 is 19 ms in every run. The socket leg is 2 ms; the rest is the page's
   frame. No fix proposed until a quiet run misses.
+
+### A session on another computer (2026-10-18)
+
+`bench/peer.mjs` ([bench/README.md](../bench/README.md)), ADR-067 PR3: two
+throwaway daemons on one Mac — a target and a controller, each with its own
+HOME, data directory and port, a clean environment and the fake `claude` —
+and `caprock remote relay` on loopback. The controller pairs by link, the
+target allows it, the controller starts the session on the target through
+`/v1/m/{id}/…`; then one key at a time, timed from the send to the frame
+that echoes it (the target's tty echo, terminal protocol v2), 400 keys a leg
+in two alternating rounds, 40 ms apart. *Local* is the target's own terminal
+socket; *peer* is the same session through the controller's proxy, the
+relay, Noise and the target's Host. Raw JSON:
+[bench/results-2026-10-18-peer/peer.json](../bench/results-2026-10-18-peer/peer.json).
+
+Measured on 2026-10-18 (00:31 local), Apple M1 Pro, 10 cores, 16 GB, macOS
+27.0 (Darwin 27.0.0), on the owner's working Mac with a one-minute load of
+27 (a busy machine, not a quiet one):
+
+| Leg   | Keys | Median  | p95     | Max      |
+| ----- | ---- | ------- | ------- | -------- |
+| local | 400  | 2.14 ms | 47.8 ms | 87.6 ms  |
+| peer  | 400  | 2.47 ms | 56.8 ms | 103.0 ms |
+
+What it says, and what it does not:
+
+- On one machine, the hop through the proxy, the relay and Noise added 0.33
+  ms at the median and 9 ms at p95. That is the cost of Caprock's own path,
+  not of a network: both daemons and the relay were on loopback.
+- It does not measure two computers on a home network, from abroad, or the
+  hosted relay (`relay.caprock.dev`): OQ-17 and OQ-18 stay open for those
+  ([12-risks.md](12-risks.md)), and no latency figure for a real link is
+  stated anywhere public before they are measured (rule 6).
+- The p95 of both legs is the busy machine's; re-run on a quiet one before
+  reading the tail.
 
 ### A hidden window does no work (2026-10-13)
 

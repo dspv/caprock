@@ -53,6 +53,9 @@ export function asksForApp(hash: string, search: string): boolean {
 /** Whether this page shows the app workspace rather than the dashboard. */
 export function isAppMode(): boolean {
   if (typeof window === 'undefined') return false
+  // Another computer's session in a frame of the app (screens/MachinePage,
+  // ADR-067) is the dashboard's Session view, whatever the window around it.
+  if (new URLSearchParams(location.search).has('machine')) return false
   if (isTauri() || asksForApp(location.hash, location.search)) {
     try { sessionStorage.setItem(LATCH_KEY, '1') } catch { /* private mode: the URL still says so */ }
     return true

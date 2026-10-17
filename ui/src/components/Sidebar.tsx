@@ -66,6 +66,7 @@ import { useTodayCard } from '@/lib/todayCard'
 import { SidebarFooter } from './SidebarFooter'
 import { CaprockMark, ChatIcon, EyeIcon, FolderIcon, FolderPlusIcon, PlusIcon, SearchIcon } from './AppIcons'
 import { ModuleRows } from './ModuleRows'
+import { MachineRows } from './MachineRows'
 import { BrainSidebar } from './BrainSidebar'
 import { keys } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, saveRowOrder, type RowOrders } from '@/lib/rowOrder'
@@ -577,6 +578,9 @@ export function Sidebar(props: SidebarProps) {
             Listed from where your sessions ran. Git state and clone arrive with the projects API.
           </p>
         )}
+        {/* The other computers and what runs there, each row tagged by its
+          * computer; with none linked, one quiet "+ Add a machine" (ADR-067). */}
+        {props.onRoute && <MachineRows onOpen={props.onRoute} onSettingsSection={props.onSettingsSection} dashboardActive={props.dashboardActive && !props.mailActive && !props.pipelineActive} />}
       </div>
 
       {/* Second Brain under the list (ADR-063), never in its scroll, so its

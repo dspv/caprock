@@ -163,12 +163,19 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   and from abroad, is unmeasured. Decided by: `bench/peer.mjs` (PR3 of
   ADR-067) through the local `relaysrv` and through `relay.caprock.dev`,
   median and p95, recorded with a date in `.ai/21-app.md`. No latency figure
-  is stated anywhere public before then (rule 6).
+  is stated anywhere public before then (rule 6). *2026-10-18:* the local
+  half only — both daemons and the relay on one busy Mac, the hop added
+  0.33 ms at the median and 9 ms at p95 to a terminal echo
+  ([21-app.md § A session on another computer](21-app.md)). Two real
+  computers and `relay.caprock.dev` are still unmeasured, so this stays
+  open.
 - `OQ-18` — **Terminal echo through a link.** Keystroke-to-echo for a
   session on another computer, through the controller's `/v1/m/{id}/…`
   proxy and the relay, against the same session typed into locally. Decided
   by: the same bench, through `/v1/m/…`, with a date. Until then a remote
-  terminal is not described as "instant" or "like local".
+  terminal is not described as "instant" or "like local". *2026-10-18:*
+  measured through `/v1/m/…` on loopback only (above, OQ-17); open until
+  two computers are measured.
 - `OQ-19` — **What running a task elsewhere frees on this machine.** The
   case for a second computer is that this Mac stays responsive and runs
   more agents (or works with the lid closed), not that anything is faster.
@@ -176,7 +183,10 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   moving it to another computer gives back, is unmeasured. Decided by: one
   real task run here and then on a linked computer, this machine's memory
   and CPU read from the footprint meter (`/v1/resources`) for both, with a
-  date.
+  date. *2026-10-18:* `/v1/resources` now reports the machine as a whole
+  (`machine`: cores, one-minute load, total and available memory), which
+  the measurement and the New-agent busy line need; the line stays off
+  until this sets its thresholds.
 - `OQ-20` — **Is another computer actually quicker at the work?** Whether a
   linked machine finishes the same work sooner depends on that machine, not
   on Caprock. Decided by: `go test ./...` and the UI build of this

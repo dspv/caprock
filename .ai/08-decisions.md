@@ -4565,6 +4565,18 @@ Phase 2's smoke adds a Windows target to the matrix.
       `.ai/03-contracts.md`), read on each machine and fetched from the
       other through `/v1/m/{id}/v1/resources`. The thresholds are set from
       OQ-19's measurement, not before.
+  - *PR3 status (2026-10-18): built.* The sidebar's computers and their
+    sessions, tagged; a computer's screen and its sessions in a frame of the
+    dashboard whose `/v1/…` is rewritten to `/v1/m/{id}/…` (the machine
+    page, [04-ui.md § Other computers](04-ui.md)); Settings → Computers with
+    add, rename, forget, check, the steps for the other computer and a link
+    for another computer to reach this one; offline, pending, revoked and
+    refused said in words; *+ Add a machine* with none linked.
+    `/v1/resources` carries `machine` (`cpus`, `load1`, `mem_total`,
+    `mem_available`), but **the busy line is not drawn**: OQ-19 is
+    unmeasured, so there are no thresholds. `bench/peer.mjs` was run
+    through the local relay only (2026-10-18, [21-app.md](21-app.md));
+    the hosted relay and two real computers are still OQ-17/OQ-18.
 - **Phase 2 — start and finish work on another computer:** a Machine picker
   in New agent (projects, folders, models and agents read from the target;
   offline ones disabled); permission buttons, the queue, Changes, diff and

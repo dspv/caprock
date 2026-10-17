@@ -29,7 +29,7 @@ export function pageTitle(r: Route): string {
   switch (r.name) {
     case 'session': return 'Session'
     case 'pipeline': return r.repo ? `Pipeline · ${folderName(r.repo)}` : 'Pipeline'
-    case 'settings': return r.section === 'phone' ? 'Settings · Phone' : r.section === 'telegram' ? 'Settings · Telegram' : 'Settings'
+    case 'settings': return r.section === 'phone' ? 'Settings · Phone' : r.section === 'telegram' ? 'Settings · Telegram' : r.section === 'computers' ? 'Settings · Computers' : 'Settings'
     case 'tasks': return r.view === 'queue' ? 'Tasks · Queue' : 'Tasks'
     default: return screenName(r)
   }

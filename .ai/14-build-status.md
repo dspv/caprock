@@ -12,14 +12,15 @@ Since Orchestrate closed, the product has grown one observation surface across s
 
 Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
-| Track                           | Progress | State                                                                 |
-| ------------------------------- | -------- | --------------------------------------------------------------------- |
-| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                     |
-| Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published |
-| Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                |
-| Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed      |
-| Phase 3 — Delight               | 0%       | No plan by design                                                     |
-| Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open               |
+| Track                           | Progress | State                                                                                          |
+| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                                              |
+| Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published                          |
+| Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                                         |
+| Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed                               |
+| Phase 3 — Delight               | 0%       | No plan by design                                                                              |
+| Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open                                        |
+| Other computers (ADR-067)       | 40%      | Phase 1 built (PR1–PR3): see and type into another computer's sessions; Phases 2–4 not started |
 
 ## Milestone status
 
@@ -74,6 +75,31 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-10-18 — unreleased: other computers in the app (ADR-067, Phase 1 PR3)
+
+The last of Phase 1's three pull requests: from the MacBook, see and type
+into the Mac mini's sessions. The app's sidebar lists each linked computer
+and the sessions running there, tagged by its name; with none linked, one
+quiet *+ Add a machine* row opens Settings → Computers (the owner's install
+hook). A computer's screen (`#/m/<id>`) lists its running and recent
+sessions; one opens in a frame of this dashboard whose `/v1/…` requests and
+sockets are rewritten to `/v1/m/<id>/…` (the machine page), so the Session
+view and its terminal are the ordinary ones. Settings → Computers: add by
+link, rename, forget, check, offline / waiting for Allow / removed there /
+refused in words, the steps for the other computer (install, `caprock remote
+on`, `caprock pair --computer`, allow), and a link for another computer to
+reach this one. `/v1/resources` gains `machine` (cores, one-minute load,
+total and available memory; rule 8, contract in the same commit); the
+New-agent *"This Mac is busy"* line is **not** drawn, because OQ-19 has not
+been measured and nothing sets its thresholds. `bench/peer.mjs` measured
+keystroke-to-echo through the local relay (2026-10-18, [21-app.md](21-app.md));
+two real computers and the hosted relay remain OQ-17/OQ-18. Verified end to
+end with two real daemons in sandboxes, `caprock remote relay` on loopback,
+the branch's UI and Playwright's headless shell — pair, allow, the tagged
+row, typing and the echo, a relay restart under the open terminal (it
+reopened and resumed), offline, revoked, forget ([04-ui.md](04-ui.md) §
+Other computers). Phase 2 is next: the Machine picker in New agent.
 
 ### 2026-10-17 — unreleased: import chats from Claude.ai and ChatGPT (ADR-074)
 
