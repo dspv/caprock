@@ -71,6 +71,7 @@ var controllerMayAlso = map[string]bool{
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
 	"POST /v1/agents/{id}/permission": true, "POST /v1/agents/{id}/permission-mode": true,
 	"PUT /v1/sessions/{id}/name":  true,
+	"POST /v1/support":            true,
 	"PUT /v1/chats/{id}/archived": true, "DELETE /v1/chats/{id}": true, // archive and delete a chat (ADR-071)
 	"POST /v1/agents/{id}/queue": true, "PATCH /v1/agents/{id}/queue/{qid}": true, "DELETE /v1/agents/{id}/queue/{qid}": true, "POST /v1/agents/{id}/queue/{qid}/send": true,
 	"POST /v1/tasks/{id}/approve": true, "POST /v1/tasks/{id}/reject": true,

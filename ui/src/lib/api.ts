@@ -1997,6 +1997,8 @@ export const api = {
   /** The user's own name for a session; '' clears it. */
   /** Send one offer-survey answer to caprock.dev, through the daemon (ADR-062). Only on the user's click. */
   sendOffer: (a: { offer: string; answers: Record<string, string>; email?: string }) => post<{ status: string }>('/v1/offer', a),
+  /** Send one bug report to Caprock support at caprock.dev, through the daemon (ADR-073). Only on the user's click; lib/support.ts builds the body. */
+  sendSupport: (r: { text: string; email?: string; screenshots?: { name: string; type: string; data: string }[] }) => post<{ ok: boolean }>('/v1/support', r),
   renameSession: (id: string, name: string) => post<{ session_id: string; name: string }>(`/v1/sessions/${encodeURIComponent(id)}/name`, { name }, 'PUT'),
   /** Chats (ADR-071, 03-contracts.md § Chats): newest first; `q` searches every prompt. */
   chats: (o: { q?: string; archived?: boolean; limit?: number } = {}) => {

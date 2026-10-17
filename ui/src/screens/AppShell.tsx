@@ -57,6 +57,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { SessionDeck } from '@/components/SessionDeck'
 import { readDeck, saveDeck, type DeckPrefs } from '@/lib/deck'
 import { FeedbackDialog } from '@/components/Feedback'
+import { BugReportSheet } from '@/components/BugReportSheet'
 import { currentScreen } from '@/lib/feedback'
 import { StatusStrip } from '@/components/StatusStrip'
 import { openCaprockDoctor } from '@/components/FootprintPanel'
@@ -196,6 +197,8 @@ type SheetState =
   /** New project from a template (components/TemplateProjectSheet.tsx, ADR-065); the job it starts lives on in `tplJob`. */
   | { kind: 'template' }
   | { kind: 'palette' }
+  /** ⌘K *Report a bug…*: the report to Caprock support (components/BugReportSheet.tsx, ADR-073). */
+  | { kind: 'bug' }
   | { kind: 'keys' }
   /** ⌘K "Share my numbers": the share sheet. */
   | { kind: 'share' }
@@ -1291,6 +1294,7 @@ export function AppShell() {
       { id: 'a-telegram', group: 'Actions', label: 'Connect Telegram', detail: 'messages when a session needs you; reply from the chat', icon: <SettingsIcon size={14} />, run: () => openSettingsSection('telegram') },
       // `caprock doctor` in the window: the status strip's panel. No chord (rule 12).
       { id: 'a-doctor', group: 'Actions', label: 'Caprock doctor', detail: 'what Caprock costs this computer: memory, disk, duplicates', icon: <SparkIcon size={14} />, run: openCaprockDoctor },
+      { id: 'a-bug', group: 'Actions', label: 'Report a bug…', detail: 'to Caprock support at caprock.dev, not GitHub: your words, screenshots, an email for a reply', icon: <SparkIcon size={14} />, run: () => setSheet({ kind: 'bug' }) },
       { id: 'a-keys', group: 'Actions', label: 'Keyboard shortcuts', detail: 'every key the app answers to', icon: <SearchIcon size={14} />, run: () => setSheet({ kind: 'keys' }) },
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
       { id: 'a-theme-pick', group: 'Actions', label: 'Choose a theme…', detail: 'the eight palettes: hover one to try it', hint: keys(THEME_KEY), icon: <SparkIcon size={14} />, run: () => run({ kind: 'theme' }) },
@@ -2152,6 +2156,7 @@ export function AppShell() {
           onCancel={() => { setClosing(null); closing.resolve({ cancelled: true, stopped: 0 }) }}
         />
       )}
+      <BugReportSheet open={sheet?.kind === 'bug'} onClose={closeSheet} />
       {sheet?.kind === 'palette' && <CommandPalette items={paletteItems} fallback={paletteFallback} search={paletteSearch} onClose={closeSheet} />}
       {sheet?.kind === 'saved' && <CommandPalette label="Run saved" placeholder="Run a saved prompt or command…" items={[...savedItems, { ...manageSaved, group: 'Saved' }]} onClose={closeSheet} />}
     </div>

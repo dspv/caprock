@@ -610,6 +610,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/stats/trends", s.handleTrends)
 	// The offer survey: forwards one answer to caprock.dev on a click (offer.go, ADR-062).
 	m.HandleFunc("POST /v1/offer", s.handleOffer)
+	// Report a bug: forwards one report to caprock.dev support on a click (support.go, ADR-073).
+	m.HandleFunc("POST /v1/support", s.handleSupport)
 	m.HandleFunc("GET /v1/update", s.handleUpdate)
 	// Pairing. Only the redeem endpoint is reachable from the network; the
 	// rest are refused off-loopback inside the handlers, so a paired tablet
