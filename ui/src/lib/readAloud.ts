@@ -145,7 +145,7 @@ export function plainForSpeech(md: string): string {
 
 /** The utterance language for `text`, roughly: Cyrillic or Latin, else '' (the browser's own). */
 export function speechLangFor(text: string): string {
-  const cyr = (text.match(/[Ѐ-ӿ]/g) ?? []).length
+  const cyr = (text.match(/[\u0400-\u04FF]/g) ?? []).length
   const lat = (text.match(/[A-Za-z]/g) ?? []).length
   if (cyr === 0 && lat === 0) return ''
   return cyr > lat ? 'ru-RU' : 'en-US'
