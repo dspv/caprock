@@ -276,6 +276,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-18 — 0.133.0: other computers in the app, multi-repo projects, settings search, several subscriptions
+
+A minor release because it carries features, landed as one batch PR (#741). Another computer's sessions open and take typing through the relay (ADR-067 Phase 1 PR3); a project can be made of chosen repositories (ADR-077); Settings gains a search and Telegram a three-step setup; several Claude and Codex sign-ins run side by side; the doctor watches Codex and old-install orphans; merged is the last step where a repository cuts no releases, and the release plan lists pushed branches and working subagents; a Codex terminal scrolls again after a reconnect; Codex is drawn with OpenAI's mark.
+
 ### 2026-10-17 — 0.132.0: copy an agent's update command, queued messages always submit, At a glance shows trends
 
 A minor release because it carries features, landed as one batch PR (#738). An agent's update banner gets a bar to copy the command and open a terminal beside it; nothing from the terminal is run. Every message Caprock types into a session goes as a bracketed paste when the session enables it, with Enter as its own write and one checked retry (a Codex session kept a Tell the agent heads-up unsent). At a glance marks which way each share is moving, last 7 days against the 7 before.

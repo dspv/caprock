@@ -12,6 +12,148 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.133.0] - 2026-10-18
+
+### Added
+
+- **app:** the status strip carries *Premium*, the header's way to buy, which
+  a terminal in front hides; and, while a plan window is 70% spent, *pause
+  before the limit*, which opens Premium on the plan-window stop. Neither
+  shows to someone who has Premium.
+- **modules:** each private module's sidebar row shows a key, ⌥⌘1 to ⌥⌘9
+  (Ctrl+Alt+Shift+1–9 on Windows and Linux), that opens it from anywhere in
+  the app. The keys exist only while a module is installed.
+- **machines:** your other computers in the app (ADR-067). The sidebar lists
+  each linked computer and the sessions running there, tagged by its name,
+  and opens one with its Session view and terminal as on that computer's own
+  screen, through this Caprock. Settings → Computers adds one by the link it
+  shows, renames, forgets and checks them, says when one is offline, waiting
+  for Allow, removed there or refused, lists the steps for the other computer
+  (install, `caprock remote on`, `caprock pair --computer`), and shows a link
+  for another computer to reach this one. With none linked, one quiet
+  *+ Add a machine* row in the sidebar.
+- **resources:** `GET /v1/resources` reports the machine as a whole —
+  cores, one-minute load (not on Windows), total and available memory.
+- **bench:** `bench/peer.mjs` measures keystroke-to-echo through a linked
+  computer against the same session typed into locally.
+- **mail:** removing an account signed in with Google now also revokes
+  Caprock's access at Google, not only the token on this machine; for a
+  Microsoft account, which offers apps no way to do that, the confirmation
+  says where to remove the access. `docs/mail-oauth.md` gains the owner's
+  setup checklist and a step-by-step test on a real Gmail and Outlook account,
+  and the Go tests walk a whole account's life against a fake provider and
+  fake mail servers: sign in, sync, read, send after the access token
+  expired, remove.
+- **projects:** put several repositories in one project without a folder
+  around them. In New project, *Put several repositories in one project*
+  turns the folder list into checkboxes: tick repositories in one folder or
+  several, *2 selected · Continue*, name it, done. Nothing is made on disk:
+  the first one ticked is the project's home repository, where agents start,
+  and they reach the others. A project's menu has *Add a repository…* for
+  later, New agent asks which repository to start in, each session in the
+  sidebar names its repository, and the CI/CD section lists every
+  repository of the project.
+- **doctor:** the orphan list now covers Codex CLIs whose session ended or
+  whose parent exited, and terminals still running from an older Caprock
+  install (a Homebrew `caprock pty-host` left from before a move to the app),
+  shown but never ticked in Clean up. Each process shows its CPU and its
+  command line, cut short with tokens and passwords hidden. The status bar
+  says *3 orphans* and the doctor *Orphans: 3 · 410 MB*; `caprock doctor`
+  prints the same.
+- **release:** the right panel's Release section now shows what heads into
+  the next release beyond merged pull requests: pushed branches with no pull
+  request yet (ahead of the default branch, from the last 14 days, titled by
+  their last commit, with their commits ahead and age; ones whose work is
+  already on the default branch by content, as after a squash or batch
+  merge, are left out) and the session's working subagents (*working ·
+  12m*). The rows stand in sections with counts: *In this release*, *Pull
+  requests*, *Ready* (branches) and *In progress* (agents).
+- **ui:** Settings has a search field at the top of its menu (above the
+  sections on a narrow window). Typing filters the sections live by title and
+  by every label, hint and button inside them, understands common words
+  (*token* finds Telegram, *dark* Appearance, *phone* Use on your phone,
+  *shortcut* Global shortcut) and marks the matches; Enter or a click jumps to
+  the matching control and lights it. Esc clears; ⌘F (Ctrl+Shift+F, or
+  Ctrl+F, on Windows and Linux) puts the cursor in it while Settings is in
+  front.
+
+### Changed
+
+- **app:** closing a working agent's tab asks in one short line, and the two
+  choices carry a few words each; *Keep it running* is drawn filled as the
+  recommended one, *Stop it* outlined.
+- **ui:** Codex is shown by OpenAI's own mark, the Blossom, everywhere it
+  appears — sidebar rows, tabs, Projects, the pulse, Now cards, the tray, At a
+  glance, Second Brain, the Week and share cards. Where the other agents have
+  characters, Codex is the Blossom on a plain white tile instead of the drawn
+  terminal box. Per OpenAI's brand guidelines it is used unchanged, in black
+  or white only, with no face or other additions.
+- **ui:** the ⇧⌘-click link chooser (Ctrl+Shift+click off macOS) now offers
+  two choices: *Default browser*, named by the browser it is, and *Caprock
+  browser*, always in the desktop app. Picking *Caprock browser* while the
+  in-app browser is off turns it on, and a toast says where to turn it off.
+  *Copy link* follows. Other browsers wait behind a quiet *Other browser…*,
+  which lists real web browsers only: apps that merely handle web links,
+  such as a chat app, a terminal or a bank's secure-browser wrapper, are
+  no longer offered. The hover hint now reads *⇧⌘-click to choose where it
+  opens*.
+- **doctor:** stopping a listed process sends SIGTERM and then reports
+  whether it is still running, instead of following up with SIGKILL on its
+  own. A process that ignores the request gets **Force stop** in the panel,
+  or `caprock doctor --stop <pid> --force`, as a second, separate choice.
+- **settings:** Settings → Use on your phone is rebuilt plain. It opens with
+  one sentence that says whether a phone is connected — *iPhone · Safari is
+  connected and can control sessions · seen 2 min ago*, or *No phone
+  connected yet.* — with the one fix beside it when something is in the way.
+  One button, **Connect a phone**, shows the QR with one line (*Scan with
+  your phone's camera. Works once, 4:43 left.*). The four-step checklist is
+  gone; how it works, the home-screen link, the way back to the page and the
+  off switch are folded under **How it works**. Each device is one row: its
+  name, *Can control* or *View only*, when it was last seen, **Allow
+  control** or **Take control away**, and **Remove**. Devices not seen for
+  30 days fold into *N old devices* with **Remove all**, confirmed once. The
+  phone's own pages now point to *Connect a phone* and *Allow control*.
+- **app:** the quick replies under a terminal say what they are: *Reply to
+  the agent:* leads the row, and each one's hover names the message it sends.
+- **ui:** setting up or changing the Telegram bot is one card with three
+  numbered steps that tick as they are done — copy the token in @BotFather,
+  paste it here (a **Paste** button reads the clipboard), send your bot the
+  code with **Open @yourbot**. Connected, it is one line, *Connected to @bot ·
+  alerts to <chat>*, with real **Change bot**, **Pair again** and
+  **Disconnect** buttons; where the token is kept moved behind the **i**. A
+  refused token brings the same card back in red.
+
+### Fixed
+
+- **terminal:** The wheel scrolls Codex again. A terminal opened, reloaded or
+  reconnected after Codex's startup had scrolled out of the daemon's 256 KB
+  output buffer came back on the normal screen with the mouse off, so the
+  wheel never reached Codex. The replay now restores the alternate screen and
+  mouse reporting along with the other modes the session set.
+- **pipeline:** in a repository that cuts no releases (none published and no
+  version tag in 180 days, such as a site deployed on every merge), merged is
+  now the last step: the CI block's and the Pipeline's bars end at merged and
+  fill, and the release plan says *No releases here: work ships when it
+  merges* instead of listing every merge as waiting for a release that never
+  comes. Where releases are cut, the empty released step says what it means
+  and what a merge waits for (*the next release (v0.133.0)*, *in v0.132.0*);
+  where it cannot be read, the step is drawn as not known.
+- **subscriptions:** a session started on an added Claude Code or Codex
+  subscription now runs on that subscription's own sign-in even when your
+  shell exports `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,
+  `CODEX_API_KEY` or another credential the agent would otherwise use
+  first. Settings → Subscriptions names any such variable it sets aside,
+  and sessions on your own sign-in keep them. Removing a subscription now
+  names the macOS Keychain item its sign-in is kept in and offers **Sign out
+  first**, which types the agent's own sign-out into a shell tab for you to
+  run. Caprock still never touches the Keychain.
+- **ui:** the Settings menu draws an icon for *Closing a tab*, gives
+  Telegram's chat its own icon beside the bot's, and shows a tooltip only on
+  a title it cuts, so it no longer covers the row above.
+- **ui:** when Telegram refuses the bot's token (*Unauthorized*), Settings →
+  Telegram says so in a large box with the two steps to fix it — copy the
+  token from @BotFather, paste it under Change bot — and opens the bot fields.
+
 ## [0.132.0] - 2026-10-17
 
 ### Added
