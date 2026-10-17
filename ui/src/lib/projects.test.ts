@@ -188,9 +188,16 @@ describe('the sidebar model', () => {
   it('builds 50 projects and 30 live sessions in well under a frame', () => {
     const many: Project[] = Array.from({ length: 50 }, (_, i) => ({ id: `p${i}`, root: `/w/p${i}`, name: `p${i}`, kind: 'repo' as const }))
     const sessions = Array.from({ length: 230 }, (_, i) => sess({ session_id: `s${i}`, cwd: `/w/p${i % 50}`, status: i < 30 ? 'active' : 'ended' }))
-    const t0 = performance.now()
-    const m = buildSidebar({ projects: many, sessions, permissions: new Set(), costs: new Map(), openSessions: new Set() })
-    expect(performance.now() - t0).toBeLessThan(50)
+    // The best of five runs: one run on a loaded machine (or the first, before
+    // the JIT warms up) measures the machine, not buildSidebar.
+    let best = Infinity
+    let m!: ReturnType<typeof buildSidebar>
+    for (let i = 0; i < 5; i++) {
+      const t0 = performance.now()
+      m = buildSidebar({ projects: many, sessions, permissions: new Set(), costs: new Map(), openSessions: new Set() })
+      best = Math.min(best, performance.now() - t0)
+    }
+    expect(best).toBeLessThan(50)
     expect(m.projects.reduce((n, p) => n + p.live, 0)).toBe(30)
   })
 
