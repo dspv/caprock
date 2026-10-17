@@ -58,7 +58,10 @@ export const PHONE_SECTION = 'settings-phone'
 /** The Telegram section's id (PhoneAlerts), right after the phone's. */
 export const TELEGRAM_SECTION = 'telegram'
 
-const SECTION_IDS: Record<SettingsSection, string> = { phone: PHONE_SECTION, telegram: TELEGRAM_SECTION }
+/** Settings → Computers (components/Computers.tsx, ADR-067). */
+export const COMPUTERS_SECTION = 'settings-computers'
+
+const SECTION_IDS: Record<SettingsSection, string> = { phone: PHONE_SECTION, telegram: TELEGRAM_SECTION, computers: COMPUTERS_SECTION }
 
 // Set by a click that means "show me the code" (the sidebar's *phone*, the
 // palette); read once by the phone section, mounted or not yet. Never set by

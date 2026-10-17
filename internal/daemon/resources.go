@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -120,13 +121,41 @@ type ResourceThresholds struct {
 	IntervalSec int     `json:"interval_s"`
 }
 
+// MachineResources is the machine-wide part of GET /v1/resources.
+type MachineResources struct {
+	CPUs int `json:"cpus"`
+	// Load1 is the one-minute load average; nil where the OS keeps none
+	// (Windows).
+	Load1        *float64 `json:"load1,omitempty"`
+	MemTotal     uint64   `json:"mem_total"`
+	MemAvailable uint64   `json:"mem_available"`
+}
+
+// machineResources reads the machine-wide figures; nil when none came back.
+func machineResources(ctx context.Context) *MachineResources {
+	st, _ := procstat.Machine(ctx)
+	if st.MemTotal == 0 && !st.HasLoad {
+		return nil
+	}
+	m := &MachineResources{CPUs: st.CPUs, MemTotal: st.MemTotal, MemAvailable: st.MemAvailable}
+	if st.HasLoad {
+		l := math.Round(st.Load1*100) / 100
+		m.Load1 = &l
+	}
+	return m
+}
+
 // ResourceReport is GET /v1/resources and the data of a "resources" frame.
 type ResourceReport struct {
 	At         int64              `json:"at"`
 	Sessions   []SessionResources `json:"sessions"`
 	Caprock    CaprockResources   `json:"caprock"`
 	Thresholds ResourceThresholds `json:"thresholds"`
-	Error      string             `json:"error,omitempty"`
+	// Machine is the machine as a whole (ADR-067): what another computer
+	// reads through /v1/m/{id}/v1/resources to say which one has room.
+	// Absent when the OS gave none of it.
+	Machine *MachineResources `json:"machine,omitempty"`
+	Error   string            `json:"error,omitempty"`
 
 	// What the footprint needs beyond the contract's figures (footprint.go).
 	scan   caprockScan
@@ -259,6 +288,7 @@ func (d *Daemon) sampleResources(ctx context.Context) *ResourceReport {
 			AfterS: int(hotAfter / time.Second), IntervalSec: int(resourceEvery / time.Second),
 		},
 	}
+	r.Machine = machineResources(ctx)
 	tab, err := procstat.Read(ctx)
 	if err != nil {
 		r.Error = err.Error()

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { machinePageId } from '@/lib/machinepage'
 import { api, errText, isPairedDevice, type NativeTerminal, type OpenTerminalInfo, type OpenTerminalMode, type Settings, type TerminalList } from '@/lib/api'
 
 /**
@@ -55,16 +56,24 @@ const explain: Record<OpenTerminalMode, string> = {
   fork: 'A branch under a new id; this one keeps running.',
 }
 
-export function OpenInTerminal({
-  sessionID,
-  info,
-  compact = false,
-}: {
+interface OpenInTerminalProps {
   sessionID: string
   info?: OpenTerminalInfo
   /** On a menu row: one small button, the choice confirmed in place. */
   compact?: boolean
-}) {
+}
+
+/**
+ * Nothing on the machine page (another computer's session, ADR-067): a
+ * terminal application opens on that computer's own screen, which a paired
+ * computer is never allowed to do there.
+ */
+export function OpenInTerminal(props: OpenInTerminalProps) {
+  if (machinePageId()) return null
+  return <OpenInTerminalMenu {...props} />
+}
+
+function OpenInTerminalMenu({ sessionID, info, compact = false }: OpenInTerminalProps) {
   const [list, setList] = useTerminals()
   const [chosen, setChosen] = useState('')
   const [open, setOpen] = useState(false)

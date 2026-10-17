@@ -61,6 +61,12 @@ export interface ResourceReport {
     hosts: { count: number; mem_bytes: number; cpu_pct: number; orphans: number; reapable: number; list: HostVerdict[] }
   }
   thresholds: { cpu_pct: number; mem_bytes: number; after_s: number; interval_s: number }
+  /** The machine as a whole (ADR-067): cores, the one-minute load (absent on
+   *  Windows), physical memory and what is free to take. Absent from a daemon
+   *  before it, or when the OS gave none of it. Read from another computer
+   *  through /v1/m/{id}/v1/resources; nothing acts on it until OQ-19 sets
+   *  the thresholds. */
+  machine?: { cpus: number; load1?: number; mem_total: number; mem_available: number }
   error?: string
 }
 

@@ -63,8 +63,8 @@ describe('the start-work route', () => {
 })
 
 describe('the settings route', () => {
-  it('deep-links to the phone and to Telegram, and drops an unknown section', () => {
-    for (const section of ['phone', 'telegram'] as const) {
+  it('deep-links to the phone, Telegram and the computers, and drops an unknown section', () => {
+    for (const section of ['phone', 'telegram', 'computers'] as const) {
       expect(href({ name: 'settings', section })).toBe(`#/settings/${section}`)
       expect(parseHash(href({ name: 'settings', section }))).toEqual({ name: 'settings', section })
     }
@@ -97,5 +97,21 @@ describe('chats (ADR-071)', () => {
     }
     expect(href({ name: 'chat', id: 'c1' })).toBe('#/chats/c1')
     expect(parseHash('#/chats?archived=0')).toEqual({ name: 'chats' })
+  })
+})
+
+describe('another computer (ADR-067)', () => {
+  const id = 'f7kc4QaG4HRPYEjg19Pr-au-FeTljmKHkikFrAmRTzM'
+  it('round-trips its sessions and one of them, with the tab', () => {
+    for (const r of [
+      { name: 'machine' as const, id },
+      { name: 'machine' as const, id, session: 'a b' },
+      { name: 'machine' as const, id, session: 's1', tab: 'terminal' },
+    ]) expect(parseHash(href(r))).toEqual(r)
+    expect(href({ name: 'machine', id, session: 's1' })).toBe(`#/m/${id}/session/s1`)
+  })
+  it('sends a malformed id home', () => {
+    expect(parseHash('#/m/../etc')).toEqual({ name: 'now' })
+    expect(parseHash('#/m/')).toEqual({ name: 'now' })
   })
 })

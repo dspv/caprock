@@ -796,6 +796,14 @@ being reached. From a terminal on each:
    that printed the link, press **Allow** on the card its screen shows, or
    run `caprock machines allow <name>`. Until then it reaches nothing.
 
+In the app it is the same, with fewer commands: **Settings → Computers**
+takes the pasted link and lists the steps for the other computer; with no
+computer linked yet, the sidebar's **+ Add a machine** opens it. Once a
+computer is allowed, the sidebar lists the sessions running on it, tagged by
+its name, and opens one — its conversation and its terminal — through this
+Caprock. Starting a session there from the app comes next; for now start it
+on that computer, or over SSH.
+
 An allowed computer can start, type into and stop sessions there, open shells
 and run tasks — never that computer's settings, pairing, updates or the
 doctor's stop, and only the sessions that computer's Caprock started. Pairing

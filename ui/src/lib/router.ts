@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/chats[?archived=1] · #/chats/:id · #/x/:id
+// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/chats[?archived=1] · #/chats/:id · #/x/:id · #/m/:machine[/session/:id]
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -41,11 +41,14 @@ export type Route =
   | { name: 'chat'; id: string }
   // A private module the admin key opens (ADR-076): its page at /x/<id>/.
   | { name: 'module'; id: string }
+  // Another computer this one reaches (ADR-067): its sessions, or one of
+  // them — the Session view and terminal through /v1/m/{id}/… (screens/Machine).
+  | { name: 'machine'; id: string; session?: string; tab?: string }
 
 export type StartMode = 'clone' | 'new' | 'worktree'
 
-/** The parts of Settings a link can open on: the phone, and Telegram beside it. */
-export type SettingsSection = 'phone' | 'telegram'
+/** The parts of Settings a link can open on: the phone, Telegram beside it, and the other computers. */
+export type SettingsSection = 'phone' | 'telegram' | 'computers'
 
 export function parseHash(hash: string): Route {
   const h = hash.replace(/^#\/?/, '')
@@ -83,7 +86,7 @@ export function parseHash(hash: string): Route {
     case 'notes':
       return { name: 'notes' }
     case 'settings':
-      return parts[1] === 'phone' || parts[1] === 'telegram' ? { name: 'settings', section: parts[1] } : { name: 'settings' }
+      return parts[1] === 'phone' || parts[1] === 'telegram' || parts[1] === 'computers' ? { name: 'settings', section: parts[1] } : { name: 'settings' }
     case 'mail':
       return { name: 'mail' }
     case 'brain': {
@@ -103,6 +106,12 @@ export function parseHash(hash: string): Route {
       return params.get('archived') === '1' ? { name: 'chats', archived: true } : { name: 'chats' }
     case 'x':
       return parts[1] && /^[a-z][a-z0-9-]{0,31}$/.test(parts[1]) ? { name: 'module', id: parts[1] } : { name: 'now' }
+    case 'm': {
+      const id = parts[1] ?? ''
+      if (!/^[A-Za-z0-9_-]{16,128}$/.test(id)) return { name: 'now' }
+      if (parts[2] === 'session' && parts[3]) return { name: 'machine', id, session: decodeURIComponent(parts[3]), ...(tab ? { tab } : {}) }
+      return { name: 'machine', id }
+    }
     case 'start': {
       const mode = params.get('mode')
       return mode === 'clone' || mode === 'new' || mode === 'worktree' ? { name: 'start', mode } : { name: 'start' }
@@ -136,6 +145,7 @@ export function href(r: Route): string {
     case 'chats': return r.archived ? '#/chats?archived=1' : '#/chats'
     case 'chat': return `#/chats/${encodeURIComponent(r.id)}`
     case 'module': return `#/x/${r.id}`
+    case 'machine': return r.session ? `#/m/${r.id}/session/${encodeURIComponent(r.session)}${r.tab ? `?tab=${encodeURIComponent(r.tab)}` : ''}` : `#/m/${r.id}`
     case 'pipeline': {
       const q = new URLSearchParams()
       if (r.repo) q.set('repo', r.repo)

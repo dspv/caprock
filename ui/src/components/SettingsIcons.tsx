@@ -33,6 +33,7 @@ const P: Record<string, string> = {
   globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3z',
   tabClose: 'M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 9h18M10 13l4 4M14 13l-4 4',
   chat: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z',
+  monitor: 'M3 4h18v12H3zM8 20h8M12 16v4',
   refresh: 'M20 11a8 8 0 0 0-14.9-4M4 4v4h4M4 13a8 8 0 0 0 14.9 4M20 20v-4h-4',
 }
 
@@ -47,6 +48,7 @@ const BY_TITLE: [RegExp, string][] = [
   // Telegram's chat is its own section beside the bot's: its own mark, so
   // the menu does not show the same icon twice in a row (owner, 2026-10-17).
   [/talk to your agents/i, 'chat'],
+  [/^computers/i, 'monitor'],
   [/telegram/i, 'send'],
   [/closing a tab/i, 'tabClose'],
   [/terminal|status line/i, 'terminal'],

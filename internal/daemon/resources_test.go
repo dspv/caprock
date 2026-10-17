@@ -1,9 +1,22 @@
 package daemon
 
 import (
+	"context"
+	"runtime"
 	"testing"
 	"time"
 )
+
+// The machine-wide part of GET /v1/resources (ADR-067), read for real.
+func TestMachineResources(t *testing.T) {
+	m := machineResources(context.Background())
+	if m == nil || m.CPUs < 1 || m.MemTotal == 0 || m.MemAvailable > m.MemTotal {
+		t.Fatalf("machineResources() = %+v", m)
+	}
+	if (m.Load1 == nil) != (runtime.GOOS == "windows") {
+		t.Errorf("load1 = %v on %s", m.Load1, runtime.GOOS)
+	}
+}
 
 // A session is hot after a minute over a limit, stays hot through a short
 // dip, and cools after hotClearAfter under both.
