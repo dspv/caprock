@@ -465,6 +465,58 @@ database against the 176 rollouts on his machine.
   every parent turn is, and `session_stats` and `daily_stats` add up to the
   events for every Codex session.
 
+## A growing rollout
+
+A live session appends to its rollout for as long as it runs, and a poll used
+to answer each append by parsing the whole file again and offering every record
+in it to the store, which turned all but the new ones away as duplicates. The
+importer now keeps each plain rollout's parser between polls (`tail`,
+`internal/codex/tail.go`) and reads only the bytes after the last complete
+line it fed. A seek to the end would not do: the next turn is a delta of the
+running cumulative usage, prose waits for the turn that bills it, a late
+output names a call from earlier in the request, and a call's turn is the one
+after it. All of that is parser state (`parser`, `internal/codex/parser.go`),
+and `Parse` is the same parser run once over a whole file.
+
+- **What is offered.** Every record the last successful import did not store,
+  plus the two kinds of stored row a full re-read would still change: a turn
+  whose prose grew since (a request's late prose joins its last turn when the
+  request ends) and a call stored before its turn was known (it gets its
+  `msg_id`). The repairs that compare a whole transcript with the store
+  (`syncTools`, `repriceSession`) run on the file's first full read in a run;
+  rows stored after it need none, and `syncText` looks up only the turns
+  handed over, by key.
+- **Nothing advances past a failed write.** A pass whose record write fails
+  commits nothing, and the next pass offers again everything after the last
+  commit, as a full re-read would; a repair that fails leaves the import
+  uncommitted the same way.
+- **Read in full instead.** A file whose session id, keys or model changed
+  under it (a link made since, a subagent or imported thread recognised late,
+  a model named after turns were stored, which reprices them), a file that is
+  no longer the one read (another file at the path, shorter than what was
+  read, or different in its first or last 4 KiB before the boundary), every
+  `.jsonl.zst` rollout, and every file on its first change after a restart:
+  the checkpoint lives in memory, and a restart replays a file once, as every
+  file was read before. A parser idle for an hour is let go the same way.
+- **Partial lines.** A final line with no newline is read when it is complete
+  JSON, as `Parse` reads it, and its newline is skipped when it arrives; a
+  partial write waits for the next poll. A line over the 8 MiB cap stops the
+  read where it stops `Parse`.
+- **Held to the full read.** Tests grow every fixture in `testdata/codex/` and
+  synthetic transcripts in random chunks cut anywhere, and after every chunk
+  require the parser to equal `Parse` of the bytes so far and the store to
+  equal, row for row, what an importer with tails off (`Ingester.replay`)
+  builds — across a parent and its subagent growing side by side, restarts,
+  failed writes, rewrites and a rollout compressed under it.
+- **Measured.** `BenchmarkAppendOneRecord` (2026-10-18, Apple M1 Pro under
+  load, synthetic requests of eight records averaging about 1 KiB): one pass
+  after a one-record append to a 16,384-record file went from about 201 MB
+  allocated, 1.2 million allocations and a median 2.2 s to about 150 KB, 300
+  allocations and a median under 1 ms, the same at 1,024 and 8,192 records. The
+  importer's counters (`Ingester.Work`: bytes read, records decoded, records
+  offered and how many the store already held) read 1 record decoded and
+  0.8 offered per pass instead of the whole file.
+
 ## Restarts
 
 The files already read are remembered in the store (`meta.codex_seen`: path,
@@ -574,6 +626,9 @@ match, not a fact**, and it is stated as one:
 
 - `internal/codex/codex.go` — the transcript parser, `List`, `ListAll`,
   `Home`, `Dirs`.
+- `internal/codex/parser.go` — the record-by-record parser `Parse` runs and a
+  tail keeps between polls; `internal/codex/tail.go` — the incremental read of
+  a growing rollout (§ A growing rollout).
 - `internal/codex/ingest.go` — the poller that writes into the store.
 - `internal/codex/repair.go` — the one-time repair of imported threads and
   subagent rows stored by earlier versions (§ Imported threads and subagents).

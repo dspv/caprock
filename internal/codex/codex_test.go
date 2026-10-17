@@ -2,6 +2,7 @@ package codex
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -568,12 +569,23 @@ func TestCompressedRolloutIsListedAndParsed(t *testing.T) {
 // A response's items come before the token_count that bills it, so a call
 // belongs to the first turn after it; one with no turn after it stays unlinked.
 func TestToolCallBelongsToTheNextTurn(t *testing.T) {
-	s := &Session{
-		Turns: []Turn{{Key: "t3", Line: 3}, {Key: "t9", Line: 9}},
-		Tools: []ToolCall{{Line: 1}, {Line: 5}, {Line: 6}, {Line: 12}},
+	call := func(id string) string {
+		return `{"timestamp":"2026-09-06T10:00:01Z","type":"response_item","payload":{"type":"function_call","name":"shell","call_id":"` + id + `","arguments":"{}"}}`
 	}
-	linkToolsToTurns(s)
-	want := []string{"t3", "t9", "t9", ""}
+	tokens := func(total int) string {
+		return fmt.Sprintf(`{"timestamp":"2026-09-06T10:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":%d,"output_tokens":0,"total_tokens":%d}}}}`, total, total)
+	}
+	meta := `{"timestamp":"2026-09-06T10:00:00Z","type":"session_meta","payload":{"id":"s1","cwd":"/p"}}`
+	// Lines: 1 meta, 2 call, 3 turn, 4 call, 5 call, 6 turn, 7 call.
+	src := strings.Join([]string{meta, call("a"), tokens(10), call("b"), call("c"), tokens(20), call("d")}, "\n") + "\n"
+	s, err := Parse(strings.NewReader(src), "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"codex:turn:3", "codex:turn:6", "codex:turn:6", ""}
+	if len(s.Tools) != len(want) {
+		t.Fatalf("%d calls, want %d", len(s.Tools), len(want))
+	}
 	for i, c := range s.Tools {
 		if c.TurnKey != want[i] {
 			t.Errorf("tool on line %d: TurnKey = %q, want %q", c.Line, c.TurnKey, want[i])

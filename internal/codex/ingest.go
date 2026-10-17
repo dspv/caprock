@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -31,6 +32,8 @@ const Agent = "codex"
 //
 // Only files whose modification time moved are re-read, which on a machine with
 // a hundred transcripts is one stat per file per tick and no parsing at all.
+// A file that grew is read from where the last pass stopped (see tail), and
+// only what the new lines added is offered to the store.
 type Ingester struct {
 	// dirs are the transcript roots: sessions/ and archived_sessions/ (Dirs).
 	dirs  []string
@@ -80,6 +83,16 @@ type Ingester struct {
 	// kick asks Run for a pass now rather than at the next tick (Kick).
 	kick chan struct{}
 
+	// tails keeps the parser of each plain rollout that changed recently
+	// between passes, by path. Only Run's goroutine touches it.
+	tails map[string]*tail
+	// replay turns tails off: every changed file is parsed whole and every
+	// record offered again, as before tails existed. Tests compare the two.
+	replay bool
+	// work counts what the passes did (see Work); pass is the pass running.
+	work Work
+	pass *Work
+
 	namesAt time.Time
 	// namesFor is how many transcripts had been imported at that sync. A
 	// thread can be indexed before its transcript is imported, and then its
@@ -87,6 +100,30 @@ type Ingester struct {
 	// the next sync.
 	namesFor int
 }
+
+// Work is what the importer's passes have read and offered to the store, in
+// total and in the last pass. Offered minus Stored is what the store turned
+// away as already held: the waste a full re-read of a growing file paid.
+type Work struct {
+	BytesRead int64 `json:"bytes_read"`
+	Records   int64 `json:"records_decoded"`
+	Offered   int64 `json:"offered"`
+	Stored    int64 `json:"stored"`
+	// Last is the most recent pass alone.
+	Last *Work `json:"last,omitempty"`
+}
+
+func (w *Work) add(o Work) {
+	w.BytesRead += o.BytesRead
+	w.Records += o.Records
+	w.Offered += o.Offered
+	w.Stored += o.Stored
+}
+
+// tailIdle is how long a transcript can go unwritten before its parser is
+// let go. A session picked up again after that is read in full once, as
+// every file was before tails, and incrementally after.
+const tailIdle = time.Hour
 
 type fileState struct {
 	mod  time.Time
@@ -116,7 +153,7 @@ func NewIngester(dirs []string, rec *rollup.Recorder, log *slog.Logger, every ti
 	if every <= 0 {
 		every = 5 * time.Second
 	}
-	return &Ingester{dirs: dirs, rec: rec, log: log, every: every, seen: map[string]fileState{}, kick: make(chan struct{}, 1)}
+	return &Ingester{dirs: dirs, rec: rec, log: log, every: every, seen: map[string]fileState{}, kick: make(chan struct{}, 1), tails: map[string]*tail{}}
 }
 
 // Kick asks for a pass now instead of at the next tick: input was just typed
@@ -145,6 +182,27 @@ func (in *Ingester) seenKey() string {
 		return store.MetaCodexSeen + ":" + in.Subscription
 	}
 	return store.MetaCodexSeen
+}
+
+// Work returns what the passes have read and offered so far.
+func (in *Ingester) Work() Work {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	w := in.work
+	if w.Last != nil {
+		last := *w.Last
+		w.Last = &last
+	}
+	return w
+}
+
+// count adds one pass's work to the totals.
+func (in *Ingester) count(w Work) {
+	in.mu.Lock()
+	in.work.add(w)
+	last := w
+	in.work.Last = &last
+	in.mu.Unlock()
 }
 
 // Stats returns a snapshot of what has been imported.
@@ -189,7 +247,15 @@ func (in *Ingester) once(ctx context.Context) error {
 		in.restoreSeen(ctx)
 	}
 	changed := in.forgetMoved(files)
+	var work Work
+	in.pass = &work
 	defer func() {
+		in.pass = nil
+		in.count(work)
+		if work.Offered > 0 || work.Records > 0 {
+			in.log.Debug("codex pass", "component", "codex", "bytes_read", work.BytesRead,
+				"records_decoded", work.Records, "offered", work.Offered, "duplicates", work.Offered-work.Stored)
+		}
 		if changed {
 			in.saveSeen(ctx)
 		}
@@ -219,7 +285,7 @@ func (in *Ingester) once(ctx context.Context) error {
 		if ok && prev.mod.Equal(f.Modified) && prev.size == f.Size {
 			continue // unchanged since the last pass
 		}
-		s, err := ParseFile(f.Path)
+		s, t, err := in.read(ctx, f.Path, &work)
 		if err != nil {
 			// A file that is not a transcript, or is unreadable, is skipped
 			// and remembered so it is not retried every tick. A transcript
@@ -230,9 +296,14 @@ func (in *Ingester) once(ctx context.Context) error {
 			in.mu.Unlock()
 			continue
 		}
-		in.link(ctx, s)
-		if err := in.session(ctx, s); err != nil {
+		clean, err := in.importSession(ctx, s, t != nil && !t.fresh)
+		if err != nil {
+			// Nothing is committed: the next pass offers again everything
+			// this one did not finish, as a full re-read would.
 			return err
+		}
+		if t != nil && clean {
+			t.commit(s)
 		}
 		in.recordLimits(ctx, s)
 		readNow[f.Path] = true
@@ -246,6 +317,11 @@ func (in *Ingester) once(ctx context.Context) error {
 		// any progress to report.
 		in.stats.Sessions = len(in.seen)
 		in.mu.Unlock()
+	}
+	for _, f := range files {
+		if in.tails[f.Path] != nil && time.Since(f.Modified) > tailIdle {
+			delete(in.tails, f.Path)
+		}
 	}
 	in.syncNames(ctx)
 	if !in.textChecked {
@@ -264,6 +340,55 @@ func (in *Ingester) once(ctx context.Context) error {
 	in.stats.LastPoll = time.Now().UnixMilli()
 	in.mu.Unlock()
 	return nil
+}
+
+// read parses what changed in one transcript and returns the session to
+// import, linked: every record for a file read in full, and for a file read
+// incrementally (t non-nil) what the last import did not store. A compressed
+// rollout is never appended to and is always read in full.
+func (in *Ingester) read(ctx context.Context, path string, work *Work) (*Session, *tail, error) {
+	if in.replay || strings.HasSuffix(path, compressedSuffix) {
+		s, rc, err := parseFile(path)
+		work.BytesRead += rc.bytes
+		work.Records += rc.records
+		if err != nil {
+			return nil, nil, err
+		}
+		in.link(ctx, s)
+		return s, nil, nil
+	}
+	t := in.tails[path]
+	if t == nil {
+		t = newTail(path)
+		in.tails[path] = t
+	}
+	for {
+		rc, err := t.advance()
+		work.BytesRead += rc.bytes
+		work.Records += rc.records
+		if err != nil {
+			delete(in.tails, path)
+			return nil, nil, err
+		}
+		s := t.p.header()
+		if s.ID == "" {
+			// No session_meta yet. The tail is kept: what follows is read
+			// on from here.
+			return nil, nil, ErrNotASession
+		}
+		in.link(ctx, s)
+		if !t.fresh && identityOf(s) != t.stored {
+			// The session's id, keys or model are not what the stored rows
+			// were written with: a link made since, a subagent or imported
+			// thread recognised late, a model named at last. A full read
+			// stores and reprices accordingly, so the file is read again
+			// from the start and imported in full.
+			t.reset()
+			continue
+		}
+		t.pending(s)
+		return s, t, nil
+	}
 }
 
 // syncNames copies Codex's own thread names onto the sessions already
@@ -342,6 +467,20 @@ func IsTUI(originator string) bool {
 // session records one parsed transcript: its turns and its tool calls, in the
 // order they happened.
 func (in *Ingester) session(ctx context.Context, s *Session) error {
+	_, err := in.importSession(ctx, s, false)
+	return err
+}
+
+// importSession is session, also saying whether the best-effort repairs after
+// the records all succeeded (clean). A tail commits only a clean import: one
+// that is not is offered again on the file's next change, as a full re-read
+// would have offered it.
+//
+// With delta set, s holds only what a tail read since the last import (see
+// tail.pending): the repairs that compare the whole transcript with its stored
+// rows ran when the file was first read in full this run, and rows this run
+// stored need none, so only the prose of the turns in s is synced.
+func (in *Ingester) importSession(ctx context.Context, s *Session, delta bool) (clean bool, err error) {
 	if s.Imported {
 		// A thread Codex imported from another agent replays that agent's
 		// session, token reports included: work Claude Code did and Caprock
@@ -350,8 +489,9 @@ func (in *Ingester) session(ctx context.Context, s *Session) error {
 		// what an earlier version stored is taken back out.
 		if _, err := in.purgeImported(ctx, s); err != nil {
 			in.log.Debug("codex imported thread purge failed", "component", "codex", "session_id", s.ID, "err", err)
+			return false, nil
 		}
-		return nil
+		return true, nil
 	}
 	info := rollup.SessionInfo{Cwd: s.Cwd, Model: s.Model, Version: s.CLIVersion, Agent: Agent, Subscription: in.Subscription}
 	if s.Subagent {
@@ -402,31 +542,39 @@ func (in *Ingester) session(ctx context.Context, s *Session) error {
 			err = in.result(ctx, s, *it.result, info)
 		}
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
-	// Calls stored before their call id and normalised input were: given
-	// both, so their results pair with them (see syncTools).
-	if _, err := in.syncTools(ctx, s); err != nil {
-		in.log.Debug("codex tool sync failed", "component", "codex", "session_id", s.ID, "err", err)
-	}
-	// Rows written before this importer could find the model are corrected
-	// here, from the transcript they came from. Best-effort: a failure to
-	// repair history must not stop the import of what is current.
-	if err := in.repriceSession(ctx, s); err != nil {
-		in.log.Debug("codex reprice failed", "component", "codex", "session_id", s.ID, "err", err)
+	clean = true
+	if !delta {
+		// Calls stored before their call id and normalised input were: given
+		// both, so their results pair with them (see syncTools).
+		if _, err := in.syncTools(ctx, s); err != nil {
+			in.log.Debug("codex tool sync failed", "component", "codex", "session_id", s.ID, "err", err)
+			clean = false
+		}
+		// Rows written before this importer could find the model are corrected
+		// here, from the transcript they came from. Best-effort: a failure to
+		// repair history must not stop the import of what is current.
+		if err := in.repriceSession(ctx, s); err != nil {
+			in.log.Debug("codex reprice failed", "component", "codex", "session_id", s.ID, "err", err)
+			clean = false
+		}
 	}
 	// A turn's text can arrive after its row: a message written after the
 	// request's last token_count joins that turn when the request ends. And
 	// rows imported before prose was read have none. Both are filled here.
-	if _, err := in.syncText(ctx, s); err != nil {
+	if _, err := in.syncText(ctx, s, delta); err != nil {
 		in.log.Debug("codex text sync failed", "component", "codex", "session_id", s.ID, "err", err)
+		clean = false
 	}
-	return nil
+	return clean, nil
 }
 
 // syncText writes each parsed turn's prose onto its stored row where the row's
-// text differs, and returns how many rows changed.
+// text differs, and returns how many rows changed. byKey looks up only the rows
+// of s's turns, by key, rather than every turn the session holds: for the few
+// turns an incremental read hands over.
 //
 // Event keys are idempotent, so a re-read never rewrites a row; this is the one
 // place a Codex turn's payload is updated after it is stored, and it touches
@@ -434,7 +582,7 @@ func (in *Ingester) session(ctx context.Context, s *Session) error {
 // subagent's file carries its parent's session id, and before subagentKey its
 // rows were stored under the parent's line-number keys, so a key alone could
 // name a row that came from a different file.
-func (in *Ingester) syncText(ctx context.Context, s *Session) (int, error) {
+func (in *Ingester) syncText(ctx context.Context, s *Session, byKey bool) (int, error) {
 	want := map[string]Turn{}
 	for _, t := range s.Turns {
 		if t.Text != "" && !t.At.IsZero() {
@@ -444,6 +592,29 @@ func (in *Ingester) syncText(ctx context.Context, s *Session) (int, error) {
 	if len(want) == 0 || in.rec == nil || in.rec.Store == nil {
 		return 0, nil
 	}
+	var todo []textFix
+	if byKey {
+		for key, t := range want {
+			var id, ts int64
+			var text string
+			err := in.rec.Store.DB().QueryRowContext(ctx,
+				`SELECT id, ts, COALESCE(json_extract(payload,'$.text'),'')
+				   FROM events
+				  WHERE session_id = ? AND key = ? AND source = ? AND kind = ?`,
+				s.ID, key, string(event.SourceCodex), string(event.KindTurnAssistant)).Scan(&id, &ts, &text)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return 0, err
+			}
+			if t.At.UnixMilli() != ts || t.Text == text {
+				continue
+			}
+			todo = append(todo, textFix{id: id, text: t.Text})
+		}
+		return in.applyText(ctx, todo)
+	}
 	rows, err := in.rec.Store.DB().QueryContext(ctx,
 		`SELECT id, COALESCE(key,''), ts, COALESCE(json_extract(payload,'$.text'),'')
 		   FROM events
@@ -452,11 +623,6 @@ func (in *Ingester) syncText(ctx context.Context, s *Session) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	type fix struct {
-		id   int64
-		text string
-	}
-	var todo []fix
 	for rows.Next() {
 		var id, ts int64
 		var key, text string
@@ -468,7 +634,7 @@ func (in *Ingester) syncText(ctx context.Context, s *Session) (int, error) {
 		if !ok || t.At.UnixMilli() != ts || t.Text == text {
 			continue
 		}
-		todo = append(todo, fix{id: id, text: t.Text})
+		todo = append(todo, textFix{id: id, text: t.Text})
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
@@ -477,10 +643,21 @@ func (in *Ingester) syncText(ctx context.Context, s *Session) (int, error) {
 	if err := rows.Close(); err != nil {
 		return 0, err
 	}
+	return in.applyText(ctx, todo)
+}
+
+// textFix is one stored turn whose prose syncText rewrites.
+type textFix struct {
+	id   int64
+	text string
+}
+
+// applyText writes syncText's fixes in one transaction.
+func (in *Ingester) applyText(ctx context.Context, todo []textFix) (int, error) {
 	if len(todo) == 0 {
 		return 0, nil
 	}
-	err = in.rec.Store.WithTx(ctx, func(q store.Querier) error {
+	err := in.rec.Store.WithTx(ctx, func(q store.Querier) error {
 		for _, f := range todo {
 			if _, err := q.ExecContext(ctx,
 				`UPDATE events SET payload = json_set(payload, '$.text', ?) WHERE id = ? AND json_valid(payload)`,
@@ -528,7 +705,7 @@ func (in *Ingester) backfillText(ctx context.Context, files []Transcript, readNo
 			continue
 		}
 		parsed++
-		n, err := in.syncText(ctx, s)
+		n, err := in.syncText(ctx, s, false)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -599,7 +776,7 @@ func (in *Ingester) turn(ctx context.Context, s *Session, t Turn, info rollup.Se
 			CacheRead: t.CacheRead, CacheWrite: t.CacheWrite,
 		},
 	}
-	res, err := in.rec.Record(ctx, ev, info)
+	res, err := in.offer(ctx, ev, info)
 	if err != nil {
 		return fmt.Errorf("record codex turn: %w", err)
 	}
@@ -659,7 +836,7 @@ func (in *Ingester) tool(ctx context.Context, s *Session, c ToolCall, info rollu
 		MsgID:     turnMsgID(s, c.TurnKey),
 		AgentID:   subagentID(s),
 	}
-	res, err := in.rec.Record(ctx, ev, info)
+	res, err := in.offer(ctx, ev, info)
 	if err != nil {
 		return fmt.Errorf("record codex tool: %w", err)
 	}
@@ -724,9 +901,21 @@ func (in *Ingester) result(ctx context.Context, s *Session, r ToolResult, info r
 	}, info, "tool result")
 }
 
+// offer hands one event to the recorder, counting it in the running pass.
+func (in *Ingester) offer(ctx context.Context, ev *event.Event, info rollup.SessionInfo) (rollup.Result, error) {
+	res, err := in.rec.Record(ctx, ev, info)
+	if w := in.pass; w != nil {
+		w.Offered++
+		if err == nil && res.Stored {
+			w.Stored++
+		}
+	}
+	return res, err
+}
+
 // record stores one event and counts it.
 func (in *Ingester) record(ctx context.Context, ev *event.Event, info rollup.SessionInfo, what string) error {
-	res, err := in.rec.Record(ctx, ev, info)
+	res, err := in.offer(ctx, ev, info)
 	if err != nil {
 		return fmt.Errorf("record codex %s: %w", what, err)
 	}
@@ -1177,6 +1366,7 @@ func (in *Ingester) forgetMoved(files []Transcript) bool {
 			continue
 		}
 		delete(in.seen, p)
+		delete(in.tails, p)
 		changed = true
 		if st.session != "" {
 			gone[filepath.Base(p)] = st
