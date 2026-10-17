@@ -674,13 +674,13 @@ func (s *Server) pairingGate(w http.ResponseWriter, r *http.Request) (*http.Requ
 		}
 		return r, true
 	}
-	detail := "Open the Caprock app on your computer: Settings \u2192 Use on your phone \u2192 Show a code, and scan it with this device."
+	detail := "Open the Caprock app on your computer: Settings \u2192 Use on your phone \u2192 Connect a phone, and scan it with this device."
 	if status == http.StatusForbidden {
 		switch reason {
 		case pendingRefusal:
 			detail = "On the machine Caprock runs on, press Allow beside this computer's name, or run `caprock machines allow <name>` there."
 		case viewerRefusal:
-			detail = "To start, type into or stop sessions from here, open the Caprock app on your computer: Settings \u2192 Use on your phone, then press \u201cLet it control sessions\u201d next to this device."
+			detail = "To start, type into or stop sessions from here, open the Caprock app on your computer: Settings \u2192 Use on your phone, then press \u201cAllow control\u201d next to this device."
 		default:
 			detail = "Settings, pairing, the task runner and opening a terminal window happen on the machine Caprock runs on."
 		}

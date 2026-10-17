@@ -24,7 +24,7 @@ import (
 )
 
 // Access from anywhere, from a terminal (ADR-058). The dashboard's Settings →
-// Use on your phone → Show a code does the same; these exist for the machine
+// Use on your phone → Connect a phone does the same; these exist for the machine
 // nobody sits at — a Mac mini reached over SSH has no screen to click on.
 
 func remoteCmd() *cobra.Command {

@@ -92,7 +92,7 @@ export function usePRForce(o: PRForceOptions) {
     return { mode: 'spawn', wt: wt && !foreign ? wt : undefined, foreign }
   }
   const forceWhy = (p: SessionPRLive, kind: ForceKind): string => {
-    if (!canControl) return 'This device can only watch. To act from it, open the Caprock app on your computer: Settings → Use on your phone, then press Let it control sessions next to this device.'
+    if (!canControl) return 'This device can only watch. To act from it, open the Caprock app on your computer: Settings → Use on your phone, then press Allow control next to this device.'
     const live = p.live
     if (!live || live.state !== 'open') return 'Only an open pull request.'
     if (kind === 'rerun' || kind === 'update') {

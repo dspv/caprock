@@ -45,13 +45,13 @@ export function LanOnlyNotice() {
       {app ? (
         <span className="min-w-0 flex-1">
           This is the old Wi-Fi link: it works only on your home Wi-Fi. Use the Caprock app from <b className="font-medium">{app}</b>{' '}
-          instead: in the Caprock app on your computer, <b className="font-medium">Settings → Use on your phone → Show a code</b>,
+          instead: in the Caprock app on your computer, <b className="font-medium">Settings → Use on your phone → Connect a phone</b>,
           and scan it. Then remove this one from your home screen.
         </span>
       ) : (
         <span className="min-w-0 flex-1">
           This link works only on your home Wi-Fi. To use Caprock anywhere: in the Caprock app on your computer,{' '}
-          <b className="font-medium">Settings → Use on your phone → Show a code</b>, and scan it.
+          <b className="font-medium">Settings → Use on your phone → Connect a phone</b>, and scan it.
         </span>
       )}
       <button onClick={() => setMe(null)} aria-label="Hide" className="shrink-0 px-1 text-fg-faint hover:text-fg">×</button>

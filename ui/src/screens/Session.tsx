@@ -408,7 +408,7 @@ function chatFooter(s: SessionDetail, reader: boolean): ReactNode {
     <div className="mt-2"><ContinueSession sessionID={s.session_id} cwd={s.cwd} live={!ended} resume={s.resume} big /></div>
   )
   if (reader) {
-    return <>This phone can read but not type. To type here, open the Caprock app on your computer: Settings → <b className="font-medium text-fg">Use on your phone</b>, then press <b className="font-medium text-fg">Let it control sessions</b> next to this phone.</>
+    return <>This phone can read but not type. To type here, open the Caprock app on your computer: Settings → <b className="font-medium text-fg">Use on your phone</b>, then press <b className="font-medium text-fg">Allow control</b> next to this phone.</>
   }
   if (ended) return <>{s.detached ? 'This session lost its terminal when Caprock restarted.' : 'This session has ended.'}{cont}</>
   if (!s.owned) {

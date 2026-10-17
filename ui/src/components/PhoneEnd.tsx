@@ -23,7 +23,7 @@ export const WHY_NOT_OURS = 'Started in your own terminal — Caprock never stop
 /** Caprock started it but no longer holds its terminal (a restart, a lost pty-host). */
 export const WHY_DETACHED = 'Caprock no longer holds its terminal after a restart, so it cannot end it from here.'
 /** A paired device holding the viewer role (ADR-034): the signal route is a controller's. */
-export const WHY_WATCH = 'This phone can only watch — allow control on your computer: Settings → Use on your phone → Let it control sessions.'
+export const WHY_WATCH = 'This phone can only watch — allow control on your computer: Settings → Use on your phone → Allow control.'
 
 /** Whether a session can be ended here: null when there is nothing to end. */
 export type EndState = null | { can: true } | { can: false; why: string }

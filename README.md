@@ -743,25 +743,24 @@ For a phone on mobile data, a laptop at home, a Mac mini in a cupboard
 running agents:
 
 1. In the Caprock app on the computer: **Settings → Use on your phone**.
-   Leave **This phone can type and start agents** ticked (the default) for a
-   phone that should work on sessions; untick it for one that should only
-   look.
-2. Press **Show a code**. That press is what turns access from anywhere on,
+   Leave **It can control sessions** ticked under **Connect a phone** (the
+   default) for a phone that should work on sessions; untick it for one that
+   should only look.
+2. Press **Connect a phone**. That press is what turns access from anywhere on,
    and it stays on until you turn it off. Over SSH, `caprock remote on` then
    `caprock pair` (which draws the QR in the terminal) do the same, for a
    phone that only looks.
 3. Point the phone's camera at the code and open the link. The phone pairs
-   and says it is ready: connected, and whether it can type. The panel on the
-   computer ticks off the same list as it happens.
+   and says it is ready: connected, and whether it can type. The first line
+   of the panel on the computer turns to the phone's name and what it can do.
 4. Optional: install the app. An iPhone keeps a home-screen app's storage
-   apart from Safari's, so paste the link there once: *Copy link* under the
-   code, then *+ Add a machine* on the phone.
+   apart from Safari's, so paste the link there once: *Copy link* under
+   *How it works* while the code is up, then *+ Add a machine* on the phone.
 
-Each paired device in Settings says how it reaches the computer: *anywhere*,
-or *Wi-Fi link* for a phone paired on a home-network address before this was
-the one way. A Wi-Fi link works on that Wi-Fi only; the row offers **Show the
-code** to pair it once more through the relay, and the phone itself says the
-same while it is on that link.
+A phone paired on a home-network address before this was the one way works
+on that Wi-Fi only. Its row in Settings says *Works on your home Wi-Fi only*
+with **Reconnect**, which pairs it once more through the relay, and the phone
+itself says the same while it is on that link.
 
 The phone can hold several machines and switch between them from the strip
 along its top. It stays on across restarts until you turn it off.
@@ -820,7 +819,7 @@ terminal, for a machine with no way out to the internet:
    to type on a phone without a camera.
 2. The phone, on the same Wi-Fi (or on Tailscale, which also works from
    mobile data), opens the address and pairs. It appears in Settings under
-   *Paired devices* as a *Wi-Fi link*, with a *Remove* button; while that
+   *Your devices*, with a *Remove* button; while that
    listener is on, Settings shows it with a *Turn off*.
 
 The QR code is drawn locally; nothing is sent anywhere to make it.
@@ -829,7 +828,7 @@ The QR code is drawn locally; nothing is sent anywhere to make it.
 Android, Chrome's menu → *Add to Home screen*. It opens full-screen with the
 Caprock icon, in your light or dark theme, clear of the notch. An iPhone keeps
 a home-screen app's storage apart from Safari's, so the first time you open it
-from there it asks to pair again: press *Show a code* on the computer and type
+from there it asks to pair again: press *Connect a phone* on the computer and type
 the six digits (scanning would open Safari, not the app). The machine lists it
 as a second device, "iPhone · home screen".
 
@@ -857,9 +856,9 @@ place Caprock stops being loopback-only:
   settings and can be removed one by one, which takes effect on the next
   request.
 - **A paired device reads, unless you let it control sessions.** It sees
-  sessions, costs, answers, changes and the task board. *This phone can type
-  and start agents*, ticked beside *Show a code* (the default), or *Let it
-  control sessions* beside a device afterwards, lets that phone also start a session in
+  sessions, costs, answers, changes and the task board. *It can control
+  sessions*, ticked under *Connect a phone* (the default), or *Allow control*
+  beside a device afterwards, lets that phone also start a session in
   any folder under your home directory with Claude Code, Codex or OpenCode, in
   any permission mode (Bypass asks once first, and the computer's one-time
   bypass consent has to have been given at the computer), type into it (a big input

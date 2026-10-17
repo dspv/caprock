@@ -149,7 +149,7 @@ export function ReadyCard({ name, me, offer, onOpen, onClose, page = typeof wind
           ) : (
             <>
               <b className="font-semibold text-fg">View only.</b> To type, on the computer: Caprock app → Settings → Use on your phone →{' '}
-              <b className="font-semibold text-fg">Let it control sessions</b> next to this phone. This page notices by itself.
+              <b className="font-semibold text-fg">Allow control</b> next to this phone. This page notices by itself.
             </>
           )}
         </Row>

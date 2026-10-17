@@ -1,64 +1,54 @@
 /**
- * Open Caprock on your phone.
+ * Settings → Use on your phone.
  *
- * The owner's verdict on the panel this replaced (translated): "honestly,
- * NOTHING here is understandable, and it should be easy and simple." It asked
- * the reader to "let this network in", then to find an address, then to ask
- * for a code, then to type both — four ideas before anything happened, and the
- * one thing a person holding a phone wants to do (point the camera at the
- * screen) was not offered at all.
+ * The owner, 2026-10-18 (translated), on the panel this replaced: "I don't
+ * understand at all what's going on here — not one clear piece of info." It
+ * had a status pill, a four-step checklist, a QR with three paragraphs beside
+ * it, and a device list whose every row carried a role, a route, two dates,
+ * an id, a sentence about m.caprock.dev and three buttons. Each piece was
+ * true; together they did not answer the one question a person opening this
+ * has: is my phone connected?
  *
- * So it is three steps and one button. **Show a code** turns on access from
- * anywhere (ADR-058) and issues a pairing code in the same press, and the code
- * is drawn as a QR code whose link carries it: the camera opens the phone's
- * page, the page pairs through the relay, and the phone appears in the list
- * below.
+ * So the section is, top to bottom:
  *
- * One way in, not a choice of three (owner, 2026-10-14, translated: "I'd
- * remove every option except the normal online one — who cares about working
- * only inside your own Wi-Fi; everyone wants to work online"). The same
- * morning his phone had paired on the Wi-Fi address a minute before he turned
- * on access from anywhere, kept that link, and went dead on mobile data with
- * nothing anywhere saying why. The Wi-Fi and Tailscale addresses are no longer
- * offered; a phone still on one is marked in the list with the code that moves
- * it (`via` in the state), and its own page says the same (LanOnlyNotice).
+ * - **One sentence** that answers it (`phoneSummary`): *iPhone · Safari is
+ *   connected and can control sessions · seen 2 min ago*, or *No phone
+ *   connected yet.* When something is in the way it says so in the same
+ *   sentence, with the one button that fixes it (access from anywhere off:
+ *   **Turn it on**; a phone that can only view: **Allow control**).
+ * - **One button**, **Connect a phone**. It turns on access from anywhere
+ *   (ADR-058) when it is off — the line under it says so, which is the
+ *   decision on the machine that ADR asks for — and issues a code drawn as a
+ *   QR, with one line beside it: *Scan with your phone's camera. Works once,
+ *   4:43 left.* and a quiet **New code · Cancel**. Under the button, the
+ *   tick that decides whether the phone can control sessions (ADR-034,
+ *   amended 2026-10-14): the code carries the role, decided here, never by
+ *   the phone.
+ * - **How it works**, folded: what happens when you scan, why it works on
+ *   any network and what the relay can and cannot see, the link for an
+ *   iPhone home-screen app, the way back to the page for a phone already
+ *   connected (Vova, 2026-10-15: "I don't remember the link — and that's
+ *   it"), and the switch that turns access from anywhere off.
+ * - **Your devices**: one row each — the name, *Can control* or *View only*,
+ *   when it was last seen, and two small buttons. Devices not seen for 30
+ *   days fold into *N old devices* with **Remove all**, confirmed once.
  *
  * What did not change is the security model (ADR-029, ADR-058): pairing is
  * required; access from anywhere is turned on only here or by `caprock remote
- * on`, never from a phone.
+ * on`, never from a phone. The QR code is drawn in the browser by
+ * ui/src/lib/qr.ts: the link carries a code that lets a device in, and it is
+ * not sent anywhere to be rendered.
  *
- * **Control is chosen with the code** (ADR-034, amended 2026-10-14). The
- * owner, translated: "I see the QR code, scan it with the phone, install the
- * app, go in — and I can't do anything, and say I've already left the house."
- * A paired phone was a viewer until a second click here, which nobody makes
- * from the street. So beside Show a code sits **This phone can type and start
- * agents**, ticked by default and remembered on this computer; the code
- * carries that role, and the phone is a controller the moment it pairs.
- * Unticked, it pairs to view only, as before. Either way the decision is made
- * here, on the machine, by the person showing the code — never by the phone.
- *
- * While a code is out, and after the phone pairs, a checklist says what is
- * done and what is left: access from anywhere, the phone paired (by name),
- * whether it can type (with the one button that fixes it), and whether it runs
- * as the installed app.
- *
- * The QR code is drawn here, in the browser, by ui/src/lib/qr.ts: the link
- * carries a code that lets a device in, and it is not sent anywhere to be
- * rendered.
- *
- * **A paired phone finds its way back** (Vova, 2026-10-15, translated: "I
- * opened the phone app, then closed the tab … today I want to open it again
- * but I don't remember the link — and that's it"). The phone keeps its token
- * on the page's own origin, so opening the page's address again is all it
- * takes; every paired device's row says so — the address to type, a QR of
- * that address alone (no code, no key: it pairs nothing), and, with a
- * Telegram bot set up, **Send the link to my phone**.
+ * One way in, through the relay (owner, 2026-10-14). The Wi-Fi listener stays
+ * in the daemon for a machine without internet (`caprock up --lan`, `caprock
+ * pair`); a build without the relay falls back to it, and a phone still on a
+ * Wi-Fi link is marked in its row with **Reconnect**.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText, type PairAddress, type PairedDevice, type PairState, type RemoteState } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { REVEAL_EVENT, Section } from '@/components/SettingsParts'
-import { fmtAgo, fmtWhen } from '@/lib/format'
+import { fmtWhen } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { encodeQR, qrPath } from '@/lib/qr'
 import type { SettingsSection } from '@/lib/router'
@@ -180,25 +170,6 @@ export function looksLikePhone(name: string): boolean {
   return /phone|android|ipad|tablet/i.test(name)
 }
 
-export type PhoneStatus = { tone: 'off' | 'waiting' | 'ok' | 'on'; label: string }
-
-/** What the corner of the panel says, from the daemon's state alone. */
-export function phoneStatus(s: Pick<PairState, 'enabled' | 'code' | 'devices' | 'remote'>): PhoneStatus {
-  const n = s.devices.length
-  const noun = deviceNoun(s.devices)
-  if (!s.enabled && !s.remote?.enabled) {
-    return { tone: 'off', label: n > 0 ? `Off · ${n} ${noun}${n === 1 ? '' : 's'} paired` : 'Off' }
-  }
-  if (s.code) return { tone: 'waiting', label: 'Waiting for your phone…' }
-  if (n > 0) return { tone: 'ok', label: `${n} ${noun}${n === 1 ? '' : 's'} connected` }
-  return { tone: 'on', label: 'On · nothing paired yet' }
-}
-
-/** "phone" when every paired device looks like one, "device" otherwise. */
-function deviceNoun(devices: PairedDevice[]): string {
-  return devices.length > 0 && devices.every((d) => /phone|android/i.test(d.name)) ? 'phone' : 'device'
-}
-
 /**
  * Whether a paired device is on a link that works on the home Wi-Fi only and
  * should pair once more through the relay: it last came over the network
@@ -210,7 +181,7 @@ export function needsRepair(d: PairedDevice, all: readonly PairedDevice[]): bool
   return !all.some((o) => o.id !== d.id && o.name === d.name && o.via === 'relay')
 }
 
-/** Where the tick beside Show a code is remembered, on this computer. */
+/** Where the tick beside Connect a phone is remembered, on this computer. */
 export const ALLOW_TYPE_KEY = 'caprock.pair.allowType'
 
 /** The remembered tick: on unless the owner unticked it here before. */
@@ -228,46 +199,75 @@ function keepAllowType(on: boolean) {
   } catch { /* not remembered: ticked again next time */ }
 }
 
-/** One row of the checklist: done, waiting on something, missing, or optional. */
-export type CheckState = 'done' | 'waiting' | 'missing' | 'optional'
-export interface CheckRow { key: 'anywhere' | 'paired' | 'type' | 'app'; state: CheckState; title: string; detail: string }
+const DAY = 86_400_000
 
-/**
- * What is done and what is left, from the daemon's state and the phone that
- * paired while the panel was open (or null while waiting for it). Pure, for
- * the tests.
- */
-export function pairChecklist(s: Pick<PairState, 'enabled' | 'remote' | 'code_role'>, phone: PairedDevice | null, allowType: boolean): CheckRow[] {
-  const remote = s.remote
-  const anywhere: CheckRow = !remote
-    ? { key: 'anywhere', state: s.enabled ? 'done' : 'waiting', title: 'Network access', detail: s.enabled ? 'On' : 'Off' }
-    : !remote.enabled
-      ? { key: 'anywhere', state: 'waiting', title: 'Access from anywhere', detail: 'Off: Show a code turns it on' }
-      : remote.status === 'online'
-        ? { key: 'anywhere', state: 'done', title: 'Access from anywhere', detail: 'On' }
-        : remote.status === 'connecting'
-          ? { key: 'anywhere', state: 'waiting', title: 'Access from anywhere', detail: 'Connecting to the relay…' }
-          : { key: 'anywhere', state: 'missing', title: 'Access from anywhere', detail: remote.error ? `Offline: ${remote.error}` : 'Offline, retrying' }
-  const paired: CheckRow = phone
-    ? { key: 'paired', state: 'done', title: 'Phone paired', detail: phone.name }
-    : { key: 'paired', state: 'waiting', title: 'Phone paired', detail: 'Waiting for the phone to scan the code…' }
-  // Before the phone pairs, what it will get is what the outstanding code
-  // carries (or, with none, the tick).
-  const willType = s.code_role ? s.code_role === 'controller' : allowType
-  const type: CheckRow = phone
-    ? phone.role === 'controller'
-      ? { key: 'type', state: 'done', title: 'Can type from the phone', detail: 'Yes: start agents, type, approve, stop' }
-      : { key: 'type', state: 'missing', title: 'Can type from the phone', detail: 'No: view only' }
-    : willType
-      ? { key: 'type', state: 'waiting', title: 'Can type from the phone', detail: 'Yes, once it pairs' }
-      : { key: 'type', state: 'missing', title: 'Can type from the phone', detail: 'No: this code pairs it to view only' }
-  const app: CheckRow = phone?.app
-    ? { key: 'app', state: 'done', title: 'App installed on the phone', detail: 'Yes' }
-    : { key: 'app', state: 'optional', title: 'App installed on the phone', detail: 'Optional: install it on the phone when it offers' }
-  return [anywhere, paired, type, app]
+/** A device not seen for this long folds into *old devices*. */
+export const OLD_AFTER_MS = 30 * DAY
+
+/** Seen this recently, a phone reads as *connected*; before that, *set up*. */
+export const CONNECTED_MS = 5 * 60_000
+
+/** Whether a device has not been seen for 30 days (one never seen: since it paired). */
+export function isOldDevice(d: Pick<PairedDevice, 'last_seen' | 'paired_at' | 'pending'>, now: number): boolean {
+  if (d.pending) return false
+  const t = d.last_seen || d.paired_at
+  return Boolean(t) && now - t >= OLD_AFTER_MS
 }
 
-/** "this Mac" on a Mac: the steps name the machine the reader is looking at. */
+/** "just now", "2 min ago", "3 hours ago", "4 days ago": for a person, not a log. */
+export function seenAgo(t: number, now: number): string {
+  const m = Math.floor(Math.max(0, now - t) / 60_000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m} min ago`
+  const h = Math.floor(m / 60)
+  if (h < 48) return `${h} hour${h === 1 ? '' : 's'} ago`
+  const d = Math.floor(h / 24)
+  return `${d} day${d === 1 ? '' : 's'} ago`
+}
+
+/**
+ * The sentence at the top of the section, answering "is my phone
+ * connected?": who, what it can do, and when it was last seen; or that none
+ * is; or what is in the way, with the one fix (`fix`) beside it.
+ */
+export interface PhoneSummary {
+  tone: 'none' | 'waiting' | 'ok' | 'idle' | 'warn'
+  /** The device the sentence is about, its name said first. */
+  device?: PairedDevice
+  text: string
+  meta?: string
+  fix?: 'turn-on' | 'allow'
+}
+
+/** Pure, for the tests: the daemon's state, the clock, and the phone that just joined (first, if any). */
+export function phoneSummary(s: Pick<PairState, 'code' | 'devices' | 'remote'>, now: number, joinedId = ''): PhoneSummary {
+  if (s.code) return { tone: 'waiting', text: 'Waiting for your phone to scan the code…' }
+  const recent = s.devices
+    .filter((d) => d.kind !== 'machine' && !isOldDevice(d, now))
+    .sort((a, b) => (b.id === joinedId ? 1 : 0) - (a.id === joinedId ? 1 : 0) || (b.last_seen || 0) - (a.last_seen || 0))
+  const d = recent[0]
+  if (!d) return { tone: 'none', text: 'No phone connected yet.' }
+  const can = d.role === 'controller' ? 'can control sessions' : 'can only view'
+  const more = recent.length > 1 ? `${recent.length - 1} more device${recent.length === 2 ? '' : 's'}` : ''
+  const remote = s.remote
+  if (remote && !remote.enabled) {
+    return { tone: 'warn', device: d, text: "is set up, but access from anywhere is off, so it can't reach this computer.", fix: 'turn-on' }
+  }
+  if (remote?.status === 'offline') {
+    return { tone: 'warn', device: d, text: `is set up, but this computer can't get online right now${remote.error ? ` (${remote.error})` : ''}. Retrying.` }
+  }
+  const fresh = Boolean(d.last_seen) && now - d.last_seen <= CONNECTED_MS
+  const seen = d.last_seen ? `${fresh ? 'seen' : 'last seen'} ${seenAgo(d.last_seen, now)}` : 'not opened yet'
+  return {
+    tone: fresh ? 'ok' : 'idle',
+    device: d,
+    text: `is ${fresh ? 'connected' : 'set up'} and ${can}`,
+    meta: [seen, more].filter(Boolean).join(' · '),
+    fix: d.role === 'controller' ? undefined : 'allow',
+  }
+}
+
+/** "this Mac" on a Mac: the lines name the machine the reader is looking at. */
 function thisMachine(): string {
   const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent
   if (/Macintosh/.test(ua)) return 'this Mac'
@@ -275,29 +275,18 @@ function thisMachine(): string {
   return 'this computer'
 }
 
-/**
- * Settings → Use on your phone.
- *
- * One way in: from anywhere, through the relay (ADR-058, amended 2026-10-14 —
- * owner, translated: "I'd remove every option except the normal online one —
- * who cares about working only inside your own Wi-Fi; everyone wants to work
- * online"). Pressing **Show a code** here is the decision on the machine that
- * turns it on, and the line under the button says so. The Wi-Fi listener
- * stays in the daemon for a machine without internet (`caprock up --lan`,
- * `caprock pair`), and the panel shows it only while it is on, to turn off.
- */
+const SMALL_BTN = 'shrink-0 rounded-md border border-border px-2.5 py-1 text-[12px] text-fg-muted disabled:opacity-50'
+
 export function Pairing() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [codeUntil, setCodeUntil] = useState(0)
-  const [joined, setJoined] = useState<PairedDevice | null>(null)
-  // The checklist shows from Show a code until the owner closes it.
-  const [checking, setChecking] = useState(false)
+  const [joined, setJoined] = useState('')
   const [allowType, setAllowType] = useState(readAllowType)
   const now = useNow(1000)
 
-  // Polled fast only while a code is on screen, so the phone shows up in the
-  // list within a couple of seconds of being paired.
+  // Polled fast only while a code is on screen, so the phone shows up within
+  // a couple of seconds of being paired.
   const [fast, setFast] = useState(false)
   const state = useApi(() => api.pairState(), [], { live: false, intervalMs: fast ? 1500 : 5000 })
   const s = state.data
@@ -310,15 +299,15 @@ export function Pairing() {
     if (code && s?.expires_in_sec) setCodeUntil(Date.now() + s.expires_in_sec * 1000)
   }, [code, s?.expires_in_sec])
 
-  // A device that appears while a code is showing is the phone that just
-  // scanned it. Say so in words, beside the list it joined.
+  // A device that appears while the panel is open is the phone that just
+  // scanned the code: the sentence at the top is about it.
   const known = useRef<Set<string> | null>(null)
   useEffect(() => {
     if (!s) return
     const ids = new Set(s.devices.map((d) => d.id))
     if (known.current) {
       const fresh = s.devices.find((d) => !known.current!.has(d.id))
-      if (fresh) setJoined(fresh)
+      if (fresh) setJoined(fresh.id)
     }
     known.current = ids
   }, [s])
@@ -342,23 +331,12 @@ export function Pairing() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrived, s])
 
-  async function showCode() {
+  // Every action: busy while it runs, its error in the one error line.
+  async function act(fn: () => Promise<unknown>) {
     setBusy(true)
     setError('')
-    setJoined(null)
-    setChecking(true)
     try {
-      // One press does both: access from anywhere has to be on before a
-      // phone can reach the page the code opens. A build without the relay
-      // falls back to the network listener, as before.
-      if (s?.remote) {
-        if (!s.remote.enabled) await api.setRemote(true)
-      } else if (!s?.enabled) {
-        await api.setLAN(true)
-      }
-      // The role is the tick's, decided here (ADR-034, amended 2026-10-14).
-      const r = await api.pairCode(allowType ? 'controller' : 'viewer')
-      setCodeUntil(Date.now() + r.expires_in_sec * 1000)
+      await fn()
       state.refresh()
     } catch (e) {
       setError(errText(e))
@@ -367,70 +345,31 @@ export function Pairing() {
     }
   }
 
-  async function turnLANOff() {
-    setBusy(true)
-    setError('')
-    try {
-      await api.setLAN(false)
-      state.refresh()
-    } catch (e) {
-      setError(errText(e))
-    } finally {
-      setBusy(false)
+  const showCode = () => act(async () => {
+    setJoined('')
+    // One press does both: access from anywhere has to be on before a phone
+    // can reach the page the code opens. A build without the relay falls
+    // back to the network listener.
+    if (s?.remote) {
+      if (!s.remote.enabled) await api.setRemote(true)
+    } else if (!s?.enabled) {
+      await api.setLAN(true)
     }
-  }
-
-  async function turnRemote(on: boolean) {
-    setBusy(true)
-    setError('')
-    try {
-      await api.setRemote(on)
-      state.refresh()
-    } catch (e) {
-      setError(errText(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
+    // The role is the tick's, decided here (ADR-034, amended 2026-10-14).
+    const r = await api.pairCode(allowType ? 'controller' : 'viewer')
+    setCodeUntil(Date.now() + r.expires_in_sec * 1000)
+  })
   // Withdraws the code on the daemon, not just from the screen: a code hidden
   // here but still valid there would be a door left open behind the reader.
-  async function cancelCode() {
-    setBusy(true)
-    setError('')
-    try {
-      await api.pairCancelCode()
-      setCodeUntil(0)
-      state.refresh()
-    } catch (e) {
-      setError(errText(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function remove(id: string) {
-    setError('')
-    try {
-      await api.pairRevoke(id)
-      if (joined?.id === id) setJoined(null)
-      state.refresh()
-    } catch (e) {
-      setError(errText(e))
-    }
-  }
-
-  // Control is a second decision, made here and nowhere else (ADR-034):
-  // pairing makes a viewer, and taking control away is one button.
-  async function setRole(id: string, role: PairedDevice['role']) {
-    setError('')
-    try {
-      await api.pairSetRole(id, role)
-      state.refresh()
-    } catch (e) {
-      setError(errText(e))
-    }
-  }
+  const cancelCode = () => act(async () => {
+    await api.pairCancelCode()
+    setCodeUntil(0)
+  })
+  const turnRemote = (on: boolean) => act(() => api.setRemote(on))
+  const turnLANOff = () => act(() => api.setLAN(false))
+  const remove = (ids: string[]) => act(() => Promise.all(ids.map((id) => api.pairRevoke(id))))
+  // Control is decided here and nowhere else (ADR-034).
+  const setRole = (id: string, role: PairedDevice['role']) => act(() => api.pairSetRole(id, role))
 
   if (!s) {
     return (
@@ -440,215 +379,100 @@ export function Pairing() {
     )
   }
 
-  const status = phoneStatus(s)
   const secondsLeft = codeUntil ? Math.max(0, Math.ceil((codeUntil - now) / 1000)) : 0
   const remote = s.remote
   const anywhere = Boolean(remote?.enabled)
   const addresses = addressesOf(s)
   const showingCode = Boolean(code && (anywhere || (!remote && s.url)) && secondsLeft > 0)
-  const machine = thisMachine()
-  const hasPhone = s.devices.some((d) => looksLikePhone(d.name))
-  // The joined phone as the daemon has it now: its role and app change live.
-  const phone = joined ? s.devices.find((d) => d.id === joined.id) ?? null : null
-  const showChecklist = checking && (showingCode || Boolean(phone))
+  const summary = phoneSummary(showingCode ? s : { ...s, code: undefined }, now, joined)
+  const link = showingCode && anywhere ? remote?.link ?? '' : ''
+  const openAgain = remote?.app && s.devices.some((d) => d.kind !== 'machine' && offersOpenAgain(d))
+    ? { app: remote.app, anywhere, telegram: Boolean(s.telegram), onTurnOn: () => void turnRemote(true) }
+    : undefined
   const tick = (on: boolean) => {
     setAllowType(on)
     keepAllowType(on)
   }
 
   return (
-    <Section id={PHONE_SECTION} title="Use on your phone" aside={<StatusPill status={status} />}>
+    <Section id={PHONE_SECTION} title="Use on your phone">
       <div className="grid gap-4">
-        {showChecklist && (
-          <Checklist rows={pairChecklist(s, phone, allowType)} onAllowType={phone ? () => setRole(phone.id, 'controller') : undefined} onClose={phone ? () => setChecking(false) : undefined} />
-        )}
+        <StatusLine summary={summary} busy={busy} onTurnOn={() => void turnRemote(true)} onAllow={(id) => void setRole(id, 'controller')} />
+
         {showingCode ? (
-          <CodeView remote={anywhere ? remote : undefined} address={addresses[0]} code={code} secondsLeft={secondsLeft} onNew={showCode} onCancel={cancelCode} busy={busy} />
+          <CodeView remote={anywhere ? remote : undefined} address={addresses[0]} code={code} secondsLeft={secondsLeft} onNew={() => void showCode()} onCancel={() => void cancelCode()} busy={busy} />
         ) : (
-          <>
-            {/* One line a step, the same words as the phone's page (m.caprock.dev):
-              * the owner left the house with a phone that could only look
-              * (2026-10-14), so the tick that lets it type is step one. */}
-            <p className="text-[15px] leading-snug text-fg-muted">
-              The same Caprock on your phone, on any network — Wi-Fi or mobile data. Read what agents wrote, type into a session, approve, stop.
-            </p>
-            <ol data-testid="pair-steps" className="grid gap-1.5 text-[14px] leading-snug text-fg">
-              <Step n={1}>Tick <b className="font-medium">This phone can type and start agents</b> (on by default)</Step>
-              <Step n={2}>Press <b className="font-medium">Show a code</b> and scan it with the phone&apos;s camera</Step>
-              <Step n={3}>Open the link; the phone pairs</Step>
-              <Step n={4}><span className="text-fg-muted">Optional:</span> Install the app when the phone offers it</Step>
-            </ol>
-            <div className="grid gap-2">
-              <label className="flex w-fit cursor-pointer items-center gap-2 text-[14px] text-fg">
-                <input
-                  type="checkbox"
-                  data-testid="allow-type"
-                  className="h-4 w-4 accent-[var(--color-accent)]"
-                  checked={allowType}
-                  onChange={(e) => tick(e.target.checked)}
-                />
-                This phone can type and start agents
-              </label>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <button
-                  onClick={showCode}
-                  disabled={busy}
-                  className="h-11 rounded-[10px] bg-accent px-6 text-[15px] font-semibold text-panel hover:brightness-110 disabled:opacity-50"
-                >
-                  {busy ? 'One moment…' : hasPhone ? 'Show a code for another phone' : 'Show a code'}
-                </button>
-                {anywhere && <RelayState remote={remote!} busy={busy} onOff={() => turnRemote(false)} />}
-              </div>
-              <p className="text-[13px] leading-snug text-fg-muted">
-                {allowType
-                  ? 'It can start agents, type into sessions, approve and stop them. Settings and pairing stay on this computer.'
-                  : 'Unticked, the phone can only look. You can let it type later, next to it in the list below.'}
+          <div className="grid gap-2">
+            <button
+              onClick={() => void showCode()}
+              disabled={busy}
+              className="h-11 w-fit rounded-[10px] bg-accent px-6 text-[15px] font-semibold text-panel hover:brightness-110 disabled:opacity-50"
+            >
+              {busy ? 'One moment…' : summary.device ? 'Connect another phone' : 'Connect a phone'}
+            </button>
+            <label className="flex w-fit cursor-pointer items-center gap-2 text-[13px] text-fg-muted">
+              <input
+                type="checkbox"
+                data-testid="allow-type"
+                className="h-4 w-4 accent-[var(--color-accent)]"
+                checked={allowType}
+                onChange={(e) => tick(e.target.checked)}
+              />
+              {allowType ? 'It can control sessions: type, start agents, approve, stop' : 'View only: it can read, not type'}
+            </label>
+            {/* ADR-058: on only by a decision on the machine. This press is
+              * that decision, so the line beside it says what it turns on. */}
+            {remote && !anywhere && (
+              <p data-testid="anywhere-consent" data-keep className="text-[12px] leading-snug text-fg-muted">
+                This also turns on access from anywhere for {thisMachine()}, so the phone works on any network. It stays on until you turn it off.
               </p>
-              {/* ADR-058: on only by a decision on the machine. This press is
-                * that decision, so the line beside it says what it turns on. */}
-              {remote && !anywhere && (
-                <p data-testid="anywhere-consent" data-keep className="text-[13px] leading-snug text-fg-muted">
-                  Showing a code turns on access from anywhere for {machine}, and keeps it on: an encrypted relay that passes bytes it cannot read.
-                </p>
-              )}
-            </div>
-            <details className="group rounded-[10px] border border-border px-4 py-2.5 text-[14px]">
-              <summary className="cursor-pointer select-none font-medium text-fg">Then: home screen, carrying on a session</summary>
-              <ul className="mt-2 grid gap-2 text-fg-muted">
-                <li><b className="font-medium text-fg">Home screen.</b> On Android, tap <b className="font-medium text-fg">Install</b> on the phone&apos;s page. On an iPhone, Share → Add to Home Screen; the home-screen app keeps its own storage, so copy the link under the code and paste it there once.</li>
-                <li><b className="font-medium text-fg">Carry on a session.</b> On the phone: Home → the session → Chat, and type. Approve and stop from there too.</li>
-              </ul>
-            </details>
-          </>
+            )}
+          </div>
         )}
 
         {error && <div className="text-[12px] text-danger">{error}</div>}
 
+        <Devices devices={s.devices} now={now} busy={busy} onRemove={(ids) => void remove(ids)} onRole={(id, r) => void setRole(id, r)} onRepair={remote ? () => void showCode() : undefined} />
 
-        {/* A paired Mac is not a phone (owner's screenshot, 2026-10-14: the
-          * only row was "Mac", seen 41 days ago), so say there is none yet. */}
-        {!showingCode && s.devices.length > 0 && !hasPhone && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] text-fg">
-            <span>No phone paired yet.</span>
-            <button onClick={showCode} disabled={busy} className="font-medium text-accent hover:underline disabled:opacity-50">Show a code</button>
-          </div>
-        )}
-        <Devices
-          devices={s.devices}
-          now={now}
-          onRemove={remove}
-          onRole={setRole}
-          onRepair={remote ? showCode : undefined}
-          openAgain={remote?.app ? { app: remote.app, anywhere, telegram: Boolean(s.telegram), onTurnOn: () => turnRemote(true) } : undefined}
+        <HowItWorks
+          link={link}
+          remote={remote}
           busy={busy}
+          onRemoteOff={() => void turnRemote(false)}
+          openAgain={openAgain}
+          wifi={s.enabled && remote ? { url: s.url ?? '', onOff: () => void turnLANOff() } : undefined}
         />
-
-        <div className="grid gap-1 border-t border-border pt-3 text-[12px] leading-relaxed text-fg-muted">
-          <p>Only phones you pair get in, each with the role you chose here; take control away or remove one with a click.</p>
-          {/* The Wi-Fi listener is not offered here any more; when it is on
-            * (`caprock up --lan`, or switched on before), say so and offer off. */}
-          {s.enabled && remote && (
-            <div data-testid="wifi-listener" className="flex flex-wrap items-center gap-x-3 pt-1">
-              <span className="min-w-0 text-fg-faint">
-                Also open on this Wi-Fi at <span className="mono break-all">{s.url}</span> — that link works only on the same network.
-              </span>
-              <button onClick={turnLANOff} disabled={busy} className="text-fg-faint underline hover:text-danger disabled:opacity-50">
-                Turn off
-              </button>
-            </div>
-          )}
-        </div>
       </div>
     </Section>
   )
 }
 
-/** One numbered line of the steps. */
-function Step({ n, children }: { n: number; children: React.ReactNode }) {
-  return (
-    <li className="flex items-baseline gap-2.5">
-      <span className="num w-4 shrink-0 text-right font-semibold text-accent">{n}.</span>
-      <span className="min-w-0">{children}</span>
-    </li>
-  )
+const DOT: Record<PhoneSummary['tone'], string> = {
+  none: 'bg-fg-faint',
+  waiting: 'bg-warn animate-pulse',
+  ok: 'bg-ok',
+  idle: 'bg-accent',
+  warn: 'bg-danger',
 }
 
-const CHECK_MARK: Record<CheckState, { mark: string; cls: string }> = {
-  done: { mark: '✓', cls: 'bg-ok/15 text-ok' },
-  waiting: { mark: '…', cls: 'bg-warn/15 text-warn' },
-  missing: { mark: '✗', cls: 'bg-danger/15 text-danger' },
-  optional: { mark: '○', cls: 'bg-panel-2 text-fg-faint' },
-}
-
-/**
- * What is done and what is left, live while a code is out and after the phone
- * pairs: the owner should not walk out of the door to find the phone can only
- * look (2026-10-14).
- */
-function Checklist({ rows, onAllowType, onClose }: { rows: CheckRow[]; onAllowType?: () => void; onClose?: () => void }) {
-  const allDone = rows.every((r) => r.state === 'done' || r.state === 'optional')
+/** The one sentence at the top, and the one fix beside it when something is in the way. */
+function StatusLine({ summary, busy, onTurnOn, onAllow }: { summary: PhoneSummary; busy: boolean; onTurnOn: () => void; onAllow: (id: string) => void }) {
+  const d = summary.device
   return (
-    <div data-testid="pair-checklist" className="grid gap-1 rounded-[12px] border border-border bg-panel-2/40 px-4 py-3" aria-live="polite">
-      <div className="flex items-center gap-3">
-        <span className="text-[13px] font-medium text-fg">{allDone ? 'Ready: the phone is set up' : 'Setting up your phone'}</span>
-        {onClose && (
-          <button onClick={onClose} className="ml-auto text-[12px] text-fg-faint hover:text-fg">
-            {allDone ? 'Done' : 'Hide'}
-          </button>
-        )}
-      </div>
-      <ol className="grid gap-1.5">
-        {rows.map((r, i) => {
-          const m = CHECK_MARK[r.state]
-          return (
-            <li key={r.key} data-testid={`check-${r.key}`} data-state={r.state} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[14px]">
-              <span className={`num inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold ${m.cls}`} aria-hidden>
-                {m.mark}
-              </span>
-              <span className="text-fg">
-                <span className="num text-fg-faint">{i + 1}.</span> {r.title}
-              </span>
-              <span className="min-w-0 text-fg-muted">— {r.detail}</span>
-              {r.key === 'type' && r.state === 'missing' && onAllowType && (
-                <button onClick={onAllowType} className="rounded-sm border border-accent px-2 py-0.5 text-[12px] font-medium text-accent hover:bg-accent/10">
-                  Let it control sessions
-                </button>
-              )}
-            </li>
-          )
-        })}
-      </ol>
-    </div>
-  )
-}
-
-/** Whether the relay is up, and its off switch, beside Show a code. */
-function RelayState({ remote, busy, onOff }: { remote: RemoteState; busy: boolean; onOff: () => void }) {
-  const st = remote.status === 'online'
-    ? { dot: 'bg-ok', text: remote.phones > 0 ? `Anywhere · online · ${remote.phones} connected now` : 'Anywhere · online' }
-    : remote.status === 'connecting'
-      ? { dot: 'bg-warn animate-pulse', text: 'Anywhere · connecting to the relay…' }
-      : { dot: 'bg-danger', text: remote.error ? `Anywhere · offline: ${remote.error}` : 'Anywhere · offline, retrying' }
-  return (
-    <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg">
-      <span className="flex min-w-0 items-center gap-1.5">
-        <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${st.dot}`} aria-hidden />
-        <span className="min-w-0 break-words">{st.text}</span>
+    <div data-testid="phone-status" data-tone={summary.tone} aria-live="polite" className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
+      <span className="min-w-0 text-[16px] leading-snug text-fg">
+        <span className={`mr-2 inline-block h-2.5 w-2.5 rounded-full align-[1px] ${DOT[summary.tone]}`} aria-hidden />
+        {d && <b className="font-semibold">{d.name} </b>}
+        {summary.text}
+        {summary.meta && <span className="text-fg-muted"> · {summary.meta}</span>}
       </span>
-      <button onClick={onOff} disabled={busy} className="text-[12px] text-fg-faint underline hover:text-danger disabled:opacity-50">
-        Turn off
-      </button>
-    </span>
-  )
-}
-
-function StatusPill({ status }: { status: PhoneStatus }) {
-  const dot = status.tone === 'ok' ? 'bg-ok' : status.tone === 'waiting' ? 'bg-warn animate-pulse' : status.tone === 'on' ? 'bg-accent' : 'bg-fg-faint'
-  return (
-    <span className="inline-flex items-center gap-1.5 text-[12px] text-fg" aria-live="polite">
-      <span className={`inline-block h-2 w-2 rounded-full ${dot}`} aria-hidden />
-      {status.label}
-    </span>
+      {summary.fix === 'turn-on' && (
+        <button onClick={onTurnOn} disabled={busy} className={`${SMALL_BTN} border-accent text-accent hover:bg-accent/10`}>Turn it on</button>
+      )}
+      {summary.fix === 'allow' && d && (
+        <button onClick={() => onAllow(d.id)} disabled={busy} className={`${SMALL_BTN} hover:border-accent hover:text-accent`}>Allow control</button>
+      )}
+    </div>
   )
 }
 
@@ -684,65 +508,42 @@ function CodeView({
   const viaRelay = Boolean(remote?.link)
   const url = viaRelay ? remote!.app : address?.url ?? ''
   const link = viaRelay ? remote!.link! : pairLink(url, code)
-  const [copied, setCopied] = useState(false)
   const qr = useMemo(() => qrPath(encodeQR(link)), [link])
   const mm = Math.floor(secondsLeft / 60)
   const ss = String(secondsLeft % 60).padStart(2, '0')
   return (
-    <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
+    <div data-testid="pair-code" className="flex flex-wrap items-center gap-x-6 gap-y-3">
       {/* Black on white whatever the theme: a phone camera reads a dark code
         * on a light ground, and an inverted one fails on many of them. */}
       <svg
         viewBox={qr.viewBox}
         role="img"
         aria-label={`QR code that opens ${url} and pairs with code ${code}`}
-        className="h-auto w-full max-w-[280px] shrink-0 rounded-md bg-white p-2"
+        className="h-auto w-full max-w-[240px] shrink-0 rounded-md bg-white p-2"
         shapeRendering="crispEdges"
       >
         <path d={qr.d} fill="#000" />
       </svg>
-      <div className="grid min-w-0 flex-1 basis-[220px] gap-3">
-        <div>
-          <div className="text-[15px] text-fg">Point your phone&apos;s camera at the code.</div>
-          <div className="mt-0.5 text-[12px] text-fg-muted">Tap the link it shows. The phone pairs by itself.</div>
+      <div className="grid min-w-0 flex-1 basis-[220px] gap-2">
+        <div className="text-[15px] leading-snug text-fg">
+          Scan with your phone&apos;s camera. <span className="whitespace-nowrap tabular-nums">Works once, {mm}:{ss} left.</span>
         </div>
-        <div data-testid="pair-reach" className="text-[13px] leading-snug text-fg">
-          {viaRelay
-            ? <>Anywhere — Wi-Fi or mobile data, nothing to install. Encrypted end to end; the relay cannot read it.</>
-            : address?.kind === 'lan'
-              ? <>Only on this Wi-Fi: the phone has to be on the same network as {thisMachine()}.</>
-              : <>Anywhere, as long as Tailscale is on, on both your phone and {thisMachine()}.</>}
-        </div>
-        {viaRelay ? (
-          <div className="grid gap-1 text-[12px] text-fg-muted">
-            {/* A home-screen app on iOS keeps its own storage and the camera
-              * opens links in Safari, so the link is offered to paste there. */}
-            <div>Added Caprock to the phone&apos;s home screen? Copy the link and paste it there.</div>
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard?.writeText(link).then(() => {
-                  setCopied(true)
-                  setTimeout(() => setCopied(false), 2000)
-                })
-              }}
-              className="w-fit rounded-md border border-border px-2.5 py-1 text-[12px] text-fg hover:border-accent"
-            >
-              {copied ? 'Copied ✓' : 'Copy link'}
-            </button>
-          </div>
-        ) : (
-          <div className="grid gap-1">
-            <div className="text-[12px] text-fg-muted">
-              No camera? Open <span className="mono text-fg select-all break-all">{url}</span> on the phone and type
+        {!viaRelay && (
+          // A build without the relay: the address and the digits to type,
+          // and that it works on this Wi-Fi only.
+          <div data-testid="pair-reach" className="grid gap-1 text-[12px] text-fg-muted">
+            <div>
+              {address?.kind === 'lan'
+                ? <>Only on this Wi-Fi: the phone has to be on the same network as {thisMachine()}.</>
+                : <>Anywhere, as long as Tailscale is on, on both your phone and {thisMachine()}.</>}
+              {' '}No camera? Open <span className="mono text-fg select-all break-all">{url}</span> on the phone and type
             </div>
             <div className="mono text-[40px] leading-none tracking-[0.18em] text-accent select-all" aria-label={`pairing code ${code.split('').join(' ')}`}>
               {code.slice(0, 3)}&thinsp;{code.slice(3)}
             </div>
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-fg-muted">
-          <span className="num">Works once · {mm}:{ss} left</span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
           <button onClick={onNew} disabled={busy} className="text-accent hover:underline disabled:opacity-50">New code</button>
           <button onClick={onCancel} disabled={busy} className="text-fg-faint hover:text-danger disabled:opacity-50">Cancel</button>
         </div>
@@ -751,11 +552,111 @@ function CodeView({
   )
 }
 
-/** How a device reaches the machine, in a few words, from how it last did. */
-const VIA_LABEL: Record<NonNullable<PairedDevice['via']>, string> = {
-  relay: 'anywhere',
-  tailscale: 'anywhere with Tailscale',
-  lan: 'Wi-Fi link',
+/**
+ * Everything that is true and useful but not needed to connect a phone,
+ * folded: what happens, why any network works, the home-screen link, the way
+ * back for a phone already connected, and the off switch. Its lines are
+ * `data-keep`/divs, so Settings' explanations switch does not hide them
+ * inside a disclosure the reader opened on purpose.
+ */
+function HowItWorks({
+  link,
+  remote,
+  busy,
+  onRemoteOff,
+  openAgain,
+  wifi,
+}: {
+  /** The pairing link while a code is on screen through the relay. */
+  link: string
+  remote?: RemoteState
+  busy: boolean
+  onRemoteOff: () => void
+  openAgain?: OpenAgainProps
+  wifi?: { url: string; onOff: () => void }
+}) {
+  const [copied, setCopied] = useState(false)
+  const [again, setAgain] = useState(false)
+  const host = remote?.app ? phonePage(remote.app).host : 'the phone page'
+  return (
+    <details data-testid="phone-how" className="group border-t border-border pt-3 text-[13px]">
+      <summary className="w-fit cursor-pointer select-none text-fg-muted hover:text-fg">How it works</summary>
+      <div className="mt-3 grid gap-3 leading-snug text-fg-muted">
+        <ol className="grid gap-1 text-fg">
+          <li>1. Press <b className="font-medium">Connect a phone</b> and point the phone&apos;s camera at the code.</li>
+          <li>2. Tap the link it shows. The phone opens {host} and connects by itself.</li>
+          <li>3. Optional: keep it as an app. On an iPhone, Share → Add to Home Screen; on Android, ⋮ → Install app.</li>
+        </ol>
+        {remote && (
+          <div data-testid="pair-reach">
+            It works on Wi-Fi or mobile data, with nothing to install. What passes between the phone and {thisMachine()} is encrypted end to end;
+            the relay in between forwards it without being able to read it. Only devices you connect here get in, and each can be removed with one click.
+          </div>
+        )}
+        {link && (
+          // A home-screen app on iOS keeps its own storage and the camera
+          // opens links in Safari, so the link is offered to paste there.
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>Added Caprock to the iPhone home screen before connecting? Copy the link and paste it there.</span>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(link).then(() => {
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                })
+              }}
+              className={`${SMALL_BTN} text-fg hover:border-accent`}
+            >
+              {copied ? 'Copied ✓' : 'Copy link'}
+            </button>
+          </div>
+        )}
+        {openAgain && (
+          <div className="grid gap-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span>Closed the page on a phone you already connected? Just open {host} on it again.</span>
+              <button onClick={() => setAgain((v) => !v)} aria-expanded={again} className="font-medium text-accent hover:underline">
+                {again ? 'Hide' : 'Show the address as a code'}
+              </button>
+            </div>
+            {again && <OpenAgain {...openAgain} name="" busy={busy} />}
+          </div>
+        )}
+        {remote?.enabled && <RelayState remote={remote} busy={busy} onOff={onRemoteOff} />}
+        {/* The Wi-Fi listener is not offered here any more; when it is on
+          * (`caprock up --lan`, or switched on before), say so and offer off. */}
+        {wifi && (
+          <div data-testid="wifi-listener" className="flex flex-wrap items-center gap-x-3">
+            <span className="min-w-0">
+              Also open on this Wi-Fi at <span className="mono break-all">{wifi.url}</span> — that link works only on the same network.
+            </span>
+            <button onClick={wifi.onOff} disabled={busy} className="text-fg-faint underline hover:text-danger disabled:opacity-50">Turn off</button>
+          </div>
+        )}
+      </div>
+    </details>
+  )
+}
+
+/** Whether access from anywhere is up, and its off switch, inside How it works. */
+function RelayState({ remote, busy, onOff }: { remote: RemoteState; busy: boolean; onOff: () => void }) {
+  const st = remote.status === 'online'
+    ? { dot: 'bg-ok', text: 'Access from anywhere is on.' }
+    : remote.status === 'connecting'
+      ? { dot: 'bg-warn animate-pulse', text: 'Access from anywhere is connecting…' }
+      : { dot: 'bg-danger', text: remote.error ? `Access from anywhere is offline: ${remote.error}` : 'Access from anywhere is offline, retrying.' }
+  return (
+    <div data-testid="relay-state" className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-fg">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${st.dot}`} aria-hidden />
+        <span className="min-w-0 break-words">{st.text}</span>
+      </span>
+      <button onClick={onOff} disabled={busy} className="text-[12px] text-fg-faint underline hover:text-danger disabled:opacity-50">
+        Turn off
+      </button>
+    </div>
+  )
 }
 
 interface OpenAgainProps {
@@ -768,124 +669,156 @@ interface OpenAgainProps {
   onTurnOn: () => void
 }
 
+/** "Can control" / "View only" / a computer's state: one word or two, plain. */
+function capability(d: PairedDevice): { word: string; cls: string } {
+  if (d.kind === 'machine') return d.pending ? { word: 'Computer · waiting for Allow', cls: 'text-warn' } : { word: 'Computer · controls this one', cls: 'text-accent' }
+  return d.role === 'controller' ? { word: 'Can control', cls: 'text-accent' } : { word: 'View only', cls: 'text-fg-muted' }
+}
+
+/** How a device reaches the machine, for the row's tooltip. */
+const VIA_LABEL: Record<NonNullable<PairedDevice['via']>, string> = {
+  relay: 'from anywhere',
+  tailscale: 'over Tailscale',
+  lan: 'on the home Wi-Fi only',
+}
+
 function Devices({
   devices,
   now,
+  busy,
   onRemove,
   onRole,
   onRepair,
-  openAgain,
-  busy,
 }: {
   devices: PairedDevice[]
   now: number
-  onRemove: (id: string) => void
-  onRole: (id: string, role: PairedDevice['role']) => void
-  /** Shows the code a Wi-Fi-linked phone re-pairs with; absent without the relay. */
-  onRepair?: () => void
-  /** The way back to the phone's page for a paired device; absent without the relay. */
-  openAgain?: OpenAgainProps
   busy: boolean
+  onRemove: (ids: string[]) => void
+  onRole: (id: string, role: PairedDevice['role']) => void
+  /** Shows the code a Wi-Fi-linked phone reconnects with; absent without the relay. */
+  onRepair?: () => void
 }) {
-  const [expanded, setExpanded] = useState('')
+  const [showOld, setShowOld] = useState(false)
+  const [confirmOld, setConfirmOld] = useState(false)
   if (devices.length === 0) return null
+  const byRecent = [...devices].sort((a, b) => (b.last_seen || b.paired_at || 0) - (a.last_seen || a.paired_at || 0))
+  const current = byRecent.filter((d) => !isOldDevice(d, now))
+  const old = byRecent.filter((d) => isOldDevice(d, now))
+  const row = (d: PairedDevice) => (
+    <DeviceRow key={d.id} d={d} all={devices} now={now} busy={busy} onRemove={() => onRemove([d.id])} onRole={(r) => onRole(d.id, r)} onRepair={onRepair} />
+  )
+  const n = old.length
   return (
     <div className="grid gap-1.5">
-      <div className="text-[12px] text-fg-muted">Paired devices</div>
-      <ul className="grid gap-1.5">
-        {devices.map((d) => {
-          const repair = Boolean(onRepair) && needsRepair(d, devices)
-          return (
-            <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-border px-3 py-2">
-              <span className="min-w-0 flex-1 basis-40">
-                {/* Two phones of one model share a name, so each row also says
-                  * when it was paired and the start of its id — enough to tell
-                  * which one to take control away from. */}
-                <span className="flex min-w-0 items-baseline gap-1.5">
-                  <span className="min-w-0 truncate text-fg" title={d.name}>{d.name}</span>
-                  {/* Outside the truncation: on a narrow row the name gives way,
-                    * never the part that tells two of them apart. */}
-                  <span className="mono shrink-0 text-[11px] text-fg-faint" title={`device id ${d.id}`}>#{d.id.slice(0, 4)}</span>
-                </span>
-                <span className="block text-[11px] text-fg-faint">
-                  {/* Another computer's Caprock (ADR-067): Allow is the card
-                    * it asks with, and Remove ends it. */}
-                  {d.kind === 'machine'
-                    ? (d.pending
-                      ? <span data-testid="device-computer" className="text-warn">a computer, waiting for Allow</span>
-                      : <span data-testid="device-computer" className="text-accent">a computer that controls this one</span>)
-                    : d.role === 'controller' ? <span className="text-accent">can control sessions</span> : 'view only'}
-                  {d.via && (
-                    <>
-                      {' · '}
-                      <span data-testid="device-via" className={d.via === 'lan' ? 'text-warn' : undefined}>{VIA_LABEL[d.via]}</span>
-                    </>
-                  )}
-                  {d.app && <>{' · '}<span data-testid="device-app">app installed</span></>}
-                  {' · '}
-                  {d.last_seen ? `last seen ${fmtAgo(d.last_seen, now)}` : 'not seen yet'}
-                  {d.paired_at ? ` · paired ${fmtWhen(d.paired_at, now)}` : ''}
-                </span>
-                {/* The owner's phone, 2026-10-14: paired on the Wi-Fi address,
-                  * dead on mobile data, and nothing said why. One quiet line. */}
-                {repair && (
-                  <span data-testid="device-repair" className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-fg-muted">
-                    <span>Works on this Wi-Fi only. Pair it once more to use it anywhere:</span>
-                    <button onClick={onRepair} disabled={busy} className="font-medium text-accent hover:underline disabled:opacity-50">
-                      Show the code
-                    </button>
-                  </span>
-                )}
-                {openAgain && !repair && d.kind !== 'machine' && offersOpenAgain(d) && (
-                  <span data-testid="device-open-again" className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-fg-muted">
-                    <span>
-                      Already paired — just open <b className="mono font-medium text-fg select-all">{phonePage(openAgain.app).host}</b> on that phone.
-                    </span>
-                    <button
-                      onClick={() => setExpanded((x) => (x === d.id ? '' : d.id))}
-                      aria-expanded={expanded === d.id}
-                      className="font-medium text-accent hover:underline"
-                    >
-                      {expanded === d.id ? 'Hide' : 'Open on the phone again'}
-                    </button>
-                  </span>
-                )}
+      <div className="text-[12px] text-fg-muted">Your devices</div>
+      {current.length > 0 && <ul className="grid gap-1.5">{current.map(row)}</ul>}
+      {n > 0 && (
+        <div data-testid="old-devices" className="grid gap-1.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+            <button onClick={() => setShowOld((v) => !v)} aria-expanded={showOld} className="flex items-center gap-1.5 text-fg-muted hover:text-fg">
+              <span aria-hidden className={`text-[11px] transition-transform ${showOld ? 'rotate-90' : ''}`}>›</span>
+              {n} old device{n === 1 ? '' : 's'} · not seen for 30+ days
+            </button>
+            {confirmOld ? (
+              <span data-testid="old-confirm" className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="text-fg">Remove {n === 1 ? 'it' : `all ${n}`}? {n === 1 ? 'It stops' : 'They stop'} working at once.</span>
+                <button onClick={() => { setConfirmOld(false); onRemove(old.map((d) => d.id)) }} disabled={busy} className={`${SMALL_BTN} border-danger text-danger hover:bg-danger/10`}>
+                  Remove {n}
+                </button>
+                <button onClick={() => setConfirmOld(false)} className="text-[12px] text-fg-faint hover:text-fg">Keep</button>
               </span>
-              {d.kind === 'machine' ? null : d.role === 'controller' ? (
-                <button
-                  onClick={() => onRole(d.id, 'viewer')}
-                  title="It goes back to view only on its next request, and an open terminal stops taking keys"
-                  className="shrink-0 rounded-sm border border-border px-2 py-1 text-[12px] text-fg-muted hover:border-danger hover:text-danger"
-                >
-                  Take control away
-                </button>
-              ) : (
-                <button
-                  onClick={() => onRole(d.id, 'controller')}
-                  title="It can start sessions in your projects, type into them, answer approvals and stop them. Settings and pairing stay on this machine."
-                  className="shrink-0 rounded-sm border border-border px-2 py-1 text-[12px] text-fg-muted hover:border-accent hover:text-accent"
-                >
-                  Let it control sessions
-                </button>
-              )}
-              <button
-                onClick={() => onRemove(d.id)}
-                title="It stops working on its next request"
-                className="shrink-0 rounded-sm border border-border px-2 py-1 text-[12px] text-fg-muted hover:border-danger hover:text-danger"
-              >
-                Remove
+            ) : (
+              <button onClick={() => { setConfirmOld(true); setShowOld(true) }} disabled={busy} className="text-[12px] text-fg-faint underline hover:text-danger disabled:opacity-50">
+                Remove all
               </button>
-              {openAgain && expanded === d.id && d.kind !== 'machine' && offersOpenAgain(d) && <OpenAgain {...openAgain} name={d.name} busy={busy} />}
-            </li>
-          )
-        })}
-      </ul>
+            )}
+          </div>
+          {showOld && <ul className="grid gap-1.5">{old.map(row)}</ul>}
+        </div>
+      )}
     </div>
   )
 }
 
+function DeviceRow({
+  d,
+  all,
+  now,
+  busy,
+  onRemove,
+  onRole,
+  onRepair,
+}: {
+  d: PairedDevice
+  all: PairedDevice[]
+  now: number
+  busy: boolean
+  onRemove: () => void
+  onRole: (role: PairedDevice['role']) => void
+  onRepair?: () => void
+}) {
+  const cap = capability(d)
+  const repair = Boolean(onRepair) && needsRepair(d, all)
+  // Two phones of one model share a name: only then does the row show the
+  // start of its id, enough to tell which one to take control away from.
+  const twin = all.some((o) => o.id !== d.id && o.name === d.name)
+  const detail = [
+    d.paired_at ? `Connected ${fmtWhen(d.paired_at, now)}` : '',
+    d.via ? `reaches this computer ${VIA_LABEL[d.via]}` : '',
+    d.app ? 'app installed' : '',
+    `device ${d.id}`,
+  ].filter(Boolean).join(' · ')
+  return (
+    <li data-testid="device-row" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-border px-3 py-2">
+      <span className="min-w-0 flex-1 basis-44">
+        <span className="flex min-w-0 items-baseline gap-1.5" title={detail}>
+          <span className="min-w-0 truncate text-[14px] text-fg">{d.name}</span>
+          {twin && <span className="mono shrink-0 text-[11px] text-fg-faint">#{d.id.slice(0, 4)}</span>}
+        </span>
+        <span className="block text-[12px] text-fg-faint">
+          <span data-testid="device-can" className={cap.cls}>{cap.word}</span>
+          {' · '}
+          {d.last_seen ? `seen ${seenAgo(d.last_seen, now)}` : 'not opened yet'}
+        </span>
+        {/* The owner's phone, 2026-10-14: paired on the Wi-Fi address, dead
+          * on mobile data, and nothing said why. One quiet line. */}
+        {repair && (
+          <span data-testid="device-repair" className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[12px] text-warn">
+            <span>Works on your home Wi-Fi only.</span>
+            <button onClick={onRepair} disabled={busy} className="font-medium text-accent hover:underline disabled:opacity-50">Reconnect</button>
+          </span>
+        )}
+      </span>
+      <span className="flex shrink-0 items-center gap-1.5">
+        {d.kind === 'machine' ? null : d.role === 'controller' ? (
+          <button
+            onClick={() => onRole('viewer')}
+            disabled={busy}
+            title="It goes back to view only on its next request, and an open terminal stops taking keys"
+            className={`${SMALL_BTN} hover:border-danger hover:text-danger`}
+          >
+            Take control away
+          </button>
+        ) : (
+          <button
+            onClick={() => onRole('controller')}
+            disabled={busy}
+            title="It can start sessions in your projects, type into them, answer approvals and stop them. Settings and pairing stay on this computer."
+            className={`${SMALL_BTN} hover:border-accent hover:text-accent`}
+          >
+            Allow control
+          </button>
+        )}
+        <button onClick={onRemove} disabled={busy} title="It stops working on its next request" className={`${SMALL_BTN} hover:border-danger hover:text-danger`}>
+          Remove
+        </button>
+      </span>
+    </li>
+  )
+}
+
 /**
- * "Open on the phone again", under a paired device: the plain address, a QR
+ * "Closed the page on a phone you already connected?", inside How it works: the plain address, a QR
  * of that address alone, and the link sent to Telegram when a bot is set up.
  * Vova, 2026-10-15: a paired phone, a closed tab, and no way back but
  * removing it and pairing again.

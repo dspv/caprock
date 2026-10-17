@@ -1396,23 +1396,25 @@ install from an app store. It reaches this computer through an encrypted
 relay that passes bytes it cannot read
 ([how it works](../README.md#from-anywhere-through-an-encrypted-relay)).
 
-1. **Choose what the phone may do.** In the app, click **phone** beside
-   *Settings* in the sidebar (or open Settings → *Use on your phone*).
-   **This phone can type and start agents** is ticked by default, and
-   remembered on this computer: the phone can then start agents, type into
-   sessions, approve and stop them as soon as it pairs, with nothing more to
-   click here. Untick it for a phone that should only look.
-2. **Show a code and scan it.** Press **Show a code**. The line under the
-   button says what that press does: it turns on access from anywhere for
-   this computer, and keeps it on until you press **Turn off** beside it.
-   Point the phone's camera at the code and tap the link: Caprock opens and
-   pairs by itself. **Copy link** under the code is for a phone that cannot
-   scan.
-3. **Check the list.** While the code is up, and after, the panel shows
-   what is done and what is left, live: *Access from anywhere* — on;
-   *Phone paired* — waiting, then the phone's name; *Can type from the
-   phone* — yes, or *view only* with **Let it control sessions** beside it;
-   *App installed on the phone* — yes, or optional. The phone opens on a
+1. **Open it.** In the app, click **phone** beside *Settings* in the
+   sidebar (or open Settings → *Use on your phone*). The first line answers
+   whether a phone is connected: *iPhone · Safari is connected and can
+   control sessions · seen 2 min ago*, or *No phone connected yet.* When
+   something is in the way it says so there, with the one button that fixes
+   it.
+2. **Connect a phone.** Press **Connect a phone**. The tick under it, *It
+   can control sessions*, is on by default and remembered on this computer:
+   the phone can then start agents, type into sessions, approve and stop
+   them as soon as it connects. Untick it for a phone that should only look.
+   With access from anywhere off, a line under the button says the press
+   turns it on for this computer and keeps it on (the off switch is under
+   **How it works**). A QR code appears with one line: *Scan with your
+   phone's camera. Works once, 4:43 left.* Point the phone's camera at it
+   and tap the link: Caprock opens and connects by itself. **New code** and
+   **Cancel** sit under it.
+3. **Check the first line.** It turns from *Waiting for your phone to scan
+   the code…* to the phone's name and what it can do; a phone that can only
+   view gets **Allow control** beside it. The phone opens on a
    short **Ready** card: connected to this computer, whether it can type
    (and, if not, where on the computer to fix it — the card notices by
    itself), the install button, and **Open sessions**. The card comes back
@@ -1424,7 +1426,8 @@ relay that passes bytes it cannot read
    later, the page says *Caprock is on your home screen* instead. A new
    version of the page updates the installed app in place. On an iPhone, in
    Safari: **Share** → **Add to Home Screen**; the home-screen app keeps
-   its own storage there, so paste the copied link into it once. On
+   its own storage there, so paste the link into it once (**Copy link** is
+   under **How it works** while the code is up). On
    Android the app and Chrome share the pairing.
 
 **When the phone cannot reach the computer**, it never just says
@@ -1441,8 +1444,8 @@ once when the phone comes back to the page or onto a network):
 - **Connected to the relay — your computer isn't answering**: the relay
   reached it but it did not reply, the usual sign of a computer that went to
   sleep.
-- **Paired device removed: pair again**: it was removed in *Paired
-  devices*. Show a new code and scan it.
+- **Paired device removed: pair again**: it was removed in *Your
+  devices*. Connect it again with a new code.
 
 **Details**, folded under each of these, lists the last error with the
 relay's code, when it happened, the last try and the last time the phone
@@ -1450,8 +1453,8 @@ was connected: worth a screenshot when asking for help.
 
 **Getting back to a paired phone.** Closed the tab, and do not remember the
 address? Open **m.caprock.dev** on the same phone, in the same browser: it
-is still paired and connects by itself. Settings → Use on your phone says so
-beside each paired phone, and **Open on the phone again** shows a QR code of
+is still paired and connects by itself. Settings → Use on your phone → **How
+it works** says so, and **Show the address as a code** shows a QR code of
 the address (the address only, which pairs nothing) — and, with a Telegram
 bot set up, **Send the link to my phone** sends it to your Telegram chat
 through your own bot. To keep it one tap away: Share → **Add to Home
@@ -1472,15 +1475,18 @@ was wrong.
 a copied link. Opening a pairing link whose code was already used (the
 camera, then the app) goes straight back to the pairing that worked.
 
-The phone appears under *Paired devices*, which says how each device reaches
-this computer: *anywhere*, or *Wi-Fi link*. A *Wi-Fi link* is a phone paired
-on this computer's home-network address before access from anywhere was the
-one way; it works on that Wi-Fi only. Its row says so in one line and offers
-**Show the code**: scan it with that phone and it pairs once more, through the
-relay. The phone says the same on its own screen while it is on that link:
+The phone appears under *Your devices*, one row each: its name, *Can
+control* or *View only*, when it was last seen, and two small buttons
+(**Allow control** or **Take control away**, and **Remove**). Hover the name
+for when it was connected and how it reaches this computer. Devices not seen
+for 30 days fold into *N old devices · not seen for 30+ days*, with **Remove
+all**, which asks once. A phone paired on this computer's home-network
+address before access from anywhere was the one way works on that Wi-Fi
+only; its row says *Works on your home Wi-Fi only* with **Reconnect**: scan
+that code with the phone and it pairs once more, through the relay. The phone says the same on its own screen while it is on that link:
 *This is the old Wi-Fi link: it works only on your home Wi-Fi. Use the
 Caprock app from m.caprock.dev instead: in the Caprock app on your computer,
-Settings → Use on your phone → Show a code, and scan it. Then remove this one
+Settings → Use on your phone → Connect a phone, and scan it. Then remove this one
 from your home screen.* It no longer offers to put the Wi-Fi link on the home
 screen, so a phone does not end up with two icons named Caprock.
 
@@ -1488,11 +1494,12 @@ screen, so a phone does not end up with two icons named Caprock.
 machine that cannot reach the relay, from a terminal only: `caprock up --lan`
 listens on the private Wi-Fi address (and Tailscale's, when it is up), and
 `caprock pair`, with access from anywhere off, draws a QR for it. While that
-listener is on, Settings shows its address with a **Turn off**. See
+listener is on, Settings shows its address with a **Turn off** under **How
+it works**. See
 [Without internet](../README.md#without-internet-on-the-same-network-advanced).
 
 A phone paired with the box unticked can look but not change anything
-until you press **Let it control sessions** beside it; **Take control
+until you press **Allow control** beside it; **Take control
 away** undoes either at once, and holds on the phone's next keystroke. The rest of what pairing allows, and
 why, is in [Open it on your phone](../README.md#open-it-on-your-phone).
 
