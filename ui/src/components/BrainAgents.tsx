@@ -1,7 +1,7 @@
 /**
  * Second Brain's hero (ADR-063): the agents this user actually runs, drawn
  * as the app's own characters (components/Characters — the duck or whichever
- * face Claude wears, Codex's terminal block, Gemini's spark, OpenCode's
+ * face Claude wears, Codex's Blossom on its tile, Gemini's spark, OpenCode's
  * braces, DeepSeek's whale), around the brain made of a graph (BrainMark),
  * each linked to it by a line along which a pulse travels into the brain.
  * One picture for "all your agents feed one memory, and it is yours" (owner,
