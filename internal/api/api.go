@@ -200,6 +200,9 @@ type Deps struct {
 	// Editors opens a folder or a file in the user's own editor (F18). nil ⇒
 	// the editor endpoints return 501.
 	Editors EditorController
+	// Browsers lists the web browsers installed here and opens a link in
+	// one (the terminal link chooser). nil ⇒ the browser endpoints return 501.
+	Browsers BrowserController
 	// Projects is the projects list, its git state and clones (nil ⇒ the
 	// /v1/projects endpoints return 501).
 	Projects *projects.Service
@@ -606,6 +609,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/terminals", s.handleTerminals)
 	m.HandleFunc("GET /v1/editors", s.handleEditors)
 	m.HandleFunc("POST /v1/editors/open", s.handleOpenEditor)
+	m.HandleFunc("GET /v1/browsers", s.handleBrowsers)
+	m.HandleFunc("POST /v1/browsers/open", s.handleOpenBrowser)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
 	m.HandleFunc("GET /v1/stats/trends", s.handleTrends)
 	// The offer survey: forwards one answer to caprock.dev on a click (offer.go, ADR-062).

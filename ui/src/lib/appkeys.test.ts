@@ -233,7 +233,8 @@ describe('zoom keys', () => {
 // changes, or it is an epic fail"). For each single-key chord in SHORTCUTS,
 // the macOS chord and the text `keys()` shows off macOS must reach the same
 // command.
-import { SHORTCUTS } from './appkeys'
+import { LINK_CHOOSE_CLICK, LINK_OPEN_CLICK, SHORTCUTS } from './appkeys'
+import { choosesBrowser, opensLink } from './termlinks'
 
 describe('every listed shortcut, on every OS', () => {
   const chords = SHORTCUTS.flatMap(([k]) => k.split(', ')).filter((c) => /^[⇧⌘⌥⌃]+[A-Z0-9,\\.\-=+[\]↑↓←→]$/.test(c) && c.includes('⌘'))
@@ -332,6 +333,31 @@ describe('every listed shortcut, on every OS', () => {
     expect(matchAppShortcut(event('KeyW', 'W', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'detach-tab' })
     // Ctrl+Alt+T without Shift (GNOME's terminal) is never ours.
     expect(matchAppShortcut(event('KeyT', 't', { ctrlKey: true, altKey: true }), false)).toBeNull()
+  })
+
+  // The two clicks on a terminal link (owner, 2026-10-17). Each row is
+  // pressed as macOS and as Windows and Linux spell it, and reaches the same
+  // action there: open in the default browser, or the browser chooser.
+  it('makes ⌘-click open a link and ⇧⌘-click choose a browser, Ctrl+click and Ctrl+Shift+click off macOS', () => {
+    expect(SHORTCUTS.find(([k]) => k === LINK_OPEN_CLICK)?.[1]).toMatch(/default browser/)
+    expect(SHORTCUTS.find(([k]) => k === LINK_CHOOSE_CLICK)?.[1]).toMatch(/choose the browser/)
+    expect(keys(LINK_OPEN_CLICK, false)).toBe('Ctrl+click')
+    expect(keys(LINK_CHOOSE_CLICK, false)).toBe('Ctrl+Shift+click')
+    const clickOf = (spelled: string, isMac: boolean) => {
+      const mods = spelled.replace(/-?click$/, '')
+      return isMac
+        ? { metaKey: mods.includes('⌘'), shiftKey: mods.includes('⇧'), altKey: mods.includes('⌥'), ctrlKey: mods.includes('⌃') }
+        : { ctrlKey: mods.includes('Ctrl'), shiftKey: mods.includes('Shift'), altKey: mods.includes('Alt'), metaKey: false }
+    }
+    for (const isMac of [true, false]) {
+      const open = clickOf(keys(LINK_OPEN_CLICK, isMac), isMac)
+      const pick = clickOf(keys(LINK_CHOOSE_CLICK, isMac), isMac)
+      expect(opensLink(open, isMac) && !choosesBrowser(open, isMac), `${keys(LINK_OPEN_CLICK, isMac)} opens`).toBe(true)
+      expect(choosesBrowser(pick, isMac), `${keys(LINK_CHOOSE_CLICK, isMac)} chooses`).toBe(true)
+    }
+    // No click is a key chord: no keyboard shortcut reads the same.
+    const keyed = new Set(SHORTCUTS.flatMap(([k]) => k.split(', ')).filter((c) => !c.endsWith('-click')).map((c) => keys(c, false)))
+    expect(keyed.has('Ctrl+click') || keyed.has('Ctrl+Shift+click')).toBe(false)
   })
 
   // Rule 12: no two rows of the list may read the same off macOS.

@@ -1825,6 +1825,8 @@ POST   /v1/brain/backfill            {days?, dry_run?} → BrainEstimate; 409 wh
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
 POST   /v1/editors/open              {path, line?, editor?} → {editor: {id, name}}; this machine only
+GET    /v1/browsers                  → {browsers: [{id, name, default}]}; web browsers installed here, the default first; this machine only
+POST   /v1/browsers/open             {browser, url} → {browser: {id, name, default}}; an http(s) url in that browser; this machine only
 POST   /v1/sessions/{id}/open-terminal {terminal?, mode?: resume|move|fork} → {terminal: {id, name}, mode, command}
 PUT    /v1/sessions/{id}/name        {name} → {session_id, name}; "" clears it; 400 without name, 404 for an unknown session (§ Session name DDL)
 POST   /v1/sessions/remove           {ids?: [id], cwd_prefix?, dry_run?} → {dry_run, sessions: [RemovalCandidate], skipped: [RemovalCandidate + reason], cost_usd, unmatched_usd}
@@ -2763,6 +2765,33 @@ relayed), in the handler, whatever a device's role — an editor opens on this
 screen, not the phone's — and neither is on a device allowlist.
 `GET`/`PUT /v1/settings` carry **`editor`**: an id from `editor.IDs()` or
 `""` (the first installed), else 400; stored as `editor` in `config.json`.
+
+**Open a link in a browser** (the terminal link chooser, `internal/browser`,
+`internal/api/browser.go`). `GET /v1/browsers` lists the web browsers
+installed here, found once per daemon run from what the OS says handles web
+links, the default first and the rest by name: on macOS every app
+LaunchServices names for an https URL (`LSCopyApplicationURLsForURL`, the
+default from `LSCopyDefaultApplicationURLForURL`, through purego), kept only
+inside an Applications folder and not inside another bundle, `id` the
+bundle's path; on Windows the registry's `Clients\StartMenuInternet` keys
+(HKCU, then HKLM, each also under `WOW6432Node`) with a `shell\open\command`
+whose executable exists, `id` the key's name, the default the one whose
+`Capabilities\URLAssociations\https` ProgId is the https `UserChoice`; on
+Linux the desktop entries in the XDG data dirs (plus Flatpak's and Snap's
+exports) whose `MimeType` names `x-scheme-handler/http` or `https`, shown and
+with their `TryExec` installed, `id` the desktop file id, the default from
+`mimeapps.list` (the desktop-specific one first, then the config and data
+dirs, then `defaults.list`). Every app registered for https is listed, as
+the OS's own default-browser setting lists it. `POST /v1/browsers/open`
+`{browser, url}` opens an `http` or `https` `url` (a host, no spaces or
+control characters, at most 8 KiB) in that browser and answers `{browser}`;
+a bad URL or an unknown browser is `400`, a launch that fails `502`. Each
+launch is an argv, never a shell string, and the URL is its own last word:
+macOS `open -a <bundle> <url>`, Windows the client's executable with the URL,
+Linux the entry's `Exec` with `%u` (`%U`, `%f`, `%F`) replaced by the URL
+and the other field codes dropped. Both endpoints answer `403` to anything
+but a request from this machine (`isLocal`), in the handler, and neither is
+on a device allowlist.
 
 `GET`/`PUT /v1/settings` carry **`spawn_permission_mode`**: the permission mode
 new sessions start in, one of `agents.PermissionModes` (`acceptEdits`, `auto`,

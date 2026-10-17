@@ -1839,6 +1839,18 @@ replies to a running session: Continue, Shorter and the like"). Built in
   Shell 2 is running npm. Stop them and close?* — with **Stop and close**,
   **Keep them running, close tabs** and **Cancel**. Its agents are never
   stopped. The project's ⋯ menu *Close tabs* still only closes tabs.
+- **Links in a terminal** (`ui/src/lib/termlinks.ts`, .ai/04-ui.md § Session
+  Detail). ⌘-click (Ctrl+click off macOS) opens a link in the default
+  browser, through the shell's `open_external`. ⇧⌘-click (Ctrl+Shift+click)
+  on an http(s) link opens a chooser at the pointer: the browsers installed
+  here, the default first and marked, then *Copy link* (owner, 2026-10-17).
+  The daemon finds them (`internal/browser`, `GET /v1/browsers`: LaunchServices
+  on macOS, the registry's StartMenuInternet on Windows, `.desktop` entries
+  for `x-scheme-handler/http(s)` on Linux) and opens a picked one
+  (`POST /v1/browsers/open`), a process Caprock starts (rule 7). The in-app
+  browser stays withdrawn (ADR-070); the chooser's rows are entry kinds
+  (`lib/linkchooser.ts`), so *Open in Caprock* is one more the day it comes
+  back.
 
 ## File tabs
 

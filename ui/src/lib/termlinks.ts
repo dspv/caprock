@@ -19,10 +19,17 @@
  * app's terminal does, and the workspace opens the file in a file tab if it
  * lies inside a project Caprock knows (lib/mdreader). It never leaves the
  * machine.
+ *
+ * An http(s) link also takes **⇧⌘-click** (Ctrl+Shift+click elsewhere;
+ * `LINK_CHOOSE_CLICK`, lib/appkeys.ts): a small chooser at the pointer lists
+ * the browsers installed here, the default first, and *Copy link*
+ * (components/LinkChooser.tsx, owner, 2026-10-17). A mailto link or a path
+ * has no chooser: the chord opens it as ⌘-click does.
  */
 import type { IBufferRange, IDisposable, ILink, ILinkHandler, Terminal as Xterm } from '@xterm/xterm'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { isMacPlatform, isTauri } from './appmode'
+import { keys, LINK_CHOOSE_CLICK, LINK_OPEN_CLICK } from './appkeys'
 import { shell } from './shell'
 import { mdPathsIn } from './mdreader'
 
@@ -48,9 +55,30 @@ export function opensLink(e: Pick<MouseEvent, 'metaKey' | 'ctrlKey'>, mac: boole
   return mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey
 }
 
-/** The hover hint for the platform. */
-export function linkHint(mac: boolean): string {
-  return mac ? '⌘-click to open' : 'Ctrl+click to open'
+/** Whether a click opens the browser chooser: ⇧⌘ on macOS, Ctrl+Shift elsewhere, no Alt. */
+export function choosesBrowser(e: Pick<MouseEvent, 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey'>, mac: boolean): boolean {
+  return opensLink(e, mac) && e.shiftKey && !e.altKey
+}
+
+/** Whether a URL can go to a browser of the user's choosing: http and https. */
+export function isWebUrl(url: string): boolean {
+  return /^https?:/i.test(url)
+}
+
+/**
+ * The hover hint for the platform, through `keys()`. A web link names both
+ * clicks; a mailto link, only the one that opens it.
+ */
+export function linkHint(mac: boolean, choose = false): string {
+  const open = `${keys(LINK_OPEN_CLICK, mac)} to open`
+  return choose ? `${open} · ${keys(LINK_CHOOSE_CLICK, mac)} to choose a browser` : open
+}
+
+/** The chooser for `url` at the pointer, loaded on first use (components/LinkChooser.tsx). */
+export function chooseBrowser(url: string, at: { x: number; y: number }): void {
+  void import('@/components/LinkChooser')
+    .then((m) => m.showLinkChooser(url, at))
+    .catch(() => openLink(url))
 }
 
 /**
@@ -76,10 +104,17 @@ export function openLink(url: string): void {
  */
 export function attachTerminalLinks(
   term: Xterm,
-  opts: { mac?: boolean; open?: (url: string) => void; onPath?: (path: string) => void } = {},
+  opts: {
+    mac?: boolean
+    open?: (url: string) => void
+    /** The chooser for a ⇧⌘-click on a web link; `chooseBrowser` by default. */
+    choose?: (url: string, at: { x: number; y: number }) => void
+    onPath?: (path: string) => void
+  } = {},
 ): IDisposable {
   const mac = opts.mac ?? isMacPlatform()
   const open = opts.open ?? openLink
+  const choose = opts.choose ?? chooseBrowser
   let tip: HTMLDivElement | null = null
 
   const hide = () => {
@@ -102,7 +137,8 @@ export function attachTerminalLinks(
       'overflow:hidden', 'text-overflow:ellipsis',
     ].join(';')
     // An OSC 8 link can put any text over any address: name the address.
-    el.textContent = says ?? (label !== undefined && label !== url ? `${linkHint(mac)} · ${url}` : linkHint(mac))
+    const hint = linkHint(mac, isWebUrl(url))
+    el.textContent = says ?? (label !== undefined && label !== url ? `${hint} · ${url}` : hint)
     const r = host.getBoundingClientRect()
     el.style.left = `${Math.max(0, e.clientX - r.left + 8)}px`
     el.style.top = `${Math.max(0, e.clientY - r.top + 14)}px`
@@ -115,7 +151,8 @@ export function attachTerminalLinks(
     if (!safe) return
     e.preventDefault()
     hide()
-    open(safe)
+    if (choosesBrowser(e, mac) && isWebUrl(safe)) choose(safe, { x: e.clientX, y: e.clientY })
+    else open(safe)
   }
 
   // OSC 8: `text` is the link's URI. Non-http schemes reach us (mailto) and

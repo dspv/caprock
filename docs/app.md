@@ -846,6 +846,8 @@ On macOS:
 | ⌘J          | Next session waiting on you                                                         |
 | ⇧⌘H         | Add to Second Brain: keep a line of your own                                        |
 | ⌘F          | Find in the terminal or the file                                                    |
+| ⌘-click     | A link in the terminal: open it in your default browser                             |
+| ⇧⌘-click    | A link in the terminal: choose the browser to open it in, or copy it                |
 | ⌘K          | Command palette                                                                     |
 | ⌘,          | Settings                                                                            |
 | ⇧⌘F         | Send feedback                                                                       |
@@ -865,7 +867,8 @@ On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 Ctrl+Alt+Shift+W and the theme Ctrl+Alt+Shift+T, since Ctrl+Shift+F, W and T
 are Find, Close and New shell; the Dashboard is Ctrl+Shift+D, never Ctrl+D,
 which stays the shell's end of input; tabs are
-Ctrl+Shift+1–9; Add to Second Brain is Ctrl+Shift+H). The arrow
+Ctrl+Shift+1–9; Add to Second Brain is Ctrl+Shift+H; a link opens on
+Ctrl+click and its browser chooser on Ctrl+Shift+click). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;

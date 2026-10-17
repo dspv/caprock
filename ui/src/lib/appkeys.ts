@@ -24,6 +24,22 @@ export const PIPELINE_KEY = '⌘P'
 export const WORK_KEY = '⇧⌘W'
 export const THEME_KEY = '⇧⌘T'
 
+/**
+ * The two clicks on a link in a terminal (lib/termlinks.ts), in macOS
+ * spelling; `keys()` writes them Ctrl+click and Ctrl+Shift+click off macOS.
+ * ⌘-click opens the default browser, as in every Mac terminal. ⇧⌘-click
+ * opens a chooser of the browsers installed here (owner, 2026-10-17,
+ * translated: "another chord, and there I see and choose which browser").
+ * Off macOS Ctrl+Shift+click collides with nothing: Windows Terminal,
+ * GNOME Terminal, Konsole and VS Code's terminal open a link on Ctrl+click
+ * and bind nothing to it with Shift added, and in the page a terminal has no
+ * `<a>`, so the webview's own Ctrl+Shift+click (a new tab in front) never
+ * fires. Shift alone keeps xterm's extend-the-selection and, off macOS,
+ * select-even-when-the-program-reads-the-mouse; neither is a link's.
+ */
+export const LINK_OPEN_CLICK = '⌘-click'
+export const LINK_CHOOSE_CLICK = '⇧⌘-click'
+
 export type AppCommand =
   | { kind: 'new-shell' }
   | { kind: 'new-agent' }
@@ -377,6 +393,8 @@ export function keys(mac: string, isMac = isMacPlatform()): string {
 const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0', '⇧⌘B', '⇧⌘F', '⇧⌘T', '⇧⌘W'])
 
 function offMac(k: string): string {
+  // A click chord (⌘-click, ⇧⌘-click): Ctrl stands for ⌘, Shift stays.
+  if (k.endsWith('-click')) return `${k.includes('⌘') ? 'Ctrl+' : ''}${k.includes('⌥') ? 'Alt+' : ''}${k.includes('⇧') ? 'Shift+' : ''}click`
   if (/[↩↵]/.test(k)) return `${k.includes('⌘') ? 'Ctrl+' : ''}${k.includes('⇧') ? 'Shift+' : ''}Enter`
   if (k.startsWith('⌃')) return `Ctrl+${k.slice(1)}`
   // ⌥⇧↑ ⌥⇧↓, the sidebar's move-a-row keys, are Ctrl+Shift off macOS:
@@ -443,6 +461,8 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘E, ⇧⌘E', 'Split: a new shell beside, below'],
   ['⌘[ ]', 'Previous and next pane'],
   ['⌘F', 'Find in the terminal'],
+  [LINK_OPEN_CLICK, 'A link in the terminal: open it in your default browser'],
+  [LINK_CHOOSE_CLICK, 'A link in the terminal: choose the browser to open it in, or copy it'],
   ['⌘I', 'Inspector'],
   ['⌘B', 'Pipeline bar under the agent’s terminal, shown or hidden'],
   ['⌘P', 'Pipeline, in a tab of its own; there, back to where you were'],

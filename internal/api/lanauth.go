@@ -421,6 +421,8 @@ var pairedDeviceRoutes = map[string]bool{
 //     screen, which is not where the phone's owner is looking.
 //   - GET /v1/editors, POST /v1/editors/open — the same, for an editor; the
 //     handlers refuse anything not local as well (editor.go).
+//   - GET /v1/browsers, POST /v1/browsers/open — the same, for a browser
+//     (browser.go).
 //   - /v1/settings, /v1/pair*, /v1/hive, POST /v1/tasks, /v1/orchestrator/*,
 //     /v1/hooks/install, /v1/shutdown, /v1/update/check, /v1/report/test,
 //     /v1/telegram*, /v1/gemini/ask — configuration of the machine, starting a fleet, or an

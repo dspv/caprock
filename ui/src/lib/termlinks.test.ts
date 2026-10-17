@@ -12,7 +12,7 @@ vi.mock('./shell', () => ({
   },
 }))
 
-import { attachTerminalLinks, linkHint, openableUrl, openLink, opensLink } from './termlinks'
+import { attachTerminalLinks, choosesBrowser, linkHint, openableUrl, openLink, opensLink } from './termlinks'
 
 const click = (mods: Partial<MouseEvent> = {}) =>
   ({ metaKey: false, ctrlKey: false, preventDefault: vi.fn(), clientX: 10, clientY: 10, ...mods }) as unknown as MouseEvent
@@ -65,6 +65,22 @@ describe('opensLink', () => {
   it('hints the platform key', () => {
     expect(linkHint(true)).toBe('⌘-click to open')
     expect(linkHint(false)).toBe('Ctrl+click to open')
+    expect(linkHint(true, true)).toBe('⌘-click to open · ⇧⌘-click to choose a browser')
+    expect(linkHint(false, true)).toBe('Ctrl+click to open · Ctrl+Shift+click to choose a browser')
+  })
+})
+
+describe('choosesBrowser', () => {
+  const m = (mods: Partial<MouseEvent>) => ({ metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...mods })
+  it('is ⇧⌘ on macOS and Ctrl+Shift elsewhere, and only then', () => {
+    expect(choosesBrowser(m({ metaKey: true, shiftKey: true }), true)).toBe(true)
+    expect(choosesBrowser(m({ metaKey: true }), true)).toBe(false)
+    expect(choosesBrowser(m({ ctrlKey: true, shiftKey: true }), true)).toBe(false)
+    expect(choosesBrowser(m({ metaKey: true, shiftKey: true, altKey: true }), true)).toBe(false)
+    expect(choosesBrowser(m({ ctrlKey: true, shiftKey: true }), false)).toBe(true)
+    expect(choosesBrowser(m({ ctrlKey: true }), false)).toBe(false)
+    expect(choosesBrowser(m({ shiftKey: true }), false)).toBe(false)
+    expect(choosesBrowser(m({ metaKey: true, shiftKey: true }), false)).toBe(false)
   })
 })
 
@@ -125,7 +141,8 @@ describe('attachTerminalLinks', () => {
     })
     term.open(host)
     const opened: string[] = []
-    const links = attachTerminalLinks(term, { mac: true, open: (u) => opened.push(u), onPath })
+    const chosen: string[] = []
+    const links = attachTerminalLinks(term, { mac: true, open: (u) => opened.push(u), choose: (u, at) => chosen.push(`${u} @${at.x},${at.y}`), onPath })
     await new Promise<void>((r) => term.write(text, r))
     const linksOn = (y: number, n = 0) =>
       new Promise<ILink[]>((r) => providers[n]!.provideLinks(y, (l) => r(l ?? [])))
@@ -134,7 +151,7 @@ describe('attachTerminalLinks', () => {
       term.dispose()
       host.remove()
     }
-    return { term, host, links, opened, linksOn, teardown }
+    return { term, host, links, opened, chosen, linksOn, teardown }
   }
 
   it('opens a plain URL on Cmd+click only', async () => {
@@ -147,6 +164,28 @@ describe('attachTerminalLinks', () => {
     expect(t.opened).toEqual([])
     link.activate(click({ metaKey: true }), link.text)
     expect(t.opened).toEqual(['https://github.com/dspv/caprock/actions/runs/1'])
+    expect(t.chosen).toEqual([])
+    t.teardown()
+  })
+
+  // Owner, 2026-10-17: ⌘-click stays the default browser; another chord
+  // shows the browsers to choose from.
+  it('opens the chooser at the pointer on ⇧⌘-click, and only for a web link', async () => {
+    const t = await setup('see https://example.com/a and mailto:who@example.com\r\n')
+    const link = (await t.linksOn(1))[0]!
+    const e = click({ metaKey: true, shiftKey: true, clientX: 40, clientY: 70 })
+    link.activate(e, link.text)
+    expect(t.chosen).toEqual(['https://example.com/a @40,70'])
+    expect(t.opened).toEqual([])
+    expect(e.preventDefault).toHaveBeenCalled()
+    // With ⌥ as well it is no chooser: ⌘ still opens it, as before.
+    link.activate(click({ metaKey: true, shiftKey: true, altKey: true }), link.text)
+    expect(t.chosen).toHaveLength(1)
+    expect(t.opened).toEqual(['https://example.com/a'])
+    // A mailto link has no browser to choose: the chord opens it as ⌘-click does.
+    t.term.options.linkHandler!.activate(click({ metaKey: true, shiftKey: true }), 'mailto:who@example.com', { start: { x: 1, y: 1 }, end: { x: 2, y: 1 } })
+    expect(t.opened).toEqual(['https://example.com/a', 'mailto:who@example.com'])
+    expect(t.chosen).toHaveLength(1)
     t.teardown()
   })
 
@@ -168,7 +207,7 @@ describe('attachTerminalLinks', () => {
     const link = (await t.linksOn(1))[0]!
     link.hover?.(click(), link.text)
     const tip = t.host.querySelector('.caprock-link-tip')
-    expect(tip?.textContent).toBe('⌘-click to open')
+    expect(tip?.textContent).toBe('⌘-click to open · ⇧⌘-click to choose a browser')
     expect(tip?.classList.contains('xterm-hover')).toBe(true)
     link.leave?.(click(), link.text)
     expect(t.host.querySelector('.caprock-link-tip')).toBeNull()
@@ -187,7 +226,7 @@ describe('attachTerminalLinks', () => {
     const link = found[0]!
     link.hover?.(click(), link.text)
     expect(t.host.querySelector('.caprock-link-tip')?.textContent).toBe(
-      '⌘-click to open · https://github.com/dspv/caprock/pull/330',
+      '⌘-click to open · ⇧⌘-click to choose a browser · https://github.com/dspv/caprock/pull/330',
     )
     link.activate(click(), link.text)
     expect(t.opened).toEqual([])

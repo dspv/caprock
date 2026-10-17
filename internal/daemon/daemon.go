@@ -27,6 +27,7 @@ import (
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/board"
 	"github.com/dspv/caprock/internal/brain"
+	"github.com/dspv/caprock/internal/browser"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/cap"
 	"github.com/dspv/caprock/internal/codex"
@@ -714,6 +715,9 @@ func (d *Daemon) run(ctx context.Context) error {
 		Editors: &editor.Opener{
 			Env:       func() []string { return userenv.Environ(d.log) },
 			Preferred: func() string { return d.config().Editor },
+		},
+		Browsers: &browser.Opener{
+			Env: func() []string { return userenv.Environ(d.log) },
 		},
 		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines,
 		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
