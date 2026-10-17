@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LoopAlert } from '@/lib/api'
 
-const h = vi.hoisted(() => ({ sent: [] as [string, string][], answer: { sent: false } as { sent: boolean } | Error }))
+const h = vi.hoisted(() => ({ sent: [] as [string, string][], answer: { sent: false } as { sent: boolean } | Error, waiting: 'turn' as string }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -13,14 +13,14 @@ vi.mock('@/lib/api', async (orig) => {
       queueSend: async (id: string, text: string) => {
         h.sent.push([id, text])
         if (h.answer instanceof Error) throw h.answer
-        return { ...h.answer, queue: { session_id: id, messages: [], waiting: 'turn' } }
+        return { ...h.answer, queue: { session_id: id, messages: [], waiting: h.waiting } }
       },
     },
   }
 })
 
 import { LoopAlertCard } from './LoopAlertCard'
-import { loopHidden, resetLoopMutesForTest, tellAgentMessage } from '@/lib/loopalert'
+import { loopHidden, resetLoopMutesForTest, sentLabel, tellAgentMessage } from '@/lib/loopalert'
 
 const now = Date.parse('2026-10-14T11:00:00Z')
 const a: LoopAlert = {
@@ -30,7 +30,7 @@ const a: LoopAlert = {
   tax_usd: 0.88,
 }
 
-beforeEach(() => { h.sent = []; h.answer = { sent: false }; localStorage.clear(); resetLoopMutesForTest() })
+beforeEach(() => { h.sent = []; h.answer = { sent: false }; h.waiting = 'turn'; localStorage.clear(); resetLoopMutesForTest() })
 
 describe('LoopAlertCard', () => {
   it('says what happened, full command on hover, costs quiet', () => {
@@ -76,7 +76,7 @@ describe('LoopAlertCard', () => {
     expect(h.sent).toHaveLength(0)
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send to the agent' })) })
     expect(h.sent).toEqual([['s1', tellAgentMessage(a)]])
-    expect(screen.getByRole('status')).toHaveTextContent('Queued — the agent gets it when this turn ends.')
+    expect(screen.getByRole('status')).toHaveTextContent('Will send when it finishes this turn')
   })
 
   it('sends what was edited', async () => {
@@ -86,7 +86,7 @@ describe('LoopAlertCard', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message to the agent' }), { target: { value: '[Caprock] try the cache' } })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send to the agent' })) })
     expect(h.sent).toEqual([['s1', '[Caprock] try the cache']])
-    expect(screen.getByRole('status')).toHaveTextContent('Sent — the agent has it.')
+    expect(screen.getByRole('status')).toHaveTextContent('Sent to the agent')
   })
 
   it('says when the queue refused it', async () => {
@@ -95,6 +95,35 @@ describe('LoopAlertCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tell the agent' }))
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send to the agent' })) })
     expect(screen.getByRole('status')).toHaveTextContent('Not sent: 409 Conflict')
+  })
+
+  it('says what a held message waits for', async () => {
+    h.waiting = 'permission'
+    render(<LoopAlertCard alert={a} project="caprock" owned now={now} openHref="#/session/s1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Tell the agent' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send to the agent' })) })
+    expect(screen.getByRole('status')).toHaveTextContent('Will send once the permission prompt is answered')
+    expect(sentLabel(false, 'turn')).toBe('Will send when it finishes this turn')
+    expect(sentLabel(false, 'question')).toBe('Will send once its question is answered')
+    expect(sentLabel(true, 'turn')).toBe('Sent to the agent')
+  })
+
+  // The 2026-10-17 report: "Tell agent", then Dismiss, and the text was in
+  // the chat unsent. Dismiss never sends — not an open draft, not twice.
+  it('dismiss never sends', async () => {
+    const first = render(<LoopAlertCard alert={a} project="caprock" owned now={now} openHref="#/session/s1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Tell the agent' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Dismiss$/ }))
+    expect(h.sent).toHaveLength(0)
+    first.unmount()
+
+    resetLoopMutesForTest()
+    render(<LoopAlertCard alert={a} project="caprock" owned now={now} openHref="#/session/s1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Tell the agent' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send to the agent' })) })
+    fireEvent.click(screen.getByRole('button', { name: /^Dismiss$/ }))
+    expect(h.sent).toHaveLength(1)
   })
 
   it('dismiss puts it away and tells the caller', () => {

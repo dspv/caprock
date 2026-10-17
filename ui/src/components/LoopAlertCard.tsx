@@ -26,7 +26,7 @@ import { useRef, useState } from 'react'
 import { api, errText, type LoopAlert } from '@/lib/api'
 import { fmtAgo, fmtUSD } from '@/lib/format'
 import { href } from '@/lib/router'
-import { dismissLoop, loopHeadline, muteLoop, muteNoun, tellAgentMessage } from '@/lib/loopalert'
+import { dismissLoop, loopHeadline, muteLoop, muteNoun, sentLabel, tellAgentMessage } from '@/lib/loopalert'
 import { MenuBox, MenuItem, MenuSeparator, type MenuAt } from './RowMenu'
 import { ChevronIcon, CloseIcon, EyeOffIcon } from './AppIcons'
 
@@ -67,7 +67,7 @@ export function LoopAlertCard({ alert, project, owned, sessionCostUSD, now, open
     setResult(null)
     try {
       const r = await api.queueSend(alert.session_id, text)
-      setResult({ ok: true, text: r.sent ? 'Sent — the agent has it.' : 'Queued — the agent gets it when this turn ends.' })
+      setResult({ ok: true, text: sentLabel(r.sent, r.queue?.waiting) })
       setDraft(null)
     } catch (e) {
       setResult({ ok: false, text: `Not sent: ${errText(e)}` })

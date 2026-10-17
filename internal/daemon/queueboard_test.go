@@ -60,7 +60,7 @@ func TestBoardEstimatesFromProjectHistory(t *testing.T) {
 		at = at.Add(time.Minute)
 	}
 
-	f.owned["s1"] = agents.AgentClaude
+	set(f, f.owned, "s1", agents.AgentClaude)
 	boardSession(t, d, "s1", "claude", "/r", true)
 	boundAt(t, d, "s1", event.KindTurnUser, now.Add(-30*time.Second), `{"prompt":"go"}`)
 	for _, m := range []string{"second", "third"} {
@@ -68,7 +68,7 @@ func TestBoardEstimatesFromProjectHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	f.owned["cx"] = agents.AgentCodex
+	set(f, f.owned, "cx", agents.AgentCodex)
 	boardSession(t, d, "cx", "codex", "/r", true)
 
 	b, err := q.Board(ctx)
@@ -106,7 +106,7 @@ func TestBoardTooFewTurns(t *testing.T) {
 	q, f, d := newTestQueue(t)
 	now := time.Now().Truncate(time.Millisecond)
 	q.now = func() time.Time { return now }
-	f.owned["s1"] = agents.AgentClaude
+	set(f, f.owned, "s1", agents.AgentClaude)
 	boardSession(t, d, "s1", "claude", "/new", true)
 	boundAt(t, d, "s1", event.KindTurnUser, now.Add(-time.Hour), "")
 	boundAt(t, d, "s1", event.KindAgentStop, now.Add(-59*time.Minute), "")
@@ -140,7 +140,7 @@ func TestQueuedMessageDoneIsHeardAndMarked(t *testing.T) {
 		defer mu.Unlock()
 		return append([]string(nil), heard...)
 	}
-	f.owned["s1"] = agents.AgentClaude
+	set(f, f.owned, "s1", agents.AgentClaude)
 	boardSession(t, d, "s1", "claude", "/r", true)
 	hook(t, q, d, "s1", event.KindTurnUser, nil, false)
 	if _, err := q.Send(ctx, "s1", "queued one"); err != nil {

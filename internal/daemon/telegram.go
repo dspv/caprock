@@ -135,10 +135,10 @@ func (h *tgHost) live(ctx context.Context, s store.Session) telegram.Live {
 	return l
 }
 
-// typeGap is the pause between a message and the Enter that sends it: a CR
-// in the same write can be read as part of a paste (as typeWhenReady).
-const typeGap = 200 * time.Millisecond
-
+// Type puts a message into a session's prompt and sends it the way the
+// message queue does (typeMessage: a paste where the session takes one, the
+// Enter on its own after a pause, and once more if the prompt still holds
+// the text a moment later).
 func (h *tgHost) Type(id, text string) error {
 	if h.d.mgr == nil {
 		return errors.New("this daemon cannot type into sessions")
@@ -150,12 +150,16 @@ func (h *tgHost) Type(id, text string) error {
 	if _, waiting := h.d.mgr.PendingPermission(id); waiting {
 		return errors.New("it is waiting for an approval; answer that first")
 	}
-	body := strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", "\x1b\r")
-	if err := h.d.mgr.Input(id, []byte(body)); err != nil {
+	if _, err := typeMessage(h.d.mgr, id, text, queueTypeGap, nil); err != nil {
 		return err
 	}
-	time.Sleep(typeGap)
-	return h.d.mgr.Input(id, []byte("\r"))
+	go func() {
+		time.Sleep(queueConfirmAfter)
+		if _, ok := h.d.mgr.Get(id); ok && confirmMessage(h.d.mgr, id, text) {
+			h.d.log.Info("telegram: the prompt still held the message; pressed Enter again", "component", "telegram", "session_id", id)
+		}
+	}()
+	return nil
 }
 
 // Answer goes through the same call as the app's card: the menu is read off

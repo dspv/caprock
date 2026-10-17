@@ -66,6 +66,29 @@ func TestRingChangedWakesOnWrite(t *testing.T) {
 	}
 }
 
+// Mode says what the output last set for a tracked mode, across chunks and
+// a restore, and that a mode it never touched is unknown.
+func TestRingModeReadsBracketedPaste(t *testing.T) {
+	r := NewRing(64)
+	if _, seen := r.Mode(2004); seen {
+		t.Fatal("a mode the output never set must be unknown")
+	}
+	r.Write([]byte("hello\x1b[?20"))
+	r.Write([]byte("04h world"))
+	if on, seen := r.Mode(2004); !on || !seen {
+		t.Fatalf("Mode(2004) = %v %v; want on", on, seen)
+	}
+	r.Write([]byte("\x1b[?2004l"))
+	if on, seen := r.Mode(2004); on || !seen {
+		t.Fatalf("Mode(2004) = %v %v; want off", on, seen)
+	}
+	r2 := NewRing(64)
+	r2.Restore([]byte("\x1b[?2004h"), []byte("screen"), 6)
+	if on, _ := r2.Mode(2004); !on {
+		t.Fatal("a restored ring must keep the holder's modes")
+	}
+}
+
 func TestInputsApplyOnceAndForget(t *testing.T) {
 	in := NewInputs(time.Minute)
 	now := time.Unix(0, 0)
