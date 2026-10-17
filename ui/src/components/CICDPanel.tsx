@@ -22,7 +22,7 @@
  * At its head, the Pipeline's own figures for the repository the Pipeline
  * shows, with the way to the page (components/PipelineCard.tsx).
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type SessionSummary } from '@/lib/api'
 import { readDeck, writeDeck } from '@/lib/deckCache'
 import { fmtAgo } from '@/lib/format'
@@ -36,7 +36,6 @@ import { asReposCI, keepWhileReading, loadHiddenRepos, owners, prTokens, quietTe
 import { Panel } from './ui'
 import { PipelineCard } from './PipelineCard'
 import { Freshness } from './Freshness'
-import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 import { EyeOffIcon } from './AppIcons'
 import { Bars, Trend } from './DayBars'
 import { GitHubAvatar, GitHubPerson } from './GitHubAvatar'
@@ -49,6 +48,8 @@ const CICD_REFRESH_MS = 3_000
 /** How often each owner's Actions bill is asked again (the daemon keeps it 30 minutes). */
 const USAGE_EVERY_MS = 30 * 60_000
 const CACHE_KEY = 'cicd:now'
+/** How long a hidden block leaves its Undo in its place. */
+const UNDO_MS = 10_000
 const STATUS_PAGE = 'https://www.githubstatus.com'
 
 /** How fresh the section is, said in its header (Freshness): the body reads, the header says it. */
@@ -157,6 +158,16 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
       return next
     })
   }, [])
+  // The block just hidden: an Undo where it was, for UNDO_MS.
+  const [undo, setUndo] = useState<{ repo: string; name: string; at: number }>()
+  const [showHidden, setShowHidden] = useState(false)
+  useEffect(() => {
+    if (!undo) return
+    const t = window.setTimeout(() => setUndo(undefined), UNDO_MS)
+    return () => window.clearTimeout(t)
+  }, [undo])
+  const hideRow = useCallback((r: RepoCIRow, at: number) => { setHide(r.repo, true); setUndo({ repo: r.repo, name: r.name || r.repo, at }) }, [setHide])
+  const unhide = useCallback((repo: string) => { setHide(repo, false); setUndo((u) => (u?.repo === repo ? undefined : u)) }, [setHide])
   // Hidden or shown again is drawn at once; the next answer agrees.
   const data = useMemo(() => answer && {
     ...answer,
@@ -180,6 +191,16 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
   const calm = sectionErrorText(data.repos)
   const quiet = quietText(data.quiet, days)
   const hiddenRows = data.quiet.filter((q) => q.why === 'hidden')
+  // The blocks, the one just hidden as its Undo in the place it had.
+  const undoStrip = undo && hidden.has(undo.repo.toLowerCase()) ? (
+    <div key="undo" data-cicd-undo={undo.repo} role="status" className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 text-[12px] text-fg-muted last:border-b-0">
+      <EyeOffIcon size={13} className="shrink-0 text-fg-faint" />
+      <span className="min-w-0 truncate"><span className="text-fg">{undo.name}</span> hidden from CI/CD</span>
+      <button type="button" onClick={() => unhide(undo.repo)} className="ml-auto shrink-0 text-[11.5px] text-accent hover:underline">Undo</button>
+    </div>
+  ) : null
+  const blocks: (RepoCIRow | 'undo')[] = [...data.repos]
+  if (undo && undoStrip) blocks.splice(Math.min(undo.at, blocks.length), 0, 'undo')
   return (
     <div data-cicd-panel className="@container/cicd flex flex-col">
       {st && (
@@ -200,13 +221,24 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
       <PipelineCard sessions={sessions} />
       {data.repos.length === 0 && data.quiet.length === 0 ? <p className="px-3 py-3 text-[12.5px] text-fg-muted">No listed repository is on GitHub.</p>
         : data.repos.length === 0 && !older ? <p className="px-3 py-3 text-[12.5px] text-fg-muted">No repository on GitHub had a session in the last {days} days.</p>
-          : data.repos.map((r) => <RepoBlock key={r.project_id} r={r} now={now} usage={usage[r.repo.split('/')[0] ?? '']} calm={!!calm} onHide={() => setHide(r.repo, true)} />)}
-      {quiet && (
+          : blocks.map((r) => r === 'undo' ? undoStrip : <RepoBlock key={r.project_id} r={r} now={now} usage={usage[r.repo.split('/')[0] ?? '']} calm={!!calm} onHide={() => hideRow(r, data.repos.indexOf(r))} />)}
+      {data.repos.length === 0 && undoStrip}
+      {(quiet || older) && (
         <div data-cicd-quiet className="border-t border-border px-3 py-1.5 text-[12px] text-fg-muted">
-          <button type="button" aria-expanded={older} onClick={() => setOlder((o) => !o)} title={quiet.title} className="text-left hover:text-fg">
-            {older ? 'Fold older repositories' : <>{quiet.text} — <span className="text-accent hover:underline">show</span></>}
-          </button>
-          {older && hiddenRows.length > 0 && (
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
+            {(older || (quiet?.older ?? 0) > 0) && (
+              <button type="button" data-cicd-older aria-expanded={older} onClick={() => setOlder((o) => !o)} title={quiet?.title} className="text-left hover:text-fg">
+                {older ? 'Fold older repositories' : <>{quiet?.older} older repositor{quiet?.older === 1 ? 'y' : 'ies'} — <span className="text-accent hover:underline">show</span></>}
+              </button>
+            )}
+            {hiddenRows.length > 0 && (
+              <button type="button" data-cicd-hidden-toggle aria-expanded={showHidden} onClick={() => setShowHidden((s) => !s)}
+                title="Repositories hidden here are not read from GitHub until shown again" className="inline-flex items-center gap-1 text-left hover:text-fg">
+                <EyeOffIcon size={12} className="text-fg-faint" />{hiddenRows.length} hidden · <span className="text-accent hover:underline">{showHidden ? 'Fold' : 'Show'}</span>
+              </button>
+            )}
+          </div>
+          {showHidden && hiddenRows.length > 0 && (
             <ul className="mt-1 flex flex-col">
               {hiddenRows.map((q) => (
                 <li key={q.repo} data-cicd-hidden={q.repo} className="flex min-w-0 items-center gap-2 py-0.5">
@@ -214,9 +246,14 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
                   <span className="truncate text-fg">{q.name || q.repo}</span>
                   <span className="mono truncate text-[11px] text-fg-faint">{q.repo}</span>
                   {q.last_active ? <span className="shrink-0 text-[11px] text-fg-faint">active {fmtAgo(q.last_active, now)}</span> : null}
-                  <button type="button" onClick={() => setHide(q.repo, false)} className="ml-auto shrink-0 text-[11.5px] text-accent hover:underline">Show again</button>
+                  <button type="button" onClick={() => unhide(q.repo)} aria-label={`Show ${q.name || q.repo} again`} className="ml-auto shrink-0 text-[11.5px] text-accent hover:underline">Show again</button>
                 </li>
               ))}
+              {hiddenRows.length > 1 && (
+                <li className="pt-0.5">
+                  <button type="button" data-cicd-show-all onClick={() => { for (const q of hiddenRows) unhide(q.repo); setShowHidden(false) }} className="text-[11.5px] text-accent hover:underline">Show all {hiddenRows.length} again</button>
+                </li>
+              )}
             </ul>
           )}
         </div>
@@ -238,11 +275,6 @@ function Cell({ label, children, note, title, data }: { label: string; children:
 const BIG = 'num truncate text-[18px] font-semibold leading-none text-fg'
 
 function RepoBlock({ r, now, usage, calm, onHide }: { r: RepoCIRow; now: number; usage?: ActionsUsage; calm: boolean; onHide: () => void }) {
-  const [menu, setMenu] = useState<MenuAt | undefined>()
-  const openMenu = (e: ReactMouseEvent<HTMLButtonElement>) => {
-    const b = e.currentTarget.getBoundingClientRect()
-    setMenu({ x: b.right - 200, y: b.bottom + 4 })
-  }
   const err = rowErrorText(r)
   // Nothing read from GitHub yet, or refused before anything was: one line, no empty cells.
   const bare = !!r.pending || (!!r.error && !r.ci && r.open === 0 && r.merged_7d === 0 && !r.release)
@@ -262,6 +294,11 @@ function RepoBlock({ r, now, usage, calm, onHide }: { r: RepoCIRow; now: number;
         </span>
         {r.live > 0 && <span className="text-[11.5px] text-fg-muted">{r.live} session{r.live === 1 ? '' : 's'} running</span>}
         {r.live === 0 && r.last_active ? <span className="text-[11.5px] text-fg-faint" title={new Date(r.last_active).toLocaleString()}>active {fmtAgo(r.last_active, now)}</span> : null}
+        <button type="button" data-cicd-hide onClick={onHide} aria-label={`Hide ${r.name || r.repo} from CI/CD`}
+          title="Hide from CI/CD: it folds into the hidden line at the bottom, where Show brings it back"
+          className="inline-flex shrink-0 items-center gap-1 rounded px-1 text-[11.5px] text-fg-faint hover:bg-fg/5 hover:text-fg">
+          <EyeOffIcon size={12} />Hide
+        </button>
         {r.pending && <span className="text-[11.5px] text-fg-faint">reading GitHub…</span>}
         {bare && err && !calm && <span data-cicd-error={r.slow ? 'slow' : r.error?.kind} className={`min-w-0 truncate text-[11.5px] ${errCls}`} title={r.error?.message}>· {err}</span>}
         {r.release && (
@@ -269,13 +306,6 @@ function RepoBlock({ r, now, usage, calm, onHide }: { r: RepoCIRow; now: number;
             className="ml-auto shrink-0 text-[11.5px] text-fg-muted hover:text-fg">
             released <span className="mono text-fg">{r.release.tag}</span> {fmtAgo(r.release.published_at, now)}
           </button>
-        )}
-        <button type="button" aria-label={`${r.name || r.repo}: actions`} aria-haspopup="menu" aria-expanded={!!menu} onClick={openMenu}
-          className={`${r.release ? '' : 'ml-auto '}shrink-0 rounded px-1 text-[13px] leading-none text-fg-faint hover:bg-fg/5 hover:text-fg`}>⋯</button>
-        {menu && (
-          <MenuBox at={menu} label={`${r.name || r.repo}: actions`} width={200} onClose={() => setMenu(undefined)}>
-            <MenuItem icon={<EyeOffIcon size={14} />} label="Hide from CI/CD" onClick={() => { setMenu(undefined); onHide() }} />
-          </MenuBox>
         )}
       </div>
       {!bare && err && !calm && (

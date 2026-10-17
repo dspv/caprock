@@ -10,15 +10,39 @@
  *
  * Folded, nothing is asked: the body (and its poll) is mounted only while the
  * panel is open, and the poll pauses while the window is hidden.
+ *
+ * A row opens under itself (owner, 2026-10-16, translated: show a bit more
+ * per repository): the branch checked out, the newest CI run, the pull
+ * requests, the release, the lines and the folder — only what the answer
+ * already carries, and on a phone the figures its columns leave out.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, type RepoActivity, type ReposActivity } from '@/lib/api'
 import { readDeck, writeDeck } from '@/lib/deckCache'
 import { fmtAgo, fmtTokens } from '@/lib/format'
 import { fmtRun } from '@/lib/ci'
 import { href } from '@/lib/router'
+import { openExternal } from '@/lib/nudges'
+import { extProps } from '@/lib/externalLinks'
 import { Panel } from './ui'
 import { Bars } from './DayBars'
+import { ChevronIcon } from './AppIcons'
+
+/** The rows opened, by root, kept per viewer. */
+export const REPOS_OPEN_KEY = 'caprock.repos.open'
+
+function loadOpen(): Set<string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(REPOS_OPEN_KEY) ?? 'null') as unknown
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveOpen(s: ReadonlySet<string>): void {
+  try { localStorage.setItem(REPOS_OPEN_KEY, JSON.stringify([...s].sort())) } catch { /* not kept */ }
+}
 
 /** How often the open section asks the daemon (its git answers are kept 10 minutes). */
 const REPOS_POLL_MS = 60_000
@@ -91,6 +115,16 @@ const GH = '@max-[600px]/repos:hidden'
 
 function ReposBody() {
   const { data, failed } = useRepos()
+  const [open, setOpen] = useState<Set<string>>(() => loadOpen())
+  const toggle = useCallback((root: string) => {
+    setOpen((cur) => {
+      const next = new Set(cur)
+      if (next.has(root)) next.delete(root)
+      else next.add(root)
+      saveOpen(next)
+      return next
+    })
+  }, [])
   const now = Date.now()
   if (!data) {
     return <p className="px-3 py-3 text-[12.5px] text-fg-muted">{failed ? 'Could not read the repositories.' : 'Reading the repositories…'}</p>
@@ -99,10 +133,27 @@ function ReposBody() {
     return <p className="px-3 py-3 text-[12.5px] text-fg-muted">No listed repository has a session running.</p>
   }
   const H = ({ children, r, cls = '' }: { children: ReactNode; r?: boolean; cls?: string }) => <span className={`${r ? 'text-right' : ''} ${cls}`}>{children}</span>
+  const allOpen = data.repos.every((r) => open.has(r.root))
+  const setAll = () => {
+    const next = new Set(open)
+    for (const r of data.repos) {
+      if (allOpen) next.delete(r.root)
+      else next.add(r.root)
+    }
+    saveOpen(next)
+    setOpen(next)
+  }
   return (
     <div className="@container/repos" data-repos-panel>
       <div className={`grid ${COLS} items-end gap-x-4 border-b border-border px-3 pb-1.5 pt-2 text-[10.5px] uppercase tracking-[0.12em] text-fg-faint`}>
-        <H>Repository</H>
+        <span className="flex min-w-0 items-center gap-2">
+          <span>Repository</span>
+          <button type="button" data-repos-all aria-pressed={allOpen} onClick={setAll}
+            title={allOpen ? 'Fold every row back to one line' : 'Open every row: branch, newest CI run, pull requests, release, lines, folder'}
+            className="rounded px-1 normal-case tracking-normal text-[11px] text-fg-muted hover:bg-fg/5 hover:text-fg">
+            {allOpen ? 'Less' : 'More'}
+          </button>
+        </span>
         <H cls={WIDE}>Commits a day · 14d</H>
         <H r>Today</H>
         <H r>7 days</H>
@@ -111,22 +162,25 @@ function ReposBody() {
         <H r cls={GH}>CI red · median</H>
         <H r cls={GH}>Release</H>
       </div>
-      {data.repos.map((r) => <Row key={r.project_id} r={r} connected={data.github_connected} now={now} />)}
+      {data.repos.map((r) => <Row key={r.project_id} r={r} connected={data.github_connected} now={now} open={open.has(r.root)} onToggle={() => toggle(r.root)} />)}
     </div>
   )
 }
 
-function Row({ r, connected, now }: { r: RepoActivity; connected: boolean; now: number }) {
+function Row({ r, connected, now, open, onToggle }: { r: RepoActivity; connected: boolean; now: number; open: boolean; onToggle: () => void }) {
   const today = r.commits.at(-1) ?? 0
   const week = sum(r.commits, -7)
   return (
-    <div data-repo-row={r.name} className={`grid ${COLS} min-h-[52px] items-center gap-x-4 border-b border-border px-3 py-1.5 last:border-b-0`}>
+    <div data-repo-row={r.name} data-open={open || undefined} className={`grid ${COLS} min-h-[52px] items-center gap-x-4 border-b border-border px-3 py-1.5 last:border-b-0`}>
       <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2 text-[13px]">
+        <button type="button" onClick={onToggle} aria-expanded={open} aria-label={`${r.name}: details`}
+          title={`${r.root}\n${open ? 'Fold this row' : 'More: branch, newest CI run, pull requests, release, lines'}`}
+          className="flex min-w-0 max-w-full items-center gap-1.5 rounded text-left text-[13px] hover:text-fg">
+          <ChevronIcon size={12} className={`shrink-0 text-fg-faint transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} />
           <span className="inline-block h-[7px] w-[7px] shrink-0 rounded-full bg-ok" title={`${r.sessions} session${r.sessions === 1 ? '' : 's'} running here`} />
-          <span className="truncate font-medium" title={r.root}>{r.name}</span>
-        </div>
-        <div className="pl-[15px] text-[11px] leading-snug text-fg-faint">
+          <span className="truncate font-medium">{r.name}</span>
+        </button>
+        <div className="pl-[31px] text-[11px] leading-snug text-fg-faint">
           {r.error ? <span title={r.error}>git could not be read</span> : r.last_commit_at ? `last commit ${fmtAgo(r.last_commit_at, now)}` : 'no commits in 14 days'}
           {r.sessions > 1 ? ` · ${r.sessions} sessions` : ''}
           {r.dirty > 0 && <span className="whitespace-nowrap text-warn" title="Files changed or new, not committed"> · {r.dirty} uncommitted</span>}
@@ -135,10 +189,75 @@ function Row({ r, connected, now }: { r: RepoActivity; connected: boolean; now: 
       <div className={WIDE}><Bars values={r.commits} labels={r.days} unit="commits" w={150} h={26} /></div>
       <div className="mono text-right text-[15px] font-semibold tabular-nums">{today}</div>
       <div className="mono text-right text-[15px] font-semibold tabular-nums">{week}</div>
-      <div className={`mono text-right text-[12px] tabular-nums ${WIDE}`} title="Lines added and removed in the last 7 days, every branch, merges left out">
-        <span className="text-ok">+{fmtTokens(sum(r.added, -7))}</span> <span className="text-danger">−{fmtTokens(sum(r.deleted, -7))}</span>
+      <div className={`mono text-right text-[12px] tabular-nums ${WIDE}`} title={`Lines added and removed in the last 7 days, every branch, merges left out${r.lines_partial ? `\n${PARTIAL}` : ''}`}>
+        <Lines r={r} />
       </div>
       <GitHubCells r={r} connected={connected} now={now} />
+      {open && <Details r={r} connected={connected} now={now} />}
+    </div>
+  )
+}
+
+const PARTIAL = 'Some commits’ lines are still being counted; the next read goes on'
+
+function Lines({ r }: { r: RepoActivity }) {
+  return (
+    <>
+      <span className="text-ok">+{fmtTokens(sum(r.added, -7))}</span> <span className="text-danger">−{fmtTokens(sum(r.deleted, -7))}</span>
+      {r.lines_partial && <span data-repo-lines-partial className="text-fg-faint"> …</span>}
+    </>
+  )
+}
+
+/** A finished run's word and colour; a run not finished says so. */
+function runWord(l: { status: string; conclusion?: string }): { text: string; cls: string } {
+  if (l.status !== 'completed') return { text: l.status === 'in_progress' ? 'running' : l.status.replace(/_/g, ' '), cls: 'text-warn' }
+  const c = l.conclusion ?? 'done'
+  if (c === 'success') return { text: 'passed', cls: 'text-ok' }
+  if (c === 'failure' || c === 'timed_out' || c === 'startup_failure') return { text: c === 'failure' ? 'failed' : c.replace(/_/g, ' '), cls: 'text-danger' }
+  return { text: c.replace(/_/g, ' '), cls: 'text-fg-muted' }
+}
+
+/** The opened row: one wrapping line of labelled facts under the whole row. */
+function Details({ r, connected, now }: { r: RepoActivity; connected: boolean; now: number }) {
+  const g = connected ? r.github : undefined
+  const last = g?.ci?.last
+  const word = last && runWord(last)
+  const red = g?.ci && g.ci.runs > 0 ? (g.ci.red / g.ci.runs) * 100 : undefined
+  const Item = ({ k, children, d, wrap }: { k: string; children: ReactNode; d: string; wrap?: boolean }) => (
+    <span data-repo-detail={d} className="inline-flex min-w-0 max-w-full items-baseline gap-1.5">
+      <span className="shrink-0 text-[10.5px] uppercase tracking-[0.12em] text-fg-faint">{k}</span>
+      <span className={`min-w-0 text-fg ${wrap ? 'break-words' : 'truncate'}`}>{children}</span>
+    </span>
+  )
+  return (
+    <div data-repo-details className="col-span-full flex flex-wrap gap-x-5 gap-y-1 pb-1 pl-[31px] pt-1 text-[12px]">
+      <Item k="Branch" d="branch">{r.branch ? <span className="mono">{r.branch}</span> : <span className="text-fg-faint">{r.error ? 'not read' : 'detached'}</span>}</Item>
+      {connected && (
+        <Item k="Last CI" d="ci">
+          {last && word ? (
+            <button type="button" onClick={() => last.url && openExternal(last.url)} disabled={!last.url} {...extProps(`${last.name}${last.branch ? ` on ${last.branch}` : ''}: ${word.text}`)} className="text-left hover:underline disabled:no-underline">
+              <span className={word.cls}>{word.text}</span>
+              <span className="text-fg-muted"> · {last.name}{last.branch ? <> on <span className="mono">{last.branch}</span></> : null}{last.at ? ` · ${fmtAgo(last.at, now)}` : ''}</span>
+            </button>
+          ) : <span className="text-fg-faint" title={NOT_READ}>{g ? 'not read yet' : 'not on GitHub'}</span>}
+        </Item>
+      )}
+      {g && (
+        <Item k="Pull requests" d="prs">
+          {g.pulls ? <>{g.pulls.open} open <span className="text-fg-muted">· {g.pulls.merged_7d} merged in 7 days</span></> : <span className="text-fg-faint" title={NOT_READ}>not read yet</span>}
+        </Item>
+      )}
+      {g?.ci && red !== undefined && (
+        <Item k="CI red · 14d" d="red">
+          <span className={g.ci.red > 0 ? 'text-danger' : ''}>{red < 10 && red > 0 ? red.toFixed(1) : Math.round(red)}%</span>
+          <span className="text-fg-muted"> of {g.ci.runs} runs{g.ci.median_ms ? ` · median ${fmtRun(g.ci.median_ms)}` : ''}</span>
+        </Item>
+      )}
+      {g?.release?.tag && <Item k="Release" d="release"><span className="mono">{g.release.tag}</span>{g.release.at ? <span className="text-fg-muted"> {fmtAgo(g.release.at, now)}</span> : null}</Item>}
+      <Item k="Lines · 7d" d="lines"><span className="mono"><Lines r={r} /></span></Item>
+      <Item k="Folder" d="root"><span className="mono text-fg-muted" title={r.root}>{r.root}</span></Item>
+      {r.error && <Item k="Git" d="error" wrap><span className="text-warn" title={r.error}>{r.error}</span></Item>}
     </div>
   )
 }

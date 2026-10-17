@@ -52,6 +52,37 @@ describe('the Repos section', () => {
     expect(web.querySelector('[title^="Not read yet"]')).toBeTruthy()
   })
 
+  it('opens a row to its branch, newest CI run, pull requests and folder, and remembers it', async () => {
+    h.answer = {
+      github_connected: true,
+      repos: [
+        repo({ branch: 'master', lines_partial: true, github: { repo: 'ada/app', pulls: { open: 2, merged_7d: 9, listed: 50 }, ci: { runs: 47, red: 3, workflow: 'ci', median_ms: 430_000, last: { name: 'ci', branch: 'feat/x', status: 'completed', conclusion: 'failure', at: now - 12 * 60_000, url: 'https://github.com/ada/app/actions/runs/1' } } } }),
+        repo({ project_id: 2, root: '/w/web', name: 'web', error: 'git did not answer in time and was stopped', github: { repo: 'ada/web' } }),
+      ],
+    } satisfies ReposActivity
+    const { unmount } = render(<ReposPanel />)
+    await waitFor(() => expect(document.querySelector('[data-repo-row="app"]')).toBeTruthy())
+    expect(document.querySelector('[data-repo-details]')).toBeNull()
+    expect(document.querySelector('[data-repo-row="app"] [data-repo-lines-partial]')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'app: details' }))
+    const d = document.querySelector('[data-repo-row="app"] [data-repo-details]')!
+    expect(d.querySelector('[data-repo-detail="branch"]')).toHaveTextContent('master')
+    expect(d.querySelector('[data-repo-detail="ci"]')).toHaveTextContent('failed · ci on feat/x · 12m ago')
+    expect(d.querySelector('[data-repo-detail="prs"]')).toHaveTextContent('2 open · 9 merged in 7 days')
+    expect(d.querySelector('[data-repo-detail="root"]')).toHaveTextContent('/w/app')
+    expect(screen.getByRole('button', { name: 'app: details' })).toHaveAttribute('aria-expanded', 'true')
+    // More opens every row; the git error is said in full.
+    fireEvent.click(document.querySelector('[data-repos-all]')!)
+    const web = document.querySelector('[data-repo-row="web"] [data-repo-details]')!
+    expect(web.querySelector('[data-repo-detail="error"]')).toHaveTextContent('git did not answer in time')
+    expect(web.querySelector('[data-repo-detail="ci"]')).toHaveTextContent('not read yet')
+    unmount()
+    render(<ReposPanel />)
+    await waitFor(() => expect(document.querySelectorAll('[data-repo-details]')).toHaveLength(2))
+    fireEvent.click(document.querySelector('[data-repos-all]')!)
+    expect(document.querySelector('[data-repo-details]')).toBeNull()
+  })
+
   it('shows the local figures alone while GitHub is not connected', async () => {
     h.answer = { github_connected: false, repos: [repo({})] } satisfies ReposActivity
     render(<ReposPanel />)

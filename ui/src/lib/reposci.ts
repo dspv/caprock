@@ -190,7 +190,7 @@ export function sectionErrorText(rows: RepoCIRow[]): string | undefined {
 }
 
 /** The folded line under the rows: "3 older repositories · 1 hidden"; empty when there is nothing quiet. */
-export function quietText(quiet: RepoCIQuiet[], days: number): { text: string; title: string } | undefined {
+export function quietText(quiet: RepoCIQuiet[], days: number): { text: string; title: string; older: number; hidden: number } | undefined {
   if (quiet.length === 0) return undefined
   const n = (why: string) => quiet.filter((q) => q.why === why).length
   const older = n('older') + n('more')
@@ -200,6 +200,8 @@ export function quietText(quiet: RepoCIQuiet[], days: number): { text: string; t
     hidden > 0 ? `${hidden} hidden` : '',
   ].filter(Boolean)
   return {
+    older,
+    hidden,
     text: parts.join(' · '),
     title: `Listed repositories without a session in the last ${days} days, or hidden here, are not read from GitHub until shown`,
   }

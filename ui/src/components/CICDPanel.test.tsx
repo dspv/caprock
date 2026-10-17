@@ -87,7 +87,7 @@ describe('the CI/CD section', () => {
     expect(h.usage).toEqual([])
   })
 
-  it('folds older and hidden repositories into one line, reads them only when shown, and hides a row from its menu', async () => {
+  it('folds older and hidden repositories into one line, reads them only when shown, and hides a row in one click', async () => {
     h.answer = (q: { older?: boolean; hide?: string[] } | undefined) => ({
       github_connected: true,
       recent_days: 14,
@@ -106,18 +106,33 @@ describe('the CI/CD section', () => {
     const line = await screen.findByText(/2 older repositories/)
     expect(document.querySelector('[data-cicd-repo="ada/bloq"]')).toBeNull()
     expect(h.q[0]).toEqual({ older: false, hide: [] })
-    // Hide one from its menu: gone at once, remembered, and the next ask names it.
-    fireEvent.click(screen.getByRole('button', { name: 'site: actions' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /Hide from CI\/CD/ }))
+    // Hide one with its own button, right of "active 3d ago": gone at once,
+    // an Undo in its place, remembered, and the next ask names it.
+    const site = document.querySelector('[data-cicd-repo="ada/site"]')!
+    expect(site).toHaveTextContent(/active 3d ago\s*Hide/)
+    fireEvent.click(screen.getByRole('button', { name: 'Hide site from CI/CD' }))
     expect(document.querySelector('[data-cicd-repo="ada/site"]')).toBeNull()
+    expect(document.querySelector('[data-cicd-undo="ada/site"]')).toHaveTextContent('site hidden from CI/CD')
     expect(JSON.parse(localStorage.getItem(HIDDEN_REPOS_KEY) ?? '[]')).toEqual(['ada/site'])
     await waitFor(() => expect(h.q.at(-1)).toEqual({ older: false, hide: ['ada/site'] }))
-    await waitFor(() => expect(document.querySelector('[data-cicd-quiet]')).toHaveTextContent('2 older repositories · 1 hidden'))
-    // Shown: the older one is read and drawn; the hidden one can come back.
-    fireEvent.click(document.querySelector('[data-cicd-quiet] button')!)
+    await waitFor(() => expect(document.querySelector('[data-cicd-hidden-toggle]')).toHaveTextContent('1 hidden · Show'))
+    expect(document.querySelector('[data-cicd-older]')).toHaveTextContent('2 older repositories — show')
+    // Undo brings it straight back.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(document.querySelector('[data-cicd-repo="ada/site"]')).not.toBeNull())
+    expect(document.querySelector('[data-cicd-undo]')).toBeNull()
+    expect(JSON.parse(localStorage.getItem(HIDDEN_REPOS_KEY) ?? '[]')).toEqual([])
+    // Hidden again; "1 hidden · Show" lists it without reading the older ones.
+    fireEvent.click(screen.getByRole('button', { name: 'Hide site from CI/CD' }))
+    await waitFor(() => expect(document.querySelector('[data-cicd-hidden-toggle]')).not.toBeNull())
+    fireEvent.click(document.querySelector('[data-cicd-hidden-toggle]')!)
+    expect(document.querySelector('[data-cicd-hidden="ada/site"]')).not.toBeNull()
+    expect(h.q.at(-1)).toEqual({ older: false, hide: ['ada/site'] })
+    // Older shown: read and drawn.
+    fireEvent.click(document.querySelector('[data-cicd-older]')!)
     await waitFor(() => expect(document.querySelector('[data-cicd-repo="ada/bloq"]')).not.toBeNull())
     expect(h.q.at(-1)).toEqual({ older: true, hide: ['ada/site'] })
-    fireEvent.click(screen.getByRole('button', { name: 'Show again' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show site again' }))
     await waitFor(() => expect(document.querySelector('[data-cicd-repo="ada/site"]')).not.toBeNull())
     expect(JSON.parse(localStorage.getItem(HIDDEN_REPOS_KEY) ?? '[]')).toEqual([])
     expect(line).toBeTruthy()
