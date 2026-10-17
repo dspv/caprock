@@ -33,6 +33,7 @@ func doctorCmd() *cobra.Command {
 		dataDirF string
 		stop     []int
 		yes      bool
+		force    bool
 	)
 	c := &cobra.Command{
 		Use:   "doctor",
@@ -51,7 +52,10 @@ func doctorCmd() *cobra.Command {
 			f := doctorReport(cmd, dir)
 			out := cmd.OutOrStdout()
 			if len(stop) > 0 {
-				return doctorStop(cmd, dir, f, stop, yes)
+				return doctorStop(cmd, dir, f, stop, yes, force)
+			}
+			if force {
+				return errors.New("--force goes with --stop <pid>")
 			}
 			if asJSON {
 				enc := json.NewEncoder(out)
@@ -72,6 +76,7 @@ func doctorCmd() *cobra.Command {
 	c.Flags().StringVar(&dataDirF, "data-dir", "", "the data directory to check (also $CAPROCK_DATA_DIR)")
 	c.Flags().IntSliceVar(&stop, "stop", nil, "stop a process from the Orphans list by pid (repeatable); asks first")
 	c.Flags().BoolVar(&yes, "yes", false, "with --stop: do not ask")
+	c.Flags().BoolVar(&force, "force", false, "with --stop: send SIGKILL (Windows: TerminateProcess) — for a process a stop reported still running after SIGTERM")
 	return c
 }
 
@@ -81,7 +86,7 @@ func doctorReport(cmd *cobra.Command, dir string) *daemon.FootprintReport {
 	rt, err := config.ReadRuntime(dir)
 	if err == nil && daemonAlive(rt) {
 		var f daemon.FootprintReport
-		if err := getJSON(rt.Port, "/v1/footprint?orphans=1", &f); err == nil {
+		if err := getJSON(rt.Port, "/v1/footprint?orphans=1&fresh=1", &f); err == nil {
 			if f.Orphans == nil {
 				// A daemon from before the orphan scan: take it here.
 				f.SetOrphans(daemon.OfflineOrphans(cmd.Context(), dir, int32(rt.PID)))
@@ -97,8 +102,10 @@ func doctorReport(cmd *cobra.Command, dir string) *daemon.FootprintReport {
 // Orphans list just taken, it is shown, and it is stopped only after a yes
 // (ADR-059). The daemon stops it when one answers; otherwise the doctor
 // does, against a scan of its own. Either way the pid's start time is
-// checked again before every signal.
-func doctorStop(cmd *cobra.Command, dir string, f *daemon.FootprintReport, pids []int, yes bool) error {
+// checked again before the signal. It gets SIGTERM; one still running five
+// seconds later is reported, and only `--force` (a second, deliberate
+// command) sends SIGKILL.
+func doctorStop(cmd *cobra.Command, dir string, f *daemon.FootprintReport, pids []int, yes, force bool) error {
 	out := cmd.OutOrStdout()
 	byPID := map[int32]daemon.Orphan{}
 	if f.Orphans != nil {
@@ -116,7 +123,12 @@ func doctorStop(cmd *cobra.Command, dir string, f *daemon.FootprintReport, pids 
 		targets = append(targets, daemon.OrphanTarget{PID: o.PID, StartedAt: o.StartedAt})
 	}
 	if !yes {
-		fmt.Fprintf(out, "Stop %s? It gets SIGTERM, then SIGKILL after 5 seconds. [y/N] ", map[bool]string{true: "it", false: "them"}[len(targets) == 1])
+		it := map[bool]string{true: "it", false: "them"}[len(targets) == 1]
+		how := "It gets SIGTERM; if it is still running 5 seconds later, the doctor says so and sends nothing more."
+		if force {
+			how = "It gets SIGKILL: it cannot save anything first."
+		}
+		fmt.Fprintf(out, "Stop %s? %s [y/N] ", it, how)
 		line, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
 		if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
 			fmt.Fprintln(out, "Nothing stopped.")
@@ -126,12 +138,12 @@ func doctorStop(cmd *cobra.Command, dir string, f *daemon.FootprintReport, pids 
 	var res daemon.OrphanStopResult
 	rt, err := config.ReadRuntime(dir)
 	if err == nil && daemonAlive(rt) && f.DiskIO != nil {
-		err := postJSON(rt.Port, "/v1/footprint/orphans/stop", map[string]any{"targets": targets}, &res)
+		err := postJSON(rt.Port, "/v1/footprint/orphans/stop", map[string]any{"targets": targets, "force": force}, &res)
 		var se statusError
 		switch {
 		case errors.As(err, &se) && (se.code == http.StatusNotFound || se.code == http.StatusMethodNotAllowed):
 			// A daemon from before the stop: the doctor stops it itself.
-			res = daemon.StopOrphansOffline(cmd.Context(), dir, targets, int32(rt.PID))
+			res = daemon.StopOrphansOffline(cmd.Context(), dir, targets, int32(rt.PID), force)
 		case err != nil:
 			return err
 		}
@@ -140,15 +152,28 @@ func doctorStop(cmd *cobra.Command, dir string, f *daemon.FootprintReport, pids 
 		if err == nil {
 			running = int32(rt.PID)
 		}
-		res = daemon.StopOrphansOffline(cmd.Context(), dir, targets, running)
+		res = daemon.StopOrphansOffline(cmd.Context(), dir, targets, running, force)
 	}
+	return printStopResult(out, res, force)
+}
+
+// printStopResult says what a stop did, one line per process, and how to
+// finish one that outlived SIGTERM. Exit 1 when any is still there.
+func printStopResult(out io.Writer, res daemon.OrphanStopResult, force bool) error {
 	for _, o := range res.Stopped {
 		fmt.Fprintf(out, "stopped pid %d (%s)\n", o.PID, o.Label)
+	}
+	for _, o := range res.Running {
+		if force {
+			fmt.Fprintf(out, "pid %d (%s) is still running after SIGKILL\n", o.PID, o.Label)
+			continue
+		}
+		fmt.Fprintf(out, "pid %d (%s) is still running after SIGTERM; nothing more was sent. To kill it: caprock doctor --stop %d --force\n", o.PID, o.Label, o.PID)
 	}
 	for _, x := range res.Failed {
 		fmt.Fprintf(out, "pid %d not stopped: %s\n", x.PID, x.Error)
 	}
-	if len(res.Failed) > 0 {
+	if len(res.Failed) > 0 || len(res.Running) > 0 {
 		return exitCodeError{code: 1}
 	}
 	return nil
@@ -296,7 +321,11 @@ func printOrphans(w io.Writer, f *daemon.FootprintReport) {
 	if o == nil {
 		return
 	}
-	fmt.Fprintln(w, "\nOrphans (processes that look abandoned)")
+	if o.Count > 0 {
+		fmt.Fprintf(w, "\nOrphans: %d · %s (processes that look abandoned)\n", o.Count, daemon.Bytes(o.MemBytes))
+	} else {
+		fmt.Fprintln(w, "\nOrphans (processes that look abandoned)")
+	}
 	switch {
 	case !o.Scanned && o.Count > 0:
 		fmt.Fprintf(w, "  %d found at the last check; `caprock doctor` lists them\n", o.Count)
@@ -314,14 +343,21 @@ func printOrphans(w io.Writer, f *daemon.FootprintReport) {
 	}
 }
 
-// printOrphan is one orphan in three lines: what, why, where.
+// printOrphan is one orphan in up to four lines: what, why, the command
+// line, where.
 func printOrphan(w io.Writer, at int64, p daemon.Orphan, indent string) {
 	tail := ""
+	if p.CPUPct != nil {
+		tail += fmt.Sprintf(" · %.1f%% CPU", *p.CPUPct)
+	}
 	if p.Auto {
-		tail = " · stopped on its own"
+		tail += " · stopped on its own"
 	}
 	fmt.Fprintf(w, "%spid %d  %s · %s old · %s%s\n", indent, p.PID, p.Label, daemon.Age(time.Duration(at-p.StartedAt)*time.Millisecond), daemon.Bytes(p.MemBytes), tail)
 	fmt.Fprintf(w, "%s  %s\n", indent, p.Why)
+	if p.Cmd != "" {
+		fmt.Fprintf(w, "%s  $ %s\n", indent, p.Cmd)
+	}
 	where := p.Exe
 	if p.DataDir != "" {
 		if where != "" {

@@ -2275,11 +2275,15 @@ export const api = {
   reapOrphans: () => post<ReapResult>('/v1/resources/reap', {}),
   /**
    * What Caprock itself costs this machine: memory, disk, its disk I/O, duplicates (lib/footprint.ts).
-   * `orphans` takes the orphan list now, for the open doctor; without it the counts are the last scan's.
+   * `orphans` answers with the orphan list (at most 30 s old), for the open doctor; `fresh` takes it now
+   * (Check now). Without `orphans` the counts are the last scan's.
    */
-  footprint: (orphans = false) => get<Footprint>(orphans ? '/v1/footprint?orphans=1' : '/v1/footprint'),
-  /** Stop processes the user picked from the doctor's orphan list, each by pid and start time (ADR-059). Machine only. */
-  stopOrphans: (targets: OrphanTarget[]) => post<OrphanStopResult>('/v1/footprint/orphans/stop', { targets }),
+  footprint: (orphans = false, fresh = false) => get<Footprint>(orphans ? `/v1/footprint?orphans=1${fresh ? '&fresh=1' : ''}` : '/v1/footprint'),
+  /**
+   * Stop processes the user picked from the doctor's orphan list, each by pid and start time (ADR-059).
+   * SIGTERM; `force` sends SIGKILL — only the second click, on one a stop reported still running. Machine only.
+   */
+  stopOrphans: (targets: OrphanTarget[], force = false) => post<OrphanStopResult>('/v1/footprint/orphans/stop', force ? { targets, force } : { targets }),
   /** Terminal applications installed here, most preferred first. */
   terminals: () => get<TerminalList>('/v1/terminals'),
   /** Open a session in the user's own terminal app. */

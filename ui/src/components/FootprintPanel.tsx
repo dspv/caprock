@@ -15,7 +15,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { api, errText } from '@/lib/api'
 import { fmtAgo } from '@/lib/format'
 import { fmtCPU, fmtMem, useResources } from '@/lib/resources'
-import { age, cleanupList, doctorHeadline, doctorRows, fmtBytes, footprintText, footprintTitle, plainName, safeToStop, startedFrom, useFootprint, useFootprintWithOrphans, warnings, windowUsage, type DoctorRow, type DoctorRowKey, type Footprint, type Orphan, type OrphanStopResult } from '@/lib/footprint'
+import { age, cleanupList, doctorHeadline, doctorRows, fmtBytes, footprintText, footprintTitle, orphanFigure, plainName, safeToStop, startedFrom, useFootprint, useFootprintWithOrphans, warnings, windowUsage, type DoctorRow, type DoctorRowKey, type Footprint, type Orphan, type OrphanStopResult } from '@/lib/footprint'
 import { useNow } from '@/lib/useNow'
 import { useMenuDismiss } from './Cockpit'
 
@@ -92,6 +92,7 @@ export function CaprockFootprint({ owner }: { owner: boolean }) {
     )
   }
   const warn = warnings(f).length > 0
+  const orphans = orphanFigure(f.orphans, true)
   return (
     <span ref={box} className="relative inline-flex">
       <button type="button" data-caprock-load data-warn={warn || undefined} aria-expanded={open} aria-haspopup="dialog"
@@ -103,6 +104,12 @@ export function CaprockFootprint({ owner }: { owner: boolean }) {
           <>
             <span aria-hidden className="opacity-60">·</span>
             <span data-disk-figure className="num">{fmtBytes(f.disk.total_bytes)}</span>
+            {orphans && (
+              <>
+                <span aria-hidden className="opacity-60">·</span>
+                <span data-orphan-figure className="num">{orphans}</span>
+              </>
+            )}
           </>
         )}
       </button>
@@ -142,14 +149,17 @@ export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose
   // now; the strip's answer (counts only) stands in until it lands.
   const full = useFootprintWithOrphans()
   const f = full.data && full.data.at >= strip.at - FRESH_MS ? full.data : strip
-  const onCheck = () => {
+  const onCheck = (fresh = false) => {
     onStripCheck?.()
-    full.refresh()
+    if (fresh) full.checkNow()
+    else full.refresh()
   }
   const now = useNow(5_000)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string>()
   const [confirm, setConfirm] = useState<Confirming>()
+  // What outlived SIGTERM: offered a Force stop, the second click (ADR-059, amended 2026-10-18).
+  const [stubborn, setStubborn] = useState<Orphan[]>([])
   const [breakdown, setBreakdown] = useState(false)
   // *Check now*: "Checking…" until an answer newer than the one shown lands.
   const [checking, setChecking] = useState<number>()
@@ -161,7 +171,7 @@ export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose
   }, [checking, f.at])
   const check = () => {
     setChecking(f.at)
-    onCheck()
+    onCheck(true)
   }
   const sinceCheck = now - f.at
   const checked = checking !== undefined ? 'Checking…' : sinceCheck < 10_000 ? 'Checked just now' : `Checked ${fmtAgo(f.at, now)}`
@@ -169,17 +179,20 @@ export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose
   const all = owner ? cleanupList(rows) : []
   const safe = all.filter(safeToStop)
   const head = doctorHeadline(f)
-  const stop = async (items: Orphan[]) => {
+  const stop = async (items: Orphan[], force = false) => {
     if (!items.length) { setConfirm(undefined); return }
     setBusy(true)
     setNote(undefined)
     try {
-      const r: OrphanStopResult = await api.stopOrphans(items.map((x) => ({ pid: x.pid, started_at: x.started_at })))
+      const r: OrphanStopResult = await api.stopOrphans(items.map((x) => ({ pid: x.pid, started_at: x.started_at })), force)
       const ok = r.stopped ?? []
+      const still = r.running ?? []
       const bad = r.failed ?? []
       const freed = ok.reduce((s, x) => s + x.mem_bytes, 0)
+      setStubborn(force ? [] : still)
       setNote([
         ok.length ? `Stopped ${ok.length}${freed ? `, about ${fmtBytes(freed)} freed` : ''}.` : '',
+        force && still.length ? `${still.length} still running after a force stop.` : '',
         bad.length ? `${bad.length} could not be stopped${bad.length === 1 ? `: ${bad[0]!.error}` : ''}.` : '',
       ].filter(Boolean).join(' '))
       onCheck()
@@ -228,8 +241,17 @@ export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose
             </div>
           )}
           {looking && <p className="text-[11.5px] text-fg-muted">Looking for what can be stopped…</p>}
+          {orphanFigure(f.orphans) && (
+            <p data-orphan-summary className="num text-[12px] text-fg-muted" title="Processes that look abandoned: Caprock's own, claude and codex sessions that ended, MCP servers whose agent is gone">
+              {orphanFigure(f.orphans)}
+            </p>
+          )}
           {confirmBox('all')}
         </div>
+
+        {owner && stubborn.length > 0 && (
+          <ForceStop items={stubborn} busy={busy} onForce={(xs) => void stop(xs, true)} onDismiss={() => setStubborn([])} />
+        )}
 
         {rows.length > 0 && (
           <ul data-doctor-rows className="flex flex-col divide-y divide-[var(--app-hairline)] border-y border-[var(--app-hairline)]">
@@ -292,8 +314,9 @@ function DoctorRowView({ r, at, canStop, busy, onStop, children }: {
               const from = startedFrom(p.data_dir, p.exe)
               return (
                 <div key={p.pid} data-orphan={p.pid} className="flex flex-col">
-                  <span className="text-fg">{p.label ? `${p.label} · ` : ''}pid {p.pid} · {fmtMem(p.mem_bytes)}{p.started_at ? ` · ${age(at - p.started_at)}` : ''}</span>
+                  <span className="text-fg">{p.label ? `${p.label} · ` : ''}pid {p.pid} · {fmtMem(p.mem_bytes)}{p.cpu_pct !== undefined && p.cpu_pct !== null ? ` · ${fmtCPU(p.cpu_pct)} CPU` : ''}{p.started_at ? ` · ${age(at - p.started_at)}` : ''}</span>
                   {from && <span>started by: {from}</span>}
+                  {p.cmd && <span data-orphan-cmd className="break-all" title={p.cmd}>$ {p.cmd}</span>}
                   {p.exe && <span className="break-all">{p.exe}</span>}
                   {p.data_dir && <span className="break-all">data {p.data_dir}{p.data_dir_gone ? ' (gone)' : ''}</span>}
                   {p.why && <span className="font-sans text-[11px]">{p.why}</span>}
@@ -358,11 +381,40 @@ function StopConfirm({ items, at, busy, onStop, onCancel }: { items: Orphan[]; a
   )
 }
 
+/**
+ * What outlived SIGTERM. Nothing more was sent; **Force stop** is the second
+ * click, which sends SIGKILL to each one named here (ADR-059, amended
+ * 2026-10-18).
+ */
+function ForceStop({ items, busy, onForce, onDismiss }: { items: Orphan[]; busy: boolean; onForce: (xs: Orphan[]) => void; onDismiss: () => void }) {
+  return (
+    <div role="alertdialog" aria-label="Still running" data-force-stop-box
+      className="flex flex-col gap-2 rounded-[8px] border border-[var(--app-hairline-strong)] bg-[var(--app-hairline)] px-2.5 py-2">
+      <p className="text-[12px] text-fg">Still running after a polite stop. <span className="text-fg-muted">Force stop ends {items.length === 1 ? 'it' : 'them'} at once; nothing in {items.length === 1 ? 'it' : 'them'} gets to save.</span></p>
+      <ul className="flex flex-col gap-0.5 text-[12px]">
+        {items.map((x) => (
+          <li key={x.pid} data-still-running={x.pid} className="flex items-baseline gap-2">
+            <span className="min-w-0 flex-1 text-fg">{plainName(x)} <span className="text-fg-faint">· pid {x.pid}</span></span>
+            <span className="num shrink-0 text-fg-muted">{fmtMem(x.mem_bytes)}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center gap-2">
+        <button type="button" data-force-stop className={PRIMARY} disabled={busy} onClick={() => onForce(items)}>
+          {busy ? 'Stopping…' : `Force stop ${items.length}`}
+        </button>
+        <button type="button" className={BUTTON} disabled={busy} onClick={onDismiss}>Leave running</button>
+      </div>
+    </div>
+  )
+}
+
 /** Why a listed process is not ticked for you. */
 function carefulWhy(o: Orphan): string {
   switch (o.kind) {
     case 'caprock_daemon': return 'Not a test folder: it may be a Caprock you use.'
     case 'caprock_holder': return 'Something still runs in it; stopping closes that terminal.'
+    case 'caprock_old_holder': return 'A session still runs in it; stopping ends that session.'
     case 'caprock_other': return 'Part of an app; it may still be in use.'
     default: return 'Check it before stopping.'
   }

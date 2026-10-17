@@ -50,7 +50,8 @@ func (s *Server) handleFootprint(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusNotImplemented, errors.New("footprint not available"))
 		return
 	}
-	writeJSON(w, http.StatusOK, s.d.Footprint(r.Context(), r.URL.Query().Get("orphans") == "1"))
+	q := r.URL.Query()
+	writeJSON(w, http.StatusOK, s.d.Footprint(r.Context(), q.Get("orphans") == "1", q.Get("fresh") == "1"))
 }
 
 // OrphanTarget names one process from the footprint's orphan list: its pid
@@ -65,9 +66,10 @@ const maxStopTargets = 256
 
 // handleStopOrphans stops processes the user picked from the doctor's
 // orphan list, each named by pid and start time (ADR-059). The daemon
-// scans again and signals only what that scan lists. Machine only: it is
-// on no paired device's list, so a phone can read the orphans but never
-// stop one.
+// scans again and signals only what that scan lists: SIGTERM, or SIGKILL
+// with `force`, the user's second click on one that outlived SIGTERM.
+// Machine only: it is on no paired device's list, so a phone can read the
+// orphans but never stop one.
 func (s *Server) handleStopOrphans(w http.ResponseWriter, r *http.Request) {
 	if s.d.StopOrphans == nil {
 		s.failCode(w, http.StatusNotImplemented, errors.New("the orphan stop is not available"))
@@ -75,6 +77,7 @@ func (s *Server) handleStopOrphans(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Targets []OrphanTarget `json:"targets"`
+		Force   bool           `json:"force"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&body); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
@@ -90,7 +93,7 @@ func (s *Server) handleStopOrphans(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, s.d.StopOrphans(r.Context(), body.Targets))
+	writeJSON(w, http.StatusOK, s.d.StopOrphans(r.Context(), body.Targets, body.Force))
 }
 
 // handleReapOrphans stops the orphaned pty-hosts nothing runs in. Not on a

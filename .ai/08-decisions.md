@@ -3871,6 +3871,46 @@ after N minutes without a client (a Settings toggle, off by default) — that
 is an automatic stop of a process Caprock did not start and needs its own
 ADR.
 
+**Amended 2026-10-18 (owner, 2026-10-13, confirmed 2026-10-18, translated:
+"I'd like to monitor orphans, including Claude's orphans; maybe also an
+advanced mode to clean them").** On his Mac a `/opt/homebrew/bin/caprock
+pty-host` from 2026-10-06 was still running twelve days later, from a
+Homebrew install he had left for the app; the doctor said it only as a count
+of "terminal holders from another install, all still in use", with no row,
+no age and no way to stop it there. The decision above already covers
+processes Caprock did not start; this amendment widens what is listed and
+narrows how a stop signals:
+
+- **More is listed, by the same rule.** Kind `codex` — a Codex CLI judged
+  exactly as a `claude` is (parent gone, or its pid the latest ended session
+  in Caprock's history, no terminal); `codex app-server`, the Codex desktop
+  app's managed daemon, is a service and never listed. Kind
+  `caprock_old_holder` — a terminal holder this Caprock still lists but whose
+  executable lies outside the answering daemon's install directories: a
+  session that outlived a move between installs. Something still runs in it,
+  so it is said (a row of its own, never a warning), never stopped on its own
+  and never ticked in Clean up; its `why` names the install, its age, whether
+  that program file is gone and whether a live session runs in it. With no
+  daemon to compare installs with, no holder is judged by its executable.
+- **Each item carries what a person needs to decide:** age, CPU, memory, and
+  the command line (`cmd`, cut to 160 characters, credentials hidden). The
+  strip says *3 orphans*; the doctor says *Orphans: 3 · 410 MB*.
+- **Still cheap.** The 10-minute sweep keeps the count; the open doctor's
+  10-second asks are answered from a scan up to 30 s old; Check now,
+  `caprock doctor` and every stop take one at once.
+- **A stop sends one signal, then reports.** SIGTERM, a 5-second wait, and a
+  process still there is reported *still running* — nothing more is sent.
+  SIGKILL is a second, separate click (**Force stop N**, listing each process
+  again) or `caprock doctor --stop <pid> --force`. Previously SIGKILL followed
+  SIGTERM on its own after five seconds; a person who chose a polite stop now
+  sees that it did not work before anything harsher happens. Windows has only
+  TerminateProcess, so its first stop already ends the process.
+- **Unchanged:** never automatic, never from a paired device, never the
+  orchestrator or an agent; every stop is per item, the item seen and
+  confirmable one by one (a *Stop N* lists each on its own line with its own
+  checkbox, nothing bulk without that list); pid and start time re-checked by
+  a fresh scan before each signal; only the named pid, never its children.
+
 ## ADR-060 — Phone access may stay on across restarts, when the owner ticks it
 
 **Date:** 2026-10-14 · **Status:** accepted

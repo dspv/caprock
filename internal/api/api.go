@@ -103,11 +103,13 @@ type Deps struct {
 	// time for GET /v1/resources/history. nil ⇒ 501.
 	ResourceHistory func(sinceMs int64) any
 	// Footprint returns what Caprock costs this machine for GET
-	// /v1/footprint; orphans is ?orphans=1, which takes the orphan list now.
+	// /v1/footprint; orphans is ?orphans=1, which answers with the orphan
+	// list (at most 30 s old), and fresh is &fresh=1, which takes it now.
 	// StopOrphans stops processes from that list for POST
-	// /v1/footprint/orphans/stop. nil ⇒ 501.
-	Footprint   func(ctx context.Context, orphans bool) any
-	StopOrphans func(ctx context.Context, targets []OrphanTarget) any
+	// /v1/footprint/orphans/stop; force (the second click on one that
+	// outlived SIGTERM) sends SIGKILL. nil ⇒ 501.
+	Footprint   func(ctx context.Context, orphans, fresh bool) any
+	StopOrphans func(ctx context.Context, targets []OrphanTarget, force bool) any
 	// KeepAwake returns whether the computer is being kept awake, for GET
 	// /v1/keepawake (keepawake.Status). Nil ⇒ 501.
 	KeepAwake func() any

@@ -14,15 +14,18 @@ import (
 // and ?orphans=1 on the footprint asks for the list.
 func TestOrphanStopContract(t *testing.T) {
 	var got []OrphanTarget
-	var asked []bool
+	var forced []bool
+	var asked, fresh []bool
 	s := New(Deps{
-		Footprint: func(_ context.Context, orphans bool) any {
+		Footprint: func(_ context.Context, orphans, f bool) any {
 			asked = append(asked, orphans)
+			fresh = append(fresh, f)
 			return map[string]any{"ok": true}
 		},
-		StopOrphans: func(_ context.Context, ts []OrphanTarget) any {
+		StopOrphans: func(_ context.Context, ts []OrphanTarget, force bool) any {
 			got = ts
-			return map[string]any{"stopped": []any{}, "failed": []any{}}
+			forced = append(forced, force)
+			return map[string]any{"stopped": []any{}, "running": []any{}, "failed": []any{}}
 		},
 	})
 	do := func(method, path, body string) *httptest.ResponseRecorder {
@@ -37,8 +40,12 @@ func TestOrphanStopContract(t *testing.T) {
 
 	do(http.MethodGet, "/v1/footprint", "")
 	do(http.MethodGet, "/v1/footprint?orphans=1", "")
-	if len(asked) != 2 || asked[0] || !asked[1] {
-		t.Errorf("footprint asked for the list: %v, want [false true]", asked)
+	do(http.MethodGet, "/v1/footprint?orphans=1&fresh=1", "")
+	if len(asked) != 3 || asked[0] || !asked[1] || !asked[2] {
+		t.Errorf("footprint asked for the list: %v, want [false true true]", asked)
+	}
+	if fresh[1] || !fresh[2] {
+		t.Errorf("fresh: %v, want only the third", fresh)
 	}
 
 	for _, bad := range []string{`nope`, `{}`, `{"targets":[]}`, `{"targets":[{"pid":1,"started_at":5}]}`, `{"targets":[{"pid":42}]}`} {
@@ -60,6 +67,13 @@ func TestOrphanStopContract(t *testing.T) {
 	var res map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil || res["stopped"] == nil {
 		t.Errorf("answer: %s (%v)", w.Body, err)
+	}
+	// SIGKILL only when the body says force: the second click.
+	if w := do(http.MethodPost, "/v1/footprint/orphans/stop", `{"targets":[{"pid":4242,"started_at":1791877000000}],"force":true}`); w.Code != http.StatusOK {
+		t.Fatalf("force stop: %d %s", w.Code, w.Body)
+	}
+	if len(forced) != 2 || forced[0] || !forced[1] {
+		t.Errorf("force: %v, want [false true]", forced)
 	}
 
 	if w := (func() *httptest.ResponseRecorder {

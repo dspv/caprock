@@ -113,9 +113,11 @@ type FootprintVerdict struct {
 }
 
 // footprint answers GET /v1/footprint; withOrphans (?orphans=1, sent while
-// the doctor is open and by `caprock doctor`) takes the orphan list now
-// instead of answering with the last scan's counts.
-func (d *Daemon) footprint(ctx context.Context, withOrphans bool) *FootprintReport {
+// the doctor is open and by `caprock doctor`) answers with the orphan list —
+// the last scan's while it is younger than orphanListTTL, a new one when
+// fresh (&fresh=1: Check now, `caprock doctor`) — instead of the last
+// scan's counts.
+func (d *Daemon) footprint(ctx context.Context, withOrphans, fresh bool) *FootprintReport {
 	rep := d.resources(ctx)
 	exe, _ := os.Executable()
 	f := &FootprintReport{At: time.Now().UnixMilli(), DaemonRunning: true, DataDir: d.opt.DataDir, Exe: exe, Error: rep.Error}
@@ -131,7 +133,7 @@ func (d *Daemon) footprint(ctx context.Context, withOrphans bool) *FootprintRepo
 	f.Actions = d.actions.all()
 	var o OrphanReport
 	if withOrphans {
-		o = d.scanOrphans(ctx)
+		o = d.orphanList(ctx, fresh)
 	} else {
 		o = d.orphanCounts(ctx)
 	}
@@ -259,14 +261,7 @@ func otherInstallHolders(s caprockScan, verdicts []ptyhost.Verdict, dirs []strin
 		if exe == "" {
 			continue
 		}
-		mine := false
-		for _, d := range dirs {
-			if sameDir(filepath.Dir(exe), d) {
-				mine = true
-				break
-			}
-		}
-		if mine {
+		if inInstall(exe, dirs) {
 			continue
 		}
 		out.Count++
@@ -367,7 +362,7 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 		info = append(info, FootprintVerdict{Level: "ok", Code: "other_install_holders", Text: text})
 	}
 	if o := f.Orphans; o != nil {
-		stray := o.ByKind[OrphanClaude] + o.ByKind[OrphanMCP] + o.ByKind[OrphanCaprockOther]
+		stray := o.ByKind[OrphanClaude] + o.ByKind[OrphanCodex] + o.ByKind[OrphanMCP] + o.ByKind[OrphanCaprockOther]
 		children := o.ByKind[OrphanClaudeChild]
 		const how = "Caprock never stops them on its own; the doctor's Clean up or `caprock doctor --stop <pid>` can."
 		switch {
@@ -423,7 +418,7 @@ func processes(n int) string {
 func orphanParts(by map[string]int) string {
 	var parts []string
 	for _, k := range []struct{ kind, one string }{
-		{OrphanClaude, "claude"}, {OrphanMCP, "MCP server"}, {OrphanCaprockOther, "Caprock command"},
+		{OrphanClaude, "claude"}, {OrphanCodex, "codex"}, {OrphanMCP, "MCP server"}, {OrphanCaprockOther, "Caprock command"},
 	} {
 		if n := by[k.kind]; n > 0 {
 			parts = append(parts, plural(n, k.one))
