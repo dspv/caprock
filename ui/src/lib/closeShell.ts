@@ -218,28 +218,20 @@ export function planAgentClose(
  */
 export const AGENT_SAVED_TOAST = 'Closed. The conversation is saved — reopen it from History or the sidebar.'
 
-/** The one sentence before closing the tab of an agent that is working or waiting. */
+/** The one short line before closing the tab of an agent that is working or waiting. */
 export function agentStillWorking(title: string, many: boolean): string {
-  return many
-    ? `“${title}”: its agents are still working. The conversations are saved either way.`
-    : `“${title}” is still working. The conversation is saved either way.`
+  return many ? `“${title}”: its agents are still working.` : `“${title}” is still working.`
 }
 
 /**
- * The two equal choices under that sentence, each with one plain line
- * saying what it does (owner, 2026-10-17, translated: one button "may be
- * the wrong choice").
+ * The two choices under that line, each with a few words saying what it does
+ * (owner, 2026-10-17, translated: "a lot of text, and it's unclear which
+ * button is recommended"). Keeping it running is the recommended one.
  */
 export function agentCloseChoices(many: boolean): { keep: { label: string; says: string }; end: { label: string; says: string } } {
   return many
-    ? {
-        keep: { label: 'Keep them running', says: 'Only the tab closes. They work on in the background, under Running in the sidebar.' },
-        end: { label: 'Stop them', says: 'They stop now and the tab closes. Continue them later from History or the sidebar.' },
-      }
-    : {
-        keep: { label: 'Keep it running', says: 'Only the tab closes. It works on in the background, under Running in the sidebar.' },
-        end: { label: 'Stop it', says: 'It stops now and the tab closes. Continue it later from History or the sidebar.' },
-      }
+    ? { keep: { label: 'Keep them running', says: 'They work on in the background.' }, end: { label: 'Stop them', says: 'Continue later from History.' } }
+    : { keep: { label: 'Keep it running', says: 'It works on in the background.' }, end: { label: 'Stop it', says: 'Continue later from History.' } }
 }
 
 /** The one question before ending an agent that is still answering. */

@@ -47,9 +47,10 @@ export function CloseChatConfirm({ onStop, onKeep, onCancel, agent = false }: {
 
 /**
  * Closing the tab of an agent Caprock started that is working or waiting on
- * you (lib/agentClose.ts): one sentence and two equal buttons, each with
- * one plain line under it saying what it does (owner, 2026-10-17,
- * translated: the dialog had one button, which may be the wrong choice).
+ * you (lib/agentClose.ts): one short line and two buttons, each with a few
+ * words under it (owner, 2026-10-17, translated: the dialog had one button,
+ * which may be the wrong choice; then: too much text, and unclear which one
+ * is recommended). *Keep it running* is the recommended one, drawn filled.
  * From 2026-10-15 it was *Close tab* and a quiet *Stop it instead* link,
  * and stopping was easy to miss. *Keep it running* is in focus, so ⌘W then
  * Enter still closes the tab and lets the agent work on; Escape cancels.
@@ -66,7 +67,7 @@ export function CloseAgentChoice({ title, many, onKeep, onEnd, onCancel }: {
   onCancel: () => void
 }) {
   const choices = agentCloseChoices(many)
-  // The two are drawn alike on purpose: neither is the "right" one.
+  // Keep is recommended and drawn filled; Stop is outlined.
   const rows = [
     { key: 'keep', c: choices.keep, act: onKeep, focus: true },
     { key: 'end', c: choices.end, act: onEnd, focus: false },
@@ -79,10 +80,10 @@ export function CloseAgentChoice({ title, many, onKeep, onEnd, onCancel }: {
           {rows.map(({ key, c, act, focus }) => (
             <div key={key} className="grid content-start gap-1.5">
               <button type="button" autoFocus={focus} data-agent-close={key} aria-describedby={`agent-close-${key}`} onClick={act}
-                className="h-[34px] w-full whitespace-nowrap rounded-[7px] border border-[var(--app-hairline-strong)] px-4 text-[14px] font-medium text-fg hover:bg-[var(--app-row-hover)]">
+                className={`h-[34px] w-full whitespace-nowrap rounded-[7px] px-4 text-[14px] font-medium ${focus ? 'bg-accent text-panel hover:opacity-90' : 'border border-[var(--app-hairline-strong)] text-fg hover:bg-[var(--app-row-hover)]'}`}>
                 {c.label}
               </button>
-              <p id={`agent-close-${key}`} className="text-[12.5px] leading-[1.45] text-fg-muted">{c.says}</p>
+              <p id={`agent-close-${key}`} className="text-center text-[12.5px] leading-[1.45] text-fg-muted">{c.says}</p>
             </div>
           ))}
         </div>
