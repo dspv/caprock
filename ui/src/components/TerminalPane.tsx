@@ -57,6 +57,10 @@
  * - **Where you type** (lib/terminputbox): in a Claude Code session, the rows
  *   of its input box sit on a faint band, found again after each parsed
  *   write from the bottom rows alone; another agent or a shell gets none.
+ * - **An agent's update command** (lib/termupdate): Codex's or Claude Code's
+ *   "update available" notice gets a small bar near the bottom — Copy
+ *   command, Open a terminal (a plain shell tab, nothing typed), × — and the
+ *   printed command is never run.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
@@ -89,6 +93,8 @@ import { checkTerminalCell, clearGlyphAtlas, loadTerminalFont, watchTerminalFont
 import { healAtlasMerges, reuploadGlyphs } from '@/lib/termatlas'
 import { blinkWhileVisible, pageHidden } from '@/lib/visible'
 import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
+import { attachUpdateWatch, dismissNotice, requestShellBeside, type UpdateNotice } from '@/lib/termupdate'
+import { UpdateNoticeBar } from './UpdateNoticeBar'
 
 export { APP_TERMINAL_THEME } from '@/lib/termthemes'
 export { reuploadGlyphs } from '@/lib/termatlas'
@@ -243,6 +249,8 @@ export function TerminalPane({
   const [highlightOn, setHighlightOn] = useState(() => getTerminalPrefs().highlightInput)
   const [ground, setGround] = useState(() => terminalTheme(getTerminalPrefs().theme).colors.background)
   const [boxHint, setBoxHint] = useState<{ top: number; height: number } | null>(null)
+  // An agent's "update available" notice, found in the output (lib/termupdate).
+  const [update, setUpdate] = useState<UpdateNotice | null>(null)
 
   useEffect(() => {
     const el = host.current
@@ -284,6 +292,7 @@ export function TerminalPane({
     bandRef.current = band
     band.setLook({ shown: prefs.highlightInput, strength: prefs.highlightStrength })
     band.setEnabled(inputBoxRef.current)
+    const updates = attachUpdateWatch(term, setUpdate)
     // Pointing at Claude Code's input box shows, on its top rule, the key
     // that hides or brings back its band: where the eye already is.
     let pointerY: number | null = null
@@ -808,6 +817,7 @@ export function TerminalPane({
       if (hintRaf) cancelAnimationFrame(hintRaf)
       band.dispose()
       bandRef.current = null
+      updates.dispose()
       term.dispose()
     }
   }, [sessionId])
@@ -876,6 +886,19 @@ export function TerminalPane({
               {keys(INPUT_HIGHLIGHT_KEY)} {highlightOn ? 'hides the highlight' : 'highlights where you type'}
             </span>
           </span>
+        </div>
+      )}
+      {update && (
+        <div className="pointer-events-none absolute bottom-3 right-3 z-10 flex max-w-[calc(100%-1.5rem)] justify-end">
+          <UpdateNoticeBar
+            notice={update}
+            onOpenShell={() => requestShellBeside(sessionId)}
+            onDismiss={() => {
+              dismissNotice(update)
+              setUpdate(null)
+              api.current?.focus()
+            }}
+          />
         </div>
       )}
       <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">

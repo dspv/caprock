@@ -94,6 +94,7 @@ import { NewAgentSheet } from '@/components/NewAgentSheet'
 import type { HandoffTarget } from '@/components/AgentHandoff'
 import { liveOwnedSession } from '@/lib/handoff'
 import { locateFile, OPEN_PATH_EVENT, type FileRoot, type OpenPathDetail } from '@/lib/mdreader'
+import { OPEN_SHELL_BESIDE_EVENT } from '@/lib/termupdate'
 import type { SendTarget } from '@/components/FileTools'
 import { CloseSettingsContext } from '@/lib/settingsClose'
 import { SetupShellContext } from '@/lib/setupShell'
@@ -1709,6 +1710,22 @@ export function AppShell() {
   const projectOfSession = useCallback((id: string) => model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((y) => y.session.session_id === id))), [model.projects])
   const wsRef = useRef(ws)
   wsRef.current = ws
+  // An agent's update notice in its terminal (lib/termupdate): *Open a
+  // terminal* is a plain shell tab in the session's folder, in front. Nothing
+  // is typed into it; the user pastes the command he copied (rule 7).
+  const shellBesideCtx = useRef({ sessionsById, projectOfSession, newShell, activeProjectId })
+  shellBesideCtx.current = { sessionsById, projectOfSession, newShell, activeProjectId }
+  useEffect(() => {
+    const on = (e: Event) => {
+      const id = (e as CustomEvent<{ sessionId?: string }>).detail?.sessionId
+      if (!id) return
+      const c = shellBesideCtx.current
+      const pid = findTabBySession(wsRef.current, id)?.projectId ?? c.projectOfSession(id)?.project.id ?? c.activeProjectId
+      void c.newShell(pid, c.sessionsById.get(id)?.cwd || undefined)
+    }
+    window.addEventListener(OPEN_SHELL_BESIDE_EVENT, on)
+    return () => window.removeEventListener(OPEN_SHELL_BESIDE_EVENT, on)
+  }, [])
   // ⌘P (⇧⌘B until 2026-10-15) is the Pipeline one keystroke away (owner, 2026-10-14, translated:
   // "it feels like quick access to the CI/CD page is missing"): it brings
   // the Pipeline tab to the front — for the agent in front, else where it
