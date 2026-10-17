@@ -87,6 +87,17 @@ export type Account = {
   signature: string
   last_sync: number
   last_error: string
+  /** 'password' (the default), 'oauth2:google' or 'oauth2:microsoft'. */
+  auth?: string
+}
+
+/** What removing an account says before it goes (ADR-057): Google's grant is
+ *  revoked there too; Microsoft offers apps no way to, so the user is told where. */
+export function removeAccountPrompt(a: Pick<Account, 'email' | 'auth'>): string {
+  const base = `Remove ${a.email}? Mail stays on the server.`
+  if (a.auth === 'oauth2:google') return `${base} Caprock also gives back its access to this Google account.`
+  if (a.auth === 'oauth2:microsoft') return `${base} Microsoft keeps Caprock's access until you remove it at account.live.com/consent/Manage (work accounts: myapps.microsoft.com).`
+  return base
 }
 
 export type Folder = {

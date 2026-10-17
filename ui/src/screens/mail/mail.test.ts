@@ -5,6 +5,7 @@ import { groupThreads } from './MailScreen'
 import { buildDoc, hasRemoteContent } from './MailBody'
 import { parseAddresses, quote, replySubject } from './format'
 import type { Message } from './mailApi'
+import { removeAccountPrompt } from './mailApi'
 
 const msg = (p: Partial<Message>): Message => ({
   id: 1, account_id: 1, folder_id: 1, uid: 1, message_id: '', in_reply_to: '', references: '', thread_key: '',
@@ -52,5 +53,13 @@ describe('mail', () => {
     expect(replySubject('Re: hi', 'Re')).toBe('Re: hi')
     expect(replySubject('hi', 'Fwd')).toBe('Fwd: hi')
     expect(quote(msg({ body_text: 'one\ntwo\n\n' })).endsWith('> one\n> two')).toBe(true)
+  })
+})
+
+describe('removing an account', () => {
+  it('says what happens to the sign-in at the provider', () => {
+    expect(removeAccountPrompt({ email: 'a@x.io', auth: 'password' })).toBe('Remove a@x.io? Mail stays on the server.')
+    expect(removeAccountPrompt({ email: 'a@gmail.com', auth: 'oauth2:google' })).toContain('gives back its access to this Google account')
+    expect(removeAccountPrompt({ email: 'a@outlook.com', auth: 'oauth2:microsoft' })).toContain('account.live.com/consent/Manage')
   })
 })

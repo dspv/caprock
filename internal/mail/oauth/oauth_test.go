@@ -130,6 +130,32 @@ func TestAccessTokenCachesAndRefreshes(t *testing.T) {
 	}
 }
 
+// Revoke takes the grant back at Google (a second time is still "revoked":
+// the token is dead either way); a provider with no endpoint sends nothing;
+// an endpoint that fails is an error.
+func TestRevoke(t *testing.T) {
+	srv := oauthtest.Start(t, &oauth.Google, "me@gmail.example")
+	ctx := context.Background()
+	p, _ := oauth.Lookup("google")
+	if ok, err := p.Revoke(ctx, "refresh-1"); !ok || err != nil || srv.Revocations() != 1 {
+		t.Fatalf("revoke: %v %v (%d)", ok, err, srv.Revocations())
+	}
+	if _, _, err := oauth.AccessToken(ctx, "google", "refresh-1"); !errors.Is(err, oauth.ErrSignInAgain) {
+		t.Fatalf("a revoked refresh token still refreshes: %v", err)
+	}
+	if ok, err := p.Revoke(ctx, "refresh-1"); !ok || err != nil {
+		t.Fatalf("second revoke: %v %v", ok, err)
+	}
+	m, _ := oauth.Lookup("microsoft")
+	if ok, err := m.Revoke(ctx, "refresh-1"); ok || err != nil {
+		t.Fatalf("microsoft revoke: %v %v", ok, err)
+	}
+	p.RevokeURL = srv.URL + "/missing"
+	if ok, err := p.Revoke(ctx, "refresh-1"); ok || err == nil {
+		t.Fatalf("failing endpoint: %v %v", ok, err)
+	}
+}
+
 func TestXOAuth2Format(t *testing.T) {
 	mech, ir, err := oauth.XOAuth2("me@x.example", "tok").Start()
 	if err != nil || mech != "XOAUTH2" || string(ir) != "user=me@x.example\x01auth=Bearer tok\x01\x01" {

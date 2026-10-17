@@ -75,6 +75,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-18 — unreleased: Mail's OAuth, ready for a real account
+
+Sign-in with Google and Microsoft (PKCE, loopback redirect, XOAUTH2 for IMAP
+and SMTP, refresh, the release wiring of the client IDs) shipped on
+2026-10-14 (#552). Added now: removing a Google account revokes its grant at
+Google (Microsoft has no endpoint for it; the confirmation says where), a Go
+test that walks one account's whole life against a fake provider and fake
+servers, and in [docs/mail-oauth.md](../docs/mail-oauth.md) the owner's
+checklist and the real-account test. Still not done: the owner's Google and
+Azure registrations and the three repository secrets, so release builds offer
+app passwords only; no real Gmail or Outlook account has signed in yet.
+
 ### 2026-10-17 — unreleased: import chats from Claude.ai and ChatGPT (ADR-074)
 
 The owner (translated): his Claude.ai and ChatGPT conversations in one place

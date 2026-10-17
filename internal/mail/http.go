@@ -214,6 +214,14 @@ func (s *Service) updateAccount(w http.ResponseWriter, r *http.Request) {
 func (s *Service) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	s.with(w, r, func(st *store.Store, eng *engine.Engine) {
 		id := idParam(r)
+		// An OAuth account's refresh token is read before it is deleted, to
+		// take it back at the provider afterwards.
+		var provider, refresh string
+		if a, err := st.Account(r.Context(), id); err == nil {
+			if provider = oauth.ProviderOf(a.Auth); provider != "" {
+				refresh, _ = s.secrets().Get(id)
+			}
+		}
 		eng.StopAccount(id)
 		if err := st.DeleteAccount(r.Context(), id); err != nil {
 			fail(w, 500, err)
@@ -221,8 +229,32 @@ func (s *Service) deleteAccount(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = s.secrets().Delete(id)
 		s.version.Add(1)
-		writeJSON(w, map[string]bool{"ok": true})
+		out := map[string]bool{"ok": true}
+		if provider != "" {
+			out["revoked"] = revokeSignIn(r.Context(), provider, refresh)
+		}
+		writeJSON(w, out)
 	})
+}
+
+// revokeTimeout bounds the revocation call on account removal: the account
+// is already gone by then, and an offline machine must not hold the screen.
+var revokeTimeout = 5 * time.Second
+
+// revokeSignIn takes a removed account's refresh token back at its provider
+// (ADR-057), best effort. It reports whether the provider confirmed it: false
+// for Microsoft, which offers apps no endpoint for it, and on any failure.
+// The token is gone from the secret store either way.
+func revokeSignIn(ctx context.Context, provider, refresh string) bool {
+	oauth.Forget(refresh)
+	p, ok := oauth.Lookup(provider)
+	if !ok || refresh == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), revokeTimeout)
+	defer cancel()
+	done, err := p.Revoke(ctx, refresh)
+	return done && err == nil
 }
 
 func (s *Service) list(w http.ResponseWriter, r *http.Request) {
