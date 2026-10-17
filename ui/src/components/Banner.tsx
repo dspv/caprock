@@ -117,10 +117,11 @@ export function BannerArt({ scene }: { scene: Scene }) {
 function SceneBody({ scene }: { scene: Scene }) {
   switch (scene) {
     case 'team':
-      // Several people's agents, side by side.
+      // Several people's agents, side by side. No Codex here: its mark is
+      // OpenAI's Blossom, which may only name Codex itself, not decorate.
       return (
         <>
-          <Who who="codex" x={-2} y={20} s={0.76} />
+          <Who who="opencode" x={-2} y={20} s={0.76} />
           <Who who="gemini" x={62} y={18} s={0.76} />
           <Who who="lead" x={21} y={2} s={1} />
         </>
