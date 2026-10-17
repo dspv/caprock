@@ -1491,6 +1491,10 @@ case that a code admitted whoever scanned it in five minutes; the owner
 judged a phone that cannot type once he has left the house the worse
 failure, and one click removes either.
 
+*Amended 2026-10-17 by [ADR-073](#adr-073--report-a-bug-on-a-click-to-caprockdev-never-github-the-sheet-names-every-field):*
+a controller may also send a bug report (`POST /v1/support`). It acts on no
+session and changes nothing on the machine; a viewer still cannot.
+
 
 ---
 
@@ -2715,6 +2719,10 @@ their replies flow here with no change to the bridge.
 *Amended 2026-10-14 by [ADR-062](#adr-062--caprock-may-ask-a-question-and-the-user-may-send-the-answer-to-caprockdev):*
 besides the integrations the user turns on, one survey answer may go to
 caprock.dev, only on the user's click, after the card names every field.
+
+*Amended 2026-10-17 by [ADR-073](#adr-073--report-a-bug-on-a-click-to-caprockdev-never-github-the-sheet-names-every-field):*
+one bug report may go to Caprock support at caprock.dev the same way — on
+the user's click, after the sheet names every field.
 
 ---
 
@@ -4785,3 +4793,66 @@ session still uses; syncing with Claude.ai or ChatGPT now (an open question,
 the flag is set on spawn, not derived from the folder); a chat's files need
 scripts to be useful (an opt-in per file, never by default); or the sync in
 OQ-22 is decided.
+
+## ADR-073 — Report a bug: on a click, to caprock.dev, never GitHub; the sheet names every field
+
+**Date:** 2026-10-17 · **Status:** accepted (owner, 2026-10-17)
+
+*Amends [ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine),
+[ADR-034](#adr-034--a-phone-the-owner-chooses-can-work-on-sessions-and-nothing-else)
+and rule 4's wording; follows [ADR-062](#adr-062--caprock-may-ask-a-question-and-the-user-may-send-the-answer-to-caprockdev).*
+
+**Context.** The owner, 2026-10-17 (translated): a bug report the user can
+type or dictate with the phone keyboard, attach a few screenshots, and send
+to Caprock support — not a GitHub issue, because it may contain personal
+data; an optional email so we can reply, and those emails later make a list
+of customers. Until now the only way to report was *Send feedback*, which
+composes a GitHub issue the user submits in public (04-ui.md § Feedback), and
+a phone had no way at all. Rule 4 allowed one message to caprock.dev, a
+survey answer (ADR-062); a bug report is the second of the same kind: one
+message the user writes to us and sends with a click.
+
+**Decision.**
+
+- **A bug report goes to Caprock support at caprock.dev, never to GitHub.**
+  The sheet (`components/BugReportSheet.tsx`) sends through `POST
+  /v1/support` to `https://caprock.dev/api/support`, only when the user
+  presses **Send to support**. The site keeps it privately; nothing about it
+  is public.
+- **The sheet names every field before the button**, word for word: *Sent to
+  Caprock support (caprock.dev), not GitHub: your text, the screenshots you
+  attached, your email if given, Caprock version and OS. Nothing else — no
+  transcripts, no logs.*
+- **What is sent is fixed by the daemon** (`internal/api/support.go`): the
+  text (1–8,000 characters), up to three PNG, JPEG or WebP screenshots (each
+  at most 4 MB, 8 MB together, the type checked against the bytes), the
+  email when typed, and the two fields the sheet names that the daemon adds:
+  the version and `GOOS/GOARCH`. The body is rebuilt from those fields, so
+  nothing else the page might add rides along. No identifier, path,
+  transcript or log.
+- **Screenshots are made small on the device.** Each is drawn at most 1600 px
+  on the long side and re-encoded as JPEG at 0.85 before it is sent, so a
+  report from a phone on mobile data is hundreds of kilobytes, not
+  megabytes.
+- **Allowed for a paired phone that controls, and the machine** (amends
+  ADR-034): the phone is where a bug is often met and its keyboard is where
+  it is dictated. It acts on no session and changes nothing on the machine.
+  A viewer cannot send one.
+- **The email is optional and only what was typed.** It is how support
+  replies, and the owner keeps those addresses as a customer list; the sheet
+  says the email goes, and leaving it empty sends none.
+- **Offered** from the phone bar's **+** menu and, on a computer, from ⌘K
+  *Report a bug…* (no new shortcut). *Send feedback* stays as it is for a
+  public GitHub issue.
+
+**Rules out:** filing it as a GitHub issue (public, and a report may hold
+personal data); attaching anything the user did not pick — a transcript, a
+log, a crash dump, a session id; a background retry or an offline queue (a
+failure is shown and the form kept); logging the text, email or images on
+the daemon; reusing this route for anything but a report the user typed and
+sent.
+
+**Revisit if:** support needs diagnostics a report cannot carry today (then
+each is a named line on the sheet the user can untick, as Feedback's
+*Include diagnostics* is, and a new decision); reports arrive that the site
+cannot keep private; or the limits stop fitting real screenshots.

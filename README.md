@@ -510,7 +510,9 @@ claude.ai sign-in is not used and its plan limits do not apply.
   chat on your own key, GitHub, and the weekly report, alerts and chat through
   your own Telegram bot are each off by default. Caprock may ask you about
   a feature it is considering; your answer reaches caprock.dev only if you
-  press Send, and the card says exactly what it sends.
+  press Send, and the card says exactly what it sends. A bug report you write
+  in Caprock goes privately to Caprock support at caprock.dev, not GitHub,
+  only when you press Send to support, and the sheet lists what it sends.
 
 What your usage is actually worth — the same work priced at the API rate,
 against what your plan costs — is on the Cost screen, and everything you have
