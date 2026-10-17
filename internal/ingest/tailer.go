@@ -53,7 +53,10 @@ type Tailer struct {
 	// BackfillWindow: files last modified longer ago than this are backfilled in
 	// the background after live files; zero means everything is treated as live.
 	BackfillWindow time.Duration
-	// MaxLine bounds one JSONL line (a tool_result can embed a whole file).
+	// MaxLine bounds one JSONL record: the bytes before its newline. A longer
+	// record is skipped without being held in memory (see readFile). The longest
+	// line in 4.0 GB of local transcripts was 2.1 MB (2026-10-18); a
+	// tool_result can embed a whole file, hence the headroom.
 	MaxLine int
 
 	mu    sync.Mutex
@@ -88,6 +91,12 @@ type fileState struct {
 	sessionID string
 	lastSize  int64
 	lastMod   time.Time
+	// skipTo is set while the record starting at offset is longer than
+	// MaxLine and has no newline yet: the position its bytes have been read
+	// (and dropped) up to. The next read resumes there instead of reading the
+	// record again, and offset stays on the record's first byte, a boundary,
+	// until its newline arrives. Zero means no record is being skipped.
+	skipTo int64
 	// mtime-based ordering for backfill
 	backfilled bool
 }
@@ -333,6 +342,13 @@ func (t *Tailer) backfill(ctx context.Context) {
 }
 
 // readFile reads from the stored offset to EOF, recording complete lines.
+//
+// A record is held in memory only up to MaxLine bytes. A longer one, complete
+// or still being written, is read in fragments of the reader's buffer and
+// dropped as it goes, counted as malformed and logged once, and reading carries
+// on after its newline. Reading it whole first, as ReadBytes did, allocated
+// twice the record's size per read (67 MB for a 32 MiB record, measured
+// 2026-10-18) and did it again on every pass while the record had no newline.
 func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -342,9 +358,12 @@ func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 			f.offset = off
 		}
 	}
-	if fi.Size() < f.offset {
+	if fi.Size() < f.offset || fi.Size() < f.skipTo {
 		// Truncated/rotated: start over. Duplicates are absorbed by keyed dedupe.
+		// A file shorter than what was read of a record being skipped was cut
+		// too, even when it still reaches the offset.
 		f.offset = 0
+		f.skipTo = 0
 	}
 	fh, err := os.Open(f.path)
 	if err != nil {
@@ -366,55 +385,144 @@ func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 	// is not the file we measured. Costs one read of one byte per sweep.
 	if f.offset > 0 && !endsLineAt(fh, f.offset) {
 		f.offset = 0
+		f.skipTo = 0
 	}
-	if _, err := fh.Seek(f.offset, io.SeekStart); err != nil {
+	start := f.offset
+	pos := f.offset // where the reader is in the file
+	if f.skipTo > 0 {
+		pos = f.skipTo
+	}
+	if _, err := fh.Seek(pos, io.SeekStart); err != nil {
 		return
 	}
 	reader := bufio.NewReaderSize(fh, 256<<10)
-	consumed := int64(0)
 	batch := 0
 	stalled := false
-	for ctx.Err() == nil {
-		line, err := reader.ReadBytes('\n')
-		if err == nil {
-			if !t.handleLine(ctx, f, line, fi.ModTime()) {
-				// The line could not be written and is worth trying again: stop
-				// BEFORE it, so the offset stays on it and the next pass reads
-				// it once more. Moving past it was how SQLITE_BUSY turned into
-				// lost turns — the warning was logged and the line was never
-				// read again. Whatever part of the line did get stored is
-				// absorbed by keyed dedupe on the retry.
-				stalled = true
-				break
-			}
-			consumed += int64(len(line))
-			batch++
-			continue
+	if f.skipTo > 0 {
+		// Go on dropping the oversized record an earlier read stopped inside.
+		n, done := skipRecord(ctx, reader)
+		pos += n
+		if done {
+			f.offset, f.skipTo = pos, 0
+		} else {
+			f.skipTo = pos
 		}
-		if errors.Is(err, io.EOF) && len(line) > 0 {
-			// Incomplete trailing line (writer mid-flush): leave the offset before it
-			// so the next pass re-reads it whole — unless it is absurdly long, in
-			// which case skip it rather than re-read forever.
-			if len(line) > t.MaxLine {
-				consumed += int64(len(line))
-				t.mu.Lock()
-				t.stats.LinesMalformed++
-				t.mu.Unlock()
-			}
-		}
-		break
 	}
-	f.offset += consumed
+	for f.skipTo == 0 && ctx.Err() == nil {
+		line, n, over, err := readRecord(ctx, reader, t.MaxLine)
+		if over {
+			t.mu.Lock()
+			t.stats.LinesMalformed++
+			t.mu.Unlock()
+			t.Log.Warn("transcript record over the size limit skipped", "component", "ingest",
+				"path", f.path, "offset", f.offset, "limit", t.MaxLine)
+			pos += n
+			if err == nil {
+				f.offset = pos // its newline was read: carry on after it
+				continue
+			}
+			f.skipTo = pos // no newline yet: the next read resumes here
+			break
+		}
+		if err != nil {
+			// An incomplete trailing line within MaxLine (writer mid-flush), or a
+			// read error: leave the offset before it so the next pass reads it whole.
+			break
+		}
+		if !t.handleLine(ctx, f, line, fi.ModTime()) {
+			// The line could not be written and is worth trying again: stop
+			// BEFORE it, so the offset stays on it and the next pass reads
+			// it once more. Moving past it was how SQLITE_BUSY turned into
+			// lost turns — the warning was logged and the line was never
+			// read again. Whatever part of the line did get stored is
+			// absorbed by keyed dedupe on the retry.
+			stalled = true
+			break
+		}
+		pos += n
+		f.offset = pos
+		batch++
+	}
 	f.lastSize, f.lastMod = fi.Size(), fi.ModTime()
-	if stalled {
+	if stalled || ctx.Err() != nil {
 		// Forget the size and time we read up to, or the next pass would see
 		// an unchanged file and skip it — leaving the retry waiting on the
 		// session writing another line, which an ended session never does.
+		// A cancelled read did not reach the end either.
 		f.lastSize, f.lastMod = -1, time.Time{}
 	}
-	if batch > 0 || consumed > 0 {
+	if batch > 0 || f.offset != start {
+		// Only a record boundary is persisted, never skipTo: after a restart an
+		// oversized record is read from its start and skipped again.
 		_ = store.SetOffset(ctx, t.Store.DB(), f.path, f.sessionID, f.offset)
 	}
+}
+
+// readRecord reads one record of at most limit bytes before its newline. It
+// returns the record, newline included, in a slice of its own; the number of
+// bytes read; and err == nil when the newline was found.
+//
+// A record longer than limit is not kept: over is true, line is nil, and the
+// reader has gone past the record's newline (err == nil) or to the end of what
+// is there (err != nil), dropping bytes as it went, so the memory a record
+// takes stays within limit plus one reader buffer however long it is.
+func readRecord(ctx context.Context, r *bufio.Reader, limit int) (line []byte, n int64, over bool, err error) {
+	var full [][]byte // copies of the buffer-sized fragments before the last
+	size := 0
+	for {
+		frag, err := r.ReadSlice('\n')
+		n += int64(len(frag))
+		body := len(frag)
+		if err == nil {
+			body-- // the newline is not counted in the record's length
+		}
+		if size+body > limit {
+			if err == nil {
+				return nil, n, true, nil
+			}
+			if !errors.Is(err, bufio.ErrBufferFull) {
+				return nil, n, true, err
+			}
+			m, done := skipRecord(ctx, r)
+			n += m
+			if done {
+				return nil, n, true, nil
+			}
+			return nil, n, true, io.EOF
+		}
+		if errors.Is(err, bufio.ErrBufferFull) {
+			full = append(full, bytes.Clone(frag))
+			size += len(frag)
+			continue
+		}
+		// The newline, the end of the file, or a read error: hand back what
+		// there is as one slice, as ReadBytes did.
+		buf := make([]byte, size+len(frag))
+		at := 0
+		for _, b := range full {
+			at += copy(buf[at:], b)
+		}
+		copy(buf[at:], frag)
+		return buf, n, false, err
+	}
+}
+
+// skipRecord drops bytes up to and including the next newline. It returns how
+// many it read and whether the newline was among them; false means the end of
+// the file, a read error or cancellation came first. Nothing is allocated:
+// each fragment is the reader's own buffer.
+func skipRecord(ctx context.Context, r *bufio.Reader) (n int64, done bool) {
+	for ctx.Err() == nil {
+		frag, err := r.ReadSlice('\n')
+		n += int64(len(frag))
+		if err == nil {
+			return n, true
+		}
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			return n, false
+		}
+	}
+	return n, false
 }
 
 // handleLine records one transcript line. It returns false when a write

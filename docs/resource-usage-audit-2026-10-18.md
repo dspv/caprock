@@ -258,6 +258,49 @@ later, the next valid line, truncation, cancellation and SQLite-busy retry all
 work. Allocation remains bounded as the oversized record grows. Define any
 acceptance-policy change in the transcript contract alongside implementation.
 
+**Implemented (2026-10-18).** `readFile` reads a record through
+`bufio.Reader.ReadSlice` and keeps it only while it is within `MaxLine`. A
+longer record is dropped as it is read, counted once in `lines_malformed`,
+logged once, and reading continues after its newline. Until the newline
+arrives, a `skipTo` position in the file state lets the next read resume
+inside the record, while the persisted offset stays on its first byte. The
+policy is in the [transcript contract](../.ai/03-contracts.md#transcript-jsonl-observed-shape).
+One acceptance change: a complete record over 16 MiB used to reach the parser
+and is now skipped. The longest line in 4.0 GB of the owner's local
+transcripts (702 files, 593,686 lines) was 2.1 MB, measured the same day.
+
+Fixing it showed a second defect. A partial record over the limit was dropped
+by moving the offset into its middle. On the next read the byte before that
+offset was not a newline, so the replaced-file check sent the tailer back to
+offset 0 to read the whole transcript again.
+
+`BenchmarkReadFileOversize` and `BenchmarkReadFileSmallRecords` in
+`internal/ingest/tailer_bench_test.go` measure one `readFile` from a fresh
+file state, with `-benchmem -count=5` on an Apple M1 Pro. The machine was
+loaded by other work (load average 7.7–13.5), so ns/op is noise and the
+figures below are medians of five runs; B/op and allocs/op varied by less
+than 0.01% between runs.
+
+```text
+input             before B/op  allocs  before ns/op  after B/op  allocs  after ns/op
+32 MiB, partial      67379204     152      20714182    17045356      82     9522961
+32 MiB, complete     67387420     152      20602737    17045702      93     9106473
+64 MiB, partial     134496282     281      36840860    17045297      82    12833618
+64 MiB, complete    134504452     281      29694816    17045585      93    15098826
+4096 x 1 KiB lines    4457168    4112       3833069     4457167    4112     4595955
+```
+
+A read of an oversized record now allocates about 17 MB whatever its size,
+which is the 16 MiB `MaxLine` held in fragments before it is rejected plus
+one reader buffer. Before, it allocated twice the record's size. Ordinary
+short records allocate the same bytes and objects as before. Their ns/op
+difference is within the noise of the loaded machine.
+`TestOversizedRecordAllocationIsBounded` asserts the bound for records four
+and sixteen times a test limit. The audit's own 32 MiB run took 102 ms
+(partial) and 218 ms (complete) per read. The before column above, on the
+same code, measured about 20 ms for both. Timings on this machine are not
+comparable between runs.
+
 ### F2 — P1: remove sliding-buffer allocation from terminal writes
 
 **Evidence:** [terminal buffer](../internal/termbuf/ring.go), `Write`, `wake`,
@@ -686,7 +729,8 @@ rerun and a post-documentation `make docs-check docs-links lang-check` were
 started; their final results were still pending when the implementation handoff
 was requested. Do not interpret this audit as a green full-suite result.
 
-No optimization has been implemented or measured after implementation. A green
+When the audit was written, no optimization had been implemented or measured
+after implementation; F1 has since been, see its **Implemented** note. A green
 local check cannot substitute for Windows/Linux runtime performance or the
 repository's three-OS CI requirement.
 
