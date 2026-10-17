@@ -1164,6 +1164,7 @@ own memory as below). Only reads: nothing is signalled except by the reap below.
              "hosts": {"count": 19, "mem_bytes": 95000000, "cpu_pct": 0, "orphans": 15, "reapable": 15,
                        "list": [{"pid": 2267, "state": "unreachable-idle", "reap": true, "ours": false, "abandoned": true, "child": "zsh"}]}},
  "thresholds": {"cpu_pct": 100, "mem_bytes": 2147483648, "after_s": 60, "interval_s": 5},
+ "machine": {"cpus": 10, "load1": 3.42, "mem_total": 17179869184, "mem_available": 4342251520},
  "error": "…"}
 ```
 
@@ -1205,6 +1206,18 @@ own memory as below). Only reads: nothing is signalled except by the reap below.
   nobody watches reads no process table. Each sample goes out as a
   `{type:"resources", seq, data:<the object above>}` frame on `/v1/live`. A
   `GET` answers the last sample when it is under 5 s old, otherwise takes one.
+- **The machine as a whole** (2026-10-18, ADR-067): `machine` is read on
+  every sample, before the process table, by `procstat.Machine` — `cpus` the
+  logical cores (`runtime.NumCPU`), `load1` the one-minute load average
+  rounded to 0.01 (absent on Windows, which keeps none: gopsutil's emulation
+  would hold a goroutine and a PDH counter for the life of the daemon),
+  `mem_total` the physical memory and `mem_available` what can be taken
+  without swapping as the OS judges it (gopsutil `VirtualMemory`: macOS free
+  plus inactive pages, Linux `MemAvailable`, Windows available physical
+  memory). Absent when the OS gave none of it, and from a daemon before it.
+  Another computer reads it through `/v1/m/{id}/v1/resources`. Nothing acts
+  on it yet: the New-agent line *"This Mac is busy — run it on …?"* waits for
+  thresholds set from OQ-19's measurement ([12-risks.md](12-risks.md)).
 - **A paired device may read it**; it may not reap.
 
 `GET /v1/resources/history[?since=<unix ms>]` (2026-10-15) is the same

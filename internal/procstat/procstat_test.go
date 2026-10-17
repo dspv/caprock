@@ -125,3 +125,21 @@ func TestReadFindsAChild(t *testing.T) {
 		t.Errorf("no command line read for the child")
 	}
 }
+
+// The machine-wide figures the other computer reads (ADR-067): real on each
+// OS the matrix runs, a load average everywhere but Windows.
+func TestMachine(t *testing.T) {
+	st, err := Machine(context.Background())
+	if err != nil {
+		t.Fatalf("Machine: %v", err)
+	}
+	if st.CPUs < 1 || st.MemTotal == 0 || st.MemAvailable == 0 || st.MemAvailable > st.MemTotal {
+		t.Errorf("Machine() = %+v: want cores, and available memory within the total", st)
+	}
+	if st.HasLoad == (runtime.GOOS == "windows") {
+		t.Errorf("HasLoad = %v on %s", st.HasLoad, runtime.GOOS)
+	}
+	if st.Load1 < 0 {
+		t.Errorf("Load1 = %v", st.Load1)
+	}
+}
