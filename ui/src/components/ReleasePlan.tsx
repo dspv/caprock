@@ -21,7 +21,7 @@
  * page's Release view, and on the phone home (`phone`: components/
  * PhoneReleases). It reads nothing itself.
  */
-import { useMemo, type ReactNode } from 'react'
+import { useContext, useMemo, type ReactNode } from 'react'
 import type { ReleaseCI, SessionCIStats } from '@/lib/api'
 import { asBoard } from '@/lib/prboard'
 import { releaseStatus, type ReleaseStatus } from '@/lib/releasestatus'
@@ -34,6 +34,10 @@ import { SectionLabel, useFolded } from './Cockpit'
 import { useDeckAnswer } from './CockpitCI'
 import { Panel } from './ui'
 import { extTitle } from '@/lib/externalLinks'
+import { PipelineHostContext } from '@/lib/pipelineHost'
+import { href } from '@/lib/router'
+import { openSession } from '@/lib/sessionJump'
+import { TerminalIcon } from './AppIcons'
 
 export interface ReleasePlanProps {
   plan: ReleasePlanData
@@ -135,8 +139,8 @@ function Rows({ plan, compact, onOpen }: { plan: ReleasePlanData; compact: boole
         {plan.rows.map(row)}
         {plan.later.map((g) => [
           <li key={`later:${g.key}`} data-release-later={g.key}
-            className={`col-span-full pt-1.5 font-semibold uppercase tracking-[0.08em] text-fg-faint ${compact ? 'text-[10px]' : 'text-[10.5px]'}`}>
-            Later · {g.label}
+            className={`col-span-full pt-1.5 font-medium text-fg-faint ${compact ? 'text-[10.5px]' : 'text-[11.5px]'}`}>
+            {g.label}
           </li>,
           ...g.rows.map(row),
         ])}
@@ -170,7 +174,7 @@ function OSDots({ dots }: { dots: OSDot[] }) {
  * The phone's rows: one per piece of work, its title on the first line (cut,
  * the whole of it on the second line's hover) and the bar, the stage word
  * and what it waits for (cut) on the second, so the bars stand in one column
- * at the left edge at any width. A pull request row is a link to it on GitHub, the whole row its target.
+ * at the left edge at any width. A pull request row is a link to it on GitHub, the whole row its target; an agent's row, a link into its session's chat.
  */
 function PhoneRows({ plan }: { plan: ReleasePlanData }) {
   const row = (r: PlanRow) => {
@@ -188,11 +192,14 @@ function PhoneRows({ plan }: { plan: ReleasePlanData }) {
       </>
     )
     const cls = 'grid min-h-11 min-w-0 content-center gap-1 px-3 py-2'
+    // An agent's row opens its session the way the phone opens one: its chat (owner, 2026-10-17).
     return (
       <li key={r.key} data-release-row={r.number ?? r.key} data-stage={r.stage} className="min-w-0 border-b border-border last:border-b-0">
         {r.url
           ? <a href={r.url} target="_blank" rel="noopener noreferrer" title={extTitle(r.title)} className={`${cls} text-fg no-underline active:bg-panel-2`}>{body}</a>
-          : <div title={r.title} className={cls}>{body}</div>}
+          : r.session
+            ? <a href={href({ name: 'session', id: r.session.id, tab: 'chat' })} data-release-session={r.session.id} title={`Open the session: ${r.title}`} className={`${cls} text-fg no-underline active:bg-panel-2`}>{body}</a>
+            : <div title={r.title} className={cls}>{body}</div>}
       </li>
     )
   }
@@ -201,8 +208,8 @@ function PhoneRows({ plan }: { plan: ReleasePlanData }) {
       {plan.rows.map(row)}
       {plan.later.map((g) => [
         <li key={`later:${g.key}`} data-release-later={g.key}
-          className="border-b border-border px-3 pb-1.5 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-faint last:border-b-0">
-          Later · {g.label}
+          className="border-b border-border px-3 pb-1.5 pt-3 text-[12px] font-medium text-fg-faint last:border-b-0">
+          {g.label}
         </li>,
         ...g.rows.map(row),
       ])}
@@ -220,20 +227,56 @@ function Word({ row: r, className }: { row: PlanRow; className: string }) {
   )
 }
 
+/**
+ * A row's title. A pull request's opens it (on the Pipeline page, in place);
+ * when an agent session is known on it, a small terminal button after the
+ * title opens that session. An agent's row with no pull request is itself
+ * the way into its session (owner, 2026-10-17, translated: "from here I want
+ * to go into the session"): the title is the button. Either goes as a
+ * *Waiting for you* row does (lib/sessionJump openSession): the session's
+ * tab in the desktop app, its terminal or timeline in a browser.
+ */
 function Title({ row: r, root, compact, onOpen }: { row: PlanRow; root: string; compact: boolean; onOpen?: (n: number) => void }) {
+  const host = useContext(PipelineHostContext)
+  const s = r.session
+  const go = s ? () => openSession(host.onOpenSession, s.id, s.owned) : undefined
   const text = (
     <>
       {r.number ? <span className="num mr-1.5 text-fg-muted">#{r.number}</span> : null}
       <span className="text-fg">{r.title}</span>
     </>
   )
-  const cls = `min-w-0 text-left no-underline hover:[&>span:last-child]:text-accent ${compact ? 'truncate' : '[overflow-wrap:anywhere]'}`
-  if (!r.number) return <span className={compact ? 'min-w-0 truncate' : 'min-w-0 [overflow-wrap:anywhere]'} title={r.title}>{text}</span>
-  if (onOpen) return <button type="button" onClick={() => onOpen(r.number!)} title={r.title} className={cls}>{text}</button>
-  return <a href={pipelineHref(root, r.number)} title={r.title} className={cls}>{text}</a>
+  const wrap = compact ? 'truncate' : '[overflow-wrap:anywhere]'
+  const cls = `min-w-0 text-left no-underline hover:[&>span:last-child]:text-accent ${wrap}`
+  if (!r.number) {
+    if (go) {
+      return (
+        <button type="button" data-release-session={s!.id} onClick={go} title={`Open the session: ${r.title}`}
+          aria-label={`Open the session: ${r.title}`}
+          className={`${cls} rounded-[3px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent`}>{text}</button>
+      )
+    }
+    return <span className={`min-w-0 ${wrap}`} title={r.title}>{text}</span>
+  }
+  const link = onOpen
+    ? <button type="button" onClick={() => onOpen(r.number!)} title={r.title} className={cls}>{text}</button>
+    : <a href={pipelineHref(root, r.number)} title={r.title} className={cls}>{text}</a>
+  if (!go) return link
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {link}
+      <button type="button" data-release-session={s!.id} onClick={go}
+        title={`Open session: ${s!.name}`} aria-label={`Open session: ${s!.name}`}
+        className="inline-flex shrink-0 items-center justify-center rounded-[4px] p-0.5 text-fg-faint hover:bg-panel-2 hover:text-accent focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent">
+        <TerminalIcon size={compact ? 12 : 13} />
+      </button>
+    </span>
+  )
 }
 
 const STEP_NAME: Record<(typeof STEPS)[number], string> = { agent: 'Agent', PR: 'Pull request', CI: 'CI', merged: 'Merged', released: 'Released' }
+/** The steps in order, said on every segment's hover. */
+const STEP_PATH = 'Agent → PR → CI → Merged → Released'
 const STEP_SAYS: Record<StepState, string> = { done: 'done', now: 'under way', red: 'failed', warn: 'waits on you', off: 'to come' }
 export type StepState = 'done' | 'now' | 'red' | 'warn' | 'off'
 
@@ -260,12 +303,13 @@ export function Blocks({ row: r, compact = false, phone = false }: { row: PlanRo
   const tone = r.stage === 'merged' ? 'bg-merged' : 'bg-accent'
   const on = states.filter((s) => s !== 'off').length
   return (
-    <span data-release-bar role="img" aria-label={`${on} of ${STEPS.length} steps: ${r.word}`}
+    <span data-release-bar role="img" aria-label={`${on} of ${STEPS.length} steps (${STEP_PATH}): ${r.word}`}
       className={`flex items-center gap-[3px] ${phone ? 'shrink-0' : 'w-full'}`}>
       {STEPS.map((step, i) => {
         const s = states[i]!
         const color = s === 'off' ? 'bg-border-strong' : s === 'red' ? 'bg-danger' : s === 'warn' ? 'bg-warn' : tone
-        return <span key={step} data-step={step} data-step-state={s} title={`${STEP_NAME[step]}: ${STEP_SAYS[s]}${s === 'off' || s === 'done' ? '' : ` — ${r.word}`}`}
+        const says = step === 'PR' && s === 'off' && !r.number ? 'none yet — the agent has not opened one' : STEP_SAYS[s]
+        return <span key={step} data-step={step} data-step-state={s} title={`${STEP_NAME[step]}: ${says}${s === 'off' || s === 'done' ? '' : ` — ${r.word}`}\n${STEP_PATH}`}
           className={`${phone ? 'h-[10px] w-[16px]' : compact ? 'h-[7px] min-w-[8px] flex-1' : 'h-[9px] min-w-[12px] flex-1'} rounded-[2px] ${color}${s === 'now' ? ' release-step-pulse' : ''}`} />
       })}
     </span>
