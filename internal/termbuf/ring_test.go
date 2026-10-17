@@ -147,8 +147,12 @@ func TestRingSnapshotKeepsCodexOnTheAlternateScreenWithTheMouse(t *testing.T) {
 		t.Fatal("the startup is still in the ring; the test proves nothing")
 	}
 	snap := string(r.Snapshot())
+	prefix, _, found := strings.Cut(snap, "\x1b[?2026h")
+	if !found {
+		t.Fatalf("no synchronized-output frame in the snapshot: %q", snap[:64])
+	}
 	for _, mode := range []string{"\x1b[?1049h", "\x1b[?1003h", "\x1b[?1006h", "\x1b[?2004h"} {
-		if !strings.Contains(snap[:strings.Index(snap, "\x1b[?2026h")], mode) {
+		if !strings.Contains(prefix, mode) {
 			t.Errorf("snapshot prefix lacks %q: %q", mode, snap[:64])
 		}
 	}
