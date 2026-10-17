@@ -23,6 +23,8 @@ export const DASHBOARD_KEY = '⌘D'
 export const PIPELINE_KEY = '⌘P'
 export const WORK_KEY = '⇧⌘W'
 export const THEME_KEY = '⇧⌘T'
+/** A browser tab's own keys (lib/browsertab browserKey, ADR-075): only while one is in front, never a terminal's. */
+export const BROWSER_TAB_KEYS = '⌥←, ⌥→'
 
 export type AppCommand =
   | { kind: 'new-shell' }
@@ -443,7 +445,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌥⌘→, ⌥⌘←', 'Next and previous project'],
   ['⌥⇧↑, ⌥⇧↓', 'Move the focused session row up or down in the sidebar or the Live pulse, or a right panel section by its grip'],
   ['⌃Tab, ⇧⌘[ ]', 'Next and previous tab'],
-  ['⌥←, ⌥→', 'In a browser tab (beta): the tab before and after, outside a text field'],
+  [BROWSER_TAB_KEYS, 'In a browser tab (beta): the tab before and after, outside a text field'],
   ['⌘W', 'Close the tab or pane — the session keeps going'],
   ['⌘E, ⇧⌘E', 'Split: a new shell beside, below'],
   ['⌘[ ]', 'Previous and next pane'],
