@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { INPUT_HIGHLIGHT_KEY, matchAppShortcut, moveKeysLine, ownsTerminalKey, stripKey, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
+import { afterEach, describe, expect, it } from 'vitest'
+import { INPUT_HIGHLIGHT_KEY, matchAppShortcut, moveKeysLine, ownsTerminalKey, stripKey, type KeyLike, keys, tabDigit, tabKey, moduleKey, setModuleKeyCount } from './appkeys'
 import { browserKey } from './browsertab'
 
 const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
@@ -450,3 +450,38 @@ describe('the input highlight key', () => {
     expect(ownsTerminalKey(k('g', { ctrlKey: true }), false)).toBe(false)
   })
 })
+
+// Private modules (ADR-076): ⌥⌘1–9 open the modules in the sidebar's order,
+// and only as many as there are. Without one the chord is nobody's here, so a
+// layout whose AltGr is Ctrl+Alt still types its characters in a terminal.
+describe('module keys', () => {
+  const ev = (d: number, mods: Partial<KeyLike>): KeyLike => ({ key: String(d), code: `Digit${d}`, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...mods } as KeyLike)
+  afterEach(() => setModuleKeyCount(0))
+
+  it('are nobody\'s without a module', () => {
+    setModuleKeyCount(0)
+    expect(matchAppShortcut(ev(1, { metaKey: true, altKey: true }), true)).toBeNull()
+    expect(matchAppShortcut(ev(1, { ctrlKey: true, altKey: true, shiftKey: true }), false)).toBeNull()
+  })
+
+  it('open the Nth module on every OS, and only as many as there are', () => {
+    setModuleKeyCount(2)
+    for (const d of [1, 2]) {
+      const mac = matchAppShortcut(ev(d, { metaKey: true, altKey: true }), true)
+      expect(mac).toEqual({ kind: 'module', index: d - 1 })
+      expect(keys(moduleKey(d - 1)!, false)).toBe(`Ctrl+Alt+Shift+${d}`)
+      expect(matchAppShortcut(ev(d, { ctrlKey: true, altKey: true, shiftKey: true }), false)).toEqual(mac)
+    }
+    expect(matchAppShortcut(ev(3, { metaKey: true, altKey: true }), true)).toBeNull()
+    // ⌘1 stays the first tab, Ctrl+Shift+1 too.
+    expect(matchAppShortcut(ev(1, { metaKey: true }), true)).toEqual({ kind: 'tab', index: 0 })
+    expect(matchAppShortcut(ev(1, { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'tab', index: 0 })
+  })
+
+  it('stop at nine', () => {
+    expect(moduleKey(0)).toBe('⌥⌘1')
+    expect(moduleKey(8)).toBe('⌥⌘9')
+    expect(moduleKey(9)).toBeUndefined()
+  })
+})
+

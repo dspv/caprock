@@ -7,11 +7,23 @@
  */
 import { useEffect, useState } from 'react'
 import { api, isPairedDevice, type AdminState, type ModuleInfo } from './api'
+import { setModuleKeyCount } from './appkeys'
 
 /** Sent on this window when the admin key changes, so every list asks again. */
 export const ADMIN_EVENT = 'caprock-admin-change'
 
 let known: ModuleInfo[] = []
+
+/** Keeps the list the sidebar draws, and the keys that open its rows (appkeys moduleKey). */
+function remember(list: ModuleInfo[]): void {
+  known = list
+  setModuleKeyCount(list.length)
+}
+
+/** The module at a place in the sidebar, for its key; undefined past the end. */
+export function moduleAt(index: number): ModuleInfo | undefined {
+  return known[index]
+}
 
 /** The module's name as the last answer gave it; the id until one has. */
 export function moduleName(id: string): string {
@@ -20,7 +32,7 @@ export function moduleName(id: string): string {
 
 /** Says an admin key was stored or cleared, with the daemon's answer. */
 export function announceAdmin(st: AdminState): void {
-  known = st.installed ?? []
+  remember(st.installed ?? [])
   window.dispatchEvent(new CustomEvent<AdminState>(ADMIN_EVENT, { detail: st }))
 }
 
@@ -33,7 +45,7 @@ export function useAdmin(): AdminState | undefined {
     const ask = () => {
       api.admin().then((a) => {
         if (!live) return
-        known = a.installed ?? []
+        remember(a.installed ?? [])
         setSt(a)
       }).catch(() => { /* an older daemon, or none: no modules */ })
     }

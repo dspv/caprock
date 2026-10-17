@@ -99,6 +99,33 @@ export type AppCommand =
   | { kind: 'zoom'; step: 1 | -1 | 0 }
   /** ⌥⌘G: the highlight where you type, on or off in every terminal (INPUT_HIGHLIGHT_KEY). */
   | { kind: 'input-highlight' }
+  /** ⌥⌘1–⌥⌘9: the Nth private module the admin key opens (ADR-076, moduleKey). */
+  | { kind: 'module'; index: number }
+
+/**
+ * How many private modules have a key (ADR-076): lib/modules sets it from the
+ * daemon's answer. With none, ⌥⌘1–9 (Ctrl+Alt+Shift+1–9) belong to nobody
+ * here and reach the page or the terminal as before: an AltGr layout off
+ * macOS types characters with Ctrl+Alt, and nothing about modules may change
+ * a key for someone without one.
+ */
+let moduleKeys = 0
+
+export function setModuleKeyCount(n: number): void {
+  moduleKeys = Math.max(0, Math.min(9, n))
+}
+
+/**
+ * A module's key, in macOS spelling, by its place in the sidebar: ⌥⌘1 for the
+ * first. ⌥ beside ⌘ because ⌘1–9 are the tabs; ⌥⌘ with a digit is bound by
+ * no Mac browser, terminal or macOS menu, and ⌘ never reaches a shell. Off
+ * macOS it is Ctrl+Alt+Shift with the digit, as Quick chat is with N:
+ * Ctrl+Shift+digit is a tab, and Ctrl+Alt+Shift+digit is bound by no shell,
+ * readline, PSReadLine, Windows Terminal or GNOME default.
+ */
+export function moduleKey(index: number): string | undefined {
+  return index >= 0 && index < 9 ? `⌥⌘${index + 1}` : undefined
+}
 
 /** The subset of a KeyboardEvent the map reads. */
 export interface KeyLike {
@@ -247,6 +274,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
     const quick = isMac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey
     if (quick && baseKey(e) === 'n') return { kind: 'quick-chat' }
     if (quick && baseKey(e) === 'g') return { kind: 'input-highlight' }
+    if (quick && /^[1-9]$/.test(baseKey(e)) && Number(baseKey(e)) <= moduleKeys) return { kind: 'module', index: Number(baseKey(e)) - 1 }
     if (isMac && quick) return arrowCommand(baseKey(e))
     // Off macOS the arrow chords are Alt+Shift (arrowCommand).
     if (!isMac && e.shiftKey && !e.ctrlKey && !e.metaKey) return arrowCommand(baseKey(e))

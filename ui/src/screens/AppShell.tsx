@@ -68,6 +68,7 @@ import { MailStrip } from '@/components/MailStrip'
 import { OfferStrip } from '@/components/OfferStrip'
 import { BrainCaptureHost } from '@/components/BrainCapture'
 import { BrainGlyph } from '@/components/BrainDrop'
+import { moduleAt } from '@/lib/modules'
 import { openBrainCapture } from '@/lib/brain'
 import { SetupStrip } from '@/components/SetupStrip'
 import { ShareMoment } from '@/components/Nudges'
@@ -1209,6 +1210,8 @@ export function AppShell() {
       case 'settings': onSettings(); break
       case 'feedback': setFeedbackAt(currentScreen(location.hash, true)); break
       case 'mail': onMail(); break
+      // A private module's screen on the dashboard (ADR-076, ModuleRows).
+      case 'module': { const m = moduleAt(c.index); if (m) onRoute(`#/x/${m.id}`); break }
       case 'zoom': stepUiScale(c.step); break
       // Every open terminal and chat field at once, and remembered (lib/termprefs).
       case 'input-highlight': {
