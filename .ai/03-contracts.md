@@ -233,7 +233,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`, saving to
   and deleting from the Inbox (`POST /v1/inbox`, `DELETE /v1/inbox/{id}`,
   § Inbox), archiving and deleting a chat (`PUT /v1/chats/{id}/archived`,
-  `DELETE /v1/chats/{id}`: chats only, ADR-071 amending ADR-037), and — to
+  `DELETE /v1/chats/{id}`: chats only, ADR-071 amending ADR-037), AI;DR on
+  an answer (`POST /v1/events/{id}/tldr`, § AI;DR, ADR-072), and — to
   start work from the phone (2026-10-05, [21-app.md](21-app.md) decision 8) —
   `POST /v1/projects`, `PATCH` and `DELETE /v1/projects/{id}`, and `POST` and
   `DELETE /v1/projects/{id}/worktrees…` (see § Projects and shells for the
@@ -3518,6 +3519,49 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   never sent. A failure is recorded with its error and retried after 15
   minutes, doubling; after four the session waits for new prose.
 
+### AI;DR
+
+One agent answer squeezed into at most two short sentences, on the user's
+tap ([ADR-072](08-decisions.md)). Code: `internal/api/tldr.go`,
+`internal/brain/tldr.go`, `internal/store/tldr.go`; DDL in § AI;DR DDL
+(migration 0060).
+
+```
+POST /v1/events/{id}/tldr   (no body) → 200 {tldr: string, cached: bool} | 404 {error} | 502 {error} | 503 {error}
+```
+
+- **`{id}`** is the answer's event id, the `event_id` of `/v1/notes`,
+  `/v1/sessions/{id}/notes` and a brain drop. It must be main-thread
+  assistant prose (§ Phase 0's notes rules, `store.BrainNoteSource`); any
+  other event, an unknown id or one that is not a number is `404`.
+- **A short answer is its own TL;DR.** Fewer than 280 runes after trimming:
+  `{tldr: <the answer, trimmed>, cached: false}`, no call, nothing kept.
+- **Kept.** A squeeze is kept in `event_tldr`; a later tap returns it with
+  `cached: true` and makes no call. A failed call keeps nothing, so the next
+  tap tries again.
+- **The call.** Second Brain's runner (`brain.ClaudeRunner`, flags in
+  ADR-063: `claude -p --output-format json --tools "" --no-session-persistence
+  --setting-sources local --settings <hooks off>`), with `--model haiku`,
+  `--system-prompt` the AI;DR instructions (`brain.TLDRSystem`: the answer's
+  own language, at most 2 sentences and 220 characters, decisions, numbers
+  and the next action kept, no preamble) and no `--json-schema`; the answer
+  goes on stdin and the reply is claude's `result` text. A Windows `.cmd`
+  shim gets the instructions on stdin too. An answer longer than 12,000
+  runes is sent as its first 4,000 and its last 8,000 around a marker: an
+  agent says what it did first and its result and next step last. The
+  reply is trimmed of a `TL;DR:` label and wrapping quotes, joined onto one
+  line and clipped to 300 runes. Never typed into the session; the
+  session's transcript is not touched, and the call writes none of its own.
+- **One call per answer.** Taps on the same answer while its squeeze runs
+  wait on that one call. The call runs under its own one-minute deadline,
+  not the request's: a tap that gives up does not stop it, and its result is
+  kept for the next tap.
+- **`503`** — no usable claude: the binary is not found (`brain.ErrNoClaude`)
+  or the build wires no runner. **`502`** — claude ran and failed or did not
+  answer within a minute; `error` says which.
+- **Who.** The machine, and a paired controller phone (`controllerRoutes`);
+  a viewer gets `403`.
+
 ### Queued messages
 
 What the chat field sends to a session Caprock started ([ADR-053](08-decisions.md)).
@@ -4673,6 +4717,24 @@ CREATE INDEX IF NOT EXISTS idx_sessions_chat ON sessions(last_event_at) WHERE ch
 every session already in a chat folder by its name, so chats from before the
 column are chats. The partial index serves the Chats list; the work list's
 `chat = 0` reads the table as before.
+
+### AI;DR DDL (migration 0060)
+
+```sql
+CREATE TABLE IF NOT EXISTS event_tldr (
+  event_id   INTEGER PRIMARY KEY,
+  text       TEXT NOT NULL,
+  model      TEXT NOT NULL DEFAULT '',
+  cost_usd   REAL NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+```
+
+One kept AI;DR per assistant answer ([ADR-072](08-decisions.md), § AI;DR):
+`event_id` is `events.id`, `model` and `cost_usd` what claude reported for
+the call, `created_at` unix ms. A row goes with its event: removing a
+session deletes its rows, and `PruneEventsBefore` deletes those whose event
+is gone, because an event id is a rowid that may be handed out again.
 
 ### Worked-at and parent DDL (migration 0027)
 

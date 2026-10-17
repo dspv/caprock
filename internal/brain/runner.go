@@ -41,11 +41,17 @@ type Request struct {
 	System string
 	Prompt string
 	Model  string
+	// Plain asks for a plain-text answer (Result.Text) instead of memories:
+	// no --json-schema, nothing parsed out of the text. AI;DR uses it
+	// (ADR-072).
+	Plain bool
 }
 
 // Result is what one call returned and what it cost, as claude reported it.
 type Result struct {
-	Memories  []Memory
+	Memories []Memory
+	// Text is the answer's text as claude returned it (`result`).
+	Text      string
 	Model     string
 	TokensIn  int64 // input, cache read and cache write
 	TokensOut int64
@@ -144,6 +150,9 @@ func (c ClaudeRunner) Run(ctx context.Context, r Request) (Result, error) {
 		}
 		return Result{}, fmt.Errorf("claude: %w: %s", err, clip(msg, 300))
 	}
+	if r.Plain {
+		return ParseText(out.Bytes())
+	}
 	return ParseResult(out.Bytes())
 }
 
@@ -155,6 +164,12 @@ func Argv(r Request, settingsPath string, batch bool) ([]string, string) {
 		"--setting-sources", "local", "--settings", settingsPath}
 	if r.Model != "" {
 		args = append(args, "--model", r.Model)
+	}
+	if r.Plain {
+		if batch {
+			return args, r.System + "\n\n" + r.Prompt
+		}
+		return append(args, "--system-prompt", r.System), r.Prompt
 	}
 	if batch {
 		return args, r.System + "\n\nAnswer with only this JSON, nothing around it: " + Schema + "\n\n" + r.Prompt
@@ -183,21 +198,9 @@ type claudeJSON struct {
 // output, else from the first JSON object in the text), the tokens and the
 // cost it reported.
 func ParseResult(b []byte) (Result, error) {
-	var c claudeJSON
-	if err := json.Unmarshal(bytes.TrimSpace(b), &c); err != nil {
-		return Result{}, fmt.Errorf("claude's answer is not JSON: %s", clip(string(b), 200))
-	}
-	res := Result{
-		TokensIn:  c.Usage.InputTokens + c.Usage.CacheReadInputTokens + c.Usage.CacheCreationInputTokens,
-		TokensOut: c.Usage.OutputTokens,
-		CostUSD:   c.TotalCostUSD,
-	}
-	for m := range c.ModelUsage {
-		res.Model = m
-		break
-	}
-	if c.IsError {
-		return res, fmt.Errorf("claude: %s %s", c.Subtype, clip(c.Result, 300))
+	c, res, err := parseEnvelope(b)
+	if err != nil {
+		return res, err
 	}
 	raw := c.StructuredOutput
 	if len(raw) == 0 || string(raw) == "null" {
@@ -211,6 +214,36 @@ func ParseResult(b []byte) (Result, error) {
 	}
 	res.Memories = body.Memories
 	return res, nil
+}
+
+// ParseText reads claude's JSON result for a plain-text request: the text,
+// the tokens and the cost it reported.
+func ParseText(b []byte) (Result, error) {
+	_, res, err := parseEnvelope(b)
+	return res, err
+}
+
+// parseEnvelope reads the parts of claude's JSON result every request has:
+// the text, the tokens, the cost, the model, and whether it is an error.
+func parseEnvelope(b []byte) (claudeJSON, Result, error) {
+	var c claudeJSON
+	if err := json.Unmarshal(bytes.TrimSpace(b), &c); err != nil {
+		return c, Result{}, fmt.Errorf("claude's answer is not JSON: %s", clip(string(b), 200))
+	}
+	res := Result{
+		Text:      c.Result,
+		TokensIn:  c.Usage.InputTokens + c.Usage.CacheReadInputTokens + c.Usage.CacheCreationInputTokens,
+		TokensOut: c.Usage.OutputTokens,
+		CostUSD:   c.TotalCostUSD,
+	}
+	for m := range c.ModelUsage {
+		res.Model = m
+		break
+	}
+	if c.IsError {
+		return c, res, fmt.Errorf("claude: %s %s", c.Subtype, clip(c.Result, 300))
+	}
+	return c, res, nil
 }
 
 // firstObject returns the first balanced {...} in s, or s itself.

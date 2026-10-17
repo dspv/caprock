@@ -29,6 +29,18 @@ func (d *Daemon) newBrain() *brain.Engine {
 	}
 }
 
+// newTLDRRunner is what AI;DR squeezes one answer with (ADR-072): the same
+// headless call to the user's own claude as Second Brain's, from a folder of
+// its own beside it, bounded to a minute.
+func (d *Daemon) newTLDRRunner() brain.Runner {
+	return brain.ClaudeRunner{
+		Binary:  d.mgr.ClaudeBinary,
+		Env:     func() []string { return userenv.Environ(d.log) },
+		Dir:     filepath.Join(d.opt.DataDir, "brain", "tldr"),
+		Timeout: time.Minute,
+	}
+}
+
 // brainAdapter is api.BrainAuto over the engine and the saved settings.
 type brainAdapter struct {
 	d   *Daemon

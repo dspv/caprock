@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/agents"
+	"github.com/dspv/caprock/internal/brain"
 	"github.com/dspv/caprock/internal/bus"
 	capguard "github.com/dspv/caprock/internal/cap"
 	"github.com/dspv/caprock/internal/codex"
@@ -136,6 +137,10 @@ type Deps struct {
 	// Machines are the other computers this machine reaches (ADR-067,
 	// machines.go); nil in a build or test without them.
 	Machines Machines
+	// TLDR is what AI;DR squeezes an answer with (ADR-072): the user's own
+	// claude, through Second Brain's runner. Nil in builds or tests without
+	// it, and POST /v1/events/{id}/tldr answers 503 for a long answer.
+	TLDR brain.Runner
 	// BrainAuto is Second Brain's automatic extraction (ADR-063). Nil in
 	// builds or tests without it; the graph and manual drops work either way.
 	BrainAuto BrainAuto
@@ -522,6 +527,8 @@ type Server struct {
 	// socks are the paired devices' open sockets, closed when one is
 	// removed or its role changes (devsockets.go).
 	socks deviceSockets
+	// tldr holds the AI;DR squeezes in flight, one per answer (tldr.go).
+	tldr tldrFlights
 }
 
 // New builds the router.
@@ -801,6 +808,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("DELETE /v1/brain/links", s.handleBrainLink)
 	m.HandleFunc("PUT /v1/brain/settings", s.handleBrainSettings)
 	m.HandleFunc("POST /v1/brain/backfill", s.handleBrainBackfill)
+	// AI;DR (tldr.go, ADR-072): one answer squeezed by the user's own claude.
+	m.HandleFunc("POST /v1/events/{id}/tldr", s.handleEventTLDR)
 	m.HandleFunc("POST /v1/shells", s.handleStartShell)
 	m.HandleFunc("GET /v1/shells", s.handleShells)
 	m.HandleFunc("POST /v1/shutdown", s.handleShutdown)

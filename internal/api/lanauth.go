@@ -448,6 +448,11 @@ var controllerRoutes = map[string]bool{
 	"POST /v1/tasks/{id}/approve": true,
 	"POST /v1/tasks/{id}/reject":  true,
 
+	// AI;DR on an answer the phone already shows (ADR-072): a call to the
+	// user's own claude on the tap, kept in Caprock's own database; nothing
+	// is typed into the session.
+	"POST /v1/events/{id}/tldr": true,
+
 	// Answer a permission prompt with a button (ADR-035).
 	"POST /v1/agents/{id}/permission": true,
 

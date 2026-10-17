@@ -118,6 +118,7 @@ func RemoveSession(ctx context.Context, q Querier, c RemovalCandidate, loc *time
 		return 0, err
 	}
 	for _, stmt := range []string{
+		`DELETE FROM event_tldr WHERE event_id IN (SELECT id FROM events WHERE session_id = ?)`,
 		`DELETE FROM events WHERE session_id = ?`,
 		`DELETE FROM session_stats WHERE session_id = ?`,
 		`DELETE FROM session_files WHERE session_id = ?`,

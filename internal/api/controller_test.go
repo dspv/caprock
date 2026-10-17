@@ -76,6 +76,8 @@ var controllerMayAlso = map[string]bool{
 	"POST /v1/tasks/{id}/approve": true, "POST /v1/tasks/{id}/reject": true,
 	// Save to the Inbox from the phone, and delete from it.
 	"POST /v1/inbox": true, "DELETE /v1/inbox/{id}": true,
+	// AI;DR under an answer (ADR-072).
+	"POST /v1/events/{id}/tldr": true,
 	// Start work from the phone (21-app.md decision 8). Shells are not
 	// here: from the phone they are P1, so POST and GET /v1/shells are 403.
 	"POST /v1/projects": true, "PATCH /v1/projects/{id}": true, "DELETE /v1/projects/{id}": true,
