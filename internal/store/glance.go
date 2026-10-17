@@ -192,3 +192,77 @@ func EventsVersion(ctx context.Context, q Querier) (int64, error) {
 	err := q.QueryRowContext(ctx, `SELECT COALESCE(MAX(id), 0) FROM events`).Scan(&v)
 	return v, err
 }
+
+// TrendWindow is what one window of the At a glance trend holds: each model's
+// stored cost and tokens by type (priced into the bill by the caller), and
+// tool calls by tool. The agents come from AgentSplit over the same bounds.
+type TrendWindow struct {
+	Models []TrendModel
+	Tools  map[string]int64
+}
+
+// TrendModel is one model's stored cost and tokens by type in a window.
+type TrendModel struct {
+	ModelTokens
+	CostUSD float64
+}
+
+// TrendWindows splits [from, now) at cut into two windows, prior = [from, cut)
+// and recent = [cut, now), with one grouped query for the turns and one for
+// the tool calls: the window is a GROUP BY column, so the two windows cost
+// one range scan each, on the same covering indexes the all-time figures read
+// (idx_events_turn_agent, idx_events_tool_dist).
+func TrendWindows(ctx context.Context, q Querier, from, cut int64) (prior, recent TrendWindow, err error) {
+	prior.Tools, recent.Tools = map[string]int64{}, map[string]int64{}
+	pick := func(isRecent bool) *TrendWindow {
+		if isRecent {
+			return &recent
+		}
+		return &prior
+	}
+	rows, err := q.QueryContext(ctx, `
+		SELECT ts >= ?, COALESCE(model,''), COALESCE(SUM(cost_usd),0),
+		       COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
+		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0), COALESCE(SUM(cache_write_1h),0)
+		FROM events INDEXED BY idx_events_turn_agent
+		WHERE kind = 'turn.assistant' AND ts >= ?`+nonInternalEvent+`
+		GROUP BY 1, 2`, cut, from)
+	if err != nil {
+		return prior, recent, err
+	}
+	for rows.Next() {
+		var isRecent bool
+		var m TrendModel
+		if err := rows.Scan(&isRecent, &m.Model, &m.CostUSD, &m.In, &m.Out, &m.CacheRead, &m.CacheWrite, &m.CacheWrite1h); err != nil {
+			_ = rows.Close()
+			return prior, recent, err
+		}
+		w := pick(isRecent)
+		w.Models = append(w.Models, m)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return prior, recent, err
+	}
+	_ = rows.Close()
+	// The same calls ToolDistribution counts for history's Most-used tools.
+	rows, err = q.QueryContext(ctx, `
+		SELECT ts >= ?, tool, COUNT(*)
+		FROM events
+		WHERE kind = 'tool.pre' AND tool != '' AND ts >= ? AND internal = 0
+		GROUP BY 1, 2`, cut, from)
+	if err != nil {
+		return prior, recent, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var isRecent bool
+		var tool string
+		var n int64
+		if err := rows.Scan(&isRecent, &tool, &n); err != nil {
+			return prior, recent, err
+		}
+		pick(isRecent).Tools[tool] += n
+	}
+	return prior, recent, rows.Err()
+}

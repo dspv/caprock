@@ -80,3 +80,56 @@ func TestGlanceRangeSplitsOnlyThePeriod(t *testing.T) {
 		t.Fatalf("7d: %v", got)
 	}
 }
+
+func TestGlanceTrendSplitsTheLastTwoWeeks(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	put := func(sid, agent, key, model string, cost float64, ts time.Time, tool string) {
+		if err := store.UpsertSession(ctx, e.st.DB(), sid, store.SessionPatch{Agent: agent, StartedAt: ts.UnixMilli(), LastEventAt: ts.UnixMilli()}); err != nil {
+			t.Fatal(err)
+		}
+		ev := event.Event{SessionID: sid, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Ts: ts, Key: key, Model: model, CostUSD: &cost, Tokens: &event.TokenDelta{In: 10, Out: 10, CacheRead: 100}}
+		if _, err := store.InsertEvent(ctx, e.st.DB(), &ev); err != nil {
+			t.Fatal(err)
+		}
+		pre := event.Event{SessionID: sid, Source: event.SourceHook, Kind: event.KindToolPre, Ts: ts, Key: key + "-pre", Tool: tool}
+		if _, err := store.InsertEvent(ctx, e.st.DB(), &pre); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("r", "claude", "r1", "claude-opus-5-5", 3, e.now.Add(-time.Hour), "Bash")
+	put("r", "claude", "r2", "claude-opus-5", 1, e.now.Add(-2*time.Hour), "Read")
+	put("p", "codex", "p1", "claude-opus-5", 4, e.now.Add(-10*24*time.Hour), "Read")
+	// Older than both windows: in all time only.
+	put("o", "claude", "o1", "claude-opus-5", 50, e.now.Add(-30*24*time.Hour), "Edit")
+
+	var g GlanceResponse
+	if code := e.get(t, "/v1/glance", &g); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	tr := g.Trend
+	if tr == nil || tr.Days != 7 {
+		t.Fatalf("trend %+v", tr)
+	}
+	if tr.Recent.Models["claude-opus-5-5"] != 3 || tr.Recent.Models["claude-opus-5"] != 1 {
+		t.Fatalf("recent models %+v", tr.Recent.Models)
+	}
+	if tr.Prior.Models["claude-opus-5"] != 4 || len(tr.Prior.Models) != 1 {
+		t.Fatalf("prior models %+v", tr.Prior.Models)
+	}
+	if tr.Recent.Tools["Bash"] != 1 || tr.Recent.Tools["Read"] != 1 || tr.Prior.Tools["Read"] != 1 || tr.Prior.Tools["Edit"] != 0 {
+		t.Fatalf("tools recent %+v prior %+v", tr.Recent.Tools, tr.Prior.Tools)
+	}
+	if len(tr.Prior.Agents) != 1 || tr.Prior.Agents[0].Agent != "codex" || len(tr.Recent.Agents) != 1 || tr.Recent.Agents[0].Agent != "claude" {
+		t.Fatalf("agents prior %+v recent %+v", tr.Prior.Agents, tr.Recent.Agents)
+	}
+	if tr.Recent.Bill == nil || tr.Recent.Bill.CacheReadUSD <= 0 {
+		t.Fatalf("recent bill %+v", tr.Recent.Bill)
+	}
+	// A ranged answer carries no trend.
+	var r GlanceResponse
+	if code := e.get(t, "/v1/glance?range=7d", &r); code != 200 || r.Trend != nil {
+		t.Fatalf("ranged: status %d trend %+v", code, r.Trend)
+	}
+}

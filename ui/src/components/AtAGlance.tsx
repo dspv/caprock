@@ -12,13 +12,13 @@
  * remembered in this browser.
  */
 import { useState } from 'react'
-import { api, type Glance, type History, type WeekAgent } from '@/lib/api'
+import { api, type Glance, type GlanceWindow, type History, type WeekAgent } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtTool, fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
 import { SLOW_LIVE_MS, useOnScreen } from '@/lib/refresh'
 import { AgentCharacter, agentName, characterFor, type Character } from '@/components/Characters'
-import { colorOf, Donut, Ring, sharePct, topN, type Segment } from '@/components/Donut'
+import { colorOf, Donut, pointPct, Ring, sharePct, topN, TrendMark, trendDelta, type Segment, type TrendCell } from '@/components/Donut'
 
 const OPEN_KEY = 'caprock-glance-open'
 const VIEW_KEY = 'caprock-glance-view'
@@ -92,6 +92,83 @@ export function glanceCharts(h: History | undefined, g: Glance | undefined): Gla
   return { models, bill, tools, modelTotal: sum(models), billTotal: sum(bill), toolTotal: sum(tools) }
 }
 
+/**
+ * Each segment's share in the trend's two windows, keyed like the segments,
+ * so a legend row can say how its share moved (owner, 2026-10-17, translated:
+ * "I only need the rough dynamics, no graphs"). "other" is everything the
+ * named rows are not, in each window. Undefined when either window holds
+ * nothing: a share of nothing is no trend.
+ */
+export function segmentTrends(segs: Segment[], prior: Record<string, number>, recent: Record<string, number>, what: string, days: number): Map<string, TrendCell> | undefined {
+  const sum = (m: Record<string, number>) => Object.values(m).reduce((a, v) => a + (v > 0 ? v : 0), 0)
+  const pt = sum(prior)
+  const rt = sum(recent)
+  if (pt <= 0 || rt <= 0 || segs.length === 0) return undefined
+  const named = segs.filter((s) => s.key !== '__other').map((s) => s.key)
+  const valueOf = (m: Record<string, number>, total: number, key: string) =>
+    key === '__other' ? Math.max(0, total - named.reduce((a, k) => a + (m[k] ?? 0), 0)) : (m[key] ?? 0)
+  const out = new Map<string, TrendCell>()
+  for (const s of segs) {
+    const r = (100 * valueOf(recent, rt, s.key)) / rt
+    const p = (100 * valueOf(prior, pt, s.key)) / pt
+    out.set(s.key, { recent: r, prior: p, title: `${s.label}: ${pointPct(r)} of ${what} in the last ${days} days, ${pointPct(p)} in the ${days} days before` })
+  }
+  return out
+}
+
+/** The shift worth a sentence: five points or more. */
+const STORY_POINTS = 5
+
+/**
+ * The one sentence under Where the money went, only when the data says it:
+ * the model whose share of spend rose most, by at least five points, and the
+ * one that fell most, by as much. Measured shares, no projection.
+ */
+export function moneyStory(segs: Segment[], trends: Map<string, TrendCell> | undefined, days: number): string | undefined {
+  if (!trends) return undefined
+  const rows = segs.flatMap((s) => {
+    const t = s.key === '__other' ? undefined : trends.get(s.key)
+    return t ? [{ s, t }] : []
+  })
+  const up = rows.filter((x) => trendDelta(x.t) >= STORY_POINTS).sort((a, b) => trendDelta(b.t) - trendDelta(a.t))[0]
+  const down = rows.filter((x) => trendDelta(x.t) <= -STORY_POINTS).sort((a, b) => trendDelta(a.t) - trendDelta(b.t))[0]
+  if (up) {
+    const head = `${up.s.label} is gaining: ${pointPct(up.t.recent)} of the last ${days} days' spend vs ${pointPct(up.t.prior)} the ${days} before`
+    return down ? `${head}; ${down.s.label} fell to ${pointPct(down.t.recent)} from ${pointPct(down.t.prior)}.` : `${head}.`
+  }
+  if (down) return `${down.s.label} is falling: ${pointPct(down.t.recent)} of the last ${days} days' spend vs ${pointPct(down.t.prior)} the ${days} before.`
+  return undefined
+}
+
+export interface GlanceTrends {
+  days: number
+  models?: Map<string, TrendCell>
+  bill?: Map<string, TrendCell>
+  tools?: Map<string, TrendCell>
+  agents?: Map<string, TrendCell>
+  story?: string
+}
+
+/** The block's trend markers, from the glance's two windows. Pure, so it is tested. */
+export function glanceTrends(c: GlanceCharts, rows: AgentRow[], g: Glance | undefined): GlanceTrends | undefined {
+  const t = g?.trend
+  if (!t) return undefined
+  const bill = (w: GlanceWindow): Record<string, number> => (w.bill
+    ? { cache_read: w.bill.cache_read_usd, cache_write: w.bill.cache_write_usd, output: w.bill.output_usd, input: w.bill.input_usd }
+    : {})
+  const agents = (w: GlanceWindow) => Object.fromEntries(agentRows(w.agents ?? []).map((r) => [r.key, r.cost]))
+  const agentSegs: Segment[] = rows.map((r) => ({ key: r.key, label: r.name, value: r.cost, display: '' }))
+  const models = segmentTrends(c.models, t.prior.models ?? {}, t.recent.models ?? {}, 'spend', t.days)
+  return {
+    days: t.days,
+    models,
+    bill: segmentTrends(c.bill, bill(t.prior), bill(t.recent), 'the bill', t.days),
+    tools: segmentTrends(c.tools, t.prior.tools ?? {}, t.recent.tools ?? {}, 'tool calls', t.days),
+    agents: segmentTrends(agentSegs, agents(t.prior), agents(t.recent), 'spend across every agent', t.days),
+    story: moneyStory(c.models, models, t.days),
+  }
+}
+
 export function AtAGlancePanel() {
   const [open, setOpen] = useState(() => read(OPEN_KEY, '1') !== '0')
   const [view, setView] = useState<'charts' | 'numbers'>(() => (read(VIEW_KEY, 'charts') === 'numbers' ? 'numbers' : 'charts'))
@@ -105,6 +182,7 @@ export function AtAGlancePanel() {
   const c = glanceCharts(h.data, g.data)
   const rows = agentRows(g.data?.agents ?? [])
   const agentTotal = rows.reduce((a, r) => a + r.cost, 0)
+  const tr = glanceTrends(c, rows, g.data)
   if (c.models.length === 0 && c.tools.length === 0) return null
 
   const toggle = () => { const v = !open; setOpen(v); write(OPEN_KEY, v ? '1' : '0') }
@@ -144,12 +222,13 @@ export function AtAGlancePanel() {
           <div className="@container">
           <div className="grid gap-x-8 gap-y-5 px-3 py-3 @[720px]:grid-cols-3">
             <Donut title="Where the money went" segments={c.models} center={lead(c.models, c.modelTotal)} centerLabel={c.models[0]?.label ?? ''}
-              ariaLabel={`Cost by model: ${c.models.map((s) => `${s.label} ${s.display}, ${sharePct(s.value, c.modelTotal)}`).join('; ')}`} />
+              trends={tr?.models} note={tr?.story}
+              ariaLabel={`Cost by model:${c.models.map((s) => `${s.label} ${s.display}, ${sharePct(s.value, c.modelTotal)}`).join('; ')}`} />
             {c.bill.length > 0 && (
-              <Donut title="The bill by token type" segments={c.bill} center={readRe ? sharePct(readRe.value, c.billTotal) : '—'} centerLabel="re-reading context"
+              <Donut title="The bill by token type" segments={c.bill} center={readRe ? sharePct(readRe.value, c.billTotal) : '—'} centerLabel="re-reading context" trends={tr?.bill}
                 ariaLabel={`Cost by token type at current list prices: ${c.bill.map((s) => `${s.label} ${s.display}, ${sharePct(s.value, c.billTotal)}`).join('; ')}`} />
             )}
-            <Donut title="Most-used tools" segments={c.tools} center={lead(c.tools, c.toolTotal)} centerLabel={c.tools[0]?.label ?? ''}
+            <Donut title="Most-used tools" segments={c.tools} center={lead(c.tools, c.toolTotal)} centerLabel={c.tools[0]?.label ?? ''} trends={tr?.tools}
               ariaLabel={`Tool calls by tool: ${c.tools.map((s) => `${s.label} ${s.display}, ${sharePct(s.value, c.toolTotal)}`).join('; ')}`} />
           </div>
           </div>
@@ -169,6 +248,7 @@ export function AtAGlancePanel() {
                     className="group relative inline-flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 outline-none focus-visible:ring-2 focus-visible:ring-accent">
                     <AgentCharacter who={r.who} size={52} className="h-auto w-[clamp(32px,4vw,52px)]" />
                     <span className="num text-[clamp(13px,1.3vw,17px)] font-medium text-fg">{share}</span>
+                    {tr?.agents?.get(r.key) && <TrendMark cell={tr.agents.get(r.key)!} className="-ml-1 text-[11px]" />}
                     <span role="tooltip" data-agent-hint
                       className="pointer-events-none invisible absolute bottom-full left-0 z-20 mb-2 w-max max-w-[280px] rounded-xl border border-border-strong bg-panel px-3.5 py-2.5 opacity-0 shadow-lg transition-opacity duration-100 group-hover:visible group-hover:opacity-100 group-focus-visible:visible group-focus-visible:opacity-100">
                       <span className="block text-[14px] font-semibold text-fg">{r.name}</span>
@@ -211,6 +291,7 @@ export function AtAGlancePanel() {
                         <span className="num text-[10.5px] font-medium text-fg">{share}</span>
                       </Ring>
                       <span aria-hidden className="text-[10px] leading-[1.15] text-fg-faint">of<br />spend</span>
+                      {tr?.agents?.get(r.key) && <TrendMark cell={tr.agents.get(r.key)!} className="text-[11px]" />}
                     </span>
                   </div>
                 )
@@ -227,15 +308,17 @@ export function AtAGlancePanel() {
       )}
       {open && view === 'numbers' && (
         <div className="grid gap-x-10 gap-y-7 px-3 py-4 md:grid-cols-2 min-[1800px]:grid-cols-4">
-          <ShareBlock title="Where the money went" head={['model', 'cost']} of="of the cost" segments={c.models} total={c.modelTotal} />
-          {c.bill.length > 0 && <ShareBlock title="The bill by token type" head={['type', 'cost']} of="of the bill" segments={c.bill} total={c.billTotal} />}
-          <ShareBlock title="Most-used tools" head={['tool', 'calls']} of="of tool calls" segments={c.tools} total={c.toolTotal} />
+          <ShareBlock title="Where the money went" head={['model', 'cost']} of="of the cost" segments={c.models} total={c.modelTotal} trends={tr?.models} days={tr?.days} note={tr?.story} />
+          {c.bill.length > 0 && <ShareBlock title="The bill by token type" head={['type', 'cost']} of="of the bill" segments={c.bill} total={c.billTotal} trends={tr?.bill} days={tr?.days} />}
+          <ShareBlock title="Most-used tools" head={['tool', 'calls']} of="of tool calls" segments={c.tools} total={c.toolTotal} trends={tr?.tools} days={tr?.days} />
           {rows.length > 0 && (
             <ShareBlock
               title="Agents"
               head={['agent', 'turns', 'cost']}
               of="of the spend"
               segments={rows.map((r) => ({ key: r.key, label: r.name, value: r.cost, display: fmtUSD(r.cost) }))}
+              trends={tr?.agents}
+              days={tr?.days}
               extra={rows.map((r) => r.turns.toLocaleString('en-US'))}
               total={agentTotal}
             />
@@ -253,13 +336,17 @@ export function AtAGlancePanel() {
  * donuts' colours, and under every row a bar of its share. Still a table, so
  * it stays the charts' text alternative.
  */
-function ShareBlock({ title, head, of, segments, total, extra }: {
+function ShareBlock({ title, head, of, segments, total, extra, trends, days, note }: {
   title: string
   head: string[]
   of: string
   segments: Segment[]
   total: number
   extra?: string[]
+  /** A change column after the share; absent, the table is as it always was. */
+  trends?: Map<string, TrendCell>
+  days?: number
+  note?: string
 }) {
   const lead = segments[0]
   const pct = (v: number) => (total > 0 ? (100 * v) / total : 0)
@@ -284,6 +371,11 @@ function ShareBlock({ title, head, of, segments, total, extra }: {
         <thead>
           <tr className="text-[11px] text-fg-faint">
             {[...head, 'share'].map((h, i) => <th key={h} scope="col" className={`pb-1 font-normal ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>)}
+            {trends && (
+              <th scope="col" className="pb-1 pl-2 text-right font-normal" title={`Change in share, in points: the last ${days} days against the ${days} before`}>
+                {days}d
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -298,11 +390,12 @@ function ShareBlock({ title, head, of, segments, total, extra }: {
               {extra && <td className="num pt-1 pl-2 text-right text-fg-muted">{extra[i]}</td>}
               <td className="num pt-1 pl-2 text-right text-fg">{sg.display}</td>
               <td className="num pt-1 pl-2 text-right font-semibold text-fg">{sharePct(sg.value, total)}</td>
+              {trends && <td className="pt-1 pl-2 text-right text-[12px]">{trends.get(sg.key) && <TrendMark cell={trends.get(sg.key)!} />}</td>}
             </tr>,
             // The row's share as a bar the width of the whole row, so the
             // rows compare against each other at a glance.
             <tr key={`${sg.key}-bar`} aria-hidden>
-              <td colSpan={head.length + 1} className="pb-1.5 pl-[18px]">
+              <td colSpan={head.length + (trends ? 2 : 1)} className="pb-1.5 pl-[18px]">
                 <span className="block h-1 rounded-full bg-panel-2">
                   <span className="block h-full rounded-full" style={{ width: `${Math.max(pct(sg.value), 0.8)}%`, background: colorOf(sg, i) }} />
                 </span>
@@ -311,6 +404,7 @@ function ShareBlock({ title, head, of, segments, total, extra }: {
           ])}
         </tbody>
       </table>
+      {note && <p className="mb-0 mt-2 text-[12px] leading-snug text-fg-muted" data-glance-note>{note}</p>}
     </div>
   )
 }

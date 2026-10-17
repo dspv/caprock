@@ -851,7 +851,7 @@ GET  /v1/glance                         → Glance — all-time split by agent a
 GET  /v1/glance?range=today|7d|30d|all  → the same, over one range (the share card's agent mix)
 ```
 
-`{agents[], bill?, display}` for the Now screen's At a glance block, all time
+`{agents[], bill?, display, trend?}` for the Now screen's At a glance block, all time
 and never filtered by agent. `range` takes the summary's ranges (local
 midnight today, the last 7 or 30 days, all) and is how the share card draws
 the agents of the period it is about; absent or `all`, all time:
@@ -871,6 +871,17 @@ the agents of the period it is about; absent or `all`, all time:
   Tokens of a model with no row are counted in `unpriced_tokens` and priced
   nowhere. Absent with no pricing table.
 - **`display`** maps each model id seen to the table's display name.
+- **`trend`** (all-time answer only; absent with `range`) is two equal
+  windows ending now, for the block's change-in-share markers:
+  `{days, prior_from_ms, cut_ms, to_ms, prior, recent}` with `days` = 7,
+  prior = `[prior_from_ms, cut_ms)` and recent = `[cut_ms, to_ms)`. Each
+  window is `{models, bill?, tools, agents}`: `models` maps model id to
+  stored `cost_usd`, `bill` is the shape above priced the same way, `tools`
+  maps tool name to `tool.pre` calls (the calls Most-used tools counts), and
+  `agents` is `store.AgentSplit` over the window. The turns and the tool
+  calls are one grouped query each, the window a `GROUP BY` column
+  (`store.TrendWindows`, on `idx_events_turn_agent` and
+  `idx_events_tool_dist`, both covering; the plan guard checks it).
 
 Cached for 60 s per range and range start; on the owner's 1 GB database
 (2026-10-04) a cold all-time build takes 0.44 s.
