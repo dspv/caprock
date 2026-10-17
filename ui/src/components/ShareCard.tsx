@@ -132,6 +132,15 @@ export function agentColour(agent: string, look: CardLook): string {
   return agent === 'codex' ? p.ink : p.muted
 }
 
+/**
+ * An agent's mark colour on a ground: its bar colour, except OpenAI's Blossom,
+ * which OpenAI allows in black or white only (OpenAIBlossom.ts).
+ */
+export function markColour(agent: string, look: CardLook): string {
+  if (agent === 'codex') return look === 'dark' ? '#ffffff' : '#000000'
+  return agentColour(agent, look)
+}
+
 /** Dollars as the card says them: whole above $100, cents below. */
 export function cardMoney(v: number): string {
   if (!(v > 0)) return '$0'
@@ -363,7 +372,7 @@ function paintCard(g: CanvasRenderingContext2D, d: CardData, look: CardLook) {
       const label = `${m.name} ${m.pct}%`
       const lw = 26 + width(label, `600 17px ${SANS}`)
       if (lx + lw > W - pad + 2) break
-      drawMark(g, m.agent, lx, ly - 16, 19, m.agent === 'other' ? p.faint : agentColour(m.agent, look))
+      drawMark(g, m.agent, lx, ly - 16, 19, m.agent === 'other' ? p.faint : markColour(m.agent, look))
       text(lx + 26, ly, m.name, `600 17px ${SANS}`, p.ink)
       text(lx + 26 + width(`${m.name} `, `600 17px ${SANS}`), ly, `${m.pct}%`, `500 17px ${MONO}`, p.muted)
       lx += lw + 22
@@ -408,28 +417,16 @@ export function drawBrand(g: CanvasRenderingContext2D, x: number, y: number, loo
 
 /** An agent's mark at (x, y), `s` pixels square. */
 function drawMark(g: CanvasRenderingContext2D, agent: string, x: number, y: number, s: number, colour: string) {
-  const path = agentMarkPath(agent)
+  const mark = agentMarkPath(agent)
+  const box = mark?.box ?? { x: 0, y: 0, size: 24 }
   g.save?.()
   g.translate?.(x, y)
-  g.scale?.(s / 24, s / 24)
+  g.scale?.(s / box.size, s / box.size)
+  g.translate?.(-box.x, -box.y)
   g.fillStyle = colour
   g.strokeStyle = colour
-  if (path && typeof Path2D !== 'undefined') {
-    g.fill(new Path2D(path))
-  } else if (agent === 'codex') {
-    g.lineWidth = 2.2
-    g.beginPath()
-    g.moveTo(7.5, 2.5)
-    g.arcTo(21.5, 2.5, 21.5, 21.5, 5)
-    g.arcTo(21.5, 21.5, 2.5, 21.5, 5)
-    g.arcTo(2.5, 21.5, 2.5, 2.5, 5)
-    g.arcTo(2.5, 2.5, 21.5, 2.5, 5)
-    g.closePath()
-    g.stroke()
-    g.beginPath()
-    // The "C": the long way round from upper right to lower right.
-    g.arc?.(12, 12, 4.2, -0.736, 0.736, true)
-    g.stroke()
+  if (mark && typeof Path2D !== 'undefined') {
+    g.fill(new Path2D(mark.path))
   } else {
     g.beginPath()
     g.arc?.(12, 12, 5, 0, Math.PI * 2)

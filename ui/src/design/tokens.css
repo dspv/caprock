@@ -404,7 +404,13 @@
   /* Hermes Agent: a teal of our own — no brand colour of Nous Research's is
    * used here, as no mark of theirs is (AgentMarks.tsx). */
   --agent-hermes: color-mix(in srgb, #2f9e86 70%, var(--color-fg-muted));
+  /* Codex: OpenAI's Blossom, which OpenAI's brand guidelines allow in black
+   * or white only ("DON'T add any colors", components/OpenAIBlossom.ts), so
+   * no mix: pure white on the dark palettes, pure black on the light ones
+   * (and on the terminal slab, by its own tone, further down). */
+  --agent-codex: #ffffff;
 }
+:root[data-theme="light"] { --agent-codex: #000000; }
 
 /* Second Brain's kinds (lib/brain.ts KIND_COLOR): the same 70/30-style mix
  * with the muted ink, so each follows the theme. Memories take a hue each;
@@ -1110,6 +1116,7 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
   --color-fg: #e8e6e2;
   --color-fg-muted: #a9a59e;
   --color-fg-faint: #8f8b84;
+  --agent-codex: #ffffff;
   --color-panel: #211f1d;
   --app-hairline: rgba(232, 230, 226, 0.09);
   --app-hairline-strong: rgba(232, 230, 226, 0.17);
@@ -1170,6 +1177,7 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
   --color-fg: #24211c;
   --color-fg-muted: #5f5a51;
   --color-fg-faint: #6c675e;
+  --agent-codex: #000000;
   --color-panel: #f4ecdd;
   --app-hairline: rgba(36, 33, 28, 0.1);
   --app-hairline-strong: rgba(36, 33, 28, 0.18);
