@@ -8,6 +8,7 @@
  * doctor` in the window: *Copy report* builds the same text the command
  * prints, pinned to it by one fixture (testdata/footprint/).
  */
+import { useRef } from 'react'
 import { api } from './api'
 import { useApi } from './useApi'
 import { fmtCPU, fmtMem, type ProcGroup, type ProcUsage } from './resources'
@@ -38,8 +39,10 @@ export interface Orphan {
   pid: number
   /** With `pid`, names the process: a stop sends both, and a pid since reused is not touched. */
   started_at: number
-  kind: 'caprock_daemon' | 'caprock_holder' | 'caprock_other' | 'claude' | 'mcp_server' | 'claude_child' | string
+  kind: 'caprock_daemon' | 'caprock_holder' | 'caprock_old_holder' | 'caprock_other' | 'claude' | 'codex' | 'mcp_server' | 'claude_child' | string
   label: string
+  /** The command line, cut to 160 characters, credentials hidden. */
+  cmd?: string
   exe?: string
   data_dir?: string
   data_dir_gone?: boolean
@@ -57,6 +60,8 @@ export interface OrphanReport {
   at: number
   count: number
   by_kind: Record<string, number> | null
+  /** Every listed process's memory together; absent from a daemon before 2026-10-18. */
+  mem_bytes?: number
   list: Orphan[] | null
   note?: string
 }
@@ -65,6 +70,8 @@ export interface OrphanTarget { pid: number; started_at: number }
 
 export interface OrphanStopResult {
   stopped: Orphan[] | null
+  /** Got SIGTERM and was still there 5 s later; nothing more was sent (Force stop is the second click). */
+  running?: Orphan[] | null
   failed: { pid: number; error: string }[] | null
 }
 
@@ -123,11 +130,29 @@ export function useFootprint() {
 }
 
 /**
- * The footprint with the orphan list taken now: the open doctor asks for it,
- * every 10 s like the strip, and only while it is open.
+ * The footprint with the orphan list: the open doctor asks for it every 10 s
+ * like the strip, and only while it is open. The daemon answers with a scan
+ * up to 30 s old; `checkNow` (Check now) asks it to take one at once.
  */
 export function useFootprintWithOrphans() {
-  return useApi(() => api.footprint(true), [], { live: false, intervalMs: FOOTPRINT_POLL_MS, keepUnchanged: true })
+  const fresh = useRef(false)
+  const q = useApi(() => {
+    const now = fresh.current
+    fresh.current = false
+    return api.footprint(true, now)
+  }, [], { live: false, intervalMs: FOOTPRINT_POLL_MS, keepUnchanged: true })
+  return { ...q, checkNow: () => { fresh.current = true; q.refresh() } }
+}
+
+/**
+ * The orphans in one figure, undefined when there are none: "Orphans: 3 ·
+ * 410 MB" in the doctor, "3 orphans" on the strip (`short`), where the width
+ * is already spent (NARROW_STRIP_PX) and the memory is in the tooltip.
+ */
+export function orphanFigure(o: OrphanReport | undefined, short = false): string | undefined {
+  if (!o || o.count <= 0) return undefined
+  if (short) return `${o.count} ${o.count === 1 ? 'orphan' : 'orphans'}`
+  return `Orphans: ${o.count}${o.mem_bytes ? ` · ${fmtBytes(o.mem_bytes)}` : ''}`
 }
 
 /** daemon.Age: "40s", "12m", "3h", "7d" (days from 48 hours). */
@@ -262,7 +287,7 @@ export function footprintText(f: Footprint): string {
 
   const orph = f.orphans
   if (orph) {
-    out.push('', 'Orphans (processes that look abandoned)')
+    out.push('', orph.count > 0 ? `Orphans: ${orph.count} · ${goBytes(orph.mem_bytes ?? 0)} (processes that look abandoned)` : 'Orphans (processes that look abandoned)')
     const list = orph.list ?? []
     if (!orph.scanned && orph.count > 0) out.push(`  ${orph.count} found at the last check; \`caprock doctor\` lists them`)
     else if (orph.count === 0) out.push('  none')
@@ -284,9 +309,11 @@ export function footprintText(f: Footprint): string {
   return out.join('\n') + '\n'
 }
 
-/** doctor.go's printOrphan: what, why, where. */
+/** doctor.go's printOrphan: what, why, the command line, where. */
 function orphanLines(at: number, p: Orphan, indent: string): string[] {
-  const out = [`${indent}pid ${p.pid}  ${p.label} · ${age(at - p.started_at)} old · ${goBytes(p.mem_bytes)}${p.auto ? ' · stopped on its own' : ''}`, `${indent}  ${p.why}`]
+  const cpu = p.cpu_pct !== undefined && p.cpu_pct !== null ? ` · ${pct(p.cpu_pct)} CPU` : ''
+  const out = [`${indent}pid ${p.pid}  ${p.label} · ${age(at - p.started_at)} old · ${goBytes(p.mem_bytes)}${cpu}${p.auto ? ' · stopped on its own' : ''}`, `${indent}  ${p.why}`]
+  if (p.cmd) out.push(`${indent}  $ ${p.cmd}`)
   let where = p.exe ?? ''
   if (p.data_dir) where += `${where ? ' · ' : ''}data ${p.data_dir}${p.data_dir_gone ? ' (gone)' : ''}`
   if (where) out.push(`${indent}  ${where}`)
@@ -297,6 +324,7 @@ function orphanLines(at: number, p: Orphan, indent: string): string[] {
 export function footprintTitle(f: Footprint): string {
   return [
     `Caprock on this computer: ${fmtMem(f.memory.total_mem_bytes)} memory (${fmtCPU(f.memory.total_cpu_pct)} CPU) · ${fmtBytes(f.disk.total_bytes)} on disk`,
+    ...(f.orphans && f.orphans.count > 0 ? [`${orphanFigure(f.orphans)} — processes that look abandoned`] : []),
     ...warnings(f).map((v) => v.text),
     'Click for what it is spent on — caprock doctor.',
   ].join('\n')
@@ -314,6 +342,7 @@ export function footprintTitle(f: Footprint): string {
 /** A temporary folder or an agent's worktree: where agent work starts throwaway daemons. */
 const THROWAWAY = [
   /[/\\]\.claude[/\\]worktrees[/\\]/,
+  /[/\\]\.claude[/\\]jobs[/\\]/,
   /[/\\]scratchpad[/\\]/,
   /^\/(private\/)?tmp\//,
   /^\/(private\/)?var\/folders\//,
@@ -339,6 +368,8 @@ export function startedFrom(...paths: (string | undefined)[]): string | undefine
     if (!p) continue
     const wt = /[/\\]\.claude[/\\]worktrees[/\\]([^/\\]+)/.exec(p)
     if (wt) return `worktree ${wt[1]}`
+    const job = /[/\\]\.claude[/\\]jobs[/\\]([^/\\]+)/.exec(p)
+    if (job) return `agent job ${job[1]!.slice(0, 8)}`
     const sp = /[/\\]scratchpad[/\\]([^/\\]+)/.exec(p)
     if (sp) return `agent scratchpad ${sp[1]}`
   }
@@ -349,7 +380,8 @@ export function startedFrom(...paths: (string | undefined)[]): string | undefine
  * Whether Clean up ticks it by default. Everything the doctor lists may be
  * stopped (ADR-059); these are the ones that are safe to stop without
  * reading further. Left unticked: a terminal holder something still runs in
- * (stopping it closes that terminal), a Caprock daemon for a data folder
+ * (stopping it closes that terminal) — an old install's above all, whose
+ * session this Caprock still lists — a Caprock daemon for a data folder
  * that is not a temporary one (it may be a second install someone uses),
  * and a Caprock command inside an app bundle.
  */
@@ -357,12 +389,13 @@ export function safeToStop(o: Orphan): boolean {
   switch (o.kind) {
     case 'caprock_daemon': return isTestCopy(o)
     case 'caprock_holder': return Boolean(o.auto)
+    case 'caprock_old_holder': return false
     case 'caprock_other': return !/\.app[/\\]/.test(o.exe ?? '')
     default: return true
   }
 }
 
-export type DoctorRowKey = 'copies' | 'apps' | 'terminals' | 'commands' | 'claude' | 'helpers' | 'reads' | 'database' | 'wal' | 'daemon' | string
+export type DoctorRowKey = 'copies' | 'apps' | 'terminals' | 'old-terminals' | 'commands' | 'claude' | 'codex' | 'helpers' | 'reads' | 'database' | 'wal' | 'daemon' | string
 
 /** One row of the doctor: what, why in a line, how big, and what can be stopped. */
 export interface DoctorRow {
@@ -378,7 +411,7 @@ export interface DoctorRow {
   /** What its Stop and Clean up may stop: listed by the doctor's scan, on the machine. */
   stoppable: Orphan[]
   /** The processes behind it, for Details: from the scan, or the duplicates when the scan has not landed. */
-  procs: { pid: number; mem_bytes: number; started_at?: number; exe?: string; data_dir?: string; data_dir_gone?: boolean; why?: string; label?: string }[]
+  procs: { pid: number; mem_bytes: number; cpu_pct?: number; started_at?: number; exe?: string; cmd?: string; data_dir?: string; data_dir_gone?: boolean; why?: string; label?: string }[]
   /** The daemon's own sentence, for Details. */
   said?: string
 }
@@ -437,6 +470,21 @@ export function doctorRows(f: Footprint): DoctorRow[] {
     })
   }
 
+  // Said, never warned: a session this Caprock still lists, run by an install it moved away from.
+  const oldHolders = of('caprock_old_holder')
+  if (oldHolders.length) {
+    rows.push({
+      key: 'old-terminals',
+      title: 'Terminals from an older Caprock install',
+      count: oldHolders.length,
+      reason: 'Sessions started before you switched installs; they still run.',
+      value: fmtBytes(mem(oldHolders)),
+      warn: false,
+      stoppable: oldHolders,
+      procs: oldHolders,
+    })
+  }
+
   const strayWarn = isWarn('stray_processes')
   const commands = of('caprock_other')
   if (commands.length) {
@@ -446,6 +494,10 @@ export function doctorRows(f: Footprint): DoctorRow[] {
   if (claudes.length) {
     rows.push({ key: 'claude', title: 'Finished Claude sessions still running', count: claudes.length, reason: 'Their session has ended; the process did not.', value: fmtBytes(mem(claudes)), warn: strayWarn, stoppable: claudes, procs: claudes })
   }
+  const codexes = of('codex')
+  if (codexes.length) {
+    rows.push({ key: 'codex', title: 'Finished Codex sessions still running', count: codexes.length, reason: 'Their session has ended; the process did not.', value: fmtBytes(mem(codexes)), warn: strayWarn, stoppable: codexes, procs: codexes })
+  }
   const helpers = of('mcp_server', 'claude_child')
   if (helpers.length) {
     rows.push({ key: 'helpers', title: 'Leftover helpers', count: helpers.length, reason: 'Servers left running by finished agent sessions.', value: fmtBytes(mem(helpers)), warn: strayWarn && helpers.some((o) => o.kind === 'mcp_server'), stoppable: helpers, procs: helpers, said: verdict('stray_processes')?.text })
@@ -453,7 +505,7 @@ export function doctorRows(f: Footprint): DoctorRow[] {
   // Before the scan lands: the strip's counts, so the row is not missing for ten seconds.
   if (!f.orphans?.scanned && f.orphans && f.orphans.count > 0) {
     const k = f.orphans.by_kind ?? {}
-    const n = (k.claude ?? 0) + (k.mcp_server ?? 0) + (k.claude_child ?? 0) + (k.caprock_other ?? 0)
+    const n = (k.claude ?? 0) + (k.codex ?? 0) + (k.mcp_server ?? 0) + (k.claude_child ?? 0) + (k.caprock_other ?? 0) + (k.caprock_old_holder ?? 0)
     if (n) rows.push({ key: 'helpers', title: 'Leftover processes', count: n, reason: 'Left running by finished sessions. Looking at them now…', warn: strayWarn, stoppable: [], procs: [], said: verdict('stray_processes')?.text })
   }
 
@@ -504,6 +556,8 @@ export function plainName(o: Orphan): string {
   switch (o.kind) {
     case 'caprock_daemon': return isTestCopy(o) ? 'Test copy of Caprock' : 'Other copy of Caprock'
     case 'caprock_holder': return 'Unused Caprock terminal'
+    case 'caprock_old_holder': return 'Terminal from an older Caprock install'
+    case 'codex': return 'Finished Codex session'
     case 'caprock_other': {
       const app = /([^/\\]+)\.app[/\\]/.exec(o.exe ?? '')?.[1]
       return app ? `${app} helper` : `Leftover ${o.label}`

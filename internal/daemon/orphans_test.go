@@ -64,7 +64,17 @@ func newOrphanFixture() orphanFixture {
 		{pid: 507, ppid: 1, name: "claude", start: old, otherUser: true},                                       // another user's
 		{pid: 508, ppid: 1, name: "2.1.296", start: old, argv: []string{"/Users/u/.local/bin/claude", "-p"}},   // the native binary by version
 		{pid: 509, ppid: 1, name: "node", start: old, argv: []string{"node", "/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js"}},
+		// codex.
+		{pid: 510, ppid: 1, name: "codex", start: old, argv: []string{"/Users/u/.local/bin/codex", "--no-daemon"}}, // parent gone
+		{pid: 511, ppid: 1, name: "codex", start: old, argv: []string{"codex", "app-server", "daemon", "pid-update-loop"},
+			exe: "/Users/u/.codex/packages/app-server-daemon/releases/0.163.0/bin/codex"}, // the Codex app's managed daemon
+		{pid: 512, ppid: 1, name: "node", start: old, argv: []string{"node", "/usr/lib/node_modules/@openai/codex/bin/codex.js"}},
+		{pid: 513, ppid: 600, name: "codex.exe", start: old},           // parent alive, its session ended (Windows spelling)
 		{pid: 600, ppid: 1, name: "Hermes", start: ms(48 * time.Hour)}, // whatever started 503, still running
+		// A holder of an old Homebrew install this Caprock still lists, and
+		// the live session in it.
+		{pid: 405, ppid: 1, name: "caprock", start: ms(12 * 24 * time.Hour), argv: []string{"/opt/homebrew/bin/caprock", "pty-host"}},
+		{pid: 406, ppid: 405, name: "claude", start: ms(12 * 24 * time.Hour), tty: true, argv: []string{"claude", "--api-key", "sk-ant-secret", "--session-id", "af28"}},
 		// MCP servers and what Claude Code started.
 		{pid: 700, ppid: 1, name: "node", start: old, argv: []string{"node", "/x/@modelcontextprotocol/server-github/dist/index.js"}},
 		{pid: 701, ppid: 1, name: "node", start: old, argv: []string{"node", "vite"}, env: []string{"CLAUDECODE=1"}},
@@ -114,8 +124,9 @@ func newOrphanFixture() orphanFixture {
 			{PID: 400, StartMs: old, Children: []ptyhost.ChildProc{{PID: 401, Name: "claude"}}},
 			{PID: 402, StartMs: old, Env: []string{ptyhost.RegistryEnv + "=/gone/stand/ptyhost"}, Children: []ptyhost.ChildProc{{PID: 403, Name: "claude"}}},
 			{PID: 404, StartMs: old},
+			{PID: 405, StartMs: ms(12 * 24 * time.Hour), Children: []ptyhost.ChildProc{{PID: 406, Name: "claude"}}},
 		},
-		hostExe: map[int32]string{400: "/opt/homebrew/bin/caprock", 402: "/opt/homebrew/bin/caprock", 404: "/app/caprock-pty-host"},
+		hostExe: map[int32]string{400: "/app/caprock-pty-host", 402: "/opt/homebrew/bin/caprock", 404: "/app/caprock-pty-host", 405: "/gone/homebrew/bin/caprock"},
 		other: []otherCaprock{
 			{pid: 210, start: old, exe: "/x/caprock", sub: "up"},
 			{pid: 211, start: old, exe: "/x/caprock", sub: "status"},
@@ -128,11 +139,14 @@ func newOrphanFixture() orphanFixture {
 			{PID: 400, State: "registered", Ours: true},
 			{PID: 402, State: "unreachable-busy", Abandoned: true, Child: "claude"},
 			{PID: 404, State: "dead", Reap: true},
+			{PID: 405, State: "registered", Ours: true, Child: "claude"},
 		},
-		skip: map[int32]bool{100: true},
-		live: liveTrees(tab, map[string]int32{"s-live": 502}),
+		skip:        map[int32]bool{100: true},
+		live:        liveTrees(tab, map[string]int32{"s-live": 502, "s-homebrew": 406}),
+		installDirs: []string{"/app"},
 		ended: map[int32]store.EndedPID{
 			503: {SessionID: "s-ended", PID: 503, StartedAt: ms(2*time.Hour + 50*time.Minute), LastEventAt: ms(2 * time.Hour)},
+			513: {SessionID: "s-codex", PID: 513, StartedAt: ms(2*time.Hour + 50*time.Minute), LastEventAt: ms(90 * time.Minute)},
 			504: {SessionID: "s-old", PID: 504, StartedAt: ms(5 * time.Hour), LastEventAt: ms(4 * time.Hour)},
 		},
 		exists: func(dir string) bool { return !strings.HasPrefix(dir, "/gone") },
@@ -149,7 +163,9 @@ func TestOrphansAreListedConservatively(t *testing.T) {
 	}
 	want := map[int32]string{
 		200: OrphanDaemon, 402: OrphanHolder, 404: OrphanHolder, 210: OrphanCaprockOther,
+		405: OrphanOldHolder,
 		500: OrphanClaude, 503: OrphanClaude, 508: OrphanClaude, 509: OrphanClaude,
+		510: OrphanCodex, 512: OrphanCodex, 513: OrphanCodex,
 		700: OrphanMCP, 704: OrphanMCP, 705: OrphanMCP, 708: OrphanMCP, 901: OrphanMCP,
 		701: OrphanClaudeChild,
 	}
@@ -194,8 +210,26 @@ func TestOrphansAreListedConservatively(t *testing.T) {
 	if o := got[210]; o.Label != "caprock up" {
 		t.Errorf("label: %q, want the binary and its subcommand only", o.Label)
 	}
-	if o := got[700]; o.Label != "node index.js" {
-		t.Errorf("label: %q", o.Label)
+	if o := got[700]; o.Label != "node index.js" || o.Cmd != "node /x/@modelcontextprotocol/server-github/dist/index.js" {
+		t.Errorf("label %q, cmd %q", o.Label, o.Cmd)
+	}
+	// The Codex app's own daemon is a service, not a leftover.
+	if _, ok := got[511]; ok {
+		t.Errorf("codex app-server is listed: %+v", got[511])
+	}
+	if o := got[513]; !strings.Contains(o.Why, "A codex whose session ended") || !strings.Contains(o.Why, "1h ago") {
+		t.Errorf("the ended codex: %q", o.Why)
+	}
+	// The old install's holder: said with where it runs from and that a
+	// live session is in it; never the sweep's.
+	if o := got[405]; o.Auto || !strings.Contains(o.Why, "another Caprock install (/gone/homebrew/bin/caprock)") ||
+		!strings.Contains(o.Why, "12d ago") || !strings.Contains(o.Why, "program file is gone") || !strings.Contains(o.Why, "as a live session") ||
+		o.Cmd != "caprock pty-host" {
+		t.Errorf("the old install's holder: %+v", o)
+	}
+	// Its live session's claude is never listed itself.
+	if _, ok := got[406]; ok {
+		t.Errorf("the live claude in the old holder is listed")
 	}
 	// Caprock's first, then by kind and pid.
 	if list[0].Kind != OrphanDaemon || list[len(list)-1].Kind != OrphanClaudeChild {
@@ -203,15 +237,53 @@ func TestOrphansAreListedConservatively(t *testing.T) {
 	}
 
 	r := newOrphanReport(list, f.now)
-	if r.Count != len(want) || r.ByKind[OrphanClaude] != 4 || r.ByKind[OrphanMCP] != 5 || !r.Scanned {
+	if r.Count != len(want) || r.ByKind[OrphanClaude] != 4 || r.ByKind[OrphanCodex] != 3 || r.ByKind[OrphanMCP] != 5 || !r.Scanned {
 		t.Errorf("report: %+v", r)
+	}
+
+	// With no daemon to compare installs with, no holder is judged by its
+	// executable.
+	f.in.installDirs = nil
+	for _, o := range f.m.orphans(context.Background(), f.in) {
+		if o.Kind == OrphanOldHolder {
+			t.Errorf("an old install's holder listed with nothing to compare with: %+v", o)
+		}
+	}
+}
+
+func TestOrphanReportSumsMemory(t *testing.T) {
+	r := newOrphanReport([]Orphan{{PID: 2, Kind: OrphanClaude, MemBytes: 300 << 20}, {PID: 3, Kind: OrphanMCP, MemBytes: 110 << 20}}, time.Now())
+	if r.MemBytes != 410<<20 || r.Count != 2 {
+		t.Errorf("report: %+v", r)
+	}
+}
+
+func TestCmdLineHidesSecretsAndCuts(t *testing.T) {
+	for _, c := range []struct {
+		argv []string
+		want string
+	}{
+		{[]string{"/Users/u/.local/bin/claude", "--api-key", "sk-ant-1", "--session-id", "af28"}, "claude --api-key [hidden] --session-id af28"},
+		{[]string{"node", "server.js", "--token=abc", "GITHUB_TOKEN=ghp_x", "--port", "8080"}, "node server.js --token=[hidden] GITHUB_TOKEN=[hidden] --port 8080"},
+		{[]string{"uvx", "mcp-proxy", "https://user:pa55@example.com/sse"}, "uvx mcp-proxy https://[hidden]@example.com/sse"},
+		{[]string{"claude", "-p", "fix the\nbug now"}, `claude -p "fix the bug now"`},
+		{[]string{`C:\Users\u\AppData\Roaming\npm\codex.exe`, "exec"}, "codex.exe exec"},
+		{nil, ""},
+	} {
+		if got := cmdLine(c.argv); got != c.want {
+			t.Errorf("cmdLine(%q) = %q, want %q", c.argv, got, c.want)
+		}
+	}
+	long := cmdLine([]string{"node", strings.Repeat("ア", 300)})
+	if n := len([]rune(long)); n != cmdMax || !strings.HasSuffix(long, "…") {
+		t.Errorf("a long line: %d runes, %q", n, long[len(long)-10:])
 	}
 }
 
 func TestClaudeCandidatesSkipTerminalsAndApps(t *testing.T) {
 	f := newOrphanFixture()
-	got := f.m.claudeCandidates(context.Background(), f.in.tab, f.in.skip)
-	want := []int32{500, 502, 503, 504, 506, 508, 509}
+	got := f.m.agentCandidates(context.Background(), f.in.tab, f.in.skip)
+	want := []int32{500, 502, 503, 504, 506, 508, 509, 510, 512, 513}
 	if len(got) != len(want) {
 		t.Fatalf("candidates %v, want %v", got, want)
 	}
@@ -313,15 +385,18 @@ func TestStopOnlyWhatIsListedWithItsStart(t *testing.T) {
 	}
 	res := stopListed(context.Background(), f, list, []OrphanTarget{
 		{PID: 500, StartedAt: 1000}, // stops on SIGTERM
-		{PID: 501, StartedAt: 1001}, // ignores it: SIGKILL after the grace
+		{PID: 501, StartedAt: 1001}, // ignores it: reported running, nothing more sent
 		{PID: 502, StartedAt: 1002}, // the pid now names another process
 		{PID: 600, StartedAt: 1},    // never listed
 		{PID: 500, StartedAt: 1000}, // named twice
 		{PID: 501, StartedAt: 7},    // listed, but not with this start
-	}, 300*time.Millisecond)
+	}, 300*time.Millisecond, false)
 
-	if len(res.Stopped) != 2 || res.Stopped[0].PID != 500 || res.Stopped[1].PID != 501 {
+	if len(res.Stopped) != 1 || res.Stopped[0].PID != 500 {
 		t.Errorf("stopped: %+v", res.Stopped)
+	}
+	if len(res.Running) != 1 || res.Running[0].PID != 501 {
+		t.Errorf("running: %+v, want 501, which ignored SIGTERM", res.Running)
 	}
 	failed := map[int32]string{}
 	for _, x := range res.Failed {
@@ -339,20 +414,30 @@ func TestStopOnlyWhatIsListedWithItsStart(t *testing.T) {
 	if !strings.Contains(sent, "TERM 500") || strings.Contains(sent, "KILL 500") {
 		t.Errorf("500 should stop on SIGTERM alone: %s", sent)
 	}
-	if !strings.Contains(sent, "TERM 501") || !strings.Contains(sent, "KILL 501") {
-		t.Errorf("501 should get SIGKILL after ignoring SIGTERM: %s", sent)
+	if !strings.Contains(sent, "TERM 501") || strings.Contains(sent, "KILL") {
+		t.Errorf("no SIGKILL without the second click: %s", sent)
 	}
 	if strings.Count(sent, "TERM 500") != 1 {
 		t.Errorf("500 signalled twice: %s", sent)
+	}
+
+	// The second click: force, for 501 alone.
+	f.sent = nil
+	res = stopListed(context.Background(), f, list, []OrphanTarget{{PID: 501, StartedAt: 1001}}, 300*time.Millisecond, true)
+	if len(res.Stopped) != 1 || res.Stopped[0].PID != 501 || len(res.Running) != 0 || len(res.Failed) != 0 {
+		t.Errorf("force: %+v", res)
+	}
+	if got := strings.Join(f.sent, ","); got != "KILL 501" {
+		t.Errorf("force sent %q, want SIGKILL to 501 alone", got)
 	}
 }
 
 func TestStopProcRefusesAReusedPid(t *testing.T) {
 	f := &fakeProcs{start: map[int32]int64{700: 2}}
-	if err := stopProc(context.Background(), f, 700, 1, time.Second); !errors.Is(err, errChanged) {
+	if _, err := stopProc(context.Background(), f, 700, 1, time.Second, false); !errors.Is(err, errChanged) {
 		t.Errorf("err %v, want errChanged", err)
 	}
-	if err := stopProc(context.Background(), f, 1, 2, time.Second); !errors.Is(err, errChanged) {
+	if _, err := stopProc(context.Background(), f, 1, 2, time.Second, true); !errors.Is(err, errChanged) {
 		t.Errorf("pid 1: err %v, want errChanged", err)
 	}
 	if len(f.sent) != 0 {
@@ -389,7 +474,7 @@ func TestStopProcStopsOwnChild(t *testing.T) {
 		t.Fatal("the child's start time cannot be read")
 	}
 	// The wrong start first: nothing is sent.
-	if err := stopProc(context.Background(), osSignaller{}, pid, start+1, time.Second); !errors.Is(err, errChanged) {
+	if _, err := stopProc(context.Background(), osSignaller{}, pid, start+1, time.Second, false); !errors.Is(err, errChanged) {
 		t.Fatalf("a wrong start: %v", err)
 	}
 	select {
@@ -398,7 +483,7 @@ func TestStopProcStopsOwnChild(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 	// Reaped by cmd.Wait as it exits, so its start stops matching.
-	if err := stopProc(context.Background(), osSignaller{}, pid, start, 5*time.Second); err != nil {
+	if running, err := stopProc(context.Background(), osSignaller{}, pid, start, 5*time.Second, false); err != nil || running {
 		t.Fatalf("stop: %v", err)
 	}
 	select {

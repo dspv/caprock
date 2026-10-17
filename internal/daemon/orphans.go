@@ -30,21 +30,35 @@ import (
 
 // Orphan kinds, in the order the list shows them.
 const (
-	OrphanDaemon       = "caprock_daemon" // another `caprock up --foreground`
-	OrphanHolder       = "caprock_holder" // a terminal holder no Caprock will reattach to
-	OrphanCaprockOther = "caprock_other"  // any other caprock command whose parent is gone
-	OrphanClaude       = "claude"         // a claude whose session ended or whose parent is gone
-	OrphanMCP          = "mcp_server"     // an MCP server whose parent is gone
-	OrphanClaudeChild  = "claude_child"   // started from a Claude Code session, parent gone
+	OrphanDaemon = "caprock_daemon" // another `caprock up --foreground`
+	OrphanHolder = "caprock_holder" // a terminal holder no Caprock will reattach to
+	// OrphanOldHolder is a holder this Caprock still lists, running from
+	// another install's executable: a session that outlived a move between
+	// installs (Homebrew to the app). Something runs in it; never ticked.
+	OrphanOldHolder    = "caprock_old_holder"
+	OrphanCaprockOther = "caprock_other" // any other caprock command whose parent is gone
+	OrphanClaude       = "claude"        // a claude whose session ended or whose parent is gone
+	OrphanCodex        = "codex"         // a codex CLI whose session ended or whose parent is gone
+	OrphanMCP          = "mcp_server"    // an MCP server whose parent is gone
+	OrphanClaudeChild  = "claude_child"  // started from a Claude Code session, parent gone
 )
 
 var orphanKindOrder = map[string]int{
-	OrphanDaemon: 0, OrphanHolder: 1, OrphanCaprockOther: 2, OrphanClaude: 3, OrphanMCP: 4, OrphanClaudeChild: 5,
+	OrphanDaemon: 0, OrphanHolder: 1, OrphanOldHolder: 2, OrphanCaprockOther: 3, OrphanClaude: 4, OrphanCodex: 5, OrphanMCP: 6, OrphanClaudeChild: 7,
 }
 
-// orphanStopGrace is how long a listed process gets to stop after SIGTERM
-// before SIGKILL.
+// orphanStopGrace is how long a stop waits, after its one signal, for the
+// process to go before it reports it still running (ADR-059, amended
+// 2026-10-18: SIGKILL only on a second click).
 const orphanStopGrace = 5 * time.Second
+
+// orphanListTTL is how old a scan the open doctor may be answered with: it
+// asks every 10 s, and a scan reads every process's argv once. Check now,
+// `caprock doctor` and every stop take one at once.
+const orphanListTTL = 30 * time.Second
+
+// cmdMax is how many characters of a command line an orphan carries.
+const cmdMax = 160
 
 // OrphanReport is the footprint's `orphans`.
 type OrphanReport struct {
@@ -56,7 +70,10 @@ type OrphanReport struct {
 	At     int64          `json:"at"`
 	Count  int            `json:"count"`
 	ByKind map[string]int `json:"by_kind"`
-	List   []Orphan       `json:"list"`
+	// MemBytes is the memory of every listed process together: the strip's
+	// "orphans 3 · 410 MB".
+	MemBytes uint64   `json:"mem_bytes"`
+	List     []Orphan `json:"list"`
 	// Note says what this scan could not look at.
 	Note string `json:"note,omitempty"`
 }
@@ -69,9 +86,13 @@ type Orphan struct {
 	StartedAt int64  `json:"started_at"`
 	Kind      string `json:"kind"`
 	// Label is the program and, for Caprock, its subcommand: "caprock
-	// pty-host", "claude", "node server-github". Never the rest of argv.
+	// pty-host", "claude", "node server-github".
 	Label string `json:"label"`
-	Exe   string `json:"exe,omitempty"`
+	// Cmd is the command line, cut to cmdMax characters, the program by its
+	// base name and the value of anything that names a token, key, secret or
+	// password hidden (cmdLine). Empty when argv cannot be read.
+	Cmd string `json:"cmd,omitempty"`
+	Exe string `json:"exe,omitempty"`
 	// DataDir is the Caprock data directory a daemon or holder belongs to,
 	// when it can be told; DataDirGone is set when it no longer exists.
 	DataDir     string `json:"data_dir,omitempty"`
@@ -91,7 +112,10 @@ type OrphanTarget = api.OrphanTarget
 
 // OrphanStopResult is POST /v1/footprint/orphans/stop.
 type OrphanStopResult struct {
-	Stopped []Orphan      `json:"stopped"`
+	Stopped []Orphan `json:"stopped"`
+	// Running got its signal and was still there when the grace ran out.
+	// Nothing more was sent: a SIGKILL is the user's second click (force).
+	Running []Orphan      `json:"running"`
 	Failed  []ReapFailure `json:"failed"`
 }
 
@@ -109,8 +133,13 @@ type orphanInput struct {
 	// ended is, by pid, the latest ended session that ran in it.
 	ended map[int32]store.EndedPID
 	now   time.Time
-	// exists reports whether a directory is still there.
+	// exists reports whether a directory (or a file) is still there.
 	exists func(string) bool
+	// installDirs is where the answering daemon's own executables live
+	// (installDirs()); a holder it lists that runs from elsewhere is an old
+	// install's. Empty when there is no daemon to compare with: then no
+	// holder is judged by its executable.
+	installDirs []string
 }
 
 // mcpWord finds MCP in a command line: "mcp-server-fetch", "server-mcp",
@@ -172,17 +201,54 @@ func claudeLike(name string, argv []string) bool {
 	return false
 }
 
-// claudeCandidate is a process the classifier might call claude, so the
-// caller knows which pids to ask the store about: one of this user's, with
-// no terminal and not in an app bundle.
-func (m *resourceMeter) claudeCandidates(ctx context.Context, tab *procstat.Table, skip map[int32]bool) []int32 {
+// codexLike is whether a process is the Codex CLI: named codex, argv[0]
+// says so, or node or bun running the npm package. Its services are not:
+// `codex app-server` (the Codex desktop app's managed daemon, launchd's
+// child by design) and anything under its packages' app-server directory.
+func codexLike(name string, argv []string, exe string) bool {
+	if strings.Contains(filepath.ToSlash(exe), "/app-server-daemon/") {
+		return false
+	}
+	is := strings.TrimSuffix(strings.ToLower(name), ".exe") == "codex"
+	if len(argv) > 0 {
+		if b := strings.TrimSuffix(strings.ToLower(filepath.Base(filepath.ToSlash(argv[0]))), ".exe"); b == "codex" {
+			is = true
+		}
+		if !is && (procstat.IsInterpreter(argv[0]) || procstat.IsInterpreter(name)) {
+			for _, a := range argv[1:] {
+				if strings.Contains(filepath.ToSlash(a), "@openai/codex") {
+					is = true
+					break
+				}
+			}
+		}
+	}
+	if !is {
+		return false
+	}
+	for _, a := range argv[1:] {
+		if a == "app-server" {
+			return false
+		}
+	}
+	return true
+}
+
+// agentCandidates is every process the classifier might call claude or
+// codex, so the caller knows which pids to ask the store about: one of this
+// user's, with no terminal and not in an app bundle.
+func (m *resourceMeter) agentCandidates(ctx context.Context, tab *procstat.Table, skip map[int32]bool) []int32 {
 	var out []int32
 	for pid, p := range tab.Procs {
-		if pid <= 1 || skip[pid] || !sameUser(p) || !maybeClaude(p.Name) {
+		if pid <= 1 || skip[pid] || !sameUser(p) || !maybeAgent(p.Name) {
 			continue
 		}
 		k := pidKey{pid, p.StartMs}
-		if m.ttyOf(k, p) || !claudeLike(p.Name, m.argvOf(ctx, k)) || inAppBundle(m.exeOf(ctx, k)) {
+		if m.ttyOf(k, p) {
+			continue
+		}
+		argv, exe := m.argvOf(ctx, k), m.exeOf(ctx, k)
+		if !claudeLike(p.Name, argv) && !codexLike(p.Name, argv, exe) || inAppBundle(exe) {
 			continue
 		}
 		out = append(out, pid)
@@ -191,11 +257,11 @@ func (m *resourceMeter) claudeCandidates(ctx context.Context, tab *procstat.Tabl
 	return out
 }
 
-// maybeClaude is the cheap test before argv is read: names Claude Code
-// runs under.
-func maybeClaude(name string) bool {
+// maybeAgent is the cheap test before argv is read: names Claude Code and
+// the Codex CLI run under.
+func maybeAgent(name string) bool {
 	n := strings.TrimSuffix(strings.ToLower(name), ".exe")
-	if n == "claude" || n == "node" || n == "bun" {
+	if n == "claude" || n == "codex" || n == "node" || n == "bun" {
 		return true
 	}
 	// The native binary's file is named by its version: "2.1.296".
@@ -244,7 +310,13 @@ func (m *resourceMeter) orphans(ctx context.Context, in orphanInput) []Orphan {
 	}
 	for i, h := range in.scan.hosts {
 		v := in.holders[i]
-		if !v.Orphan() || in.skip[h.PID] {
+		if in.skip[h.PID] {
+			continue
+		}
+		if !v.Orphan() {
+			if o, ok := oldInstallHolder(in, h, v, old); ok {
+				add(o)
+			}
 			continue
 		}
 		o := Orphan{PID: h.PID, StartedAt: h.StartMs, Kind: OrphanHolder, Label: "caprock pty-host", Exe: in.scan.hostExe[h.PID], Auto: v.Reap}
@@ -298,7 +370,7 @@ func (m *resourceMeter) orphans(ctx context.Context, in orphanInput) []Orphan {
 		// reused since belongs to someone else.
 		hasEnded = hasEnded && e.StartedAt > 0 && p.StartMs > 0 && p.StartMs <= e.StartedAt+60_000
 		mcpName := strings.Contains(low, "mcp")
-		candidate := maybeClaude(p.Name) || mcpName || procstat.IsInterpreter(p.Name) || low == "npm"
+		candidate := maybeAgent(p.Name) || mcpName || procstat.IsInterpreter(p.Name) || low == "npm"
 		if !candidate || (!isParentGone && !hasEnded) {
 			continue
 		}
@@ -313,13 +385,9 @@ func (m *resourceMeter) orphans(ctx context.Context, in orphanInput) []Orphan {
 		o := Orphan{PID: pid, StartedAt: p.StartMs, Exe: exe}
 		switch {
 		case claudeLike(p.Name, argv):
-			o.Kind, o.Label = OrphanClaude, "claude"
-			switch {
-			case hasEnded:
-				o.Why = fmt.Sprintf("A claude whose session ended (last heard from %s ago), still running with no terminal.", ago(in.now, e.LastEventAt))
-			default:
-				o.Why = "A claude whose parent has exited, with no terminal and no live session in Caprock."
-			}
+			o.Kind, o.Label, o.Why = OrphanClaude, "claude", agentWhy("claude", hasEnded, in.now, e)
+		case codexLike(p.Name, argv, exe):
+			o.Kind, o.Label, o.Why = OrphanCodex, "codex", agentWhy("codex", hasEnded, in.now, e)
 		case !isParentGone:
 			continue // only claude is judged by its session
 		case mcpName || mcpWord.MatchString(strings.ToLower(strings.Join(argv, " "))):
@@ -333,6 +401,11 @@ func (m *resourceMeter) orphans(ctx context.Context, in orphanInput) []Orphan {
 		}
 		add(o)
 	}
+	for i := range out {
+		if p, ok := in.tab.Procs[out[i].PID]; ok {
+			out[i].Cmd = cmdLine(m.argvOf(ctx, pidKey{p.PID, p.StartMs}))
+		}
+	}
 	sort.Slice(out, func(i, j int) bool {
 		if a, b := orphanKindOrder[out[i].Kind], orphanKindOrder[out[j].Kind]; a != b {
 			return a < b
@@ -340,6 +413,101 @@ func (m *resourceMeter) orphans(ctx context.Context, in orphanInput) []Orphan {
 		return out[i].PID < out[j].PID
 	})
 	return out
+}
+
+func agentWhy(name string, ended bool, now time.Time, e store.EndedPID) string {
+	if ended {
+		return fmt.Sprintf("A %s whose session ended (last heard from %s ago), still running with no terminal.", name, ago(now, e.LastEventAt))
+	}
+	return fmt.Sprintf("A %s whose parent has exited, with no terminal and no live session in Caprock.", name)
+}
+
+// oldInstallHolder lists a holder this Caprock still lists (a session it
+// can attach to) when it runs from another install's executable: a
+// Homebrew `caprock pty-host` left from before the move to the app, still
+// holding a session days later. Something runs in it, so it is said, never
+// stopped on its own and never ticked.
+func oldInstallHolder(in orphanInput, h ptyhost.HostProc, v ptyhost.Verdict, old func(int64) bool) (Orphan, bool) {
+	exe := in.scan.hostExe[h.PID]
+	if v.State != "registered" || exe == "" || len(in.installDirs) == 0 || inInstall(exe, in.installDirs) || !old(h.StartMs) {
+		return Orphan{}, false
+	}
+	child, live := v.Child, false
+	if child == "" {
+		child = "a program"
+	}
+	for _, c := range h.Children {
+		live = live || in.live[c.PID]
+	}
+	o := Orphan{PID: h.PID, StartedAt: h.StartMs, Kind: OrphanOldHolder, Label: "caprock pty-host", Exe: exe}
+	if reg := ptyhost.RegistryOf(h.Env); reg != "" {
+		o.DataDir = filepath.Dir(reg)
+	}
+	o.Why = fmt.Sprintf("A terminal holder from another Caprock install (%s), started %s ago", exe, Age(in.now.Sub(time.UnixMilli(h.StartMs))))
+	if in.exists != nil && !in.exists(exe) {
+		o.Why += "; that program file is gone"
+	}
+	o.Why += fmt.Sprintf(". This Caprock still lists it and %s runs in it", child)
+	if live {
+		o.Why += " as a live session"
+	}
+	o.Why += ", so it is never stopped on its own. Stopping it ends that session."
+	return o, true
+}
+
+// inInstall is whether an executable lives in one of an install's
+// directories.
+func inInstall(exe string, dirs []string) bool {
+	for _, d := range dirs {
+		if sameDir(filepath.Dir(exe), d) {
+			return true
+		}
+	}
+	return false
+}
+
+// secretArg finds an argument or flag that names a credential.
+var secretArg = regexp.MustCompile(`(?i)(token|secret|passw|api[-_]?key|apikey|auth|credential|bearer|cookie|private[-_]?key)`)
+
+// urlUserinfo is the user:password@ part of a URL.
+var urlUserinfo = regexp.MustCompile(`(://)[^/@\s:]+:[^/@\s]+@`)
+
+// cmdLine is a command line for a person: the program by its base name, an
+// argument with a space quoted, the value of any flag or KEY=VALUE that
+// names a token, key, secret or password replaced by [hidden], a URL's
+// password removed, and the whole cut to cmdMax characters.
+func cmdLine(argv []string) string {
+	if len(argv) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(argv))
+	hideNext := false
+	for i, a := range argv {
+		a = strings.Join(strings.Fields(a), " ") // newlines and tabs in a prompt
+		switch {
+		case i == 0:
+			// Either separator: a Windows argv[0] read on any OS.
+			a = a[strings.LastIndexAny(a, `/\`)+1:]
+		case hideNext:
+			a, hideNext = "[hidden]", false
+		default:
+			if k, _, ok := strings.Cut(a, "="); ok && secretArg.MatchString(k) {
+				a = k + "=[hidden]"
+			} else if strings.HasPrefix(a, "-") && secretArg.MatchString(a) {
+				hideNext = true
+			}
+		}
+		a = urlUserinfo.ReplaceAllString(a, "${1}[hidden]@")
+		if strings.Contains(a, " ") || a == "" {
+			a = `"` + a + `"`
+		}
+		parts = append(parts, a)
+	}
+	s := strings.Join(parts, " ")
+	if r := []rune(s); len(r) > cmdMax {
+		s = string(r[:cmdMax-1]) + "…"
+	}
+	return s
 }
 
 func hasEnv(env []string, key string) bool {
@@ -437,6 +605,7 @@ func newOrphanReport(list []Orphan, at time.Time) OrphanReport {
 	}
 	for _, o := range list {
 		r.ByKind[o.Kind]++
+		r.MemBytes += o.MemBytes
 	}
 	return r
 }
@@ -464,13 +633,15 @@ func (d *Daemon) scanOrphans(ctx context.Context) OrphanReport {
 	self := int32(os.Getpid())
 	skip := map[int32]bool{self: true}
 	scan := d.res.scanCaprock(ctx, tab, self)
+	exe, _ := os.Executable()
 	in := orphanInput{
 		tab: tab, scan: scan, skip: skip, now: now, exists: dirExists,
-		holders: ptyhost.Classify(scan.hosts, ptyhost.Dir(d.opt.DataDir), now),
-		live:    liveTrees(tab, d.sessionPIDs(ctx)),
+		holders:     ptyhost.Classify(scan.hosts, ptyhost.Dir(d.opt.DataDir), now),
+		live:        liveTrees(tab, d.sessionPIDs(ctx)),
+		installDirs: installDirs(exe, d.opt.HolderExe, d.opt.DataDir),
 	}
 	note := orphanScanNote()
-	if cands := d.res.claudeCandidates(ctx, tab, skip); len(cands) > 0 && d.store != nil {
+	if cands := d.res.agentCandidates(ctx, tab, skip); len(cands) > 0 && d.store != nil {
 		pids := make([]int, len(cands))
 		for i, p := range cands {
 			pids[i] = int(p)
@@ -512,6 +683,19 @@ func (m *resourceMeter) measureOrphans(tab *procstat.Table, list []Orphan) {
 	}
 }
 
+// orphanList is the list for the open doctor: the last scan when it is
+// younger than orphanListTTL, a new one otherwise or when fresh (Check
+// now).
+func (d *Daemon) orphanList(ctx context.Context, fresh bool) OrphanReport {
+	d.res.mu.Lock()
+	last := d.res.orphLast
+	d.res.mu.Unlock()
+	if !fresh && last.Scanned && last.At > 0 && time.Since(time.UnixMilli(last.At)) < orphanListTTL {
+		return last
+	}
+	return d.scanOrphans(ctx)
+}
+
 // orphanCounts is the last scan's counts without its list, for a footprint
 // that did not ask for the list. The first one after start scans.
 func (d *Daemon) orphanCounts(ctx context.Context) OrphanReport {
@@ -546,10 +730,19 @@ func OfflineOrphans(ctx context.Context, dataDir string, running int32) OrphanRe
 		sk[running] = true
 	}
 	scan := m.scanCaprock(ctx, tab, self)
+	// An old install's holder is judged against the daemon that answers;
+	// with none, there is no install to compare with.
+	var dirs []string
+	if running > 0 {
+		if e := procstat.Exe(ctx, running); e != "" {
+			dirs = installDirs(e, "", dataDir)
+		}
+	}
 	list := m.orphans(ctx, orphanInput{
 		tab: tab, scan: scan, skip: sk, now: now, exists: dirExists,
-		holders: ptyhost.Classify(scan.hosts, ptyhost.Dir(dataDir), now),
-		live:    map[int32]bool{},
+		holders:     ptyhost.Classify(scan.hosts, ptyhost.Dir(dataDir), now),
+		live:        map[int32]bool{},
+		installDirs: dirs,
 	})
 	m.measureOrphans(tab, list)
 	r := newOrphanReport(list, now)
@@ -583,43 +776,43 @@ func (osSignaller) startOf(ctx context.Context, pid int32) (int64, bool) {
 	return procstat.StartMs(ctx, pid)
 }
 
-// stopProc asks one process to stop (SIGTERM; Windows has only
-// TerminateProcess) and makes it after grace (SIGKILL). The pid's start
-// time is checked before each signal and between them: a pid that names
-// another process now is never signalled. Only this pid is signalled —
-// never its children.
-func stopProc(ctx context.Context, s signaller, pid int32, start int64, grace time.Duration) error {
+// stopProc sends one process one signal — SIGTERM, or SIGKILL when force
+// (the user's second click on a process that outlived SIGTERM); Windows has
+// only TerminateProcess — and waits up to grace for it to go. It reports
+// running when the process is still there then; nothing more is sent. The
+// pid's start time is checked before the signal and while waiting: a pid
+// that names another process now is never signalled. Only this pid is
+// signalled — never its children.
+func stopProc(ctx context.Context, s signaller, pid int32, start int64, grace time.Duration, force bool) (running bool, err error) {
 	same := func() bool {
 		st, ok := s.startOf(ctx, pid)
 		return ok && st == start
 	}
 	if pid <= 1 || start == 0 || !same() {
-		return errChanged
+		return false, errChanged
 	}
-	if err := s.terminate(pid); err != nil {
+	send := s.terminate
+	if force {
+		send = s.kill
+	}
+	if err := send(pid); err != nil {
 		if !same() {
-			return nil // it ended on its own meanwhile
+			return false, nil // it ended on its own meanwhile
 		}
-		return err
+		return false, err
 	}
 	deadline := time.Now().Add(grace)
 	for time.Now().Before(deadline) {
 		if !same() {
-			return nil
+			return false, nil
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return false, ctx.Err()
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	if !same() {
-		return nil
-	}
-	if err := s.kill(pid); err != nil && same() {
-		return err
-	}
-	return nil
+	return same(), nil
 }
 
 // errNotListed is a target the fresh scan does not list.
@@ -627,9 +820,9 @@ var errNotListed = errors.New("not on the doctor's list now: it exited, stopped 
 
 // stopListed stops each target that list holds with the same start time,
 // all at once, and refuses the rest. list must be a scan taken for this
-// stop, not one the caller kept.
-func stopListed(ctx context.Context, s signaller, list []Orphan, targets []OrphanTarget, grace time.Duration) OrphanStopResult {
-	res := OrphanStopResult{Stopped: []Orphan{}, Failed: []ReapFailure{}}
+// stop, not one the caller kept. force sends SIGKILL instead of SIGTERM.
+func stopListed(ctx context.Context, s signaller, list []Orphan, targets []OrphanTarget, grace time.Duration, force bool) OrphanStopResult {
+	res := OrphanStopResult{Stopped: []Orphan{}, Running: []Orphan{}, Failed: []ReapFailure{}}
 	byPID := map[int32]Orphan{}
 	for _, o := range list {
 		byPID[o.PID] = o
@@ -659,30 +852,42 @@ func stopListed(ctx context.Context, s signaller, list []Orphan, targets []Orpha
 		wg.Add(1)
 		go func(o Orphan) {
 			defer wg.Done()
-			err := stopProc(ctx, s, o.PID, o.StartedAt, grace)
+			running, err := stopProc(ctx, s, o.PID, o.StartedAt, grace, force)
 			mu.Lock()
 			defer mu.Unlock()
-			if err != nil {
+			switch {
+			case err != nil:
 				res.Failed = append(res.Failed, ReapFailure{PID: o.PID, Error: err.Error()})
-				return
+			case running:
+				res.Running = append(res.Running, o)
+			default:
+				res.Stopped = append(res.Stopped, o)
 			}
-			res.Stopped = append(res.Stopped, o)
 		}(o)
 	}
 	wg.Wait()
-	sort.Slice(res.Stopped, func(i, j int) bool { return res.Stopped[i].PID < res.Stopped[j].PID })
+	byPIDOrder := func(xs []Orphan) {
+		sort.Slice(xs, func(i, j int) bool { return xs[i].PID < xs[j].PID })
+	}
+	byPIDOrder(res.Stopped)
+	byPIDOrder(res.Running)
 	sort.Slice(res.Failed, func(i, j int) bool { return res.Failed[i].PID < res.Failed[j].PID })
 	return res
 }
 
-// stopOrphans is POST /v1/footprint/orphans/stop: the user's click on Stop
-// or Stop selected. It scans again and stops only what that scan lists
-// with the start time the click named (ADR-059).
-func (d *Daemon) stopOrphans(ctx context.Context, targets []OrphanTarget) OrphanStopResult {
+// stopOrphans is POST /v1/footprint/orphans/stop: the user's click on Stop,
+// Clean up or — for one still running after SIGTERM — Force stop. It scans
+// again and stops only what that scan lists with the start time the click
+// named (ADR-059).
+func (d *Daemon) stopOrphans(ctx context.Context, targets []OrphanTarget, force bool) OrphanStopResult {
 	list := d.scanOrphans(ctx).List
-	res := stopListed(ctx, d.signals(), list, targets, orphanStopGrace)
+	res := stopListed(ctx, d.signals(), list, targets, orphanStopGrace, force)
+	sig := map[bool]string{false: "SIGTERM", true: "SIGKILL"}[force]
 	for _, o := range res.Stopped {
-		d.log.Info("stopped a process the user picked from the doctor's orphan list", "component", "resources", "pid", o.PID, "kind", o.Kind, "label", o.Label)
+		d.log.Info("stopped a process the user picked from the doctor's orphan list", "component", "resources", "pid", o.PID, "kind", o.Kind, "label", o.Label, "signal", sig)
+	}
+	for _, o := range res.Running {
+		d.log.Info("a process the user picked from the doctor's orphan list outlived its signal", "component", "resources", "pid", o.PID, "kind", o.Kind, "label", o.Label, "signal", sig)
 	}
 	if len(res.Stopped) > 0 {
 		d.scanOrphans(ctx) // the counts the strip shows
@@ -699,7 +904,7 @@ func (d *Daemon) signals() signaller {
 
 // StopOrphansOffline is `caprock doctor --stop` with no daemon to ask: the
 // same rule, against the doctor's own scan.
-func StopOrphansOffline(ctx context.Context, dataDir string, targets []OrphanTarget, running int32) OrphanStopResult {
+func StopOrphansOffline(ctx context.Context, dataDir string, targets []OrphanTarget, running int32, force bool) OrphanStopResult {
 	list := OfflineOrphans(ctx, dataDir, running).List
-	return stopListed(ctx, osSignaller{}, list, targets, orphanStopGrace)
+	return stopListed(ctx, osSignaller{}, list, targets, orphanStopGrace, force)
 }

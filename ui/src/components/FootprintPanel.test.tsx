@@ -22,6 +22,7 @@ function healthy(): Footprint {
     ...f,
     memory: { ...f.memory, hosts: { count: 6, mem_bytes: 200 * 2 ** 20, cpu_pct: 0, orphans: 0, reapable: 0 }, other_daemons_mem_bytes: 0, total_mem_bytes: 2 ** 30 },
     duplicates: { ...f.duplicates, daemons: [], other_install_holders: { count: 0, orphans: 0, exes: [] } },
+    orphans: { scanned: true, at: f.at, count: 0, by_kind: {}, mem_bytes: 0, list: [] },
     verdicts: [{ level: 'ok', code: 'ok', text: 'Nothing here looks wrong.' }],
   }
 }
@@ -30,6 +31,8 @@ function healthy(): Footprint {
 let lastServed: Footprint | undefined
 /** The bodies POSTed to the orphan stop. */
 let stopBodies: unknown[] = []
+/** Pids that ignore SIGTERM: a stop without force reports them running. */
+let stubborn = new Set<number>()
 
 function serve(f: Footprint) {
   stopBodies = []
@@ -37,10 +40,11 @@ function serve(f: Footprint) {
     const url = String(input)
     let body: unknown
     if (url.includes('/v1/footprint/orphans/stop')) {
-      const req = JSON.parse(String(init?.body)) as { targets: { pid: number }[] }
+      const req = JSON.parse(String(init?.body)) as { targets: { pid: number }[]; force?: boolean }
       stopBodies.push(req)
-      const list = f.orphans?.list ?? []
-      body = { stopped: list.filter((o) => req.targets.some((t) => t.pid === o.pid)), failed: [] }
+      const named = (f.orphans?.list ?? []).filter((o) => req.targets.some((t) => t.pid === o.pid))
+      const holdsOut = (pid: number) => !req.force && stubborn.has(pid)
+      body = { stopped: named.filter((o) => !holdsOut(o.pid)), running: named.filter((o) => holdsOut(o.pid)), failed: [] }
     } else if (url.includes('/v1/footprint')) {
       // The strip asks without the list; the open panel with it.
       const withList = url.includes('orphans=1')
@@ -55,6 +59,7 @@ function serve(f: Footprint) {
 }
 
 afterEach(() => {
+  stubborn = new Set()
   act(() => resetResourcesForTest())
   vi.unstubAllGlobals()
 })
@@ -77,6 +82,19 @@ describe('the status figure', () => {
     expect(button.className).toContain('text-fg-muted')
     expect(button.className).not.toContain('text-warn')
     expect(button.querySelector('[data-warn-dot]')).toBeNull()
+  })
+
+  it('counts the orphans on the strip, and says their memory in the doctor', async () => {
+    const { button, container } = await strip(warned())
+    expect(button.querySelector('[data-orphan-figure]')!.textContent).toBe('4 orphans')
+    expect(button.getAttribute('title')).toContain('Orphans: 4 · 325 MB')
+    fireEvent.click(button)
+    expect(container.querySelector('[data-orphan-summary]')!.textContent).toBe('Orphans: 4 · 325 MB')
+    // Details: the command line, credentials hidden, and the CPU when there is a rate.
+    await waitFor(() => expect(container.querySelector('[data-orphan="48120"]')).not.toBeNull())
+    const claude = container.querySelector('[data-orphan="48120"]')!
+    expect(claude.querySelector('[data-orphan-cmd]')!.textContent).toBe('$ claude --session-id 2f6c --api-key [hidden] -p "summarise the logs"')
+    expect(claude.textContent).toContain('0.1% CPU')
   })
 
   it('says memory alone in a narrow window, the disk in the tooltip, and keeps the warning dot', async () => {
@@ -140,7 +158,7 @@ describe('the panel', () => {
     fireEvent.click(button)
     expect(container.querySelector('[data-verdict-summary]')!.textContent).toBe('Caprock is using more than it should')
     await waitFor(() => expect(container.querySelector('[data-doctor-row="claude"]')).not.toBeNull())
-    expect([...container.querySelectorAll('[data-doctor-row]')].map((e) => e.getAttribute('data-doctor-row'))).toEqual(['copies', 'terminals', 'claude', 'helpers', 'reads'])
+    expect([...container.querySelectorAll('[data-doctor-row]')].map((e) => e.getAttribute('data-doctor-row'))).toEqual(['copies', 'terminals', 'claude', 'codex', 'helpers', 'reads'])
     const copies = container.querySelector('[data-doctor-row="copies"]')!
     expect(copies.textContent).toContain('Test copies of Caprock (1)')
     expect(copies.textContent).toContain('Started by agent work, not your app.')
@@ -195,7 +213,7 @@ describe('the panel', () => {
     await act(async () => { fireEvent.click(container.querySelector('[data-copy-report]')!) })
     const text = (writeText.mock.calls.at(-1) as unknown as [string])[0]
     expect(text).toBe(footprintText(lastServed!)) // ages count from the report's `at`
-    expect(text).toContain('Orphans (processes that look abandoned)')
+    expect(text).toContain('Orphans: 4 · 325 MB (processes that look abandoned)')
     expect(text).toContain('Memory and CPU')
     expect(screen.getByRole('status').textContent).toBe('Report copied.')
   })
@@ -209,6 +227,10 @@ describe('the panel', () => {
     expect(container.querySelector('[data-checked]')!.textContent).toBe('Checking…')
     // The strip's question and the open panel's, with the orphan list.
     await waitFor(() => expect(fetch.mock.calls.filter((c) => String(c[0]).includes('/v1/footprint')).length).toBe(before + 2))
+    // Check now takes a new scan; the panel's 10-second asks take the daemon's last (up to 30 s old).
+    const panelAsks = fetch.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('orphans=1'))
+    expect(panelAsks[0]).not.toContain('fresh=1')
+    expect(panelAsks.at(-1)).toContain('orphans=1&fresh=1')
     await waitFor(() => expect(container.querySelector('[data-checked]')!.textContent).toBe('Checked just now'))
   })
 })
@@ -224,29 +246,58 @@ describe('Clean up and Stop', () => {
   it('offers one Clean up with what it frees, and stops nothing before the list is confirmed', async () => {
     const { container } = await open()
     const clean = container.querySelector<HTMLButtonElement>('[data-cleanup]')!
-    expect(clean.textContent).toBe('Clean up (frees ~276 MB)')
+    expect(clean.textContent).toBe('Clean up (frees ~316 MB)')
     fireEvent.click(clean)
     expect(stopBodies).toEqual([])
     const confirm = container.querySelector('[data-stop-confirm]')!
     // Every process on its own line with its own box; the safe ones ticked.
     const picks = [...confirm.querySelectorAll<HTMLInputElement>('[data-stop-pick]')]
-    expect(picks.map((p) => [p.getAttribute('data-stop-pick'), p.checked])).toEqual([['34399', false], ['48120', true], ['48133', true]])
+    expect(picks.map((p) => [p.getAttribute('data-stop-pick'), p.checked])).toEqual([['34399', false], ['48120', true], ['48160', true], ['48133', true]])
     expect(confirm.textContent).toContain('Something still runs in it')
-    expect(container.querySelector('[data-stop-confirm-yes]')!.textContent).toBe('Stop 2 · frees ~276 MB')
+    expect(container.querySelector('[data-stop-confirm-yes]')!.textContent).toBe('Stop 3 · frees ~316 MB')
     await act(async () => { fireEvent.click(container.querySelector('[data-stop-confirm-yes]')!) })
     await waitFor(() => expect(stopBodies).toHaveLength(1))
     const started = warned().orphans!.list![1]!.started_at
-    expect(stopBodies[0]).toEqual({ targets: [{ pid: 48120, started_at: started }, { pid: 48133, started_at: started }] })
-    await waitFor(() => expect(container.querySelector('[data-doctor-note]')!.textContent).toBe('Stopped 2, about 276 MB freed.'))
+    expect(stopBodies[0]).toEqual({ targets: [{ pid: 48120, started_at: started }, { pid: 48160, started_at: warned().orphans!.list![2]!.started_at }, { pid: 48133, started_at: started }] })
+    await waitFor(() => expect(container.querySelector('[data-doctor-note]')!.textContent).toBe('Stopped 3, about 316 MB freed.'))
   })
 
   it('stops only what is left ticked', async () => {
     const { container } = await open()
     fireEvent.click(container.querySelector('[data-cleanup]')!)
     fireEvent.click(container.querySelector('[data-stop-pick="48133"]')!)
+    fireEvent.click(container.querySelector('[data-stop-pick="48160"]')!)
     await act(async () => { fireEvent.click(container.querySelector('[data-stop-confirm-yes]')!) })
     await waitFor(() => expect(stopBodies).toHaveLength(1))
     expect((stopBodies[0] as { targets: { pid: number }[] }).targets.map((t) => t.pid)).toEqual([48120])
+  })
+
+  it('sends SIGKILL only on a second click, for what outlived SIGTERM', async () => {
+    stubborn = new Set([48120])
+    const { container } = await open()
+    fireEvent.click(container.querySelector('[data-doctor-row="claude"] [data-row-stop]')!)
+    await act(async () => { fireEvent.click(container.querySelector('[data-stop-confirm-yes]')!) })
+    await waitFor(() => expect(container.querySelector('[data-force-stop-box]')).not.toBeNull())
+    expect(stopBodies).toHaveLength(1)
+    expect((stopBodies[0] as { force?: boolean }).force).toBeUndefined()
+    const box = container.querySelector('[data-force-stop-box]')!
+    expect(box.querySelector('[data-still-running="48120"]')!.textContent).toContain('Finished Claude session')
+    expect(box.querySelector('[data-force-stop]')!.textContent).toBe('Force stop 1')
+    await act(async () => { fireEvent.click(box.querySelector('[data-force-stop]')!) })
+    await waitFor(() => expect(stopBodies).toHaveLength(2))
+    expect(stopBodies[1]).toEqual({ targets: [{ pid: 48120, started_at: warned().orphans!.list![1]!.started_at }], force: true })
+    await waitFor(() => expect(container.querySelector('[data-force-stop-box]')).toBeNull())
+  })
+
+  it('leaves what outlived SIGTERM running when asked', async () => {
+    stubborn = new Set([48120])
+    const { container } = await open()
+    fireEvent.click(container.querySelector('[data-doctor-row="claude"] [data-row-stop]')!)
+    await act(async () => { fireEvent.click(container.querySelector('[data-stop-confirm-yes]')!) })
+    await waitFor(() => expect(container.querySelector('[data-force-stop-box]')).not.toBeNull())
+    fireEvent.click(screen.getByText('Leave running'))
+    expect(container.querySelector('[data-force-stop-box]')).toBeNull()
+    expect(stopBodies).toHaveLength(1)
   })
 
   it('stops one row from its own Stop, after the confirmation', async () => {
@@ -297,7 +348,7 @@ describe('Clean up and Stop', () => {
       return Promise.resolve(new Response(JSON.stringify({ ...f, at: Date.now(), orphans: { ...f.orphans, scanned: false, list: [] } }), { status: 200, headers: { 'content-type': 'application/json' } }))
     })
     fireEvent.click(r.button)
-    expect(r.container.querySelector('[data-doctor-row="helpers"]')!.textContent).toContain('Leftover processes (2)')
+    expect(r.container.querySelector('[data-doctor-row="helpers"]')!.textContent).toContain('Leftover processes (3)')
     expect(r.container.textContent).toContain('Looking for what can be stopped')
     expect(r.container.querySelector('[data-cleanup]')).toBeNull()
   })

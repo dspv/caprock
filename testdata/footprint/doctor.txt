@@ -28,15 +28,22 @@ Duplicates
     9  /opt/homebrew/bin/caprock
     2  /Applications/Caprock 0.104.app/Contents/MacOS/caprock
 
-Orphans (processes that look abandoned)
-  pid 34399  caprock pty-host · 7d old · 9 MB
+Orphans: 4 · 325 MB (processes that look abandoned)
+  pid 34399  caprock pty-host · 7d old · 9 MB · 0.0% CPU
     A terminal holder no Caprock can reattach to; claude still runs in it, so it is never stopped on its own. Stopping it closes its terminal. Its data directory is gone.
+    $ caprock pty-host
     /opt/homebrew/bin/caprock · data /private/tmp/stand-7 (gone)
-  pid 48120  claude · 26h old · 212 MB
+  pid 48120  claude · 26h old · 212 MB · 0.1% CPU
     A claude whose session ended (last heard from 25h ago), still running with no terminal.
+    $ claude --session-id 2f6c --api-key [hidden] -p "summarise the logs"
     /Users/you/.local/share/claude/versions/2.1.296
+  pid 48160  codex · 2h old · 40 MB
+    A codex whose parent has exited, with no terminal and no live session in Caprock.
+    $ codex --no-daemon exec "add the tests"
+    /Users/you/.local/bin/codex
   pid 48133  node index.js · 26h old · 64 MB
     An MCP server whose parent has exited (usually the claude that started it), with no terminal.
+    $ node /x/@modelcontextprotocol/server-github/dist/index.js
     /opt/homebrew/bin/node
   (stop one: caprock doctor --stop <pid>)
 

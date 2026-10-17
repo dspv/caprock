@@ -25,16 +25,22 @@
     "other_install_holders": {"count": 11, "orphans": 11, "exes": [{"exe": "/opt/homebrew/bin/caprock", "count": 9}, {"exe": "/Applications/Caprock 0.104.app/Contents/MacOS/caprock", "count": 2}]}
   },
   "orphans": {
-    "scanned": true, "at": 1791877758573, "count": 3,
-    "by_kind": {"caprock_holder": 1, "claude": 1, "mcp_server": 1},
+    "scanned": true, "at": 1791877758573, "count": 4,
+    "by_kind": {"caprock_holder": 1, "claude": 1, "codex": 1, "mcp_server": 1},
+    "mem_bytes": 340787200,
     "list": [
-      {"pid": 34399, "started_at": 1791265758573, "kind": "caprock_holder", "label": "caprock pty-host", "exe": "/opt/homebrew/bin/caprock",
+      {"pid": 34399, "started_at": 1791265758573, "kind": "caprock_holder", "label": "caprock pty-host", "cmd": "caprock pty-host", "exe": "/opt/homebrew/bin/caprock",
        "data_dir": "/private/tmp/stand-7", "data_dir_gone": true, "cpu_pct": 0, "mem_bytes": 9437184,
        "why": "A terminal holder no Caprock can reattach to; claude still runs in it, so it is never stopped on its own. Stopping it closes its terminal. Its data directory is gone."},
-      {"pid": 48120, "started_at": 1791784158573, "kind": "claude", "label": "claude", "exe": "/Users/you/.local/share/claude/versions/2.1.296",
+      {"pid": 48120, "started_at": 1791784158573, "kind": "claude", "label": "claude", "cmd": "claude --session-id 2f6c --api-key [hidden] -p \"summarise the logs\"",
+       "exe": "/Users/you/.local/share/claude/versions/2.1.296",
        "cpu_pct": 0.1, "mem_bytes": 222298112,
        "why": "A claude whose session ended (last heard from 25h ago), still running with no terminal."},
-      {"pid": 48133, "started_at": 1791784158573, "kind": "mcp_server", "label": "node index.js", "exe": "/opt/homebrew/bin/node", "mem_bytes": 67108864,
+      {"pid": 48160, "started_at": 1791870558573, "kind": "codex", "label": "codex", "cmd": "codex --no-daemon exec \"add the tests\"",
+       "exe": "/Users/you/.local/bin/codex", "mem_bytes": 41943040,
+       "why": "A codex whose parent has exited, with no terminal and no live session in Caprock."},
+      {"pid": 48133, "started_at": 1791784158573, "kind": "mcp_server", "label": "node index.js", "cmd": "node /x/@modelcontextprotocol/server-github/dist/index.js",
+       "exe": "/opt/homebrew/bin/node", "mem_bytes": 67108864,
        "why": "An MCP server whose parent has exited (usually the claude that started it), with no terminal."}
     ]
   },

@@ -22,7 +22,7 @@ func TestDoctorStopAsksAndRefuses(t *testing.T) {
 		cmd := &cobra.Command{}
 		cmd.SetOut(&out)
 		cmd.SetIn(strings.NewReader(in))
-		err := doctorStop(cmd, t.TempDir(), f, pids, false)
+		err := doctorStop(cmd, t.TempDir(), f, pids, false, false)
 		return out.String(), err
 	}
 
@@ -40,5 +40,30 @@ func TestDoctorStopAsksAndRefuses(t *testing.T) {
 	}
 	if out, _ := run("", 999_991); !strings.Contains(out, "Nothing stopped.") {
 		t.Errorf("no answer is a no:\n%s", out)
+	}
+	if out, _ := run("n\n", 999_991); !strings.Contains(out, "sends nothing more") {
+		t.Errorf("the question says SIGKILL is not sent on its own:\n%s", out)
+	}
+}
+
+// A process that outlives SIGTERM is reported with the command that kills
+// it, and nothing more is sent; the stop exits 1 until it is gone.
+func TestDoctorStopReportsWhatOutlivedSIGTERM(t *testing.T) {
+	res := daemon.OrphanStopResult{
+		Stopped: []daemon.Orphan{{PID: 11, Label: "claude"}},
+		Running: []daemon.Orphan{{PID: 12, Label: "node index.js"}},
+	}
+	var out bytes.Buffer
+	if err := printStopResult(&out, res, false); err == nil {
+		t.Error("a process still running is not a clean stop")
+	}
+	for _, want := range []string{"stopped pid 11 (claude)", "pid 12 (node index.js) is still running after SIGTERM; nothing more was sent", "caprock doctor --stop 12 --force"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	out.Reset()
+	if err := printStopResult(&out, daemon.OrphanStopResult{Stopped: res.Stopped}, true); err != nil || strings.Contains(out.String(), "--force") {
+		t.Errorf("a clean stop: %v\n%s", err, out.String())
 	}
 }

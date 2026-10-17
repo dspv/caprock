@@ -8,6 +8,7 @@ caprock doctor          # readable report; exits 1 when something is flagged
 caprock doctor --json   # the same as GET /v1/footprint
 caprock doctor --data-dir <dir>   # check another data directory
 caprock doctor --stop <pid>       # stop one process from the Orphans list (asks first; --yes skips)
+caprock doctor --stop <pid> --force   # for one still running after that: SIGKILL
 ```
 
 ## In the app: the status bar
@@ -15,21 +16,25 @@ caprock doctor --stop <pid>       # stop one process from the Orphans list (asks
 The same report is one click away in the desktop app and the dashboard. At
 the right of the status bar, *caprock 1.1 GB · 2.2 GB* is the memory every
 Caprock process holds and the data directory's size on disk (in a narrow
-window, memory alone; the disk figure is in its tooltip). It turns the
-warning colour, with a small dot, when the doctor flags something. A click
-opens the doctor as a panel: the verdict in one line (*All good*, or *3
-things to look at*), each warning with the processes behind it, what the
-memory and the disk are spent on, the daemon's disk reads and writes,
-what Caprock did on its own, and:
+window, memory alone; the disk figure is in its tooltip). When the last
+check found processes that look abandoned, *· 3 orphans* follows. It turns
+the warning colour, with a small dot, when the doctor flags something. A
+click opens the doctor as a panel: the verdict in one line (*All good*, or
+*Caprock is using more than it should*), *Orphans: 3 · 410 MB* when there
+are any, one row per kind of problem with its size, and, behind each row's
+**Details**, every process with its pid, memory, CPU, age, command line and
+why it is listed. Then:
 
-- **Orphans** lists the processes that look abandoned, each with why
-  (below). Switch on **Advanced** (off by default, and only on the computer
-  itself) for a Stop beside each and **Stop selected**; each asks once more
-  before anything is sent.
+- **Clean up** and each row's **Stop** open one confirmation listing every
+  process on its own line with its own checkbox; the ones safe to stop are
+  ticked, the rest are shown unticked with why. Nothing is sent before you
+  confirm, and only on the computer itself — a paired phone can read the
+  list but never stop anything.
+- **Force stop** appears only for a process that was asked to stop and is
+  still running five seconds later. It lists each one again; nothing is
+  killed without that second click.
 - **Check now** asks again at once (the panel otherwise refreshes every 10
   seconds while the window is visible).
-- **Stop N orphans** stops the orphaned terminals the sweep would stop, now
-  (on the computer itself, not from a paired phone).
 - **Copy report** copies the text `caprock doctor` prints, line for line —
   the thing to paste into an issue.
 - **Storage settings →** goes to what fills the database and the retention
@@ -72,10 +77,17 @@ why each is listed:
 - **A terminal holder no Caprock will reattach to**, from any install. The
   ones that hold nothing but an idle shell the daemon stops on its own; one
   where an agent or a command still runs is listed and left alone.
+- **A terminal from an older Caprock install** — say a Homebrew
+  `caprock pty-host` still holding a session days after you moved to the
+  app. Caprock still lists that session, so this is shown, never warned
+  about, never stopped on its own and never ticked in Clean up; stopping it
+  ends that session.
 - **Any other `caprock` command whose parent has exited.**
-- **A `claude` whose session ended** in Caprock's history (and which was
-  already running when that session started, so a reused pid is not
-  mistaken for it), **or whose parent has exited**, with no terminal.
+- **A `claude` or `codex` whose session ended** in Caprock's history (and
+  which was already running when that session started, so a reused pid is
+  not mistaken for it), **or whose parent has exited**, with no terminal.
+  The Codex desktop app's own background service (`codex app-server`) is
+  not a leftover and is never listed.
 - **An MCP server whose parent has exited** — its command line names MCP —
   usually because the `claude` that started it is gone.
 - **Something a Claude Code session started** (`CLAUDECODE` is in its
@@ -85,8 +97,11 @@ why each is listed:
 Never listed: anything with a terminal (a window you are in), anything in a
 live session's process tree, another user's processes, anything younger than
 two minutes, and macOS apps and their helpers (the Claude desktop app is
-launchd's child by design). The list is taken when you open the doctor or
-run `caprock doctor`; the daemon's 10-minute sweep keeps only a count, which
+launchd's child by design). Each process's command line is shown cut to
+160 characters, with the value of anything named like a token, key, secret
+or password replaced by `[hidden]`. The list is taken when you open the
+doctor (the open panel reuses a list up to 30 seconds old; **Check now**
+takes a new one) or run `caprock doctor`; the daemon's 10-minute sweep keeps only a count, which
 turns the status figure the warning colour when a `claude`, an MCP server or
 a Caprock command looks abandoned. On Windows, which does not reparent and
 has no terminals to check, a process counts as parentless when its parent's
@@ -96,13 +111,17 @@ pid is not running or now names a younger process.
 
 Caprock never stops a process it did not start on its own. You can:
 
-- **In the panel:** tick **Advanced**, then **Stop** beside one, or tick
-  several and **Stop selected**, and confirm.
+- **In the panel:** **Clean up**, or **Stop** on one row, then confirm the
+  list (untick anything you want to keep).
 - **In a terminal:** `caprock doctor --stop <pid>` (repeatable). It shows the
   process and why it is listed, and asks; `--yes` skips the question.
 
-Either way the process gets SIGTERM, then SIGKILL five seconds later if it is
-still there (on Windows it is terminated at once). Only a process on the list
+Either way the process gets SIGTERM — a request to exit, so it can save and
+clean up — and Caprock waits five seconds. One that is still running then
+is reported as still running, and nothing more is sent: a SIGKILL is your
+second, separate choice (**Force stop** in the panel, or
+`caprock doctor --stop <pid> --force`). On Windows, which has no SIGTERM,
+the first stop already terminates the process. Only a process on the list
 can be stopped: the daemon takes the list again, and signals only a pid that
 is still on it with the same start time — checked again before each signal,
 so a pid the system has since given to another program is never touched.
