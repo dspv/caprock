@@ -98,6 +98,10 @@ const (
 	// call itself and records whether the figure is the provider's or its
 	// estimate — so the pricing table is never applied to them (ADR-069).
 	SourceHermes Source = "hermes"
+	// SourceImport marks the messages of a conversation the user imported
+	// from a Claude.ai or ChatGPT export (ADR-074). They carry no tokens and
+	// no cost, and are stored `internal` so no aggregate counts them.
+	SourceImport Source = "import"
 )
 
 // TokenDelta carries per-turn token usage (turn.assistant only).

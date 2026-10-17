@@ -13,10 +13,14 @@
  * (hides it from this list, deleting nothing) or deletes it for good after a
  * second, explicit tap. An ended chat stays listed, *ended*, and can be
  * continued. Archived chats are one link away.
+ *
+ * **Import** (on the machine, ADR-074) files the conversations of a Claude.ai
+ * or ChatGPT export the user downloaded as read-only chats, marked with the
+ * service's mark and name. The file is read on this computer; nothing is sent.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, errText, type SessionSummary } from '@/lib/api'
-import { chatModelLabel, chatTitle, startChat } from '@/lib/chats'
+import { api, errText, isPairedDevice, type SessionSummary } from '@/lib/api'
+import { chatModelLabel, chatTitle, importSummary, startChat } from '@/lib/chats'
 import { fmtAgo } from '@/lib/format'
 import { href, navigate } from '@/lib/router'
 import { useApi } from '@/lib/useApi'
@@ -136,6 +140,7 @@ export function ChatsScreen({ archived = false }: { archived?: boolean }) {
     <div className={`mx-auto grid w-full max-w-[760px] gap-3 ${phone && starter ? 'pb-[96px]' : ''}`}>
       {header}
       {!phone && starter}
+      {!archived && !isPairedDevice() && <ImportChats onDone={list.refresh} />}
       {search}
       {list.error && !list.data && <p role="alert" className="text-[14px] text-danger">{errText(list.error)}</p>}
       {!list.data && !list.error ? (
@@ -226,6 +231,71 @@ function ChatRow({ s, now, canControl, onGone, onChanged, onEnded }: { s: Sessio
         </span>
       </a>
     </EndableRow>
+  )
+}
+
+/**
+ * Import chats from an export (ADR-074). Neither Claude.ai nor ChatGPT lets
+ * another program read an account's conversations, so the user asks the
+ * service for their data and opens the archive it emails them here. Read on
+ * this computer, nothing sent; importing the same export again adds only what
+ * is new. On the machine only: an export holds every conversation of an
+ * account, and the daemon refuses a paired device.
+ */
+export function ImportChats({ onDone }: { onDone: () => void }) {
+  const input = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState('')
+  const [error, setError] = useState('')
+  const [help, setHelp] = useState(false)
+  const pick = async (file: File | undefined) => {
+    if (!file) return
+    setBusy(true)
+    setNote('')
+    setError('')
+    try {
+      setNote(importSummary(await api.importChats(file)))
+      onDone()
+    } catch (e) {
+      setError(errText(e))
+    } finally {
+      setBusy(false)
+      if (input.current) input.current.value = ''
+    }
+  }
+  return (
+    <div className="grid gap-1.5 text-[13px]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => input.current?.click()}
+          className="inline-flex h-8 items-center rounded-[10px] border border-border-strong bg-bg px-3 text-[13.5px] text-fg hover:border-accent disabled:opacity-60"
+        >
+          {busy ? 'Importing…' : 'Import from Claude.ai or ChatGPT…'}
+        </button>
+        <button type="button" aria-expanded={help} onClick={() => setHelp((h) => !h)} className="text-fg-muted hover:text-fg">
+          How do I get the file?
+        </button>
+        <input
+          ref={input}
+          type="file"
+          accept=".zip,.json,application/zip,application/json"
+          aria-label="Export file"
+          className="hidden"
+          onChange={(e) => void pick(e.target.files?.[0])}
+        />
+      </div>
+      {help && (
+        <ul className="grid list-disc gap-1 pl-5 text-fg-muted">
+          <li><b className="font-medium text-fg">Claude.ai:</b> Settings → Privacy → Export data. The link arrives by email.</li>
+          <li><b className="font-medium text-fg">ChatGPT:</b> Settings → Data controls → Export data. The link arrives by email.</li>
+          <li>Choose the .zip they send, or the conversations.json inside it. It is read on this computer and nothing is sent anywhere. The chats are a copy you can read and search here; they are carried on in Claude.ai or ChatGPT. Importing a newer export adds only what is new.</li>
+        </ul>
+      )}
+      {note && <p role="status" className="text-fg-muted">{note}</p>}
+      {error && <p role="alert" className="text-danger">{error}</p>}
+    </div>
   )
 }
 

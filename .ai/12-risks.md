@@ -200,24 +200,73 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   tell. Decided by: a measured sample of the owner's sessions — how many
   touch more than one repository and how much of their cost is at stake —
   before any code, then an ADR.
-- `OQ-22` — **Syncing chats with Claude.ai and ChatGPT (plan only, nothing
-  built).** The owner wants Caprock's chats (ADR-071) and his Claude.ai and
-  ChatGPT conversations in one place, later (2026-10-16, translated). What
-  is not known, and none of it is verified: whether either service offers a
-  supported API that reads or writes a consumer account's conversations (the
-  developer APIs bill per token and have no history of the chat apps), and
-  whether their terms allow a third-party client to read them. The data
-  exports both services offer (a downloadable archive) are a one-way import
-  that needs no network call from Caprock. Constraints already fixed: rule 4
-  — any sync is an integration the user turns on, off by default, revocable,
-  to the destination they chose, saying what it sends; nothing leaves the
-  machine before that, and an import from a file the user downloaded sends
-  nothing. A Caprock chat runs a local agent (Claude Code, Codex) in a folder,
-  so its history is a transcript; a Claude.ai conversation has no folder and
-  no tool calls, so the two are not the same shape. Decided by: reading each
-  service's current API documentation and terms, with a date, then a spike
-  importing one real export into the Chats list, then an ADR. Until then the
-  answer is "import an export" at most, never "sync".
+- `OQ-22` — **Syncing chats with Claude.ai and ChatGPT (import built, live
+  sync not).** The owner wants Caprock's chats (ADR-071) and his Claude.ai
+  and ChatGPT conversations in one place (2026-10-16 and 2026-10-17,
+  translated: "try to build chat sync"). Read on 2026-10-17; three OpenAI
+  pages refused the fetch, so their wording is from search-engine extracts
+  and is marked so:
+  - **No supported way to read a consumer account's history, from either.**
+    Anthropic's Messages API "is stateless … you always send the full
+    conversational history"
+    (<https://platform.claude.com/docs/en/build-with-claude/working-with-messages>);
+    no documented endpoint reads claude.ai conversations. The one
+    open-source reader of them uses the web app's own endpoints and calls
+    that API "private and undocumented"
+    (<https://github.com/skillsynchq/txcript/blob/main/docs/formats/claude-chat.md>).
+    OpenAI's Conversations API persists conversations made through its
+    Responses API (<https://developers.openai.com/api/docs/guides/conversation-state>);
+    nothing there reads ChatGPT's own chats, and no OpenAI page found says
+    either way in so many words.
+  - **The terms rule out a third-party client reading them.** Anthropic's
+    Consumer Terms (effective 2025-10-08,
+    <https://www.anthropic.com/legal/consumer-terms>) forbid accessing the
+    services "through automated or non-human means, whether through a bot,
+    script, or otherwise" except with an API key or explicit permission,
+    and to "crawl, scrape, or otherwise harvest data". OpenAI's Terms of
+    Use forbid to "automatically or programmatically extract data or
+    Output" (<https://openai.com/policies/terms-of-use/>, from an extract;
+    current effective date not confirmed).
+  - **Both offer a self-service export, and that is the supported route.**
+    Claude.ai: Settings → Privacy → *Export data*; a link by email, signed
+    in to download, expiring after 24 hours; "conversation data and the
+    user data for your account"; no file list or format given
+    (<https://support.claude.com/en/articles/9450526-how-can-i-export-my-claude-data>).
+    ChatGPT: Settings → Data controls → *Export data*; a ZIP by email, "can
+    take up to 7 days", link valid 24 hours; Free, Go, Plus, Pro and some
+    Edu, not Business or Enterprise
+    (<https://help.openai.com/en/articles/7260999-how-do-i-export-my-chatgpt-history-and-data>,
+    from an extract).
+  - **Neither documents the file.** Observed by open-source readers: the
+    Claude.ai zip holds `conversations.json` (an array of `{uuid, name,
+    created_at, updated_at, current_leaf_message_uuid, chat_messages}`,
+    messages `{uuid, parent_message_uuid, sender, text, content[],
+    created_at, attachments[]}`, so a tree with branches) beside
+    `users.json` and `projects.json`
+    (<https://github.com/kenn-io/agentsview/blob/main/internal/parser/claude_ai.go>,
+    <https://github.com/risaacr/claude-chats>). The ChatGPT zip holds
+    `conversations.json` (an array of `{title, create_time, update_time,
+    conversation_id|id, current_node, mapping}`, the mapping a tree of
+    `{parent, children, message: {author.role, create_time, content:
+    {content_type, parts}}}`, the visible thread read back from
+    `current_node`), `chat.html`, `user.json`, `message_feedback.json` and
+    `shared_conversations.json`; newer exports leave private-use citation
+    markers in the prose
+    (<https://github.com/garrytan/gbrain/blob/master/src/core/transcripts/chatgpt-export.ts>,
+    <https://github.com/CherryHQ/cherry-studio/blob/main/src/renderer/services/import/importers/ChatgptImporter.ts>,
+    <https://community.openai.com/t/decoding-exported-data-by-parsing-conversations-json-and-or-chat-html/403144>,
+    2023-09-29: "Is this documented somewhere?").
+
+  **Decided** ([ADR-074](08-decisions.md)): import the export the user
+  downloaded, on the machine, sending nothing; no live sync. **Still open:**
+  (1) a live sync needs a supported read API or written permission from
+  either company, and neither exists as of 2026-10-17; (2) the export
+  formats are undocumented and may change without notice, so the importer
+  reads every field as optional and a fixture from a real export is still
+  to be checked by the owner on his own machine (none is in the repo); (3)
+  whether a ChatGPT export carries Codex cloud tasks is not known. Revisit
+  when either company publishes a history API or a documented export
+  format.
 
 ## What would falsify the whole plan
 

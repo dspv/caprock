@@ -579,6 +579,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("PUT /v1/sessions/{id}/name", s.handleRenameSession)
 	// Chats (ADR-071): the list, archive, delete, and the files each wrote.
 	m.HandleFunc("GET /v1/chats", s.handleChats)
+	m.HandleFunc("POST /v1/chats/import", s.handleChatImport)
 	m.HandleFunc("PUT /v1/chats/{id}/archived", s.handleChatArchive)
 	m.HandleFunc("DELETE /v1/chats/{id}", s.handleChatDelete)
 	m.HandleFunc("GET /v1/chats/{id}/files", s.handleChatFiles)

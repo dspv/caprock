@@ -110,6 +110,40 @@ describe('ChatsScreen', () => {
   })
 })
 
+describe('Import chats (ADR-074)', () => {
+  it('imports an export the user picks, says what it did, and reads the list again', async () => {
+    const list = vi.spyOn(api, 'chats').mockResolvedValue({ items: [], total: 0, chats: 0, archived: 0 })
+    const imp = vi.spyOn(api, 'importChats').mockResolvedValue({
+      conversations: 12, added: 3, updated: 1, unchanged: 8, deleted: 0, empty: 2, messages: 40, sources: { chatgpt: 12 },
+    })
+    render(<ChatsScreen />)
+    await screen.findByText('No chats yet.')
+    fireEvent.click(screen.getByRole('button', { name: 'How do I get the file?' }))
+    expect(screen.getByText(/Settings → Data controls → Export data/)).toBeTruthy()
+    expect(screen.getByText(/nothing is sent anywhere/)).toBeTruthy()
+    const file = new File(['[]'], 'export.zip', { type: 'application/zip' })
+    fireEvent.change(screen.getByLabelText('Export file'), { target: { files: [file] } })
+    await waitFor(() => expect(imp).toHaveBeenCalledWith(file))
+    expect(await screen.findByText('Read 12 conversations from ChatGPT: 3 new, 1 with new messages, 8 already here.')).toBeTruthy()
+    await waitFor(() => expect(list.mock.calls.length).toBeGreaterThan(1))
+  })
+
+  it('shows an imported chat with its service, read-only, with no files', async () => {
+    vi.spyOn(api, 'session').mockResolvedValue({
+      ...chat('c9', { agent: 'chatgpt', owned: false, cwd: '', model_display: '', title: 'Packing list for a hike' }), events: [], files: [], prs: [],
+    } as unknown as SessionDetail)
+    const files = vi.spyOn(api, 'chatFiles').mockRejectedValue(new Error('404'))
+    vi.spyOn(api, 'recentEvents').mockResolvedValue([])
+    render(<ChatScreen id="c9" />)
+    expect(await screen.findByRole('heading', { name: 'Packing list for a hike' })).toBeTruthy()
+    expect(screen.getByText(/ChatGPT · ended/)).toBeTruthy()
+    expect(await screen.findByText(/Imported from ChatGPT/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Files/ })).toBeNull()
+    expect(screen.queryByPlaceholderText('Message…')).toBeNull()
+    expect(files).toHaveBeenCalled()
+  })
+})
+
 describe('ChatScreen', () => {
   const files: ChatFile[] = [
     { path: 'page.html', size: 120, modified: NOW - 1000, kind: 'html' },

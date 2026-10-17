@@ -1,0 +1,98 @@
+[
+  {
+    "title": "Packing list for a hike",
+    "create_time": 1767261600.0,
+    "update_time": 1767261900.5,
+    "conversation_id": "6795a000-0000-4000-8000-0000000000c1",
+    "id": "6795a000-0000-4000-8000-0000000000c1",
+    "current_node": "n-a2",
+    "default_model_slug": "gpt-test",
+    "mapping": {
+      "root": {"id": "root", "message": null, "parent": null, "children": ["n-sys"]},
+      "n-sys": {
+        "id": "n-sys",
+        "parent": "root",
+        "children": ["n-u1"],
+        "message": {
+          "id": "n-sys",
+          "author": {"role": "system"},
+          "create_time": null,
+          "content": {"content_type": "text", "parts": [""]},
+          "metadata": {"is_visually_hidden_from_conversation": true}
+        }
+      },
+      "n-u1": {
+        "id": "n-u1",
+        "parent": "n-sys",
+        "children": ["n-a1"],
+        "message": {
+          "id": "n-u1",
+          "author": {"role": "user"},
+          "create_time": 1767261600.0,
+          "content": {"content_type": "text", "parts": ["What should I pack for a day hike?"]},
+          "metadata": {}
+        }
+      },
+      "n-a1": {
+        "id": "n-a1",
+        "parent": "n-u1",
+        "children": ["n-u2-old", "n-u2"],
+        "message": {
+          "id": "n-a1",
+          "author": {"role": "assistant"},
+          "create_time": 1767261610.0,
+          "content": {"content_type": "text", "parts": ["Water, snacks, a map and a rain layer.citeturn0search0"]},
+          "metadata": {"model_slug": "gpt-test"}
+        }
+      },
+      "n-u2-old": {
+        "id": "n-u2-old",
+        "parent": "n-a1",
+        "children": [],
+        "message": {
+          "id": "n-u2-old",
+          "author": {"role": "user"},
+          "create_time": 1767261700.0,
+          "content": {"content_type": "text", "parts": ["A question I edited away."]},
+          "metadata": {}
+        }
+      },
+      "n-u2": {
+        "id": "n-u2",
+        "parent": "n-a1",
+        "children": ["n-tool"],
+        "message": {
+          "id": "n-u2",
+          "author": {"role": "user"},
+          "create_time": 1767261800.0,
+          "content": {"content_type": "multimodal_text", "parts": [{"content_type": "image_asset_pointer", "asset_pointer": "file-service://file-test"}, "Is this trail too steep?"]},
+          "metadata": {}
+        }
+      },
+      "n-tool": {
+        "id": "n-tool",
+        "parent": "n-u2",
+        "children": ["n-a2"],
+        "message": {
+          "id": "n-tool",
+          "author": {"role": "tool"},
+          "create_time": 1767261850.0,
+          "content": {"content_type": "text", "parts": ["tool output"]},
+          "metadata": {}
+        }
+      },
+      "n-a2": {
+        "id": "n-a2",
+        "parent": "n-tool",
+        "children": [],
+        "message": {
+          "id": "n-a2",
+          "author": {"role": "assistant"},
+          "create_time": 1767261900.5,
+          "content": {"content_type": "text", "parts": ["It looks moderate; take poles."]},
+          "metadata": {"model_slug": "gpt-test-2"}
+        }
+      }
+    }
+  }
+]

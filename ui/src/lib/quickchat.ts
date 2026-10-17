@@ -53,7 +53,7 @@ export function startedChat(sessionId: string): StartedChat | undefined {
   return c && typeof c.agent === 'string' ? c : undefined
 }
 
-const AGENTS: Record<string, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', opencode: 'OpenCode', grok: 'Grok', deepseek: 'DeepSeek' }
+const AGENTS: Record<string, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', opencode: 'OpenCode', grok: 'Grok', deepseek: 'DeepSeek', 'claude.ai': 'Claude.ai', chatgpt: 'ChatGPT' }
 
 /** The agent's short name: "Claude", "Codex". */
 export function chatAgentName(agent: string | undefined): string {

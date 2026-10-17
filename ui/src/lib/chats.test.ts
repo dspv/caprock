@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionSummary } from './api'
-import { chatTitle, isChat, newChatRequest, resolveChatPath, sandboxedHTML } from './chats'
+import { chatTitle, importedFrom, importSummary, isChat, newChatRequest, resolveChatPath, sandboxedHTML } from './chats'
 
 const s = (x: Partial<SessionSummary>) => ({ session_id: 'c1', cwd: '/w/x', ...x }) as SessionSummary
 
@@ -20,6 +20,18 @@ describe('chats', () => {
     const long = chatTitle(s({ title: 'x'.repeat(200) }))
     expect(long.length).toBeLessThanOrEqual(80)
     expect(long.endsWith('…')).toBe(true)
+  })
+
+  it('names the service an imported chat came from, and what an import did', () => {
+    expect(importedFrom(s({ agent: 'claude.ai' }))).toBe('Claude.ai')
+    expect(importedFrom(s({ agent: 'chatgpt' }))).toBe('ChatGPT')
+    expect(importedFrom(s({ agent: 'claude' }))).toBe('')
+    const r = { conversations: 1, added: 1, updated: 0, unchanged: 0, deleted: 0, empty: 0, messages: 4, sources: { 'claude.ai': 1 } }
+    expect(importSummary(r)).toBe('Read 1 conversation from Claude.ai: 1 new.')
+    expect(importSummary({ ...r, conversations: 3, added: 0, unchanged: 2, deleted: 1, sources: { 'claude.ai': 2, chatgpt: 1 } }))
+      .toBe('Read 3 conversations from Claude.ai and ChatGPT: 2 already here, 1 you deleted stay deleted.')
+    expect(importSummary({ ...r, conversations: 0, added: 0, sources: {} })).toBe('That file holds no conversation with a message in it.')
+    expect(importSummary({ ...r, error: 'conversation 2: bad' })).toBe('Read 1 conversation from Claude.ai: 1 new. It stopped part way — conversation 2: bad')
   })
 
   it('asks the daemon for a chat, never a folder', () => {

@@ -8,7 +8,7 @@
  * A chat is read as a conversation (ChatView), never as a terminal, and is
  * listed on the Chats screen instead of with the work.
  */
-import { api, type ChatFile, type SessionSummary, type SpawnRequest } from './api'
+import { api, type ChatFile, type ChatImport, type SessionSummary, type SpawnRequest } from './api'
 import { chatAgentName, isQuickChat, rememberStartedChat, startedChat } from './quickchat'
 import { quickChoiceLabel, rememberQuickChoice, type QuickChoice } from '@/components/QuickChat'
 import { sessionAbout } from './sidebar'
@@ -16,6 +16,33 @@ import { sessionAbout } from './sidebar'
 /** Whether a session is a chat: marked so by the daemon, or in a chat's folder. */
 export function isChat(s: Pick<SessionSummary, 'cwd' | 'chat'> | undefined): boolean {
   return !!s && (!!s.chat || isQuickChat(s))
+}
+
+/**
+ * The service an imported chat came from (ADR-074): "Claude.ai" or
+ * "ChatGPT", or '' for a chat Caprock ran. An imported chat is a copy of a
+ * conversation held there, read here and never written into.
+ */
+export function importedFrom(s: Pick<SessionSummary, 'agent'> | undefined): string {
+  if (s?.agent === 'claude.ai') return 'Claude.ai'
+  if (s?.agent === 'chatgpt') return 'ChatGPT'
+  return ''
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/** One line on what an import did: "Read 12 conversations from ChatGPT: 3 new, 9 already here." */
+export function importSummary(r: ChatImport): string {
+  const names = Object.keys(r.sources ?? {}).map((k) => importedFrom({ agent: k as SessionSummary['agent'] }) || k)
+  if (r.conversations === 0) return r.error ? `Nothing imported — ${r.error}` : 'That file holds no conversation with a message in it.'
+  const parts = [
+    r.added > 0 && `${r.added} new`,
+    r.updated > 0 && `${r.updated} with new messages`,
+    r.unchanged > 0 && `${r.unchanged} already here`,
+    r.deleted > 0 && `${r.deleted} you deleted stay deleted`,
+  ].filter(Boolean)
+  const line = `Read ${plural(r.conversations, 'conversation')} from ${names.join(' and ')}: ${parts.join(', ')}.`
+  return r.error ? `${line} It stopped part way — ${r.error}` : line
 }
 
 /** The longest a title made from the first message runs, in characters. */
