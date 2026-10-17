@@ -267,6 +267,7 @@ export const ProjectRow = memo(function ProjectRow({
           type="button"
           data-nav-row
           data-project-row={id}
+          data-project-name={p.name}
           data-current={current || undefined}
           aria-expanded={items.length > 0 ? open : undefined}
           onClick={() => onSelect(id)}
@@ -679,6 +680,7 @@ function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, on
         type="button"
         data-nav-row
         data-tab-row={tab.id}
+        data-session-id={label?.session?.session_id}
         data-waiting={waiting || undefined}
         data-selected={active || undefined}
         aria-current={active ? 'true' : undefined}

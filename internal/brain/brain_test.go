@@ -139,6 +139,9 @@ func TestAReadKeepsMemoriesLinkedToTheirProjectAndTopics(t *testing.T) {
 	for len(sub.C) > 0 {
 		if f := <-sub.C; f.Type == bus.FrameBrain && f.Data.(map[string]any)["op"] == "added" {
 			frames++
+			if d := f.Data.(map[string]any); d["session"] != "s1" || d["project"] != "acme-api" {
+				t.Errorf("frame %v: want the memory's session and project", d)
+			}
 		}
 	}
 	if frames != 2 {

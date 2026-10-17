@@ -217,7 +217,8 @@ describe('the Second Brain screen', () => {
     fireEvent.click(card)
     const dialog = screen.getByRole('dialog', { name: 'Second Brain graph' })
     expect(dialog.querySelector('[data-brain-graph="full"]')).not.toBeNull()
-    expect(dialog.querySelector('[data-brain-legend]')).not.toBeNull()
+    // The memory opened on the screen is opened beside the graph too.
+    expect(dialog.querySelector('[data-brain-detail]')).not.toBeNull()
     act(() => { fireEvent.keyDown(document, { key: 'Escape' }) })
     expect(screen.queryByRole('dialog', { name: 'Second Brain graph' })).toBeNull()
     fireEvent.click(card)

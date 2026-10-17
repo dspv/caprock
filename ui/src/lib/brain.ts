@@ -66,7 +66,10 @@ export async function dropIntoBrain(d: BrainDrop): Promise<DropResult> {
 }
 
 /** Calls `fn` on every brain change the live socket reports, and after a replay gap; a read's `progress` frames only with `{progress: true}`. */
-export function useBrainFrames(fn: (f?: { id: number; op: string; title?: string; kind?: string; auto?: boolean }) => void, opts?: { progress?: boolean }) {
+/** A `brain` frame's data (03-contracts.md § Second Brain, Live): `session` and `project` only on `added`, when known. */
+export interface BrainFrame { id: number; op: string; title?: string; kind?: string; auto?: boolean; session?: string; project?: string }
+
+export function useBrainFrames(fn: (f?: BrainFrame) => void, opts?: { progress?: boolean }) {
   const progress = !!opts?.progress
   const ref = useRef(fn)
   ref.current = fn
@@ -74,7 +77,7 @@ export function useBrainFrames(fn: (f?: { id: number; op: string; title?: string
     if (f.type === 'brain') {
       // A read beginning or ending changes no memory; only the status cares.
       if ((f.data as { op?: string } | undefined)?.op === 'progress' && !progress) return
-      ref.current(f.data)
+      ref.current(f.data as BrainFrame)
     } else if (f.type === 'reset') ref.current()
   }), [progress])
 }
@@ -280,3 +283,21 @@ export const BRAIN_STEPS: { stage: 'find' | 'extracting' | 'linking'; label: str
   { stage: 'extracting', label: 'Claude extracts memories' },
   { stage: 'linking', label: 'Link into the graph' },
 ]
+
+/** Settings → Second Brain, *Animate thoughts arriving*: kept per browser, on unless turned off. */
+const ARRIVALS_KEY = 'caprock.brain-arrivals'
+
+/** Whether a memory arriving is animated: the setting, and never under prefers-reduced-motion. */
+export function brainArrivalsOn(): boolean {
+  try { if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false } catch { /* no media queries */ }
+  return brainArrivalsSetting()
+}
+
+/** The setting alone, whatever the motion preference. */
+export function brainArrivalsSetting(): boolean {
+  try { return localStorage.getItem(ARRIVALS_KEY) !== 'off' } catch { return true }
+}
+
+export function setBrainArrivals(on: boolean) {
+  try { if (on) localStorage.removeItem(ARRIVALS_KEY); else localStorage.setItem(ARRIVALS_KEY, 'off') } catch { /* private window: this page only */ }
+}

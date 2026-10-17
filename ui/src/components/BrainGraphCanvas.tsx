@@ -44,15 +44,31 @@
  *
  * The Pensieve (the owner's picture, translated: "memories drawn out with a
  * wand and laid in the Pensieve"): a memory that arrives while the graph is
- * on screen drops in from above, and a faint ring spreads where it lands.
+ * on screen flies out of its project's hub to its place as a spark, or drops
+ * in from above when it has no project, and a faint ring spreads where it
+ * lands (Settings → Second Brain, *Animate thoughts arriving*; never under
+ * prefers-reduced-motion).
+ *
+ * The opened graph (04-ui.md § Second Brain, *The graph opened*) adds three
+ * things the card does not use: `tint`, a colour per node (its project's);
+ * `highlight`, the nodes a search or a project picks out, the rest faded;
+ * and `restLabels`, the projects and the busiest topics named at any zoom.
+ * Neither a tint nor a highlight re-lays the graph out or re-runs the
+ * effect: they are read from refs and only the picture is redrawn.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { BrainGraph, BrainNode } from '@/lib/api'
-import { isEntity, KIND_COLOR } from '@/lib/brain'
+import { brainArrivalsOn, isEntity, KIND_COLOR } from '@/lib/brain'
 import { bounds, seed, Simulation, type SimLink } from '@/lib/forcegraph'
 
 const DROP_MS = 900
 const RIPPLE_MS = 900
+/** A highlight fades the rest of the graph to this. */
+const UNPICKED = 0.13
+/** A highlight names its memories only when it holds at most this many. */
+const PICKED_NAMED = 24
+/** The topics named at rest beside the projects, busiest first. */
+const REST_TOPICS = 6
 /** How much of the rest stays visible while a node has the focus. */
 const DIM = 0.2
 /** The same while only an opened node has it: the card beside says the rest, so less is dimmed. */
@@ -148,6 +164,14 @@ export interface BrainGraphCanvasProps {
   onSelect?: (id: number) => void
   /** A small one: no labels, no pan or zoom, fitted. */
   mini?: boolean
+  /** A colour per node id (CSS, resolved against the theme); a node without one keeps its kind's. */
+  tint?: Map<number, string>
+  /** The nodes picked out (a search, a project): the rest fade; null or absent, none. */
+  highlight?: Set<number> | null
+  /** The node under the pointer, or undefined when it leaves one (after the linger). */
+  onHover?: (id: number | undefined) => void
+  /** Name the projects and the busiest topics at any zoom. */
+  restLabels?: boolean
   className?: string
   ariaLabel?: string
 }
@@ -157,7 +181,7 @@ type Gesture =
   | { kind: 'node'; i: number; x: number; y: number; moved: boolean }
   | { kind: 'pinch'; d: number; k: number; mx: number; my: number; tx: number; ty: number }
 
-export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, className = '', ariaLabel }: BrainGraphCanvasProps) {
+export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, className = '', ariaLabel, tint, highlight, onHover, restLabels = false }: BrainGraphCanvasProps) {
   const wrap = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   // Positions outlive a graph read, so a reload or a new memory does not
@@ -173,6 +197,23 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
   const frame = useRef(0)
   const kick = useRef<() => void>(() => {})
   const fitNow = useRef<() => void>(() => {})
+  /** Redraws the picture as it stands (a tint or a highlight changed). */
+  const redraw = useRef<() => void>(() => {})
+  const tintRef = useRef(tint)
+  const pickRef = useRef(highlight ?? null)
+  const hoverCb = useRef(onHover)
+  hoverCb.current = onHover
+  useEffect(() => {
+    tintRef.current = tint
+    pickRef.current = highlight ?? null
+    redraw.current()
+  }, [tint, highlight])
+  const setHover = (i: number) => {
+    if (hover.current === i) return
+    hover.current = i
+    hoverCb.current?.(i >= 0 ? sim.s.nodes[i]?.id : undefined)
+    kick.current()
+  }
   /** Screen radius of each node at the current zoom, for hit-testing. */
   const radiusAt = useRef<(i: number) => number>(() => 2)
   // When the view last moved by hand: while it moves the base layer is scaled, not redrawn.
@@ -227,6 +268,9 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         else own.set(hub, [leaf])
       }
     }
+    // Each memory's project hub, for the arrival's flight (-1: none).
+    const hubOf = graph.nodes.map(() => -1)
+    for (const [hub, leaves] of own) for (const j of leaves) hubOf[j] = hub
     const hold = { hubs: true }
     const tick = () => {
       s.tick()
@@ -248,16 +292,16 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
     if (placed === nodes.length) s.alpha = 0.05
     else if (placed > 0) s.alpha = 0.3
     // New nodes after the first paint drop in.
-    if (seen.current && !another && !reducedMotion()) {
+    if (seen.current && !another && brainArrivalsOn()) {
       const now = performance.now()
       for (const n of graph.nodes) if (!seen.current.has(n.id) && !isEntity(n.kind)) born.current.set(n.id, now)
     }
     seen.current = new Set(ids)
-    return { s, tick, hold, fresh: placed === 0 }
+    return { s, tick, hold, hubOf, fresh: placed === 0 }
   }, [graph, mini])
 
   useEffect(() => {
-    const { s: layout, tick, hold, fresh } = sim
+    const { s: layout, tick, hold, hubOf, fresh } = sim
     const cv = canvas.current
     const box = wrap.current
     if (!cv || !box) return
@@ -265,6 +309,21 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
     if (!ctx) return // jsdom, or a canvas the browser refused
     const still = reducedMotion()
     let colors = readColors(box)
+    // The tint's CSS colours resolved once each (a canvas takes no var()).
+    const probe = document.createElement('span')
+    probe.style.display = 'none'
+    box.appendChild(probe)
+    let resolved = new Map<string, string>()
+    const resolve = (css: string) => {
+      let c = resolved.get(css)
+      if (c === undefined) {
+        probe.style.color = ''
+        probe.style.color = css
+        c = getComputedStyle(probe).color || colors.dot
+        resolved.set(css, c)
+      }
+      return c
+    }
     let w = 0
     let h = 0
     const dpr = () => window.devicePixelRatio || 1
@@ -398,7 +457,8 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       // Hairlines; behind a focus, its own links brighter on top.
       c.strokeStyle = colors.web
       c.lineWidth = big ? 0.5 : 0.65
-      c.globalAlpha = Math.min(1, ((big ? 0.09 : EDGE_ALPHA) / 0.45) * rest)
+      const pickedSet = pickRef.current
+      c.globalAlpha = Math.min(1, ((big ? 0.09 : EDGE_ALPHA) / 0.45) * rest * (pickedSet ? 0.45 : 1))
       c.beginPath()
       for (const l of layout.links) {
         const a = nodes[l.s]!
@@ -407,6 +467,19 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         c.lineTo(sx(b.x, v), sy(b.y, v))
       }
       c.stroke()
+      if (pickedSet && pickedSet.size > 0) {
+        // The picked-out nodes' own links, brighter.
+        c.globalAlpha = Math.min(1, 0.3 * rest)
+        c.beginPath()
+        for (const l of layout.links) {
+          const a = nodes[l.s]!
+          const b = nodes[l.t]!
+          if (!pickedSet.has(a.id) || !pickedSet.has(b.id)) continue
+          c.moveTo(sx(a.x, v), sy(a.y, v))
+          c.lineTo(sx(b.x, v), sy(b.y, v))
+        }
+        c.stroke()
+      }
       if (focus !== undefined && lit > 0) {
         c.globalAlpha = 0.55 * lit
         c.strokeStyle = colors.fg
@@ -423,12 +496,18 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       }
       // Dots, one path per kind: the rest, then the lit neighbourhood with a
       // soft glow.
-      const groups = new Map<string, number[]>()
+      // Grouped by kind and colour: one path each.
+      const tints = tintRef.current
+      const picked = pickRef.current
+      const groups = new Map<string, { kind: string; color: string; list: number[] }>()
       nodes.forEach((n, i) => {
         if (born.current.has(n.id)) return
-        const list = groups.get(kinds[i]!)
-        if (list) list.push(i)
-        else groups.set(kinds[i]!, [i])
+        const t = tints?.get(n.id)
+        const color = t ? resolve(t) : fill(kinds[i]!)
+        const key = `${kinds[i]}|${color}`
+        const gr = groups.get(key)
+        if (gr) gr.list.push(i)
+        else groups.set(key, { kind: kinds[i]!, color, list: [i] })
       })
       const dots = (list: number[], pick: (i: number) => boolean, scale = 1) => {
         c.beginPath()
@@ -445,10 +524,24 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         c.fill()
       }
       const inFocus = (i: number) => focus !== undefined && near.has(nodes[i]!.id)
-      for (const [kind, list] of groups) {
-        c.fillStyle = fill(kind)
-        c.globalAlpha = restAlpha(kind) * rest
-        dots(list, (i) => !inFocus(i) || lit === 0)
+      const isPicked = (i: number) => !picked || picked.has(nodes[i]!.id)
+      if (picked) {
+        // A highlight: the rest faded first, then what it picked out, with a halo.
+        for (const { kind, color, list } of groups.values()) {
+          c.fillStyle = color
+          c.globalAlpha = restAlpha(kind) * rest * UNPICKED
+          dots(list, (i) => !isPicked(i) && (!inFocus(i) || lit === 0))
+        }
+        for (const { color, list } of groups.values()) {
+          c.fillStyle = color
+          c.globalAlpha = 0.16 * rest
+          dots(list, (i) => isPicked(i) && (!inFocus(i) || lit === 0), 2.6)
+        }
+      }
+      for (const { kind, color, list } of groups.values()) {
+        c.fillStyle = color
+        c.globalAlpha = Math.min(1, restAlpha(kind) * rest * (picked ? 1.12 : 1))
+        dots(list, (i) => isPicked(i) && (!inFocus(i) || lit === 0))
       }
       if (focus !== undefined && lit > 0) {
         // The glow: two soft halos under each lit dot, one path each (a
@@ -457,10 +550,10 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         c.fillStyle = colors.fg
         for (const [scale, a] of [[3.4, 0.05], [2.1, 0.09]] as const) {
           c.globalAlpha = a * lit
-          for (const list of groups.values()) dots(list, litDot, scale)
+          for (const { list } of groups.values()) dots(list, litDot, scale)
         }
-        for (const [kind, list] of groups) {
-          c.fillStyle = fill(kind)
+        for (const { kind, color, list } of groups.values()) {
+          c.fillStyle = color
           const a = restAlpha(kind)
           c.globalAlpha = a * rest + (1 - a * rest) * lit
           dots(list, litDot)
@@ -513,6 +606,21 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
           for (const i of ns) if (isEntity(kinds[i]!) || mems.length <= NEAR_NAMED || memA > 0) put(i, lit)
         }
         if (sel >= 0) put(sel, 1, true)
+        if (picked && picked.size > 0) {
+          // What a search or a project picked out: its hubs, and its memories
+          // too while there are few of them.
+          const few = picked.size <= PICKED_NAMED
+          for (const i of hubs) if (picked.has(nodes[i]!.id)) put(i, 1, kinds[i] === 'project')
+          if (few) for (let i = 0; i < nodes.length; i++) if (picked.has(nodes[i]!.id) && !isEntity(kinds[i]!)) put(i, 1)
+        }
+        if (restLabels) {
+          // The projects and the busiest topics, at any zoom.
+          let topics = 0
+          for (const i of hubs) {
+            if (kinds[i] === 'project') put(i, (picked && !picked.has(nodes[i]!.id) ? 0.35 : 0.95) * rest, true)
+            else if (kinds[i] === 'topic' && topics < REST_TOPICS) { topics++; put(i, (picked && !picked.has(nodes[i]!.id) ? 0.3 : 0.8) * rest) }
+          }
+        }
         if (hubA > 0) {
           const limit = Math.round(6 * zr * zr)
           for (const i of hubs.slice(0, limit)) put(i, hubA * rest, kinds[i] === 'project')
@@ -537,14 +645,52 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         animating = true
         const p = Math.min(1, t / DROP_MS)
         const ease = 1 - Math.pow(1 - p, 3)
-        const fall = (1 - ease) * (mini ? 40 : 90)
         const x = sx(n.x, v)
         const y = sy(n.y, v)
-        ctx.globalAlpha = (0.25 + 0.75 * ease) * DOT_ALPHA
-        ctx.fillStyle = colors.dot
-        ctx.beginPath()
-        ctx.arc(x, y - fall, px[i]! * g * (1 + (1 - ease) * 0.8), 0, Math.PI * 2)
-        ctx.fill()
+        const t0 = tintRef.current?.get(id)
+        const dot = t0 ? resolve(t0) : colors.dot
+        const hub = hubOf[i] ?? -1
+        if (hub >= 0 && nodes[hub]) {
+          // Out of its project's hub to its place, a spark with a short
+          // tail along a slight curve.
+          const hx = sx(nodes[hub]!.x, v)
+          const hy = sy(nodes[hub]!.y, v)
+          const bend = (mini ? 10 : 26) * (i % 2 ? 1 : -1)
+          const at = (q: number) => {
+            const mx = (hx + x) / 2 - (y - hy) * 0.001 * bend
+            const my = (hy + y) / 2 + (x - hx) * 0.001 * bend - bend * 0.4
+            const u = 1 - q
+            return [u * u * hx + 2 * u * q * mx + q * q * x, u * u * hy + 2 * u * q * my + q * q * y] as const
+          }
+          if (p < 1) {
+            ctx.fillStyle = colors.ring
+            for (let k = 4; k >= 1; k--) {
+              const [tx, ty] = at(Math.max(0, ease - k * 0.06))
+              ctx.globalAlpha = 0.16 * (5 - k) * (1 - p * 0.5)
+              ctx.beginPath()
+              ctx.arc(tx, ty, (px[i]! * g) * (0.5 + 0.12 * (5 - k)), 0, Math.PI * 2)
+              ctx.fill()
+            }
+          }
+          const [cx2, cy2] = at(ease)
+          ctx.globalAlpha = 0.25 * (1 - p)
+          ctx.fillStyle = colors.ring
+          ctx.beginPath()
+          ctx.arc(cx2, cy2, px[i]! * g * 3.2, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.globalAlpha = p < 1 ? 1 : DOT_ALPHA
+          ctx.fillStyle = p < 1 ? colors.ring : dot
+          ctx.beginPath()
+          ctx.arc(cx2, cy2, px[i]! * g * (1 + (1 - ease) * 0.6), 0, Math.PI * 2)
+          ctx.fill()
+        } else {
+          const fall = (1 - ease) * (mini ? 40 : 90)
+          ctx.globalAlpha = (0.25 + 0.75 * ease) * DOT_ALPHA
+          ctx.fillStyle = dot
+          ctx.beginPath()
+          ctx.arc(x, y - fall, px[i]! * g * (1 + (1 - ease) * 0.8), 0, Math.PI * 2)
+          ctx.fill()
+        }
         if (t > DROP_MS * 0.8) {
           const q = Math.min(1, (t - DROP_MS * 0.8) / RIPPLE_MS)
           ctx.globalAlpha = 0.45 * (1 - q)
@@ -677,6 +823,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       frame.current = requestAnimationFrame(loop)
     }
     kick.current = schedule
+    redraw.current = () => { baseDirty = true; schedule() }
     fitNow.current = () => {
       touched.current = false
       const to = fitted()
@@ -691,7 +838,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
     ro.observe(box)
     resize()
     // A theme change repaints in its colours.
-    const mo = new MutationObserver(() => { colors = readColors(box); baseDirty = true; schedule() })
+    const mo = new MutationObserver(() => { colors = readColors(box); resolved = new Map(); baseDirty = true; schedule() })
     mo.observe(document.documentElement, { attributes: true })
     return () => {
       cancelAnimationFrame(frame.current)
@@ -699,6 +846,8 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       unhover.current = 0
       ro.disconnect()
       mo.disconnect()
+      probe.remove()
+      redraw.current = () => {}
       running = false
     }
   }, [sim, graph, selected, mini])
@@ -901,19 +1050,18 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
           if (i >= 0) {
             window.clearTimeout(unhover.current)
             unhover.current = 0
-            if (i !== hover.current) { hover.current = i; kick.current() }
+            setHover(i)
           } else if (hover.current >= 0 && !unhover.current) {
             // Off a dot: the focus lingers a moment, so moving from one dot
             // to the next does not fade the whole graph out and back in.
-            unhover.current = window.setTimeout(() => { unhover.current = 0; hover.current = -1; kick.current() }, LINGER_MS)
+            unhover.current = window.setTimeout(() => { unhover.current = 0; setHover(-1) }, LINGER_MS)
           }
         }}
         onPointerLeave={() => {
           if (gesture.current) return
           window.clearTimeout(unhover.current)
           unhover.current = 0
-          hover.current = -1
-          kick.current()
+          setHover(-1)
         }}
         onPointerCancel={(e) => { pointers.current.delete(e.pointerId); release(); gesture.current = null }}
         onPointerUp={(e) => {
