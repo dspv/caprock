@@ -221,6 +221,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-17 — 0.128.0: the phone walkie-talkie bar, AI;DR, report a bug, Halloween pumpkins
+
+A minor release because it carries features, landed as one batch PR (#727). The phone gets a slim walkie-talkie bar: hold to talk, answers read aloud, and AI;DR / Read aloud / Continue / Stop on the latest answer. AI;DR squeezes one answer through the user's own claude, cached (ADR-072). Report a bug sends a report the user wrote to Caprock support, only on their click after the sheet names every field (ADR-073; rule 4 amended with the owner's OK). In October Claude's portrait can wear a pumpkin.
+
 ### 2026-10-16 — 0.127.0: end sessions from the phone, a release status on Pipeline
 
 A minor release because it carries features, landed as one batch PR (#725). Every live row Caprock started can be ended from the phone (menu or swipe), and a chat from its sheet; when ending is not allowed the row says why. Pipeline's Next release panel opens with the release's own status: the version and why, its stages from merged PRs to published, unknown stages left neutral, and the last release. The version panel can check again right after a check.

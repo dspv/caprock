@@ -12,6 +12,43 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.128.0] - 2026-10-17
+
+### Added
+
+- **api:** AI;DR: `POST /v1/events/{id}/tldr` squeezes one agent answer into
+  at most two short sentences, in the answer's own language, by a separate
+  call to your own `claude` (Second Brain's headless runner, Haiku, no
+  session written), only when you tap it. Never typed into the session. The
+  result is kept, so a second tap makes no call; an answer under 280
+  characters is its own TL;DR. A paired controller phone may use it
+  (ADR-072).
+- **ui:** Halloween pumpkins for Claude's portrait: eight of them (a
+  jack-o'-lantern, a witch, a vampire, a ghost, a black cat, a mummy, a
+  monster and a lantern) on a new *Pumpkins* tab of the face menu, and
+  *A pumpkin per session* in Settings → Appearance. Nobody's current face
+  changes.
+  Through October the quiet *try a duck?* line beside an idle portrait
+  says *try a pumpkin?* instead and opens the pumpkins.
+- **support:** Report a bug, from the phone bar's + menu and ⌘K *Report a
+  bug…*: type or dictate what happened, attach up to three screenshots (made
+  small on the device), add an email if you want a reply, and press Send to
+  support. It goes privately to Caprock support at caprock.dev, never to
+  GitHub, and only on that click; the sheet lists exactly what is sent — your
+  text, the screenshots, the email if given, the Caprock version and the OS
+  (ADR-073).
+
+### Changed
+
+- **phone:** the chat's bottom bar is one row: a speaker switch that reads
+  new answers aloud (on by default, remembered per device), a + menu with
+  Photo, New chat and Report a bug, a one-line field that Enter sends, and a
+  round hold-to-talk microphone — hold to speak and release to send, tap to
+  start and tap again to send, slide off to cancel. The latest answer carries
+  AI;DR (a two-line summary from your machine), Read aloud, Continue and
+  Stop. Esc, Tab, the arrows, Enter, Ctrl+C and the dictation language moved
+  to the session's ··· menu. The desktop chat is unchanged.
+
 ## [0.127.0] - 2026-10-16
 
 ### Added
