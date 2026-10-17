@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +15,7 @@ import (
 func TestParseShortstat(t *testing.T) {
 	loc := time.FixedZone("UTC+3", 3*3600)
 	now := time.Date(2026, 10, 13, 15, 0, 0, 0, loc)
-	start := activityStart(now, 14)
+	start := activityStart(now)
 	at := func(day, hour int) int64 { return start.AddDate(0, 0, day).Add(time.Duration(hour) * time.Hour).Unix() }
 	rec := func(sec int64, stat string) string { return fmt.Sprintf("\x1e%d\n\n%s\n", sec, stat) }
 	out := rec(at(13, 14), " 3 files changed, 120 insertions(+), 4 deletions(-)") +
@@ -70,32 +72,111 @@ func TestRepoName(t *testing.T) {
 
 func TestReadActivity(t *testing.T) {
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
-	start := activityStart(now, 14)
+	start := activityStart(now)
 	var asked []string
 	git := func(args ...string) ([]byte, error) {
 		asked = append(asked, args[0])
 		switch args[0] {
 		case "log":
-			return []byte(fmt.Sprintf("\x1e%d\r\n\r\n 1 file changed, 2 insertions(+)\r\n", start.AddDate(0, 0, 13).Unix())), nil
+			return []byte(fmt.Sprintf("\x1eaaa %d\r\n", start.AddDate(0, 0, 13).Unix())), nil
+		case "branch":
+			return []byte("main\r\n"), nil
 		case "status":
 			return []byte(" M a.go\r\n?? new.txt\r\n M dir\\b.go\r\n"), nil
 		}
 		return nil, errors.New("unexpected")
 	}
-	a := readActivity(context.Background(), `C:\dev\app`, now, 14, git)
-	if a.Name != "app" || a.Commits[13] != 1 || a.Added[13] != 2 || a.Dirty != 3 || a.Error != "" {
+	stat := func(args ...string) ([]byte, error) {
+		asked = append(asked, "stat")
+		return []byte("\x1eaaa\r\n\r\n 1 file changed, 2 insertions(+)\r\n"), nil
+	}
+	a, lines := readActivity(context.Background(), `C:\dev\app`, now, git, stat, nil)
+	if a.Name != "app" || a.Commits[13] != 1 || a.Added[13] != 2 || a.Dirty != 3 || a.Error != "" || a.Branch != "main" || a.LinesPartial {
 		t.Fatalf("got %+v", a)
 	}
 	if a.Days[0] != "2026-09-30" || a.Days[13] != "2026-10-13" {
 		t.Fatalf("days %v", a.Days)
 	}
-	if strings.Join(asked, ",") != "log,status" {
+	if strings.Join(asked, ",") != "log,stat,branch,status" {
 		t.Fatalf("asked %v", asked)
 	}
+	// The next read diffs nothing it already counted.
+	asked = nil
+	if b, _ := readActivity(context.Background(), `C:\dev\app`, now, git, stat, lines); b.Added[13] != 2 || strings.Join(asked, ",") != "log,branch,status" {
+		t.Fatalf("asked %v, got %+v", asked, b)
+	}
 
-	broken := readActivity(context.Background(), "/x", now, 14, func(...string) ([]byte, error) { return nil, errors.New("not a git repository") })
+	broken, _ := readActivity(context.Background(), "/x", now, func(...string) ([]byte, error) { return nil, errors.New("not a git repository") }, stat, nil)
 	if broken.Error == "" || len(broken.Commits) != 14 {
 		t.Fatalf("a failed git: %+v", broken)
+	}
+}
+
+// Counting lines that runs out of time is not a repository that could not
+// be read: the commits are counted, the batches diffed so far are kept, and
+// the next read goes on from there. Before 2026-10-17 one
+// `git log --all --shortstat` past the 5 s timeout (the owner's caprock and
+// caprock-web) turned the whole row into "git could not be read".
+func TestReadActivityLinesRunOut(t *testing.T) {
+	defer func(n int) { activityStatBatch = n }(activityStatBatch)
+	activityStatBatch = 2
+	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
+	start := activityStart(now)
+	day := start.AddDate(0, 0, 13).Unix()
+	git := func(args ...string) ([]byte, error) {
+		if args[0] == "log" {
+			return []byte(fmt.Sprintf("\x1ec1 %d\n\x1ec2 %d\n\x1ec3 %d\n\x1ec4 %d\n", day, day, day, day)), nil
+		}
+		return nil, nil
+	}
+	calls := 0
+	stat := func(args ...string) ([]byte, error) {
+		calls++
+		if calls > 1 {
+			return nil, errLineBudget
+		}
+		var b strings.Builder
+		for _, h := range args[4:] {
+			fmt.Fprintf(&b, "\x1e%s\n\n 1 file changed, 10 insertions(+), 1 deletion(-)\n", h)
+		}
+		return []byte(b.String()), nil
+	}
+	a, lines := readActivity(context.Background(), "/r", now, git, stat, nil)
+	if a.Error != "" || a.Commits[13] != 4 || !a.LinesPartial || a.Added[13] != 20 || a.Deleted[13] != 2 || len(lines) != 2 {
+		t.Fatalf("a budget run out: %+v, %d kept", a, len(lines))
+	}
+	calls = 0
+	b, lines := readActivity(context.Background(), "/r", now, git, stat, lines)
+	if b.LinesPartial || b.Added[13] != 40 || len(lines) != 4 || calls != 1 {
+		t.Fatalf("the next read: %+v, %d kept, %d diffs", b, len(lines), calls)
+	}
+}
+
+// The real git, in batches of two: lines per commit through
+// `log --no-walk`, and the branch.
+func TestActivityRealGit(t *testing.T) {
+	needGit(t)
+	defer func(n int) { activityStatBatch = n }(activityStatBatch)
+	activityStatBatch = 2
+	root := newRepo(t, filepath.Join(t.TempDir(), "app"))
+	for i, body := range []string{"a\nb\n", "a\nb\nc\n", "c\n"} {
+		if err := os.WriteFile(filepath.Join(root, "g"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		git(t, root, "add", "g")
+		git(t, root, "commit", "-q", "-m", fmt.Sprint("c", i))
+	}
+	s := &Service{}
+	a := s.Activity(context.Background(), root)
+	total := func(v []int) (n int) {
+		for _, x := range v {
+			n += x
+		}
+		return n
+	}
+	// f +1; g +2, then +1, then +0 -2.
+	if a.Error != "" || a.Branch != "main" || a.LinesPartial || total(a.Commits) != 4 || total(a.Added) != 4 || total(a.Deleted) != 2 {
+		t.Fatalf("got %+v", a)
 	}
 }
 

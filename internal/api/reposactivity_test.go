@@ -71,6 +71,9 @@ func TestReposActivity(t *testing.T) {
 	if g == nil || g.Pulls == nil || g.Pulls.Open != 1 || g.Pulls.Merged7 != 1 || g.Pulls.Listed != 2 || g.CI == nil || g.CI.Runs != 3 || g.CI.Red != 1 || g.CI.Workflow != "ci" {
 		t.Fatalf("kept figures: %+v %+v %+v", g, g.Pulls, g.CI)
 	}
+	if l := g.CI.Last; l == nil || l.Name != "ci" || l.Branch != "b" || l.Conclusion != "success" || l.At == 0 {
+		t.Fatalf("the newest run: %+v", l)
+	}
 	if asked.Load() != before {
 		t.Fatalf("the Repos section asked GitHub %d times", asked.Load()-before)
 	}

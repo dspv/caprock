@@ -60,6 +60,20 @@ type RepoGitHubCI struct {
 	// median successful run (absent with fewer than two).
 	Workflow string `json:"workflow,omitempty"`
 	MedianMS int64  `json:"median_ms,omitempty"`
+	// Last is the newest run of the kept list, whatever its age.
+	Last *RepoGitHubRun `json:"last,omitempty"`
+}
+
+// RepoGitHubRun is one run, as a row's expanded line says it.
+type RepoGitHubRun struct {
+	Name   string `json:"name"`
+	Branch string `json:"branch,omitempty"`
+	// Status is GitHub's (queued, in_progress, completed…); Conclusion is
+	// set once it completed (success, failure, cancelled…).
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion,omitempty"`
+	At         int64  `json:"at,omitempty"`
+	URL        string `json:"url,omitempty"`
 }
 
 // RepoGitHubRelease is the newest release run the deck read.
@@ -126,6 +140,24 @@ func (s *Server) handleReposActivity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// newestRun is the run created last, nil for none.
+func newestRun(runs []github.CIRun) *RepoGitHubRun {
+	var n *github.CIRun
+	for i := range runs {
+		if n == nil || runs[i].CreatedAt > n.CreatedAt {
+			n = &runs[i]
+		}
+	}
+	if n == nil {
+		return nil
+	}
+	at := n.UpdatedAt
+	if at == 0 {
+		at = n.CreatedAt
+	}
+	return &RepoGitHubRun{Name: n.Name, Branch: n.HeadBranch, Status: n.Status, Conclusion: n.Conclusion, At: at, URL: n.HTMLURL}
+}
+
 // keptGitHub is a repository's GitHub figures from the caches alone.
 func (s *Server) keptGitHub(remote string, now time.Time) *RepoGitHub {
 	repo, ok := github.ParseRemote(remote)
@@ -152,6 +184,7 @@ func (s *Server) keptGitHub(remote string, now time.Time) *RepoGitHub {
 		if len(st.Workflows) > 0 {
 			ci.Workflow, ci.MedianMS = st.Workflows[0].Name, st.Workflows[0].MedianMS
 		}
+		ci.Last = newestRun(runs)
 		g.CI = ci
 	}
 	if rel, ok := s.d.GitHub.CachedRelease(repo); ok && rel.State != "" && rel.State != "none" {
